@@ -208,7 +208,8 @@ class MainActivity : ComponentActivity() {
     private fun buildVerse(page: FrameLayout) {
         world = VerseSurface(this) { _, _ -> if (tab == AppTab.VERSE) renderVerse() }
         page.addView(world, FrameLayout.LayoutParams(-1, -1))
-        val controls = column().apply { gravity = Gravity.END }
+        // Bottom center, between the movement and look sticks Rust draws.
+        val controls = column().apply { gravity = Gravity.CENTER_HORIZONTAL }
         cameraButton = iconButton(R.drawable.ic_touch_look, "Touch look", "verse-camera-mode") { world.toggleMotion() }
         recenterButton = iconButton(R.drawable.ic_recenter, "Recenter", "verse-motion-recenter") { world.recenter() }
         val modes = row().apply {
@@ -224,7 +225,7 @@ class MainActivity : ComponentActivity() {
         controls.addView(worldStatus, LinearLayout.LayoutParams(-2, -2).apply { bottomMargin = dp(8) })
         controls.addView(worldRetry, LinearLayout.LayoutParams(-2, -2).apply { bottomMargin = dp(8) })
         controls.addView(modes)
-        page.addView(controls, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.END).apply {
+        page.addView(controls, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply {
             setMargins(dp(16), dp(16), dp(16), dp(16)) })
     }
 

@@ -223,6 +223,10 @@ pub(crate) struct Packet {
     /// pinch arbitration, so zooming never releases the stick.
     #[serde(skip_serializing_if = "Option::is_none")]
     stick_pointer: Option<u64>,
+    /// The pointer holding the bare world's look stick, which the host keeps
+    /// out of pinch arbitration in the same way.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    look_stick_pointer: Option<u64>,
     motion_needed: bool,
     companion: Companion,
     computer: Computer,
@@ -465,6 +469,7 @@ fn packet(
         camera_distance: verse::camera::FollowCamera::default().distance,
         camera_first_person: false,
         stick_pointer: None,
+        look_stick_pointer: None,
         motion_needed: false,
         companion: Companion {
             near: false,
@@ -516,6 +521,9 @@ struct Touch {
     origin: [f32; 2],
     latest: [f32; 2],
     movement: bool,
+    /// The touch holds the bare world's look stick. It is a look control, so
+    /// it never shares the screen with a look drag.
+    look_stick: bool,
     target: Option<WorldTarget>,
     tap_valid: bool,
     started: f64,
@@ -544,8 +552,18 @@ const PLAYER_TAG_LIFT: f32 = 2.2;
 const STICK_MARGIN_POINTS: f32 = 24.0;
 /// Touches this far from the stick's center take the stick.
 const STICK_GRAB_POINTS: f32 = STICK_RADIUS_POINTS * 1.25;
-/// Stick deflection that starts movement along an axis.
+/// Stick deflection that starts movement along an axis, and the look
+/// stick's radial dead zone.
 const STICK_DEAD_POINTS: f32 = 12.0;
+/// The bare world draws its sticks at this fraction of the Coder stick's
+/// opacity, so they stay faint over the world.
+const BARE_STICK_FAINTNESS: f32 = 0.5;
+/// The look stick's turn rate at full deflection, in radians per second.
+const LOOK_STICK_YAW_RATE: f32 = 2.6;
+/// The look stick's pitch rate at full deflection, in radians per second.
+const LOOK_STICK_PITCH_RATE: f32 = 1.6;
+/// Time constant, in seconds, of the look stick's rate smoothing.
+const LOOK_STICK_SMOOTHING_SECONDS: f32 = 0.06;
 const DOUBLE_TAP_SECONDS: f64 = 0.35;
 const DOUBLE_TAP_DISTANCE_POINTS: f32 = 32.0;
 
@@ -600,6 +618,19 @@ fn motion_angles(quaternion: [f32; 4]) -> Option<MotionOrientation> {
     })
 }
 
+/// A stick touch's offset from the stick's `center`, clamped to its base.
+fn deflection(center: [f32; 2], point: [f32; 2]) -> [f32; 2] {
+    let dx = point[0] - center[0];
+    let dy = point[1] - center[1];
+    let length = dx.hypot(dy);
+    if length > STICK_RADIUS_POINTS {
+        let k = STICK_RADIUS_POINTS / length;
+        [dx * k, dy * k]
+    } else {
+        [dx, dy]
+    }
+}
+
 pub(crate) struct Scene {
     /// The host asked for an extended-range surface (read by the iOS mount).
     #[cfg_attr(not(target_os = "ios"), allow(dead_code))]
@@ -623,6 +654,8 @@ pub(crate) struct Scene {
     spawn_pending: bool,
     camera_mode: CameraMode,
     motion: Motion,
+    /// The look stick's smoothed turn and pitch rates, in radians per second.
+    look_rate: [f32; 2],
     frame_timestamp: Option<f64>,
     touches: BTreeMap<u64, Touch>,
     /// Safe-area insets in logical points: top, right, bottom, left.
@@ -711,7 +744,7 @@ impl Scene {
         }
         let mut zone_hud = verse::zones::hud::Hud::default();
         if config.bare {
-            // Lagrange 1's panel stands above the Grid's centered stick.
+            // Lagrange 1's panel stands above the Grid's sticks.
             zone_hud.set_bottom_clearance(STICK_MARGIN_POINTS + 2.0 * STICK_RADIUS_POINTS + 8.0)?;
         }
         let door_notice = config
@@ -759,6 +792,7 @@ impl Scene {
             spawn_pending: false,
             camera_mode: CameraMode::Touch,
             motion: Motion::default(),
+            look_rate: [0.0, 0.0],
             frame_timestamp: None,
             touches: BTreeMap::new(),
             insets: [0.0; 4],
@@ -1075,6 +1109,7 @@ impl Scene {
                 let single_touch = self.touches.is_empty();
                 let size = self.lifecycle.viewport().logical_size();
                 let movement = self.on_stick(x, y);
+                let look_stick = !movement && self.on_look_stick(x, y);
                 // A tap off the stick is independent from an established movement
                 // hold. Near-simultaneous contacts still cancel taps for pinch.
                 let beside_movement = !movement
@@ -1106,6 +1141,7 @@ impl Scene {
                         origin: [x, y],
                         latest: [x, y],
                         movement,
+                        look_stick,
                         target,
                         tap_valid: single_touch || beside_movement,
                         started: timestamp,
@@ -1130,8 +1166,11 @@ impl Scene {
                     {
                         self.last_world_tap = None;
                     }
+                    // The look stick turns at a rate in `update`, not by
+                    // its travel.
                     if touch.target.is_none()
                         && !touch.movement
+                        && !touch.look_stick
                         && self.camera_mode == CameraMode::Touch
                     {
                         self.world.apply(Action::FaceCamera)?;
@@ -1148,19 +1187,27 @@ impl Scene {
         Ok(())
     }
 
-    /// Center of the movement stick, above the bottom safe area: centered in
-    /// the bare world, where it is the only control, and at the left otherwise.
+    /// Center of the movement stick, above the bottom-left safe area.
     fn stick_center(&self) -> [f32; 2] {
         let size = self.lifecycle.viewport().logical_size();
-        let x = if self.world.is_bare() {
-            self.insets[3] + (size[0] - self.insets[3] - self.insets[1]) / 2.0
-        } else {
-            self.insets[3] + STICK_MARGIN_POINTS + STICK_RADIUS_POINTS
-        };
         [
-            x,
+            self.insets[3] + STICK_MARGIN_POINTS + STICK_RADIUS_POINTS,
             size[1] - self.insets[2] - STICK_MARGIN_POINTS - STICK_RADIUS_POINTS,
         ]
+    }
+
+    /// Center of the look stick, above the bottom-right safe area: the
+    /// bare world's second stick, shown only in touch look. Motion look
+    /// turns the camera with the phone, so a stick there would fight it.
+    fn look_stick_center(&self) -> Option<[f32; 2]> {
+        if !self.world.is_bare() || self.camera_mode != CameraMode::Touch {
+            return None;
+        }
+        let size = self.lifecycle.viewport().logical_size();
+        Some([
+            size[0] - self.insets[1] - STICK_MARGIN_POINTS - STICK_RADIUS_POINTS,
+            size[1] - self.insets[2] - STICK_MARGIN_POINTS - STICK_RADIUS_POINTS,
+        ])
     }
 
     fn on_stick(&self, x: f32, y: f32) -> bool {
@@ -1168,45 +1215,132 @@ impl Scene {
         (x - center[0]).hypot(y - center[1]) <= STICK_GRAB_POINTS
     }
 
-    /// A held stick touch's offset from the stick's center, clamped to its base.
-    fn stick_deflection(&self, point: [f32; 2]) -> [f32; 2] {
-        let center = self.stick_center();
-        let dx = point[0] - center[0];
-        let dy = point[1] - center[1];
-        let length = dx.hypot(dy);
-        if length > STICK_RADIUS_POINTS {
-            let k = STICK_RADIUS_POINTS / length;
-            [dx * k, dy * k]
-        } else {
-            [dx, dy]
-        }
+    fn on_look_stick(&self, x: f32, y: f32) -> bool {
+        self.look_stick_center()
+            .is_some_and(|center| (x - center[0]).hypot(y - center[1]) <= STICK_GRAB_POINTS)
     }
 
+    /// A held stick touch's offset from the stick's center, clamped to its base.
+    fn stick_deflection(&self, point: [f32; 2]) -> [f32; 2] {
+        deflection(self.stick_center(), point)
+    }
+
+    /// The touch holding the look stick, if one does.
+    fn look_stick_touch(&self) -> Option<(u64, &Touch)> {
+        self.touches
+            .iter()
+            .find(|(_, touch)| touch.look_stick && touch.target.is_none())
+            .map(|(id, touch)| (*id, touch))
+    }
+
+    /// The turn and pitch rates, in radians per second, that the look stick
+    /// asks for with a touch at `point`: nothing inside the dead zone, then
+    /// rising with the square of the deflection past it, for fine aim near
+    /// the center and a quick turn at the rim.
+    fn look_stick_target(&self, point: [f32; 2]) -> [f32; 2] {
+        let Some(center) = self.look_stick_center() else {
+            return [0.0, 0.0];
+        };
+        let [dx, dy] = deflection(center, point);
+        let length = dx.hypot(dy);
+        if length <= STICK_DEAD_POINTS {
+            return [0.0, 0.0];
+        }
+        let reach = ((length - STICK_DEAD_POINTS) / (STICK_RADIUS_POINTS - STICK_DEAD_POINTS))
+            .clamp(0.0, 1.0);
+        let magnitude = reach * reach / length;
+        [
+            dx * magnitude * LOOK_STICK_YAW_RATE,
+            dy * magnitude * LOOK_STICK_PITCH_RATE,
+        ]
+    }
+
+    /// Turns the camera at the look stick's smoothed rate for `dt` seconds.
+    /// Right turns right and up looks up, as a look drag does. Releasing the
+    /// stick stops the turn at once; smoothing only steadies a held thumb.
+    fn advance_look_stick(&mut self, dt: f32) -> Result<(), String> {
+        let held = self
+            .look_stick_touch()
+            .map(|(_, touch)| touch.latest)
+            .filter(|_| self.lifecycle.active() && !self.panel_open() && !self.spawn_pending);
+        let Some(point) = held else {
+            self.look_rate = [0.0, 0.0];
+            return Ok(());
+        };
+        let target = self.look_stick_target(point);
+        let dt = if dt.is_finite() {
+            dt.clamp(0.0, 0.1)
+        } else {
+            0.0
+        };
+        let k = 1.0 - (-dt / LOOK_STICK_SMOOTHING_SECONDS).exp();
+        for (rate, target) in self.look_rate.iter_mut().zip(target) {
+            *rate += (target - *rate) * k;
+        }
+        let dx = self.look_rate[0] * dt / verse::camera::SENSITIVITY;
+        let dy = self.look_rate[1] * dt / verse::camera::SENSITIVITY;
+        if dx != 0.0 || dy != 0.0 {
+            self.world.apply(Action::FaceCamera)?;
+            self.world.apply(Action::Look { dx, dy })?;
+        }
+        Ok(())
+    }
+
+    /// The bare world's sticks, ring and knob, faint over the world: the
+    /// movement stick at the bottom left and, in touch look, the look stick
+    /// at the bottom right. Coder's world draws only its movement stick, at
+    /// full strength.
     fn stick_ui(&self) -> verse::ui::UiBatch {
         let mut ui = verse::ui::UiBatch::default();
         if !self.lifecycle.active() || self.panel_open() || self.spawn_pending {
             return ui;
         }
-        let scale = self.lifecycle.viewport().scale();
-        let center = self.stick_center();
-        let held = self
+        let faint = if self.world.is_bare() {
+            BARE_STICK_FAINTNESS
+        } else {
+            1.0
+        };
+        let movement = self
             .touches
             .values()
-            .find(|p| p.movement && p.target.is_none());
-        let knob = held.map_or([0.0, 0.0], |touch| self.stick_deflection(touch.latest));
+            .find(|p| p.movement && p.target.is_none())
+            .map(|touch| touch.latest);
+        self.draw_stick(&mut ui, self.stick_center(), movement, faint);
+        if let Some(center) = self.look_stick_center() {
+            let look = self.look_stick_touch().map(|(_, touch)| touch.latest);
+            self.draw_stick(&mut ui, center, look, faint);
+        }
+        ui
+    }
+
+    fn draw_stick(
+        &self,
+        ui: &mut verse::ui::UiBatch,
+        center: [f32; 2],
+        held: Option<[f32; 2]>,
+        faint: f32,
+    ) {
+        let scale = self.lifecycle.viewport().scale();
+        let knob = held.map_or([0.0, 0.0], |point| deflection(center, point));
         let base = STICK_RADIUS_POINTS * scale;
         let alpha = if held.is_some() { 0.55 } else { 0.3 };
         let x = center[0] * scale;
         let y = center[1] * scale;
-        ui.ring(&self.atlas, x, y, base, 2.0 * scale, [1.0, 1.0, 1.0, alpha]);
+        ui.ring(
+            &self.atlas,
+            x,
+            y,
+            base,
+            2.0 * scale,
+            [1.0, 1.0, 1.0, alpha * faint],
+        );
         ui.disc(
             &self.atlas,
             x + knob[0] * scale,
             y + knob[1] * scale,
             base * 0.35,
-            [1.0, 1.0, 1.0, alpha + 0.25],
+            [1.0, 1.0, 1.0, (alpha + 0.25) * faint],
         );
-        ui
     }
 
     /// Every player's pubkey prefix over their head, this player's included
@@ -1351,6 +1485,7 @@ impl Scene {
             self.reset_motion();
         }
         self.advance_motion(camera_dt as f32);
+        self.advance_look_stick(camera_dt as f32)?;
         // Other players' avatars, where they are drawn, are solid.
         let now = Instant::now();
         self.world
@@ -1476,9 +1611,10 @@ impl Scene {
                 }
             }
             Request::PinchZoom { scale } => {
-                // A pinch owns its two fingers, never the stick: a thumb on
-                // the stick keeps walking while the other hand zooms.
-                self.touches.retain(|_, touch| touch.movement);
+                // A pinch owns its two fingers, never a stick's: a thumb on
+                // a stick keeps walking or looking while other fingers zoom.
+                self.touches
+                    .retain(|_, touch| touch.movement || touch.look_stick);
                 self.cancel_taps();
                 self.jump = false;
                 if !self.lifecycle.active() || self.panel_open() || self.spawn_pending {
@@ -1699,6 +1835,7 @@ impl Scene {
             .iter()
             .find(|(_, touch)| touch.movement && touch.target.is_none())
             .map(|(id, _)| *id);
+        packet.look_stick_pointer = self.look_stick_touch().map(|(id, _)| id);
         packet.motion_needed = self.motion_needed();
         let companion = self.world.companion(self.aspect());
         packet.companion = Companion {
@@ -1790,7 +1927,7 @@ impl Scene {
 
     pub fn map_ui(&self) -> verse::ui::UiBatch {
         if self.world.is_bare() {
-            // The movement stick is the bare world's only control; the
+            // The sticks are the bare world's only controls; the
             // players there carry their key's first letters overhead. In the
             // zone its portal leads to, the zone's panel joins them, in the
             // neutral palette.
@@ -3554,8 +3691,8 @@ mod tests {
         assert!(scene.world.is_bare() && scene.relay.is_none() && scene.session.is_none());
         assert_eq!(scene.packet().connection.state, "offline");
         scene.update(1.0).unwrap();
-        // The stick is the only drawn control, beside the player's own tag;
-        // the map's corner looks instead.
+        // The sticks are the only drawn controls, beside the player's own
+        // tag; the map's corner looks instead.
         assert_eq!(
             scene.map_ui().vertices.len(),
             scene.stick_ui().vertices.len() + PLAYER_TAG_CHARS * 6
@@ -3566,10 +3703,12 @@ mod tests {
         scene.pointer(1, PointerPhase::Up, 300.0, 60.0).unwrap();
         assert_ne!(scene.world.player.yaw, yaw);
         assert!(!scene.map_snapshot().expanded);
-        // The stick is a circle centered above the bottom edge.
+        // The movement stick is a circle above the bottom-left corner, and
+        // the look stick mirrors it at the bottom right.
         let size = scene.lifecycle.viewport().logical_size();
         let [sx, sy] = scene.stick_center();
-        assert_eq!(sx, size[0] / 2.0);
+        assert_eq!([sx, sy], [80.0, size[1] - 80.0]);
+        assert_eq!(scene.look_stick_center(), Some([size[0] - 80.0, sy]));
         // The stick walks the player forward.
         let start = scene.world.player.pos;
         scene.pointer(2, PointerPhase::Down, sx, sy).unwrap();
@@ -3702,6 +3841,158 @@ mod tests {
         assert_eq!(grid.packet().stick_pointer, Some(7));
         grid.pointer(7, PointerPhase::Up, sx, sy - 80.0).unwrap();
         assert_eq!(grid.packet().stick_pointer, None);
+        assert!(!grid.input().forward);
+    }
+
+    #[test]
+    fn the_grid_draws_two_faint_sticks_in_touch_look_and_one_in_motion_look() {
+        let mut grid = bare_scene();
+        // Coder's stick draws a ring and a knob; the Grid draws two of each,
+        // at half the opacity.
+        let mut plaza = scene();
+        plaza.activate(true).unwrap();
+        plaza.update(1.0).unwrap();
+        let coder = plaza.stick_ui().vertices;
+        let both = grid.stick_ui().vertices;
+        assert_eq!(both.len(), 2 * coder.len());
+        let ring = coder.len() / 2;
+        let alpha = |v: &[verse::ui::UiVertex]| v.iter().map(|v| v.color[3]).fold(0.0, f32::max);
+        assert!((alpha(&both) - BARE_STICK_FAINTNESS * alpha(&coder)).abs() < 1e-6);
+        assert!(ring > 0);
+        // Motion look turns with the phone: the look stick hides, and a touch
+        // where it stood does not take it.
+        grid.action(Request::CameraMode {
+            mode: CameraMode::Motion,
+        })
+        .unwrap();
+        assert!(grid.look_stick_center().is_none());
+        assert_eq!(grid.stick_ui().vertices.len(), coder.len());
+        let size = grid.lifecycle.viewport().logical_size();
+        grid.pointer(3, PointerPhase::Down, size[0] - 80.0, size[1] - 80.0)
+            .unwrap();
+        assert_eq!(grid.packet().look_stick_pointer, None);
+        grid.pointer(3, PointerPhase::Up, size[0] - 80.0, size[1] - 80.0)
+            .unwrap();
+        // Back in touch look it returns; Coder's world never has one.
+        grid.action(Request::CameraMode {
+            mode: CameraMode::Touch,
+        })
+        .unwrap();
+        assert!(grid.look_stick_center().is_some());
+        assert!(plaza.look_stick_center().is_none());
+    }
+
+    #[test]
+    fn the_look_stick_turns_and_pitches_at_a_rate_past_its_dead_zone() {
+        let mut grid = bare_scene();
+        let [lx, ly] = grid.look_stick_center().unwrap();
+        let heading = |grid: &Scene| {
+            verse::controller::wrap(grid.world.player.yaw + grid.world.camera.yaw_offset)
+        };
+        grid.pointer(4, PointerPhase::Down, lx, ly).unwrap();
+        assert_eq!(grid.packet().look_stick_pointer, Some(4));
+        assert_eq!(grid.packet().stick_pointer, None);
+        // Inside the dead zone nothing turns, and holding it never walks.
+        let yaw = heading(&grid);
+        let pitch = grid.world.camera.pitch;
+        grid.pointer(4, PointerPhase::Move, lx + STICK_DEAD_POINTS - 1.0, ly)
+            .unwrap();
+        for frame in 1..=30 {
+            grid.update(1.0 + f64::from(frame) / 60.0).unwrap();
+        }
+        assert_eq!(heading(&grid), yaw);
+        assert_eq!(grid.world.camera.pitch, pitch);
+        assert!(!grid.input().forward && !grid.input().strafe_right);
+        // Pushed right, the view turns right, as a drag to the right does,
+        // at a steady rate once smoothing settles: a small push turns
+        // slowly, the rim at the full rate.
+        let turn = |grid: &mut Scene, dx: f32, start: f64| {
+            grid.pointer(4, PointerPhase::Move, lx + dx, ly).unwrap();
+            for frame in 1..=30 {
+                grid.update(start + f64::from(frame) / 60.0).unwrap();
+            }
+            let before = heading(grid);
+            for frame in 31..=90 {
+                grid.update(start + f64::from(frame) / 60.0).unwrap();
+            }
+            verse::controller::wrap(heading(grid) - before)
+        };
+        let slow = turn(&mut grid, 30.0, 2.0);
+        let full = turn(&mut grid, 200.0, 4.0);
+        assert!(
+            slow < 0.0 && full < 0.0,
+            "a push right turns right: {slow} {full}"
+        );
+        assert!(
+            (full + LOOK_STICK_YAW_RATE).abs() < 0.05,
+            "the rim turns at the full rate for one second: {full}"
+        );
+        assert!(slow.abs() < 0.25 * full.abs(), "{slow} {full}");
+        // Pushed up, it looks up.
+        grid.pointer(4, PointerPhase::Move, lx, ly - 200.0).unwrap();
+        let pitch = grid.world.camera.pitch;
+        for frame in 1..=20 {
+            grid.update(6.0 + f64::from(frame) / 60.0).unwrap();
+        }
+        assert!(grid.world.camera.pitch < pitch);
+        // Releasing stops the turn at once.
+        grid.pointer(4, PointerPhase::Up, lx, ly - 200.0).unwrap();
+        assert_eq!(grid.packet().look_stick_pointer, None);
+        let yaw = heading(&grid);
+        let pitch = grid.world.camera.pitch;
+        grid.update(6.5).unwrap();
+        assert_eq!(grid.look_rate, [0.0, 0.0]);
+        assert_eq!(heading(&grid), yaw);
+        assert_eq!(grid.world.camera.pitch, pitch);
+    }
+
+    #[test]
+    fn both_thumbs_move_and_look_at_once_while_other_fingers_pinch() {
+        let mut grid = bare_scene();
+        let [sx, sy] = grid.stick_center();
+        let [lx, ly] = grid.look_stick_center().unwrap();
+        grid.pointer(1, PointerPhase::Down, sx, sy).unwrap();
+        grid.pointer(1, PointerPhase::Move, sx, sy - 80.0).unwrap();
+        grid.update(1.1).unwrap();
+        grid.pointer(2, PointerPhase::Down, lx, ly).unwrap();
+        grid.pointer(2, PointerPhase::Move, lx + 80.0, ly).unwrap();
+        let packet = grid.packet();
+        assert_eq!(
+            (packet.stick_pointer, packet.look_stick_pointer),
+            (Some(1), Some(2))
+        );
+        let start = grid.world.player.pos;
+        let yaw = grid.world.player.yaw;
+        let distance = grid.world.camera.distance;
+        // Two more fingers pinch; the host cancels them in Rust and sends
+        // the zoom, and neither thumb lets go.
+        grid.pointer(3, PointerPhase::Down, 150.0, 300.0).unwrap();
+        grid.pointer(5, PointerPhase::Down, 250.0, 300.0).unwrap();
+        grid.pointer(3, PointerPhase::Cancel, 0.0, 0.0).unwrap();
+        grid.pointer(5, PointerPhase::Cancel, 0.0, 0.0).unwrap();
+        for frame in 1..=45 {
+            grid.action(Request::PinchZoom { scale: 1.01 }).unwrap();
+            grid.update(1.1 + f64::from(frame) / 60.0).unwrap();
+        }
+        assert!(grid.world.camera.distance < distance, "the pinch zoomed");
+        assert!(
+            grid.world.player.pos.distance(start) > 2.0,
+            "the left stick kept walking"
+        );
+        assert!(
+            verse::controller::wrap(grid.world.player.yaw - yaw) < -0.5,
+            "the right stick kept turning"
+        );
+        assert!(grid.input().forward);
+        let packet = grid.packet();
+        assert_eq!(
+            (packet.stick_pointer, packet.look_stick_pointer),
+            (Some(1), Some(2))
+        );
+        // Letting go of one thumb leaves the other working.
+        grid.pointer(2, PointerPhase::Up, lx + 80.0, ly).unwrap();
+        assert!(grid.input().forward);
+        grid.pointer(1, PointerPhase::Up, sx, sy - 80.0).unwrap();
         assert!(!grid.input().forward);
     }
 

@@ -19,7 +19,9 @@ The app has four tabs, shown as white icons on black:
   This is the iPhone app's Coder tab; Rust decides everything it shows.
 - **Verse** (globe) mounts Verse's bare world (`coder_mobile::VerseHandle` in
   bare mode) in a `SurfaceView` and forwards touches, pinch, and rotation
-  samples as Coder's `coder.verse.v1` requests. The hand/gyroscope button
+  samples as Coder's `coder.verse.v1` requests. Rust draws the movement
+  stick at the bottom left and, in touch look, the look stick at the bottom
+  right. The hand/gyroscope button, at the bottom center between them,
   switches touch and motion look, and the crosshair recenters the camera.
   The world draws with Verse's shared renderer on Vulkan or OpenGL ES; see
   [Graphics backends](#graphics-backends).

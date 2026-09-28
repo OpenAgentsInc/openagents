@@ -2,7 +2,7 @@
 // Coder's player controls, the other players, and the Gym in it. UIKit owns
 // the Metal layer, the display clock, touches, the motion sensor, and the
 // world key and Gym connection in Keychain; Rust owns the world, the player,
-// the camera, the movement stick, world presence on the relay, the Gym board,
+// the camera, the movement and look sticks, world presence on the relay, the Gym board,
 // and every frame.
 import QuartzCore
 import SwiftUI
@@ -24,6 +24,9 @@ struct WorldPacket: Decodable {
     let camera_first_person: Bool?
     /// The pointer holding the movement stick, which pinch never claims.
     let stick_pointer: UInt64?
+    /// The pointer holding the look stick (touch look only), which pinch
+    /// never claims either.
+    let look_stick_pointer: UInt64?
     let motion_needed: Bool
     /// Other players' avatars with a recent pose.
     let live_remote_entities: UInt64?
@@ -184,7 +187,7 @@ struct VerseTab: View {
     var body: some View {
         GeometryReader { outer in
             let safe = outer.safeAreaInsets
-            ZStack(alignment: .bottomTrailing) {
+            ZStack(alignment: .bottom) {
                 VerseWorldSurface(world: world, active: active, insets: safe)
                     .ignoresSafeArea()
                     .overlay {
@@ -195,9 +198,10 @@ struct VerseTab: View {
                                 .ignoresSafeArea()
                         }
                     }
+                // Bottom center, between the movement stick at the bottom
+                // left and the look stick at the bottom right.
                 if !world.gymOpen {
                     controls
-                        .padding(.trailing, safe.trailing + 16)
                         .padding(.bottom, 12)
                 }
             }
@@ -242,9 +246,11 @@ struct VerseTab: View {
     /// The same camera controls as Coder's world: the touch or motion look
     /// toggle and Recenter.
     private var controls: some View {
-        VStack(alignment: .trailing, spacing: 4) {
+        VStack(alignment: .center, spacing: 4) {
             if let error = world.motionError {
-                Text(error).font(.caption).multilineTextAlignment(.trailing)
+                // Narrow enough to stay between the two sticks.
+                Text(error).font(.caption).multilineTextAlignment(.center)
+                    .frame(maxWidth: 180)
                     .accessibilityIdentifier("verse-motion-error")
             }
             HStack(spacing: 16) {
@@ -257,7 +263,7 @@ struct VerseTab: View {
                 .accessibilityIdentifier("verse-camera-mode")
                 .accessibilityHint(world.motionAvailable
                     ? "Switches between dragging and phone orientation for camera control."
-                    : "Motion look is unavailable on this device. Drag the world to look around.")
+                    : "Motion look is unavailable on this device. Drag the world or use the look stick to look around.")
                 Button { world.recenter() } label: {
                     Image(systemName: "scope").frame(width: 44, height: 44)
                 }
@@ -306,9 +312,9 @@ final class VerseWorldView: UIView {
     private var pointers: [ObjectIdentifier: UInt64] = [:]
     private var nextPointer: UInt64 = 1
     private var pinchAdmission = PinchAdmission()
-    /// Pointers Rust took for the movement stick. They stay out of pinch
-    /// arbitration and always reach Rust, so walking continues while the
-    /// other hand pinches.
+    /// Pointers Rust took for the movement and look sticks. They stay out of
+    /// pinch arbitration and always reach Rust, so walking and looking
+    /// continue while other fingers pinch.
     private var stickPointers: Set<UInt64> = []
     private var wantsHDR = false
     private lazy var script = VerseWorldScript.fromLaunchArguments()
@@ -325,13 +331,20 @@ final class VerseWorldView: UIView {
         isAccessibilityElement = true
         accessibilityLabel = "Verse world"
         accessibilityIdentifier = "verse-surface"
-        accessibilityHint = "Drag anywhere to look around and use the stick at the bottom center to move. Double-tap to jump and pinch with two fingers to zoom."
+        accessibilityHint = Self.hint(motionLook: false)
         accessibilityTraits = [.allowsDirectInteraction]
         world.surface = self
         displayTarget.view = self
     }
 
     required init?(coder: NSCoder) { nil }
+
+    /// The world's controls, as they are laid out in the current look mode.
+    private static func hint(motionLook: Bool) -> String {
+        motionLook
+            ? "Turn the phone to look around and use the stick at the bottom left to move. Double-tap to jump and pinch with two fingers to zoom."
+            : "Use the stick at the bottom left to move and the stick at the bottom right, or a drag anywhere, to look around. Double-tap to jump and pinch with two fingers to zoom."
+    }
 
     override func didMoveToWindow() {
         super.didMoveToWindow()
@@ -490,6 +503,8 @@ final class VerseWorldView: UIView {
             metal.colorspace = nil
         }
         world.receive(packet)
+        let hint = Self.hint(motionLook: packet.camera_mode == "motion")
+        if accessibilityHint != hint { accessibilityHint = hint }
         syncMotion(packet)
         latestGym = packet.gym
         updateGymAccessibility(packet)
@@ -575,7 +590,8 @@ final class VerseWorldView: UIView {
             nextPointer &+= 1
             pointers[ObjectIdentifier(touch)] = id
             let at = touch.location(in: self)
-            if pointer(id, phase: "down", at: at)?.stick_pointer == id {
+            if let packet = pointer(id, phase: "down", at: at),
+               packet.stick_pointer == id || packet.look_stick_pointer == id {
                 stickPointers.insert(id)
             } else {
                 pinchAdmission.down(id, x: Double(at.x), y: Double(at.y), time: touch.timestamp)
@@ -622,7 +638,7 @@ final class VerseWorldView: UIView {
         return send(["action": "pointer", "id": id, "phase": phase, "x": Double(at.x), "y": Double(at.y)])
     }
 
-    /// Cancels every pointer in Rust; a pinch keeps the stick's.
+    /// Cancels every pointer in Rust; a pinch keeps the sticks'.
     private func cancelRustPointers(keepingStick: Bool = false) {
         for id in pointers.values where !(keepingStick && stickPointers.contains(id)) {
             send(["action": "pointer", "id": id, "phase": "cancel", "x": 0, "y": 0])
@@ -675,7 +691,10 @@ final class VerseWorldView: UIView {
 /// controls can be checked on a simulator without touching the screen.
 /// `push` holds the stick forward for the whole step, walking into the ball
 /// ahead of the spawn, `closer` pinches in past the nearest orbit into first
-/// person, `walkpinch` holds the stick forward while pinching in, `face`
+/// person, `walkpinch` holds the stick forward while pinching in, `turn`
+/// holds the look stick right, `walklook` holds the movement stick forward
+/// and the look stick right with two pointers at once, `motion` and `touch`
+/// switch the look mode, `face`
 /// turns toward the Grid's portal to Lagrange 1 (39° right of the spawn's
 /// heading; `walk,walk` then goes through it), `board` taps the Gym's board
 /// where the last packet placed it (with `--gym-preview`, `walk,walk,walk`
@@ -708,10 +727,10 @@ private final class VerseWorldScript {
         frame += 1
         guard frame > 60, let current = steps.first else { return }
         let t = frame - 61
-        // The stick's center, as Rust places it in the bare world: centered
-        // between the safe-area sides, 24 + 56 points above the bottom inset.
-        let stick = CGPoint(x: insets.leading + (bounds.width - insets.leading - insets.trailing) / 2,
-                            y: bounds.height - insets.bottom - 80)
+        // The sticks' centers, as Rust places them in the bare world: 24 + 56
+        // points in from the left or right inset and above the bottom inset.
+        let stick = CGPoint(x: insets.leading + 80, y: bounds.height - insets.bottom - 80)
+        let look = CGPoint(x: bounds.width - insets.trailing - 80, y: stick.y)
         let center = CGPoint(x: bounds.width * 0.5, y: bounds.height * 0.4)
         switch (current, t) {
         case ("look", 0): view.pointer(pointer, phase: "down", at: center)
@@ -734,6 +753,20 @@ private final class VerseWorldScript {
         case ("walkpinch", 2..<60): view.send(["action": "pinch_zoom", "scale": 1.02])
         case ("walkpinch", 89): view.pointer(pointer, phase: "up", at: CGPoint(x: stick.x, y: stick.y - 56))
         case ("recenter", 0): view.send(["action": "recenter_camera"])
+        case ("turn", 0): view.pointer(pointer, phase: "down", at: look)
+        case ("turn", 1): view.pointer(pointer, phase: "move", at: CGPoint(x: look.x + 40, y: look.y))
+        case ("turn", 80): view.pointer(pointer, phase: "up", at: CGPoint(x: look.x + 40, y: look.y))
+        case ("walklook", 0):
+            view.pointer(pointer, phase: "down", at: stick)
+            view.pointer(pointer + 1, phase: "down", at: look)
+        case ("walklook", 1):
+            view.pointer(pointer, phase: "move", at: CGPoint(x: stick.x, y: stick.y - 56))
+            view.pointer(pointer + 1, phase: "move", at: CGPoint(x: look.x + 40, y: look.y))
+        case ("walklook", 80):
+            view.pointer(pointer, phase: "up", at: CGPoint(x: stick.x, y: stick.y - 56))
+            view.pointer(pointer + 1, phase: "up", at: CGPoint(x: look.x + 40, y: look.y))
+        case ("motion", 0): view.send(["action": "camera_mode", "mode": "motion"])
+        case ("touch", 0): view.send(["action": "camera_mode", "mode": "touch"])
         case ("board", 0), ("board", 2):
             if let gym = view.latestGym {
                 let at = CGPoint(x: gym.screen_x * bounds.width, y: gym.screen_y * bounds.height)

@@ -35,10 +35,12 @@ The app has four tabs, shown as icons:
   the world shares the ball and the blocks, and finds them where they were
   left; walking into the pillar to the right of the spawn puts them all back
   (see [sharing the ball](../../docs/verse/mobile.md#sharing-the-ball)). It fills the screen behind the status bar and the tab bar. The
-  controls are Coder's: drag anywhere to look, push the stick at the bottom
-  left to walk, double-tap to jump, and pinch to zoom. The hand/gyroscope
-  icon switches touch and motion look, and the crosshair recenters the
-  camera. While the tab shows, it joins the bare world (`verse-bare`) on
+  controls are Coder's, with a second stick: push the faint stick at the
+  bottom left to walk, and in touch look push the faint stick at the bottom
+  right (or drag anywhere) to look, with both thumbs at once if you like;
+  double-tap to jump, and pinch to zoom. Between the sticks, the
+  hand/gyroscope icon switches touch and motion look (motion look hides the
+  look stick), and the crosshair recenters the camera. While the tab shows, it joins the bare world (`verse-bare`) on
   `wss://relay.openagents.com` for avatar presence alone and draws other
   players' avatars in white and gray; it has no chat and reads no computers
   or chats. Presence signs with a separate world key in Keychain

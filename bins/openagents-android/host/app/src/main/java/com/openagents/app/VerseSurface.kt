@@ -60,7 +60,7 @@ class VerseSurface(context: Context, private val changed: (JSONObject?, String?)
 
     init {
         tag = "verse-surface"
-        contentDescription = "Verse world. Drag to look around, and push the stick at the bottom left to walk. Double-tap to jump. Pinch with two fingers to zoom."
+        contentDescription = "Verse world. Push the stick at the bottom left to walk, and the stick at the bottom right or a drag anywhere to look around. Double-tap to jump. Pinch with two fingers to zoom."
         holder.addCallback(this)
         isFocusable = true
     }

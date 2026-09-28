@@ -13,12 +13,33 @@ The OpenAgents app's **Verse** tab mounts the same surface in its bare mode
 (`WorldRuntime::zone_label`, the zone snapshot's label, and the return
 controls); Coder's plaza keeps its own name. The Grid has only the plaza's ground grid, drawn in the neutral
 palette (each amber step's lightness in white light), and the player with the
-controls below, and other players' avatars, and the Gym
+controls below ([the Grid's sticks](#the-grids-sticks)), and other players' avatars, and the Gym
 ([below](#the-grids-gym)). It has no chat, map, doors, computer, or
 companion, and one zone: a walk-in portal to Lagrange 1
 ([below](#the-grids-portal-to-lagrange-1)). See
 [presence in the OpenAgents app](#presence-in-the-openagents-app) and
 [OpenAgents for iOS](../../bins/openagents-ios/README.md).
+
+### The Grid's sticks
+
+The Grid draws two faint sticks, rings with round knobs at half the opacity
+of Coder's stick, above the bottom safe area:
+
+- **Movement**, at the bottom left, as in Coder: push up to walk, down to
+  back up, and sideways to strafe.
+- **Look**, at the bottom right, in touch look only: push right to turn
+  right and up to look up. Nothing turns inside a 12-point dead zone; past
+  it the turn rate rises with the square of the deflection, to 2.6 rad/s of
+  turn and 1.6 rad/s of pitch at the rim, smoothed over about 0.06 s while
+  held and stopped at once on release. It works in first person too. Motion
+  look turns the camera with the phone, so there the stick is hidden.
+
+Both thumbs can hold their sticks at once, and a pinch with other fingers
+takes neither: the host keeps both sticks' touches (`stick_pointer`,
+`look_stick_pointer`) out of pinch arbitration. A drag anywhere else still
+looks, but only one look control is held at a time. The camera buttons
+(touch or motion look, and recenter) sit at the bottom center, between the
+sticks.
 
 The bare world's fog starts 6 m from the camera and is total at 110 m, well
 inside the grid's 264 m edge, so the grid dims gradually toward the horizon
@@ -163,7 +184,7 @@ the zone panel's **The Grid** button, or a tap on that arch.
   forces overlay, and the return arch. A carried part's slot outline is gray
   until aligned and white when it latches (Coder draws amber, then green).
   The zone panel (caption, **Grab**/**Latch**, **Forces**, **Art**/**Photo**,
-  **The Grid**) is drawn in the neutral palette above the centered stick.
+  **The Grid**) is drawn in the neutral palette above the sticks.
   Coder's plaza, its three arches with their buttons, and its amber Lagrange
   1 are unchanged.
 - **Presence.** Lagrange 1 is local, as every zone is in Coder: its station
@@ -220,7 +241,7 @@ not validate them, which suits a toy with no stakes.
 
 A charcoal pillar with a button on top stands 6 m to the right of the spawn
 and 4 m ahead ([`verse::pillar`](../../crates/verse/src/pillar.rs)). The
-bare world has one stick and no action button, so you press the button by
+bare world has no action button, only its sticks, so you press the button by
 walking into the pillar: the first touch presses it, holding against it
 does not press again, and presses are at least five seconds apart. The
 button is lit white while anything sits away from home, and it sinks

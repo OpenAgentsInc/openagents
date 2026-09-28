@@ -22,9 +22,9 @@ fn preview() -> Scene {
     .unwrap()
 }
 
-/// The centered stick's middle in the 400 × 600 point viewport: centered
-/// between the sides, 80 points above the bottom.
-const STICK: [f32; 2] = [200.0, 520.0];
+/// The movement stick's middle in the 400 × 600 point viewport: 80 points
+/// in from the left and above the bottom.
+const STICK: [f32; 2] = [80.0, 520.0];
 
 #[test]
 fn the_grids_gym_stands_in_view_of_the_spawn() {
