@@ -669,7 +669,7 @@ fn live_coder_chat_runs_a_task() {
             eprintln!("status: {place}");
             last = place.clone();
         }
-        let running = nodes_of(&chat, "working").len() > 0;
+        let running = !nodes_of(&chat, "working").is_empty();
         if !running
             && (place.starts_with("Done")
                 || place.starts_with("Failed")
