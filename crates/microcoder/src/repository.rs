@@ -387,7 +387,7 @@ fn client(
     route: &GrantRoute,
     access: coder::task::adapter::Access,
     session: &str,
-) -> Result<Client<microluna::codex::CodexTransport>, String> {
+) -> Result<Client<codex_transport::codex::CodexTransport>, String> {
     if route.model.contains('/') {
         return Err("Repository execution requires an exact model name, not a routed slug.".into());
     }
@@ -406,9 +406,9 @@ fn client(
                     ))
                 })
         }
-        Some(Provider::Codex) if route.generation_endpoint == microluna::codex::BASE_URL => {
-            let login = microluna::codex::Login::default_path().ok_or("no Codex login path")?;
-            microluna::codex::CodexTransport::new(login, session)
+        Some(Provider::Codex) if route.generation_endpoint == codex_transport::codex::BASE_URL => {
+            let login = codex_transport::codex::Login::default_path().ok_or("no Codex login path")?;
+            codex_transport::codex::CodexTransport::new(login, session)
                 .map(Client::Codex)
                 .map_err(|error| error.to_string())
         }

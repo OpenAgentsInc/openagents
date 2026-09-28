@@ -9,16 +9,16 @@ struct Transport<'a, T> {
     /// A usage-limit refusal the last request met.
     refusal: RefCell<Option<Refusal>>,
 }
-impl<T: microluna::Transport> microluna::Transport for Transport<'_, T> {
+impl<T: codex_transport::Transport> codex_transport::Transport for Transport<'_, T> {
     async fn respond(
         &self,
-        request: &microluna::Request,
-    ) -> Result<microluna::Reply, microluna::TransportError> {
+        request: &codex_transport::Request,
+    ) -> Result<codex_transport::Reply, codex_transport::TransportError> {
         let sequence=self.host.effect("codex_request",json!({"model":request.model,"instructions":request.instructions,
             "input":request.input,"tools":request.tools,"effort":request.effort,"cache_key":request.cache_key,
-            "parallel_tools":request.parallel_tools})).map_err(|error|microluna::TransportError::Failed(error.to_string()))?;
+            "parallel_tools":request.parallel_tools})).map_err(|error|codex_transport::TransportError::Failed(error.to_string()))?;
         let response = self.inner.respond(request).await;
-        if let Err(microluna::TransportError::Http { status, body }) = &response
+        if let Err(codex_transport::TransportError::Http { status, body }) = &response
             && let Some(refusal) = Refusal::codex(*status, body, task::autostart::unix_now())
         {
             *self.refusal.borrow_mut() = Some(refusal);
@@ -32,13 +32,13 @@ impl<T: microluna::Transport> microluna::Transport for Transport<'_, T> {
         };
         self.host
             .result(sequence, "codex_request", observation)
-            .map_err(|error| microluna::TransportError::Failed(error.to_string()))?;
+            .map_err(|error| codex_transport::TransportError::Failed(error.to_string()))?;
         if let Ok(reply) = &response
             && (reply.model.is_empty() || reply.model != self.model)
         {
             self.host
                 .fail("native provider model identity is missing or differs from admission");
-            return Err(microluna::TransportError::Failed(
+            return Err(codex_transport::TransportError::Failed(
                 "Native model identity is missing or differs from the grant; refusing its action."
                     .into(),
             ));
@@ -166,12 +166,12 @@ impl Generate for Claude<'_> {
 }
 
 /// One admitted route's native generator.
-enum Native<'a, T: microluna::Transport> {
+enum Native<'a, T: codex_transport::Transport> {
     Codex(crate::models::CodexGenerator<Transport<'a, T>>),
     Claude(Claude<'a>),
 }
 
-impl<T: microluna::Transport> Generate for Native<'_, T> {
+impl<T: codex_transport::Transport> Generate for Native<'_, T> {
     async fn generate(&self, system: &str, prompt: &str) -> Generated {
         match self {
             Native::Codex(generator) => {
@@ -183,7 +183,7 @@ impl<T: microluna::Transport> Generate for Native<'_, T> {
     }
 }
 
-impl<T: microluna::Transport> Lane for Native<'_, T> {
+impl<T: codex_transport::Transport> Lane for Native<'_, T> {
     fn refusal(&self) -> Option<Refusal> {
         match self {
             Native::Codex(generator) => generator.transport.refusal.borrow_mut().take(),
@@ -192,7 +192,7 @@ impl<T: microluna::Transport> Lane for Native<'_, T> {
     }
 }
 
-pub(super) async fn run<T: microluna::Transport>(
+pub(super) async fn run<T: codex_transport::Transport>(
     host: Host,
     book: PathBuf,
     clients: Vec<(GrantRoute, Client<T>)>,
@@ -239,19 +239,19 @@ pub(super) async fn run<T: microluna::Transport>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use microluna::Transport as _;
+    use codex_transport::Transport as _;
 
     #[tokio::test]
     async fn missing_or_mismatched_native_identity_is_retained_but_never_accepted() {
         for model in ["", "other-model"] {
             let (_root, store, grant) = super::super::tests::fixture();
             let host = Host::admit(&store, &grant).await.unwrap();
-            let scripted = microluna::fake::FakeTransport::default();
-            scripted.then(microluna::Reply {
+            let scripted = codex_transport::fake::FakeTransport::default();
+            scripted.then(codex_transport::Reply {
                 id: Some("unaccepted-fixture".into()),
                 model: model.into(),
                 items: vec![json!({"type":"function_call","name":"next_action","arguments":"unaccepted action"})],
-                usage: microluna::TokenUsage::default(),
+                usage: codex_transport::TokenUsage::default(),
             });
             let transport = Transport {
                 host: &host,
@@ -259,7 +259,7 @@ mod tests {
                 model: "fixture-model".into(),
                 refusal: RefCell::new(None),
             };
-            let request = microluna::Request {
+            let request = codex_transport::Request {
                 text_format: None,
                 model: "fixture-model".into(),
                 instructions: String::new(),
@@ -284,19 +284,19 @@ mod tests {
     async fn native_output_items_and_each_attempt_are_retained_before_reduction() {
         let (_root, store, grant) = super::super::tests::fixture();
         let host = Host::admit(&store, &grant).await.unwrap();
-        let scripted = microluna::fake::FakeTransport::default();
-        scripted.then_fail(microluna::TransportError::Stream(
+        let scripted = codex_transport::fake::FakeTransport::default();
+        scripted.then_fail(codex_transport::TransportError::Stream(
             "fixture disconnect".into(),
         ));
         let items = vec![
             json!({"type":"reasoning","summary":[{"type":"summary_text","text":"retained native reasoning"}]}),
             json!({"type":"function_call","name":"next_action","call_id":"call-fixture","arguments":"not valid action JSON"}),
         ];
-        scripted.then(microluna::Reply {
+        scripted.then(codex_transport::Reply {
             id: Some("native-fixture".into()),
             model: "fixture-model".into(),
             items: items.clone(),
-            usage: microluna::TokenUsage {
+            usage: codex_transport::TokenUsage {
                 input: 17,
                 cached: 3,
                 output: 8,
@@ -309,7 +309,7 @@ mod tests {
             model: "fixture-model".into(),
             refusal: RefCell::new(None),
         };
-        let request = microluna::Request {
+        let request = codex_transport::Request {
             text_format: None,
             model: "fixture-model".into(),
             instructions: "exact fixture instructions".into(),

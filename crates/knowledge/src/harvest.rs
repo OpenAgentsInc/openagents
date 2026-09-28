@@ -12,7 +12,7 @@
 
 use std::path::{Path, PathBuf};
 
-use microluna::price::Basis;
+use codex_transport::price::Basis;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -218,11 +218,11 @@ pub trait Propose {
     ) -> impl std::future::Future<Output = Result<(Proposals, Cost), String>>;
 }
 
-/// Proposals through the operator's Codex login, with Microluna's
+/// Proposals through the operator's Codex login, with the Codex
 /// transport: one request declares one strict tool, `knowledge_entries`,
 /// whose parameters are [`schema`], and the proposals are its arguments.
 /// The cost is the model's list price for the reported tokens.
-pub struct CodexProposer<T: microluna::Transport = microluna::codex::CodexTransport> {
+pub struct CodexProposer<T: codex_transport::Transport = codex_transport::codex::CodexTransport> {
     pub transport: T,
     /// The Codex model slug, such as `gpt-6-luna`.
     pub model: String,
@@ -242,10 +242,10 @@ impl CodexProposer {
     ///
     /// No login, or one that can't be used now.
     pub fn from_login(model: &str) -> Result<Self, String> {
-        let login = microluna::codex::Login::default_path()
+        let login = codex_transport::codex::Login::default_path()
             .ok_or("no Codex login: can't find ~/.codex/auth.json; run `codex login`")?;
         let session = format!("kb-harvest-{}", std::process::id());
-        let transport = microluna::codex::CodexTransport::new(login, &session)
+        let transport = codex_transport::codex::CodexTransport::new(login, &session)
             .map_err(|e| format!("the Codex login can't be used: {e}; run `codex login`"))?;
         Ok(CodexProposer {
             transport,
@@ -255,7 +255,7 @@ impl CodexProposer {
     }
 }
 
-impl<T: microluna::Transport> Propose for CodexProposer<T> {
+impl<T: codex_transport::Transport> Propose for CodexProposer<T> {
     fn model(&self) -> &str {
         &self.model
     }
@@ -265,7 +265,7 @@ impl<T: microluna::Transport> Propose for CodexProposer<T> {
     }
 
     async fn propose(&self, system: &str, prompt: &str) -> Result<(Proposals, Cost), String> {
-        let request = microluna::Request {
+        let request = codex_transport::Request {
             text_format: None,
             model: self.model.clone(),
             instructions: format!("{system}\n\nReply by calling {TOOL} exactly once."),
@@ -285,7 +285,7 @@ impl<T: microluna::Transport> Propose for CodexProposer<T> {
             cache_key: format!("kb-harvest-{}", std::process::id()),
             parallel_tools: false,
         };
-        let called = microluna::oneshot::call(&self.transport, &request, TOOL).await;
+        let called = codex_transport::oneshot::call(&self.transport, &request, TOOL).await;
         let cost = Cost {
             usd: called.usd,
             known_usd: called.known_usd,

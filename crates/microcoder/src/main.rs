@@ -384,13 +384,13 @@ async fn go(options: Options) -> Result<u8, String> {
                 format!("door:unused-for-public-knowledge#{model}"),
             ));
         }
-        let login = microluna::codex::Login::default_path()
+        let login = codex_transport::codex::Login::default_path()
             .ok_or("no Codex login: can't find ~/.codex/auth.json; run `codex login`")?;
         let session = format!("microcoder-{}-{}", options.task, std::process::id());
-        let transport = microluna::codex::CodexTransport::new(login, &session)
+        let transport = codex_transport::codex::CodexTransport::new(login, &session)
             .map_err(|e| format!("the Codex login can't be used: {e}; run `codex login`"))?;
         let actual_model = model.rsplit('/').next().unwrap_or(model).to_string();
-        let recipient = format!("codex:{}#{actual_model}", microluna::codex::BASE_URL);
+        let recipient = format!("codex:{}#{actual_model}", codex_transport::codex::BASE_URL);
         Ok((
             AnyGenerator::Codex(CodexGenerator {
                 transport,

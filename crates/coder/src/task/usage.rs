@@ -25,7 +25,7 @@
 //! [`STALE_AFTER`] is not used.
 //!
 //! **Credentials.** A probe reads the provider's OAuth access token: the
-//! Codex login `microluna::codex::Login::load` reads, and Claude Code's
+//! Codex login `codex_transport::codex::Login::load` reads, and Claude Code's
 //! `claudeAiOauth.accessToken` from `~/.claude/.credentials.json` or, on
 //! macOS, the `Claude Code-credentials` keychain item (read with
 //! `/usr/bin/security`, as Claude Code itself reads it). The token is sent
@@ -683,11 +683,13 @@ async fn fetch_async(provider: Provider) -> Result<Response, Failure> {
         .map_err(|_| Failure::Network)?;
     let request = match provider {
         Provider::Codex => {
-            let path = microluna::codex::Login::default_path().ok_or(Failure::NoCredential)?;
-            let login = microluna::codex::Login::load(&path).map_err(|error| match error {
-                microluna::codex::LoginError::Expiring { .. } => Failure::Expired,
-                _ => Failure::NoCredential,
-            })?;
+            let path =
+                codex_transport::codex::Login::default_path().ok_or(Failure::NoCredential)?;
+            let login =
+                codex_transport::codex::Login::load(&path).map_err(|error| match error {
+                    codex_transport::codex::LoginError::Expiring { .. } => Failure::Expired,
+                    _ => Failure::NoCredential,
+                })?;
             login.authorize(http.get(CODEX_USAGE_URL))
         }
         Provider::Claude => {

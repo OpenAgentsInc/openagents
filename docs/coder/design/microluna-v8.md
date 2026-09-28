@@ -1,5 +1,13 @@
 # Microluna v8: guards that give way, faster suites, and general guidance
 
+> **Historical.** Microcoder replaced Microluna as Coder's loop on
+> 2026-09-25, and the owner deprecated Microluna on 2026-09-28 (issues
+> [#9878](https://github.com/OpenAgentsInc/openagents/issues/9878) and
+> [#9880](https://github.com/OpenAgentsInc/openagents/issues/9880)). Coder's
+> terminal no longer runs it; `crates/microluna` stays only so recorded
+> Terminal-Bench evidence stays reproducible, and its Codex transport moved
+> to `crates/codex-transport`. See [Microcoder](../guides/microcoder.md).
+
 Status: built, 2026-09-24. Issues
 [#9585](https://github.com/OpenAgentsInc/openagents/issues/9585) and
 [#9588](https://github.com/OpenAgentsInc/openagents/issues/9588). The policy

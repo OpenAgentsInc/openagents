@@ -18,8 +18,8 @@ while next_action isn't finished:
 The loop is `crates/microcoder-loop`, which depends on nothing from
 `crates/coder`: the loop, the model and Jev calls, where commands run,
 the provider capacity book, and failover between providers. It depends on
-`crates/jev`, `crates/knowledge`, `crates/microluna` (for its Codex
-transport and `microluna::oneshot`, the one-tool-call request that `kb
+`crates/jev`, `crates/knowledge`, `crates/codex-transport` (for its Codex
+transport and `codex_transport::oneshot`, the one-tool-call request that `kb
 harvest` shares), and `crates/openrouter` (kept for `--provider
 openrouter`, and as the HTTP client for embeddings on OpenAI's API or
 OpenRouter). `crates/microcoder` is the `microcoder` binary and what
@@ -69,7 +69,7 @@ reward, grader output, entries used, and frozen tests), and `artifacts/`
 - `provider`: `codex` or `openrouter`.
 - `cost_basis`: how the model cost was reached. `list_price` on the Codex
   login, which reports tokens and no dollars: the tokens are priced at
-  OpenAI's list rates (`crates/microluna/src/price.rs`). `billed` on
+  OpenAI's list rates (`crates/codex-transport/src/price.rs`). `billed` on
   OpenRouter, which reports what it charged. `cost_bases` gives the basis
   of the model, Jev (always its published rate times reported tokens), and
   embeddings.

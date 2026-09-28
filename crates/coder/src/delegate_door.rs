@@ -400,7 +400,7 @@ impl CodexLogin {
 pub fn codex_login(env: &impl Fn(&str) -> Option<String>) -> Result<CodexLogin, String> {
     let path = coder_one::delegate::codex_auth_file(env)
         .ok_or("no CODEX_HOME or HOME to find the Codex login in")?;
-    let login = microluna::codex::Login::load(&path).map_err(|error| error.to_string())?;
+    let login = codex_transport::codex::Login::load(&path).map_err(|error| error.to_string())?;
     Ok(CodexLogin {
         path,
         expires_at: login.expires_at(),

@@ -18,7 +18,7 @@ jev = { path = "../jev" }
 libc = "0.2"
 knowledge = { path = "../knowledge" }
 microcoder-loop = { path = "../microcoder-loop" }
-microluna = { path = "../microluna" }
+codex-transport = { path = "../codex-transport" }
 nostr = { path = "../nostr" }
 secp256k1 = "0.31.1"
 openrouter = { path = "../openrouter" }

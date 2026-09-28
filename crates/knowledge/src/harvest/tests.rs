@@ -358,22 +358,22 @@ fn a_revision_keeps_the_current_body_and_adds_the_proposal() {
     assert!(body.contains("Recompute it.\n\n## Added in version 3\n\n### Details\n\nPuts use"));
 }
 
-fn codex(reply: microluna::Reply) -> CodexProposer<microluna::fake::FakeTransport> {
+fn codex(reply: codex_transport::Reply) -> CodexProposer<codex_transport::fake::FakeTransport> {
     CodexProposer {
-        transport: microluna::fake::FakeTransport::new(vec![reply]),
+        transport: codex_transport::fake::FakeTransport::new(vec![reply]),
         model: "gpt-6-luna".to_string(),
         effort: None,
     }
 }
 
-fn entries_call(arguments: &str) -> microluna::Reply {
-    microluna::Reply {
+fn entries_call(arguments: &str) -> codex_transport::Reply {
+    codex_transport::Reply {
         id: None,
         model: "gpt-6-luna".to_string(),
         items: vec![json!({
             "type": "function_call", "call_id": "c1", "name": TOOL, "arguments": arguments,
         })],
-        usage: microluna::TokenUsage {
+        usage: codex_transport::TokenUsage {
             input: 10_000,
             output: 2_000,
             ..Default::default()
@@ -411,13 +411,13 @@ async fn a_codex_harvest_is_one_strict_tool_call_priced_at_list_price() {
 #[tokio::test]
 async fn a_failed_codex_harvest_reports_its_cost_as_unknown() {
     let proposer = CodexProposer {
-        transport: microluna::fake::FakeTransport::new(Vec::new()),
+        transport: codex_transport::fake::FakeTransport::new(Vec::new()),
         model: "gpt-6-luna".to_string(),
         effort: None,
     };
     proposer
         .transport
-        .then_fail(microluna::TransportError::Failed(
+        .then_fail(codex_transport::TransportError::Failed(
             "server_error".to_string(),
         ));
     let error = proposer.propose(SYSTEM, "the record").await.unwrap_err();

@@ -4,7 +4,7 @@
 
 use std::time::Instant;
 
-pub use microluna::price::Basis;
+pub use codex_transport::price::Basis;
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -26,7 +26,7 @@ pub const JEV_OVERHEAD_TOKENS: u64 = 4_096;
 
 /// The most one Jev call about `state` with `set` could cost: each of
 /// [`JEV_MAX_ATTEMPTS`] attempts billed for one input token per byte of the
-/// state and questions (see `microluna::price::BYTES_PER_TOKEN`) plus
+/// state and questions (see `codex_transport::price::BYTES_PER_TOKEN`) plus
 /// [`JEV_OVERHEAD_TOKENS`], at Jev's published rate. Jev's output tokens
 /// are free, so its output cap adds nothing.
 #[must_use]
@@ -38,7 +38,8 @@ pub fn jev_upper_bound(set: &QuestionSet, state: &Value) -> f64 {
             .iter()
             .map(|q| q.id.len() + q.text.len())
             .sum::<usize>();
-    let tokens = (bytes as u64).div_ceil(microluna::price::BYTES_PER_TOKEN) + JEV_OVERHEAD_TOKENS;
+    let tokens =
+        (bytes as u64).div_ceil(codex_transport::price::BYTES_PER_TOKEN) + JEV_OVERHEAD_TOKENS;
     (JEV_MAX_ATTEMPTS * tokens) as f64 * JEV_USD_PER_MILLION / 1_000_000.0
 }
 
@@ -466,7 +467,7 @@ impl Judge for JevJudge {
 }
 
 /// Generation through the operator's logged-in Codex session, with
-/// Microluna's transport: one request per step, whose reply text must match
+/// `crates/codex-transport`: one request per step, whose reply text must match
 /// the strict `next_action` JSON schema, as on OpenRouter.
 ///
 /// A step used to declare `next_action` as a strict function tool instead.
@@ -475,7 +476,7 @@ impl Judge for JevJudge {
 /// Responses API alike), while the same request with the schema as its
 /// output format reasoned first. See
 /// `docs/terminal-bench/2026-09-26-route-diff.md`.
-pub struct CodexGenerator<T: microluna::Transport = microluna::codex::CodexTransport> {
+pub struct CodexGenerator<T: codex_transport::Transport = codex_transport::codex::CodexTransport> {
     pub transport: T,
     /// The Codex model slug, such as `gpt-6-luna`.
     pub model: String,
@@ -574,13 +575,13 @@ pub fn parse_action(text: &str) -> Result<NextAction, String> {
     }
 }
 
-impl<T: microluna::Transport> CodexGenerator<T> {
+impl<T: codex_transport::Transport> CodexGenerator<T> {
     /// The request one step sends: the system text as instructions, the
     /// prompt as the one user message, and the `next_action` schema as the
     /// output format, with no tools.
     #[must_use]
-    pub fn request(&self, system: &str, prompt: &str) -> microluna::Request {
-        microluna::Request {
+    pub fn request(&self, system: &str, prompt: &str) -> codex_transport::Request {
+        codex_transport::Request {
             model: self.model.clone(),
             instructions: system.to_string(),
             input: vec![json!({
@@ -597,13 +598,13 @@ impl<T: microluna::Transport> CodexGenerator<T> {
     }
 }
 
-impl<T: microluna::Transport> Generate for CodexGenerator<T> {
+impl<T: codex_transport::Transport> Generate for CodexGenerator<T> {
     async fn generate(&self, system: &str, prompt: &str) -> Generated {
         let request = self.request(system, prompt);
-        let called = microluna::oneshot::answer(&self.transport, &request).await;
+        let called = codex_transport::oneshot::answer(&self.transport, &request).await;
         dump_request(
             "codex",
-            &microluna::codex::body(&request),
+            &codex_transport::codex::body(&request),
             json!({
                 "model": called.model,
                 "input_tokens": called.usage.input,
@@ -929,17 +930,17 @@ mod jev_tests {
 #[cfg(test)]
 mod codex_tests {
     use super::*;
-    use microluna::fake::FakeTransport;
+    use codex_transport::fake::FakeTransport;
 
-    fn call(text: &str) -> microluna::Reply {
-        microluna::Reply {
+    fn call(text: &str) -> codex_transport::Reply {
+        codex_transport::Reply {
             id: None,
             model: "gpt-6-luna".to_string(),
             items: vec![
                 json!({"type": "reasoning", "summary": []}),
                 json!({"type": "message", "content": [{"type": "output_text", "text": text}]}),
             ],
-            usage: microluna::TokenUsage {
+            usage: codex_transport::TokenUsage {
                 input: 1_000,
                 output: 100,
                 ..Default::default()
@@ -947,7 +948,7 @@ mod codex_tests {
         }
     }
 
-    fn generator(replies: Vec<microluna::Reply>) -> CodexGenerator<FakeTransport> {
+    fn generator(replies: Vec<codex_transport::Reply>) -> CodexGenerator<FakeTransport> {
         CodexGenerator {
             transport: FakeTransport::new(replies),
             model: "gpt-6-luna".to_string(),
@@ -986,7 +987,7 @@ mod codex_tests {
             effort: Some("medium".to_string()),
         };
         let (system, prompt) = ("the system text", "the step prompt");
-        let codex_body = microluna::codex::body(&codex.request(system, prompt));
+        let codex_body = codex_transport::codex::body(&codex.request(system, prompt));
         let openrouter_body = serde_json::to_value(
             openrouter
                 .request(system, prompt)
@@ -1071,14 +1072,16 @@ mod codex_tests {
     async fn a_timed_out_attempt_is_bounded_and_the_retry_priced() {
         let g = generator(Vec::new());
         g.transport
-            .then_fail(microluna::TransportError::Stream("timed out".to_string()));
+            .then_fail(codex_transport::TransportError::Stream(
+                "timed out".to_string(),
+            ));
         g.transport.then(call(
             r#"{"rationale":"look","commands":["ls"],"view":[],"expand":[],"freeze_tests":false,"finished":false}"#,
         ));
         let out = g.generate("system", "prompt").await;
         assert!(out.action.is_ok());
         assert_eq!(out.usd, None);
-        let bound = microluna::price::upper_bound(
+        let bound = codex_transport::price::upper_bound(
             "gpt-6-luna",
             g.request("system", "prompt").text_bytes(),
             None,

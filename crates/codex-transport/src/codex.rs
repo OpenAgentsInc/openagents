@@ -688,7 +688,9 @@ impl UsageLimit {
     }
 }
 
-pub(crate) fn excerpt(text: &str, max: usize) -> String {
+/// At most `max` characters of `text`, trimmed, for an error message.
+#[must_use]
+pub fn excerpt(text: &str, max: usize) -> String {
     let text = text.trim();
     match text.char_indices().nth(max) {
         Some((at, _)) => format!("{}…", &text[..at]),

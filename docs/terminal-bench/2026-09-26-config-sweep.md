@@ -126,7 +126,7 @@ easy and hard tasks. The fair comparison is task by task:
    and a run can't stay under $2 unless it passes in about 12 steps. Both
    models' OpenRouter prices ($2/$10 and $10/$50 per million input and
    output tokens, cached input $0.20 and $1.00) match
-   `crates/microluna/src/price.rs`.
+   `crates/codex-transport/src/price.rs`.
 5. **`--gate-credible` has no evidence here.** Its two runs were on the
    Codex route with the newer knowledge snapshot (see caveat 3) and both
    failed with green frozen tests.

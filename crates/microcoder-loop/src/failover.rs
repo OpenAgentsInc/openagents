@@ -57,13 +57,13 @@ impl<T> Refusing<T> {
     }
 }
 
-impl<T: microluna::Transport> microluna::Transport for Refusing<T> {
+impl<T: codex_transport::Transport> codex_transport::Transport for Refusing<T> {
     async fn respond(
         &self,
-        request: &microluna::Request,
-    ) -> Result<microluna::Reply, microluna::TransportError> {
+        request: &codex_transport::Request,
+    ) -> Result<codex_transport::Reply, codex_transport::TransportError> {
         let response = self.inner.respond(request).await;
-        if let Err(microluna::TransportError::Http { status, body }) = &response
+        if let Err(codex_transport::TransportError::Http { status, body }) = &response
             && let Some(refusal) = Refusal::codex(*status, body, unix_now())
         {
             *self.refusal.borrow_mut() = Some(refusal);
@@ -72,7 +72,7 @@ impl<T: microluna::Transport> microluna::Transport for Refusing<T> {
     }
 }
 
-impl<T: microluna::Transport> Lane for crate::models::CodexGenerator<Refusing<T>> {
+impl<T: codex_transport::Transport> Lane for crate::models::CodexGenerator<Refusing<T>> {
     fn refusal(&self) -> Option<Refusal> {
         self.transport.refusal.borrow_mut().take()
     }

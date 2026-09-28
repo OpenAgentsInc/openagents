@@ -79,7 +79,7 @@ impl Provider {
     #[must_use]
     pub const fn endpoint(self) -> &'static str {
         match self {
-            Provider::Codex => microluna::codex::BASE_URL,
+            Provider::Codex => codex_transport::codex::BASE_URL,
             Provider::Claude => "https://api.anthropic.com",
         }
     }
@@ -149,7 +149,7 @@ impl Refusal {
     /// are retried by the transport and are not recorded.
     #[must_use]
     pub fn codex(status: u16, body: &str, now: u64) -> Option<Refusal> {
-        let limit = microluna::codex::UsageLimit::parse(status, body)?;
+        let limit = codex_transport::codex::UsageLimit::parse(status, body)?;
         let resets_at = limit
             .resets_at
             .or_else(|| limit.resets_in_seconds.map(|s| now.saturating_add(s)));
@@ -298,7 +298,7 @@ impl Connection {
 ///
 /// - **Codex**: `$CODEX_HOME/auth.json` or `~/.codex/auth.json` holds a
 ///   ChatGPT login whose access token is not about to expire, as
-///   `microluna::codex::Login::load` requires before a request.
+///   `codex_transport::codex::Login::load` requires before a request.
 /// - **Claude**: a `claude` binary (`CLAUDE_BIN`, `PATH`, or
 ///   `~/.local/bin/claude`) and a Claude Code sign-in: the account record in
 ///   `~/.claude.json`, or `~/.claude/.credentials.json`. The credential
@@ -311,10 +311,10 @@ pub fn probe(provider: Provider) -> Connection {
     let home = std::env::var_os("HOME").map(PathBuf::from);
     match provider {
         Provider::Codex => {
-            let Some(path) = microluna::codex::Login::default_path() else {
+            let Some(path) = codex_transport::codex::Login::default_path() else {
                 return Connection::Missing("HOME is not set".into());
             };
-            match microluna::codex::Login::load(&path) {
+            match codex_transport::codex::Login::load(&path) {
                 Ok(_) => Connection::Connected,
                 Err(error) => Connection::Missing(error.to_string()),
             }

@@ -236,7 +236,7 @@ impl Lane for ScriptedLane {
 
 /// One provider's generator.
 enum Provided {
-    Codex(Box<CodexGenerator<Refusing<microluna::codex::CodexTransport>>>),
+    Codex(Box<CodexGenerator<Refusing<codex_transport::codex::CodexTransport>>>),
     Claude(ClaudeLane),
     Scripted(ScriptedLane),
 }
@@ -266,8 +266,9 @@ impl Lane for Provided {
 fn provided(state: &ProviderState, session: &str) -> Result<Provided, String> {
     match state.provider {
         Provider::Codex => {
-            let login = microluna::codex::Login::default_path().ok_or("no Codex login path")?;
-            let transport = microluna::codex::CodexTransport::new(login, session)
+            let login =
+                codex_transport::codex::Login::default_path().ok_or("no Codex login path")?;
+            let transport = codex_transport::codex::CodexTransport::new(login, session)
                 .map_err(|error| error.to_string())?;
             Ok(Provided::Codex(Box::new(CodexGenerator {
                 transport: Refusing::new(transport),

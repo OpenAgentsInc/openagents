@@ -433,14 +433,21 @@ uses, and marks which are implemented and which are only specified.
   loop's modules under their old paths. Read
   `docs/coder/runtime/microcoder-repository.md` before changing the
   adapter.
-- `crates/microluna` — Microluna, the minimal Luna harness of the Luna
-  pivot: short GPT-6 Luna sessions on the operator's logged-in Codex
-  session, calling the ChatGPT Codex Responses endpoint directly with
-  five native function tools (run a command, read a file region, apply a
-  patch, write a file, and finish). Commands run under `coder-boundary`
-  and `supervise`; every reply and call is an ATIF step with usage and
-  list-price cost. It only reads `~/.codex/auth.json` and never refreshes
-  it. Read `docs/coder/design/microluna.md` before changing the transport.
+- `crates/codex-transport` — the operator's Codex login and the ChatGPT
+  Codex Responses transport: one request and one reply, the typed
+  `usage_limit_reached` refusal, list-price cost, the one-tool-call
+  `oneshot`, and a scripted fake for tests. It only reads
+  `~/.codex/auth.json` and never refreshes it. The Microcoder loop, Coder,
+  and the knowledge base use it. Read `docs/coder/design/microluna.md`
+  (its origin) before changing the transport.
+- `crates/microluna` — deprecated on 2026-09-28; Microcoder replaced it.
+  Microluna ran short GPT-6 Luna sessions with five native function tools
+  (run a command, read a file region, apply a patch, write a file, and
+  finish) under `coder-boundary` and `supervise`. It stays in the
+  workspace only for Coder One's retained Terminal-Bench policies
+  (`coder_one::micro`, the `microluna-*` policies) and the `microluna`
+  binary, so recorded evidence stays reproducible. Don't build new work
+  on it; Coder's terminal no longer runs it.
 - `crates/coder-one` — Coder One, a minimal standalone agent that turns a
   GitHub issue into a pull request. Each step asks Jev for typed
   judgments over the state, puts them in the prompt, generates one

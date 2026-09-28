@@ -477,7 +477,7 @@ async fn missing_codex_usage_is_unknown_and_preserves_earlier_lower_bound() {
         let configuration = grant.adapter_configuration.as_mut().unwrap();
         configuration.provider = provider.into();
         if provider == "codex" {
-            configuration.generation_endpoint = microluna::codex::BASE_URL.into();
+            configuration.generation_endpoint = codex_transport::codex::BASE_URL.into();
             configuration.decision_endpoint = "https://decision.example.invalid".into();
         }
         let host = Host::admit(&store, &serde_json::to_vec(&grant).unwrap())

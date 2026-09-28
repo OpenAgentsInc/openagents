@@ -1,5 +1,13 @@
 # Microluna v18: the executed briefing, and what characterizes a run
 
+> **Historical.** Microcoder replaced Microluna as Coder's loop on
+> 2026-09-25, and the owner deprecated Microluna on 2026-09-28 (issues
+> [#9878](https://github.com/OpenAgentsInc/openagents/issues/9878) and
+> [#9880](https://github.com/OpenAgentsInc/openagents/issues/9880)). Coder's
+> terminal no longer runs it; `crates/microluna` stays only so recorded
+> Terminal-Bench evidence stays reproducible, and its Codex transport moved
+> to `crates/codex-transport`. See [Microcoder](../guides/microcoder.md).
+
 **Measured on 2026-09-25:** the [completed family report](../../terminal-bench/2026-09-25-microluna-v18-family.md)
 records 0/18 passes. The completed cohort meets the numerical loss condition;
 setup-only failures, a harness change, and a driver restart make the strict

@@ -1014,6 +1014,7 @@ dependencies = [
  "coder-setup",
  "coder-terminal",
  "coderbench",
+ "codex-transport",
  "crossterm",
  "futures-util",
  "indexmap",
@@ -1021,7 +1022,6 @@ dependencies = [
  "knowledge",
  "libc",
  "microcoder-loop",
- "microluna",
  "nostr",
  "nostr-transport",
  "plugin",
@@ -1503,6 +1503,19 @@ dependencies = [
  "serde",
  "termcolor",
  "unicode-width",
+]
+
+[[package]]
+name = "codex-transport"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "libc",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
 ]
 
 [[package]]
@@ -4038,7 +4051,7 @@ checksum = "e2db585e1d738fc771bf08a151420d3ed193d9d895a36df7f6f8a9456b911ddc"
 name = "knowledge"
 version = "0.1.0"
 dependencies = [
- "microluna",
+ "codex-transport",
  "nostr",
  "openrouter",
  "secp256k1 0.31.1",
@@ -4637,12 +4650,12 @@ version = "0.1.0"
 dependencies = [
  "atif",
  "coder",
+ "codex-transport",
  "futures-util",
  "jev",
  "knowledge",
  "libc",
  "microcoder-loop",
- "microluna",
  "nostr",
  "openrouter",
  "reqwest",
@@ -4662,9 +4675,9 @@ version = "0.1.0"
 dependencies = [
  "atif",
  "coder-boundary",
+ "codex-transport",
  "jev",
  "knowledge",
- "microluna",
  "nostr",
  "openrouter",
  "reqwest",
@@ -4681,6 +4694,7 @@ dependencies = [
  "atif",
  "base64 0.22.1",
  "coder-boundary",
+ "codex-transport",
  "futures-util",
  "libc",
  "reqwest",

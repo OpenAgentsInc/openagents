@@ -3,8 +3,8 @@
 //!
 //! The door serves other vendors' models under their gateway slugs, such as
 //! `google/gemini-3.8-flash`, with the same native function tools as the
-//! Codex endpoint. So the request is [`microluna::codex::body`] and the
-//! stream is read by [`microluna::codex::Events`]; only the endpoint, the
+//! Codex endpoint. So the request is [`codex_transport::codex::body`] and the
+//! stream is read by [`codex_transport::codex::Events`]; only the endpoint, the
 //! bearer, and the cost change. The door reports each call's cost as
 //! `usage.cost_microusd`, so a step's cost is that figure
 //! ([`Basis::Billed`]), not a list price computed here. A call whose cost
@@ -20,8 +20,8 @@ use std::fmt;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-use microluna::codex::{Events, REQUEST_TIMEOUT, body};
-use microluna::transport::{Reply, Request, Transport, TransportError};
+use codex_transport::codex::{Events, REQUEST_TIMEOUT, body};
+use codex_transport::transport::{Reply, Request, Transport, TransportError};
 use serde_json::{Value, json};
 
 use crate::models::{Basis, Generate, Generated, NextAction, next_action_tool};
@@ -328,8 +328,8 @@ impl<T: Transport> Generate for DoorGenerator<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use microluna::fake::FakeTransport;
-    use microluna::transport::TokenUsage;
+    use codex_transport::fake::FakeTransport;
+    use codex_transport::transport::TokenUsage;
 
     fn reply(arguments: &str) -> Reply {
         Reply {
