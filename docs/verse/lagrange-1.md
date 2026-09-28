@@ -6,7 +6,10 @@ frame begins: an astronaut in a maneuvering pack carries parts from a depot to
 a keel jig. The physics is real where it matters at each scale, and each
 approximation is named below.
 
-Enter from the plaza's east arch (**L1 portal** on the map). Controls are in
+Enter from the plaza's east arch (**L1 portal** on the map), or in the
+OpenAgents app by walking through the Grid's arch, where the station's guides
+and panel are drawn in white and gray
+([the Grid's portal](mobile.md#the-grids-portal-to-lagrange-1)). Controls are in
 [the zone guide](zones.md#lagrange-1-controls). The simulation lives in
 [`verse-lagrange`](../../crates/verse-lagrange/), which uses the shared
 zone-agnostic [`physics`](../../crates/physics/) crate for rigid bodies, fixed

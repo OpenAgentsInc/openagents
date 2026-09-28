@@ -11,8 +11,9 @@ implementation belongs to the reusable `rust-native` crate.
 The OpenAgents app's **Verse** tab mounts the same surface in its bare mode
 (`WorldRuntime::bare`): only the plaza's ground grid, drawn in the neutral
 palette (each amber step's lightness in white light), and the player with the
-controls below, and other players' avatars. It has no chat, map, zones,
-doors, computer, Gym, or companion. See
+controls below, and other players' avatars. It has no chat, map, doors,
+computer, Gym, or companion, and one zone: a walk-in portal to Lagrange 1
+([below](#the-grids-portal-to-lagrange-1)). See
 [presence in the OpenAgents app](#presence-in-the-openagents-app) and
 [OpenAgents for iOS](../../bins/openagents-ios/README.md).
 
@@ -97,6 +98,49 @@ cargo run -p verse --release --features capture --example bare_capture -- target
 
 The arguments are seconds of walking forward, seconds of waiting, and a
 sideways camera orbit in pixels.
+
+### The Grid's portal to Lagrange 1
+
+One arch stands on the bare world (the Grid), lettered **LAGRANGE 1** and
+drawn in white and gray like the grid. It has no button: walk through its
+opening and [Lagrange 1](lagrange-1.md) loads at once. Flying the pack back
+through the station's return arch, lettered **THE GRID**, returns; so does
+the zone panel's **The Grid** button, or a tap on that arch.
+
+- **Placement.** The arch stands in the ball's layout frame
+  (`verse::zones::gate::GRID_PORTAL_AT`): 9 m to the stack's side of the
+  line from the spawn to the ball and 11 m ahead, short of the stack and
+  opposite the dominoes, turned to face the spawn so its lettering reads
+  head-on. A restored spawn lays it out with the ball and blocks, inside the
+  walls. Tests keep it more than 5 m from every block and 6 m from the ball.
+- **Crossing.** `verse::zones::Gate::crossed` admits feet that pass the
+  arch's plane, or stand within 0.6 m of it, inside the 3 m opening and
+  below its lintel. A long frame's step is checked where it crossed the
+  plane. Walking past a pillar, approaching, or jumping over does not enter.
+  After a crossing, both arches wait one second before admitting another.
+- **Returning.** The player comes back 3.5 m in front of the portal, facing
+  away from it, so walking on never re-enters. The ball and blocks wait
+  where they were left: they are not stepped while the player is away, and
+  the return does not lay them out again.
+- **Neutral Lagrange 1.** Entered from the Grid, the station keeps its
+  physical materials, Sun, Earth, Moon, and stars, but every guide and
+  overlay is white or gray at the same brightness: the Earth reticle, the
+  autopilot line, the next part's outline, the airlock refill ring, the
+  forces overlay, and the return arch. A carried part's slot outline is gray
+  until aligned and white when it latches (Coder draws amber, then green).
+  The zone panel (caption, **Grab**/**Latch**, **Forces**, **Art**/**Photo**,
+  **The Grid**) is drawn in the neutral palette above the centered stick.
+  Coder's plaza, its three arches with their buttons, and its amber Lagrange
+  1 are unchanged.
+- **Presence.** Lagrange 1 is local, as every zone is in Coder: its station
+  simulation runs on the device, and its coordinates are not Grid
+  coordinates. Walking through the portal ends the `verse-bare` session, so
+  nothing is published while the player is in the zone and other players'
+  avatars are cleared; peers see the player leave, and the live-only crowd
+  drops them. Coming back starts a fresh `verse-bare` session that
+  publishes the player's state at the portal, without restoring the
+  relay's saved position. No separate NIP-MV world is joined for the
+  station, since no shared station state exists to show there.
 
 #### Sharing the ball
 
@@ -237,6 +281,9 @@ readouts above two rows of controls: tap **Prev** or **Next** to select a knob,
 **-** or **+** to change it, **Reset**, **Pause** or **Run**, **Step**, and
 **Plaza**. The first knob switches among nine scenarios. See
 [Physics Lab](physics-lab.md).
+
+The OpenAgents app's bare world reaches only Lagrange 1, through its
+[walk-in portal](#the-grids-portal-to-lagrange-1).
 
 Plaza presence and Gym observation pause while loading or visiting a zone,
 then resume the configured plaza behavior on return. Zones are local-only;

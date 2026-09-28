@@ -81,7 +81,10 @@ fn bare_world_players_see_each_other_move_and_pausing_stops_publishing() {
     );
     assert!(appeared, "the peer's avatar never appeared");
     // The peer carries its key's first letters overhead.
-    assert!(!scene.player_tags().vertices.is_empty(), "the peer has no tag");
+    assert!(
+        !scene.player_tags().vertices.is_empty(),
+        "the peer has no tag"
+    );
     let entities = crate::verse_ffi::bare_entities(
         scene
             .session
@@ -207,4 +210,119 @@ fn bare_world_players_see_each_other_move_and_pausing_stops_publishing() {
     // Returning starts a fresh presence session.
     scene.activate(true).unwrap();
     assert!(scene.session.is_some());
+}
+
+/// Walking through the Grid's portal leaves `verse-bare` for a local
+/// Lagrange 1 with a neutral panel; its button (or its arch) brings the
+/// player back in front of the portal, and presence rejoins `verse-bare`.
+#[test]
+fn the_grid_portal_pauses_presence_in_lagrange_1_and_the_return_rejoins() {
+    let relay = loopback_relay::LoopbackRelay::start();
+    let clock = Instant::now();
+    let mut scene = bare_scene(&relay.url);
+    scene.activate(true).unwrap();
+    let me = scene.public_key.clone();
+    let identity =
+        verse::identity::Identity::from_secret("peer", verse::identity::random_secret()).unwrap();
+    let mut peer = Session::start_presence(identity, &relay.url, BARE_WORLD).unwrap();
+    let mut peer_player = PlayerController::new(scene.world.player.pos, 0.0);
+    let joined = run(
+        &mut scene,
+        &mut peer,
+        &mut peer_player,
+        clock,
+        Duration::from_secs(8),
+        |scene, _, _| scene.packet().live_remote_entities == 1,
+    );
+    assert!(joined, "the peer never appeared");
+
+    // Face the portal from in front of it and hold the stick forward.
+    let gate = scene.world.grid_gate().expect("the Grid's portal");
+    let (front, away) = gate.front();
+    scene
+        .world
+        .place_player(front, away + std::f32::consts::PI)
+        .unwrap();
+    let [sx, sy] = scene.stick_center();
+    scene.pointer(1, PointerPhase::Down, sx, sy).unwrap();
+    scene.pointer(1, PointerPhase::Move, sx, sy - 80.0).unwrap();
+    let entered = run(
+        &mut scene,
+        &mut peer,
+        &mut peer_player,
+        clock,
+        // Generous for a loaded machine: the loop ends at the crossing.
+        Duration::from_secs(20),
+        |scene, _, _| !scene.world.is_plaza(),
+    );
+    assert!(
+        entered,
+        "walking through the portal did not enter Lagrange 1"
+    );
+    assert_eq!(scene.world.zone, verse::zones::ZoneId::Lagrange1);
+    // The held stick was released by the crossing; presence paused.
+    assert!(scene.touches.is_empty());
+    scene.pointer(1, PointerPhase::Up, sx, sy - 80.0).unwrap();
+    assert!(scene.session.is_none());
+    let packet = scene.packet();
+    assert_eq!(packet.connection.state, "local_zone");
+    assert_eq!(packet.remote_entities, 0);
+    let published = relay.published().len();
+
+    // The zone's panel is drawn in white and grays above the stick.
+    let hud = scene.zone_hud_snapshot();
+    assert!(hud.visible);
+    let [_, y, _, h] = hud.frame;
+    assert!(y + h < sy - 56.0, "the panel covers the stick");
+    let ui = scene.map_ui();
+    assert!(ui.vertices.len() > scene.stick_ui().vertices.len());
+    assert!(
+        ui.vertices
+            .iter()
+            .all(|v| v.color[0] == v.color[1] && v.color[1] == v.color[2])
+    );
+    // Nothing more reaches the relay while the player is in the zone.
+    run(
+        &mut scene,
+        &mut peer,
+        &mut peer_player,
+        clock,
+        Duration::from_millis(500),
+        |_, _, _| false,
+    );
+    assert!(
+        relay.published()[published..]
+            .iter()
+            .all(|event| event.pubkey != me)
+    );
+
+    // The panel's button returns to the Grid in front of the portal.
+    let button = hud
+        .buttons
+        .iter()
+        .find(|b| b.action == verse::zones::Intent::Return)
+        .unwrap();
+    assert_eq!(button.label, "The Grid");
+    let [bx, by, bw, bh] = button.frame;
+    let at = [bx + bw / 2.0, by + bh / 2.0];
+    scene.pointer(2, PointerPhase::Down, at[0], at[1]).unwrap();
+    scene.pointer(2, PointerPhase::Up, at[0], at[1]).unwrap();
+    assert!(scene.world.is_plaza());
+    assert_eq!(scene.world.player.pos, gate.front().0);
+    let session = scene.session.as_ref().expect("presence rejoins");
+    assert_eq!(session.world(), BARE_WORLD);
+    let seen_back = run(
+        &mut scene,
+        &mut peer,
+        &mut peer_player,
+        clock,
+        Duration::from_secs(10),
+        |_, peer, _| {
+            peer.crowd
+                .shown(Instant::now())
+                .iter()
+                .any(|e| e.pubkey == me && e.online && e.pos.distance(front) < 0.05)
+        },
+    );
+    assert!(seen_back, "the peer never saw the player back on the Grid");
 }

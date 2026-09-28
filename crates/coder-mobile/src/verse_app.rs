@@ -695,6 +695,11 @@ impl Scene {
             }
             world.configure_zone_cache(directory.into());
         }
+        let mut zone_hud = verse::zones::hud::Hud::default();
+        if config.bare {
+            // Lagrange 1's panel stands above the Grid's centered stick.
+            zone_hud.set_bottom_clearance(STICK_MARGIN_POINTS + 2.0 * STICK_RADIUS_POINTS + 8.0)?;
+        }
         let door_notice = config
             .door_preferences
             .as_deref()
@@ -719,7 +724,7 @@ impl Scene {
             map_error: None,
             door_hud: verse::doors::hud::DoorHud::default(),
             door_notice,
-            zone_hud: verse::zones::hud::Hud::default(),
+            zone_hud,
             lifecycle,
             session: None,
             presented_entities: verse::mesh::Mesh::default(),
@@ -933,7 +938,15 @@ impl Scene {
             }
             return Ok(());
         }
-        // The bare world draws no map, zone, or door controls to touch.
+        // The bare world draws no map or door controls to touch, and zone
+        // controls only inside the zone its portal leads to.
+        if matches!(phase, PointerPhase::Down) && self.world.is_bare() && !self.world.is_plaza() {
+            let snapshot = self.zone_hud_snapshot();
+            if self.zone_hud.down(id, point, &snapshot) {
+                self.cancel_taps();
+                return Ok(());
+            }
+        }
         if matches!(phase, PointerPhase::Down) && !self.world.is_bare() {
             let snapshot = self.zone_hud_snapshot();
             if self.zone_hud.down(id, point, &snapshot) {
@@ -1308,7 +1321,14 @@ impl Scene {
         }
         self.advance_motion(camera_dt as f32);
         let input = self.input();
+        let revision = self.world.zone_revision;
         self.world.tick(&input, dt);
+        if self.world.zone_revision != revision {
+            // The player walked through a portal: drop held input, and pause
+            // or resume the world's presence as a button entry would.
+            self.reset_zone_inputs();
+            self.sync_zone_session()?;
+        }
         self.map.tick(dt);
         let panel_was_open = self.panel_open();
         if self.computer_open && !self.computer().near {
@@ -1728,8 +1748,20 @@ impl Scene {
     pub fn map_ui(&self) -> verse::ui::UiBatch {
         if self.world.is_bare() {
             // The movement stick is the bare world's only control; the
-            // players there carry their key's first letters overhead.
+            // players there carry their key's first letters overhead. In the
+            // zone its portal leads to, the zone's panel joins them, in the
+            // neutral palette.
             let mut ui = self.player_tags();
+            if !self.world.is_plaza() {
+                let scale = self.lifecycle.viewport().scale();
+                if let Some(layout) = self.atlas.layout_at_scale(scale) {
+                    let mut zone_ui = self
+                        .zone_hud
+                        .draw(&layout, &self.zone_hud_snapshot(), scale);
+                    zone_ui.neutralize();
+                    ui.vertices.extend(zone_ui.vertices);
+                }
+            }
             ui.vertices.extend(self.stick_ui().vertices);
             return ui;
         }

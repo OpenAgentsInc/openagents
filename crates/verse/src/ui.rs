@@ -293,6 +293,16 @@ pub struct UiBatch {
 }
 
 impl UiBatch {
+    /// Recolors every vertex in the neutral palette, keeping opacity: each
+    /// amber step becomes its lightness in white light
+    /// ([`crate::palette::neutral`]).
+    pub fn neutralize(&mut self) {
+        for vertex in &mut self.vertices {
+            let [r, _, _, a] = vertex.color;
+            vertex.color = [r, r, r, a];
+        }
+    }
+
     fn quad(&mut self, p0: [f32; 2], p1: [f32; 2], uv0: [f32; 2], uv1: [f32; 2], color: [f32; 4]) {
         let v = |x: f32, y: f32, u: f32, w: f32| UiVertex {
             pos: [x, y],

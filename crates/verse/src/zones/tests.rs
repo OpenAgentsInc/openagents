@@ -295,3 +295,136 @@ fn the_plaza_renders_as_a_neon_stage_in_its_own_palette() {
     let station = runtime.dynamic_mesh();
     assert!(station.neon.is_none() && station.sky.is_some());
 }
+
+fn gray(color: [f32; 3]) -> bool {
+    color[0] == color[1] && color[1] == color[2]
+}
+
+/// Walks forward for up to `seconds`, stopping once the zone changes.
+fn walk_until_zone_changes(runtime: &mut WorldRuntime, seconds: f32) -> bool {
+    let revision = runtime.zone_revision;
+    let forward = InputState {
+        forward: true,
+        ..InputState::default()
+    };
+    for _ in 0..(seconds * 60.0) as usize {
+        runtime.tick(&forward, 1.0 / 60.0);
+        if runtime.zone_revision != revision {
+            return true;
+        }
+    }
+    false
+}
+
+#[test]
+fn walking_through_the_grid_portal_enters_a_neutral_lagrange_1_and_flying_back_returns() {
+    let mut runtime = WorldRuntime::bare();
+    let gate = runtime.grid_gate().expect("the Grid's portal");
+    let ball_at = runtime.ball().unwrap().body().pos;
+    // The arch is drawn in the neutral palette with the player and ball, and
+    // it offers no button: nothing near it admits a tap or an Enter.
+    let dynamic = runtime.dynamic_mesh_with_interactions(true, true);
+    let arch = gate.mesh(ZoneId::Plaza, ZoneId::Lagrange1.sign(), 0.0);
+    assert!(dynamic.lines.len() >= arch.lines.len());
+    assert!(dynamic.lines.iter().all(|v| gray(v.color)));
+    let (front, away) = gate.front();
+    runtime
+        .place_player(front, away + std::f32::consts::PI)
+        .unwrap();
+    let snapshot = runtime.zone_snapshot(1.0);
+    assert!(!snapshot.portal.near && snapshot.controls.is_empty());
+    assert!(runtime.zone_intent(Intent::Enter).is_err());
+    // Walking into the opening enters, with no button.
+    assert!(walk_until_zone_changes(&mut runtime, 3.0));
+    assert_eq!(runtime.zone, ZoneId::Lagrange1);
+    assert!(runtime.is_bare() && !runtime.is_plaza());
+    // Every guide, overlay, and the return arch is white or gray; the
+    // station and sky keep their physical colors.
+    assert!(runtime.world.mesh.lines.iter().all(|v| gray(v.color)));
+    runtime.zone_intent(Intent::Forces).unwrap();
+    let dynamic = runtime.dynamic_mesh_with_interactions(true, true);
+    assert!(!dynamic.lines.is_empty() && !dynamic.lit.is_empty());
+    assert!(
+        dynamic
+            .lines
+            .iter()
+            .chain(&dynamic.faces)
+            .all(|v| gray(v.color))
+    );
+    assert!(dynamic.sky.is_some());
+    let snapshot = runtime.zone_snapshot(1.0);
+    assert!(snapshot.controls.iter().any(|c| c.action == Intent::Grab));
+    let back = snapshot
+        .controls
+        .iter()
+        .find(|c| c.action == Intent::Return)
+        .unwrap();
+    assert_eq!(back.label, "The Grid");
+    // Fly the pack through the return arch: it comes back on its own.
+    let portal = ZoneId::Lagrange1.portal();
+    runtime
+        .zone_state
+        .lagrange
+        .as_mut()
+        .unwrap()
+        .station
+        .apply(verse_lagrange::Input::FlyTo {
+            target: (portal + glam::Vec3::new(0.0, 0.9, 0.0)).as_dvec3(),
+        })
+        .unwrap();
+    let mut returned = false;
+    for _ in 0..(90 * 10) {
+        runtime.tick(&InputState::default(), 0.1);
+        if runtime.is_plaza() {
+            returned = true;
+            break;
+        }
+    }
+    assert!(returned, "the pack reached the return arch");
+    // On the Grid again, in front of the portal facing away from it, with the
+    // ball where it was left and the Grid's ground in the neutral palette.
+    let (front, away) = gate.front();
+    assert_eq!(runtime.player.pos, front);
+    assert!((runtime.player.yaw - crate::controller::wrap(away)).abs() < 1e-5);
+    assert_eq!(runtime.grid_gate(), Some(gate));
+    assert!(runtime.ball().unwrap().body().pos.distance(ball_at) < 1e-6);
+    assert!(runtime.world.mesh.faces.is_empty());
+    assert!(runtime.world.mesh.lines.iter().all(|v| gray(v.color)));
+    // Walking on leads away; turning back and walking in enters again.
+    assert!(!walk_until_zone_changes(&mut runtime, 1.0));
+    assert!(runtime.is_plaza());
+    let (front, away) = gate.front();
+    runtime
+        .place_player(front, away + std::f32::consts::PI)
+        .unwrap();
+    assert!(walk_until_zone_changes(&mut runtime, 3.0));
+    // The HUD's button returns too.
+    runtime.zone_intent(Intent::Return).unwrap();
+    assert!(runtime.is_plaza());
+    assert_eq!(runtime.player.pos, gate.front().0);
+}
+
+#[test]
+fn coder_plaza_arches_still_need_their_button_and_stay_amber() {
+    let mut runtime = WorldRuntime::new();
+    assert!(runtime.grid_gate().is_none());
+    let at = ZoneId::Plaza.portals()[1].1;
+    assert_eq!(ZoneId::Plaza.portals()[1].0, ZoneId::Lagrange1);
+    runtime.set_spawn(at - glam::Vec3::Z * 3.0, 0.0).unwrap();
+    assert!(!walk_until_zone_changes(&mut runtime, 2.0));
+    assert!(runtime.is_plaza());
+    runtime.set_spawn(at - glam::Vec3::Z * 2.0, 0.0).unwrap();
+    runtime.zone_intent(Intent::Enter).unwrap();
+    assert_eq!(runtime.zone, ZoneId::Lagrange1);
+    let lagrange = runtime.zone_state.lagrange.as_ref().unwrap();
+    assert!(!lagrange.neutral);
+    assert!(lagrange.dynamic().lines.iter().any(|v| !gray(v.color)));
+    assert!(runtime.world.mesh.lines.iter().any(|v| !gray(v.color)));
+    let snapshot = runtime.zone_snapshot(1.0);
+    assert!(
+        snapshot
+            .controls
+            .iter()
+            .any(|c| c.action == Intent::Return && c.label == "Plaza")
+    );
+}

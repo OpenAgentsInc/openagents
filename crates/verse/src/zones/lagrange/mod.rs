@@ -40,6 +40,9 @@ pub(crate) struct Lagrange {
     pub overlay: bool,
     /// Use the readable art exposure instead of the photographic one.
     pub art: bool,
+    /// Draw guides and overlays in the neutral palette: white and grays
+    /// instead of cyan, amber, and green. Set when entered from the Grid.
+    pub neutral: bool,
     rendered: Mesh,
     light: light::Light,
 }
@@ -50,6 +53,7 @@ impl Lagrange {
             station: Station::new(),
             overlay: false,
             art: false,
+            neutral: false,
             rendered: Mesh::default(),
             light: light::Light::new(structure_with_wings()),
         };
@@ -139,11 +143,32 @@ impl Lagrange {
         }
     }
 
+    /// Fixed station structure with its guide (the airlock's refill ring)
+    /// in the neutral palette, at the same brightness.
+    pub fn neutral_world() -> World {
+        let mut world = Self::world();
+        for vertex in &mut world.mesh.lines {
+            let [r, g, b] = vertex.color;
+            vertex.color = [r.max(g).max(b); 3];
+        }
+        world
+    }
+
     fn camera(&self) -> Camera {
         if self.art {
             Camera::art()
         } else {
             Camera::helmet()
+        }
+    }
+
+    /// A guide's color: as given, or in the neutral palette its brightest
+    /// channel in white light, so it stays as bright.
+    fn guide(&self, color: [f32; 3]) -> [f32; 3] {
+        if self.neutral {
+            [color[0].max(color[1]).max(color[2]); 3]
+        } else {
+            color
         }
     }
 
@@ -160,10 +185,11 @@ impl Lagrange {
         let at = sky.earth.dir * SKY;
         let r = 22.0;
         let (u, v) = basis(at);
+        let reticle = self.guide([0.3, 0.8, 0.9]);
         for (du, dv) in [(1.0, 1.0), (-1.0, 1.0), (-1.0, -1.0), (1.0, -1.0)] {
             let corner = at + (u * du + v * dv) * r;
-            line(&mut mesh, corner, corner - u * du * 7.0, [0.3, 0.8, 0.9]);
-            line(&mut mesh, corner, corner - v * dv * 7.0, [0.3, 0.8, 0.9]);
+            line(&mut mesh, corner, corner - u * du * 7.0, reticle);
+            line(&mut mesh, corner, corner - v * dv * 7.0, reticle);
         }
         let carrying = s.parts.iter().any(|p| p.state == PartState::Carried);
         suit(
@@ -184,10 +210,13 @@ impl Lagrange {
             if part.state == PartState::Carried {
                 let slot = part.kind.slot().as_vec3();
                 let ready = s.snapshot().latch_ready;
-                let color = if ready {
-                    [0.2, 1.3, 0.5]
-                } else {
-                    [1.2, 0.7, 0.15]
+                // Neutral guides keep the cue in brightness: gray until
+                // aligned, then white.
+                let color = match (self.neutral, ready) {
+                    (false, true) => [0.2, 1.3, 0.5],
+                    (false, false) => [1.2, 0.7, 0.15],
+                    (true, true) => [1.3; 3],
+                    (true, false) => [0.45; 3],
                 };
                 outline(&mut mesh, slot, part.kind.size().as_vec3() * 0.5, color);
                 dashed(&mut mesh, pos.as_vec3(), slot, color);
@@ -200,11 +229,11 @@ impl Lagrange {
                 &mut mesh,
                 next.stowage().as_vec3(),
                 next.size().as_vec3() * 0.55,
-                [0.9, 0.8, 0.3],
+                self.guide([0.9, 0.8, 0.3]),
             );
         }
         if let Some(target) = s.target {
-            dashed(&mut mesh, astronaut, target.as_vec3(), [0.3, 0.8, 0.9]);
+            dashed(&mut mesh, astronaut, target.as_vec3(), reticle);
         }
         if self.overlay {
             for l in s.debug_lines() {
@@ -215,7 +244,12 @@ impl Lagrange {
                     DebugKind::Strained => [1.5, 0.2, 0.9],
                     DebugKind::Thrust => [1.2, 0.7, 1.4],
                 };
-                line(&mut mesh, l.from.as_vec3(), l.to.as_vec3(), color);
+                line(
+                    &mut mesh,
+                    l.from.as_vec3(),
+                    l.to.as_vec3(),
+                    self.guide(color),
+                );
             }
         }
         mesh.sky = Some(sky);

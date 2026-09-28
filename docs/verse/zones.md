@@ -58,6 +58,13 @@ Return restores the saved plaza position and releases the zone's geometry,
 simulation, and GPU buffers. The Ruins pack can stay in the disk cache.
 Re-entering any zone starts a fresh local simulation.
 
+The OpenAgents app's bare world (the Grid) has one walk-in arch instead, to
+Lagrange 1, with no button: walking through its opening enters, and flying
+through the station's return arch comes back in front of the Grid's arch
+([`zones/gate.rs`](../../crates/verse/src/zones/gate.rs)). Entered from the
+Grid, Lagrange 1 draws its guides, overlays, arch, and panel in the neutral
+palette. See [the Grid's portal](mobile.md#the-grids-portal-to-lagrange-1).
+
 ### Ruins controls
 
 Movement and combat run together. The bottom hotbar supplies **Firebolt**,

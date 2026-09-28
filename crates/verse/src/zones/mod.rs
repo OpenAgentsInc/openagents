@@ -4,6 +4,7 @@
 use serde::{Deserialize, Serialize};
 
 pub mod assets;
+pub mod gate;
 pub mod hud;
 mod lab;
 mod lagrange;
@@ -13,6 +14,7 @@ mod runtime;
 #[cfg(test)]
 mod tests;
 
+pub use gate::Gate;
 pub(crate) use lab::Lab;
 pub use lab::{Kind as LabScenario, KnobView, Snapshot as LabSnapshot};
 pub(crate) use lagrange::Lagrange;
@@ -92,7 +94,7 @@ impl ZoneId {
         }
     }
     /// Short arch lettering for a destination.
-    const fn sign(self) -> &'static str {
+    pub(crate) const fn sign(self) -> &'static str {
         match self {
             Self::Plaza => "PLAZA",
             Self::Ruins => "RUINS",
@@ -258,6 +260,8 @@ pub(crate) struct State {
     destination: ZoneId,
     plaza_pose: Option<(glam::Vec3, f32)>,
     elapsed: f32,
+    /// Seconds before a walk-in portal admits another crossing.
+    gate_cooldown: f32,
 }
 impl Default for State {
     fn default() -> Self {
@@ -272,6 +276,7 @@ impl Default for State {
             destination: ZoneId::Ruins,
             plaza_pose: None,
             elapsed: 0.0,
+            gate_cooldown: 0.0,
         }
     }
 }
@@ -313,18 +318,12 @@ impl Manifest {
 pub fn portal_mesh(zone: ZoneId, elapsed: f32) -> crate::mesh::Mesh {
     let mut mesh = crate::mesh::Mesh::default();
     for (destination, at) in zone.portals() {
-        arch(&mut mesh, zone, destination, at, elapsed);
+        arch(&mut mesh, zone, destination.sign(), at, elapsed);
     }
     mesh
 }
 
-fn arch(
-    mesh: &mut crate::mesh::Mesh,
-    zone: ZoneId,
-    destination: ZoneId,
-    at: glam::Vec3,
-    elapsed: f32,
-) {
+fn arch(mesh: &mut crate::mesh::Mesh, zone: ZoneId, sign: &str, at: glam::Vec3, elapsed: f32) {
     use crate::mesh::Vertex;
     use coder_ui::theme::Intensity;
     use glam::{Mat4, Vec3};
@@ -340,7 +339,6 @@ fn arch(
             * Mat4::from_scale(Vec3::new(4.2, 0.35, 0.5)),
         Intensity::Full,
     );
-    let sign = destination.sign();
     crate::doors::scene_label(
         mesh,
         sign,

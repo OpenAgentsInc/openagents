@@ -311,7 +311,10 @@ impl WorldRuntime {
         } else {
             self.update_player(input, dt);
         }
-        if let Some(ball) = &mut self.ball {
+        // The ball waits on the Grid while the player visits a zone.
+        if self.is_plaza()
+            && let Some(ball) = &mut self.ball
+        {
             ball.advance(previous.pos, &mut self.player, dt);
         }
         if self.player.speed > 0.1
@@ -321,6 +324,7 @@ impl WorldRuntime {
             self.camera.settle(dt);
         }
         self.ruins_tick(dt, previous);
+        self.walk_through_portals(previous.pos, dt);
         self.gait
             .advance(self.player.speed, self.player.airborne(), dt);
         if follow_agent {
@@ -813,9 +817,10 @@ impl WorldRuntime {
     /// This changes presentation alone, without admitting a tap or any service.
     #[must_use]
     pub fn dynamic_mesh_with_interactions(&self, computer: bool, gym: bool) -> Mesh {
-        if self.bare {
-            // The player alone, on the neutral stage; in first person the
-            // camera is inside the avatar, which is hidden.
+        if self.bare && self.is_plaza() {
+            // The player, the ball and blocks, and the portal to Lagrange 1,
+            // on the neutral stage; in first person the camera is inside the
+            // avatar, which is hidden.
             let mut player = if self.first_person() {
                 Mesh::default()
             } else {
@@ -826,7 +831,13 @@ impl WorldRuntime {
             if let Some(ball) = &self.ball {
                 ball.draw(&mut player);
             }
+            player.extend(&self.grid_portal_mesh());
             return player;
+        }
+        if self.bare {
+            // A zone entered from the Grid, with its guides and return arch
+            // in the neutral palette and no companion.
+            return self.zone_dynamic_mesh();
         }
         let mut dynamic = if self.is_plaza() {
             avatar::mesh(&self.player, &self.gait)
@@ -849,6 +860,19 @@ impl WorldRuntime {
 
     /// Sets a finite spawn inside the world. Source admission checks placement.
     pub fn set_spawn(&mut self, position: Vec3, yaw: f32) -> Result<(), String> {
+        self.place_player(position, yaw)?;
+        // A restored or chosen spawn finds the bare world's ball ahead.
+        if self.is_plaza()
+            && let Some(ball) = &mut self.ball
+        {
+            ball.place_ahead(self.player.pos, self.player.yaw);
+        }
+        Ok(())
+    }
+
+    /// Stands the player at a finite position inside the world, leaving the
+    /// ball and blocks where they are.
+    pub fn place_player(&mut self, position: Vec3, yaw: f32) -> Result<(), String> {
         if !position.is_finite()
             || !yaw.is_finite()
             || position.x.abs() >= self.zone_half()
@@ -861,10 +885,6 @@ impl WorldRuntime {
         self.cancel_navigation();
         self.doors.cancel_transient();
         self.player = PlayerController::new(position, wrap(yaw));
-        // A restored or chosen spawn finds the bare world's ball ahead.
-        if let Some(ball) = &mut self.ball {
-            ball.place_ahead(self.player.pos, self.player.yaw);
-        }
         self.agent = Agent::new(&self.player);
         self.gait = Gait::default();
         Ok(())
@@ -1069,9 +1089,10 @@ mod tests {
         let view = runtime.view(0.5);
         let head = runtime.player.pos + Vec3::Y * crate::camera::FOCUS_HEIGHT;
         assert!(view.eye.distance(head) < 1e-5, "{:?}", view.eye);
-        // The avatar is hidden; the ball and blocks still draw.
+        // The avatar is hidden; the ball, blocks, and portal still draw.
         let mesh = runtime.dynamic_mesh();
-        assert!(mesh.lines.len() < third_person && mesh.faces.is_empty());
+        assert!(mesh.lines.len() < third_person);
+        assert_eq!(mesh.faces.len(), runtime.grid_portal_mesh().faces.len());
         assert!(!mesh.lit.is_empty());
         // Walking keeps the eye on the head.
         let walk = InputState {

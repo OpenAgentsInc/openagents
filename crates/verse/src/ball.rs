@@ -80,6 +80,8 @@ pub struct Ball {
     ground: BodyId,
     /// Where the ball rests when reset.
     start: DVec3,
+    /// The frame the ball and blocks were laid out in.
+    layout: crate::blocks::Layout,
     /// Wall-clock time of the last frame's steps.
     pub step_time: Duration,
     /// Steps the last frame ran.
@@ -143,10 +145,8 @@ impl Ball {
                 restitution: RESTITUTION,
             }),
         );
-        let blocks = crate::blocks::Blocks::new(
-            &mut world,
-            &crate::blocks::Layout::new(crate::world::SPAWN.as_dvec3(), DVec3::Z),
-        );
+        let layout = crate::blocks::Layout::new(crate::world::SPAWN.as_dvec3(), DVec3::Z);
+        let blocks = crate::blocks::Blocks::new(&mut world, &layout);
         let spawn = capsule_center(crate::world::SPAWN);
         let player = world.add(Body::new(1.0, DVec3::ONE, spawn).with_kind(BodyKind::Kinematic));
         let r = f64::from(PLAYER_RADIUS);
@@ -177,6 +177,7 @@ impl Ball {
             player,
             ground,
             start: START,
+            layout,
             step_time: Duration::ZERO,
             steps: 0,
         }
@@ -196,6 +197,13 @@ impl Ball {
     #[cfg(test)]
     pub(crate) fn world_mut(&mut self) -> &mut World {
         &mut self.world
+    }
+
+    /// The frame the ball and the blocks were laid out in: the spawn's
+    /// forward axis and its side axis, shifted inside the world's walls.
+    #[must_use]
+    pub fn layout(&self) -> crate::blocks::Layout {
+        self.layout
     }
 
     /// The stack of cubes and the dominoes.
@@ -291,6 +299,7 @@ impl Ball {
             ..layout
         };
         self.blocks.place(&mut self.world, &layout);
+        self.layout = layout;
         let player = capsule_center(feet);
         let body = &mut self.world[self.player];
         body.pos = player;

@@ -116,8 +116,15 @@ impl WorldRuntime {
         }
         self.zone_state.plaza_pose = Some((self.player.pos, self.player.yaw));
         self.zone_cancel_loading();
-        let zone = Lagrange::new();
-        self.world = Lagrange::world();
+        let mut zone = Lagrange::new();
+        // From the Grid, the station's guides and overlays are neutral.
+        zone.neutral = self.is_bare();
+        zone.tick();
+        self.world = if self.is_bare() {
+            Lagrange::neutral_world()
+        } else {
+            Lagrange::world()
+        };
         self.zone_state.lagrange = Some(zone);
         self.zone = ZoneId::Lagrange1;
         self.zone_state.progress = 1.0;
@@ -214,15 +221,25 @@ impl WorldRuntime {
                 self.zone_state.ruins = None;
                 self.zone_state.lagrange = None;
                 self.zone_state.lab = None;
-                self.world = crate::world::build();
                 self.zone = ZoneId::Plaza;
                 self.zone_revision = self.zone_revision.saturating_add(1);
-                let (pos, yaw) = self
-                    .zone_state
-                    .plaza_pose
-                    .take()
-                    .unwrap_or((crate::world::SPAWN, 0.0));
-                self.set_spawn(pos, yaw)?;
+                if let Some(gate) = self.grid_gate() {
+                    // Back on the Grid in front of its portal, facing away,
+                    // with the ball and blocks where they were left.
+                    self.world = crate::world::bare();
+                    self.zone_state.plaza_pose = None;
+                    let (pos, yaw) = gate.front();
+                    self.place_player(pos, yaw)?;
+                } else {
+                    self.world = crate::world::build();
+                    let (pos, yaw) = self
+                        .zone_state
+                        .plaza_pose
+                        .take()
+                        .unwrap_or((crate::world::SPAWN, 0.0));
+                    self.set_spawn(pos, yaw)?;
+                }
+                self.zone_state.gate_cooldown = super::gate::COOLDOWN;
                 self.camera = crate::camera::FollowCamera::default();
             }
             Intent::Firebolt | Intent::MagicMissile | Intent::Fireball => {
@@ -482,7 +499,7 @@ impl WorldRuntime {
                 Intent::Camera,
                 true,
             );
-            add("return", "Plaza", Intent::Return, true);
+            add("return", self.return_label(), Intent::Return, true);
             let status = if let Some(kind) = s.carrying {
                 match s.latch_distance_m {
                     Some(_) if s.latch_ready => format!("{} aligned · latch", kind.name()),
@@ -584,7 +601,8 @@ impl WorldRuntime {
         let view = self.view(aspect);
         let clip = view.view_proj * anchor.extend(1.0);
         let mut p = PortalProjection {
-            near: !self.is_bare() && self.portal_in_reach(at),
+            // The Grid's own portal is walked through, not tapped.
+            near: !(self.is_bare() && self.is_plaza()) && self.portal_in_reach(at),
             visible: false,
             screen_x: 0.5,
             screen_y: 0.5,
@@ -621,7 +639,9 @@ impl WorldRuntime {
         entities: &crate::mesh::Mesh,
     ) -> bool {
         let portal = self.nearest_portal().1;
-        if !self.portal_in_reach(portal) || self.zone_loading() {
+        // The Grid's portal is walked through; nothing on the Grid is tapped.
+        if self.is_bare() && self.is_plaza() || !self.portal_in_reach(portal) || self.zone_loading()
+        {
             return false;
         }
         let view = self.view(aspect);
@@ -655,6 +675,66 @@ impl WorldRuntime {
             crate::runtime::mesh_occludes(&self.dynamic_mesh(), eye, direction, distance)
         }
     }
+    /// The Grid's walk-in portal while on the Grid; none elsewhere.
+    #[must_use]
+    pub fn grid_gate(&self) -> Option<super::Gate> {
+        self.ball().map(|ball| super::Gate::grid(&ball.layout()))
+    }
+
+    /// The label of the control that leaves a zone.
+    fn return_label(&self) -> &'static str {
+        if self.is_bare() { "The Grid" } else { "Plaza" }
+    }
+
+    /// The walk-in arches in the neutral palette: the Grid's portal to
+    /// Lagrange 1, or a zone's return arch lettered for the Grid.
+    pub(crate) fn grid_portal_mesh(&self) -> crate::mesh::Mesh {
+        let elapsed = self.zone_state.elapsed;
+        if self.is_plaza() {
+            return self
+                .grid_gate()
+                .map_or_else(crate::mesh::Mesh::default, |gate| {
+                    gate.mesh(ZoneId::Plaza, ZoneId::Lagrange1.sign(), elapsed)
+                });
+        }
+        let mut mesh = crate::mesh::Mesh::default();
+        for (_, at) in self.zone.portals() {
+            mesh.extend(&super::Gate::fixed(at).mesh(self.zone, "THE GRID", elapsed));
+        }
+        mesh
+    }
+
+    /// On the Grid, walking through its portal enters Lagrange 1, and in
+    /// Lagrange 1 flying through the return arch comes back. Feet moved
+    /// from `from` to the player's position this frame. Coder's plaza
+    /// keeps its tapped arches and buttons.
+    pub(crate) fn walk_through_portals(&mut self, from: Vec3, dt: f32) {
+        if !self.is_bare() {
+            return;
+        }
+        self.zone_state.gate_cooldown = (self.zone_state.gate_cooldown - dt).max(0.0);
+        if self.zone_state.gate_cooldown > 0.0 || self.zone_loading() {
+            return;
+        }
+        let to = self.player.pos;
+        if self.is_plaza() {
+            if self.grid_gate().is_some_and(|gate| gate.crossed(from, to)) {
+                self.cancel_navigation();
+                self.doors.cancel_transient();
+                self.zone_state.destination = ZoneId::Lagrange1;
+                self.install_lagrange();
+                self.zone_state.gate_cooldown = super::gate::COOLDOWN;
+            }
+        } else if self
+            .zone
+            .portals()
+            .iter()
+            .any(|&(_, at)| super::Gate::fixed(at).crossed(from, to))
+        {
+            let _ = self.zone_intent(Intent::Return);
+        }
+    }
+
     pub(crate) fn ruins_tick(&mut self, dt: f32, _previous: PlayerController) {
         self.zone_state.elapsed = (self.zone_state.elapsed + dt) % 1000.0;
         if let Some(ruins) = &mut self.zone_state.ruins
@@ -671,7 +751,11 @@ impl WorldRuntime {
     }
     pub(crate) fn zone_dynamic_mesh(&self) -> crate::mesh::Mesh {
         let elapsed = self.zone_state.elapsed;
-        let mut mesh = super::portal_mesh(self.zone, elapsed);
+        let mut mesh = if self.is_bare() {
+            self.grid_portal_mesh()
+        } else {
+            super::portal_mesh(self.zone, elapsed)
+        };
         if let Some(ruins) = &self.zone_state.ruins {
             mesh.extend(ruins.dynamic());
         }
