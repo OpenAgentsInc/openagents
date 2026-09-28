@@ -532,6 +532,8 @@ const BARE_PRESENCE_MARGIN: Duration = Duration::from_millis(300);
 const WORLD_TAP_SECONDS: f64 = 0.25;
 /// Radius of the movement stick's drawn base, in logical points.
 const STICK_RADIUS_POINTS: f32 = 56.0;
+/// Characters of a player's hex pubkey shown over their head.
+const PLAYER_TAG_CHARS: usize = 8;
 /// Players farther than this, in meters, carry no tag.
 const PLAYER_TAG_RANGE: f32 = 60.0;
 /// Height of a player's tag above their feet, in meters, as on desktop.
@@ -634,6 +636,11 @@ pub(crate) struct Scene {
     pub gym_board: verse::gym::Board,
     pub frames: u64,
     pub error: Option<String>,
+}
+
+/// A player's tag: the first characters of their hex pubkey.
+fn player_tag(pubkey: &str) -> &str {
+    pubkey.get(..PLAYER_TAG_CHARS).unwrap_or(pubkey)
 }
 
 impl Scene {
@@ -1191,37 +1198,47 @@ impl Scene {
         ui
     }
 
-    /// Each other player's pubkey prefix over their head, as desktop Verse
-    /// tags players with no profile name.
+    /// Every player's pubkey prefix over their head, this player's included
+    /// unless the camera is inside its head.
     fn player_tags(&self) -> verse::ui::UiBatch {
         let mut ui = verse::ui::UiBatch::default();
-        let Some(session) = &self.session else {
-            return ui;
-        };
         if !self.lifecycle.active() || self.panel_open() {
             return ui;
         }
+        let mut players = Vec::new();
+        if !self.world.first_person() {
+            players.push((self.public_key.as_str(), self.world.player.pos));
+        }
+        let shown = self
+            .session
+            .as_ref()
+            .map(|session| session.crowd.shown(Instant::now()))
+            .unwrap_or_default();
+        players.extend(
+            shown
+                .iter()
+                .filter(|shown| {
+                    shown.role == "avatar"
+                        && shown.pos.distance(self.world.player.pos) <= PLAYER_TAG_RANGE
+                })
+                .map(|shown| (shown.pubkey.as_str(), shown.pos)),
+        );
         let viewport = self.lifecycle.viewport();
         let size = viewport.logical_size().map(|v| v * viewport.scale());
         let view_proj = self.world.view(self.aspect()).view_proj;
-        for shown in session.crowd.shown(Instant::now()) {
-            if shown.role != "avatar"
-                || shown.pos.distance(self.world.player.pos) > PLAYER_TAG_RANGE
-            {
-                continue;
-            }
-            let mut head = shown.pos;
+        for (pubkey, feet) in players {
+            let mut head = feet;
             head.y += PLAYER_TAG_LIFT;
             let Some([x, y]) = verse::hud::project(view_proj, size, head) else {
                 continue;
             };
-            let tag = session.name_of(&shown.pubkey);
-            let width = self.atlas.measure(&tag);
+            let tag = player_tag(pubkey);
+            let width = self.atlas.measure(tag);
             ui.text(
                 &self.atlas,
                 x - width / 2.0,
                 y - self.atlas.line,
-                &tag,
+                tag,
                 [0.9, 0.9, 0.9, 1.0],
             );
         }
@@ -3522,10 +3539,11 @@ mod tests {
         assert!(scene.world.is_bare() && scene.relay.is_none() && scene.session.is_none());
         assert_eq!(scene.packet().connection.state, "offline");
         scene.update(1.0).unwrap();
-        // The stick is the only drawn control; the map's corner looks instead.
+        // The stick is the only drawn control, beside the player's own tag;
+        // the map's corner looks instead.
         assert_eq!(
             scene.map_ui().vertices.len(),
-            scene.stick_ui().vertices.len()
+            scene.stick_ui().vertices.len() + PLAYER_TAG_CHARS * 6
         );
         let yaw = scene.world.player.yaw;
         scene.pointer(1, PointerPhase::Down, 340.0, 60.0).unwrap();
@@ -3610,6 +3628,12 @@ mod tests {
     }
 
     #[test]
+    fn a_player_tag_is_the_first_eight_characters_of_the_pubkey() {
+        assert_eq!(player_tag("c25458d5b303d853"), "c25458d5");
+        assert_eq!(player_tag("abc"), "abc");
+    }
+
+    #[test]
     fn pinching_all_the_way_in_on_the_grid_enters_first_person() {
         let mut grid = bare_scene();
         for _ in 0..40 {
@@ -3617,11 +3641,15 @@ mod tests {
         }
         let packet = serde_json::to_value(grid.packet()).unwrap();
         assert_eq!(packet["camera_first_person"], true);
+        // In first person the player's own tag would sit in the camera.
+        grid.activate(true).unwrap();
+        assert!(grid.player_tags().vertices.is_empty());
         for _ in 0..3 {
             grid.action(Request::PinchZoom { scale: 0.9 }).unwrap();
         }
         let packet = serde_json::to_value(grid.packet()).unwrap();
         assert_eq!(packet["camera_first_person"], false);
+        assert!(!grid.player_tags().vertices.is_empty());
         // Coder's plaza keeps its nearest orbit.
         let mut plaza = scene();
         plaza.activate(true).unwrap();

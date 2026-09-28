@@ -96,10 +96,12 @@ fn bare_world_players_see_each_other_move_and_pausing_stops_publishing() {
         },
     );
     assert!(appeared, "the peer's avatar never appeared");
-    // The peer carries its key's first letters overhead.
-    assert!(
-        !scene.player_tags().vertices.is_empty(),
-        "the peer has no tag"
+    // Both players carry their key's first eight characters overhead: six
+    // vertices a glyph, eight glyphs a tag.
+    assert_eq!(
+        scene.player_tags().vertices.len(),
+        2 * 8 * 6,
+        "a tag is missing"
     );
     let entities = crate::verse_ffi::bare_entities(
         scene
