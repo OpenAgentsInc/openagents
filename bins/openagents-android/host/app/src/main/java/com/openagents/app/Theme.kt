@@ -20,6 +20,9 @@ internal object Palette {
     const val LINK = 0xFF0A84FF.toInt()
     const val SUCCESS = 0xFF30D158.toInt()
     const val FAILURE = 0xFFFF453A.toInt()
+    /** Selected text's highlight and the selection handles, as on iOS. */
+    const val SELECTION = 0x4D0A84FF
+    const val SELECTION_HANDLE = 0xFF0A84FF.toInt()
     /** The widest a transcript row or composer grows, centered beyond it. */
     const val READING_WIDTH_DP = 720
 }

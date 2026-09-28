@@ -12,7 +12,7 @@
             <data android:scheme="https" />
         </intent>
     </queries>
-    <application android:label="OpenAgents" android:theme="@style/OpenAgentsTheme"
+    <application android:label="${appLabel}" android:theme="@style/OpenAgentsTheme"
         android:icon="@drawable/ic_launcher" android:allowBackup="false"
         android:fullBackupContent="false" android:dataExtractionRules="@xml/data_extraction_rules"
         android:usesCleartextTraffic="false">

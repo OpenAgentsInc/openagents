@@ -25,7 +25,7 @@ fi
 
 usage() {
   cat >&2 <<'USAGE'
-usage: scripts/build-openagents-android.sh rust|apk|package|install|launch|run|release|install-release|bundle|check|abi
+usage: scripts/build-openagents-android.sh rust|apk|package|install|launch|run|release|install-release|bundle|check|bench|abi
 
 rust builds libopenagents_mobile.so; apk packages it as a debug APK; package
 does both. install updates the debug app without clearing its data. launch
@@ -34,6 +34,8 @@ App Bundle (.aab) for Google Play, signed when a keystore is set. release
 builds a signed, R8-shrunk release APK for direct download (it refuses to
 build unsigned); install-release installs it. check runs Android lint and
 unit tests.
+bench builds the transcript benchmark app and installs it on
+OPENAGENTS_ANDROID_SERIAL; see below.
 
 Set OPENAGENTS_ANDROID_SERIAL for install, launch, and run.
 Set OPENAGENTS_ANDROID_ABI to arm64-v8a (default) or x86_64.
@@ -48,14 +50,24 @@ release builds OPENAGENTS_ANDROID_ABI (default arm64-v8a) with the release
 Rust profile and signs it the same way. OPENAGENTS_ANDROID_SIGNING_ENV may
 name a file of KEY=value lines for the four signing variables instead.
 No command creates, resets, or launches an emulator, or uploads an app.
+
+bench builds release Rust and a non-debuggable app, signed with the debug
+key, with the transcript fixture, benchmark, and selection extras compiled in,
+under its own application ID (com.openagents.app.bench) so it never replaces
+the installed app. Launch it with the fixture extras, for example:
+  adb -s SERIAL shell am start -S -W -n com.openagents.app.bench/com.openagents.app.MainActivity \
+    --ez rust_native_fixture true --ei rust_native_fixture_rows 3000 \
+    --ez rust_native_transcript_bench true
+  adb -s SERIAL logcat -s TranscriptBench
+Remove it afterward with `adb -s SERIAL uninstall com.openagents.app.bench`.
 USAGE
 }
 
 command="${1:-package}"
-case "$command" in rust|apk|package|install|launch|run|release|install-release|bundle|check|abi) ;; *) usage; exit 64 ;; esac
+case "$command" in rust|apk|package|install|launch|run|release|install-release|bundle|check|bench|abi) ;; *) usage; exit 64 ;; esac
 [[ $# -le 1 ]] || { usage; exit 64; }
 if [[ "$command" == bundle ]]; then OPENAGENTS_ANDROID_ABI=arm64-v8a; OPENAGENTS_ANDROID_PROFILE=release; fi
-if [[ "$command" == release ]]; then OPENAGENTS_ANDROID_PROFILE=release; fi
+if [[ "$command" == release || "$command" == bench ]]; then OPENAGENTS_ANDROID_PROFILE=release; fi
 # The version name follows the iPhone app's MARKETING_VERSION.
 version_name="$(sed -n 's/^ *MARKETING_VERSION: *\([0-9][0-9.]*\) *$/\1/p' "$root/bins/openagents-ios/host/project.yml" | head -1)"
 [[ "$version_name" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Could not read MARKETING_VERSION from bins/openagents-ios/host/project.yml.' >&2; exit 1; }
@@ -86,6 +98,7 @@ bundle_path="$output/gradle/app/outputs/bundle/release/app-release.aab"
 release_apk="$output/gradle/app/outputs/apk/release/app-release.apk"
 release_dir="$output/release"
 release_name="OpenAgents-$version_name-$OPENAGENTS_ANDROID_VERSION_CODE-$OPENAGENTS_ANDROID_ABI.apk"
+bench_path="$output/gradle/app/outputs/apk/bench/app-bench.apk"
 case "$OPENAGENTS_ANDROID_ABI" in arm64-v8a) triple=aarch64-linux-android ;; x86_64) triple=x86_64-linux-android ;; esac
 profile_dir=debug; [[ "$OPENAGENTS_ANDROID_PROFILE" == release ]] && profile_dir=release
 mkdir -p "$output"
@@ -196,6 +209,17 @@ install() {
 launch() {
   require_device
   adb -s "$OPENAGENTS_ANDROID_SERIAL" shell am start -S -W -n com.openagents.app/.MainActivity
+}
+
+bench() {
+  require_device
+  rust
+  gradle_ assembleBench
+  "$ANDROID_HOME/build-tools/35.0.0/zipalign" -c -P 16 4 "$bench_path"
+  # The benchmark app has its own application ID; the installed app and its
+  # data are untouched.
+  adb -s "$OPENAGENTS_ANDROID_SERIAL" install -r "$bench_path"
+  echo "Installed com.openagents.app.bench from $bench_path"
 }
 
 package() { rust; apk; }

@@ -189,7 +189,7 @@ class MainActivity : ComponentActivity() {
             intent.getStringExtra("account_route")?.let { name -> AccountRoute.entries.firstOrNull { it.name.equals(name, true) } }
                 ?.let { tab = AppTab.ACCOUNT; route = it }
         }
-        if (BuildConfig.DEBUG && intent.getBooleanExtra("rust_native_fixture", false)) {
+        if (TranscriptDebug.ENABLED && intent.getBooleanExtra("rust_native_fixture", false)) {
             fixture = runCatching { JSONObject(assets.open("conversation.json").bufferedReader().readText()) }.getOrNull()
                 ?.let { TranscriptFixture.prepare(it, intent.getIntExtra("rust_native_fixture_rows", 0),
                     intent.getBooleanExtra("rust_native_transcript_pull", false)) }

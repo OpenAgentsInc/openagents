@@ -25,6 +25,9 @@ android {
         versionCode = providers.gradleProperty("openagentsVersionCode").orElse("1").get().toInt()
         versionName = providers.gradleProperty("openagentsVersionName").orElse("1.0.0").get()
         ndk { abiFilters += openagentsAbi }
+        // The transcript's fixture, benchmark, and selection launch extras.
+        buildConfigField("boolean", "TRANSCRIPT_DEBUG", "false")
+        manifestPlaceholders["appLabel"] = "OpenAgents"
     }
 
     signingConfigs {
@@ -46,18 +49,36 @@ android {
     // Debug builds carry Rust Native's sample conversation for the
     // `rust_native_fixture` launch extra.
     sourceSets.getByName("debug").assets.srcDir(rootProject.file("../../../crates/rust-native/fixtures"))
+    sourceSets.maybeCreate("bench").assets.srcDir(rootProject.file("../../../crates/rust-native/fixtures"))
     // Uncompressed, page-aligned native libraries (16 KiB pages).
     packaging { jniLibs.useLegacyPackaging = false }
     buildTypes {
-        debug { isJniDebuggable = true }
+        debug {
+            isJniDebuggable = true
+            buildConfigField("boolean", "TRANSCRIPT_DEBUG", "true")
+        }
         // Release builds shrink Kotlin with R8 and drop unused resources.
-        // BuildConfig.DEBUG is false there, so R8 removes the debug-only
-        // launch extras (fixtures, previews, scripted walks, secret captures).
+        // BuildConfig.DEBUG and TRANSCRIPT_DEBUG are false there, so R8
+        // removes the debug-only launch extras (fixtures, previews, scripted
+        // walks, secret captures).
         release {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             if (releaseStore != null) signingConfig = signingConfigs.getByName("release")
+        }
+        // A separate, non-debuggable app for measuring the transcript on a
+        // device (`scripts/build-openagents-android.sh bench`). Its own
+        // application ID means it never replaces the installed app.
+        create("bench") {
+            initWith(getByName("release"))
+            applicationIdSuffix = ".bench"
+            versionNameSuffix = "-bench"
+            signingConfig = signingConfigs.getByName("debug")
+            isDebuggable = false
+            matchingFallbacks += "release"
+            buildConfigField("boolean", "TRANSCRIPT_DEBUG", "true")
+            manifestPlaceholders["appLabel"] = "OpenAgents Bench"
         }
     }
 }

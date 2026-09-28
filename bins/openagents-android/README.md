@@ -112,12 +112,28 @@ see the transcript layout section of
   new rows while you are at the bottom, stops when you scroll up, shows a
   jump-to-bottom button, and keeps your place when rows arrive above. Wide
   code blocks and tables scroll sideways. **Load earlier** is its first row.
-  Long-press a row to copy its text.
+- Long-press a row for **Copy** and **Select Text**, as on iOS. **Select
+  Text** selects the painted text in place
+  ([`SelectionLayer.kt`](host/app/src/main/java/com/openagents/app/SelectionLayer.kt)):
+  a highlight under the text, two handles to drag, and the system's floating
+  toolbar with **Copy** and **Select All**. Carets sit at Rust's run
+  positions, with stops from the bundled font's advances scaled to each run's
+  width ([`TextSelection.kt`](host/app/src/main/java/com/openagents/app/TextSelection.kt)),
+  so a caret never lands inside a surrogate pair or a ligature. A selection
+  stays in one row, like iOS's; a tap elsewhere or a new version of the row
+  ends it, and Copy copies and ends it, as Android text does.
 - Debug launch extras: `--ez rust_native_fixture true` shows the sample
   conversation, `--ei rust_native_fixture_rows N` adds N rows,
   `--ez rust_native_transcript_pull true` sends the rows through a transcript
-  source, and `--ez rust_native_transcript_bench true` flings through the
-  list and logs frame times under `TranscriptBench`.
+  source, `--ez rust_native_transcript_bench true` flings through the
+  list and logs frame times under `TranscriptBench`, and
+  `--es rust_native_transcript_select KEY` selects that row's text.
+- `scripts/build-openagents-android.sh bench` builds release Rust and a
+  separate, non-debuggable app with these extras,
+  `com.openagents.app.bench` ("OpenAgents Bench", signed with the debug key),
+  and installs it on `OPENAGENTS_ANDROID_SERIAL`. It never replaces the
+  installed app or its data. The script's usage text shows how to launch the
+  benchmark and remove the app.
 
 Messages, Markdown, tool rows, and the composer outside a transcript follow
 the iOS design in [`NativeChat.swift`](../coder-ios/host/App/NativeChat.swift):
@@ -391,6 +407,17 @@ Trainer, Computers, Tailnet, About this device, and the Changelog headed
 crash, and the release dex has none of the debug launch extras. Captures
 are in `verification/2026-09-28-release`.
 
+- Transcript selection (later on 2026-09-28): a long press offered **Copy**
+  and **Select Text**; **Select Text** selected the user message in place
+  with both handles and the floating **Copy** and **Select all** toolbar; an
+  `adb` swipe dragged the end handle back to "Fix the flak", and **Copy**
+  put exactly that on the clipboard (pasted into the composer) and ended the
+  selection. With `rust_native_transcript_select`, a reply's selection
+  covered its paragraphs, list, code block, and table, and the handles
+  stayed inside a wide code block while it scrolled sideways and followed
+  the list when it scrolled. Captures are in
+  `verification/2026-09-28-transcript-selection`.
+
 Rust: `cargo test`, `cargo clippy`, and `cargo fmt --check` for
 `openagents-mobile` on the host; `cargo ndk clippy` for `aarch64-linux-android`
 and `cargo ndk check` for `x86_64-linux-android`; Android lint and unit tests
@@ -405,6 +432,8 @@ checked: the emulator isn't on a tailnet.
   been exercised on an emulator or a device.
 - Text with the Markdown role outside the conversation elements shows as
   plain text; iOS styles its inline Markdown.
+- The transcript's streaming fade isn't built on Android (#9833).
+- No Android device numbers for the transcript yet; use the bench build.
 - Two-thumb sticks with a pinch from other fingers are covered by unit
   tests (`PinchAdmissionTest`) but not by an emulator run, since `adb`
   can't inject multi-touch.

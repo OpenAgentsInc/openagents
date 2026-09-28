@@ -136,6 +136,29 @@ internal class RowModel(val json: JSONObject, private val context: Context) {
         }
     }
 
+    /**
+     * The row's text for in-place selection. Caret stops come from the
+     * bundled font's advances, scaled to Rust's width for each run; lines
+     * span the font's ascent and descent.
+     */
+    val selectable: SelectableText by lazy {
+        SelectableText(texts, runs.mapIndexed { index, run ->
+            val style = styles.getOrNull(run.style) ?: return@mapIndexed null
+            val text = texts.getOrNull(run.text) ?: return@mapIndexed null
+            val end = run.start + run.length
+            if (run.start < 0 || run.length <= 0 || end > text.length) return@mapIndexed null
+            val metrics = style.paint.fontMetrics
+            SelectableRun(run.text, run.start, run.length, run.x, run.baseline, run.width,
+                -metrics.ascent / pixels, metrics.descent / pixels, runScroller[index], run.truncate) {
+                val widths = FloatArray(run.length)
+                style.paint.getTextWidths(text, run.start, end, widths)
+                val carets = FloatArray(run.length + 1)
+                for (i in 0 until run.length) carets[i + 1] = carets[i] + widths[i] / pixels
+                carets
+            }
+        })
+    }
+
     private fun JSONObject.f(name: String) = getDouble(name).toFloat()
 
     private fun ink(ink: JSONObject, opacity: Float): Int {
@@ -174,7 +197,8 @@ internal class RowModel(val json: JSONObject, private val context: Context) {
      * Paints the items of `scroller` (-1 for the row itself) at row
      * coordinates, which are points, into a canvas in pixels.
      */
-    fun draw(canvas: Canvas, scroller: Int = -1, top: Float = Float.NEGATIVE_INFINITY, bottom: Float = Float.POSITIVE_INFINITY) {
+    fun draw(canvas: Canvas, scroller: Int = -1, top: Float = Float.NEGATIVE_INFINITY, bottom: Float = Float.POSITIVE_INFINITY,
+             highlights: List<TextBox>? = null) {
         val d = pixels
         val fill = Paint(Paint.ANTI_ALIAS_FLAG)
         canvas.save()
@@ -187,6 +211,10 @@ internal class RowModel(val json: JSONObject, private val context: Context) {
                 fill.style = Paint.Style.STROKE; fill.strokeWidth = 1f; fill.color = it
                 canvas.drawPath(path(RectF(rect.box).apply { inset(0.5f, 0.5f) }, rect.radii.map { r -> maxOf(0f, r - 0.5f) }.toFloatArray()), fill)
             }
+        }
+        if (highlights != null) {
+            fill.style = Paint.Style.FILL; fill.color = Palette.SELECTION
+            for (box in highlights) canvas.drawRect(box.left, box.top, box.right, box.bottom, fill)
         }
         canvas.restore()
         runs.forEachIndexed { index, run ->
@@ -221,11 +249,18 @@ internal class RowModel(val json: JSONObject, private val context: Context) {
     }
 }
 
-/** One transcript row: its painting, widgets, and sideways scrollers. */
+/** One transcript row: its painting, widgets, sideways scrollers, and an in-place text selection. */
 internal class RowView(context: Context) : FrameLayout(context) {
     var model: RowModel? = null; private set
     var toggle: (String) -> Unit = {}
     var loadEarlier: () -> Unit = {}
+    /** Called when this row's selection starts, changes, or ends, and when a scroller moves under it. */
+    var selectionChanged: (RowView) -> Unit = {}
+    /** The selected range, ordered, or null. */
+    var selection: Pair<TextPosition, TextPosition>? = null; private set
+    private var highlights: Map<Int, List<TextBox>> = emptyMap()
+    private val scrollViews = ArrayList<HorizontalScrollView>()
+    private val scrollContents = ArrayList<View>()
     private val density = context.resources.displayMetrics.density
 
     init {
@@ -236,8 +271,11 @@ internal class RowView(context: Context) : FrameLayout(context) {
 
     fun bind(model: RowModel) {
         if (this.model === model) return
+        clearSelection()
         this.model = model
         removeAllViews()
+        scrollViews.clear()
+        scrollContents.clear()
         contentDescription = model.label
         for (scroller in model.scrollers.withIndex()) addView(scrollerView(model, scroller.index, scroller.value))
         for (widget in model.widgets) widgetView(widget)?.let { view ->
@@ -256,7 +294,7 @@ internal class RowView(context: Context) : FrameLayout(context) {
     }
 
     override fun onDraw(canvas: Canvas) {
-        model?.draw(canvas)
+        model?.draw(canvas, highlights = highlights[-1])
     }
 
     private fun scrollerView(model: RowModel, index: Int, scroller: RowModel.Scroller): View {
@@ -268,10 +306,11 @@ internal class RowView(context: Context) : FrameLayout(context) {
             override fun onDraw(canvas: Canvas) {
                 canvas.save()
                 canvas.translate(-scroller.box.left * density, -scroller.box.top * density)
-                model.draw(canvas, index)
+                model.draw(canvas, index, highlights = highlights[index])
                 canvas.restore()
             }
         }
+        scrollContents.add(content)
         return HorizontalScrollView(context).apply {
             isHorizontalScrollBarEnabled = true
             overScrollMode = OVER_SCROLL_NEVER
@@ -279,6 +318,8 @@ internal class RowView(context: Context) : FrameLayout(context) {
             layoutParams = LayoutParams(px(scroller.box.width()), px(scroller.box.height())).apply {
                 leftMargin = px(scroller.box.left); topMargin = px(scroller.box.top)
             }
+            setOnScrollChangeListener { _, _, _, _, _ -> if (selection != null) selectionChanged(this@RowView) }
+            scrollViews.add(this)
         }
     }
 
@@ -320,17 +361,96 @@ internal class RowView(context: Context) : FrameLayout(context) {
         return super.performClick()
     }
 
+    // A long press on a message offers Copy and Select Text. Select Text
+    // selects the painted text in place, with handles to adjust it.
     private fun offerCopy() {
         val model = model ?: return
         val text = model.copy ?: model.label
         if (text.isEmpty()) return
         val menu = PopupMenu(context, this)
         menu.menu.add(0, 0, 0, "Copy")
-        menu.setOnMenuItemClickListener { clipboard(text); true }
+        if (model.selectable.hasText) menu.menu.add(0, 1, 1, "Select Text")
+        menu.setOnMenuItemClickListener { item ->
+            if (item.itemId == 0) clipboard(text) else post { selectAll() }
+            true
+        }
         menu.show()
     }
 
-    private fun clipboard(text: String) {
+    // Selection
+
+    fun selectAll() {
+        val bounds = model?.selectable?.textBounds() ?: return
+        select(bounds.first, bounds.second)
+    }
+
+    fun select(start: TextPosition, end: TextPosition) {
+        val model = model ?: return
+        selection = if (start <= end) start to end else end to start
+        highlights = model.selectable.highlights(selection!!.first, selection!!.second)
+        repaint()
+        selectionChanged(this)
+    }
+
+    fun clearSelection() {
+        if (selection == null) return
+        selection = null
+        highlights = emptyMap()
+        repaint()
+        selectionChanged(this)
+    }
+
+    fun selectedText(): String {
+        val (start, end) = selection ?: return ""
+        return model?.selectable?.text(start, end) ?: ""
+    }
+
+    private fun repaint() {
+        invalidate()
+        scrollContents.forEach { it.invalidate() }
+    }
+
+    /** How far a scroller has moved sideways, in points. */
+    fun scrollOffset(scroller: Int): Float = scrollViews.getOrNull(scroller)?.let { it.scrollX / density } ?: 0f
+
+    /** A caret on screen, in this view's points: scrolled, and held inside its scroller. */
+    fun caret(position: TextPosition): Caret? {
+        val model = model ?: return null
+        val caret = model.selectable.caret(position) ?: return null
+        val scroller = model.selectable.scroller(position.run)
+        var x = caret.x - scrollOffset(scroller)
+        model.scrollers.getOrNull(scroller)?.let { x = x.coerceIn(it.box.left, it.box.right) }
+        return Caret(x, caret.top, caret.bottom)
+    }
+
+    /** The selection's highlight on screen, in this view's points. */
+    fun selectionBounds(): TextBox? {
+        var box: TextBox? = null
+        for ((scroller, boxes) in highlights) {
+            val offset = scrollOffset(scroller)
+            val clip = model?.scrollers?.getOrNull(scroller)?.box
+            for (b in boxes) {
+                var left = b.left - offset; var right = b.right - offset
+                if (clip != null) { left = left.coerceIn(clip.left, clip.right); right = right.coerceIn(clip.left, clip.right) }
+                box = box?.let { TextBox(minOf(it.left, left), minOf(it.top, b.top), maxOf(it.right, right), maxOf(it.bottom, b.bottom)) }
+                    ?: TextBox(left, b.top, right, b.bottom)
+            }
+        }
+        return box
+    }
+
+    /** The text position under a point in this view, in points. */
+    fun position(x: Float, y: Float): TextPosition? {
+        val model = model ?: return null
+        for ((index, scroller) in model.scrollers.withIndex()) {
+            if (scroller.box.contains(x, y)) {
+                model.selectable.position(x + scrollOffset(index), y, index)?.let { return it }
+            }
+        }
+        return model.selectable.position(x, y, -1)
+    }
+
+    fun clipboard(text: String) {
         (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager)
             .setPrimaryClip(ClipData.newPlainText("Message", text))
     }
@@ -446,6 +566,7 @@ class RustTranscript(private val context: Context, private val activate: (String
     private var worstUpdate = 0L
     private var worstBind = 0L
     private var bench: TranscriptBench? = null
+    private var selectedOnce = false
 
     private val adapter = object : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
         override fun getItemCount() = items.size
@@ -461,8 +582,10 @@ class RustTranscript(private val context: Context, private val activate: (String
             worstBind = maxOf(worstBind, System.nanoTime() - started)
             view.toggle = { key -> if (!expanded.remove(key)) expanded.add(key); dirty = true; sync() }
             view.loadEarlier = { if (earlier?.optBoolean("loading") == false && key.isNotEmpty()) activate(key) }
+            view.selectionChanged = { row -> selection.changed(row) }
         }
     }
+    private lateinit var selection: SelectionLayer
 
     init {
         list.layoutManager = layout
@@ -485,10 +608,22 @@ class RustTranscript(private val context: Context, private val activate: (String
                 }
                 if (following) pin()
                 updateJump()
+                selection.scrolling(state != RecyclerView.SCROLL_STATE_IDLE)
             }
             override fun onScrolled(view: RecyclerView, dx: Int, dy: Int) {
                 updateJump()
                 prefetch()
+                selection.place()
+            }
+        })
+        // A tap anywhere in the list ends a selection; the handles keep their drags.
+        val taps = android.view.GestureDetector(context, object : android.view.GestureDetector.SimpleOnGestureListener() {
+            override fun onSingleTapUp(e: android.view.MotionEvent): Boolean { selection.clear(); return false }
+        })
+        list.addOnItemTouchListener(object : RecyclerView.SimpleOnItemTouchListener() {
+            override fun onInterceptTouchEvent(view: RecyclerView, e: android.view.MotionEvent): Boolean {
+                if (selection.row != null) taps.onTouchEvent(e)
+                return false
             }
         })
         list.addOnLayoutChangeListener { _, left, _, right, _, oldLeft, _, oldRight, _ ->
@@ -500,6 +635,7 @@ class RustTranscript(private val context: Context, private val activate: (String
             gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL; bottomMargin = context.dp(12)
         })
         jump.setOnClickListener { following = true; pin(); updateJump() }
+        selection = SelectionLayer(root, list)
         // The layout lives while the view is attached; reattaching lays out
         // again from the current revision.
         root.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
@@ -594,7 +730,7 @@ class RustTranscript(private val context: Context, private val activate: (String
         if (previous != 0L) TranscriptNative.frameRelease(previous)
         prefetched = -1
         prefetch()
-        if (BuildConfig.DEBUG && bench == null && fresh.isNotEmpty() &&
+        if (TranscriptDebug.ENABLED && bench == null && fresh.isNotEmpty() &&
             (context as? android.app.Activity)?.intent?.getBooleanExtra("rust_native_transcript_bench", false) == true) {
             worstBind = 0
             bench = TranscriptBench(list, { following = false; updateJump() }) {
@@ -608,6 +744,24 @@ class RustTranscript(private val context: Context, private val activate: (String
             if (index >= 0) layout.scrollToPositionWithOffset(index, anchor.second)
         }
         updateJump()
+        list.post { selection.place() }
+        if (TranscriptDebug.ENABLED && !selectedOnce && fresh.isNotEmpty()) {
+            (context as? android.app.Activity)?.intent?.getStringExtra("rust_native_transcript_select")?.let { wanted ->
+                // Select a row's text in place, for screenshots.
+                selectedOnce = true
+                val index = fresh.indexOfFirst { it.key == wanted }
+                if (index >= 0) {
+                    following = false
+                    layout.scrollToPositionWithOffset(index, context.dp(120))
+                    list.postDelayed({
+                        for (i in 0 until list.childCount) {
+                            val row = list.getChildAt(i) as? RowView ?: continue
+                            if (row.model?.key == wanted) row.selectAll()
+                        }
+                    }, 1_000)
+                }
+            }
+        }
     }
 
     /** The first visible row's key and its view's top on screen. */
@@ -669,6 +823,7 @@ class RustTranscript(private val context: Context, private val activate: (String
     }
 
     private fun dispose() {
+        selection.clear()
         if (disposed || handle == 0L) return
         disposed = true
         val (h, f) = handle to frame
@@ -695,7 +850,16 @@ class RustTranscript(private val context: Context, private val activate: (String
     }
 }
 
-/** Debug builds only: synthetic rows for the fixture, to check scrolling over a long transcript. */
+/**
+ * The transcript's fixture, benchmark, and selection launch extras exist
+ * only in debug builds and in the separate benchmark app
+ * (`scripts/build-openagents-android.sh bench`), never in the released app.
+ */
+internal object TranscriptDebug {
+    val ENABLED: Boolean get() = BuildConfig.TRANSCRIPT_DEBUG
+}
+
+/** Debug and benchmark builds only: synthetic rows for the fixture, to check scrolling over a long transcript. */
 internal object TranscriptFixture {
     /**
      * `view` with `count` synthetic rows before its transcript's own; with
