@@ -108,6 +108,9 @@ pub struct ResultsView {
     pub loading: bool,
     pub status: String,
     pub error: Option<String>,
+    /// The player is past the boards list, so Back applies (also while an
+    /// opened trace is still loading and there's no page yet).
+    pub can_back: bool,
     pub page: Option<Page>,
 }
 
@@ -417,6 +420,13 @@ impl Results {
             view::render(&self.nav, lb, self.source.as_ref(), self.bundle.as_deref()).ok()
         });
         let status = match (&self.leaderboard, self.loading, &self.source) {
+            (Some(_), _, _) if page.is_none() && self.nav.trace().is_some() => {
+                if self.loading {
+                    "Loading the trace…".to_owned()
+                } else {
+                    "The trace isn't available".to_owned()
+                }
+            }
             (None, true, _) => "Loading the published results…".to_owned(),
             (None, false, _) if self.error.is_some() => {
                 "The published results aren't available".into()
@@ -431,6 +441,7 @@ impl Results {
             loading: self.loading,
             status,
             error: self.error.clone(),
+            can_back: self.nav.board().is_some(),
             page,
         }
     }

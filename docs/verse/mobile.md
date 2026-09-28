@@ -158,8 +158,9 @@ Coder's plaza Gym is unchanged and amber.
   It needs no Gym connection. Entering the Gym starts loading them (a
   verified cached copy shows at once), leaving cancels it, and a tap on the
   board (or VoiceOver's **Open results board**) opens the white-on-black
-  results panel: the boards list, a board, and an attempt, each drawn from
-  Rust's view model. `--verse-script walk,walk,walk,right,wait,results`
+  results panel: the boards list, a board, an attempt, and its trace (a
+  scrubber with play, pause, and step over Jev, the briefing, the agent's
+  steps, and the verifier), each drawn from Rust's view model. `--verse-script walk,walk,walk,right,wait,results`
   opens it in the preview, and `r=board:<id>`, `r=attempt:<id>`, and the
   other `r=` steps choose in it. A host without the panel (Android, for
   now) shows the lettering but no tap cue, and loads nothing.

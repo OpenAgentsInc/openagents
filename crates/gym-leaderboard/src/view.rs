@@ -797,8 +797,8 @@ impl Money {
                 lower_bound_usd,
                 upper_bound_usd,
             } => match (lower_bound_usd, upper_bound_usd) {
-                (Some(low), _) => format!("unknown (bound: at least {})", self.usd(low)),
-                (None, Some(high)) => format!("unknown (bound: at most {})", self.usd(high)),
+                (Some(low), _) => format!("unknown; bound at least {}", self.usd(low)),
+                (None, Some(high)) => format!("unknown; bound at most {}", self.usd(high)),
                 (None, None) => "unknown".into(),
             },
         }

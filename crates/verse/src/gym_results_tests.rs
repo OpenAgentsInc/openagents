@@ -293,6 +293,56 @@ fn a_field_this_reader_doesnt_know_still_verifies() {
     assert!(results.view().page.is_some());
 }
 
+/// Every published bundle opens through the panel on demand, verified,
+/// and renders every tab under the page bound; a frame never carries it.
+#[test]
+fn every_published_trace_opens_on_demand() {
+    let cache = tempfile::tempdir().unwrap();
+    let mut results = Results::new(Config {
+        base: base(&published()),
+        cache_directory: Some(cache.path().into()),
+    });
+    results.set_active(true);
+    settle(&mut results, |r| !r.view().loading);
+    let leaderboard = results.leaderboard.clone().unwrap();
+    let mut opened = 0;
+    for board in &leaderboard.boards {
+        for attempt in board.attempts.iter().filter(|a| a.trace.is_some()) {
+            results
+                .act(Action::Board {
+                    id: board.id.clone(),
+                })
+                .unwrap();
+            results
+                .act(Action::Attempt {
+                    id: attempt.id.clone(),
+                })
+                .unwrap();
+            results.act(Action::Trace).unwrap();
+            assert!(results.view().can_back);
+            settle(&mut results, |r| {
+                r.open_trace().is_some() || r.view().error.is_some()
+            });
+            assert!(
+                results.view().error.is_none(),
+                "{}: {:?}",
+                attempt.id,
+                results.view().error
+            );
+            for tab in [Tab::Jev, Tab::Briefing, Tab::Agent, Tab::Verifier] {
+                results.act(Action::Tab { tab }).unwrap();
+                let bytes = serde_json::to_vec(&results.view()).unwrap().len();
+                assert!(bytes < view::MAX_PAGE_BYTES, "{}: {bytes}", attempt.id);
+            }
+            opened += 1;
+            results.act(Action::Back).unwrap();
+            results.act(Action::Back).unwrap();
+            results.act(Action::Back).unwrap();
+        }
+    }
+    assert!(opened >= 28, "{opened}");
+}
+
 #[test]
 fn only_https_or_a_local_directory_is_an_origin() {
     assert!(Origin::new("http://example.com/").is_err());

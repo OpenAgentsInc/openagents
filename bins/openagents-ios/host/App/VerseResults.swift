@@ -13,6 +13,7 @@ struct ResultsView: Decodable {
     let loading: Bool
     let status: String
     let error: String?
+    let can_back: Bool
     let page: ResultsPage?
 }
 
@@ -20,6 +21,7 @@ enum ResultsPage: Decodable {
     case boards(ResultsBoardsPage)
     case board(ResultsBoardPage)
     case attempt(ResultsAttemptPage)
+    case trace(ResultsTracePage)
     case unknown
 
     private enum Key: String, CodingKey { case screen }
@@ -30,11 +32,10 @@ enum ResultsPage: Decodable {
         case "boards": self = .boards(try ResultsBoardsPage(from: decoder))
         case "board": self = .board(try ResultsBoardPage(from: decoder))
         case "attempt": self = .attempt(try ResultsAttemptPage(from: decoder))
+        case "trace": self = .trace(try ResultsTracePage(from: decoder))
         default: self = .unknown
         }
     }
-
-    var isBoards: Bool { if case .boards = self { return true } else { return false } }
 }
 
 struct ResultsChip: Decodable, Hashable { let code: String; let text: String }
@@ -135,7 +136,7 @@ struct VerseResultsPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                if let page = view?.page, !page.isBoards {
+                if view?.can_back == true {
                     Button("Back", systemImage: "chevron.left") { world.results(["do": "back"]) }
                         .labelStyle(.iconOnly).frame(width: 44, height: 44)
                         .accessibilityIdentifier("results-back")
@@ -155,6 +156,7 @@ struct VerseResultsPanel: View {
                 case .boards(let page)?: ScrollView { boards(page) }
                 case .board(let page)?: ScrollView { board(page) }
                 case .attempt(let page)?: ScrollView { attempt(page) }
+                case .trace(let page)?: VerseTraceViewer(world: world, page: page)
                 case .unknown?: Text("This screen needs a newer app.")
                 case nil:
                     if view.loading { ProgressView(view.status).accessibilityIdentifier("results-loading") }
@@ -329,6 +331,11 @@ struct VerseResultsPanel: View {
             if let verifier = page.verifier { Text("Verifier: \(verifier)").font(.caption) }
             ForEach(page.failed_tests, id: \.self) { Text("Failed: \($0)").font(.caption2.monospaced()) }
             Text(page.trial).font(.caption2.monospaced()).foregroundStyle(.secondary).textSelection(.enabled)
+            if let trace = page.trace {
+                Button(trace, systemImage: "play.rectangle") { world.results(["do": "trace"]) }
+                    .buttonStyle(.bordered)
+                    .accessibilityIdentifier("results-open-trace")
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .contain)
