@@ -103,7 +103,8 @@ fn report() -> (Vec<String>, bool) {
             let login = match state.provider {
                 coder::task::capacity::Provider::Codex => format!(" · {}", codex_state()),
                 coder::task::capacity::Provider::Claude
-                | coder::task::capacity::Provider::Vertex => String::new(),
+                | coder::task::capacity::Provider::Vertex
+                | coder::task::capacity::Provider::Devin => String::new(),
             };
             lines.push(format!(
                 "    {:<10} {} · {standing}{login}",

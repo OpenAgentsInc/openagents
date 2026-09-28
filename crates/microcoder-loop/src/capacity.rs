@@ -45,6 +45,11 @@ pub const MAX_HOLD: u64 = 31 * 24 * 60 * 60;
 /// had capacity. The task owner keeps it as the run's `ending`.
 pub const NO_CAPACITY_ENDING: &str = "no_capacity";
 
+/// The endpoint a grant names for a Devin route: the local `devin acp`
+/// process, which reaches Devin's service with its own login. It is not a
+/// URL, and no request goes to it from Microcoder.
+pub const DEVIN_ENDPOINT: &str = "local:devin-acp";
+
 /// A model provider a repository run can generate through.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -56,11 +61,20 @@ pub enum Provider {
     /// Vertex AI's OpenAI-compatible endpoint, with the operator's access
     /// token file ([`crate::vertex`]).
     Vertex,
+    /// The local Devin CLI over ACP (`devin acp`), with its own login. It
+    /// is a whole coding agent, not a model a loop step generates through:
+    /// a repository run on a Devin route hands Devin the turn.
+    Devin,
 }
 
 impl Provider {
     /// Every provider, in a fixed order.
-    pub const ALL: [Provider; 3] = [Provider::Codex, Provider::Claude, Provider::Vertex];
+    pub const ALL: [Provider; 4] = [
+        Provider::Codex,
+        Provider::Claude,
+        Provider::Vertex,
+        Provider::Devin,
+    ];
 
     /// The providers with a usage endpoint a probe can ask.
     pub const PROBED: [Provider; 2] = [Provider::Codex, Provider::Claude];
@@ -74,6 +88,7 @@ impl Provider {
             "codex" => Some(Provider::Codex),
             "claude" => Some(Provider::Claude),
             "vertex" => Some(Provider::Vertex),
+            "devin" => Some(Provider::Devin),
             _ => None,
         }
     }
@@ -85,6 +100,7 @@ impl Provider {
             Provider::Codex => "codex",
             Provider::Claude => "claude",
             Provider::Vertex => "vertex",
+            Provider::Devin => "devin",
         }
     }
 
@@ -95,6 +111,7 @@ impl Provider {
             Provider::Codex => codex_transport::codex::BASE_URL,
             Provider::Claude => "https://api.anthropic.com",
             Provider::Vertex => crate::vertex::BASE_URL,
+            Provider::Devin => DEVIN_ENDPOINT,
         }
     }
 
@@ -102,7 +119,7 @@ impl Provider {
     #[must_use]
     pub const fn unknown_hold(self) -> u64 {
         match self {
-            Provider::Codex | Provider::Claude => UNKNOWN_RESET_HOLD,
+            Provider::Codex | Provider::Claude | Provider::Devin => UNKNOWN_RESET_HOLD,
             Provider::Vertex => VERTEX_UNKNOWN_RESET_HOLD,
         }
     }
@@ -493,6 +510,11 @@ impl Connection {
 ///   `~/.claude.json`, or `~/.claude/.credentials.json`. The credential
 ///   itself, in the macOS keychain or that file, is not read.
 ///
+/// - **Devin**: a `devin` binary (`DEVIN_BIN`, `PATH`, or
+///   `~/.local/bin/devin`) and Devin's stored CLI login,
+///   `~/.local/share/devin/credentials.toml` (or under `XDG_DATA_HOME`),
+///   which is checked for presence and never read.
+///
 /// - **Vertex**: the access token file (`VERTEX_TOKEN_FILE`, else
 ///   `~/.openagents/vertex-token`) is present and not empty. Its content is
 ///   read only to check that, never logged.
@@ -522,6 +544,19 @@ pub fn probe(provider: Provider) -> Connection {
                 )),
             },
         },
+        Provider::Devin => {
+            let variable = |name: &str| std::env::var_os(name);
+            if acp_client::devin::binary(&variable).is_none() {
+                return Connection::Missing(
+                    "no devin binary in DEVIN_BIN, PATH, or ~/.local/bin".into(),
+                );
+            }
+            if acp_client::devin::signed_in(&variable) {
+                Connection::Connected
+            } else {
+                Connection::Missing("the Devin CLI is not signed in; run `devin auth login`".into())
+            }
+        }
         Provider::Claude => {
             if claude_binary(home.as_deref()).is_none() {
                 return Connection::Missing(

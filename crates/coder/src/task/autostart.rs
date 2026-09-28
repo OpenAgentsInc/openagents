@@ -1331,6 +1331,11 @@ fn parse_route(text: &str) -> std::result::Result<Route, String> {
                 "usage: `{text}`: repository runs don't generate through vertex; use codex or claude"
             ));
         }
+        Some(Provider::Devin) => {
+            return Err(format!(
+                "usage: `{text}`: this build does not run repository turns on devin"
+            ));
+        }
         None => {
             return Err(format!(
                 "usage: the provider in `{text}` is not codex or claude"
@@ -2110,7 +2115,9 @@ mod tests {
         let book = capacity::Book::default();
         let only_codex = |provider: Provider| match provider {
             Provider::Codex => Connection::Connected,
-            Provider::Claude | Provider::Vertex => Connection::Missing("not signed in".into()),
+            Provider::Claude | Provider::Vertex | Provider::Devin => {
+                Connection::Missing("not signed in".into())
+            }
         };
         let usage = usage::Book::default();
         match policy.choose(&book, &usage, &only_codex, 1) {
@@ -2267,7 +2274,7 @@ mod tests {
             Provider::Claude => {
                 include_str!("../../../microcoder-loop/fixtures/usage/claude-oauth-usage.json")
             }
-            Provider::Vertex => return Err(usage::Failure::Unsupported),
+            Provider::Vertex | Provider::Devin => return Err(usage::Failure::Unsupported),
         };
         Ok(usage::Response {
             status: 200,

@@ -365,7 +365,7 @@ pub fn outcome(provider: Provider, fetched: Result<Response, Failure>, now: u64)
                 let result = match provider {
                     Provider::Claude => parse_claude(&response.body, now),
                     Provider::Codex => parse_codex(&response.body, now),
-                    Provider::Vertex => Err(Failure::Unsupported),
+                    Provider::Vertex | Provider::Devin => Err(Failure::Unsupported),
                 };
                 let next_probe_at = if result.is_ok() {
                     now + MIN_INTERVAL
@@ -835,7 +835,7 @@ mod tests {
             match provider {
                 Provider::Claude => ok(CLAUDE),
                 Provider::Codex => Err(Failure::NoCredential),
-                Provider::Vertex => Err(Failure::Unsupported),
+                Provider::Vertex | Provider::Devin => Err(Failure::Unsupported),
             }
         }
         let dir = tempfile::tempdir().unwrap();

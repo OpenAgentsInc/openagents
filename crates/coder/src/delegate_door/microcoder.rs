@@ -132,6 +132,7 @@ impl ProviderState {
             Provider::Codex => "the Codex login",
             Provider::Claude => "the Claude Code login",
             Provider::Vertex => "Vertex",
+            Provider::Devin => "the Devin CLI login",
         }
     }
 
@@ -351,6 +352,9 @@ fn provided(state: &ProviderState, session: &str) -> Result<Provided, String> {
             .map(|generator| Provided::Claude(ClaudeLane::new(generator))),
         Provider::Vertex => microcoder_loop::vertex::VertexGenerator::from_env(&state.model, None)
             .map(|generator| Provided::Vertex(VertexLane::new(generator))),
+        // Devin is a whole coding agent; the loop's steps don't generate
+        // through it, and the lineup never names it.
+        Provider::Devin => Err("the loop does not generate through Devin".into()),
     }
 }
 

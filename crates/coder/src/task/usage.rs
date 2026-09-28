@@ -97,7 +97,7 @@ async fn fetch_async(provider: Provider) -> Result<Response, Failure> {
                 .bearer_auth(&token.0)
                 .header("anthropic-beta", CLAUDE_OAUTH_BETA)
         }
-        Provider::Vertex => return Err(Failure::Unsupported),
+        Provider::Vertex | Provider::Devin => return Err(Failure::Unsupported),
     };
     let response = request.send().await.map_err(|_| Failure::Network)?;
     let status = response.status().as_u16();
