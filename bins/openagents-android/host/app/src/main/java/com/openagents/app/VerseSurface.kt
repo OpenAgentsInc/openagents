@@ -8,7 +8,6 @@ import android.hardware.SensorManager
 import android.os.SystemClock
 import android.view.Choreographer
 import android.view.MotionEvent
-import android.view.ScaleGestureDetector
 import android.view.SurfaceHolder
 import android.view.SurfaceView
 import org.json.JSONArray
@@ -21,7 +20,8 @@ import org.json.JSONObject
  * the player, the camera, the movement stick, and every frame. Adapted from
  * Coder's Android `VerseSurface`. Every Verse JNI call stays on the main thread.
  */
-class VerseSurface(context: Context, private val changed: (JSONObject?, String?) -> Unit) :
+class VerseSurface(context: Context, private val gymPreview: Boolean,
+                   private val changed: (JSONObject?, String?) -> Unit) :
     SurfaceView(context), SurfaceHolder.Callback, Choreographer.FrameCallback, SensorEventListener {
     private var handle = 0L
     private var attached = false
@@ -36,20 +36,14 @@ class VerseSurface(context: Context, private val changed: (JSONObject?, String?)
     private var latestSensor: Pair<Long, DoubleArray>? = null
     private var sensorRunning = false
     private val pointers = mutableSetOf<Int>()
+    /**
+     * Pointers Rust took for the movement and look sticks. They stay out of
+     * pinch arbitration and always reach Rust, so walking and looking go on
+     * while two other fingers pinch.
+     */
+    private val stickPointers = mutableSetOf<Int>()
     private var hudInsets = floatArrayOf(0f, 0f, 0f, 0f)
     private val pinchAdmission = PinchAdmission()
-    private val pinch = ScaleGestureDetector(context, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
-        override fun onScaleBegin(detector: ScaleGestureDetector): Boolean {
-            if (!running || !pinchAdmission.allowed) return false
-            cancelPointers(retainContacts = true)
-            return true
-        }
-        override fun onScale(detector: ScaleGestureDetector): Boolean {
-            val scale = detector.scaleFactor
-            if (running && scale.isFinite() && scale > 0f) send(json("action" to "pinch_zoom", "scale" to scale), false)
-            return true
-        }
-    }).apply { isQuickScaleEnabled = false; isStylusScaleEnabled = false }
     private val sensors = context.getSystemService(SensorManager::class.java)
     private val sensor = sensors?.getDefaultSensor(Sensor.TYPE_GAME_ROTATION_VECTOR)
         ?: sensors?.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
@@ -57,6 +51,9 @@ class VerseSurface(context: Context, private val changed: (JSONObject?, String?)
     var snapshot: JSONObject? = null; private set
     var motionError: String? = null; private set
     var nativeError: String? = null; private set
+    var gymStorageError: String? = null; private set
+    /** The debug `verse_script` extra's steps, if any. */
+    var script: VerseScript? = null
 
     init {
         tag = "verse-surface"
@@ -88,6 +85,14 @@ class VerseSurface(context: Context, private val changed: (JSONObject?, String?)
             val config = JSONObject(surfaceConfig())
             runCatching { DeviceKey.loadOrCreate(context, DeviceKey.Purpose.WORLD) }
                 .onSuccess { config.put("world_secret_hex", it) }
+            // The Gym's saved connection, or in a debug build the labeled
+            // synthetic board, which keeps the world offline.
+            if (gymPreview) config.put("gym_preview", true)
+            else try { DeviceKey.gymCode(context)?.let { config.put("gym_code", it) } }
+            catch (failure: Exception) { gymStorageError = failure.message }
+            // Verified copies of the Gym's published results stay in the
+            // app's cache between visits.
+            config.put("results_cache_directory", context.cacheDir.path)
             handle = OpenAgentsNative.verseCreate(holder.surface, config.toString())
             check(handle != 0L) { "The world renderer couldn't start on this device." }
             attached = true
@@ -152,6 +157,7 @@ class VerseSurface(context: Context, private val changed: (JSONObject?, String?)
         if (lastFrame == 0L || frameTimeNanos - lastFrame >= 32_000_000L) {
             lastFrame = frameTimeNanos
             pollMotion()
+            script?.let { val density = resources.displayMetrics.density; it.step(this, width / density, height / density) }
             send(json("action" to "frame", "timestamp" to frameTimeNanos / 1e9), false)
         }
         if (running) Choreographer.getInstance().postFrameCallback(this)
@@ -161,7 +167,9 @@ class VerseSurface(context: Context, private val changed: (JSONObject?, String?)
         if (handle == 0L) return null
         return try {
             val encoded = request.toString()
-            require(encoded.toByteArray().size <= 4096) { "The world request is too large." }
+            // A Gym connection code is the one large request.
+            val limit = if (request.optString("action") == "gym_configure") 98_304 else 4096
+            require(encoded.toByteArray().size <= limit) { "The world request is too large." }
             val result = packet(OpenAgentsNative.verseCall(handle, encoded), "coder.verse.v1")
             require(result.getJSONArray("position").length() == 3 &&
                 result.getString("camera_mode") in listOf("touch", "motion")) { "Invalid world view." }
@@ -195,6 +203,25 @@ class VerseSurface(context: Context, private val changed: (JSONObject?, String?)
     }
 
     fun recenter() = send(json("action" to "recenter_camera"))
+
+    /**
+     * Hands a pasted `gym-connect:` code to Rust, and saves it once Rust has
+     * accepted it for this world key.
+     */
+    fun configureGym(code: String): Boolean {
+        if (code.toByteArray().size > 65_536) {
+            gymStorageError = "The Gym connection exceeds its size limit."; changed(snapshot, null); return false
+        }
+        val result = send(json("action" to "gym_configure", "code" to code)) ?: return false
+        if (result.textOrNull("error") != null || result.optJSONObject("gym_board")?.optBoolean("configured") != true) return false
+        try { DeviceKey.saveGymCode(context, code); gymStorageError = null }
+        catch (_: Exception) { gymStorageError = "The Gym connection works for this session but couldn't be saved securely." }
+        changed(result, null)
+        return true
+    }
+
+    /** Sends a choice in the results panel to Rust. */
+    fun results(command: JSONObject) = send(json("action" to "results", "command" to command))
 
     private fun syncSensors(needed: Boolean) {
         if (!needed || !running) { stopSensors(); return }
@@ -248,25 +275,37 @@ class VerseSurface(context: Context, private val changed: (JSONObject?, String?)
                 val id = event.getPointerId(index)
                 if (pointers.size < 8) {
                     pointers.add(id)
-                    pointer(event, index, "down")
-                    pinchAdmission.down(id, event.getX(index) / density, event.getY(index) / density, event.eventTime)
+                    val result = pointer(event, index, "down")
+                    // A pointer Rust took for a stick never joins a pinch.
+                    if (result != null && (result.optLong("stick_pointer", -1) == id.toLong() ||
+                            result.optLong("look_stick_pointer", -1) == id.toLong())) {
+                        stickPointers.add(id)
+                    } else {
+                        pinchAdmission.down(id, event.getX(index) / density, event.getY(index) / density, event.eventTime)
+                    }
                 }
+                if (pinchAdmission.reserved) cancelPointers(retainContacts = true, keepSticks = true)
             }
-            MotionEvent.ACTION_MOVE -> for (i in 0 until event.pointerCount) {
-                pinchAdmission.move(event.getPointerId(i), event.getX(i) / density, event.getY(i) / density)
-            }
-        }
-        if (pinchAdmission.reserved) cancelPointers(retainContacts = true)
-        pinch.onTouchEvent(event)
-        when (event.actionMasked) {
-            MotionEvent.ACTION_MOVE -> for (i in 0 until event.pointerCount) {
-                val id = event.getPointerId(i)
-                if (id in pointers && !pinchAdmission.reserved) pointer(event, i, "move")
+            MotionEvent.ACTION_MOVE -> {
+                for (i in 0 until event.pointerCount) {
+                    val id = event.getPointerId(i)
+                    if (id !in pointers) continue
+                    if (id in stickPointers) { pointer(event, i, "move"); continue }
+                    pinchAdmission.move(id, event.getX(i) / density, event.getY(i) / density)
+                    if (!pinchAdmission.reserved) pointer(event, i, "move")
+                }
+                val scale = pinchAdmission.scale()
+                if (scale != null && scale.isFinite() && scale > 0f) send(json("action" to "pinch_zoom", "scale" to scale), false)
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP -> {
                 val id = event.getPointerId(index)
-                if (pointers.remove(id) && !pinchAdmission.reserved) pointer(event, index, "up")
-                pinchAdmission.up(id)
+                if (pointers.remove(id)) {
+                    if (stickPointers.remove(id)) pointer(event, index, "up")
+                    else {
+                        if (!pinchAdmission.reserved) pointer(event, index, "up")
+                        pinchAdmission.up(id)
+                    }
+                }
                 performClick()
             }
             MotionEvent.ACTION_CANCEL -> { cancelPointers(); pinchAdmission.reset() }
@@ -275,9 +314,9 @@ class VerseSurface(context: Context, private val changed: (JSONObject?, String?)
     }
     override fun performClick(): Boolean { super.performClick(); return true }
 
-    private fun pointer(event: MotionEvent, index: Int, phase: String) {
+    private fun pointer(event: MotionEvent, index: Int, phase: String): JSONObject? {
         val density = resources.displayMetrics.density
-        send(json("action" to "pointer", "id" to event.getPointerId(index), "phase" to phase,
+        return send(json("action" to "pointer", "id" to event.getPointerId(index), "phase" to phase,
             "x" to event.getX(index) / density, "y" to event.getY(index) / density), phase != "move")
     }
 
@@ -286,19 +325,17 @@ class VerseSurface(context: Context, private val changed: (JSONObject?, String?)
         if (running) send(json("action" to "pointer", "id" to id, "phase" to phase, "x" to x, "y" to y), phase != "move")
     }
 
-    private fun cancelPointers(retainContacts: Boolean = false) {
+    /** Cancels pointers in Rust; a pinch keeps the sticks' pointers. */
+    private fun cancelPointers(retainContacts: Boolean = false, keepSticks: Boolean = false) {
         for (id in pointers.toList()) {
+            if (keepSticks && id in stickPointers) continue
             send(json("action" to "pointer", "id" to id, "phase" to "cancel", "x" to 0, "y" to 0), false)
-            if (!retainContacts) pointers.remove(id)
+            if (!retainContacts) { pointers.remove(id); stickPointers.remove(id) }
         }
     }
     private fun cancelTouches() {
         cancelPointers()
         pinchAdmission.reset()
-        val now = SystemClock.uptimeMillis()
-        val cancel = MotionEvent.obtain(now, now, MotionEvent.ACTION_CANCEL, 0f, 0f, 0)
-        pinch.onTouchEvent(cancel)
-        cancel.recycle()
     }
 
     private fun detachSurface() {

@@ -79,6 +79,8 @@ class MainActivity : ComponentActivity() {
     private lateinit var recenterButton: ImageButton
     private lateinit var worldStatus: TextView
     private lateinit var worldRetry: TextView
+    private lateinit var worldControls: LinearLayout
+    private lateinit var panels: VersePanels
 
     private var cameraCallback: ((Boolean) -> Unit)? = null
     private val cameraPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -152,6 +154,7 @@ class MainActivity : ComponentActivity() {
             for ((value, page) in pages) if (value != AppTab.VERSE) page.setPadding(0, bars.top, 0, 0)
             val density = resources.displayMetrics.density
             world.setHudInsets(bars.top / density, 0f, 0f, 0f)
+            panels.setTopInset(bars.top)
             WindowInsetsCompat.CONSUMED
         }
 
@@ -159,6 +162,7 @@ class MainActivity : ComponentActivity() {
             override fun handleOnBackPressed() {
                 when {
                     tab == AppTab.ACCOUNT && route != null -> open(null)
+                    tab == AppTab.VERSE && panels.showing -> panels.back()
                     tab != AppTab.CODER -> select(AppTab.CODER)
                     else -> { isEnabled = false; onBackPressedDispatcher.onBackPressed(); isEnabled = true }
                 }
@@ -206,8 +210,14 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun buildVerse(page: FrameLayout) {
-        world = VerseSurface(this) { _, _ -> if (tab == AppTab.VERSE) renderVerse() }
+        val gymPreview = BuildConfig.DEBUG && intent.getBooleanExtra("gym_preview", false)
+        world = VerseSurface(this, gymPreview) { packet, _ ->
+            if (::panels.isInitialized) panels.update(packet)
+            if (tab == AppTab.VERSE) renderVerse()
+        }
+        if (BuildConfig.DEBUG) intent.getStringExtra("verse_script")?.let { world.script = VerseScript.parse(it) }
         page.addView(world, FrameLayout.LayoutParams(-1, -1))
+        panels = VersePanels(this, world)
         // Bottom center, between the movement and look sticks Rust draws.
         val controls = column().apply { gravity = Gravity.CENTER_HORIZONTAL }
         cameraButton = iconButton(R.drawable.ic_touch_look, "Touch look", "verse-camera-mode") { world.toggleMotion() }
@@ -225,8 +235,10 @@ class MainActivity : ComponentActivity() {
         controls.addView(worldStatus, LinearLayout.LayoutParams(-2, -2).apply { bottomMargin = dp(8) })
         controls.addView(worldRetry, LinearLayout.LayoutParams(-2, -2).apply { bottomMargin = dp(8) })
         controls.addView(modes)
+        worldControls = controls
         page.addView(controls, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply {
             setMargins(dp(16), dp(16), dp(16), dp(16)) })
+        page.addView(panels.root, FrameLayout.LayoutParams(-1, -1))
     }
 
     private fun renderVerse() {
@@ -235,6 +247,9 @@ class MainActivity : ComponentActivity() {
         cameraButton.setImageResource(if (motion) R.drawable.ic_motion_look else R.drawable.ic_touch_look)
         cameraButton.isEnabled = world.motionAvailable
         cameraButton.alpha = if (world.motionAvailable) 1f else 0.4f
+        // The Gym and results panels show their own errors and hide the
+        // camera controls.
+        worldControls.visibility = if (panels.showing) View.GONE else View.VISIBLE
         val problem = world.nativeError ?: world.snapshot?.textOrNull("error") ?: world.motionError
         worldStatus.text = problem ?: ""
         worldStatus.visibility = if (problem == null) View.GONE else View.VISIBLE

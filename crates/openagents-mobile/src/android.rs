@@ -16,9 +16,15 @@ mod exports;
 pub(crate) const MAX_HANDLES: usize = 4;
 pub(crate) const MAX_CONFIG_BYTES: usize = 16 * 1024;
 pub(crate) const MAX_REQUEST_BYTES: usize = 128 * 1024;
-/// A Verse request carries no panel feeds, so it stays small.
+/// The largest Verse request: a Gym connection code. Every other request
+/// stays within Coder's 4 KiB bound, which `VerseHandle` enforces per request.
 #[cfg_attr(not(target_os = "android"), allow(dead_code))]
-pub(crate) const MAX_VERSE_REQUEST_BYTES: usize = 4096;
+pub(crate) const MAX_VERSE_REQUEST_BYTES: usize = 96 * 1024;
+/// The largest Verse surface configuration, with a saved Gym connection code.
+#[cfg_attr(not(target_os = "android"), allow(dead_code))]
+pub(crate) const MAX_VERSE_CONFIG_BYTES: usize = 96 * 1024;
+/// The largest saved Gym connection code.
+const MAX_GYM_CODE_BYTES: usize = 65_536;
 pub(crate) const MAX_PACKET_BYTES: usize = 2 * 1024 * 1024;
 
 #[derive(Debug)]
@@ -128,6 +134,23 @@ pub(crate) struct SurfaceConfig {
     /// offline.
     #[serde(default)]
     pub(crate) world_secret_hex: Option<String>,
+    /// At creation only: the Gym connection the host saved for the world
+    /// key, a `gym-connect:` code. Rust validates it; an invalid code shows
+    /// on the Gym board rather than refusing the world.
+    #[serde(default)]
+    pub(crate) gym_code: Option<String>,
+    /// At creation only: the labeled synthetic Gym board, offline, for
+    /// emulator checks. The host sends it only in debug builds.
+    #[serde(default)]
+    pub(crate) gym_preview: bool,
+    /// At creation only: the app's cache directory, where the RESULTS board
+    /// keeps verified copies of the published results between visits.
+    #[serde(default)]
+    pub(crate) results_cache_directory: Option<String>,
+    /// At creation only: where the RESULTS board reads the published
+    /// results, for emulator checks against a mirror.
+    #[serde(default)]
+    pub(crate) results_base: Option<String>,
 }
 
 impl SurfaceConfig {
@@ -143,6 +166,29 @@ impl SurfaceConfig {
             secret_hex: secret.clone(),
             relay: None,
         }))
+    }
+}
+
+impl SurfaceConfig {
+    /// The Gym and RESULTS board setup, as the iOS host's: this host shows
+    /// both native panels.
+    #[cfg_attr(not(target_os = "android"), allow(dead_code))]
+    pub(crate) fn gym(&self) -> Result<coder_mobile::BareGym, BridgeError> {
+        if self
+            .gym_code
+            .as_ref()
+            .is_some_and(|code| code.len() > MAX_GYM_CODE_BYTES)
+        {
+            return Err(error("The Gym connection exceeds its size limit"));
+        }
+        Ok(coder_mobile::BareGym {
+            code: self.gym_code.clone(),
+            preview: self.gym_preview,
+            panel: true,
+            results_panel: true,
+            results_base: self.results_base.clone(),
+            results_cache_directory: self.results_cache_directory.clone(),
+        })
     }
 }
 
@@ -263,6 +309,32 @@ mod tests {
             );
         }
         assert!(ok.presence().expect("offline").is_none());
+        // The Android host shows both Gym panels, as iOS does.
+        let gym = ok.gym().expect("gym");
+        assert!(gym.panel && gym.results_panel && gym.code.is_none() && !gym.preview);
+        let saved = surface_config(
+            r#"{"width":10,"height":10,"scale":1,"gym_code":"gym-connect:x","gym_preview":true,
+                "results_cache_directory":"/cache"}"#,
+        )
+        .expect("config")
+        .gym()
+        .expect("gym");
+        assert_eq!(saved.code.as_deref(), Some("gym-connect:x"));
+        assert!(saved.preview);
+        assert_eq!(saved.results_cache_directory.as_deref(), Some("/cache"));
+        let long = format!(
+            r#"{{"width":10,"height":10,"scale":1,"gym_code":"{}"}}"#,
+            "x".repeat(MAX_GYM_CODE_BYTES + 1)
+        );
+        assert_eq!(
+            surface_config(&long)
+                .expect("config")
+                .gym()
+                .err()
+                .map(|e| e.0)
+                .as_deref(),
+            Some("The Gym connection exceeds its size limit")
+        );
     }
 
     #[test]

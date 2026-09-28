@@ -14,23 +14,66 @@ import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
 /**
- * This device's Nostr key, encrypted with an Android Keystore key that never
- * leaves the device's secure hardware, in app-private storage that is not
- * backed up. No secret is printed or put in shared preferences.
+ * This device's secrets, each encrypted with its own Android Keystore key
+ * that never leaves the device's secure hardware, in app-private storage
+ * that is not backed up. No secret is printed or put in shared preferences.
  */
 object DeviceKey {
-    /** A key's purpose: `device` holds host grants; `world` signs only Verse presence. */
-    enum class Purpose(val id: String) { DEVICE("device"), WORLD("world") }
+    /**
+     * A secret's purpose: `device` holds host grants; `world` signs only
+     * Verse presence; `spark` is the phone wallet's BIP39 entropy; `gym` is
+     * the saved Gym connection code for the world key. Each has its own
+     * Keystore key and file.
+     */
+    enum class Purpose(val id: String, val maxBytes: Int) {
+        DEVICE("device", 32), WORLD("world", 32), SPARK("spark", 32), GYM("gym", 65_536),
+    }
     private val lock = Any()
 
     /** The 32-byte secret key as lowercase hex, created on first use. */
     fun loadOrCreate(context: Context, purpose: Purpose = Purpose.DEVICE): String = synchronized(lock) {
-        val secret = try { read(context, purpose) ?: ByteArray(32).also { SecureRandom().nextBytes(it); write(context, purpose, it) } }
+        require(purpose == Purpose.DEVICE || purpose == Purpose.WORLD)
+        val secret = try { read(context, purpose) ?: random(32).also { write(context, purpose, it) } }
         catch (failure: Exception) {
             throw IllegalStateException("The device key is unavailable. Unlock the device and reopen OpenAgents.", failure)
         }
         check(secret.size == 32) { "The device key is unavailable. Unlock the device and reopen OpenAgents." }
-        secret.joinToString("") { "%02x".format(it.toInt() and 255) }
+        hex(secret)
+    }
+
+    /**
+     * The Spark wallet's seed: 16 bytes of BIP39 entropy made on this phone,
+     * or the 16 or 32 bytes a restore saved, as lowercase hex.
+     */
+    fun loadOrCreateSpark(context: Context): String = synchronized(lock) {
+        val seed = try { read(context, Purpose.SPARK) ?: random(16).also { write(context, Purpose.SPARK, it) } }
+        catch (failure: Exception) {
+            throw IllegalStateException("The wallet's key is unavailable. Unlock the device and try again.", failure)
+        }
+        check(seed.size == 16 || seed.size == 32) { "The wallet's key is damaged." }
+        hex(seed)
+    }
+
+    /** Replaces the Spark seed after Rust checked a restore's words. */
+    fun replaceSpark(context: Context, entropyHex: String) = synchronized(lock) {
+        val bytes = unhex(entropyHex)
+        require(bytes != null && (bytes.size == 16 || bytes.size == 32)) { "The restored key is invalid." }
+        try { write(context, Purpose.SPARK, bytes) }
+        catch (failure: Exception) { throw IllegalStateException("The restored key could not be saved.", failure) }
+    }
+
+    /** The saved Gym connection code, if any. */
+    fun gymCode(context: Context): String? = synchronized(lock) {
+        try { read(context, Purpose.GYM)?.toString(Charsets.UTF_8) }
+        catch (failure: Exception) {
+            throw IllegalStateException("The saved Gym connection is unavailable. Unlock the device and try again.", failure)
+        }
+    }
+
+    fun saveGymCode(context: Context, code: String) = synchronized(lock) {
+        val bytes = code.toByteArray(Charsets.UTF_8)
+        require(bytes.size <= Purpose.GYM.maxBytes) { "The Gym connection exceeds its size limit." }
+        write(context, Purpose.GYM, bytes)
     }
 
     /** The app's private state directory, excluded from backup. */
@@ -38,6 +81,15 @@ object DeviceKey {
         File(context.noBackupFilesDir, "openagents-v1").also {
             check(it.isDirectory || it.mkdirs() || it.isDirectory) { "The app's private storage could not be opened." }
         }
+
+    internal fun hex(bytes: ByteArray) = bytes.joinToString("") { "%02x".format(it.toInt() and 255) }
+
+    internal fun unhex(text: String): ByteArray? {
+        if (text.length % 2 != 0 || text.any { Character.digit(it, 16) < 0 }) return null
+        return ByteArray(text.length / 2) { ((Character.digit(text[it * 2], 16) shl 4) + Character.digit(text[it * 2 + 1], 16)).toByte() }
+    }
+
+    private fun random(size: Int) = ByteArray(size).also { SecureRandom().nextBytes(it) }
 
     private fun alias(purpose: Purpose) = "com.openagents.app.${purpose.id}-v1"
 
@@ -65,7 +117,8 @@ object DeviceKey {
             if (!file.baseFile.exists() && !File(file.baseFile.path + ".bak").exists()) return null
             throw failure
         }
-        check(bytes.size in 29..256 && bytes[0] == 1.toByte()) { "The device key record is damaged." }
+        // A version byte, a 12-byte nonce, the ciphertext, and a 16-byte tag.
+        check(bytes.size in 29..(29 + purpose.maxBytes) && bytes[0] == 1.toByte()) { "The ${purpose.id} key record is damaged." }
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.DECRYPT_MODE, key(purpose), GCMParameterSpec(128, bytes.copyOfRange(1, 13)))
         cipher.updateAAD(alias(purpose).toByteArray())
@@ -73,6 +126,7 @@ object DeviceKey {
     }
 
     private fun write(context: Context, purpose: Purpose, secret: ByteArray) {
+        require(secret.size in 1..purpose.maxBytes)
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.ENCRYPT_MODE, key(purpose))
         cipher.updateAAD(alias(purpose).toByteArray())

@@ -23,10 +23,25 @@ The app has four tabs, shown as white icons on black:
   bare mode) in a `SurfaceView` and forwards touches, pinch, and rotation
   samples as Coder's `coder.verse.v1` requests. Rust draws the movement
   stick at the bottom left and, in touch look, the look stick at the bottom
-  right. The hand/gyroscope button, at the bottom center between them,
-  switches touch and motion look, and the crosshair recenters the camera.
-  The world draws with Verse's shared renderer on Vulkan or OpenGL ES; see
+  right. The pointers Rust takes for the sticks (`stick_pointer`,
+  `look_stick_pointer`) stay out of pinch arbitration, so a pinch with two
+  other fingers zooms while both thumbs keep walking and looking; the pinch
+  scale comes from the two pinching fingers alone. The hand/gyroscope
+  button, at the bottom center between them, switches touch and motion
+  look, and the crosshair recenters the camera. The world draws with
+  Verse's shared renderer on Vulkan or OpenGL ES; see
   [Graphics backends](#graphics-backends).
+  The Grid's Gym has both native panels, as on iOS: a tap on the Gym board
+  opens the **Gym** panel (runs, a run's metrics, recipes with confirmed
+  starts, and the Gym connection, where you paste a `gym-connect:` code),
+  and a tap on the RESULTS board opens **Results** (the boards, one board
+  with its filters and caveats, one attempt, and the trace viewer with its
+  timeline, play, step, and the Jev, Briefing, Agent, and Verifier tabs).
+  Each panel hangs from a line to its board. TalkBack reads each row's
+  `accessibility` text from Rust and offers **Open Gym board** and **Open
+  results board** actions on the world when the player is in reach. The
+  Gym connection code is kept encrypted under its own Keystore key; the
+  verified results are cached in the app's cache directory.
 - **Wallet** is a placeholder that says **Coming soon.**
 - **Account** holds **Computers** (Coder's shared Computers screens, with
   their input requests, QR scanning, secret fields, and the invitation QR
@@ -146,6 +161,11 @@ one that shows Rust Native's sample conversation
 adb shell am start -n com.openagents.app/.MainActivity --es tab verse
 adb shell am start -n com.openagents.app/.MainActivity --es account_route tailnet
 adb shell am start -n com.openagents.app/.MainActivity --ez rust_native_fixture true
+# The labeled synthetic Gym board, and a scripted walk up to it (steps as
+# in the iOS --verse-script: walk, right, turn, look, walkpinch, board,
+# results, r=do:value, wait).
+adb shell am start -n com.openagents.app/.MainActivity --es tab verse \
+  --ez gym_preview true --es verse_script walk,walk,walk,board
 ```
 
 ## Release

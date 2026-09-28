@@ -1,7 +1,7 @@
 //! Android's JNI exports. See the parent module for the contract.
 use super::{
-    BridgeError, MAX_CONFIG_BYTES, MAX_HANDLES, MAX_REQUEST_BYTES, MAX_VERSE_REQUEST_BYTES,
-    create_app, error, guarded, packet_text, respond, surface_config,
+    BridgeError, MAX_CONFIG_BYTES, MAX_HANDLES, MAX_REQUEST_BYTES, MAX_VERSE_CONFIG_BYTES,
+    MAX_VERSE_REQUEST_BYTES, create_app, error, guarded, packet_text, respond, surface_config,
 };
 use crate::App;
 use coder_mobile::VerseHandle;
@@ -209,7 +209,7 @@ pub extern "system" fn Java_com_openagents_app_OpenAgentsNative_verseCreate<'loc
     unowned
         .with_env(|env| -> Result<_, BridgeError> {
             main_thread(true)?;
-            let config = surface_config(&input(env, &config, 1024)?)?;
+            let config = surface_config(&input(env, &config, MAX_VERSE_CONFIG_BYTES)?)?;
             let window = NativeWindow::acquire(env, &surface)?;
             guarded(|| {
                 VERSES.with(|verses| {
@@ -222,13 +222,14 @@ pub extern "system" fn Java_com_openagents_app_OpenAgentsNative_verseCreate<'loc
                     // SAFETY: `window` is acquired on this main thread and is
                     // stored after the handle, so it outlives the renderer.
                     let handle = unsafe {
-                        VerseHandle::create_bare(
+                        VerseHandle::create_bare_with_gym(
                             window.0.as_ptr().cast(),
                             config.width,
                             config.height,
                             config.scale,
                             false,
                             config.presence()?,
+                            config.gym()?,
                         )
                     }?;
                     let id = next_handle()?;
@@ -257,7 +258,7 @@ pub extern "system" fn Java_com_openagents_app_OpenAgentsNative_verseAttach<'loc
     unowned
         .with_env(|env| -> Result<_, BridgeError> {
             main_thread(true)?;
-            let config = surface_config(&input(env, &config, 1024)?)?;
+            let config = surface_config(&input(env, &config, MAX_VERSE_CONFIG_BYTES)?)?;
             let window = NativeWindow::acquire(env, &surface)?;
             guarded(|| {
                 VERSES.with(|verses| {
