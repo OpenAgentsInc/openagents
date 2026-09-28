@@ -51,12 +51,12 @@ mod tls;
 pub use {coder_access as access, coder_link as link, coder_pty as pty, coder_reach as reach};
 
 pub use coder_access::Code;
-pub use coder_access::protocol::TaskCreate;
+pub use coder_access::protocol::{CommandAction, TaskCommand, TaskCreate};
 #[cfg(feature = "host")]
 pub use config::Config;
 #[cfg(feature = "host")]
 pub use serve::{Running, start};
-pub use tasks::{NoTasks, Note, TaskRef, Tasks};
+pub use tasks::{NoTasks, Note, Principal, Standing, TaskRef, Tasks};
 
 /// The host protocol version the ready record and presence report.
 pub const PROTOCOL_VERSION: u32 = coder_reach::PROTOCOL_VERSION;

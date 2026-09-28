@@ -995,3 +995,135 @@ fn a_grant_without_fallbacks_keeps_its_bytes() {
     assert!(!text.contains("fallbacks"));
     assert_eq!(crate::claude::ENDPOINT, Provider::Claude.endpoint());
 }
+
+#[tokio::test]
+async fn a_follow_up_runs_as_the_next_turn_and_carries_the_earlier_one() {
+    let (_root, store, grant) = fixture();
+    let first = generator("printf output > result.txt");
+    let host = Host::admit(&store, &grant).await.unwrap();
+    let ended = run(host, &first, &JudgeFixture).await.unwrap();
+    assert_eq!(ended.execution, task::Execution::Finished);
+    let follow_up = Command {
+        schema: task::COMMAND_SCHEMA.into(),
+        command_id: "follow-up-fixture".into(),
+        task_id: "fixture".into(),
+        expected_revision: Some(ended.revision),
+        action: Action::Continue {
+            prompt: "Now also write done.txt.".into(),
+        },
+    };
+    let bytes = serde_json::to_vec(&follow_up).unwrap();
+    let receipt = Store::open(&store).unwrap().apply(&bytes).unwrap();
+    assert_eq!(receipt.status, task::Status::Queued);
+    // The earlier grant names an earlier revision and cannot run the turn.
+    assert!(Host::admit(&store, &grant).await.is_err());
+    let mut next: task::owner::Grant = serde_json::from_slice(&grant).unwrap();
+    next.expected_revision = receipt.revision;
+    let next = serde_json::to_vec(&next).unwrap();
+    let host = Host::admit(&store, &next).await.unwrap();
+    assert_eq!(host.prompt(), "Now also write done.txt.");
+    assert_eq!(host.earlier().len(), 1);
+    assert_eq!(
+        host.earlier()[0].reply.as_deref(),
+        Some("The requested file exists.")
+    );
+    let prompt = host.engine_prompt();
+    assert!(prompt.contains("Write result.txt containing output."));
+    assert!(prompt.contains("The requested file exists."));
+    assert!(prompt.ends_with("The user's new message:\nNow also write done.txt."));
+    let context = ContextGenerator {
+        prompt: RefCell::new(String::new()),
+    };
+    let task = run(host, &context, &JudgeFixture).await.unwrap();
+    assert!(context.prompt.borrow().contains("Now also write done.txt."));
+    assert!(
+        context
+            .prompt
+            .borrow()
+            .contains("Write result.txt containing output.")
+    );
+    assert_eq!(task.turn(), 2);
+    assert_eq!(task.earlier.len(), 1);
+    let run = task.run.as_ref().unwrap();
+    assert_eq!(run.admission.trace_file, "fixture.2.atif.jsonl");
+    assert_eq!(run.effect_id.as_deref(), Some("fixture:2:command"));
+    // Both turns' traces stay; the second carries the first as marked steps.
+    assert!(store.join("fixture.1.atif.jsonl").exists());
+    let second = std::fs::read_to_string(store.join("fixture.2.atif.jsonl")).unwrap();
+    assert!(second.contains("carried_from"));
+    // The store replays both turns from its journal.
+    assert_eq!(Store::open(&store).unwrap().show("fixture").unwrap(), task);
+    // An exact retry of the follow-up returns its original receipt.
+    assert_eq!(Store::open(&store).unwrap().apply(&bytes).unwrap(), receipt);
+}
+
+#[tokio::test]
+async fn an_emulated_steer_stops_the_running_turn_and_continues_with_the_message() {
+    use coder::task::commands::{self, Kind, Outcome, Request, Sender, State};
+    let (_root, store, grant) = fixture();
+    let generator = generator("sleep 30; printf output > result.txt");
+    let host = Host::admit(&store, &grant).await.unwrap();
+    let sender = Sender {
+        device: "phone".into(),
+        grant: None,
+        epoch: None,
+    };
+    let always = |_: &Sender| true;
+    let now = coder::task::autostart::unix_now();
+    let steer = |emulate: bool, id: &str| Request {
+        command: id.repeat(64),
+        task: "fixture".into(),
+        kind: Kind::Steer,
+        based_on: 2,
+        text: "Write steered.txt instead.".into(),
+        emulate,
+        issued_at: now,
+    };
+    let steered = async {
+        let started = std::time::Instant::now();
+        loop {
+            let trace =
+                std::fs::read_to_string(store.join("fixture.1.atif.jsonl")).unwrap_or_default();
+            if trace.contains("command started") {
+                break;
+            }
+            assert!(started.elapsed() < Duration::from_secs(4));
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        // Native steering of a running Microcoder turn is refused.
+        let (native, _) = commands::record(
+            &store,
+            &sender,
+            &steer(false, "a"),
+            &crate::STEERING,
+            &always,
+            now,
+        )
+        .unwrap();
+        assert!(matches!(
+            native.state,
+            State::Done(Outcome::Rejected { .. })
+        ));
+        // The chosen emulation stops the turn and holds the message.
+        let (emulated, _) = commands::record(
+            &store,
+            &sender,
+            &steer(true, "b"),
+            &crate::STEERING,
+            &always,
+            now,
+        )
+        .unwrap();
+        assert_eq!(emulated.state, State::Held { priority: true });
+    };
+    let (result, ()) = tokio::join!(run(host, &generator, &JudgeFixture), steered);
+    let ended = result.unwrap();
+    assert_eq!(ended.execution, task::Execution::Stopped);
+    // When the turn has ended, the held steer becomes the next turn.
+    let continued = commands::process(&store, "fixture", &crate::STEERING, &always, now).unwrap();
+    assert_eq!(continued.len(), 1);
+    let task = Store::open(&store).unwrap().show("fixture").unwrap();
+    assert_eq!(task.status, task::Status::Queued);
+    assert_eq!(task.effective_prompt(), "Write steered.txt instead.");
+    assert_eq!(task.earlier.len(), 1);
+}

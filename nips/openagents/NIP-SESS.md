@@ -253,6 +253,13 @@ process is not native steering. The host refuses unsupported steering unless
 the caller explicitly chose the pinned emulated operation. Task-level CTRL
 steering is a frame correction; it does not prove that an engine consumed it.
 
+NIP-HOST `task.command` is the host-wide device form of these commands for
+the task owner's single-lineage tasks: `send` is `submit` of the next turn
+against an ended task, `queue` is `enqueue` with promotion when the turn
+ends, `steer` and `interrupt` keep the meanings here, and emulated steering
+runs only when the device set `emulate`. Its evaluation order and replay
+rules are in [HOST](NIP-HOST.md#operations).
+
 Interrupt asks the engine to stop the exact turn. Its receipt records the
 request, followed separately by observed stop, failure, or unknown state.
 Archive affects discoverability only. Close prevents new turn admissions and

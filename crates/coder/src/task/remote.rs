@@ -16,7 +16,9 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use coder_host::{Code, Note, TaskCreate, TaskRef, Tasks};
+use coder_host::{
+    Code, CommandAction, Note, Principal, Standing, TaskCommand, TaskCreate, TaskRef, Tasks,
+};
 use nostr::activity_summary::Phase;
 
 use super::capacity::Provider;
@@ -57,6 +59,32 @@ impl Inbox {
     #[must_use]
     pub fn store(&self) -> &Path {
         &self.store
+    }
+
+    /// Tell the auto-start policy about tasks a device command continued,
+    /// so each new turn starts under the same bounds as a new task. Without
+    /// the policy a continued task waits, inert.
+    fn continued(&self, continued: &[super::commands::Continued]) {
+        let Some(autostart) = &self.autostart else {
+            return;
+        };
+        let Ok(store) = Store::open(&self.store) else {
+            return;
+        };
+        let mut any = false;
+        for item in continued {
+            let Ok(task) = store.show(&item.task) else {
+                continue;
+            };
+            if let Some(label) = super::commands::label_for(&self.workspaces, &task) {
+                autostart.eligible_turn(&item.task, &item.device, label, item.turn);
+                any = true;
+            }
+        }
+        drop(store);
+        if any {
+            autostart.sweep_soon();
+        }
     }
 
     fn apply(&self, command: &Command) -> Result<TaskRef, Code> {
@@ -156,6 +184,87 @@ impl Tasks for Inbox {
         )
         .map(|_| ())
         .map_err(refusal)
+    }
+
+    /// Record a device's durable command and evaluate its task's commands.
+    /// Microcoder's stated steering decides what a steer may do.
+    fn command(&self, principal: &Principal, command: &TaskCommand) -> Result<TaskRef, Code> {
+        use super::commands::{Kind, Outcome, Rejection, Request, Sender, State};
+        let sender = Sender {
+            device: principal.device.clone(),
+            grant: principal.grant.clone(),
+            epoch: principal.epoch,
+        };
+        let request = Request {
+            command: command.command.clone(),
+            task: command.task.clone(),
+            kind: match command.action {
+                CommandAction::Send => Kind::Send,
+                CommandAction::Queue => Kind::Queue,
+                CommandAction::Steer => Kind::Steer,
+                CommandAction::Interrupt => Kind::Interrupt,
+                CommandAction::Answer => Kind::Answer,
+            },
+            based_on: command.based_on,
+            text: command.text.clone(),
+            emulate: command.emulate,
+            issued_at: command.issued_at,
+        };
+        // The host admitted this request's grant a moment ago.
+        let admitted = |_: &Sender| true;
+        let (recorded, continued) = super::commands::record(
+            &self.store,
+            &sender,
+            &request,
+            &super::adapter::STEERING,
+            &admitted,
+            super::autostart::unix_now(),
+        )
+        .map_err(|error| match error {
+            Error::NotFound => Code::Forbidden,
+            other => refusal(other),
+        })?;
+        self.continued(&continued);
+        let task = recorded.task.as_ref().map(current).ok_or(Code::Forbidden)?;
+        match recorded.state {
+            State::Done(Outcome::Rejected { reason }) => Err(match reason {
+                Rejection::Conflict => Code::Conflict,
+                Rejection::Unsupported => Code::Unsupported,
+                Rejection::Unavailable => Code::Unavailable,
+                Rejection::Revoked => Code::Revoked,
+                Rejection::Stale => Code::Stale,
+                Rejection::Missing => Code::Forbidden,
+                Rejection::Bounds => Code::Bounds,
+            }),
+            State::Done(Outcome::Expired) => Err(Code::Expired),
+            State::Done(Outcome::Superseded) => Err(Code::Stale),
+            _ => Ok(task),
+        }
+    }
+
+    /// Evaluate held commands again, such as queued messages after a turn
+    /// ends, with each sender's grant rechecked.
+    fn tick(&self, standing: Standing<'_>) {
+        let check = |sender: &super::commands::Sender| {
+            standing(&Principal {
+                device: sender.device.clone(),
+                grant: sender.grant.clone(),
+                epoch: sender.epoch,
+            })
+        };
+        let now = super::autostart::unix_now();
+        for task in super::commands::open_tasks(&self.store) {
+            match super::commands::process(
+                &self.store,
+                &task,
+                &super::adapter::STEERING,
+                &check,
+                now,
+            ) {
+                Ok(continued) => self.continued(&continued),
+                Err(error) => eprintln!("coder host: device commands: {error}"),
+            }
+        }
     }
 
     /// Archived tasks are left out, so the host never publishes their

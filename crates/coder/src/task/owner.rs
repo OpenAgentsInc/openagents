@@ -242,7 +242,7 @@ pub(super) fn transition(record: &Record, tasks: &mut BTreeMap<String, Task>) ->
                 || !admission
                     .context
                     .valid(task, admission.grant.requirements.as_ref())
-                || admission.trace_file != format!("{}.1.atif.jsonl", task.task_id)
+                || admission.trace_file != task.trace_file(task.turn())
                 || !hex_digest(&admission.source_snapshot)
                 || !hex_digest(&admission.program_digest)
                 || Grant::parse(admission.grant_request.as_bytes())? != admission.grant
@@ -264,11 +264,12 @@ pub(super) fn transition(record: &Record, tasks: &mut BTreeMap<String, Task>) ->
             task.execution = Execution::Running;
         }
         Event::EffectIntent { effect_id } => {
+            let expected = effect_id_for(task);
             let run = task.run.as_mut().ok_or(Error::InvalidTransition)?;
             if run.epoch != record.epoch
                 || run.effect_id.is_some()
                 || task.status != Status::Running
-                || effect_id != &format!("{}:1:command", task.task_id)
+                || effect_id != &expected
             {
                 return Err(Error::InvalidTransition);
             }
@@ -523,6 +524,12 @@ pub(super) async fn git(workspace: &Path, arguments: &[&str]) -> Result<String, 
     Ok(ended.stdout.text.trim().into())
 }
 
+/// The one effect a turn's run records before dispatch:
+/// `<task>:<turn>:command`.
+pub(super) fn effect_id_for(task: &Task) -> String {
+    format!("{}:{}:command", task.task_id, task.turn())
+}
+
 /// Execute a single explicitly granted bounded command. The calling process is
 /// the owner, not a client connection. Use the detached CLI to outlive a client.
 pub async fn execute(directory: &Path, bytes: &[u8]) -> Result<Task, Error> {
@@ -607,7 +614,7 @@ pub async fn execute(directory: &Path, bytes: &[u8]) -> Result<Task, Error> {
         network: network_policy().into(),
         read_scope: "workspace_and_system".into(),
         authority: "local_os_user".into(),
-        trace_file: format!("{}.1.atif.jsonl", task.task_id),
+        trace_file: task.trace_file(task.turn()),
         context,
     };
     owner.record(Event::Admitted {
@@ -616,7 +623,7 @@ pub async fn execute(directory: &Path, bytes: &[u8]) -> Result<Task, Error> {
     fault("after_admission")?;
     let trace_path = owner.dir.join(&admission.trace_file);
     let session = Session::opening(
-        &format!("{}-1", task.task_id),
+        &format!("{}-{}", task.task_id, task.turn()),
         "none",
         "bounded-command",
         &workspace.display().to_string(),
@@ -631,7 +638,7 @@ pub async fn execute(directory: &Path, bytes: &[u8]) -> Result<Task, Error> {
         &Step::said(Source::System, "Execution admitted by the local operator.")
             .noting("admission", json!(admission)),
     )?;
-    let effect_id = format!("{}:1:command", task.task_id);
+    let effect_id = effect_id_for(&task);
     let state = Store::open(&owner.dir)?.show(&task.task_id)?;
     // A cancellation accepted before dispatch permits no effect.
     let mut output_incomplete = false;

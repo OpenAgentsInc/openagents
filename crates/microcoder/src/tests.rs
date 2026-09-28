@@ -1272,7 +1272,7 @@ async fn the_oracle_is_written_first_and_blocks_the_finish_until_it_passes() {
 
 #[test]
 fn microcoder_states_that_it_steers_only_at_a_turn_boundary() {
-    use coder::task::steering::{Acknowledgment, Native, Refusal, Request, Turn};
+    use coder::task::steering::{Acknowledgment, Emulation, Native, Plan, Refusal, Request, Turn};
     assert_eq!(crate::STEERING.adapter, coder::task::adapter::NAME);
     assert_eq!(crate::STEERING.native, Native::TurnBoundary);
     assert_eq!(
@@ -1282,5 +1282,15 @@ fn microcoder_states_that_it_steers_only_at_a_turn_boundary() {
     assert_eq!(
         crate::STEERING.admit(Turn::Running, Request::Native),
         Err(Refusal::Unsupported)
+    );
+    // Stopping the turn and continuing with the message runs only when
+    // the caller chose it.
+    assert_eq!(
+        crate::STEERING.emulation,
+        Some(Emulation::CancelAndContinue)
+    );
+    assert_eq!(
+        crate::STEERING.admit(Turn::Running, Request::Emulated),
+        Ok(Plan::CancelAndContinue)
     );
 }

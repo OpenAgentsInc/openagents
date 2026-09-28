@@ -22,6 +22,15 @@ update this file in the same change and name the test that checks it.
 
 See [the auto-start guide](docs/coder/runtime/host-autostart.md).
 
+## Device commands
+
+| Invariant | Status | Checked by |
+| --- | --- | --- |
+| A device command runs at most once: the host keys it by device and device-minted ID, records it before evaluating it, records the exact task-owner command before applying it, and applies those bytes again after a crash; a replay returns the recorded disposition. | New on 2026-09-28 ([#9835](https://github.com/OpenAgentsInc/openagents/issues/9835)). | `follow_ups_continue_the_task_and_replays_never_run_twice`, `a_recorded_dispatch_is_applied_again_byte_for_byte_after_a_crash` in `crates/coder` |
+| An interrupt supersedes only an older interrupt, never runs, queues, or steers anything, and never stops a turn newer than the one it was based on; commands expire 24 hours after the device minted them. | New on 2026-09-28. | `an_interrupt_supersedes_only_older_interrupts_and_never_a_past_turn`, `expired_and_revoked_commands_never_run` |
+| A command that waits for a turn to end runs only while its sender still holds `operate` under the same grant and epoch. | New on 2026-09-28. | `a_held_command_rechecks_its_sender_before_it_runs`, `a_task_command_reaches_the_owner_with_its_grant_and_epoch` in `crates/coder-access` |
+| A follow-up turn is an inert submission unless the owner's auto-start policy admits it under the same workspace, model, route, and concurrency bounds as a new task. A follow-up never widens a grant or reuses an earlier turn's grant. | New on 2026-09-28. It extends the remote-task-creation rows to later turns. | `a_follow_up_starts_its_turn_only_within_the_policy_bounds`, `a_follow_up_runs_as_the_next_turn_and_carries_the_earlier_one` in `crates/microcoder` |
+
 ## Steering
 
 | Invariant | Status | Checked by |

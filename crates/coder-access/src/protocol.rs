@@ -239,6 +239,68 @@ pub struct TaskCreate {
     pub workspace: String,
 }
 
+/// What a durable task command asks for. The device picks it from task
+/// state and its rights, never from the text.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CommandAction {
+    /// Continue an ended task with a new turn.
+    Send,
+    /// Continue the task with a new turn after the current one ends.
+    Queue,
+    /// Steer the current turn, under the engine's stated semantics.
+    Steer,
+    /// Stop the current turn.
+    Interrupt,
+    /// Answer the engine's pending approval request or question.
+    Answer,
+}
+
+/// A durable task command (`task.command`): the device mints `command`
+/// once and replays it unchanged, however many NIP-HOST requests carry it.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TaskCommand {
+    /// The device-minted command ID: 64 lowercase hexadecimal characters.
+    pub command: String,
+    /// The host-issued task ID.
+    pub task: String,
+    pub action: CommandAction,
+    /// The task revision the device last read.
+    pub based_on: u64,
+    /// The message, or for `interrupt` a single-line reason.
+    pub text: String,
+    /// For `steer` only: the caller chooses the engine's emulated steering.
+    pub emulate: bool,
+    /// When the device minted the command, in Unix seconds.
+    pub issued_at: u64,
+}
+
+impl TaskCommand {
+    /// Check identities, bounds, and that `emulate` goes with `steer` only.
+    ///
+    /// # Errors
+    /// `malformed` for a bad identity or flag, `bounds` for text.
+    pub fn validate(&self) -> Result<()> {
+        identity(&self.command).map_err(Error::from)?;
+        identity(&self.task).map_err(Error::from)?;
+        safe(self.based_on)?;
+        safe(self.issued_at)?;
+        if self.emulate && self.action != CommandAction::Steer {
+            return fail(Code::Malformed, "only a steer chooses emulation");
+        }
+        match self.action {
+            CommandAction::Interrupt => text(&self.text, 512)?,
+            _ => {
+                if self.text.trim().is_empty() || self.text.len() > 16 * 1024 {
+                    return fail(Code::Bounds, "command text exceeds its bound");
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
 /// Typed operations. Each names the one right it requires.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", deny_unknown_fields)]
@@ -299,6 +361,9 @@ pub enum Operation {
     /// List the workspace labels `task.create` accepts on this host.
     #[serde(rename = "workspace.list")]
     ListWorkspaces {},
+    /// A durable task command: send, queue, steer, interrupt, or answer.
+    #[serde(rename = "task.command")]
+    CommandTask { command: TaskCommand },
 }
 impl Operation {
     pub fn name(&self) -> &'static str {
@@ -316,6 +381,7 @@ impl Operation {
             Self::CancelTask { .. } => "task.cancel",
             Self::ArchiveTask { .. } => "task.archive",
             Self::ListWorkspaces {} => "workspace.list",
+            Self::CommandTask { .. } => "task.command",
         }
     }
     /// The right this operation requires. Redemption uses the invitation's
@@ -333,7 +399,8 @@ impl Operation {
             | Self::SteerTask { .. }
             | Self::CancelTask { .. }
             | Self::ArchiveTask { .. }
-            | Self::ListWorkspaces {} => Some(Right::Operate),
+            | Self::ListWorkspaces {}
+            | Self::CommandTask { .. } => Some(Right::Operate),
             Self::OpenTerminal { .. } => Some(Right::Terminal),
         }
     }
@@ -408,6 +475,7 @@ impl Operation {
                 text(reason, 512)?;
             }
             Self::ArchiveTask { task } => identity(task).map_err(Error::from)?,
+            Self::CommandTask { command } => command.validate()?,
         }
         Ok(())
     }
@@ -556,7 +624,8 @@ impl Outcome {
                 | Operation::OpenTerminal { .. }
                 | Operation::SteerTask { .. }
                 | Operation::CancelTask { .. }
-                | Operation::ArchiveTask { .. },
+                | Operation::ArchiveTask { .. }
+                | Operation::CommandTask { .. },
                 Self::Dispatched { receipt },
             ) => receipt.operation == op.name(),
             _ => false,

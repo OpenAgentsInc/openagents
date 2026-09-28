@@ -255,6 +255,18 @@ updated control metadata only through a separately authorized owner flow.
 Unknown handling requires reconciliation; it is not permission to send a
 new command ID with the same intended effect.
 
+### Host-wide device commands
+
+A device enrolled with a host through [HOST](NIP-HOST.md) sends the same kinds
+of control as NIP-HOST `task.command` under its host-wide `operate` right,
+with the same discipline this section sets: a device-minted command ID stable
+through every retransmission, a retained disposition for an identical replay,
+a conflict for different content under the same ID, persistence before any
+effect, and no retargeting of a stale turn. It adds `send` and `queue`
+(follow-up turns), `interrupt`, and `answer`, and an explicit evaluation order
+for interrupts; a command that waits for a turn to end rechecks its sender's
+grant and epoch before it runs.
+
 ## Observation, catch-up, and optional synchronization
 
 A read has `v: "openagents.task-read.v1"`, `request` (common ID), `grant`

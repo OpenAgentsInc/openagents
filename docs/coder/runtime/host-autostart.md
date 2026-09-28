@@ -208,7 +208,22 @@ Each decision appends one line to `~/.openagents/host/autostart.jsonl`
 | `unadmitted` | A started task was still queued 120 seconds later: its owner process refused it. The reason is in the task store's `repository-launch-TASK-*.jsonl` diagnostic. |
 | `policy_on`, `policy_off` | The owner changed the policy, with its bounds. |
 
-Entries never hold a prompt or a title.
+Entries never hold a prompt or a title. An entry about a later turn of a
+continued task carries `turn`, the task revision that turn started at; the
+first turn leaves it out.
+
+## Follow-up turns
+
+A device continues a chat with NIP-HOST `task.command` (`send`, a `queue`
+promotion, or an emulated `steer`). Each starts the task's next turn, which
+is queued exactly like a new task: the inbox records it as `eligible` with
+its `turn`, and the sweep starts it only when the policy is on, lists the
+task's workspace, still names the task's model, and has a free slot, through
+the same admitted routes and a fresh operator grant at the new revision.
+With the policy off, a follow-up turn waits, inert, like any submission. The
+engine gets the new message after the earlier turns it read from the task's
+own traces (at most eight, each message at most 4 KiB), and the new turn's
+trace, `TASK.N.atif.jsonl`, carries them as steps marked `carried_from`.
 
 ## Invariants
 
@@ -230,6 +245,9 @@ records the change:
   starting.
 - Usage probes read a provider credential only when the owner turned them
   on, and a probed reading only reorders admitted routes.
+- A device's follow-up turn starts under exactly these bounds, or not at
+  all; a command that waits for a turn to end runs only while its sender
+  still holds `operate` under the same grant and epoch.
 
 `coder::task::autostart` tests cover each: creation without a policy, the
 workspace allowlist, the concurrency bound and its wait, cancellation and a

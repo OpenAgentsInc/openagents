@@ -552,3 +552,111 @@ fn visible_rename_requires_a_successful_reopen_barrier_before_retry_acknowledgem
     assert_eq!(store.apply(&bytes).unwrap().sequence, 1);
     assert_eq!(store.document.commands.len(), 1);
 }
+
+fn continue_with(command_id: &str, task_id: &str, revision: u64, prompt: &str) -> Vec<u8> {
+    serde_json::to_vec(&Command {
+        schema: COMMAND_SCHEMA.into(),
+        command_id: command_id.into(),
+        task_id: task_id.into(),
+        expected_revision: Some(revision),
+        action: Action::Continue {
+            prompt: prompt.into(),
+        },
+    })
+    .unwrap()
+}
+
+fn correct_with(command_id: &str, task_id: &str, revision: u64, prompt: &str) -> Vec<u8> {
+    serde_json::to_vec(&Command {
+        schema: COMMAND_SCHEMA.into(),
+        command_id: command_id.into(),
+        task_id: task_id.into(),
+        expected_revision: Some(revision),
+        action: Action::Correct {
+            prompt: prompt.into(),
+            reason: "Steered".into(),
+        },
+    })
+    .unwrap()
+}
+
+#[test]
+fn only_an_ended_turn_continues_and_the_newest_instruction_applies() {
+    let dir = private_dir();
+    let mut store = Store::open(dir.path()).unwrap();
+    store.apply(&submit("submit", "task")).unwrap();
+    // A queued turn is not ended.
+    assert!(matches!(
+        store.apply(&continue_with("early", "task", 1, "More")),
+        Err(Error::InvalidTransition)
+    ));
+    store.apply(&cancel("cancel", "task", 1)).unwrap();
+    let receipt = store
+        .apply(&continue_with(
+            "follow-up",
+            "task",
+            2,
+            "Try again with logging.",
+        ))
+        .unwrap();
+    assert_eq!(
+        (receipt.revision, receipt.status, receipt.execution),
+        (3, Status::Queued, Execution::NotStarted)
+    );
+    let task = store.show("task").unwrap();
+    assert_eq!(task.effective_prompt(), "Try again with logging.");
+    assert_eq!(task.turn_started(), 3);
+    // A turn cancelled before it ran leaves no earlier run.
+    assert!(task.earlier.is_empty());
+    assert_eq!(task.cancellation_reason, None);
+    // A correction after the follow-up replaces it before the turn runs;
+    // the ledger holds it until a run reads it.
+    store
+        .apply(&correct_with("correct", "task", 3, "Only the parser."))
+        .unwrap();
+    let task = store.show("task").unwrap();
+    assert_eq!(task.effective_prompt(), "Only the parser.");
+    assert_eq!(task.unconsumed_steers().len(), 1);
+    // A stale follow-up is refused, and the journal replays after reopening.
+    assert!(matches!(
+        store.apply(&continue_with("stale", "task", 3, "More")),
+        Err(Error::RevisionMismatch)
+    ));
+    drop(store);
+    let reopened = Store::open(dir.path()).unwrap();
+    assert_eq!(reopened.show("task").unwrap(), task);
+}
+
+#[test]
+fn follow_ups_are_bounded_per_task() {
+    let dir = private_dir();
+    let mut store = Store::open(dir.path()).unwrap();
+    store.apply(&submit("submit", "task")).unwrap();
+    store.apply(&cancel("cancel-0", "task", 1)).unwrap();
+    let mut revision = 2;
+    // Turns cancelled before running stay at turn one, so a store bounds
+    // runs by MAX_TURNS and commands by MAX_COMMANDS.
+    for index in 0..8 {
+        let receipt = store
+            .apply(&continue_with(
+                &format!("again-{index}"),
+                "task",
+                revision,
+                "Again",
+            ))
+            .unwrap();
+        let cancelled = store
+            .apply(&cancel(
+                &format!("cancel-{}", index + 1),
+                "task",
+                receipt.revision,
+            ))
+            .unwrap();
+        revision = cancelled.revision;
+    }
+    assert_eq!(store.show("task").unwrap().follow_ups.len(), 8);
+    assert!(matches!(
+        store.apply(&continue_with("empty", "task", revision, "  ")),
+        Err(Error::InvalidCommand(_))
+    ));
+}

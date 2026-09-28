@@ -15,7 +15,7 @@ pub mod rights;
 
 pub use client::{Client, Pending};
 pub use coder_connect::RelayPolicy;
-pub use protocol::{Access, Enrollment, Grant, Operation, Outcome};
+pub use protocol::{Access, CommandAction, Enrollment, Grant, Operation, Outcome, TaskCommand};
 pub use rights::{Right, Rights};
 
 pub type Result<T> = std::result::Result<T, Error>;

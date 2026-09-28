@@ -332,6 +332,7 @@ A request is `openagents.host-request.v1`:
 | `task.steer` | `operate` | `dispatched` |
 | `task.cancel` | `operate` | `dispatched` |
 | `task.archive` | `operate` | `dispatched` |
+| `task.command` | `operate` | `dispatched` |
 | `terminal.open` | `terminal` | `dispatched` |
 | `workspace.list` | `operate` | `workspaces` |
 
@@ -354,6 +355,46 @@ steer records replacement instructions and supersedes a running context, a
 cancel requests a stop, and another revision refuses as `stale`. Neither
 grants execution authority. A host answers
 either only after the effect's owner accepts it.
+`task.command` carries `{command}`, one durable task command:
+`{command, task, action, based_on, text, emulate, issued_at}`. `command` is a
+64-hex ID the device mints once and replays unchanged in every later request,
+however long it was offline; the host keys its command journal by the device
+key and that ID, so a replay returns the recorded disposition and never runs
+the command twice, and different content under the same ID refuses as
+`conflict`. `action` is `send`, `queue`, `steer`, `interrupt`, or `answer`,
+chosen from task state and the device's rights, never from the text.
+`based_on` is the task revision the device last read, `text` the message of
+at most 16 KiB (for `interrupt`, a single-line reason of at most 512 bytes),
+`emulate` true only on a `steer` whose caller chose the engine's emulated
+steering, and `issued_at` when the device minted the command. The host
+evaluates a task's commands in arrival order:
+
+1. A decided command returns its outcome.
+2. A command more than 24 hours past `issued_at` expires (`expired`); one
+   dated more than five minutes ahead refuses as `bounds`.
+3. A newer `interrupt` supersedes an older undecided one, and only an
+   interrupt; an interrupt never runs, queues, or steers anything, and one
+   based on a turn that already ended is superseded (`stale`).
+4. `send` starts the next turn of an ended task and refuses as `conflict`
+   while a turn is queued or running or a queued message waits. `queue`
+   waits for the current turn to end and then starts the next turn, in
+   order. `steer` replaces the instructions of a turn that has not started;
+   for a running turn it follows the engine's stated steering
+   ([SESS](NIP-SESS.md#steering-capability)): native steering the engine
+   lacks refuses as `unsupported` unless `emulate` chose the engine's
+   cancel-and-continue emulation, which stops the turn and starts the next
+   turn with the message before any queued message; a steer whose turn
+   already ended becomes the next turn. `answer` refuses as `unsupported`
+   until the engine raises approvals or questions a device can answer.
+
+The host records a command before it evaluates it, and records the exact
+task-owner command before it applies one, applying those bytes again after a
+crash. A command that waits is rechecked when it runs: its sender must still
+hold `operate` under the same grant and epoch, or it refuses as `revoked`.
+A turn a command starts is an inert submission unless the owner's auto-start
+policy admits it, under the same bounds as a new task. `dispatched`
+returns the task ID as its reference; a waiting command is dispatched too.
+An older host refuses `task.command` as `malformed` or `unsupported`.
 `task.archive` carries `{task}`: it takes a finished or cancelled task off
 every device's lists and deletes nothing. The host stops publishing the
 task's activity summary, and its history observer lists the task's
@@ -556,8 +597,8 @@ with the refusal code each must produce; `crates/coder-access/tests/wire.rs`
 checks them.
 [`crates/coder-host`](../../crates/coder-host/README.md) is the resident host
 (`coder host serve`): it serves the direct artifact binding and the
-direct-channel binding, and dispatches `task.create`, `task.steer`, and
-`task.cancel` to the durable task inbox and `terminal.open` to its terminal
+direct-channel binding, and dispatches `task.create`, `task.steer`,
+`task.cancel`, and `task.command` to the durable task inbox and `terminal.open` to its terminal
 host. It records each device's last-seen time for `device.list`. The
 [Computers screens](../../crates/coder-computers/README.md) are its
 interface on iOS, Android, and the terminal: their live service redeems

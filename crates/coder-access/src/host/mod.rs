@@ -36,6 +36,18 @@ pub trait Dispatch: Send {
         device: &str,
         op: &Operation,
     ) -> std::result::Result<Receipt, Code>;
+    /// Dispatch with the admitted principal's grant and epoch, which a
+    /// deferred effect rechecks before it runs. `grant` is `None` for the
+    /// owner. The default ignores it.
+    fn dispatch_as(
+        &mut self,
+        request: &str,
+        device: &str,
+        _grant: Option<(&str, u64)>,
+        op: &Operation,
+    ) -> std::result::Result<Receipt, Code> {
+        self.dispatch(request, device, op)
+    }
     /// The workspace labels `task.create` accepts, for `workspace.list`.
     /// Sorted and distinct. A host without a task owner has none to offer.
     fn workspaces(&mut self) -> std::result::Result<Vec<String>, Code> {
@@ -394,7 +406,8 @@ impl Host {
             | Operation::OpenTerminal { .. }
             | Operation::SteerTask { .. }
             | Operation::CancelTask { .. }
-            | Operation::ArchiveTask { .. } => {
+            | Operation::ArchiveTask { .. }
+            | Operation::CommandTask { .. } => {
                 // Record the admitted intent before the effect. A crash after
                 // dispatch replays the same idempotency key, never a new one.
                 if book.replies.len() >= MAX_REPLIES {
@@ -410,7 +423,8 @@ impl Host {
                     },
                 );
                 store.save(book)?;
-                match dispatch.dispatch(&request.request, &p.key, &request.op) {
+                let grant = p.grant.as_deref().zip(request.epoch);
+                match dispatch.dispatch_as(&request.request, &p.key, grant, &request.op) {
                     Ok(receipt)
                         if receipt.operation == request.op.name()
                             && !receipt.reference.is_empty()

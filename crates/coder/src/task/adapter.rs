@@ -20,15 +20,17 @@ pub const NAME: &str = "microcoder-repository";
 /// starts; the admission records the task revision it read, and the turn's
 /// trace records the consumed correction as its own step. A correction
 /// accepted while a run is going supersedes that run's context and stops
-/// it: that is task-level CTRL cancellation, not steering.
+/// it: that is task-level CTRL cancellation, not steering. The emulated
+/// operation, which a device must choose, stops the run and continues the
+/// task with the message as its next turn.
 pub const STEERING: coder_one::steering::Steering = coder_one::steering::Steering {
     adapter: NAME,
     native: coder_one::steering::Native::TurnBoundary,
-    emulation: None,
+    emulation: Some(coder_one::steering::Emulation::CancelAndContinue),
     acknowledgment: coder_one::steering::Acknowledgment::NextTurnStart,
     limitations: &[
         "A run reads its instructions once, at admission.",
-        "A correction for a running task stops that run; no new turn starts.",
+        "Emulation stops the running turn and starts the next turn with the message.",
     ],
 };
 pub const CONFIG_SCHEMA: &str = "openagents.microcoder.repository-config.v1";
@@ -209,6 +211,112 @@ impl Configuration {
     }
 }
 
+/// The most earlier turns a later turn carries, newest kept.
+pub const MAX_CARRIED_TURNS: usize = 8;
+/// The most bytes of one earlier message a later turn carries.
+pub const MAX_CARRIED_BYTES: usize = 4 * 1024;
+
+/// One earlier turn of a task, as a later turn carries it: the user's
+/// message and the engine's last reply, each bounded.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct EarlierTurn {
+    /// The turn, from one.
+    pub turn: usize,
+    pub prompt: String,
+    pub reply: Option<String>,
+}
+
+impl EarlierTurn {
+    /// The trace steps that carry this turn into a later one, each marked
+    /// with the turn it came from.
+    pub fn steps(&self) -> Vec<Step> {
+        let carried = json!({"turn": self.turn});
+        let mut steps =
+            vec![Step::said(Source::User, &self.prompt).noting("carried_from", carried.clone())];
+        if let Some(reply) = &self.reply {
+            steps.push(Step::said(Source::Agent, reply).noting("carried_from", carried));
+        }
+        steps
+    }
+}
+
+/// The earlier turns of `task` that ran, read from their retained traces
+/// in `directory`: at most [`MAX_CARRIED_TURNS`], newest kept. A trace that
+/// cannot be read contributes its prompt without a reply.
+pub fn earlier_turns(directory: &Path, task: &Task) -> Vec<EarlierTurn> {
+    let mut turns: Vec<EarlierTurn> = task
+        .earlier
+        .iter()
+        .enumerate()
+        .map(|(index, run)| EarlierTurn {
+            turn: index + 1,
+            prompt: bounded(&run.admission.context.prompt),
+            reply: last_reply(&directory.join(&run.admission.trace_file)),
+        })
+        .collect();
+    let skip = turns.len().saturating_sub(MAX_CARRIED_TURNS);
+    turns.drain(..skip);
+    turns
+}
+
+/// The prompt an engine gets for a turn after `earlier`.
+pub fn conversation_prompt(earlier: &[EarlierTurn], prompt: &str) -> String {
+    if earlier.is_empty() {
+        return prompt.to_owned();
+    }
+    let mut text = String::from(
+        "This continues an earlier conversation in this repository. Earlier turns, oldest first:\n",
+    );
+    for turn in earlier {
+        text.push_str(&format!("\nUser (turn {}):\n{}\n", turn.turn, turn.prompt));
+        if let Some(reply) = &turn.reply {
+            text.push_str(&format!("\nCoder (turn {}):\n{reply}\n", turn.turn));
+        }
+    }
+    text.push_str("\nThe user's new message:\n");
+    text.push_str(prompt);
+    text
+}
+
+fn bounded(text: &str) -> String {
+    if text.len() <= MAX_CARRIED_BYTES {
+        return text.to_owned();
+    }
+    let mut end = MAX_CARRIED_BYTES;
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}…", &text[..end])
+}
+
+/// The engine's last reply in a retained trace: the last agent message, or
+/// the rationale of Microcoder's last generated action.
+fn last_reply(path: &Path) -> Option<String> {
+    let bytes = std::fs::read(path).ok()?;
+    let mut reply = None;
+    for line in bytes.split(|byte| *byte == b'\n') {
+        let Ok(record) = serde_json::from_slice::<Value>(line) else {
+            continue;
+        };
+        if record["record"] != "step" {
+            continue;
+        }
+        let step = &record["step"];
+        let message = step["message"].as_str().unwrap_or_default();
+        let agent = matches!(step["source"].as_str(), Some("Agent" | "agent"));
+        if agent && !message.trim().is_empty() {
+            reply = Some(message.to_owned());
+        } else if let Some(rationale) =
+            step["extensions"]["microcoder"]["event"]["generated"]["action"]["Ok"]["rationale"]
+                .as_str()
+                .filter(|text| !text.trim().is_empty())
+        {
+            reply = Some(rationale.to_owned());
+        }
+    }
+    reply.map(|text| bounded(&text))
+}
+
 /// Full bounded process observation; prompt summaries are a caller's projection.
 #[derive(Debug)]
 pub struct CommandObservation {
@@ -226,6 +334,7 @@ pub struct Host {
     admission: owner::Admission,
     before: Snapshot,
     boundary: Boundary,
+    earlier: Vec<EarlierTurn>,
     trace: RefCell<Log>,
     trace_bytes: Cell<usize>,
     started: Instant,
@@ -383,7 +492,7 @@ impl Host {
             }
             .into(),
             authority: "local_os_user".into(),
-            trace_file: format!("{}.1.atif.jsonl", task.task_id),
+            trace_file: task.trace_file(task.turn()),
             context,
         };
         owner.record(owner::Event::Admitted {
@@ -392,13 +501,19 @@ impl Host {
         let mut trace = Log::create_at(
             &owner.dir.join(&admission.trace_file),
             &Session::opening(
-                &format!("{}-1", task.task_id),
+                &format!("{}-{}", task.task_id, task.turn()),
                 &configuration.model,
                 NAME,
                 &workspace.display().to_string(),
                 env!("CARGO_PKG_VERSION"),
             ),
         )?;
+        let earlier = earlier_turns(&owner.dir, &task);
+        for turn in &earlier {
+            for step in turn.steps() {
+                trace.append(&step)?;
+            }
+        }
         trace.append(&Step::said(Source::User, task.effective_prompt()))?;
         for step in super::consumed_steers(&task, &STEERING) {
             trace.append(&step)?;
@@ -421,7 +536,7 @@ impl Host {
         // retain their exact intents and results in this same fsynced ATIF log.
         if Store::open(&owner.dir)?.show(&task.task_id)?.status != Status::CancelRequested {
             owner.record(owner::Event::EffectIntent {
-                effect_id: format!("{}:1:command", task.task_id),
+                effect_id: owner::effect_id_for(&task),
             })?;
         }
         let trace_bytes = std::fs::metadata(trace.path())?.len() as usize;
@@ -431,6 +546,7 @@ impl Host {
             admission,
             before,
             boundary,
+            earlier,
             trace: RefCell::new(trace),
             trace_bytes: Cell::new(trace_bytes),
             started: Instant::now(),
@@ -458,6 +574,20 @@ impl Host {
 
     pub fn prompt(&self) -> &str {
         &self.admission.context.prompt
+    }
+
+    /// The task's earlier turns that ran, oldest first, as this turn's
+    /// trace carries them.
+    pub fn earlier(&self) -> &[EarlierTurn] {
+        &self.earlier
+    }
+
+    /// What the engine is asked to do this turn: the admitted prompt, after
+    /// the earlier turns of the conversation when there are any. The earlier
+    /// turns are context the host read from its own retained traces; they
+    /// grant nothing.
+    pub fn engine_prompt(&self) -> String {
+        conversation_prompt(&self.earlier, self.prompt())
     }
     pub fn context(&self) -> &checks::Context {
         &self.admission.context

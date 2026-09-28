@@ -268,6 +268,8 @@ mod tests {
             checks: Checks::NotRun,
             cancellation_reason: None,
             corrections: Vec::new(),
+            follow_ups: Vec::new(),
+            earlier: Vec::new(),
             run: Some(owner::Run {
                 epoch: 1,
                 admission: owner::Admission {

@@ -246,6 +246,29 @@
         "reason": "No longer needed."
       }
     },
+    "request_task_command": {
+      "v": "openagents.host-request.v1",
+      "requires": [],
+      "request": "7777777777777777777777777777777777777777777777777777777777777777",
+      "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+      "grant": "1111111111111111111111111111111111111111111111111111111111111111",
+      "epoch": 0,
+      "relay": "wss://relay.example.com/",
+      "issued_at": 1790000000,
+      "expires_at": 1790000060,
+      "op": {
+        "kind": "task.command",
+        "command": {
+          "command": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "task": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "action": "queue",
+          "based_on": 3,
+          "text": "Then update the changelog.",
+          "emulate": false,
+          "issued_at": 1789999000
+        }
+      }
+    },
     "request_workspace_list": {
       "v": "openagents.host-request.v1",
       "requires": [],
@@ -877,6 +900,34 @@
         "expires_at": 1790000060,
         "op": {
           "kind": "device.list"
+        }
+      },
+      "code": "malformed"
+    },
+    {
+      "name": "task command choosing emulation for a send",
+      "schema": "request",
+      "body": {
+        "v": "openagents.host-request.v1",
+        "requires": [],
+        "request": "7777777777777777777777777777777777777777777777777777777777777777",
+        "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+        "grant": "1111111111111111111111111111111111111111111111111111111111111111",
+        "epoch": 0,
+        "relay": "wss://relay.example.com/",
+        "issued_at": 1790000000,
+        "expires_at": 1790000060,
+        "op": {
+          "kind": "task.command",
+          "command": {
+            "command": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "task": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "action": "send",
+            "based_on": 3,
+            "text": "Then update the changelog.",
+            "emulate": true,
+            "issued_at": 1789999000
+          }
         }
       },
       "code": "malformed"

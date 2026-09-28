@@ -103,6 +103,7 @@ async fn observe_only_device_cannot_create_a_task_or_open_a_terminal() {
             },
             Right::Operate,
         ),
+        (command(), Right::Operate),
         (terminal(), Right::Terminal),
         (Operation::ListDevices {}, Right::AccessRead),
         (
@@ -554,4 +555,56 @@ fn owner_is_established_locally_and_the_store_is_private() {
         )
         .is_err()
     );
+}
+
+fn command() -> Operation {
+    Operation::CommandTask {
+        command: crate::TaskCommand {
+            command: random_id(),
+            task: random_id(),
+            action: crate::CommandAction::Queue,
+            based_on: 2,
+            text: "Then update the changelog.".into(),
+            emulate: false,
+            issued_at: now(),
+        },
+    }
+}
+
+#[tokio::test]
+async fn a_task_command_reaches_the_owner_with_its_grant_and_epoch() {
+    let f = Fixture::served(0, false).await;
+    let (phone, operator) = f.enroll("standard").await;
+    let Outcome::Dispatched { receipt } = operator.call(command()).await.unwrap() else {
+        panic!("dispatch expected")
+    };
+    assert_eq!(receipt.operation, "task.command");
+    let entry = f.host().devices(now()).unwrap().remove(0);
+    let seen = f.recorder.seen();
+    assert_eq!(
+        seen[0].1,
+        format!("{} {} {}", pubkey(&phone), entry.grant, entry.epoch)
+    );
+    // Emulation belongs to a steer only, and text stays bounded.
+    let Operation::CommandTask { mut command } = command() else {
+        unreachable!()
+    };
+    command.emulate = true;
+    assert!(
+        Operation::CommandTask {
+            command: command.clone()
+        }
+        .validate()
+        .is_err()
+    );
+    command.action = crate::CommandAction::Steer;
+    assert!(
+        Operation::CommandTask {
+            command: command.clone()
+        }
+        .validate()
+        .is_ok()
+    );
+    command.text = "x".repeat(16 * 1024 + 1);
+    assert!(Operation::CommandTask { command }.validate().is_err());
 }

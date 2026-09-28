@@ -12,7 +12,7 @@
 //! running context, and a cancel requests a stop.
 
 use coder_access::Code;
-use coder_access::protocol::TaskCreate;
+use coder_access::protocol::{TaskCommand, TaskCreate};
 use nostr::activity_summary::Phase;
 
 /// A task after an accepted operation.
@@ -61,6 +61,21 @@ pub fn utc(seconds: u64) -> String {
         seconds % 3_600 / 60
     )
 }
+
+/// Who sent a durable task command: the device key and, for a device, the
+/// grant and epoch the host admitted it under. A deferred effect rechecks
+/// these before it runs; the owner has no grant.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Principal {
+    pub device: String,
+    pub grant: Option<String>,
+    pub epoch: Option<u64>,
+}
+
+/// Whether a principal still holds the `operate` right under the same
+/// grant and epoch, now.
+pub type Standing<'a> = &'a (dyn Fn(&Principal) -> bool + Sync);
 
 /// Where admitted task operations go.
 ///
@@ -113,6 +128,23 @@ pub trait Tasks: Send + Sync {
     /// finishing. Archived tasks are not listed.
     /// The host publishes a summary when a revision changes. The default
     /// reports none.
+    /// Record and evaluate a durable task command. The device's command ID
+    /// is its idempotency key across NIP-HOST requests: a replay returns
+    /// the recorded disposition and never runs the command twice. The
+    /// default refuses as `unsupported`.
+    ///
+    /// # Errors
+    /// Returns the NIP-HOST refusal code the device receives.
+    fn command(&self, _principal: &Principal, _command: &TaskCommand) -> Result<TaskRef, Code> {
+        Err(Code::Unsupported)
+    }
+
+    /// Evaluate held commands again, such as a queued message after its
+    /// task's turn ends. `standing` rechecks each sender's grant before a
+    /// deferred command runs. The host calls this periodically, off its
+    /// async runtime. The default does nothing.
+    fn tick(&self, _standing: Standing<'_>) {}
+
     fn current(&self) -> Vec<TaskRef> {
         Vec::new()
     }

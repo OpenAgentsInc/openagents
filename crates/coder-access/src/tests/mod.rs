@@ -44,8 +44,26 @@ impl Dispatch for Recorder {
             reference: request.into(),
         })
     }
+    /// Records the admitted grant and epoch in the device column, so a
+    /// test can see what a deferred effect would recheck.
+    fn dispatch_as(
+        &mut self,
+        request: &str,
+        device: &str,
+        grant: Option<(&str, u64)>,
+        op: &Operation,
+    ) -> std::result::Result<Receipt, Code> {
+        let who = match grant {
+            Some((grant, epoch)) => format!("{device} {grant} {epoch}"),
+            None => device.to_owned(),
+        };
+        self.dispatch(request, &who, op)
+    }
 }
 impl Recorder {
+    pub(super) fn seen(&self) -> Vec<(String, String, String)> {
+        self.0.lock().unwrap().clone()
+    }
     pub(super) fn count(&self) -> usize {
         self.0.lock().unwrap().len()
     }

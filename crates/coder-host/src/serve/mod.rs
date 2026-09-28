@@ -415,7 +415,25 @@ async fn summary_loop(shared: Arc<Shared>) {
     loop {
         ticker.tick().await;
         let tasks = shared.tasks.clone();
-        let Ok(current) = tokio::task::spawn_blocking(move || tasks.current()).await else {
+        let authority = shared.authority.clone();
+        let Ok(current) = tokio::task::spawn_blocking(move || {
+            // Held commands run only while their sender still holds
+            // `operate` under the same grant and epoch.
+            let standing =
+                |principal: &crate::tasks::Principal| match (&principal.grant, principal.epoch) {
+                    (None, None) => true,
+                    (Some(grant), Some(epoch)) => unix_time().is_ok_and(|now| {
+                        authority
+                            .check(&principal.device, grant, epoch, now)
+                            .is_ok_and(|rights| rights.contains(coder_access::Right::Operate))
+                    }),
+                    _ => false,
+                };
+            tasks.tick(&standing);
+            tasks.current()
+        })
+        .await
+        else {
             continue;
         };
         let mut changed: Vec<TaskRef> = current

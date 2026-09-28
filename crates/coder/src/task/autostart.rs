@@ -372,6 +372,10 @@ pub struct Entry {
     pub event: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub task: Option<String>,
+    /// For a follow-up's later turn: the task revision that turn started
+    /// at. Absent means the first turn.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub turn: Option<u64>,
     /// The enrolled device that created the task.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub device: Option<String>,
@@ -398,6 +402,7 @@ impl Entry {
             at,
             event: event.into(),
             task: None,
+            turn: None,
             device: None,
             workspace: None,
             grant_digest: None,
@@ -415,6 +420,18 @@ impl Entry {
     fn detail(mut self, detail: impl Into<String>) -> Self {
         self.detail = Some(detail.into());
         self
+    }
+
+    /// Name a later turn by the revision it started at; the first is left
+    /// implicit, as before turns.
+    fn at_turn(mut self, turn: u64) -> Self {
+        self.turn = (turn > 1).then_some(turn);
+        self
+    }
+
+    /// The task and turn this entry decides.
+    fn subject(&self) -> Option<(String, u64)> {
+        self.task.clone().map(|task| (task, self.turn.unwrap_or(1)))
     }
 }
 
@@ -636,7 +653,16 @@ impl Autostart {
 
     /// Record that `device` created `task` in `workspace` under the policy.
     pub fn eligible(&self, task: &str, device: &str, workspace: &str) {
-        let mut entry = Entry::new((self.now)(), "eligible").task(task);
+        self.eligible_turn(task, device, workspace, 1);
+    }
+
+    /// Record that `device` continued `task` in `workspace` into the turn
+    /// that started at revision `turn` under the policy. The turn starts
+    /// exactly as a new task would, under the same bounds.
+    pub fn eligible_turn(&self, task: &str, device: &str, workspace: &str, turn: u64) {
+        let mut entry = Entry::new((self.now)(), "eligible")
+            .task(task)
+            .at_turn(turn);
         entry.device = Some(device.into());
         entry.workspace = Some(workspace.into());
         if let Err(error) = record(&self.root, &entry) {
@@ -656,15 +682,15 @@ impl Autostart {
         let now = (self.now)();
         let history = journal(&self.root);
         let mut waiting: Vec<Entry> = Vec::new();
-        let mut decided: BTreeSet<String> = BTreeSet::new();
-        let mut started: Vec<(String, u64)> = Vec::new();
-        let mut unadmitted: BTreeSet<String> = BTreeSet::new();
+        let mut decided: BTreeSet<(String, u64)> = BTreeSet::new();
+        let mut started: Vec<((String, u64), u64)> = Vec::new();
+        let mut unadmitted: BTreeSet<(String, u64)> = BTreeSet::new();
         for entry in history {
-            let Some(task) = entry.task.clone() else {
+            let Some(task) = entry.subject() else {
                 continue;
             };
             match entry.event.as_str() {
-                "eligible" if !waiting.iter().any(|w| w.task == entry.task) => {
+                "eligible" if !waiting.iter().any(|w| w.subject() == entry.subject()) => {
                     waiting.push(entry);
                 }
                 "started" => {
@@ -680,7 +706,7 @@ impl Autostart {
                 _ => {}
             }
         }
-        waiting.retain(|entry| entry.task.as_ref().is_some_and(|t| !decided.contains(t)));
+        waiting.retain(|entry| entry.subject().is_some_and(|t| !decided.contains(&t)));
         if waiting.is_empty() && started.iter().all(|(task, _)| unadmitted.contains(task)) {
             return Vec::new();
         }
@@ -714,7 +740,8 @@ impl Autostart {
             };
             let mut active = started
                 .iter()
-                .filter(|(task, at)| match store.show(task) {
+                .filter(|((task, turn), at)| match store.show(task) {
+                    Ok(task) if task.turn_started() != *turn => false,
                     Ok(task) => match task.status {
                         Status::Running | Status::CancelRequested => true,
                         Status::Queued => {
@@ -727,14 +754,16 @@ impl Autostart {
                 .count();
             // A started task still queued after the grace was never admitted
             // by its owner process; say so once, so the journal shows it.
-            for (id, at) in &started {
+            for (subject, at) in &started {
+                let (id, turn) = subject;
                 let stalled = store.show(id).is_ok_and(|task| {
-                    task.status == Status::Queued
+                    task.turn_started() == *turn
+                        && task.status == Status::Queued
                         && task.run.is_none()
                         && now.saturating_sub(*at) >= PENDING_GRACE
                 });
-                if stalled && !unadmitted.contains(id) {
-                    write(Entry::new(now, "unadmitted").task(id).detail(
+                if stalled && !unadmitted.contains(subject) {
+                    write(Entry::new(now, "unadmitted").task(id).at_turn(*turn).detail(
                         "the owner process did not admit the task; read its launch diagnostic in the task store",
                     ));
                 }
@@ -742,6 +771,7 @@ impl Autostart {
             let mut plans = Vec::new();
             for entry in &waiting {
                 let id = entry.task.clone().unwrap_or_default();
+                let turn = entry.subject().map_or(1, |(_, turn)| turn);
                 let workspace = entry.workspace.clone().unwrap_or_default();
                 let task = match store.show(&id) {
                     Ok(task) => task,
@@ -749,15 +779,20 @@ impl Autostart {
                         write(
                             Entry::new(now, "skipped")
                                 .task(&id)
+                                .at_turn(turn)
                                 .detail("the task is gone"),
                         );
                         continue;
                     }
                 };
-                if task.status != Status::Queued || task.run.is_some() {
+                if task.turn_started() != turn
+                    || task.status != Status::Queued
+                    || task.run.is_some()
+                {
                     write(
                         Entry::new(now, "skipped")
                             .task(&id)
+                            .at_turn(turn)
                             .detail("the task is no longer queued"),
                     );
                     continue;
@@ -766,6 +801,7 @@ impl Autostart {
                     write(
                         Entry::new(now, "skipped")
                             .task(&id)
+                            .at_turn(turn)
                             .detail("the policy no longer admits the workspace"),
                     );
                     continue;
@@ -774,6 +810,7 @@ impl Autostart {
                     write(
                         Entry::new(now, "skipped")
                             .task(&id)
+                            .at_turn(turn)
                             .detail("the policy's model changed after the task was created"),
                     );
                     continue;
@@ -788,23 +825,28 @@ impl Autostart {
                     Choice::NoCapacity { until } => {
                         // Record first, then end the task, so the summary a
                         // device receives for the ending can name the reset.
-                        let mut entry = Entry::new(now, "no_capacity").task(&id).detail(
+                        let mut entry = Entry::new(now, "no_capacity").task(&id).at_turn(turn).detail(
                             "no admitted provider has capacity; the task ends instead of starting",
                         );
                         entry.workspace = Some(workspace.clone());
                         entry.resets_at = until;
                         write(entry);
-                        end_without_capacity(&mut store, &id, task.revision, until);
+                        end_without_capacity(&mut store, &id, turn, task.revision, until);
                         continue;
                     }
                     Choice::Unconnected { why } => {
-                        write(Entry::new(now, "refused").task(&id).detail(why));
+                        write(
+                            Entry::new(now, "refused")
+                                .task(&id)
+                                .at_turn(turn)
+                                .detail(why),
+                        );
                         continue;
                     }
                 };
                 active += 1;
                 if policy.engine.usage_probe.is_some() {
-                    let mut entry = Entry::new(now, "usage").task(&id).detail(
+                    let mut entry = Entry::new(now, "usage").task(&id).at_turn(turn).detail(
                         policy
                             .routes()
                             .iter()
@@ -823,6 +865,7 @@ impl Autostart {
                 }
                 plans.push((
                     id,
+                    turn,
                     workspace,
                     task.intent_digest.clone(),
                     task.revision,
@@ -831,10 +874,10 @@ impl Autostart {
             }
             plans
         };
-        for (id, workspace, intent_digest, revision, order) in plans {
+        for (id, turn, workspace, intent_digest, revision, order) in plans {
             let entry = match self.start(&policy, &order, &id, &intent_digest, revision) {
                 Ok(launched) => {
-                    let mut entry = Entry::new(now, "started").task(&id);
+                    let mut entry = Entry::new(now, "started").task(&id).at_turn(turn);
                     entry.workspace = Some(workspace);
                     entry.grant_digest = Some(launched.grant_digest);
                     entry.owner_process = Some(launched.owner_process);
@@ -853,7 +896,10 @@ impl Autostart {
                     ));
                     entry
                 }
-                Err(why) => Entry::new(now, "refused").task(&id).detail(why),
+                Err(why) => Entry::new(now, "refused")
+                    .task(&id)
+                    .at_turn(turn)
+                    .detail(why),
             };
             write(entry);
         }
@@ -898,7 +944,13 @@ impl Autostart {
 /// End a queued task that no admitted provider can serve: the host cancels
 /// it with a reason that names the earliest reset. The command identity is
 /// fixed per task, so a repeat after a crash is an exact retry.
-fn end_without_capacity(store: &mut Store, task: &str, revision: u64, until: Option<u64>) {
+fn end_without_capacity(
+    store: &mut Store,
+    task: &str,
+    turn: u64,
+    revision: u64,
+    until: Option<u64>,
+) {
     let reason = match until {
         Some(until) => format!(
             "No admitted model provider has capacity until {}.",
@@ -908,7 +960,11 @@ fn end_without_capacity(store: &mut Store, task: &str, revision: u64, until: Opt
     };
     let command = Command {
         schema: COMMAND_SCHEMA.into(),
-        command_id: format!("autostart-no-capacity-{task}"),
+        command_id: if turn > 1 {
+            format!("autostart-no-capacity-{task}-{turn}")
+        } else {
+            format!("autostart-no-capacity-{task}")
+        },
         task_id: task.into(),
         expected_revision: Some(revision),
         action: Action::Cancel { reason },
@@ -1509,6 +1565,78 @@ mod tests {
             s.autostart.sweep().iter().all(|e| e.event != "started"),
             "nothing starts twice"
         );
+    }
+
+    fn follow_up(task: &str, command: &str, based_on: u64) -> coder_host::TaskCommand {
+        coder_host::TaskCommand {
+            command: command.repeat(64),
+            task: task.into(),
+            action: coder_host::CommandAction::Send,
+            based_on,
+            text: "Now fix the second flaky test.".into(),
+            emulate: false,
+            // The inbox dates commands by the host's clock.
+            issued_at: unix_now(),
+        }
+    }
+
+    #[test]
+    fn a_follow_up_starts_its_turn_only_within_the_policy_bounds() {
+        let s = setup();
+        policy(1).save(&s.root).unwrap();
+        let phone = coder_host::Principal {
+            device: "phone".into(),
+            grant: Some("e".repeat(64)),
+            epoch: Some(1),
+        };
+        let (allowed, outside) = ("b".repeat(64), "d".repeat(64));
+        s.inbox
+            .create(&allowed, "phone", &create("allowed"))
+            .unwrap();
+        s.inbox.create(&outside, "phone", &create("other")).unwrap();
+        assert_eq!(s.launched.lock().unwrap().len(), 1);
+        s.inbox
+            .cancel(&"1".repeat(64), "phone", &allowed, 1, "Ended")
+            .unwrap();
+        s.inbox
+            .cancel(&"2".repeat(64), "phone", &outside, 1, "Ended")
+            .unwrap();
+        // A follow-up in an admitted workspace starts its turn with a fresh
+        // grant at the revision the turn started at.
+        let continued = s
+            .inbox
+            .command(&phone, &follow_up(&allowed, "a", 2))
+            .unwrap();
+        assert_eq!(
+            (continued.revision, continued.phase),
+            (3, nostr::activity_summary::Phase::Queued)
+        );
+        assert_eq!(s.launched.lock().unwrap().len(), 2);
+        let grant = launched_grant(&s, 1);
+        assert_eq!(
+            (grant.task_id.as_str(), grant.expected_revision),
+            (allowed.as_str(), 3)
+        );
+        let started = journal(&s.root)
+            .into_iter()
+            .filter(|entry| entry.event == "started")
+            .map(|entry| entry.turn)
+            .collect::<Vec<_>>();
+        assert_eq!(started, [None, Some(3)]);
+        // A follow-up outside the policy's workspaces stays inert.
+        s.inbox
+            .command(&phone, &follow_up(&outside, "c", 2))
+            .unwrap();
+        s.autostart.sweep();
+        assert_eq!(s.launched.lock().unwrap().len(), 2);
+        let task = Store::open(&s.store).unwrap().show(&outside).unwrap();
+        assert_eq!((task.status, task.run.is_none()), (Status::Queued, true));
+        // A replay of the first follow-up starts nothing more.
+        s.inbox
+            .command(&phone, &follow_up(&allowed, "a", 2))
+            .unwrap();
+        s.autostart.sweep();
+        assert_eq!(s.launched.lock().unwrap().len(), 2);
     }
 
     #[test]

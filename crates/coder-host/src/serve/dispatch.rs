@@ -47,6 +47,27 @@ impl Dispatch for Dispatcher {
         Ok(self.shared.config.workspaces.keys().cloned().collect())
     }
 
+    fn dispatch_as(
+        &mut self,
+        request: &str,
+        device: &str,
+        grant: Option<(&str, u64)>,
+        op: &Operation,
+    ) -> Result<Receipt, Code> {
+        match op {
+            Operation::CommandTask { command } => {
+                let principal = crate::tasks::Principal {
+                    device: device.into(),
+                    grant: grant.map(|(id, _)| id.to_owned()),
+                    epoch: grant.map(|(_, epoch)| epoch),
+                };
+                let result = self.shared.tasks.clone().command(&principal, command);
+                self.task(op, result)
+            }
+            _ => self.dispatch(request, device, op),
+        }
+    }
+
     fn dispatch(&mut self, request: &str, device: &str, op: &Operation) -> Result<Receipt, Code> {
         let tasks = self.shared.tasks.clone();
         match op {

@@ -27,12 +27,15 @@ pub mod autostart;
 pub mod capacity;
 pub mod checks;
 pub mod cli;
+pub mod commands;
 pub mod owner;
 pub mod remote;
 pub mod usage;
 pub mod view;
 /// Per-engine steering semantics; see [`coder_one::steering`].
 pub use coder_one::steering;
+/// The most turns one task can take. A follow-up past it is refused.
+pub const MAX_TURNS: usize = 64;
 /// The largest command, including JSON whitespace, in bytes.
 pub const MAX_COMMAND_BYTES: usize = 64 * 1024;
 /// The largest persisted inbox document, in bytes.
@@ -78,9 +81,22 @@ pub struct TaskIntent {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Action {
-    Submit { intent: TaskIntent },
-    Cancel { reason: String },
-    Correct { prompt: String, reason: String },
+    Submit {
+        intent: TaskIntent,
+    },
+    Cancel {
+        reason: String,
+    },
+    Correct {
+        prompt: String,
+        reason: String,
+    },
+    /// A follow-up: start the next turn of an ended task with a new user
+    /// message. The earlier turns stay retained; the task is queued again
+    /// and needs a fresh execution grant, exactly like a new task.
+    Continue {
+        prompt: String,
+    },
 }
 
 /// A command identity is global to this store, not scoped to a task or action.
@@ -146,6 +162,22 @@ pub struct Task {
     pub corrections: Vec<Correction>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub run: Option<owner::Run>,
+    /// Follow-up messages, one per turn after the first.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub follow_ups: Vec<FollowUp>,
+    /// The runs of earlier turns, oldest first. The current turn's run is
+    /// `run`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub earlier: Vec<owner::Run>,
+}
+
+/// A user's message that started a later turn of a task.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct FollowUp {
+    /// The task revision the follow-up created.
+    pub revision: u64,
+    pub prompt: String,
 }
 
 /// A retained replacement instruction. Earlier instructions and effects remain visible.
@@ -159,10 +191,37 @@ pub struct Correction {
 
 impl Task {
     /// Current user instructions; this does not change a running grant.
+    ///
+    /// The newest of the last correction and the last follow-up applies:
+    /// a follow-up starts a turn with its message, and a correction after
+    /// it replaces that message before the turn runs.
     pub fn effective_prompt(&self) -> &str {
-        self.corrections
+        match (self.corrections.last(), self.follow_ups.last()) {
+            (Some(correction), Some(follow_up)) if follow_up.revision > correction.revision => {
+                &follow_up.prompt
+            }
+            (Some(correction), _) => &correction.prompt,
+            (None, Some(follow_up)) => &follow_up.prompt,
+            (None, None) => &self.intent.prompt,
+        }
+    }
+
+    /// The current turn, from one. Each follow-up starts the next.
+    pub fn turn(&self) -> usize {
+        self.earlier.len() + 1
+    }
+
+    /// The task revision the current turn started at: one, or the
+    /// revision its follow-up created.
+    pub fn turn_started(&self) -> u64 {
+        self.follow_ups
             .last()
-            .map_or(&self.intent.prompt, |item| &item.prompt)
+            .map_or(1, |follow_up| follow_up.revision)
+    }
+
+    /// The trace file of `turn`: `<task>.<turn>.atif.jsonl`.
+    pub fn trace_file(&self, turn: usize) -> String {
+        format!("{}.{turn}.atif.jsonl", self.task_id)
     }
 
     /// Corrections routed to this task that no admitted run has read: the
@@ -172,6 +231,7 @@ impl Task {
         let read = self
             .run
             .as_ref()
+            .or(self.earlier.last())
             .map_or(0, |run| run.admission.context.task_revision);
         self.corrections
             .iter()
@@ -361,6 +421,13 @@ pub fn parse_command(bytes: &[u8]) -> Result<Command, Error> {
             {
                 return Err(Error::InvalidCommand(
                     "correction requires a revision, prompt, and reason",
+                ));
+            }
+        }
+        Action::Continue { prompt } => {
+            if command.expected_revision.is_none() || !text(prompt, 32 * 1024, true) {
+                return Err(Error::InvalidCommand(
+                    "a follow-up requires a revision and a bounded prompt",
                 ));
             }
         }
@@ -688,6 +755,8 @@ fn transition(
                     cancellation_reason: None,
                     corrections: Vec::new(),
                     run: None,
+                    follow_ups: Vec::new(),
+                    earlier: Vec::new(),
                 },
             );
         }
@@ -713,6 +782,34 @@ fn transition(
                         Some("instructions corrected; current context superseded".into());
                 }
             }
+        }
+        Action::Continue { prompt } => {
+            let task = tasks.get_mut(&command.task_id).ok_or(Error::NotFound)?;
+            if command.expected_revision != Some(task.revision) {
+                return Err(Error::RevisionMismatch);
+            }
+            // Only an ended turn continues: never a running, queued, or
+            // unknown one, and never while its checks run.
+            if !matches!(task.status, Status::Finished | Status::Cancelled)
+                || task.checks == Checks::Running
+            {
+                return Err(Error::InvalidTransition);
+            }
+            if task.turn() >= MAX_TURNS {
+                return Err(Error::LimitExceeded);
+            }
+            if let Some(run) = task.run.take() {
+                task.earlier.push(run);
+            }
+            task.revision += 1;
+            task.status = Status::Queued;
+            task.execution = Execution::NotStarted;
+            task.checks = Checks::NotRun;
+            task.cancellation_reason = None;
+            task.follow_ups.push(FollowUp {
+                revision: task.revision,
+                prompt: prompt.clone(),
+            });
         }
         Action::Cancel { reason } => {
             let task = tasks.get_mut(&command.task_id).ok_or(Error::NotFound)?;

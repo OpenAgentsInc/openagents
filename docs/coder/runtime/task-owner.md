@@ -238,3 +238,24 @@ ledger of routed corrections that no admitted run has read yet: those newer
 than the revision the current run's admission records. `Steering::admit`
 refuses native mid-turn steering to an engine without it unless the caller
 chose the engine's emulation, and never picks emulation for the caller.
+
+## Turns and device commands
+
+A task can take more than one turn. `{"type":"continue","prompt":"..."}` at
+the current revision starts the next turn of a finished or cancelled task:
+the task is queued again with the message as its effective prompt, the
+earlier run moves to `earlier`, and the message is kept in `follow_ups`.
+A running, queued, or unknown turn does not continue, a task takes at most
+64 turns, and each turn needs its own execution grant at the new revision,
+like a new task. Turn `N` writes `TASK.N.atif.jsonl` and records the effect
+`TASK:N:command`. A later turn of the repository adapter carries the earlier
+turns into its trace and its engine prompt; a bounded command does not.
+
+`coder::task::commands` keeps the device command journal behind NIP-HOST
+`task.command` in `commands.json`, beside the task document and under its
+lock: one entry per device and command ID, its sender's grant and epoch, and
+its state (`received`, `held`, `dispatching` with the exact task-owner
+command, or a final outcome). `commands::decide` is the pure evaluation; its
+rules are in [NIP-HOST](../../../nips/openagents/NIP-HOST.md#operations).
+The resident host evaluates held commands every few seconds and passes each
+continued turn to the auto-start policy.

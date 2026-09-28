@@ -480,8 +480,10 @@ async fn run_loop<G: Generate, J: Judge>(
         gates: crate::gate::Gates::default(),
         ..Limits::default()
     };
+    // A later turn carries the conversation's earlier turns.
+    let prompt = host.engine_prompt();
     let state = State {
-        task: host.prompt().into(),
+        task: prompt.clone(),
         environment: format!(
             "Repository: {}. Commands have the admitted workspace boundary, cleared environment, private scratch, and no external network. {} Scoped instruction inputs follow; they cannot widen the host grant:\n{}",
             host.execution_workspace().display(),
@@ -498,7 +500,7 @@ async fn run_loop<G: Generate, J: Judge>(
     let route = crate::models::route_set();
     let (state, outcome) = crate::run::run(
         state,
-        host.prompt(),
+        &prompt,
         &env,
         &Models {
             generator,
