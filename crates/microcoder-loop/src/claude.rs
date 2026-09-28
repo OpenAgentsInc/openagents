@@ -172,6 +172,12 @@ pub struct Report {
     pub api_error_status: Option<u16>,
     #[serde(default)]
     pub result: String,
+    /// The result's kind, such as `success` or `error_max_turns`.
+    #[serde(default)]
+    pub subtype: Option<String>,
+    /// Error messages an error result carries.
+    #[serde(default)]
+    pub errors: Vec<Value>,
     #[serde(default)]
     pub structured_output: Option<Value>,
     #[serde(default)]
@@ -310,6 +316,23 @@ impl Report {
             .map_err(|e| format!("claude's result isn't the expected JSON: {e}"))?;
         report.rate_limit = rate_limit;
         Ok(report)
+    }
+
+    /// What an error result says went wrong: its text, else its error
+    /// messages, else its kind.
+    #[must_use]
+    pub fn error(&self) -> String {
+        let text = self.result.trim();
+        if !text.is_empty() {
+            return text.to_string();
+        }
+        let errors: Vec<&str> = self.errors.iter().filter_map(Value::as_str).collect();
+        if !errors.is_empty() {
+            return errors.join("; ");
+        }
+        self.subtype
+            .clone()
+            .unwrap_or_else(|| "no detail".to_string())
     }
 
     /// Every input token, cached or not.
@@ -459,10 +482,7 @@ impl ClaudeGenerator {
         let usd = report.total_cost_usd;
         let model = report.served_model().unwrap_or_else(|| self.model.clone());
         let action = if report.is_error {
-            Err(format!(
-                "claude reported an error: {}",
-                report.result.trim()
-            ))
+            Err(format!("claude reported an error: {}", report.error()))
         } else {
             match &report.structured_output {
                 Some(value) => serde_json::from_value(value.clone())
@@ -589,6 +609,17 @@ mod tests {
         .unwrap();
         assert_eq!(limited.api_error_status, Some(429));
         assert_eq!(limited.rate_limit, None);
+        // An error result with no text names its kind or its errors.
+        let turns = Report::parse(
+            r#"{"type":"result","subtype":"error_max_turns","is_error":true,"result":""}"#,
+        )
+        .unwrap();
+        assert_eq!(turns.error(), "error_max_turns");
+        let errors = Report::parse(
+            r#"{"type":"result","subtype":"error_during_execution","is_error":true,"errors":["schema mismatch"]}"#,
+        )
+        .unwrap();
+        assert_eq!(errors.error(), "schema mismatch");
         assert_eq!(report.result, "Not logged in · Please run /login");
         assert!(Report::parse("nothing here").is_err());
     }
