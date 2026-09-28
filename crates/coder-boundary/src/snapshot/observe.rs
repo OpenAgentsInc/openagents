@@ -18,14 +18,29 @@
 //! Links are never opened. A link's entry is its `readlinkat` target,
 //! which is why a link pointing outside the root — into anything at all
 //! — pulls nothing in.
+//!
+//! Files are hashed by a few worker threads while the walk lists
+//! directories; each worker opens its file relative to the directory
+//! descriptor the walk found it in, exactly as the walk would. A digest
+//! is reused, without reading the file again, only for a file whose
+//! device, inode, length, mode, modification time, and status-change time
+//! all equal those of a file this process hashed, and only when both
+//! times were at least [`SETTLED`] seconds old when it was hashed. A
+//! write moves the status-change time, which no unprivileged process can
+//! set back, so a reused digest is the digest of the same bytes; a file
+//! written moments before an observation is always read again.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::ffi::{CStr, CString, OsStr, OsString};
 use std::fs::File;
 use std::io::Read as _;
 use std::os::fd::{AsRawFd, FromRawFd};
 use std::os::unix::ffi::OsStrExt;
+use std::os::unix::fs::MetadataExt as _;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, OnceLock, mpsc};
+use std::time::{Duration, SystemTime};
 
 use sha2::{Digest, Sha256};
 
@@ -40,6 +55,21 @@ const FAULT_MAX: usize = 64;
 /// answer cannot grow without bound.
 const LINK_MAX: usize = 64 * 1024;
 
+/// How old a file's modification and status-change times must be, when
+/// it is hashed, for its digest to be reused by a later observation.
+const SETTLED: Duration = Duration::from_secs(2);
+
+/// The most digests this process keeps for reuse; past it, the store is
+/// emptied and refilled.
+const REUSED_MAX: usize = 400_000;
+
+/// The most file workers one walk runs.
+const WORKERS_MAX: usize = 8;
+
+/// The most files queued for the workers at once, so the directory
+/// descriptors they hold stay few.
+const QUEUED_MAX: usize = 64;
+
 /// What `fstatat` says an entry is.
 enum Kind {
     Directory,
@@ -53,7 +83,6 @@ enum Kind {
 struct Walk {
     entries: BTreeMap<PathBuf, Entry>,
     faults: Vec<Fault>,
-    hashed: u64,
     /// Every listed entry counts against the entries bound — a failed
     /// one included — so a tree cannot exhaust the budget on successes
     /// alone or on failures alone.
@@ -84,7 +113,6 @@ pub(super) fn walk(root: &Path, limits: Limits) -> Snapshot {
     let mut walk = Walk {
         entries: BTreeMap::new(),
         faults: Vec::new(),
-        hashed: 0,
         attempts: 0,
         limits,
     };
@@ -138,18 +166,110 @@ pub(super) fn walk(root: &Path, limits: Limits) -> Snapshot {
         }
     }
 
+    let hashed = AtomicU64::new(0);
+    let over = AtomicBool::new(false);
+    let workers = std::thread::available_parallelism()
+        .map_or(1, std::num::NonZeroUsize::get)
+        .clamp(1, WORKERS_MAX);
+    let (jobs, queue) = mpsc::sync_channel::<Job>(QUEUED_MAX);
+    let queue = Mutex::new(queue);
+    let (done, results) = mpsc::channel::<(PathBuf, Hashed)>();
+    std::thread::scope(|scope| {
+        for _ in 0..workers {
+            let (queue, done, hashed, over) = (&queue, done.clone(), &hashed, &over);
+            scope.spawn(move || {
+                loop {
+                    let job = match queue.lock() {
+                        Ok(queue) => queue.recv(),
+                        Err(_) => return,
+                    };
+                    let Ok(job) = job else { return };
+                    let result = if over.load(Ordering::Relaxed) {
+                        Hashed::Bytes
+                    } else {
+                        file(&job.dir, &job.name, limits.bytes, hashed)
+                    };
+                    if matches!(result, Hashed::Bytes) {
+                        over.store(true, Ordering::Relaxed);
+                    }
+                    if done.send((job.path, result)).is_err() {
+                        return;
+                    }
+                }
+            });
+        }
+        list(&mut walk, root_fd, &jobs, &hashed, &over);
+        drop(jobs);
+    });
+    drop(done);
+    // Files are recorded after the listing; their faults follow the
+    // listing's, in path order, so the same tree faults the same way.
+    let mut faults: Vec<(PathBuf, Fault)> = Vec::new();
+    let mut bytes = false;
+    for (path, result) in results {
+        match result {
+            Hashed::File(entry) => {
+                walk.entries.insert(path, entry);
+            }
+            Hashed::Read(error) => faults.push((path.clone(), Fault::Read { path, error })),
+            Hashed::Bytes => bytes = true,
+        }
+    }
+    faults.sort_by(|a, b| a.0.cmp(&b.0));
+    for (_, fault) in faults {
+        walk.fault(fault);
+    }
+    if bytes {
+        walk.fault(Fault::Bytes {
+            limit: limits.bytes,
+        });
+    }
+    finish(walk, canonical)
+}
+
+/// One file for a worker: the directory descriptor it was found in, its
+/// name there, and its path under the root.
+struct Job {
+    dir: Arc<File>,
+    name: OsString,
+    path: PathBuf,
+}
+
+/// What a worker made of one file.
+enum Hashed {
+    File(Entry),
+    Read(String),
+    /// The byte bound was reached.
+    Bytes,
+}
+
+/// List the tree from its root descriptor, recording directories, links,
+/// and other entries, and queueing every file for the workers. It stops
+/// at the entry bound, or once a worker reached the byte bound.
+fn list(
+    walk: &mut Walk,
+    root_fd: File,
+    jobs: &mpsc::SyncSender<Job>,
+    hashed: &AtomicU64,
+    over: &AtomicBool,
+) {
+    let limits = walk.limits;
     // Each pending directory holds its own descriptor, so listing it
     // reads the directory that was found, not whatever the path names by
     // the time the walk reaches it.
     let mut pending: Vec<(PathBuf, File)> = vec![(PathBuf::new(), root_fd)];
     'walk: while let Some((rel, dir)) = pending.pop() {
+        if over.load(Ordering::Relaxed) {
+            break;
+        }
+        let dir = Arc::new(dir);
         if walk.attempts > walk.limits.entries {
             walk.fault(Fault::Entries {
                 limit: limits.entries,
             });
             break;
         }
-        let names = match list(&dir, walk.limits.entries - walk.attempts) {
+        let names = match listing(&dir, walk.limits.entries - walk.attempts) {
             Ok((_, true)) => {
                 walk.fault(Fault::Entries {
                     limit: limits.entries,
@@ -199,16 +319,35 @@ pub(super) fn walk(root: &Path, limits: Limits) -> Snapshot {
                     },
                     Err(error) => walk.read(path, error),
                 },
-                Kind::File => match file(&mut walk, &dir, &name, &path) {
-                    Some(entry) => {
-                        walk.entries.insert(path, entry);
+                // A file whose digest this process already took, and that
+                // nothing moved since, needs no worker.
+                Kind::File if let Some(digest) = reused(&Stamp::at(&st)) => {
+                    let length = u64::try_from(st.st_size).unwrap_or(u64::MAX);
+                    if hashed.fetch_add(length, Ordering::Relaxed) + length > limits.bytes {
+                        over.store(true, Ordering::Relaxed);
+                        break 'walk;
                     }
-                    None => {
-                        if walk.hashed > walk.limits.bytes {
-                            break 'walk;
-                        }
+                    walk.entries.insert(
+                        path,
+                        Entry::File {
+                            id: id_of(&st),
+                            length,
+                            digest,
+                            modified: modified_of(&st),
+                            mode: mode_of(&st),
+                        },
+                    );
+                }
+                Kind::File => {
+                    let job = Job {
+                        dir: dir.clone(),
+                        name,
+                        path,
+                    };
+                    if jobs.send(job).is_err() || over.load(Ordering::Relaxed) {
+                        break 'walk;
                     }
-                },
+                }
                 Kind::Link => match link_target(&dir, &name) {
                     Ok(target) => {
                         walk.entries.insert(
@@ -235,7 +374,6 @@ pub(super) fn walk(root: &Path, limits: Limits) -> Snapshot {
             }
         }
     }
-    finish(walk, canonical)
 }
 
 fn finish(walk: Walk, root: PathBuf) -> Snapshot {
@@ -247,64 +385,133 @@ fn finish(walk: Walk, root: PathBuf) -> Snapshot {
 }
 
 /// One file, hashed under the byte bound and checked for a write that
-/// landed mid-read.
+/// landed mid-read, or its earlier digest when nothing about it moved.
 ///
-/// The entry comes from the open descriptor's `fstat`, not the earlier
+/// The entry comes from the open descriptor's `fstat`, not the walk's
 /// `fstatat`: between the two the path may name something else, and the
 /// descriptor pins the file that was actually hashed. A metadata change
 /// across the read is a fault — the digest of a moving file is no
 /// observation at all.
-fn file(walk: &mut Walk, dir: &File, name: &OsStr, path: &Path) -> Option<Entry> {
+fn file(dir: &File, name: &OsStr, cap: u64, hashed: &AtomicU64) -> Hashed {
     let mut file = match open_at(dir, name, FILE_FLAGS) {
         Ok(file) => file,
-        Err(error) => {
-            walk.read(path.to_path_buf(), error);
-            return None;
-        }
+        Err(error) => return Hashed::Read(error.to_string()),
     };
     let before = match file.metadata() {
         Ok(before) if before.is_file() => before,
         // The entry named itself a file and opened as something else.
-        Ok(_) => {
-            walk.read(path.to_path_buf(), "changed while it was being opened");
-            return None;
-        }
-        Err(error) => {
-            walk.read(path.to_path_buf(), error);
-            return None;
-        }
+        Ok(_) => return Hashed::Read("changed while it was being opened".into()),
+        Err(error) => return Hashed::Read(error.to_string()),
     };
-    let digest = match hash(&mut file, walk.limits.bytes, &mut walk.hashed) {
+    let stamp = Stamp::of(&before);
+    let entry = |digest| {
+        Hashed::File(Entry::File {
+            id: id(&before),
+            length: before.len(),
+            digest,
+            modified: before.modified().ok(),
+            mode: mode(&before),
+        })
+    };
+    if let Some(digest) = reused(&stamp) {
+        // A reused digest still counts its bytes: the bound says how big a
+        // tree may be, not how much of it was read this time.
+        if hashed.fetch_add(before.len(), Ordering::Relaxed) + before.len() > cap {
+            return Hashed::Bytes;
+        }
+        return entry(digest);
+    }
+    let started = SystemTime::now();
+    let digest = match hash(&mut file, cap, hashed) {
         Ok(Some(digest)) => digest,
-        Ok(None) => {
-            walk.fault(Fault::Bytes {
-                limit: walk.limits.bytes,
-            });
-            return None;
-        }
-        Err(error) => {
-            walk.read(path.to_path_buf(), error);
-            return None;
-        }
+        Ok(None) => return Hashed::Bytes,
+        Err(error) => return Hashed::Read(error),
     };
     let after = match file.metadata() {
         Ok(after) => after,
-        Err(error) => {
-            walk.read(path.to_path_buf(), error);
-            return None;
-        }
+        Err(error) => return Hashed::Read(error.to_string()),
     };
-    if !steady(&before, &after) {
-        walk.read(path.to_path_buf(), "changed while it was being read");
-        return None;
+    if !steady(&before, &after) || Stamp::of(&after) != stamp {
+        return Hashed::Read("changed while it was being read".into());
     }
-    Some(Entry::File {
-        id: id(&before),
-        length: before.len(),
-        digest,
-        modified: before.modified().ok(),
-        mode: mode(&before),
-    })
+    if stamp.settled(started) {
+        keep(stamp, digest);
+    }
+    entry(digest)
+}
+
+/// Everything about a file that a write to it moves: its identity,
+/// length, mode, and modification and status-change times.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+struct Stamp {
+    dev: u64,
+    ino: u64,
+    len: u64,
+    mode: u32,
+    modified: (i64, i64),
+    changed: (i64, i64),
+}
+
+impl Stamp {
+    fn of(metadata: &std::fs::Metadata) -> Self {
+        Stamp {
+            dev: metadata.dev(),
+            ino: metadata.ino(),
+            len: metadata.size(),
+            mode: metadata.mode(),
+            modified: (metadata.mtime(), metadata.mtime_nsec()),
+            changed: (metadata.ctime(), metadata.ctime_nsec()),
+        }
+    }
+
+    /// The stamp of an `fstatat` result, as [`Stamp::of`] reads an open
+    /// descriptor's.
+    #[allow(clippy::unnecessary_cast, clippy::useless_conversion)]
+    fn at(st: &libc::stat) -> Self {
+        Stamp {
+            dev: st.st_dev as u64,
+            ino: st.st_ino as u64,
+            len: u64::try_from(st.st_size).unwrap_or(u64::MAX),
+            mode: st.st_mode as u32,
+            modified: (st.st_mtime as i64, st.st_mtime_nsec as i64),
+            changed: (st.st_ctime as i64, st.st_ctime_nsec as i64),
+        }
+    }
+
+    /// Whether both times were at least [`SETTLED`] old at `started`, so a
+    /// write after the hash cannot leave them unchanged.
+    fn settled(&self, started: SystemTime) -> bool {
+        let Some(horizon) = started
+            .checked_sub(SETTLED)
+            .and_then(|at| at.duration_since(SystemTime::UNIX_EPOCH).ok())
+        else {
+            return false;
+        };
+        let horizon = (
+            i64::try_from(horizon.as_secs()).unwrap_or(i64::MAX),
+            i64::from(horizon.subsec_nanos()),
+        );
+        self.modified < horizon && self.changed < horizon
+    }
+}
+
+/// Digests this process hashed, by the stamp of the file they were taken of.
+fn reuse() -> &'static Mutex<HashMap<Stamp, [u8; 32]>> {
+    static REUSE: OnceLock<Mutex<HashMap<Stamp, [u8; 32]>>> = OnceLock::new();
+    REUSE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn reused(stamp: &Stamp) -> Option<[u8; 32]> {
+    reuse().lock().ok()?.get(stamp).copied()
+}
+
+fn keep(stamp: Stamp, digest: [u8; 32]) {
+    if let Ok(mut map) = reuse().lock() {
+        if map.len() >= REUSED_MAX {
+            map.clear();
+        }
+        map.insert(stamp, digest);
+    }
 }
 
 /// Whether the file read is the file hashed: same length, same
@@ -318,16 +525,15 @@ fn steady(before: &std::fs::Metadata, after: &std::fs::Metadata) -> bool {
 
 /// The SHA-256 of the open file's contents, charged against the walk's
 /// byte bound. `Ok(None)` is the bound reached.
-fn hash(file: &mut File, cap: u64, hashed: &mut u64) -> Result<Option<[u8; 32]>, String> {
+fn hash(file: &mut File, cap: u64, hashed: &AtomicU64) -> Result<Option<[u8; 32]>, String> {
     let mut sha = Sha256::new();
-    let mut chunk = [0u8; 8 * 1024];
+    let mut chunk = vec![0u8; 64 * 1024];
     loop {
         let read = file.read(&mut chunk).map_err(|error| error.to_string())?;
         if read == 0 {
             return Ok(Some(sha.finalize().into()));
         }
-        *hashed += read as u64;
-        if *hashed > cap {
+        if hashed.fetch_add(read as u64, Ordering::Relaxed) + read as u64 > cap {
             return Ok(None);
         }
         sha.update(&chunk[..read]);
@@ -337,7 +543,7 @@ fn hash(file: &mut File, cap: u64, hashed: &mut u64) -> Result<Option<[u8; 32]>,
 /// The names one directory holds, listed through a duplicated descriptor
 /// — `fdopendir` owns what it is handed, and the walk keeps its
 /// descriptor for the children's `openat`.
-fn list(dir: &File, limit: usize) -> std::io::Result<(Vec<OsString>, bool)> {
+fn listing(dir: &File, limit: usize) -> std::io::Result<(Vec<OsString>, bool)> {
     let dup = unsafe { libc::fcntl(dir.as_raw_fd(), libc::F_DUPFD_CLOEXEC, 0) };
     if dup < 0 {
         return Err(std::io::Error::last_os_error());
@@ -545,6 +751,21 @@ fn id_of(st: &libc::stat) -> Option<Id> {
     Some((st.st_dev as u64, st.st_ino))
 }
 
+/// The modification time of an `fstatat` result, as `Metadata::modified`
+/// reads it from a descriptor.
+#[allow(clippy::unnecessary_cast)]
+fn modified_of(st: &libc::stat) -> Option<SystemTime> {
+    let seconds = st.st_mtime as i64;
+    let nanos = u32::try_from(st.st_mtime_nsec as i64).ok()?;
+    if seconds >= 0 {
+        SystemTime::UNIX_EPOCH.checked_add(Duration::new(seconds as u64, nanos))
+    } else {
+        SystemTime::UNIX_EPOCH
+            .checked_sub(Duration::from_secs(seconds.unsigned_abs()))?
+            .checked_add(Duration::from_nanos(u64::from(nanos)))
+    }
+}
+
 /// Permission bits from an `fstatat` result.
 ///
 /// `st_mode` is `u16` on macOS and `u32` on Linux.
@@ -581,7 +802,7 @@ mod tests {
             std::fs::write(dir.path().join(i.to_string()), b"x").unwrap();
         }
         let fd = open(&dir.path().canonicalize().unwrap(), DIR_FLAGS).unwrap();
-        let (names, exceeded) = list(&fd, 3).unwrap();
+        let (names, exceeded) = listing(&fd, 3).unwrap();
         assert_eq!(names.len(), 3);
         assert!(exceeded);
     }
@@ -603,14 +824,66 @@ mod tests {
         let name = cstring(path.join("fifo").as_os_str()).unwrap();
         assert_eq!(unsafe { libc::mkfifo(name.as_ptr(), 0o600) }, 0);
         let fd = open(&path, DIR_FLAGS).unwrap();
-        let mut walk = Walk {
-            entries: BTreeMap::new(),
-            faults: Vec::new(),
-            hashed: 0,
-            attempts: 0,
-            limits: Limits::default(),
+        let hashed = AtomicU64::new(0);
+        assert!(matches!(
+            file(&fd, OsStr::new("fifo"), u64::MAX, &hashed),
+            Hashed::Read(_)
+        ));
+    }
+
+    /// A digest is reused only while nothing about the file moved: a
+    /// rewrite of the same length with its modification time put back
+    /// still moves its status-change time, so it is read again.
+    #[test]
+    fn a_rewrite_that_restores_the_modification_time_is_read_again() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().canonicalize().unwrap();
+        let target = path.join("file");
+        std::fs::write(&target, b"first").unwrap();
+        let old = SystemTime::now() - Duration::from_secs(3600);
+        File::options()
+            .write(true)
+            .open(&target)
+            .unwrap()
+            .set_modified(old)
+            .unwrap();
+        // Past the settling time, the digest is kept for reuse.
+        std::thread::sleep(SETTLED + Duration::from_millis(200));
+        let first = crate::Snapshot::observe(&path);
+        let again = crate::Snapshot::observe(&path);
+        assert!(first.is_complete() && again.is_complete());
+        assert_eq!(first.digest(), again.digest());
+        std::fs::write(&target, b"other").unwrap();
+        File::options()
+            .write(true)
+            .open(&target)
+            .unwrap()
+            .set_modified(old)
+            .unwrap();
+        let rewritten = crate::Snapshot::observe(&path);
+        assert!(rewritten.is_complete());
+        assert_ne!(first.digest(), rewritten.digest());
+        assert!(rewritten.matches_file(Path::new("file"), b"other"));
+    }
+
+    #[test]
+    fn a_fresh_file_is_never_kept_for_reuse() {
+        let now = SystemTime::now();
+        let since_epoch = now.duration_since(SystemTime::UNIX_EPOCH).unwrap();
+        let fresh = (since_epoch.as_secs() as i64, 0);
+        let stamp = Stamp {
+            dev: 1,
+            ino: 2,
+            len: 3,
+            mode: 0o644,
+            modified: (0, 0),
+            changed: fresh,
         };
-        assert!(file(&mut walk, &fd, OsStr::new("fifo"), Path::new("fifo")).is_none());
-        assert!(!walk.faults.is_empty());
+        assert!(!stamp.settled(now));
+        let old = Stamp {
+            changed: (0, 0),
+            ..stamp
+        };
+        assert!(old.settled(now));
     }
 }
