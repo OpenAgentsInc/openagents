@@ -418,10 +418,31 @@ pub async fn connect_within(
 /// long to wait for them once the worker has been heard from.
 #[derive(Clone, Copy)]
 struct Posted<'a> {
-    request: &'a Event,
+    /// The request to publish, or `None` when following a request an
+    /// earlier process already published.
+    request: Option<&'a Event>,
+    request_id: &'a str,
     subscription: &'a str,
     conversation: &'a [u8; 32],
     answer: Duration,
+}
+
+/// A job request signed and encrypted but not yet published.
+///
+/// Its ID is the job's name on the relay before anything is on the wire,
+/// so a caller can record it durably and later [`RelayDoor::follow`] the
+/// job from another process.
+pub struct Prepared {
+    request: Event,
+    conversation: [u8; 32],
+}
+
+impl Prepared {
+    /// The request event's ID, hex.
+    #[must_use]
+    pub fn id(&self) -> &str {
+        &self.request.id
+    }
 }
 
 /// What one NIP-CJ job came back with: the result payload and what
@@ -566,30 +587,102 @@ impl RelayDoor {
     /// given, not the door's default.
     async fn job_within(
         &self,
-        mut payload: Value,
+        payload: Value,
         answer: Duration,
         sink: &mut (dyn FnMut(&str) + Send),
     ) -> (String, Result<Answer, GenerateError>) {
+        let prepared = match self.prepare(payload) {
+            Ok(prepared) => prepared,
+            Err(error) => return (String::new(), Err(error)),
+        };
+        let answered = self.post(&prepared, answer, sink).await;
+        (prepared.request.id, answered)
+    }
+
+    /// Signs and encrypts `payload` as a job request without publishing
+    /// it, so its ID can be recorded before [`RelayDoor::post`] sends it.
+    ///
+    /// # Errors
+    ///
+    /// [`GenerateError::Stream`] when the payload could not be encrypted.
+    pub fn prepare(&self, mut payload: Value) -> Result<Prepared, GenerateError> {
         if let Some(object) = payload.as_object_mut() {
             object.insert("v".to_string(), json!(PAYLOAD_VERSION));
         }
-        let (request, conversation) = match self.request_payload(&payload) {
-            Ok(signed) => signed,
-            Err(error) => return (String::new(), Err(error)),
-        };
-        let mut socket = match self.connection().await {
-            Ok(socket) => socket,
-            Err(error) => return (request.id, Err(error)),
-        };
-        let subscription = format!("job-{}", &request.id[..16]);
+        let (request, conversation) = self.request_payload(&payload)?;
+        Ok(Prepared {
+            request,
+            conversation,
+        })
+    }
+
+    /// Publishes a prepared request on a socket of its own and waits up
+    /// to `answer` for its result once the worker has been heard from.
+    ///
+    /// # Errors
+    ///
+    /// As [`RelayDoor::job`].
+    pub async fn post(
+        &self,
+        prepared: &Prepared,
+        answer: Duration,
+        sink: &mut (dyn FnMut(&str) + Send),
+    ) -> Result<Answer, GenerateError> {
+        self.run(
+            Some(&prepared.request),
+            &prepared.request.id,
+            &prepared.conversation,
+            answer,
+            sink,
+        )
+        .await
+    }
+
+    /// Subscribes to the answers of a request this identity published
+    /// earlier, without publishing it again.
+    ///
+    /// Feedback and results are ephemeral, so only what the worker sends
+    /// after this subscription opens arrives: a job whose result landed
+    /// while nobody listened reads as a silence.
+    ///
+    /// # Errors
+    ///
+    /// As [`RelayDoor::job`].
+    pub async fn follow(
+        &self,
+        request_id: &str,
+        answer: Duration,
+        sink: &mut (dyn FnMut(&str) + Send),
+    ) -> Result<Answer, GenerateError> {
+        if request_id.len() != 64 || !request_id.bytes().all(|b| b.is_ascii_hexdigit()) {
+            return Err(GenerateError::Stream(
+                "the request ID to follow is not 64 hex characters".into(),
+            ));
+        }
+        let conversation = nip44::conversation_key(&self.identity.secret, &self.worker);
+        self.run(None, request_id, &conversation, answer, sink)
+            .await
+    }
+
+    async fn run(
+        &self,
+        request: Option<&Event>,
+        request_id: &str,
+        conversation: &[u8; 32],
+        answer: Duration,
+        sink: &mut (dyn FnMut(&str) + Send),
+    ) -> Result<Answer, GenerateError> {
+        let mut socket = self.connection().await?;
+        let subscription = format!("job-{}", &request_id[..16]);
         let mut meta = |_: Meta| {};
         let answered = self
             .exchange(
                 &mut socket,
                 &Posted {
-                    request: &request,
+                    request,
+                    request_id,
                     subscription: &subscription,
-                    conversation: &conversation,
+                    conversation,
                     answer,
                 },
                 sink,
@@ -599,7 +692,7 @@ impl RelayDoor {
         // The socket is this job's alone and closes with it, so a CLOSE
         // it will not take changes nothing the answer has not said.
         let _ = send(&mut socket, json!(["CLOSE", subscription])).await;
-        (request.id, answered)
+        answered
     }
 
     /// Asks the worker whether it is there and what answers through it.
@@ -656,7 +749,8 @@ impl RelayDoor {
             .exchange(
                 socket,
                 &Posted {
-                    request: &request,
+                    request: Some(&request),
+                    request_id: &request.id,
                     subscription: &subscription,
                     conversation: &conversation,
                     answer: self.answer,
@@ -741,6 +835,7 @@ impl RelayDoor {
     ) -> Result<Answer, GenerateError> {
         let Posted {
             request,
+            request_id,
             subscription,
             conversation,
             answer,
@@ -750,11 +845,13 @@ impl RelayDoor {
             socket,
             json!(["REQ", subscription, {
                 "kinds": [RESULT_KIND, FEEDBACK_KIND],
-                "#e": [request.id],
+                "#e": [request_id],
             }]),
         )
         .await?;
-        send(socket, json!(["EVENT", request])).await?;
+        if let Some(request) = request {
+            send(socket, json!(["EVENT", request])).await?;
+        }
 
         // One read loop for the publish `OK` and the worker's feedback:
         // a fast worker can answer before the OK lands, so the frames must
@@ -792,7 +889,7 @@ impl RelayDoor {
                 continue;
             };
             match value[0].as_str().unwrap_or_default() {
-                "OK" if value[1].as_str() == Some(request.id.as_str())
+                "OK" if value[1].as_str() == Some(request_id)
                     && !value[2].as_bool().unwrap_or(false) =>
                 {
                     let reason = value[3].as_str().unwrap_or("refused");
@@ -821,7 +918,7 @@ impl RelayDoor {
                     let Ok(event) = serde_json::from_value::<Event>(value[2].clone()) else {
                         continue;
                     };
-                    if !self.binds(&event, &request.id) {
+                    if !self.binds(&event, request_id) {
                         continue;
                     }
                     // A relay may deliver one event twice; a delta
@@ -1256,6 +1353,52 @@ mod tests {
         assert_eq!(parse_pubkey(&npub), Some(public));
         assert_eq!(parse_pubkey(&public.to_string()), Some(public));
         assert_eq!(parse_pubkey("not-a-key"), None);
+    }
+
+    #[test]
+    fn a_prepared_job_is_a_signed_tagged_request_and_follow_checks_its_id() {
+        let secret = SecretKey::from_byte_array([11; 32]).unwrap();
+        let (worker, _) = SecretKey::from_byte_array([12; 32])
+            .unwrap()
+            .public_key(&Secp256k1::new())
+            .x_only_public_key();
+        let door = RelayDoor::new(
+            "wss://relay.test",
+            worker,
+            Identity::from_secret(secret).unwrap(),
+        );
+        let prepared = door.prepare(json!({"task": "say hi"})).unwrap();
+        assert_eq!(prepared.id().len(), 64);
+        assert_eq!(prepared.request.kind, REQUEST_KIND);
+        assert!(prepared.request.validate_crypto().is_ok());
+        assert!(
+            prepared
+                .request
+                .tags
+                .iter()
+                .any(|tag| tag.0.first().map(String::as_str) == Some("p")
+                    && tag.0.get(1) == Some(&worker.to_string())),
+            "the request is addressed to the worker"
+        );
+        let payload: Value = serde_json::from_str(
+            &nip44::decrypt(&prepared.request.content, &prepared.conversation).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(payload["v"], json!(PAYLOAD_VERSION));
+        assert_eq!(payload["task"], "say hi");
+
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let mut sink = |_: &str| {};
+        let error = runtime
+            .block_on(door.follow("not-an-id", Duration::from_secs(1), &mut sink))
+            .unwrap_err();
+        assert!(
+            matches!(error, GenerateError::Stream(ref why) if why.contains("64 hex")),
+            "{error:?}"
+        );
     }
 
     #[test]

@@ -69,7 +69,7 @@ const USAGE: &str = "usage: openagents x402 COMMAND [OPTIONS]
                           advertises.
   native-serve --slug SLUG --msat N [--expiry SECONDS] [--per-buyer N]
         [--rerun-safe] [--seconds N] [--as PROFILE] [--relay URL]
-        -- CMD [ARGS...]
+        (-- CMD [ARGS...] | --cj WORKER [--cj-relay URL])
                           Sell CMD over the relay (x402 exact/lnbtc,
                           nostr:openagents:1): every record is a private kind
                           3188 artifact sealed to the other party. A request
@@ -84,7 +84,14 @@ const USAGE: &str = "usage: openagents x402 COMMAND [OPTIONS]
                           or running are finished as failed
                           (provider_restarted); with --rerun-safe, one whose
                           execution window is still open is run again instead
-                          once its input is read back from the relay.
+                          once its input is read back from the relay. With
+                          --cj, the input is sent as one NIP-CJ job to WORKER
+                          (npub or hex) over --cj-relay (default CODER_RELAY,
+                          then --relay) and its result is the output; the job
+                          ID is kept in the purchase store, so a restart follows
+                          the job instead of failing the purchase. Worker
+                          outcomes become causes no_worker, worker_silent,
+                          worker_refused, or worker_failed.
   buy PROVIDER --slug SLUG [--input FILE|-] [--max-msat N] [--max-fee-msat F]
         [--wait SECONDS] [--as PROFILE] [--relay URL] [--show-proof]
                           Buy one run: resolve PROVIDER:SLUG on the relay, seal
@@ -96,9 +103,10 @@ const USAGE: &str = "usage: openagents x402 COMMAND [OPTIONS]
                           is never paid again.
   status PROVIDER PURCHASE [--wait SECONDS] [--as PROFILE] [--relay URL]
                           Ask PROVIDER for the status chain of PURCHASE and
-                          print the newest status and any output. `unknown`
-                          means the provider has not answered; nothing is paid
-                          twice in any case.
+                          print the newest status and any output. Without
+                          --wait, a running purchase is followed to the end of
+                          its execution window. `unknown` means the provider
+                          has not answered; nothing is paid twice in any case.
   status --list [--as PROFILE]
   status --finish BUYER:PURCHASE --cause CAUSE [--as PROFILE] [--relay URL]
                           Provider side: list this key's open purchases, or

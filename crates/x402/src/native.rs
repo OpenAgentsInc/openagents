@@ -589,6 +589,12 @@ impl Purchase {
         Ok(parse_status(body)?.phase)
     }
 
+    /// The NIP-CJ job this purchase was dispatched to, when it was: the
+    /// `job` object [`Provider::start_job`] recorded in the run evidence.
+    pub fn job(&self) -> Option<&Value> {
+        self.run.as_ref()?.get("job").filter(|job| job.is_object())
+    }
+
     fn last_ref(&self) -> Option<(u64, String)> {
         let last = self.statuses.last()?;
         let value = last.value().ok()?;
@@ -1154,12 +1160,33 @@ impl<S: ReplayStore> Provider<'_, S> {
     /// Move an admitted purchase to `running` (`Ok(None)` when it already is),
     /// then to `completed` or `failed` through [`Provider::finish`].
     pub fn start(&self, buyer: &str, purchase: &str, now: u64) -> Result<Emit, &'static str> {
+        self.start_job(buyer, purchase, None, now)
+    }
+
+    /// [`Provider::start`], recording the NIP-CJ job the work was handed
+    /// to as `run.job` (`{"relay", "worker", "request"}`), so a restarted
+    /// provider can follow the job instead of failing the purchase.
+    pub fn start_job(
+        &self,
+        buyer: &str,
+        purchase: &str,
+        job: Option<Value>,
+        now: u64,
+    ) -> Result<Emit, &'static str> {
         let mut entry = self.load(buyer, purchase)?;
         if entry.phase()? != Phase::Admitted {
             return Err("purchase is not admitted");
         }
         if now >= entry.execute_until {
             return self.finish(buyer, purchase, Err("execute_until_passed"), now);
+        }
+        if let Some(job) = job {
+            if !job.is_object() || job["request"].as_str().is_none_or(str::is_empty) {
+                return Err("job must be an object naming its request");
+            }
+            let mut run = entry.run.take().unwrap_or_else(|| json!({}));
+            run["job"] = job;
+            entry.run = Some(run);
         }
         let status = self.status(
             &entry,
@@ -1250,15 +1277,30 @@ impl<S: ReplayStore> Provider<'_, S> {
     }
 
     /// Settle what a previous provider process left in `admitted` or
-    /// `running`. With `rerun_safe`, a purchase whose execution window is
-    /// still open comes back as [`Recovery::Rerun`] for the caller to run
-    /// again; everything else is finished as `failed` with cause
-    /// `provider_restarted` and its status returned for publication.
+    /// `running`. A `running` purchase dispatched to a NIP-CJ job whose
+    /// execution window is still open comes back as [`Recovery::Follow`]
+    /// for the caller to follow (the worker may still answer). With
+    /// `rerun_safe`, a purchase whose execution window is still open comes
+    /// back as [`Recovery::Rerun`] for the caller to run again; everything
+    /// else is finished as `failed` with cause `provider_restarted` and its
+    /// status returned for publication.
     pub fn recover(&self, rerun_safe: bool, now: u64) -> Result<Vec<Recovery>, &'static str> {
         let mut out = Vec::new();
         for purchase in self.open_purchases()? {
             let phase = purchase.phase()?;
             if !matches!(phase, Phase::Admitted | Phase::Running) {
+                continue;
+            }
+            if phase == Phase::Running
+                && now < purchase.execute_until
+                && let Some(job) = purchase.job()
+            {
+                out.push(Recovery::Follow {
+                    buyer: purchase.buyer.clone(),
+                    purchase: purchase.purchase.clone(),
+                    job: job.clone(),
+                    execute_until: purchase.execute_until,
+                });
                 continue;
             }
             if rerun_safe && now < purchase.execute_until {
@@ -1324,6 +1366,21 @@ impl<S: ReplayStore> Provider<'_, S> {
 /// The failure cause a restarted provider records for work it lost.
 pub const PROVIDER_RESTARTED: &str = "provider_restarted";
 
+/// The failure cause recorded when no NIP-CJ worker answered the job
+/// within the purchase's execution window.
+pub const NO_WORKER: &str = "no_worker";
+
+/// The failure cause recorded when a NIP-CJ worker was heard from and
+/// then sent no result within the execution window.
+pub const WORKER_SILENT: &str = "worker_silent";
+
+/// The failure cause recorded when a NIP-CJ worker refused the job.
+pub const WORKER_REFUSED: &str = "worker_refused";
+
+/// The failure cause recorded when the relay or the worker's answer
+/// failed in a way that is neither absence, silence, nor refusal.
+pub const WORKER_FAILED: &str = "worker_failed";
+
 /// The causes an operator may record by hand when finishing an open purchase.
 pub const OPERATOR_CAUSES: [&str; 3] = [
     PROVIDER_RESTARTED,
@@ -1355,6 +1412,14 @@ pub enum Recovery {
         purchase: String,
         phase: Phase,
         input: Value,
+        execute_until: u64,
+    },
+    /// Left `running` for the caller to follow the NIP-CJ job named by
+    /// `job` (`{"relay", "worker", "request"}`) and finish from its answer.
+    Follow {
+        buyer: String,
+        purchase: String,
+        job: Value,
         execute_until: u64,
     },
 }
@@ -1947,6 +2012,75 @@ mod tests {
                 NOW + 3_601,
             )
             .unwrap();
+    }
+
+    #[test]
+    fn a_dispatched_job_is_persisted_and_followed_after_restart() {
+        let mut bench = Bench::new("job");
+        let provider = bench.provider();
+        let purchase = purchase_id(9);
+        let (_, _, _, claim) = offer_and_claim(&bench, &purchase);
+        provider
+            .claim(&Signed::new(&claim).unwrap(), NOW + 1)
+            .unwrap();
+        assert_eq!(
+            provider
+                .start_job(BUYER, &purchase, Some(json!({"relay": "wss://r"})), NOW + 2)
+                .unwrap_err(),
+            "job must be an object naming its request"
+        );
+        let job = json!({"relay": "wss://r", "worker": "w", "request": "a".repeat(64)});
+        let running = provider
+            .start_job(BUYER, &purchase, Some(job.clone()), NOW + 2)
+            .unwrap();
+        let status = parse_status(&running.records[0]["body"]).unwrap();
+        assert_eq!(status.phase, Phase::Running);
+        assert_eq!(running.records[0]["body"]["run"]["job"], job);
+        let entry = bench.store.get(BUYER, &purchase).unwrap().unwrap();
+        assert_eq!(entry.job(), Some(&job));
+
+        // A restart inside the window follows the job rather than failing
+        // or rerunning it.
+        let provider = bench.provider();
+        for rerun_safe in [false, true] {
+            let recovered = provider.recover(rerun_safe, NOW + 10).unwrap();
+            let [
+                Recovery::Follow {
+                    job: got,
+                    execute_until,
+                    ..
+                },
+            ] = recovered.as_slice()
+            else {
+                panic!("a running purchase with a job is followed");
+            };
+            assert_eq!(got, &job);
+            assert_eq!(*execute_until, NOW + 1200);
+        }
+        let finished = provider
+            .finish(BUYER, &purchase, Err(NO_WORKER), NOW + 20)
+            .unwrap();
+        let status = parse_status(&finished.records[0]["body"]).unwrap();
+        assert_eq!(status.phase, Phase::Failed);
+        assert_eq!(status.cause.as_deref(), Some(NO_WORKER));
+        assert!(provider.recover(true, NOW + 30).unwrap().is_empty());
+
+        // Past the window, the job is over and the run fails.
+        drop(provider);
+        let late = purchase_id(10);
+        bench.fresh_settlement(&late);
+        let provider = bench.provider();
+        let (_, _, _, claim) = offer_and_claim(&bench, &late);
+        provider
+            .claim(&Signed::new(&claim).unwrap(), NOW + 1)
+            .unwrap();
+        provider
+            .start_job(BUYER, &late, Some(job), NOW + 2)
+            .unwrap();
+        assert!(matches!(
+            provider.recover(true, NOW + 1201).unwrap().as_slice(),
+            [Recovery::Failed { .. }]
+        ));
     }
 
     #[test]
