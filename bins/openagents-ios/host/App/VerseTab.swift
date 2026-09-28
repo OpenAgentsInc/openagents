@@ -525,8 +525,10 @@ final class VerseWorldView: UIView {
 /// controls can be checked on a simulator without touching the screen.
 /// `push` holds the stick forward for the whole step, walking into the ball
 /// ahead of the spawn, `closer` pinches in past the nearest orbit into first
-/// person, `walkpinch` holds the stick forward while pinching in, and `wait`
-/// does nothing for a step.
+/// person, `walkpinch` holds the stick forward while pinching in, `face`
+/// turns toward the Grid's portal to Lagrange 1 (39° right of the spawn's
+/// heading; `walk,walk` then goes through it), and `wait` does nothing for a
+/// step.
 /// Debug and simulator builds only.
 @MainActor
 private final class VerseWorldScript {
@@ -580,6 +582,11 @@ private final class VerseWorldScript {
         case ("walkpinch", 2..<60): view.send(["action": "pinch_zoom", "scale": 1.02])
         case ("walkpinch", 89): view.pointer(pointer, phase: "up", at: CGPoint(x: stick.x, y: stick.y - 56))
         case ("recenter", 0): view.send(["action": "recenter_camera"])
+        // 171.5 points at 0.004 rad per point turn the player 0.686 rad right.
+        case ("face", 0): view.pointer(pointer, phase: "down", at: center)
+        case ("face", 1...35):
+            view.pointer(pointer, phase: "move", at: CGPoint(x: center.x + CGFloat(t) * 4.9, y: center.y))
+        case ("face", 36): view.pointer(pointer, phase: "up", at: CGPoint(x: center.x + 171.5, y: center.y))
         default: break
         }
         if t == 89 {
