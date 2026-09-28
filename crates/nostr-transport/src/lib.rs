@@ -127,6 +127,14 @@ impl Connection {
             remaining: 256,
         })
     }
+    /// Replace the frame budget for the rest of this connection, at most
+    /// 4,096 frames: a streamed answer reads one frame per delta event, more
+    /// than the default 256 allows for a long one.
+    #[must_use]
+    pub fn with_frame_budget(mut self, frames: usize) -> Self {
+        self.remaining = frames.min(4096);
+        self
+    }
     pub async fn send(&mut self, value: Value) -> Result<()> {
         let text = value.to_string();
         if text.len() > MAX_BYTES {

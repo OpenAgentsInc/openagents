@@ -67,6 +67,17 @@
 //! stated minutes is refused `timed_out`, so no request is left without
 //! an answer. Read [`docs/coder/guides/worker-executor.md`] for that path.
 //!
+//! `CODER_WORKER_QUOTA` opens a worker to callers it has never met, as
+//! the OpenAgents app's chat needs, and meters them instead
+//! ([`coder::relay::quota`]): each caller key gets a few jobs a minute and
+//! a day, every caller together gets a day's total, and a request past its
+//! byte bound is refused. A refused job carries `rate_limited`,
+//! `quota_exhausted`, or `limit_exceeded` and, where waiting helps,
+//! `retry_after_ms`. Keys on `CODER_WORKER_ALLOW` are not metered. A
+//! metered caller gets conversation jobs only: no delegation and no
+//! execution. `CODER_WORKER_QUOTA_FILE` keeps the day's counts across a
+//! restart.
+//!
 //! One request is answered once. An event whose ID the worker has already
 //! seen is set aside, and a request whose `created_at` is more than ten
 //! minutes old is refused `stale`: nothing on this path is stored, so an
@@ -85,6 +96,7 @@ use std::time::{Duration, Instant};
 use coder::generate::{
     Door, Generate, GenerateError, Lane, Message, Role, Usage, WORKER_MODEL_VAR, model_from_env,
 };
+use coder::relay::quota::{Ledger, Policy};
 use coder::relay::{
     DEFAULT_RELAY_URL, FEEDBACK_KIND, Identity, PAYLOAD_VERSION, REQUEST_KIND, RESULT_KIND, Socket,
     connect, parse_pubkey, partial_payload, payload_version, send,
@@ -179,7 +191,10 @@ Usage: coder-worker [--once] [--decline <CODE>] [--check]
 CODER_WORKER_SECRET names the worker identity, 64 hex or an nsec.
 CODER_RELAY picks the relay. CODER_WORKER_ALLOW, when set, lists the
 customer pubkeys (npub or hex, comma-separated) this worker answers; any
-other request is refused with code not_admitted. CODER_WORKER_JOBS bounds
+other request is refused with code not_admitted. CODER_WORKER_QUOTA
+(day=N,minute=N,total=N[,bytes=N]) answers every other caller too, under
+those per-key and total limits; CODER_WORKER_QUOTA_FILE keeps the day's
+counts across a restart. CODER_WORKER_JOBS bounds
 how many jobs run at once; the rest are refused busy. The door the worker
 answers through comes from the environment exactly as it does for the
 agent, except for the lane: CODER_WORKER_MODEL names the model or lane
@@ -192,10 +207,28 @@ struct Options {
     decline: Option<String>,
     /// Customers this worker answers; `None` admits everyone.
     allow: Option<Vec<String>>,
+    /// The limits every caller off the allowlist is admitted under.
+    quota: Option<Policy>,
 }
 
 /// The environment variable that lists admitted customers.
 const ALLOW_VAR: &str = "CODER_WORKER_ALLOW";
+
+/// The environment variable that opens the worker under a quota.
+const QUOTA_VAR: &str = "CODER_WORKER_QUOTA";
+
+/// The environment variable naming the file that keeps the day's counts.
+const QUOTA_FILE_VAR: &str = "CODER_WORKER_QUOTA_FILE";
+
+/// Reads `CODER_WORKER_QUOTA`, or `None` when unset.
+fn quota_from_env() -> Result<Option<Policy>, String> {
+    match env::var(QUOTA_VAR) {
+        Ok(text) => Policy::parse(&text)
+            .map(Some)
+            .map_err(|why| format!("{QUOTA_VAR}: {why}")),
+        Err(_) => Ok(None),
+    }
+}
 
 /// The environment variable that bounds how many jobs run at once.
 const JOBS_VAR: &str = "CODER_WORKER_JOBS";
@@ -263,6 +296,7 @@ fn options() -> Result<Options, String> {
         check,
         decline,
         allow: allowed_from_env()?,
+        quota: quota_from_env()?,
     })
 }
 
@@ -296,13 +330,14 @@ fn is_loopback(url: &str) -> bool {
             .is_ok_and(|address| address.is_loopback())
 }
 
-/// Whether this configuration may be deployed.
-fn deployable(allow: Option<&[String]>, url: &str) -> Result<(), String> {
-    if allow.is_none() && !is_loopback(url) {
+/// Whether this configuration may be deployed. A worker off loopback needs
+/// an allowlist or a quota: one of them is its spend control.
+fn deployable(allow: Option<&[String]>, quota: Option<&Policy>, url: &str) -> Result<(), String> {
+    if allow.is_none() && quota.is_none() && !is_loopback(url) {
         return Err(format!(
             "{ALLOW_VAR} is unset and {url} is not a loopback relay: an open worker on a \
              shared relay answers whoever finds its key. Set {ALLOW_VAR} to the customer \
-             pubkeys this worker serves."
+             pubkeys this worker serves, or {QUOTA_VAR} to meter every caller."
         ));
     }
     Ok(())
@@ -379,12 +414,30 @@ async fn serve(options: &Options) -> Result<(), String> {
     if let Some(code) = &options.decline {
         eprintln!("declining every job with {code}");
     }
-    match &options.allow {
-        Some(keys) => eprintln!("admits  {} customer(s)", keys.len()),
-        None => eprintln!("admits  every customer ({ALLOW_VAR} unset)"),
+    match (&options.allow, &options.quota) {
+        (Some(keys), None) => eprintln!("admits  {} customer(s)", keys.len()),
+        (allow, Some(quota)) => eprintln!(
+            "admits  every caller under a quota: {} a minute and {} a day per key, {} a day \
+             in all, {} bytes a request; {} key(s) unmetered",
+            quota.per_key_minute,
+            quota.per_key_day,
+            quota.total_day,
+            quota.max_request_bytes,
+            allow.as_ref().map_or(0, Vec::len)
+        ),
+        (None, None) => eprintln!("admits  every customer ({ALLOW_VAR} unset)"),
     }
+    let ledger = match options.quota {
+        Some(policy) => {
+            let path = env::var(QUOTA_FILE_VAR).ok().map(PathBuf::from);
+            let ledger = Ledger::open(policy, path, unix_now())?;
+            eprintln!("quota   {} job(s) admitted today", ledger.total());
+            Some(Arc::new(std::sync::Mutex::new(ledger)))
+        }
+        None => None,
+    };
     if options.check {
-        deployable(options.allow.as_deref(), &url)?;
+        deployable(options.allow.as_deref(), options.quota.as_ref(), &url)?;
         eprintln!("the configuration is safe to deploy");
         return Ok(());
     }
@@ -400,6 +453,7 @@ async fn serve(options: &Options) -> Result<(), String> {
         tasks: JoinSet::new(),
         answered: 0,
         seen: VecDeque::with_capacity(SEEN_REQUESTS),
+        ledger,
     };
     let mut backoff = RECONNECT_FLOOR;
     loop {
@@ -459,6 +513,8 @@ struct Worker<'a> {
     answered: usize,
     /// IDs of the last [`SEEN_REQUESTS`] requests, oldest first.
     seen: VecDeque<String>,
+    /// The day's counts, when the worker is open under a quota.
+    ledger: Option<Arc<std::sync::Mutex<Ledger>>>,
 }
 
 impl Worker<'_> {
@@ -545,6 +601,15 @@ impl Worker<'_> {
                         }
                     };
                     if request.kind == nostr::execution::REQUEST_KIND {
+                        // A metered caller gets conversation jobs only:
+                        // execution is for the operator's own keys.
+                        if !execution_admitted(self.options, &request.pubkey) {
+                            eprintln!(
+                                "ignored execution {}: not from an allowlisted key",
+                                &request.id[..request.id.len().min(16)]
+                            );
+                            continue;
+                        }
                         // Execution admission is the shared store. A closed
                         // socket does not cancel the claim, and a later
                         // relay OK is not acceptance: `Store::answer` is.
@@ -577,6 +642,7 @@ impl Worker<'_> {
                         door: self.door.clone(),
                         decline: self.options.decline.clone(),
                         allow: self.options.allow.clone(),
+                        ledger: self.ledger.clone(),
                         publish: self.outgoing.clone(),
                         permit,
                         waits: WAITS,
@@ -633,6 +699,16 @@ fn answer_execution(
     Ok(())
 }
 
+/// Whether this worker takes execution requests from `caller`: an open
+/// worker's metered callers get conversation jobs only.
+fn execution_admitted(options: &Options, caller: &str) -> bool {
+    options.quota.is_none()
+        || options
+            .allow
+            .as_ref()
+            .is_some_and(|keys| keys.iter().any(|key| key == caller))
+}
+
 fn execution_dir() -> Result<PathBuf, String> {
     let home = env::var("HOME").map_err(|_| "HOME is unset".to_string())?;
     Ok(PathBuf::from(home).join(".openagents").join("execution"))
@@ -681,6 +757,9 @@ struct Job {
     door: Arc<Door>,
     decline: Option<String>,
     allow: Option<Vec<String>>,
+    /// The quota a caller off the allowlist is admitted under, when the
+    /// worker is open.
+    ledger: Option<Arc<std::sync::Mutex<Ledger>>>,
     /// Frames for the serving loop to write to the socket, in order.
     publish: mpsc::UnboundedSender<Value>,
     /// A slot under the concurrency bound, or `None` when every slot was
@@ -725,19 +804,27 @@ impl Job {
                 .send(json!(["EVENT", event]))
                 .map_err(|_| "the serving loop is gone".to_string())
         };
-        let refuse = |version: u64, code: &str, message: String| -> Result<(), String> {
-            publish(
-                FEEDBACK_KIND,
-                json!({
-                    "v": version,
-                    "type": "status",
-                    "status": "error",
-                    "code": code,
-                    "message": message,
-                }),
-            )?;
+        let refuse_after = |version: u64,
+                            code: &str,
+                            message: String,
+                            retry_after_ms: Option<u64>|
+         -> Result<(), String> {
+            let mut status = json!({
+                "v": version,
+                "type": "status",
+                "status": "error",
+                "code": code,
+                "message": message,
+            });
+            if let Some(wait) = retry_after_ms {
+                status["retry_after_ms"] = json!(wait);
+            }
+            publish(FEEDBACK_KIND, status)?;
             eprintln!("job {label} declined: {code}");
             Ok(())
+        };
+        let refuse = |version: u64, code: &str, message: String| -> Result<(), String> {
+            refuse_after(version, code, message, None)
         };
 
         let payload = match nip44::decrypt(&request.content, &conversation)
@@ -770,9 +857,13 @@ impl Job {
             );
         };
 
-        if let Some(keys) = &self.allow
-            && !keys.contains(&request.pubkey)
-        {
+        let listed = self
+            .allow
+            .as_ref()
+            .is_some_and(|keys| keys.contains(&request.pubkey));
+        // A quota admits callers off the list, metered below.
+        let metered = !listed && self.ledger.is_some();
+        if self.allow.is_some() && !listed && !metered {
             return refuse(
                 version,
                 "not_admitted",
@@ -829,6 +920,38 @@ impl Job {
                 "busy",
                 "this worker is running as many jobs as it admits at once".to_string(),
             );
+        }
+
+        if metered {
+            // A metered caller gets a conversation: a delegation is a
+            // bounded task for the operator's own terminal.
+            if !payload["delegation"].is_null() {
+                return refuse(
+                    version,
+                    "not_admitted",
+                    "this worker answers conversation jobs only from your pubkey".to_string(),
+                );
+            }
+            let admitted = self.ledger.as_ref().map(|ledger| {
+                ledger
+                    .lock()
+                    .map_err(|_| "the quota ledger is poisoned".to_string())
+                    .map(|mut ledger| {
+                        ledger.admit(&request.pubkey, request.content.len(), unix_now())
+                    })
+            });
+            match admitted {
+                Some(Ok(Err(refusal))) => {
+                    return refuse_after(
+                        version,
+                        refusal.code(),
+                        refusal.message(),
+                        refusal.retry_after_ms(),
+                    );
+                }
+                Some(Err(why)) => return refuse(version, "internal", why),
+                Some(Ok(Ok(()))) | None => {}
+            }
         }
 
         let started = Instant::now();
@@ -987,7 +1110,9 @@ impl Job {
                 delta = incoming.recv(), if draining => match delta {
                     Some(delta) => {
                         buffer.push_str(&delta);
-                        if buffer.len() >= PARTIAL_BYTES {
+                        // The first delta goes at once, so a reader sees the
+                        // answer begin; later ones collect.
+                        if buffer.len() >= PARTIAL_BYTES || partial_seq == 0 {
                             // `seq` is the signed ordering the terminal
                             // checks deltas against; arrival order proves
                             // nothing. A version-1 answer makes no such
@@ -1111,6 +1236,18 @@ mod tests {
         allow: Option<Vec<String>>,
         admitted: bool,
     ) -> Value {
+        response_metered(door, content, created_at, decline, allow, admitted, None).await
+    }
+
+    async fn response_metered(
+        door: Door,
+        content: String,
+        created_at: u64,
+        decline: Option<&str>,
+        allow: Option<Vec<String>>,
+        admitted: bool,
+        ledger: Option<Arc<std::sync::Mutex<Ledger>>>,
+    ) -> Value {
         tokio::time::timeout(std::time::Duration::from_secs(5), async {
             let (worker, client, conversation) = identities();
             let request = client.signer().sign(
@@ -1127,6 +1264,7 @@ mod tests {
                 door: Arc::new(door),
                 decline: decline.map(str::to_owned),
                 allow,
+                ledger,
                 publish,
                 permit,
                 waits: Waits {
@@ -1175,7 +1313,7 @@ mod tests {
             "127.0.0.1:7777",
         ] {
             assert!(is_loopback(url), "{url}");
-            assert!(deployable(None, url).is_ok(), "{url}");
+            assert!(deployable(None, None, url).is_ok(), "{url}");
         }
         for url in [
             "wss://relay.openagents.com",
@@ -1185,9 +1323,15 @@ mod tests {
             "wss://relay.example/127.0.0.1",
         ] {
             assert!(!is_loopback(url), "{url}");
-            let why = deployable(None, url).unwrap_err();
+            let why = deployable(None, None, url).unwrap_err();
             assert!(why.contains(ALLOW_VAR) && why.contains(url), "{why}");
-            assert!(deployable(Some(&["ab".to_string()]), url).is_ok(), "{url}");
+            assert!(why.contains(QUOTA_VAR), "{why}");
+            assert!(
+                deployable(Some(&["ab".to_string()]), None, url).is_ok(),
+                "{url}"
+            );
+            let quota = Policy::parse("day=5,minute=2,total=10").unwrap();
+            assert!(deployable(None, Some(&quota), url).is_ok(), "{url}");
         }
     }
 
@@ -1406,5 +1550,92 @@ mod tests {
                 assert!(result.get("text").is_none());
             }
         }
+    }
+
+    /// An open worker answers a caller it has never met, under the quota:
+    /// a key past its minute hears `rate_limited` with the wait, a
+    /// delegation is refused, and a key on the allowlist is not counted.
+    #[tokio::test]
+    async fn a_quota_meters_callers_off_the_allowlist() {
+        let (_, client, conversation) = identities();
+        let policy = Policy::parse("day=5,minute=2,total=10").unwrap();
+        let ledger = Arc::new(std::sync::Mutex::new(
+            Ledger::open(policy, None, unix_now()).unwrap(),
+        ));
+        let ask = |payload: Value, allow: Option<Vec<String>>| {
+            let content = nip44::encrypt(&payload.to_string(), &conversation, [43; 32]).unwrap();
+            response_metered(
+                Door::Stub(StubGenerate::default()),
+                content,
+                unix_now(),
+                None,
+                allow,
+                true,
+                Some(ledger.clone()),
+            )
+        };
+        let turn = json!({"v":2,"task":"hello"});
+        assert_eq!(ask(turn.clone(), None).await["type"], "result");
+        // The allowlist names someone else; the quota still admits this key.
+        let other = vec!["ab".repeat(32)];
+        assert_eq!(ask(turn.clone(), Some(other)).await["type"], "result");
+        let limited = ask(turn.clone(), None).await;
+        assert_eq!(limited["code"], "rate_limited");
+        assert!(limited["retry_after_ms"].as_u64().unwrap() > 0, "{limited}");
+        // A listed key is not metered at all.
+        let listed = Some(vec![client.pubkey().to_string()]);
+        assert_eq!(ask(turn.clone(), listed).await["type"], "result");
+        assert_eq!(ledger.lock().unwrap().total(), 2);
+        let delegation = json!({"v":2,"task":"x","delegation":{"writes":false,"minutes":1}});
+        assert_eq!(ask(delegation, None).await["code"], "not_admitted");
+    }
+
+    /// A request past the quota's byte bound is refused `limit_exceeded`
+    /// before anything is generated or counted.
+    #[tokio::test]
+    async fn a_metered_request_past_its_bytes_is_refused() {
+        let (_, _, conversation) = identities();
+        let policy = Policy::parse("day=5,minute=2,total=10,bytes=200").unwrap();
+        let ledger = Arc::new(std::sync::Mutex::new(
+            Ledger::open(policy, None, unix_now()).unwrap(),
+        ));
+        let payload = json!({"v":2,"task":"x".repeat(400)});
+        let content = nip44::encrypt(&payload.to_string(), &conversation, [43; 32]).unwrap();
+        let refused = response_metered(
+            Door::Stub(StubGenerate::default()),
+            content,
+            unix_now(),
+            None,
+            None,
+            true,
+            Some(ledger.clone()),
+        )
+        .await;
+        assert_eq!(refused["code"], "limit_exceeded");
+        assert!(refused.get("retry_after_ms").is_none());
+        assert_eq!(ledger.lock().unwrap().total(), 0);
+    }
+
+    #[test]
+    fn a_metered_caller_gets_no_execution() {
+        let options = |allow: Option<Vec<String>>, quota: Option<Policy>| Options {
+            once: false,
+            check: false,
+            decline: None,
+            allow,
+            quota,
+        };
+        let quota = Policy::parse("day=5,minute=2,total=10").ok();
+        let owner = "ab".repeat(32);
+        assert!(execution_admitted(&options(None, None), &owner));
+        assert!(!execution_admitted(&options(None, quota), &owner));
+        assert!(execution_admitted(
+            &options(Some(vec![owner.clone()]), quota),
+            &owner
+        ));
+        assert!(!execution_admitted(
+            &options(Some(vec![owner.clone()]), quota),
+            &"cd".repeat(32)
+        ));
     }
 }

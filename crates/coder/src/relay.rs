@@ -47,6 +47,8 @@
 
 /// Authenticated, bounded reads and publication of exact private artifacts.
 pub mod artifacts;
+/// An open conversation worker's per-caller quota.
+pub mod quota;
 
 use std::collections::HashSet;
 use std::env;

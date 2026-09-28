@@ -66,6 +66,10 @@ A result has `v: 1`, `requires`, `type: "result"`, nonempty `text`, optional
 an attribution claim, not proof of immutable weights. The first valid result
 or terminal error ends observation; subsequent events do not change it.
 
+A worker that answers callers it has not admitted by name meters them and
+refuses with `rate_limited` or `quota_exhausted` (each with `retry_after_ms`)
+or `limit_exceeded`; a metered caller's refusal is not an outage.
+
 Conversation jobs have no durable retransmission identity. Another request is
 a new invocation. A dropped socket does not stop remote work. Effects requiring
 recovery, cancellation, or exact implementation attribution use execution jobs.
