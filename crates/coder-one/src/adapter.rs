@@ -78,6 +78,18 @@ pub fn capabilities(agent: Agent) -> (Capabilities, &'static str) {
     }
 }
 
+/// How each CLI adapter takes a steer and what confirms it; see
+/// [`crate::steering`]. Mid-turn steering is exactly the demonstrated
+/// `steer` capability.
+#[must_use]
+pub fn steering(agent: Agent) -> crate::steering::Steering {
+    match agent {
+        Agent::ClaudeCode => crate::steering::CLAUDE_CODE,
+        Agent::Codex => crate::steering::CODEX_EXEC,
+        Agent::Microluna => crate::steering::MICROLUNA,
+    }
+}
+
 /// A new session ID in UUID version 4 form, which Claude Code's
 /// `--session-id` requires.
 #[must_use]
@@ -1135,6 +1147,32 @@ mod tests {
         assert!(!codex.steer);
         assert!(codex.start && codex.observe && codex.stop && codex.resume);
         assert!(note.contains("Steering is refused"));
+    }
+
+    #[test]
+    fn each_adapter_reports_a_steering_mode_that_matches_what_it_demonstrated() {
+        use crate::steering::{Native, Plan, Refusal, Request, Turn};
+        for agent in [Agent::ClaudeCode, Agent::Codex, Agent::Microluna] {
+            let (demonstrated, _) = capabilities(agent);
+            let steering = steering(agent);
+            assert_eq!(steering.native == Native::MidTurn, demonstrated.steer);
+            // Emulation stops and resumes, so it needs both.
+            assert_eq!(
+                steering.emulation.is_some(),
+                demonstrated.stop && demonstrated.resume
+            );
+        }
+        // Codex refuses a native steer, as its session does, and runs the
+        // emulated one only when chosen.
+        let codex = steering(Agent::Codex);
+        assert_eq!(
+            codex.admit(Turn::Running, Request::Native),
+            Err(Refusal::Unsupported)
+        );
+        assert_eq!(
+            codex.admit(Turn::Running, Request::Emulated),
+            Ok(Plan::CancelAndContinue)
+        );
     }
 
     #[test]

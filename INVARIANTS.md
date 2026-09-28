@@ -21,6 +21,13 @@ update this file in the same change and name the test that checks it.
 
 See [the auto-start guide](docs/coder/runtime/host-autostart.md).
 
+## Steering
+
+| Invariant | Status | Checked by |
+| --- | --- | --- |
+| A host never treats a new turn, an enqueue, or a restart as native steering: native steering of a running turn is refused unless the engine steers mid-turn, and emulation (cancel and continue) runs only when the caller chose it. | New on 2026-09-28 ([#9836](https://github.com/OpenAgentsInc/openagents/issues/9836)); restates NIP-SESS for the adapters in code. | `native_steering_an_engine_lacks_is_refused_unless_emulation_was_chosen`, `each_adapter_reports_a_steering_mode_that_matches_what_it_demonstrated`, `microcoder_states_that_it_steers_only_at_a_turn_boundary` |
+| An accepted steer is not a consumed one: consumption is recorded only from the adapter's stated acknowledgment, as its own trace step, and a correction stays in the unconsumed ledger until a run's admission reads it. | New on 2026-09-28. | `a_steer_is_consumed_when_the_next_turn_starts_and_recorded_as_its_own_step`, `only_engine_evidence_confirms_consumption` |
+
 ## Linking devices
 
 | Invariant | Status | Checked by |

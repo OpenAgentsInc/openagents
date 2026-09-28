@@ -31,6 +31,8 @@ pub mod owner;
 pub mod remote;
 pub mod usage;
 pub mod view;
+/// Per-engine steering semantics; see [`coder_one::steering`].
+pub use coder_one::steering;
 /// The largest command, including JSON whitespace, in bytes.
 pub const MAX_COMMAND_BYTES: usize = 64 * 1024;
 /// The largest persisted inbox document, in bytes.
@@ -163,6 +165,20 @@ impl Task {
             .map_or(&self.intent.prompt, |item| &item.prompt)
     }
 
+    /// Corrections routed to this task that no admitted run has read: the
+    /// ledger of steers not yet consumed. A run consumes every correction
+    /// up to the task revision its admission records.
+    pub fn unconsumed_steers(&self) -> Vec<&Correction> {
+        let read = self
+            .run
+            .as_ref()
+            .map_or(0, |run| run.admission.context.task_revision);
+        self.corrections
+            .iter()
+            .filter(|item| item.revision > read)
+            .collect()
+    }
+
     fn context_superseded(&self) -> bool {
         self.run.as_ref().is_some_and(|run| {
             self.corrections
@@ -170,6 +186,34 @@ impl Task {
                 .is_some_and(|item| item.revision > run.admission.context.task_revision)
         })
     }
+}
+
+/// The trace steps that record each correction a run consumes as it
+/// starts, one step per correction, before the adapter's own admission
+/// step. `task` is the task as it was before admission; `steering` is the
+/// adapter's statement, whose acknowledgment the step names.
+pub(crate) fn consumed_steers(
+    task: &Task,
+    steering: &coder_one::steering::Steering,
+) -> Vec<atif::Step> {
+    task.unconsumed_steers()
+        .into_iter()
+        .map(|correction| {
+            atif::Step::said(
+                atif::Source::System,
+                "Steer consumed: this turn starts with the corrected instructions.",
+            )
+            .noting(
+                "steer_consumed",
+                serde_json::json!({
+                    "revision": correction.revision,
+                    "reason": correction.reason,
+                    "adapter": steering.adapter,
+                    "acknowledgment": steering.acknowledgment,
+                }),
+            )
+        })
+        .collect()
 }
 
 /// The original result of an accepted command, returned again on exact retry.

@@ -70,6 +70,46 @@ containing a method is not proof that the adapter handles it. Unknown required
 notifications or reverse requests cause an inspectable protocol fault and
 block affected dispatch; do not silently discard them and remain live.
 
+### Steering capability
+
+The `steer` feature entry's semantics name three facts, because engines
+steer differently and an accepted steer is not a consumed one:
+
+- **Native mode**: `mid_turn` (a running turn takes the message),
+  `turn_boundary` (the engine takes new input only when a turn ends), or
+  `unsupported`.
+- **Emulation**: `cancel_and_continue` (stop the running turn, then start a
+  new turn that carries the message), or none. A host runs emulation only
+  when the caller chose it; support for it never upgrades a native claim.
+- **Acknowledgment**: the evidence that the engine consumed the steer:
+  `engine_replay` (the engine repeats the message in its own stream),
+  `turn_answer` (the engine answers the steer for the exact expected turn),
+  `next_turn_start` (the turn that carries the message starts, and its
+  admission records the revision it read), `input_written` (the message was
+  written to the engine's input: acceptance only), or `none`.
+
+A host refuses native steering of a running turn when the mode is not
+`mid_turn`, and refuses emulation the adapter lacks. When the named turn
+ended before the steer reached it, the steer is re-dispatched as a new turn
+on an engine that can start one, because nothing consumed it. The host
+records consumption as its own ATIF step, separate from the steer's
+acceptance, and keeps a ledger of routed steers until one is consumed.
+
+Known engine behavior, as adapter capability rows:
+
+| Engine surface | Native mode | Acknowledgment | Notes |
+| --- | --- | --- | --- |
+| Claude Code, `claude -p --input-format stream-json` | `mid_turn` | `engine_replay` with `--replay-user-messages`; otherwise `input_written` | A steer is a stdin user line. Send it with `priority: "now"` only when no tool is open, and `"next"` while a tool runs, because `now` aborts in-flight MCP calls. |
+| Codex app-server | `mid_turn` | `turn_answer` | `turn/steer` names `expectedTurnId`. After the turn ends, the message becomes the next `turn/start`. |
+| Codex, `codex exec` | `turn_boundary` | `next_turn_start` | Reads one prompt and closes its input; a new turn is `codex exec resume`. |
+| ACP agents | `mid_turn` only with an advertised steering extension; otherwise `turn_boundary` | Per the extension; otherwise `next_turn_start` | Without the extension, emulation is cancel and re-prompt at a step boundary, only when chosen. |
+| Microcoder (`microcoder-repository`) | `turn_boundary` | `next_turn_start` | A run reads its instructions once, at admission. |
+
+The adapters in this repository state their rows in code: `coder_one::steering`
+for the Claude Code, Codex, and Microluna session adapters, and
+`coder::task::adapter::STEERING` for Microcoder, which each repository
+admission records among its capabilities.
+
 A configuration artifact is `openagents.session-configuration.v1` with
 `adapter` (DefinitionRef), `recipient` (POL recipient ArtifactRef), `model`
 (ArtifactRef identifying the requested or reported model), `settings_schema`

@@ -217,3 +217,24 @@ completed result becomes disputed. If independent checking is already running,
 its evidence is retained, but its final disposition becomes disputed rather
 than verifying the corrected request. A replacement execution requires a new
 explicitly admitted task; automatic replanning is not implemented by this adapter.
+
+### Steering and acknowledgment
+
+A correction is a steer at the task level. Each adapter states how its engine
+takes one, as a `coder_one::steering::Steering` row: its native mode, the
+emulation it offers, and the evidence that confirms consumption. Both
+task-owner adapters, `microcoder-repository` (`coder::task::adapter::STEERING`,
+also exported as `microcoder::STEERING`) and `bounded-command`, are
+`turn_boundary` engines without emulation: a run reads its instructions once,
+at admission. Their acknowledgment is `next_turn_start`. The admission's
+context records the task revision it read, and the run's trace records each
+correction it consumed as its own System step with a `steer_consumed`
+extension (the correction's revision and reason, the adapter, and the
+acknowledgment), after the user step and before the admission step.
+The repository adapter also lists its row under `capabilities.steering`.
+
+Accepting a correction is not consuming it. `Task::unconsumed_steers` is the
+ledger of routed corrections that no admitted run has read yet: those newer
+than the revision the current run's admission records. `Steering::admit`
+refuses native mid-turn steering to an engine without it unless the caller
+chose the engine's emulation, and never picks emulation for the caller.

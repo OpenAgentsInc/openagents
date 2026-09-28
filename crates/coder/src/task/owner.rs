@@ -9,6 +9,16 @@ use coder_boundary::{Boundary, Snapshot};
 use serde_json::json;
 use supervise::{Input, Job, Limits};
 
+/// A bounded command reads its instructions once, at admission, like any
+/// task-owner run; its command itself takes no input.
+pub const BOUNDED_COMMAND_STEERING: coder_one::steering::Steering = coder_one::steering::Steering {
+    adapter: "bounded-command",
+    native: coder_one::steering::Native::TurnBoundary,
+    emulation: None,
+    acknowledgment: coder_one::steering::Acknowledgment::NextTurnStart,
+    limitations: &["The command's standard input is closed."],
+};
+
 pub const GRANT_SCHEMA: &str = "openagents.coder.task-execution-grant.v1";
 const MAX_HOST_EVENTS: usize = 8192;
 
@@ -614,6 +624,9 @@ pub async fn execute(directory: &Path, bytes: &[u8]) -> Result<Task, Error> {
     );
     let mut trace = Log::create_at(&trace_path, &session)?;
     trace.append(&Step::said(Source::User, task.effective_prompt()))?;
+    for step in super::consumed_steers(&task, &BOUNDED_COMMAND_STEERING) {
+        trace.append(&step)?;
+    }
     trace.append(
         &Step::said(Source::System, "Execution admitted by the local operator.")
             .noting("admission", json!(admission)),

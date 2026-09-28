@@ -73,6 +73,7 @@ pub mod shell;
 pub mod snapshot;
 pub mod stall;
 pub mod state;
+pub mod steering;
 pub mod stream;
 pub mod study;
 pub mod support;

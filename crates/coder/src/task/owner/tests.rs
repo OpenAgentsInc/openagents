@@ -145,6 +145,59 @@ async fn executes_once_with_retained_intent_trace_and_unknown_cost() {
 }
 
 #[tokio::test]
+async fn a_steer_is_consumed_when_the_next_turn_starts_and_recorded_as_its_own_step() {
+    let (root, _workspace, mut grant) = fixture();
+    let dir = root.path().join("store");
+    let correction = serde_json::to_vec(&Command {
+        schema: COMMAND_SCHEMA.into(),
+        command_id: "steer-one".into(),
+        task_id: "task-one".into(),
+        expected_revision: Some(1),
+        action: Action::Correct {
+            prompt: "Write the corrected output.".into(),
+            reason: "Steered before the turn started".into(),
+        },
+    })
+    .unwrap();
+    Store::open(&dir).unwrap().apply(&correction).unwrap();
+    let queued = Store::open(&dir).unwrap().show("task-one").unwrap();
+    // Accepted is not consumed: the ledger still holds the steer.
+    assert_eq!(queued.unconsumed_steers().len(), 1);
+    grant.expected_revision = queued.revision;
+    let task = execute(&dir, &serde_json::to_vec(&grant).unwrap())
+        .await
+        .unwrap();
+    let run = task.run.as_ref().unwrap();
+    assert_eq!(run.admission.context.task_revision, 2);
+    assert_eq!(run.admission.context.prompt, "Write the corrected output.");
+    assert!(task.unconsumed_steers().is_empty());
+    let recording = atif::log::read_whole(&dir.join(&run.admission.trace_file)).unwrap();
+    let document = recording.document();
+    let steps = document["steps"].as_array().unwrap();
+    let consumed: Vec<_> = steps
+        .iter()
+        .filter_map(|step| step["extra"]["steer_consumed"].as_object())
+        .collect();
+    assert_eq!(consumed.len(), 1, "{document}");
+    assert_eq!(consumed[0]["revision"], 2);
+    assert_eq!(consumed[0]["acknowledgment"], "next_turn_start");
+    assert_eq!(consumed[0]["adapter"], "bounded-command");
+    // The step sits after the user's instructions and before admission.
+    let position = |needle: &str| {
+        steps
+            .iter()
+            .position(|step| {
+                step["message"]
+                    .as_str()
+                    .is_some_and(|m| m.starts_with(needle))
+            })
+            .unwrap()
+    };
+    assert!(position("Write the corrected output.") < position("Steer consumed"));
+    assert!(position("Steer consumed") < position("Execution admitted"));
+}
+
+#[tokio::test]
 async fn cancellation_acknowledges_before_process_cleanup_and_keeps_original_receipt() {
     let (root, _workspace, mut grant) = fixture();
     grant.arguments[1] = "printf started; sleep 20; printf late > late.txt".into();

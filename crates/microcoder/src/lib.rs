@@ -37,6 +37,11 @@ pub mod tbench;
 pub mod vertex;
 pub mod xpnet;
 
+/// How Microcoder takes a steer: at the next turn boundary, confirmed when
+/// that turn's admission records the revision it read. The task owner's
+/// repository adapter reports this statement in every admission.
+pub use coder::task::adapter::STEERING;
+
 /// The default model, reached through the operator's Codex login.
 pub const MODEL: &str = "gpt-6-luna";
 

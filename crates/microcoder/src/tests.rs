@@ -1269,3 +1269,18 @@ async fn the_oracle_is_written_first_and_blocks_the_finish_until_it_passes() {
     // The oracle session's reply is priced into the model's spend.
     assert!((outcome.model_usd.unwrap() - 0.05).abs() < 1e-9);
 }
+
+#[test]
+fn microcoder_states_that_it_steers_only_at_a_turn_boundary() {
+    use coder::task::steering::{Acknowledgment, Native, Refusal, Request, Turn};
+    assert_eq!(crate::STEERING.adapter, coder::task::adapter::NAME);
+    assert_eq!(crate::STEERING.native, Native::TurnBoundary);
+    assert_eq!(
+        crate::STEERING.acknowledgment,
+        Acknowledgment::NextTurnStart
+    );
+    assert_eq!(
+        crate::STEERING.admit(Turn::Running, Request::Native),
+        Err(Refusal::Unsupported)
+    );
+}

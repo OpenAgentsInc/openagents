@@ -14,6 +14,23 @@ use supervise::{Input, Job, Limits};
 pub mod container;
 
 pub const NAME: &str = "microcoder-repository";
+
+/// How Microcoder takes a steer. A run reads its instructions once, when it
+/// is admitted, so a correction reaches the engine only when the next turn
+/// starts; the admission records the task revision it read, and the turn's
+/// trace records the consumed correction as its own step. A correction
+/// accepted while a run is going supersedes that run's context and stops
+/// it: that is task-level CTRL cancellation, not steering.
+pub const STEERING: coder_one::steering::Steering = coder_one::steering::Steering {
+    adapter: NAME,
+    native: coder_one::steering::Native::TurnBoundary,
+    emulation: None,
+    acknowledgment: coder_one::steering::Acknowledgment::NextTurnStart,
+    limitations: &[
+        "A run reads its instructions once, at admission.",
+        "A correction for a running task stops that run; no new turn starts.",
+    ],
+};
 pub const CONFIG_SCHEMA: &str = "openagents.microcoder.repository-config.v1";
 const TRACE_LIMIT: usize = 48 * 1024 * 1024;
 const STEP_LIMIT: usize = 8 * 1024 * 1024;
@@ -186,7 +203,8 @@ impl Configuration {
             "provider_artifact_attestation":"unsupported",
             "container_adapter": if self.container.is_some() { "docker-per-command-workspace-persistence" } else { "not_requested" },
             "provider_failover": if self.fallbacks.is_empty() { "not_requested" } else { "on-capacity-refusal" },
-            "frozen_knowledge_context":self.knowledge == "frozen-context"
+            "frozen_knowledge_context":self.knowledge == "frozen-context",
+            "steering": STEERING
         })
     }
 }
@@ -382,6 +400,9 @@ impl Host {
             ),
         )?;
         trace.append(&Step::said(Source::User, task.effective_prompt()))?;
+        for step in super::consumed_steers(&task, &STEERING) {
+            trace.append(&step)?;
+        }
         trace.append(
             &Step::said(
                 Source::System,
