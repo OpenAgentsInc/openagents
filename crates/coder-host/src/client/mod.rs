@@ -266,6 +266,59 @@ pub async fn fetch_summaries(device: &Device, relay: &str) -> Result<Vec<Activit
     Ok(latest.into_values().collect())
 }
 
+/// Hand each activity summary the host publishes to this device to `seen`
+/// as the relay delivers it, for up to `lifetime`, then return. A device
+/// that keeps one open hears of a task starting or ending at once instead
+/// of at its next [`fetch_summaries`]. Summaries published before the
+/// watch began are left to that read.
+///
+/// # Errors
+/// Returns why the relay could not be watched or stopped delivering; the
+/// caller watches again.
+pub async fn watch_summaries(
+    device: &Device,
+    relay: &str,
+    lifetime: Duration,
+    seen: &mut (dyn FnMut(ActivitySummary) + Send),
+) -> Result<()> {
+    device
+        .policy
+        .validate(relay)
+        .map_err(|_| Error::Config("the relay policy refuses this relay".into()))?;
+    let host = device.host();
+    let mailbox = mailbox::mailbox(&device.secret, host, Stream::Summaries)?;
+    let since = unix_time()?.saturating_sub(5);
+    let filter = json!({
+        "kinds": [3188], "authors": [host], "#p": [device.key()], "#h": [mailbox],
+        "since": since
+    });
+    let mut socket = Connection::connect(relay, &device.secret, lifetime)
+        .await
+        .map_err(Error::Transport)?;
+    let id = coder_reach::new_id();
+    socket
+        .send(json!(["REQ", id, filter]))
+        .await
+        .map_err(Error::Transport)?;
+    loop {
+        let frame = socket.next().await.map_err(Error::Transport)?;
+        if frame[1] != id.as_str() {
+            continue;
+        }
+        match frame[0].as_str() {
+            Some("CLOSED") => return Err(Error::Transport("the relay closed a watch".into())),
+            Some("EVENT") => {
+                if let Ok(event) = serde_json::from_value::<Event>(frame[2].clone())
+                    && let Ok(summary) = activity_summary::open(&event, &device.secret, host)
+                {
+                    seen(summary);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
 fn stale(detail: &'static str) -> Error {
     Error::Reach(coder_reach::Error::new(coder_reach::Refusal::Stale, detail))
 }

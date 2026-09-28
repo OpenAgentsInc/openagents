@@ -46,7 +46,7 @@ use coder_access::protocol::{DeviceEntry, QueueEdit, TaskCommand, TaskCreate, Ta
 use coder_access::{Access, Code, Error, Operation, Outcome, RelayPolicy, Right, Rights};
 use coder_host::client::{
     Connector, Device, Link, Reports, Route, fetch_directory_revisions, fetch_reach,
-    fetch_summaries,
+    fetch_summaries, watch_summaries,
 };
 use coder_link::{
     BlockReason, ConnectionId, Failure, HostKey, Phase, Policy, Registry, Report, Signal,
@@ -56,7 +56,7 @@ use coder_reach::directory::Directory;
 use coder_reach::hints::Class;
 pub use coder_reach::hints::Locality;
 use coder_reach::presence::{ClientProfile, Received, VersionRange};
-use nostr::activity_summary::ActivitySummary;
+use nostr::activity_summary::{self, ActivitySummary};
 use secp256k1::SecretKey;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -73,6 +73,9 @@ pub const SAVED_SCHEMA: &str = "openagents.coder.computers.v1";
 const TICK: Duration = Duration::from_millis(200);
 /// A snapshot asks for fresh data when the last read is older than this.
 const NUDGE_AFTER: Duration = Duration::from_secs(2);
+/// How long one summary watch stays open before it is opened again; a relay
+/// connection lives at most 120 seconds.
+const WATCH_FOR: Duration = Duration::from_secs(110);
 /// How long relays keep a directory revision this device publishes.
 const DIRECTORY_RETENTION: u64 = 365 * 86_400;
 
@@ -388,6 +391,8 @@ struct HostLive {
     /// The connection the last catch-up read, and when it finished.
     caught_up: Option<(u64, Instant)>,
     catching_up: bool,
+    /// A relay subscription to the host's summaries is open.
+    watching: bool,
     nudged: bool,
     /// When this device last left the host a relay nudge.
     woken_at: Option<Instant>,
@@ -773,6 +778,12 @@ impl Shared {
             else {
                 continue;
             };
+            // Summaries arrive as the host publishes them while the host is
+            // connected; the catch-up below reads what was published before.
+            if !live.watching {
+                live.watching = true;
+                tokio::spawn(watch(self.clone(), host.clone(), device.clone()));
+            }
             let due = live.nudged
                 || live
                     .caught_up
@@ -988,6 +999,41 @@ async fn read_directory(shared: Arc<Shared>, owner: SecretKey, relays: Vec<Strin
     let _ = shared.save(&saved);
 }
 
+/// Keep the host's summaries for this device current as the relay delivers
+/// them, until the watch ends; the next schedule opens another.
+async fn watch(shared: Arc<Shared>, host: String, device: Arc<Device>) {
+    let relay = device.relay().to_owned();
+    let mut seen = |summary: ActivitySummary| {
+        if let Some(live) = lock(&shared.state).hosts.get_mut(&host) {
+            keep_newest(&mut live.activity, summary);
+        }
+    };
+    let ended = watch_summaries(&device, &relay, WATCH_FOR, &mut seen).await;
+    // A watch that failed at once waits before the next, so an unreachable
+    // relay is not asked again on every tick.
+    if ended.is_err() {
+        tokio::time::sleep(Duration::from_secs(5)).await;
+    }
+    if let Some(live) = lock(&shared.state).hosts.get_mut(&host) {
+        live.watching = false;
+    }
+}
+
+/// Hold `summary` unless a newer one for its subject is held.
+fn keep_newest(activity: &mut Vec<ActivitySummary>, summary: ActivitySummary) {
+    match activity
+        .iter_mut()
+        .find(|held| held.subject_kind == summary.subject_kind && held.subject == summary.subject)
+    {
+        Some(held) => {
+            if activity_summary::supersedes(held, &summary).unwrap_or(false) {
+                *held = summary;
+            }
+        }
+        None => activity.push(summary),
+    }
+}
+
 /// Read what a connected host holds for this device, then report whether
 /// the data is current.
 async fn catch_up(
@@ -1060,8 +1106,11 @@ async fn catch_up(
                 live.compatibility = compatibility;
                 live.presence = presence;
             }
+            // A watch may already hold a summary newer than this read's.
             if let Ok(summaries) = &summaries {
-                live.activity.clone_from(summaries);
+                for summary in summaries {
+                    keep_newest(&mut live.activity, summary.clone());
+                }
             }
             if let Some(devices) = devices {
                 live.devices = Some((devices, now));
@@ -1832,5 +1881,28 @@ mod tests {
             assert_eq!(mode(dir.clone()), 0o700);
         }
         std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    /// A watched summary and a catch-up's read merge by subject, and an
+    /// older one never replaces a newer one.
+    #[test]
+    fn the_newest_summary_of_each_subject_is_held() {
+        use nostr::activity_summary::{Attention, Phase, SubjectKind};
+        let summary = |subject: &str, sequence: u64, phase: Phase| ActivitySummary {
+            host: "a".repeat(64),
+            subject_kind: SubjectKind::Task,
+            subject: subject.repeat(64),
+            sequence,
+            phase,
+            headline: "Task".into(),
+            attention: Attention::None,
+            updated_at: sequence,
+        };
+        let mut held = vec![summary("b", 5, Phase::Queued)];
+        keep_newest(&mut held, summary("b", 6, Phase::Running));
+        keep_newest(&mut held, summary("b", 5, Phase::Queued));
+        keep_newest(&mut held, summary("c", 1, Phase::Queued));
+        assert_eq!(held.len(), 2);
+        assert_eq!((held[0].sequence, held[0].phase), (6, Phase::Running));
     }
 }
