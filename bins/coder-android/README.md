@@ -21,6 +21,16 @@ shows bundled notices in **About Verse**. Its latest
 covers Rust/JNI, APK packaging, and 16 KiB alignment; a new Android Ruins
 emulator/device session is not part of that evidence.
 
+## Graphics
+
+The world draws with Verse's shared wgpu renderer. A device tries Vulkan
+first and falls back to OpenGL ES 3.0; the emulator uses OpenGL ES only.
+Before #9838, the physical renderer's pipelines failed to build on OpenGL
+ES, which the emulator uses. It now renders the plaza, zones, and Lagrange 1
+there. `adb shell setprop debug.verse.backend vulkan` (or `gl`) forces a
+backend. See [graphics backends](../../docs/verse/README.md#graphics-backends)
+for what differs on OpenGL ES.
+
 ## Source and app identity
 
 This adapter reimplements the native Android setup inspected in the authorized

@@ -21,8 +21,8 @@ The app has four tabs, shown as white icons on black:
   bare mode) in a `SurfaceView` and forwards touches, pinch, and rotation
   samples as Coder's `coder.verse.v1` requests. The hand/gyroscope button
   switches touch and motion look, and the crosshair recenters the camera.
-  See [Known gaps](#known-gaps): the shared renderer doesn't start on
-  Android's GLES backend yet.
+  The world draws with Verse's shared renderer on Vulkan or OpenGL ES; see
+  [Graphics backends](#graphics-backends).
 - **Wallet** is a placeholder that says **Coming soon.**
 - **Account** holds **Computers** (Coder's shared Computers screens, with
   their input requests, QR scanning, secret fields, and the invitation QR
@@ -172,6 +172,33 @@ every upload. The script never uploads, and never commits or prints a key;
 Git ignores `*.jks` and `*.keystore` files here. Creating the Play Console
 app, the upload key, and the testers list are owner steps.
 
+## Graphics backends
+
+The Verse tab uses the shared wgpu renderer. A device tries Vulkan first and
+falls back to OpenGL ES 3.0 when Vulkan has no adapter or device for the
+window. The emulator uses OpenGL ES only, because enumerating Vulkan can stall
+in emulator drivers. To force one backend, set a system property and reopen
+the Verse tab:
+
+```sh
+adb shell setprop debug.verse.backend vulkan   # or gl
+adb shell setprop debug.verse.backend "''"     # restore the default
+```
+
+On OpenGL ES, the renderer draws the same passes with these differences:
+
+- Sun and studio-light shadows keep their soft 16-tap filter, but the
+  penumbra width is fixed instead of following each occluder's distance.
+  GLSL ES can't read a depth texture that is also sampled with comparison.
+- Screen-space line coverage and the Sun, Earth, and Moon discs interpolate
+  without the `noperspective` qualifier, with an exact substitute.
+- Frames are drawn into an sRGB texture and encoded into a linear surface in
+  one extra full-screen pass, because the emulator's EGL ignores an sRGB
+  window colorspace.
+
+The Metal, Vulkan, and desktop output doesn't change. See
+[`docs/verse/README.md`](../../docs/verse/README.md#graphics-backends).
+
 ## Verification
 
 On 2026-09-28, the debug APK ran on the `coder_mobile_api35` emulator
@@ -187,8 +214,11 @@ On 2026-09-28, the debug APK ran on the `coder_mobile_api35` emulator
   from the emulator, returned a sign-in URL, and **Sign in with Tailscale**
   opened it in Chrome; About this device with the key and `1.0.0 (1)`.
 - Wallet: the placeholder.
-- Verse: the host mounted the surface and created the world, and the error
-  shown is the renderer's (see below).
+- Verse, after the OpenGL ES renderer fix (#9838): the bare world's grid,
+  the player, the lit ball with its shadow and light pool, and two remote
+  avatars on the horizon. Walking into the ball rolled it. The same frame
+  rendered with `debug.verse.backend` set to `vulkan`. `adb logcat` showed no
+  wgpu errors on either backend.
 
 Rust: `cargo test`, `cargo clippy`, and `cargo fmt --check` for
 `openagents-mobile` on the host; `cargo ndk clippy` for `aarch64-linux-android`
@@ -198,13 +228,8 @@ checked: the emulator isn't on a tailnet.
 
 ## Known gaps
 
-- **The Verse world doesn't render on Android yet.** The shared photographic
-  renderer (`crates/verse/src/pbr`) fails to build its pipelines on wgpu's
-  GLES backend, which Android uses: `photo.wgsl` reads the shadow depth
-  texture with `textureLoad`, and a vertex output uses a `noperspective`
-  qualifier, neither of which GLES supports. Coder for Android uses the same
-  renderer. The host shows the renderer's error with **Retry**; the fix
-  belongs in the Verse renderer.
+- Vulkan on a physical device hasn't been checked; the emulator's Vulkan
+  rendered the Verse tab correctly.
 - The terminal screen, QR scanning, and motion look are built but haven't
   been exercised on an emulator or a device.
 - Text with the Markdown role outside the conversation elements shows as

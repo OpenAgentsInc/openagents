@@ -469,6 +469,44 @@ render crate's third-person follow camera), not copied:
 
 The character collides with building footprints and the world edge.
 
+## Graphics backends
+
+The renderer runs on Metal (macOS and iOS), Vulkan, DirectX 12, and OpenGL ES
+3.0. Every backend requests the OpenGL ES 3.0 limits (the WebGL 2 set, with
+no storage buffers or compute), so desktop validation refuses anything an
+OpenGL ES device couldn't run. Android tries Vulkan first and falls back to
+OpenGL ES; its emulator uses OpenGL ES only. The `debug.verse.backend` system
+property (`vulkan` or `gl`) forces one.
+
+wgpu translates WGSL to GLSL ES 3.00 on OpenGL ES, which lacks three things
+the physical path uses. [`src/gles.rs`](../../crates/verse/src/gles.rs) keeps
+one side of each `//#if GLES` block in a shader; other backends compile the
+original side, so their output is unchanged:
+
+| Technique | Other backends | OpenGL ES |
+| --- | --- | --- |
+| Soft shadows | Percentage-closer soft shadows: a blocker search reads the shadow map's depths and sets the penumbra from the occluder's distance. | The same 16-tap comparison filter with the penumbra of an occluder 1 m away. GLSL ES can't read a depth texture that is also sampled with comparison. |
+| Screen-space varyings (line coverage, the Sun, Earth, and Moon discs) | `@interpolate(linear)` | GLSL ES has no `noperspective`, so the value travels multiplied by clip w and the fragment multiplies it by 1 / w. The result is the same. |
+| Bloom level count in the output pass | Read from the post uniform | The same; `textureNumLevels` isn't in GLSL ES, so no backend uses it. |
+
+OpenGL ES also presents differently. wgpu offers an sRGB surface there only
+through the EGL window colorspace, which the Android emulator accepts and
+then ignores, so frames would arrive too dark. The renderer instead draws
+into an `Rgba8UnormSrgb` texture and
+[`present.wgsl`](../../crates/verse/src/present.wgsl) encodes it into a
+linear surface in one full-screen pass. If the physical path still can't be
+created, for example because a driver rejects a translated shader, the
+renderer reports it and draws the amber path instead of stopping.
+
+The `gles` tests translate every entry point of every Verse shader, at every
+pipeline-constant value the renderer passes, through naga's GLSL ES 3.00
+writer with wgpu's options. They also refuse a texture sampled with two
+samplers, which OpenGL ES can't bind. They run on any development machine:
+
+```sh
+cargo test -p verse --lib gles
+```
+
 ## Code map
 
 | File | Owns |
@@ -497,7 +535,8 @@ The character collides with building footprints and the world edge.
 | [`src/zones/`](../../crates/verse/src/zones/mod.rs) | Curated zone identities, portals, manifest admission, lazy Ruins loading, palette/fog, the Ruins hotbar, and the Lagrange 1 scene. |
 | [`verse-ruins`](../../crates/verse-ruins/) | Retained Wizard Woods ECS simulation, exact source terrain, and portable host adapter. |
 | [`verse-lagrange`](../../crates/verse-lagrange/) | Sun–Earth CR3BP orbit and station-keeping, rigid bodies, and the L1 EVA construction sandbox. |
-| [`src/render.rs`](../../crates/verse/src/render.rs), [`src/shader.wgsl`](../../crates/verse/src/shader.wgsl) | Pipelines, fog, the window renderer, and PNG capture. |
+| [`src/render.rs`](../../crates/verse/src/render.rs), [`src/shader.wgsl`](../../crates/verse/src/shader.wgsl) | Pipelines, fog, the window renderer, backend choice, and PNG capture. |
+| [`src/gles.rs`](../../crates/verse/src/gles.rs), [`src/present.wgsl`](../../crates/verse/src/present.wgsl) | OpenGL ES shader variants, their GLSL ES validation tests, and the sRGB presentation pass. |
 
 Test the crate with `cargo test -p verse`. Tests cover the controller rules,
 the camera limits, the world's determinism and clear spawn, the palette

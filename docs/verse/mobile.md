@@ -127,7 +127,9 @@ shows **WALK CLOSER** until you are within reach, then **TAP TO OPEN**.
 The iOS world requests a 60 Hz display callback (30 Hz minimum); Android
 follows its native display callback. Motion samples are requested at 60 Hz.
 Both use a single-sample render target: a Metal layer on iOS and an Android
-native window on Android. Desktop retains its mouse and keyboard controls and
+native window on Android. Android draws with Vulkan, or with OpenGL ES where
+Vulkan isn't available and on the emulator; see
+[graphics backends](README.md#graphics-backends). Desktop retains its mouse and keyboard controls and
 supported 4× MSAA.
 Both surfaces run `verse::runtime::WorldRuntime`; mobile does not approximate
 the city with a separate scene or image.
