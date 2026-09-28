@@ -55,6 +55,69 @@ class MobileBridge(private val context: Context, private val changed: () -> Unit
     }
 
     fun lifecycle(active: Boolean) = send(json("op" to "lifecycle", "active" to active))
+
+    /**
+     * Hands Rust the Spark wallet's seed from the Keystore-encrypted store.
+     * Rust ignores a repeat. The seed is never logged or kept here.
+     */
+    fun openWallet() {
+        if (walletOpened) return
+        val entropy = try { DeviceKey.loadOrCreateSpark(context) } catch (problem: Exception) {
+            failure = problem.message; changed(); return
+        }
+        walletOpened = true
+        send(json("op" to "wallet_open", "entropy_hex" to entropy))
+    }
+    private var walletOpened = false
+
+    /** A Wallet request whose fields Rust checks. */
+    fun wallet(op: String, vararg fields: Pair<String, Any?>) = send(json("op" to op, *fields))
+
+    /**
+     * The recovery words, for a dialog the person asked to see after a
+     * warning. They arrive in Rust's direct reply, never in the app packet;
+     * nothing here keeps or logs them.
+     */
+    fun walletWords(received: (List<String>) -> Unit) = call(json("op" to "wallet_words")) { text ->
+        val reply = text?.let { runCatching { JSONObject(it) }.getOrNull() }
+            ?.takeIf { it.optString("schema") == "openagents.wallet-secret.v1" } ?: return@call
+        reply.optJSONArray("words")?.let { list -> received((0 until list.length()).map { list.getString(it) }) }
+    }
+
+    /**
+     * Restores from recovery words: Rust checks them, this saves the seed in
+     * the Keystore-encrypted store, and Rust replaces the running wallet.
+     * `done` gets the reason on failure, never the words.
+     */
+    fun restoreWallet(words: String, done: (String?) -> Unit) = call(json("op" to "wallet_restore_check", "words" to words)) { text ->
+        val reply = text?.let { runCatching { JSONObject(it) }.getOrNull() }
+            ?.takeIf { it.optString("schema") == "openagents.wallet-secret.v1" }
+        val entropy = reply?.textOrNull("entropy_hex")
+        if (entropy == null) { done(reply?.textOrNull("error") ?: "The words could not be checked."); return@call }
+        try { DeviceKey.replaceSpark(context, entropy) } catch (problem: Exception) {
+            done(problem.message ?: "The restored key could not be saved."); return@call
+        }
+        walletOpened = true
+        send(json("op" to "wallet_open", "entropy_hex" to entropy, "replace" to true))
+        done(null)
+    }
+
+    /**
+     * This device's keys and the changelog (`openagents.account.v1`). With
+     * `reveal`, the answer also carries the nsec: ask only after the person
+     * chose to see it, and keep it no longer than it shows.
+     */
+    fun account(reveal: Boolean = false, received: (JSONObject) -> Unit) = call(json("op" to "account", "reveal" to reveal)) { text ->
+        text?.let { runCatching { JSONObject(it) }.getOrNull() }
+            ?.takeIf { it.optString("schema") == "openagents.account.v1" }?.let(received)
+    }
+
+    /** Open a computer from the native Computers list. */
+    fun openComputer(host: String) = send(json("op" to "computers_open", "host" to host))
+    /** A choice from a Computers row's menu, already confirmed when it asks. */
+    fun chooseComputer(host: String, choice: String) = send(json("op" to "computers_choose", "host" to host, "choice" to choice))
+    /** `home`, `add`, `activity`, `owner_key`, `keep_directory`, or `refresh`. */
+    fun computersGo(destination: String) = send(json("op" to "computers_go", "to" to destination))
     fun refreshComputers() = send(json("op" to "computers_refresh"))
     fun snapshot() = send(json("op" to "snapshot"))
 
@@ -117,6 +180,7 @@ class MobileBridge(private val context: Context, private val changed: () -> Unit
             failure = null
             if (!next.optBoolean("terminal")) { terminalView = null; terminalRevision = 0 }
             next.textOrNull("open_url")?.let { link -> open(link) }
+            next.textOrNull("wallet_open_url")?.let { link -> browse(link) }
             changed()
         }
     }
@@ -132,6 +196,14 @@ class MobileBridge(private val context: Context, private val changed: () -> Unit
             failure = "No browser is available to open the Tailscale sign-in page."
             changed()
         }
+    }
+
+    /** Opens a bitcoin purchase page Rust named, once. */
+    private fun browse(link: String) {
+        val uri = Uri.parse(link)
+        if (uri.scheme != "https") return
+        try { context.startActivity(Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+        catch (_: ActivityNotFoundException) { failure = "No browser is available to open this page."; changed() }
     }
 
     private fun call(request: JSONObject, received: (String?) -> Unit) {

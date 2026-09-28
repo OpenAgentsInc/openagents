@@ -57,6 +57,8 @@ class MainActivity : ComponentActivity() {
     private val tabButtons = mutableMapOf<AppTab, ImageButton>()
     private lateinit var tabBar: LinearLayout
 
+    private lateinit var wallet: WalletScreen
+
     // Coder tab.
     private lateinit var coderRenderer: NativeRenderer
     private val coderContent by lazy { FrameLayout(this) }
@@ -196,17 +198,14 @@ class MainActivity : ComponentActivity() {
             button.isSelected = key == value
         }
         world.setShown(value == AppTab.VERSE)
+        if (value == AppTab.WALLET) wallet.appeared() else wallet.disappeared()
         if (value == AppTab.CODER && !bridge.busy) bridge.refreshComputers()
         render()
     }
 
     private fun buildWallet(page: FrameLayout) {
-        page.addView(column().apply {
-            gravity = Gravity.CENTER
-            addView(text("Wallet", 30f).bold(), LinearLayout.LayoutParams(-2, -2).apply { gravity = Gravity.CENTER_HORIZONTAL })
-            addView(text("Coming soon.", 16f, Palette.SECONDARY), LinearLayout.LayoutParams(-2, -2).apply {
-                gravity = Gravity.CENTER_HORIZONTAL; topMargin = dp(8) })
-        }, FrameLayout.LayoutParams(-1, -1))
+        wallet = WalletScreen(this, bridge, scanner)
+        page.addView(wallet.root, FrameLayout.LayoutParams(-1, -1))
     }
 
     private fun buildVerse(page: FrameLayout) {
@@ -407,6 +406,7 @@ class MainActivity : ComponentActivity() {
             AccountRoute.DEVICE -> deviceKey?.text = packet?.textOrNull("device") ?: "Not available yet."
             null -> Unit
         }
+        if (tab == AppTab.WALLET) wallet.update(packet)
         terminal.update(packet?.optBoolean("terminal") == true, bridge.terminalView)
         if (tab == AppTab.VERSE) renderVerse()
     }
@@ -445,6 +445,11 @@ class MainActivity : ComponentActivity() {
                 (route == AccountRoute.CHATS && packet?.optBoolean("chats_loading") == true) ||
                 (route == AccountRoute.TAILNET && packet?.optBoolean("tailnet_loading") == true))
             if (loading && bridge.pending < 2) bridge.snapshot()
+            // Starts, syncs, quotes, and payments finish in the background:
+            // poll every second while one runs, else every ten seconds for
+            // payments that arrive.
+            val walletLoading = packet?.optBoolean("wallet_loading") == true
+            if (tab == AppTab.WALLET && (walletLoading || ticks % 10 == 0) && !bridge.busy) bridge.snapshot()
             main.postDelayed(this, 1000)
         }
     }

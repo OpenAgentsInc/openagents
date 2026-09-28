@@ -42,7 +42,17 @@ The app has four tabs, shown as white icons on black:
   results board** actions on the world when the player is in reach. The
   Gym connection code is kept encrypted under its own Keystore key; the
   verified results are cached in the app's cache directory.
-- **Wallet** is a placeholder that says **Coming soon.**
+- **Wallet** runs Breez's Spark SDK on Bitcoin mainnet, as the iPhone
+  app's Wallet tab does, from the same Rust state: the balance and sync
+  status, a balance warning above 1,000,000 sats, **Receive** (a Lightning
+  invoice, the Spark address, or the Bitcoin deposit address, each with a
+  QR code, Copy, and Share), **Send** (paste or scan a request, review the
+  amount and fee, then confirm), **Buy** (the provider's page opens in the
+  browser), deposits to claim, history, and **Recovery**. The info button
+  opens the trust note, and closing it acknowledges it. **Show recovery
+  words** asks first, then shows the words from Rust's direct reply;
+  **Restore** takes 12 or 24 words, which Rust checks, and asks again when
+  the wallet holds bitcoin.
 - **Account** holds **Computers** (Coder's shared Computers screens, with
   their input requests, QR scanning, secret fields, and the invitation QR
   code), **Chats on your computers**, **Tailnet** (Tailscale sign-in with
@@ -88,6 +98,15 @@ Backspace, Enter, and hardware keys with their modifiers.
 - The device's Nostr key is 32 random bytes, encrypted with AES-GCM under an
   Android Keystore key and stored in `noBackupFilesDir`. It goes to Rust only
   as the `secret_hex` field of the app configuration and is never logged.
+- The Spark wallet's seed (16 bytes of BIP39 entropy, or the 16 or 32 bytes
+  a restore saved) is encrypted the same way under its own Keystore key.
+  It reaches Rust only in `wallet_open`. The recovery words arrive only in
+  Rust's direct reply to `wallet_words`, never in the app packet, and exist
+  only while their dialog is open. **Copy words** marks the clip sensitive
+  and clears it after a minute; the words dialog and the restore dialog
+  block screenshots and screen recording (`FLAG_SECURE`).
+- The Verse world key and the Gym connection code each have their own
+  Keystore key too.
 - Rust keeps grants, pairings, and the Tailscale node keys in its own
   encrypted stores under `noBackupFilesDir/openagents-v1`.
 - Backup and device transfer exclude all app data, and cleartext traffic is
@@ -161,6 +180,8 @@ one that shows Rust Native's sample conversation
 adb shell am start -n com.openagents.app/.MainActivity --es tab verse
 adb shell am start -n com.openagents.app/.MainActivity --es account_route tailnet
 adb shell am start -n com.openagents.app/.MainActivity --ez rust_native_fixture true
+# Let captures include the recovery words and restore dialogs (debug only).
+adb shell am start -n com.openagents.app/.MainActivity --es tab wallet --ez allow_secret_captures true
 # The labeled synthetic Gym board, and a scripted walk up to it (steps as
 # in the iOS --verse-script: walk, right, turn, look, walkpinch, board,
 # results, r=do:value, wait).
@@ -237,7 +258,12 @@ On 2026-09-28, the debug APK ran on the `coder_mobile_api35` emulator
   Chats; Tailnet, where `tailscale-rs` reached Tailscale's control server
   from the emulator, returned a sign-in URL, and **Sign in with Tailscale**
   opened it in Chrome; About this device with the key and `1.0.0 (1)`.
-- Wallet: the placeholder.
+- Wallet (2026-09-28, on mainnet): a fresh wallet opened and synced,
+  showed its Spark address and a new Lightning invoice as QR codes, the
+  trust note, Send, the recovery words after the warning, Rust's refusal
+  of three words, and a restore from the public BIP39 test words, which
+  replaced the wallet and read its history. Captures are in
+  `verification/2026-09-28-wallet` (the words themselves are left out).
 - Verse, after the OpenGL ES renderer fix (#9838): the bare world's grid,
   the player, the lit ball with its shadow and light pool, and two remote
   avatars on the horizon. Walking into the ball rolled it. The same frame
