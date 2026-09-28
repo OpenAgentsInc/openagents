@@ -1,0 +1,1738 @@
+{
+  "cadence_ms": {
+    "idle": 5000,
+    "moving": 3000,
+    "state": 30000
+  },
+  "elapsed_ms": 120183,
+  "errors": [],
+  "events": [
+    {
+      "event": {
+        "content": "{\"v\":1,\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[19.637259,0.0,15.586372],\"q\":[0.0,0.0,0.0,1.0],\"t\":1790574150886,\"online\":true}",
+        "created_at": 1790574150,
+        "id": "c479cc4ea5b5f593f590e81c0f9008dbb566d5a7856d49d10a79609837cf12f2",
+        "kind": 33301,
+        "pubkey": "c25458d5b303d8533c4ef7dad4913ce3ec6afe1e84588c0f24d96577c4722e3c",
+        "sig": "52c7edb6c2c40a319019168bb1f2d4669d39b1edc5779185a9162189d156fc375304a50b04ac2fee912af825756ea138bab60012d2ab7bb31f61e04509df41d8",
+        "tags": [
+          [
+            "d",
+            "verse-bare/avatar"
+          ],
+          [
+            "w",
+            "verse-bare"
+          ],
+          [
+            "role",
+            "avatar"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 280
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[19.637259,0.0,15.586372],\"q\":[0.0,0.0,0.0,1.0],\"t\":1790574150886,\"online\":true}",
+        "created_at": 1790574150,
+        "id": "c479cc4ea5b5f593f590e81c0f9008dbb566d5a7856d49d10a79609837cf12f2",
+        "kind": 33301,
+        "pubkey": "c25458d5b303d8533c4ef7dad4913ce3ec6afe1e84588c0f24d96577c4722e3c",
+        "sig": "52c7edb6c2c40a319019168bb1f2d4669d39b1edc5779185a9162189d156fc375304a50b04ac2fee912af825756ea138bab60012d2ab7bb31f61e04509df41d8",
+        "tags": [
+          [
+            "d",
+            "verse-bare/avatar"
+          ],
+          [
+            "w",
+            "verse-bare"
+          ],
+          [
+            "role",
+            "avatar"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 340
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"4daf87d898f6bd64\",\"n\":1,\"t\":1790574155440,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[20.829685,0.0,19.586372],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,1.0381317],\"a\":\"run\"}]}",
+        "created_at": 1790574155,
+        "id": "9817c86671275edee3c1dd3fe36f34ab4e19bd3ff7f078abb2cd7c37d5b8c3df",
+        "kind": 23300,
+        "pubkey": "205a0a8d4d9f2747d0d1ccdd2bd1242c8950d056586923c708c6c01deaddd48e",
+        "sig": "f3ca254886f279a1405df9e14fe7344901908d95f32189d8effa78b589faa33e45204cd6e6deb42080c9935e37f915f8af20d21c64d57496fe68cc39d844eee1",
+        "tags": [
+          [
+            "w",
+            "verse-bare"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 509
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[20.829685,0.0,19.586372],\"q\":[0.0,0.0,0.0,1.0],\"t\":1790574155441,\"online\":true}",
+        "created_at": 1790574155,
+        "id": "56a9c37e9bb222b526d84c055b2b37db202bb302e75a05e390d7862828c3521f",
+        "kind": 33301,
+        "pubkey": "205a0a8d4d9f2747d0d1ccdd2bd1242c8950d056586923c708c6c01deaddd48e",
+        "sig": "9533d22989a31f7ae12bac2b8df23e86635e2c809137e6a15d5288709f210ab07990169d626ea888a535340b650033062f916e4352264ae6a3562983beaf3f3d",
+        "tags": [
+          [
+            "d",
+            "verse-bare/avatar"
+          ],
+          [
+            "w",
+            "verse-bare"
+          ],
+          [
+            "role",
+            "avatar"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 566
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"9dd3609339529361\",\"n\":2,\"t\":1790574155883,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[19.637259,0.0,15.586372],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.0],\"a\":\"idle\"}]}",
+        "created_at": 1790574155,
+        "id": "7bb5f5990617c9406548e1cae706d8f3c9daf39faad4d6c057f4eb189855e7a7",
+        "kind": 23300,
+        "pubkey": "c25458d5b303d8533c4ef7dad4913ce3ec6afe1e84588c0f24d96577c4722e3c",
+        "sig": "58b4da87600f67bfde06ba9761f6f2854adec7c163d0afeaa1db82d641b98ccc330c81584bcb5adc2cb570aaeaa9a99a0ee3e6c08d4d7f3d8182cacfa39a1061",
+        "tags": [
+          [
+            "w",
+            "verse-bare"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 950
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"4daf87d898f6bd64\",\"n\":2,\"t\":1790574158491,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[22.891273,0.0,19.586372],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.22205353],\"a\":\"run\"}]}",
+        "created_at": 1790574158,
+        "id": "5f34f1d56e4c41410374c425acf68b9c9e8b3433e8fb3b6c70d1090e6a670dc0",
+        "kind": 23300,
+        "pubkey": "205a0a8d4d9f2747d0d1ccdd2bd1242c8950d056586923c708c6c01deaddd48e",
+        "sig": "15fc9ff4f9f464b7002b34e483e2213fa6e096673fdffc04889967dc3b260828b173fc0114f0b9269ffde95f2c9f232ca1ab163febda19bf72dbcd0e4fa92c68",
+        "tags": [
+          [
+            "w",
+            "verse-bare"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 3553
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"9dd3609339529361\",\"n\":3,\"t\":1790574160899,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[19.637259,0.0,15.586372],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.0],\"a\":\"idle\"}]}",
+        "created_at": 1790574160,
+        "id": "6307eba53e6f253e92468e0ec9aeedd917926e209c11e8b79908dbd5f042f63f",
+        "kind": 23300,
+        "pubkey": "c25458d5b303d8533c4ef7dad4913ce3ec6afe1e84588c0f24d96577c4722e3c",
+        "sig": "0e79c2c0d120aa0835de11a20980cb313418c4d2f54d386c72ae211ae32d9b35ca1415fed95ee961016e308703bd04bdc8550db453aa52f304d50a92a6be778e",
+        "tags": [
+          [
+            "w",
+            "verse-bare"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 5977
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"4daf87d898f6bd64\",\"n\":3,\"t\":1790574161503,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[21.761139,0.0,19.586372],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.8691788],\"a\":\"run\"}]}",
+        "created_at": 1790574161,
+        "id": "971f8e6017227906ff300042c86ab976ab83c7c4f2d8c5750eeb241867dd91c9",
+        "kind": 23300,
+        "pubkey": "205a0a8d4d9f2747d0d1ccdd2bd1242c8950d056586923c708c6c01deaddd48e",
+        "sig": "bd45262fdc55416d2e4a5ffe618284afbd53114b5ea620013e1347151c3426d136e44f39f685413c31aaa6c7db69b43f33f839c7e25f26128d6b8e9cb77ea442",
+        "tags": [
+          [
+            "w",
+            "verse-bare"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 6566
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"4daf87d898f6bd64\",\"n\":4,\"t\":1790574164527,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[18.92165,0.0,19.586372],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.8824539],\"a\":\"run\"}]}",
+        "created_at": 1790574164,
+        "id": "c0504e6ffb71a323afa13850507118258e7853b63371e9c26844f79bc0abb133",
+        "kind": 23300,
+        "pubkey": "205a0a8d4d9f2747d0d1ccdd2bd1242c8950d056586923c708c6c01deaddd48e",
+        "sig": "55131d37454865667df24082485130ed93dc816359fb8dd7e83f28681cbfc75946cc3634a9f31bc6bf8e8fae3ec6634d90c8220e1500a5fed27df6015fe92708",
+        "tags": [
+          [
+            "w",
+            "verse-bare"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 9588
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"9dd3609339529361\",\"n\":4,\"t\":1790574165899,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[19.637259,0.0,15.586372],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.0],\"a\":\"idle\"}]}",
+        "created_at": 1790574165,
+        "id": "9d9b56bbfa68d8a04e5cf8b1a8248dec7ace581c0061b5cc38d9c4915e757f25",
+        "kind": 23300,
+        "pubkey": "c25458d5b303d8533c4ef7dad4913ce3ec6afe1e84588c0f24d96577c4722e3c",
+        "sig": "a123e0bc150728682cc7f42b93e5bef1e03b53f2a413ebc4a3f25a8c6f4223c07e780be649aed60d396d2f84d354a6068ec6e6d735c3f3f5b435d916ccc2e4ba",
+        "tags": [
+          [
+            "w",
+            "verse-bare"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 10945
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"4daf87d898f6bd64\",\"n\":5,\"t\":1790574167547,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[18.040749,0.0,19.586372],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.30189514],\"a\":\"run\"}]}",
+        "created_at": 1790574167,
+        "id": "c1895fb94425d348a066c64f403348964a498f144a09a24bdf31f3b12af14238",
+        "kind": 23300,
+        "pubkey": "205a0a8d4d9f2747d0d1ccdd2bd1242c8950d056586923c708c6c01deaddd48e",
+        "sig": "9dc56c5fed3d6d4cbb18111215af7ffff2dfc70a99d72407a86210497ed5ff3602829d198e58a1388c51c22734caa3729befbf3e2930780210e4e055bb497ba8",
+        "tags": [
+          [
+            "w",
+            "verse-bare"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 12615
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"4daf87d898f6bd64\",\"n\":6,\"t\":1790574170573,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[20.2575,0.0,19.586372],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,1.1438751],\"a\":\"run\"}]}",
+        "created_at": 1790574170,
+        "id": "45641b49dd6e1a0e0836dca1ccb7862b846240a78df7b843685f03aefcb22edf",
+        "kind": 23300,
+        "pubkey": "205a0a8d4d9f2747d0d1ccdd2bd1242c8950d056586923c708c6c01deaddd48e",
+        "sig": "1fbbe1988fdb32acfc44ef52a6461aa0d7d0e1ac78c43a95468ba173237826284e62c429ed87eb5358fdd5700761ba45287f7e8d0fb36a775586c84d2eb62b73",
+        "tags": [
+          [
+            "w",
+            "verse-bare"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 15643
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"9dd3609339529361\",\"n\":5,\"t\":1790574170900,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[19.637259,0.0,15.586372],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.0],\"a\":\"idle\"}]}",
+        "created_at": 1790574170,
+        "id": "b8ccf9bdf20104a24da99c682c34c136dc1d0ab07a4730eec8c0ba372159e4cd",
+        "kind": 23300,
+        "pubkey": "c25458d5b303d8533c4ef7dad4913ce3ec6afe1e84588c0f24d96577c4722e3c",
+        "sig": "73bac9ad57ecedb891bb4d9e97d8a3d2a24cdd82fc29236286e7f3dc633b74cdc8400a5ad8a45c54e8fea2605760903cab92871a2e75ca61a240159485d5ce5c",
+        "tags": [
+          [
+            "w",
+            "verse-bare"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 15936
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"4daf87d898f6bd64\",\"n\":7,\"t\":1790574173625,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[22.718315,0.0,19.586372],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.46035767],\"a\":\"run\"}]}",
+        "created_at": 1790574173,
+        "id": "4d8f98013508e03a9ee2c19d153d3cdba583a0f58417e57e701275689e26c34b",
+        "kind": 23300,
+        "pubkey": "205a0a8d4d9f2747d0d1ccdd2bd1242c8950d056586923c708c6c01deaddd48e",
+        "sig": "66d4a55d34585615fcbc9e2bdf42649e5fe47d8a4c5a4a6df06dbf16c9b1417dcea66cfb002f78075a22110cdad1f480268c2f909d758884d79f8414357938f7",
+        "tags": [
+          [
+            "w",
+            "verse-bare"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 18687
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"9dd3609339529361\",\"n\":6,\"t\":1790574175916,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[19.637259,0.0,15.586372],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.0],\"a\":\"idle\"}]}",
+        "created_at": 1790574175,
+        "id": "0eb73ea7917dceeb567902341dbb260dcd03703375a48dd169749c1a9cf9dec0",
+        "kind": 23300,
+        "pubkey": "c25458d5b303d8533c4ef7dad4913ce3ec6afe1e84588c0f24d96577c4722e3c",
+        "sig": "9c4f067d07ff7bcbd616260717fbf8b7ae526d461ca05e2e5344f2a6fcf512e9dcc78c4af2d370da057741f1cdec1caf7e3038785fc50668918925440559a1d8",
+        "tags": [
+          [
+            "w",
+            "verse-bare"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 20980
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"4daf87d898f6bd64\",\"n\":8,\"t\":1790574176648,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[22.201485,0.0,19.586372],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.8242798],\"a\":\"run\"}]}",
+        "created_at": 1790574176,
+        "id": "9f0d23c5191c1234dd059629613947caef3c98d2780a24787aaf214e93ed1409",
+        "kind": 23300,
+        "pubkey": "205a0a8d4d9f2747d0d1ccdd2bd1242c8950d056586923c708c6c01deaddd48e",
+        "sig": "dab34173ed1cb8e556ae23ef3651c377c64ba946cc5aba36535a0784d0df445793ec9e5be041c39502b602991d0890a5307cf46594cb6af3747ec5198688c2c0",
+        "tags": [
+          [
+            "w",
+            "verse-bare"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 21708
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"4daf87d898f6bd64\",\"n\":9,\"t\":1790574179683,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[19.39417,0.0,19.586372],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,1.1023712],\"a\":\"run\"}]}",
+        "created_at": 1790574179,
+        "id": "55002319e73f9937921a0cf9fbcf547b6490bda99ff335dd80b28713fc3226a0",
+        "kind": 23300,
+        "pubkey": "205a0a8d4d9f2747d0d1ccdd2bd1242c8950d056586923c708c6c01deaddd48e",
+        "sig": "619dff2894008204d3ce46f93b6334a96e58e73a379a6b989ce1e2c210e1dcdb72a237ca632c2bc7f9da6e2324064a7beb63a9d371c62991458e2e5e30b7764f",
+        "tags": [
+          [
+            "w",
+            "verse-bare"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 24756
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"9dd3609339529361\",\"n\":7,\"t\":1790574180916,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[19.637259,0.0,15.586372],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.0],\"a\":\"idle\"}]}",
+        "created_at": 1790574180,
+        "id": "4e9c0e1a36f7e9b46b566b3b58d38132aa92db9e566113b64ac3ebfa626ad0e7",
+        "kind": 23300,
+        "pubkey": "c25458d5b303d8533c4ef7dad4913ce3ec6afe1e84588c0f24d96577c4722e3c",
+        "sig": "914e026f58fed2752947081d97c4dad0cc5bb31fb456c881fff07825d2744cff4bae2481efde38849f3f70c455cb56d3af76c442a8207316768af0ea0b6d7f9a",
+        "tags": [
+          [
+            "w",
+            "verse-bare"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 25981
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"4daf87d898f6bd64\",\"n\":10,\"t\":1790574182693,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[17.942343,0.0,19.586372],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.062294006],\"a\":\"idle\"}]}",
+        "created_at": 1790574182,
+        "id": "e6c3540080be27223957dd0da0fc9d14dcb1aafcc65d1e41ca91f76a55f4c7f7",
+        "kind": 23300,
+        "pubkey": "205a0a8d4d9f2747d0d1ccdd2bd1242c8950d056586923c708c6c01deaddd48e",
+        "sig": "ed6c17715d51f1cd16ca2da0a4e86eb622511d57d90c7b02cb02eb7a071bdd63167d820043b8ec5fc22f98de190d9b202caa154eef661f0a1ca4f712a95fa1ed",
+        "tags": [
+          [
+            "w",
+            "verse-bare"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 27761
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[19.469765,0.0,19.586372],\"q\":[0.0,0.0,0.0,1.0],\"t\":1790574185467,\"online\":true}",
+        "created_at": 1790574185,
+        "id": "87611dd259dad241524bed514ee9b25d3698b07d447fc518ac6ae1fd7e3ec51c",
+        "kind": 33301,
+        "pubkey": "205a0a8d4d9f2747d0d1ccdd2bd1242c8950d056586923c708c6c01deaddd48e",
+        "sig": "2bbe46b4dd21c70dda7ad0be2470eec2b9179d0e5e195db3e0d459f4f78f7d3d7ae5299ed41d575669f828c11a0e121003eeec766f5be6e944e600010d1e54e8",
+        "tags": [
+          [
+            "d",
+            "verse-bare/avatar"
+          ],
+          [
+            "w",
+            "verse-bare"
+          ],
+          [
+            "role",
+            "avatar"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 30543
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"4daf87d898f6bd64\",\"n\":11,\"t\":1790574185699,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[19.687567,0.0,19.586372],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,1.0932922],\"a\":\"run\"}]}",
+        "created_at": 1790574185,
+        "id": "3b6fedcf0177a780a0fb81ea1f3445f4407ff20bbb93856e5335cf8b9c84a7aa",
+        "kind": 23300,
+        "pubkey": "205a0a8d4d9f2747d0d1ccdd2bd1242c8950d056586923c708c6c01deaddd48e",
+        "sig": "d05c64eba42cda71e59577740848c8f8ca176a06d3a6ea0b210a1b9e86721441a256d9187fcc062159bc153c230b46f7b8ace6fcfc3cb6773afda3ac712a7f3f",
+        "tags": [
+          [
+            "w",
+            "verse-bare"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 30774
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"7f895f9f03da258a\",\"n\":1,\"t\":1790574186083,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[19.637259,0.0,15.586372],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.0],\"a\":\"idle\"}]}",
+        "created_at": 1790574186,
+        "id": "9ae7f85c089ee754824032606012aa66ab9ccf1cd5f2708a2f188091b16db4cf",
+        "kind": 23300,
+        "pubkey": "c25458d5b303d8533c4ef7dad4913ce3ec6afe1e84588c0f24d96577c4722e3c",
+        "sig": "78a86dc58f8164ea8bbfe6317e629ca95b6b485e958c6e0488e09c81b5dfa61ceb0b0f7085ec84b152ce1a749d9153b0ce7ab2e427db7416634c52c0e627d0e8",
+        "tags": [
+          [
+            "w",
+            "verse-bare"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 31105
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[19.637259,0.0,15.586372],\"q\":[0.0,0.0,0.0,1.0],\"t\":1790574186083,\"online\":true}",
+        "created_at": 1790574186,
+        "id": "1bd66c80ac606f41afa3a7e07643b581963c5adee131964b7103cf2edf63d56c",
+        "kind": 33301,
+        "pubkey": "c25458d5b303d8533c4ef7dad4913ce3ec6afe1e84588c0f24d96577c4722e3c",
+        "sig": "86ca5f0d78a47cfc27600cbda4e775fa2346fa537ca6a8e4ef213911ecd2fa8e4db8bd0bff21a45dfeb7577e951264c29cf6d342cdb4cd0e01ec24f7c710e093",
+        "tags": [
+          [
+            "d",
+            "verse-bare/avatar"
+          ],
+          [
+            "w",
+            "verse-bare"
+          ],
+          [
+            "role",
+            "avatar"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 31166
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"4daf87d898f6bd64\",\"n\":12,\"t\":1790574188724,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[22.403769,0.0,19.586372],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.7525253],\"a\":\"run\"}]}",
+        "created_at": 1790574188,
+        "id": "6ca07e2d724fc3d7d38464034ae441be7794d661699a6b652ed1c30150883af5",
+        "kind": 23300,
+        "pubkey": "205a0a8d4d9f2747d0d1ccdd2bd1242c8950d056586923c708c6c01deaddd48e",
+        "sig": "6d459b3c6b231067c610b8c4df3b29e3de6ed3f5f5155f8cf395af4c36c517964b07af20e2281759bbf7983587a099c1e9990643680b69ad2c22baadc5920b2d",
+        "tags": [
+          [
+            "w",
+            "verse-bare"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 33796
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"7f895f9f03da258a\",\"n\":2,\"t\":1790574189083,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[19.637259,0.0,28.387962],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,6.4008],\"a\":\"run\"}]}",
+        "created_at": 1790574189,
+        "id": "906e5f97c0ac7f85f5220a93a6eadef693edcbba434bc2cb92a2c5231947fa39",
+        "kind": 23300,
+        "pubkey": "c25458d5b303d8533c4ef7dad4913ce3ec6afe1e84588c0f24d96577c4722e3c",
+        "sig": "1308b2b33ca79b1be79f4906c4422549b1c97cdeab5bb6a2cb0602a2ba6d9a093a8d25a5056956e3778be53172590259ef1a3220b740828eefadcb4aa4066864",
+        "tags": [
+          [
+            "w",
+            "verse-bare"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 34147
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"4daf87d898f6bd64\",\"n\":13,\"t\":1790574191758,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[22.571049,0.0,32.387962],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.6142044],\"a\":\"run\"}]}",
+        "created_at": 1790574191,
+        "id": "25a554d3247effce8ce7e4b858bd2fb7823b56f5e07cfdea7090d74b871c90c6",
+        "kind": 23300,
+        "pubkey": "205a0a8d4d9f2747d0d1ccdd2bd1242c8950d056586923c708c6c01deaddd48e",
+        "sig": "b3f831b0fbc72ef8690862864ed7809b5c6af1a49501313d4bda3d5ad1a65ee5ebfb5333e352c3818b0f8f22923c4bbb7ec3c6227f9ea6aa888a99052bc4720c",
+        "tags": [
+          [
+            "w",
+            "verse-bare"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 36828
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"7f895f9f03da258a\",\"n\":3,\"t\":1790574194083,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[19.637259,0.0,40.86967],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.0],\"a\":\"idle\"}]}",
+        "created_at": 1790574194,
+        "id": "df12605e2a884a9acf004cadc27aad1bb5b4f5a2e176d42152a63878b259064d",
+        "kind": 23300,
+        "pubkey": "c25458d5b303d8533c4ef7dad4913ce3ec6afe1e84588c0f24d96577c4722e3c",
+        "sig": "b7018e1555c190db07bd8cc82ddbdca202c0382bd9a8c299db27ac5501c1421b9ed8c96cf67eb852aa57f024cbbc684f293b6c3a7f3ffaf8f3c57b61238d914a",
+        "tags": [
+          [
+            "w",
+            "verse-bare"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 39224
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"4daf87d898f6bd64\",\"n\":14,\"t\":1790574194775,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[19.97949,0.0,44.86967],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,1.0000992],\"a\":\"run\"}]}",
+        "created_at": 1790574194,
+        "id": "77b4c85144212c000a016172df2a5e1b6fd778796e89e4f2e4118257f026924a",
+        "kind": 23300,
+        "pubkey": "205a0a8d4d9f2747d0d1ccdd2bd1242c8950d056586923c708c6c01deaddd48e",
+        "sig": "2242b59650e5f4f30155a0e265fc0bfbff24c645df7060b510f58eefe152016b3cacd37bcada72c244a53bef950eee878d529fba3fb04f49def74901dcda7f4d",
+        "tags": [
+          [
+            "w",
+            "verse-bare"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 39844
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"4daf87d898f6bd64\",\"n\":15,\"t\":1790574197818,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[17.973099,0.0,44.86967],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.19397736],\"a\":\"run\"}]}",
+        "created_at": 1790574197,
+        "id": "7201082a9d3e03203565f0fd02df8f1b8f6deac4a4e6848031fd77cdea7c882c",
+        "kind": 23300,
+        "pubkey": "205a0a8d4d9f2747d0d1ccdd2bd1242c8950d056586923c708c6c01deaddd48e",
+        "sig": "6f897627ce1de907b018a580e02a9f4150d5a4d8fbcd86e786882e86433c3c9760592c664e45c09641e7b4a101ed5896c870e914cc5ac1efe43cf2d0e0a58301",
+        "tags": [
+          [
+            "w",
+            "verse-bare"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 42886
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"7f895f9f03da258a\",\"n\":4,\"t\":1790574199100,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[19.637259,0.0,40.86967],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.0],\"a\":\"idle\"}]}",
+        "created_at": 1790574199,
+        "id": "b11e03f10d2474e7f6702150b5d77f5d1117a043a2f631cc6b5894787e58ec6d",
+        "kind": 23300,
+        "pubkey": "c25458d5b303d8533c4ef7dad4913ce3ec6afe1e84588c0f24d96577c4722e3c",
+        "sig": "0e7f2b01c4c74c4595f5affdde25c22a67f4a55c017278a3e9ffeb2c6203bc09a41c9ea7013b84b197ac0613123ad5e745b67c945033e1248227b5fa81772a21",
+        "tags": [
+          [
+            "w",
+            "verse-bare"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 44151
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"4daf87d898f6bd64\",\"n\":16,\"t\":1790574200855,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[19.182882,0.0,44.86967],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.99823],\"a\":\"run\"}]}",
+        "created_at": 1790574200,
+        "id": "6dd6ccd99fbecb02641f24420dbdd3e40ede5c239988c26f13db3167e47e1677",
+        "kind": 23300,
+        "pubkey": "205a0a8d4d9f2747d0d1ccdd2bd1242c8950d056586923c708c6c01deaddd48e",
+        "sig": "37792b9c5a43cf5663e1998da7981517484f277d5417a96c86c5033e71dac5b8d11b01272b24f51922d58ebbe65b287d3045d55e80f99bc32191e988e6d3e041",
+        "tags": [
+          [
+            "w",
+            "verse-bare"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 45921
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"4daf87d898f6bd64\",\"n\":17,\"t\":1790574203871,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[22.010899,0.0,44.86967],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.8146286],\"a\":\"run\"}]}",
+        "created_at": 1790574203,
+        "id": "7a75bf9ba6d3deaf47022ae63f6c0dae9e211c9e4f888a6d579b7239eb92332d",
+        "kind": 23300,
+        "pubkey": "205a0a8d4d9f2747d0d1ccdd2bd1242c8950d056586923c708c6c01deaddd48e",
+        "sig": "b373ae539e0f0f884f603065fe323148e92d421cd5a14df9e0b87c2cc60e1017b84c40f29caed5ce58bd5a532b9be944c17892891f4028ace46ad34c2d76b350",
+        "tags": [
+          [
+            "w",
+            "verse-bare"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 48936
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"7f895f9f03da258a\",\"n\":5,\"t\":1790574204117,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[19.637259,0.0,40.86967],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.0],\"a\":\"idle\"}]}",
+        "created_at": 1790574204,
+        "id": "c45d290e5d3e226f929d8c1763d9cbe9acb8eb42a42a2df39894a48775070d75",
+        "kind": 23300,
+        "pubkey": "c25458d5b303d8533c4ef7dad4913ce3ec6afe1e84588c0f24d96577c4722e3c",
+        "sig": "fb9d827f438acc4577d307ad59ff70f140973dbc4a3e29f4d60a503f9a7f814ad8895da7edcf2b11476b49e13d6418db1b26de53e0da8c0eae8d48e1afeaeb72",
+        "tags": [
+          [
+            "w",
+            "verse-bare"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 49223
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"4daf87d898f6bd64\",\"n\":18,\"t\":1790574206920,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[22.802795,0.0,44.86967],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.37490845],\"a\":\"run\"}]}",
+        "created_at": 1790574206,
+        "id": "ac94989d82a73361d1bd4b5f44990608a5056c5828d8ce461c9421f0944c4c73",
+        "kind": 23300,
+        "pubkey": "205a0a8d4d9f2747d0d1ccdd2bd1242c8950d056586923c708c6c01deaddd48e",
+        "sig": "04d244fd708ee280a7d86d166b843f3a6c1ab9d30909dbcf9fa4e22918ad06bd3ef582cdfdf1b559cde9c9b49beb528af45f33143fed18dc32e4460a0d76f0cc",
+        "tags": [
+          [
+            "w",
+            "verse-bare"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 51991
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"7f895f9f03da258a\",\"n\":6,\"t\":1790574209117,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[19.637259,0.0,40.86967],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.0],\"a\":\"idle\"}]}",
+        "created_at": 1790574209,
+        "id": "fab2850fc086d747decdb07e169d8caa6671b979c57bb7d00f0f2ddcf463b3e8",
+        "kind": 23300,
+        "pubkey": "c25458d5b303d8533c4ef7dad4913ce3ec6afe1e84588c0f24d96577c4722e3c",
+        "sig": "027116a32ea9faca98bfb8c8102717472a9f3d3e6b7c084a133202145480c6d9e3f6c58bee1eaa9bd0a0c016c4bb8c851136aee7c15effffcb400d03d9403795",
+        "tags": [
+          [
+            "w",
+            "verse-bare"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 54144
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"4daf87d898f6bd64\",\"n\":19,\"t\":1790574209949,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[20.511026,0.0,44.86967],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,1.1649323],\"a\":\"run\"}]}",
+        "created_at": 1790574209,
+        "id": "d719234225a6d574450dcb1cc91fce47679f91420c4870bd37864b1f4de53155",
+        "kind": 23300,
+        "pubkey": "205a0a8d4d9f2747d0d1ccdd2bd1242c8950d056586923c708c6c01deaddd48e",
+        "sig": "b0cfdfc0a64fda7e43f9ed6c9b095ef136c675a70aa3863db78381e1f79c8c03b1869a4d9a92c11aec9cbc8e35307fb6eca214062ddc1cb76a3a1346df2bd4ff",
+        "tags": [
+          [
+            "w",
+            "verse-bare"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 55025
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"4daf87d898f6bd64\",\"n\":20,\"t\":1790574212973,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[18.125778,0.0,44.86967],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.45619965],\"a\":\"run\"}]}",
+        "created_at": 1790574212,
+        "id": "c7101ea7dd28dcc6b3dff2ac0e5850c51025252f4a31fbc27d5e5fc958f1bbf2",
+        "kind": 23300,
+        "pubkey": "205a0a8d4d9f2747d0d1ccdd2bd1242c8950d056586923c708c6c01deaddd48e",
+        "sig": "2fedbc8224998fac95cd6185940acea7ae7b198e47d1c1c904cf379edbdae8d7ba95643a54844d4214c0156ed8cfa41c4650ae1573d07ed43aa7ed0f6e2be513",
+        "tags": [
+          [
+            "w",
+            "verse-bare"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 58038
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"7f895f9f03da258a\",\"n\":7,\"t\":1790574214117,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[19.637259,0.0,40.86967],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.0],\"a\":\"idle\"}]}",
+        "created_at": 1790574214,
+        "id": "e6fa98c4b59f458467c29bc838a3329aa6e95e0e7d733680e97e2a9e667d1e08",
+        "kind": 23300,
+        "pubkey": "c25458d5b303d8533c4ef7dad4913ce3ec6afe1e84588c0f24d96577c4722e3c",
+        "sig": "de25976d9232ef470db7a26581b2b94051f34ec59243da4407b71c64f6d124d83c52235ceb669b165210e5ddf1306f62d3c791144d87323649de23a5c0c30cf9",
+        "tags": [
+          [
+            "w",
+            "verse-bare"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 59234
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[18.397188,0.0,44.86967],\"q\":[0.0,0.0,0.0,1.0],\"t\":1790574215491,\"online\":true}",
+        "created_at": 1790574215,
+        "id": "762bca76d377c753225a0e440aba4e900731d4be9207dd7b2d26b46b0aa03b63",
+        "kind": 33301,
+        "pubkey": "205a0a8d4d9f2747d0d1ccdd2bd1242c8950d056586923c708c6c01deaddd48e",
+        "sig": "bac8bd56bf49f39b2f2d4a56ae36c02272bcf5e11352b954e1a35e754d5115ec9c4cea1eb8137dcd421f7bcec42cf95d2994d719f98e55291f3ae4f1a2e5c4d7",
+        "tags": [
+          [
+            "d",
+            "verse-bare/avatar"
+          ],
+          [
+            "w",
+            "verse-bare"
+          ],
+          [
+            "role",
+            "avatar"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 60559
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"4daf87d898f6bd64\",\"n\":21,\"t\":1790574216001,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[18.732538,0.0,44.86967],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.7617569],\"a\":\"run\"}]}",
+        "created_at": 1790574216,
+        "id": "cb33809394be788a3c589012b830d1b1caf548c55c9a7d264a9d5dd4d7c209eb",
+        "kind": 23300,
+        "pubkey": "205a0a8d4d9f2747d0d1ccdd2bd1242c8950d056586923c708c6c01deaddd48e",
+        "sig": "c06059fbf4d6fc62117d2ee5646e1e65f0fca52c897d3e17ea51c1341cb2c4de4093edca4b47df982170ad40acb2018a8ad1e0593a6188771c03168de5a130ef",
+        "tags": [
+          [
+            "w",
+            "verse-bare"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 61060
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[19.637259,0.0,40.86967],\"q\":[0.0,0.0,0.0,1.0],\"t\":1790574216085,\"online\":true}",
+        "created_at": 1790574216,
+        "id": "38337812ff6188c833a224338389d92723d38e7bf58eba4a437d07b568ba70eb",
+        "kind": 33301,
+        "pubkey": "c25458d5b303d8533c4ef7dad4913ce3ec6afe1e84588c0f24d96577c4722e3c",
+        "sig": "96e086aa4348e1e8ca315241611b1f4492236eac956f8629ba201d4374cc6e1adfdd2e44dc1d15f20b2aa42cbaa44ad2a26ef42b49c1998854dcabcf6fb454b2",
+        "tags": [
+          [
+            "d",
+            "verse-bare/avatar"
+          ],
+          [
+            "w",
+            "verse-bare"
+          ],
+          [
+            "role",
+            "avatar"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 61182
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"4daf87d898f6bd64\",\"n\":22,\"t\":1790574219055,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[21.572151,0.0,44.86967],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,1.047287],\"a\":\"run\"}]}",
+        "created_at": 1790574219,
+        "id": "11332b4fc2a1771f8b4def8e80cf991ef3487623aaf3fdbbec5432ffc468493a",
+        "kind": 23300,
+        "pubkey": "205a0a8d4d9f2747d0d1ccdd2bd1242c8950d056586923c708c6c01deaddd48e",
+        "sig": "4a7b7c41b2b23f91ace107264f30f7a28b5a2897415cc703f250e74ac5ef6f0a357b80549ebf97812137cbc8a3584e7cc9e086f3d9a854cbb4fef48d9a023f3b",
+        "tags": [
+          [
+            "w",
+            "verse-bare"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 64126
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"7f895f9f03da258a\",\"n\":8,\"t\":1790574219134,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[19.637259,0.0,40.86967],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.0],\"a\":\"idle\"}]}",
+        "created_at": 1790574219,
+        "id": "4ccc9bd6eb6f9cfaae95a9cea90288f789b77140cfd68a7eab5e9395d7ef34b6",
+        "kind": 23300,
+        "pubkey": "c25458d5b303d8533c4ef7dad4913ce3ec6afe1e84588c0f24d96577c4722e3c",
+        "sig": "0be5058ee9c4241ed8c4329231eeacfd6fac0c8593ed9b0ec324f4299cb0d2111c6c35571595f911800c8d8a44ce95dbcca56930fbf1c36922e12e0cd65c736f",
+        "tags": [
+          [
+            "w",
+            "verse-bare"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 64187
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"4daf87d898f6bd64\",\"n\":23,\"t\":1790574222068,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[22.923334,0.0,44.86967],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.11180878],\"a\":\"run\"}]}",
+        "created_at": 1790574222,
+        "id": "b578d2be8194f1f8966f62f92813a3470c9e1576fa9fdb349bf2be0f5c6545b3",
+        "kind": 23300,
+        "pubkey": "205a0a8d4d9f2747d0d1ccdd2bd1242c8950d056586923c708c6c01deaddd48e",
+        "sig": "7c4bed102e4b5743209e9df1307ba2bdce91cdc299048acd94a5f963f5e928d88d12efde79786dca7eb285c76a61f3677669bca8a4cfac922bc599b982fdd5a5",
+        "tags": [
+          [
+            "w",
+            "verse-bare"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 67137
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"7f895f9f03da258a\",\"n\":9,\"t\":1790574224150,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[19.637259,0.0,40.86967],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.0],\"a\":\"idle\"}]}",
+        "created_at": 1790574224,
+        "id": "a82816d64e92cdb8e9ef171ef14c3ef7ac0de2bf6c772d3f8e51a3d16e7bfe89",
+        "kind": 23300,
+        "pubkey": "c25458d5b303d8533c4ef7dad4913ce3ec6afe1e84588c0f24d96577c4722e3c",
+        "sig": "c3405e2a952a1e2c8608aba1fc59b3cf461af20bbe418cf1ad0c80acae659c4ef7dbea4471300e7da0a117419dbea8812cfa682b37cb7a4695c56f1f56734f19",
+        "tags": [
+          [
+            "w",
+            "verse-bare"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 69444
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"4daf87d898f6bd64\",\"n\":24,\"t\":1790574225125,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[21.037445,0.0,44.86967],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,1.1322784],\"a\":\"run\"}]}",
+        "created_at": 1790574225,
+        "id": "2ca1e3b5b7072ab9b389ef8dd7786628db38927b0b1e6527c3cd92990b887e91",
+        "kind": 23300,
+        "pubkey": "205a0a8d4d9f2747d0d1ccdd2bd1242c8950d056586923c708c6c01deaddd48e",
+        "sig": "86c739c97ba4e8b1a8cb68482fc1d2d25f779ecd6b336c4ce8b267e4b4004d20948589e58ed1aaefaaf65d8a6d5236411f17aa55ccd3c14bb162adb3ffe71ee0",
+        "tags": [
+          [
+            "w",
+            "verse-bare"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 70194
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"4daf87d898f6bd64\",\"n\":25,\"t\":1790574228160,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[18.372799,0.0,44.86967],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.6876373],\"a\":\"run\"}]}",
+        "created_at": 1790574228,
+        "id": "4e7aa5ecd59528f295aa85cea45f6baea94fc512390b4c29c539d7605ad1ba94",
+        "kind": 23300,
+        "pubkey": "205a0a8d4d9f2747d0d1ccdd2bd1242c8950d056586923c708c6c01deaddd48e",
+        "sig": "efe8e842a6e8048420ccca9a6e63d2625acd18834f5881a26cccfb50026e97f67a153b56917ede90668396168b9255709ef64e8ed574e8c90c5836fecfc78215",
+        "tags": [
+          [
+            "w",
+            "verse-bare"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 73217
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"7f895f9f03da258a\",\"n\":10,\"t\":1790574229151,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[19.637259,0.0,40.86967],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.0],\"a\":\"idle\"}]}",
+        "created_at": 1790574229,
+        "id": "0e60fe3dae7b438fe9dfc6fcf50b6445dddd4ae50a4f66817380237fbe89c608",
+        "kind": 23300,
+        "pubkey": "c25458d5b303d8533c4ef7dad4913ce3ec6afe1e84588c0f24d96577c4722e3c",
+        "sig": "c61620da069c97931ab60e4523022db118e27a9a2c221101ed07fc8d9c379c4ae648895831a8057c4d3fa0f8b1e36ca232a810f4a1c2618101ad27ece11ffd7c",
+        "tags": [
+          [
+            "w",
+            "verse-bare"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 74188
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"4daf87d898f6bd64\",\"n\":26,\"t\":1790574231210,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[18.403606,0.0,44.86967],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.6830597],\"a\":\"run\"}]}",
+        "created_at": 1790574231,
+        "id": "9860e098b201274320ae030c3d57984806ff804a7930ad19c3fa31c7dfe3788a",
+        "kind": 23300,
+        "pubkey": "205a0a8d4d9f2747d0d1ccdd2bd1242c8950d056586923c708c6c01deaddd48e",
+        "sig": "6e95da67931b00198020eee52afca9e151c229b4664498b874a647cab0c61d812e69224744ac80c5d3cf7abaecc4d8496f8d318a970232a9936694f3bb608c93",
+        "tags": [
+          [
+            "w",
+            "verse-bare"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 76281
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"7f895f9f03da258a\",\"n\":11,\"t\":1790574234151,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[19.637259,0.0,40.86967],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.0],\"a\":\"idle\"}]}",
+        "created_at": 1790574234,
+        "id": "dd503892529e395585f5583956930ff63d62771b36ed25d9c5cff7d9931392da",
+        "kind": 23300,
+        "pubkey": "c25458d5b303d8533c4ef7dad4913ce3ec6afe1e84588c0f24d96577c4722e3c",
+        "sig": "880d2d5046761c1f87794973bb418b81d31bf1cea2d0f07250e92bc098f3aa9e37035bd3ee97d89505dc20e0df32ca05da2c84dd6a076ef7a1d4e2276ba322b9",
+        "tags": [
+          [
+            "w",
+            "verse-bare"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 79242
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"4daf87d898f6bd64\",\"n\":27,\"t\":1790574234227,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[21.072048,0.0,44.86967],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,1.2453461],\"a\":\"run\"}]}",
+        "created_at": 1790574234,
+        "id": "6c925bb0be26eab3db22a425ddcbf7403b0d42a9c81336fb798b3fb38433449f",
+        "kind": 23300,
+        "pubkey": "205a0a8d4d9f2747d0d1ccdd2bd1242c8950d056586923c708c6c01deaddd48e",
+        "sig": "eb03af1ad48e815f3bf76af880e7b7eda2306bd4b51486c4d5d353b93162e9a95d7f11b6a007b5be1be08d60f07b211d8eac599b4b43e565f38f28e0315818c9",
+        "tags": [
+          [
+            "w",
+            "verse-bare"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 79298
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"4daf87d898f6bd64\",\"n\":28,\"t\":1790574237274,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[22.925894,0.0,44.86967],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.12874603],\"a\":\"run\"}]}",
+        "created_at": 1790574237,
+        "id": "7e49fb5ca8a91ad408a727f6511b53139298d13606b82f87c0158d359021f322",
+        "kind": 23300,
+        "pubkey": "205a0a8d4d9f2747d0d1ccdd2bd1242c8950d056586923c708c6c01deaddd48e",
+        "sig": "2441a8274dcbcc6d915783ddb7e5400d19aba015c5cbe85d9daeb9bc88978ddb682791c21f6dd2c19034771b5fe434e18d278357860dea383f4371802a161d21",
+        "tags": [
+          [
+            "w",
+            "verse-bare"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 82402
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"7f895f9f03da258a\",\"n\":12,\"t\":1790574239167,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[19.637259,0.0,40.86967],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.0],\"a\":\"idle\"}]}",
+        "created_at": 1790574239,
+        "id": "532b265d31ac8b25e0b3473de13dd20356ae857798ae473ef24b0d2ec05b69a4",
+        "kind": 23300,
+        "pubkey": "c25458d5b303d8533c4ef7dad4913ce3ec6afe1e84588c0f24d96577c4722e3c",
+        "sig": "d2a3c0d40f1388d04a45648fc3857f9c9359098c640a56e6d6acf9f7fff5f572e939752cc62e358fbcc7321baa38887a488a79b18f4f3057796f7f64fb505c1f",
+        "tags": [
+          [
+            "w",
+            "verse-bare"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 84238
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"4daf87d898f6bd64\",\"n\":29,\"t\":1790574240301,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[21.536736,0.0,44.86967],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.90229034],\"a\":\"run\"}]}",
+        "created_at": 1790574240,
+        "id": "d4615dfd6166b367f8e7659992b27fa3d74933ee223847eb49d34820ba4c0f66",
+        "kind": 23300,
+        "pubkey": "205a0a8d4d9f2747d0d1ccdd2bd1242c8950d056586923c708c6c01deaddd48e",
+        "sig": "289017cd7bd203929ab325339231d988f05f9a4767b3e3e1215841e8980c0a2af38898bf8085dec5f2a647aa1289332c70e8c290b3855c615f982add1b03ddc5",
+        "tags": [
+          [
+            "w",
+            "verse-bare"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 85370
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"4daf87d898f6bd64\",\"n\":30,\"t\":1790574243361,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[18.699703,0.0,44.86967],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.87306976],\"a\":\"run\"}]}",
+        "created_at": 1790574243,
+        "id": "24f79145e50b5d70da18773c528438734ab0152d6abdff121475788a8b73a6b4",
+        "kind": 23300,
+        "pubkey": "205a0a8d4d9f2747d0d1ccdd2bd1242c8950d056586923c708c6c01deaddd48e",
+        "sig": "d6987fb3a3a5330ae38312eee9b0b624925c9459de28d6060250bacdf539695e0936b2f2d09aefc0c60f2cf43684bf289a8b03fcdef6e82c1422a6127efc2b81",
+        "tags": [
+          [
+            "w",
+            "verse-bare"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 88434
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"7f895f9f03da258a\",\"n\":13,\"t\":1790574244184,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[19.637259,0.0,40.86967],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.0],\"a\":\"idle\"}]}",
+        "created_at": 1790574244,
+        "id": "63f14bff0235baf794c668a7b923811ca36219e56b5f887e58b04a95d8df93ad",
+        "kind": 23300,
+        "pubkey": "c25458d5b303d8533c4ef7dad4913ce3ec6afe1e84588c0f24d96577c4722e3c",
+        "sig": "06dde291bec2c06cd6f689bd19bccfca79d13c15f8c907556cfc015b5af0fcbfe9b813858503d7e79649521135914e09bc4766e0c0c00dcfe248e239dc165ca7",
+        "tags": [
+          [
+            "w",
+            "verse-bare"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 89302
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"4daf87d898f6bd64\",\"n\":31,\"t\":1790574246404,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[18.149523,0.0,44.86967],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.44013977],\"a\":\"run\"}]}",
+        "created_at": 1790574246,
+        "id": "b36473a93147ebe708b3226a1ded375846e795f99f384f9f4ddb3dd805e9b7e2",
+        "kind": 23300,
+        "pubkey": "205a0a8d4d9f2747d0d1ccdd2bd1242c8950d056586923c708c6c01deaddd48e",
+        "sig": "f78cd9421da24aa1fc0177668dc0cf147a0339cc2561a3febc33a5531bceea66e77585e0d24f8f26e7654a880df3d82edce6052120fae2f9a438d41e79548c0f",
+        "tags": [
+          [
+            "w",
+            "verse-bare"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 91462
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[18.937906,0.0,44.86967],\"q\":[0.0,0.0,0.0,1.0],\"t\":1790574247686,\"online\":true}",
+        "created_at": 1790574247,
+        "id": "a650a9b18dbf56cce404292afec3beee667d46d055f3817c9041aa51852afb16",
+        "kind": 33301,
+        "pubkey": "205a0a8d4d9f2747d0d1ccdd2bd1242c8950d056586923c708c6c01deaddd48e",
+        "sig": "896f7094d1212421ef01cd34edb16d260a6774947b55a1599323f2c1ec11189d6da883f91bafa34af46a2ba4f959b517f32c5d7afc80f7a92f6feed24abd87f4",
+        "tags": [
+          [
+            "d",
+            "verse-bare/avatar"
+          ],
+          [
+            "w",
+            "verse-bare"
+          ],
+          [
+            "role",
+            "avatar"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 92753
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"7f895f9f03da258a\",\"n\":14,\"t\":1790574249201,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[19.637259,0.0,40.86967],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.0],\"a\":\"idle\"}]}",
+        "created_at": 1790574249,
+        "id": "26a3c53d9f0c383efca2a33a530b5427d2718cfa4751b5824955822ad53a0e8f",
+        "kind": 23300,
+        "pubkey": "c25458d5b303d8533c4ef7dad4913ce3ec6afe1e84588c0f24d96577c4722e3c",
+        "sig": "ac0d9c379ad91f9763e489ef8cb74fac1ba711a0d10b465863c27f2a5dcdd923cfa6a027c67092c107a6cfd906f695a0d0dc61c776a639586a655f67876b9293",
+        "tags": [
+          [
+            "w",
+            "verse-bare"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 94254
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"4daf87d898f6bd64\",\"n\":32,\"t\":1790574249422,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[20.565557,0.0,44.86967],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,1.1995316],\"a\":\"run\"}]}",
+        "created_at": 1790574249,
+        "id": "761e721e69e96173d1a63774f5e84da297874d734fab01881edf06de81c36418",
+        "kind": 23300,
+        "pubkey": "205a0a8d4d9f2747d0d1ccdd2bd1242c8950d056586923c708c6c01deaddd48e",
+        "sig": "92522ad30102c4c0e95a79f132579df3cf7fb4075e23ff62ac1faf90cf8a3271af14525e11bc864afcd546f836a16d4efc493352963fd0f40afa6ea57a8032ee",
+        "tags": [
+          [
+            "w",
+            "verse-bare"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 94487
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"4daf87d898f6bd64\",\"n\":33,\"t\":1790574252436,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[22.81505,0.0,44.86967],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.38440704],\"a\":\"run\"}]}",
+        "created_at": 1790574252,
+        "id": "9cd0ca269e958061f480d4b0fe21202ff7fd5ecd257f395d3488122bb861837c",
+        "kind": 23300,
+        "pubkey": "205a0a8d4d9f2747d0d1ccdd2bd1242c8950d056586923c708c6c01deaddd48e",
+        "sig": "8b78254a9eb2a1d98536267031948f3fc271469d40bf23e53db00415f79aa8047f812353e02739f7570c25f71b264c79cb244da5134d7bb386cd9837289e65f3",
+        "tags": [
+          [
+            "w",
+            "verse-bare"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 97504
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"7f895f9f03da258a\",\"n\":15,\"t\":1790574254201,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[19.637259,0.0,40.86967],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.0],\"a\":\"idle\"}]}",
+        "created_at": 1790574254,
+        "id": "b93d41441c2667a59f268d4d325faa7af4aaa7c615088646998538a2049ec9c0",
+        "kind": 23300,
+        "pubkey": "c25458d5b303d8533c4ef7dad4913ce3ec6afe1e84588c0f24d96577c4722e3c",
+        "sig": "1677e52866090de3d217fe468dbf9a13dd4c2fd019c25e32e3bfeb435e8ca2b4e66ef23ebe1c1982e9ca3e107795bcdf017378ddc5230aa209b122b8ab5fbbee",
+        "tags": [
+          [
+            "w",
+            "verse-bare"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 99277
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"4daf87d898f6bd64\",\"n\":34,\"t\":1790574255461,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[21.998545,0.0,44.86967],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.8469391],\"a\":\"run\"}]}",
+        "created_at": 1790574255,
+        "id": "615ab027e89aef3f89059359a01a7899b6f6ffefcdb6c665dbb089c19eadb115",
+        "kind": 23300,
+        "pubkey": "205a0a8d4d9f2747d0d1ccdd2bd1242c8950d056586923c708c6c01deaddd48e",
+        "sig": "860c3205386416d21f986b40460c667d5e35cfac3740d012907cd703a2c55c4d8e23a612d46c13f723c59e7322638e7c848045f2dc45fdde9379bd1dba0e1483",
+        "tags": [
+          [
+            "w",
+            "verse-bare"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 100529
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"4daf87d898f6bd64\",\"n\":35,\"t\":1790574258507,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[19.144144,0.0,44.86967],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.91350555],\"a\":\"run\"}]}",
+        "created_at": 1790574258,
+        "id": "aea0bd67019ffb4643cb023e737434356a2d6da508d7160a1216a4e4d663de54",
+        "kind": 23300,
+        "pubkey": "205a0a8d4d9f2747d0d1ccdd2bd1242c8950d056586923c708c6c01deaddd48e",
+        "sig": "66ee5c3479b190f7a3c7840df6dfc09fa4841dfd96c70f1c3269df3092e6c439bd10f71db9790847242643d6f63d3d55ec044aa797077666e0f7e379413e5e49",
+        "tags": [
+          [
+            "w",
+            "verse-bare"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 103577
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"7f895f9f03da258a\",\"n\":16,\"t\":1790574259218,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[19.637259,0.0,40.86967],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.0],\"a\":\"idle\"}]}",
+        "created_at": 1790574259,
+        "id": "f29d88a179d998caf038d8765281204b070e8025be96283e3329c6a085db7502",
+        "kind": 23300,
+        "pubkey": "c25458d5b303d8533c4ef7dad4913ce3ec6afe1e84588c0f24d96577c4722e3c",
+        "sig": "3b20cfad33756d9734ee4b3f1e68b99e3ee195b0129acef05fb71a954d8a2f82e5a70a0c39ec1e41c2c8250e73423cdb2fa422692e329d732f7fd55b4928cb17",
+        "tags": [
+          [
+            "w",
+            "verse-bare"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 104300
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"4daf87d898f6bd64\",\"n\":36,\"t\":1790574261541,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[17.98058,0.0,44.86967],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.20832062],\"a\":\"run\"}]}",
+        "created_at": 1790574261,
+        "id": "9540e6246af47d11cd97a4e14deed4107d08fd1b460efb15c9eaf61090ba18d9",
+        "kind": 23300,
+        "pubkey": "205a0a8d4d9f2747d0d1ccdd2bd1242c8950d056586923c708c6c01deaddd48e",
+        "sig": "5e642ed7521bb6000bff42f5702ccbdd2d23986953e17d1713d3511819d069322a9ce25657fab45a8f0937e27250bc15f013eb07ecce0a88ae2df3689a341d59",
+        "tags": [
+          [
+            "w",
+            "verse-bare"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 106607
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"7f895f9f03da258a\",\"n\":17,\"t\":1790574264218,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[19.637259,0.0,40.86967],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.0],\"a\":\"idle\"}]}",
+        "created_at": 1790574264,
+        "id": "fdb7cd9eb40569a4a555d109da279d88318c3ba24f13d699de0ee19cfe60a27f",
+        "kind": 23300,
+        "pubkey": "c25458d5b303d8533c4ef7dad4913ce3ec6afe1e84588c0f24d96577c4722e3c",
+        "sig": "7156fd7c6fdf216506dcf23a929780d5b74bf1d64078e957c6a93e4c8bf6cd97b9b22a211bf860c14c4f66663882ecbb9eb6c7c03d1151aedb997c3a2b7fe642",
+        "tags": [
+          [
+            "w",
+            "verse-bare"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 109295
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"4daf87d898f6bd64\",\"n\":37,\"t\":1790574264569,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[20.006477,0.0,44.86967],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,1.179924],\"a\":\"run\"}]}",
+        "created_at": 1790574264,
+        "id": "8fe56d39fe3ee7f719ec443fadb9bfad3b99eb0f638f5fbc13b8008c6e80a5dd",
+        "kind": 23300,
+        "pubkey": "205a0a8d4d9f2747d0d1ccdd2bd1242c8950d056586923c708c6c01deaddd48e",
+        "sig": "82bda6a5e7df4288418e8091c2c4495c23d3cd72dcd8c6ca9f968f75c160a6b5709881564a6b23089bcf2abe00b1b011c84266b5a3bfed67f25093dc464b2c0d",
+        "tags": [
+          [
+            "w",
+            "verse-bare"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 109633
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"4daf87d898f6bd64\",\"n\":38,\"t\":1790574267585,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[22.584753,0.0,44.86967],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.6269455],\"a\":\"run\"}]}",
+        "created_at": 1790574267,
+        "id": "ef668bf0f764823cb243817e0951ff9f622aeb1fc203d23a8131fa2cd509ce51",
+        "kind": 23300,
+        "pubkey": "205a0a8d4d9f2747d0d1ccdd2bd1242c8950d056586923c708c6c01deaddd48e",
+        "sig": "653fed7bef3970121845de2d2be7edfedefe0cdaa39f095bc8f5d42d97ff7fbf03f29d89c98c95fa16905b79022b7e475c289bd3e59497f94dc397d3e11347b7",
+        "tags": [
+          [
+            "w",
+            "verse-bare"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 112653
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"7f895f9f03da258a\",\"n\":18,\"t\":1790574269218,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[19.637259,0.0,40.86967],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.0],\"a\":\"idle\"}]}",
+        "created_at": 1790574269,
+        "id": "f263946b97de1dc2d3fb0564d0ce43d950e1ac1577a4a5d797cb7e7d0bb8f5fd",
+        "kind": 23300,
+        "pubkey": "c25458d5b303d8533c4ef7dad4913ce3ec6afe1e84588c0f24d96577c4722e3c",
+        "sig": "539809285a4f18bc6bc30ff34570b11d066934db4d2236180a341a5d5ec49799a1a98676c94dd00f37632bae11b0bf01f4c686165fa4b808d5ef40e42daa4c8e",
+        "tags": [
+          [
+            "w",
+            "verse-bare"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 114249
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"4daf87d898f6bd64\",\"n\":39,\"t\":1790574270598,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[22.400093,0.0,44.86967],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.61351776],\"a\":\"run\"}]}",
+        "created_at": 1790574270,
+        "id": "46f4afb090f948c9a16b1c3f9457619023d4f8d0856e77917e50f4627a7f7790",
+        "kind": 23300,
+        "pubkey": "205a0a8d4d9f2747d0d1ccdd2bd1242c8950d056586923c708c6c01deaddd48e",
+        "sig": "7bdd006f3733de8f7aac97ccbead1afbe1b1d64be4d5a2701c577799d65fc815b1a3d39694fbe9f7f5c4bd24d8aefa4faf33fc7bba83731a6684a25461f65815",
+        "tags": [
+          [
+            "w",
+            "verse-bare"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 115666
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"4daf87d898f6bd64\",\"n\":40,\"t\":1790574273609,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[19.695454,0.0,44.86967],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,1.1151886],\"a\":\"run\"}]}",
+        "created_at": 1790574273,
+        "id": "296d1d95f5d5acaf240e4544c189985ebd06af3c5fb26601484fa03a20537475",
+        "kind": 23300,
+        "pubkey": "205a0a8d4d9f2747d0d1ccdd2bd1242c8950d056586923c708c6c01deaddd48e",
+        "sig": "c94e757cd521338365ede466c59c082b66e366322e8d488e91958e2005603c9ef5ef1cfa7aadb3a280fccf8bcdaa0ecc31081ca297597e45bb50c0fcd911a1cd",
+        "tags": [
+          [
+            "w",
+            "verse-bare"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 118681
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"s\":\"7f895f9f03da258a\",\"n\":19,\"t\":1790574274234,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[19.637259,0.0,40.86967],\"q\":[0.0,0.0,0.0,1.0],\"v\":[0.0,0.0,0.0],\"a\":\"idle\"}]}",
+        "created_at": 1790574274,
+        "id": "16f0efb38bdbef354d6459549091b625dc37042670addad8813a8ff152b61d74",
+        "kind": 23300,
+        "pubkey": "c25458d5b303d8533c4ef7dad4913ce3ec6afe1e84588c0f24d96577c4722e3c",
+        "sig": "f7826e34f76402d6b8604afe4720a853380cb0e5a93a4e1b254febc5eb71a76ade9e6d3a8ccb355d861ba34d3a3b81921d3935acbf1c739aeeb2655a3109443a",
+        "tags": [
+          [
+            "w",
+            "verse-bare"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 119296
+    },
+    {
+      "event": {
+        "content": "{\"v\":1,\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[18.538185,0.0,44.86967],\"q\":[0.0,0.0,0.0,1.0],\"t\":1790574275072,\"online\":false}",
+        "created_at": 1790574275,
+        "id": "0c65474ad60006a26e90b37350933dfd40a94fbcfe492d1c87f11b95ec907afd",
+        "kind": 33301,
+        "pubkey": "205a0a8d4d9f2747d0d1ccdd2bd1242c8950d056586923c708c6c01deaddd48e",
+        "sig": "d07f4a50715d4c8bd93f6171492effcc534aba60d29b2571dc903399bbcbc0465e7ef924a084c174f5401d1225cd32720ec64d80300e03ebb77c5726db5c3950",
+        "tags": [
+          [
+            "d",
+            "verse-bare/avatar"
+          ],
+          [
+            "w",
+            "verse-bare"
+          ],
+          [
+            "role",
+            "avatar"
+          ],
+          [
+            "c",
+            "0,0"
+          ]
+        ]
+      },
+      "received_ms": 120129
+    }
+  ],
+  "frame_sequences": {
+    "205a0a8d4d9f2747d0d1ccdd2bd1242c8950d056586923c708c6c01deaddd48e": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+      21,
+      22,
+      23,
+      24,
+      25,
+      26,
+      27,
+      28,
+      29,
+      30,
+      31,
+      32,
+      33,
+      34,
+      35,
+      36,
+      37,
+      38,
+      39,
+      40
+    ],
+    "c25458d5b303d8533c4ef7dad4913ce3ec6afe1e84588c0f24d96577c4722e3c": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19
+    ]
+  },
+  "limitations": [
+    "Native screenshot and rendered-entity evidence must be recorded separately",
+    "The probe has no phone secrets and cannot authenticate or publish as the phone",
+    "Only public presence records for the explicitly supplied phone and probe are retained",
+    "The probe publishes no chat, profiles, greetings, model requests, or benchmark runs",
+    "Probe offline states remain; fresh private keys are never persisted"
+  ],
+  "passed": true,
+  "peer_offline_received": true,
+  "peer_online_ms": 397,
+  "peer_pubkey": "205a0a8d4d9f2747d0d1ccdd2bd1242c8950d056586923c708c6c01deaddd48e",
+  "peer_saw_phone_live_ms": 952,
+  "phone_avatar_positions": [
+    [
+      19.637258529663086,
+      0.0,
+      15.586372375488281
+    ],
+    [
+      19.637258529663086,
+      0.0,
+      28.387962341308594
+    ],
+    [
+      19.637258529663086,
+      0.0,
+      40.86967086791992
+    ]
+  ],
+  "phone_pubkey": "c25458d5b303d8533c4ef7dad4913ce3ec6afe1e84588c0f24d96577c4722e3c",
+  "relay": "wss://relay.openagents.com",
+  "schema": "verse.phone-presence-probe.v1",
+  "started_at_unix": 1790574155,
+  "witness_authenticated": true,
+  "witness_subscribed": true,
+  "world": "verse-bare"
+}

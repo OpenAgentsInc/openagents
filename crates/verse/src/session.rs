@@ -30,6 +30,11 @@ use crate::net::{In, Link, Out};
 
 /// The world this client joins.
 pub const WORLD: &str = "verse-plaza";
+/// The world of the OpenAgents app's bare plaza. It is a separate coordinate
+/// space from [`WORLD`]: the bare world has none of the plaza's buildings or
+/// collision, so its positions are not valid plaza positions (NIP-MV requires
+/// a distinct world identifier for each separately loaded coordinate space).
+pub const BARE_WORLD: &str = "verse-bare";
 /// Public plaza relay used by unconfigured Coder mobile installs.
 pub const PUBLIC_RELAY: &str = "wss://relay.openagents.com";
 /// The relay used when none is named.
@@ -177,6 +182,11 @@ pub struct Session {
     intervals: PublishIntervals,
     pending_spawn: Option<PendingSpawn>,
     room_authority: Option<String>,
+    /// The NIP-MV world identifier every event carries.
+    world: &'static str,
+    /// Avatar presence alone: no chat, rooms, gestures, commands, profiles,
+    /// names, or agent entity.
+    presence_only: bool,
 }
 
 /// A NIP-MV zone command (kind 23302) addressed to this operator.
@@ -235,40 +245,79 @@ impl Session {
     pub fn start_with_identity(id: Identity, relay: &str) -> Result<Self, String> {
         Self::with_link(id, Link::start(relay))
     }
+
+    /// Connect to `world` for presence alone: the avatar's pose frames and
+    /// durable states, published and received. It subscribes to no chat,
+    /// rooms, private messages, gestures, zone commands, or profiles, and
+    /// publishes no profile, agent, gesture, or display name. Like
+    /// [`Session::start_with_identity`], it does not wait for the network.
+    ///
+    /// # Errors
+    ///
+    /// Returns a message when `world` is not a valid NIP-MV world identifier.
+    pub fn start_presence(id: Identity, relay: &str, world: &'static str) -> Result<Self, String> {
+        Self::with_link_in(id, Link::start(relay), world, true)
+    }
+
     fn with_link(id: Identity, link: Link) -> Result<Self, String> {
+        Self::with_link_in(id, link, WORLD, false)
+    }
+
+    fn with_link_in(
+        id: Identity,
+        link: Link,
+        world: &'static str,
+        presence_only: bool,
+    ) -> Result<Self, String> {
+        if world.is_empty() || world.len() > 128 {
+            return Err("invalid world identifier".into());
+        }
         let me = id.signer.pubkey().to_owned();
-        link.send(Out::Subscribe {
-            id: LIVE_SUB.into(),
-            filters: vec![
-                json!({"kinds": [mv::FRAME_KIND, mv::GESTURE_KIND], "#w": [WORLD]}),
-                json!({"kinds": [mv::COMMAND_KIND], "#w": [WORLD], "#p": [me]}),
-            ],
-            live: true,
-        });
-        link.send(Out::Subscribe {
-            id: STATE_SUB.into(),
-            filters: vec![json!({"kinds": [mv::STATE_KIND], "#w": [WORLD], "limit": 500})],
-            live: true,
-        });
-        link.send(Out::Subscribe {
-            id: CHAT_SUB.into(),
-            filters: vec![json!({"kinds": [mv::CHAT_KIND], "#w": [WORLD], "limit": 100})],
-            live: true,
-        });
-        link.send(Out::Subscribe {
-            id: ROOM_SUB.into(),
-            filters: vec![
-                json!({"kinds": [mv::CHAT_KIND], "#h": ROOMS, "limit": 60}),
-                json!({"kinds": [39_000], "#d": ROOMS}),
-            ],
-            live: true,
-        });
-        if id.created {
-            link.send(Out::Publish(mv::profile_event(
-                &id.signer,
-                &id.profile,
-                unix_now(),
-            )));
+        if presence_only {
+            link.send(Out::Subscribe {
+                id: LIVE_SUB.into(),
+                filters: vec![json!({"kinds": [mv::FRAME_KIND], "#w": [world]})],
+                live: true,
+            });
+            link.send(Out::Subscribe {
+                id: STATE_SUB.into(),
+                filters: vec![json!({"kinds": [mv::STATE_KIND], "#w": [world], "limit": 500})],
+                live: true,
+            });
+        } else {
+            link.send(Out::Subscribe {
+                id: LIVE_SUB.into(),
+                filters: vec![
+                    json!({"kinds": [mv::FRAME_KIND, mv::GESTURE_KIND], "#w": [world]}),
+                    json!({"kinds": [mv::COMMAND_KIND], "#w": [world], "#p": [me]}),
+                ],
+                live: true,
+            });
+            link.send(Out::Subscribe {
+                id: STATE_SUB.into(),
+                filters: vec![json!({"kinds": [mv::STATE_KIND], "#w": [world], "limit": 500})],
+                live: true,
+            });
+            link.send(Out::Subscribe {
+                id: CHAT_SUB.into(),
+                filters: vec![json!({"kinds": [mv::CHAT_KIND], "#w": [world], "limit": 100})],
+                live: true,
+            });
+            link.send(Out::Subscribe {
+                id: ROOM_SUB.into(),
+                filters: vec![
+                    json!({"kinds": [mv::CHAT_KIND], "#h": ROOMS, "limit": 60}),
+                    json!({"kinds": [39_000], "#d": ROOMS}),
+                ],
+                live: true,
+            });
+            if id.created {
+                link.send(Out::Publish(mv::profile_event(
+                    &id.signer,
+                    &id.profile,
+                    unix_now(),
+                )));
+            }
         }
         Ok(Self {
             link,
@@ -311,6 +360,8 @@ impl Session {
             intervals: PublishIntervals::desktop(),
             pending_spawn: None,
             room_authority: None,
+            world,
+            presence_only,
         })
     }
 
@@ -318,6 +369,12 @@ impl Session {
     #[must_use]
     pub fn profile(&self) -> &str {
         &self.id.profile
+    }
+
+    /// The NIP-MV world identifier this session joins.
+    #[must_use]
+    pub fn world(&self) -> &'static str {
+        self.world
     }
 
     /// The relay URL.
@@ -362,7 +419,7 @@ impl Session {
         });
         self.link.send(Out::Subscribe {
             id: ME_SUB.into(),
-            filters: vec![json!({"kinds":[mv::STATE_KIND],"authors":[self.pubkey()],"#d":[mv::state_address(WORLD,"avatar")],"limit":1})],
+            filters: vec![json!({"kinds":[mv::STATE_KIND],"authors":[self.pubkey()],"#d":[mv::state_address(self.world,"avatar")],"limit":1})],
             live: false,
         });
     }
@@ -418,8 +475,10 @@ impl Session {
         self.crowd.prune(now);
         self.my_pos = player.pos;
         self.bubbles.retain(|b| b.until > now);
-        self.notice_logins(now);
-        self.ask_names(now);
+        if !self.presence_only {
+            self.notice_logins(now);
+            self.ask_names(now);
+        }
 
         let moving = self
             .last_player
@@ -445,9 +504,14 @@ impl Session {
                 s: self.session.clone(),
                 n: self.seq,
                 t: unix_millis(),
-                e: poses(player, agent),
+                e: self.poses(player, agent),
             };
-            self.publish_now(mv::frame_event(&self.id.signer, WORLD, &frame, unix_now()));
+            self.publish_now(mv::frame_event(
+                &self.id.signer,
+                self.world,
+                &frame,
+                unix_now(),
+            ));
         }
 
         let due = match self.last_state {
@@ -471,7 +535,7 @@ impl Session {
             id: sub.clone(),
             filters: vec![json!({
                 "kinds": [mv::STATE_KIND],
-                "#w": [WORLD],
+                "#w": [self.world],
                 "#c": mv::cells_around(from, 1),
                 "limit": 100,
             })],
@@ -513,7 +577,7 @@ impl Session {
         };
         self.publish_now(mv::gesture_event(
             &self.id.signer,
-            WORLD,
+            self.world,
             &gesture,
             agent.pos,
             unix_now(),
@@ -554,7 +618,7 @@ impl Session {
         };
         self.publish_now(mv::gesture_event(
             &self.id.signer,
-            WORLD,
+            self.world,
             &gesture,
             agent.pos,
             unix_now(),
@@ -582,7 +646,7 @@ impl Session {
         };
         self.publish_now(mv::gesture_event(
             &self.id.signer,
-            WORLD,
+            self.world,
             &gesture,
             at,
             unix_now(),
@@ -602,9 +666,19 @@ impl Session {
         // Native suspension drops the session and cancels the link immediately.
     }
 
+    /// The entities this session publishes: the avatar and the agent, or the
+    /// avatar alone for presence.
+    fn poses(&self, player: &PlayerController, agent: &Agent) -> Vec<EntityPose> {
+        let mut poses = poses(player, agent);
+        if self.presence_only {
+            poses.retain(|pose| pose.role == "avatar");
+        }
+        poses
+    }
+
     fn publish_states(&mut self, player: &PlayerController, agent: &Agent, online: bool) {
-        let name = Some(self.id.profile.clone());
-        for pose in poses(player, agent) {
+        let name = (!self.presence_only).then(|| self.id.profile.clone());
+        for pose in self.poses(player, agent) {
             let state = State {
                 v: 1,
                 id: pose.id.clone(),
@@ -616,7 +690,7 @@ impl Session {
                 follows: pose.follows.clone(),
                 name: name.clone(),
             };
-            let event = mv::state_event(&self.id.signer, WORLD, &state, unix_now());
+            let event = mv::state_event(&self.id.signer, self.world, &state, unix_now());
             self.link.send(Out::Publish(event));
         }
     }
@@ -649,7 +723,7 @@ impl Session {
             }
             In::Event { sub, event } if sub == ME_SUB => {
                 if event.pubkey == self.pubkey()
-                    && let Ok(Received::State { state, .. }) = mv::decode(&event, WORLD)
+                    && let Ok(Received::State { state, .. }) = mv::decode(&event, self.world)
                     && state.id == "avatar"
                     && let Some(pending) = &mut self.pending_spawn
                     && pending.found.as_ref().is_none_or(|old| old.t < state.t)
@@ -681,6 +755,9 @@ impl Session {
                 self.world_live_ready = false;
                 self.world_state_ready = false;
                 self.update_world_status();
+                if self.presence_only {
+                    return;
+                }
                 // The link restores every retained subscription after AUTH, not only PMs.
                 self.link.send(Out::Subscribe {
                     id: DM_SUB.into(),
@@ -723,7 +800,7 @@ impl Session {
                 }
             }
             In::Event { event, .. } => {
-                if let Ok(received) = mv::decode(&event, WORLD) {
+                if let Ok(received) = mv::decode(&event, self.world) {
                     if let Received::State { pubkey, state } = &received
                         && let Some(name) = &state.name
                     {
@@ -979,7 +1056,7 @@ impl Session {
             Channel::Agent => return Err("Talk to your agent with T or /ai.".into()),
             other => mv::world_chat_event(
                 &self.id.signer,
-                WORLD,
+                self.world,
                 other.slug().unwrap_or("all"),
                 zone,
                 pos,
@@ -1109,7 +1186,7 @@ impl Session {
         if event.pubkey == self.pubkey() {
             return;
         }
-        let Ok(line) = mv::decode_chat(event, WORLD) else {
+        let Ok(line) = mv::decode_chat(event, self.world) else {
             return;
         };
         if !self.remember_chat(&event.id) {

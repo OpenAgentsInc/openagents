@@ -1,15 +1,20 @@
 //! The Verse tab: Verse's bare world on a native Metal layer. It is the plaza's
 //! ground grid in the neutral palette with Coder's player and its touch and
-//! motion controls, and nothing else. It joins no relay and reads no chats or
-//! computers. The world, controls, and rendering are Coder's shared mobile
-//! Verse surface ([`coder_mobile::VerseHandle`]); this module only admits the
-//! host's configuration and carries its C ABI.
+//! motion controls, and other players' avatars. It reads no chats or
+//! computers. The world, controls, presence, and rendering are Coder's shared
+//! mobile Verse surface ([`coder_mobile::VerseHandle`]); this module only
+//! admits the host's configuration and carries its C ABI.
+//!
+//! With a world key, the tab joins the bare world's own NIP-MV world on the
+//! public relay while it is active, for avatar presence alone: no chat,
+//! gestures, companion, or profile. The world key is a separate protected
+//! identity; the device key that holds host grants never signs world events.
 //!
 //! Create, call, and destroy a handle on the main thread while its
 //! CAMetalLayer stays alive. Requests and replies are Coder's native Verse
 //! JSON (`coder.verse.v1`).
 use crate::{OpenAgentsMobileBuffer, buffer};
-use coder_mobile::VerseHandle;
+use coder_mobile::{BarePresence, VerseHandle};
 use serde::Deserialize;
 use std::cell::RefCell;
 use std::ffi::c_void;
@@ -21,8 +26,8 @@ thread_local! { static CREATE_ERROR: RefCell<Option<String>> = const { RefCell::
 /// A world request carries no panel feeds, so it stays small.
 const MAX_REQUEST_BYTES: usize = 4096;
 
-/// The host's mount: the layer's drawable size in pixels, its scale, and
-/// whether the layer is set up for extended dynamic range.
+/// The host's mount: the layer's drawable size in pixels, its scale, whether
+/// the layer is set up for extended dynamic range, and the world identity.
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Config {
@@ -31,6 +36,26 @@ struct Config {
     scale: f32,
     #[serde(default)]
     hdr: bool,
+    /// The world identity's secret as 64 hexadecimal characters: a key kept
+    /// only for world presence, never the device key. Without it the world
+    /// stays offline.
+    #[serde(default)]
+    world_secret_hex: Option<String>,
+}
+
+impl Config {
+    fn presence(&self) -> Result<Option<BarePresence>, String> {
+        let Some(secret) = &self.world_secret_hex else {
+            return Ok(None);
+        };
+        if secret.len() != 64 || !secret.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+            return Err("Invalid Verse world identity".into());
+        }
+        Ok(Some(BarePresence {
+            secret_hex: secret.clone(),
+            relay: None,
+        }))
+    }
 }
 
 /// # Safety
@@ -52,8 +77,16 @@ pub unsafe extern "C" fn openagents_verse_create(
         let bytes = unsafe { std::slice::from_raw_parts(bytes, len) };
         let config: Config = serde_json::from_slice(bytes)
             .map_err(|_| "Invalid native Verse configuration".to_owned())?;
+        let presence = config.presence()?;
         unsafe {
-            VerseHandle::create_bare(layer, config.width, config.height, config.scale, config.hdr)
+            VerseHandle::create_bare(
+                layer,
+                config.width,
+                config.height,
+                config.scale,
+                config.hdr,
+                presence,
+            )
         }
     }));
     match result {
@@ -132,6 +165,18 @@ mod tests {
         let text = unsafe { std::slice::from_raw_parts(error.data, error.len) };
         assert_eq!(text, b"Invalid native Verse configuration");
         unsafe { crate::openagents_mobile_buffer_free(error) };
+        // A world key must be exactly a 32-byte secret in hexadecimal.
+        for key in ["zz".repeat(32), "11".repeat(31)] {
+            let bad = serde_json::to_vec(&serde_json::json!({
+                "width": 1, "height": 1, "scale": 1.0, "world_secret_hex": key,
+            }))
+            .unwrap();
+            assert!(unsafe { openagents_verse_create(layer, bad.as_ptr(), bad.len()) }.is_null());
+            let error = openagents_verse_create_error();
+            let text = unsafe { std::slice::from_raw_parts(error.data, error.len) };
+            assert_eq!(text, b"Invalid Verse world identity");
+            unsafe { crate::openagents_mobile_buffer_free(error) };
+        }
         #[cfg(not(target_os = "ios"))]
         {
             assert!(

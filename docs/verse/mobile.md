@@ -11,8 +11,10 @@ implementation belongs to the reusable `rust-native` crate.
 The OpenAgents app's **Verse** tab mounts the same surface in its bare mode
 (`WorldRuntime::bare`): only the plaza's ground grid, drawn in the neutral
 palette (each amber step's lightness in white light), and the player with the
-controls below. It has no relay, map, zones, doors, computer, Gym, or
-companion. See [OpenAgents for iOS](../../bins/openagents-ios/README.md).
+controls below, and other players' avatars. It has no chat, map, zones,
+doors, computer, Gym, or companion. See
+[presence in the OpenAgents app](#presence-in-the-openagents-app) and
+[OpenAgents for iOS](../../bins/openagents-ios/README.md).
 
 ## Walk the world
 
@@ -267,6 +269,50 @@ other clients must age out stale presence. Leaving the relay saves an explicit
 offline choice. Before build 48, iOS deleted the setting when leaving, so a
 legacy missing setting cannot distinguish a past Leave from first use; both
 now use the public default. A new native mount starts a new local world.
+
+## Presence in the OpenAgents app
+
+The OpenAgents app's Verse tab shares avatar presence with other players in
+its bare world. It reuses Coder's NIP-MV session (`verse::session::Session`),
+relay link, crowd interpolation, and mobile cadence, and adds only what the
+bare world needs:
+
+- **Its own world.** The tab joins `verse-bare` (`verse::session::BARE_WORLD`)
+  on `wss://relay.openagents.com`, not Coder's `verse-plaza`. The bare world
+  has none of the plaza's buildings or collision, so its positions are not
+  valid plaza positions, and NIP-MV gives each separately loaded coordinate
+  space its own world identifier. Players in the OpenAgents app see each
+  other; they do not see Coder's plaza, and Coder does not see them.
+- **Presence only.** `Session::start_presence` subscribes to pose frames and
+  entity states for that world and publishes the avatar's frames and states
+  with no display name. It subscribes to and publishes no chat, rooms,
+  private messages, gestures, zone commands, profiles, or companion entity.
+- **Its own identity.** A separate secp256k1 key in Keychain
+  (`com.openagents.app.verse`, this device only, available while unlocked)
+  signs world events. The device key that holds host grants never signs a
+  world event, so players cannot link it to the world identity. If Keychain
+  cannot provide the key, the world stays offline.
+- **Cadence.** The tab publishes at Coder's mobile cadence: a pose frame every
+  three seconds while moving and every five seconds at rest, and durable
+  state on join and at most every thirty seconds while moving. That keeps
+  each player within the public relay's per-key event limit. On join, it
+  restores its own saved position in the bare world within 1.5 seconds, or
+  spawns at random.
+- **Rendering.** Other players' avatars are drawn in the neutral palette,
+  3.3 seconds in the past (one moving interval plus a margin for jitter).
+  Each drawn position lies between two received poses, so avatars walk
+  continuously instead of jumping at every frame, at the cost of that delay.
+  An avatar with no frame for 10 seconds rests dim at its last saved state.
+- **Pausing.** Switching tabs or backgrounding the app deactivates the world,
+  which closes the relay connection: nothing more is published or received,
+  and remote avatars are cleared. Returning starts a fresh presence session.
+  As in Coder, the offline state is best effort, so peers also age out
+  stale presence.
+
+The tab has no Join or Leave control yet; it always joins the public relay
+while shown. The
+[verification record](../../bins/openagents-ios/verification/2026-09-28-verse-presence/README.md)
+covers loopback tests and a production-relay exchange with the simulator.
 
 ## Shared code and platform boundaries
 

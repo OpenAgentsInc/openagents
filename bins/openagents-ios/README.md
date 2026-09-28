@@ -20,12 +20,19 @@ The app has four tabs, shown as icons:
   works, the send control stops the task (`task.cancel`). A message in a
   finished chat starts a new chat.
 - **Verse** (globe) is Verse's bare world: the plaza's ground grid in white
-  and gray on a dark field, with your character in the center and nothing
-  else. It fills the screen behind the status bar and the tab bar. The
+  and gray on a dark field, with your character in the center and the other
+  players in the same world. It fills the screen behind the status bar and the tab bar. The
   controls are Coder's: drag anywhere to look, push the stick at the bottom
   left to walk, double-tap to jump, and pinch to zoom. The hand/gyroscope
   icon switches touch and motion look, and the crosshair recenters the
-  camera. It joins no relay and reads no computers or chats. Rust draws the
+  camera. While the tab shows, it joins the bare world (`verse-bare`) on
+  `wss://relay.openagents.com` for avatar presence alone and draws other
+  players' avatars in white and gray; it has no chat and reads no computers
+  or chats. Presence signs with a separate world key in Keychain
+  (`com.openagents.app.verse`), never the device key. Switching tabs or
+  backgrounding the app closes the connection. See
+  [Verse presence](../../docs/verse/mobile.md#presence-in-the-openagents-app).
+  Rust draws the
   world through Coder's mobile Verse surface in its bare mode
   (`coder_mobile::VerseHandle::create_bare`, carried by
   `openagents_verse_create`, `openagents_verse_call`, and
@@ -33,7 +40,9 @@ The app has four tabs, shown as icons:
   the Metal layer and forwards touches and motion samples, and reuses
   Coder's `PinchAdmission.swift` and `DeviceMotion.swift`. In simulator
   builds, `--verse-script look,walk,jump,zoom,recenter` drives those
-  controls through the same touch path without touching the screen.
+  controls through the same touch path without touching the screen, and the
+  log line `verse-world` reports the connection, live players, and the world
+  public key.
 - **Wallet** is a placeholder.
 - **Account** holds **Computers** (Coder's shared Computers screens: add a
   computer, access, activity, order work, terminal), **Chats on your

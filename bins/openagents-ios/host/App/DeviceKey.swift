@@ -12,9 +12,22 @@ enum DeviceKey {
     }
 
     static func loadOrCreate() throws -> Data {
+        try loadOrCreate(service: "com.openagents.app.device",
+                         accessible: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly)
+    }
+
+    /// The Verse tab's world identity: a separate key that signs only world
+    /// presence, so players in the world never see the device key that holds
+    /// host grants.
+    static func loadOrCreateVerse() throws -> Data {
+        try loadOrCreate(service: "com.openagents.app.verse",
+                         accessible: kSecAttrAccessibleWhenUnlockedThisDeviceOnly)
+    }
+
+    private static func loadOrCreate(service: String, accessible: CFString) throws -> Data {
         var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: "com.openagents.app.device",
+            kSecAttrService as String: service,
             kSecAttrAccount as String: "device-v1",
             kSecAttrSynchronizable as String: false,
         ]
@@ -34,7 +47,7 @@ enum DeviceKey {
         guard random == errSecSuccess else { throw Failure.message("Could not create a device key.") }
         query.removeValue(forKey: kSecReturnData as String)
         query[kSecValueData as String] = secret
-        query[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+        query[kSecAttrAccessible as String] = accessible
         guard SecItemAdd(query as CFDictionary, nil) == errSecSuccess else {
             throw Failure.message("Could not save the device key in Keychain.")
         }

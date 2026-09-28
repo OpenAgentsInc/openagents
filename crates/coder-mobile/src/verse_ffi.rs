@@ -12,6 +12,53 @@ use std::ptr;
 /// 512 KiB view bound) with its input request and QR code.
 const MAX_REQUEST_BYTES: usize = 640 * 1024;
 
+/// Avatar presence for the bare world: the protected world identity and,
+/// optionally, a relay other than the public plaza relay.
+pub struct BarePresence {
+    /// The world identity's secp256k1 secret, as 64 hexadecimal characters.
+    /// Keep it separate from any pairing or host-grant key.
+    pub secret_hex: String,
+    /// A `wss://` relay; the public relay when absent.
+    pub relay: Option<String>,
+}
+
+pub(crate) fn bare_config(
+    width: u32,
+    height: u32,
+    scale: f32,
+    hdr: bool,
+    presence: Option<BarePresence>,
+) -> Config {
+    let (secret_hex, world_relay, world_offline) = match presence {
+        Some(presence) => (presence.secret_hex, presence.relay, false),
+        None => {
+            let secret = secp256k1::SecretKey::new(&mut secp256k1::rand::rng());
+            let hex = secret
+                .secret_bytes()
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect();
+            (hex, None, true)
+        }
+    };
+    Config {
+        secret_hex,
+        width,
+        height,
+        scale,
+        synthetic: false,
+        gym_code: None,
+        synthetic_gym: false,
+        world_relay,
+        world_offline,
+        door_preferences: None,
+        zone_cache_directory: None,
+        computer_hud: false,
+        hdr,
+        bare: true,
+    }
+}
+
 /// A mounted Verse world and its renderer.
 pub struct VerseHandle {
     pub(crate) scene: Scene,
@@ -137,7 +184,9 @@ pub unsafe extern "C" fn coder_verse_call(
 impl VerseHandle {
     /// Mounts Verse's bare world on a Metal layer: the plaza's ground grid in
     /// the neutral palette, with Coder's player, touch, and motion controls
-    /// and nothing else. It joins no relay and uses a throwaway identity.
+    /// and nothing else. With `presence`, it joins the bare world's own NIP-MV
+    /// world for avatar presence alone while active; without it, it joins no
+    /// relay and uses a throwaway identity.
     ///
     /// # Safety
     /// As `coder_verse_create`: `layer` must be a live CAMetalLayer owned by
@@ -148,31 +197,12 @@ impl VerseHandle {
         height: u32,
         scale: f32,
         hdr: bool,
+        presence: Option<BarePresence>,
     ) -> Result<Self, String> {
         if layer.is_null() {
             return Err("No native layer to draw in".into());
         }
-        let secret = secp256k1::SecretKey::new(&mut secp256k1::rand::rng());
-        let scene = Scene::new(Config {
-            secret_hex: secret
-                .secret_bytes()
-                .iter()
-                .map(|byte| format!("{byte:02x}"))
-                .collect(),
-            width,
-            height,
-            scale,
-            synthetic: false,
-            gym_code: None,
-            synthetic_gym: false,
-            world_relay: None,
-            world_offline: true,
-            door_preferences: None,
-            zone_cache_directory: None,
-            computer_hud: false,
-            hdr,
-            bare: true,
-        })?;
+        let scene = Scene::new(bare_config(width, height, scale, hdr, presence))?;
         create_renderer(layer, scene)
     }
 
@@ -268,6 +298,11 @@ impl VerseHandle {
                         .map_or_else(verse::mesh::Mesh::default, |session| {
                             session.crowd.mesh(std::time::Instant::now(), dt)
                         });
+                    let entities = if self.scene.world.is_bare() {
+                        bare_entities(entities)
+                    } else {
+                        entities
+                    };
                     mesh.extend(&entities);
                     let view = self.scene.world.view(renderer.aspect());
                     match renderer.draw(view, &mesh, &self.scene.map_ui()) {
@@ -301,6 +336,16 @@ impl VerseHandle {
             request => self.scene.action(request),
         }
     }
+}
+
+/// Other players in the bare world, drawn in its neutral palette: gray and
+/// white geometry with no colored light or glow of their own.
+pub(crate) fn bare_entities(mut entities: verse::mesh::Mesh) -> verse::mesh::Mesh {
+    entities.neutralize();
+    entities.lit.clear();
+    entities.glow.clear();
+    entities.neon = None;
+    entities
 }
 
 /// # Safety

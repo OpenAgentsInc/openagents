@@ -46,8 +46,10 @@ pub(crate) struct Config {
     #[serde(default)]
     pub hdr: bool,
     /// Mount Verse's bare world: the plaza grid in the neutral palette with
-    /// the same player controls and nothing else. It joins no relay and has
-    /// no map, zones, doors, computer, Gym, or companion.
+    /// the same player controls and nothing else. It has no map, zones,
+    /// doors, computer, Gym, or companion. Unless offline, it joins its own
+    /// NIP-MV world ([`verse::session::BARE_WORLD`]) for avatar presence
+    /// alone: no chat, gestures, agent, or profile.
     #[serde(default)]
     pub bare: bool,
 }
@@ -499,6 +501,9 @@ struct WorldTap {
 }
 
 const TAP_DRIFT_POINTS: f32 = 12.0;
+/// Slack past the mobile moving-pose interval for relay and scheduling jitter
+/// when drawing bare-world players in the past.
+const BARE_PRESENCE_MARGIN: Duration = Duration::from_millis(300);
 const WORLD_TAP_SECONDS: f64 = 0.25;
 /// Radius of the movement stick's drawn base, in logical points.
 const STICK_RADIUS_POINTS: f32 = 56.0;
@@ -616,16 +621,15 @@ impl Scene {
         )
         .map_err(|e| e.to_string())?;
         if config.bare
-            && (config.world_relay.is_some()
-                || config.gym_code.is_some()
+            && (config.gym_code.is_some()
                 || config.synthetic_gym
                 || config.door_preferences.is_some()
                 || config.zone_cache_directory.is_some()
                 || config.computer_hud)
         {
-            return Err("The bare world has no network, zones, or panels".into());
+            return Err("The bare world has no Gym, doors, zones, or panels".into());
         }
-        let selected_relay = if config.world_offline || config.bare {
+        let selected_relay = if config.world_offline {
             None
         } else {
             config
@@ -766,11 +770,21 @@ impl Scene {
             return Err("This zone is local-only".into());
         }
         let identity = verse::identity::Identity::from_secret("phone", self.secret)?;
-        let mut session = Session::start_with_identity(
-            identity,
-            self.relay.as_deref().ok_or("No Verse relay selected")?,
-        )?;
-        session.set_publish_intervals(verse::session::PublishIntervals::mobile())?;
+        let relay = self.relay.as_deref().ok_or("No Verse relay selected")?;
+        let intervals = verse::session::PublishIntervals::mobile();
+        let mut session = if self.world.is_bare() {
+            let mut session = Session::start_presence(identity, relay, verse::session::BARE_WORLD)?;
+            // Every bare-world player publishes at this mobile cadence; draw
+            // them one moving interval in the past so they walk continuously
+            // between sparse poses instead of jumping at each one.
+            session
+                .crowd
+                .set_delay(intervals.moving + BARE_PRESENCE_MARGIN);
+            session
+        } else {
+            Session::start_with_identity(identity, relay)?
+        };
+        session.set_publish_intervals(intervals)?;
         self.spawn_pending = std::mem::take(&mut self.restore_spawn);
         if self.spawn_pending {
             session.begin_spawn(Duration::from_millis(1500));
@@ -1240,7 +1254,13 @@ impl Scene {
         self.sync_gym_interest();
         self.gym_board.poll();
         let now = Instant::now();
-        if let Some(session) = &mut self.session {
+        if let Some(session) = &mut self.session
+            && self.world.is_bare()
+        {
+            // Presence alone: the bare world's session has no agent to scan
+            // or greet with.
+            session.tick(now, &self.world.player, &self.world.agent);
+        } else if let Some(session) = &mut self.session {
             session.tick(now, &self.world.player, &self.world.agent);
             if self.world.agent.take_scan() {
                 session.request_scan(self.world.agent.pos);
@@ -2129,6 +2149,10 @@ impl Scene {
         self.world.computer(aspect)
     }
 }
+
+#[cfg(test)]
+#[path = "bare_presence_tests.rs"]
+mod bare_presence_tests;
 
 #[cfg(test)]
 mod tests {
@@ -3324,7 +3348,7 @@ mod tests {
 
     #[test]
     fn the_bare_world_keeps_the_player_controls_and_nothing_else() {
-        let config = |relay: Option<&str>| Config {
+        let config = |relay: Option<&str>, offline: bool| Config {
             secret_hex: "11".repeat(32),
             width: 800,
             height: 1200,
@@ -3333,15 +3357,26 @@ mod tests {
             gym_code: None,
             synthetic_gym: false,
             world_relay: relay.map(str::to_owned),
-            world_offline: false,
+            world_offline: offline,
             door_preferences: None,
             zone_cache_directory: None,
             computer_hud: false,
             hdr: false,
             bare: true,
         };
-        assert!(Scene::new(config(Some("wss://relay.example.com"))).is_err());
-        let mut scene = Scene::new(config(None)).unwrap();
+        // Online, it selects the public relay unless another is named.
+        let online = Scene::new(config(None, false)).unwrap();
+        assert_eq!(online.relay.as_deref(), Some(verse::session::PUBLIC_RELAY));
+        let named = Scene::new(config(Some("wss://relay.example.com"), false)).unwrap();
+        assert_eq!(named.relay.as_deref(), Some("wss://relay.example.com"));
+        assert!(
+            Scene::new(Config {
+                computer_hud: true,
+                ..config(None, true)
+            })
+            .is_err()
+        );
+        let mut scene = Scene::new(config(None, true)).unwrap();
         scene.activate(true).unwrap();
         assert!(scene.world.is_bare() && scene.relay.is_none() && scene.session.is_none());
         assert_eq!(scene.packet().connection.state, "offline");

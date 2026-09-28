@@ -6,7 +6,10 @@
 //! gesture, model, or benchmark request is published. Offline states remain
 //! as durable relay records; sockets close and keys are discarded on exit.
 //! Add `--observe-phone HEX_PUBKEY` to keep one peer near a phone for 120 seconds
-//! and independently retain only their public presence records.
+//! and independently retain only their public presence records. Add `--bare`
+//! after it to observe the OpenAgents app's bare world instead of the plaza:
+//! the peer joins `verse-bare` for avatar presence alone and walks back and
+//! forth in front of the phone.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -19,7 +22,7 @@ use verse::controller::PlayerController;
 use verse::identity::{self, Identity};
 use verse::mv::{self, Received};
 use verse::net::{In, Link, Out};
-use verse::session::{PublishIntervals, Session, Status, WORLD};
+use verse::session::{BARE_WORLD, PublishIntervals, Session, Status, WORLD};
 
 const DEADLINE: Duration = Duration::from_secs(45);
 const STEP: Duration = Duration::from_millis(50);
@@ -32,6 +35,7 @@ fn unix_now() -> u64 {
 }
 
 struct Witness {
+    world: &'static str,
     link: Link,
     signer: RelaySigner,
     auth_id: Option<String>,
@@ -47,9 +51,10 @@ struct Witness {
 }
 
 impl Witness {
-    fn new(relay: &str, keys: Vec<String>) -> Result<Self, String> {
+    fn new(relay: &str, keys: Vec<String>, world: &'static str) -> Result<Self, String> {
         let id = Identity::from_secret("verse-presence-witness", identity::random_secret())?;
         let witness = Self {
+            world,
             link: Link::start(relay),
             signer: id.signer,
             auth_id: None,
@@ -70,7 +75,7 @@ impl Witness {
     fn subscribe(&self) -> Result<(), String> {
         self.link.send(Out::Subscribe {
             id: "presence-probe".into(),
-            filters: vec![json!({"kinds":[mv::FRAME_KIND,mv::STATE_KIND],"authors":self.keys,"#w":[WORLD],"limit":8})],
+            filters: vec![json!({"kinds":[mv::FRAME_KIND,mv::STATE_KIND],"authors":self.keys,"#w":[self.world],"limit":8})],
             live: true,
         }).then_some(()).ok_or("Witness subscription could not be queued".into())
     }
@@ -107,7 +112,7 @@ impl Witness {
                 }
                 In::Eose(id) if id == "presence-probe" => self.subscribed = true,
                 In::Event { event, .. } if self.keys.contains(&event.pubkey) => {
-                    let Ok(received) = mv::decode(&event, WORLD) else {
+                    let Ok(received) = mv::decode(&event, self.world) else {
                         self.errors
                             .push("Witness received invalid probe presence".into());
                         continue;
@@ -166,10 +171,13 @@ fn run() -> Result<(), String> {
         return Err("Use a secure public relay or explicit loopback relay".into());
     }
     if args.len() == 3 && args[1] == "--observe-phone" {
-        return observe_phone(relay, &args[2]);
+        return observe_phone(relay, &args[2], false);
+    }
+    if args.len() == 4 && args[1] == "--observe-phone" && args[3] == "--bare" {
+        return observe_phone(relay, &args[2], true);
     }
     if args.len() != 1 {
-        return Err("Expected RELAY [--observe-phone HEX_PUBKEY]".into());
+        return Err("Expected RELAY [--observe-phone HEX_PUBKEY [--bare]]".into());
     }
     let started_at = unix_now();
     let started = Instant::now();
@@ -181,7 +189,7 @@ fn run() -> Result<(), String> {
         sessions.push(session);
     }
     let keys: Vec<_> = sessions.iter().map(|s| s.pubkey().to_owned()).collect();
-    let mut witness = Witness::new(relay, keys.clone())?;
+    let mut witness = Witness::new(relay, keys.clone(), WORLD)?;
     let mut players = [
         PlayerController::new(Vec3::new(-20.0, 0.0, -20.0), 0.0),
         PlayerController::new(Vec3::new(-16.0, 0.0, -20.0), 0.0),
@@ -299,17 +307,23 @@ fn cadence() -> Value {
     json!({"moving":intervals.moving.as_millis(),"idle":intervals.idle.as_millis(),"state":intervals.state.as_millis()})
 }
 
-fn observe_phone(relay: &str, phone: &str) -> Result<(), String> {
+fn observe_phone(relay: &str, phone: &str, bare: bool) -> Result<(), String> {
     use std::str::FromStr;
     secp256k1::XOnlyPublicKey::from_str(phone)
         .map_err(|_| "Phone key must be a hexadecimal public key")?;
     let started_at = unix_now();
     let started = Instant::now();
     let id = Identity::from_secret("verse-phone-probe", identity::random_secret())?;
-    let mut session = Session::start_with_identity(id, relay)?;
+    let world = if bare { BARE_WORLD } else { WORLD };
+    let mut session = if bare {
+        Session::start_presence(id, relay, BARE_WORLD)?
+    } else {
+        Session::start_with_identity(id, relay)?
+    };
     session.set_publish_intervals(PublishIntervals::mobile())?;
     let peer = session.pubkey().to_owned();
-    let mut witness = Witness::new(relay, vec![peer.clone(), phone.into()])?;
+    let mut witness = Witness::new(relay, vec![peer.clone(), phone.into()], world)?;
+    let mut phone_positions: Vec<[f32; 3]> = Vec::new();
     let mut player = PlayerController::new(Vec3::new(4.0, 0.0, 4.0), 0.0);
     let mut agent = Agent::new(&player);
     let mut online_ms = None;
@@ -319,7 +333,23 @@ fn observe_phone(relay: &str, phone: &str) -> Result<(), String> {
         let now = Instant::now();
         witness.drain(started.elapsed());
         if let Some(position) = witness.avatar_positions.get(phone) {
-            player.pos = Vec3::from(*position) + Vec3::new(0.8, 0.0, 3.0);
+            if phone_positions.last() != Some(position) && phone_positions.len() < 256 {
+                phone_positions.push(*position);
+            }
+            // In the bare world the peer walks back and forth across the
+            // phone's view so its motion shows; on the plaza it stands.
+            let sway = if bare {
+                2.5 * (started.elapsed().as_secs_f32() * 0.4).sin()
+            } else {
+                0.0
+            };
+            let next = Vec3::from(*position) + Vec3::new(0.8 + sway, 0.0, 4.0);
+            player.speed = if bare {
+                next.distance(player.pos) / STEP.as_secs_f32()
+            } else {
+                0.0
+            };
+            player.pos = next;
             agent.pos = player.pos + Vec3::new(1.0, 1.8, 1.0);
         }
         session.tick(now, &player, &agent);
@@ -342,8 +372,13 @@ fn observe_phone(relay: &str, phone: &str) -> Result<(), String> {
         std::thread::sleep(STEP);
     }
     session.leave(&player, &agent);
+    let entities: &[&str] = if bare {
+        &["avatar"]
+    } else {
+        &["avatar", "agent"]
+    };
     let cleaned = |w: &Witness| {
-        ["avatar", "agent"]
+        entities
             .iter()
             .all(|id| w.offline.contains(&(peer.clone(), (*id).into())))
     };
@@ -363,7 +398,8 @@ fn observe_phone(relay: &str, phone: &str) -> Result<(), String> {
             .iter()
             .all(|key| witness.frames.get(*key).is_some_and(|f| f.len() >= 2));
     println!("{}", serde_json::to_string_pretty(&json!({
-        "schema":"verse.phone-presence-probe.v1", "passed":passed,"relay":relay,
+        "schema":"verse.phone-presence-probe.v1", "passed":passed,"relay":relay,"world":world,
+        "phone_avatar_positions":phone_positions,
         "started_at_unix":started_at,"elapsed_ms":started.elapsed().as_millis(),
         "phone_pubkey":phone,"peer_pubkey":peer,"cadence_ms":cadence(),
         "peer_online_ms":online_ms,"peer_saw_phone_live_ms":phone_seen_ms,

@@ -79,6 +79,8 @@ pub struct Crowd {
     me: String,
     entities: HashMap<(String, String), Remote>,
     sessions: HashMap<String, SessionOrder>,
+    /// How far in the past entities are drawn; [`DELAY`] unless set.
+    delay: Duration,
 }
 
 impl Crowd {
@@ -89,7 +91,24 @@ impl Crowd {
             me: me.to_owned(),
             entities: HashMap::new(),
             sessions: HashMap::new(),
+            delay: DELAY,
         }
+    }
+
+    /// Draws entities `delay` in the past instead of [`DELAY`]. Publishers
+    /// with a sparse cadence (the mobile profile sends a moving pose every
+    /// few seconds) need a delay a little longer than their frame interval,
+    /// so each drawn position lies between two received poses and motion
+    /// stays continuous rather than jumping at every frame. Bounded to
+    /// `[DELAY, STALE / 2]`.
+    pub fn set_delay(&mut self, delay: Duration) {
+        self.delay = delay.clamp(DELAY, STALE / 2);
+    }
+
+    /// How far in the past entities are drawn.
+    #[must_use]
+    pub fn delay(&self) -> Duration {
+        self.delay
     }
 
     /// Number of tracked entities.
@@ -103,7 +122,11 @@ impl Crowd {
     pub fn live_len(&self, now: Instant) -> usize {
         self.entities
             .values()
-            .filter(|remote| remote.at(now).is_some_and(|(_, _, online)| online))
+            .filter(|remote| {
+                remote
+                    .at(now, self.delay)
+                    .is_some_and(|(_, _, online)| online)
+            })
             .count()
     }
 
@@ -210,7 +233,7 @@ impl Crowd {
             .entities
             .iter()
             .filter_map(|((pubkey, id), remote)| {
-                let (pos, rot, online) = remote.at(now)?;
+                let (pos, rot, online) = remote.at(now, self.delay)?;
                 Some(Shown {
                     pubkey: pubkey.clone(),
                     id: id.clone(),
@@ -242,7 +265,7 @@ impl Crowd {
     pub fn mesh(&mut self, now: Instant, dt: f32) -> Mesh {
         let mut mesh = Mesh::default();
         for remote in self.entities.values_mut() {
-            let Some((pos, rot, online)) = remote.at(now) else {
+            let Some((pos, rot, online)) = remote.at(now, self.delay) else {
                 continue;
             };
             let bright = if online {
@@ -281,10 +304,10 @@ impl Crowd {
 impl Remote {
     /// Pose at `now`: interpolated frames while online, durable state
     /// otherwise.
-    fn at(&self, now: Instant) -> Option<(Vec3, Quat, bool)> {
+    fn at(&self, now: Instant, delay: Duration) -> Option<(Vec3, Quat, bool)> {
         let live = self.last_frame.is_some_and(|t| now - t < STALE);
         if live {
-            let render = now.checked_sub(DELAY).unwrap_or(now);
+            let render = now.checked_sub(delay).unwrap_or(now);
             return Some(interpolate(&self.samples, render)).map(|(p, q)| (p, q, true));
         }
         self.state.map(|(p, q, _)| (p, q, false))
@@ -348,6 +371,36 @@ mod tests {
             1,
             "Stale geometry is retained but not counted as live"
         );
+    }
+
+    #[test]
+    fn a_longer_delay_keeps_sparse_frames_continuous() {
+        let t0 = Instant::now();
+        let gap = Duration::from_secs(3);
+        let shown_at = |crowd: &Crowd, after: Duration| crowd.shown(t0 + after)[0].pos.x;
+        // With the default delay, a pose three seconds after the last one
+        // is drawn almost at once.
+        let mut default = Crowd::new("me");
+        default.apply(frame(1, "s", 0.0), t0);
+        default.apply(frame(2, "s", 30.0), t0 + gap);
+        assert!(shown_at(&default, gap) > 25.0);
+        // A delay just past the frame interval walks between the two poses.
+        let mut sparse = Crowd::new("me");
+        sparse.set_delay(gap + Duration::from_millis(300));
+        sparse.apply(frame(1, "s", 0.0), t0);
+        sparse.apply(frame(2, "s", 30.0), t0 + gap);
+        let early = shown_at(&sparse, gap + Duration::from_millis(1300));
+        let later = shown_at(&sparse, gap + Duration::from_millis(2300));
+        assert!(
+            (early - 10.0).abs() < 0.1 && (later - 20.0).abs() < 0.1,
+            "{early} {later}"
+        );
+        assert!(sparse.shown(t0 + gap)[0].online);
+        // The delay is bounded.
+        sparse.set_delay(Duration::from_secs(60));
+        assert_eq!(sparse.delay(), STALE / 2);
+        sparse.set_delay(Duration::ZERO);
+        assert_eq!(sparse.delay(), DELAY);
     }
 
     #[test]

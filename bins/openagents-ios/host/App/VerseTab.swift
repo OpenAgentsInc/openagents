@@ -1,7 +1,8 @@
 // The Verse tab: Verse's bare world, the plaza grid in white light with
-// Coder's player controls and nothing else. UIKit owns the Metal layer, the
-// display clock, touches, and the motion sensor; Rust owns the world, the
-// player, the camera, the movement stick, and every frame.
+// Coder's player controls and the other players in it. UIKit owns the Metal
+// layer, the display clock, touches, the motion sensor, and the world key in
+// Keychain; Rust owns the world, the player, the camera, the movement stick,
+// world presence on the relay, and every frame.
 import QuartzCore
 import SwiftUI
 import UIKit
@@ -19,12 +20,23 @@ struct WorldPacket: Decodable {
     let camera_pitch: Double
     let camera_distance: Double
     let motion_needed: Bool
+    /// Other players' avatars with a recent pose.
+    let live_remote_entities: UInt64?
+    /// The world identity's public key, hex.
+    let world_public_key: String?
+    let connection: WorldConnectionPacket?
 
     var valid: Bool {
         schema == "coder.verse.v1" && position.count == 3 && position.allSatisfy(\.isFinite)
             && ["touch", "motion"].contains(camera_mode) && camera_yaw.isFinite
             && camera_pitch.isFinite && camera_distance.isFinite && camera_distance > 0
     }
+}
+
+/// The world connection's state: offline, paused, connecting, connected, or
+/// retrying.
+struct WorldConnectionPacket: Decodable {
+    let state: String
 }
 
 /// The tab's native state: camera mode, errors, and the motion sensor.
@@ -233,8 +245,13 @@ final class VerseWorldView: UIView {
         extent = (width, height, scale)
         if handle == nil, !creationFailed {
             configureDynamicRange(metal)
-            let configuration: [String: Any] = ["width": width, "height": height,
+            var configuration: [String: Any] = ["width": width, "height": height,
                                                 "scale": Double(scale), "hdr": wantsHDR]
+            // World presence signs with its own key, never the device key. If
+            // Keychain cannot provide it, the world stays offline.
+            if let secret = try? DeviceKey.loadOrCreateVerse() {
+                configuration["world_secret_hex"] = secret.map { String(format: "%02x", $0) }.joined()
+            }
             guard let data = try? JSONSerialization.data(withJSONObject: configuration) else { return }
             handle = data.withUnsafeBytes {
                 openagents_verse_create(Unmanaged.passUnretained(metal).toOpaque(),
@@ -333,9 +350,11 @@ final class VerseWorldView: UIView {
     /// Debug and simulator builds expose position and camera to UI checks.
     private func observe(_ packet: WorldPacket) {
         #if DEBUG || targetEnvironment(simulator)
-        let value = String(format: "frames %llu position %.2f %.2f %.2f yaw %.2f pitch %.2f zoom %.2f %@",
+        let value = String(format: "frames %llu position %.2f %.2f %.2f yaw %.2f pitch %.2f zoom %.2f %@ world %@ players %llu key %@",
                            packet.frames_presented, packet.position[0], packet.position[1], packet.position[2],
-                           packet.camera_yaw, packet.camera_pitch, packet.camera_distance, packet.camera_mode)
+                           packet.camera_yaw, packet.camera_pitch, packet.camera_distance, packet.camera_mode,
+                           packet.connection?.state ?? "unknown", packet.live_remote_entities ?? 0,
+                           packet.world_public_key ?? "")
         if accessibilityValue != value { accessibilityValue = value }
         if script != nil, packet.frames_presented % 30 == 0 { NSLog("verse-world %@", value) }
         #endif
