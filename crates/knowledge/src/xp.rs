@@ -97,8 +97,8 @@ pub fn excluded_tasks(entry: &Event) -> Result<Vec<String>, String> {
     Ok(tasks.into_iter().collect())
 }
 
-/// Checks one award completely: the award alone, its quest, and the
-/// quest's rule over the entry and evidence it names.
+/// Checks one `kb-transfer` award completely: the award alone, its quest,
+/// and the quest's rule over the entry and evidence it names.
 ///
 /// # Errors
 ///
@@ -116,6 +116,24 @@ pub fn verify(
     Ok((award, parsed))
 }
 
+/// Checks one `reproduce` award completely: the award alone, its quest,
+/// and the rule over the claim and reproduction it names.
+///
+/// # Errors
+///
+/// A message naming the first check that failed.
+pub fn verify_reproduction(
+    award_event: &Event,
+    quest: &Event,
+    claim: &Event,
+    reproduction: &Event,
+) -> Result<(Award, xp::Quest), String> {
+    let award = xp::parse_award(award_event).map_err(|e| e.to_string())?;
+    let parsed = xp::bind_quest(&award, quest).map_err(|e| e.to_string())?;
+    xp::bind_reproduction(&award, &parsed, claim, reproduction).map_err(|e| e.to_string())?;
+    Ok((award, parsed))
+}
+
 /// One awardee's share of one counted award.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Credit {
@@ -126,7 +144,10 @@ pub struct Credit {
     pub quest: String,
     pub title: String,
     pub season: String,
-    /// `author` or `runner`.
+    /// The quest's rule: `kb-transfer` or `reproduce`.
+    pub rule: String,
+    /// `author` or `runner` under `kb-transfer`; `claimant` or
+    /// `reproducer` under `reproduce`.
     pub role: String,
     pub pubkey: String,
     pub xp: u64,
@@ -160,7 +181,9 @@ fn short(hex: &str) -> &str {
 
 /// Derives the ledger from `events`: quests, awards, and revocations,
 /// plus the `3190` entries and `3189` evidence the awards name. Events may
-/// come from several relays and repeat.
+/// come from several relays and repeat. When the reader lists runners, a
+/// `kb-transfer` award counts only when its runner is listed, and a
+/// `reproduce` award only when its reproducer is.
 #[must_use]
 pub fn derive(events: &[Event], trust: &XpTrust) -> Ledger {
     let mut ledger = Ledger::default();
@@ -229,10 +252,22 @@ pub fn derive(events: &[Event], trust: &XpTrust) -> Ledger {
                     .ok_or(format!("the {what} {} isn't available", short(id)))
             };
             let quest = find(&award.quest.id, "quest")?;
-            let entry = find(&award.entry.id, "entry")?;
-            let evidence = find(&award.evidence[0].id, "evidence")?;
-            let (award, quest) = verify(event, quest, entry, evidence)?;
-            let runner = &award.role("runner").ok_or("no runner")?.pubkey;
+            let (award, quest) = if award.rule == xp::REPRODUCE {
+                let claim = find(&award.evidence[0].id, "claim")?;
+                let reproduction = find(&award.evidence[1].id, "reproduction")?;
+                verify_reproduction(event, quest, claim, reproduction)?
+            } else {
+                let entry_id = &award.entry.as_ref().ok_or("no entry")?.id;
+                let entry = find(entry_id, "entry")?;
+                let evidence = find(&award.evidence[0].id, "evidence")?;
+                verify(event, quest, entry, evidence)?
+            };
+            let role = if award.rule == xp::REPRODUCE {
+                "reproducer"
+            } else {
+                "runner"
+            };
+            let runner = &award.role(role).ok_or("no runner")?.pubkey;
             if !trust.runners.is_empty() && !trust.runners.contains(runner) {
                 return Err(format!("the runner {} isn't trusted", short(runner)));
             }
@@ -272,6 +307,7 @@ the referee revokes the extra ones",
                 quest: quest.address.clone(),
                 title: quest.title.clone(),
                 season: quest.season.id.clone(),
+                rule: award.rule.clone(),
                 role: awardee.role.clone(),
                 pubkey: awardee.pubkey.clone(),
                 xp: awardee.xp,

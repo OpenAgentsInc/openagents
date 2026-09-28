@@ -532,3 +532,174 @@ async fn transfer_evidence_is_refused_for_self_in_sample_and_other_bytes() {
 fn derive_from(store: &Store, trust: &XpTrust) -> Ledger {
     ledger_xp::derive(&store.lock().unwrap().clone(), trust)
 }
+
+/// A Microcoder run directory for `build-pmars` with `reward`; `nonce`
+/// makes two runs' files differ.
+fn pmars_run(dir: &Path, name: &str, reward: f64, nonce: u64) -> PathBuf {
+    let run = dir.join(name);
+    std::fs::create_dir_all(&run).unwrap();
+    let summary = json!({
+        "task": "build-pmars", "model": "gpt-6-luna", "effort": "medium",
+        "outcome": {"ending": {"reason": "finished"}, "steps": 8, "seconds": 80 + nonce,
+                    "usd": 0.006, "known_usd": 0.006},
+        "reward": reward, "image": "alexgshaw/build-pmars:20251031", "kb": "off",
+        "container": format!("microcoder-build-pmars-{nonce}"),
+    });
+    std::fs::write(run.join("summary.json"), summary.to_string()).unwrap();
+    run
+}
+
+#[tokio::test]
+async fn a_claim_a_reproduction_and_its_award_level_up_the_reproducer() {
+    let (url, store) = relay().await;
+    let home = scratch("xp-reproduce");
+    let referee_key = home.join("referee-key");
+    let claimant_key = home.join("claimant-key");
+    let reproducer_key = home.join("reproducer-key");
+
+    // The claimant publishes its pass as a claim.
+    let claimed = pmars_run(&home, "claim", 1.0, 0);
+    let claim_options = options(&["--relay", &url, "--record", claimed.to_str().unwrap()]);
+    assert_eq!(claim(&claim_options, &claimant_key).await.unwrap(), 0);
+    let claim_event = store
+        .lock()
+        .unwrap()
+        .iter()
+        .find(|e| e.kind == kb::EVIDENCE_KIND)
+        .cloned()
+        .unwrap();
+    let parsed_claim = xp::parse_run_evidence(&claim_event).unwrap();
+
+    // The referee pins it in a tutorial quest.
+    let spec = json!({
+        "id": "tb21.build-pmars.reproduce", "version": 1,
+        "season": {"id": "tb21-tutorial-s1", "opens_at": 0, "closes_at": 4_000_000_000_u64},
+        "title": "Reproduce Microcoder's pass on build-pmars",
+        "objective": "Rerun the published pass from its recipe.",
+        "acceptance": {"rule": "reproduce", "task": "build-pmars",
+            "recipe": parsed_claim.recipe_digest,
+            "claim": {"id": claim_event.id, "pubkey": claim_event.pubkey, "kind": kb::EVIDENCE_KIND}},
+        "reference": null,
+        "award": {"claimant": 0, "reproducer": 50},
+    });
+    let file = home.join("tutorial.json");
+    std::fs::write(&file, spec.to_string()).unwrap();
+    assert_eq!(
+        quest(
+            &options(&[file.to_str().unwrap(), "--relay", &url]),
+            &referee_key
+        )
+        .await
+        .unwrap(),
+        0
+    );
+    let referee = remote::own_pubkey(&referee_key).unwrap();
+    let address = "tb21.build-pmars.reproduce@1";
+
+    // The claimant can't reproduce its own claim, and a failed rerun isn't
+    // published.
+    let mine = pmars_run(&home, "mine", 1.0, 1);
+    let own = options(&[
+        "--relay",
+        &url,
+        "--quest",
+        address,
+        "--referee",
+        &referee,
+        "--record",
+        mine.to_str().unwrap(),
+    ]);
+    assert_eq!(reproduce(&own, &claimant_key).await.unwrap(), 1);
+    let failed = pmars_run(&home, "failed", 0.0, 2);
+    let fail = options(&[
+        "--relay",
+        &url,
+        "--quest",
+        address,
+        "--referee",
+        &referee,
+        "--record",
+        failed.to_str().unwrap(),
+    ]);
+    assert_eq!(reproduce(&fail, &reproducer_key).await.unwrap(), 1);
+    assert_eq!(count(&store, kb::EVIDENCE_KIND), 1);
+
+    // A passing rerun by another key is published.
+    let rerun = pmars_run(&home, "rerun", 1.0, 3);
+    let ok = options(&[
+        "--relay",
+        &url,
+        "--quest",
+        address,
+        "--referee",
+        &referee,
+        "--record",
+        rerun.to_str().unwrap(),
+    ]);
+    assert_eq!(reproduce(&ok, &reproducer_key).await.unwrap(), 0);
+    let reproduction = store
+        .lock()
+        .unwrap()
+        .iter()
+        .find(|e| e.kind == kb::EVIDENCE_KIND && e.id != claim_event.id)
+        .cloned()
+        .unwrap();
+
+    // The referee needs the run record, and the right one.
+    let without = options(&[
+        "--relay",
+        &url,
+        "--quest",
+        address,
+        "--evidence",
+        &reproduction.id,
+    ]);
+    assert!(
+        award(&without, &referee_key)
+            .await
+            .unwrap_err()
+            .contains("--record")
+    );
+    let wrong = options(&[
+        "--relay",
+        &url,
+        "--quest",
+        address,
+        "--evidence",
+        &reproduction.id,
+        "--record",
+        mine.to_str().unwrap(),
+    ]);
+    assert_eq!(award(&wrong, &referee_key).await.unwrap(), 1);
+    assert_eq!(count(&store, xp::AWARD_KIND), 0);
+    let right = options(&[
+        "--relay",
+        &url,
+        "--quest",
+        address,
+        "--evidence",
+        &reproduction.id,
+        "--record",
+        rerun.to_str().unwrap(),
+        "--label",
+        "first-reproduction",
+    ]);
+    assert_eq!(award(&right, &referee_key).await.unwrap(), 0);
+    assert_eq!(count(&store, xp::AWARD_KIND), 1);
+    assert_eq!(award(&right, &referee_key).await.unwrap(), 1);
+
+    let trust = XpTrust {
+        referees: BTreeSet::from([referee.clone()]),
+        runners: BTreeSet::new(),
+    };
+    let derived = derive_from(&store, &trust);
+    let reproducer = remote::own_pubkey(&reproducer_key).unwrap();
+    assert_eq!(derived.totals.get(&reproducer), Some(&50));
+    assert_eq!(derived.totals.len(), 1);
+    assert_eq!(
+        ledger(&options(&["--relay", &url]), &referee_key, &trust)
+            .await
+            .unwrap(),
+        0
+    );
+}

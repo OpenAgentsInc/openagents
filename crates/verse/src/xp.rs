@@ -24,7 +24,8 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use coder_ui::theme::Intensity;
 use knowledge::remote::{own_pubkey, parse_author};
-use knowledge::xp::{XpTrust, derive, referee_key_file, trust_file};
+pub use knowledge::xp::XpTrust;
+use knowledge::xp::{Credit, derive, referee_key_file, trust_file};
 use nostr::domain::{Event, RelaySigner, Tag};
 use nostr::xp;
 use serde_json::json;
@@ -39,6 +40,26 @@ const SUB: &str = "verse-xp";
 const LIMIT: usize = 500;
 /// How long the worker waits for events to settle before deriving.
 const SETTLE: Duration = Duration::from_millis(250);
+
+/// The OpenAgents referee's public key, hex: the one referee the
+/// OpenAgents app trusts. Its key lives on OpenAgents' execution host.
+pub const OPENAGENTS_REFEREE: &str =
+    "650a2a22df20b1567b07b7ee069e7c4a7f5569b187844ff394870c424a75b5c7";
+
+/// A trust list with the OpenAgents referee alone and no runner list: what
+/// the OpenAgents app counts. Early boards trust one referee, and say so.
+#[must_use]
+pub fn openagents_trust() -> XpTrust {
+    XpTrust {
+        referees: BTreeSet::from([OPENAGENTS_REFEREE.to_owned()]),
+        runners: BTreeSet::new(),
+    }
+}
+
+/// The name of the level curve [`xp_to_reach`] and [`level_of`] compute.
+/// Every display of a level names it, so two clients never show different
+/// numbers under one name; a new curve gets a new name.
+pub const CURVE: &str = "trainer-curve-v1";
 
 /// Cumulative XP needed to reach `level`. Level 1 needs nothing; level
 /// `n + 1` needs `100 · n^1.5`, rounded up: 100 XP for level 2, 283 for
@@ -74,7 +95,13 @@ pub struct QuestRow {
     /// Two different events at this address: a rewritten frozen version.
     pub conflict: bool,
     pub title: String,
+    /// `kb-transfer` or `reproduce`.
+    pub rule: String,
     pub task: String,
+    /// `reproduce`: the recipe's digest, lowercase hex.
+    pub recipe: Option<String>,
+    /// `reproduce`: the claim's event ID.
+    pub claim: Option<String>,
     pub min_pass_rate: f64,
     pub max_usd_per_run: Option<f64>,
     pub reference: Option<xp::Reference>,
@@ -106,6 +133,8 @@ pub struct Snapshot {
     pub totals: BTreeMap<String, u64>,
     /// Achievement titles per hex public key.
     pub titles: BTreeMap<String, BTreeSet<String>>,
+    /// Every awardee's share of every counted award.
+    pub credits: Vec<Credit>,
     /// Awards that count.
     pub counted: usize,
     pub revoked: usize,
@@ -208,11 +237,14 @@ pub fn snapshot(events: &[Event], trust: &XpTrust) -> Snapshot {
                 trusted: trust.referees.contains(&event.pubkey),
                 conflict: false,
                 title: quest.title.clone(),
+                rule: quest.acceptance.rule.clone(),
                 task: quest.acceptance.task.clone(),
+                recipe: quest.acceptance.recipe.clone(),
+                claim: quest.acceptance.claim.as_ref().map(|c| c.id.clone()),
                 min_pass_rate: quest.acceptance.min_pass_rate,
                 max_usd_per_run: quest.acceptance.max_usd_per_run,
                 reference: quest.reference.clone(),
-                split: xp::ROLES
+                split: xp::roles(&quest.acceptance.rule)
                     .iter()
                     .filter_map(|r| quest.award.get(*r).map(|xp| ((*r).to_owned(), *xp)))
                     .collect(),
@@ -251,6 +283,7 @@ pub fn snapshot(events: &[Event], trust: &XpTrust) -> Snapshot {
         quests,
         totals: ledger.totals.clone(),
         titles,
+        credits: ledger.credits.clone(),
         counted: counted.len(),
         revoked: ledger.revoked.len(),
         refused: ledger.refused.len(),
@@ -260,7 +293,8 @@ pub fn snapshot(events: &[Event], trust: &XpTrust) -> Snapshot {
 }
 
 /// Event IDs the trusted referees' awards name that `have` lacks: their
-/// exact quest, entry, and evidence events.
+/// exact quest, entry, and evidence events (a reproduction's claim and
+/// reproduction are its evidence).
 #[must_use]
 pub fn missing(have: &BTreeMap<String, Event>, trust: &XpTrust) -> BTreeSet<String> {
     let mut want = BTreeSet::new();
@@ -270,7 +304,7 @@ pub fn missing(have: &BTreeMap<String, Event>, trust: &XpTrust) -> BTreeSet<Stri
         }
         if let Ok(award) = xp::parse_award(event) {
             want.insert(award.quest.id);
-            want.insert(award.entry.id);
+            want.extend(award.entry.map(|e| e.id));
             want.extend(award.evidence.into_iter().map(|e| e.id));
         }
     }
@@ -618,7 +652,7 @@ pub fn strip(board: Option<&Board>, mine: &[String]) -> Vec<Styled> {
     let next = xp_to_reach(level + 1);
     let mut out = vec![(
         format!(
-            "XP {xp} · level {level} · {} XP to level {}",
+            "XP {xp} · level {level} ({CURVE}) · {} XP to level {}",
             next - xp,
             level + 1
         ),
@@ -698,13 +732,17 @@ pub fn board_lines(board: Option<&Board>, now: u64) -> Vec<Styled> {
             title.push_str("  [conflict: this version was published twice]");
         }
         out.push((title, Intensity::Full));
-        let bar = match q.max_usd_per_run {
-            Some(usd) => format!(
+        let bar = match (&q.recipe, q.max_usd_per_run) {
+            (Some(recipe), _) => format!(
+                "reproduce the published pass from recipe {} with a run of your own",
+                short(recipe)
+            ),
+            (None, Some(usd)) => format!(
                 "pass at least {:.0}% of runs, under {} a run",
                 q.min_pass_rate * 100.0,
                 money(usd)
             ),
-            None => format!("pass at least {:.0}% of runs", q.min_pass_rate * 100.0),
+            (None, None) => format!("pass at least {:.0}% of runs", q.min_pass_rate * 100.0),
         };
         out.push((
             format!("  task {} · bar: {bar}", q.task),
@@ -763,11 +801,94 @@ pub fn board_lines(board: Option<&Board>, now: u64) -> Vec<Styled> {
     out
 }
 
-/// A player's level for a name tag, when they have XP.
+/// A player's level for a name tag, when they have XP. The tag is short;
+/// the HUD strip and the trainer card name the curve.
 #[must_use]
 pub fn level_tag(snapshot: Option<&Snapshot>, keys: &[String]) -> Option<String> {
     let xp = snapshot?.xp_of(keys);
     (xp > 0).then(|| format!("lv {}", level_of(xp)))
+}
+
+/// A name tag: the first eight hex characters of `pubkey`, then ` · lv n`
+/// when the key has XP under `snapshot`, such as `650a2a22 · lv 3`.
+#[must_use]
+pub fn name_tag(snapshot: Option<&Snapshot>, pubkey: &str) -> String {
+    let prefix = &pubkey[..pubkey.len().min(8)];
+    match level_tag(snapshot, &[pubkey.to_owned()]) {
+        Some(level) => format!("{prefix} · {level}"),
+        None => prefix.to_owned(),
+    }
+}
+
+/// One counted award on a trainer card.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
+pub struct CardAward {
+    /// The `3193` event ID.
+    pub award: String,
+    pub referee: String,
+    /// `<id>@<version>`.
+    pub quest: String,
+    pub title: String,
+    pub season: String,
+    pub rule: String,
+    pub role: String,
+    pub xp: u64,
+}
+
+/// A trainer card: a key's level under the reader's trust, the curve it
+/// uses, and the counted awards behind it. The awards are the credential;
+/// the level is their summary.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
+pub struct Card {
+    pub keys: Vec<String>,
+    pub curve: &'static str,
+    pub xp: u64,
+    pub level: u32,
+    /// Cumulative XP at which the next level starts.
+    pub next_level_at: u64,
+    /// XP still needed for the next level.
+    pub to_next: u64,
+    pub titles: Vec<String>,
+    pub awards: Vec<CardAward>,
+    /// How many referees the reader trusts.
+    pub referees: usize,
+}
+
+/// The trainer card for `keys` under `snapshot`.
+#[must_use]
+pub fn card(snapshot: &Snapshot, keys: &[String]) -> Card {
+    let xp = snapshot.xp_of(keys);
+    let level = level_of(xp);
+    let next_level_at = xp_to_reach(level + 1);
+    let mine: BTreeSet<&String> = keys.iter().collect();
+    let mut awards: Vec<CardAward> = snapshot
+        .credits
+        .iter()
+        .filter(|c| c.xp > 0 && mine.contains(&c.pubkey))
+        .map(|c| CardAward {
+            award: c.award.clone(),
+            referee: c.referee.clone(),
+            quest: c.quest.clone(),
+            title: c.title.clone(),
+            season: c.season.clone(),
+            rule: c.rule.clone(),
+            role: c.role.clone(),
+            xp: c.xp,
+        })
+        .collect();
+    awards.sort_by(|a, b| a.quest.cmp(&b.quest).then(a.award.cmp(&b.award)));
+    awards.dedup();
+    Card {
+        keys: keys.to_vec(),
+        curve: CURVE,
+        xp,
+        level,
+        next_level_at,
+        to_next: next_level_at.saturating_sub(xp),
+        titles: snapshot.titles_of(keys).into_iter().collect(),
+        awards,
+        referees: snapshot.referees,
+    }
 }
 
 pub mod fixture;

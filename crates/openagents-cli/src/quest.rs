@@ -100,7 +100,10 @@ fn quest_value(row: &QuestRow) -> Value {
         "trusted": row.trusted,
         "conflict": row.conflict,
         "title": row.title,
+        "rule": row.rule,
         "task": row.task,
+        "recipe": row.recipe,
+        "claim": row.claim,
         "min_pass_rate": row.min_pass_rate,
         "max_usd_per_run": row.max_usd_per_run,
         "reference": row.reference.as_ref().map(|r| json!({
@@ -200,6 +203,7 @@ fn ledger_value(snapshot: &Snapshot, keys: &[String]) -> Value {
     json!({
         "keys": keys,
         "xp": total,
+        "curve": verse::xp::CURVE,
         "level": level,
         "next_level_at": verse::xp::xp_to_reach(level + 1),
         "titles": snapshot.titles_of(keys),
@@ -241,8 +245,9 @@ pub fn xp(output: &Output, args: &Args) -> Result<u8, String> {
             })
             .unwrap_or_default();
         format!(
-            "level {} with {} XP (next at {}){}",
+            "level {} ({}) with {} XP (next at {}){}",
             value["level"],
+            value["curve"].as_str().unwrap_or_default(),
             value["xp"],
             value["next_level_at"],
             if titles.is_empty() {
@@ -277,6 +282,7 @@ pub fn board(output: &Output, args: &Args) -> Result<u8, String> {
             "refused": snapshot.refused,
             "conflicts": snapshot.conflicts,
             "me": ledger_value(snapshot, &reading.mine),
+            "curve": verse::xp::CURVE,
             "standings": standings.iter().map(|(key, xp)| json!({
                 "pubkey": key,
                 "xp": xp,
@@ -299,8 +305,10 @@ pub fn board(output: &Output, args: &Args) -> Result<u8, String> {
                 lines.push(format!("trust: {problem}"));
             }
             lines.push(format!(
-                "me: level {} with {} XP",
-                value["me"]["level"], value["me"]["xp"]
+                "me: level {} ({}) with {} XP",
+                value["me"]["level"],
+                value["me"]["curve"].as_str().unwrap_or_default(),
+                value["me"]["xp"]
             ));
             if let Some(rows) = value["standings"].as_array() {
                 for row in rows.iter().take(10) {
@@ -354,6 +362,7 @@ mod tests {
         let value = ledger_value(&Snapshot::default(), &["ab".repeat(32)]);
         assert_eq!(value["xp"], 0);
         assert_eq!(value["level"], 1);
+        assert_eq!(value["curve"], "trainer-curve-v1");
         assert_eq!(value["next_level_at"], verse::xp::xp_to_reach(2));
     }
 }

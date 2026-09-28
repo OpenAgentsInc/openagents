@@ -155,6 +155,102 @@ refuse self-evidence, but it can't tell whether two keys belong to one
 person. Accept evidence you can re-derive from retained runs, or evidence
 from runners you know.
 
+## Referee a reproduction quest
+
+A `reproduce` quest pays for an independent rerun of a published attempt.
+It needs no knowledge entry, so it's the quest a newcomer can finish first.
+The [tutorial quests](../../verse/tutorial-quests.md) are this kind.
+
+1. Publish the attempt as a **claim**, from its Microcoder run record:
+
+   ```sh
+   microcoder xp claim --relay wss://relay.openagents.com \
+     --record bench/terminal-bench/microcoder-runs/coderos-4080-tb21/build-pmars-1790459651308 \
+     --benchmark terminal-bench --benchmark-version 2.1
+   ```
+
+   The claim is run evidence (kind `3189`, marked `oa:xp:run:v1`) signed
+   with your knowledge key, or `--key`. It carries the run's **recipe**
+   (the benchmark, task, image, agent, model, effort, and knowledge
+   setting), an extract of the graded record, and the digest of the whole
+   `summary.json`. The command prints the claim's event ID and the recipe's
+   digest.
+
+2. Write a quest that pins the claim and the recipe's digest:
+
+   ```json
+   "acceptance": {
+     "rule": "reproduce",
+     "task": "build-pmars",
+     "recipe": "<the recipe digest>",
+     "claim": {"id": "<the claim's event ID>", "pubkey": "<its signer>", "kind": 3189}
+   },
+   "award": {"claimant": 0, "reproducer": 50}
+   ```
+
+   Publish it with `microcoder xp quest`. OpenAgents' tutorial quests give
+   the claimant nothing, since OpenAgents shouldn't earn XP from its own
+   referee.
+
+3. A trainer reruns the recipe and publishes a **reproduction** that cites
+   the claim (see [Reproduce a pass](#reproduce-a-pass)), then sends you
+   the run's `summary.json`.
+
+4. Accept it with the file:
+
+   ```sh
+   microcoder xp award --relay wss://relay.openagents.com \
+     --quest tb21.build-pmars.reproduce@1 \
+     --evidence <the reproduction's event ID> \
+     --record summary.json --label first-reproduction
+   ```
+
+   The command refuses without `--record`. It checks that the file has the
+   digest the reproduction names and gives the extract it carries, then
+   runs the rule: the reproducer isn't the claimant, the rerun followed the
+   recipe and passed, its record isn't the claim's, and it was published
+   inside the season. Readers repeat every check except the file.
+
+## Reproduce a pass
+
+To earn XP on a `reproduce` quest:
+
+1. Run the recipe with Microcoder, as the quest's claim records it: the
+   same task, model, effort, and knowledge setting, on the task's image.
+   For a TB2.1 tutorial quest, point `MICROCODER_TASKS` at the Terminal-Bench
+   2.1 tasks:
+
+   ```sh
+   MICROCODER_TASKS=~/terminal-bench-2.1/tasks \
+     microcoder build-pmars --model gpt-6-luna --effort medium --kb off
+   ```
+
+   Microcoder prints `Record: <directory>` at the end; the directory holds
+   the run's `summary.json`.
+
+2. Publish the reproduction, signed by the key you train under:
+
+   ```sh
+   microcoder xp reproduce --relay wss://relay.openagents.com \
+     --quest tb21.build-pmars.reproduce@1 \
+     --referee npub1v59z5gklyzc4v7c8klhqd8nuffl426d3s7zyluu5suxyyjn4khrsrusf6k \
+     --record ~/.openagents/microcoder/runs/<run> --key <your key file>
+   ```
+
+   The command checks your run against the quest before it publishes:
+   a failed run, a run that didn't follow the recipe, or a claimant's own
+   rerun is refused and nothing is published.
+
+3. Send the run's `summary.json` to the referee with the reproduction's
+   event ID. For OpenAgents, open a GitHub issue titled
+   `Reproduction: <quest address>` and attach the file. It holds your run's
+   commands' results and costs, so read it before you share it.
+
+In the OpenAgents app, the key over your head in the Grid is your
+**trainer key**. Account > Trainer shows it, and **Reveal nsec** exports it
+to sign with on your computer, so an award to it shows as your level in the
+Grid and on your trainer card.
+
 ## Revoke an award
 
 ```sh
@@ -233,6 +329,8 @@ cargo run -p verse --release -- \
   summed over your Verse key, your knowledge key, and any `--xp-key`.
 - Other players' name tags show their level when their Verse key has XP.
 
-Verse's level curve is its own: level n + 1 needs 100 · n^1.5 cumulative
-XP. Verse only reads; it never publishes quests, awards, or labels, and
+The level curve is named `trainer-curve-v1`: level 1 at 0 XP, and level
+n + 1 at `ceil(100 · n^1.5)` cumulative XP. Every display of a level names
+it: Verse's HUD, `openagents xp`, and the OpenAgents app's trainer card.
+Verse only reads; it never publishes quests, awards, or labels, and
 nothing in it spends or converts XP.

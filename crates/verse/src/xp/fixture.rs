@@ -151,3 +151,155 @@ impl Completion {
         )
     }
 }
+
+/// A Microcoder `summary.json` for `task` with `reward`; `nonce` makes two
+/// runs' files differ.
+#[must_use]
+pub fn run_summary(task: &str, reward: f64, nonce: u64) -> Vec<u8> {
+    json!({
+        "task": task, "model": "gpt-6-luna", "effort": "medium",
+        "outcome": {"ending": {"reason": "finished"}, "steps": 8, "seconds": 80 + nonce, "usd": 0.006},
+        "reward": reward, "image": format!("example/{task}:1"), "kb": "off",
+        "container": format!("microcoder-{task}-{nonce}"),
+    })
+    .to_string()
+    .into_bytes()
+}
+
+/// A `reproduce` quest on `task`, the claim it pins, and a passing
+/// reproduction by another key: the tutorial quest shape.
+pub struct Reproduction {
+    /// Signs the quest, the award, and labels.
+    pub referee: RelaySigner,
+    /// The `30193`.
+    pub quest: Event,
+    /// The claimant's run evidence.
+    pub claim: Event,
+    /// The reproducer's run evidence.
+    pub reproduction: Event,
+}
+
+impl Reproduction {
+    /// Signs a claim by `claimant`, a quest by `referee` that pins it and
+    /// awards the reproducer `xp`, and `reproducer`'s passing
+    /// reproduction, all at `at`.
+    ///
+    /// # Panics
+    ///
+    /// Never for a task without whitespace and `xp` from 1 to 1,000.
+    #[must_use]
+    pub fn new(
+        referee: &RelaySigner,
+        claimant: &RelaySigner,
+        reproducer: &RelaySigner,
+        task: &str,
+        xp_award: u64,
+        at: u64,
+    ) -> Self {
+        let recipe = xp::recipe_from_summary(&run_summary(task, 1.0, 0), "terminal-bench", "2.1")
+            .expect("a valid recipe");
+        let claim = sign(
+            claimant,
+            at,
+            xp::run_evidence(
+                claimant.pubkey(),
+                claimant.pubkey(),
+                &recipe,
+                &xp::record_from_summary(&run_summary(task, 1.0, 0)).expect("a record"),
+                &[],
+            )
+            .expect("a valid claim"),
+        );
+        let quest = sign(
+            referee,
+            at,
+            xp::quest(&json!({
+                "id": format!("tb21.{task}.reproduce"), "version": 1,
+                "season": {"id": "tb21-tutorial-s1", "opens_at": at - 1_000, "closes_at": at + 90 * 86_400},
+                "title": format!("Reproduce Microcoder's pass on {task}"),
+                "objective": format!("Rerun the published pass on {task} from its recipe, and pass the task's tests."),
+                "acceptance": {"rule": "reproduce", "task": task,
+                    "recipe": xp::recipe_digest(&recipe).expect("a digest"),
+                    "claim": {"id": claim.id, "pubkey": claim.pubkey, "kind": kb::EVIDENCE_KIND}},
+                "reference": null,
+                "award": {"claimant": 0, "reproducer": xp_award},
+            }))
+            .expect("a valid quest"),
+        );
+        let reproduction = sign(
+            reproducer,
+            at,
+            xp::run_evidence(
+                reproducer.pubkey(),
+                claimant.pubkey(),
+                &recipe,
+                &xp::record_from_summary(&run_summary(task, 1.0, 1)).expect("a record"),
+                std::slice::from_ref(&claim.id),
+            )
+            .expect("a valid reproduction"),
+        );
+        Self {
+            referee: referee.clone(),
+            quest,
+            claim,
+            reproduction,
+        }
+    }
+
+    /// The referee's award for the reproduction, accepted at `at`.
+    ///
+    /// # Panics
+    ///
+    /// When `at` is outside the quest's season.
+    #[must_use]
+    pub fn award(&self, at: u64) -> Event {
+        sign(
+            &self.referee,
+            at,
+            xp::reproduce_award(&self.quest, &self.claim, &self.reproduction, at)
+                .expect("the rule accepts the reproduction"),
+        )
+    }
+
+    /// Every event a reader needs: the quest, the claim, the reproduction,
+    /// and the award accepted at `at`.
+    #[must_use]
+    pub fn events(&self, at: u64) -> Vec<Event> {
+        vec![
+            self.quest.clone(),
+            self.claim.clone(),
+            self.reproduction.clone(),
+            self.award(at),
+        ]
+    }
+}
+
+/// The tasks [`tutorial_events`] reproduces, in order.
+pub const TUTORIAL_TASKS: &[&str] = &[
+    "build-pmars",
+    "fix-code-vulnerability",
+    "git-multibranch",
+    "hello-world",
+    "log-summary",
+    "openssl-selfsigned-cert",
+    "prove-plus-comm",
+    "sqlite-with-gcov",
+];
+
+/// Signed events in which `reproducer` completed `count` tutorial
+/// reproductions of 50 XP each, refereed by `referee`: a labeled fixture
+/// for captures and tests. The claims are signed by a throwaway key.
+#[must_use]
+pub fn tutorial_events(
+    referee: &RelaySigner,
+    reproducer: &RelaySigner,
+    count: usize,
+    at: u64,
+) -> Vec<Event> {
+    let claimant = signer(0x7c_1a_1b);
+    TUTORIAL_TASKS
+        .iter()
+        .take(count)
+        .flat_map(|task| Reproduction::new(referee, &claimant, reproducer, task, 50, at).events(at))
+        .collect()
+}

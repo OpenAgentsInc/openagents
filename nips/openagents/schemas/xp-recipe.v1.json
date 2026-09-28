@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "openagents.xp-recipe.v1",
+  "title": "NIP-XP run recipe: how a reproducible attempt ran",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "v",
+    "benchmark",
+    "benchmark_version",
+    "task",
+    "image",
+    "agent",
+    "model",
+    "effort",
+    "knowledge"
+  ],
+  "properties": {
+    "v": {
+      "const": "openagents.xp-recipe.v1"
+    },
+    "benchmark": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "benchmark_version": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "task": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "image": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "agent": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "model": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "effort": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "knowledge": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    }
+  }
+}

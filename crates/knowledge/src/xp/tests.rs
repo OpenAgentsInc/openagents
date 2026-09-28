@@ -247,3 +247,137 @@ fn the_trust_file_reads_npubs_and_hex() {
     std::fs::write(&path, r#"{"referees": ["nope"]}"#).unwrap();
     assert!(XpTrust::read(&path).is_err());
 }
+
+/// A `reproduce` quest, its claim, and a reproduction by another key.
+struct Reproduction {
+    referee: RelaySigner,
+    claimant: RelaySigner,
+    reproducer: RelaySigner,
+    quest: Event,
+    claim: Event,
+    reproduction: Event,
+}
+
+fn run_summary(nonce: u64) -> Vec<u8> {
+    json!({
+        "task": "build-pmars", "model": "gpt-6-luna", "effort": "medium",
+        "outcome": {"ending": {"reason": "finished"}, "steps": 8, "seconds": 80 + nonce, "usd": 0.006},
+        "reward": 1.0, "image": "alexgshaw/build-pmars:20251031", "kb": "off",
+        "container": format!("c-{nonce}"),
+    })
+    .to_string()
+    .into_bytes()
+}
+
+impl Reproduction {
+    fn new() -> Self {
+        let referee = signer("referee");
+        let claimant = signer("claimant");
+        let reproducer = signer("reproducer");
+        let recipe = xp::recipe_from_summary(&run_summary(0), "terminal-bench", "2.1").unwrap();
+        let claim_record = xp::record_from_summary(&run_summary(0)).unwrap();
+        let claim = sign(
+            &claimant,
+            xp::run_evidence(
+                claimant.pubkey(),
+                claimant.pubkey(),
+                &recipe,
+                &claim_record,
+                &[],
+            )
+            .unwrap(),
+        );
+        let quest = sign(
+            &referee,
+            xp::quest(&json!({
+                "id": "tb21.build-pmars.reproduce", "version": 1,
+                "season": {"id": "tutorial", "opens_at": AT - 1_000, "closes_at": AT + 1_000_000},
+                "title": "Reproduce the pass on build-pmars",
+                "objective": "Rerun the published pass from its recipe.",
+                "acceptance": {"rule": "reproduce", "task": "build-pmars",
+                    "recipe": xp::recipe_digest(&recipe).unwrap(),
+                    "claim": {"id": claim.id, "pubkey": claim.pubkey, "kind": kb::EVIDENCE_KIND}},
+                "reference": null,
+                "award": {"claimant": 0, "reproducer": 50},
+            }))
+            .unwrap(),
+        );
+        let record = xp::record_from_summary(&run_summary(1)).unwrap();
+        let reproduction = sign(
+            &reproducer,
+            xp::run_evidence(
+                reproducer.pubkey(),
+                claimant.pubkey(),
+                &recipe,
+                &record,
+                std::slice::from_ref(&claim.id),
+            )
+            .unwrap(),
+        );
+        Reproduction {
+            referee,
+            claimant,
+            reproducer,
+            quest,
+            claim,
+            reproduction,
+        }
+    }
+
+    fn award(&self) -> Event {
+        sign(
+            &self.referee,
+            xp::reproduce_award(&self.quest, &self.claim, &self.reproduction, AT).unwrap(),
+        )
+    }
+
+    fn trust(&self) -> XpTrust {
+        XpTrust {
+            referees: BTreeSet::from([self.referee.pubkey().to_string()]),
+            runners: BTreeSet::new(),
+        }
+    }
+}
+
+#[test]
+fn a_reproduction_credits_the_reproducer_and_not_a_zero_share() {
+    let r = Reproduction::new();
+    let award = r.award();
+    let events = vec![
+        r.quest.clone(),
+        r.claim.clone(),
+        r.reproduction.clone(),
+        award.clone(),
+        award,
+    ];
+    let ledger = derive(&events, &r.trust());
+    assert!(ledger.refused.is_empty(), "{:?}", ledger.refused);
+    assert_eq!(ledger.totals.get(r.reproducer.pubkey()), Some(&50));
+    assert_eq!(ledger.totals.get(r.claimant.pubkey()), None);
+    assert_eq!(ledger.credits.len(), 1);
+    assert_eq!(ledger.credits[0].rule, "reproduce");
+    assert_eq!(ledger.credits[0].role, "reproducer");
+
+    // Listing runners lists reproducers too.
+    let mut trust = r.trust();
+    trust
+        .runners
+        .insert(signer("someone else").pubkey().to_string());
+    let ledger = derive(&events, &trust);
+    assert!(ledger.totals.is_empty());
+    assert!(ledger.refused[0].contains("runner"));
+    trust.runners.insert(r.reproducer.pubkey().to_string());
+    assert_eq!(
+        derive(&events, &trust).totals.get(r.reproducer.pubkey()),
+        Some(&50)
+    );
+}
+
+#[test]
+fn a_reproduce_award_without_its_reproduction_is_refused() {
+    let r = Reproduction::new();
+    let events = vec![r.quest.clone(), r.claim.clone(), r.award()];
+    let ledger = derive(&events, &r.trust());
+    assert!(ledger.totals.is_empty());
+    assert!(ledger.refused[0].contains("reproduction"));
+}

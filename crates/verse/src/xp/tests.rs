@@ -4,7 +4,7 @@ use std::collections::BTreeSet;
 
 use knowledge::xp::XpTrust;
 
-use super::fixture::{Completion, signer};
+use super::fixture::{Completion, Reproduction, signer, tutorial_events};
 use super::*;
 
 const AT: u64 = 1_790_000_000;
@@ -190,7 +190,10 @@ fn the_hud_shows_xp_level_titles_and_the_board() {
     let mine = vec![c.author.pubkey().to_owned()];
 
     let lines = strip(Some(&board), &mine);
-    assert_eq!(lines[0].0, "XP 6 · level 1 · 94 XP to level 2");
+    assert_eq!(
+        lines[0].0,
+        "XP 6 · level 1 (trainer-curve-v1) · 94 XP to level 2"
+    );
     assert_eq!(lines[1].0, "titles: beat-reference");
     assert!(lines[2].0.contains("1 quests") && lines[2].0.contains("relay.openagents.com"));
 
@@ -232,4 +235,71 @@ fn offline_the_hud_says_so() {
         "relay.openagents.com"
     );
     assert_eq!(host("ws://127.0.0.1:7447"), "127.0.0.1:7447");
+}
+
+#[test]
+fn a_reproduction_shows_on_the_board_the_tag_and_the_card() {
+    let referee = signer(61);
+    let reproducer = signer(62);
+    let events = tutorial_events(&referee, &reproducer, 6, AT);
+    let trust = XpTrust {
+        referees: BTreeSet::from([referee.pubkey().to_owned()]),
+        runners: BTreeSet::new(),
+    };
+    let snap = snapshot(&events, &trust);
+    assert_eq!(snap.counted, 6, "refused: {}", snap.refused);
+    let me = reproducer.pubkey().to_owned();
+    assert_eq!(snap.xp_of(std::slice::from_ref(&me)), 300);
+
+    // The name tag is the prefix and the level; a key without XP shows its
+    // prefix alone.
+    assert_eq!(name_tag(Some(&snap), &me), format!("{} · lv 3", &me[..8]));
+    let nobody = signer(63).pubkey().to_owned();
+    assert_eq!(name_tag(Some(&snap), &nobody), nobody[..8].to_owned());
+    assert_eq!(name_tag(None, &me), me[..8].to_owned());
+
+    // The card names its curve and lists the counted awards behind the level.
+    let card = card(&snap, std::slice::from_ref(&me));
+    assert_eq!(card.curve, "trainer-curve-v1");
+    assert_eq!((card.xp, card.level), (300, 3));
+    assert_eq!(card.next_level_at, 520);
+    assert_eq!(card.to_next, 220);
+    assert_eq!(card.awards.len(), 6);
+    assert!(card.awards.iter().all(|a| a.rule == "reproduce"
+        && a.role == "reproducer"
+        && a.xp == 50
+        && a.referee == referee.pubkey()));
+    // The claimant's zero share is never listed.
+    let claimant = card
+        .awards
+        .iter()
+        .map(|a| a.award.clone())
+        .collect::<BTreeSet<_>>();
+    assert_eq!(claimant.len(), 6);
+
+    let board = Board::fixed("wss://relay.openagents.com", snap);
+    let all: Vec<String> = board_lines(Some(&board), AT)
+        .into_iter()
+        .map(|l| l.0)
+        .collect();
+    let all = all.join("\n");
+    assert!(all.contains("Reproduce Microcoder's pass on build-pmars"));
+    assert!(all.contains("bar: reproduce the published pass from recipe"));
+    assert!(all.contains("award 50 XP (claimant 0, reproducer 50)"));
+}
+
+#[test]
+fn missing_names_a_reproductions_claim_and_reproduction() {
+    let referee = signer(71);
+    let r = Reproduction::new(&referee, &signer(72), &signer(73), "hello-world", 50, AT);
+    let award = r.award(AT);
+    let trust = XpTrust {
+        referees: BTreeSet::from([referee.pubkey().to_owned()]),
+        runners: BTreeSet::new(),
+    };
+    let have = BTreeMap::from([(award.id.clone(), award)]);
+    let want = missing(&have, &trust);
+    assert!(want.contains(&r.quest.id));
+    assert!(want.contains(&r.claim.id));
+    assert!(want.contains(&r.reproduction.id));
 }

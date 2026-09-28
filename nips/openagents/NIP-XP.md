@@ -1,7 +1,7 @@
 # NIP-XP — Quests, acceptance, and experience points
 
-`draft` `optional` — v1, 2026-09-26. The [shared contracts](contracts.md)
-are normative.
+`draft` `optional` — v1, 2026-09-26; the `reproduce` rule added
+2026-09-28. The [shared contracts](contracts.md) are normative.
 
 This NIP publishes quests, a referee's acceptance of a completed quest, and
 the experience points (XP) that acceptance carries, as signed Nostr events.
@@ -44,7 +44,8 @@ refused. Unknown body keys, rules, roles, and uniqueness policies are
 refused. Every `t` value is lowercase.
 
 `schemas/xp-quest.v1.json`, `schemas/xp-award.v1.json`, and
-`schemas/xp-revocation.v1.json` describe the three bodies. The schema
+`schemas/xp-revocation.v1.json` describe the three bodies, and
+`schemas/xp-recipe.v1.json` the recipe a `reproduce` quest pins. The schema
 dialect has no `pattern` keyword, so the validator checks the ID grammar,
 the hex fields, and the coordinates itself.
 
@@ -57,11 +58,17 @@ the hex fields, and the coordinates itself.
   uses.
 - A **runner** ran the paired runs and signed the [NIP-EVAL](NIP-EVAL.md)
   evidence (`3189`) that shows the entry helped.
+- A **claimant** published an attempt as run evidence (a claim) whose
+  recipe a `reproduce` quest pins.
+- A **reproducer** reran that recipe and signed run evidence of the rerun
+  (a reproduction).
 - A **reader** keeps its own list of trusted referees, and optionally of
-  trusted runners, and derives XP from them.
+  trusted runners, and derives XP from them. A reader's runner list also
+  lists the reproducers it trusts.
 
-The author and the runner MUST be different keys. Evidence an author signs
-about their own entry never earns XP.
+The author and the runner MUST be different keys, and so MUST the claimant
+and the reproducer. Evidence an author signs about their own entry, and a
+reproduction a claimant signs of their own attempt, never earn XP.
 
 ## Quests (`30193`)
 
@@ -108,9 +115,9 @@ The body (illustrative values):
 | --- | --- |
 | `season` | A slug `id` and the Unix-second window `[opens_at, closes_at]`, with `opens_at < closes_at`. Awards and their evidence fall inside it. |
 | `title`, `objective` | Display text, at most 200 and 4,000 characters. Never an instruction to an agent. |
-| `acceptance` | The rule and its parameters; see [Acceptance rules](#acceptance-rules). |
+| `acceptance` | The rule and its parameters; see [Acceptance rules](#acceptance-rules). Each rule has its own closed set of keys. |
 | `reference` | The run the quest is measured against, or `null`: a label, its cost in dollars, its wall time in seconds, and where it's recorded. Display and provenance only; the executable bar is in `acceptance`. |
-| `award` | Fixed XP per role. The quest's award is the sum, at least 1 and at most 1,000. Roles split the award; they never multiply it. |
+| `award` | Fixed XP per role, with exactly the rule's roles: `author` and `runner` under `kb-transfer`, `claimant` and `reproducer` under `reproduce`. A role MAY be 0. The quest's award is the sum, at least 1 and at most 1,000. Roles split the award; they never multiply it. |
 | `completions` | The uniqueness policy. `first` is the only value in this version: the first accepted completion of the quest version earns the award, once. |
 
 Tags:
@@ -170,6 +177,82 @@ Both the referee, before signing, and every reader, before counting, run
 these checks from the signed events alone. Nothing in the rule depends on
 the referee's word except the choice to accept.
 
+### `reproduce`
+
+A reproduction quest is completed by an independent rerun of a published
+attempt, from its pinned recipe, that the benchmark's grader accepts. It
+needs no knowledge entry, so it is the rule a newcomer can complete first,
+and it builds the pool of runners that `kb-transfer` needs.
+
+```json
+"acceptance": {
+  "rule": "reproduce",
+  "task": "build-pmars",
+  "recipe": "<64 hex: SHA-256 of the recipe's RFC 8785 canonical JSON>",
+  "claim": {"id": "<3189 event id>", "pubkey": "<claimant>", "kind": 3189}
+},
+"award": {"claimant": 0, "reproducer": 50}
+```
+
+A **recipe** (`schemas/xp-recipe.v1.json`) pins how an attempt ran. Every
+field is a string of 1 to 256 characters:
+
+```json
+{
+  "v": "openagents.xp-recipe.v1",
+  "benchmark": "terminal-bench",
+  "benchmark_version": "2.1",
+  "task": "build-pmars",
+  "image": "alexgshaw/build-pmars:20251031",
+  "agent": "microcoder",
+  "model": "gpt-6-luna",
+  "effort": "medium",
+  "knowledge": "off"
+}
+```
+
+**Run evidence** is a NIP-EVAL `3189` publication in this profile:
+
+- Tags: `t` `oa:eval:v1`, `t` `oa:xp:run:v1`, `x` (the report's digest,
+  as in NIP-KB evidence), and one `e` per claim the evidence cites: none
+  for a claim, the claim for a reproduction. The `oa:xp:run:v1` marker
+  keeps NIP-KB readers from reading run evidence as knowledge evidence.
+- The publication's `subject` is a DefinitionRef with no `event`: `id` is
+  `<claimant>:recipe/<task slug>` and `artifact` names the recipe's
+  canonical bytes, with the schema `openagents.xp-recipe.v1`. A claim and
+  its reproductions share one subject.
+- `meta.run_report` holds the report's exact bytes, at most 32 KiB. The
+  report is `openagents.eval-report.v1` with `evaluator` equal to the
+  signer, the same subject, `verdict` `pass` when the record's reward is at
+  least 1 and `fail` otherwise, and `meta.run: {recipe, record}`.
+- The **record** is a bounded extract of one graded run: `task`, `image`,
+  `model`, `effort`, `knowledge`, and `reward`, which MUST match the
+  recipe (the reward aside), and `ending`, `steps`, `seconds`, and `usd`,
+  each nullable. `summary` is the ArtifactRef of the whole run record file
+  (Microcoder's `summary.json`).
+
+A completion names one claim, the one the quest pins, and one
+reproduction. It is accepted when all of these hold:
+
+1. The claim is valid run evidence whose recipe has the quest's `recipe`
+   digest and `task`, whose subject belongs to the claim's signer, and
+   whose record passed.
+2. The reproduction is valid run evidence with the claim's subject that
+   cites the claim.
+3. The reproduction's signer (the reproducer) isn't the claim's signer
+   (the claimant).
+4. The reproduction's record passed, and its `summary` digest differs from
+   the claim's: a rerun has a run record of its own.
+5. The reproduction was published inside the season, and not before the
+   claim.
+
+Readers run these checks from the signed events alone. Before signing, the
+referee also obtains the reproducer's run record file, checks that its
+bytes have the digest the reproduction names, and checks that the extract
+is the one those bytes give. A reader can't repeat that check without the
+file, so, as under `kb-transfer`, a reader that wants more than the
+referee's word lists the reproducers it trusts.
+
 Rules are closed: a reader refuses a quest whose rule it doesn't implement.
 A future rule, such as a Gym trial with a pinned suite or a coding quest
 with an integrator, needs its own rule name and roles.
@@ -217,13 +300,19 @@ everything a reader needs to re-check it:
 - `accepted_at` falls inside the season and is no earlier than the
   evidence event's `created_at`.
 
+A `reproduce` award has no `entry` or `entry_version`. Its `evidence`
+lists the claim, then the reproduction, and its `awardees` list the
+claimant, then the reproducer, each the signer of the event its role
+names. A role whose XP is 0 is still listed. The first awardee's role
+tells a reader which shape to expect; `schemas/xp-award.v1.json` has both.
+
 Tags:
 
 | Tag | Count | Value |
 | --- | --- | --- |
 | `t` | exactly 1 | `oa:xp:award:v1`. |
 | `a` | exactly 1 | The quest coordinate, equal to `key`. |
-| `e` | 3 | The quest, entry, and evidence event IDs. |
+| `e` | 3 | The quest, entry, and evidence event IDs; under `reproduce`, the quest, claim, and reproduction. |
 | `p` | 2 | The awardees' public keys. |
 
 The `a` tag lets a reader or referee find every award for a quest version
@@ -320,8 +409,9 @@ balance it can't re-derive. With its trusted referees `R` and, optionally,
 its trusted runners `U`:
 
 1. Fetch `30193`, `3193`, and `3194` events authored by `R`, then the `3190`
-   entries and `3189` evidence the awards name, by exact event ID. Events
-   from several relays are merged by event ID.
+   entries and `3189` evidence (including claims and reproductions) the
+   awards name, by exact event ID. Events from several relays are merged by
+   event ID.
 2. Validate every quest. Report addresses with two different quest events,
    and count no award under them.
 3. Validate every revocation, keeping those whose signer is the award's
@@ -330,10 +420,12 @@ its trusted runners `U`:
    validate it alone, bind it to the exact quest event it names, and run
    the quest's rule over the exact entry and evidence events it names. A
    missing event means the award isn't counted, never that it is assumed
-   valid. When `U` is non-empty, the runner MUST be in `U`.
+   valid. When `U` is non-empty, the runner (under `reproduce`, the
+   reproducer) MUST be in `U`.
+6. An awardee whose `xp` is 0 gets no credit.
 5. Group the surviving awards by referee and uniqueness key. A group with
    more than one award is a conflict and counts for no one.
-6. For each remaining award, credit each awardee its `xp`.
+7. For each remaining award, credit each awardee its `xp`.
 
 The result is XP per public key, with the awards behind each credit, the
 revoked awards, the refusals, and the conflicts. Two readers with different
@@ -366,6 +458,9 @@ subscription they arrived on.
 | Attack | What stops it |
 | --- | --- |
 | **Self-evidence**: an author runs and signs evidence for their own entry. | The runner MUST differ from the author, checked by the referee and by every reader. |
+| **Self-reproduction**: a claimant reproduces their own attempt. | The reproducer MUST differ from the claimant. |
+| **Copied reproduction**: a key republishes the claim's run record as its own rerun. | The reproduction's `summary` digest MUST differ from the claim's, and the referee checks the reproducer's own file before signing. |
+| **Fabricated reproduction**: a key signs a passing extract of a run it never made. | The referee accepts a reproduction only after checking the run record file it names; a reader MAY list trusted reproducers. As with Sybil runners, keys can't be tied to people. |
 | **Sybil runners**: an author makes a second key to run their evidence. | Keys can't be tied to people, so the protocol can't detect this alone. The referee accepts only evidence it can re-derive from retained runs or that comes from runners it trusts, and a reader MAY list trusted runners so evidence from any other key never counts. |
 | **In-sample evidence**: an entry written from the quest's task "helps" on it. | The rule reads the entry document's `provenance.written_from` and refuses a quest task the entry was written from. |
 | **Cherry-picked runs**: reporting only the winning run. | The rule reads the paired task's whole arm: every graded run counts toward the pass rate and the cost per run, and the report's own verdict must pass. |
@@ -385,13 +480,14 @@ A reader accepts a `3193` only when all of these hold:
    has `v: 1`, an empty `requires`, `type: award`, and no unknown keys.
 3. The signer is the quest's referee, `key` equals the quest coordinate,
    and the `a`, `e`, and `p` tags agree with the body.
-4. The awardees are the author, then the runner; the author signed the
-   entry, the runner signed the evidence, and the two differ.
+4. The awardees are the author, then the runner, under `kb-transfer`, or
+   the claimant, then the reproducer, under `reproduce`; each signed the
+   event its role names, and the two differ.
 5. The exact quest event it names is available and valid, the award falls
    inside the season, and each role's XP equals the quest's table.
-6. The exact entry and evidence events it names are available and valid,
-   the entry version matches `entry_version`, and the quest's rule accepts
-   them.
+6. The exact events it names are available and valid, the entry version
+   matches `entry_version` under `kb-transfer`, the claim is the one the
+   quest pins under `reproduce`, and the quest's rule accepts them.
 7. No trusted revocation names it, and no other live award from its referee
    shares its key.
 
@@ -413,7 +509,12 @@ that cites the entry event but measured other document bytes or names the
 entry outside its author's namespace, a revoked
 award and its replacement, two live awards for one key, a rewritten quest
 version, an award whose evidence is unavailable, and a revocation signed by
-someone other than the award's referee. `crates/nostr/src/xp/tests.rs`,
+someone other than the award's referee. For `reproduce`: a claimant's own
+reproduction, a failed reproduction, a copied run record, a reproduction
+outside the season, one that doesn't cite the claim, a claim the quest
+doesn't pin, a claim that didn't pass, tampered run evidence, a record
+that didn't follow its recipe, swapped roles, inflated XP, and a
+reproduction whose record file the referee doesn't have. `crates/nostr/src/xp/tests.rs`, `crates/nostr/src/xp/reproduce/tests.rs`,
 `crates/knowledge/src/xp/tests.rs`, and
 `crates/microcoder/src/xpnet/tests.rs` hold them.
 

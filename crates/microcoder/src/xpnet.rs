@@ -29,12 +29,25 @@ pub const USAGE: &str = "usage: microcoder xp <command> --relay URL [options]
 Refereeing (signed with the referee key):
   quest <file.json>        publish a frozen quest version (NIP-XP kind 30193);
                            a version is never rewritten, so raise it to change one
-  award --quest ID@VERSION --evidence EVENT-ID [--label VALUE]...
+  award --quest ID@VERSION --evidence EVENT-ID [--record summary.json]
+        [--label VALUE]...
                            check a completion against the quest's rule, then
                            publish its award (kind 3193) and any achievement
-                           labels (NIP-32); a quest version pays once
+                           labels (NIP-32); a quest version pays once. A
+                           reproduce quest needs the reproducer's run record
+                           (--record), which must match the digest the
+                           reproduction names
   revoke <award-event-id> --reason TEXT
                            revoke one of your awards (kind 3194)
+
+Run evidence (signed with your knowledge key, or --key):
+  claim --record RUN [--benchmark NAME --benchmark-version V]
+                           publish a graded run as a claim: run evidence
+                           (kind 3189) whose recipe a reproduce quest can pin
+  reproduce --quest ID@VERSION --referee KEY --record RUN
+                           publish your rerun of a reproduce quest's claim as
+                           a reproduction that cites it; then send the run's
+                           summary.json to the referee
 
 Reading:
   ledger [--referee KEY]... [--runner KEY]... [--json]
@@ -43,8 +56,10 @@ Reading:
 
 Options:
   --relay URL   the relay; there's no default
-  --key PATH    the referee key (default ~/.openagents/nostr/referee-key,
-                created on first use)
+  --key PATH    the signing key (default ~/.openagents/nostr/referee-key for
+                refereeing, created on first use, and
+                ~/.openagents/nostr/knowledge-key for run evidence)
+  --record RUN  a Microcoder run directory or its summary.json
 
 The ledger trusts the referees in ~/.openagents/knowledge/xp-trust.json
 ({\"referees\": [\"npub1...\"], \"runners\": [\"npub1...\"]}), those named with
@@ -62,6 +77,9 @@ pub struct XpOptions {
     pub reason: Option<String>,
     pub referees: Vec<String>,
     pub runners: Vec<String>,
+    pub record: Option<PathBuf>,
+    pub benchmark: Option<String>,
+    pub benchmark_version: Option<String>,
     pub json: bool,
     /// Words that aren't options, in order.
     pub words: Vec<String>,
@@ -86,6 +104,9 @@ pub fn parse(args: &[String]) -> Result<XpOptions, String> {
             "--reason" => o.reason = Some(value()?),
             "--referee" => o.referees.push(value()?),
             "--runner" => o.runners.push(value()?),
+            "--record" => o.record = Some(PathBuf::from(value()?)),
+            "--benchmark" => o.benchmark = Some(value()?),
+            "--benchmark-version" => o.benchmark_version = Some(value()?),
             "--json" => o.json = true,
             "-h" | "--help" => return Err(USAGE.to_string()),
             other if other.starts_with("--") => return Err(format!("unknown option {other}")),
@@ -124,6 +145,24 @@ fn referee_key(o: &XpOptions) -> Result<PathBuf, String> {
         .clone()
         .or_else(ledger_xp::referee_key_file)
         .ok_or("HOME isn't set, so there's no key file: pass --key".to_string())
+}
+
+fn trainer_key(o: &XpOptions) -> Result<PathBuf, String> {
+    o.key
+        .clone()
+        .or_else(remote::key_file)
+        .ok_or("HOME isn't set, so there's no key file: pass --key".to_string())
+}
+
+/// The bytes of a run record: `path` itself, or `path/summary.json` for a
+/// run directory.
+fn record_bytes(path: &Path) -> Result<Vec<u8>, String> {
+    let file = if path.is_dir() {
+        path.join("summary.json")
+    } else {
+        path.to_path_buf()
+    };
+    std::fs::read(&file).map_err(|e| format!("can't read {}: {e}", file.display()))
 }
 
 fn load_key(key: &Path, role: &str) -> Result<Identity, String> {
@@ -174,6 +213,8 @@ pub async fn main(args: &[String]) -> u8 {
             "quest" => quest(&o, &referee_key(&o)?).await,
             "award" => award(&o, &referee_key(&o)?).await,
             "revoke" => revoke(&o, &referee_key(&o)?).await,
+            "claim" => claim(&o, &trainer_key(&o)?).await,
+            "reproduce" => reproduce(&o, &trainer_key(&o)?).await,
             "ledger" => {
                 let key = remote::key_file().ok_or("HOME isn't set, so there's no key file")?;
                 ledger(&o, &key, &trust_for(&o)?).await
@@ -294,17 +335,36 @@ pub async fn award(o: &XpOptions, key: &Path) -> Result<u8, String> {
     };
     let parsed = xp::parse_quest(&quest).map_err(|e| e.to_string())?;
     let evidence = by_id(&mut relay, evidence_id, kb::EVIDENCE_KIND, "evidence").await?;
-    let published = kb::parse_evidence(&evidence).map_err(|e| format!("the evidence: {e}"))?;
-    let subject = published
-        .subject
-        .event
-        .ok_or("the evidence names no entry event")?;
-    let entry = by_id(&mut relay, &subject.id, kb::ENTRY_KIND, "entry").await?;
-    let excluded = ledger_xp::excluded_tasks(&entry)?;
-    if let Err(error) = xp::check_transfer(&parsed, &entry, &evidence, &excluded) {
-        println!("{address}: not accepted: {error}");
-        return Ok(1);
-    }
+    let completion = if parsed.acceptance.rule == xp::REPRODUCE {
+        let claim_id = &parsed.acceptance.claim.as_ref().ok_or("no claim")?.id;
+        let claim = by_id(&mut relay, claim_id, kb::EVIDENCE_KIND, "claim").await?;
+        let record = o.record.as_deref().ok_or(
+            "a reproduce award needs the reproducer's run record: pass --record with the \
+summary.json they sent",
+        )?;
+        if let Err(error) = check_record(&evidence, &record_bytes(record)?) {
+            println!("{address}: not accepted: {error}");
+            return Ok(1);
+        }
+        if let Err(error) = xp::check_reproduce(&parsed, &claim, &evidence) {
+            println!("{address}: not accepted: {error}");
+            return Ok(1);
+        }
+        Completion::Reproduce { claim }
+    } else {
+        let published = kb::parse_evidence(&evidence).map_err(|e| format!("the evidence: {e}"))?;
+        let subject = published
+            .subject
+            .event
+            .ok_or("the evidence names no entry event")?;
+        let entry = by_id(&mut relay, &subject.id, kb::ENTRY_KIND, "entry").await?;
+        let excluded = ledger_xp::excluded_tasks(&entry)?;
+        if let Err(error) = xp::check_transfer(&parsed, &entry, &evidence, &excluded) {
+            println!("{address}: not accepted: {error}");
+            return Ok(1);
+        }
+        Completion::Transfer { entry, excluded }
+    };
     let coordinate = xp::coordinate(&me, &parsed.address);
     let existing = relay
         .query(json!({
@@ -335,8 +395,15 @@ first to replace it.",
         .filter_map(|e| xp::parse_award(e).ok())
         .map(|a| a.accepted_at + 1)
         .fold(now(), u64::max);
-    let parts =
-        xp::award(&quest, &entry, &evidence, &excluded, accepted_at).map_err(|e| e.to_string())?;
+    let parts = match &completion {
+        Completion::Transfer { entry, excluded } => {
+            xp::award(&quest, entry, &evidence, excluded, accepted_at)
+        }
+        Completion::Reproduce { claim } => {
+            xp::reproduce_award(&quest, claim, &evidence, accepted_at)
+        }
+    }
+    .map_err(|e| e.to_string())?;
     let signed = sign(&identity, parts);
     relay.publish(&signed).await?;
     let parsed_award = xp::parse_award(&signed).map_err(|e| e.to_string())?;
@@ -363,6 +430,140 @@ first to replace it.",
         }
     }
     Ok(u8::from(refused > 0))
+}
+
+/// What an award accepts, by the quest's rule.
+enum Completion {
+    Transfer { entry: Event, excluded: Vec<String> },
+    Reproduce { claim: Event },
+}
+
+/// The referee's check of a reproduction's run record: `bytes` are the
+/// exact file whose digest the reproduction names, and the extract it
+/// carries is the one those bytes give.
+///
+/// # Errors
+///
+/// When the bytes or the extract differ from what the reproduction signed.
+pub fn check_record(reproduction: &Event, bytes: &[u8]) -> Result<(), String> {
+    let run = xp::parse_run_evidence(reproduction).map_err(|e| format!("the reproduction: {e}"))?;
+    xp::check_run_record(&run.record, bytes)
+        .map_err(|e| format!("the run record isn't the one the reproduction names: {e}"))
+}
+
+/// `xp claim`: publishes a graded run as run evidence, a claim whose
+/// recipe a `reproduce` quest can pin.
+///
+/// # Errors
+///
+/// A bad usage, record, key, or relay.
+pub async fn claim(o: &XpOptions, key: &Path) -> Result<u8, String> {
+    let url = relay_url(o)?;
+    let path = o
+        .record
+        .as_deref()
+        .ok_or("name the run with --record RUN (its directory or summary.json)")?;
+    let bytes = record_bytes(path)?;
+    let recipe = xp::recipe_from_summary(
+        &bytes,
+        o.benchmark.as_deref().unwrap_or("terminal-bench"),
+        o.benchmark_version.as_deref().unwrap_or("2.1"),
+    )
+    .map_err(|e| format!("{}: {e}", path.display()))?;
+    let record = xp::record_from_summary(&bytes).map_err(|e| e.to_string())?;
+    let identity = load_key(key, "signing as")?;
+    let me = identity.pubkey().to_string();
+    let parts = xp::run_evidence(&me, &me, &recipe, &record, &[]).map_err(|e| e.to_string())?;
+    let event = sign(&identity, parts);
+    let parsed = xp::parse_run_evidence(&event).map_err(|e| e.to_string())?;
+    let mut relay = Relay::open(url, &identity).await?;
+    println!("connected to {url}");
+    relay.publish(&event).await?;
+    println!(
+        "claim {} published: {} on {} ({}), reward {}; recipe {}",
+        event.id,
+        parsed.recipe.task,
+        parsed.recipe.model,
+        parsed.verdict,
+        parsed.record.reward,
+        parsed.recipe_digest
+    );
+    Ok(u8::from(parsed.verdict != "pass"))
+}
+
+/// `xp reproduce`: publishes the trainer's rerun of a `reproduce` quest's
+/// claim, after checking it against the quest's rule.
+///
+/// # Errors
+///
+/// A bad usage, record, key, or relay, or a quest the relay doesn't have.
+pub async fn reproduce(o: &XpOptions, key: &Path) -> Result<u8, String> {
+    let url = relay_url(o)?;
+    let address = o
+        .quest
+        .as_deref()
+        .ok_or("name the quest version with --quest ID@VERSION")?;
+    let referee = o
+        .referees
+        .first()
+        .and_then(|k| parse_author(k))
+        .ok_or("name the quest's referee with --referee KEY (an npub or hex key)")?;
+    let path = o
+        .record
+        .as_deref()
+        .ok_or("name your run with --record RUN (its directory or summary.json)")?;
+    let bytes = record_bytes(path)?;
+    let identity = load_key(key, "signing as")?;
+    let me = identity.pubkey().to_string();
+    let mut relay = Relay::open(url, &identity).await?;
+    println!("connected to {url}");
+    let quests = my_quests(&mut relay, &referee, address).await?;
+    let quest = match quests.as_slice() {
+        [one] => one.clone(),
+        [] => {
+            return Err(format!(
+                "{} has no quest {address} on this relay",
+                npub(&referee)
+            ));
+        }
+        _ => return Err(format!("{address} has conflicting versions on this relay")),
+    };
+    let parsed = xp::parse_quest(&quest).map_err(|e| e.to_string())?;
+    let claim_pointer = parsed
+        .acceptance
+        .claim
+        .as_ref()
+        .ok_or(format!("{address} isn't a reproduce quest"))?;
+    let claim = by_id(&mut relay, &claim_pointer.id, kb::EVIDENCE_KIND, "claim").await?;
+    let claimed = xp::parse_run_evidence(&claim).map_err(|e| format!("the claim: {e}"))?;
+    let record = xp::record_from_summary(&bytes).map_err(|e| format!("{}: {e}", path.display()))?;
+    let parts = match xp::run_evidence(
+        &me,
+        &claim.pubkey,
+        &claimed.recipe.to_value(),
+        &record,
+        std::slice::from_ref(&claim.id),
+    ) {
+        Ok(parts) => parts,
+        Err(error) => {
+            println!("{address}: not a reproduction: {error}");
+            return Ok(1);
+        }
+    };
+    let event = sign(&identity, parts);
+    if let Err(error) = xp::check_reproduce(&parsed, &claim, &event) {
+        println!("{address}: not a reproduction the quest accepts: {error}");
+        return Ok(1);
+    }
+    relay.publish(&event).await?;
+    println!(
+        "{address}: reproduction {} published. Send {} to the referee, {}, with this event ID; \
+it checks the file before it awards the quest.",
+        event.id,
+        path.display(),
+        npub(&referee)
+    );
+    Ok(0)
 }
 
 /// `xp revoke`: revokes one of this referee's awards.
@@ -435,7 +636,7 @@ pub async fn ledger(o: &XpOptions, key: &Path, trust: &XpTrust) -> Result<u8, St
     let mut wanted: BTreeSet<String> = BTreeSet::new();
     for award in events.iter().filter_map(|e| xp::parse_award(e).ok()) {
         wanted.insert(award.quest.id);
-        wanted.insert(award.entry.id);
+        wanted.extend(award.entry.map(|e| e.id));
         wanted.extend(award.evidence.into_iter().map(|e| e.id));
     }
     let missing: Vec<String> = wanted.difference(&have).cloned().collect();

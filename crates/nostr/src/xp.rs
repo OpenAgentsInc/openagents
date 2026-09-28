@@ -8,10 +8,12 @@
 //! never carries XP itself.
 //!
 //! This module builds the unsigned parts of each and checks signed ones,
-//! and it checks the `kb-transfer` acceptance rule against the NIP-KB entry
-//! and NIP-EVAL evidence an award names. Reading an entry's document to
-//! find the tasks it was written from, and deciding which referees to
-//! trust, belong to the reader.
+//! and it checks the two acceptance rules: `kb-transfer` against the NIP-KB
+//! entry and NIP-EVAL evidence an award names, and `reproduce` against the
+//! run evidence of a published attempt and its reproduction
+//! ([`reproduce`]). Reading an entry's document to find the tasks it was
+//! written from, and deciding which referees to trust, belong to the
+//! reader.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -36,11 +38,28 @@ pub const LABEL_KIND: u16 = 1_985;
 pub const LABEL_NAMESPACE: &str = "openagents.xp";
 
 /// The acceptance rules this version implements.
-pub const RULES: &[&str] = &["kb-transfer"];
+pub const RULES: &[&str] = &[KB_TRANSFER, REPRODUCE];
+/// The rule a knowledge entry that helped out of sample completes.
+pub const KB_TRANSFER: &str = "kb-transfer";
+/// The rule an independent reproduction of a published attempt completes.
+pub const REPRODUCE: &str = "reproduce";
 /// The uniqueness policies this version implements.
 pub const COMPLETIONS: &[&str] = &["first"];
 /// The awardee roles of `kb-transfer`, in the order an award lists them.
 pub const ROLES: &[&str] = &["author", "runner"];
+/// The awardee roles of `reproduce`, in the order an award lists them.
+pub const REPRODUCE_ROLES: &[&str] = &["claimant", "reproducer"];
+
+/// The awardee roles of `rule`, in the order an award lists them. An
+/// unknown rule has none.
+#[must_use]
+pub fn roles(rule: &str) -> &'static [&'static str] {
+    match rule {
+        KB_TRANSFER => ROLES,
+        REPRODUCE => REPRODUCE_ROLES,
+        _ => &[],
+    }
+}
 
 /// The most XP one award may carry, all roles together.
 pub const MAX_AWARD: u64 = 1_000;
@@ -77,15 +96,22 @@ pub struct Season {
 /// What a completion must show.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Acceptance {
-    /// `kb-transfer` in this version.
+    /// `kb-transfer` or `reproduce`.
     pub rule: String,
-    /// The task the evidence must pair on, as its report names it.
+    /// The task the evidence must pair on, as its report names it, or the
+    /// task the reproduced attempt ran.
     pub task: String,
-    /// The lowest pass rate the with-entry arm may have on the task.
+    /// `kb-transfer`: the lowest pass rate the with-entry arm may have on
+    /// the task. `reproduce`: 1, since the reproduction must pass.
     pub min_pass_rate: f64,
-    /// The with-entry arm's cost per run must be below this, in dollars,
-    /// when set.
+    /// `kb-transfer`: the with-entry arm's cost per run must be below this,
+    /// in dollars, when set. `None` under `reproduce`.
     pub max_usd_per_run: Option<f64>,
+    /// `reproduce`: the lowercase hex SHA-256 of the recipe's canonical
+    /// JSON (RFC 8785), which pins the task, harness, and model.
+    pub recipe: Option<String>,
+    /// `reproduce`: the exact `3189` run evidence of the published attempt.
+    pub claim: Option<Pointer>,
 }
 
 /// The run a quest is measured against, for display and provenance.
@@ -128,7 +154,8 @@ impl Quest {
 /// One credited key in an award.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Awardee {
-    /// `author` or `runner`.
+    /// `author` or `runner` under `kb-transfer`; `claimant` or
+    /// `reproducer` under `reproduce`.
     pub role: String,
     pub pubkey: String,
     pub xp: u64,
@@ -146,6 +173,10 @@ pub struct EntryVersionRef {
 /// A verified `3193`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Award {
+    /// The rule the award's shape follows: `kb-transfer` or `reproduce`.
+    /// The award doesn't state it; its awardee roles do, and
+    /// [`bind_quest`] checks it against the quest.
+    pub rule: String,
     /// The exact `30193` event.
     pub quest: Pointer,
     /// `30193:<referee>:<address>`.
@@ -153,10 +184,12 @@ pub struct Award {
     /// The uniqueness key: at most one live award per key per referee.
     pub key: String,
     pub accepted_at: u64,
-    /// The exact `3190` event.
-    pub entry: Pointer,
-    pub entry_version: EntryVersionRef,
-    /// The `3189` events.
+    /// The exact `3190` event, under `kb-transfer`.
+    pub entry: Option<Pointer>,
+    /// The entry version, under `kb-transfer`.
+    pub entry_version: Option<EntryVersionRef>,
+    /// The `3189` events: the runner's evidence under `kb-transfer`; the
+    /// claim, then the reproduction, under `reproduce`.
     pub evidence: Vec<Pointer>,
     pub awardees: Vec<Awardee>,
 }
@@ -291,7 +324,7 @@ fn quest_body(object: &Map<String, Value>) -> Result<Quest, ContractError> {
         Value::Null => None,
         value => Some(reference(value)?),
     };
-    let award = award_table(require(object, "award")?)?;
+    let award = award_table(require(object, "award")?, roles(&acceptance.rule))?;
     let completions = text(object, "completions")?;
     if !COMPLETIONS.contains(&completions.as_str()) {
         return Err(unsupported("completions"));
@@ -342,17 +375,40 @@ fn season(value: &Value) -> Result<Season, ContractError> {
 
 fn acceptance(value: &Value) -> Result<Acceptance, ContractError> {
     let object = value.as_object().ok_or_else(|| malformed("acceptance"))?;
-    reject(
-        object,
-        &["rule", "task", "min_pass_rate", "max_usd_per_run"],
-    )?;
     let rule = text(object, "rule")?;
     if !RULES.contains(&rule.as_str()) {
         return Err(unsupported("acceptance.rule"));
     }
+    if rule == REPRODUCE {
+        reject(object, &["rule", "task", "recipe", "claim"])?;
+    } else {
+        reject(
+            object,
+            &["rule", "task", "min_pass_rate", "max_usd_per_run"],
+        )?;
+    }
     let task = text(object, "task")?;
     if task.is_empty() || task.len() > 256 || task.chars().any(char::is_whitespace) {
         return Err(malformed("acceptance.task"));
+    }
+    if rule == REPRODUCE {
+        let recipe = text(object, "recipe")?;
+        if !is_hex(&recipe) {
+            return Err(malformed("acceptance.recipe"));
+        }
+        let claim = require(object, "claim")?
+            .as_object()
+            .ok_or_else(|| malformed("acceptance.claim"))?;
+        reject(claim, &["id", "pubkey", "kind"])?;
+        let claim = pointer(claim, kb::EVIDENCE_KIND, "acceptance.claim")?;
+        return Ok(Acceptance {
+            rule,
+            task,
+            min_pass_rate: 1.0,
+            max_usd_per_run: None,
+            recipe: Some(recipe),
+            claim: Some(claim),
+        });
     }
     let min_pass_rate = require(object, "min_pass_rate")?
         .as_f64()
@@ -372,6 +428,8 @@ fn acceptance(value: &Value) -> Result<Acceptance, ContractError> {
         task,
         min_pass_rate,
         max_usd_per_run,
+        recipe: None,
+        claim: None,
     })
 }
 
@@ -414,11 +472,11 @@ fn reference(value: &Value) -> Result<Reference, ContractError> {
     })
 }
 
-fn award_table(value: &Value) -> Result<BTreeMap<String, u64>, ContractError> {
+fn award_table(value: &Value, roles: &[&str]) -> Result<BTreeMap<String, u64>, ContractError> {
     let object = value.as_object().ok_or_else(|| malformed("award"))?;
-    reject(object, ROLES)?;
+    reject(object, roles)?;
     let mut table = BTreeMap::new();
-    for role in ROLES {
+    for role in roles {
         table.insert((*role).to_string(), number(object, role)?);
     }
     let total: u64 = table.values().sum();
@@ -449,6 +507,9 @@ pub fn award(
     accepted_at: u64,
 ) -> Result<Unsigned, ContractError> {
     let parsed = parse_quest(quest)?;
+    if parsed.acceptance.rule != KB_TRANSFER {
+        return Err(mismatch("the quest's rule isn't kb-transfer"));
+    }
     in_season(&parsed, accepted_at)?;
     let version = check_transfer(&parsed, entry, evidence, excluded_tasks)?;
     let coordinate = coordinate(&quest.pubkey, &parsed.address);
@@ -489,29 +550,41 @@ pub fn award(
 }
 
 /// Checks a signed `3193` on its own: signature, body, tags, and that it
-/// names its own quest, an author who isn't the runner, and each awardee
-/// as the signer of the event the role names.
+/// names its own quest, awardees in its rule's order who are different
+/// keys, and each awardee as the signer of the event the role names. The
+/// awardee roles say which rule the award follows: `author` first under
+/// `kb-transfer`, `claimant` first under `reproduce`.
 ///
 /// # Errors
 ///
 /// A typed refusal naming the first check that failed.
 pub fn parse_award(event: &Event) -> Result<Award, ContractError> {
     let object = open(event, AWARD_KIND, "award")?;
-    reject(
-        &object,
-        &[
-            "v",
-            "requires",
-            "type",
-            "quest",
-            "key",
-            "accepted_at",
-            "entry",
-            "entry_version",
-            "evidence",
-            "awardees",
-        ],
-    )?;
+    let first_role = require(&object, "awardees")?
+        .as_array()
+        .and_then(|a| a.first())
+        .and_then(|a| a.get("role"))
+        .and_then(Value::as_str)
+        .ok_or_else(|| malformed("awardees"))?;
+    let rule = match first_role {
+        "author" => KB_TRANSFER,
+        "claimant" => REPRODUCE,
+        _ => return Err(unsupported("awardee roles")),
+    };
+    let mut allowed = vec![
+        "v",
+        "requires",
+        "type",
+        "quest",
+        "key",
+        "accepted_at",
+        "evidence",
+        "awardees",
+    ];
+    if rule == KB_TRANSFER {
+        allowed.extend(["entry", "entry_version"]);
+    }
+    reject(&object, &allowed)?;
     let quest_value = require(&object, "quest")?
         .as_object()
         .ok_or_else(|| malformed("quest"))?;
@@ -533,12 +606,96 @@ pub fn parse_award(event: &Event) -> Result<Award, ContractError> {
         return Err(mismatch("a tag"));
     }
     let accepted_at = number(&object, "accepted_at")?;
-    let entry_value = require(&object, "entry")?
+    let (entry, entry_version) = if rule == KB_TRANSFER {
+        let (entry, version) = entry_fields(&object)?;
+        (Some(entry), Some(version))
+    } else {
+        (None, None)
+    };
+    let evidence_values = require(&object, "evidence")?
+        .as_array()
+        .ok_or_else(|| malformed("evidence"))?;
+    // `kb-transfer` names exactly one evidence event, the runner's;
+    // `reproduce` names two, the claim and then the reproduction.
+    let count = if rule == KB_TRANSFER { 1 } else { 2 };
+    if evidence_values.len() != count {
+        return Err(unsupported("evidence count"));
+    }
+    let mut evidence = Vec::new();
+    for value in evidence_values {
+        let item = value.as_object().ok_or_else(|| malformed("evidence"))?;
+        reject(item, &["id", "pubkey", "kind"])?;
+        evidence.push(pointer(item, kb::EVIDENCE_KIND, "evidence")?);
+    }
+    let awardees = awardees(require(&object, "awardees")?, roles(rule))?;
+    let (first, second) = (&awardees[0], &awardees[1]);
+    if rule == KB_TRANSFER {
+        let entry = entry.as_ref().expect("kb-transfer names an entry");
+        if first.pubkey != entry.pubkey {
+            return Err(mismatch("the author awardee didn't sign the entry"));
+        }
+        if second.pubkey != evidence[0].pubkey {
+            return Err(mismatch("the runner awardee didn't sign the evidence"));
+        }
+        if first.pubkey == second.pubkey {
+            return Err(ContractError::new(
+                RefusalCode::NotAdmitted,
+                "the runner is the entry's author: self-evidence earns nothing",
+            ));
+        }
+    } else {
+        if first.pubkey != evidence[0].pubkey {
+            return Err(mismatch("the claimant awardee didn't sign the claim"));
+        }
+        if second.pubkey != evidence[1].pubkey {
+            return Err(mismatch(
+                "the reproducer awardee didn't sign the reproduction",
+            ));
+        }
+        if first.pubkey == second.pubkey {
+            return Err(ContractError::new(
+                RefusalCode::NotAdmitted,
+                "the reproducer is the claimant: reproducing your own attempt earns nothing",
+            ));
+        }
+    }
+    let total: u64 = awardees.iter().map(|a| a.xp).sum();
+    if total == 0 {
+        return Err(malformed("awardees"));
+    }
+    if total > MAX_AWARD {
+        return Err(ContractError::new(RefusalCode::LimitExceeded, "awardees"));
+    }
+    let mut named: BTreeSet<&str> = BTreeSet::from([quest.id.as_str()]);
+    named.extend(entry.iter().map(|e| e.id.as_str()));
+    named.extend(evidence.iter().map(|e| e.id.as_str()));
+    if tag_set(event, "e") != named || event.tag_values("e").count() != named.len() {
+        return Err(mismatch("e tags"));
+    }
+    let people: BTreeSet<&str> = awardees.iter().map(|a| a.pubkey.as_str()).collect();
+    if tag_set(event, "p") != people {
+        return Err(mismatch("p tags"));
+    }
+    Ok(Award {
+        rule: rule.to_string(),
+        quest,
+        coordinate: coordinate_value,
+        key,
+        accepted_at,
+        entry,
+        entry_version,
+        evidence,
+        awardees,
+    })
+}
+
+fn entry_fields(object: &Map<String, Value>) -> Result<(Pointer, EntryVersionRef), ContractError> {
+    let entry_value = require(object, "entry")?
         .as_object()
         .ok_or_else(|| malformed("entry"))?;
     reject(entry_value, &["id", "pubkey", "kind"])?;
     let entry = pointer(entry_value, kb::ENTRY_KIND, "entry")?;
-    let version_value = require(&object, "entry_version")?
+    let version_value = require(object, "entry_version")?
         .as_object()
         .ok_or_else(|| malformed("entry_version"))?;
     reject(version_value, &["id", "version", "digest"])?;
@@ -553,69 +710,16 @@ pub fn parse_award(event: &Event) -> Result<Award, ContractError> {
     {
         return Err(malformed("entry_version"));
     }
-    let evidence_values = require(&object, "evidence")?
-        .as_array()
-        .ok_or_else(|| malformed("evidence"))?;
-    // `kb-transfer` names exactly one evidence event: the runner's.
-    if evidence_values.len() != 1 {
-        return Err(unsupported("evidence count"));
-    }
-    let mut evidence = Vec::new();
-    for value in evidence_values {
-        let item = value.as_object().ok_or_else(|| malformed("evidence"))?;
-        reject(item, &["id", "pubkey", "kind"])?;
-        evidence.push(pointer(item, kb::EVIDENCE_KIND, "evidence")?);
-    }
-    let awardees = awardees(require(&object, "awardees")?)?;
-    let author = &awardees[0];
-    let runner = &awardees[1];
-    if author.pubkey != entry.pubkey {
-        return Err(mismatch("the author awardee didn't sign the entry"));
-    }
-    if runner.pubkey != evidence[0].pubkey {
-        return Err(mismatch("the runner awardee didn't sign the evidence"));
-    }
-    if author.pubkey == runner.pubkey {
-        return Err(ContractError::new(
-            RefusalCode::NotAdmitted,
-            "the runner is the entry's author: self-evidence earns nothing",
-        ));
-    }
-    let total: u64 = awardees.iter().map(|a| a.xp).sum();
-    if total == 0 {
-        return Err(malformed("awardees"));
-    }
-    if total > MAX_AWARD {
-        return Err(ContractError::new(RefusalCode::LimitExceeded, "awardees"));
-    }
-    let mut named: BTreeSet<&str> = BTreeSet::from([quest.id.as_str(), entry.id.as_str()]);
-    named.extend(evidence.iter().map(|e| e.id.as_str()));
-    if tag_set(event, "e") != named {
-        return Err(mismatch("e tags"));
-    }
-    let people: BTreeSet<&str> = awardees.iter().map(|a| a.pubkey.as_str()).collect();
-    if tag_set(event, "p") != people {
-        return Err(mismatch("p tags"));
-    }
-    Ok(Award {
-        quest,
-        coordinate: coordinate_value,
-        key,
-        accepted_at,
-        entry,
-        entry_version,
-        evidence,
-        awardees,
-    })
+    Ok((entry, entry_version))
 }
 
-fn awardees(value: &Value) -> Result<Vec<Awardee>, ContractError> {
+fn awardees(value: &Value, roles: &[&str]) -> Result<Vec<Awardee>, ContractError> {
     let items = value.as_array().ok_or_else(|| malformed("awardees"))?;
-    if items.len() != ROLES.len() {
+    if items.len() != roles.len() {
         return Err(malformed("awardees"));
     }
     let mut out = Vec::new();
-    for (item, role) in items.iter().zip(ROLES) {
+    for (item, role) in items.iter().zip(roles) {
         let object = item.as_object().ok_or_else(|| malformed("awardees"))?;
         reject(object, &["role", "pubkey", "xp"])?;
         let awardee = Awardee {
@@ -624,7 +728,10 @@ fn awardees(value: &Value) -> Result<Vec<Awardee>, ContractError> {
             xp: number(object, "xp")?,
         };
         if awardee.role != *role {
-            return Err(malformed("awardee roles are author, then runner"));
+            return Err(malformed(format!(
+                "awardee roles are {}, in that order",
+                roles.join(", then ")
+            )));
         }
         if !is_hex(&awardee.pubkey) {
             return Err(malformed("awardee pubkey"));
@@ -649,6 +756,14 @@ pub fn bind_quest(award: &Award, quest: &Event) -> Result<Quest, ContractError> 
         || award.coordinate != coordinate(&quest.pubkey, &parsed.address)
     {
         return Err(mismatch("quest"));
+    }
+    if award.rule != parsed.acceptance.rule {
+        return Err(mismatch("the award's roles aren't its quest's rule"));
+    }
+    if let Some(claim) = &parsed.acceptance.claim
+        && award.evidence.first() != Some(claim)
+    {
+        return Err(mismatch("the award's claim isn't the one its quest pins"));
     }
     in_season(&parsed, award.accepted_at)?;
     for awardee in &award.awardees {
@@ -677,7 +792,10 @@ pub fn bind_evidence(
     evidence: &Event,
     excluded_tasks: &[String],
 ) -> Result<(), ContractError> {
-    if award.entry.id != entry.id || award.entry.pubkey != entry.pubkey {
+    let (Some(named_entry), Some(named_version)) = (&award.entry, &award.entry_version) else {
+        return Err(mismatch("the award isn't a kb-transfer award"));
+    };
+    if named_entry.id != entry.id || named_entry.pubkey != entry.pubkey {
         return Err(mismatch("entry"));
     }
     let named = &award.evidence[0];
@@ -685,9 +803,9 @@ pub fn bind_evidence(
         return Err(mismatch("evidence"));
     }
     let version = check_transfer(quest, entry, evidence, excluded_tasks)?;
-    if version.id != award.entry_version.id
-        || version.version != award.entry_version.version
-        || version.digest != award.entry_version.digest
+    if version.id != named_version.id
+        || version.version != named_version.version
+        || version.digest != named_version.digest
     {
         return Err(mismatch("entry_version"));
     }
@@ -1037,6 +1155,13 @@ fn tag_set<'a>(event: &'a Event, name: &str) -> BTreeSet<&'a str> {
         .filter_map(Tag::value)
         .collect()
 }
+
+pub mod reproduce;
+pub use reproduce::{
+    RECIPE_SCHEMA, RUN_MARKER, Recipe, RunEvidence, RunRecord, bind_reproduction, check_reproduce,
+    check_run_record, parse_run_evidence, recipe_digest, recipe_from_summary, record_from_summary,
+    reproduce_award, run_evidence,
+};
 
 #[cfg(test)]
 mod tests;
