@@ -48,7 +48,7 @@ Non-goals:
 | Measurement plane | `crates/gym` | `gym runs`, run cards, the `beats-winner` highlight rule, head-to-head replay. `gym publish` covers decision-model stores only; nothing is published for Terminal-Bench. |
 | Verse replays | [Run replays](README.md#run-replays) | Plays a retained Microcoder run as visits to world landmarks, beside a ghost of Fable's cheapest winning run. Desktop only. |
 | Evidence | `bench/terminal-bench/` | Experiment directories with `attempts.json`, study round reports, 631 retained trace directories (853 MB), and Microcoder run records. |
-| Web | none in this repository | The openagents.com web app lives in its own repository. The retired Phoenix `/gym` pages are gone ([migration note](../history/2026-09-26-retired-gym-migration.md)). |
+| Web | the openagents.com service, in its own repository | `/gym/results` renders this publication with this crate's view model; see [Web parity](#web-parity). The retired Phoenix `/gym` pages are gone ([migration note](../history/2026-09-26-retired-gym-migration.md)). |
 
 No Rust code reads an `attempts.json` before this work, and the retained
 traces had no redaction step beyond `tbench retain`'s exact-value credential
@@ -547,10 +547,34 @@ byte-identical to the hand-written adapter's. The recipe is in the
 
 ## Web parity
 
-An optional `/gym` page on openagents.com reads the same three files and
-follows the same presentation rules. It belongs in the openagents.com web
-app's repository, not this one. It can also serve as the mirror the app's
-base URL points at.
+The openagents.com service renders the publication at `/gym/results`, and
+`/gym` leads with the boards list (#9852; the pages reach openagents.com
+with the service's next deploy). The service lives in its own repository, so
+it carries a copy of this crate's reader half: `contract.rs`,
+`evidence.rs`, `summary.rs`, `verify.rs`, `view.rs`, `client.rs`, the
+constants in `lib.rs`, and `atif`'s digest rule. A sync script there copies
+them from a checkout of this repository and fails its check when the copy
+differs; it records the commit it copied. A change to one of those files
+reaches the web page when the copy is refreshed.
+
+- **Same words.** The pages lay out the `view::Page` that `view::render`
+  returns for the same `Nav` the app would hold: the boards list with the
+  rule 11 summary and footer, a board with its filter and caveats, an
+  attempt, and a trace with its tab, current step, page of steps, and
+  expanded output. The URL holds what the app keeps in memory
+  (`?filter=beats&caveats=all`, `?tab=agent&row=12&page=0&open=12`). No
+  figure, label, caveat, or sentence is composed on the web side.
+- **Same checks.** The service reads the files through the same `client`
+  (`raw.githubusercontent.com` at the index's commit, with the same size
+  caps and timeouts), checks the index every 5 minutes, and verifies every
+  leaderboard and bundle by digest. A digest mismatch with nothing verified
+  before shows "Can't verify this publication" and no numbers; with an
+  earlier verified publication, it shows that one under the same error.
+  A bundle that fails its SHA-256 shows "Can't verify this trace" and none
+  of the trace.
+- **Not yet.** The page doesn't read the signed publication (#9853), and it
+  doesn't serve the files as a mirror; the app's base URL still points at
+  GitHub.
 
 ## Verification
 
@@ -604,5 +628,5 @@ Epic [#9839](https://github.com/OpenAgentsInc/openagents/issues/9839).
 | #9849 | Grid **RESULTS** board and screens | #9846, #9848 | After the Gym port |
 | #9850 | Grid trace viewer | #9849 | After the Gym port |
 | #9851 | Play a trace as a world replay (optional) | #9850 | After the Gym port |
-| #9852 | openagents.com `/gym` page (optional, other repository) | #9840 | Any time |
+| #9852 | openagents.com `/gym` page (optional, other repository) | #9840 | Done; live with the service's next deploy |
 | #9853 | Signed results publication (optional) | #9840, #9846 | Done; the first signature waits on the publisher key |
