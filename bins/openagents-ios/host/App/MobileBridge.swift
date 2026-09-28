@@ -70,6 +70,11 @@ struct AppPacket: Decodable {
     let coder: NativeView?
     /// The open Coder chat changes on its own; ask for a packet sooner.
     let coder_live: Bool?
+    /// A basic Coder reply is streaming; ask for packets every few hundred
+    /// milliseconds.
+    let chat_streaming: Bool?
+    /// Show another tab's screen once: `computers` is Account > Computers.
+    let coder_go: String?
     let chats: NativeView?
     let chats_input: ComputersInput?
     let chats_loading: Bool
@@ -283,6 +288,8 @@ final class MobileBridge: ObservableObject {
     @Published private(set) var terminalView: NativeView?
     @Published private(set) var failure: String?
     @Published private(set) var pending = 0
+    /// Counts the Chat tab's requests to open Account > Computers.
+    @Published private(set) var computersRequested = 0
     private let queue = DispatchQueue(label: "com.openagents.app.rust")
     private nonisolated(unsafe) let handle: UnsafeMutableRawPointer?
     private var terminalRevision: UInt64 = 0
@@ -592,6 +599,7 @@ final class MobileBridge: ObservableObject {
                 return
             }
             self.packet = packet
+            if packet.coder_go == "computers" { self.computersRequested += 1 }
             if !packet.terminal { self.terminalView = nil; self.terminalRevision = 0 }
             if let link = packet.open_url, let url = URL(string: link), url.scheme == "https" {
                 UIApplication.shared.open(url)

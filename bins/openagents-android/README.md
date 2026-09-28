@@ -13,8 +13,17 @@ tabs, navigation, the camera, keyboards, the Keystore, and the Verse
 
 The app has four tabs, shown as white icons on black:
 
-- **Coder** (`</>`) chats with Coder on your computers. Sending a message
-  starts a NIP-HOST `task.create` on the chosen computer, and the chat follows
+- **Chat** (a chat bubble) is a list of conversations, newest first. A new
+  chat is a conversation with the basic Coder, which needs no computer: each
+  message is a NIP-CJ conversation job signed by the device key and sent,
+  NIP-44 encrypted, through `relay.openagents.com` to the OpenAgents chat
+  worker, and the reply streams back as partials drawn with incremental
+  Markdown. The app holds no model key; the worker meters each caller key
+  (see `INVARIANTS.md`). From a conversation, **Run Coder on** a computer starts Coder on
+  it with the conversation so far; with no computer,
+  **Connect a computer to run Coder** opens Account > Computers. The same list shows
+  Coder's chats on your computers:
+  a message there starts a NIP-HOST `task.create` on the chosen computer, and the chat follows
   the task's transcript. Later messages are durable `task.command`s that
   continue, queue, steer, or answer; a long press on send offers the other
   ways to send, as a menu.
@@ -23,7 +32,7 @@ The app has four tabs, shown as white icons on black:
   has a breadcrumb back to the list beside its phase and computer; a
   waiting question makes the composer answer it, and an approval request
   adds **Approve** and **Deny**. Chats last shown stay listed across a
-  relaunch. This is the iPhone app's Coder tab; Rust decides everything
+  relaunch. This is the iPhone app's Chat tab; Rust decides everything
   it shows.
 - **Verse** (globe) mounts Verse's bare world (`coder_mobile::VerseHandle` in
   bare mode) in a `SurfaceView` and forwards touches, pinch, and rotation

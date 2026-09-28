@@ -36,6 +36,8 @@ class MobileBridge(private val context: Context, private val computersFixture: B
     var failure: String? = null; private set
     var pending = 0; private set
     val busy get() = pending > 0
+    /** Counts the Chat tab's requests to open Account > Computers. */
+    var computersRequested = 0; private set
 
     init {
         pending += 1
@@ -279,6 +281,7 @@ class MobileBridge(private val context: Context, private val computersFixture: B
             }
             packet = next
             failure = null
+            if (next.textOrNull("coder_go") == "computers") computersRequested += 1
             if (!next.optBoolean("terminal")) { terminalView = null; terminalRevision = 0 }
             next.textOrNull("open_url")?.let { link -> open(link) }
             next.textOrNull("wallet_open_url")?.let { link -> browse(link) }

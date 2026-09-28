@@ -1,5 +1,6 @@
-// The app's four tabs: Coder, Verse, Wallet, and Account. The tab bar shows
-// icons only; each tab keeps a spoken name for VoiceOver.
+// The app's four tabs: Chat, Verse, Wallet, and Account. The tab bar shows
+// icons only; each tab keeps a spoken name for VoiceOver. The Chat tab's
+// value stays `coder`, the name the playtest session log uses.
 import SwiftUI
 import UIKit
 
@@ -8,7 +9,7 @@ enum AppTab: String, CaseIterable {
 
     var title: String {
         switch self {
-        case .coder: "Coder"
+        case .coder: "Chat"
         case .verse: "Verse"
         case .wallet: "Wallet"
         case .account: "Account"
@@ -17,7 +18,7 @@ enum AppTab: String, CaseIterable {
 
     var symbol: String {
         switch self {
-        case .coder: "chevron.left.forwardslash.chevron.right"
+        case .coder: "bubble.left.and.bubble.right"
         case .verse: "globe"
         // `wallet.bifold` arrived in iOS 18.
         case .wallet: UIImage(systemName: "wallet.bifold") == nil ? "creditcard" : "wallet.bifold"
@@ -108,6 +109,8 @@ struct AppTabs: View {
             place.tab = tab
             bridge.playtestScreen(tab: place.tabName, route: place.routeName)
         }
+        // A chat asked to connect a computer: Account > Computers.
+        .onChange(of: bridge.computersRequested) { _, _ in tab = .account }
         .onAppear {
             #if targetEnvironment(simulator)
             // `--report` opens Report a problem for the first screen.
@@ -208,6 +211,7 @@ struct AccountTab: View {
                     .toolbarBackground(Color.black, for: .navigationBar)
             }
         }
+        .onChange(of: bridge.computersRequested) { _, _ in path = [.computers] }
         .onChange(of: path, initial: true) { _, path in
             place.accountRoute = path.last
             if place.tab == .account {

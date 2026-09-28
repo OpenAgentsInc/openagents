@@ -262,7 +262,8 @@ private struct ComputerRow: View {
     }
 }
 
-/// Chats with Coder: a new chat is a task on the chosen computer.
+/// The Chat tab: conversations with the basic Coder, and Coder's chats on
+/// the computers.
 struct CoderTab: View {
     @ObservedObject var bridge: MobileBridge
 
@@ -288,26 +289,53 @@ struct CoderTab: View {
                 if !Task.isCancelled && !bridge.busy { bridge.refreshComputers() }
             }
         }
+        // A basic Coder reply streams in: read it four times a second.
+        .task(id: bridge.packet?.chat_streaming == true) {
+            guard bridge.packet?.chat_streaming == true else { return }
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(250))
+                if !Task.isCancelled && !bridge.busy { bridge.snapshot() }
+            }
+        }
     }
 }
 
 /// Simulator checks: `--coder-tap KEY[,KEY...]` taps Coder nodes in order
 /// once the surface shows them. A key ending in `*` taps the first node whose
-/// key starts with the rest, such as `task-*` for the first chat.
+/// key starts with the rest, such as `task-*` for the first chat. Then
+/// `--coder-send TEXT` sends TEXT from the screen's composer.
 enum CoderLaunchTaps {
     @MainActor static func run(_ bridge: MobileBridge) async {
         #if DEBUG || targetEnvironment(simulator)
         let arguments = ProcessInfo.processInfo.arguments
-        guard let index = arguments.firstIndex(of: "--coder-tap"), index + 1 < arguments.count else { return }
-        for key in arguments[index + 1].split(separator: ",").map(String.init) {
-            for _ in 0..<20 {
-                try? await Task.sleep(for: .milliseconds(500))
-                guard let view = bridge.packet?.coder, let node = find(key, in: view.root) else { continue }
-                bridge.activate("coder", view: view, node: node)
-                break
+        if let index = arguments.firstIndex(of: "--coder-tap"), index + 1 < arguments.count {
+            for key in arguments[index + 1].split(separator: ",").map(String.init) {
+                for _ in 0..<20 {
+                    try? await Task.sleep(for: .milliseconds(500))
+                    guard let view = bridge.packet?.coder, let node = find(key, in: view.root) else { continue }
+                    bridge.activate("coder", view: view, node: node)
+                    break
+                }
             }
         }
+        guard let index = arguments.firstIndex(of: "--coder-send"), index + 1 < arguments.count else { return }
+        for _ in 0..<20 {
+            try? await Task.sleep(for: .milliseconds(500))
+            guard let view = bridge.packet?.coder, let token = composer(in: view.root) else { continue }
+            bridge.submit("coder", token: token, value: arguments[index + 1])
+            break
+        }
         #endif
+    }
+
+    private static func composer(in node: NativeNode) -> String? {
+        switch node.element {
+        case let .composer(props): return props.token
+        case let .stack(_, nodes), let .list(_, nodes), let .transcript(_, nodes, _, _):
+            for child in nodes { if let token = composer(in: child) { return token } }
+            return nil
+        default: return nil
+        }
     }
 
     private static func find(_ key: String, in node: NativeNode) -> String? {

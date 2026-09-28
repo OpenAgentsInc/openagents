@@ -28,9 +28,12 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import org.json.JSONObject
 
-/** The four tabs, shown as icons; each keeps a spoken name for TalkBack. */
+/**
+ * The four tabs, shown as icons; each keeps a spoken name for TalkBack. The
+ * Chat tab's name stays `CODER`, the name the playtest session log uses.
+ */
 enum class AppTab(val title: String, val icon: Int) {
-    CODER("Coder", R.drawable.ic_tab_coder),
+    CODER("Chat", R.drawable.ic_tab_chat),
     VERSE("Verse", R.drawable.ic_tab_verse),
     WALLET("Wallet", R.drawable.ic_tab_wallet),
     ACCOUNT("Account", R.drawable.ic_tab_account),
@@ -52,6 +55,8 @@ class MainActivity : ComponentActivity() {
     private var route: AccountRoute? = null
     private var resumed = false
     private var ticks = 0
+    /** The Chat tab's requests to open Account > Computers, as last handled. */
+    private var computersShown = 0
     private var statusTop = 0
 
     private val pages = mutableMapOf<AppTab, FrameLayout>()
@@ -204,6 +209,13 @@ class MainActivity : ComponentActivity() {
         }
         select(tab)
         open(route)
+        // Debug builds only: `--es coder_tap KEY[,KEY...]` taps Chat nodes in
+        // order (a key ending in `*` taps the first whose key starts with the
+        // rest), then `--es coder_send TEXT` sends TEXT from the composer.
+        if (BuildConfig.DEBUG) {
+            val taps = intent.getStringExtra("coder_tap")?.split(",").orEmpty().filter { it.isNotEmpty() }
+            launchTaps(taps, intent.getStringExtra("coder_send"), 0)
+        }
         tabBar.setOnLongClickListener { report(); true }
         // Debug builds only: `--ez report true` opens Report a problem for the first screen.
         if (BuildConfig.DEBUG && intent.getBooleanExtra("report", false)) main.postDelayed({ report() }, 1500)
@@ -506,10 +518,49 @@ class MainActivity : ComponentActivity() {
         }, LinearLayout.LayoutParams(dp(44), dp(44)))
     }
 
+    private fun launchTaps(taps: List<String>, send: String?, attempt: Int) {
+        if (taps.isEmpty() && send == null || attempt > 40) return
+        main.postDelayed({
+            val view = bridge.packet?.objectOrNull("coder")
+            val root = view?.optJSONObject("root")
+            if (view == null || root == null || bridge.busy) { launchTaps(taps, send, attempt + 1); return@postDelayed }
+            if (taps.isNotEmpty()) {
+                val key = taps.first()
+                val found = findNode(root) { node ->
+                    val name = node.optString("key")
+                    if (key.endsWith("*")) name.startsWith(key.dropLast(1)) else name == key
+                }
+                if (found == null) { launchTaps(taps, send, attempt + 1); return@postDelayed }
+                bridge.activate("coder", view, found.optString("key"))
+                launchTaps(taps.drop(1), send, 0)
+            } else if (send != null) {
+                val composer = findNode(root) { it.optJSONObject("element")?.optString("kind") == "composer" }
+                if (composer == null) { launchTaps(taps, send, attempt + 1); return@postDelayed }
+                val token = composer.getJSONObject("element").getJSONObject("props").getString("token")
+                bridge.submit("coder", token, send)
+            }
+        }, 500)
+    }
+
+    private fun findNode(node: JSONObject, matches: (JSONObject) -> Boolean): JSONObject? {
+        if (matches(node)) return node
+        val children = node.optJSONObject("element")?.optJSONObject("props")?.optJSONArray("children") ?: return null
+        for (index in 0 until children.length()) {
+            children.optJSONObject(index)?.let { child -> findNode(child, matches)?.let { return it } }
+        }
+        return null
+    }
+
     // Rendering
 
     private fun render() {
         if (!::bridge.isInitialized) return
+        // A chat asked to connect a computer: Account > Computers.
+        if (bridge.computersRequested != computersShown) {
+            computersShown = bridge.computersRequested
+            select(AppTab.ACCOUNT)
+            open(AccountRoute.COMPUTERS)
+        }
         val packet = bridge.packet
         mount(coderRenderer, coderContent, fixture ?: packet?.objectOrNull("coder"))
         when (route) {
@@ -615,8 +666,21 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    // A basic Coder reply streams in: read it four times a second.
+    private val streaming = object : Runnable {
+        override fun run() {
+            if (!resumed) return
+            if (tab == AppTab.CODER && bridge.packet?.optBoolean("chat_streaming") == true && !bridge.busy) {
+                bridge.snapshot()
+            }
+            main.postDelayed(this, 250)
+        }
+    }
+
     override fun onResume() {
         super.onResume()
+        main.removeCallbacks(streaming)
+        main.postDelayed(streaming, 250)
         resumed = true
         bridge.lifecycle(true)
         world.setResumed(true)

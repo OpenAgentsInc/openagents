@@ -13,8 +13,17 @@ The Android build, with the same tabs and the same Rust library, is in
 
 The app has four tabs, shown as icons:
 
-- **Coder** (`</>`) chats with Coder on your computers. Sending a message
-  starts a NIP-HOST `task.create` in the computer's `openagents` workspace,
+- **Chat** (a chat bubble) is a list of conversations, newest first. A new
+  chat is a conversation with the basic Coder, which needs no computer: each
+  message is a NIP-CJ conversation job signed by the device key and sent,
+  NIP-44 encrypted, through `relay.openagents.com` to the OpenAgents chat
+  worker, and the reply streams back as partials drawn with incremental
+  Markdown. The app holds no model key; the worker meters each caller key
+  (see `INVARIANTS.md`). From a conversation, **Run Coder on** a computer starts Coder on
+  it with the conversation so far; with no computer,
+  **Connect a computer to run Coder** opens Account > Computers. The same list shows
+  Coder's chats on your computers:
+  a message there starts a NIP-HOST `task.create` in the computer's `openagents` workspace,
   the same operation as Order work; with the host's auto-start policy on,
   the host runs Coder's engine right away. An open chat reads the task's
   ATIF transcript through the computer's read-only history observer (its
