@@ -132,6 +132,13 @@ impl Outbox {
             .count()
     }
 
+    /// Whether the command with ID `command` still waits for its host.
+    pub fn holds(&self, command: &str) -> bool {
+        self.pending
+            .iter()
+            .any(|pending| pending.command.command == command)
+    }
+
     /// Record what an attempt at the command with ID `command` did.
     pub fn settle(&mut self, command: &str, attempt: &Attempt, now: u64) {
         match attempt {

@@ -37,6 +37,15 @@ pub enum Intent {
     Forget { computer: String },
 }
 
+/// What became of a read of a catalog's first page.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Head {
+    Running,
+    Read,
+    /// It failed or was never started; ask again.
+    Failed,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Purpose {
@@ -65,6 +74,11 @@ struct Computer {
     client: Result<Arc<Client>, String>,
     status: Status,
     chats: Vec<Chat>,
+    /// Reads of the catalog's first page started and finished, and whether
+    /// one is running.
+    heads: u64,
+    heads_done: u64,
+    head_running: bool,
 }
 
 #[derive(Default)]
@@ -117,6 +131,9 @@ impl Chats {
                 saved,
                 status: Status::Loading,
                 chats: vec![],
+                heads: 0,
+                heads_done: 0,
+                head_running: false,
             })
             .collect();
         let mut chats = Self {
@@ -335,6 +352,9 @@ impl Chats {
                 client: client.clone(),
                 status: Status::Loading,
                 chats: vec![],
+                heads: 0,
+                heads_done: 0,
+                head_running: false,
             });
             guard.named = (!named).then(|| host.clone());
             guard.dirty = true;
@@ -427,44 +447,83 @@ impl Chats {
         Some((computer.saved.code.host.clone(), client, chat))
     }
 
-    /// Read the catalog of the machine whose Computers host key is `host`
-    /// again, as a new task's chat appears.
-    pub fn refresh_linked(&mut self, host: &str) {
-        let job = {
+    /// The observer client of the machine whose Computers host key is
+    /// `host`, whether or not its catalog has been read.
+    pub fn coder_client(&self, host: &str) -> Option<Arc<Client>> {
+        lock(&self.state)
+            .computers
+            .iter()
+            .find(|c| c.saved.host.as_deref() == Some(host))?
+            .client
+            .as_ref()
+            .ok()
+            .cloned()
+    }
+
+    /// Read the first page of the catalog of the machine whose Computers
+    /// host key is `host`, its newest chats, and merge it into the list, as
+    /// a Coder task's next turn appears. Returns the read's number, or
+    /// `None` when none started because one is running or no pairing is
+    /// linked; [`Chats::head_read`] says when it finished.
+    pub fn refresh_head(&mut self, host: &str) -> Option<u64> {
+        let (observer, client, round) = {
             let mut state = lock(&self.state);
-            state
+            let computer = state
                 .computers
                 .iter_mut()
-                .find(|c| {
-                    c.saved.host.as_deref() == Some(host) && !matches!(c.status, Status::Loading)
-                })
-                .and_then(|computer| {
-                    let client = computer.client.as_ref().ok()?.clone();
-                    computer.status = Status::Loading;
-                    Some((computer.saved.code.host.clone(), client))
-                })
-        };
-        let Some((observer, client)) = job else {
-            return;
+                .find(|c| c.saved.host.as_deref() == Some(host) && !c.head_running)?;
+            let client = computer.client.as_ref().ok()?.clone();
+            computer.head_running = true;
+            computer.heads += 1;
+            (computer.saved.code.host.clone(), client, computer.heads)
         };
         let state = self.state.clone();
         self.runtime.spawn(async move {
-            let result = catalog(&client).await;
+            let request = CatalogRequest {
+                cursor: None,
+                limit: coder_history::MAX_CATALOG_PAGE,
+            };
+            let result = observe(&client, Query::Catalog(request)).await;
             let mut state = lock(&state);
-            if let Some(computer) = state
+            let Some(computer) = state
                 .computers
                 .iter_mut()
                 .find(|c| c.saved.code.host == observer)
-            {
-                match result {
-                    Ok(chats) => {
-                        computer.chats = chats;
-                        computer.status = Status::Ready;
+            else {
+                return;
+            };
+            computer.head_running = false;
+            if let Ok(Observation::Catalog(page)) = result {
+                for chat in page.entries {
+                    match computer.chats.iter_mut().find(|known| known.id == chat.id) {
+                        Some(known) => *known = chat,
+                        None => computer.chats.push(chat),
                     }
-                    Err(error) => computer.status = Status::Failed(error),
                 }
+                computer.heads_done = computer.heads_done.max(round);
             }
         });
+        Some(round)
+    }
+
+    /// What became of first-page read `round` of the machine whose
+    /// Computers host key is `host`.
+    pub fn head(&self, host: &str, round: u64) -> Head {
+        let state = lock(&self.state);
+        let Some(computer) = state
+            .computers
+            .iter()
+            .find(|c| c.saved.host.as_deref() == Some(host))
+        else {
+            return Head::Failed;
+        };
+        if computer.heads_done >= round {
+            Head::Read
+        } else if computer.head_running && computer.heads == round {
+            Head::Running
+        } else {
+            Head::Failed
+        }
     }
 
     /// Whether a current chat pairing is linked to the machine whose
@@ -492,8 +551,7 @@ impl Chats {
                 Ok(view) => break view,
                 // A long chat can outgrow one view; keep its newest half.
                 Err(_) if self.reading.is_some() => {
-                    self.reading.as_ref()?.shrink();
-                    if self.reading.as_ref()?.is_empty() {
+                    if !self.reading.as_ref()?.shrink() {
                         return None;
                     }
                 }
@@ -693,7 +751,7 @@ fn reader(reading: &Conversation) -> Node<Intent> {
             ],
         ),
         heading("chat-title", &reading.chat.title),
-        reading.transcript("chat", Intent::Earlier, None),
+        reading.transcript("chat", Intent::Earlier, &[], None),
     ])
 }
 

@@ -782,3 +782,52 @@ fn an_unreached_computer_is_nudged_and_the_command_waits() {
     assert!(script.lock().unwrap().commands.is_empty());
     assert_eq!(script.lock().unwrap().nudges, 1);
 }
+
+/// A message shows in its chat the moment it is sent, marked while it waits
+/// for the computer or in the computer's queue, until the transcript shows
+/// it; a refusal takes it away.
+#[test]
+fn a_sent_message_shows_in_the_chat_at_once() {
+    use nostr::activity_summary::{Attention, Phase};
+    let notes = |view: &Value| -> Vec<(String, String)> {
+        nodes(view)
+            .into_iter()
+            .filter(|node| {
+                node["key"]
+                    .as_str()
+                    .is_some_and(|key| key.starts_with("coder-sent-") && !key.ends_with("-md"))
+            })
+            .map(|node| {
+                let props = &node["element"]["props"];
+                let text =
+                    props["children"][0]["element"]["props"]["blocks"][0]["spans"][0]["text"]
+                        .as_str()
+                        .unwrap_or_default()
+                        .to_owned();
+                (text, props["note"].as_str().unwrap_or_default().to_owned())
+            })
+            .collect()
+    };
+    // Sent while the computer is out of reach: it shows, waiting.
+    let (mut fixture, script, chat) = Fixture::scripted(Phase::Completed, Attention::Completed);
+    script.lock().unwrap().offline = true;
+    let chat = fixture.send(&chat, None, "Follow up.");
+    assert_eq!(
+        notes(&chat),
+        [("Follow up.".into(), "Sending".into())],
+        "{:?}",
+        keys(&chat)
+    );
+    // Once the computer answers, it shows as sent.
+    script.lock().unwrap().offline = false;
+    fixture.coder.flush(Some(&mut fixture.computers));
+    let chat = fixture.render();
+    assert!(notes(&chat).iter().all(|(text, _)| text == "Follow up."));
+    // Queued while Coder works: it shows as queued.
+    let (mut fixture, _, chat) = Fixture::scripted(Phase::Running, Attention::None);
+    let chat = fixture.send(&chat, None, "And the docs.");
+    assert_eq!(notes(&chat), [("And the docs.".into(), "Queued".into())]);
+    // A stop is not a message.
+    let chat = fixture.tap("coder-stop");
+    assert_eq!(notes(&chat).len(), 1);
+}

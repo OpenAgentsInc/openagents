@@ -272,6 +272,9 @@ pub struct Packet {
     pub computers_input: Option<InputRequest>,
     pub computers_qr: Option<QrModules>,
     pub coder: Option<serde_json::Value>,
+    /// The open Coder chat changes on its own, as while its task runs: ask
+    /// for a packet again soon.
+    pub coder_live: bool,
     pub chats: Option<serde_json::Value>,
     /// A value the Chats surface asks the host to collect.
     pub chats_input: Option<rust_native::input::InputRequest<ChatsPurpose>>,
@@ -438,6 +441,9 @@ impl App {
                 ))
                 .with_outbox(crate::outbox::Outbox::open(
                     Cache::open(&config.state_dir.join("coder-outbox"), &secret).ok(),
+                ))
+                .with_transcripts(crate::transcripts::Transcripts::open(
+                    Cache::open(&config.state_dir.join("coder-transcripts"), &secret).ok(),
                 )),
             terminals,
             terminal: None,
@@ -946,6 +952,7 @@ impl App {
                         .collect(),
                 }),
             coder,
+            coder_live: self.coder.live(self.computers.as_ref()),
             chats,
             chats_input: self.chats.input().cloned(),
             chats_loading: self.chats.loading(),

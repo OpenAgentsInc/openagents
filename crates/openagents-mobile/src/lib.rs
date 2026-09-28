@@ -27,6 +27,7 @@ mod outbox;
 mod spark;
 mod tailnet;
 mod tailnet_view;
+mod transcripts;
 mod verse;
 mod wallet;
 

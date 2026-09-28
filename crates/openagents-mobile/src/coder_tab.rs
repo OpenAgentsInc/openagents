@@ -27,10 +27,11 @@
 //! open, so nothing runs a message being edited: edit, move up, send now,
 //! or remove this device's own queued messages.
 
-use crate::chats::Chats;
+use crate::chats::{Chats, Head};
 use crate::coder_list::{List, Row, Store};
-use crate::conversation::Conversation;
+use crate::conversation::{Conversation, Pending};
 use crate::outbox::{Attempt, Draft, Outbox};
+use crate::transcripts::Transcripts;
 use coder_computers::{
     Action, Capabilities, Computers, Denial, HostRecord, HostStatus, OfflineCause, Platform,
     Snapshot, authority,
@@ -129,6 +130,15 @@ impl Choice {
 /// The least time between two reads of an open chat's queue while its
 /// summary does not move, in seconds.
 const QUEUE_READ_EVERY: u64 = 15;
+/// How often a running chat's computer is asked for its newest chats, so a
+/// turn's transcript is found as soon as it starts, in seconds.
+const HEAD_EVERY: u64 = 3;
+/// How often a running chat's transcript is kept for the next opening, in
+/// seconds; an ended one is kept at once.
+const KEEP_EVERY: u64 = 5;
+/// How long a sent message shows before the transcript does, at most, in
+/// seconds.
+const ECHO_FOR: u64 = 30 * 60;
 /// How often the open queue panel renews its edit lease, in seconds; the
 /// host holds a lease for 60.
 const LEASE_RENEW_EVERY: u64 = 20;
@@ -153,6 +163,33 @@ struct Open {
     leased_at: Option<u64>,
     /// The queued message the composer edits.
     editing: Option<String>,
+    /// A read of the computer's newest chats is wanted, as when the task's
+    /// summary moved; when one last started; and the read that started
+    /// after the summary last moved.
+    head_wanted: bool,
+    head_at: u64,
+    head_round: Option<u64>,
+    /// The ended summary sequence whose transcript was read after the
+    /// summary said so, and the read that is to show it.
+    settled: Option<u64>,
+    settle_read: Option<u64>,
+    /// The transcript version last kept for the next opening, and when.
+    kept: (u64, u64),
+}
+
+/// A message this device sent, shown in its chat until the transcript
+/// shows it.
+struct Echo {
+    task: String,
+    key: u64,
+    text: String,
+    /// The command's outbox ID; a new chat's first message has none.
+    command: Option<String>,
+    queued: bool,
+    /// How many of the user's messages with this text the chat showed
+    /// when it was sent.
+    shown: usize,
+    sent_at: u64,
 }
 
 pub struct CoderTab {
@@ -172,6 +209,10 @@ pub struct CoderTab {
     /// The current composer's choices: each token this tab minted and what
     /// it sends.
     choices: Vec<(String, Choice)>,
+    /// Each chat's transcript as last shown; it survives a relaunch.
+    transcripts: Transcripts,
+    echoes: Vec<Echo>,
+    echoed: u64,
 }
 
 impl CoderTab {
@@ -188,7 +229,17 @@ impl CoderTab {
             composing: false,
             outbox: Outbox::open(None),
             choices: Vec::new(),
+            transcripts: Transcripts::open(None),
+            echoes: Vec::new(),
+            echoed: 0,
         }
+    }
+
+    /// Keep each chat's transcript in `transcripts`, which survives a
+    /// relaunch.
+    pub fn with_transcripts(mut self, transcripts: Transcripts) -> Self {
+        self.transcripts = transcripts;
+        self
     }
 
     /// Keep the chats list in `list`, which survives a relaunch.
@@ -229,7 +280,11 @@ impl CoderTab {
                 Err(refusal) => Attempt::Refused(refusal.reason()),
             };
             match &attempt {
-                Attempt::Refused(reason) => self.notice = Some(reason.clone()),
+                Attempt::Refused(reason) => {
+                    self.notice = Some(reason.clone());
+                    let refused = Some(&pending.command.command);
+                    self.echoes.retain(|echo| echo.command.as_ref() != refused);
+                }
                 Attempt::Unreached if !unreached.contains(&pending.host) => {
                     unreached.push(pending.host.clone());
                 }
@@ -364,13 +419,79 @@ impl CoderTab {
             text,
             emulate,
         };
-        if self.outbox.push(&host, draft, now).is_none() {
+        let Some(command) = self
+            .outbox
+            .push(&host, draft, now)
+            .map(|pending| pending.command.command.clone())
+        else {
             self.notice = Some("Too many messages are waiting to send. Try again later.".into());
             return false;
+        };
+        // The message shows in the chat at once; an interrupt is not one.
+        if action != CommandAction::Interrupt {
+            self.echo(
+                &task,
+                text,
+                Some(command),
+                action == CommandAction::Queue,
+                now,
+            );
         }
         self.notice = None;
         self.flush(Some(computers));
         true
+    }
+
+    /// Show `text` in the chat of `task` until its transcript does.
+    fn echo(&mut self, task: &str, text: &str, command: Option<String>, queued: bool, now: u64) {
+        let shown = self
+            .open
+            .as_ref()
+            .filter(|open| open.task == task)
+            .and_then(|open| open.conversation.as_ref())
+            .map_or(0, |conversation| conversation.sent(text));
+        self.echoed += 1;
+        self.echoes.push(Echo {
+            task: task.to_owned(),
+            key: self.echoed,
+            text: text.trim().to_owned(),
+            command,
+            queued,
+            shown,
+            sent_at: now,
+        });
+    }
+
+    /// Stop showing sent messages the open chat's transcript now shows, and
+    /// any shown for too long.
+    fn settle_echoes(&mut self, now: u64) {
+        let open = self.open.as_ref();
+        self.echoes.retain(|echo| {
+            if now.saturating_sub(echo.sent_at) > ECHO_FOR {
+                return false;
+            }
+            let conversation = open
+                .filter(|open| open.task == echo.task)
+                .and_then(|open| open.conversation.as_ref());
+            conversation.is_none_or(|conversation| conversation.sent(&echo.text) <= echo.shown)
+        });
+    }
+
+    /// Whether the open chat is changing on its own, so the host should
+    /// ask for a new packet sooner: its task runs, its ending has not been
+    /// read yet, or a message it sent does not show yet.
+    pub fn live(&self, computers: Option<&Computers>) -> bool {
+        let Some(open) = &self.open else {
+            return false;
+        };
+        let summary = computers.and_then(|c| Self::summary(c.snapshot(), &open.host, &open.task));
+        summary.is_none_or(|summary| {
+            Self::running(summary.phase) || open.settled != Some(summary.sequence)
+        }) || self.echoes.iter().any(|echo| echo.task == open.task)
+            || open
+                .conversation
+                .as_ref()
+                .is_some_and(Conversation::loading)
     }
 
     /// The host and task of the open chat.
@@ -456,6 +577,7 @@ impl CoderTab {
             }
             // Back from a chat or the New chat screen: the chats list.
             Intent::Back => {
+                self.keep(true);
                 self.open = None;
                 self.composing = false;
             }
@@ -529,51 +651,156 @@ impl CoderTab {
     }
 
     fn open(&mut self, host: String, task: String, chats: &mut Chats) {
+        self.keep(true);
+        // The chat as last shown, at once, while its computer is read again.
+        let (chat, conversation) = match (self.transcripts.get(&task), chats.coder_client(&host)) {
+            (Some(cached), Some(client)) => (
+                Some(cached.chat.id.clone()),
+                Some(Conversation::resume(
+                    chats.runtime(),
+                    client,
+                    cached.chat.clone(),
+                    Some(cached),
+                )),
+            ),
+            _ => (None, None),
+        };
         self.open = Some(Open {
             host,
             task,
-            conversation: None,
-            chat: None,
+            conversation,
+            chat,
             seen: None,
             queue: None,
             listed: None,
             unlisted: false,
             leased_at: None,
             editing: None,
+            head_wanted: true,
+            head_at: 0,
+            head_round: None,
+            settled: None,
+            settle_read: None,
+            kept: (0, 0),
         });
         self.attach(chats);
     }
 
-    /// Find the open chat's transcript once the computer lists it.
+    /// Keep the open chat's transcript for its next opening: when `now`, or
+    /// when it changed and was last kept a while ago.
+    fn keep(&mut self, now: bool) {
+        let at = unix_now();
+        let Some(open) = self.open.as_mut() else {
+            return;
+        };
+        let Some(conversation) = &open.conversation else {
+            return;
+        };
+        let version = conversation.version();
+        if version == open.kept.0 || !now && at.saturating_sub(open.kept.1) < KEEP_EVERY {
+            return;
+        }
+        if let Some(cached) = conversation.cached() {
+            open.kept = (version, at);
+            self.transcripts.put(&open.task, cached);
+        }
+    }
+
+    /// Find the open chat's transcript once the computer lists it, and move
+    /// to a later turn's transcript when one appears.
     fn attach(&mut self, chats: &mut Chats) {
         let Some(open) = self.open.as_mut() else {
             return;
         };
-        match chats.coder_chat(&open.host, &open.task) {
+        let Some((_, client, chat)) = chats.coder_chat(&open.host, &open.task) else {
+            return;
+        };
+        if open.chat.as_ref() == Some(&chat.id) {
+            return;
+        }
+        match &mut open.conversation {
             // A later turn's transcript is a newer chat for the same task;
             // it carries the earlier turns, so it replaces the one shown.
-            Some((_, client, chat)) if open.chat.as_ref() != Some(&chat.id) => {
+            // A list read before that turn began names an older one.
+            Some(conversation) => {
+                if chat.updated_at <= conversation.chat.updated_at {
+                    return;
+                }
+                open.chat = Some(chat.id.clone());
+                conversation.switch(chat);
+            }
+            None => {
                 open.chat = Some(chat.id.clone());
                 open.conversation = Some(Conversation::open(chats.runtime(), client, chat));
             }
-            Some(_) => {}
-            None => chats.refresh_linked(&open.host),
         }
     }
 
-    /// Read the computer's chat list again when the open task's summary
-    /// moves, so a new turn's transcript is found.
+    /// Follow the open chat: ask the computer for its newest chats when the
+    /// task's summary moves and every few seconds while it runs, so each
+    /// turn's transcript is found as it starts; read the transcript while
+    /// the task runs; and once it ends, read it again after the newest chats
+    /// were, so the turn's last reply shows.
     fn follow(&mut self, computers: Option<&Computers>, chats: &mut Chats) {
-        let (Some(open), Some(computers)) = (self.open.as_mut(), computers) else {
+        let now = unix_now();
+        let Some(open) = self.open.as_mut() else {
             return;
         };
-        let sequence =
-            Self::summary(computers.snapshot(), &open.host, &open.task).map(|s| s.sequence);
+        let summary = computers.and_then(|c| Self::summary(c.snapshot(), &open.host, &open.task));
+        let sequence = summary.map(|s| s.sequence);
+        let busy = summary.is_none_or(|s| Self::running(s.phase));
         if sequence != open.seen {
-            if open.seen.is_some() {
-                chats.refresh_linked(&open.host);
-            }
             open.seen = sequence;
+            open.head_wanted = true;
+            open.head_round = None;
+            open.settle_read = None;
+        }
+        if busy && now.saturating_sub(open.head_at) >= HEAD_EVERY {
+            open.head_wanted = true;
+        }
+        if let Some(round) = open.head_round
+            && chats.head(&open.host, round) == Head::Failed
+        {
+            open.head_wanted = true;
+        }
+        if open.head_wanted
+            && let Some(round) = chats.refresh_head(&open.host)
+        {
+            open.head_wanted = false;
+            open.head_at = now;
+            open.head_round = Some(round);
+        }
+        self.attach(chats);
+        let Some(open) = self.open.as_mut() else {
+            return;
+        };
+        let Some(conversation) = &open.conversation else {
+            return;
+        };
+        if busy || conversation.failed() {
+            conversation.poll();
+            return;
+        }
+        if open.settled == sequence {
+            return;
+        }
+        // Ended: after the newest chats were read, one more read, which
+        // shows the turn's last reply.
+        let listed = open
+            .head_round
+            .is_some_and(|round| chats.head(&open.host, round) == Head::Read);
+        if !listed {
+            return;
+        }
+        match open.settle_read {
+            Some(ticket) if conversation.read_since(ticket) => open.settled = sequence,
+            Some(_) => {
+                conversation.poll();
+            }
+            None => {
+                open.settle_read = Some(conversation.reads());
+                conversation.poll();
+            }
         }
     }
 
@@ -681,7 +908,8 @@ impl CoderTab {
                 self.list.save();
                 self.notice = None;
                 self.composing = false;
-                self.open(host, task, chats);
+                self.open(host, task.clone(), chats);
+                self.echo(&task, prompt, None, false, now);
             }
             Err(refusal) => self.notice = Some(refusal.reason()),
         }
@@ -770,17 +998,12 @@ impl CoderTab {
             self.remember(computers, chats);
         }
         self.follow(computers, chats);
-        self.attach(chats);
-        // Follow a running chat's transcript, and read a chat again whose
-        // first read failed, even after its task ended.
-        if let (Some(open), Some(computers)) = (&self.open, computers)
-            && let Some(conversation) = &open.conversation
-            && (conversation.failed()
-                || Self::summary(computers.snapshot(), &open.host, &open.task)
-                    .is_none_or(|s| Self::running(s.phase)))
-        {
-            conversation.poll();
-        }
+        self.settle_echoes(computers.map_or_else(unix_now, |c| c.snapshot().now));
+        let ended = self
+            .open
+            .as_ref()
+            .is_some_and(|open| open.seen.is_some() && open.settled == open.seen);
+        self.keep(ended);
         self.revision += 1;
         let view = loop {
             let root = match &self.open {
@@ -790,11 +1013,11 @@ impl CoderTab {
             };
             match View::new(self.instance.clone(), self.revision, root).validate() {
                 Ok(view) => break view,
-                // A long chat can outgrow one view; keep its newest half.
+                // A long chat can outgrow one view: show less of each tool's
+                // output, then keep its newest half.
                 Err(_) => {
                     let conversation = self.open.as_ref()?.conversation.as_ref()?;
-                    conversation.shrink();
-                    if conversation.is_empty() {
+                    if !conversation.shrink() {
                         return None;
                     }
                 }
@@ -1049,15 +1272,39 @@ impl CoderTab {
         if let Some(notice) = &self.notice {
             children.push(status("coder-notice", notice));
         }
+        // Messages this device sent that the transcript does not show yet.
+        let echoes: Vec<Pending<'_>> = self
+            .echoes
+            .iter()
+            .filter(|echo| echo.task == open.task)
+            .map(|echo| Pending {
+                key: format!("coder-sent-{}", echo.key),
+                text: &echo.text,
+                note: if echo
+                    .command
+                    .as_ref()
+                    .is_some_and(|command| self.outbox.holds(command))
+                {
+                    Some("Sending")
+                } else if echo.queued {
+                    Some("Queued")
+                } else {
+                    None
+                },
+            })
+            .collect();
         let transcript = match &open.conversation {
             Some(conversation) => {
-                conversation.transcript("coder-transcript", Intent::Earlier, working)
+                conversation.transcript("coder-transcript", Intent::Earlier, &echoes, working)
             }
             None => {
-                // The computer has not listed the transcript yet: show the
-                // message this device sent.
+                // The computer has not listed the transcript yet: show what
+                // this device sent, or the chat's first line after a
+                // relaunch.
                 let mut rows = vec![];
-                if let Some(title) = self.list.list.titles.get(&open.task) {
+                if echoes.is_empty()
+                    && let Some(title) = self.list.list.titles.get(&open.task)
+                {
                     rows.push(node(
                         "coder-sent",
                         Element::Message {
@@ -1072,20 +1319,16 @@ impl CoderTab {
                         },
                     ));
                 }
-                rows.push(node(
-                    "coder-waiting",
-                    Element::Working {
-                        label: working.unwrap_or("Loading the chat").into(),
-                    },
-                ));
-                node(
+                let mut transcript = Conversation::pending_transcript(
                     "coder-transcript",
-                    Element::Transcript {
-                        label: "Messages".into(),
-                        children: rows,
-                        earlier: None,
-                    },
-                )
+                    &echoes,
+                    Some(working.unwrap_or("Loading the chat")),
+                );
+                if let Element::Transcript { children, .. } = &mut transcript.element {
+                    rows.append(children);
+                    *children = rows;
+                }
+                transcript
             }
         };
         children.push(transcript);
@@ -1503,6 +1746,12 @@ pub(crate) fn unix_seconds(text: &str) -> Option<u64> {
         }
     }
     u64::try_from(seconds).ok()
+}
+
+fn unix_now() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |elapsed| elapsed.as_secs())
 }
 
 fn ago(now: u64, then: u64) -> String {
