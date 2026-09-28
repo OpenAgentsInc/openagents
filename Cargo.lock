@@ -5888,6 +5888,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b4596b6d070b27117e987119b4dac604f3c58cfb0b191112e24771b2faeac1a6"
 
 [[package]]
+name = "playtest"
+version = "0.1.0"
+dependencies = [
+ "nostr",
+ "secp256k1 0.31.1",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+]
+
+[[package]]
 name = "plugin"
 version = "0.1.0"
 dependencies = [
