@@ -14,8 +14,14 @@ import UIKit
 // MARK: - Measurement
 
 /// System fonts by Rust's font description, shared by measuring and painting
-/// so both use the same face.
+/// so both use the same face. With `bundled`, Rust shapes the text itself
+/// (`layout::shape`), and these are the bundled faces with the variations
+/// Rust measured, so painting draws exactly what Rust laid out.
 enum NativeTextFonts {
+    /// Draw with the fonts Rust bundles and shapes. `--rust-native-shaped`
+    /// turns it on for a launch.
+    static let bundled = ProcessInfo.processInfo.arguments.contains("--rust-native-shaped")
+
     private struct Key: Hashable {
         let size: UInt32
         let weight: UInt8
@@ -31,6 +37,10 @@ enum NativeTextFonts {
         lock.lock()
         defer { lock.unlock() }
         if let font = fonts[key] { return font }
+        if bundled, let font = bundledFont(size: size, weight: weight, italic: italic, mono: mono) {
+            fonts[key] = font
+            return font
+        }
         let weights: [UIFont.Weight] = [.regular, .medium, .semibold, .bold]
         let uiWeight = weights[min(Int(weight), weights.count - 1)]
         let points = CGFloat(max(1, min(size, 400)))
@@ -42,6 +52,36 @@ enum NativeTextFonts {
         }
         fonts[key] = font
         return font
+    }
+
+    nonisolated(unsafe) private static var faces: [UInt32: CTFontDescriptor] = [:]
+
+    /// A bundled face at Rust's variations for this font. Called under `lock`.
+    private static func bundledFont(size: Float, weight: UInt8, italic: Bool, mono: Bool) -> UIFont? {
+        let spec = rust_native_font_spec(size, weight, italic ? 1 : 0, mono ? 1 : 0)
+        let face: CTFontDescriptor
+        if let found = faces[spec.face] {
+            face = found
+        } else {
+            var length = 0
+            guard let bytes = rust_native_font_data(spec.face, &length) else { return nil }
+            // The font file lives as long as the process; no copy is needed.
+            let data = Data(bytesNoCopy: UnsafeMutableRawPointer(mutating: bytes), count: length, deallocator: .none)
+            guard let descriptors = CTFontManagerCreateFontDescriptorsFromData(data as CFData) as? [CTFontDescriptor],
+                  let first = descriptors.first else { return nil }
+            faces[spec.face] = first
+            face = first
+        }
+        func tag(_ name: String) -> Int { name.unicodeScalars.reduce(0) { $0 << 8 | Int($1.value) } }
+        var variation: [Int: Double] = [tag("wght"): Double(spec.weight)]
+        if spec.optical > 0 { variation[tag("opsz")] = Double(spec.optical) }
+        var attributes: [CFString: Any] = [kCTFontVariationAttribute: variation]
+        if spec.calt == 0 {
+            attributes[kCTFontFeatureSettingsAttribute] = [[kCTFontOpenTypeFeatureTag: "calt",
+                                                           kCTFontOpenTypeFeatureValue: 0]]
+        }
+        let descriptor = CTFontDescriptorCreateCopyWithAttributes(face, attributes as CFDictionary)
+        return CTFontCreateWithFontDescriptor(descriptor, CGFloat(max(1, min(size, 400))), nil) as UIFont
     }
 
     static func weight(_ name: String) -> UInt8 {
@@ -133,7 +173,9 @@ final class NativeTranscriptLayout: @unchecked Sendable {
     private let queue = DispatchQueue(label: "com.openagents.transcript-layout", qos: .userInitiated)
 
     init?() {
-        guard let handle = rust_native_layout_create(nil, nativeLayoutMeasure) else { return nil }
+        let created = NativeTextFonts.bundled ? rust_native_layout_create_shaped()
+                                              : rust_native_layout_create(nil, nativeLayoutMeasure)
+        guard let handle = created else { return nil }
         self.handle = handle
     }
 

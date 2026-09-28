@@ -176,7 +176,7 @@ impl Measurer for Platform {
 
 pub struct RustNativeLayout {
     layout: TranscriptLayout,
-    platform: Platform,
+    measurer: Box<dyn Measurer>,
 }
 
 fn buffer(bytes: Vec<u8>) -> RustNativeBuffer {
@@ -209,10 +209,89 @@ pub unsafe extern "C" fn rust_native_layout_create(
     catch_unwind(|| {
         Box::into_raw(Box::new(RustNativeLayout {
             layout: TranscriptLayout::new(),
-            platform: Platform { context, measure },
+            measurer: Box::new(Platform { context, measure }),
         }))
     })
     .unwrap_or(ptr::null_mut())
+}
+
+/// Creates a layout that shapes text in Rust with the bundled fonts
+/// (`layout::shape`), so it needs no measurer. The adapter draws each run
+/// with the face and variations `rust_native_font_spec` names.
+#[cfg(feature = "shaping")]
+#[unsafe(no_mangle)]
+pub extern "C" fn rust_native_layout_create_shaped() -> *mut RustNativeLayout {
+    catch_unwind(|| {
+        Box::into_raw(Box::new(RustNativeLayout {
+            layout: TranscriptLayout::new(),
+            measurer: Box::new(super::shape::ShapingMeasurer::new()),
+        }))
+    })
+    .unwrap_or(ptr::null_mut())
+}
+
+/// How to draw a display-list font with the bundled faces.
+#[cfg(feature = "shaping")]
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct RustNativeFontSpec {
+    /// Which face `rust_native_font_data` returns: 0 Inter, 1 Inter Italic,
+    /// 2 JetBrains Mono, 3 JetBrains Mono Italic.
+    pub face: u32,
+    /// The `wght` axis value.
+    pub weight: f32,
+    /// The `opsz` axis value, or 0 when the face has no such axis.
+    pub optical: f32,
+    /// Whether contextual alternates (`calt`) stay on.
+    pub calt: u8,
+    pub reserved: [u8; 3],
+}
+
+/// The face and variations for a display-list font: its size, weight (0
+/// regular, 1 medium, 2 semibold, 3 bold), italic, and monospace.
+#[cfg(feature = "shaping")]
+#[unsafe(no_mangle)]
+pub extern "C" fn rust_native_font_spec(
+    size: f32,
+    weight: u8,
+    italic: u8,
+    monospace: u8,
+) -> RustNativeFontSpec {
+    let spec = super::shape::FontSpec::of(super::display::Font {
+        size,
+        weight: match weight {
+            1 => Weight::Medium,
+            2 => Weight::Semibold,
+            3 => Weight::Bold,
+            _ => Weight::Regular,
+        },
+        italic: italic != 0,
+        mono: monospace != 0,
+    });
+    RustNativeFontSpec {
+        face: spec.face as u32,
+        weight: spec.weight,
+        optical: spec.optical,
+        calt: u8::from(spec.calt),
+        reserved: [0; 3],
+    }
+}
+
+/// A bundled face's font file, which lives as long as the process, and its
+/// length in `len`; null for an unknown face.
+///
+/// # Safety
+/// `len` must be writable.
+#[cfg(feature = "shaping")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_native_font_data(face: u32, len: *mut usize) -> *const u8 {
+    let Some(data) = super::shape::FACES.get(face as usize) else {
+        return ptr::null();
+    };
+    if !len.is_null() {
+        unsafe { len.write(data.len()) };
+    }
+    data.as_ptr()
 }
 
 /// Applies a JSON [`Update`] and returns a JSON [`super::Summary`], or
@@ -237,7 +316,7 @@ pub unsafe extern "C" fn rust_native_layout_update(
             Ok(update) => update,
             Err(error) => return error_json(&error.to_string()),
         };
-        match handle.layout.update(update, &mut handle.platform) {
+        match handle.layout.update(update, handle.measurer.as_mut()) {
             Ok(summary) => serde_json::to_vec(&summary).unwrap_or_default(),
             Err(error) => error_json(&error.to_string()),
         }

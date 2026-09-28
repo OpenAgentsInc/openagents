@@ -7,18 +7,22 @@ publish = false
 license = "Apache-2.0"
 readme = "README.md"
 description = "Experimental reusable semantic views, typed intents, styles, and native-renderer contracts."
-include = ["src/**", "include/**", "examples/**", "docs/**", "README.md", "LICENSE"]
+include = ["src/**", "include/**", "examples/**", "docs/**", "fonts/**", "README.md", "LICENSE"]
 
 [features]
 # Exports the transcript layout's C interface (`include/rust_native_layout.h`)
 # from the application library that links this crate.
 ffi = []
+# Shapes transcript text in Rust with the bundled fonts (`layout::shape`), so
+# an adapter can lay out without a platform text-engine callback.
+shaping = ["dep:swash"]
 
 [dependencies]
 # Markdown is parsed in Rust into typed blocks; adapters only lay them out.
 pulldown-cmark = { version = "0.13.4", default-features = false }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+swash = { version = "0.2.10", optional = true }
 
 [lints.rust]
 unsafe_op_in_unsafe_fn = "deny"

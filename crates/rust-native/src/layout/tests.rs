@@ -13,7 +13,7 @@ fn node(key: &str, element: Element<()>) -> Node<()> {
     }
 }
 
-fn message(key: &str, role: MessageRole, text: &str) -> Node<()> {
+pub(super) fn message(key: &str, role: MessageRole, text: &str) -> Node<()> {
     node(
         key,
         Element::Message {
@@ -64,7 +64,7 @@ const REPLY: &str = "Fixed it. The test seeded its random number generator from 
      the order changed between runs.\n\n- Seeded the RNG\n- Added a retry\n\n\
      ```rust\nlet seed = 7;\n```\n\n| a | b |\n|---|--:|\n| 1 | 2 |";
 
-fn conversation(count: usize) -> Vec<Node<()>> {
+pub(super) fn conversation(count: usize) -> Vec<Node<()>> {
     (0..count)
         .map(|i| match i % 4 {
             0 => message(

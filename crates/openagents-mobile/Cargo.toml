@@ -40,7 +40,7 @@ uuid = { version = "1", features = ["v4"] }
 # The Wallet tab's receive-address QR code.
 qrcodegen = "1.8"
 # `ffi` exports Rust Native transcript layout to the iOS host.
-rust-native = { path = "../rust-native", features = ["ffi"] }
+rust-native = { path = "../rust-native", features = ["ffi", "shaping"] }
 # Linking tailscale-rs (aws-lc-rs) beside the host client (ring) enables two
 # rustls providers, so the app installs ring as the process default.
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }

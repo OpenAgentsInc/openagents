@@ -66,6 +66,25 @@ typedef int32_t (*RustNativeMeasure)(void *context,
                                      size_t *offset_count);
 
 void *rust_native_layout_create(void *context, RustNativeMeasure measure);
+
+// With rust-native's `shaping` feature: a layout that shapes text in Rust with
+// the bundled fonts (Inter and JetBrains Mono, SIL Open Font License), so it
+// needs no measurer. Draw each run with the face and variations
+// rust_native_font_spec names for its style's font; the font files come from
+// rust_native_font_data and live as long as the process.
+void *rust_native_layout_create_shaped(void);
+
+typedef struct {
+    uint32_t face;     // 0 Inter, 1 Inter Italic, 2 JetBrains Mono, 3 its italic
+    float weight;      // the `wght` axis value
+    float optical;     // the `opsz` axis value, or 0 when the face has none
+    uint8_t calt;      // whether contextual alternates stay on
+    uint8_t reserved[3];
+} RustNativeFontSpec;
+
+// weight: 0 regular, 1 medium, 2 semibold, 3 bold.
+RustNativeFontSpec rust_native_font_spec(float size, uint8_t weight, uint8_t italic, uint8_t monospace);
+const uint8_t *rust_native_font_data(uint32_t face, size_t *length);
 // Applies a JSON update: {"width", "scale", "order": [keys], "rows": [nodes
 // that are new or changed], "expanded": [tool keys], "earlier": {"label",
 // "loading"} or null, "curve": [[nominal, scaled] sizes, at most 16]}. With

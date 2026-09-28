@@ -23,6 +23,8 @@ pub mod display;
 pub mod ffi;
 mod measure;
 mod rows;
+#[cfg(feature = "shaping")]
+pub mod shape;
 pub mod source;
 pub mod testing;
 

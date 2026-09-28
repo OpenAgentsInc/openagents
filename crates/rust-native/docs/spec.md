@@ -130,6 +130,24 @@ adapter presents them, not a separate wire contract.
   iOS adapter implements it with CoreText. Results are cached by paragraph
   text, fonts, and width, so a row laid out again at the same width, or a
   display list for a laid-out row, does not measure again.
+- **Shaping in Rust.** With the `shaping` feature, `layout::shape` measures
+  without a platform callback. It shapes with four bundled variable faces
+  under the SIL Open Font License (`fonts/`): Inter and Inter Italic, and
+  JetBrains Mono and JetBrains Mono Italic. `FontSpec` names the face and
+  variations for each display-list font (`wght` 400–700, Inter's `opsz`
+  following the size between 14 and 32, and `calt` off for code), and the
+  adapter paints with exactly those. Lines break greedily at UAX #14
+  opportunities with CoreText's tailoring, trailing spaces hang, and a word
+  wider than the line breaks between grapheme clusters. Tabs advance to
+  28-point stops. A character the faces lack is measured as a platform
+  fallback roughly draws it (1 em for wide characters and emoji, else
+  0.6 em), so such text can wrap differently from the platform. A
+  ground-truth test compares the breaks with CoreText's for the same fonts
+  over about 3,300 paragraphs (`fixtures/coretext-lines.json`, made by
+  `tools/coretext-lines.swift`): it requires no line-count differences and
+  at least 99.9% exact line starts. The C interface adds
+  `rust_native_layout_create_shaped`, `rust_native_font_spec`, and
+  `rust_native_font_data`.
 - **Frame.** Every row has a key, a content version, an exact height, and a
   cumulative offset. `rows_in(y0, y1)` is a binary search. A row is laid out
   again only when its content, the width, the text sizes, or its expansion
