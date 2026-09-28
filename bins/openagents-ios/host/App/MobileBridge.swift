@@ -48,6 +48,8 @@ struct AppPacket: Decodable {
     let open_url: String?
     let terminal: Bool
     let notices: [String]
+    let wallet: WalletState?
+    let wallet_loading: Bool?
 }
 
 /// One released version and what it brought.
@@ -126,6 +128,13 @@ final class MobileBridge: ObservableObject {
     }
 
     func refreshChats() { send(["op": "chats_refresh"]) }
+
+    /// Hand Rust the wallet key from Keychain. Rust ignores a repeat.
+    func openWallet() {
+        guard let entropy = try? DeviceKey.loadOrCreateWallet() else { return }
+        send(["op": "wallet_open", "entropy_hex": entropy.map { String(format: "%02x", $0) }.joined()])
+    }
+    func refreshWallet() { send(["op": "wallet_refresh"]) }
 
     /// Answer or close an input request on the Computers or Chats surface.
     func submit(_ surface: String, token: String, value: String) {

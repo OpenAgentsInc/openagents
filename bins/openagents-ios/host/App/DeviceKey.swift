@@ -24,6 +24,14 @@ enum DeviceKey {
                          accessible: kSecAttrAccessibleWhenUnlockedThisDeviceOnly)
     }
 
+    /// The Wallet tab's key: 32 bytes of BIP39 entropy for its test-network
+    /// wallet, separate from the device and world keys, never synced or
+    /// backed up, and handed only to Rust.
+    static func loadOrCreateWallet() throws -> Data {
+        try loadOrCreate(service: "com.openagents.app.wallet",
+                         accessible: kSecAttrAccessibleWhenUnlockedThisDeviceOnly)
+    }
+
     private static func loadOrCreate(service: String, accessible: CFString) throws -> Data {
         var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,

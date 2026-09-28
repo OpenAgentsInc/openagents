@@ -43,6 +43,19 @@ pub fn generate_mnemonic() -> String {
     ldk_node::generate_entropy_mnemonic(None).to_string()
 }
 
+/// The BIP39 mnemonic for `entropy`, which a platform key store holds: 32
+/// bytes give 24 words. The error never repeats the entropy.
+pub fn mnemonic_from_entropy(entropy: &[u8]) -> Result<String, WalletError> {
+    if entropy.len() != 32 {
+        return Err(WalletError::Setup(
+            "wallet entropy must be 32 bytes".to_string(),
+        ));
+    }
+    ldk_node::bip39::Mnemonic::from_entropy(entropy)
+        .map(|mnemonic| mnemonic.to_string())
+        .map_err(|_| WalletError::Setup("wallet entropy is not usable".to_string()))
+}
+
 impl LdkWallet {
     /// Build and start the node from `config` with its store under
     /// `home/ldk`. The first start on a fresh store syncs against Esplora.
@@ -179,6 +192,19 @@ impl LdkWallet {
             .send_to_address(&address, amount_sats, None)
             .map(|txid| txid.to_string())
             .map_err(|error| WalletError::Node(format!("onchain send: {error}")))
+    }
+
+    /// Sync the on-chain and Lightning wallets with the chain source now,
+    /// rather than at the next background interval. Blocks until it ends.
+    pub fn sync(&self) -> Result<(), WalletError> {
+        self.node
+            .sync_wallets()
+            .map_err(|error| WalletError::Node(format!("sync: {error}")))
+    }
+
+    /// When the on-chain wallet last finished a sync, in Unix seconds.
+    pub fn onchain_synced_at(&self) -> Option<u64> {
+        self.node.status().latest_onchain_wallet_sync_timestamp
     }
 
     pub fn stop(&self) -> Result<(), WalletError> {
@@ -782,6 +808,16 @@ mod tests {
             "the seed alone gives the same node id and the same addresses from the start"
         );
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn entropy_gives_one_mnemonic_and_bad_entropy_is_refused_quietly() {
+        let words = mnemonic_from_entropy(&[7; 32]).unwrap();
+        assert_eq!(words.split_whitespace().count(), 24);
+        assert_eq!(mnemonic_from_entropy(&[7; 32]).unwrap(), words);
+        assert_ne!(mnemonic_from_entropy(&[8; 32]).unwrap(), words);
+        let refusal = mnemonic_from_entropy(&[7; 16]).unwrap_err().to_string();
+        assert!(!refusal.contains("0707"), "{refusal}");
     }
 
     #[test]

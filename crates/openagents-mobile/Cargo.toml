@@ -25,6 +25,10 @@ coder-history = { path = "../coder-history", default-features = false }
 # reader and C exports are not called; the app linker strips them.
 coder-mobile = { path = "../coder-mobile" }
 base64 = "0.22"
+# The Wallet tab: the repository's own ldk-node wallet, on signet only.
+openagents-wallet = { path = "../wallet" }
+# The Wallet tab's receive-address QR code.
+qrcodegen = "1.8"
 # `ffi` exports Rust Native transcript layout to the iOS host.
 rust-native = { path = "../rust-native", features = ["ffi"] }
 # Linking tailscale-rs (aws-lc-rs) beside the host client (ring) enables two

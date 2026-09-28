@@ -129,6 +129,13 @@ pub enum Request {
         #[serde(default)]
         reveal: bool,
     },
+    /// Start the Wallet tab's wallet with its key from the platform's
+    /// protected store: 32 bytes as 64 hex digits. Never logged or stored.
+    WalletOpen {
+        entropy_hex: String,
+    },
+    /// Sync the wallet with Mutinynet, or retry a failed start.
+    WalletRefresh,
 }
 
 impl Request {
@@ -146,7 +153,7 @@ impl Request {
 
 /// The invitation QR code the Computers surface shows: one string of `1`
 /// (dark) and `0` (light) per module row, quiet zone included.
-#[derive(Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct QrModules {
     pub size: usize,
     pub rows: Vec<String>,
@@ -178,6 +185,10 @@ pub struct Packet {
     pub terminal: bool,
     /// App-level problems, such as an unavailable host client.
     pub notices: Vec<String>,
+    /// The Wallet tab's state.
+    pub wallet: crate::wallet::Screen,
+    /// The wallet is starting or syncing in the background.
+    pub wallet_loading: bool,
 }
 
 /// The encrypted store for the Computers record, keyed by the device key.
@@ -231,6 +242,7 @@ pub struct App {
     tailnet_view: Option<ValidatedView<TailnetIntent>>,
     /// Records of what tailnet admission added, keyed by address.
     admissions: Result<Cache, String>,
+    wallet: crate::wallet::Wallet,
     notices: Vec<String>,
 }
 
@@ -329,6 +341,10 @@ impl App {
             admissions: Cache::open(&config.state_dir.join("admissions"), &secret),
             tailnet_revision: 0,
             tailnet_view: None,
+            wallet: crate::wallet::Wallet::new(
+                config.state_dir.join("wallet"),
+                crate::wallet::ldk_opener(),
+            ),
             notices,
         })
     }
@@ -358,6 +374,7 @@ impl App {
                     let _ = computers.set_active(active);
                 }
                 if active {
+                    self.wallet.refresh_if_open();
                     self.chats.refresh();
                     self.load_tailnet(None, TAILNET_REFRESH_LIMIT);
                 }
@@ -483,6 +500,8 @@ impl App {
             // `respond` answers it with the account packet; the app packet
             // never carries the secret key.
             Request::Account { .. } => {}
+            Request::WalletOpen { entropy_hex } => self.wallet.open(&entropy_hex),
+            Request::WalletRefresh => self.wallet.refresh(),
         }
         self.packet(open_url)
     }
@@ -749,6 +768,8 @@ impl App {
             open_url,
             terminal: self.terminal.is_some(),
             notices: self.notices.clone(),
+            wallet: self.wallet.screen(),
+            wallet_loading: self.wallet.loading(),
         }
     }
 

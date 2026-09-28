@@ -61,3 +61,10 @@ See [the auto-start guide](docs/coder/runtime/host-autostart.md).
 | Output the host discarded is shown as a marked gap, never joined to the output around it, and frames apply once, in sequence order. | New on 2026-09-27. | `output_gaps_and_exit_reach_the_model_in_order`, `a_marker_starts_on_its_own_line_and_resets_the_parser` |
 | Terminal input is live only: nothing typed while the screen is not attached is queued or sent later. | New on 2026-09-27. | `a_build_without_the_live_service_refuses_clearly`; `Session::send` refuses unless attached |
 | Terminal output is untrusted data: it cannot read or write the phone's clipboard, and a paste cannot end a bracketed paste early. | New on 2026-09-27. | `title_bell_and_ignored_commands`, `a_paste_normalizes_newlines_and_cannot_close_the_bracket` in `crates/coder-vt` |
+
+## Phone wallet
+
+| Invariant | Status | Checked by |
+| --- | --- | --- |
+| The OpenAgents app's Wallet tab runs `crates/wallet`'s `ldk-node` wallet only on Mutinynet signet (`https://mutinynet.com/api`), with no listening socket, liquidity provider, or trusted peer. No request, configuration, or stored value switches it to mainnet; a mainnet configuration and a non-test address are refused. It never opens a computer's wallet directory or any treasury wallet. | New on 2026-09-28. | `the_phone_wallet_is_signet_only_on_mutinynet` in `crates/openagents-mobile` |
+| The phone wallet's key is 32 bytes of BIP39 entropy in its own Keychain item (`com.openagents.app.wallet`, this device only, when unlocked), separate from the device and world keys. Rust receives it with `wallet_open` and keeps it and its mnemonic in memory only: neither is written to disk, logged, or put in a packet or an error. | New on 2026-09-28. | `failures_are_typed_and_never_carry_the_key` in `crates/openagents-mobile`; `entropy_gives_one_mnemonic_and_bad_entropy_is_refused_quietly` in `crates/wallet` |

@@ -10,6 +10,8 @@
 //! saved on every computer paired for reading. **Tailnet** lists the devices on the user's
 //! tailnet through Tailscale's control server. **Verse** mounts Verse's bare
 //! world, the plaza grid with Coder's player controls, on a native Metal layer.
+//! **Wallet** holds test coins on Mutinynet signet through the repository's
+//! `ldk-node` wallet; it never runs on mainnet.
 
 mod account;
 #[cfg(any(target_os = "android", test))]
@@ -22,6 +24,7 @@ mod outbox;
 mod tailnet;
 mod tailnet_view;
 mod verse;
+mod wallet;
 
 pub use app::{App, Config, Packet, Request};
 

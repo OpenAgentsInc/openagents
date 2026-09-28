@@ -69,7 +69,7 @@ struct AppTabs: View {
                 .tabIcon(.coder)
             VerseTab(selected: tab == .verse)
                 .tabIcon(.verse)
-            ComingSoonScreen(title: "Wallet")
+            WalletTab(bridge: bridge)
                 .tabIcon(.wallet)
             AccountTab(bridge: bridge)
                 .tabIcon(.account)
