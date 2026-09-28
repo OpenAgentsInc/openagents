@@ -209,7 +209,7 @@ const STACK_KNOBS: &[KnobDef] = &[
         id: "count",
         label: "Boxes",
         options: &[1.0, 3.0, 5.0, 8.0, 12.0],
-        default: 1,
+        default: 2,
         live: false,
         format: plain,
     },
@@ -917,9 +917,8 @@ impl Scene {
                     set: ThrusterSet::box_corners(half, 25.0),
                     throttles: vec![0.0; 24],
                     position: Pid::new(4.0, 0.4, 4.0),
-                    // Stiff enough that errors above about a degree clear the
-                    // allocator's fuel deadband. No integral: it winds up
-                    // while recovering from a tumble.
+                    // No integral: it winds up while recovering from a
+                    // tumble.
                     attitude: Pid::new(64.0, 0.0, 16.0),
                     home,
                     target: (home, 0.0),
@@ -984,9 +983,6 @@ impl Scene {
                 if t >= settle {
                     let mu = v("friction");
                     *load = v("load") * mu * self.world[*block].mass * G;
-                    // A pushed body is not at rest; `apply_force` alone
-                    // does not wake a sleeper.
-                    self.world.wake(*block);
                     self.world[*block].apply_force(DVec3::X * *load);
                     if start.is_none() {
                         *start = Some(self.world[*block].pos);
@@ -1003,7 +999,6 @@ impl Scene {
             } => {
                 if t >= 0.5 {
                     *torque = v("torque");
-                    self.world.wake(*ball);
                     self.world[*ball].apply_torque(DVec3::Y * *torque);
                     if start.is_none() {
                         *start = Some(self.world[*ball].orientation);
@@ -1057,7 +1052,7 @@ impl Scene {
                 self.world.sleep.enabled = sleep;
                 step_world(&mut self.world, gravity);
             }
-            Rig::SoftGrip { hand, part, joint } => {
+            Rig::SoftGrip { hand, joint, .. } => {
                 // The hand holds still for two seconds, then sways.
                 let omega = std::f64::consts::TAU / 4.0;
                 let sway = if t >= 2.0 {
@@ -1066,11 +1061,6 @@ impl Scene {
                     0.0
                 };
                 self.world[*hand].vel = DVec3::X * sway;
-                // A moving kinematic body does not wake a sleeper joined to
-                // it, so the hand wakes its part itself.
-                if sway != 0.0 {
-                    self.world.wake(*part);
-                }
                 if let Some(joint) = self.world.joint_mut(*joint) {
                     joint.spring = Some(physics::Spring {
                         frequency: std::f64::consts::TAU * v("frequency"),
@@ -1138,7 +1128,6 @@ impl Scene {
                 // Body-frame torque from the principal inertia.
                 let torque = body.inertia * (body.orientation.inverse() * spin);
                 *throttles = set.allocate(force, torque);
-                self.world.wake(*craft);
                 set.apply(&mut self.world[*craft], throttles);
                 step_world(&mut self.world, gravity);
             }

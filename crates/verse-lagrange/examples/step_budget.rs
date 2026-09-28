@@ -38,10 +38,15 @@ fn main() {
     let steps = 30 * 120;
     let mut times = Vec::with_capacity(steps);
     let mut contacts = 0;
+    let (mut detect, mut solve, mut world_total) = (0.0, 0.0, 0.0);
     for _ in 0..steps {
         let start = Instant::now();
         station.advance(&command);
         times.push(start.elapsed().as_secs_f64() * 1_000.0);
+        let st = station.world.stats;
+        detect += st.detect.as_secs_f64();
+        solve += st.solve.as_secs_f64();
+        world_total += st.total.as_secs_f64();
         contacts = contacts.max(station.world.contacts.len());
     }
     times.sort_by(f64::total_cmp);
@@ -54,5 +59,12 @@ fn main() {
         at(0.99),
         at(1.0),
         station.world.stats.awake
+    );
+    let per_step = |seconds: f64| seconds * 1_000.0 / steps as f64;
+    println!(
+        "rigid-body world: {:.3} ms per step (detect {:.3}, solve {:.3}); the rest is the station's own work",
+        per_step(world_total),
+        per_step(detect),
+        per_step(solve)
     );
 }

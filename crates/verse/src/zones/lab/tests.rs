@@ -219,10 +219,10 @@ fn zero_g_collisions_keep_the_ledger_balanced_with_and_without_gravity() {
 fn solver_iterations_and_count_change_the_stack() {
     let mut lab = Lab::new();
     lab.select(Kind::Stack);
-    lab.set("count", 3.0);
+    lab.set("count", 5.0);
     run(&mut lab, 4.0);
     let resting = lab.snapshot().readout[0].clone();
-    assert!(resting.starts_with("0 awake · 3 asleep"), "{resting}");
+    assert!(resting.starts_with("0 awake · 5 asleep"), "{resting}");
     // Turning sleep off wakes the stack.
     lab.set("sleep", 0.0);
     run(&mut lab, 0.1);
@@ -334,9 +334,8 @@ fn thrusters_recover_from_a_tumble_and_follow_a_command() {
     let attitude = lab.scene.world[*craft]
         .orientation
         .angle_between(glam::DQuat::IDENTITY);
-    // The allocator's fuel penalty leaves a small deadband.
     assert!(
-        attitude < 1.5f64.to_radians(),
+        attitude < 0.3f64.to_radians(),
         "attitude held: {attitude} rad"
     );
     assert!(throttles.iter().all(|u| (0.0..=1.0).contains(u)));

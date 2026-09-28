@@ -126,35 +126,27 @@ With **Overlay** on, the lab draws the lines from `World::debug_lines`:
 contact normals (magenta), contact impulses (yellow), joints (green, or red at
 their limit), plus a cross at each contact point and joint anchor.
 
-## Physics API gaps and findings
+## Physics API notes
 
-The lab uses `crates/physics` as it stands on `main` and does not change it.
-It works around these gaps in the zone:
+The lab uses `crates/physics` as it stands on `main`. Building it surfaced
+gaps that are now fixed in the crate
+([#9827](https://github.com/OpenAgentsInc/openagents/issues/9827)):
 
-- **Detection needs a responding body.** `World::detect` skips pairs in which
-  neither body can respond. The manifold scenario scripts a dynamic stand-in
-  that it never steps, as the crate's own manifold test does.
-- **Loads do not wake sleepers.** `Body::apply_force` and `Body::apply_torque`
-  on a sleeping body are ignored. The lab wakes each body it pushes (the
-  friction box, the torsion ball, and the craft) every step.
-- **Moving kinematic bodies do not wake sleepers.** A sleeper joined to a
-  moving kinematic body stays asleep, because only an awake dynamic body wakes
-  what it touches. The soft grip's part slept while the hand was still and then
-  stayed put as the hand swung away. The lab wakes the part while the hand
-  moves.
-- **The thruster allocator has a deadband.** Its first-phase fuel penalty
-  returns zero throttles for small requests: below roughly 0.3 N·m of torque
-  on the lab's craft. A soft attitude loop stalls several degrees off target, and an
-  integral term winds up during tumble recovery and then cancels the
-  proportional term. The lab uses stiff proportional-derivative gains, which
-  leave about 1° of error.
-- **Tall stacks creep in yaw.** A straight stack of five 0.4 m boxes rotates
-  about the vertical at about 0.02 rad/s at the default settings. That rate
-  sits at the sleep threshold, so the stack never sleeps. A stack of three
-  sleeps. The stack scenario starts with three boxes; choose five or more to
-  see the creep.
-- **Bodies cannot be removed.** Scenarios that fire or drop objects on a loop
-  rebuild the world instead.
+- A moving kinematic body wakes the sleepers it touches or holds, so the soft
+  grip's part follows the swaying hand.
+- The thruster allocator scales its fuel penalty with the request, so small
+  torques are met; the craft holds attitude within 0.3°.
+- Contacts warm start from the last step, so tall stacks settle and sleep. The
+  stack scenario starts with five boxes; eight also sleep.
+- `World::remove_body` takes a body out of collisions, joints, and momentum.
+  The looping scenarios still rebuild their world, which also resets their
+  timing.
+
+Forces and torques applied through `Body::apply_force` and
+`Body::apply_torque` wake a sleeper; the lab relies on that. One constraint
+remains by design: `World::detect` skips pairs in which neither body can
+respond, so the manifold scenario scripts a dynamic stand-in that it never
+steps, as the crate's own manifold test does.
 
 ## Tests and capture
 

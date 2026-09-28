@@ -11,7 +11,8 @@ use crate::contact::{ContactReport, SolverSettings};
 use crate::joint::Joint;
 use crate::ledger::Momentum;
 
-/// Index of a body in its world. Bodies are never removed, so ids stay valid.
+/// Index of a body in its world. Removing a body leaves its slot in place,
+/// so ids stay valid and are never reused.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct BodyId(pub u32);
 
@@ -72,6 +73,10 @@ pub struct World {
     /// What each contact point did in the last step.
     #[serde(skip)]
     pub contacts: Vec<ContactReport>,
+    /// Last step's contact impulses, which warm start the next step's
+    /// solve. Saved with the world so a restored world continues exactly.
+    #[serde(default)]
+    pub(crate) warm: Vec<crate::contact::WarmContact>,
     /// Bodies put to sleep in the last step, with the momentum about the
     /// world origin that stopping them removed (tiny, and taken up by the
     /// fixed bodies the island rests on).
@@ -143,6 +148,7 @@ impl World {
             joints: Vec::new(),
             sleep: SleepSettings::default(),
             contacts: Vec::new(),
+            warm: Vec::new(),
             slept: Vec::new(),
             stats: StepStats::default(),
         }
@@ -213,6 +219,7 @@ impl World {
             Vec::new()
         } else {
             let base = self.solver.margin;
+            self.wake_near_kinematic(base);
             let bodies = &self.bodies;
             manifolds = self.detect(&|a, b| {
                 let reach = |c: &Collider| {
@@ -250,6 +257,33 @@ impl World {
         self.stats.total = started.elapsed();
     }
 
+    /// Remove a body: it becomes fixed and inert, its colliders stop
+    /// colliding, and its joints are removed, waking what they held. Its id
+    /// stays valid and is not reused.
+    pub fn remove_body(&mut self, id: BodyId) {
+        let joints: Vec<crate::joint::JointId> = self
+            .joints()
+            .filter(|(_, j)| j.a == id || j.b == id)
+            .map(|(joint, _)| joint)
+            .collect();
+        for joint in joints {
+            self.remove_joint(joint);
+        }
+        for collider in &mut self.colliders {
+            if collider.body == id {
+                collider.filter = crate::collision::Filter::NONE;
+            }
+        }
+        let body = &mut self[id];
+        body.kind = BodyKind::Static;
+        body.vel = DVec3::ZERO;
+        body.omega = DVec3::ZERO;
+        body.force = DVec3::ZERO;
+        body.torque = DVec3::ZERO;
+        body.sleeping = false;
+        body.removed = true;
+    }
+
     /// Wake a body.
     pub fn wake(&mut self, id: BodyId) {
         self[id].wake();
@@ -278,12 +312,58 @@ impl World {
         );
         for (a, b) in pairs {
             for (sleeper, other) in [(a, b), (b, a)] {
-                let other_body = &self.bodies[other];
-                if self.bodies[sleeper].sleeping && other_body.responds() && self.moving(other_body)
-                {
+                if self.bodies[sleeper].sleeping && self.pushes(other) {
                     self.bodies[sleeper].wake();
                 }
             }
+        }
+    }
+
+    /// Whether body `i` can disturb a sleeper: an awake dynamic body that is
+    /// moving, or a kinematic body its owner is moving.
+    fn pushes(&self, i: usize) -> bool {
+        let body = &self.bodies[i];
+        match body.kind {
+            BodyKind::Dynamic => body.responds() && self.moving(body),
+            BodyKind::Kinematic => body.vel != DVec3::ZERO || body.omega != DVec3::ZERO,
+            BodyKind::Static => false,
+        }
+    }
+
+    /// Wake sleepers whose colliders come within `margin` of a moving
+    /// kinematic body's. Detection skips pairs where neither side can
+    /// respond, so without this a scripted body would pass through a
+    /// sleeper instead of pushing it.
+    fn wake_near_kinematic(&mut self, margin: f64) {
+        let movers: Vec<usize> = (0..self.bodies.len())
+            .filter(|&i| self.bodies[i].kind == BodyKind::Kinematic && self.pushes(i))
+            .collect();
+        if movers.is_empty() {
+            return;
+        }
+        let bound = |c: &Collider, world: &Self| (c.pose(world).0, c.shape.bound());
+        let mut wake = Vec::new();
+        for mover in &self.colliders {
+            if !movers.contains(&(mover.body.0 as usize)) {
+                continue;
+            }
+            let (pa, ra) = bound(mover, self);
+            let reach = self[mover.body].vel.length() * self.dt + margin;
+            for other in &self.colliders {
+                if other.body == mover.body
+                    || !self[other.body].sleeping
+                    || !mover.filter.allows(other.filter)
+                {
+                    continue;
+                }
+                let (pb, rb) = bound(other, self);
+                if pa.distance(pb) <= ra + rb + reach {
+                    wake.push(other.body);
+                }
+            }
+        }
+        for id in wake {
+            self[id].wake();
         }
     }
 

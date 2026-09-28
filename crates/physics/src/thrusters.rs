@@ -39,7 +39,7 @@ pub struct ThrusterSet {
 /// deterministic.
 const SWEEPS: usize = 256;
 /// Linear fuel penalty in the first allocation phase, relative to the
-/// largest thruster column's squared norm.
+/// largest thruster column's norm times the size of the request.
 const FUEL_WEIGHT: f64 = 0.01;
 
 impl ThrusterSet {
@@ -112,7 +112,11 @@ impl ThrusterSet {
         let mut throttles = vec![0.0; columns.len()];
         let mut residual = [force, torque / arm];
         let mut active = vec![true; columns.len()];
-        for penalty in [FUEL_WEIGHT * biggest, 0.0] {
+        // The fuel penalty scales with the request, so a small request is
+        // treated like a large one instead of falling under a fixed
+        // threshold.
+        let request = (residual[0].length_squared() + residual[1].length_squared()).sqrt();
+        for penalty in [FUEL_WEIGHT * biggest.sqrt() * request, 0.0] {
             for _ in 0..SWEEPS {
                 let mut moved: f64 = 0.0;
                 for ((u, c), on) in throttles.iter_mut().zip(&columns).zip(&active) {
@@ -294,5 +298,24 @@ mod tests {
         assert!((first - DVec3::X * (2.0 + 0.1)).length() < 1e-12);
         let second = pid.update(DVec3::X * 2.0, 0.1);
         assert!((second - DVec3::X * (4.0 + 0.3 + 5.0)).length() < 1e-12);
+    }
+
+    #[test]
+    fn small_requests_are_met_like_large_ones() {
+        let set = pack();
+        for scale in [1e-4, 1e-2, 1.0] {
+            let torque = DVec3::new(0.0, 0.3, -0.1) * scale;
+            let w = set.wrench(&set.allocate(DVec3::ZERO, torque));
+            assert!(
+                (w.torque - torque).length() < torque.length() * 1e-3,
+                "{scale}: {w:?}"
+            );
+            let force = DVec3::new(0.2, 0.0, -0.1) * scale;
+            let w = set.wrench(&set.allocate(force, DVec3::ZERO));
+            assert!(
+                (w.force - force).length() < force.length() * 1e-3,
+                "{scale}: {w:?}"
+            );
+        }
     }
 }

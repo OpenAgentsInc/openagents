@@ -17,7 +17,9 @@ consumer: GP-0 `ade3d61631`, GP-1 `56a2664a94`, GP-2 `e098cd7363`, GP-3
 - **Budget.** `cargo run --release -p verse-lagrange --example step_budget`
   runs 30 s of a busy scene: the astronaut carrying the engine under thrust
   and attitude control while five parts strike the station. On an Apple M5 Max
-  a step takes 0.018 ms on average and 0.054 ms at worst. The budget is 1 ms
+  a step took 0.018 ms on average and 0.054 ms at worst when GP-8 landed. After
+  the ropes, plume impingement, and flexing arrays of #9801, it takes about
+  0.28 ms, of which the rigid-body world is 0.012 ms. The budget is 1 ms
   per step on the slowest supported phone; the phone measurement is pending
   with the owner (the **Forces** overlay shows the step time on device).
 - **Randomized invariants.** Seeded tests vary mass, inertia, shape, center

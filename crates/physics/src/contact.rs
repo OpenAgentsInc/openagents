@@ -4,6 +4,10 @@
 //! and torsional friction about the normal (Genesis
 //! `examples/rigid/friction_breakaway.py`, `torsional_grasp.py`).
 //!
+//! Each contact point starts from the impulses it carried last step (warm
+//! starting, matched by collider pair and position), so tall stacks converge
+//! and settle instead of creeping.
+//!
 //! Impulses act equally and oppositely at each contact point, so contacts
 //! between moving bodies conserve linear and angular momentum.
 
@@ -44,6 +48,22 @@ impl Default for SolverSettings {
         }
     }
 }
+
+/// A contact point's accumulated impulses from the last step, kept to warm
+/// start the next one. Matched by collider pair and position.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct WarmContact {
+    pub a: ColliderId,
+    pub b: ColliderId,
+    pub point: DVec3,
+    pub normal: f64,
+    /// World-frame tangential impulse, so it survives a change of basis.
+    pub tangent: DVec3,
+    pub twist: f64,
+}
+
+/// A cached contact matches a new one within this distance, m.
+const WARM_RADIUS: f64 = 0.02;
 
 /// What one contact point did in the last step.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
@@ -362,6 +382,15 @@ impl World {
                 let tangents = basis(c.normal);
                 let twist_k = c.normal.dot(ma.inverse_inertia * c.normal)
                     + c.normal.dot(mb.inverse_inertia * c.normal);
+                // Warm start from last step's nearest point on this pair.
+                let warm = self
+                    .warm
+                    .iter()
+                    .filter(|w| w.a == manifold.a && w.b == manifold.b)
+                    .map(|w| (w.point.distance_squared(c.point), w))
+                    .filter(|(d, _)| *d <= WARM_RADIUS * WARM_RADIUS)
+                    .min_by(|x, y| x.0.total_cmp(&y.0))
+                    .map(|(_, w)| *w);
                 rows.push(Row {
                     a,
                     b,
@@ -378,9 +407,11 @@ impl World {
                     target,
                     friction,
                     torsional,
-                    normal_impulse: 0.0,
-                    tangent_impulse: [0.0; 2],
-                    twist_impulse: 0.0,
+                    normal_impulse: warm.map_or(0.0, |w| w.normal),
+                    tangent_impulse: warm.map_or([0.0; 2], |w| {
+                        [w.tangent.dot(tangents[0]), w.tangent.dot(tangents[1])]
+                    }),
+                    twist_impulse: warm.map_or(0.0, |w| w.twist),
                     report: ContactReport {
                         a: manifold.a,
                         b: manifold.b,
@@ -394,6 +425,18 @@ impl World {
                     },
                 });
             }
+        }
+        // Apply the warm-start impulses before iterating; the iterations can
+        // take them back, since each row's accumulated impulse starts there.
+        for row in &rows {
+            let impulse = row.normal * row.normal_impulse
+                + row.tangents[0] * row.tangent_impulse[0]
+                + row.tangents[1] * row.tangent_impulse[1];
+            motions[row.a].push(-impulse, row.ra);
+            motions[row.b].push(impulse, row.rb);
+            let twist = row.normal * row.twist_impulse;
+            motions[row.a].twist(-twist);
+            motions[row.b].twist(twist);
         }
         let (mut tethers, mut blocks) = self.joint_groups(&motions, dt);
         for _ in 0..settings.iterations {
@@ -470,6 +513,18 @@ impl World {
                 body.omega = body.orientation.inverse() * motion.omega;
             }
         }
+        self.warm = rows
+            .iter()
+            .map(|row| WarmContact {
+                a: row.report.a,
+                b: row.report.b,
+                point: row.report.point,
+                normal: row.normal_impulse,
+                tangent: row.tangents[0] * row.tangent_impulse[0]
+                    + row.tangents[1] * row.tangent_impulse[1],
+                twist: row.twist_impulse,
+            })
+            .collect();
         rows.into_iter()
             .map(|row| ContactReport {
                 impulse: row.normal * row.normal_impulse

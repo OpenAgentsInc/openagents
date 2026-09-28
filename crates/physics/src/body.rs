@@ -50,6 +50,10 @@ pub struct Body {
     /// How long the body has been slow enough to sleep, s.
     #[serde(default)]
     pub sleep_time: f64,
+    /// Removed from its world with [`crate::World::remove_body`]: fixed,
+    /// without colliders or joints, and outside momentum sums.
+    #[serde(default)]
+    pub removed: bool,
 }
 
 impl Body {
@@ -70,6 +74,7 @@ impl Body {
             torque: DVec3::ZERO,
             sleeping: false,
             sleep_time: 0.0,
+            removed: false,
         }
     }
 

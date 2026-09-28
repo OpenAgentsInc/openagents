@@ -1108,3 +1108,160 @@ fn randomized_joints_keep_their_invariants() {
         }
     }
 }
+
+/// #9827: a scripted (kinematic) body wakes the sleepers it pushes or holds.
+#[test]
+fn a_moving_kinematic_body_wakes_what_it_touches_or_holds() {
+    let g = Uniform(DVec3::new(0.0, -G, 0.0));
+    let settle = |world: &mut World, id| {
+        for _ in 0..200 {
+            world.step(&g);
+        }
+        assert!(world[id].sleeping);
+    };
+    // Contact: a kinematic paddle sweeps into a sleeping block.
+    let mut world = World::new(0.01);
+    ground(&mut world, Material::default());
+    let half = DVec3::splat(0.2);
+    let block = world.add(Body::new(
+        5.0,
+        Body::box_inertia(5.0, half * 2.0),
+        DVec3::new(0.0, 0.2, 0.0),
+    ));
+    world.add_collider(Collider::new(block, Shape::Cuboid { half }));
+    let paddle = world
+        .add(Body::new(1.0, DVec3::ONE, DVec3::new(-1.0, 0.2, 0.0)).with_kind(BodyKind::Kinematic));
+    world.add_collider(Collider::new(
+        paddle,
+        Shape::Cuboid {
+            half: DVec3::new(0.05, 0.2, 0.3),
+        },
+    ));
+    settle(&mut world, block);
+    world[paddle].vel = DVec3::X * 1.0;
+    for _ in 0..100 {
+        world.step(&g);
+    }
+    assert!(
+        world[block].pos.x > 0.2,
+        "the paddle pushed the block: {}",
+        world[block].pos
+    );
+    // Joint: a kinematic hand holding a sleeping part by a soft weld.
+    let mut world = World::new(0.01);
+    ground(&mut world, Material::default());
+    let part = world.add(Body::new(
+        5.0,
+        Body::box_inertia(5.0, half * 2.0),
+        DVec3::new(0.0, 0.2, 0.0),
+    ));
+    world.add_collider(Collider::new(part, Shape::Cuboid { half }));
+    let hand = world
+        .add(Body::new(1.0, DVec3::ONE, DVec3::new(0.0, 0.6, 0.0)).with_kind(BodyKind::Kinematic));
+    world.add_joint(
+        crate::Joint::weld_here(&world, hand, part, DVec3::new(0.0, 0.4, 0.0)).soft(10.0, 1.0),
+    );
+    settle(&mut world, part);
+    world[hand].vel = DVec3::X * 0.5;
+    for _ in 0..100 {
+        world.step(&g);
+    }
+    let gap = world[part].pos.x - (world[hand].pos.x);
+    assert!(gap.abs() < 0.05, "the part followed the hand: gap {gap} m");
+}
+
+/// #9827: tall stacks settle and sleep (warm-started contacts converge
+/// where twenty cold iterations left a twist).
+#[test]
+fn tall_stacks_settle_and_sleep() {
+    for count in [5, 8] {
+        let mut world = World::new(1.0 / 120.0);
+        let material = Material {
+            friction: 0.5,
+            torsional: 0.0,
+            restitution: 0.1,
+        };
+        ground(&mut world, material);
+        let half = DVec3::splat(0.2);
+        for i in 0..count {
+            let id = world.add(Body::new(
+                1.0,
+                Body::box_inertia(1.0, half * 2.0),
+                DVec3::new(0.0, 0.2 + 0.401 * f64::from(i), 0.0),
+            ));
+            world.add_collider(Collider::new(id, Shape::Cuboid { half }).with_material(material));
+        }
+        let g = Uniform(DVec3::new(0.0, -G, 0.0));
+        for _ in 0..(120 * 5) {
+            world.step(&g);
+        }
+        assert_eq!(world.stats.asleep, count as usize, "{count} boxes");
+        let top = world.bodies().last().unwrap().pos;
+        assert!(
+            (top.y - (0.2 + 0.4 * f64::from(count - 1))).abs() < 0.02,
+            "{top}"
+        );
+    }
+}
+
+/// #9827: removing a body takes it out of collisions, joints, and momentum;
+/// ids stay valid.
+#[test]
+fn removed_bodies_stop_interacting() {
+    let mut world = World::new(0.01);
+    let mut a = Body::new(2.0, DVec3::splat(0.1), DVec3::new(-1.0, 0.0, 0.0));
+    a.vel = DVec3::X * 2.0;
+    let a = world.add(a);
+    world.add_collider(Collider::new(a, Shape::Sphere { radius: 0.2 }));
+    let b = world.add(Body::new(2.0, DVec3::splat(0.1), DVec3::ZERO));
+    world.add_collider(Collider::new(b, Shape::Sphere { radius: 0.2 }));
+    let c = world.add(Body::new(1.0, DVec3::splat(0.1), DVec3::new(0.0, 3.0, 0.0)));
+    let joint = world.add_joint(crate::Joint::new(
+        b,
+        DVec3::ZERO,
+        c,
+        DVec3::ZERO,
+        crate::JointKind::Tether { length: 3.0 },
+    ));
+    world.remove_body(b);
+    assert!(world[b].removed && world.joint(joint).is_none());
+    assert_eq!(world.momentum(DVec3::ZERO).linear, DVec3::X * 4.0);
+    for _ in 0..200 {
+        world.step(&NoField);
+    }
+    assert!(world[a].pos.x > 2.0, "the ball passed through where b was");
+    assert_eq!(world[b].pos, DVec3::ZERO);
+    let d = world.add(Body::new(1.0, DVec3::ONE, DVec3::ZERO));
+    assert_ne!(d, b, "removed ids are not reused");
+}
+
+/// #9827: forces and impulses through the public API wake a sleeper.
+#[test]
+fn a_force_on_a_sleeping_body_moves_it() {
+    let mut world = World::new(0.01);
+    ground(&mut world, Material::default());
+    let half = DVec3::splat(0.2);
+    let block = world.add(Body::new(
+        5.0,
+        Body::box_inertia(5.0, half * 2.0),
+        DVec3::new(0.0, 0.2, 0.0),
+    ));
+    world.add_collider(Collider::new(block, Shape::Cuboid { half }));
+    let g = Uniform(DVec3::new(0.0, -G, 0.0));
+    for _ in 0..200 {
+        world.step(&g);
+    }
+    assert!(world[block].sleeping);
+    for _ in 0..50 {
+        world[block].apply_force(DVec3::X * 60.0);
+        world.step(&g);
+    }
+    assert!(world[block].pos.x > 0.01, "{}", world[block].pos);
+    for _ in 0..200 {
+        world.step(&g);
+    }
+    assert!(world[block].sleeping);
+    world[block].apply_torque(DVec3::Y * 20.0);
+    world.step(&g);
+    assert!(!world[block].sleeping && world[block].omega.y > 0.0);
+}
