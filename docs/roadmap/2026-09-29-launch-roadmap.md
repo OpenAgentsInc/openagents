@@ -1,6 +1,6 @@
 # Launch roadmap: the OpenAgents app, 2026-09-29
 
-Written 2026-09-28. This page ties together what ships to playtesters on
+Written 2026-09-28, updated the evening of 2026-09-28. This page ties together what ships to playtesters on
 **Tuesday 2026-09-29** (the MVP), its honest limits, and the staged
 milestones after it, each with a target date and the issues that own it. The
 [master roadmap](../roadmap.md) keeps cross-project priorities; the
@@ -17,10 +17,10 @@ Status words follow the [glossary](../glossary.md): **Done** means landed on
 | | |
 | --- | --- |
 | Date | Tuesday 2026-09-29 |
-| iOS | OpenAgents (`com.openagents.app`) 1.0.0 build 14 or later from a **public TestFlight link**; build 15 (`be94321643`) with the 2026-09-28 fixes follows after Beta App Review |
-| Android | The signed OpenAgents APK from [`bins/openagents-android`](../../bins/openagents-android/README.md), linked publicly; partial parity ([below](#android-at-launch)) |
+| iOS | OpenAgents (`com.openagents.app`) 1.0.0 build 16 (`e7989aa4e1`) from a **public TestFlight link** |
+| Android | The signed OpenAgents APK 1.0.0 (16) from [`bins/openagents-android`](../../bins/openagents-android/README.md), from a draft GitHub release the owner publishes ([below](#android-at-launch)) |
 | Who | Anyone. The program is open; joining earns nothing by itself, and XP and titles come only from accepted contributions |
-| Feedback | TestFlight feedback, the **Playtest report** GitHub issue template (label `playtest`), or the playtest email; in-app **Report a problem** is [#9882](https://github.com/OpenAgentsInc/openagents/issues/9882) |
+| Feedback | In-app **Report a problem** (Account, or a long press on the tab bar), TestFlight feedback, the **Playtest report** GitHub issue template (label `playtest`), or the playtest email. In-app reports stay on the phone until the owner creates the triage key |
 | Runbook | [Day-0 launch checklist](../game/playtesting.md#day-0-launch-checklist-2026-09-29) and [season 1, week by week](../game/playtesting.md#season-1-week-by-week) |
 
 ## MVP: what ships to playtesters
@@ -43,10 +43,13 @@ Status words follow the [glossary](../glossary.md): **Done** means landed on
   provider with capacity and fail over (`b65f6e3f93`); each route's capacity
   is recorded when a repository run starts (`4340294fd8`).
 
+- **Fast chat loading**: chat reads go directly over the tailnet with the
+  same sealed requests (relay as fallback), in parallel and in large pages;
+  the chat list loads in well under a second and chats reopen instantly from
+  the phone's cache ([M1](#m1-fast-chat-loading-over-the-tailnet)).
+
 Honest limits: you need your own Mac or Linux computer on the same tailnet.
-Replies arrive by polling, not token streaming; a chat keeps its newest 240
-rows; long chats can load slowly over the tailnet (see
-[fast chat loading](#m1-fast-chat-loading-over-the-tailnet)). No attachments,
+Replies update per step as the engine records them, not token by token. No attachments,
 dictation, model picker, or push notifications
 ([what comes later](../../bins/openagents-ios/docs/chat-later.md)).
 
@@ -54,7 +57,7 @@ dictation, model picker, or push notifications
 
 - **Presence**: other players in the same world, signed with a separate
   world key, over `wss://relay.openagents.com`.
-- **Tags**: name tags with a pubkey prefix (no levels yet).
+- **Tags**: name tags with a pubkey prefix and trainer level (`c25458d5 · lv 3`), your own included.
 - **Sticks**: a walk stick and a look stick, both thumbs at once; jump,
   pinch zoom, motion look, and recenter.
 - **Physics toys with shared state**: the ball, the stack, and the
@@ -65,10 +68,12 @@ dictation, model picker, or push notifications
   ([Gym leaderboard](../verse/gym-leaderboard.md)); results publications are
   signed with NIP-EVAL kind 3195 (`03cf0aa44b`,
   [#9853](https://github.com/OpenAgentsInc/openagents/issues/9853), closed).
+- **Trainer levels and tutorial quests**: six live tutorial quests reward
+  reproducing a published pass ([tutorial quests](../verse/tutorial-quests.md)).
 - **Lagrange 1 portal**: the **LAGRANGE 1** arch into the station and
   **THE GRID** arch back ([Lagrange 1](../verse/lagrange-1.md)).
 
-Honest limits: no chat in the Grid, no levels on tags, and shared state can
+Honest limits: no chat in the Grid, and shared state can
 lag between players. The Gym results aren't shown as "signed by OpenAgents"
 until the owner creates and pins a publisher key.
 
@@ -88,9 +93,16 @@ until the owner creates and pins a publisher key.
   ([#9858](https://github.com/OpenAgentsInc/openagents/issues/9858), iOS
   done).
 
+- **Paying people and deposits**: pay an npub (their published Spark address
+  or profile Lightning address), unclaimed deposits with claim and refund,
+  and the exit backup (`f0466f1b15`, `d43b304e87`).
+- **Amounts in BIP 177 form** (`₿12,345`) with a legacy BTC toggle
+  (`dfe066f267`).
+- **Agent payments**: an agent on your computer asks to pay; you approve each
+  payment on the phone (`c26e37c366`).
+
 Honest limits: real bitcoin; use amounts you can lose. No receiving Lightning
-address, no paying users by npub, and no unclaimed on-chain deposit handling. Android has the
-Wallet too (`e56d173480`). See [Wallet design](../breez/wallet-design.md) and
+address of your own yet. Android has the Wallet too (`e56d173480`, `e1aeec7413`). See [Wallet design](../breez/wallet-design.md) and
 [`INVARIANTS.md`](../../INVARIANTS.md), Phone wallet.
 
 ### Account
@@ -99,98 +111,90 @@ Wallet too (`e56d173480`). See [Wallet design](../breez/wallet-design.md) and
 - **Identity keys**: the device key and the Verse world key.
 - **Changelog**: what changed in each build.
 - **Links** and **About this device** (version and build).
+- **Trainer** card and **Playtest** card, **Report a problem**, **My reports**,
+  and the opt-in **Playtest session** log.
 
 ### Android at launch
 
-[#9838](https://github.com/OpenAgentsInc/openagents/issues/9838) is open.
-Landed: the JNI surface and app (`098ccb1bb0`, `49f5363860`), Verse on OpenGL
-ES (`85a91f63cc`), the Gym and RESULTS panels
-(`82663b935d`, [#9876](https://github.com/OpenAgentsInc/openagents/issues/9876)),
-Coder chats, Computers, Tailnet, About, and the Spark Wallet (`e56d173480`,
-`e1aeec7413`; [#9861](https://github.com/OpenAgentsInc/openagents/issues/9861)
-closed). The transcript is painted from Rust's layout (`f55db62c44`). Missing:
-**Report a problem** and **Playtest session** (iOS only so far). The playtest APK is a signed
-release build, 1.0.0 version code 16 (the iPhone build number), from a draft GitHub release the owner
-publishes (see the Android README's Release section). Verified on the emulator only: a live tailnet chat, QR scanning, the
-terminal, motion look, and Vulkan on a physical device haven't been checked.
+[#9838](https://github.com/OpenAgentsInc/openagents/issues/9838) is closed as
+code-complete: Coder chats, Computers, Tailnet, Account, the Grid with the
+Gym and RESULTS panels, the Spark Wallet with recovery and the trust note,
+trainer levels, Report a problem and the playtest card (`738d1b5248`), and a
+transcript painted from Rust's layout with in-place Select Text
+(`f55db62c44`, `6722771d93`). The APK is a signed release build, 1.0.0
+version code 16. Verified on the emulator only; physical-device checks are
+an owner step.
 
 ## Done by launch (2026-09-28)
 
 | Item | Evidence |
 | --- | --- |
-| Spark wallet on the phone: receive, send, buy, recovery, trust note (iOS) | `7bc872cfed`, `854284a38e`, `4cefc1e78d`, `7c8173ebe7`; epic [#9854](https://github.com/OpenAgentsInc/openagents/issues/9854) stays open for Android and the later wallet issues |
-| Gym leaderboard in the Grid, signed publication over Nostr | [#9839](https://github.com/OpenAgentsInc/openagents/issues/9839) foundation; [#9853](https://github.com/OpenAgentsInc/openagents/issues/9853) closed (`03cf0aa44b`) |
-| Android Gym panels | `82663b935d` ([#9876](https://github.com/OpenAgentsInc/openagents/issues/9876) still open for closure) |
-| Capacity routing and failover for host tasks | `b65f6e3f93`, `4340294fd8` |
-| Faster chat reads on the host | `4ef967aa40` |
-| Rust-laid-out transcript, stage 2 and CoreText painting | `21b8774ec3`, `386c106598`, `3943b45f62` ([#9833](https://github.com/OpenAgentsInc/openagents/issues/9833)) |
-| BIP 177 amount formatter (shared, not yet on screen) | `8d89ddf293` ([#9881](https://github.com/OpenAgentsInc/openagents/issues/9881)) |
-| Playtesting plan | [playtesting.md](../game/playtesting.md), `926564d073`, epic [#9888](https://github.com/OpenAgentsInc/openagents/issues/9888) |
-| iOS build 15 | `be94321643` |
+| Spark wallet: receive, send, buy, recovery, trust note, paying people, deposits, BIP 177 | `7bc872cfed`, `854284a38e`, `4cefc1e78d`, `7c8173ebe7`, `f0466f1b15`, `d43b304e87`, `dfe066f267` |
+| Agent spending phase 1 | `c26e37c366`, `a0cbbffb68` ([#9863](https://github.com/OpenAgentsInc/openagents/issues/9863), closed) |
+| Gym leaderboard in the Grid, signed publication over Nostr | [#9839](https://github.com/OpenAgentsInc/openagents/issues/9839), [#9853](https://github.com/OpenAgentsInc/openagents/issues/9853) closed |
+| Capacity routing, usage probes, full-access hosts | `b65f6e3f93`, `4340294fd8`, `acee225991`, `718727d1c0` |
+| Fast chat loading over the tailnet | `4ef967aa40`, `2a7c7fae11`, `e1c4fe40b9`, `a1ea5ea9cc` |
+| Playtest feedback, triage, and rewards | `d3033ae898`, `74f2f90be0`, `253ca31885`, `c038e1d25b`, `38c2a7f9f0`, `a4aa3013de`, `ecf6cabd3b`, `c9850f5c73`, `cf9d36741b`, `f8b773578a` |
+| Trainer leveling phase 1 | `9bb3738bd8`, `b860b3e88a`, `ce3c76257e` |
+| Android parity and release APK | `e56d173480`, `e1aeec7413`, `738d1b5248`, `762fb8d36d` |
+| iOS build 16 | `e7989aa4e1` |
 
 ## Milestones after launch
 
+The owner is taking M1, M2, M3, and M6 through their owner steps tonight,
+2026-09-28 (the device, key, and release steps in the workspace
+`NEEDS_OWNER.md`). Their code is on `main`; issues close when code-complete
+and owner steps never hold them open.
+
 | Milestone | Target | Status | Owning issues |
 | --- | --- | --- | --- |
-| [M1. Fast chat loading over the tailnet](#m1-fast-chat-loading-over-the-tailnet) | 2026-10-02 | In progress | [#9833](https://github.com/OpenAgentsInc/openagents/issues/9833) |
-| [M2. Playtest feedback in the app](#m2-playtest-feedback-in-the-app) | 2026-10-09 | Planned | [#9882](https://github.com/OpenAgentsInc/openagents/issues/9882), [#9883](https://github.com/OpenAgentsInc/openagents/issues/9883), [#9884](https://github.com/OpenAgentsInc/openagents/issues/9884), [#9887](https://github.com/OpenAgentsInc/openagents/issues/9887) |
-| [M3. Android parity](#m3-android-parity) | 2026-10-12 | In progress | [#9838](https://github.com/OpenAgentsInc/openagents/issues/9838), [#9861](https://github.com/OpenAgentsInc/openagents/issues/9861), [#9876](https://github.com/OpenAgentsInc/openagents/issues/9876), [#9857](https://github.com/OpenAgentsInc/openagents/issues/9857), [#9858](https://github.com/OpenAgentsInc/openagents/issues/9858) |
-| [M4. Wallet: addresses, paying users, deposits, BIP 177](#m4-wallet-addresses-paying-users-deposits-bip-177) | 2026-10-16 | Planned (BIP 177 in progress) | [#9859](https://github.com/OpenAgentsInc/openagents/issues/9859), [#9860](https://github.com/OpenAgentsInc/openagents/issues/9860), [#9862](https://github.com/OpenAgentsInc/openagents/issues/9862), [#9881](https://github.com/OpenAgentsInc/openagents/issues/9881) |
-| [M5. Gym on the web](#m5-gym-on-the-web) | None | Postponed | [#9852](https://github.com/OpenAgentsInc/openagents/issues/9852) |
-| [M6. Trainer leveling phase 1 and playtest rewards](#m6-trainer-leveling-phase-1-and-playtest-rewards) | 2026-10-26 (end of season 1) | In progress | [#9847](https://github.com/OpenAgentsInc/openagents/issues/9847), [#9885](https://github.com/OpenAgentsInc/openagents/issues/9885), [#9886](https://github.com/OpenAgentsInc/openagents/issues/9886), [#9887](https://github.com/OpenAgentsInc/openagents/issues/9887), epic [#9888](https://github.com/OpenAgentsInc/openagents/issues/9888) |
-| [M7. Agent spending phase 1](#m7-agent-spending-phase-1) | 2026-10-30 | Planned | [#9863](https://github.com/OpenAgentsInc/openagents/issues/9863) |
-| [M8. x402 receive on mainnet](#m8-x402-receive-on-mainnet) | 2026-10-30 | Planned | [#9832](https://github.com/OpenAgentsInc/openagents/issues/9832) |
-| [M9. Agent spending, later phases](#m9-agent-spending-later-phases) | After M7, not dated | Planned | [#9864](https://github.com/OpenAgentsInc/openagents/issues/9864) |
+| [M1. Fast chat loading over the tailnet](#m1-fast-chat-loading-over-the-tailnet) | 2026-09-28 (tonight) | Code done; owner verifying | [#9833](https://github.com/OpenAgentsInc/openagents/issues/9833), [#9910](https://github.com/OpenAgentsInc/openagents/issues/9910) |
+| [M2. Playtest feedback in the app](#m2-playtest-feedback-in-the-app) | 2026-09-28 (tonight) | Done | #9882, #9883, #9884, #9887, #9903–#9906 (closed) |
+| [M3. Android parity](#m3-android-parity) | 2026-09-28 (tonight) | Done | #9838, #9861, #9876, #9857, #9858 (closed); [#9910](https://github.com/OpenAgentsInc/openagents/issues/9910) |
+| [M4. Wallet: addresses, paying users, deposits, BIP 177](#m4-wallet-addresses-paying-users-deposits-bip-177) | 2026-09-28 | Done | #9859, #9860, #9862, #9881 (closed) |
+| [M5. Gym on the web](#m5-gym-on-the-web) | None | Postponed | #9852 (closed, not planned) |
+| [M6. Trainer leveling phase 1 and playtest rewards](#m6-trainer-leveling-phase-1-and-playtest-rewards) | 2026-09-28 (tonight) | Phase 1 done; follow-ups in progress | #9847, #9885, #9886 (closed); [#9896](https://github.com/OpenAgentsInc/openagents/issues/9896), [#9898](https://github.com/OpenAgentsInc/openagents/issues/9898) |
+| [M7. Agent spending phase 1](#m7-agent-spending-phase-1) | 2026-09-28 | Done | #9863 (closed) |
+| [M8. x402 receive on mainnet](#m8-x402-receive-on-mainnet) | None | Not planned for now | #9832 (closed) |
+| [M9. Agent spending, later phases](#m9-agent-spending-later-phases) | None | Deferred (won't do for now) | #9864, #9911, #9912, #9913 (closed, not planned) |
+| Microcoder replaces Microluna | Not dated | In progress | [#9878](https://github.com/OpenAgentsInc/openagents/issues/9878), [#9880](https://github.com/OpenAgentsInc/openagents/issues/9880), [#9889](https://github.com/OpenAgentsInc/openagents/issues/9889), [#9890](https://github.com/OpenAgentsInc/openagents/issues/9890) |
+| Host store fixes | Not dated | In progress | [#9908](https://github.com/OpenAgentsInc/openagents/issues/9908), [#9909](https://github.com/OpenAgentsInc/openagents/issues/9909) |
 | CoderOS (owned by another agent) | Not scheduled here | See [CoderOS](../os/README.md) | Reference only |
 
 ### M1. Fast chat loading over the tailnet
 
-Opening a long chat on the phone should show its newest rows at once, and
-scrolling and following a running chat should stay smooth. Landed so far:
-host reads in milliseconds (`4ef967aa40`), transcript rows pulled straight
-from Rust (`5d42b68455`), Rust layout with exact row heights (`386c106598`),
-and CoreText painting of Rust's layout (`3943b45f62`). Remaining in
-[#9833](https://github.com/OpenAgentsInc/openagents/issues/9833): finish the
-native painting path and measure open time on a real tailnet. Ships in the
-first post-launch build.
+Code done. Chat reads go over the tailnet with the same sealed requests,
+several at once and in large pages, with the relay as fallback; the host
+reuses its book and caches session heads (`4ef967aa40`, `2a7c7fae11`,
+`e1c4fe40b9`, `a1ea5ea9cc`). Measured on coderos-4080: chat list 6–7 s →
+0.2–0.35 s, uncached open 9.5–11 s → 0.02–0.25 s; reopen is instant. The
+transcript's rows come straight from Rust (`5d42b68455`), with Rust shaping
+(`dfc4bd02e4`) and Android painting and selection (`f55db62c44`,
+`6722771d93`). Owner step tonight: verify on the phone, and lend a phone for
+the device benchmarks. The Android streaming fade is
+[#9910](https://github.com/OpenAgentsInc/openagents/issues/9910).
 
 ### M2. Playtest feedback in the app
 
-**Report a problem** in Account and from a long press on the tab bar,
-build-stamped and sent privately
-([#9882](https://github.com/OpenAgentsInc/openagents/issues/9882)); the
-opt-in local session log with its `INVARIANTS.md` rows
-([#9883](https://github.com/OpenAgentsInc/openagents/issues/9883)); the
-triage inbox that drafts `playtest` issues and keeps the triage log
-([#9884](https://github.com/OpenAgentsInc/openagents/issues/9884)); and a
-"What to test" line in each build's Changelog
-([#9887](https://github.com/OpenAgentsInc/openagents/issues/9887)). Until
-then, the launch's three channels apply.
+Done. **Report a problem** in Account and from a long press on the tab bar,
+build-stamped and sealed privately to the triage key; **My reports**; the
+opt-in session log; the public content-free report record (NIP-XP kind 3197);
+the triage inbox with TestFlight feedback; and a "What to test" line per
+build (#9882–#9884, #9887, #9903–#9906). Owner step tonight: create the
+triage key so reports leave the phone.
 
 ### M3. Android parity
 
-The Android Wallet screen with a Keystore-wrapped Spark seed
-([#9861](https://github.com/OpenAgentsInc/openagents/issues/9861)), then
-recovery and the trust note on Android
-([#9857](https://github.com/OpenAgentsInc/openagents/issues/9857),
-[#9858](https://github.com/OpenAgentsInc/openagents/issues/9858)); close
-[#9876](https://github.com/OpenAgentsInc/openagents/issues/9876); check a
-live tailnet chat, QR scanning, the terminal, motion look, and Vulkan on
-physical devices; then close
-[#9838](https://github.com/OpenAgentsInc/openagents/issues/9838). A Play
-Store testing track is an owner decision after this milestone.
+Done: the Android app matches iOS for launch (#9838 closed) and ships as a
+signed APK. Owner steps tonight: back up the release key, publish the draft
+GitHub release, and check it on a physical phone. A Play Store testing track
+is an owner decision after this.
 
 ### M4. Wallet: addresses, paying users, deposits, BIP 177
 
-A receiving Lightning address and LNURL
-([#9859](https://github.com/OpenAgentsInc/openagents/issues/9859)); paying
-other OpenAgents users by npub, Lightning address, or QR
-([#9860](https://github.com/OpenAgentsInc/openagents/issues/9860));
-unclaimed on-chain deposits and the unilateral-exit backup
-([#9862](https://github.com/OpenAgentsInc/openagents/issues/9862)); and BIP 177
-amounts as integer base units with a legacy BTC toggle
-([#9881](https://github.com/OpenAgentsInc/openagents/issues/9881); the shared
-formatter landed in `8d89ddf293`).
+Done: Lightning address and LNURL sending, paying users by npub, deposits and
+the exit backup, and BIP 177 amounts (#9859, #9860, #9862, #9881). A
+receiving Lightning address of our own needs its own LNURL server and issue.
 
 ### M5. Gym on the web
 
@@ -203,36 +207,32 @@ the coder repository but stays undeployed. The Nostr publication itself is done
 
 ### M6. Trainer leveling phase 1 and playtest rewards
 
-Phase 1 of [agent trainer leveling](../verse/agent-trainer-leveling.md): the
-read-only XP reader and trainer card in the app, and the first trainer who
-levels up in the Grid ([#9847](https://github.com/OpenAgentsInc/openagents/issues/9847)).
-On top of it, the playtest rewards: the NIP-XP `playtest` rule and referee
-key ([#9885](https://github.com/OpenAgentsInc/openagents/issues/9885)),
-titles and cosmetics on name tags
-([#9886](https://github.com/OpenAgentsInc/openagents/issues/9886)), and the
-playtest card in Account
-([#9887](https://github.com/OpenAgentsInc/openagents/issues/9887)). Week 3's
-paper-prototype sessions can change the phase 1 design before it ships. The
-first signed playtest awards are season 1's
-[first milestone](../game/playtesting.md#success-metrics-and-the-first-milestone);
-they cover accepted contributions only, never joining.
+Phase 1 done: the NIP-XP `reproduce` rule, the XP reader, level tags in the
+Grid, the Trainer card, and six live tutorial quests (#9847); the NIP-XP
+`playtest` rule, titles on name tags, and the playtest card (#9885–#9887);
+signing awards from triage decisions (#9906). Owner step tonight: create the
+playtest referee key so awards can be signed. Follow-ups: key links
+([#9896](https://github.com/OpenAgentsInc/openagents/issues/9896)) and trainer
+card export ([#9898](https://github.com/OpenAgentsInc/openagents/issues/9898)).
+Awards cover accepted contributions only, never joining.
 
 ### M7. Agent spending phase 1
 
-An agent asks to spend, and the owner approves each payment on the phone
-([#9863](https://github.com/OpenAgentsInc/openagents/issues/9863)). Depends on
-M4's wallet surfaces being stable in playtest.
+Done: an agent asks to spend, the owner approves each payment on the phone,
+and nothing pays without the tap (#9863).
 
 ### M8. x402 receive on mainnet
 
-Verify x402 receive on mainnet through the MoneyDevKit LSPS4 channel
-([#9832](https://github.com/OpenAgentsInc/openagents/issues/9832)).
+Not planned for now (#9832 closed): it needs a funded MoneyDevKit LSPS4
+channel and the owner's go-ahead.
 
 ### M9. Agent spending, later phases
 
-Allowance wallets, standing grants, and operator allowances
-([#9864](https://github.com/OpenAgentsInc/openagents/issues/9864)), after
-phase 1 has run in playtest with no lost funds.
+Deferred by the owner (2026-09-28): #9864, #9911, #9912, and #9913 are closed
+as won't do for now. Two slices had already landed and stay on `main`: phone
+wakes for spend requests with spend ops over CAP/CJ (`cf43ac7dff`), and
+standing grants that pay a payee without a tap only after the owner chooses
+**Approve and trust this payee** (`1d5d9cd7bf`; opt-in, off until then).
 
 ## Maintaining this page
 
