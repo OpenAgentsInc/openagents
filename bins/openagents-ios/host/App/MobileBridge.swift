@@ -221,6 +221,8 @@ struct ReportRow: Decodable, Hashable {
     let error: String?
     let screenshot: Bool
     let session: Bool
+    /// The public, content-free record of the report is on the relay.
+    let published: Bool?
 }
 
 /// The playtest session's state.

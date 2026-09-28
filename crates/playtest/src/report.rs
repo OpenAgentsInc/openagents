@@ -7,8 +7,11 @@
 //! and signed by the tester's Verse world key ([`wrap`]). The kind-14
 //! rumor's event ID is the report's identity: its first eight hex digits,
 //! as `PT-1A2B3C4D`, are the report code the tester can quote. The SHA-256
-//! of the exact content bytes is the report's [`digest`], which a public,
-//! content-free NIP-XP playtest report event can cite later.
+//! of the exact content bytes is the report's [`digest`]. Beside the
+//! private message, [`wrap`] signs the public, content-free NIP-XP playtest
+//! report (kind `3197`, [`public_record`]) with the same key: the build,
+//! the platform, the kind, and that digest, and no text. It is what a
+//! playtest award cites, so an accepted report can earn XP.
 //!
 //! A screenshot is never part of a report from the Wallet tab or a screen
 //! that can show a key ([`crate::session::Route::sensitive`]); [`Report::check`]
@@ -283,6 +286,9 @@ pub struct Sealed {
     pub digest: String,
     /// The kind-1059 gift wrap addressed to the triage key.
     pub wrap: Event,
+    /// The public, content-free NIP-XP playtest report (kind `3197`),
+    /// signed by the tester, committing to [`Sealed::digest`].
+    pub public: Event,
 }
 
 /// The randomness a seal needs, supplied by the caller so tests repeat.
@@ -339,12 +345,36 @@ pub fn wrap(
         None,
     )
     .map_err(failed)?;
+    let digest = digest(&content);
+    let public = public_record(report, &digest, tester)?;
     Ok(Sealed {
         code: code(&rumor.id),
-        digest: digest(&content),
+        digest,
         rumor_id: rumor.id,
         wrap,
+        public,
     })
+}
+
+/// The public NIP-XP playtest report (kind `3197`) for `report`, whose
+/// private content hashes to `digest`, signed by `tester` at the report's
+/// time. It holds the build, the platform, and the kind, and no text.
+///
+/// # Errors
+///
+/// When a field is outside the NIP-XP grammar.
+pub fn public_record(report: &Report, digest: &str, tester: &SecretKey) -> Result<Event, String> {
+    let parts = nostr::xp::playtest::playtest_report(
+        &report.context.build_label(),
+        &session::name(&report.context.platform),
+        &session::name(&report.kind),
+        digest,
+        None,
+    )
+    .map_err(|_| "The report's public record couldn't be made.".to_string())?;
+    let signer = nostr::domain::RelaySigner::from_secret_hex(&tester.display_secret().to_string())
+        .map_err(|_| "The report's public record couldn't be signed.".to_string())?;
+    Ok(signer.sign(report.context.at, parts.kind, parts.tags, parts.content))
 }
 
 /// A report the triage key opened.

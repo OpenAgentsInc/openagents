@@ -10,6 +10,13 @@
 //! ([`playtest::TRIAGE_KEY`]) a report waits on the phone and is sent when
 //! one does; it is never sent anywhere else.
 //!
+//! When the private report is sent, the app also publishes its public,
+//! content-free NIP-XP playtest report (kind `3197`, [`playtest::report::public_record`])
+//! signed by the same world key: the build, the platform, the kind, and the
+//! private report's digest, and no text. A playtest award cites it, so an
+//! accepted report can earn XP. It is kept on the phone until a relay
+//! accepts it and sent again from My reports.
+//!
 //! The session log records only while **Playtest session** is on, holds
 //! only closed structural values ([`playtest::session`]), stays on the
 //! phone, and is attached to a report only when the tester chose to and
@@ -75,6 +82,12 @@ struct Saved {
     error: Option<String>,
     screenshot: bool,
     session: bool,
+    /// The signed public record, kept until a relay accepts it.
+    #[serde(default)]
+    public: Option<Event>,
+    /// A relay accepted the public record.
+    #[serde(default)]
+    published: bool,
 }
 
 /// A row of My reports.
@@ -94,6 +107,8 @@ pub struct Row {
     pub error: Option<String>,
     pub screenshot: bool,
     pub session: bool,
+    /// The public, content-free record of this report is on the relay.
+    pub published: bool,
 }
 
 /// The kinds a tester chooses from, with the words the form shows.
@@ -137,7 +152,7 @@ fn kind_label(kind: Kind) -> &'static str {
 }
 
 /// What a report sends and to whom, shown on the form.
-pub const PRIVACY: &str = "Sent privately, encrypted to the OpenAgents triage team and signed by your Verse world key. It becomes public only as a GitHub issue we write, without Wallet or key screenshots, and quotes your words only if you allow it. Reports earn nothing by themselves; accepted ones can earn playtest XP later.";
+pub const PRIVACY: &str = "Sent privately, encrypted to the OpenAgents triage team and signed by your Verse world key. It becomes public only as a GitHub issue we write, without Wallet or key screenshots, and quotes your words only if you allow it. Your key also signs a public record that you filed a report on this build (its kind and a fingerprint, never your words), so an accepted report can earn playtest XP. Reports earn nothing by themselves.";
 
 /// Where testers report while the app can't send yet.
 pub const FALLBACK: &str =
@@ -217,9 +232,10 @@ pub struct Form {
     pub screenshot: Option<Screenshot>,
 }
 
-/// Publishes a sealed report.
+/// Publishes a sealed report and its public record.
 pub trait Relay: Send + Sync {
-    /// Sends `wrap`, authenticating as `auth` where the relay asks.
+    /// Sends `wrap` (a gift wrap or a public record), authenticating as
+    /// `auth` where the relay asks.
     /// Blocking.
     fn publish(&self, wrap: &Event, auth: &SecretKey) -> Result<(), String>;
 }
@@ -336,6 +352,7 @@ fn row(saved: &Saved) -> Row {
         error: saved.error.clone(),
         screenshot: saved.screenshot,
         session: saved.session,
+        published: saved.published,
     }
 }
 
@@ -492,8 +509,35 @@ impl Playtest {
                     self.dispatch(body, world, &digest);
                 }
             }
+            let unpublished: Vec<(String, Event)> = lock(&self.inner)
+                .saved
+                .iter()
+                .filter(|s| s.status == Status::Sent && !s.published)
+                .filter_map(|s| Some((s.digest.clone(), s.public.clone()?)))
+                .collect();
+            for (digest, public) in unpublished {
+                self.announce(public, *world, digest);
+            }
         }
         self.packet(None, None)
+    }
+
+    /// Publishes a sent report's public record on a background thread,
+    /// authenticating as the key that signed it.
+    fn announce(&mut self, public: Event, world: SecretKey, digest: String) {
+        let (inner, store, relay) = (self.inner.clone(), self.store.clone(), self.relay.clone());
+        self.sending.retain(|h| !h.is_finished());
+        self.sending.push(std::thread::spawn(move || {
+            let result = relay.publish(&public, &world);
+            let mut inner = lock(&inner);
+            if result.is_ok()
+                && let Some(saved) = inner.saved.iter_mut().find(|s| s.digest == digest)
+            {
+                saved.published = true;
+                saved.public = None;
+            }
+            save(store.as_deref(), &inner);
+        }));
     }
 
     /// Files a report from the form. `task` is the open Coder chat's task.
@@ -596,6 +640,8 @@ impl Playtest {
                     error: None,
                     screenshot: report.screenshot.is_some(),
                     session: report.session.is_some(),
+                    public: None,
+                    published: false,
                 },
             );
             while inner.saved.len() > MAX_SAVED {
@@ -645,14 +691,20 @@ impl Playtest {
                 s.status = Status::Sending;
                 s.code = Some(sealed.code.clone());
                 s.error = None;
+                if !s.published {
+                    s.public = Some(sealed.public.clone());
+                }
             });
             self.persist(&inner);
         }
         let (inner, store, relay) = (self.inner.clone(), self.store.clone(), self.relay.clone());
         let digest = digest.to_owned();
+        let world = *world;
         self.sending.retain(|h| !h.is_finished());
         self.sending.push(std::thread::spawn(move || {
             let result = relay.publish(&sealed.wrap, &random.wrapper);
+            // The public record follows the private report, never alone.
+            let published = result.is_ok() && relay.publish(&sealed.public, &world).is_ok();
             let mut inner = lock(&inner);
             let place = inner.log.position();
             if let Some(saved) = inner.saved.iter_mut().find(|s| s.digest == digest) {
@@ -661,6 +713,10 @@ impl Playtest {
                         saved.status = Status::Sent;
                         saved.sent_at = Some(now());
                         saved.error = None;
+                        if published {
+                            saved.published = true;
+                            saved.public = None;
+                        }
                         // A sent report's body leaves the phone's store.
                         if let Some(store) = &store {
                             let _ = store.write(&body_key(&digest), &Option::<Report>::None);

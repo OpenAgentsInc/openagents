@@ -391,7 +391,12 @@ Status: implemented on iOS in build 16 (`74f2f90be0`), as described below,
 with the triage key still to be created (workspace `NEEDS_OWNER.md`); until
 then reports wait on the phone. Screenshots are cropped top and bottom and
 sent as a small JPEG; reports read on the triage side with
-`openagents playtest inbox` ([triage](playtest-triage.md)).
+`openagents playtest inbox` ([triage](playtest-triage.md)). When a report is
+sent, the app also publishes its public, content-free NIP-XP playtest record
+(kind `3197`: the build, platform, kind, and the private report's digest,
+signed by the same world key), which a playtest award cites
+([#9904](https://github.com/OpenAgentsInc/openagents/issues/9904)); the form
+says so, and **My reports** marks it once a relay accepts it.
 
 A **Report** action that files a structured report, signed by the tester's
 key and sent privately:

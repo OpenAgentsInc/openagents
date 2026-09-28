@@ -328,7 +328,7 @@ struct MyReportsScreen: View {
                             .foregroundStyle(row.status == "sent" ? .secondary : Color.yellow)
                     }
                     Text(row.summary).font(.subheadline).lineLimit(2)
-                    Text("\(row.kind_label) · \(row.place) · \(row.build)\(row.screenshot ? " · screenshot" : "")\(row.session ? " · session log" : "")")
+                    Text("\(row.kind_label) · \(row.place) · \(row.build)\(row.screenshot ? " · screenshot" : "")\(row.session ? " · session log" : "")\(row.published == true ? " · public record" : "")")
                         .font(.caption).foregroundStyle(.secondary)
                     if let error = row.error {
                         Text(error).font(.caption).foregroundStyle(.red)

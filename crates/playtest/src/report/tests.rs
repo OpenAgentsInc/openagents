@@ -188,3 +188,34 @@ fn a_message_without_the_marker_is_not_a_report() {
 fn the_code_is_the_rumor_prefix_in_capitals() {
     assert_eq!(code("1a2b3c4d5e6f"), "PT-1A2B3C4D");
 }
+
+#[test]
+fn the_public_record_commits_to_the_opened_report_and_holds_no_text() {
+    let tester = key(3);
+    let triage = key(4);
+    let mut filed = report(Tab::Verse, Route::Gym);
+    filed.kind = Kind::FeltGood;
+    filed.context.platform = Platform::Android;
+    let sealed = wrap(&filed, &tester, &public(&triage), &random()).expect("sealed");
+    let opened = open(&sealed.wrap, &triage).expect("opened");
+
+    let record = nostr::xp::playtest::parse_playtest_report(&sealed.public).expect("a valid 3197");
+    assert_eq!(sealed.public.kind, nostr::kinds::XP_PLAYTEST_REPORT);
+    assert_eq!(sealed.public.pubkey, opened.tester);
+    assert_eq!(record.digest, opened.digest);
+    assert_eq!(record.digest, sealed.digest);
+    assert_eq!(record.build, "1.0.0 (15)");
+    assert_eq!(record.platform, "android");
+    assert_eq!(record.kind, "felt-good");
+    assert_eq!(record.script, None);
+    assert_eq!(sealed.public.created_at, filed.context.at);
+    for words in [
+        &filed.happened,
+        &filed.expected,
+        &filed.steps,
+        &filed.context.device,
+    ] {
+        assert!(!sealed.public.content.contains(words.as_str()));
+    }
+    assert!(!sealed.public.content.contains(&public(&triage).to_string()));
+}
