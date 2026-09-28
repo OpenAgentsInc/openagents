@@ -11,10 +11,12 @@ use ldk_node::bitcoin::secp256k1::PublicKey;
 use ldk_node::lightning::ln::msgs::SocketAddress;
 use ldk_node::lightning::routing::router::RouteParametersConfig;
 use ldk_node::lightning_invoice::{Bolt11Invoice, Bolt11InvoiceDescription, Sha256};
+use ldk_node::lightning_liquidity::lsps1::msgs::LSPS1OrderId;
+use ldk_node::liquidity::LSPS1OrderStatus;
 use ldk_node::payment::{PaymentDetails, PaymentDirection as LdkDirection, PaymentKind};
 use ldk_node::{Builder, Event, Node};
 
-use crate::config::{STORE_DIR, WalletConfig};
+use crate::config::{LspProtocol, STORE_DIR, WalletConfig};
 use crate::model::{
     Balance, Channel, IssuedInvoice, PaymentDirection, PaymentRecord, PaymentStatus, Proof,
     WalletError,
@@ -63,11 +65,15 @@ impl LdkWallet {
                 .map_err(|error| WalletError::Setup(format!("listen: {error}")))?;
         }
         if let Some(lsp) = &config.lsp {
-            builder.set_liquidity_source_lsps2(
-                pubkey(&lsp.node_id)?,
-                socket(&lsp.address)?,
-                lsp.token.clone(),
-            );
+            let (node_id, address) = (pubkey(&lsp.node_id)?, socket(&lsp.address)?);
+            match lsp.protocol {
+                LspProtocol::Lsps1 => {
+                    builder.set_liquidity_source_lsps1(node_id, address, lsp.token.clone());
+                }
+                LspProtocol::Lsps2 => {
+                    builder.set_liquidity_source_lsps2(node_id, address, lsp.token.clone());
+                }
+            }
         }
         let node = builder
             .build()
@@ -78,6 +84,57 @@ impl LdkWallet {
             node,
             network: config.network,
         })
+    }
+
+    /// Order an inbound channel from the configured LSPS1 provider: the LSP
+    /// funds `lsp_balance_sat` on its side, `client_balance_sat` is pushed
+    /// to us, and the channel stays open for `channel_expiry_blocks`. The
+    /// order quotes a fee payable by Lightning or on chain; the channel
+    /// opens once that is paid.
+    pub fn buy_channel(
+        &self,
+        lsp_balance_sat: u64,
+        client_balance_sat: u64,
+        channel_expiry_blocks: u32,
+        announce: bool,
+    ) -> Result<serde_json::Value, WalletError> {
+        let status = self
+            .node
+            .lsps1_liquidity()
+            .request_channel(
+                lsp_balance_sat,
+                client_balance_sat,
+                channel_expiry_blocks,
+                announce,
+            )
+            .map_err(|error| WalletError::Node(format!("lsps1 order: {error}")))?;
+        Ok(describe_order(&status))
+    }
+
+    /// The current state of an LSPS1 order, by its id.
+    pub fn channel_order(&self, order_id: &str) -> Result<serde_json::Value, WalletError> {
+        let status = self
+            .node
+            .lsps1_liquidity()
+            .check_order_status(LSPS1OrderId(order_id.to_owned()))
+            .map_err(|error| WalletError::Node(format!("lsps1 order {order_id}: {error}")))?;
+        Ok(describe_order(&status))
+    }
+
+    /// Send `amount_sats` from the on-chain wallet to `address`; returns the
+    /// transaction id.
+    pub fn send_onchain(&self, address: &str, amount_sats: u64) -> Result<String, WalletError> {
+        let address = ldk_node::bitcoin::Address::from_str(address)
+            .map_err(|error| WalletError::Invalid(format!("address: {error}")))?
+            .require_network(network(self.network))
+            .map_err(|_| {
+                WalletError::Invalid(format!("address is not for {}", self.network.as_str()))
+            })?;
+        self.node
+            .onchain_payment()
+            .send_to_address(&address, amount_sats, None)
+            .map(|txid| txid.to_string())
+            .map_err(|error| WalletError::Node(format!("onchain send: {error}")))
     }
 
     pub fn stop(&self) -> Result<(), WalletError> {
@@ -361,6 +418,47 @@ fn unix_now() -> Duration {
         .unwrap_or_default()
 }
 
+fn describe_order(status: &LSPS1OrderStatus) -> serde_json::Value {
+    let bolt11 = status.payment_options.bolt11.as_ref().map(|pay| {
+        serde_json::json!({
+            "state": format!("{:?}", pay.state).to_lowercase(),
+            "expires_at": pay.expires_at.to_rfc3339(),
+            "fee_total_sat": pay.fee_total_sat,
+            "order_total_sat": pay.order_total_sat,
+            "invoice": pay.invoice.to_string(),
+        })
+    });
+    let onchain = status.payment_options.onchain.as_ref().map(|pay| {
+        serde_json::json!({
+            "state": format!("{:?}", pay.state).to_lowercase(),
+            "expires_at": pay.expires_at.to_rfc3339(),
+            "fee_total_sat": pay.fee_total_sat,
+            "order_total_sat": pay.order_total_sat,
+            "address": pay.address.to_string(),
+            "min_onchain_payment_confirmations": pay.min_onchain_payment_confirmations,
+        })
+    });
+    let channel = status.channel_state.as_ref().map(|channel| {
+        serde_json::json!({
+            "funded_at": channel.funded_at.to_rfc3339(),
+            "funding_outpoint": channel.funding_outpoint.to_string(),
+            "expires_at": channel.expires_at.to_rfc3339(),
+        })
+    });
+    serde_json::json!({
+        "order_id": status.order_id.0,
+        "lsp_balance_sat": status.order_params.lsp_balance_sat,
+        "client_balance_sat": status.order_params.client_balance_sat,
+        "required_channel_confirmations": status.order_params.required_channel_confirmations,
+        "funding_confirms_within_blocks": status.order_params.funding_confirms_within_blocks,
+        "channel_expiry_blocks": status.order_params.channel_expiry_blocks,
+        "announce_channel": status.order_params.announce_channel,
+        "bolt11": bolt11,
+        "onchain": onchain,
+        "channel": channel,
+    })
+}
+
 fn network(network: crate::config::Network) -> ldk_node::bitcoin::Network {
     use crate::config::Network as N;
     match network {
@@ -520,6 +618,30 @@ fn describe(event: &Event) -> serde_json::Value {
 impl crate::resident::Served for LdkWallet {
     fn status(&self) -> serde_json::Value {
         LdkWallet::status(self)
+    }
+
+    fn buy_channel(
+        &self,
+        lsp_balance_sat: u64,
+        client_balance_sat: u64,
+        channel_expiry_blocks: u32,
+        announce: bool,
+    ) -> Result<serde_json::Value, WalletError> {
+        LdkWallet::buy_channel(
+            self,
+            lsp_balance_sat,
+            client_balance_sat,
+            channel_expiry_blocks,
+            announce,
+        )
+    }
+
+    fn channel_order(&self, order_id: &str) -> Result<serde_json::Value, WalletError> {
+        LdkWallet::channel_order(self, order_id)
+    }
+
+    fn send_onchain(&self, address: &str, amount_sats: u64) -> Result<String, WalletError> {
+        LdkWallet::send_onchain(self, address, amount_sats)
     }
 }
 

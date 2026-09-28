@@ -32,6 +32,43 @@ impl Opened {
     }
 
     /// Stop a node this process opened; a resident keeps running.
+    pub fn buy_channel(
+        &self,
+        lsp_balance_sat: u64,
+        client_balance_sat: u64,
+        channel_expiry_blocks: u32,
+        announce: bool,
+    ) -> Result<serde_json::Value, WalletError> {
+        match self {
+            Self::Resident(wallet) => wallet.buy_channel(
+                lsp_balance_sat,
+                client_balance_sat,
+                channel_expiry_blocks,
+                announce,
+            ),
+            Self::Local(wallet) => wallet.buy_channel(
+                lsp_balance_sat,
+                client_balance_sat,
+                channel_expiry_blocks,
+                announce,
+            ),
+        }
+    }
+
+    pub fn channel_order(&self, order_id: &str) -> Result<serde_json::Value, WalletError> {
+        match self {
+            Self::Resident(wallet) => wallet.channel_order(order_id),
+            Self::Local(wallet) => wallet.channel_order(order_id),
+        }
+    }
+
+    pub fn send_onchain(&self, address: &str, amount_sats: u64) -> Result<String, WalletError> {
+        match self {
+            Self::Resident(wallet) => wallet.send_onchain(address, amount_sats),
+            Self::Local(wallet) => wallet.send_onchain(address, amount_sats),
+        }
+    }
+
     pub fn stop(&self) -> Result<(), WalletError> {
         match self {
             Self::Resident(_) => Ok(()),

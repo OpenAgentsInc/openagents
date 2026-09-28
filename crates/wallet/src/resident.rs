@@ -54,6 +54,19 @@ pub enum Request {
         amount_sats: u64,
         announce: bool,
     },
+    BuyChannel {
+        lsp_balance_sat: u64,
+        client_balance_sat: u64,
+        channel_expiry_blocks: u32,
+        announce: bool,
+    },
+    ChannelOrder {
+        order_id: String,
+    },
+    SendOnchain {
+        address: String,
+        amount_sats: u64,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -90,6 +103,15 @@ fn io_error(context: &str, error: std::io::Error) -> WalletError {
 /// What the resident needs from the node beyond `LightningWallet`.
 pub trait Served: LightningWallet {
     fn status(&self) -> serde_json::Value;
+    fn buy_channel(
+        &self,
+        lsp_balance_sat: u64,
+        client_balance_sat: u64,
+        channel_expiry_blocks: u32,
+        announce: bool,
+    ) -> Result<serde_json::Value, WalletError>;
+    fn channel_order(&self, order_id: &str) -> Result<serde_json::Value, WalletError>;
+    fn send_onchain(&self, address: &str, amount_sats: u64) -> Result<String, WalletError>;
 }
 
 /// The serving side: owns the socket and answers until `stop` is set.
@@ -226,6 +248,24 @@ fn handle<W: Served>(
             amount_sats,
             announce,
         )?)),
+        Request::BuyChannel {
+            lsp_balance_sat,
+            client_balance_sat,
+            channel_expiry_blocks,
+            announce,
+        } => wallet.buy_channel(
+            lsp_balance_sat,
+            client_balance_sat,
+            channel_expiry_blocks,
+            announce,
+        ),
+        Request::ChannelOrder { order_id } => wallet.channel_order(&order_id),
+        Request::SendOnchain {
+            address,
+            amount_sats,
+        } => Ok(serde_json::Value::String(
+            wallet.send_onchain(&address, amount_sats)?,
+        )),
     }
 }
 
@@ -254,6 +294,47 @@ impl RemoteWallet {
 
     pub fn path(&self) -> &Path {
         &self.path
+    }
+
+    pub fn buy_channel(
+        &self,
+        lsp_balance_sat: u64,
+        client_balance_sat: u64,
+        channel_expiry_blocks: u32,
+        announce: bool,
+    ) -> Result<serde_json::Value, WalletError> {
+        self.call(
+            &Request::BuyChannel {
+                lsp_balance_sat,
+                client_balance_sat,
+                channel_expiry_blocks,
+                announce,
+            },
+            REPLY_WAIT,
+        )
+    }
+
+    pub fn channel_order(&self, order_id: &str) -> Result<serde_json::Value, WalletError> {
+        self.call(
+            &Request::ChannelOrder {
+                order_id: order_id.to_owned(),
+            },
+            REPLY_WAIT,
+        )
+    }
+
+    pub fn send_onchain(&self, address: &str, amount_sats: u64) -> Result<String, WalletError> {
+        let value = self.call(
+            &Request::SendOnchain {
+                address: address.to_owned(),
+                amount_sats,
+            },
+            REPLY_WAIT,
+        )?;
+        value
+            .as_str()
+            .map(str::to_owned)
+            .ok_or_else(|| WalletError::Node("resident returned no txid".to_string()))
     }
 
     /// The resident's account of itself and its node.
@@ -442,6 +523,30 @@ mod tests {
         fn status(&self) -> serde_json::Value {
             serde_json::json!({ "running": true })
         }
+
+        fn buy_channel(
+            &self,
+            lsp_balance_sat: u64,
+            client_balance_sat: u64,
+            channel_expiry_blocks: u32,
+            announce: bool,
+        ) -> Result<serde_json::Value, WalletError> {
+            Ok(serde_json::json!({
+                "order_id": "order-1",
+                "lsp_balance_sat": lsp_balance_sat,
+                "client_balance_sat": client_balance_sat,
+                "channel_expiry_blocks": channel_expiry_blocks,
+                "announce_channel": announce,
+            }))
+        }
+
+        fn channel_order(&self, order_id: &str) -> Result<serde_json::Value, WalletError> {
+            Ok(serde_json::json!({ "order_id": order_id, "channel": null }))
+        }
+
+        fn send_onchain(&self, address: &str, amount_sats: u64) -> Result<String, WalletError> {
+            Ok(format!("txid:{address}:{amount_sats}"))
+        }
     }
 
     fn temp_home(tag: &str) -> PathBuf {
@@ -472,6 +577,14 @@ mod tests {
             remote.open_channel("03ab", "h:1", 5, false).unwrap(),
             "channel-to-03ab"
         );
+        let order = remote.buy_channel(100_000, 0, 13_000, false).unwrap();
+        assert_eq!(order["order_id"], "order-1");
+        assert_eq!(order["lsp_balance_sat"], 100_000);
+        assert_eq!(
+            remote.channel_order("order-1").unwrap()["order_id"],
+            "order-1"
+        );
+        assert_eq!(remote.send_onchain("tb1qx", 7).unwrap(), "txid:tb1qx:7");
         let status = remote.status().unwrap();
         assert_eq!(status.pid, std::process::id());
         assert_eq!(status.node["running"], true);

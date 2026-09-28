@@ -16,9 +16,15 @@ use crate::{Args, Output};
 
 const USAGE: &str = "usage: openagents wallet COMMAND [OPTIONS]
   init [--network NET] [--esplora URL] [--listen HOST:PORT]
-       [--lsp NODE_ID@HOST:PORT [--lsp-token TOKEN]] [--trust NODE_ID]...
+       [--lsp NODE_ID@HOST:PORT|olympus [--lsp-protocol lsps1|lsps2]
+        [--lsp-token TOKEN]] [--trust NODE_ID]...
                           Write config.json and a seed. NET is bitcoin,
                           testnet, signet, or regtest (default signet).
+                          --lsp olympus picks the Olympus (ZEUS) LSPS1
+                          peer for the network; a peer given by hand is
+                          LSPS2 (just-in-time) unless --lsp-protocol says
+                          lsps1. LSPS1 keeps this node the invoice signer,
+                          which x402 requires of payTo.
                           --trust lets that peer open anchor channels here
                           without an on-chain reserve (your own nodes).
                           Running init again keeps the seed.
@@ -31,6 +37,16 @@ const USAGE: &str = "usage: openagents wallet COMMAND [OPTIONS]
                           broadcast (state `pending`), up to --wait
                           (default 60).
   channel list            List channels with capacity and readiness.
+  channel buy --lsp-sats N [--our-sats N] [--expiry-blocks N] [--announce]
+              [--pay lightning|onchain]
+                          Order an inbound channel from the LSPS1 provider
+                          set by init. Prints the order with its fee and
+                          the BOLT11 and on-chain ways to pay it; --pay
+                          settles from this wallet right away. Default
+                          --expiry-blocks 13000 (about 90 days).
+  channel order ORDER_ID  The LSP's current state of an order; `channel`
+                          is set once the LSP has funded it.
+  send ADDRESS --sats N   Send on-chain from the wallet's balance.
   invoice --msat N --request-hash HEX64 [--expiry SECONDS]
                           Issue an exact-amount BOLT11 whose description
                           hash is the request hash (x402 receiver).
@@ -85,6 +101,7 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
             )
         }),
         "channel" => channel(&args).map(|v| (v, render_json as _)),
+        "send" => send(&args).map(|v| (v, render_json as _)),
         "invoice" => invoice(&args).map(|v| {
             (
                 v,
@@ -175,8 +192,17 @@ fn init(args: &Args) -> Result<Value, Failure> {
         .option("listen")
         .map(str::to_owned)
         .or(existing.as_ref().and_then(|c| c.listen.clone()));
+    let lsp_protocol = args
+        .option("lsp-protocol")
+        .map(config::LspProtocol::parse)
+        .transpose()?;
     wallet_config.lsp = match args.option("lsp") {
-        Some(text) => Some(config::Lsp::parse(text, args.option("lsp-token"))?),
+        Some(text) => Some(config::Lsp::parse_or_preset(
+            text,
+            args.option("lsp-token"),
+            lsp_protocol,
+            network,
+        )?),
         None => existing.as_ref().and_then(|c| c.lsp.clone()),
     };
     let trusted = args.options("trust");
@@ -340,8 +366,87 @@ fn channel(args: &Args) -> Result<Value, Failure> {
                 }))
             })
         }
-        _ => Err("channel needs `open` or `list`".to_string().into()),
+        Some("buy") => {
+            let lsp_sats: u64 = args.number("lsp-sats", 0)?;
+            if lsp_sats == 0 {
+                return Err("channel buy needs --lsp-sats N".to_string().into());
+            }
+            let our_sats: u64 = args.number("our-sats", 0)?;
+            let expiry_blocks: u32 = args.number("expiry-blocks", 13_000)?;
+            let announce = args.switch("announce");
+            let pay_with = match args.option("pay") {
+                None => None,
+                Some("lightning") => Some("lightning"),
+                Some("onchain") => Some("onchain"),
+                Some(other) => {
+                    return Err(format!("--pay must be lightning or onchain, not `{other}`").into());
+                }
+            };
+            with_node(|wallet| {
+                let mut order = wallet.buy_channel(lsp_sats, our_sats, expiry_blocks, announce)?;
+                order["paid"] = match pay_with {
+                    None => Value::Null,
+                    Some("lightning") => {
+                        let bolt11 = order["bolt11"]["invoice"]
+                            .as_str()
+                            .ok_or_else(|| {
+                                WalletError::Node("the order has no BOLT11 to pay".to_string())
+                            })?
+                            .to_owned();
+                        let fee_total_sat = order["bolt11"]["fee_total_sat"].as_u64().unwrap_or(0);
+                        let proof = wallet.pay(
+                            &bolt11,
+                            fee_total_sat.saturating_mul(10).max(1_000),
+                            Duration::from_secs(60),
+                        )?;
+                        json!({ "via": "lightning", "proof": proof })
+                    }
+                    Some(_) => {
+                        let address = order["onchain"]["address"]
+                            .as_str()
+                            .ok_or_else(|| {
+                                WalletError::Node("the order has no on-chain address".to_string())
+                            })?
+                            .to_owned();
+                        let total =
+                            order["onchain"]["order_total_sat"]
+                                .as_u64()
+                                .ok_or_else(|| {
+                                    WalletError::Node("the order has no on-chain total".to_string())
+                                })?;
+                        let txid = wallet.send_onchain(&address, total)?;
+                        json!({ "via": "onchain", "txid": txid, "sats": total })
+                    }
+                };
+                Ok(order)
+            })
+        }
+        Some("order") => {
+            let order_id = positional
+                .get(1)
+                .ok_or_else(|| "channel order needs ORDER_ID".to_string())?;
+            with_node(|wallet| Ok(wallet.channel_order(order_id)?))
+        }
+        _ => Err("channel needs `open`, `list`, `buy`, or `order`"
+            .to_string()
+            .into()),
     }
+}
+
+fn send(args: &Args) -> Result<Value, Failure> {
+    let address = args
+        .positional()
+        .first()
+        .cloned()
+        .ok_or_else(|| "send needs ADDRESS".to_string())?;
+    let sats: u64 = args.number("sats", 0)?;
+    if sats == 0 {
+        return Err("send needs --sats N".to_string().into());
+    }
+    with_node(|wallet| {
+        let txid = wallet.send_onchain(&address, sats)?;
+        Ok(json!({ "txid": txid, "address": address, "sats": sats }))
+    })
 }
 
 fn invoice(args: &Args) -> Result<Value, Failure> {
