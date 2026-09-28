@@ -99,6 +99,11 @@ pub struct Lsp {
     pub token: Option<String>,
     #[serde(default)]
     pub protocol: LspProtocol,
+    /// The smallest payment the LSP forwards to this node, in msat, where
+    /// the LSP publishes one. An x402 provider refuses to serve tolls below
+    /// it, since buyers could never settle them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_payment_msat: Option<u64>,
 }
 
 /// Olympus by ZEUS, LSPS1 endpoints from <https://docs.zeusln.app/lsp/api/lsps1/>.
@@ -168,6 +173,7 @@ impl Lsp {
             address: address.to_string(),
             token: token.map(str::to_string),
             protocol,
+            min_payment_msat: None,
         })
     }
 }

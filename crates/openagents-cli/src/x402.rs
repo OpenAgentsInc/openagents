@@ -17,6 +17,9 @@ use openagents_x402::mcp::{
     BOUND_METADATA, Gate, PAYMENT_RESPONSE_META, PaidTools, payment_required_from_result,
     with_payment,
 };
+use openagents_x402::policy::{
+    Ceiling, DAY_SECS, Entry, Flags, LEDGER_FILE, Ledger, Limits, POLICY_FILE, Policy,
+};
 use openagents_x402::server::{Executor, Receiver, Resource};
 use openagents_x402::{
     FileReplayStore, PAYMENT_REQUIRED, PAYMENT_RESPONSE, PAYMENT_SIGNATURE, PaymentPayload,
@@ -30,7 +33,7 @@ use crate::relay::{Client, relay_url, signer_for};
 use crate::{Args, Output};
 
 const USAGE: &str = "usage: openagents x402 COMMAND [OPTIONS]
-  serve --url PUBLIC_URL --msat N [--listen HOST:PORT] [--timeout SECONDS]
+  serve --url PUBLIC_URL --msat N [--listen HOST:PORT] [--expiry SECONDS]
         [--mime TYPE] [--seconds N] -- CMD [ARGS...]
                           Sell CMD at PUBLIC_URL for exactly N msat per call
                           (x402 exact/lnbtc, http:1). A request without
@@ -38,14 +41,14 @@ const USAGE: &str = "usage: openagents x402 COMMAND [OPTIONS]
                           the method, URL, and body; a paid request runs CMD
                           with the body on stdin and returns stdout. Each
                           invoice settles once; a replay is duplicate_settlement.
-  fetch URL [--method M] [--body FILE|-] --max-msat N [--max-fee-msat F]
+  fetch URL [--method M] [--body FILE|-] [--max-msat N] [--max-fee-msat F]
         [--wait SECONDS] [--cap PUBKEY:SLUG] [--relay URL] [--show-proof]
                           Buy one call: read the 402, check the invoice against
-                          this request, refuse above --max-msat, pay from the
+                          this request, refuse above the ceiling, pay from the
                           wallet, retry with the preimage, print the body. With
                           --cap, resolve that NIP-CAP head first and refuse a
                           challenge whose payTo or URL it does not advertise.
-  mcp-serve --server URI --msat N [--tool GROUP]... [--timeout SECONDS]
+  mcp-serve --server URI --msat N [--tool GROUP]... [--expiry SECONDS]
                           Serve `openagents mcp serve` over stdio with a toll
                           (x402 exact/lnbtc, mcp:1): a tools/call without
                           _meta[\"x402/payment\"] gets an error result carrying
@@ -54,18 +57,18 @@ const USAGE: &str = "usage: openagents x402 COMMAND [OPTIONS]
                           returns its result with _meta[\"x402/payment-response\"].
                           --tool narrows the served groups. URI is the name
                           the buyer must bind to; it is not connected to.
-  call TOOL [--arg WORD]... --max-msat N [--max-fee-msat F] [--wait SECONDS]
+  call TOOL [--arg WORD]... [--max-msat N] [--max-fee-msat F] [--wait SECONDS]
         [--server URI] [--cap PUBKEY:SLUG] [--relay URL] [--show-proof]
         -- CMD [ARGS...]
                           Buy one tools/call: start CMD as a stdio MCP server,
                           call TOOL with {\"args\": [WORD...]}, check the
                           challenge's invoice against this call and URI, refuse
-                          above --max-msat, pay from the wallet, retry with the
+                          above the ceiling, pay from the wallet, retry with the
                           proof, print the result. With --cap, URI defaults to
                           the advertised endpoint and the payTo must be one it
                           advertises.
-  native-serve --slug SLUG --msat N [--timeout SECONDS] [--seconds N]
-        [--as PROFILE] [--relay URL] -- CMD [ARGS...]
+  native-serve --slug SLUG --msat N [--expiry SECONDS] [--per-buyer N]
+        [--seconds N] [--as PROFILE] [--relay URL] -- CMD [ARGS...]
                           Sell CMD over the relay (x402 exact/lnbtc,
                           nostr:openagents:1): every record is a private kind
                           3188 artifact sealed to the other party. A request
@@ -74,12 +77,13 @@ const USAGE: &str = "usage: openagents x402 COMMAND [OPTIONS]
                           bytes; a valid claim settles once, then CMD runs with
                           the input on stdin and its stdout is sealed back with
                           a status chain (offered, claim_pending, admitted,
-                          running, completed or failed).
-  buy PROVIDER --slug SLUG [--input FILE|-] --max-msat N [--max-fee-msat F]
+                          running, completed or failed). --per-buyer refuses a
+                          buyer's Nth+1 request in a rolling hour (rate_limited).
+  buy PROVIDER --slug SLUG [--input FILE|-] [--max-msat N] [--max-fee-msat F]
         [--wait SECONDS] [--as PROFILE] [--relay URL] [--show-proof]
                           Buy one run: resolve PROVIDER:SLUG on the relay, seal
                           the input and a request to PROVIDER, check the
-                          challenge against them, refuse above --max-msat, pay
+                          challenge against them, refuse above the ceiling, pay
                           from the wallet, seal the claim, follow the status
                           chain, print the output. A run that does not end
                           within --wait leaves the purchase for `status`; it
@@ -97,9 +101,29 @@ const USAGE: &str = "usage: openagents x402 COMMAND [OPTIONS]
                           server URI), or nostr:openagents:1 answered by this
                           key on --relays (default: --relay), with recovery
                           native-record-v1.
-Replay records live in ~/.openagents/x402/replay and native purchases in
-~/.openagents/x402/native. The preimage is printed only with --show-proof.
-Add --json before `x402` for one JSON document.";
+  policy [show]           Print the buyer policy and where it lives.
+  policy set [--max-msat N|-] [--max-fee-msat F|-] [--daily-cap-msat N|-]
+        [--provider NODE_ID | --cap PUBKEY:SLUG]
+                          Set the default ceiling, or the ceiling for one
+                          provider node (payTo) or one capability; `-` clears
+                          a field. --daily-cap-msat applies to the whole wallet.
+  policy allow NODE_ID... / policy deny NODE_ID...
+                          Add to or remove from the provider allowlist. An
+                          empty list admits every provider.
+  ledger [--since SECONDS] [--binding B] [--provider NODE_ID]
+                          List what this buyer paid across http:1, mcp:1, and
+                          nostr:openagents:1: when, provider, resource, amount,
+                          fee, payment hash, and how the call ended, plus the
+                          total; --since limits to the last N seconds.
+The buyer ceiling for a call is --max-msat if given, else the policy's
+capability, provider, or default ceiling; with neither, the call is refused
+before anything is paid. The allowlist and the daily cap (amounts plus fees
+over the last 24 hours, from the ledger) hold whatever the flags say. Without
+--max-fee-msat the fee cap is the policy's, else 1% + 1000 msat.
+Replay records live in ~/.openagents/x402/replay, native purchases in
+~/.openagents/x402/native, the policy in ~/.openagents/x402/policy.json, and
+the ledger in ~/.openagents/x402/ledger.ndjson. The preimage is printed only
+with --show-proof. Add --json before `x402` for one JSON document.";
 
 const SWITCHES: &[&str] = &["show-proof", "dry-run"];
 
@@ -123,11 +147,13 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
         "buy" => crate::x402_native::buy(output, rest),
         "status" => crate::x402_native::status(output, rest),
         "advertise" => advertise(output, rest),
+        "policy" => policy(output, rest),
+        "ledger" => ledger(output, rest),
         other => output.usage("x402", &format!("unknown command `{other}`"), USAGE),
     }
 }
 
-pub(crate) fn replay_dir() -> PathBuf {
+pub(crate) fn x402_home() -> PathBuf {
     match std::env::var_os("OPENAGENTS_X402_HOME") {
         Some(home) => PathBuf::from(home),
         None => config::home()
@@ -135,7 +161,10 @@ pub(crate) fn replay_dir() -> PathBuf {
             .map(|p| p.join("x402"))
             .unwrap_or_else(|| PathBuf::from("x402")),
     }
-    .join("replay")
+}
+
+pub(crate) fn replay_dir() -> PathBuf {
+    x402_home().join("replay")
 }
 
 /// The resident node when `wallet serve` answers, else a node opened here.
@@ -225,8 +254,7 @@ fn serve(output: &Output, words: &[String]) -> u8 {
         Ok(msat) => msat,
         Err(message) => return output.usage("x402", &message, USAGE),
     };
-    let timeout: u32 = match args.number("timeout", 300) {
-        Ok(0) => return output.usage("x402", "--timeout must be positive", USAGE),
+    let timeout = match expiry(&args) {
         Ok(timeout) => timeout,
         Err(message) => return output.usage("x402", &message, USAGE),
     };
@@ -258,6 +286,10 @@ fn serve(output: &Output, words: &[String]) -> u8 {
             ),
         );
     };
+    if let Err(message) = toll_floor(&wallet_config, msat) {
+        let _ = wallet.stop();
+        return output.fail("x402", &message);
+    }
     let store = match FileReplayStore::open(&replay_dir()) {
         Ok(store) => store,
         Err(error) => {
@@ -366,13 +398,8 @@ fn fetch(output: &Output, words: &[String]) -> u8 {
             Err(error) => return output.fail("x402", &format!("read {path}: {error}")),
         },
     };
-    let max_msat: u64 = match args.number("max-msat", 0) {
-        Ok(0) => return output.usage("x402", "fetch needs --max-msat N (positive)", USAGE),
-        Ok(max) => max,
-        Err(message) => return output.usage("x402", &message, USAGE),
-    };
-    let max_fee: u64 = match args.number("max-fee-msat", 0) {
-        Ok(fee) => fee,
+    let flags = match flags(&args).and_then(|flags| ceiling_present(flags).map(|()| flags)) {
+        Ok(flags) => flags,
         Err(message) => return output.usage("x402", &message, USAGE),
     };
     let wait: u64 = match args.number("wait", 60) {
@@ -479,10 +506,12 @@ fn fetch(output: &Output, words: &[String]) -> u8 {
         HTTP_ONLY,
         "http:1",
         descriptor.as_ref(),
-        Budget {
-            max_msat,
-            max_fee,
+        Spend {
+            flags,
+            capability: args.option("cap").map(str::to_owned),
             wait,
+            binding: "http:1",
+            resource: url.clone(),
         },
     ) {
         Ok(bought) => bought,
@@ -495,6 +524,7 @@ fn fetch(output: &Output, words: &[String]) -> u8 {
     let (status, headers, paid_body) = match send(Some(signature)) {
         Ok(reply) => reply,
         Err(error) => {
+            set_phase(&proof.payment_hash, "retry_failed");
             return output.fail(
                 "x402",
                 &format!(
@@ -515,11 +545,137 @@ fn fetch(output: &Output, words: &[String]) -> u8 {
     )
 }
 
-/// What the buyer will spend on one call.
-pub(crate) struct Budget {
-    pub(crate) max_msat: u64,
-    pub(crate) max_fee: u64,
+/// What the buyer is willing to spend on one call, before the policy is
+/// applied: the flags, the capability the call is for, the wait, and how
+/// the ledger names it.
+pub(crate) struct Spend {
+    pub(crate) flags: Flags,
+    pub(crate) capability: Option<String>,
     pub(crate) wait: u64,
+    pub(crate) binding: &'static str,
+    pub(crate) resource: String,
+}
+
+/// Read `--max-msat` and `--max-fee-msat`, both optional.
+pub(crate) fn flags(args: &Args) -> Result<Flags, String> {
+    let max_msat = match args.number::<u64>("max-msat", 0)? {
+        0 if args.option("max-msat").is_some() => {
+            return Err("--max-msat must be positive".into());
+        }
+        0 => None,
+        max => Some(max),
+    };
+    let max_fee_msat = args
+        .option("max-fee-msat")
+        .map(|_| args.number::<u64>("max-fee-msat", 0))
+        .transpose()?;
+    Ok(Flags {
+        max_msat,
+        max_fee_msat,
+    })
+}
+
+pub(crate) fn load_policy() -> Result<Option<Policy>, String> {
+    Policy::load(&x402_home().join(POLICY_FILE)).map_err(|error| error.to_string())
+}
+
+pub(crate) fn open_ledger() -> Ledger {
+    Ledger::open(&x402_home().join(LEDGER_FILE))
+}
+
+/// The ceilings for a call to `provider` (the invoice's `payTo`, when known)
+/// and `capability`, from the flags and the policy.
+pub(crate) fn limits(
+    policy: Option<&Policy>,
+    flags: Flags,
+    provider: Option<&str>,
+    capability: Option<&str>,
+) -> Result<Limits, String> {
+    Policy::limits(policy, flags, provider, capability).map_err(|error| error.to_string())
+}
+
+/// Refuse `amount_msat` to `provider` if the ceiling, the allowlist, or the
+/// daily cap says so. Nothing is paid on an error.
+pub(crate) fn admit(
+    policy: Option<&Policy>,
+    limits: Limits,
+    provider: &str,
+    amount_msat: u64,
+) -> Result<(), String> {
+    let spent = open_ledger()
+        .spent_since(openagents_x402::unix_now().saturating_sub(DAY_SECS))
+        .map_err(|error| error.to_string())?;
+    Policy::admit(policy, limits, provider, amount_msat, spent)
+        .map_err(|error| format!("{error}; nothing was paid"))
+}
+
+/// Write one payment to the ledger. A ledger error never undoes a payment,
+/// so it is reported on stderr and the call continues.
+pub(crate) fn record_payment(
+    spend: &Spend,
+    network: &str,
+    provider: &str,
+    proof: &openagents_wallet::Proof,
+    phase: &str,
+) {
+    let entry = Entry {
+        paid_at: openagents_x402::unix_now(),
+        binding: spend.binding.to_owned(),
+        network: network.to_owned(),
+        provider: provider.to_owned(),
+        capability: spend.capability.clone(),
+        resource: spend.resource.clone(),
+        amount_msat: proof.amount_msat,
+        fee_msat: proof.fee_msat,
+        payment_hash: proof.payment_hash.clone(),
+        phase: phase.to_owned(),
+    };
+    if let Err(error) = open_ledger().append(&entry) {
+        eprintln!("x402: ledger: {error}");
+    }
+}
+
+/// Refuse before any request goes out when neither a flag nor a policy
+/// file can bound the call.
+pub(crate) fn ceiling_present(flags: Flags) -> Result<(), String> {
+    if flags.max_msat.is_some() || x402_home().join(POLICY_FILE).is_file() {
+        return Ok(());
+    }
+    Err("no --max-msat and no policy; give --max-msat N or run `openagents x402 policy set --max-msat N`".into())
+}
+
+/// Refuse a toll the configured LSP would never forward.
+pub(crate) fn toll_floor(wallet_config: &WalletConfig, msat: u64) -> Result<(), String> {
+    match wallet_config
+        .lsp
+        .as_ref()
+        .and_then(|lsp| lsp.min_payment_msat)
+    {
+        Some(min) if msat < min => Err(format!(
+            "--msat {msat} is below the LSP's smallest forwarded payment, {min} msat; buyers could never settle it"
+        )),
+        _ => Ok(()),
+    }
+}
+
+/// Note how the call paid for by `payment_hash` ended.
+pub(crate) fn set_phase(payment_hash: &str, phase: &str) {
+    if let Err(error) = open_ledger().set_phase(payment_hash, phase) {
+        eprintln!("x402: ledger: {error}");
+    }
+}
+
+/// `--expiry SECONDS`, or its earlier name `--timeout`; default 300.
+pub(crate) fn expiry(args: &Args) -> Result<u32, String> {
+    let name = if args.option("expiry").is_some() {
+        "expiry"
+    } else {
+        "timeout"
+    };
+    match args.number::<u32>(name, 300)? {
+        0 => Err(format!("--{name} must be positive")),
+        seconds => Ok(seconds),
+    }
 }
 
 /// Pick the one requirement of `required` that is a valid exact/lnbtc
@@ -532,7 +688,7 @@ fn buy(
     profiles: SupportedProfiles,
     binding: &str,
     descriptor: Option<&(PaidCapability, String)>,
-    budget: Budget,
+    spend: Spend,
 ) -> Result<(PaymentPayload, openagents_wallet::Proof, u64), String> {
     let now = openagents_x402::unix_now();
     let Some((terms, invoice)) = required.accepts.iter().find_map(|terms| {
@@ -564,13 +720,19 @@ fn buy(
             return Err(format!("the named capability does not advertise {binding}"));
         }
     }
-    if invoice.amount_msat() > budget.max_msat {
-        return Err(format!(
-            "the resource costs {} msat, above --max-msat {}",
-            invoice.amount_msat(),
-            budget.max_msat
-        ));
-    }
+    let policy = load_policy()?;
+    let limits = limits(
+        policy.as_ref(),
+        spend.flags,
+        Some(&terms.pay_to),
+        spend.capability.as_deref(),
+    )?;
+    admit(
+        policy.as_ref(),
+        limits,
+        &terms.pay_to,
+        invoice.amount_msat(),
+    )?;
 
     let bolt11 = terms
         .extra
@@ -578,7 +740,8 @@ fn buy(
         .and_then(Value::as_str)
         .unwrap_or_default()
         .to_string();
-    let proof = pay_invoice(&bolt11, &terms.network, &budget)?;
+    let proof = pay_invoice(&bolt11, &terms.network, limits.max_fee_msat, spend.wait)?;
+    record_payment(&spend, &terms.network, &terms.pay_to, &proof, "paid");
 
     let mut payload = Map::new();
     payload.insert("preimage".into(), Value::String(proof.preimage.clone()));
@@ -601,7 +764,8 @@ fn buy(
 pub(crate) fn pay_invoice(
     bolt11: &str,
     network: &str,
-    budget: &Budget,
+    max_fee_msat: u64,
+    wait: u64,
 ) -> Result<openagents_wallet::Proof, String> {
     let (wallet, wallet_config) = open_wallet().map_err(|error| error.to_string())?;
     if network_id(wallet_config.network.as_str()) != Some(network) {
@@ -611,7 +775,7 @@ pub(crate) fn pay_invoice(
             wallet_config.network.as_str()
         ));
     }
-    let proof = wallet.pay(bolt11, budget.max_fee, Duration::from_secs(budget.wait));
+    let proof = wallet.pay(bolt11, max_fee_msat, Duration::from_secs(wait));
     let stopped = wallet.stop();
     let proof = match proof {
         Ok(proof) => proof,
@@ -654,8 +818,7 @@ fn mcp_serve(output: &Output, words: &[String]) -> u8 {
         Ok(msat) => msat,
         Err(message) => return output.usage("x402", &message, USAGE),
     };
-    let timeout: u32 = match args.number("timeout", 300) {
-        Ok(0) => return output.usage("x402", "--timeout must be positive", USAGE),
+    let timeout = match expiry(&args) {
         Ok(timeout) => timeout,
         Err(message) => return output.usage("x402", &message, USAGE),
     };
@@ -686,6 +849,10 @@ fn mcp_serve(output: &Output, words: &[String]) -> u8 {
             ),
         );
     };
+    if let Err(message) = toll_floor(&wallet_config, msat) {
+        let _ = wallet.stop();
+        return output.fail("x402", &message);
+    }
     let store = match FileReplayStore::open(&replay_dir()) {
         Ok(store) => store,
         Err(error) => {
@@ -840,13 +1007,8 @@ fn call(output: &Output, words: &[String]) -> u8 {
         return output.usage("x402", "call needs a TOOL", USAGE);
     };
     let tool_args: Vec<&str> = args.options("arg");
-    let max_msat: u64 = match args.number("max-msat", 0) {
-        Ok(0) => return output.usage("x402", "call needs --max-msat N (positive)", USAGE),
-        Ok(max) => max,
-        Err(message) => return output.usage("x402", &message, USAGE),
-    };
-    let max_fee: u64 = match args.number("max-fee-msat", 0) {
-        Ok(fee) => fee,
+    let flags = match flags(&args).and_then(|flags| ceiling_present(flags).map(|()| flags)) {
+        Ok(flags) => flags,
         Err(message) => return output.usage("x402", &message, USAGE),
     };
     let wait: u64 = match args.number("wait", 60) {
@@ -906,10 +1068,12 @@ fn call(output: &Output, words: &[String]) -> u8 {
         MCP_ONLY,
         "mcp:1",
         descriptor.as_ref(),
-        Budget {
-            max_msat,
-            max_fee,
+        Spend {
+            flags,
+            capability: args.option("cap").map(str::to_owned),
             wait,
+            binding: "mcp:1",
+            resource: format!("{server} {tool}"),
         },
     ) {
         Ok(bought) => bought,
@@ -943,6 +1107,12 @@ fn finish_call(
         .and_then(|meta| meta.get(PAYMENT_RESPONSE_META))
         .cloned();
     let is_error = result["isError"].as_bool().unwrap_or(false);
+    if let Some(proof) = proof {
+        set_phase(
+            &proof.payment_hash,
+            if is_error { "tool_error" } else { "completed" },
+        );
+    }
     let mut value = json!({
         "paid": proof.is_some(),
         "amount_msat": amount_msat,
@@ -1005,6 +1175,9 @@ fn finish(
         value["bolt11"] = Value::String(proof.bolt11.clone());
     }
     let ok = (200..300).contains(&status);
+    if let Some(proof) = proof {
+        set_phase(&proof.payment_hash, &format!("http_{status}"));
+    }
     if output.json() {
         println!("{value}");
     } else {
@@ -1022,6 +1195,185 @@ fn finish(
         }
     }
     if ok { 0 } else { crate::EXIT_FAILURE }
+}
+
+fn policy(output: &Output, words: &[String]) -> u8 {
+    let path = x402_home().join(POLICY_FILE);
+    let (verb, rest) = match words.first().map(String::as_str) {
+        None | Some("show") => ("show", &words[words.len().min(1)..]),
+        Some(verb) => (verb, &words[1..]),
+    };
+    let mut current = match Policy::load(&path) {
+        Ok(policy) => policy,
+        Err(error) => return output.fail("x402", &error.to_string()),
+    };
+    let show = |output: &Output, policy: Option<&Policy>, path: &std::path::Path| -> u8 {
+        let value = json!({
+            "path": path,
+            "present": policy.is_some(),
+            "policy": policy,
+        });
+        output.emit(&value, |value| match policy {
+            None => format!("no policy at {} (flags decide every call)", path.display()),
+            Some(_) => format!(
+                "{}\n{}",
+                path.display(),
+                serde_json::to_string_pretty(&value["policy"]).unwrap_or_default()
+            ),
+        });
+        0
+    };
+    match verb {
+        "show" => show(output, current.as_ref(), &path),
+        "set" => {
+            let args = match Args::parse(rest, &[]) {
+                Ok(args) => args,
+                Err(message) => return output.usage("x402", &message, USAGE),
+            };
+            let field = |name: &str| -> Result<Option<Option<u64>>, String> {
+                match args.option(name) {
+                    None => Ok(None),
+                    Some("-") => Ok(Some(None)),
+                    Some(text) => text
+                        .parse::<u64>()
+                        .map(|n| Some(Some(n)))
+                        .map_err(|_| format!("--{name} takes a number or `-`, not `{text}`")),
+                }
+            };
+            let (max_msat, max_fee_msat, daily) = match (
+                field("max-msat"),
+                field("max-fee-msat"),
+                field("daily-cap-msat"),
+            ) {
+                (Ok(a), Ok(b), Ok(c)) => (a, b, c),
+                (Err(m), _, _) | (_, Err(m), _) | (_, _, Err(m)) => {
+                    return output.usage("x402", &m, USAGE);
+                }
+            };
+            if max_msat.is_none() && max_fee_msat.is_none() && daily.is_none() {
+                return output.usage("x402", "policy set needs a field to set", USAGE);
+            }
+            let mut policy = current.take().unwrap_or_default();
+            if let Some(daily) = daily {
+                if args.option("provider").is_some() || args.option("cap").is_some() {
+                    return output.usage(
+                        "x402",
+                        "--daily-cap-msat applies to the whole wallet, not one provider or capability",
+                        USAGE,
+                    );
+                }
+                policy.daily_cap_msat = daily;
+            }
+            let apply = |ceiling: &mut Ceiling| {
+                if let Some(max) = max_msat {
+                    ceiling.max_msat = max;
+                }
+                if let Some(fee) = max_fee_msat {
+                    ceiling.max_fee_msat = fee;
+                }
+            };
+            match (args.option("provider"), args.option("cap")) {
+                (Some(_), Some(_)) => {
+                    return output.usage("x402", "name --provider or --cap, not both", USAGE);
+                }
+                (Some(provider), None) => {
+                    let entry = policy.providers.entry(provider.to_owned()).or_default();
+                    apply(entry);
+                    if *entry == Ceiling::default() {
+                        policy.providers.remove(provider);
+                    }
+                }
+                (None, Some(cap)) => {
+                    let entry = policy.capabilities.entry(cap.to_owned()).or_default();
+                    apply(entry);
+                    if *entry == Ceiling::default() {
+                        policy.capabilities.remove(cap);
+                    }
+                }
+                (None, None) => apply(&mut policy.default),
+            }
+            if let Err(error) = policy.save(&path) {
+                return output.fail("x402", &error.to_string());
+            }
+            show(output, Some(&policy), &path)
+        }
+        "allow" | "deny" => {
+            if rest.is_empty() {
+                return output.usage("x402", &format!("policy {verb} needs NODE_ID..."), USAGE);
+            }
+            let mut policy = current.take().unwrap_or_default();
+            for node in rest {
+                if verb == "allow" {
+                    if !policy.allow.contains(node) {
+                        policy.allow.push(node.clone());
+                    }
+                } else {
+                    policy.allow.retain(|n| n != node);
+                }
+            }
+            if let Err(error) = policy.save(&path) {
+                return output.fail("x402", &error.to_string());
+            }
+            show(output, Some(&policy), &path)
+        }
+        other => output.usage("x402", &format!("unknown policy command `{other}`"), USAGE),
+    }
+}
+
+fn ledger(output: &Output, words: &[String]) -> u8 {
+    let args = match Args::parse(words, &[]) {
+        Ok(args) => args,
+        Err(message) => return output.usage("x402", &message, USAGE),
+    };
+    let since: u64 = match args.number("since", 0) {
+        Ok(0) => 0,
+        Ok(seconds) => openagents_x402::unix_now().saturating_sub(seconds),
+        Err(message) => return output.usage("x402", &message, USAGE),
+    };
+    let ledger = open_ledger();
+    let entries: Vec<Entry> = match ledger.entries() {
+        Ok(entries) => entries
+            .into_iter()
+            .filter(|e| e.paid_at >= since)
+            .filter(|e| args.option("binding").is_none_or(|b| b == e.binding))
+            .filter(|e| args.option("provider").is_none_or(|p| p == e.provider))
+            .collect(),
+        Err(error) => return output.fail("x402", &error.to_string()),
+    };
+    let amount: u64 = entries.iter().map(|e| e.amount_msat).sum();
+    let fees: u64 = entries.iter().map(|e| e.fee_msat).sum();
+    let value = json!({
+        "path": ledger.path(),
+        "count": entries.len(),
+        "amount_msat": amount,
+        "fee_msat": fees,
+        "entries": entries,
+    });
+    output.emit(&value, |_| {
+        let mut lines: Vec<String> = entries
+            .iter()
+            .map(|e| {
+                format!(
+                    "{}  {:<19} {}  {:>10} msat +{:<6} {}  {}  {}",
+                    e.paid_at,
+                    e.binding,
+                    &e.provider[..e.provider.len().min(12)],
+                    e.amount_msat,
+                    e.fee_msat,
+                    &e.payment_hash[..e.payment_hash.len().min(12)],
+                    e.phase,
+                    e.resource
+                )
+            })
+            .collect();
+        lines.push(format!(
+            "{} payments, {amount} msat + {fees} msat fees ({})",
+            entries.len(),
+            ledger.path().display()
+        ));
+        lines.join("\n")
+    });
+    0
 }
 
 /// A refusal on the way to a paid capability: the caller's words, or the
@@ -1391,6 +1743,65 @@ fn resolve_descriptor(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn wallet_config(min_payment_msat: Option<u64>) -> WalletConfig {
+        let mut lsp = config::Lsp::parse(
+            &format!("{}@lsp.example:9735", "ab".repeat(33)),
+            None,
+            config::LspProtocol::Lsps1,
+        )
+        .unwrap();
+        lsp.min_payment_msat = min_payment_msat;
+        WalletConfig {
+            network: config::Network::Testnet,
+            esplora_url: String::new(),
+            listen: None,
+            lsp: Some(lsp),
+            trusted_peers: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn a_toll_below_the_lsp_minimum_is_refused() {
+        assert!(toll_floor(&wallet_config(Some(1_000)), 999).is_err());
+        assert_eq!(toll_floor(&wallet_config(Some(1_000)), 1_000), Ok(()));
+        assert_eq!(toll_floor(&wallet_config(None), 1), Ok(()));
+    }
+
+    #[test]
+    fn expiry_takes_the_new_flag_or_the_old_name_and_refuses_zero() {
+        let parse = |words: &[&str]| {
+            Args::parse(
+                &words.iter().map(|w| w.to_string()).collect::<Vec<_>>(),
+                &[],
+            )
+            .unwrap()
+        };
+        assert_eq!(expiry(&parse(&[])), Ok(300));
+        assert_eq!(expiry(&parse(&["--expiry", "60"])), Ok(60));
+        assert_eq!(expiry(&parse(&["--timeout", "45"])), Ok(45));
+        assert!(expiry(&parse(&["--expiry", "0"])).is_err());
+    }
+
+    #[test]
+    fn the_flags_refuse_a_zero_ceiling_and_pass_none_through() {
+        let parse = |words: &[&str]| {
+            Args::parse(
+                &words.iter().map(|w| w.to_string()).collect::<Vec<_>>(),
+                &[],
+            )
+            .unwrap()
+        };
+        assert_eq!(flags(&parse(&[])), Ok(Flags::default()));
+        assert_eq!(
+            flags(&parse(&["--max-msat", "5", "--max-fee-msat", "1"])),
+            Ok(Flags {
+                max_msat: Some(5),
+                max_fee_msat: Some(1),
+            })
+        );
+        assert!(flags(&parse(&["--max-msat", "0"])).is_err());
+    }
 
     #[test]
     fn the_advertised_definition_passes_the_cap_contract() {

@@ -24,7 +24,10 @@ use secp256k1::{SecretKey, XOnlyPublicKey};
 use serde_json::{Map, Value, json};
 
 use crate::relay::{Client, identity_for, relay_url, unix_now};
-use crate::x402::{Budget, Node, fail_wallet, open_wallet, pay_invoice, replay_dir};
+use crate::x402::{
+    Node, Spend, admit, ceiling_present, expiry, fail_wallet, flags, limits, load_policy,
+    open_wallet, pay_invoice, record_payment, replay_dir, set_phase, toll_floor,
+};
 use crate::{Args, Output};
 
 const SWITCHES: &[&str] = &["show-proof"];
@@ -225,9 +228,14 @@ pub fn serve(output: &Output, words: &[String]) -> u8 {
         Ok(0) | Err(_) => return usage(output, "native-serve needs --msat N (N > 0)"),
         Ok(n) => n,
     };
-    let timeout_secs = match args.number::<u32>("timeout", 300) {
-        Ok(n) if n > 0 => n,
-        _ => return usage(output, "--timeout takes seconds above zero"),
+    let timeout_secs = match expiry(&args) {
+        Ok(n) => n,
+        Err(message) => return usage(output, &message),
+    };
+    let per_buyer_hourly = match args.number::<u32>("per-buyer", 0) {
+        Ok(0) => None,
+        Ok(n) => Some(n),
+        Err(message) => return usage(output, &message),
     };
     let seconds = match args.number::<u64>("seconds", 0) {
         Ok(n) => n,
@@ -251,6 +259,10 @@ pub fn serve(output: &Output, words: &[String]) -> u8 {
             ),
         );
     };
+    if let Err(message) = toll_floor(&wallet_config, amount_msat) {
+        let _ = wallet.stop();
+        return output.fail("x402", &message);
+    }
     let wallet = Arc::new(wallet);
     let receiver = Node(wallet.clone());
     let facilitator = match FileReplayStore::open(&replay_dir()) {
@@ -272,6 +284,7 @@ pub fn serve(output: &Output, words: &[String]) -> u8 {
             amount_msat,
             timeout_secs,
             description: slug.to_owned(),
+            per_buyer_hourly,
         },
         receiver: &receiver,
         facilitator: &facilitator,
@@ -673,14 +686,24 @@ pub fn buy(output: &Output, words: &[String]) -> u8 {
     let Some(slug) = args.option("slug") else {
         return usage(output, "buy needs --slug SLUG");
     };
-    let max_msat = match args.number::<u64>("max-msat", 0) {
-        Ok(0) | Err(_) => return usage(output, "buy needs --max-msat N (N > 0)"),
-        Ok(n) => n,
-    };
-    let max_fee = match args.number::<u64>("max-fee-msat", max_msat / 100 + 1_000) {
-        Ok(n) => n,
+    let flags = match flags(&args).and_then(|flags| ceiling_present(flags).map(|()| flags)) {
+        Ok(flags) => flags,
         Err(message) => return usage(output, &message),
     };
+    // The provider's node key is not known until its challenge arrives, so
+    // the request carries the capability's (or default) ceiling; the
+    // provider-specific one is applied to the challenge before paying.
+    let policy = match load_policy() {
+        Ok(policy) => policy,
+        Err(message) => return output.fail("x402", &message),
+    };
+    let expected_capability = format!("{provider}:x402/{slug}");
+    let request_limits = match limits(policy.as_ref(), flags, None, Some(&expected_capability)) {
+        Ok(limits) => limits,
+        Err(message) => return output.fail("x402", &message),
+    };
+    let max_msat = request_limits.max_msat;
+    let max_fee = request_limits.max_fee_msat;
     let wait = match args.number::<u64>("wait", 120) {
         Ok(n) if n > 0 => n,
         _ => return usage(output, "--wait takes seconds above zero"),
@@ -877,34 +900,58 @@ pub fn buy(output: &Output, words: &[String]) -> u8 {
             "the challenge's payTo is not a receiver the capability advertises",
         );
     }
-    if terms.amount_msat > max_msat {
-        client.close();
-        return output.fail(
-            "x402",
-            &format!(
-                "the run costs {} msat, above --max-msat {max_msat}; nothing was paid",
-                terms.amount_msat
-            ),
-        );
-    }
+    let limits = match limits(
+        policy.as_ref(),
+        flags,
+        Some(&terms.requirements.pay_to),
+        Some(&capability_id),
+    )
+    .and_then(|limits| {
+        admit(
+            policy.as_ref(),
+            limits,
+            &terms.requirements.pay_to,
+            terms.amount_msat,
+        )
+        .map(|()| limits)
+    }) {
+        Ok(limits) => limits,
+        Err(message) => {
+            client.close();
+            return output.fail("x402", &format!("{message}; nothing was paid"));
+        }
+    };
     output.line(
         &json!({"event": "challenged", "purchase": purchase, "amount_msat": terms.amount_msat, "pay_to": terms.requirements.pay_to, "expires_at": terms.expires_at}),
         |value| format!("challenge: {} msat to {}", value["amount_msat"], value["pay_to"]),
     );
 
     // Pay exactly once; a pending payment is left for `wallet lookup`.
-    let budget = Budget {
-        max_msat,
-        max_fee,
-        wait: wait.min(90),
-    };
-    let proof = match pay_invoice(&terms.invoice, &terms.requirements.network, &budget) {
+    let proof = match pay_invoice(
+        &terms.invoice,
+        &terms.requirements.network,
+        limits.max_fee_msat,
+        wait.min(90),
+    ) {
         Ok(proof) => proof,
         Err(message) => {
             client.close();
             return output.fail("x402", &message);
         }
     };
+    record_payment(
+        &Spend {
+            flags,
+            capability: Some(capability_id.clone()),
+            wait,
+            binding: PROFILE,
+            resource: format!("{provider} {slug} {purchase}"),
+        },
+        &terms.requirements.network,
+        &terms.requirements.pay_to,
+        &proof,
+        "paid",
+    );
     receipt.paid = Some(proof.payment_hash.clone());
     let _ = save_receipt(&receipt);
     let mut payload = Map::new();
@@ -990,6 +1037,11 @@ fn finish(
     let phase = status
         .as_ref()
         .map_or("unknown", |status| status.phase.name());
+    if let Some(hash) = &receipt.paid
+        && phase != "unknown"
+    {
+        set_phase(hash, phase);
+    }
     let text = bytes
         .as_deref()
         .map(|bytes| String::from_utf8_lossy(bytes).into_owned());
