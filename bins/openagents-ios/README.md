@@ -8,6 +8,9 @@ decodes and renders it. The host shares Coder's renderer and native glue
 scanner, the secret field, and the terminal keyboard) instead of copying
 them.
 
+The Android build, with the same tabs and the same Rust library, is in
+[`bins/openagents-android`](../openagents-android/README.md).
+
 The app has four tabs, shown as icons:
 
 - **Coder** (`</>`) chats with Coder on your computers. Sending a message

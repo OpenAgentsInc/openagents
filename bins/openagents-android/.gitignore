@@ -1,0 +1,11 @@
+/host/.gradle/
+/host/.kotlin/
+/host/.idea/
+/host/local.properties
+/host/build/
+/host/app/build/
+/host/app/src/main/jniLibs/
+/target/
+*.iml
+*.jks
+*.keystore

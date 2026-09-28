@@ -9,6 +9,8 @@ domain logic, permissions, and transport in Rust; the implemented observer keeps
 before adding that boundary.
 The OpenAgents iOS host at `bins/openagents-ios/host` follows the same thin
 SwiftUI boundary; its application state lives in `crates/openagents-mobile`.
+The OpenAgents Android host at `bins/openagents-android/host` is thin Kotlin
+over the same crate, through its JNI surface (`src/android.rs`).
 The Android host at `bins/coder-android/host` uses the equivalent thin Kotlin
 boundary for Android framework widgets, `SurfaceView`, camera, sensors, and
 Keystore access. Keep domain state, Nostr, authorization, cache, and world

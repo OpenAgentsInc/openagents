@@ -1,0 +1,644 @@
+// Native conversation elements for Rust Native: transcript, message,
+// Markdown, tool, working, and composer. Rust decides what each row says;
+// this file only paints, scrolls, and handles gestures. It follows the iOS
+// renderer's design (bins/coder-ios/host/App/NativeChat.swift), which
+// reimplements the t3code iOS chat (pingdotgg/t3code, MIT).
+package com.openagents.app
+
+import android.animation.ObjectAnimator
+import android.animation.ValueAnimator
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.graphics.Typeface
+import android.text.Editable
+import android.text.InputFilter
+import android.text.InputType
+import android.text.SpannableStringBuilder
+import android.text.Spanned
+import android.text.TextUtils
+import android.text.TextWatcher
+import android.text.style.BackgroundColorSpan
+import android.text.style.ForegroundColorSpan
+import android.text.style.StrikethroughSpan
+import android.text.style.StyleSpan
+import android.text.style.TypefaceSpan
+import android.text.style.UnderlineSpan
+import android.view.Gravity
+import android.view.View
+import android.view.ViewGroup
+import android.widget.EditText
+import android.widget.FrameLayout
+import android.widget.HorizontalScrollView
+import android.widget.LinearLayout
+import android.widget.ProgressBar
+import android.widget.TableLayout
+import android.widget.TableRow
+import android.widget.TextView
+import android.widget.Toast
+import androidx.recyclerview.widget.DiffUtil
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
+import org.json.JSONArray
+import org.json.JSONObject
+
+/** Plain text for copying, matching `rust_native::markdown::plain`. */
+internal object PlainText {
+    fun of(node: JSONObject): String {
+        val element = node.getJSONObject("element")
+        val props = element.getJSONObject("props")
+        return when (element.getString("kind")) {
+            "text" -> props.getString("value")
+            "markdown" -> blocks(props.getJSONArray("blocks"))
+            "button", "working" -> props.getString("label")
+            "tool" -> (listOf(props.getString("detail").let { if (it.isEmpty()) props.getString("name") else "${props.getString("name")} $it" }) +
+                props.getJSONArray("children").objects().map { of(it) }).joined("\n")
+            "stack", "list", "message", "transcript" ->
+                props.getJSONArray("children").objects().map { of(it) }.filter { it.isNotEmpty() }.joined("\n\n")
+            else -> ""
+        }
+    }
+
+    fun blocks(blocks: JSONArray): String = blocks.objects().flatMap { block ->
+        when (block.getString("kind")) {
+            "heading", "paragraph" -> listOf(spans(block.getJSONArray("spans")))
+            "list" -> block.getJSONArray("items").objects().mapIndexed { index, item ->
+                val marker = when {
+                    item.has("checked") && !item.isNull("checked") -> if (item.getBoolean("checked")) "[x] " else "[ ] "
+                    block.getBoolean("ordered") -> "${block.getLong("start") + index}. "
+                    else -> "- "
+                }
+                marker + blocks(item.getJSONArray("blocks")).replace("\n", " ")
+            }
+            "code" -> listOf(block.getString("text").trimEnd('\n'))
+            "quote" -> listOf(blocks(block.getJSONArray("blocks")).lines().joinToString("\n") { "> $it" })
+            "table" -> (listOf(block.getJSONArray("header")) + block.getJSONArray("rows").let { rows ->
+                (0 until rows.length()).map { rows.getJSONArray(it) } }).map { cells ->
+                (0 until cells.length()).joinToString(" | ") { spans(cells.getJSONArray(it)) }
+            }
+            else -> listOf("---")
+        }
+    }.joined("\n")
+
+    fun spans(spans: JSONArray) = spans.objects().joinToString("") { it.getString("text") }
+    private fun List<String>.joined(separator: String) = joinToString(separator)
+}
+
+/**
+ * Builds conversation rows as plain Android views. Rows inside a transcript
+ * are rebuilt only when their content changes; a tool row's expansion is
+ * adapter state that survives rebuilds.
+ */
+class ChatViews(
+    private val context: Context,
+    private val activate: (String) -> Unit,
+    private val submit: ((String, String) -> Unit)?,
+) {
+    companion object {
+        /** Which tool rows the reader expanded, by node key. */
+        val expanded = HashSet<String>()
+    }
+
+    fun build(node: JSONObject, depth: Int = 0, tone: Int = Palette.PRIMARY): View {
+        require(depth <= 16) { "The native view exceeds its size limit." }
+        val key = node.getString("key")
+        val element = node.getJSONObject("element")
+        val props = element.getJSONObject("props")
+        val style = node.optJSONObject("style") ?: JSONObject()
+        val color = style.objectOrNull("foreground")?.let { NativeRenderer.color(it) } ?: tone
+        val view: View = when (element.getString("kind")) {
+            "message" -> message(node, props, depth, color)
+            "markdown" -> markdown(props.getJSONArray("blocks"), color)
+            "tool" -> tool(key, props, depth)
+            "working" -> working(props.getString("label"))
+            "stack" -> context.column().apply {
+                if (props.getString("axis") == "horizontal") orientation = LinearLayout.HORIZONTAL
+                props.getJSONArray("children").objects().forEachIndexed { index, child ->
+                    addView(build(child, depth + 1, color), LinearLayout.LayoutParams(-1, -2).apply {
+                        if (index > 0) topMargin = context.dp(6)
+                    })
+                }
+            }
+            "list" -> context.column().apply {
+                props.getJSONArray("children").objects().forEach { addView(build(it, depth + 1, color)) }
+            }
+            "text" -> context.text(props.getString("value"), when (props.getString("role")) {
+                "heading" -> 18f; "status" -> 13f; "code" -> 13f; else -> 15f
+            }, color).apply {
+                setTextIsSelectable(true)
+                when (props.getString("role")) {
+                    "code", "terminal" -> typeface = Typeface.MONOSPACE
+                    "heading" -> setTypeface(typeface, Typeface.BOLD)
+                }
+            }
+            "button" -> context.text(props.getString("label"), 15f).apply {
+                background = context.rounded(Palette.RAISED, 10f)
+                setPadding(context.dp(14), context.dp(10), context.dp(14), context.dp(10))
+                isEnabled = props.getBoolean("enabled")
+                setOnClickListener { activate(key) }
+            }
+            else -> context.text("This device can't display this content.", 14f, Palette.SECONDARY)
+        }
+        view.tag = key
+        return view
+    }
+
+    // Message
+
+    private fun message(node: JSONObject, props: JSONObject, depth: Int, color: Int): View {
+        val role = props.getString("role")
+        val note = props.textOrNull("note")
+        val children = props.getJSONArray("children").objects()
+        val copy = PlainText.of(node)
+        val content = context.column().apply {
+            children.forEachIndexed { index, child ->
+                addView(build(child, depth + 1, if (role == "system") Palette.SECONDARY else color),
+                    LinearLayout.LayoutParams(-1, -2).apply { if (index > 0) topMargin = context.dp(if (role == "user") 8 else 10) })
+            }
+        }
+        val outer = context.column()
+        when (role) {
+            "user" -> {
+                content.background = context.rounded(Palette.BUBBLE, 0f, radii = floatArrayOf(18f, 18f, 4f, 18f))
+                content.setPadding(context.dp(14), context.dp(10), context.dp(14), context.dp(10))
+                outer.gravity = Gravity.END
+                outer.addView(content, LinearLayout.LayoutParams(-2, -2).apply {
+                    gravity = Gravity.END; marginStart = context.dp(48)
+                })
+                note?.let { outer.addView(context.text(it, 12f, Palette.SECONDARY), LinearLayout.LayoutParams(-2, -2).apply {
+                    gravity = Gravity.END; topMargin = context.dp(4) }) }
+            }
+            "system" -> {
+                // A quiet centered row: the text, then " · note".
+                val line = context.row().apply { gravity = Gravity.CENTER_VERTICAL }
+                content.gravity = Gravity.CENTER_HORIZONTAL
+                line.addView(content, LinearLayout.LayoutParams(-2, -2))
+                note?.let { line.addView(context.text("· $it", 13f, Palette.SECONDARY), LinearLayout.LayoutParams(-2, -2).apply {
+                    marginStart = context.dp(6) }) }
+                outer.addView(line, LinearLayout.LayoutParams(-2, -2).apply { gravity = Gravity.CENTER_HORIZONTAL })
+            }
+            else -> {
+                outer.addView(content, LinearLayout.LayoutParams(-1, -2))
+                note?.let { outer.addView(context.text(it, 12f, Palette.SECONDARY), LinearLayout.LayoutParams(-2, -2).apply {
+                    topMargin = context.dp(4) }) }
+            }
+        }
+        outer.setOnLongClickListener { copyText(copy, "Message copied"); true }
+        outer.contentDescription = null
+        return outer
+    }
+
+    private fun copyText(text: String, done: String) {
+        context.getSystemService(ClipboardManager::class.java)?.setPrimaryClip(ClipData.newPlainText("OpenAgents", text))
+        Toast.makeText(context, done, Toast.LENGTH_SHORT).show()
+    }
+
+    // Markdown
+
+    fun markdown(blocks: JSONArray, color: Int): View = context.column().apply {
+        blocks.objects().forEachIndexed { index, block ->
+            addView(block(block, color), LinearLayout.LayoutParams(-1, -2).apply { if (index > 0) topMargin = context.dp(10) })
+        }
+    }
+
+    private fun block(block: JSONObject, color: Int): View = when (block.getString("kind")) {
+        "heading" -> {
+            val level = block.getInt("level")
+            paragraph(block.getJSONArray("spans"), color, when (level) { 1 -> 22f; 2 -> 19f; 3 -> 17f; else -> 16f }).apply {
+                setTypeface(typeface, Typeface.BOLD)
+                setPadding(0, context.dp(if (level <= 2) 4 else 2), 0, 0)
+                if (android.os.Build.VERSION.SDK_INT >= 28) isAccessibilityHeading = true
+            }
+        }
+        "paragraph" -> paragraph(block.getJSONArray("spans"), color, 16f)
+        "list" -> list(block, color)
+        "code" -> code(block.textOrNull("language"), block.getString("text"))
+        "quote" -> LinearLayout(context).apply {
+            val bar = View(context).apply { background = context.rounded(Palette.BORDER, 1.5f) }
+            addView(bar, LinearLayout.LayoutParams(context.dp(3), -1))
+            addView(markdown(block.getJSONArray("blocks"), (color and 0x00FFFFFF) or (0xB3 shl 24)),
+                LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = context.dp(9) })
+        }
+        "table" -> table(block, color)
+        else -> View(context).apply {
+            setBackgroundColor(Palette.BORDER)
+            layoutParams = LinearLayout.LayoutParams(-1, context.dp(1))
+            minimumHeight = context.dp(1)
+        }
+    }
+
+    private fun paragraph(spans: JSONArray, color: Int, size: Float): TextView =
+        context.text("", size, color).apply {
+            text = styled(spans)
+            setTextIsSelectable(true)
+            // Links stay inert: they are styled, never opened.
+            linksClickable = false
+            autoLinkMask = 0
+            setLineSpacing(context.dpf(2f), 1f)
+        }
+
+    fun styled(spans: JSONArray): CharSequence {
+        val builder = SpannableStringBuilder()
+        for (span in spans.objects()) {
+            val start = builder.length
+            builder.append(span.getString("text"))
+            val end = builder.length
+            if (start == end) continue
+            fun mark(what: Any) = builder.setSpan(what, start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            val bold = span.optBoolean("bold"); val italic = span.optBoolean("italic")
+            if (bold || italic) mark(StyleSpan(when {
+                bold && italic -> Typeface.BOLD_ITALIC; bold -> Typeface.BOLD; else -> Typeface.ITALIC }))
+            if (span.optBoolean("strike")) mark(StrikethroughSpan())
+            if (span.optBoolean("code")) { mark(TypefaceSpan("monospace")); mark(BackgroundColorSpan(Palette.INLINE_CODE)) }
+            if (span.textOrNull("link") != null || span.has("link")) { mark(ForegroundColorSpan(Palette.LINK)); mark(UnderlineSpan()) }
+        }
+        return builder
+    }
+
+    private fun list(block: JSONObject, color: Int): View = context.column().apply {
+        val ordered = block.getBoolean("ordered")
+        val start = block.getLong("start")
+        block.getJSONArray("items").objects().forEachIndexed { index, item ->
+            val row = context.row()
+            val checked = if (item.has("checked") && !item.isNull("checked")) item.getBoolean("checked") else null
+            val marker = when {
+                checked == true -> "☑"; checked == false -> "☐"
+                ordered -> "${start + index}."; else -> "•"
+            }
+            row.addView(context.text(marker, 16f, if (checked != null) Palette.SECONDARY else color).apply {
+                gravity = Gravity.END
+                if (ordered && checked == null) typeface = Typeface.MONOSPACE
+            }, LinearLayout.LayoutParams(context.dp(if (ordered) 28 else 18), -2))
+            row.addView(markdown(item.getJSONArray("blocks"), color), LinearLayout.LayoutParams(0, -2, 1f).apply {
+                marginStart = context.dp(8) })
+            addView(row, LinearLayout.LayoutParams(-1, -2).apply { if (index > 0) topMargin = context.dp(4) })
+        }
+    }
+
+    private fun code(language: String?, text: String): View = context.column().apply {
+        background = context.rounded(Palette.SURFACE, 10f, Palette.BORDER)
+        clipToOutline = true
+        val header = context.row().apply {
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(context.dp(12), context.dp(6), context.dp(6), context.dp(6))
+            addView(context.text(language ?: "code", 12f, Palette.SECONDARY), LinearLayout.LayoutParams(0, -2, 1f))
+            addView(context.text("Copy", 12f, Palette.SECONDARY).apply {
+                setPadding(context.dp(10), context.dp(6), context.dp(10), context.dp(6))
+                contentDescription = "Copy code"
+                setOnClickListener { copyText(text.trimEnd('\n'), "Code copied") }
+            })
+        }
+        addView(header)
+        addView(View(context).apply { setBackgroundColor(Palette.BORDER) }, LinearLayout.LayoutParams(-1, context.dp(1)))
+        addView(HorizontalScrollView(context).apply {
+            isHorizontalScrollBarEnabled = false
+            addView(context.text(text.trimEnd('\n'), 13f).apply {
+                typeface = Typeface.MONOSPACE
+                setTextIsSelectable(true)
+                setHorizontallyScrolling(true)
+                setPadding(context.dp(12), context.dp(12), context.dp(12), context.dp(12))
+            })
+        })
+    }
+
+    private fun table(block: JSONObject, color: Int): View {
+        val align = block.getJSONArray("align")
+        val table = TableLayout(context).apply {
+            background = context.rounded(Palette.SURFACE, 8f, Palette.BORDER)
+            clipToOutline = true
+        }
+        fun cells(values: JSONArray, header: Boolean): TableRow = TableRow(context).apply {
+            if (header) setBackgroundColor(Palette.RAISED)
+            for (column in 0 until values.length()) {
+                addView(context.text("", 14f, color).apply {
+                    text = styled(values.getJSONArray(column))
+                    if (header) setTypeface(typeface, Typeface.BOLD)
+                    setTextIsSelectable(true)
+                    maxWidth = context.dp(280)
+                    gravity = when (align.optString(column)) {
+                        "center" -> Gravity.CENTER_HORIZONTAL; "right" -> Gravity.END; else -> Gravity.START
+                    }
+                    setPadding(context.dp(10), context.dp(7), context.dp(10), context.dp(7))
+                })
+            }
+        }
+        table.addView(cells(block.getJSONArray("header"), true))
+        val rows = block.getJSONArray("rows")
+        for (index in 0 until rows.length()) {
+            table.addView(View(context).apply { setBackgroundColor(Palette.BORDER) }, TableLayout.LayoutParams(-1, context.dp(1)))
+            table.addView(cells(rows.getJSONArray(index), false))
+        }
+        return HorizontalScrollView(context).apply {
+            isHorizontalScrollBarEnabled = false
+            addView(table)
+        }
+    }
+
+    // Tool
+
+    private fun tool(key: String, props: JSONObject, depth: Int): View {
+        val name = props.getString("name")
+        val detail = props.getString("detail")
+        val state = props.getString("state")
+        val children = props.getJSONArray("children").objects()
+        val outer = context.column()
+        val chevron = context.text("", 14f, Palette.TERTIARY)
+        val body = context.column().apply {
+            background = context.rounded(Palette.SURFACE, 8f)
+            setPadding(context.dp(10), context.dp(10), context.dp(10), context.dp(10))
+            children.forEachIndexed { index, child ->
+                addView(build(child, depth + 1, Palette.PRIMARY).also { smaller(it) },
+                    LinearLayout.LayoutParams(-1, -2).apply { if (index > 0) topMargin = context.dp(6) })
+            }
+        }
+        fun show() {
+            val open = key in expanded
+            body.visibility = if (open) View.VISIBLE else View.GONE
+            chevron.text = if (children.isEmpty()) "" else if (open) "⌄" else "›"
+            outer.getChildAt(0)?.stateDescriptionCompat(if (open) "Expanded" else "Collapsed")
+        }
+        val header = context.row().apply {
+            gravity = Gravity.CENTER_VERTICAL
+            minimumHeight = context.dp(36)
+            val icon: View = when (state) {
+                "running" -> ProgressBar(context).apply { isIndeterminate = true }
+                "failed" -> context.text("✕", 13f, Palette.FAILURE).apply { gravity = Gravity.CENTER }
+                else -> context.text("✓", 13f, Palette.SUCCESS).apply { gravity = Gravity.CENTER }
+            }
+            addView(icon, LinearLayout.LayoutParams(context.dp(18), context.dp(18)))
+            addView(context.text(name, 15f).apply { setTypeface(typeface, Typeface.BOLD) },
+                LinearLayout.LayoutParams(-2, -2).apply { marginStart = context.dp(8) })
+            addView(context.text(detail, 15f, Palette.SECONDARY).apply {
+                maxLines = 1; ellipsize = TextUtils.TruncateAt.END
+            }, LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = context.dp(8) })
+            addView(chevron, LinearLayout.LayoutParams(-2, -2).apply { marginStart = context.dp(4) })
+            contentDescription = "$name, ${when (state) { "running" -> "running"; "failed" -> "failed"; else -> "done" }}. $detail"
+            isEnabled = children.isNotEmpty()
+            setOnClickListener { if (!expanded.remove(key)) expanded.add(key); show() }
+        }
+        outer.addView(header)
+        outer.addView(body, LinearLayout.LayoutParams(-1, -2).apply { topMargin = context.dp(4) })
+        show()
+        return outer
+    }
+
+    /** Tool output is secondary: draw it a step smaller than the conversation. */
+    private fun smaller(view: View) {
+        if (view is TextView) view.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX,
+            (view.textSize - sp(2f)).coerceAtLeast(sp(11f)))
+        if (view is ViewGroup) for (index in 0 until view.childCount) smaller(view.getChildAt(index))
+    }
+
+    private fun sp(value: Float) = android.util.TypedValue.applyDimension(
+        android.util.TypedValue.COMPLEX_UNIT_SP, value, context.resources.displayMetrics)
+
+    // Working
+
+    private fun working(label: String): View = context.row().apply {
+        gravity = Gravity.CENTER_VERTICAL
+        setPadding(0, context.dp(4), 0, context.dp(4))
+        for (index in 0 until 3) {
+            addView(View(context).apply {
+                background = context.rounded(Palette.SECONDARY, 3f)
+                ObjectAnimator.ofFloat(this, View.ALPHA, 0.25f, 1f).apply {
+                    duration = 600; startDelay = index * 200L
+                    repeatMode = ValueAnimator.REVERSE; repeatCount = ValueAnimator.INFINITE
+                    start()
+                }
+            }, LinearLayout.LayoutParams(context.dp(6), context.dp(6)).apply { if (index > 0) marginStart = context.dp(4) })
+        }
+        addView(context.text(label, 15f, Palette.SECONDARY), LinearLayout.LayoutParams(-2, -2).apply { marginStart = context.dp(10) })
+        contentDescription = label
+    }
+}
+
+private fun View.stateDescriptionCompat(value: String) {
+    if (android.os.Build.VERSION.SDK_INT >= 30) stateDescription = value
+}
+
+/**
+ * A bottom-anchored conversation. Rows are diffed by node key, and only rows
+ * whose content changed are rebound. While the reader is at the bottom, the
+ * newest row stays in view; scrolling up stops following and offers a jump
+ * back to the bottom.
+ */
+class Transcript(private val context: Context, private val activate: (String) -> Unit) {
+    private data class Row(val id: String, val content: String, val node: JSONObject?)
+
+    val root = FrameLayout(context)
+    private val list = RecyclerView(context)
+    private val layout = LinearLayoutManager(context).apply { stackFromEnd = true }
+    private val jump = context.text("↓", 18f).apply {
+        gravity = Gravity.CENTER
+        background = context.rounded(Palette.RAISED, 20f, Palette.BORDER)
+        elevation = context.dpf(6f)
+        contentDescription = "Scroll to bottom"
+        tag = "transcript-scroll-to-bottom"
+        visibility = View.GONE
+    }
+    private var rows: List<Row> = emptyList()
+    private var key = ""
+    private var chat: ChatViews? = null
+    private var earlier: JSONObject? = null
+    private var following = true
+
+    private val adapter = object : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
+        override fun getItemCount() = rows.size
+        override fun getItemViewType(position: Int) = if (rows[position].node == null) 1 else 0
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder =
+            object : RecyclerView.ViewHolder(FrameLayout(parent.context).apply {
+                layoutParams = RecyclerView.LayoutParams(-1, -2)
+            }) {}
+        override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
+            val cell = holder.itemView as FrameLayout
+            cell.removeAllViews()
+            val row = rows[position]
+            val view = row.node?.let { chat?.build(it) } ?: earlierRow()
+            cell.addView(view, FrameLayout.LayoutParams(-1, -2))
+        }
+    }
+
+    init {
+        list.layoutManager = layout
+        list.adapter = adapter
+        list.itemAnimator = null
+        list.clipToPadding = false
+        list.overScrollMode = View.OVER_SCROLL_NEVER
+        list.addItemDecoration(object : RecyclerView.ItemDecoration() {
+            override fun getItemOffsets(outRect: android.graphics.Rect, view: View, parent: RecyclerView, state: RecyclerView.State) {
+                val width = parent.width
+                val side = maxOf(context.dp(16), (width - context.dp(Palette.READING_WIDTH_DP)) / 2)
+                outRect.left = side; outRect.right = side
+                outRect.top = if (parent.getChildAdapterPosition(view) == 0) context.dp(16) else context.dp(18)
+                outRect.bottom = if (parent.getChildAdapterPosition(view) == rows.size - 1) context.dp(16) else 0
+            }
+        })
+        list.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+            override fun onScrollStateChanged(view: RecyclerView, state: Int) {
+                when (state) {
+                    RecyclerView.SCROLL_STATE_DRAGGING -> following = false
+                    RecyclerView.SCROLL_STATE_IDLE -> following = distanceFromBottom() < context.dp(24)
+                }
+                updateJump()
+            }
+            override fun onScrolled(view: RecyclerView, dx: Int, dy: Int) = updateJump()
+        })
+        // Rows measure themselves after they appear; hold the bottom while following.
+        list.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> if (following) pin() }
+        root.addView(list, FrameLayout.LayoutParams(-1, -1))
+        root.addView(jump, FrameLayout.LayoutParams(context.dp(40), context.dp(40)).apply {
+            gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL; bottomMargin = context.dp(12)
+        })
+        jump.setOnClickListener { following = true; pin(); updateJump() }
+    }
+
+    fun update(props: JSONObject, views: ChatViews) {
+        chat = views
+        list.contentDescription = props.getString("label")
+        key = root.getTag(R.id.native_key) as? String ?: key
+        val nextEarlier = props.objectOrNull("earlier")
+        val next = buildList {
+            if (nextEarlier != null) add(Row(EARLIER, nextEarlier.toString(), null))
+            props.getJSONArray("children").objects().forEach { add(Row(it.getString("key"), it.toString(), it)) }
+        }
+        val previous = rows
+        val diff = DiffUtil.calculateDiff(object : DiffUtil.Callback() {
+            override fun getOldListSize() = previous.size
+            override fun getNewListSize() = next.size
+            override fun areItemsTheSame(old: Int, new: Int) = previous[old].id == next[new].id
+            override fun areContentsTheSame(old: Int, new: Int) = previous[old].content == next[new].content
+        })
+        earlier = nextEarlier
+        rows = next
+        diff.dispatchUpdatesTo(adapter)
+        if (following) pin()
+    }
+
+    private fun earlierRow(): View {
+        val earlier = earlier ?: return View(context)
+        val loading = earlier.optBoolean("loading")
+        return context.row().apply {
+            gravity = Gravity.CENTER
+            minimumHeight = context.dp(44)
+            tag = "transcript-earlier"
+            if (loading) addView(ProgressBar(context), LinearLayout.LayoutParams(context.dp(18), context.dp(18)).apply {
+                marginEnd = context.dp(8) })
+            addView(context.text(earlier.getString("label"), 15f, Palette.SECONDARY))
+            isEnabled = !loading
+            setOnClickListener {
+                val current = key.ifEmpty { root.getTag(R.id.native_key) as? String ?: "" }
+                if (this@Transcript.earlier?.optBoolean("loading") == false && current.isNotEmpty()) activate(current)
+            }
+        }
+    }
+
+    private fun distanceFromBottom() =
+        list.computeVerticalScrollRange() - list.computeVerticalScrollOffset() - list.computeVerticalScrollExtent()
+
+    private fun pin() {
+        if (rows.isEmpty() || list.scrollState != RecyclerView.SCROLL_STATE_IDLE) return
+        // Jump without animating so long transcripts don't lay out every row.
+        list.post {
+            if (!following || rows.isEmpty()) return@post
+            val last = rows.size - 1
+            if (layout.findLastVisibleItemPosition() != last) list.scrollToPosition(last)
+            else if (list.canScrollVertically(1)) list.scrollBy(0, distanceFromBottom().coerceAtLeast(1))
+        }
+    }
+
+    private fun updateJump() {
+        val show = !following && list.height > context.dp(120) && distanceFromBottom() > context.dp(80)
+        jump.visibility = if (show) View.VISIBLE else View.GONE
+    }
+
+    private companion object { const val EARLIER = "\u0001earlier" }
+}
+
+/**
+ * A multi-line text field with a send control. A send is an input answer
+ * bound to the composer's token; while Rust reports `busy`, the control
+ * becomes stop, which activates the composer node.
+ */
+class Composer(private val context: Context, private val send: (String, String) -> Unit,
+               private val stop: (String) -> Unit) {
+    val root = context.row()
+    private val field = EditText(context)
+    private val control = context.text("↑", 17f, Palette.BACKGROUND)
+    private var token = ""
+    private var maxBytes = 65_536
+    private var enabled = true
+    private var busy = false
+    private var stoppable = false
+
+    init {
+        root.gravity = Gravity.BOTTOM
+        root.setPadding(context.dp(12), context.dp(8), context.dp(12), context.dp(8))
+        field.apply {
+            textSize = 16f
+            setTextColor(Palette.PRIMARY)
+            setHintTextColor(Palette.TERTIARY)
+            background = context.rounded(Palette.RAISED, 20f)
+            setPadding(context.dp(14), context.dp(9), context.dp(14), context.dp(9))
+            minLines = 1; maxLines = 6
+            isVerticalScrollBarEnabled = true
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
+            tag = "composer-field"
+            // Refuse an edit past the byte bound, but always allow deleting.
+            filters = arrayOf(InputFilter { source, start, end, dest, dstart, dend ->
+                val next = dest.substring(0, dstart) + source.subSequence(start, end) + dest.substring(dend)
+                if (end > start && next.toByteArray().size > maxBytes) "" else null
+            })
+            addTextChangedListener(object : TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) = Unit
+                override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) = Unit
+                override fun afterTextChanged(s: Editable?) = refresh()
+            })
+        }
+        control.apply {
+            gravity = Gravity.CENTER
+            setTypeface(typeface, Typeface.BOLD)
+            background = context.rounded(Palette.PRIMARY, 18f)
+            setOnClickListener { if (busy) doStop() else doSend() }
+        }
+        root.addView(field, LinearLayout.LayoutParams(0, -2, 1f))
+        root.addView(control, LinearLayout.LayoutParams(context.dp(36), context.dp(36)).apply {
+            marginStart = context.dp(8); bottomMargin = context.dp(1) })
+    }
+
+    fun update(props: JSONObject) {
+        token = props.getString("token")
+        maxBytes = props.getInt("max_bytes").coerceIn(1, 65_536)
+        enabled = props.getBoolean("enabled")
+        busy = props.getBoolean("busy")
+        stoppable = props.has("stop") && !props.isNull("stop")
+        val placeholder = props.getString("placeholder")
+        if (field.hint?.toString() != placeholder) { field.hint = placeholder; field.contentDescription = placeholder }
+        field.isEnabled = enabled
+        root.alpha = if (enabled) 1f else 0.6f
+        refresh()
+    }
+
+    private val canSend get() = enabled && !busy && field.text.toString().isNotBlank() &&
+        field.text.toString().toByteArray().size <= maxBytes
+
+    private fun refresh() {
+        val active = if (busy) stoppable else canSend
+        control.text = if (busy) "■" else "↑"
+        control.contentDescription = if (busy) "Stop" else "Send"
+        control.tag = if (busy) "composer-stop" else "composer-send"
+        control.isEnabled = active
+        control.alpha = if (active) 1f else 0.3f
+    }
+
+    private fun doSend() {
+        if (!canSend) return
+        val value = field.text.toString()
+        field.setText("")
+        send(token, value)
+    }
+
+    private fun doStop() {
+        if (!busy || !stoppable) return
+        (root.getTag(R.id.native_key) as? String)?.let { stop(it) }
+    }
+}

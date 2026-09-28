@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="OpenAgentsTheme" parent="android:style/Theme.Material.NoActionBar">
+        <item name="android:colorAccent">#FFFFFFFF</item>
+        <item name="android:colorPrimary">#FF000000</item>
+        <item name="android:textColorPrimary">#FFFFFFFF</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowBackground">#FF000000</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">#FF000000</item>
+    </style>
+</resources>
