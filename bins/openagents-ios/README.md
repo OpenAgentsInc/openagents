@@ -74,13 +74,15 @@ The app has four tabs, shown as icons:
 - **Wallet** is a Bitcoin wallet on mainnet through Breez's Spark SDK
   (`host/App/WalletTab.swift` over `crates/openagents-mobile/src/wallet.rs`):
   balance, receive (Lightning invoice, Spark address, Bitcoin deposit
-  address, each with a QR code), send (paste or scan, then a confirm screen
-  with amount and fee), buy with dollars (MoonPay or Cash App), deposit
+  address, each with a QR code), send (paste or scan an invoice, Lightning
+  address, LNURL code, Spark or Bitcoin address; a Lightning address shows
+  its range and takes a comment; then a confirm screen with amount and fee),
+  buy with dollars (MoonPay or Cash App), deposit
   claims, history, and recovery words. Its seed is in Keychain
   (`com.openagents.app.spark`). The **i** button opens the trust note.
   Simulator arguments: `--wallet-section receive|send|buy`,
   `--wallet-method lightning|spark|bitcoin`, `--wallet-invoice AMOUNT`,
-  `--wallet-send TEXT`, and `--wallet-info 1`.
+  `--wallet-send TEXT` (with `--wallet-amount SATS`), and `--wallet-info 1`.
 - **Account** holds **Computers**, **Tailnet**, **Identity keys**, **About
   this device**, and **Changelog**, and links to the source code and to
   OpenAgents on X. See [Account](#account).

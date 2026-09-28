@@ -184,11 +184,14 @@ pub enum Request {
         #[serde(default)]
         amount: String,
     },
-    /// Quote a payment to a pasted or scanned request.
+    /// Quote a payment to a pasted or scanned request. `comment` goes to an
+    /// LNURL recipient that takes one.
     WalletQuote {
         input: String,
         #[serde(default)]
         amount: String,
+        #[serde(default)]
+        comment: String,
     },
     /// Pay the quote on screen, which the person confirmed.
     WalletPay {
@@ -646,7 +649,11 @@ impl App {
             } => self.wallet.open(&entropy_hex, replace),
             Request::WalletRefresh => self.wallet.refresh(),
             Request::WalletInvoice { amount } => self.wallet.invoice(&amount),
-            Request::WalletQuote { input, amount } => self.wallet.quote(&input, &amount),
+            Request::WalletQuote {
+                input,
+                amount,
+                comment,
+            } => self.wallet.quote(&input, &amount, &comment),
             Request::WalletPay { quote } => self.wallet.pay(quote),
             Request::WalletSendReset => self.wallet.reset_send(),
             Request::WalletBuy { provider, amount } => self.wallet.buy(&provider, &amount),

@@ -8,7 +8,8 @@
 //! traces is written anywhere.
 
 use crate::wallet::{
-    ClaimQuote, DepositRow, Destination, Node, PaymentRow, Provider, Quote, QuoteFailure,
+    Ask, ClaimQuote, DepositRow, Destination, LnurlTerms, Node, Paid, PaymentRow, Provider, Quote,
+    QuoteFailure, SendRequest,
 };
 use breez_sdk_spark::{
     BreezSdk, BuyBitcoinRequest, ClaimDepositOutcome, ClaimDepositRequest, DepositClaimError,
@@ -17,7 +18,8 @@ use breez_sdk_spark::{
     Payment, PaymentMethod, PaymentRequest, PaymentStatus, PaymentType, PrepareLnurlPayRequest,
     PrepareLnurlPayResponse, PrepareSendPaymentRequest, PrepareSendPaymentResponse,
     ReceivePaymentMethod, ReceivePaymentRequest, SdkBuilder, SdkEvent, Seed, SendPaymentMethod,
-    SendPaymentOptions, SendPaymentRequest, SyncWalletRequest, default_config,
+    SendPaymentOptions, SendPaymentRequest, SuccessActionProcessed, SyncWalletRequest,
+    default_config,
 };
 use std::collections::HashMap;
 use std::path::Path;
@@ -61,7 +63,11 @@ pub fn moonpay_url(address: &str, amount_sats: u64) -> Result<String, String> {
     if address.is_empty() || !address.chars().all(|c| c.is_ascii_alphanumeric()) {
         return Err("no Bitcoin deposit address".into());
     }
-    let btc = format!("{}.{:08}", amount_sats / 100_000_000, amount_sats % 100_000_000);
+    let btc = format!(
+        "{}.{:08}",
+        amount_sats / 100_000_000,
+        amount_sats % 100_000_000
+    );
     let mut url = url::Url::parse("https://buy.moonpay.io").map_err(|error| error.to_string())?;
     url.query_pairs_mut().extend_pairs([
         ("apiKey", "pk_live_Mx5g6bpD6Etd7T0bupthv7smoTNn2Vr"),
@@ -143,7 +149,8 @@ impl SparkNode {
         id
     }
 
-    fn quote_input(&self, input: &str, amount: Option<u64>) -> Result<Quote, QuoteFailure> {
+    fn quote_input(&self, request: &SendRequest) -> Result<Quote, QuoteFailure> {
+        let input = request.input.as_str();
         let parsed = self
             .runtime
             .block_on(self.sdk.parse(input))
@@ -151,39 +158,43 @@ impl SparkNode {
         let parsed = match parsed {
             // A BIP21 URI pays through the best method it lists.
             InputType::Bip21(details) => {
-                let amount = amount.or(details.amount_sat);
+                let amount = request.amount_sats.or(details.amount_sat);
                 let method = details
                     .payment_methods
                     .into_iter()
                     .next()
                     .ok_or_else(|| QuoteFailure::Refused(UNREADABLE.into()))?;
-                return self.quote_parsed(input, method, amount);
+                let request = SendRequest {
+                    amount_sats: amount,
+                    ..request.clone()
+                };
+                return self.quote_parsed(&request, method);
             }
             other => other,
         };
-        self.quote_parsed(input, parsed, amount)
+        self.quote_parsed(request, parsed)
     }
 
     fn quote_parsed(
         &self,
-        input: &str,
+        request: &SendRequest,
         parsed: InputType,
-        amount: Option<u64>,
     ) -> Result<Quote, QuoteFailure> {
+        let (input, amount) = (request.input.as_str(), request.amount_sats);
         match parsed {
             InputType::LightningAddress(details) => {
                 let label = details.address.clone();
-                self.quote_lnurl(details.pay_request, label, amount)
+                self.quote_lnurl(details.pay_request, label, request)
             }
-            InputType::LnurlPay(request) => {
-                let label = request.domain.clone();
-                self.quote_lnurl(request, label, amount)
+            InputType::LnurlPay(pay_request) => {
+                let label = pay_request.domain.clone();
+                self.quote_lnurl(pay_request, label, request)
             }
             InputType::Bolt11Invoice(details) => {
                 if details.amount_msat.is_none() && amount.is_none() {
-                    return Err(QuoteFailure::NeedsAmount(
-                        "This invoice has no amount. Enter one.".into(),
-                    ));
+                    return Err(QuoteFailure::NeedsAmount(Ask::amount(
+                        "This invoice has no amount. Enter one.",
+                    )));
                 }
                 let amount = if details.amount_msat.is_some() {
                     None
@@ -194,9 +205,9 @@ impl SparkNode {
             }
             InputType::SparkAddress(_) | InputType::BitcoinAddress(_) => {
                 if amount.is_none() {
-                    return Err(QuoteFailure::NeedsAmount(
-                        "Enter the amount to send to this address.".into(),
-                    ));
+                    return Err(QuoteFailure::NeedsAmount(Ask::amount(
+                        "Enter the amount to send to this address.",
+                    )));
                 }
                 self.quote_send(input, amount, None)
             }
@@ -204,9 +215,9 @@ impl SparkNode {
                 let amount = if details.amount.is_some() {
                     None
                 } else if amount.is_none() {
-                    return Err(QuoteFailure::NeedsAmount(
-                        "This Spark invoice has no amount. Enter one.".into(),
-                    ));
+                    return Err(QuoteFailure::NeedsAmount(Ask::amount(
+                        "This Spark invoice has no amount. Enter one.",
+                    )));
                 } else {
                     amount
                 };
@@ -292,6 +303,7 @@ impl SparkNode {
             amount_sats,
             fee_sats,
             note: note.filter(|note| !note.trim().is_empty()),
+            comment: None,
         })
     }
 
@@ -299,36 +311,33 @@ impl SparkNode {
         &self,
         pay_request: breez_sdk_spark::LnurlPayRequestDetails,
         label: String,
-        amount: Option<u64>,
+        request: &SendRequest,
     ) -> Result<Quote, QuoteFailure> {
-        let min = pay_request.min_sendable.div_ceil(1000);
-        let max = pay_request.max_sendable / 1000;
-        let Some(amount) = amount else {
-            return Err(QuoteFailure::NeedsAmount(format!(
-                "Enter an amount from {} to {}.",
-                crate::wallet::sats(min),
-                crate::wallet::sats(max)
-            )));
-        };
-        if amount < min || amount > max {
-            return Err(QuoteFailure::NeedsAmount(format!(
-                "This recipient takes from {} to {}.",
-                crate::wallet::sats(min),
-                crate::wallet::sats(max)
-            )));
-        }
+        let terms = LnurlTerms::of(
+            label.clone(),
+            pay_request.min_sendable,
+            pay_request.max_sendable,
+            pay_request.comment_allowed,
+            &pay_request.metadata_str,
+        );
+        let (amount, comment) = terms.check(request.amount_sats, request.comment.as_deref())?;
         let prepared = self
             .runtime
             .block_on(self.sdk.prepare_lnurl_pay(PrepareLnurlPayRequest {
                 amount: u128::from(amount),
                 pay_request,
-                comment: None,
+                comment: comment.clone(),
                 validate_success_action_url: None,
                 token_identifier: None,
                 conversion_options: None,
                 fee_policy: None,
             }))
             .map_err(|error| QuoteFailure::Refused(describe("quote", &error.to_string())))?;
+        if prepared.conversion_estimate.is_some() {
+            return Err(QuoteFailure::Refused(
+                "Token payments aren't available in this app yet.".into(),
+            ));
+        }
         let (amount_sats, fee_sats) = (prepared.amount_sats, prepared.fee_sats);
         let id = self.keep(Prepared::Lnurl(Box::new(prepared)));
         Ok(Quote {
@@ -336,7 +345,8 @@ impl SparkNode {
             destination: Destination::LightningAddress(label),
             amount_sats,
             fee_sats,
-            note: None,
+            note: terms.description,
+            comment,
         })
     }
 }
@@ -428,11 +438,11 @@ impl Node for SparkNode {
         })
     }
 
-    fn quote(&self, input: &str, amount_sats: Option<u64>) -> Result<Quote, QuoteFailure> {
-        self.quote_input(input, amount_sats)
+    fn quote(&self, request: &SendRequest) -> Result<Quote, QuoteFailure> {
+        self.quote_input(request)
     }
 
-    fn pay(&self, quote: u64, idempotency_key: &str) -> Result<PaymentRow, String> {
+    fn pay(&self, quote: u64, idempotency_key: &str) -> Result<Paid, String> {
         let prepared = self
             .prepared
             .lock()
@@ -447,17 +457,20 @@ impl Node for SparkNode {
                     options,
                     idempotency_key: Some(idempotency_key.to_owned()),
                 }))
-                .map(|response| response.payment),
+                .map(|response| (response.payment, None)),
             Prepared::Lnurl(prepare_response) => self
                 .runtime
                 .block_on(self.sdk.lnurl_pay(LnurlPayRequest {
                     prepare_response: *prepare_response,
                     idempotency_key: Some(idempotency_key.to_owned()),
                 }))
-                .map(|response| response.payment),
+                .map(|response| (response.payment, response.success_action)),
         };
         payment
-            .map(|payment| row(&payment))
+            .map(|(payment, success)| Paid {
+                row: row(&payment),
+                message: success.and_then(|action| success_message(&action)),
+            })
             .map_err(|error| describe("pay", &error.to_string()))
     }
 
@@ -591,6 +604,24 @@ impl SparkNode {
             .map(|response| response.payment_request)
             .map_err(|error| describe("read", &error.to_string()))
     }
+}
+
+/// What an LNURL recipient says after a payment, as plain text. A URL is
+/// shown, never opened.
+fn success_message(action: &SuccessActionProcessed) -> Option<String> {
+    let text = match action {
+        SuccessActionProcessed::Message { data } => data.message.clone(),
+        SuccessActionProcessed::Url { data } => format!("{} {}", data.description, data.url),
+        SuccessActionProcessed::Aes { result } => match result {
+            breez_sdk_spark::AesSuccessActionDataResult::Decrypted { data } => {
+                format!("{} {}", data.description, data.plaintext)
+            }
+            breez_sdk_spark::AesSuccessActionDataResult::ErrorStatus { .. } => {
+                "The recipient's message could not be decrypted.".to_owned()
+            }
+        },
+    };
+    crate::wallet::plain_text(&text, 300)
 }
 
 /// A payment as the history shows it.

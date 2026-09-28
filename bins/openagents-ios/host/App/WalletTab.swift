@@ -36,6 +36,7 @@ struct WalletState: Decodable, Equatable {
         let fee: String
         let total: String
         let note: String?
+        let comment: String?
     }
     struct Payment: Decodable, Equatable, Identifiable {
         let id: String
@@ -51,6 +52,13 @@ struct WalletState: Decodable, Equatable {
         let message: String?
         let quote: Quote?
         let result: Payment?
+        /// While an amount is needed: who is paid, their description, and
+        /// the longest comment they take (no comment field when absent).
+        let recipient: String?
+        let description: String?
+        let comment_max: UInt16?
+        /// After a payment: what the recipient said.
+        let recipient_message: String?
     }
     struct Provider: Decodable, Equatable, Identifiable {
         let id: String
@@ -109,6 +117,7 @@ struct WalletTab: View {
     @State private var invoiceAmount = ""
     @State private var payInput = ""
     @State private var payAmount = ""
+    @State private var payComment = ""
     @State private var buyAmount = ""
     @State private var scanning = false
     @State private var copied: String?
@@ -157,7 +166,11 @@ struct WalletTab: View {
             while !Task.isCancelled, wallet?.status != nil || wallet == nil {
                 try? await Task.sleep(for: .seconds(1))
             }
-            if let send { payInput = send; bridge.wallet("wallet_quote", ["input": send, "amount": ""]) }
+            if let send {
+                payInput = send
+                payAmount = AppTabLaunch.wallet("--wallet-amount") ?? ""
+                bridge.wallet("wallet_quote", ["input": send, "amount": payAmount])
+            }
             if let invoice { invoiceAmount = invoice; bridge.wallet("wallet_invoice", ["amount": invoice]) }
         }
         // Starts, syncs, quotes, and payments finish in the background;
@@ -359,7 +372,12 @@ struct WalletTab: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(send?.message ?? "Sent.").font(.headline).foregroundStyle(.white)
                     if let result = send?.result { paymentRow(result) }
-                    Button("Done") { payInput = ""; payAmount = ""; bridge.wallet("wallet_send_reset") }
+                    if let said = send?.recipient_message {
+                        Text(said).font(.footnote).foregroundStyle(.white)
+                            .textSelection(.enabled)
+                            .accessibilityIdentifier("wallet-recipient-message")
+                    }
+                    Button("Done") { payInput = ""; payAmount = ""; payComment = ""; bridge.wallet("wallet_send_reset") }
                         .buttonStyle(.borderedProminent).tint(.white).foregroundStyle(.black)
                 }
             default:
@@ -367,11 +385,11 @@ struct WalletTab: View {
                     InlineQRScanner(prompt: "Point the camera at a Lightning invoice, Lightning address, or Bitcoin QR code.") { scanned in
                         scanning = false
                         payInput = scanned
-                        bridge.wallet("wallet_quote", ["input": scanned, "amount": payAmount])
+                        bridge.wallet("wallet_quote", ["input": scanned, "amount": payAmount, "comment": payComment])
                     }
                     Button("Type instead") { scanning = false }
                 } else {
-                    TextField("Invoice, Lightning address, or Bitcoin address", text: $payInput, axis: .vertical)
+                    TextField("Invoice, Lightning address, LNURL, or Bitcoin address", text: $payInput, axis: .vertical)
                         .lineLimit(1...4)
                         .autocorrectionDisabled().textInputAutocapitalization(.never)
                         .textFieldStyle(.roundedBorder)
@@ -383,14 +401,29 @@ struct WalletTab: View {
                         Button("Scan", systemImage: "qrcode.viewfinder") { scanning = true }
                     }
                     .buttonStyle(.bordered).tint(.white)
+                    if send?.state == "needs_amount", let recipient = send?.recipient {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(recipient).font(.system(.callout, design: .monospaced)).foregroundStyle(.white)
+                            if let description = send?.description {
+                                Text(description).font(.footnote).foregroundStyle(.gray)
+                            }
+                        }
+                        .accessibilityIdentifier("wallet-recipient")
+                    }
                     TextField("Amount in sats, if the request has none", text: $payAmount)
                         .keyboardType(.numberPad)
                         .textFieldStyle(.roundedBorder)
+                        .accessibilityIdentifier("wallet-send-amount")
+                    if send?.state == "needs_amount", let most = send?.comment_max {
+                        TextField("Comment (optional, up to \(most) characters)", text: $payComment)
+                            .textFieldStyle(.roundedBorder)
+                            .accessibilityIdentifier("wallet-send-comment")
+                    }
                     if let message = send?.message, send?.state != "idle" {
                         Text(message).font(.footnote).foregroundStyle(.white)
                     }
                     Button(send?.state == "quoting" ? "Preparing…" : "Review payment") {
-                        bridge.wallet("wallet_quote", ["input": payInput, "amount": payAmount])
+                        bridge.wallet("wallet_quote", ["input": payInput, "amount": payAmount, "comment": payComment])
                     }
                     .buttonStyle(.borderedProminent).tint(.white).foregroundStyle(.black)
                     .disabled(payInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -406,6 +439,7 @@ struct WalletTab: View {
             Text("Confirm payment").font(.headline).foregroundStyle(.white)
             row("To", "\(quote.kind)\n\(quote.destination)")
             if let note = quote.note { row("For", note) }
+            if let comment = quote.comment { row("Comment", comment) }
             row("Amount", quote.amount)
             row("Fee", quote.fee)
             Divider().overlay(Color.white.opacity(0.3))

@@ -57,11 +57,11 @@ pub trait Node: Send + Sync {
     fn bitcoin_address(&self) -> Result<String, String>;
     /// A new Lightning invoice, with an amount or without one.
     fn invoice(&self, amount_sats: Option<u64>, description: &str) -> Result<String, String>;
-    /// Prepare a payment to `input` and quote its fee. The node keeps only
-    /// the latest quote.
-    fn quote(&self, input: &str, amount_sats: Option<u64>) -> Result<Quote, QuoteFailure>;
+    /// Prepare a payment and quote its fee. The node keeps only the latest
+    /// quote.
+    fn quote(&self, request: &SendRequest) -> Result<Quote, QuoteFailure>;
     /// Pay a quote once; a repeat with the same key returns the same payment.
-    fn pay(&self, quote: u64, idempotency_key: &str) -> Result<PaymentRow, String>;
+    fn pay(&self, quote: u64, idempotency_key: &str) -> Result<Paid, String>;
     /// Recent payments, newest first.
     fn payments(&self, limit: u32) -> Result<Vec<PaymentRow>, String>;
     /// Start a purchase with a provider; the URL for the person to open.
@@ -141,6 +141,16 @@ pub enum Destination {
     Bitcoin(String),
 }
 
+/// What the person asked to pay: a request as pasted or scanned, the amount
+/// they typed when the request carries none, and a comment for a recipient
+/// that takes one.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct SendRequest {
+    pub input: String,
+    pub amount_sats: Option<u64>,
+    pub comment: Option<String>,
+}
+
 /// A prepared payment and its fee.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Quote {
@@ -148,15 +158,170 @@ pub struct Quote {
     pub destination: Destination,
     pub amount_sats: u64,
     pub fee_sats: u64,
-    /// The payment request's own description.
+    /// The payment request's own description, or an LNURL recipient's.
     pub note: Option<String>,
+    /// The comment sent to an LNURL recipient.
+    pub comment: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum QuoteFailure {
     /// The request has no amount, or the amount is out of its range.
-    NeedsAmount(String),
+    NeedsAmount(Ask),
     Refused(String),
+}
+
+/// What the screen asks for before a payment can be quoted.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Ask {
+    pub message: String,
+    /// Who is paid, as the request names them: "alice@example.com".
+    pub recipient: Option<String>,
+    /// The recipient's own description of the payment.
+    pub description: Option<String>,
+    /// The longest comment the recipient takes, in characters; 0 takes none.
+    pub comment_max: u16,
+}
+
+impl Ask {
+    /// Ask for an amount, and nothing else.
+    pub fn amount(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+            recipient: None,
+            description: None,
+            comment_max: 0,
+        }
+    }
+}
+
+/// A payment that went out, and what the recipient said about it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Paid {
+    pub row: PaymentRow,
+    /// An LNURL recipient's message after the payment, as plain text.
+    pub message: Option<String>,
+}
+
+/// What an LNURL-pay recipient (a Lightning address or an `lnurl` code)
+/// accepts, read from its pay request.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LnurlTerms {
+    /// The Lightning address, or the service's domain.
+    pub recipient: String,
+    /// Whole sats: the minimum rounded up, the maximum rounded down.
+    pub min_sats: u64,
+    pub max_sats: u64,
+    /// The longest comment it takes (LUD-12); 0 takes none.
+    pub comment_max: u16,
+    /// Its `text/plain` metadata (LUD-06), as plain text.
+    pub description: Option<String>,
+}
+
+impl LnurlTerms {
+    pub fn of(
+        recipient: String,
+        min_msat: u64,
+        max_msat: u64,
+        comment_max: u16,
+        metadata: &str,
+    ) -> Self {
+        Self {
+            recipient,
+            min_sats: min_msat.div_ceil(1000),
+            max_sats: max_msat / 1000,
+            comment_max,
+            description: lnurl_description(metadata),
+        }
+    }
+
+    fn ask(&self, message: String) -> QuoteFailure {
+        QuoteFailure::NeedsAmount(Ask {
+            message,
+            recipient: Some(self.recipient.clone()),
+            description: self.description.clone(),
+            comment_max: self.comment_max,
+        })
+    }
+
+    /// The amount and comment to prepare, or what to ask the person. A
+    /// recipient that takes one amount only is paid that amount.
+    pub fn check(
+        &self,
+        amount: Option<u64>,
+        comment: Option<&str>,
+    ) -> Result<(u64, Option<String>), QuoteFailure> {
+        if self.max_sats == 0 || self.min_sats > self.max_sats {
+            return Err(QuoteFailure::Refused(format!(
+                "{} isn't taking payments right now.",
+                self.recipient
+            )));
+        }
+        let range = if self.min_sats == self.max_sats {
+            format!("{} takes exactly {}.", self.recipient, sats(self.min_sats))
+        } else {
+            format!(
+                "{} takes from {} to {}.",
+                self.recipient,
+                sats(self.min_sats),
+                sats(self.max_sats)
+            )
+        };
+        let amount = match amount {
+            Some(amount) => amount,
+            None if self.min_sats == self.max_sats => self.min_sats,
+            None => return Err(self.ask(format!("Enter an amount. {range}"))),
+        };
+        if amount < self.min_sats || amount > self.max_sats {
+            return Err(self.ask(range));
+        }
+        let comment = comment
+            .map(str::trim)
+            .filter(|comment| !comment.is_empty() && self.comment_max > 0);
+        if let Some(comment) = comment
+            && comment.chars().count() > usize::from(self.comment_max)
+        {
+            return Err(self.ask(format!(
+                "{} takes a comment of up to {} characters.",
+                self.recipient, self.comment_max
+            )));
+        }
+        Ok((amount, comment.map(str::to_owned)))
+    }
+}
+
+/// The `text/plain` entry of LNURL-pay metadata: a JSON array of
+/// `[type, value]` pairs.
+pub fn lnurl_description(metadata: &str) -> Option<String> {
+    let entries: Vec<Vec<serde_json::Value>> = serde_json::from_str(metadata).ok()?;
+    entries.iter().find_map(|entry| match entry.as_slice() {
+        [kind, value] if kind.as_str() == Some("text/plain") => {
+            value.as_str().and_then(|text| plain_text(text, 200))
+        }
+        _ => None,
+    })
+}
+
+/// Text from a stranger, fit for one line of the screen: control characters
+/// become spaces, runs of space collapse, and it stops at `limit` characters.
+pub fn plain_text(text: &str, limit: usize) -> Option<String> {
+    let cleaned: String = text
+        .chars()
+        .map(|c| if c.is_control() { ' ' } else { c })
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    if cleaned.is_empty() {
+        return None;
+    }
+    let mut chars = cleaned.chars();
+    let head: String = chars.by_ref().take(limit).collect();
+    Some(if chars.next().is_some() {
+        format!("{head}…")
+    } else {
+        head
+    })
 }
 
 /// A payment as the SDK reported it.
@@ -227,10 +392,10 @@ pub fn restore_entropy(words: &str) -> Result<String, String> {
 enum Sending {
     Idle,
     Quoting,
-    NeedsAmount(String),
+    NeedsAmount(Ask),
     Quoted(Quote),
     Paying(Quote),
-    Sent(PaymentRow),
+    Sent(Paid),
     Failed(String),
 }
 
@@ -446,6 +611,15 @@ pub struct SendView {
     pub message: Option<String>,
     pub quote: Option<QuoteView>,
     pub result: Option<PaymentView>,
+    /// While an amount is needed: who is paid, as the request names them.
+    pub recipient: Option<String>,
+    /// While an amount is needed: the recipient's description.
+    pub description: Option<String>,
+    /// While an amount is needed: the longest comment the recipient takes.
+    /// The screen shows a comment field only when this is set.
+    pub comment_max: Option<u16>,
+    /// After a payment: what the recipient said, as plain text.
+    pub recipient_message: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -461,6 +635,8 @@ pub struct QuoteView {
     pub fee: String,
     pub total: String,
     pub note: Option<String>,
+    /// The comment sent to the recipient.
+    pub comment: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -712,8 +888,9 @@ impl Wallet {
         });
     }
 
-    /// Quote a payment to what the person pasted or scanned.
-    pub fn quote(&mut self, input: &str, amount: &str) {
+    /// Quote a payment to what the person pasted or scanned. `comment` goes
+    /// to an LNURL recipient that takes one.
+    pub fn quote(&mut self, input: &str, amount: &str, comment: &str) {
         let input = input.trim().to_owned();
         if input.is_empty() {
             self.lock().send = Sending::Idle;
@@ -722,9 +899,22 @@ impl Wallet {
         let amount = match parse_amount(amount) {
             Ok(amount) => amount,
             Err(message) => {
-                self.lock().send = Sending::NeedsAmount(message);
+                let mut shared = self.lock();
+                // Keep what the screen knew about the recipient.
+                shared.send = Sending::NeedsAmount(match &shared.send {
+                    Sending::NeedsAmount(ask) => Ask {
+                        message,
+                        ..ask.clone()
+                    },
+                    _ => Ask::amount(message),
+                });
                 return;
             }
+        };
+        let request = SendRequest {
+            input,
+            amount_sats: amount,
+            comment: Some(comment.trim().to_owned()).filter(|comment| !comment.is_empty()),
         };
         let (node, generation) = {
             let mut shared = self.lock();
@@ -740,7 +930,7 @@ impl Wallet {
         };
         let shared = self.shared.clone();
         std::thread::spawn(move || {
-            let quoted = node.quote(&input, amount);
+            let quoted = node.quote(&request);
             let mut state = lock(&shared);
             if state.generation != generation || state.send != Sending::Quoting {
                 return;
@@ -778,7 +968,7 @@ impl Wallet {
                     return;
                 }
                 state.send = match paid {
-                    Ok(row) => Sending::Sent(row),
+                    Ok(paid) => Sending::Sent(paid),
                     Err(message) => Sending::Failed(message),
                 };
             }
@@ -1108,35 +1298,54 @@ fn code(text: &str, uri: &str, caption: String) -> Code {
 }
 
 fn send_view(send: &Sending) -> SendView {
-    let (state, message, quote, result) = match send {
-        Sending::Idle => ("idle", None, None, None),
-        Sending::Quoting => ("quoting", Some("Preparing the payment…".into()), None, None),
-        Sending::NeedsAmount(message) => ("needs_amount", Some(message.clone()), None, None),
-        Sending::Quoted(quote) => ("quoted", None, Some(quote_view(quote)), None),
-        Sending::Paying(quote) => (
-            "paying",
-            Some("Sending…".into()),
-            Some(quote_view(quote)),
-            None,
-        ),
-        Sending::Sent(row) => (
-            "sent",
-            Some(match row.status.as_str() {
+    let mut view = SendView {
+        state: "idle",
+        message: None,
+        quote: None,
+        result: None,
+        recipient: None,
+        description: None,
+        comment_max: None,
+        recipient_message: None,
+    };
+    match send {
+        Sending::Idle => {}
+        Sending::Quoting => {
+            view.state = "quoting";
+            view.message = Some("Preparing the payment…".into());
+        }
+        Sending::NeedsAmount(ask) => {
+            view.state = "needs_amount";
+            view.message = Some(ask.message.clone());
+            view.recipient = ask.recipient.clone();
+            view.description = ask.description.clone();
+            view.comment_max = (ask.comment_max > 0).then_some(ask.comment_max);
+        }
+        Sending::Quoted(quote) => {
+            view.state = "quoted";
+            view.quote = Some(quote_view(quote));
+        }
+        Sending::Paying(quote) => {
+            view.state = "paying";
+            view.message = Some("Sending…".into());
+            view.quote = Some(quote_view(quote));
+        }
+        Sending::Sent(paid) => {
+            view.state = "sent";
+            view.message = Some(match paid.row.status.as_str() {
                 "pending" => "Sent. The payment is still settling.".to_string(),
                 "failed" => "The payment failed.".to_string(),
                 _ => "Sent.".to_string(),
-            }),
-            None,
-            Some(payment_view(row)),
-        ),
-        Sending::Failed(message) => ("failed", Some(message.clone()), None, None),
-    };
-    SendView {
-        state,
-        message,
-        quote,
-        result,
+            });
+            view.result = Some(payment_view(&paid.row));
+            view.recipient_message = paid.message.clone();
+        }
+        Sending::Failed(message) => {
+            view.state = "failed";
+            view.message = Some(message.clone());
+        }
     }
+    view
 }
 
 fn deposit_view(row: &DepositRow) -> DepositView {
@@ -1190,6 +1399,7 @@ fn quote_view(quote: &Quote) -> QuoteView {
         fee: sats(quote.fee_sats),
         total: sats(quote.amount_sats.saturating_add(quote.fee_sats)),
         note: quote.note.clone(),
+        comment: quote.comment.clone(),
     }
 }
 
@@ -1343,31 +1553,57 @@ mod tests {
             self.invoices.fetch_add(1, Ordering::SeqCst);
             Ok(format!("{INVOICE}{}", amount.unwrap_or(0)))
         }
-        fn quote(&self, input: &str, amount: Option<u64>) -> Result<Quote, QuoteFailure> {
-            match (input, amount) {
+        fn quote(&self, request: &SendRequest) -> Result<Quote, QuoteFailure> {
+            match (request.input.as_str(), request.amount_sats) {
                 ("lnbc-with-amount", _) => Ok(Quote {
                     id: 7,
                     destination: Destination::Lightning("lnbc-with-amount".into()),
                     amount_sats: 1_000,
                     fee_sats: 3,
                     note: Some("Coffee".into()),
+                    comment: None,
                 }),
-                ("spark1friend", None) => Err(QuoteFailure::NeedsAmount(
-                    "Enter the amount to send to this address.".into(),
-                )),
+                ("spark1friend", None) => Err(QuoteFailure::NeedsAmount(Ask::amount(
+                    "Enter the amount to send to this address.",
+                ))),
                 ("spark1friend", Some(amount)) => Ok(Quote {
                     id: 8,
                     destination: Destination::Spark("spark1friend".into()),
                     amount_sats: amount,
                     fee_sats: 0,
                     note: None,
+                    comment: None,
                 }),
+                // A Lightning address and an LNURL code resolve to a pay
+                // request, whose terms decide what is asked.
+                ("alice@example.com" | "lnurl1fixedprice", amount) => {
+                    let terms = if request.input.starts_with("alice") {
+                        LnurlTerms::of(
+                            "alice@example.com".into(),
+                            1_000,
+                            5_000_000,
+                            20,
+                            r#"[["text/identifier","alice@example.com"],["text/plain","Sats for Alice"]]"#,
+                        )
+                    } else {
+                        LnurlTerms::of("shop.example".into(), 21_000_000, 21_000_000, 0, "[]")
+                    };
+                    let (amount, comment) = terms.check(amount, request.comment.as_deref())?;
+                    Ok(Quote {
+                        id: 9,
+                        destination: Destination::LightningAddress(terms.recipient.clone()),
+                        amount_sats: amount,
+                        fee_sats: 2,
+                        note: terms.description,
+                        comment,
+                    })
+                }
                 _ => Err(QuoteFailure::Refused(
                     "That isn't a payment request.".into(),
                 )),
             }
         }
-        fn pay(&self, quote: u64, key: &str) -> Result<PaymentRow, String> {
+        fn pay(&self, quote: u64, key: &str) -> Result<Paid, String> {
             self.paid.lock().unwrap().push((quote, key.to_owned()));
             let row = PaymentRow {
                 id: format!("pay-{quote}"),
@@ -1380,7 +1616,10 @@ mod tests {
             };
             self.payments.lock().unwrap().insert(0, row.clone());
             self.balance.fetch_sub(1_003, Ordering::SeqCst);
-            Ok(row)
+            Ok(Paid {
+                row,
+                message: (quote == 9).then(|| "Thanks for the sats!".to_owned()),
+            })
         }
         fn payments(&self, _limit: u32) -> Result<Vec<PaymentRow>, String> {
             Ok(self.payments.lock().unwrap().clone())
@@ -1566,7 +1805,7 @@ mod tests {
         wallet.open(ENTROPY, false);
         settle(&wallet);
 
-        wallet.quote("not a request", "");
+        wallet.quote("not a request", "", "");
         settle(&wallet);
         let refused = ready(&wallet).send;
         assert_eq!(refused.state, "failed");
@@ -1576,15 +1815,15 @@ mod tests {
         );
 
         // An address needs an amount; the screen asks for it.
-        wallet.quote("spark1friend", "");
+        wallet.quote("spark1friend", "", "");
         settle(&wallet);
         assert_eq!(ready(&wallet).send.state, "needs_amount");
-        wallet.quote("spark1friend", "0");
+        wallet.quote("spark1friend", "0", "");
         assert_eq!(
             ready(&wallet).send.message.as_deref(),
             Some("Enter an amount above zero.")
         );
-        wallet.quote("spark1friend", "1,500");
+        wallet.quote("spark1friend", "1,500", "");
         settle(&wallet);
         let spark = ready(&wallet).send.quote.expect("quote");
         assert_eq!(
@@ -1592,7 +1831,7 @@ mod tests {
             ("Spark address", "1,500 sats", "0 sats")
         );
 
-        wallet.quote("lnbc-with-amount", "");
+        wallet.quote("lnbc-with-amount", "", "");
         settle(&wallet);
         let quoted = ready(&wallet).send;
         assert_eq!(quoted.state, "quoted");
@@ -1629,6 +1868,123 @@ mod tests {
         assert_eq!(sent.payments[0].fee.as_deref(), Some("3 sats fee"));
         wallet.reset_send();
         assert_eq!(ready(&wallet).send.state, "idle");
+    }
+
+    #[test]
+    fn lightning_addresses_and_lnurl_codes_quote_within_the_recipients_terms() {
+        let home = tempfile::tempdir().expect("temp dir");
+        let node = Arc::new(Fake::default());
+        node.balance.store(50_000, Ordering::SeqCst);
+        let mut wallet = Wallet::new(
+            home.path().to_path_buf(),
+            opener(node.clone(), Arc::new(Mutex::new(vec![]))),
+        );
+        wallet.open(ENTROPY, false);
+        settle(&wallet);
+
+        // Without an amount the screen shows the recipient, its range, its
+        // description, and a comment field sized to what it takes.
+        wallet.quote("alice@example.com", "", "");
+        settle(&wallet);
+        let asked = ready(&wallet).send;
+        assert_eq!(asked.state, "needs_amount");
+        assert_eq!(
+            asked.message.as_deref(),
+            Some("Enter an amount. alice@example.com takes from 1 sat to 5,000 sats.")
+        );
+        assert_eq!(asked.recipient.as_deref(), Some("alice@example.com"));
+        assert_eq!(asked.description.as_deref(), Some("Sats for Alice"));
+        assert_eq!(asked.comment_max, Some(20));
+
+        // Out of range, or too long a comment, asks again.
+        wallet.quote("alice@example.com", "6000", "");
+        settle(&wallet);
+        assert_eq!(
+            ready(&wallet).send.message.as_deref(),
+            Some("alice@example.com takes from 1 sat to 5,000 sats.")
+        );
+        wallet.quote("alice@example.com", "2000", &"x".repeat(21));
+        settle(&wallet);
+        assert_eq!(
+            ready(&wallet).send.message.as_deref(),
+            Some("alice@example.com takes a comment of up to 20 characters.")
+        );
+        // An unreadable amount keeps what the screen knew of the recipient.
+        wallet.quote("alice@example.com", "lots", "");
+        let kept = ready(&wallet).send;
+        assert_eq!(kept.recipient.as_deref(), Some("alice@example.com"));
+        assert_eq!(kept.comment_max, Some(20));
+
+        wallet.quote("alice@example.com", "2,000", "  for lunch ");
+        settle(&wallet);
+        let quote = ready(&wallet).send.quote.expect("quote");
+        assert_eq!(quote.kind, "Lightning address");
+        assert_eq!(quote.destination, "alice@example.com");
+        assert_eq!(
+            (
+                quote.amount.as_str(),
+                quote.fee.as_str(),
+                quote.total.as_str()
+            ),
+            ("2,000 sats", "2 sats", "2,002 sats")
+        );
+        assert_eq!(quote.note.as_deref(), Some("Sats for Alice"));
+        assert_eq!(quote.comment.as_deref(), Some("for lunch"));
+        wallet.pay(quote.id);
+        settle(&wallet);
+        let sent = ready(&wallet).send;
+        assert_eq!(sent.state, "sent");
+        assert_eq!(
+            sent.recipient_message.as_deref(),
+            Some("Thanks for the sats!")
+        );
+        assert_eq!(node.paid.lock().unwrap().len(), 1);
+        wallet.reset_send();
+
+        // A code that takes one amount is quoted for it without asking, and
+        // a comment it doesn't take is not sent.
+        wallet.quote("lnurl1fixedprice", "", "hello");
+        settle(&wallet);
+        let fixed = ready(&wallet).send.quote.expect("quote");
+        assert_eq!(fixed.amount, "21,000 sats");
+        assert_eq!(fixed.destination, "shop.example");
+        assert_eq!(fixed.comment, None);
+    }
+
+    #[test]
+    fn lnurl_terms_read_ranges_comments_and_metadata() {
+        let terms = LnurlTerms::of("bob@example.com".into(), 1_500, 2_999, 0, "not json");
+        // Millisats round inward: at least 2 sats, at most 2.
+        assert_eq!((terms.min_sats, terms.max_sats), (2, 2));
+        assert_eq!(terms.description, None);
+        assert_eq!(terms.check(None, None), Ok((2, None)));
+        let closed = LnurlTerms::of("bob@example.com".into(), 1_000, 0, 0, "[]");
+        assert_eq!(
+            closed.check(Some(10), None),
+            Err(QuoteFailure::Refused(
+                "bob@example.com isn't taking payments right now.".into()
+            ))
+        );
+        let inverted = LnurlTerms::of("bob@example.com".into(), 9_000, 1_000, 0, "[]");
+        assert!(matches!(
+            inverted.check(Some(5), None),
+            Err(QuoteFailure::Refused(_))
+        ));
+        assert_eq!(
+            lnurl_description(
+                r#"[["text/plain","Pay\n  Bob\u0007 here"],["image/png;base64","AA"]]"#
+            )
+            .as_deref(),
+            Some("Pay Bob here")
+        );
+        assert_eq!(lnurl_description(r#"[["text/plain","   "]]"#), None);
+        assert_eq!(plain_text(&"ab".repeat(10), 5).as_deref(), Some("ababa…"));
+        // Comments count characters, not bytes.
+        let terms = LnurlTerms::of("c@example.com".into(), 1_000, 10_000, 3, "[]");
+        assert_eq!(
+            terms.check(Some(5), Some("éèê")),
+            Ok((5, Some("éèê".into())))
+        );
     }
 
     #[test]
@@ -1879,7 +2235,10 @@ mod tests {
         assert!(node.spark_address().expect("address").starts_with("spark"));
         assert!(node.payments(10).expect("payments").is_empty());
         assert!(matches!(
-            node.quote("spark1nonsense", None),
+            node.quote(&SendRequest {
+                input: "spark1nonsense".into(),
+                ..SendRequest::default()
+            }),
             Err(QuoteFailure::Refused(_) | QuoteFailure::NeedsAmount(_))
         ));
     }
@@ -1907,8 +2266,61 @@ mod tests {
         let buy = node.buy(Provider::CashApp, 1_000).expect("cash app link");
         assert!(buy.starts_with("https://cash.app/"));
         let moonpay = node.buy(Provider::Moonpay, 50_000).expect("moonpay link");
-        assert!(moonpay.starts_with("https://buy.moonpay.io/?apiKey="), "{moonpay}");
+        assert!(
+            moonpay.starts_with("https://buy.moonpay.io/?apiKey="),
+            "{moonpay}"
+        );
         assert!(moonpay.contains("walletAddress=bc1"), "{moonpay}");
+    }
+
+    /// A throwaway, empty mainnet wallet reads a real Lightning address's
+    /// terms and has the recipient's server make an invoice, then stops at
+    /// the quote: nothing is paid, and the empty wallet could not pay. Run
+    /// with `--ignored`; it reaches Breez, Spark, and getalby.com.
+    #[test]
+    #[ignore = "reaches Breez, Spark, and a Lightning address server on mainnet"]
+    fn a_mainnet_lightning_address_quotes_without_paying() {
+        let home = tempfile::tempdir().expect("temp dir");
+        let mnemonic = bip39::Mnemonic::from_entropy(&rand_entropy())
+            .unwrap()
+            .to_string();
+        let node =
+            crate::spark::SparkNode::open(home.path(), NETWORK, &mnemonic).expect("mainnet wallet");
+        let ask = |amount, comment: Option<&str>| {
+            node.quote(&SendRequest {
+                input: "hello@getalby.com".into(),
+                amount_sats: amount,
+                comment: comment.map(str::to_owned),
+            })
+        };
+        match ask(None, None) {
+            Err(QuoteFailure::NeedsAmount(ask)) => {
+                assert_eq!(ask.recipient.as_deref(), Some("hello@getalby.com"));
+                assert!(ask.message.contains("takes from 1 sat"), "{}", ask.message);
+                assert!(ask.comment_max > 0);
+                eprintln!("asked: {ask:?}");
+            }
+            other => panic!("an amount is asked: {other:?}"),
+        }
+        match ask(Some(21), Some("OpenAgents LNURL check")) {
+            Ok(quote) => {
+                assert_eq!(
+                    quote.destination,
+                    Destination::LightningAddress("hello@getalby.com".into())
+                );
+                assert_eq!(quote.amount_sats, 21);
+                assert_eq!(quote.comment.as_deref(), Some("OpenAgents LNURL check"));
+                eprintln!("quoted, not paid: {quote:?}");
+            }
+            // An empty wallet may be refused at the quote; that is still a
+            // read of the recipient's terms and invoice.
+            Err(QuoteFailure::Refused(message)) => {
+                assert!(message.contains("enough"), "{message}");
+                eprintln!("refused as empty: {message}");
+            }
+            other => panic!("quote: {other:?}"),
+        }
+        assert!(node.payments(10).expect("payments").is_empty());
     }
 
     /// Breez's server stopped signing MoonPay URLs (#9865), so the phone
@@ -1921,7 +2333,8 @@ mod tests {
         let parsed = url::Url::parse(&url).expect("parses");
         assert_eq!(parsed.scheme(), "https");
         assert_eq!(parsed.host_str(), Some("buy.moonpay.io"));
-        let pairs: std::collections::HashMap<String, String> = parsed.query_pairs().into_owned().collect();
+        let pairs: std::collections::HashMap<String, String> =
+            parsed.query_pairs().into_owned().collect();
         assert_eq!(pairs["apiKey"], "pk_live_Mx5g6bpD6Etd7T0bupthv7smoTNn2Vr");
         assert_eq!(pairs["currencyCode"], "btc");
         assert_eq!(pairs["walletAddress"], "bc1qexampleaddress0");

@@ -288,6 +288,36 @@ authority than its owner gave.
   Running it is a service with uptime duties; it needs its own issue.
 - **Zaps are separate from x402 and labor payment,** as NIP-X402 requires.
 
+### Lightning addresses and LNURL (shipped on the phone, #9859)
+
+- **Send:** the Send field takes a Lightning address (`name@domain`) or an
+  LNURL-pay code (`lnurl1…`, `lightning:` URIs, and QR codes carrying
+  either). The SDK's `parse` reads the pay request; `prepare_lnurl_pay`
+  quotes it; `lnurl_pay` pays the confirmed quote once with its idempotency
+  key. Before the quote, the screen names the recipient, shows its
+  `text/plain` description and its range in whole sats (the minimum rounded
+  up and the maximum rounded down from millisats), and offers a comment field
+  only when the recipient takes one (LUD-12), up to its length. A recipient
+  that takes one amount is quoted for it without asking. A recipient with no
+  range (`maxSendable` 0) is refused. After the payment, a LUD-09 success
+  action is shown as plain text: a message, or a URL's description and the
+  URL, which the app never opens.
+- **Receive:** no Lightning address yet. Per the domain position above, the
+  phone registers none until a self-hosted LNURL server on an OpenAgents
+  subdomain has an owner, an uptime plan, and its own service issue. It never
+  calls `register_lightning_address`, so no `breez.tips` address carries our
+  name.
+- **LNURL-withdraw** is refused with a plain message for now; scanning one to
+  receive is a follow-up.
+- **Checked by:** `lightning_addresses_and_lnurl_codes_quote_within_the_recipients_terms`
+  and `lnurl_terms_read_ranges_comments_and_metadata` (fake node), and the
+  ignored live check `a_mainnet_lightning_address_quotes_without_paying`,
+  which reads `hello@getalby.com`'s terms and has its server make an invoice
+  for 21 sats from an empty throwaway wallet, stopping at the quote. Run on
+  2026-09-28: range 1 to 10,000,000 sats, comment up to 255 characters,
+  quoted fee 4 sats, nothing paid. The canary payment that moves real sats
+  is an owner step in the workspace's `NEEDS_OWNER.md`.
+
 ## x402
 
 **Paying an x402 seller from Spark works in principle.** The seller's invoice
