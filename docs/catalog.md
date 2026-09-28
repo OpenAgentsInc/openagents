@@ -10,7 +10,7 @@ Start with the [documentation index](README.md), [master roadmap](roadmap.md),
 [glossary](glossary.md), or [maintenance rules](documentation.md). The separate
 [transcript index](transcripts/README.md) owns the video archive.
 
-This catalog lists 498 documents plus itself as of September 27, 2026.
+This catalog lists 504 documents plus itself as of September 28, 2026.
 It retains historical and evidence paths rather than copying their content.
 
 Crate-owned documentation sits outside this inventory and its count. The
@@ -62,6 +62,17 @@ files are included below.
 | [audits/2026-09-26-nostr-adoption/README.md](audits/2026-09-26-nostr-adoption/README.md) | Retained evidence / audit | Nostr adoption: existing paths, missing integrations, and priorities |
 | [audits/2026-09-26-nostr-adoption/coverage.md](audits/2026-09-26-nostr-adoption/coverage.md) | Retained evidence / audit | Disposition of all 44 workspace packages and additional host surfaces |
 | [audits/README.md](audits/README.md) | Evidence index | Engineering audits |
+
+## breez
+
+| Document | Role | Topic |
+| --- | --- | --- |
+| [breez/README.md](breez/README.md) | Index | Breez and Spark |
+| [breez/breez-vs-spark.md](breez/breez-vs-spark.md) | Design / assessment | Breez and Spark: roles, use cases, and SDK choice |
+| [breez/history.md](breez/history.md) | Historical | Breez and Spark in this repository |
+| [breez/sdk-review.md](breez/sdk-review.md) | Design / assessment | Breez SDK (Spark) review |
+| [breez/stablecoin-receive.md](breez/stablecoin-receive.md) | Design / assessment | USDC and USDT receive |
+| [breez/wallet-design.md](breez/wallet-design.md) | Design / assessment | Wallet design: people, agents, and spending grants |
 
 ## coder
 

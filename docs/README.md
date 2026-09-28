@@ -13,6 +13,7 @@ the [document catalog](catalog.md) to find a specific reference.
 | Use or develop Coder | [Coder](coder/README.md), [installation](coder/guides/install.md), [task commands](coder/guides/tasks.md) |
 | Build shared terminal, native, and web interfaces | [Rust Native](../crates/rust-native/README.md), [styling](coder/rust-native/styling-design.md), [adoption plan](coder/rust-native/adoption.md) |
 | Follow suite delivery and ownership | [Migration tracker](coder/migration-status.md), [master roadmap](roadmap.md) |
+| Plan the Wallet and agent payments | [Breez and Spark](breez/README.md), [Bitcoin](bitcoin/README.md) |
 | Understand the coding and network thesis | [Coder design index](coder/design/README.md), [networked Coder](coder/design/networked-coder-plan.md) |
 | Observe and control a task over Nostr | [Scoped control host and client](coder/runtime/nostr-task-control.md) |
 | Reuse knowledge and components | [Knowledge](coder/guides/knowledge-base.md), [extensions](extensions/README.md), [programs](programs.md) |
