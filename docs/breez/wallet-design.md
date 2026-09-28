@@ -158,7 +158,7 @@ are.
 | `grantee` | The agent's key. |
 | `wallet` | Spark identity public key and network of the wallet the grant draws on (the human wallet for A and B, the allowance wallet for C). |
 | `mode` | `request`, `standing`, `allowance`, or `operator_allowance`. |
-| `unit` | `sat` or a token identifier. Exact units, never inferred, per the shared `spend_microunits` rule. |
+| `unit` | `sat` (bitcoin base units; the wire name stays `sat`, and screens show the amount as `₿N` or legacy BTC per [amounts](amounts.md)) or a token identifier. Exact units, never inferred, per the shared `spend_microunits` rule. |
 | `per_payment_max` | Ceiling for one payment, fees included. |
 | `period` and `period_max` | Rolling window (for example 24 hours) and its ceiling. |
 | `total_max` | Lifetime ceiling. |
@@ -299,8 +299,9 @@ authority than its owner gave.
   either). The SDK's `parse` reads the pay request; `prepare_lnurl_pay`
   quotes it; `lnurl_pay` pays the confirmed quote once with its idempotency
   key. Before the quote, the screen names the recipient, shows its
-  `text/plain` description and its range in whole sats (the minimum rounded
-  up and the maximum rounded down from millisats), and offers a comment field
+  `text/plain` description and its range in whole base units, in the
+  person's amount format (the minimum rounded up and the maximum rounded down
+  from LNURL's millisatoshis), and offers a comment field
   only when the recipient takes one (LUD-12), up to its length. A recipient
   that takes one amount is quoted for it without asking. A recipient with no
   range (`maxSendable` 0) is refused. After the payment, a LUD-09 success
@@ -317,9 +318,9 @@ authority than its owner gave.
   and `lnurl_terms_read_ranges_comments_and_metadata` (fake node), and the
   ignored live check `a_mainnet_lightning_address_quotes_without_paying`,
   which reads `hello@getalby.com`'s terms and has its server make an invoice
-  for 21 sats from an empty throwaway wallet, stopping at the quote. Run on
-  2026-09-28: range 1 to 10,000,000 sats, comment up to 255 characters,
-  quoted fee 4 sats, nothing paid. The canary payment that moves real sats
+  for ₿21 from an empty throwaway wallet, stopping at the quote. Run on
+  2026-09-28: range ₿1 to ₿10,000,000, comment up to 255 characters,
+  quoted fee ₿4, nothing paid. The canary payment that moves real bitcoin
   is an owner step in the workspace's `NEEDS_OWNER.md`.
 
 ## x402

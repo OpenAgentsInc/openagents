@@ -44,6 +44,10 @@ Computers keep `crates/wallet` (`ldk-node`) and `crates/x402`; see
 - [Agent spend protocol, phase 1](spend-protocol.md): the grant, request, and
   receipt formats, refusal codes, ledger, and revocation that phase 1 runs
   (an agent asks; the owner approves each payment on the phone).
+- [Amounts](amounts.md): BIP 177 display (`₿12,345`) with a legacy BTC
+  toggle, the shared `bitcoin-amount` formatter, which protocol names keep
+  `sat`/`msat`, and the audit of every surface
+  ([#9881](https://github.com/OpenAgentsInc/openagents/issues/9881)).
 
 ## Positions in brief
 

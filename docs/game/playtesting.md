@@ -162,7 +162,7 @@ take a position on each.
 | Coder chat | Does commanding your own computer from your phone feel trustworthy and worth coming back to? | It is the product's reason to exist; pairing a computer is the steepest step. |
 | The Grid (Verse tab) | Is moving around, pushing the ball, and meeting people fun for five minutes with nothing to win? | The book's warning: if the core isn't fun by beta, "you are stuck with it." |
 | The Gym and Lagrange 1 | Does a player understand what the RESULTS board and a trace replay show, and want to see more? | The Gym is where agent training will happen. |
-| Wallet | Can a person receive and send a small amount on mainnet correctly, and do they trust it? | Real money: errors cost testers sats. Correctness beats fun here. |
+| Wallet | Can a person receive and send a small amount on mainnet correctly, and do they trust it? | Real money: errors cost testers real bitcoin. Correctness beats fun here. |
 | Agent training | Would a player want to level up as an agent trainer, and do the rules feel fair? | The loop is specified, not built: the cheapest time to change it is now. |
 
 Non-goals: load testing the relay, security review of the wallet, and
@@ -268,8 +268,8 @@ agree** in the app). It says, in plain words:
    to be tied to your name.
 4. **Money.** The Wallet is real Bitcoin. Use amounts you can afford to lose.
    We never ask for your recovery words, your nsec, or a screenshot of
-   either. Nobody from OpenAgents will ever ask you to send them sats, except
-   in the scripted wallet session, where you return test sats that the
+   either. Nobody from OpenAgents will ever ask you to send them bitcoin, except
+   in the scripted wallet session, where you return the test bitcoin that the
    moderator sent you.
 5. **Leaving.** You can stop at any time. We delete your session notes and
    recordings on request. Signed events on relays can't be deleted, but an
@@ -472,7 +472,7 @@ Today's loop, written down, then widened to many testers.
   **Playtest XP** next to trainer XP, never summed into one level under the
   `trainer-curve-v1` name. Testing an app is valuable, but it isn't training
   agents, and the trainer level has to keep meaning what it says.
-- **No money.** No sats, no gift cards, and no promise of either. If quest
+- **No money.** No bitcoin, no gift cards, and no promise of either. If quest
   purses ever arrive, they follow the leveling spec's
   [prerequisites](../verse/agent-trainer-leveling.md#rewards), and
   playtesting would be a later candidate, not a first one.
@@ -699,7 +699,7 @@ Each week has a goal, the book's circle it leans on, and an exit check.
   ready, and the triage inbox
   ([#9884](https://github.com/OpenAgentsInc/openagents/issues/9884)).
 - **Exit:** unaided completion of session 1's pairing-free tasks is at least
-  60 percent, and no wallet session lost sats to an app error.
+  60 percent, and no wallet session lost bitcoin to an app error.
 
 ### Week 3 (2026-10-13 to 10-19): raids and the paper trainer loop
 
@@ -804,7 +804,8 @@ Lightning wallet and a Lightning address. The amounts are test fixtures, not
 a reward: the tester returns them, and can skip any step.
 
 - **Introduction (2 to 3 minutes).** As in session 1, plus: **"This wallet
-  is real Bitcoin. We'll move about 100 sats, less than a few cents. I'll
+  is real Bitcoin. We'll move about ₿100, a hundred of bitcoin's smallest
+  units and less than a few cents. I'll
   never ask for your recovery words. Please don't show them on screen."**
   Turn off recording before the recovery-words step, or ask the tester to
   turn the phone away.
@@ -813,14 +814,15 @@ a reward: the tester returns them, and can skip any step.
 - **Play (15 to 20 minutes).**
   1. **"Open the wallet and tell me what it's telling you."** Then: **"Find
      out who holds your money in this wallet."** (The **i** button, the
-     trust note.)
+     trust note.) Note whether the ₿ amounts and the note explaining them
+     make sense, and whether the tester switches to BTC.
   2. **"Back up the wallet the way you'd back up any wallet."** (Recovery,
      **Show recovery words**.) Camera off. Note hesitation and whether
      they write the words down.
-  3. **"I want to send you 100 sats. Give me something to pay."**
+  3. **"I want to send you ₿100. Give me something to pay."**
      (Receive, Lightning, an amount, **New invoice**.) The moderator pays;
      note how long the tester takes to believe it arrived.
-  4. **"Send 90 sats back to this Lightning address."** Read the address
+  4. **"Send ₿90 back to this Lightning address."** Read the address
      aloud or paste it in the call chat. Note whether they check the fee
      and the range before confirming.
   5. **"Find both payments."** (History.)
@@ -883,7 +885,7 @@ For season 1 (2026-09-29 to 2026-10-26):
 | Accepted `playtest` issues | 30 |
 | Median time from an accepted P0 or P1 to a TestFlight build with the fix | 2 days |
 | Fixes verified by the reporter | Half of all fixed issues |
-| Wallet sessions that lost sats to an app error | 0 |
+| Wallet sessions that lost bitcoin to an app error | 0 |
 | Privacy incidents (a key, recovery word, or private text made public) | 0 |
 | Day-7 return reported by diarists | 3 of 5 |
 | A written decision on agent trainer leveling from the paper sessions | Yes |
