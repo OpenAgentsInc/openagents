@@ -103,12 +103,16 @@ internal class AccountScreens(private val activity: MainActivity, private val br
     /** Reads the keys and changelog (never the nsec) for the Account screens. */
     fun load(refresh: () -> Unit) = bridge.account { account = it; refresh() }
 
-    private fun warn(refresh: () -> Unit) {
-        dialog().setTitle("Reveal your nsec?")
-            .setMessage("Anyone with your nsec can act as this device on your computers. Never share it, and make sure no one can see your screen.")
+    private fun warn(refresh: () -> Unit) = reveal("Reveal your nsec?",
+        "Anyone with your nsec can act as this device on your computers. Never share it, and make sure no one can see your screen.",
+        { done -> bridge.account(reveal = true) { done(it.textOrNull("nsec")) } }, refresh)
+
+    /** Asks first; then fetches the nsec and shows it with screenshots blocked. */
+    private fun reveal(title: String, message: String, fetch: ((String?) -> Unit) -> Unit, refresh: () -> Unit) {
+        dialog().setTitle(title).setMessage(message)
             .setPositiveButton("Reveal") { _, _ ->
-                bridge.account(reveal = true) { packet ->
-                    nsec = packet.textOrNull("nsec") ?: return@account
+                fetch { secret ->
+                    nsec = secret ?: return@fetch
                     if (!(BuildConfig.DEBUG && activity.intent.getBooleanExtra("allow_secret_captures", false))) {
                         activity.window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
                     }
@@ -123,6 +127,100 @@ internal class AccountScreens(private val activity: MainActivity, private val br
     fun hideNsec() {
         nsec = null
         activity.window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+    }
+
+    // Trainer
+
+    private var card: JSONObject? = null
+
+    fun loadTrainer(preview: Boolean, refresh: () -> Unit) = bridge.trainer(preview = preview) { next ->
+        if (next.toString() != card?.toString()) { card = next; refresh() }
+    }
+
+    /**
+     * The trainer card: the level over this player's head in the Grid, the
+     * curve it uses, and the counted awards behind it, derived in Rust from
+     * signed NIP-XP awards. The trainer key is the Verse world key; its nsec
+     * shows only after an explicit reveal.
+     */
+    fun trainer(preview: Boolean, refresh: () -> Unit): View {
+        val body = activity.column().apply { setPadding(activity.dp(16), 0, activity.dp(16), activity.dp(24)) }
+        val card = card
+        if (card?.optString("state") == "preview") body.add(activity.label(
+            "Preview: a labeled fixture of six tutorial reproductions, not real awards.", 13f, 0xFFFFD60A.toInt(), key = "trainer-preview"), 12)
+        val state = card?.optString("state")
+        body.section(null, if (card != null && state != "ready" && state != "preview") "Reading awards from ${card.optString("relay")}…" else null) {
+            if (card == null) { add(activity.label("Reading your XP…", 16f, Palette.SECONDARY).apply { setPadding(0, activity.dp(12), 0, activity.dp(12)) }); return@section }
+            val level = card.optInt("level"); val xp = card.optLong("xp")
+            add(activity.row().apply {
+                gravity = Gravity.BOTTOM; setPadding(0, activity.dp(10), 0, 0); tag = "trainer-card"
+                addView(activity.label("Level $level", 30f, bold = true), LinearLayout.LayoutParams(0, -2, 1f))
+                addView(activity.label("$xp XP", 18f))
+            })
+            val next = card.optLong("next_level_at").toDouble()
+            val start = if (level <= 1) 0.0 else Math.ceil(100 * Math.pow((level - 1).toDouble(), 1.5))
+            val progress = if (next > start) ((xp - start) / (next - start)).coerceIn(0.0, 1.0) else 0.0
+            add(android.widget.ProgressBar(activity, null, android.R.attr.progressBarStyleHorizontal).apply {
+                max = 1000; this.progress = (progress * 1000).toInt(); tag = "trainer-progress"
+                progressTintList = android.content.res.ColorStateList.valueOf(Palette.PRIMARY)
+            }, 8)
+            add(activity.label("${card.optLong("to_next")} XP to level ${level + 1} · ${card.optString("curve")}", 13f, Palette.SECONDARY), 4)
+            add(activity.label("Over your head in the Grid: ${card.optString("tag")}${if (xp > 0) " · lv $level" else ""}", 13f,
+                Palette.SECONDARY, mono = true).apply { setPadding(0, 0, 0, activity.dp(10)) }, 2)
+        }
+        card ?: return ScrollView(activity).apply { addView(body) }
+        val titles = card.optJSONArray("titles").strings()
+        if (titles.isNotEmpty()) body.section("Titles") {
+            add(activity.label(titles.joinToString(", "), 16f).apply { setPadding(0, activity.dp(12), 0, activity.dp(12)) })
+        }
+        body.section("Counted awards", "Trusting the OpenAgents referee, ${card.optString("referee_npub").take(16)}…, on " +
+            "${card.optString("relay")}. ${card.optString("note")}") {
+            val awards = card.optJSONArray("awards")?.objects() ?: emptyList()
+            if (awards.isEmpty()) add(activity.label("No awards yet. Reproduce a published pass from its recipe to earn your first; a tutorial quest is worth 50 XP.",
+                14f, Palette.SECONDARY).apply { setPadding(0, activity.dp(12), 0, activity.dp(12)) })
+            for (award in awards) {
+                add(activity.column().apply {
+                    setPadding(0, activity.dp(10), 0, activity.dp(10))
+                    val top = activity.row()
+                    top.addView(activity.label(award.getString("title"), 16f, bold = true), LinearLayout.LayoutParams(0, -2, 1f))
+                    top.addView(activity.label("+${award.optLong("xp")} XP", 14f))
+                    add(top)
+                    add(activity.label("${award.getString("quest")} · ${award.getString("role")} · ${award.getString("season")}", 12f,
+                        Palette.SECONDARY, mono = true), 2)
+                    val link = award.optString("link")
+                    contentDescription = "${award.getString("title")}, ${award.optLong("xp")} XP, opens in the browser"
+                    if (link.startsWith("https://")) setOnClickListener { activity.openLink(link) }
+                })
+                rowDivider()
+            }
+            val open = card.optInt("open_quests")
+            add(activity.label(if (open == 1) "1 open tutorial quest ↗" else "$open open quests ↗", 16f, Palette.LINK, key = "trainer-quests").apply {
+                setPadding(0, activity.dp(12), 0, activity.dp(12))
+                setOnClickListener { activity.openLink("https://github.com/OpenAgentsInc/openagents/blob/main/docs/verse/tutorial-quests.md") }
+            })
+        }
+        body.section("Trainer key", "Your trainer key is your Verse world key: the one over your head in the Grid. Sign a reproduction with it " +
+            "on your computer (`microcoder xp reproduce --key`), and the award shows here and in the Grid.") {
+            val npub = card.optString("npub")
+            add(key(npub, "trainer-npub")); rowDivider(); add(copyRow("Copy npub", npub, "trainer-copy-npub"))
+            rowDivider()
+            val secret = nsec
+            if (secret != null) {
+                add(key(secret, "trainer-nsec").apply { setTextIsSelectable(false) }); rowDivider()
+                add(copyRow("Copy nsec", secret, "trainer-copy-nsec", secret = true)); rowDivider()
+                add(activity.label("Hide nsec", 16f, Palette.LINK).apply {
+                    setPadding(0, activity.dp(12), 0, activity.dp(12)); setOnClickListener { hideNsec(); refresh() }
+                })
+            } else add(activity.label("Reveal nsec", 16f, Palette.FAILURE, key = "trainer-reveal").apply {
+                setPadding(0, activity.dp(12), 0, activity.dp(12))
+                setOnClickListener {
+                    reveal("Reveal your trainer nsec?", "Anyone with this nsec can act as you in Verse and sign work in your name. " +
+                        "It can't reach your computers or your wallet. Never share it, and make sure no one can see your screen.",
+                        { done -> bridge.trainer(reveal = true, preview = preview) { done(it.textOrNull("nsec")) } }, refresh)
+                }
+            })
+        }
+        return ScrollView(activity).apply { addView(body) }
     }
 
     // About this device

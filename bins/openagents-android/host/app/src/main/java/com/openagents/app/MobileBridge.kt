@@ -117,6 +117,19 @@ class MobileBridge(private val context: Context, private val computersFixture: B
             ?.takeIf { it.optString("schema") == "openagents.account.v1" }?.let(received)
     }
 
+    /**
+     * The trainer card for the Verse world key (`openagents.trainer.v1`).
+     * With `reveal`, the answer also carries that key's nsec: ask only after
+     * the person chose to see it. Nothing here logs it.
+     */
+    fun trainer(reveal: Boolean = false, preview: Boolean = false, received: (JSONObject) -> Unit) {
+        val secret = try { DeviceKey.loadOrCreate(context, DeviceKey.Purpose.WORLD) } catch (_: Exception) { return }
+        call(json("op" to "trainer", "world_secret_hex" to secret, "reveal" to reveal, "preview" to preview)) { text ->
+            text?.let { runCatching { JSONObject(it) }.getOrNull() }
+                ?.takeIf { it.optString("schema") == "openagents.trainer.v1" }?.let(received)
+        }
+    }
+
     /** Open a computer from the native Computers list. */
     fun openComputer(host: String) = send(json("op" to "computers_open", "host" to host))
     /** A choice from a Computers row's menu, already confirmed when it asks. */

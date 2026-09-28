@@ -38,7 +38,7 @@ enum class AppTab(val title: String, val icon: Int) {
 
 /** A screen that the Account tab opens. */
 enum class AccountRoute(val title: String) {
-    COMPUTERS("Computers"), TAILNET("Tailnet"), IDENTITY("Identity keys"), DEVICE("About this device"), CHANGELOG("Changelog"),
+    TRAINER("Trainer"), COMPUTERS("Computers"), TAILNET("Tailnet"), IDENTITY("Identity keys"), DEVICE("About this device"), CHANGELOG("Changelog"),
 }
 
 class MainActivity : ComponentActivity() {
@@ -193,6 +193,9 @@ class MainActivity : ComponentActivity() {
         open(route)
     }
 
+    /** Debug builds only: levels come from the labeled tutorial fixture (`xp_preview`). */
+    val xpPreview get() = BuildConfig.DEBUG && intent.getBooleanExtra("xp_preview", false)
+
     /** Debug builds only: Rust Native's sample conversation in place of the Coder surface. */
     private var fixture: JSONObject? = null
 
@@ -218,7 +221,7 @@ class MainActivity : ComponentActivity() {
 
     private fun buildVerse(page: FrameLayout) {
         val gymPreview = BuildConfig.DEBUG && intent.getBooleanExtra("gym_preview", false)
-        world = VerseSurface(this, gymPreview) { packet, _ ->
+        world = VerseSurface(this, gymPreview, xpPreview) { packet, _ ->
             if (::panels.isInitialized) panels.update(packet)
             if (tab == AppTab.VERSE) renderVerse()
         }
@@ -267,7 +270,7 @@ class MainActivity : ComponentActivity() {
 
     private fun open(next: AccountRoute?) {
         if (next != route) routeInput?.dispose()
-        if (route == AccountRoute.IDENTITY && next != route) account.hideNsec()
+        if ((route == AccountRoute.IDENTITY || route == AccountRoute.TRAINER) && next != route) account.hideNsec()
         route = next
         accountPage.removeAllViews()
         routeContent = null; routeNotices = null; routeQr = null; shownQr = null
@@ -338,6 +341,10 @@ class MainActivity : ComponentActivity() {
                 redrawAccountScreen()
                 account.load { redrawAccountScreen() }
             }
+            AccountRoute.TRAINER -> {
+                redrawAccountScreen()
+                account.loadTrainer(xpPreview) { redrawAccountScreen() }
+            }
         }
         accountPage.addView(screen, FrameLayout.LayoutParams(-1, -1))
         if (next == AccountRoute.COMPUTERS) bridge.computersGo("home")
@@ -350,6 +357,7 @@ class MainActivity : ComponentActivity() {
         val body = routeBody ?: return
         val view = when (route) {
             AccountRoute.IDENTITY -> account.identity { redrawAccountScreen() }
+            AccountRoute.TRAINER -> account.trainer(xpPreview) { redrawAccountScreen() }
             AccountRoute.DEVICE -> account.about(bridge.packet)
             AccountRoute.CHANGELOG -> account.changelog()
             else -> return
@@ -362,6 +370,7 @@ class MainActivity : ComponentActivity() {
         addView(column().apply {
             setPadding(dp(16), dp(12), dp(16), dp(24))
             addView(text("Account", 32f).bold(), LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(16) })
+            addView(group(listOf(AccountRoute.TRAINER).map { "★  ${it.title}" to "account-trainer" to { open(it) } }))
             addView(group(listOf(AccountRoute.COMPUTERS, AccountRoute.TAILNET).map { it.title to "account-${it.name.lowercase()}" to { open(it) } }))
             addView(group(listOf(AccountRoute.IDENTITY, AccountRoute.DEVICE, AccountRoute.CHANGELOG).map {
                 it.title to "account-${it.name.lowercase()}" to { open(it) } }),
@@ -372,6 +381,9 @@ class MainActivity : ComponentActivity() {
             ), external = true), LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(24) })
         })
     }
+
+    /** Opens an https page in the browser. */
+    fun openLink(link: String) = browse(link)
 
     private fun browse(link: String) {
         try { startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(link))) }
@@ -462,7 +474,7 @@ class MainActivity : ComponentActivity() {
                 routeProgress?.visibility = if (packet?.optBoolean("tailnet_loading") == true) View.VISIBLE else View.GONE
             }
             AccountRoute.DEVICE -> if (routeBody?.findViewWithTag<View>("device-key")?.contentDescription != packet?.textOrNull("device")) redrawAccountScreen()
-            AccountRoute.IDENTITY, AccountRoute.CHANGELOG -> Unit
+            AccountRoute.IDENTITY, AccountRoute.CHANGELOG, AccountRoute.TRAINER -> Unit
             null -> Unit
         }
         if (tab == AppTab.WALLET) wallet.update(packet)
@@ -503,6 +515,10 @@ class MainActivity : ComponentActivity() {
             val loading = tab == AppTab.ACCOUNT && (
                 (route == AccountRoute.TAILNET && packet?.optBoolean("tailnet_loading") == true))
             if (loading && bridge.pending < 2) bridge.snapshot()
+            // The trainer card reads awards from the relay; refresh it.
+            if (tab == AppTab.ACCOUNT && route == AccountRoute.TRAINER && ticks % 2 == 0 && !xpPreview && account.nsec == null) {
+                account.loadTrainer(false) { if (route == AccountRoute.TRAINER) redrawAccountScreen() }
+            }
             // Starts, syncs, quotes, and payments finish in the background:
             // poll every second while one runs, else every ten seconds for
             // payments that arrive.
@@ -524,7 +540,10 @@ class MainActivity : ComponentActivity() {
     override fun onPause() {
         resumed = false
         // The nsec shows only while its screen is open and in front.
-        if (account.nsec != null) { account.hideNsec(); if (route == AccountRoute.IDENTITY) redrawAccountScreen() }
+        if (account.nsec != null) {
+            account.hideNsec()
+            if (route == AccountRoute.IDENTITY || route == AccountRoute.TRAINER) redrawAccountScreen()
+        }
         main.removeCallbacks(tick)
         world.setResumed(false)
         bridge.lifecycle(false)

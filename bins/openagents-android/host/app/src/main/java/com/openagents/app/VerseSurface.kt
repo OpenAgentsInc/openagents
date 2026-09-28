@@ -20,7 +20,7 @@ import org.json.JSONObject
  * the player, the camera, the movement stick, and every frame. Adapted from
  * Coder's Android `VerseSurface`. Every Verse JNI call stays on the main thread.
  */
-class VerseSurface(context: Context, private val gymPreview: Boolean,
+class VerseSurface(context: Context, private val gymPreview: Boolean, private val xpPreview: Boolean,
                    private val changed: (JSONObject?, String?) -> Unit) :
     SurfaceView(context), SurfaceHolder.Callback, Choreographer.FrameCallback, SensorEventListener {
     private var handle = 0L
@@ -87,6 +87,8 @@ class VerseSurface(context: Context, private val gymPreview: Boolean,
                 .onSuccess { config.put("world_secret_hex", it) }
             // The Gym's saved connection, or in a debug build the labeled
             // synthetic board, which keeps the world offline.
+            // Levels over heads from the labeled tutorial fixture, offline.
+            if (xpPreview) config.put("xp_preview", true)
             if (gymPreview) config.put("gym_preview", true)
             else try { DeviceKey.gymCode(context)?.let { config.put("gym_code", it) } }
             catch (failure: Exception) { gymStorageError = failure.message }

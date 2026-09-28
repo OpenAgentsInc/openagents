@@ -61,7 +61,11 @@ The app has four tabs, shown as white icons on black:
   words** asks first, then shows the words from Rust's direct reply;
   **Restore** takes 12 or 24 words, which Rust checks, and asks again when
   the wallet holds bitcoin.
-- **Account** holds **Computers** (a native list of your computers with a
+- **Account** holds **Trainer** (the trainer card for the Verse world key:
+  level, XP and the way to the next level under `trainer-curve-v1`,
+  titles, the counted awards with links, and the trainer key with a
+  warned **Reveal nsec**; the level also shows over each player's head in
+  the Grid), **Computers** (a native list of your computers with a
   status dot and short status; a tap opens a computer's shared screens, a
   long press offers its menu, and a destructive choice asks first; the
   header's **More** menu has Activity, Refresh, and the owner-directory
@@ -200,6 +204,8 @@ one that shows Rust Native's sample conversation
 ```sh
 adb shell am start -n com.openagents.app/.MainActivity --es tab verse
 adb shell am start -n com.openagents.app/.MainActivity --es account_route tailnet
+# Levels from the labeled tutorial fixture, offline (trainer card and Grid tags).
+adb shell am start -n com.openagents.app/.MainActivity --es account_route trainer --ez xp_preview true
 # Coder's offline Computers fixture: sample computers, no host or relay.
 adb shell am start -n com.openagents.app/.MainActivity --es account_route computers --ez computers_fixture true
 adb shell am start -n com.openagents.app/.MainActivity --ez rust_native_fixture true

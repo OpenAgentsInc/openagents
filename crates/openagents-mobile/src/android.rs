@@ -154,6 +154,10 @@ pub(crate) struct SurfaceConfig {
     /// results, for emulator checks against a mirror.
     #[serde(default)]
     pub(crate) results_base: Option<String>,
+    /// At creation only: levels over heads from the labeled tutorial
+    /// fixture, offline. Debug builds only; a release build ignores it.
+    #[serde(default)]
+    pub(crate) xp_preview: bool,
 }
 
 impl SurfaceConfig {
@@ -191,7 +195,7 @@ impl SurfaceConfig {
             results_panel: true,
             results_base: self.results_base.clone(),
             results_cache_directory: self.results_cache_directory.clone(),
-            xp_preview: false,
+            xp_preview: self.xp_preview && cfg!(debug_assertions),
         })
     }
 }
