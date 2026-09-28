@@ -20,6 +20,12 @@
 //!   [`super::capacity`]); the other connected routes follow as the grant's
 //!   fallbacks. When none has capacity, the task ends as `no_capacity` with
 //!   the earliest reset instead of starting a run that cannot succeed.
+//! - **Usage probes** (off unless the owner passes `--probe-usage`): the
+//!   host also reads each admitted provider's usage windows (see
+//!   [`super::usage`]) and prefers a route whose provider is below the
+//!   policy's threshold. A probe is advisory: it never adds a route and
+//!   never overrides a recorded refusal, and any probe failure leaves the
+//!   refusal-only choice above.
 //!
 //! Every decision is appended to `autostart.jsonl` beside the policy:
 //! eligible, started (with the grant digest and owner process), skipped, and
@@ -36,6 +42,7 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 
 use super::capacity::{self, Connection, Provider};
+use super::usage;
 use super::{Action, COMMAND_SCHEMA, Command, Status, Store, adapter, owner};
 
 /// The policy file in the host root.
@@ -95,6 +102,20 @@ pub struct Engine {
     /// and `effort`. When set, the first route's model is `model`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub routes: Vec<Route>,
+    /// Probe each admitted provider's usage windows before routing. Absent
+    /// means off: no credential is read for a probe and routing uses
+    /// recorded refusals only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub usage_probe: Option<UsageProbe>,
+}
+
+/// The owner's usage-probe setting.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct UsageProbe {
+    /// Utilization, in percent (1 to 100), at or above which routing
+    /// prefers another admitted route with capacity.
+    pub threshold_percent: u8,
 }
 
 /// One admitted provider and model, in a policy's preference order.
@@ -147,10 +168,18 @@ impl Policy {
     /// connected and has capacity in `book`. A one-route policy skips the
     /// connection probe, so an existing policy starts exactly as before
     /// and a login problem shows in the task's diagnostic file.
+    ///
+    /// With usage probes on, a route whose provider's fresh reading in
+    /// `usage` is at or above the threshold is passed over for a later
+    /// route with capacity that is below it. When every route with
+    /// capacity is near its limit, the first one still starts: a reading
+    /// is advisory, and only a recorded refusal ends a task as
+    /// `no_capacity`.
     #[must_use]
     pub fn choose(
         &self,
         book: &capacity::Book,
+        usage: &usage::Book,
         probe: &dyn Fn(Provider) -> Connection,
         now: u64,
     ) -> Choice {
@@ -182,9 +211,19 @@ impl Policy {
                 why: format!("no admitted provider is connected ({})", missing.join("; ")),
             };
         }
-        match connected
+        let with_capacity: Vec<usize> = (0..connected.len())
+            .filter(|index| book.has_capacity(connected[*index].provider, now))
+            .collect();
+        let below = |index: &&usize| {
+            self.engine.usage_probe.as_ref().is_none_or(|setting| {
+                !usage.near_limit(connected[**index].provider, setting.threshold_percent, now)
+            })
+        };
+        match with_capacity
             .iter()
-            .position(|route| book.has_capacity(route.provider, now))
+            .find(below)
+            .or_else(|| with_capacity.first())
+            .copied()
         {
             Some(index) => {
                 let mut order = connected;
@@ -228,6 +267,13 @@ impl Policy {
             .is_some_and(|first| first.model != engine.model)
         {
             return Err("the first route's model must be the engine's model".into());
+        }
+        if engine
+            .usage_probe
+            .as_ref()
+            .is_some_and(|setting| !(1..=100).contains(&setting.threshold_percent))
+        {
+            return Err("the usage threshold is 1 to 100 percent".into());
         }
         if engine.adapter != adapter::NAME {
             return Err(format!("the only engine adapter is {}", adapter::NAME));
@@ -321,6 +367,7 @@ pub struct Entry {
     pub schema: String,
     pub at: u64,
     /// `eligible`, `started`, `skipped`, `refused`, `no_capacity`,
+    /// `usage` (the probed windows a start was routed with),
     /// `unadmitted`, `policy_on`, or `policy_off`.
     pub event: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -488,6 +535,7 @@ pub struct Autostart {
     launcher: Box<dyn Launch>,
     now: fn() -> u64,
     probe: fn(Provider) -> Connection,
+    fetch: usage::Fetch,
     sweeping: Mutex<()>,
     background: bool,
 }
@@ -518,6 +566,7 @@ impl Autostart {
             launcher,
             now,
             probe: capacity::probe,
+            fetch: usage::fetch,
             sweeping: Mutex::new(()),
             background: true,
         }
@@ -528,6 +577,13 @@ impl Autostart {
     #[must_use]
     pub fn with_probe(mut self, probe: fn(Provider) -> Connection) -> Self {
         self.probe = probe;
+        self
+    }
+
+    /// Ask usage endpoints with `fetch` instead of the network, for tests.
+    #[must_use]
+    pub fn with_usage_fetch(mut self, fetch: usage::Fetch) -> Self {
+        self.fetch = fetch;
         self
     }
 
@@ -628,6 +684,17 @@ impl Autostart {
         if waiting.is_empty() && started.iter().all(|(task, _)| unadmitted.contains(task)) {
             return Vec::new();
         }
+        // Probe usage before opening the task store, so no request runs
+        // under its lock. Cached, so a sweep every few seconds asks each
+        // provider at most once per `usage::MIN_INTERVAL`.
+        let usage_book = if policy.engine.usage_probe.is_some() && !waiting.is_empty() {
+            let mut providers: Vec<Provider> =
+                policy.routes().iter().map(|route| route.provider).collect();
+            providers.dedup();
+            usage::refresh(&self.store, &providers, now, self.fetch)
+        } else {
+            usage::Book::default()
+        };
         let mut written = Vec::new();
         let mut write = |entry: Entry| {
             if let Err(error) = record(&self.root, &entry) {
@@ -716,7 +783,7 @@ impl Autostart {
                 }
                 // Route at start time: capacity changes while tasks wait.
                 let book = capacity::Book::load(&self.store);
-                let order = match policy.choose(&book, &self.probe, now) {
+                let order = match policy.choose(&book, &usage_book, &self.probe, now) {
                     Choice::Start { order } => order,
                     Choice::NoCapacity { until } => {
                         // Record first, then end the task, so the summary a
@@ -736,6 +803,24 @@ impl Autostart {
                     }
                 };
                 active += 1;
+                if policy.engine.usage_probe.is_some() {
+                    let mut entry = Entry::new(now, "usage").task(&id).detail(
+                        policy
+                            .routes()
+                            .iter()
+                            .map(|route| {
+                                format!(
+                                    "{}: {}",
+                                    route.provider,
+                                    usage_book.describe(route.provider, now)
+                                )
+                            })
+                            .collect::<Vec<_>>()
+                            .join("; "),
+                    );
+                    entry.workspace = Some(workspace.clone());
+                    write(entry);
+                }
                 plans.push((
                     id,
                     workspace,
@@ -886,19 +971,25 @@ pub fn unix_now() -> u64 {
 }
 
 pub const USAGE: &str = "usage: coder host autostart COMMAND
-  show [--store DIR]   Print the policy, each provider's login and capacity
-                       (from DIR, default ~/.openagents/tasks), and the
-                       latest decisions.
+  show [--store DIR] [--probe-usage]
+                       Print the policy, each provider's login, capacity
+                       (from DIR, default ~/.openagents/tasks), and usage
+                       windows, and the latest decisions. Usage is probed
+                       when the policy probes it or --probe-usage is given.
   on --workspace LABEL [--workspace LABEL]... [--max-running N]
      [--model ID | --route PROVIDER:MODEL [--route PROVIDER:MODEL]...]
      [--effort low|medium|high|xhigh] [--max-steps N] [--wall-seconds N]
      [--memory-mib N] [--read-only] [--controller PATH]
      [--decision-endpoint URL] [--decision-model ID]
+     [--probe-usage] [--usage-threshold PERCENT]
                        Start tasks that enrolled devices with `operate` create
                        in these workspaces, at most N at once (default 1).
                        Each --route admits a provider (codex or claude) and
                        model, in preference order; a task starts on the
                        first one that is connected and has capacity.
+                       --probe-usage reads each provider's usage windows
+                       with its local login and prefers a route below
+                       PERCENT (default 90) used.
   off                  Stop starting tasks; queued tasks stay queued.
 Every command takes --root DIR (default ~/.openagents/host). The policy is
 off until `on` runs.";
@@ -924,10 +1015,13 @@ fn cli_inner(args: &[String]) -> std::result::Result<(), String> {
     };
     let mut values: BTreeMap<String, Vec<String>> = BTreeMap::new();
     let mut read_only = false;
+    let mut probe_usage = false;
     let mut rest = rest.iter();
     while let Some(arg) = rest.next() {
         if arg == "--read-only" {
             read_only = true;
+        } else if arg == "--probe-usage" {
+            probe_usage = true;
         } else if arg == "--help" {
             println!("{USAGE}");
             return Ok(());
@@ -961,6 +1055,16 @@ fn cli_inner(args: &[String]) -> std::result::Result<(), String> {
                     .join(".openagents/tasks"),
             };
             let book = capacity::Book::load(&store);
+            let probing = probe_usage
+                || Policy::load(&root)
+                    .ok()
+                    .flatten()
+                    .is_some_and(|policy| policy.engine.usage_probe.is_some());
+            let usage_book = if probing {
+                usage::refresh(&store, &Provider::ALL, now, usage::fetch)
+            } else {
+                usage::Book::load(&store)
+            };
             for provider in Provider::ALL {
                 let connection = match capacity::probe(provider) {
                     Connection::Connected => "connected".to_owned(),
@@ -970,7 +1074,10 @@ fn cli_inner(args: &[String]) -> std::result::Result<(), String> {
                     Some(refusal) => format!("no capacity until {}", capacity::utc(refusal.until)),
                     None => "capacity".to_owned(),
                 };
-                println!("{provider}: {connection}; {capacity}");
+                println!(
+                    "{provider}: {connection}; {capacity}; usage {}",
+                    usage_book.describe(provider, now)
+                );
             }
             for entry in journal(&root).iter().rev().take(20).rev() {
                 println!(
@@ -1047,7 +1154,19 @@ fn cli_inner(args: &[String]) -> std::result::Result<(), String> {
                 decision_model: take_one(&mut values, "--decision-model")?
                     .unwrap_or_else(|| DEFAULT_DECISION_MODEL.into()),
                 routes,
+                usage_probe: None,
             };
+            let threshold = take_one(&mut values, "--usage-threshold")?;
+            let mut engine = engine;
+            if probe_usage || threshold.is_some() {
+                let threshold_percent = match threshold {
+                    Some(value) => value
+                        .parse::<u8>()
+                        .map_err(|_| "usage: --usage-threshold takes a percent, 1 to 100")?,
+                    None => usage::DEFAULT_THRESHOLD_PERCENT,
+                };
+                engine.usage_probe = Some(UsageProbe { threshold_percent });
+            }
             if let Some(name) = values.keys().next() {
                 return Err(format!("usage: {name} does not apply to on"));
             }
@@ -1075,7 +1194,7 @@ fn cli_inner(args: &[String]) -> std::result::Result<(), String> {
             record(
                 &root,
                 &Entry::new(now, "policy_on").detail(format!(
-                    "workspaces {} max_running {} routes {} write_workspace {}",
+                    "workspaces {} max_running {} routes {} write_workspace {} usage_probe {}",
                     workspaces.join(","),
                     policy.max_running,
                     policy
@@ -1084,7 +1203,12 @@ fn cli_inner(args: &[String]) -> std::result::Result<(), String> {
                         .map(ToString::to_string)
                         .collect::<Vec<_>>()
                         .join(","),
-                    policy.engine.write_workspace
+                    policy.engine.write_workspace,
+                    policy
+                        .engine
+                        .usage_probe
+                        .as_ref()
+                        .map_or_else(|| "off".to_owned(), |p| format!("{}%", p.threshold_percent))
                 )),
             )?;
             println!("on");
@@ -1213,7 +1337,16 @@ mod tests {
         store: PathBuf,
     }
 
+    /// Every usage probe fails as if offline, so no test reaches a network.
+    fn offline(_: Provider) -> Result<usage::Response, usage::Failure> {
+        Err(usage::Failure::Network)
+    }
+
     fn setup() -> Setup {
+        setup_with(offline)
+    }
+
+    fn setup_with(fetch: usage::Fetch) -> Setup {
         let temp = tempfile::tempdir().unwrap();
         let root = temp.path().join("host");
         let store = temp.path().join("tasks");
@@ -1233,6 +1366,7 @@ mod tests {
                 clock,
             )
             .with_probe(|_| Connection::Connected)
+            .with_usage_fetch(fetch)
             .foreground(),
         );
         let inbox = Inbox::new(&store, workspaces).with_autostart(autostart.clone());
@@ -1264,6 +1398,7 @@ mod tests {
                 decision_endpoint: "https://api.typesafe.ai".into(),
                 decision_model: "jev-latest".into(),
                 routes: Vec::new(),
+                usage_probe: None,
             },
             changed_at: 1,
         }
@@ -1554,7 +1689,12 @@ mod tests {
         // A one-route policy starts without a login probe, as before.
         let book = capacity::Book::default();
         assert!(matches!(
-            policy.choose(&book, &|_| Connection::Missing("no login".into()), 1),
+            policy.choose(
+                &book,
+                &usage::Book::default(),
+                &|_| Connection::Missing("no login".into()),
+                1
+            ),
             Choice::Start { .. }
         ));
     }
@@ -1616,14 +1756,20 @@ mod tests {
             Provider::Codex => Connection::Connected,
             Provider::Claude => Connection::Missing("not signed in".into()),
         };
-        match policy.choose(&book, &only_codex, 1) {
+        let usage = usage::Book::default();
+        match policy.choose(&book, &usage, &only_codex, 1) {
             Choice::Start { order } => {
                 assert_eq!(order.len(), 1);
                 assert_eq!(order[0].provider, Provider::Codex);
             }
             other => panic!("{other:?}"),
         }
-        match policy.choose(&book, &|_| Connection::Missing("no login".into()), 1) {
+        match policy.choose(
+            &book,
+            &usage,
+            &|_| Connection::Missing("no login".into()),
+            1,
+        ) {
             Choice::Unconnected { why } => assert!(why.contains("claude: no login")),
             other => panic!("{other:?}"),
         }
@@ -1725,8 +1871,170 @@ mod tests {
                 .collect::<Vec<_>>(),
             ["claude:claude-opus-5-5", "codex:gpt-6-luna"]
         );
+        assert_eq!(policy.engine.usage_probe, None);
+        assert_eq!(
+            on(&[
+                "--route",
+                "codex:gpt-6-luna",
+                "--route",
+                "claude:claude-opus-5-5",
+                "--probe-usage"
+            ]),
+            0
+        );
+        let policy = Policy::load(&root).unwrap().unwrap();
+        assert_eq!(
+            policy.engine.usage_probe,
+            Some(UsageProbe {
+                threshold_percent: usage::DEFAULT_THRESHOLD_PERCENT
+            })
+        );
+        assert_eq!(on(&["--route", "codex:a", "--usage-threshold", "75"]), 0);
+        let policy = Policy::load(&root).unwrap().unwrap();
+        assert_eq!(
+            policy.engine.usage_probe.map(|p| p.threshold_percent),
+            Some(75)
+        );
+        assert_eq!(on(&["--usage-threshold", "0"]), 1);
+        assert_eq!(on(&["--usage-threshold", "most"]), 2);
         assert_eq!(on(&["--route", "codex:a", "--model", "b"]), 2);
         assert_eq!(on(&["--route", "gemini:x"]), 2);
         assert_eq!(on(&["--route", "codex:a", "--route", "codex:a"]), 1);
+    }
+    /// The recorded usage answers: Codex at its limit, Claude at 66%.
+    fn recorded(provider: Provider) -> Result<usage::Response, usage::Failure> {
+        let body: &str = match provider {
+            Provider::Codex => include_str!("../../fixtures/usage/codex-wham-usage.json"),
+            Provider::Claude => include_str!("../../fixtures/usage/claude-oauth-usage.json"),
+        };
+        Ok(usage::Response {
+            status: 200,
+            retry_after: None,
+            body: body.as_bytes().to_vec(),
+        })
+    }
+
+    fn probed(threshold_percent: u8) -> Policy {
+        let mut policy = routed(1);
+        policy.engine.usage_probe = Some(UsageProbe { threshold_percent });
+        policy.validate().unwrap();
+        policy
+    }
+
+    #[test]
+    fn routing_passes_over_a_provider_at_its_probed_limit() {
+        let dir = tempfile::tempdir().unwrap();
+        let now = 1_790_572_210;
+        let usage = usage::refresh(dir.path(), &Provider::ALL, now, recorded);
+        let refusals = capacity::Book::default();
+        let connected = |_: Provider| Connection::Connected;
+        let first = |policy: &Policy, usage: &usage::Book, at: u64| match policy
+            .choose(&refusals, usage, &connected, at)
+        {
+            Choice::Start { order } => order.iter().map(|r| r.provider).collect::<Vec<_>>(),
+            other => panic!("{other:?}"),
+        };
+        // Codex reports its limit reached: Claude starts, Codex follows.
+        assert_eq!(
+            first(&probed(90), &usage, now),
+            [Provider::Claude, Provider::Codex]
+        );
+        // Without probes in the policy, the same readings change nothing.
+        assert_eq!(
+            first(&routed(1), &usage, now),
+            [Provider::Codex, Provider::Claude]
+        );
+        // Every route at or above the threshold: advisory, so the first
+        // route with capacity still starts; only a refusal ends a task.
+        let mut all_near = usage.clone();
+        for entry in &mut all_near.entries {
+            if let Some(reading) = &mut entry.reading {
+                reading.limit_reached = true;
+            }
+        }
+        assert_eq!(
+            first(&probed(90), &all_near, now),
+            [Provider::Codex, Provider::Claude]
+        );
+        // A threshold of 60% counts Claude's 66% seven-day window.
+        assert_eq!(
+            first(&probed(60), &usage, now),
+            [Provider::Codex, Provider::Claude]
+        );
+        // A stale reading is not used.
+        assert_eq!(
+            first(&probed(90), &usage, now + usage::STALE_AFTER),
+            [Provider::Codex, Provider::Claude]
+        );
+        // A recorded refusal stays the authority over any reading.
+        let mut refused = capacity::Book::default();
+        for provider in Provider::ALL {
+            refused.refusals.push(capacity::Refusal::new(
+                provider,
+                capacity::Kind::UsageLimit,
+                now,
+                Some(now + 600),
+            ));
+        }
+        assert_eq!(
+            probed(90).choose(&refused, &usage, &connected, now),
+            Choice::NoCapacity {
+                until: Some(now + 600)
+            }
+        );
+        // Out-of-range thresholds refuse.
+        let mut bad = probed(90);
+        bad.engine.usage_probe = Some(UsageProbe {
+            threshold_percent: 0,
+        });
+        assert!(bad.validate().is_err());
+    }
+
+    #[test]
+    fn with_usage_probes_a_start_avoids_a_provider_above_the_threshold() {
+        let s = setup_with(recorded);
+        CLOCK.with(|clock| clock.set(1_790_572_210));
+        probed(90).save(&s.root).unwrap();
+        let task = "7".repeat(64);
+        s.inbox.create(&task, "phone", &create("allowed")).unwrap();
+        let configuration = launched_grant(&s, 0).adapter_configuration.unwrap();
+        assert_eq!(configuration.provider, "claude");
+        assert_eq!(configuration.fallbacks[0].provider, "codex");
+        // The journal names the windows the start was routed with, and the
+        // probe kept no credential or account identifier.
+        let entry = journal(&s.root)
+            .into_iter()
+            .find(|entry| entry.event == "usage")
+            .unwrap();
+        let detail = entry.detail.unwrap();
+        assert!(detail.contains("codex: primary 100%"), "{detail}");
+        assert!(detail.contains("(limit reached)"), "{detail}");
+        assert!(detail.contains("claude: five_hour 4%"), "{detail}");
+        let book = std::fs::read_to_string(s.store.join(usage::FILE)).unwrap();
+        assert!(!book.contains("redacted") && !book.contains("example.invalid"));
+    }
+
+    #[test]
+    fn a_failing_usage_probe_falls_back_to_refusal_only_routing() {
+        let s = setup();
+        CLOCK.with(|clock| clock.set(1_790_572_210));
+        probed(90).save(&s.root).unwrap();
+        let task = "8".repeat(64);
+        s.inbox.create(&task, "phone", &create("allowed")).unwrap();
+        // Offline probes: the first admitted route starts, as without probes.
+        let configuration = launched_grant(&s, 0).adapter_configuration.unwrap();
+        assert_eq!(configuration.provider, "codex");
+        let book = usage::Book::load(&s.store);
+        assert_eq!(
+            book.entry(Provider::Claude).unwrap().failure,
+            Some(usage::Failure::Network)
+        );
+        let detail = journal(&s.root)
+            .into_iter()
+            .find(|entry| entry.event == "usage")
+            .unwrap()
+            .detail
+            .unwrap();
+        assert!(detail.contains("unknown (probe: network)"), "{detail}");
     }
 }

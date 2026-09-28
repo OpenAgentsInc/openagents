@@ -28,6 +28,8 @@ coder host autostart on --workspace openagents --max-running 1
 | `--max-running N` | `1` | At most N auto-started tasks run at once, 1 to 8. The rest wait queued. |
 | `--model ID` | `gpt-6-luna` | The Codex model each eligible task records and its grant admits, when no `--route` is given. |
 | `--route PROVIDER:MODEL` | None | An admitted provider (`codex` or `claude`) and model, in preference order. Repeat for more, up to five. The first route's model is the one each task records. Use instead of `--model`. See [Routes and capacity](#routes-and-capacity). |
+| `--probe-usage` | Off | Read each admitted provider's usage windows before routing, with its local login, and prefer a route below the threshold. See [Usage probes](#usage-probes). |
+| `--usage-threshold PERCENT` | `90` | The utilization, 1 to 100, at or above which a probed provider is passed over. Implies `--probe-usage`. |
 | `--effort LEVEL` | `medium` | `low`, `medium`, `high`, or `xhigh`, for every route. |
 | `--max-steps N` | `24` | The engine's step limit, 1 to 128. |
 | `--wall-seconds N` | `1800` | Each command's wall-clock limit, 1 to 3,600. |
@@ -56,8 +58,10 @@ The next creation and the next sweep read the file again, so no restart is
 needed. Tasks already started keep running under their grants; cancel one
 from a device or with `coder task cancel`. Queued tasks stay queued, as
 without a policy. `coder host autostart show` prints the policy and the
-latest decisions, and whether each model provider is connected and has
-capacity; pass `--store DIR` when the task store is not `~/.openagents/tasks`.
+latest decisions, and whether each model provider is connected, has
+capacity, and how much of each usage window it has used; pass `--store DIR`
+when the task store is not `~/.openagents/tasks`. It probes usage when the
+policy does, or once when you pass `--probe-usage`.
 Deleting `autostart.json` also turns it off.
 
 ## What it does
@@ -138,6 +142,56 @@ device sees the same headline. The step's cost adds every attempt's cost, so
 Failover only chooses among the routes the owner admitted. It never adds a
 model, widens a limit, or spends beyond the policy's bounds.
 
+## Usage probes
+
+Refusals tell the host a provider is out only after a request fails. With
+`--probe-usage`, the host also asks each admitted provider how much of its
+allowance is used, before it routes a waiting task:
+
+| Provider | Endpoint | Windows read |
+| --- | --- | --- |
+| Claude | `GET https://api.anthropic.com/api/oauth/usage` with `anthropic-beta: oauth-2025-04-20` | `five_hour` and `seven_day`: `utilization` (percent) and `resets_at` |
+| Codex | `GET https://chatgpt.com/backend-api/wham/usage` | `rate_limit.primary_window` and `secondary_window`: `used_percent`, `limit_window_seconds`, `reset_at`; and `limit_reached` / `allowed` |
+
+```sh
+coder host autostart on --workspace openagents \
+  --route codex:gpt-6-luna --route claude:claude-opus-5-5 --probe-usage
+coder host autostart show
+# codex: connected; capacity; usage primary 100% until 2026-10-03 18:07 UTC (limit reached)
+# claude: connected; capacity; usage five_hour 4% until 2026-09-28 15:49 UTC, seven_day 66% until 2026-09-29 20:59 UTC
+```
+
+- **Typed readings.** Each answer is parsed into typed windows (a used
+  fraction, a reset, a length) and kept in `usage.json` in the task store,
+  mode `0600`, beside `capacity.json`. The book holds no token, account
+  identifier, or response text.
+- **Advisory.** Routing passes over a route whose provider is at or above the
+  threshold in any window, or reports its limit reached, for a later admitted
+  route with capacity below it. When every route with capacity is near its
+  limit, the first still starts: only a recorded refusal ends a task as
+  `no_capacity`. A probe never adds a route and never overrides a refusal.
+- **Cached.** Each provider is asked at most once a minute, and only when a
+  task is waiting to start. A failed probe waits five minutes; a
+  `Retry-After` is honored up to six hours. A reading older than 15 minutes
+  is not used.
+- **Degrades to refusals.** A missing or expired credential, a refused or
+  rate-limited probe, a malformed body, or no network is recorded as a typed
+  failure (`no_credential`, `expired`, `unauthorized`, `rate_limited`,
+  `status`, `malformed`, `network`), and routing uses recorded refusals only.
+  Both endpoints are private and undocumented, so expect this path.
+- **Credentials.** A probe reads the provider's OAuth access token: the Codex
+  login in `~/.codex/auth.json` (or `$CODEX_HOME`), and Claude Code's
+  `claudeAiOauth.accessToken` from `~/.claude/.credentials.json` or, on macOS,
+  the `Claude Code-credentials` keychain item for your account, read with
+  `/usr/bin/security` as Claude Code reads it. The `coder` host process reads
+  it only while probes are on, sends it only to that provider's usage
+  endpoint, and never writes, logs, or stores it. It never changes a
+  credential store. Without `--probe-usage`, no credential is read for a
+  probe.
+
+Each start routed with probes appends a `usage` journal entry naming every
+admitted provider's windows.
+
 ## The decision journal
 
 Each decision appends one line to `~/.openagents/host/autostart.jsonl`
@@ -150,6 +204,7 @@ Each decision appends one line to `~/.openagents/host/autostart.jsonl`
 | `skipped` | The task was cancelled or gone, the policy stopped listing its workspace, or the policy's model changed after it was created. |
 | `refused` | The owner process could not start, or no admitted provider is connected, with the reason. |
 | `no_capacity` | No connected admitted provider had capacity. `resets_at` is the earliest reset, in Unix seconds, when known. The task was cancelled with that reason. |
+| `usage` | With usage probes on: each admitted provider's probed windows, or why it has none, when the task was routed. |
 | `unadmitted` | A started task was still queued 120 seconds later: its owner process refused it. The reason is in the task store's `repository-launch-TASK-*.jsonl` diagnostic. |
 | `policy_on`, `policy_off` | The owner changed the policy, with its bounds. |
 
@@ -173,6 +228,8 @@ records the change:
   at start and failing over during a run pick among those routes only, and
   a task with no admitted provider that has capacity ends instead of
   starting.
+- Usage probes read a provider credential only when the owner turned them
+  on, and a probed reading only reorders admitted routes.
 
 `coder::task::autostart` tests cover each: creation without a policy, the
 workspace allowlist, the concurrency bound and its wait, cancellation and a
@@ -192,9 +249,12 @@ the command line.
 - The engine needs a login for each route it uses and the host's Jev key, as
   `microcoder repository` does. A refusal from either shows in the task's
   diagnostic file, not in the journal.
-- Capacity is learned from refusals, not read ahead from a provider's usage
-  endpoint, so the first task after a limit is reached still makes one
-  refused request. A Claude limit holds for 30 minutes at a time because its
-  reset is not reported.
+- Without usage probes, capacity is learned from refusals, so the first task
+  after a limit is reached still makes one refused request. A Claude refusal
+  holds for 30 minutes at a time because its reset is not reported. With
+  probes, a reading only reorders routes; a probed Claude reset is not
+  copied into the capacity book.
+- The phone does not show probed windows yet; read them with
+  `coder host autostart show`.
 - A task the policy ended for lack of capacity stays ended. Create it again
   after the reset.

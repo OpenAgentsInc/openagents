@@ -269,6 +269,15 @@ impl Login {
     pub fn expires_at(&self) -> Option<u64> {
         self.expires_at
     }
+
+    /// `request` with this login's bearer token and ChatGPT account header,
+    /// the two headers every ChatGPT backend request carries. The secrets
+    /// go only into the request, never into a value the caller can print.
+    pub fn authorize(&self, request: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
+        request
+            .bearer_auth(&self.access_token)
+            .header("ChatGPT-Account-ID", &self.account_id)
+    }
 }
 
 /// Removes a file, counting one that is already gone as removed.
