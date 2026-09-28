@@ -127,3 +127,19 @@ fn an_open_chat_has_a_breadcrumb_back_to_the_list() {
     assert!(node(&list, "coder-back").is_none());
     assert!(keys(&list).iter().any(|key| key.starts_with("task-")));
 }
+
+#[test]
+fn an_open_chat_shows_no_title_above_its_messages() {
+    let mut fixture = Fixture::hosts();
+    let list = fixture.render();
+    let chat = fixture.tap(&first_task(&list));
+    assert!(node(&chat, "coder-chat-title").is_none());
+    let headings: Vec<_> = nodes(&chat)
+        .into_iter()
+        .filter(|node| node["element"]["props"]["role"] == "heading")
+        .collect();
+    assert!(headings.is_empty(), "{headings:?}");
+    // The breadcrumb bar comes first.
+    let root = chat["root"]["element"]["props"]["children"][0]["key"].clone();
+    assert_eq!(root, "coder-chat-header");
+}

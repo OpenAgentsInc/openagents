@@ -55,7 +55,6 @@ pub enum Intent {
 struct Open {
     host: String,
     task: String,
-    title: String,
     conversation: Option<Conversation>,
     /// The chat whose transcript is shown: a later turn is a newer chat.
     chat: Option<String>,
@@ -251,15 +250,9 @@ impl CoderTab {
     }
 
     fn open(&mut self, host: String, task: String, chats: &mut Chats) {
-        let title = self
-            .titles
-            .get(&task)
-            .cloned()
-            .unwrap_or_else(|| "Chat with Coder".into());
         self.open = Some(Open {
             host,
             task,
-            title,
             conversation: None,
             chat: None,
             seen: None,
@@ -277,9 +270,6 @@ impl CoderTab {
             // A later turn's transcript is a newer chat for the same task;
             // it carries the earlier turns, so it replaces the one shown.
             Some((_, client, chat)) if open.chat.as_ref() != Some(&chat.id) => {
-                if !chat.title.is_empty() && !chat.title.starts_with("Saved ") {
-                    open.title = chat.title.clone();
-                }
                 open.chat = Some(chat.id.clone());
                 open.conversation = Some(Conversation::open(chats.runtime(), client, chat));
             }
@@ -495,6 +485,7 @@ impl CoderTab {
             Some(Phase::Waiting) => Some("Waiting for you on the computer"),
             _ => None,
         };
+        // Only the breadcrumb bar heads a chat; the transcript follows it.
         let mut children = vec![
             // The breadcrumb bar: back to the chats list, and where the
             // chat runs.
@@ -508,7 +499,6 @@ impl CoderTab {
                     ),
                 ],
             ),
-            heading("coder-chat-title", &open.title),
         ];
         if let Some(note) = &note {
             children.push(status("coder-chat-note", note));
