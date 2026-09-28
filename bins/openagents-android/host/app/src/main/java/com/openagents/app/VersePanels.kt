@@ -66,6 +66,8 @@ class VersePanels(private val context: Context, private val world: VerseSurface)
     }
 
     val showing get() = open.isNotEmpty()
+    /** The open panel, `gym` or `results`, or empty. */
+    val openPanel get() = open
 
     /** The system Back gesture: a results screen's back, else back to the world. */
     fun back() {

@@ -181,7 +181,7 @@ Status words follow the [glossary](../glossary.md).
 | TestFlight's own feedback: a tester takes a screenshot or uses **Send Beta Feedback** in the TestFlight app, and it reaches App Store Connect with the build number, device, and OS. Crash reports reach it too. | Exists, from Apple. Nothing in this repository reads it. |
 | The owner's build notes ("1.0.0 Build 13 Feedback") turned into commits by agents, followed by a build bump (for example `e84de16fd5`, `06d033d663`) | The current loop. It isn't written down anywhere except in commit history. |
 | **Changelog** in Account (`crates/openagents-mobile/src/account.rs`) | Implemented. One entry per TestFlight build with a **What to test** line, from build 16 (`a4aa3013de`); a test ties the newest entry to the build number in `project.yml`. |
-| **Report a problem**, **My reports**, and the opt-in **Playtest session** log in Account, and a long press on the tab bar (`crates/playtest`, `crates/openagents-mobile/src/playtest.rs`; iOS) | Implemented in build 16 (`74f2f90be0`), iOS only; Android follows. Reports are sealed to the triage key, which the owner hasn't created yet, so until a build carries it reports wait on the phone. No telemetry: the app sends nothing but a report the tester files. |
+| **Report a problem**, **My reports**, and the opt-in **Playtest session** log in Account, and a long press on the tab bar (`crates/playtest`, `crates/openagents-mobile/src/playtest.rs`; iOS and Android) | Implemented in build 16 (`74f2f90be0`) on iOS, and on Android with the Account playtest card ([#9903](https://github.com/OpenAgentsInc/openagents/issues/9903)); Android reports name the `android` platform. Reports are sealed to the triage key, which the owner hasn't created yet, so until a build carries it reports wait on the phone. No telemetry: the app sends nothing but a report the tester files. |
 | Triage inbox and triage log: `openagents playtest` reads the triage key's reports, drafts `playtest` issues for a person to approve, and records every acceptance ([playtest-triage.md](playtest-triage.md)) | Implemented ([#9884](https://github.com/OpenAgentsInc/openagents/issues/9884)). It reads reports once the owner creates the triage key and a build carries it. |
 | NIP-XP quests, awards, revocations, and achievement labels; the ledger; the referee tool ([NIP-XP](../../nips/openagents/NIP-XP.md)) | Implemented, with three rules: `kb-transfer`, `reproduce`, and `playtest` ([#9885](https://github.com/OpenAgentsInc/openagents/issues/9885)). The `playtest` rule, its report (`3197`) and session record (`3196`), and `microcoder xp playtest-keygen`/`playtest-session` exist; the playtest referee key doesn't yet (an owner step), so no playtest award counts. |
 | Levels, titles, and `lv n` name tags | Implemented on desktop Verse only. The Grid's name tags show a pubkey prefix and no level. |
@@ -242,7 +242,9 @@ Positions:
   take a day, and the public link has a tester cap that the owner sets (up
   to Apple's 10,000). Not every internal build goes to the public link.
 - **Android is behind iOS.** Android testers get Coder, Verse, Wallet, and
-  Account, but not **Report a problem** or **Playtest session** yet, and the
+  Account, with **Report a problem**, **My reports**, **Playtest session**,
+  and the playtest card
+  ([#9903](https://github.com/OpenAgentsInc/openagents/issues/9903)), but the
   build has run on the emulator only
   ([#9838](https://github.com/OpenAgentsInc/openagents/issues/9838)). Reports
   name the platform.
@@ -949,7 +951,8 @@ Tracked in epic [#9888](https://github.com/OpenAgentsInc/openagents/issues/9888)
    with a preview, never on the Wallet or **Identity keys**; sent as a
    NIP-17 message to the triage key, signed by the world key; **My
    reports** in Account. Rust in `crates/openagents-mobile`, thin SwiftUI
-   in `bins/openagents-ios/host`; Android follows.
+   in `bins/openagents-ios/host`; thin Kotlin in `bins/openagents-android/host`
+   ([#9903](https://github.com/OpenAgentsInc/openagents/issues/9903)).
 2. **Opt-in local playtest session log** ([#9883](https://github.com/OpenAgentsInc/openagents/issues/9883)), with new `INVARIANTS.md` rows and
    tests for what it never records and that it leaves the device only in a
    previewed report.

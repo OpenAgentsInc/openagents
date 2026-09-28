@@ -39,6 +39,7 @@ enum class AppTab(val title: String, val icon: Int) {
 /** A screen that the Account tab opens. */
 enum class AccountRoute(val title: String) {
     TRAINER("Trainer"), COMPUTERS("Computers"), TAILNET("Tailnet"), IDENTITY("Identity keys"), DEVICE("About this device"), CHANGELOG("Changelog"),
+    PLAYTEST("Playtest"), REPORTS("My reports"),
 }
 
 class MainActivity : ComponentActivity() {
@@ -69,6 +70,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var computersRenderer: NativeRenderer
     private lateinit var tailnetRenderer: NativeRenderer
     private lateinit var account: AccountScreens
+    private lateinit var playtest: Playtest
     private var routeBody: FrameLayout? = null
     private var routeBack: TextView? = null
     private var routeTitle: TextView? = null
@@ -116,6 +118,7 @@ class MainActivity : ComponentActivity() {
             { token, value -> bridge.submit("coder", token, value) })
         computersRenderer = NativeRenderer(this, { view, node -> bridge.activate("computers", view, node) }, scrolling = true)
         account = AccountScreens(this, bridge)
+        playtest = Playtest(this, bridge)
         payments = AgentPayments(this, bridge)
         tailnetRenderer = NativeRenderer(this, { view, node -> bridge.activate("tailnet", view, node) })
         terminal = TerminalScreen(this, bridge)
@@ -137,6 +140,8 @@ class MainActivity : ComponentActivity() {
                 contentDescription = value.title
                 tag = "tab-${value.name.lowercase()}"
                 setOnClickListener { select(value) }
+                // A long press on the tab bar reports the screen on view.
+                setOnLongClickListener { report(); true }
             }
             tabButtons[value] = button
             tabBar.addView(button, LinearLayout.LayoutParams(0, -1, 1f))
@@ -196,7 +201,32 @@ class MainActivity : ComponentActivity() {
         }
         select(tab)
         open(route)
+        tabBar.setOnLongClickListener { report(); true }
+        // Debug builds only: `--ez report true` opens Report a problem for the first screen.
+        if (BuildConfig.DEBUG && intent.getBooleanExtra("report", false)) main.postDelayed({ report() }, 1500)
+        // Debug builds only: `--ez playtest_session true` turns the session on.
+        if (BuildConfig.DEBUG && intent.getBooleanExtra("playtest_session", false)) {
+            playtest.setSession(true, playtestTab, playtestRoute) { redrawAccountScreen() }
+        }
     }
+
+    // Playtest
+
+    /** The tab as Rust's session log names it. */
+    private val playtestTab get() = tab.name.lowercase()
+
+    /** The screen as Rust's session log names it; an unnamed screen is its tab's `home`. */
+    private val playtestRoute get() = when (tab) {
+        AppTab.CODER -> if (bridge.packet?.optBoolean("terminal") == true) "terminal" else "home"
+        AppTab.VERSE -> panels.openPanel.ifEmpty { "home" }
+        AppTab.WALLET -> "home"
+        AppTab.ACCOUNT -> route?.name?.lowercase() ?: "home"
+    }
+
+    /** Opens Report a problem for the screen on view. */
+    fun report() = playtest.start(playtestTab, playtestRoute, if (tab == AppTab.VERSE) world else null)
+
+    private fun screenChanged() { if (::playtest.isInitialized) bridge.playtestScreen(playtestTab, playtestRoute) }
 
     /** Debug builds only: levels come from the labeled tutorial fixture (`xp_preview`). */
     val xpPreview get() = BuildConfig.DEBUG && intent.getBooleanExtra("xp_preview", false)
@@ -216,6 +246,7 @@ class MainActivity : ComponentActivity() {
         world.setShown(value == AppTab.VERSE)
         if (value == AppTab.WALLET) wallet.appeared() else wallet.disappeared()
         if (value == AppTab.CODER && !bridge.busy) bridge.refreshComputers()
+        screenChanged()
         render()
     }
 
@@ -282,7 +313,11 @@ class MainActivity : ComponentActivity() {
         routeProgress = null; routeInput = null; routeBody = null; routeBack = null; routeTitle = null
         routeActions = null; routeHome = null; routeShared = null; shownHome = null
         computersRenderer.clear(); tailnetRenderer.clear()
-        if (next == null) { accountPage.addView(accountList(), FrameLayout.LayoutParams(-1, -1)); render(); return }
+        if (next == null) {
+            accountPage.addView(accountList(), FrameLayout.LayoutParams(-1, -1))
+            if (tab == AppTab.ACCOUNT) screenChanged()
+            render(); return
+        }
         val screen = column()
         val header = row().apply {
             gravity = Gravity.CENTER_VERTICAL
@@ -350,10 +385,20 @@ class MainActivity : ComponentActivity() {
                 redrawAccountScreen()
                 account.loadTrainer(xpPreview) { redrawAccountScreen() }
             }
+            AccountRoute.PLAYTEST -> {
+                redrawAccountScreen()
+                playtest.loadReports { redrawAccountScreen() }
+                playtest.loadCard { redrawAccountScreen() }
+            }
+            AccountRoute.REPORTS -> {
+                redrawAccountScreen()
+                playtest.loadReports { redrawAccountScreen() }
+            }
         }
         accountPage.addView(screen, FrameLayout.LayoutParams(-1, -1))
         if (next == AccountRoute.COMPUTERS) bridge.computersGo("home")
         if (next == AccountRoute.TAILNET) bridge.snapshot()
+        if (tab == AppTab.ACCOUNT) screenChanged()
         render()
     }
 
@@ -365,6 +410,8 @@ class MainActivity : ComponentActivity() {
             AccountRoute.TRAINER -> account.trainer(xpPreview) { redrawAccountScreen() }
             AccountRoute.DEVICE -> account.about(bridge.packet)
             AccountRoute.CHANGELOG -> account.changelog()
+            AccountRoute.PLAYTEST -> playtest.screen({ redrawAccountScreen() }, { report() }, { open(AccountRoute.REPORTS) })
+            AccountRoute.REPORTS -> playtest.myReports { report() }
             else -> return
         }
         body.removeAllViews()
@@ -376,6 +423,10 @@ class MainActivity : ComponentActivity() {
             setPadding(dp(16), dp(12), dp(16), dp(24))
             addView(text("Account", 32f).bold(), LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(16) })
             addView(group(listOf(AccountRoute.TRAINER).map { "★  ${it.title}" to "account-trainer" to { open(it) } }))
+            addView(group(listOf(
+                "Playtest" to "account-playtest" to { open(AccountRoute.PLAYTEST) },
+                "Report a problem" to "account-report" to { report() },
+            )), LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(24) })
             addView(group(listOf(AccountRoute.COMPUTERS, AccountRoute.TAILNET).map { it.title to "account-${it.name.lowercase()}" to { open(it) } }))
             addView(group(listOf(AccountRoute.IDENTITY, AccountRoute.DEVICE, AccountRoute.CHANGELOG).map {
                 it.title to "account-${it.name.lowercase()}" to { open(it) } }),
@@ -479,7 +530,7 @@ class MainActivity : ComponentActivity() {
                 routeProgress?.visibility = if (packet?.optBoolean("tailnet_loading") == true) View.VISIBLE else View.GONE
             }
             AccountRoute.DEVICE -> if (routeBody?.findViewWithTag<View>("device-key")?.contentDescription != packet?.textOrNull("device")) redrawAccountScreen()
-            AccountRoute.IDENTITY, AccountRoute.CHANGELOG, AccountRoute.TRAINER -> Unit
+            AccountRoute.IDENTITY, AccountRoute.CHANGELOG, AccountRoute.TRAINER, AccountRoute.PLAYTEST, AccountRoute.REPORTS -> Unit
             null -> Unit
         }
         if (tab == AppTab.WALLET) wallet.update(packet)
@@ -526,6 +577,14 @@ class MainActivity : ComponentActivity() {
             // The trainer card reads awards from the relay; refresh it.
             if (tab == AppTab.ACCOUNT && route == AccountRoute.TRAINER && ticks % 2 == 0 && !xpPreview && account.nsec == null) {
                 account.loadTrainer(false) { if (route == AccountRoute.TRAINER) redrawAccountScreen() }
+            }
+            // A report in flight turns Sent or Not sent yet on its own.
+            if (tab == AppTab.ACCOUNT && route == AccountRoute.REPORTS && playtest.sending && ticks % 2 == 0) {
+                playtest.loadReports { if (route == AccountRoute.REPORTS) redrawAccountScreen() }
+            }
+            // The playtest card reads awards from the playtest referee.
+            if (tab == AppTab.ACCOUNT && route == AccountRoute.PLAYTEST && ticks % 3 == 0 && !xpPreview) {
+                playtest.loadCard { if (route == AccountRoute.PLAYTEST) redrawAccountScreen() }
             }
             // Starts, syncs, quotes, and payments finish in the background:
             // poll every second while one runs, else every ten seconds for

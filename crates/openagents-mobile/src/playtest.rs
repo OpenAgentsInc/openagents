@@ -37,6 +37,17 @@ use secp256k1::{SecretKey, XOnlyPublicKey};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
+/// The platform a report names for the OS the app runs on
+/// (`std::env::consts::OS`): `android` on Android, `ios` otherwise.
+#[must_use]
+pub fn platform(os: &str) -> Platform {
+    if os == "android" {
+        Platform::Android
+    } else {
+        Platform::Ios
+    }
+}
+
 /// Reports kept in My reports; older ones drop off.
 const MAX_SAVED: usize = 50;
 

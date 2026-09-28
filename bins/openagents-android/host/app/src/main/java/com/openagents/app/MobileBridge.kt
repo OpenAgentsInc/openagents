@@ -135,6 +135,38 @@ class MobileBridge(private val context: Context, private val computersFixture: B
         }
     }
 
+    /** The Report a problem form for `tab` and `route` (`openagents.report-draft.v1`). */
+    fun reportDraft(tab: String, route: String, received: (JSONObject) -> Unit) =
+        call(json("op" to "report_draft", "tab" to tab, "route" to route)) { reply(it, "openagents.report-draft.v1")?.let(received) }
+
+    /**
+     * Files a report signed by the Verse world key. Rust checks every field,
+     * refuses a screenshot from the Wallet or a key screen, and seals it to
+     * the triage key; the answer is My reports (`openagents.reports.v1`).
+     */
+    fun sendReport(form: JSONObject, received: (JSONObject) -> Unit) {
+        val secret = try { DeviceKey.loadOrCreate(context, DeviceKey.Purpose.WORLD) } catch (_: Exception) { return }
+        call(json("op" to "report_send", "world_secret_hex" to secret, "form" to form)) { reply(it, "openagents.reports.v1")?.let(received) }
+    }
+
+    /** My reports; with the world key, reports that wait or failed are sent again. */
+    fun reports(received: (JSONObject) -> Unit) {
+        val secret = try { DeviceKey.loadOrCreate(context, DeviceKey.Purpose.WORLD) } catch (_: Exception) { "" }
+        call(json("op" to "reports", "world_secret_hex" to secret)) { reply(it, "openagents.reports.v1")?.let(received) }
+    }
+
+    /** Turns Playtest session on (a new log) or off; `null` deletes the log. */
+    fun playtestSession(on: Boolean?, tab: String = "account", route: String = "playtest", received: (JSONObject) -> Unit) =
+        call(on?.let { json("op" to "playtest_session", "on" to it, "tab" to tab, "route" to route) } ?: json("op" to "playtest_clear")) {
+            reply(it, "openagents.reports.v1")?.let(received)
+        }
+
+    /** Where the tester is; Rust records it only while Playtest session is on. */
+    fun playtestScreen(tab: String, route: String) = send(json("op" to "playtest_screen", "tab" to tab, "route" to route))
+
+    private fun reply(text: String?, schema: String): JSONObject? =
+        text?.let { runCatching { JSONObject(it) }.getOrNull() }?.takeIf { it.optString("schema") == schema }
+
     /**
      * An agent payment request's answer: `spend_approve` or `spend_deny`
      * with `request`, `spend_block` or `spend_allow` with `host`, or

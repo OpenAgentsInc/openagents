@@ -862,11 +862,7 @@ impl App {
             } => match SecretKey::from_str(world_secret_hex) {
                 Ok(world) => {
                     let task = self.coder.open_task().map(|(_, task)| task);
-                    let platform = if cfg!(target_os = "android") {
-                        playtest::report::Platform::Android
-                    } else {
-                        playtest::report::Platform::Ios
-                    };
+                    let platform = crate::playtest::platform(std::env::consts::OS);
                     self.playtest.send(form.clone(), &world, task, platform)
                 }
                 Err(_) => self

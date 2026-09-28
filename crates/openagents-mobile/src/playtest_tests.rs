@@ -378,3 +378,39 @@ fn without_the_triage_key_no_public_record_is_published() {
     assert!(relay.sent.lock().unwrap().is_empty());
     assert!(!playtest.reports(None).reports[0].published);
 }
+
+#[test]
+fn an_android_report_names_android_and_seals_like_ios() {
+    assert_eq!(platform("android"), Platform::Android);
+    assert_eq!(platform("ios"), Platform::Ios);
+    let relay = Arc::new(Fake::default());
+    let key = triage_hex();
+    let (mut playtest, _dir) = setup(relay.clone(), Some(&key));
+    let mut filed = form(Tab::Account, Route::Playtest);
+    filed.device = "Google sdk_gphone64_arm64".into();
+    filed.os_version = "15".into();
+    filed.screenshot = Some(jpeg());
+    let packet = playtest.send(filed, &world(), None, platform("android"));
+    assert!(packet.error.is_none(), "{:?}", packet.error);
+    playtest.wait();
+    let sent = relay.sent.lock().unwrap().clone();
+    let wrap = sent
+        .iter()
+        .find(|e| e.kind == 1059)
+        .expect("the sealed report");
+    let opened = report::open(wrap, &SecretKey::from_byte_array(TRIAGE).unwrap()).unwrap();
+    assert_eq!(opened.report.context.platform, Platform::Android);
+    assert_eq!(opened.report.context.device, "Google sdk_gphone64_arm64");
+    assert_eq!(playtest.reports(None).reports[0].place, "account/playtest");
+    // The Wallet is never captured on Android either.
+    let mut wallet = form(Tab::Wallet, Route::Home);
+    wallet.happened = "A different problem.".into();
+    wallet.screenshot = Some(jpeg());
+    let refused = playtest.send(wallet, &world(), None, platform("android"));
+    assert!(
+        refused
+            .error
+            .unwrap()
+            .contains("never sent from the Wallet")
+    );
+}
