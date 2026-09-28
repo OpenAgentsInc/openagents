@@ -275,6 +275,14 @@ uses, and marks which are implemented and which are only specified.
   unit, with trial updates against state snapshots, rollback, and the host
   descriptor. `scripts/coder-host.py` still stages bundles. Read
   `docs/coder/runtime/host-service.md` before changing a state transition.
+- `crates/coder-desk` — the desk protocol (`coder_desk::protocol`, one
+  versioned JSON line per request on `CODER_DESK_SOCKET`) and both of its
+  halves: the client, with a native and a Hyprland backend, and the `serve`
+  module a desk answers with. `crates/coder-desk-cli` is the `coder-desk`
+  command the CoderOS scripts run instead of `hyprctl`, and
+  `os/pkgs/coder-desk.nix` builds it. `crates/coder-binds` is the one table
+  of desktop chords and window rules the Hyprland configuration renders
+  from. Read the crate READMEs before changing a verb or the generation.
 - `crates/coder-computers` — Coder's Computers screens (host status, add a
   computer, access, first run, activity) as Rust Native projections with typed
   intents and one shared authority check. Its `live` service owns the client's

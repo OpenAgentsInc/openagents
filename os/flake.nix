@@ -67,7 +67,10 @@
       # Packages built from this repository. Each later module that runs a
       # program from this workspace adds its build here, as
       # `pkgs.callPackage ./pkgs/<name>.nix { }`.
-      packages.${system} = { };
+      packages.${system} = {
+        # The desk command every CoderOS script asks the session through.
+        coder-desk = pkgs.callPackage ./pkgs/coder-desk.nix { };
+      };
 
       # A host with only the base module, and a host with every capability
       # this flake carries turned on. `tests/stub-host.nix` says how to add

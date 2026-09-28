@@ -1,0 +1,36 @@
+# The desk command: one subcommand per verb of the desk protocol, over
+# `crates/coder-desk`. The CoderOS scripts under `os/bin/` run it instead of
+# `hyprctl`, so a CoderOS host names its compositor in one backend.
+#
+# The package is `coder-desk-cli` because `crates/coder-desk` is already
+# `coder-desk` in this workspace; the binary it installs is `coder-desk`.
+[package]
+name = "coder-desk-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Ask the desktop session what is on its screens, and change one window."
+
+[[bin]]
+name = "coder-desk"
+path = "src/main.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+# The client: it reads what the session announced, picks a backend, and
+# speaks the protocol. Every verb here is one of its methods.
+coder-desk = { path = "../coder-desk" }
+# The argument parser: one derived subcommand per verb.
+clap = { version = "4", features = ["derive"] }
+# The rows `list`, `screens`, `focused`, and `reading` print, which a script
+# reads with `jq`.
+serde_json = "1"
+
+[dev-dependencies]
+# The fake desk the tests run against: it holds windows and screens in
+# memory, answers the protocol on a socket of its own, and records every
+# request.
+coder-desk = { path = "../coder-desk", features = ["test-support"] }

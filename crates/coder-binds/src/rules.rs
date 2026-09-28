@@ -1,0 +1,540 @@
+//! The one table of window rules.
+//!
+//! `RULES` holds a row per rule: what it matches, on the app-id or the
+//! title, and the effects the desktop applies to a window that matches.
+//! Two readers keep the copies from drifting: [`hyprland_rule_lines`]
+//! renders the rows as the `windowrule` lines
+//! `os/modules/coderos/desktop.nix` writes for Hyprland 0.55, which a
+//! repository test compares to that file, and the Coder compositor calls
+//! [`matching`] when a window maps and when its app-id or title changes.
+//!
+//! A match is a literal: the whole string or its start, with ASCII case
+//! either exact or ignored. The Hyprland renderer turns the literal into
+//! the regular expression Hyprland reads, and nothing else in the
+//! repository holds one.
+
+/// Which string of a window a rule reads. An X11 window's app-id is its
+/// class, the second string of its `WM_CLASS` pair.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Field {
+    AppId,
+    Title,
+}
+
+/// How a rule compares its literals to the window's string.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Case {
+    /// Byte for byte.
+    Exact,
+    /// ASCII case ignored. Wine reports a class as the executable's name in
+    /// whichever case the launcher spelled it.
+    Any,
+}
+
+/// One literal a rule accepts.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Pattern {
+    /// The whole string.
+    Exact(&'static str),
+    /// The start of the string.
+    Prefix(&'static str),
+    /// The start of the string, and a word somewhere after it.
+    PrefixHolding {
+        prefix: &'static str,
+        holds: &'static str,
+    },
+    /// The whole string, as a `coderos.desktop` option names it. The
+    /// compositor matches the option's default; `desktop.nix` writes the
+    /// option's value.
+    Configured {
+        nix: &'static str,
+        default: &'static str,
+    },
+}
+
+impl Pattern {
+    /// Whether one string matches this literal under `case`.
+    fn matches(self, text: &str, case: Case) -> bool {
+        let fold = |s: &str| match case {
+            Case::Exact => s.to_string(),
+            Case::Any => s.to_ascii_lowercase(),
+        };
+        let text = fold(text);
+        match self {
+            Pattern::Exact(want) | Pattern::Configured { default: want, .. } => text == fold(want),
+            Pattern::Prefix(want) => text.starts_with(&fold(want)),
+            Pattern::PrefixHolding { prefix, holds } => text
+                .strip_prefix(&fold(prefix))
+                .is_some_and(|rest| rest.contains(&fold(holds))),
+        }
+    }
+
+    /// The literal as one alternative of a Hyprland regular expression.
+    fn hypr(self) -> String {
+        match self {
+            Pattern::Exact(want) => escape(want),
+            Pattern::Prefix(want) => format!("{}.*", escape(want)),
+            Pattern::PrefixHolding { prefix, holds } => {
+                format!("{}.*{}.*", escape(prefix), escape(holds))
+            }
+            Pattern::Configured { nix, .. } => format!("${{{nix}}}"),
+        }
+    }
+}
+
+/// A literal with the characters RE2 reads as syntax escaped.
+fn escape(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for c in text.chars() {
+        if r"\.+*?()|[]{}^$".contains(c) {
+            out.push('\\');
+        }
+        out.push(c);
+    }
+    out
+}
+
+/// What a rule matches: a field, the literals it accepts, and how case is
+/// read. A window matches when any one literal does.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Match {
+    pub field: Field,
+    pub patterns: &'static [Pattern],
+    pub case: Case,
+}
+
+impl Match {
+    /// Whether a window with this app-id and title matches.
+    pub fn matches(&self, app_id: &str, title: &str) -> bool {
+        let text = match self.field {
+            Field::AppId => app_id,
+            Field::Title => title,
+        };
+        self.patterns
+            .iter()
+            .any(|pattern| pattern.matches(text, self.case))
+    }
+
+    /// The `match:` field of a Hyprland `windowrule` line, such as
+    /// `match:title ^(selfie)$`.
+    fn hypr(&self) -> String {
+        let field = match self.field {
+            Field::AppId => "class",
+            Field::Title => "title",
+        };
+        let flag = match self.case {
+            Case::Exact => "",
+            Case::Any => "(?i)",
+        };
+        let alternatives: Vec<String> = self.patterns.iter().map(|p| p.hypr()).collect();
+        format!("match:{field} {flag}^({})$", alternatives.join("|"))
+    }
+}
+
+/// What the desktop does to a window a rule matches. Every field left at
+/// its default leaves the window as the layout had it, so a table with no
+/// matching rule is [`Effects::default`].
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Effects {
+    /// `Some(true)` floats the window over the layout, `Some(false)` puts
+    /// it in a tile, and `None` leaves it where the layout put it.
+    pub float: Option<bool>,
+    /// A float opens in the middle of the screen.
+    pub center: bool,
+    /// The window shows on every desk. A pinned window floats.
+    pub pin: bool,
+    /// The layout keeps the ratio the window mapped at when it resizes
+    /// the window.
+    pub keep_aspect: bool,
+    /// The border's thickness in pixels. `Some(0)` draws none.
+    pub border: Option<i32>,
+    /// Whether the window casts a shadow.
+    pub shadow: Option<bool>,
+    /// A fullscreen or maximize request from the client leaves the
+    /// window where the layout has it.
+    pub suppress_fullscreen: bool,
+}
+
+impl Effects {
+    /// These effects with `over` applied on top: a field `over` sets wins,
+    /// and a flag either one raises stays raised.
+    pub fn merge(self, over: Effects) -> Effects {
+        Effects {
+            float: over.float.or(self.float),
+            center: self.center || over.center,
+            pin: self.pin || over.pin,
+            keep_aspect: self.keep_aspect || over.keep_aspect,
+            border: over.border.or(self.border),
+            shadow: over.shadow.or(self.shadow),
+            suppress_fullscreen: self.suppress_fullscreen || over.suppress_fullscreen,
+        }
+    }
+
+    /// The effects as the fields of a Hyprland `windowrule` line, in the
+    /// order `desktop.nix` spells them.
+    fn hypr(&self) -> Vec<String> {
+        let mut out = Vec::new();
+        if self.float == Some(true) {
+            out.push("float on".to_string());
+        }
+        if self.center {
+            out.push("center on".to_string());
+        }
+        if self.keep_aspect {
+            out.push("keep_aspect_ratio on".to_string());
+        }
+        if let Some(size) = self.border {
+            out.push(format!("border_size {size}"));
+        }
+        if self.shadow == Some(false) {
+            out.push("no_shadow on".to_string());
+        }
+        if self.pin {
+            out.push("pin on".to_string());
+        }
+        if self.float == Some(false) {
+            out.push("tile on".to_string());
+        }
+        if self.suppress_fullscreen {
+            out.push("suppress_event maximize fullscreen".to_string());
+        }
+        out
+    }
+}
+
+/// One row of the table.
+#[derive(Clone, Copy, Debug)]
+pub struct Rule {
+    /// The one-line name the crate's README gives the rule.
+    pub name: &'static str,
+    pub matches: Match,
+    pub effects: Effects,
+    /// The `coderos.desktop.*` option that gates the Hyprland copy of the
+    /// rule, such as `camera` for `coderos.desktop.camera`. The compositor
+    /// applies every rule: a window only matches when its launcher ran.
+    pub option: &'static str,
+}
+
+const NONE: Effects = Effects {
+    float: None,
+    center: false,
+    pin: false,
+    keep_aspect: false,
+    border: None,
+    shadow: None,
+    suppress_fullscreen: false,
+};
+
+/// A float that keeps its shape, with no border and no shadow, on every
+/// desk: the camera circle and the recording HUD.
+const OVERLAY: Effects = Effects {
+    float: Some(true),
+    pin: true,
+    border: Some(0),
+    shadow: Some(false),
+    ..NONE
+};
+
+/// A game client: a tile that a fullscreen or maximize request leaves in
+/// its tile.
+const GAME: Effects = Effects {
+    float: Some(false),
+    suppress_fullscreen: true,
+    ..NONE
+};
+
+/// The class the Android emulator's windows announce, the default of
+/// `coderos.desktop.android.windowClass`.
+pub const EMULATOR_CLASS: &str = "Emulator";
+
+/// The rule table, in the order `desktop.nix` writes the rows.
+pub const RULES: &[Rule] = &[
+    // The emulator floats, because a phone is tall and narrow, and keeps
+    // its shape under a mouse resize.
+    Rule {
+        name: "Android emulator",
+        matches: Match {
+            field: Field::AppId,
+            patterns: &[Pattern::Configured {
+                nix: "cfg.android.windowClass",
+                default: EMULATOR_CLASS,
+            }],
+            case: Case::Exact,
+        },
+        effects: Effects {
+            float: Some(true),
+            keep_aspect: true,
+            ..NONE
+        },
+        option: "android",
+    },
+    // The Battle.net login and launcher windows float in the middle of the
+    // screen.
+    Rule {
+        name: "Battle.net launcher",
+        matches: Match {
+            field: Field::AppId,
+            patterns: &[
+                Pattern::Exact("battle.net.exe"),
+                Pattern::Exact("Battle.net.exe"),
+                Pattern::Exact("steam_app_battlenet"),
+            ],
+            case: Case::Exact,
+        },
+        effects: Effects {
+            float: Some(true),
+            center: true,
+            ..NONE
+        },
+        option: "battlenet",
+    },
+    // A game client tiles as a pane without taking over the screen. Its
+    // class is the executable's name, in the case Wine reports it, and its
+    // title is the game's, so each game carries a class rule and a title
+    // rule.
+    Rule {
+        name: "World of Warcraft client, by class",
+        matches: Match {
+            field: Field::AppId,
+            patterns: &[
+                Pattern::Prefix("wow"),
+                Pattern::Prefix("world of warcraft"),
+                Pattern::PrefixHolding {
+                    prefix: "steam_app_",
+                    holds: "wow",
+                },
+            ],
+            case: Case::Any,
+        },
+        effects: GAME,
+        option: "battlenet",
+    },
+    Rule {
+        name: "World of Warcraft client, by title",
+        matches: Match {
+            field: Field::Title,
+            patterns: &[Pattern::Prefix("World of Warcraft")],
+            case: Case::Any,
+        },
+        effects: GAME,
+        option: "battlenet",
+    },
+    Rule {
+        name: "StarCraft II client, by class",
+        matches: Match {
+            field: Field::AppId,
+            patterns: &[
+                Pattern::Prefix("sc2"),
+                Pattern::Prefix("starcraft"),
+                Pattern::PrefixHolding {
+                    prefix: "steam_app_",
+                    holds: "sc2",
+                },
+            ],
+            case: Case::Any,
+        },
+        effects: GAME,
+        option: "battlenet",
+    },
+    Rule {
+        name: "StarCraft II client, by title",
+        matches: Match {
+            field: Field::Title,
+            patterns: &[Pattern::Prefix("StarCraft II")],
+            case: Case::Any,
+        },
+        effects: GAME,
+        option: "battlenet",
+    },
+    // The camera circle: `os/bin/camera-overlay` titles the window
+    // `selfie` and sizes it square, and the rule keeps it square.
+    Rule {
+        name: "Camera circle",
+        matches: Match {
+            field: Field::Title,
+            patterns: &[Pattern::Exact("selfie")],
+            case: Case::Exact,
+        },
+        effects: Effects {
+            keep_aspect: true,
+            ..OVERLAY
+        },
+        option: "camera",
+    },
+    // The recording HUD: the strip `os/bin/recording-hud` docks under the
+    // circle.
+    Rule {
+        name: "Recording HUD",
+        matches: Match {
+            field: Field::Title,
+            patterns: &[Pattern::Exact("recording-hud")],
+            case: Case::Exact,
+        },
+        effects: OVERLAY,
+        option: "screenRecording",
+    },
+];
+
+/// The effects every rule that matches a window applies, folded in table
+/// order, or [`Effects::default`] when none matches.
+pub fn matching(app_id: &str, title: &str) -> Effects {
+    RULES
+        .iter()
+        .filter(|rule| rule.matches.matches(app_id, title))
+        .fold(Effects::default(), |held, rule| held.merge(rule.effects))
+}
+
+/// The `windowrule` line Hyprland 0.55 reads for one rule, such as
+/// `windowrule = match:title ^(selfie)$, float on, keep_aspect_ratio on, border_size 0, no_shadow on, pin on`.
+pub fn hyprland_rule(rule: &Rule) -> String {
+    let mut fields = vec![rule.matches.hypr()];
+    fields.extend(rule.effects.hypr());
+    format!("windowrule = {}", fields.join(", "))
+}
+
+/// The `windowrule` lines the table renders, in table order.
+pub fn hyprland_rule_lines() -> Vec<String> {
+    RULES.iter().map(hyprland_rule).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_window_with_no_rule_gets_no_effects() {
+        assert_eq!(matching("foot", "~"), Effects::default());
+        assert_eq!(matching("XTerm", "xterm"), Effects::default());
+        // A class that holds a game's name past its start is not a game's,
+        // and the emulator's class is matched in its case.
+        assert_eq!(matching("firewow", ""), Effects::default());
+        assert_eq!(matching("emulator", ""), Effects::default());
+        assert_eq!(matching("", "selfies"), Effects::default());
+    }
+
+    #[test]
+    fn the_overlays_float_pinned_and_borderless() {
+        let camera = matching("mpv", "selfie");
+        assert_eq!(camera.float, Some(true));
+        assert!(camera.pin);
+        assert!(camera.keep_aspect);
+        assert_eq!(camera.border, Some(0));
+        assert_eq!(camera.shadow, Some(false));
+        assert!(!camera.center);
+        let hud = matching("recording-hud", "recording-hud");
+        assert_eq!(
+            hud,
+            Effects {
+                keep_aspect: false,
+                ..camera
+            }
+        );
+    }
+
+    #[test]
+    fn the_launcher_floats_in_the_middle_and_the_games_tile() {
+        for class in ["battle.net.exe", "Battle.net.exe", "steam_app_battlenet"] {
+            let launcher = matching(class, "Battle.net");
+            assert_eq!(launcher.float, Some(true), "{class}");
+            assert!(launcher.center, "{class}");
+            assert!(!launcher.suppress_fullscreen, "{class}");
+        }
+        for (class, title) in [
+            ("Wow.exe", ""),
+            ("wowclassic.exe", ""),
+            ("WOW.EXE", ""),
+            ("World of Warcraft", ""),
+            ("steam_app_wow", ""),
+            ("SC2_x64.exe", ""),
+            ("SC2.exe", ""),
+            ("StarCraft II", ""),
+            ("steam_app_sc2", ""),
+            ("wine", "World of Warcraft"),
+            ("wine", "StarCraft II"),
+        ] {
+            let game = matching(class, title);
+            assert_eq!(game.float, Some(false), "{class} {title}");
+            assert!(game.suppress_fullscreen, "{class} {title}");
+            assert!(!game.pin, "{class} {title}");
+        }
+        // A window that matches a class rule and a title rule folds the
+        // two, which for a game are the same effects.
+        assert_eq!(matching("wow.exe", "World of Warcraft"), GAME);
+    }
+
+    #[test]
+    fn the_emulator_floats_and_keeps_its_shape() {
+        let emulator = matching(EMULATOR_CLASS, "Android Emulator - coder:5554");
+        assert_eq!(emulator.float, Some(true));
+        assert!(emulator.keep_aspect);
+        assert!(!emulator.pin);
+        assert_eq!(emulator.border, None);
+    }
+
+    #[test]
+    fn a_later_effect_wins_and_a_flag_stays_raised() {
+        let tiled = Effects {
+            float: Some(false),
+            suppress_fullscreen: true,
+            ..Effects::default()
+        };
+        let floated = Effects {
+            float: Some(true),
+            pin: true,
+            border: Some(0),
+            ..Effects::default()
+        };
+        let merged = tiled.merge(floated);
+        assert_eq!(merged.float, Some(true));
+        assert!(merged.pin);
+        assert!(merged.suppress_fullscreen);
+        assert_eq!(merged.border, Some(0));
+        assert_eq!(floated.merge(Effects::default()), floated);
+    }
+
+    #[test]
+    fn hyprland_lines_render_every_rule() {
+        let lines = hyprland_rule_lines();
+        assert_eq!(lines.len(), RULES.len());
+        assert_eq!(
+            lines[0],
+            "windowrule = match:class ^(${cfg.android.windowClass})$, float on, keep_aspect_ratio on"
+        );
+        assert_eq!(
+            lines[1],
+            r"windowrule = match:class ^(battle\.net\.exe|Battle\.net\.exe|steam_app_battlenet)$, float on, center on"
+        );
+        assert_eq!(
+            lines[2],
+            "windowrule = match:class (?i)^(wow.*|world of warcraft.*|steam_app_.*wow.*)$, tile on, suppress_event maximize fullscreen"
+        );
+        assert_eq!(
+            lines[3],
+            "windowrule = match:title (?i)^(World of Warcraft.*)$, tile on, suppress_event maximize fullscreen"
+        );
+        assert_eq!(
+            lines[6],
+            "windowrule = match:title ^(selfie)$, float on, keep_aspect_ratio on, border_size 0, no_shadow on, pin on"
+        );
+        assert_eq!(
+            lines[7],
+            "windowrule = match:title ^(recording-hud)$, float on, border_size 0, no_shadow on, pin on"
+        );
+    }
+
+    #[test]
+    fn a_literal_reaches_hyprland_escaped() {
+        assert_eq!(escape("battle.net.exe"), r"battle\.net\.exe");
+        assert_eq!(escape("a+b(c)"), r"a\+b\(c\)");
+        assert_eq!(escape("recording-hud"), "recording-hud");
+    }
+
+    #[test]
+    fn every_rule_has_a_name_and_an_effect() {
+        for rule in RULES {
+            assert!(!rule.name.is_empty());
+            assert_ne!(rule.effects, Effects::default(), "{}", rule.name);
+            assert!(!rule.matches.patterns.is_empty(), "{}", rule.name);
+        }
+    }
+}
