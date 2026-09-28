@@ -164,7 +164,7 @@ document or NIP defines it and no code does it yet.
 | --- | --- | --- |
 | Gym: pinned suites, receipt-chained result store, digested acceptance gates | `crates/gym`, [Gym docs](../gym/README.md) | Implemented for decision models and Terminal-Bench records. |
 | Verse Gym building: boards for Microcoder runs, Terminal-Bench trials, and training summaries, over an encrypted, separately granted connection; confirmed launch recipes | `crates/verse/src/gym.rs`, `crates/verse/src/hud/gym.rs`, `crates/gym-bridge`, [Gym building](gym.md) | Implemented on desktop and iOS. The boards are observations, "not an independently verified leaderboard." Being ported into the OpenAgents app's Grid now. |
-| Gym leaderboard with loadable traces | `docs/verse/gym-leaderboard.md` | Being written in parallel and not yet on `main`. This document references it by name and defers board layout and trace loading to it. The nearest existing material is the Gym CLI's [beat-the-winner view](../gym/terminal-bench-cli.md) and the external [TB4 leaderboard notes](../terminal-bench/tb4-leaderboard.md). |
+| Gym leaderboard with loadable traces | [`docs/verse/gym-leaderboard.md`](gym-leaderboard.md) | Specified, with its generator (`crates/gym-leaderboard`) and published boards in `bench/terminal-bench/published/`. This document defers board layout and trace loading to it. The nearest existing material is the Gym CLI's [beat-the-winner view](../gym/terminal-bench-cli.md) and the external [TB4 leaderboard notes](../terminal-bench/tb4-leaderboard.md). |
 | Run replays with a Fable ghost | [Verse README](README.md#run-replays) | Implemented, desktop. |
 | ATIF-v1.7 trajectories: every Coder conversation records itself locally | `crates/atif`, [traces](../coder/runtime/traces.md) | Implemented. **There is no upload, no service, no trace endpoint, and no redaction.** Traces are local files. The earlier `gym upload` path is retired. |
 | Retained-history observation for paired devices | [NIP-SESS](../../nips/openagents/NIP-SESS.md), `crates/coder-connect` | Designed; only the read-only observer profile is implemented. Encrypted to the owner's paired devices; not a public submission path. |
@@ -411,8 +411,8 @@ filesystem scope, or a spending cap.
 ### The Gym is the training hall
 
 The Gym building is where trainers go to train. Board layout and trace
-loading belong to the Gym leaderboard spec being written in parallel
-(expected at `docs/verse/gym-leaderboard.md`); this section fixes what leveling adds to it.
+loading belong to the [Gym leaderboard spec](gym-leaderboard.md); this
+section fixes what leveling adds to it.
 
 - **Leaderboard boards.** The Gym leaderboard's boards rank attempts. Each
   row names its trainer by pubkey prefix and level, and links to the
@@ -578,8 +578,7 @@ and credentials.
   [contributor guide](../coder/guides/contribute-knowledge.md)
 - [TB4 quest board](../terminal-bench/quest-board.md)
 - [Cheapest verified passes](../coder/cheapest-verified-passes.md)
-- [Gym building](gym.md) and the Gym leaderboard spec (in progress,
-  expected at `docs/verse/gym-leaderboard.md`)
+- [Gym building](gym.md) and the [Gym leaderboard spec](gym-leaderboard.md)
 - [Verse game design document](gdd.md)
 - [Minecraft economy](../minecraft/economy.md)
 - [Episode 284 transcript](../transcripts/284.md)
