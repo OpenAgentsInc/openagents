@@ -59,7 +59,14 @@ This repository is open source. Other repositories on this machine
 instructions. Do not copy private backend code, prompts, endpoints, or
 secrets from them. When you carry a design over, reimplement it here and say
 so in the commit message. Never put an API key in source, a log line, a test
-fixture, or an issue.
+fixture, or an issue. The one exception is the Breez API key in
+`crates/openagents-mobile/src/spark.rs`: the owner confirmed with the Breez
+team that it is a basic validation key that any shipped app exposes, and
+decided on 2026-09-28 to commit it (see `INVARIANTS.md`, Phone wallet).
+
+`crates/openagents-mobile` is its own Cargo workspace, because Breez's SQLite
+and `ldk-node` link different `libsqlite3-sys` versions. Build and test it
+with `--manifest-path crates/openagents-mobile/Cargo.toml`, not `-p`.
 
 ## Skills
 

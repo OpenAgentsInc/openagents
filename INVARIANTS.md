@@ -70,10 +70,19 @@ See [the auto-start guide](docs/coder/runtime/host-autostart.md).
 
 ## Phone wallet
 
+The owner decided on 2026-09-28 to replace the phone's Mutinynet test wallet
+with Breez's Spark wallet on Bitcoin mainnet
+([#9854](https://github.com/OpenAgentsInc/openagents/issues/9854),
+[docs/breez/](docs/breez/README.md)). `ldk-node` stays the wallet on
+computers and the x402 receiver.
+
 | Invariant | Status | Checked by |
 | --- | --- | --- |
-| The OpenAgents app's Wallet tab runs `crates/wallet`'s `ldk-node` wallet only on Mutinynet signet (`https://mutinynet.com/api`), with no listening socket, liquidity provider, or trusted peer. No request, configuration, or stored value switches it to mainnet; a mainnet configuration and a non-test address are refused. It never opens a computer's wallet directory or any treasury wallet. | New on 2026-09-28. | `the_phone_wallet_is_signet_only_on_mutinynet` in `crates/openagents-mobile` |
-| The phone wallet's key is 32 bytes of BIP39 entropy in its own Keychain item (`com.openagents.app.wallet`, this device only, when unlocked), separate from the device and world keys. Rust receives it with `wallet_open` and keeps it and its mnemonic in memory only: neither is written to disk, logged, or put in a packet or an error. | New on 2026-09-28. | `failures_are_typed_and_never_carry_the_key` in `crates/openagents-mobile`; `entropy_gives_one_mnemonic_and_bad_entropy_is_refused_quietly` in `crates/wallet` |
+| The OpenAgents app's Wallet tab runs Breez's Spark SDK (`breez-sdk-spark`) on Bitcoin mainnet only, a network fixed in `crates/openagents-mobile/src/wallet.rs`. No request, configuration, or stored value switches it to another network. Real-time sync to Breez's server, cross-chain sends, and Stable Balance are off. It never opens a computer's wallet directory or any treasury wallet. Regtest is used only by tests. | Rewritten on 2026-09-28 (was Mutinynet signet on `ldk-node`). | `the_phone_wallet_runs_on_mainnet_with_the_committed_key`; live: `a_mainnet_wallet_connects_with_the_committed_key` and `a_regtest_wallet_connects_and_reads_its_balance` (ignored, run by hand) in `crates/openagents-mobile` |
+| The Spark seed is BIP39 entropy (16 bytes when the phone creates it; 16 or 32 when restored) in its own Keychain item (`com.openagents.app.spark`, this device only, when unlocked, not synchronized), separate from the device, world, and computer wallet keys. Rust receives it with `wallet_open` and keeps it and its mnemonic in memory only: neither is written to disk, logged, or put in the app packet or an error. The recovery words leave Rust only in the direct reply to `wallet_words`, which the host sends after the person confirms a warning, and a restore's entropy only in the direct reply to `wallet_restore_check`. | Rewritten on 2026-09-28. | `failures_are_typed_and_never_carry_the_key`, `recovery_words_restore_and_replace_the_wallet` |
+| A payment is sent only for the quote on screen, after the person confirms its amount and fee, once, with a fresh idempotency key; a stale quote ID pays nothing. | New on 2026-09-28. | `send_quotes_the_fee_and_pays_only_the_confirmed_quote_once` |
+| A purchase page opens only if its URL is `https`, and only once. An on-chain deposit is claimed automatically at maturity up to the network's recommended fee rate plus 1 sat/vB; a claim the person starts is sent only after its quote, with the quoted fee as its ceiling. | New on 2026-09-28 ([#9865](https://github.com/OpenAgentsInc/openagents/issues/9865)). | `buying_opens_the_provider_page_once_and_deposits_are_claimed_at_the_quoted_fee` |
+| The Breez API key is committed in source (`crates/openagents-mobile/src/spark.rs`). The owner confirmed with the Breez team that it is a basic validation key that every shipped app carries and none can hide; it authorizes no spending. It is the only API key exempt from the repository's no-keys-in-source rule. | Owner decision, 2026-09-28. | `the_phone_wallet_runs_on_mainnet_with_the_committed_key` |
 
 ## Verse shared bodies
 

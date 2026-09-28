@@ -36,7 +36,8 @@ case "$command" in
   *) echo "usage: bins/openagents-ios/build.sh sim|archive|upload" >&2; exit 64 ;;
 esac
 
-rust=(cargo build --locked -p openagents-mobile --lib --target "$triple")
+# openagents-mobile is its own Cargo workspace (see its Cargo.toml).
+rust=(cargo build --locked --manifest-path crates/openagents-mobile/Cargo.toml --lib --target "$triple")
 [[ "$profile" == release ]] && rust+=(--release)
 (cd "$root" && "${rust[@]}")
 (cd "$host" && xcodegen generate --quiet)

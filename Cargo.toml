@@ -3,6 +3,8 @@ members = [
     "crates/coderbench","crates/*"]
 # Retained Ruins of Atlantis source is third-party code, not first-party workspace policy.
 exclude = [
+    # Its own workspace, for Breez's SQLite; see its Cargo.toml.
+    "crates/openagents-mobile",
     "crates/verse-ruins/vendor/crates/client_core",
     "crates/verse-ruins/vendor/crates/collision_static",
     "crates/verse-ruins/vendor/crates/core_materials",

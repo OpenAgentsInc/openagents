@@ -168,13 +168,72 @@ pub enum Request {
         #[serde(default)]
         reveal: bool,
     },
-    /// Start the Wallet tab's wallet with its key from the platform's
-    /// protected store: 32 bytes as 64 hex digits. Never logged or stored.
+    /// Start the Wallet tab's wallet with its seed from the platform's
+    /// protected store: BIP39 entropy, 16 or 32 bytes as hex. Never logged
+    /// or stored. `replace` follows a restore: it stops the running wallet
+    /// and opens this one.
     WalletOpen {
         entropy_hex: String,
+        #[serde(default)]
+        replace: bool,
     },
-    /// Sync the wallet with Mutinynet, or retry a failed start.
+    /// Sync the wallet with Spark, or retry a failed start.
     WalletRefresh,
+    /// Make a Lightning invoice; an empty `amount` takes any amount.
+    WalletInvoice {
+        #[serde(default)]
+        amount: String,
+    },
+    /// Quote a payment to a pasted or scanned request.
+    WalletQuote {
+        input: String,
+        #[serde(default)]
+        amount: String,
+    },
+    /// Pay the quote on screen, which the person confirmed.
+    WalletPay {
+        quote: u64,
+    },
+    /// Close the send review or its result.
+    WalletSendReset,
+    /// Buy bitcoin with dollars: `provider` is `moonpay` or `cashapp`, and
+    /// `amount` is in sats. The page to open arrives as `wallet_open_url`.
+    WalletBuy {
+        provider: String,
+        amount: String,
+    },
+    /// Quote claiming a waiting on-chain deposit.
+    WalletClaimQuote {
+        txid: String,
+        vout: u32,
+    },
+    /// Claim the quoted deposit at its quoted fee.
+    WalletClaim {
+        txid: String,
+        vout: u32,
+    },
+    /// Close the deposit claim step.
+    WalletClaimReset,
+    /// The person read the wallet's trust note.
+    WalletAcknowledge,
+    /// The recovery words, in the direct reply only. The host sends it after
+    /// the person asks to see them and confirms a warning.
+    WalletWords,
+    /// Check recovery words for a restore. The direct reply carries their
+    /// entropy for the host's key store, or why they were refused.
+    WalletRestoreCheck {
+        words: String,
+    },
+}
+
+/// The direct reply to [`Request::WalletWords`] and
+/// [`Request::WalletRestoreCheck`]. It never reaches the app packet.
+#[derive(Serialize)]
+pub struct WalletSecretPacket {
+    pub schema: &'static str,
+    pub words: Option<Vec<String>>,
+    pub entropy_hex: Option<String>,
+    pub error: Option<String>,
 }
 
 impl Request {
@@ -231,6 +290,8 @@ pub struct Packet {
     pub wallet: crate::wallet::Screen,
     /// The wallet is starting or syncing in the background.
     pub wallet_loading: bool,
+    /// A bitcoin purchase page to open in the browser, once. Always `https`.
+    pub wallet_open_url: Option<String>,
 }
 
 /// The encrypted store for the Computers record, keyed by the device key.
@@ -360,6 +421,9 @@ impl App {
             format!("chats:{}", id()),
         );
         let tailnet_client = Client::open(&config.state_dir.join("tailscale")).map(Arc::new);
+        // The Spark wallet replaced the Mutinynet test wallet, whose store
+        // held only signet test coins; remove it. Its Keychain item goes too.
+        let _ = std::fs::remove_dir_all(config.state_dir.join("wallet"));
         Ok(Self {
             runtime,
             native_computers: launch.native_computers,
@@ -389,8 +453,8 @@ impl App {
             tailnet_revision: 0,
             tailnet_view: None,
             wallet: crate::wallet::Wallet::new(
-                config.state_dir.join("wallet"),
-                crate::wallet::ldk_opener(),
+                config.state_dir.join("spark"),
+                crate::wallet::spark_opener(),
             ),
             notices,
         })
@@ -405,6 +469,13 @@ impl App {
         }
         if let Request::Account { reveal } = request {
             let packet = crate::account::packet(&self.secret, reveal);
+            return serde_json::to_vec(&packet).unwrap_or_default();
+        }
+        if matches!(
+            request,
+            Request::WalletWords | Request::WalletRestoreCheck { .. }
+        ) {
+            let packet = self.wallet_secret(request);
             return serde_json::to_vec(&packet).unwrap_or_default();
         }
         let packet = self.call(request);
@@ -563,10 +634,47 @@ impl App {
             // `respond` answers it with the account packet; the app packet
             // never carries the secret key.
             Request::Account { .. } => {}
-            Request::WalletOpen { entropy_hex } => self.wallet.open(&entropy_hex),
+            Request::WalletOpen {
+                entropy_hex,
+                replace,
+            } => self.wallet.open(&entropy_hex, replace),
             Request::WalletRefresh => self.wallet.refresh(),
+            Request::WalletInvoice { amount } => self.wallet.invoice(&amount),
+            Request::WalletQuote { input, amount } => self.wallet.quote(&input, &amount),
+            Request::WalletPay { quote } => self.wallet.pay(quote),
+            Request::WalletSendReset => self.wallet.reset_send(),
+            Request::WalletBuy { provider, amount } => self.wallet.buy(&provider, &amount),
+            Request::WalletClaimQuote { txid, vout } => self.wallet.claim_quote(&txid, vout),
+            Request::WalletClaim { txid, vout } => self.wallet.claim(&txid, vout),
+            Request::WalletClaimReset => self.wallet.claim_reset(),
+            Request::WalletAcknowledge => self.wallet.acknowledge(),
+            // `respond` answers these directly; the app packet never
+            // carries recovery words or a seed.
+            Request::WalletWords | Request::WalletRestoreCheck { .. } => {}
         }
         self.packet(open_url)
+    }
+
+    /// The direct reply for the recovery words or a restore check.
+    pub fn wallet_secret(&self, request: Request) -> WalletSecretPacket {
+        let mut packet = WalletSecretPacket {
+            schema: "openagents.wallet-secret.v1",
+            words: None,
+            entropy_hex: None,
+            error: None,
+        };
+        match request {
+            Request::WalletWords => match self.wallet.words() {
+                Some(words) => packet.words = Some(words),
+                None => packet.error = Some("The wallet hasn't opened yet.".into()),
+            },
+            Request::WalletRestoreCheck { words } => match crate::wallet::restore_entropy(&words) {
+                Ok(entropy) => packet.entropy_hex = Some(entropy),
+                Err(error) => packet.error = Some(error),
+            },
+            _ => {}
+        }
+        packet
     }
 
     fn open_terminal(&mut self) {
@@ -851,6 +959,7 @@ impl App {
             notices: self.notices.clone(),
             wallet: self.wallet.screen(),
             wallet_loading: self.wallet.loading(),
+            wallet_open_url: self.wallet.take_open_url(),
         }
     }
 

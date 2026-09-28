@@ -10,8 +10,9 @@
 //! saved on every computer paired for reading. **Tailnet** lists the devices on the user's
 //! tailnet through Tailscale's control server. **Verse** mounts Verse's bare
 //! world, the plaza grid with Coder's player controls, on a native Metal layer.
-//! **Wallet** holds test coins on Mutinynet signet through the repository's
-//! `ldk-node` wallet; it never runs on mainnet.
+//! **Wallet** is a Bitcoin wallet on mainnet through Breez's Spark SDK:
+//! Lightning, Spark, and on-chain receive and send, with the seed in the
+//! platform's key store.
 
 mod account;
 #[cfg(any(target_os = "android", test))]
@@ -23,6 +24,7 @@ mod coder_tab;
 mod computers_home;
 mod conversation;
 mod outbox;
+mod spark;
 mod tailnet;
 mod tailnet_view;
 mod verse;

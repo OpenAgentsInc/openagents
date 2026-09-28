@@ -356,10 +356,9 @@ payee key on hosts. Neither can do the other's job.
 - Export Spark's unilateral-exit state periodically into the app's encrypted
   store, and offer an export to Files. A seed alone does not recover funds
   during an operator outage.
-- The Breez API key is a build-time input from a gitignored file, never
-  source. It is extractable from any shipped binary, as for every Breez app,
-  so plan rotation. Earlier OpenAgents code embedded a key in source three
-  times; see [history](history.md#lessons-for-a-re-add).
+- The Breez API key is committed in source by owner decision (2026-09-28):
+  the Breez team confirmed it is a basic validation key that any shipped app
+  exposes. It authorizes no spending. Plan rotation if Breez asks.
 - Agent allowance seeds are generated on the phone, kept in their own
   Keychain item, and sent to a host encrypted to its key. The phone never
   receives an agent's own Nostr secret.

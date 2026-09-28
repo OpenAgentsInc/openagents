@@ -1,105 +1,260 @@
-//! The Wallet tab: a Bitcoin wallet for test coins on Mutinynet, the public
-//! signet that the repository's wallet (`crates/wallet`) uses for testing.
-//! It runs that crate's `ldk-node` wallet, with its store in the app's
-//! private state directory and its key from the platform key store.
+//! The Wallet tab: a Bitcoin wallet on mainnet through Breez's Spark SDK
+//! (`crate::spark`). Rust decides every state and line of text; the host lays
+//! them out, collects typed values, and keeps the seed in its key store.
 //!
 //! The network is fixed in this file. No request, configuration, or stored
-//! value switches the phone's wallet to mainnet, and it never opens the
-//! wallet directory a computer uses (`~/.openagents/wallet`). The 32-byte
-//! wallet key arrives once per app lifetime with `wallet_open`; it and its
-//! mnemonic stay in memory, and neither is written, logged, or put in a
-//! packet.
+//! value switches the phone's wallet to another network, and it never opens
+//! a computer's wallet (`~/.openagents/wallet`) or any treasury wallet. The
+//! seed arrives with `wallet_open` as BIP39 entropy (16 or 32 bytes); it and
+//! its mnemonic stay in memory, and neither is written, logged, or put in the
+//! app packet or an error. The recovery words leave Rust only in the direct
+//! reply to [`crate::Request::WalletWords`], which the host sends after the
+//! person confirms a warning.
 
-use openagents_wallet::config::{MUTINYNET_ESPLORA, Network, WalletConfig};
-use openagents_wallet::ldk::{LdkWallet, mnemonic_from_entropy};
-use openagents_wallet::{Balance, LightningWallet, WalletError};
-use serde::Serialize;
+use breez_sdk_spark::Network;
+use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard};
 
 /// The only network the phone's wallet runs on.
-pub const NETWORK: Network = Network::Signet;
-/// Mutinynet's Esplora server; Mutinynet is a signet with 30-second blocks.
-pub const ESPLORA: &str = MUTINYNET_ESPLORA;
-/// Where the owner gets free test coins.
-pub const FAUCET: &str = "https://faucet.mutinynet.com";
-/// The file under the wallet home that keeps the address the screen shows,
-/// so it does not change on every launch. It holds no secret.
-const ADDRESS_FILE: &str = "receive-address";
-/// The file under the wallet home that keeps the last balance read, so the
-/// screen shows it at once while the wallet starts and reads the chain
-/// again. It holds no secret.
+pub const NETWORK: Network = Network::Mainnet;
+/// What the screen calls the network.
+pub const NETWORK_LABEL: &str = "Bitcoin · Spark";
+/// The description a new Lightning invoice carries.
+const INVOICE_DESCRIPTION: &str = "OpenAgents";
+/// Above this balance the screen reminds the person that it's a phone wallet.
+pub const BALANCE_WARNING_SATS: u64 = 1_000_000;
+/// How many payments the history shows.
+const HISTORY_LIMIT: u32 = 50;
+
+/// Files under the wallet home. None holds a secret: the last balance read,
+/// the receive addresses, recent payments, and whether the trust note was
+/// acknowledged, so the screen shows at once while the wallet starts.
 const BALANCE_FILE: &str = "last-balance";
+const ADDRESSES_FILE: &str = "addresses.json";
+const PAYMENTS_FILE: &str = "payments.json";
+const TRUST_FILE: &str = "trust-acknowledged";
 
-/// The phone wallet's configuration: Mutinynet, no listening socket, no
-/// liquidity provider, and no trusted peers.
-pub fn config() -> Result<WalletConfig, String> {
-    let config = WalletConfig::new(NETWORK, Some(ESPLORA)).map_err(|error| error.to_string())?;
-    admit(&config)?;
-    Ok(config)
-}
+/// The trust note: what Spark is and who the person relies on.
+pub const TRUST_TITLE: &str = "About this wallet";
+pub const TRUST_LINES: [&str; 5] = [
+    "This wallet runs on Spark, not on a Lightning node of your own. Your keys stay on this phone.",
+    "Three companies run Spark's operators: Lightspark, Breez, and Flashnet. Two of them must cooperate for payments off the chain, and your safety depends on at least one of them having deleted old keys, which no one can check.",
+    "If the operators stop, you can still withdraw on the Bitcoin chain yourself, but it can take days and needs a separate on-chain payment for fees.",
+    "Lightning payments go through Lightspark.",
+    "Keep amounts you'd be comfortable carrying in a phone wallet, and write down your recovery words.",
+];
 
-/// Refuse any configuration but a test network. The phone never holds
-/// mainnet coins.
-fn admit(config: &WalletConfig) -> Result<(), String> {
-    match config.network {
-        Network::Signet | Network::Testnet | Network::Regtest => Ok(()),
-        Network::Bitcoin => Err("The phone's wallet runs only on a test network.".into()),
-    }
-}
-
-/// Whether `address` is a test-network bech32 address (`tb1` on testnet and
-/// signet, `bcrt1` on regtest), never a mainnet one.
-fn test_address(address: &str) -> bool {
-    let lower = address.to_ascii_lowercase();
-    lower.starts_with("tb1") || lower.starts_with("bcrt1")
-}
-
-/// What the screen needs from a running wallet. `LdkWallet` is the real one;
-/// tests supply their own.
+/// What the screen needs from a running wallet. `SparkNode` is the real one;
+/// tests supply their own. Every call blocks.
 pub trait Node: Send + Sync {
-    fn balance(&self) -> Result<Balance, WalletError>;
-    fn new_address(&self) -> Result<String, WalletError>;
-    fn sync(&self) -> Result<(), WalletError>;
-    fn synced_at(&self) -> Option<u64>;
+    /// The balance in sats, as last synced.
+    fn balance(&self) -> Result<u64, String>;
+    fn sync(&self) -> Result<(), String>;
+    /// The wallet's static Spark address.
+    fn spark_address(&self) -> Result<String, String>;
+    /// The wallet's static Bitcoin deposit address.
+    fn bitcoin_address(&self) -> Result<String, String>;
+    /// A new Lightning invoice, with an amount or without one.
+    fn invoice(&self, amount_sats: Option<u64>, description: &str) -> Result<String, String>;
+    /// Prepare a payment to `input` and quote its fee. The node keeps only
+    /// the latest quote.
+    fn quote(&self, input: &str, amount_sats: Option<u64>) -> Result<Quote, QuoteFailure>;
+    /// Pay a quote once; a repeat with the same key returns the same payment.
+    fn pay(&self, quote: u64, idempotency_key: &str) -> Result<PaymentRow, String>;
+    /// Recent payments, newest first.
+    fn payments(&self, limit: u32) -> Result<Vec<PaymentRow>, String>;
+    /// Start a purchase with a provider; the URL for the person to open.
+    fn buy(&self, provider: Provider, amount_sats: u64) -> Result<String, String>;
+    /// On-chain deposits not yet claimed into the balance.
+    fn deposits(&self) -> Result<Vec<DepositRow>, String>;
+    /// What claiming a deposit now would cost.
+    fn claim_quote(&self, txid: &str, vout: u32) -> Result<ClaimQuote, String>;
+    /// Claim a deposit for at most `max_fee_sats`; what happened, in words.
+    fn claim(&self, txid: &str, vout: u32, max_fee_sats: u64) -> Result<String, String>;
+    /// Call `notify` when the wallet syncs, a payment changes, or a deposit
+    /// arrives.
+    fn subscribe(&self, notify: Arc<dyn Fn() + Send + Sync>);
 }
 
-impl Node for LdkWallet {
-    fn balance(&self) -> Result<Balance, WalletError> {
-        LightningWallet::balance(self)
+/// Who sells bitcoin for dollars. Both are Breez integrations on mainnet.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Provider {
+    /// Card or Apple Pay; MoonPay sends bitcoin on-chain to the deposit
+    /// address, which the wallet claims.
+    Moonpay,
+    /// A fixed-amount Lightning invoice that Cash App pays from the
+    /// person's cash balance or debit card.
+    CashApp,
+}
+
+impl Provider {
+    fn parse(id: &str) -> Option<Self> {
+        match id {
+            "moonpay" => Some(Self::Moonpay),
+            "cashapp" => Some(Self::CashApp),
+            _ => None,
+        }
     }
-    fn new_address(&self) -> Result<String, WalletError> {
-        self.funding_address()
-    }
-    fn sync(&self) -> Result<(), WalletError> {
-        LdkWallet::sync(self)
-    }
-    fn synced_at(&self) -> Option<u64> {
-        self.onchain_synced_at()
-    }
+}
+
+/// An on-chain deposit waiting to be claimed.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DepositRow {
+    pub txid: String,
+    pub vout: u32,
+    pub amount_sats: u64,
+    /// It has the confirmations a claim at maturity needs.
+    pub mature: bool,
+    /// Why the last claim failed, in words.
+    pub problem: Option<String>,
+}
+
+/// The cost of claiming a deposit now.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ClaimQuote {
+    pub fee_sats: u64,
+    pub credit_sats: u64,
+    /// Claimed ahead of maturity, for a provider's spread.
+    pub early: bool,
+    pub confirmations: u32,
+    pub confirmations_required: u32,
 }
 
 /// Opens the wallet under a home with a mnemonic. Blocking.
-pub type Opener =
-    Arc<dyn Fn(&Path, &WalletConfig, &str) -> Result<Arc<dyn Node>, String> + Send + Sync>;
+pub type Opener = Arc<dyn Fn(&Path, &str) -> Result<Arc<dyn Node>, String> + Send + Sync>;
 
-/// The real opener: start `ldk-node` on the Mutinynet configuration.
-pub fn ldk_opener() -> Opener {
-    Arc::new(|home, config, mnemonic| {
-        admit(config)?;
-        LdkWallet::open(home, config, mnemonic)
-            .map(|wallet| Arc::new(wallet) as Arc<dyn Node>)
-            .map_err(|error| describe(&error))
+/// The real opener: Breez's SDK on mainnet.
+pub fn spark_opener() -> Opener {
+    Arc::new(|home, mnemonic| {
+        crate::spark::SparkNode::open(home, NETWORK, mnemonic)
+            .map(|node| Arc::new(node) as Arc<dyn Node>)
     })
 }
 
-/// A mnemonic. It has no `Debug` so it cannot reach a log line.
-struct Seed(String);
+/// Where a payment goes, as its request decoded it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Destination {
+    Lightning(String),
+    LightningAddress(String),
+    Spark(String),
+    Bitcoin(String),
+}
 
-#[derive(Default)]
+/// A prepared payment and its fee.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Quote {
+    pub id: u64,
+    pub destination: Destination,
+    pub amount_sats: u64,
+    pub fee_sats: u64,
+    /// The payment request's own description.
+    pub note: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum QuoteFailure {
+    /// The request has no amount, or the amount is out of its range.
+    NeedsAmount(String),
+    Refused(String),
+}
+
+/// A payment as the SDK reported it.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PaymentRow {
+    pub id: String,
+    pub received: bool,
+    pub amount_sats: u64,
+    pub fee_sats: u64,
+    pub method: String,
+    /// `completed`, `pending`, or `failed`.
+    pub status: String,
+    /// Unix seconds.
+    pub at: u64,
+}
+
+/// The wallet's seed. It has no `Debug`, so it cannot reach a log line.
+struct Seed {
+    entropy: Vec<u8>,
+    mnemonic: String,
+}
+
+impl Seed {
+    fn from_entropy(entropy: Vec<u8>) -> Result<Self, String> {
+        if entropy.len() != 16 && entropy.len() != 32 {
+            return Err("The wallet key is unreadable.".into());
+        }
+        let mnemonic = bip39::Mnemonic::from_entropy(&entropy)
+            .map_err(|_| "The wallet key is unreadable.".to_string())?
+            .to_string();
+        Ok(Self { entropy, mnemonic })
+    }
+}
+
+/// Check recovery words for a restore and return their entropy as hex, for
+/// the host to put in its key store. Errors never repeat the words.
+pub fn restore_entropy(words: &str) -> Result<String, String> {
+    let words: Vec<String> = words
+        .split_whitespace()
+        .map(|word| word.to_lowercase())
+        .collect();
+    if words.len() != 12 && words.len() != 24 {
+        return Err(format!(
+            "Enter 12 or 24 recovery words; that was {}.",
+            words.len()
+        ));
+    }
+    let mnemonic =
+        bip39::Mnemonic::parse_in(bip39::Language::English, words.join(" ")).map_err(|error| {
+            match error {
+                bip39::Error::UnknownWord(index) => {
+                    format!(
+                        "Word {} isn't a recovery word. Check its spelling.",
+                        index + 1
+                    )
+                }
+                bip39::Error::InvalidChecksum => {
+                    "These words don't form a valid recovery phrase. Check each word and its order."
+                        .to_string()
+                }
+                _ => "These recovery words can't be read.".to_string(),
+            }
+        })?;
+    Ok(hex(&mnemonic.to_entropy()))
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum Sending {
+    Idle,
+    Quoting,
+    NeedsAmount(String),
+    Quoted(Quote),
+    Paying(Quote),
+    Sent(PaymentRow),
+    Failed(String),
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+struct Addresses {
+    spark: Option<String>,
+    bitcoin: Option<String>,
+}
+
+/// A deposit claim the person started: its quote, then its outcome.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct Claim {
+    txid: String,
+    vout: u32,
+    quote: Option<ClaimQuote>,
+    busy: bool,
+    message: Option<String>,
+}
+
 struct Shared {
     node: Option<Arc<dyn Node>>,
-    address: Option<String>,
+    /// Bumped when the wallet is replaced, so a start or read that began
+    /// for the old one changes nothing.
+    generation: u64,
     starting: bool,
     refreshing: bool,
     /// The last start or sync failure, cleared by the next success.
@@ -108,13 +263,25 @@ struct Shared {
     synced: bool,
     /// The last balance read, saved across launches.
     last: Option<LastBalance>,
+    addresses: Addresses,
+    payments: Vec<PaymentRow>,
+    invoice: Option<(String, Option<u64>)>,
+    invoice_busy: bool,
+    invoice_error: Option<String>,
+    send: Sending,
+    trust_acknowledged: bool,
+    deposits: Vec<DepositRow>,
+    claim: Option<Claim>,
+    buy_busy: bool,
+    buy_error: Option<String>,
+    /// A purchase page for the host to open once.
+    open_url: Option<String>,
 }
 
 /// A balance read by an earlier sync, shown until this launch reads again.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct LastBalance {
     total: u64,
-    pending: u64,
     synced_at: Option<u64>,
 }
 
@@ -123,24 +290,35 @@ impl LastBalance {
         let text = std::fs::read_to_string(home.join(BALANCE_FILE)).ok()?;
         let mut fields = text.split_whitespace();
         let total: u64 = fields.next()?.parse().ok()?;
-        let pending: u64 = fields.next()?.parse().ok()?;
         let synced_at = fields.next().and_then(|value| value.parse().ok());
-        Some(Self {
-            total,
-            pending: pending.min(total),
-            synced_at,
-        })
+        Some(Self { total, synced_at })
     }
 
     fn write(self, home: &Path) {
         let synced_at = self.synced_at.map(|at| at.to_string()).unwrap_or_default();
         // A lost cache only means the next launch shows no balance until the
-        // wallet reads the chain, so a failed write is not an error.
+        // wallet reads Spark, so a failed write is not an error.
         let _ = std::fs::write(
             home.join(BALANCE_FILE),
-            format!("{} {} {synced_at}\n", self.total, self.pending),
+            format!("{} {synced_at}\n", self.total),
         );
     }
+}
+
+fn read_json<T: for<'de> Deserialize<'de>>(home: &Path, file: &str) -> Option<T> {
+    serde_json::from_slice(&std::fs::read(home.join(file)).ok()?).ok()
+}
+
+fn write_json<T: Serialize>(home: &Path, file: &str, value: &T) {
+    if let Ok(bytes) = serde_json::to_vec(value) {
+        let _ = std::fs::write(home.join(file), bytes);
+    }
+}
+
+fn now() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |elapsed| elapsed.as_secs())
 }
 
 pub struct Wallet {
@@ -167,18 +345,10 @@ pub struct Summary {
     pub balance_sats: u64,
     /// "12,345 sats".
     pub balance: String,
-    /// "0.00012345 tBTC".
+    /// "0.00012345 BTC".
     pub balance_btc: String,
-    /// Received but not yet confirmed, in sats.
-    pub pending_sats: u64,
-    pub pending: Option<String>,
-    /// No coins yet: the screen explains how to get some.
+    /// No sats yet: the screen explains how to receive some.
     pub empty: bool,
-    pub address: String,
-    /// The BIP21 URI the QR code carries.
-    pub uri: String,
-    pub qr: Option<crate::app::QrModules>,
-    pub faucet: &'static str,
     /// When the last sync finished, in Unix seconds.
     pub synced_at: Option<u64>,
     pub refreshing: bool,
@@ -187,18 +357,149 @@ pub struct Summary {
     /// No balance has been read on this phone yet: the balance fields are
     /// empty and the screen shows placeholders.
     pub balance_unknown: bool,
-    /// What the wallet is doing while it starts or first reads the chain,
+    /// What the wallet is doing while it starts or first reads Spark,
     /// shown beside a progress indicator; the rest of the screen stays.
     pub status: Option<String>,
+    /// A reminder when the balance is large for a phone wallet.
+    pub warning: Option<String>,
+    pub trust: Trust,
+    pub receive: Receive,
+    pub send: SendView,
+    pub payments: Vec<PaymentView>,
+    /// The seed is in memory, so the recovery words can be shown.
+    pub can_show_words: bool,
+    pub buy: BuyView,
+    /// On-chain deposits waiting to be claimed.
+    pub deposits: Vec<DepositView>,
+    /// A claim the person started.
+    pub claim: Option<ClaimView>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct BuyView {
+    pub busy: bool,
+    pub error: Option<String>,
+    pub providers: Vec<ProviderView>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct ProviderView {
+    /// Send this back with `wallet_buy`.
+    pub id: &'static str,
+    pub label: &'static str,
+    pub detail: &'static str,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct DepositView {
+    pub txid: String,
+    pub vout: u32,
+    pub amount: String,
+    /// Where the deposit stands, in words.
+    pub status: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct ClaimView {
+    pub txid: String,
+    pub vout: u32,
+    pub busy: bool,
+    /// "Claim now for a 1,200 sats fee; 48,800 sats reach your balance."
+    pub quote: Option<String>,
+    pub message: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct Trust {
+    /// The person has read the note; the screen shows a link to it instead.
+    pub acknowledged: bool,
+    pub title: &'static str,
+    pub lines: Vec<&'static str>,
+}
+
+/// One way to receive: the text to share, the URI its QR code carries, and
+/// the code.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct Code {
+    pub text: String,
+    pub uri: String,
+    pub qr: Option<crate::app::QrModules>,
+    /// "Invoice for 1,000 sats", or what the code is for.
+    pub caption: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct Receive {
+    pub lightning: Option<Code>,
+    /// A new invoice is being made.
+    pub lightning_busy: bool,
+    pub lightning_error: Option<String>,
+    pub spark: Option<Code>,
+    pub bitcoin: Option<Code>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct SendView {
+    /// `idle`, `quoting`, `needs_amount`, `quoted`, `paying`, `sent`, or
+    /// `failed`.
+    pub state: &'static str,
+    pub message: Option<String>,
+    pub quote: Option<QuoteView>,
+    pub result: Option<PaymentView>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct QuoteView {
+    /// Send this back with `wallet_pay`.
+    pub id: u64,
+    /// "Lightning invoice", "Lightning address", "Spark address", or
+    /// "Bitcoin address".
+    pub kind: &'static str,
+    /// The destination, shortened for the screen.
+    pub destination: String,
+    pub amount: String,
+    pub fee: String,
+    pub total: String,
+    pub note: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct PaymentView {
+    pub id: String,
+    /// "Received" or "Sent".
+    pub title: &'static str,
+    /// "+1,000 sats" or "-1,000 sats".
+    pub amount: String,
+    pub fee: Option<String>,
+    pub method: String,
+    /// `completed`, `pending`, or `failed`.
+    pub status: String,
+    pub at: u64,
 }
 
 impl Wallet {
     pub fn new(home: PathBuf, opener: Opener) -> Self {
-        // The saved address and last balance show before the wallet starts.
+        // What earlier launches read shows before the wallet starts.
         let shared = Shared {
-            address: saved_address(&home),
+            node: None,
+            generation: 0,
+            starting: false,
+            refreshing: false,
+            error: None,
+            synced: false,
             last: LastBalance::read(&home),
-            ..Shared::default()
+            addresses: read_json(&home, ADDRESSES_FILE).unwrap_or_default(),
+            payments: read_json(&home, PAYMENTS_FILE).unwrap_or_default(),
+            invoice: None,
+            invoice_busy: false,
+            invoice_error: None,
+            send: Sending::Idle,
+            trust_acknowledged: home.join(TRUST_FILE).exists(),
+            deposits: vec![],
+            claim: None,
+            buy_busy: false,
+            buy_error: None,
+            open_url: None,
         };
         Self {
             home,
@@ -209,33 +510,81 @@ impl Wallet {
     }
 
     fn lock(&self) -> MutexGuard<'_, Shared> {
-        self.shared
-            .lock()
-            .unwrap_or_else(|poison| poison.into_inner())
+        lock(&self.shared)
     }
 
     /// Take the wallet key and start the wallet. A later call with the same
-    /// key only retries a failed start; another key is refused, since one
-    /// store belongs to one key.
-    pub fn open(&mut self, entropy_hex: &str) {
-        let mnemonic = decode(entropy_hex)
-            .and_then(|entropy| mnemonic_from_entropy(&entropy).map_err(|error| describe(&error)));
-        let mnemonic = match mnemonic {
-            Ok(mnemonic) => mnemonic,
+    /// key only retries a failed start. Another key is refused unless
+    /// `replace` is set, which the host sends after a restore: that stops the
+    /// running wallet and forgets what the screen cached for it.
+    pub fn open(&mut self, entropy_hex: &str, replace: bool) {
+        let seed = match decode(entropy_hex).and_then(Seed::from_entropy) {
+            Ok(seed) => seed,
             Err(message) => {
                 self.lock().error = Some(message);
                 return;
             }
         };
         match &self.seed {
-            Some(seed) if seed.0 != mnemonic => {
+            Some(held) if held.entropy == seed.entropy => {}
+            Some(_) if !replace => {
                 self.lock().error = Some("This wallet already has a different key.".into());
                 return;
             }
-            Some(_) => {}
-            None => self.seed = Some(Seed(mnemonic)),
+            Some(_) => {
+                self.forget();
+                self.seed = Some(seed);
+            }
+            None => {
+                if replace {
+                    self.forget();
+                }
+                self.seed = Some(seed);
+            }
         }
         self.start();
+    }
+
+    /// Stop the running wallet and clear what the screen shows of it.
+    fn forget(&mut self) {
+        let old = {
+            let mut shared = self.lock();
+            shared.generation += 1;
+            shared.starting = false;
+            shared.refreshing = false;
+            shared.error = None;
+            shared.synced = false;
+            shared.last = None;
+            shared.addresses = Addresses::default();
+            shared.payments.clear();
+            shared.invoice = None;
+            shared.invoice_busy = false;
+            shared.invoice_error = None;
+            shared.send = Sending::Idle;
+            shared.deposits.clear();
+            shared.claim = None;
+            shared.buy_busy = false;
+            shared.buy_error = None;
+            shared.open_url = None;
+            shared.node.take()
+        };
+        for file in [BALANCE_FILE, ADDRESSES_FILE, PAYMENTS_FILE] {
+            let _ = std::fs::remove_file(self.home.join(file));
+        }
+        // Disconnecting reaches the network; do it off the app thread.
+        if let Some(old) = old {
+            std::thread::spawn(move || drop(old));
+        }
+    }
+
+    /// The recovery words, for the direct reply to an explicit request.
+    pub fn words(&self) -> Option<Vec<String>> {
+        self.seed.as_ref().map(|seed| {
+            seed.mnemonic
+                .split_whitespace()
+                .map(str::to_owned)
+                .collect()
+        })
     }
 
     /// Start the wallet in the background, unless it runs or is starting.
@@ -243,59 +592,71 @@ impl Wallet {
         let Some(seed) = &self.seed else {
             return;
         };
-        {
+        let generation = {
             let mut shared = self.lock();
             if shared.node.is_some() || shared.starting {
                 return;
             }
             shared.starting = true;
             shared.error = None;
-        }
+            shared.generation
+        };
         let (home, opener, shared) = (self.home.clone(), self.opener.clone(), self.shared.clone());
-        let mnemonic = seed.0.clone();
+        let mnemonic = seed.mnemonic.clone();
         std::thread::spawn(move || {
-            let opened = config().and_then(|config| {
-                std::fs::create_dir_all(&home).map_err(|_| {
-                    "The wallet's folder could not be created on this phone.".to_string()
-                })?;
-                let node = opener(&home, &config, &mnemonic)?;
-                let address = receive_address(&home, node.as_ref())?;
-                Ok((node, address))
-            });
+            let opened = std::fs::create_dir_all(&home)
+                .map_err(|_| "The wallet's folder could not be created on this phone.".to_string())
+                .and_then(|()| opener(&home, &mnemonic));
             drop(mnemonic);
-            let node = {
-                let mut state = shared.lock().unwrap_or_else(|poison| poison.into_inner());
-                state.starting = false;
-                match opened {
-                    Ok((node, address)) => {
-                        state.node = Some(node.clone());
-                        state.address = Some(address);
-                        state.refreshing = true;
-                        node
-                    }
-                    Err(message) => {
+            let node = match opened {
+                Ok(node) => node,
+                Err(message) => {
+                    let mut state = lock(&shared);
+                    if state.generation == generation {
+                        state.starting = false;
                         state.error = Some(message);
-                        return;
                     }
+                    return;
                 }
             };
-            let outcome = node.sync();
-            finish_sync(&shared, &home, node.as_ref(), outcome);
+            let addresses = Addresses {
+                spark: node.spark_address().ok(),
+                bitcoin: node.bitcoin_address().ok(),
+            };
+            {
+                let mut state = lock(&shared);
+                if state.generation != generation {
+                    return;
+                }
+                state.starting = false;
+                state.node = Some(node.clone());
+                state.refreshing = true;
+                if addresses.spark.is_some() || addresses.bitcoin.is_some() {
+                    write_json(&home, ADDRESSES_FILE, &addresses);
+                    state.addresses = addresses;
+                }
+            }
+            let (notify_shared, notify_home) = (shared.clone(), home.clone());
+            node.subscribe(Arc::new(move || {
+                let (shared, home) = (notify_shared.clone(), notify_home.clone());
+                std::thread::spawn(move || read(&shared, &home, generation, false));
+            }));
+            read(&shared, &home, generation, true);
         });
     }
 
-    /// Read the chain again: sync a running wallet, or restart one that
-    /// failed to start.
+    /// Read Spark again: sync a running wallet, or restart one that failed
+    /// to start.
     pub fn refresh(&mut self) {
-        let node = {
+        let generation = {
             let mut shared = self.lock();
-            match shared.node.clone() {
-                Some(node) if !shared.refreshing => {
+            match shared.node.is_some() {
+                true if !shared.refreshing => {
                     shared.refreshing = true;
-                    node
+                    shared.generation
                 }
-                Some(_) => return,
-                None => {
+                true => return,
+                false => {
                     drop(shared);
                     self.start();
                     return;
@@ -303,10 +664,7 @@ impl Wallet {
             }
         };
         let (shared, home) = (self.shared.clone(), self.home.clone());
-        std::thread::spawn(move || {
-            let outcome = node.sync();
-            finish_sync(&shared, &home, node.as_ref(), outcome);
-        });
+        std::thread::spawn(move || read(&shared, &home, generation, true));
     }
 
     /// Refresh a wallet that has its key; the app came to the foreground.
@@ -316,10 +674,286 @@ impl Wallet {
         }
     }
 
-    /// Whether a start or a sync is running in the background.
+    /// Make a Lightning invoice. `amount` is what the person typed; empty
+    /// means any amount.
+    pub fn invoice(&mut self, amount: &str) {
+        let amount = match parse_amount(amount) {
+            Ok(amount) => amount,
+            Err(message) => {
+                self.lock().invoice_error = Some(message);
+                return;
+            }
+        };
+        let (node, generation) = {
+            let mut shared = self.lock();
+            let Some(node) = shared.node.clone() else {
+                shared.invoice_error = Some("The wallet is still starting.".into());
+                return;
+            };
+            if shared.invoice_busy {
+                return;
+            }
+            shared.invoice_busy = true;
+            shared.invoice_error = None;
+            (node, shared.generation)
+        };
+        let shared = self.shared.clone();
+        std::thread::spawn(move || {
+            let made = node.invoice(amount, INVOICE_DESCRIPTION);
+            let mut state = lock(&shared);
+            if state.generation != generation {
+                return;
+            }
+            state.invoice_busy = false;
+            match made {
+                Ok(invoice) => state.invoice = Some((invoice, amount)),
+                Err(message) => state.invoice_error = Some(message),
+            }
+        });
+    }
+
+    /// Quote a payment to what the person pasted or scanned.
+    pub fn quote(&mut self, input: &str, amount: &str) {
+        let input = input.trim().to_owned();
+        if input.is_empty() {
+            self.lock().send = Sending::Idle;
+            return;
+        }
+        let amount = match parse_amount(amount) {
+            Ok(amount) => amount,
+            Err(message) => {
+                self.lock().send = Sending::NeedsAmount(message);
+                return;
+            }
+        };
+        let (node, generation) = {
+            let mut shared = self.lock();
+            let Some(node) = shared.node.clone() else {
+                shared.send = Sending::Failed("The wallet is still starting.".into());
+                return;
+            };
+            if matches!(shared.send, Sending::Quoting | Sending::Paying(_)) {
+                return;
+            }
+            shared.send = Sending::Quoting;
+            (node, shared.generation)
+        };
+        let shared = self.shared.clone();
+        std::thread::spawn(move || {
+            let quoted = node.quote(&input, amount);
+            let mut state = lock(&shared);
+            if state.generation != generation || state.send != Sending::Quoting {
+                return;
+            }
+            state.send = match quoted {
+                Ok(quote) => Sending::Quoted(quote),
+                Err(QuoteFailure::NeedsAmount(message)) => Sending::NeedsAmount(message),
+                Err(QuoteFailure::Refused(message)) => Sending::Failed(message),
+            };
+        });
+    }
+
+    /// Pay the quote the person confirmed. Only the quote on screen pays,
+    /// and only once.
+    pub fn pay(&mut self, quote_id: u64) {
+        let (node, quote, generation) = {
+            let mut shared = self.lock();
+            let quote = match &shared.send {
+                Sending::Quoted(quote) if quote.id == quote_id => quote.clone(),
+                _ => return,
+            };
+            let Some(node) = shared.node.clone() else {
+                return;
+            };
+            shared.send = Sending::Paying(quote.clone());
+            (node, quote, shared.generation)
+        };
+        let (shared, home) = (self.shared.clone(), self.home.clone());
+        let key = uuid::Uuid::new_v4().to_string();
+        std::thread::spawn(move || {
+            let paid = node.pay(quote.id, &key);
+            {
+                let mut state = lock(&shared);
+                if state.generation != generation {
+                    return;
+                }
+                state.send = match paid {
+                    Ok(row) => Sending::Sent(row),
+                    Err(message) => Sending::Failed(message),
+                };
+            }
+            read(&shared, &home, generation, false);
+        });
+    }
+
+    /// Start buying bitcoin with dollars from `provider` (`moonpay` or
+    /// `cashapp`). The page to open arrives in the next packet.
+    pub fn buy(&mut self, provider: &str, amount: &str) {
+        let Some(provider) = Provider::parse(provider) else {
+            self.lock().buy_error = Some("Choose MoonPay or Cash App.".into());
+            return;
+        };
+        let amount = match parse_amount(amount) {
+            Ok(Some(amount)) => amount,
+            Ok(None) => {
+                self.lock().buy_error = Some("Enter how many sats to buy.".into());
+                return;
+            }
+            Err(message) => {
+                self.lock().buy_error = Some(message);
+                return;
+            }
+        };
+        let (node, generation) = {
+            let mut shared = self.lock();
+            let Some(node) = shared.node.clone() else {
+                shared.buy_error = Some("The wallet is still starting.".into());
+                return;
+            };
+            if shared.buy_busy {
+                return;
+            }
+            shared.buy_busy = true;
+            shared.buy_error = None;
+            (node, shared.generation)
+        };
+        let shared = self.shared.clone();
+        std::thread::spawn(move || {
+            let bought = node.buy(provider, amount).and_then(|link| {
+                // Only a web page opens; a provider's other schemes do not.
+                match url::Url::parse(&link) {
+                    Ok(url) if url.scheme() == "https" => Ok(link),
+                    _ => Err("The provider returned a link this app won't open.".to_string()),
+                }
+            });
+            let mut state = lock(&shared);
+            if state.generation != generation {
+                return;
+            }
+            state.buy_busy = false;
+            match bought {
+                Ok(link) => state.open_url = Some(link),
+                Err(message) => state.buy_error = Some(message),
+            }
+        });
+    }
+
+    /// The purchase page to open, once.
+    pub fn take_open_url(&mut self) -> Option<String> {
+        self.lock().open_url.take()
+    }
+
+    /// Quote claiming a waiting deposit now.
+    pub fn claim_quote(&mut self, txid: &str, vout: u32) {
+        let (node, generation) = {
+            let mut shared = self.lock();
+            let known = shared
+                .deposits
+                .iter()
+                .any(|deposit| deposit.txid == txid && deposit.vout == vout);
+            let Some(node) = shared.node.clone().filter(|_| known) else {
+                return;
+            };
+            if shared.claim.as_ref().is_some_and(|claim| claim.busy) {
+                return;
+            }
+            shared.claim = Some(Claim {
+                txid: txid.to_owned(),
+                vout,
+                quote: None,
+                busy: true,
+                message: None,
+            });
+            (node, shared.generation)
+        };
+        let (shared, txid) = (self.shared.clone(), txid.to_owned());
+        std::thread::spawn(move || {
+            let quoted = node.claim_quote(&txid, vout);
+            let mut state = lock(&shared);
+            if state.generation != generation {
+                return;
+            }
+            if let Some(claim) = state.claim.as_mut().filter(|claim| claim.txid == txid) {
+                claim.busy = false;
+                match quoted {
+                    Ok(quote) => claim.quote = Some(quote),
+                    Err(message) => claim.message = Some(message),
+                }
+            }
+        });
+    }
+
+    /// Claim the quoted deposit, with its quoted fee as the ceiling.
+    pub fn claim(&mut self, txid: &str, vout: u32) {
+        let (node, fee, generation) = {
+            let mut shared = self.lock();
+            let Some(node) = shared.node.clone() else {
+                return;
+            };
+            let generation = shared.generation;
+            let Some(claim) = shared.claim.as_mut() else {
+                return;
+            };
+            let Some(quote) = claim
+                .quote
+                .filter(|_| claim.txid == txid && claim.vout == vout && !claim.busy)
+            else {
+                return;
+            };
+            claim.busy = true;
+            claim.message = None;
+            (node, quote.fee_sats, generation)
+        };
+        let (shared, home, txid) = (self.shared.clone(), self.home.clone(), txid.to_owned());
+        std::thread::spawn(move || {
+            let claimed = node.claim(&txid, vout, fee);
+            {
+                let mut state = lock(&shared);
+                if state.generation != generation {
+                    return;
+                }
+                if let Some(claim) = state.claim.as_mut().filter(|claim| claim.txid == txid) {
+                    claim.busy = false;
+                    claim.quote = None;
+                    claim.message = Some(claimed.unwrap_or_else(|message| message));
+                }
+            }
+            read(&shared, &home, generation, false);
+        });
+    }
+
+    /// Close the claim step.
+    pub fn claim_reset(&mut self) {
+        let mut shared = self.lock();
+        if !shared.claim.as_ref().is_some_and(|claim| claim.busy) {
+            shared.claim = None;
+        }
+    }
+
+    /// Close the send review or its result.
+    pub fn reset_send(&mut self) {
+        let mut shared = self.lock();
+        if !matches!(shared.send, Sending::Paying(_) | Sending::Quoting) {
+            shared.send = Sending::Idle;
+        }
+    }
+
+    /// The person read the trust note.
+    pub fn acknowledge(&mut self) {
+        let _ = std::fs::create_dir_all(&self.home);
+        let _ = std::fs::write(self.home.join(TRUST_FILE), b"1\n");
+        self.lock().trust_acknowledged = true;
+    }
+
+    /// Whether a start, a sync, a quote, or a payment runs in the background.
     pub fn loading(&self) -> bool {
         let shared = self.lock();
-        shared.starting || shared.refreshing
+        shared.starting
+            || shared.refreshing
+            || shared.invoice_busy
+            || shared.buy_busy
+            || shared.claim.as_ref().is_some_and(|claim| claim.busy)
+            || matches!(shared.send, Sending::Quoting | Sending::Paying(_))
     }
 
     pub fn screen(&self) -> Screen {
@@ -331,154 +965,295 @@ impl Wallet {
                     message: shared.error.clone().unwrap_or_default(),
                 };
             }
-            (None, _) => Some("Starting the wallet…"),
-            (Some(_), _) if !shared.synced && shared.refreshing => Some("Reading Mutinynet…"),
+            (None, _) => Some("Connecting to Spark…"),
+            (Some(_), _) if !shared.synced && shared.refreshing => Some("Reading Spark…"),
             (Some(_), _) => None,
         };
-        let address = shared.address.clone().unwrap_or_default();
         let mut error = shared.error.clone();
-        // Until this launch reads the chain, show the last balance read.
-        let live = match (&shared.node, status) {
-            (Some(node), None) => match node.balance() {
-                Ok(balance) => Some(LastBalance::from_node(&balance, node.synced_at())),
-                Err(node_error) => {
-                    error = Some(describe(&node_error));
-                    None
-                }
-            },
-            _ => None,
-        };
         if status.is_none() && !shared.synced && error.is_none() {
-            error = Some("The wallet has not read Mutinynet yet.".into());
+            error = Some("The wallet has not read Spark yet.".into());
         }
-        let shown = live.or(shared.last);
-        let (total, pending) = shown.map_or((0, 0), |last| (last.total, last.pending));
-        let uri = if address.is_empty() {
-            String::new()
-        } else {
-            format!("bitcoin:{address}")
-        };
+        let shown = shared.last;
+        let total = shown.map_or(0, |last| last.total);
+        let addresses = &shared.addresses;
         Screen::Ready(Box::new(Summary {
-            network: "Mutinynet signet",
+            network: NETWORK_LABEL,
             balance_sats: total,
             balance: shown.map(|_| sats(total)).unwrap_or_default(),
             balance_btc: shown
-                .map(|_| format!("{} tBTC", btc(total)))
+                .map(|_| format!("{} BTC", btc(total)))
                 .unwrap_or_default(),
-            pending_sats: pending,
-            pending: (pending > 0).then(|| format!("{} waiting for a confirmation", sats(pending))),
             empty: shown.is_some() && total == 0,
-            // Upper case fits the QR code's compact alphanumeric mode;
-            // BIP21 schemes and bech32 addresses are case-insensitive.
-            qr: (!uri.is_empty())
-                .then(|| qr(&uri.to_ascii_uppercase()))
-                .flatten(),
-            address,
-            uri,
-            faucet: FAUCET,
             synced_at: shown.and_then(|last| last.synced_at),
             refreshing: shared.refreshing || shared.starting,
             error,
             balance_unknown: shown.is_none(),
             status: status.map(str::to_owned),
+            warning: (total > BALANCE_WARNING_SATS).then(|| {
+                format!(
+                    "This phone wallet holds more than {}. Keep only what you'd carry, and make sure your recovery words are written down.",
+                    sats(BALANCE_WARNING_SATS)
+                )
+            }),
+            trust: Trust {
+                acknowledged: shared.trust_acknowledged,
+                title: TRUST_TITLE,
+                lines: TRUST_LINES.to_vec(),
+            },
+            receive: Receive {
+                lightning: shared.invoice.as_ref().map(|(invoice, amount)| {
+                    code(
+                        invoice,
+                        &format!("lightning:{invoice}"),
+                        match amount {
+                            Some(amount) => format!("Lightning invoice for {}", sats(*amount)),
+                            None => "Lightning invoice for any amount".into(),
+                        },
+                    )
+                }),
+                lightning_busy: shared.invoice_busy,
+                lightning_error: shared.invoice_error.clone(),
+                spark: addresses.spark.as_ref().map(|address| {
+                    code(
+                        address,
+                        address,
+                        "Spark address: free and instant from other Spark wallets".into(),
+                    )
+                }),
+                bitcoin: addresses.bitcoin.as_ref().map(|address| {
+                    code(
+                        address,
+                        &format!("bitcoin:{address}"),
+                        "Bitcoin address: credited after 3 confirmations".into(),
+                    )
+                }),
+            },
+            send: send_view(&shared.send),
+            payments: shared.payments.iter().map(payment_view).collect(),
+            can_show_words: self.seed.is_some(),
+            buy: BuyView {
+                busy: shared.buy_busy,
+                error: shared.buy_error.clone(),
+                providers: vec![
+                    ProviderView {
+                        id: "moonpay",
+                        label: "Card or Apple Pay",
+                        detail: "Through MoonPay. Arrives on-chain and is credited after 3 confirmations.",
+                    },
+                    ProviderView {
+                        id: "cashapp",
+                        label: "Cash App",
+                        detail: "Pays a Lightning invoice from your Cash App balance or debit card. Credited at once.",
+                    },
+                ],
+            },
+            deposits: shared.deposits.iter().map(deposit_view).collect(),
+            claim: shared.claim.as_ref().map(claim_view),
         }))
     }
 }
 
-impl LastBalance {
-    fn from_node(balance: &Balance, synced_at: Option<u64>) -> Self {
-        let total = balance
-            .onchain_total_sats
-            .saturating_add(balance.lightning_total_sats);
-        let settled = balance
-            .onchain_spendable_sats
-            .saturating_add(balance.anchor_reserve_sats)
-            .saturating_add(balance.lightning_total_sats);
-        Self {
-            total,
-            pending: total.saturating_sub(settled),
-            synced_at,
-        }
-    }
+fn lock(shared: &Mutex<Shared>) -> MutexGuard<'_, Shared> {
+    shared.lock().unwrap_or_else(|poison| poison.into_inner())
 }
 
-fn finish_sync(
-    shared: &Mutex<Shared>,
-    home: &Path,
-    node: &dyn Node,
-    outcome: Result<(), WalletError>,
-) {
-    // Save what this sync read, for the next launch to show at once.
-    let read = outcome
-        .is_ok()
-        .then(|| node.balance().ok())
-        .flatten()
-        .map(|balance| LastBalance::from_node(&balance, node.synced_at()));
-    if let Some(read) = read {
-        read.write(home);
+/// Read the balance and recent payments into the screen's state, syncing
+/// first when `sync` is set. It changes nothing if the wallet was replaced.
+fn read(shared: &Mutex<Shared>, home: &Path, generation: u64, sync: bool) {
+    let Some(node) = lock(shared).node.clone() else {
+        return;
+    };
+    let synced = if sync { node.sync() } else { Ok(()) };
+    let balance = node.balance();
+    let payments = node.payments(HISTORY_LIMIT);
+    let deposits = node.deposits();
+    let mut state = lock(shared);
+    if state.generation != generation {
+        return;
     }
-    let mut state = shared.lock().unwrap_or_else(|poison| poison.into_inner());
-    state.refreshing = false;
-    match outcome {
-        Ok(()) => {
+    if sync {
+        state.refreshing = false;
+    }
+    match (&synced, &balance) {
+        (Ok(()), Ok(total)) => {
+            let read = LastBalance {
+                total: *total,
+                synced_at: Some(now()),
+            };
+            read.write(home);
+            state.last = Some(read);
             state.synced = true;
             state.error = None;
-            if read.is_some() {
-                state.last = read;
-            }
         }
-        Err(error) => state.error = Some(describe(&error)),
+        (Err(message), _) | (_, Err(message)) => state.error = Some(message.clone()),
+    }
+    if let Ok(payments) = payments {
+        write_json(home, PAYMENTS_FILE, &payments);
+        state.payments = payments;
+    }
+    if let Ok(deposits) = deposits {
+        state.deposits = deposits;
     }
 }
 
-/// The saved receive address, if a test-network one was saved.
-fn saved_address(home: &Path) -> Option<String> {
-    let saved = std::fs::read_to_string(home.join(ADDRESS_FILE)).ok()?;
-    let saved = saved.trim();
-    test_address(saved).then(|| saved.to_owned())
+fn code(text: &str, uri: &str, caption: String) -> Code {
+    Code {
+        text: text.to_owned(),
+        uri: uri.to_owned(),
+        // Upper case fits the QR code's compact alphanumeric mode; these
+        // schemes and bech32 payloads are case-insensitive.
+        qr: qr(&uri.to_ascii_uppercase()),
+        caption,
+    }
 }
 
-/// The address the screen shows: the saved one, or a new one saved now.
-fn receive_address(home: &Path, node: &dyn Node) -> Result<String, String> {
-    if let Some(saved) = saved_address(home) {
-        return Ok(saved);
+fn send_view(send: &Sending) -> SendView {
+    let (state, message, quote, result) = match send {
+        Sending::Idle => ("idle", None, None, None),
+        Sending::Quoting => ("quoting", Some("Preparing the payment…".into()), None, None),
+        Sending::NeedsAmount(message) => ("needs_amount", Some(message.clone()), None, None),
+        Sending::Quoted(quote) => ("quoted", None, Some(quote_view(quote)), None),
+        Sending::Paying(quote) => (
+            "paying",
+            Some("Sending…".into()),
+            Some(quote_view(quote)),
+            None,
+        ),
+        Sending::Sent(row) => (
+            "sent",
+            Some(match row.status.as_str() {
+                "pending" => "Sent. The payment is still settling.".to_string(),
+                "failed" => "The payment failed.".to_string(),
+                _ => "Sent.".to_string(),
+            }),
+            None,
+            Some(payment_view(row)),
+        ),
+        Sending::Failed(message) => ("failed", Some(message.clone()), None, None),
+    };
+    SendView {
+        state,
+        message,
+        quote,
+        result,
     }
-    let path = home.join(ADDRESS_FILE);
-    let address = node.new_address().map_err(|error| describe(&error))?;
-    if !test_address(&address) {
-        return Err("The wallet produced an address that is not for a test network.".into());
+}
+
+fn deposit_view(row: &DepositRow) -> DepositView {
+    DepositView {
+        txid: row.txid.clone(),
+        vout: row.vout,
+        amount: sats(row.amount_sats),
+        status: match (&row.problem, row.mature) {
+            (Some(problem), _) => problem.clone(),
+            (None, false) => "Waiting for confirmations.".into(),
+            (None, true) => "Confirmed; the wallet is claiming it.".into(),
+        },
     }
-    std::fs::write(&path, &address)
-        .map_err(|_| "The wallet could not save its address on this phone.".to_string())?;
-    Ok(address)
+}
+
+fn claim_view(claim: &Claim) -> ClaimView {
+    ClaimView {
+        txid: claim.txid.clone(),
+        vout: claim.vout,
+        busy: claim.busy,
+        quote: claim.quote.map(|quote| {
+            let when = if quote.early {
+                "Claim now"
+            } else if quote.confirmations >= quote.confirmations_required {
+                "Claim"
+            } else {
+                "Claim at 3 confirmations"
+            };
+            format!(
+                "{when} for a {} fee; {} reach your balance.",
+                sats(quote.fee_sats),
+                sats(quote.credit_sats)
+            )
+        }),
+        message: claim.message.clone(),
+    }
+}
+
+fn quote_view(quote: &Quote) -> QuoteView {
+    let (kind, destination) = match &quote.destination {
+        Destination::Lightning(invoice) => ("Lightning invoice", shorten(invoice)),
+        Destination::LightningAddress(address) => ("Lightning address", address.clone()),
+        Destination::Spark(address) => ("Spark address", shorten(address)),
+        Destination::Bitcoin(address) => ("Bitcoin address", shorten(address)),
+    };
+    QuoteView {
+        id: quote.id,
+        kind,
+        destination,
+        amount: sats(quote.amount_sats),
+        fee: sats(quote.fee_sats),
+        total: sats(quote.amount_sats.saturating_add(quote.fee_sats)),
+        note: quote.note.clone(),
+    }
+}
+
+fn payment_view(row: &PaymentRow) -> PaymentView {
+    PaymentView {
+        id: row.id.clone(),
+        title: if row.received { "Received" } else { "Sent" },
+        amount: format!(
+            "{}{}",
+            if row.received { "+" } else { "-" },
+            sats(row.amount_sats)
+        ),
+        fee: (!row.received && row.fee_sats > 0).then(|| format!("{} fee", sats(row.fee_sats))),
+        method: row.method.clone(),
+        status: row.status.clone(),
+        at: row.at,
+    }
+}
+
+/// The start and end of a long code, for the confirm screen.
+fn shorten(text: &str) -> String {
+    let chars: Vec<char> = text.chars().collect();
+    if chars.len() <= 28 {
+        return text.to_owned();
+    }
+    let head: String = chars[..14].iter().collect();
+    let tail: String = chars[chars.len() - 10..].iter().collect();
+    format!("{head}…{tail}")
+}
+
+/// An amount the person typed, in whole sats. Empty means none; digits may
+/// carry thousands separators.
+fn parse_amount(text: &str) -> Result<Option<u64>, String> {
+    let digits: String = text
+        .trim()
+        .trim_end_matches("sats")
+        .trim_end_matches("sat")
+        .chars()
+        .filter(|c| !matches!(c, ',' | '_' | ' '))
+        .collect();
+    if digits.is_empty() {
+        return Ok(None);
+    }
+    match digits.parse::<u64>() {
+        Ok(0) => Err("Enter an amount above zero.".into()),
+        Ok(amount) if amount <= 2_100_000_000_000_000 => Ok(Some(amount)),
+        _ => Err("Enter the amount in whole sats, such as 1,000.".into()),
+    }
 }
 
 fn decode(hex_text: &str) -> Result<Vec<u8>, String> {
-    let bytes = (hex_text.len() == 64 && hex_text.bytes().all(|b| b.is_ascii_hexdigit()))
-        .then(|| {
-            (0..32)
-                .map(|i| u8::from_str_radix(&hex_text[i * 2..i * 2 + 2], 16).ok())
-                .collect::<Option<Vec<u8>>>()
-        })
-        .flatten();
+    let bytes = (matches!(hex_text.len(), 32 | 64)
+        && hex_text.bytes().all(|b| b.is_ascii_hexdigit()))
+    .then(|| {
+        (0..hex_text.len() / 2)
+            .map(|i| u8::from_str_radix(&hex_text[i * 2..i * 2 + 2], 16).ok())
+            .collect::<Option<Vec<u8>>>()
+    })
+    .flatten();
     bytes.ok_or_else(|| "The wallet key is unreadable.".to_string())
 }
 
-/// A wallet error for the screen. Node errors carry `ldk-node`'s own text,
-/// which names no key material.
-fn describe(error: &WalletError) -> String {
-    match error {
-        WalletError::Node(detail) => match detail.split_once(": ") {
-            Some(("start", reason)) => {
-                format!("The wallet could not start ({reason}). Check the connection and refresh.")
-            }
-            Some(("sync", reason)) => {
-                format!("Mutinynet could not be read ({reason}). Refresh to try again.")
-            }
-            _ => detail.clone(),
-        },
-        other => other.to_string(),
-    }
+fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 /// "12,345 sats", with thousands separators.
@@ -527,58 +1302,125 @@ fn qr(text: &str) -> Option<crate::app::QrModules> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
     use std::time::{Duration, Instant};
 
-    const ENTROPY: &str = "5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a";
+    /// 16 bytes: a 12-word wallet, as the host creates.
+    const ENTROPY: &str = "5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a";
+    const INVOICE: &str = "lnbc10u1pfakeinvoice0000000000000000000000000000000000000000";
 
+    #[derive(Default)]
     struct Fake {
-        total: AtomicU64,
-        pending: AtomicU64,
-        sync_fails: bool,
-        addresses: AtomicU64,
+        balance: AtomicU64,
+        sync_fails: AtomicBool,
+        invoices: AtomicU64,
+        paid: Mutex<Vec<(u64, String)>>,
+        payments: Mutex<Vec<PaymentRow>>,
+        deposits: Mutex<Vec<DepositRow>>,
+        claims: Mutex<Vec<(String, u32, u64)>>,
+        notify: Mutex<Option<Arc<dyn Fn() + Send + Sync>>>,
     }
 
     impl Node for Fake {
-        fn balance(&self) -> Result<Balance, WalletError> {
-            let total = self.total.load(Ordering::SeqCst);
-            Ok(Balance {
-                onchain_total_sats: total,
-                onchain_spendable_sats: total - self.pending.load(Ordering::SeqCst),
-                lightning_total_sats: 0,
-                anchor_reserve_sats: 0,
-            })
+        fn balance(&self) -> Result<u64, String> {
+            Ok(self.balance.load(Ordering::SeqCst))
         }
-        fn new_address(&self) -> Result<String, WalletError> {
-            let n = self.addresses.fetch_add(1, Ordering::SeqCst);
-            Ok(format!("tb1qfake{n}"))
-        }
-        fn sync(&self) -> Result<(), WalletError> {
-            if self.sync_fails {
-                Err(WalletError::Node("sync: WalletOperationFailed".into()))
+        fn sync(&self) -> Result<(), String> {
+            if self.sync_fails.load(Ordering::SeqCst) {
+                Err("Spark could not be read (timeout). Refresh to try again.".into())
             } else {
                 Ok(())
             }
         }
-        fn synced_at(&self) -> Option<u64> {
-            (!self.sync_fails).then_some(1_790_000_000)
+        fn spark_address(&self) -> Result<String, String> {
+            Ok("spark1fakeaddress".into())
+        }
+        fn bitcoin_address(&self) -> Result<String, String> {
+            Ok("bc1qfakedeposit".into())
+        }
+        fn invoice(&self, amount: Option<u64>, description: &str) -> Result<String, String> {
+            assert_eq!(description, "OpenAgents");
+            self.invoices.fetch_add(1, Ordering::SeqCst);
+            Ok(format!("{INVOICE}{}", amount.unwrap_or(0)))
+        }
+        fn quote(&self, input: &str, amount: Option<u64>) -> Result<Quote, QuoteFailure> {
+            match (input, amount) {
+                ("lnbc-with-amount", _) => Ok(Quote {
+                    id: 7,
+                    destination: Destination::Lightning("lnbc-with-amount".into()),
+                    amount_sats: 1_000,
+                    fee_sats: 3,
+                    note: Some("Coffee".into()),
+                }),
+                ("spark1friend", None) => Err(QuoteFailure::NeedsAmount(
+                    "Enter the amount to send to this address.".into(),
+                )),
+                ("spark1friend", Some(amount)) => Ok(Quote {
+                    id: 8,
+                    destination: Destination::Spark("spark1friend".into()),
+                    amount_sats: amount,
+                    fee_sats: 0,
+                    note: None,
+                }),
+                _ => Err(QuoteFailure::Refused(
+                    "That isn't a payment request.".into(),
+                )),
+            }
+        }
+        fn pay(&self, quote: u64, key: &str) -> Result<PaymentRow, String> {
+            self.paid.lock().unwrap().push((quote, key.to_owned()));
+            let row = PaymentRow {
+                id: format!("pay-{quote}"),
+                received: false,
+                amount_sats: 1_000,
+                fee_sats: 3,
+                method: "Lightning".into(),
+                status: "completed".into(),
+                at: 1_790_000_000,
+            };
+            self.payments.lock().unwrap().insert(0, row.clone());
+            self.balance.fetch_sub(1_003, Ordering::SeqCst);
+            Ok(row)
+        }
+        fn payments(&self, _limit: u32) -> Result<Vec<PaymentRow>, String> {
+            Ok(self.payments.lock().unwrap().clone())
+        }
+        fn buy(&self, provider: Provider, amount: u64) -> Result<String, String> {
+            match provider {
+                Provider::Moonpay => Ok(format!("https://buy.moonpay.com/?amount={amount}")),
+                Provider::CashApp if amount == 666 => Ok("cashapp://pay".into()),
+                Provider::CashApp => Ok(format!("https://cash.app/launch/lightning/lnbc{amount}")),
+            }
+        }
+        fn deposits(&self) -> Result<Vec<DepositRow>, String> {
+            Ok(self.deposits.lock().unwrap().clone())
+        }
+        fn claim_quote(&self, _txid: &str, _vout: u32) -> Result<ClaimQuote, String> {
+            Ok(ClaimQuote {
+                fee_sats: 1_200,
+                credit_sats: 48_800,
+                early: false,
+                confirmations: 3,
+                confirmations_required: 3,
+            })
+        }
+        fn claim(&self, txid: &str, vout: u32, max_fee: u64) -> Result<String, String> {
+            self.claims
+                .lock()
+                .unwrap()
+                .push((txid.to_owned(), vout, max_fee));
+            self.deposits.lock().unwrap().clear();
+            self.balance.fetch_add(48_800, Ordering::SeqCst);
+            Ok("Claimed. It's in your balance.".into())
+        }
+        fn subscribe(&self, notify: Arc<dyn Fn() + Send + Sync>) {
+            *self.notify.lock().unwrap() = Some(notify);
         }
     }
 
-    fn fake(total: u64, pending: u64, sync_fails: bool) -> Arc<Fake> {
-        Arc::new(Fake {
-            total: AtomicU64::new(total),
-            pending: AtomicU64::new(pending),
-            sync_fails,
-            addresses: AtomicU64::new(0),
-        })
-    }
-
-    fn opener(node: Arc<Fake>, seen: Arc<Mutex<Vec<(Network, String)>>>) -> Opener {
-        Arc::new(move |_home, config, mnemonic| {
-            seen.lock()
-                .unwrap()
-                .push((config.network, mnemonic.to_owned()));
+    fn opener(node: Arc<Fake>, seen: Arc<Mutex<Vec<String>>>) -> Opener {
+        Arc::new(move |_home, mnemonic| {
+            seen.lock().unwrap().push(mnemonic.to_owned());
             Ok(node.clone() as Arc<dyn Node>)
         })
     }
@@ -591,99 +1433,202 @@ mod tests {
         assert!(!wallet.loading(), "the wallet settled");
     }
 
-    #[test]
-    fn the_phone_wallet_is_signet_only_on_mutinynet() {
-        let config = config().expect("config");
-        assert_eq!(config.network, Network::Signet);
-        assert_eq!(config.esplora_url, "https://mutinynet.com/api");
-        assert_eq!(config.listen, None);
-        assert_eq!(config.lsp, None);
-        assert!(config.trusted_peers.is_empty());
-        let mut mainnet = config.clone();
-        mainnet.network = Network::Bitcoin;
-        assert!(
-            admit(&mainnet).is_err(),
-            "a mainnet configuration is refused"
-        );
-        assert!(!test_address("bc1qexample"));
-        assert!(test_address("tb1qexample"));
-
-        // The real wallet, built without reaching the network, derives
-        // signet addresses from a key.
-        let home = tempfile::tempdir().expect("temp dir");
-        let mnemonic = mnemonic_from_entropy(&[0x5a; 32]).expect("mnemonic");
-        let (_, addresses) =
-            LdkWallet::identity(home.path(), &config, &mnemonic, 2).expect("identity");
-        for address in addresses {
-            assert!(address.starts_with("tb1"), "{address} is a signet address");
+    fn ready(wallet: &Wallet) -> Summary {
+        match wallet.screen() {
+            Screen::Ready(summary) => *summary,
+            other => panic!("ready: {other:?}"),
         }
     }
 
     #[test]
-    fn a_key_opens_the_wallet_and_a_funded_one_shows_its_balance() {
+    fn the_phone_wallet_runs_on_mainnet_with_the_committed_key() {
+        assert_eq!(NETWORK, Network::Mainnet);
+        let config = crate::spark::sdk_config(NETWORK);
+        assert_eq!(config.network, Network::Mainnet);
+        assert_eq!(config.api_key.as_deref(), Some(crate::spark::BREEZ_API_KEY));
+        // The key is Breez's validation certificate, not a spending secret.
+        assert!(crate::spark::BREEZ_API_KEY.starts_with("MIIB"));
+        assert_eq!(config.real_time_sync_server_url, None);
+        assert!(config.cross_chain_config.is_none());
+        assert!(config.stable_balance_config.is_none());
+    }
+
+    #[test]
+    fn a_key_opens_the_wallet_and_the_screen_shows_what_it_read() {
         let home = tempfile::tempdir().expect("temp dir");
-        let node = fake(0, 0, false);
+        let node = Arc::new(Fake::default());
         let seen = Arc::new(Mutex::new(vec![]));
         let mut wallet = Wallet::new(
-            home.path().join("wallet"),
+            home.path().join("spark"),
             opener(node.clone(), seen.clone()),
         );
         // Before the key arrives the screen is already the wallet's, with
         // placeholders where nothing has been read yet.
-        let Screen::Ready(opening) = wallet.screen() else {
-            panic!("the wallet screen shows while it opens");
-        };
-        assert!(opening.balance_unknown && opening.address.is_empty() && opening.qr.is_none());
+        let opening = ready(&wallet);
+        assert!(opening.balance_unknown && opening.receive.spark.is_none());
         assert_eq!(opening.status.as_deref(), Some("Opening the wallet…"));
-        wallet.open(ENTROPY);
+        assert!(!opening.trust.acknowledged && opening.trust.lines.len() == 5);
+        assert!(!opening.can_show_words);
+        wallet.open(ENTROPY, false);
         settle(&wallet);
-        let Screen::Ready(empty) = wallet.screen() else {
-            panic!("ready: {:?}", wallet.screen());
-        };
+        let empty = ready(&wallet);
         assert!(empty.empty);
         assert_eq!(empty.balance, "0 sats");
-        assert_eq!(empty.address, "tb1qfake0");
-        assert_eq!(empty.uri, "bitcoin:tb1qfake0");
-        assert!(empty.qr.is_some());
-        assert_eq!(empty.faucet, FAUCET);
+        assert_eq!(empty.network, "Bitcoin · Spark");
+        let spark = empty.receive.spark.expect("spark address");
+        assert_eq!(spark.text, "spark1fakeaddress");
+        assert!(spark.qr.is_some());
+        let bitcoin = empty.receive.bitcoin.expect("bitcoin address");
+        assert_eq!(bitcoin.uri, "bitcoin:bc1qfakedeposit");
         assert_eq!(empty.error, None);
-        let (network, mnemonic) = seen.lock().unwrap()[0].clone();
-        assert_eq!(network, Network::Signet);
-        assert_eq!(mnemonic.split_whitespace().count(), 24);
+        assert!(empty.can_show_words);
+        let mnemonic = seen.lock().unwrap()[0].clone();
+        assert_eq!(mnemonic.split_whitespace().count(), 12);
 
-        node.total.store(123_456, Ordering::SeqCst);
-        node.pending.store(10_000, Ordering::SeqCst);
-        wallet.refresh();
-        settle(&wallet);
-        let Screen::Ready(funded) = wallet.screen() else {
-            panic!("ready");
-        };
-        assert!(!funded.empty);
+        // A received payment reaches the screen through the SDK's event.
+        node.balance.store(123_456, Ordering::SeqCst);
+        node.payments.lock().unwrap().push(PaymentRow {
+            id: "in-1".into(),
+            received: true,
+            amount_sats: 123_456,
+            fee_sats: 0,
+            method: "Lightning".into(),
+            status: "completed".into(),
+            at: 1_790_000_000,
+        });
+        (node.notify.lock().unwrap().clone().expect("subscribed"))();
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while ready(&wallet).balance_sats != 123_456 && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        let funded = ready(&wallet);
         assert_eq!(funded.balance, "123,456 sats");
-        assert_eq!(funded.balance_btc, "0.00123456 tBTC");
-        assert_eq!(
-            funded.pending.as_deref(),
-            Some("10,000 sats waiting for a confirmation")
-        );
-        assert_eq!(funded.address, "tb1qfake0", "the address stays put");
+        assert_eq!(funded.balance_btc, "0.00123456 BTC");
+        assert_eq!(funded.payments.len(), 1);
+        assert_eq!(funded.payments[0].amount, "+123,456 sats");
+        assert_eq!(funded.payments[0].title, "Received");
+        assert_eq!(funded.warning, None);
 
-        // A new lifetime shows the saved address and the last balance read
-        // before its wallet starts, then reuses that address.
-        let mut again = Wallet::new(home.path().join("wallet"), opener(node.clone(), seen));
-        let Screen::Ready(cached) = again.screen() else {
-            panic!("the cached wallet shows at once");
-        };
+        // A new lifetime shows the cached balance, addresses, and history
+        // before its wallet starts.
+        let again = Wallet::new(home.path().join("spark"), opener(node, seen));
+        let cached = ready(&again);
         assert_eq!(cached.balance, "123,456 sats");
-        assert_eq!(cached.address, "tb1qfake0");
-        assert!(cached.qr.is_some() && !cached.balance_unknown);
+        assert!(!cached.balance_unknown);
+        assert_eq!(
+            cached.receive.spark.map(|code| code.text).as_deref(),
+            Some("spark1fakeaddress")
+        );
+        assert_eq!(cached.payments.len(), 1);
         assert_eq!(cached.status.as_deref(), Some("Opening the wallet…"));
-        again.open(ENTROPY);
-        settle(&again);
-        let Screen::Ready(reopened) = again.screen() else {
-            panic!("ready");
-        };
-        assert_eq!(reopened.address, "tb1qfake0");
-        assert_eq!(node.addresses.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn receive_makes_lightning_invoices_with_and_without_an_amount() {
+        let home = tempfile::tempdir().expect("temp dir");
+        let node = Arc::new(Fake::default());
+        let mut wallet = Wallet::new(
+            home.path().to_path_buf(),
+            opener(node.clone(), Arc::new(Mutex::new(vec![]))),
+        );
+        wallet.invoice("");
+        assert_eq!(
+            ready(&wallet).receive.lightning_error.as_deref(),
+            Some("The wallet is still starting.")
+        );
+        wallet.open(ENTROPY, false);
+        settle(&wallet);
+        wallet.invoice("");
+        settle(&wallet);
+        let any = ready(&wallet).receive.lightning.expect("invoice");
+        assert_eq!(any.caption, "Lightning invoice for any amount");
+        assert!(any.uri.starts_with("lightning:lnbc"));
+        assert!(any.qr.is_some());
+        wallet.invoice("2,500");
+        settle(&wallet);
+        let fixed = ready(&wallet).receive.lightning.expect("invoice");
+        assert_eq!(fixed.caption, "Lightning invoice for 2,500 sats");
+        assert!(fixed.text.ends_with("2500"));
+        wallet.invoice("a lot");
+        assert!(ready(&wallet).receive.lightning_error.is_some());
+        assert_eq!(node.invoices.load(Ordering::SeqCst), 2);
+    }
+
+    #[test]
+    fn send_quotes_the_fee_and_pays_only_the_confirmed_quote_once() {
+        let home = tempfile::tempdir().expect("temp dir");
+        let node = Arc::new(Fake::default());
+        node.balance.store(50_000, Ordering::SeqCst);
+        let mut wallet = Wallet::new(
+            home.path().to_path_buf(),
+            opener(node.clone(), Arc::new(Mutex::new(vec![]))),
+        );
+        wallet.open(ENTROPY, false);
+        settle(&wallet);
+
+        wallet.quote("not a request", "");
+        settle(&wallet);
+        let refused = ready(&wallet).send;
+        assert_eq!(refused.state, "failed");
+        assert_eq!(
+            refused.message.as_deref(),
+            Some("That isn't a payment request.")
+        );
+
+        // An address needs an amount; the screen asks for it.
+        wallet.quote("spark1friend", "");
+        settle(&wallet);
+        assert_eq!(ready(&wallet).send.state, "needs_amount");
+        wallet.quote("spark1friend", "0");
+        assert_eq!(
+            ready(&wallet).send.message.as_deref(),
+            Some("Enter an amount above zero.")
+        );
+        wallet.quote("spark1friend", "1,500");
+        settle(&wallet);
+        let spark = ready(&wallet).send.quote.expect("quote");
+        assert_eq!(
+            (spark.kind, spark.amount.as_str(), spark.fee.as_str()),
+            ("Spark address", "1,500 sats", "0 sats")
+        );
+
+        wallet.quote("lnbc-with-amount", "");
+        settle(&wallet);
+        let quoted = ready(&wallet).send;
+        assert_eq!(quoted.state, "quoted");
+        let quote = quoted.quote.expect("quote");
+        assert_eq!(quote.kind, "Lightning invoice");
+        assert_eq!(
+            (
+                quote.amount.as_str(),
+                quote.fee.as_str(),
+                quote.total.as_str()
+            ),
+            ("1,000 sats", "3 sats", "1,003 sats")
+        );
+        assert_eq!(quote.note.as_deref(), Some("Coffee"));
+
+        // A stale quote ID pays nothing; the one on screen pays once.
+        wallet.pay(8);
+        assert!(node.paid.lock().unwrap().is_empty());
+        wallet.pay(quote.id);
+        wallet.pay(quote.id);
+        settle(&wallet);
+        let paid = node.paid.lock().unwrap().clone();
+        assert_eq!(paid.len(), 1);
+        assert_eq!(paid[0].0, 7);
+        assert!(uuid::Uuid::parse_str(&paid[0].1).is_ok(), "a UUID key");
+        let sent = ready(&wallet);
+        assert_eq!(sent.send.state, "sent");
+        assert_eq!(sent.send.message.as_deref(), Some("Sent."));
+        assert_eq!(
+            sent.send.result.map(|row| row.amount).as_deref(),
+            Some("-1,000 sats")
+        );
+        assert_eq!(sent.balance, "48,997 sats");
+        assert_eq!(sent.payments[0].fee.as_deref(), Some("3 sats fee"));
+        wallet.reset_send();
+        assert_eq!(ready(&wallet).send.state, "idle");
     }
 
     #[test]
@@ -691,44 +1636,50 @@ mod tests {
         let home = tempfile::tempdir().expect("temp dir");
         let mut wallet = Wallet::new(
             home.path().to_path_buf(),
-            Arc::new(|_, _, _| Err("Mutinynet could not be reached.".to_string())),
+            Arc::new(|_, _| Err("The wallet could not reach Spark (timeout).".to_string())),
         );
-        wallet.open("zz");
+        wallet.open("zz", false);
         assert_eq!(
             wallet.screen(),
             Screen::Failed {
                 message: "The wallet key is unreadable.".into()
             }
         );
-        wallet.open(ENTROPY);
+        // 20 bytes is not a BIP39 wallet this app makes.
+        wallet.open(&"ab".repeat(20), false);
+        assert!(matches!(wallet.screen(), Screen::Failed { .. }));
+        wallet.open(ENTROPY, false);
         settle(&wallet);
         assert_eq!(
             wallet.screen(),
             Screen::Failed {
-                message: "Mutinynet could not be reached.".into()
+                message: "The wallet could not reach Spark (timeout).".into()
             }
         );
 
         // A wallet that starts but cannot sync shows what it has, and why.
-        let node = fake(5, 0, true);
+        let node = Arc::new(Fake::default());
+        node.balance.store(5, Ordering::SeqCst);
+        node.sync_fails.store(true, Ordering::SeqCst);
         let mut syncless = Wallet::new(
             home.path().join("syncless"),
             opener(node, Arc::new(Mutex::new(vec![]))),
         );
-        syncless.open(ENTROPY);
+        syncless.open(ENTROPY, false);
         settle(&syncless);
-        let Screen::Ready(summary) = syncless.screen() else {
-            panic!("ready: {:?}", syncless.screen());
-        };
-        assert_eq!(summary.balance, "5 sats");
-        assert!(summary.error.as_deref().unwrap().contains("Mutinynet"));
+        let summary = ready(&syncless);
+        assert!(summary.balance_unknown);
+        assert!(summary.error.as_deref().unwrap().contains("Spark"));
         let other = ENTROPY.replace('5', "6");
-        syncless.open(&other);
+        syncless.open(&other, false);
         assert!(
-            matches!(syncless.screen(), Screen::Ready(summary) if summary.error.as_deref().is_some_and(|e| e.contains("different key")))
+            ready(&syncless)
+                .error
+                .is_some_and(|error| error.contains("different key"))
         );
 
-        let mnemonic = mnemonic_from_entropy(&[0x5a; 32]).expect("mnemonic");
+        let entropy = decode(ENTROPY).unwrap();
+        let mnemonic = bip39::Mnemonic::from_entropy(&entropy).unwrap().to_string();
         let first_word = mnemonic.split_whitespace().next().unwrap().to_owned();
         for screen in [wallet.screen(), syncless.screen()] {
             let json = serde_json::to_string(&screen).unwrap();
@@ -738,16 +1689,227 @@ mod tests {
             );
             assert!(!json.contains(&format!("\"{first_word}")), "{json}");
         }
+        // Only the explicit request returns the words.
+        assert_eq!(syncless.words().unwrap().join(" "), mnemonic);
+    }
+
+    #[test]
+    fn recovery_words_restore_and_replace_the_wallet() {
+        let entropy = decode(ENTROPY).unwrap();
+        let mnemonic = bip39::Mnemonic::from_entropy(&entropy).unwrap().to_string();
+        assert_eq!(restore_entropy(&mnemonic).unwrap(), ENTROPY);
+        // Case and spacing don't matter.
+        let shouted = format!("  {}  ", mnemonic.to_uppercase().replace(' ', "   "));
+        assert_eq!(restore_entropy(&shouted).unwrap(), ENTROPY);
+        let long = hex(&[7; 32]);
+        let long_words = bip39::Mnemonic::from_entropy(&[7; 32]).unwrap().to_string();
+        assert_eq!(restore_entropy(&long_words).unwrap(), long);
+
+        let words: Vec<&str> = mnemonic.split_whitespace().collect();
+        let short = words[..11].join(" ");
+        assert_eq!(
+            restore_entropy(&short).unwrap_err(),
+            "Enter 12 or 24 recovery words; that was 11."
+        );
+        let mut misspelled = words.clone();
+        misspelled[3] = "notaword";
+        let error = restore_entropy(&misspelled.join(" ")).unwrap_err();
+        assert_eq!(error, "Word 4 isn't a recovery word. Check its spelling.");
+        let mut swapped = words.clone();
+        swapped.swap(0, 11);
+        if swapped != words {
+            let error = restore_entropy(&swapped.join(" ")).unwrap_err();
+            assert!(!error.contains(words[0]), "{error}");
+        }
+
+        // Replacing stops the old wallet and forgets its cached state.
+        let home = tempfile::tempdir().expect("temp dir");
+        let node = Arc::new(Fake::default());
+        node.balance.store(900, Ordering::SeqCst);
+        let seen = Arc::new(Mutex::new(vec![]));
+        let mut wallet = Wallet::new(home.path().to_path_buf(), opener(node, seen.clone()));
+        wallet.open(ENTROPY, false);
+        settle(&wallet);
+        assert_eq!(ready(&wallet).balance, "900 sats");
+        wallet.open(&long, true);
+        assert!(ready(&wallet).balance_unknown, "the old balance is gone");
+        assert!(!home.path().join(BALANCE_FILE).exists());
+        settle(&wallet);
+        assert_eq!(seen.lock().unwrap().len(), 2);
+        assert_eq!(seen.lock().unwrap()[1].split_whitespace().count(), 24);
+        assert_eq!(wallet.words().unwrap().len(), 24);
+    }
+
+    #[test]
+    fn the_trust_note_shows_until_read_and_large_balances_warn() {
+        let home = tempfile::tempdir().expect("temp dir");
+        let node = Arc::new(Fake::default());
+        node.balance
+            .store(BALANCE_WARNING_SATS + 1, Ordering::SeqCst);
+        let mut wallet = Wallet::new(
+            home.path().to_path_buf(),
+            opener(node, Arc::new(Mutex::new(vec![]))),
+        );
+        assert!(!ready(&wallet).trust.acknowledged);
+        wallet.acknowledge();
+        assert!(ready(&wallet).trust.acknowledged);
+        // It stays read across launches.
+        let relaunched = Wallet::new(home.path().to_path_buf(), spark_opener());
+        assert!(ready(&relaunched).trust.acknowledged);
+        wallet.open(ENTROPY, false);
+        settle(&wallet);
+        let warned = ready(&wallet);
+        assert!(
+            warned
+                .warning
+                .is_some_and(|warning| warning.contains("1,000,000 sats"))
+        );
+    }
+
+    #[test]
+    fn buying_opens_the_provider_page_once_and_deposits_are_claimed_at_the_quoted_fee() {
+        let home = tempfile::tempdir().expect("temp dir");
+        let node = Arc::new(Fake::default());
+        node.deposits.lock().unwrap().push(DepositRow {
+            txid: "ab".repeat(32),
+            vout: 1,
+            amount_sats: 50_000,
+            mature: true,
+            problem: Some("Claiming it costs 1,200 sats, above the automatic limit.".into()),
+        });
+        let mut wallet = Wallet::new(
+            home.path().to_path_buf(),
+            opener(node.clone(), Arc::new(Mutex::new(vec![]))),
+        );
+        wallet.open(ENTROPY, false);
+        settle(&wallet);
+        let summary = ready(&wallet);
+        assert_eq!(summary.buy.providers.len(), 2);
+        assert_eq!(summary.deposits.len(), 1);
+        assert_eq!(summary.deposits[0].amount, "50,000 sats");
+        assert!(summary.deposits[0].status.contains("1,200 sats"));
+
+        wallet.buy("moonpay", "");
+        assert_eq!(
+            ready(&wallet).buy.error.as_deref(),
+            Some("Enter how many sats to buy.")
+        );
+        wallet.buy("paypal", "1000");
+        assert!(ready(&wallet).buy.error.is_some());
+        wallet.buy("moonpay", "50,000");
+        settle(&wallet);
+        assert_eq!(
+            wallet.take_open_url().as_deref(),
+            Some("https://buy.moonpay.com/?amount=50000")
+        );
+        assert_eq!(wallet.take_open_url(), None, "it opens once");
+        wallet.buy("cashapp", "20000");
+        settle(&wallet);
+        assert!(
+            wallet
+                .take_open_url()
+                .is_some_and(|url| url.starts_with("https://cash.app/"))
+        );
+        // A link that isn't a web page never reaches the host.
+        wallet.buy("cashapp", "666");
+        settle(&wallet);
+        assert_eq!(wallet.take_open_url(), None);
+        assert!(ready(&wallet).buy.error.is_some());
+
+        // A claim is sent only after its quote, with the quoted fee as the
+        // ceiling.
+        let txid = "ab".repeat(32);
+        wallet.claim(&txid, 1);
+        assert!(node.claims.lock().unwrap().is_empty());
+        wallet.claim_quote("unknown", 0);
+        assert!(ready(&wallet).claim.is_none());
+        wallet.claim_quote(&txid, 1);
+        settle(&wallet);
+        assert_eq!(
+            ready(&wallet)
+                .claim
+                .and_then(|claim| claim.quote)
+                .as_deref(),
+            Some("Claim for a 1,200 sats fee; 48,800 sats reach your balance.")
+        );
+        wallet.claim(&txid, 1);
+        settle(&wallet);
+        assert_eq!(*node.claims.lock().unwrap(), vec![(txid, 1, 1_200)]);
+        let claimed = ready(&wallet);
+        assert_eq!(
+            claimed.claim.and_then(|claim| claim.message).as_deref(),
+            Some("Claimed. It's in your balance.")
+        );
+        assert!(claimed.deposits.is_empty());
+        assert_eq!(claimed.balance, "48,800 sats");
+        wallet.claim_reset();
+        assert!(ready(&wallet).claim.is_none());
     }
 
     #[test]
     fn amounts_read_plainly() {
         assert_eq!(sats(0), "0 sats");
         assert_eq!(sats(1), "1 sat");
-        assert_eq!(sats(999), "999 sats");
         assert_eq!(sats(1_000), "1,000 sats");
         assert_eq!(sats(21_000_000), "21,000,000 sats");
-        assert_eq!(btc(0), "0.00000000");
         assert_eq!(btc(150_000_000), "1.50000000");
+        assert_eq!(parse_amount(""), Ok(None));
+        assert_eq!(parse_amount(" 1,000 sats"), Ok(Some(1_000)));
+        assert!(parse_amount("1.5").is_err());
+        assert_eq!(shorten("short"), "short");
+        assert_eq!(
+            shorten("lnbc1234567890abcdefghijklmnopqrstuvwxyz"),
+            "lnbc1234567890…qrstuvwxyz"
+        );
+    }
+
+    /// A real Spark wallet on Lightspark's hosted regtest, which needs no
+    /// API key or funds: it connects, reads its zero balance, and makes a
+    /// Spark address. Run with `--ignored`; it reaches the network.
+    #[test]
+    #[ignore = "reaches Lightspark's hosted regtest"]
+    fn a_regtest_wallet_connects_and_reads_its_balance() {
+        let home = tempfile::tempdir().expect("temp dir");
+        let entropy: [u8; 16] = rand_entropy();
+        let mnemonic = bip39::Mnemonic::from_entropy(&entropy).unwrap().to_string();
+        let node = crate::spark::SparkNode::open(home.path(), Network::Regtest, &mnemonic)
+            .expect("regtest wallet");
+        node.sync().expect("sync");
+        assert_eq!(node.balance().expect("balance"), 0);
+        assert!(node.spark_address().expect("address").starts_with("spark"));
+        assert!(node.payments(10).expect("payments").is_empty());
+        assert!(matches!(
+            node.quote("spark1nonsense", None),
+            Err(QuoteFailure::Refused(_) | QuoteFailure::NeedsAmount(_))
+        ));
+    }
+
+    /// A throwaway mainnet wallet with the committed API key: it connects,
+    /// reads its zero balance, and makes a Spark address, a deposit address,
+    /// and a Lightning invoice. It moves no funds; nothing should be sent to
+    /// what it prints, since its seed is discarded. Run with `--ignored`.
+    #[test]
+    #[ignore = "reaches Breez and Spark on mainnet"]
+    fn a_mainnet_wallet_connects_with_the_committed_key() {
+        let home = tempfile::tempdir().expect("temp dir");
+        let mnemonic = bip39::Mnemonic::from_entropy(&rand_entropy())
+            .unwrap()
+            .to_string();
+        let node =
+            crate::spark::SparkNode::open(home.path(), NETWORK, &mnemonic).expect("mainnet wallet");
+        node.sync().expect("sync");
+        assert_eq!(node.balance().expect("balance"), 0);
+        assert!(node.spark_address().expect("spark").starts_with("spark1"));
+        assert!(node.bitcoin_address().expect("deposit").starts_with("bc1"));
+        let invoice = node.invoice(Some(1_000), "OpenAgents").expect("invoice");
+        assert!(invoice.starts_with("lnbc"), "{invoice}");
+        assert!(node.payments(10).expect("payments").is_empty());
+        let buy = node.buy(Provider::CashApp, 1_000).expect("cash app link");
+        assert!(buy.starts_with("https://cash.app/"));
+    }
+
+    fn rand_entropy() -> [u8; 16] {
+        let id = uuid::Uuid::new_v4();
+        *id.as_bytes()
     }
 }

@@ -78,6 +78,17 @@ struct AppPacket: Decodable {
     let notices: [String]
     let wallet: WalletState?
     let wallet_loading: Bool?
+    /// A bitcoin purchase page to open once.
+    let wallet_open_url: String?
+}
+
+/// Rust's direct reply with the recovery words or a checked restore. It is
+/// never part of the app packet, and this host keeps none of it.
+struct WalletSecretPacket: Decodable {
+    let schema: String
+    let words: [String]?
+    let entropy_hex: String?
+    let error: String?
 }
 
 /// One released version and what it brought.
@@ -160,12 +171,56 @@ final class MobileBridge: ObservableObject {
 
     func refreshChats() { send(["op": "chats_refresh"]) }
 
-    /// Hand Rust the wallet key from Keychain. Rust ignores a repeat.
+    /// Hand Rust the Spark wallet's seed from Keychain. Rust ignores a
+    /// repeat. The Mutinynet test wallet's key, which this replaced, is
+    /// deleted.
     func openWallet() {
-        guard let entropy = try? DeviceKey.loadOrCreateWallet() else { return }
+        DeviceKey.deleteMutinynetWallet()
+        guard let entropy = try? DeviceKey.loadOrCreateSpark() else { return }
         send(["op": "wallet_open", "entropy_hex": entropy.map { String(format: "%02x", $0) }.joined()])
     }
     func refreshWallet() { send(["op": "wallet_refresh"]) }
+    /// A Wallet request whose fields Rust checks.
+    func wallet(_ op: String, _ fields: [String: Any] = [:]) {
+        var request = fields
+        request["op"] = op
+        send(request)
+    }
+
+    /// The recovery words, for a sheet the person asked to see after a
+    /// warning. Nothing here keeps or logs them.
+    func walletWords(received: @escaping ([String]) -> Void) {
+        call(["op": "wallet_words"]) { data in
+            guard let packet = try? JSONDecoder().decode(WalletSecretPacket.self, from: data),
+                  packet.schema == "openagents.wallet-secret.v1", let words = packet.words else { return }
+            received(words)
+        }
+    }
+
+    /// Restore from recovery words: Rust checks them, this saves the seed in
+    /// Keychain, and Rust replaces the running wallet. `done` gets the
+    /// reason on failure.
+    func restoreWallet(words: String, done: @escaping (String?) -> Void) {
+        call(["op": "wallet_restore_check", "words": words]) { data in
+            guard let packet = try? JSONDecoder().decode(WalletSecretPacket.self, from: data),
+                  packet.schema == "openagents.wallet-secret.v1" else {
+                done("The words could not be checked.")
+                return
+            }
+            guard let hex = packet.entropy_hex, let entropy = Data(hexString: hex) else {
+                done(packet.error ?? "The words could not be checked.")
+                return
+            }
+            do {
+                try DeviceKey.replaceSpark(entropy)
+            } catch {
+                done(error.localizedDescription)
+                return
+            }
+            self.send(["op": "wallet_open", "entropy_hex": hex, "replace": true])
+            done(nil)
+        }
+    }
 
     /// Open a computer from the native Computers list.
     func openComputer(_ host: String) { send(["op": "computers_open", "host": host]) }
@@ -240,6 +295,9 @@ final class MobileBridge: ObservableObject {
                 UIApplication.shared.open(url)
                 self.send(["op": "tailnet_wait_for_sign_in"])
             }
+            if let link = packet.wallet_open_url, let url = URL(string: link), url.scheme == "https" {
+                UIApplication.shared.open(url)
+            }
         }
     }
 
@@ -258,5 +316,22 @@ final class MobileBridge: ObservableObject {
                 if let data { received(data) }
             }
         }
+    }
+}
+
+extension Data {
+    /// Bytes from lowercase or uppercase hex; nil for anything else.
+    init?(hexString: String) {
+        guard hexString.count.isMultiple(of: 2) else { return nil }
+        var bytes = [UInt8]()
+        bytes.reserveCapacity(hexString.count / 2)
+        var index = hexString.startIndex
+        while index < hexString.endIndex {
+            let next = hexString.index(index, offsetBy: 2)
+            guard let byte = UInt8(hexString[index..<next], radix: 16) else { return nil }
+            bytes.append(byte)
+            index = next
+        }
+        self.init(bytes)
     }
 }

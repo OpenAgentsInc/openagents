@@ -158,13 +158,15 @@ struct InlineQRScanner: View {
     @StateObject private var scanner = QRScanner()
     @Environment(\.scenePhase) private var phase
     @Environment(\.openURL) private var openURL
+    /// What the camera should be pointed at.
+    var prompt = "Point the camera at the QR invitation on your computer."
     let decoded: (String) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             if scanner.running {
                 CameraPreview(session: scanner.session).frame(height: 190).clipShape(RoundedRectangle(cornerRadius: 12))
-                Text("Point the camera at the QR invitation on your computer.").font(.caption)
+                Text(prompt).font(.caption)
             }
             if let message = scanner.message {
                 Text(message).font(.callout).accessibilityIdentifier("camera-status")

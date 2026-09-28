@@ -175,7 +175,7 @@ document or NIP defines it and no code does it yet.
 | Piece | Where | Status |
 | --- | --- | --- |
 | Lightning wallet on an exclusively held node key; x402 codecs, replay store, and facilitator | `crates/wallet`, `crates/x402`, [NIP-X402](../../nips/openagents/NIP-X402.md) | Wallet and x402 mechanics exist; NIP-X402 is Designed, and `crates/x402` says "Nothing here pays." No paid round trip has been recorded. |
-| Phone wallet | `crates/openagents-mobile/src/wallet.rs` | Implemented, signet (Mutinynet) test coins only. |
+| Phone wallet | `crates/openagents-mobile/src/wallet.rs` | Implemented on mainnet through Breez's Spark SDK ([#9854](https://github.com/OpenAgentsInc/openagents/issues/9854)); agent spending is not built yet. |
 | Quest purses: sats for an accepted completion, through NIP-MKT, NIP-LAB, and NIP-X402 (migration package M18) | NIP-XP, [NIP-MKT](../../nips/openagents/NIP-MKT.md), [NIP-LAB](../../nips/openagents/NIP-LAB.md), [beat Fable together](../coder/beat-fable-together.md) | Specified. `crates/coder-labor` is free-only ("acceptance does not perform a payment"), and M18 adds settlement only after free fulfillment works. |
 | Paying knowledge authors or trainers | — | **Nothing pays an author or a trainer today.** |
 
@@ -386,7 +386,7 @@ Sats are future, staged, and separate from XP, as NIP-XP requires.
 
 **What exists:** nothing pays a trainer or an author. The wallet and x402
 code landed, but no paid round trip has been recorded, and the phone wallet
-runs on test coins.
+has no agent spending path yet.
 
 **What must be true before any quest pays sats:**
 

@@ -50,6 +50,18 @@ enum AppTabLaunch {
         return []
     }
 
+    /// Wallet screenshots: `--wallet-section send`, `--wallet-method spark`,
+    /// `--wallet-send TEXT` (reviewed once the wallet runs), and
+    /// `--wallet-invoice AMOUNT` (made once the wallet runs), and `--wallet-info 1`
+    /// (the trust note).
+    static func wallet(_ name: String) -> String? {
+        #if DEBUG || targetEnvironment(simulator)
+        return argument(name)
+        #else
+        return nil
+        #endif
+    }
+
     private static func argument(_ name: String) -> String? {
         let arguments = ProcessInfo.processInfo.arguments
         guard let index = arguments.firstIndex(of: name), index + 1 < arguments.count else {

@@ -100,7 +100,8 @@ gradle_() {
 rust() {
   [[ -d "$ANDROID_NDK_HOME" ]] || { echo "Android NDK is missing: $ANDROID_NDK_HOME" >&2; exit 1; }
   command -v cargo-ndk >/dev/null || { echo 'Install cargo-ndk before building Android.' >&2; exit 1; }
-  local build=(build --locked -p openagents-mobile --lib)
+  # openagents-mobile is its own Cargo workspace (see its Cargo.toml).
+  local build=(build --locked --manifest-path crates/openagents-mobile/Cargo.toml --lib)
   [[ "$OPENAGENTS_ANDROID_PROFILE" != release ]] || build+=(--release)
   # NDK r27 needs an explicit alignment for devices with 16 KiB memory pages.
   export RUSTFLAGS='-C link-arg=-Wl,-z,max-page-size=16384 -C link-arg=-Wl,-z,common-page-size=16384'

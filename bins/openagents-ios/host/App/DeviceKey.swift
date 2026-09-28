@@ -24,13 +24,61 @@ enum DeviceKey {
                          accessible: kSecAttrAccessibleWhenUnlockedThisDeviceOnly)
     }
 
-    /// The Wallet tab's key: 32 bytes of BIP39 entropy for its test-network
-    /// wallet, separate from the device and world keys, never synced or
-    /// backed up, and handed only to Rust.
-    static func loadOrCreateWallet() throws -> Data {
-        try loadOrCreate(service: "com.openagents.app.wallet",
-                         accessible: kSecAttrAccessibleWhenUnlockedThisDeviceOnly)
+    /// The Wallet tab's Spark seed: BIP39 entropy, 16 bytes (12 words) when
+    /// created here and 16 or 32 when restored. It is separate from the
+    /// device and world keys, never synced or backed up, and handed only to
+    /// Rust.
+    static func loadOrCreateSpark() throws -> Data {
+        var query = sparkQuery
+        var result: CFTypeRef?
+        query[kSecReturnData as String] = true
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        if status == errSecSuccess, let seed = result as? Data, seed.count == 16 || seed.count == 32 {
+            return seed
+        }
+        guard status == errSecItemNotFound else {
+            throw Failure.message("The wallet key is unavailable. Unlock the device and reopen OpenAgents.")
+        }
+        var seed = Data(count: 16)
+        let random = seed.withUnsafeMutableBytes {
+            SecRandomCopyBytes(kSecRandomDefault, $0.count, $0.baseAddress!)
+        }
+        guard random == errSecSuccess else { throw Failure.message("Could not create a wallet key.") }
+        try replaceSpark(seed)
+        return seed
     }
+
+    /// Put a restored seed in place of the current one.
+    static func replaceSpark(_ seed: Data) throws {
+        guard seed.count == 16 || seed.count == 32 else {
+            throw Failure.message("That wallet key can't be saved.")
+        }
+        SecItemDelete(sparkQuery as CFDictionary)
+        var item = sparkQuery
+        item[kSecValueData as String] = seed
+        item[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+        guard SecItemAdd(item as CFDictionary, nil) == errSecSuccess else {
+            throw Failure.message("Could not save the wallet key in Keychain.")
+        }
+    }
+
+    /// Delete the Mutinynet test wallet's key, which the Spark wallet
+    /// replaced. It held only signet test coins.
+    static func deleteMutinynetWallet() {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: "com.openagents.app.wallet",
+            kSecAttrSynchronizable as String: false,
+        ]
+        SecItemDelete(query as CFDictionary)
+    }
+
+    private static let sparkQuery: [String: Any] = [
+        kSecClass as String: kSecClassGenericPassword,
+        kSecAttrService as String: "com.openagents.app.spark",
+        kSecAttrAccount as String: "seed-v1",
+        kSecAttrSynchronizable as String: false,
+    ]
 
     private static func loadOrCreate(service: String, accessible: CFString) throws -> Data {
         var query: [String: Any] = [

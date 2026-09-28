@@ -1,0 +1,585 @@
+//! The Wallet tab's Spark wallet: Breez's SDK (`breez-sdk-spark`) behind the
+//! [`Node`](crate::wallet::Node) trait the screen uses. Everything here is
+//! blocking; each call runs on the wallet's own Tokio runtime.
+//!
+//! The SDK keeps its SQLite store under the wallet home, one directory per
+//! network and wallet. Real-time sync to Breez's server is off. The SDK logs
+//! through `tracing`, and the app installs no subscriber, so nothing it
+//! traces is written anywhere.
+
+use crate::wallet::{
+    ClaimQuote, DepositRow, Destination, Node, PaymentRow, Provider, Quote, QuoteFailure,
+};
+use breez_sdk_spark::{
+    BreezSdk, BuyBitcoinRequest, ClaimDepositOutcome, ClaimDepositRequest, DepositClaimError,
+    EventListener, FetchClaimDepositQuoteRequest, GetInfoRequest, InputType, ListPaymentsRequest,
+    ListUnclaimedDepositsRequest, LnurlPayRequest, MaxFee, Network, OnchainConfirmationSpeed,
+    Payment, PaymentMethod, PaymentRequest, PaymentStatus, PaymentType, PrepareLnurlPayRequest,
+    PrepareLnurlPayResponse, PrepareSendPaymentRequest, PrepareSendPaymentResponse,
+    ReceivePaymentMethod, ReceivePaymentRequest, SdkBuilder, SdkEvent, Seed, SendPaymentMethod,
+    SendPaymentOptions, SendPaymentRequest, SyncWalletRequest, default_config,
+};
+use std::collections::HashMap;
+use std::path::Path;
+use std::sync::{Arc, Mutex};
+
+/// OpenAgents' Breez API key. The owner confirmed with the Breez team that it
+/// is a basic validation key, which every shipped app carries and none can
+/// hide, so it is committed here plainly (2026-09-28). It is a Base64 X.509
+/// certificate that Breez's services check; it is not a spending credential.
+pub const BREEZ_API_KEY: &str = "MIIBfjCCATCgAwIBAgIHPYzgGw0A+zAFBgMrZXAwEDEOMAwGA1UEAxMFQnJlZXowHhcNMjQxMTI0MjIxOTMzWhcNMzQxMTIyMjIxOTMzWjA3MRkwFwYDVQQKExBPcGVuQWdlbnRzLCBJbmMuMRowGAYDVQQDExFDaHJpc3RvcGhlciBEYXZpZDAqMAUGAytlcAMhANCD9cvfIDwcoiDKKYdT9BunHLS2/OuKzV8NS0SzqV13o4GBMH8wDgYDVR0PAQH/BAQDAgWgMAwGA1UdEwEB/wQCMAAwHQYDVR0OBBYEFNo5o+5ea0sNMlW/75VgGJCv2AcJMB8GA1UdIwQYMBaAFN6q1pJW843ndJIW/Ey2ILJrKJhrMB8GA1UdEQQYMBaBFGNocmlzQG9wZW5hZ2VudHMuY29tMAUGAytlcANBABvQIfNsop0kGIk0bgO/2kPum5B5lv6pYaSBXz73G1RV+eZj/wuW88lNQoGwVER+rA9+kWWTaR/dpdi8AFwjxw0=";
+
+/// How long a Lightning or Spark send waits for the payment to settle
+/// before it returns as pending.
+const SEND_WAIT_SECS: u32 = 30;
+
+/// The SDK configuration the phone uses: the given network, OpenAgents' API
+/// key, and no real-time sync server.
+pub fn sdk_config(network: Network) -> breez_sdk_spark::Config {
+    let mut config = default_config(network);
+    config.api_key = Some(BREEZ_API_KEY.to_owned());
+    // Encrypted sync to Breez's server is for several devices on one
+    // wallet, which the app does not offer.
+    config.real_time_sync_server_url = None;
+    // Claim on-chain deposits (a MoonPay purchase, or bitcoin sent to the
+    // deposit address) at maturity for up to the network's fastest
+    // recommended rate plus 1 sat/vB, so ordinary deposits credit without a
+    // tap. The default, 1 sat/vB, leaves them waiting whenever fees rise;
+    // the screen offers a quoted claim for any deposit still waiting.
+    config.max_deposit_claim_fee = Some(MaxFee::NetworkRecommended {
+        leeway_sat_per_vbyte: 1,
+    });
+    config
+}
+
+/// A prepared payment, kept here between its quote and its confirmation.
+enum Prepared {
+    Send(Box<PrepareSendPaymentResponse>, Option<SendPaymentOptions>),
+    Lnurl(Box<PrepareLnurlPayResponse>),
+}
+
+/// The running SDK and the runtime that drives it. Dropping it disconnects.
+pub struct SparkNode {
+    runtime: tokio::runtime::Runtime,
+    sdk: BreezSdk,
+    prepared: Mutex<HashMap<u64, Prepared>>,
+    next_quote: Mutex<u64>,
+}
+
+impl SparkNode {
+    /// Start the SDK with a mnemonic under `home`. Blocking; it reaches the
+    /// Spark operators.
+    pub fn open(home: &Path, network: Network, mnemonic: &str) -> Result<Self, String> {
+        // Two rustls providers are linked, so name one, as the app does. A
+        // second install is refused harmlessly.
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .thread_name("openagents-spark")
+            .enable_all()
+            .build()
+            .map_err(|_| "The wallet could not start its worker.".to_string())?;
+        let storage = home.join("breez").to_string_lossy().into_owned();
+        let seed = Seed::Mnemonic {
+            mnemonic: mnemonic.to_owned(),
+            passphrase: None,
+        };
+        let sdk = runtime
+            .block_on(
+                SdkBuilder::new(sdk_config(network), seed)
+                    .with_default_storage(storage)
+                    .build(),
+            )
+            .map_err(|error| describe("start", &error.to_string()))?;
+        Ok(Self {
+            runtime,
+            sdk,
+            prepared: Mutex::new(HashMap::new()),
+            next_quote: Mutex::new(1),
+        })
+    }
+
+    fn keep(&self, prepared: Prepared) -> u64 {
+        let mut next = self
+            .next_quote
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        let id = *next;
+        *next += 1;
+        let mut kept = self
+            .prepared
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        // Only the latest quote can be confirmed.
+        kept.clear();
+        kept.insert(id, prepared);
+        id
+    }
+
+    fn quote_input(&self, input: &str, amount: Option<u64>) -> Result<Quote, QuoteFailure> {
+        let parsed = self
+            .runtime
+            .block_on(self.sdk.parse(input))
+            .map_err(|_| QuoteFailure::Refused(UNREADABLE.into()))?;
+        let parsed = match parsed {
+            // A BIP21 URI pays through the best method it lists.
+            InputType::Bip21(details) => {
+                let amount = amount.or(details.amount_sat);
+                let method = details
+                    .payment_methods
+                    .into_iter()
+                    .next()
+                    .ok_or_else(|| QuoteFailure::Refused(UNREADABLE.into()))?;
+                return self.quote_parsed(input, method, amount);
+            }
+            other => other,
+        };
+        self.quote_parsed(input, parsed, amount)
+    }
+
+    fn quote_parsed(
+        &self,
+        input: &str,
+        parsed: InputType,
+        amount: Option<u64>,
+    ) -> Result<Quote, QuoteFailure> {
+        match parsed {
+            InputType::LightningAddress(details) => {
+                let label = details.address.clone();
+                self.quote_lnurl(details.pay_request, label, amount)
+            }
+            InputType::LnurlPay(request) => {
+                let label = request.domain.clone();
+                self.quote_lnurl(request, label, amount)
+            }
+            InputType::Bolt11Invoice(details) => {
+                if details.amount_msat.is_none() && amount.is_none() {
+                    return Err(QuoteFailure::NeedsAmount(
+                        "This invoice has no amount. Enter one.".into(),
+                    ));
+                }
+                let amount = if details.amount_msat.is_some() {
+                    None
+                } else {
+                    amount
+                };
+                self.quote_send(input, amount, details.description)
+            }
+            InputType::SparkAddress(_) | InputType::BitcoinAddress(_) => {
+                if amount.is_none() {
+                    return Err(QuoteFailure::NeedsAmount(
+                        "Enter the amount to send to this address.".into(),
+                    ));
+                }
+                self.quote_send(input, amount, None)
+            }
+            InputType::SparkInvoice(details) => {
+                let amount = if details.amount.is_some() {
+                    None
+                } else if amount.is_none() {
+                    return Err(QuoteFailure::NeedsAmount(
+                        "This Spark invoice has no amount. Enter one.".into(),
+                    ));
+                } else {
+                    amount
+                };
+                self.quote_send(input, amount, details.description)
+            }
+            InputType::CrossChainAddress(_) => Err(QuoteFailure::Refused(
+                "Sending to other chains isn't available in this app yet.".into(),
+            )),
+            InputType::LnurlWithdraw(_) => Err(QuoteFailure::Refused(
+                "This code withdraws to a wallet; receiving it isn't available yet.".into(),
+            )),
+            _ => Err(QuoteFailure::Refused(UNREADABLE.into())),
+        }
+    }
+
+    fn quote_send(
+        &self,
+        input: &str,
+        amount: Option<u64>,
+        note: Option<String>,
+    ) -> Result<Quote, QuoteFailure> {
+        let prepared = self
+            .runtime
+            .block_on(self.sdk.prepare_send_payment(PrepareSendPaymentRequest {
+                payment_request: PaymentRequest::Input {
+                    input: input.to_owned(),
+                },
+                amount: amount.map(u128::from),
+                token_identifier: None,
+                conversion_options: None,
+                fee_policy: None,
+            }))
+            .map_err(|error| QuoteFailure::Refused(describe("quote", &error.to_string())))?;
+        if prepared.token_identifier.is_some() || prepared.conversion_estimate.is_some() {
+            return Err(QuoteFailure::Refused(
+                "Token payments aren't available in this app yet.".into(),
+            ));
+        }
+        let amount_sats = sats_of(prepared.amount)?;
+        let (destination, fee_sats, options) = match &prepared.payment_method {
+            SendPaymentMethod::BitcoinAddress { address, fee_quote } => (
+                Destination::Bitcoin(address.address.clone()),
+                fee_quote.speed_medium.user_fee_sat + fee_quote.speed_medium.l1_broadcast_fee_sat,
+                Some(SendPaymentOptions::BitcoinAddress {
+                    confirmation_speed: OnchainConfirmationSpeed::Medium,
+                }),
+            ),
+            SendPaymentMethod::Bolt11Invoice {
+                invoice_details,
+                spark_transfer_fee_sats,
+                lightning_fee_sats,
+            } => {
+                // A payee on Spark is paid directly, which costs less.
+                let (fee, prefer_spark) = match spark_transfer_fee_sats {
+                    Some(fee) if fee <= lightning_fee_sats => (*fee, true),
+                    _ => (*lightning_fee_sats, false),
+                };
+                (
+                    Destination::Lightning(invoice_details.invoice.bolt11.clone()),
+                    fee,
+                    Some(SendPaymentOptions::Bolt11Invoice {
+                        prefer_spark,
+                        completion_timeout_secs: Some(SEND_WAIT_SECS),
+                    }),
+                )
+            }
+            SendPaymentMethod::SparkAddress { address, fee, .. } => {
+                (Destination::Spark(address.clone()), sats_of(*fee)?, None)
+            }
+            SendPaymentMethod::SparkInvoice { fee, .. } => {
+                (Destination::Spark(input.to_owned()), sats_of(*fee)?, None)
+            }
+            SendPaymentMethod::CrossChainAddress { .. } => {
+                return Err(QuoteFailure::Refused(
+                    "Sending to other chains isn't available in this app yet.".into(),
+                ));
+            }
+        };
+        let id = self.keep(Prepared::Send(Box::new(prepared), options));
+        Ok(Quote {
+            id,
+            destination,
+            amount_sats,
+            fee_sats,
+            note: note.filter(|note| !note.trim().is_empty()),
+        })
+    }
+
+    fn quote_lnurl(
+        &self,
+        pay_request: breez_sdk_spark::LnurlPayRequestDetails,
+        label: String,
+        amount: Option<u64>,
+    ) -> Result<Quote, QuoteFailure> {
+        let min = pay_request.min_sendable.div_ceil(1000);
+        let max = pay_request.max_sendable / 1000;
+        let Some(amount) = amount else {
+            return Err(QuoteFailure::NeedsAmount(format!(
+                "Enter an amount from {} to {}.",
+                crate::wallet::sats(min),
+                crate::wallet::sats(max)
+            )));
+        };
+        if amount < min || amount > max {
+            return Err(QuoteFailure::NeedsAmount(format!(
+                "This recipient takes from {} to {}.",
+                crate::wallet::sats(min),
+                crate::wallet::sats(max)
+            )));
+        }
+        let prepared = self
+            .runtime
+            .block_on(self.sdk.prepare_lnurl_pay(PrepareLnurlPayRequest {
+                amount: u128::from(amount),
+                pay_request,
+                comment: None,
+                validate_success_action_url: None,
+                token_identifier: None,
+                conversion_options: None,
+                fee_policy: None,
+            }))
+            .map_err(|error| QuoteFailure::Refused(describe("quote", &error.to_string())))?;
+        let (amount_sats, fee_sats) = (prepared.amount_sats, prepared.fee_sats);
+        let id = self.keep(Prepared::Lnurl(Box::new(prepared)));
+        Ok(Quote {
+            id,
+            destination: Destination::LightningAddress(label),
+            amount_sats,
+            fee_sats,
+            note: None,
+        })
+    }
+}
+
+impl Drop for SparkNode {
+    fn drop(&mut self) {
+        let _ = self.runtime.block_on(self.sdk.disconnect());
+    }
+}
+
+const UNREADABLE: &str = "That isn't a payment request this wallet can pay: paste a Lightning invoice, Lightning address, Spark address, or Bitcoin address.";
+
+fn sats_of(amount: u128) -> Result<u64, QuoteFailure> {
+    u64::try_from(amount).map_err(|_| QuoteFailure::Refused("The amount is too large.".into()))
+}
+
+/// An SDK error for the screen. Its text names no key material.
+fn describe(step: &str, detail: &str) -> String {
+    let detail = detail.trim();
+    let lower = detail.to_ascii_lowercase();
+    if lower.contains("insufficient") {
+        return "The wallet doesn't hold enough to pay this and its fee.".into();
+    }
+    match step {
+        "start" => format!(
+            "The wallet could not reach Spark ({detail}). Check the connection and try again."
+        ),
+        "quote" => format!("This payment could not be prepared ({detail})."),
+        "pay" => format!("The payment did not go through ({detail})."),
+        "buy" => format!("The purchase could not start ({detail})."),
+        "claim" => format!("The deposit could not be claimed ({detail})."),
+        _ => format!("Spark could not be read ({detail}). Refresh to try again."),
+    }
+}
+
+/// Calls `notify` when the SDK reports a sync or a payment.
+struct Listener(Arc<dyn Fn() + Send + Sync>);
+
+#[async_trait::async_trait]
+impl EventListener for Listener {
+    async fn on_event(&self, event: SdkEvent) {
+        if matches!(
+            event,
+            SdkEvent::Synced
+                | SdkEvent::PaymentSucceeded { .. }
+                | SdkEvent::PaymentPending { .. }
+                | SdkEvent::PaymentFailed { .. }
+                | SdkEvent::ClaimedDeposits { .. }
+                | SdkEvent::UnclaimedDeposits { .. }
+                | SdkEvent::NewDeposits { .. }
+        ) {
+            (self.0)();
+        }
+    }
+}
+
+impl Node for SparkNode {
+    fn balance(&self) -> Result<u64, String> {
+        self.runtime
+            .block_on(self.sdk.get_info(GetInfoRequest {
+                ensure_synced: Some(false),
+            }))
+            .map(|info| info.balance_sats)
+            .map_err(|error| describe("read", &error.to_string()))
+    }
+
+    fn sync(&self) -> Result<(), String> {
+        self.runtime
+            .block_on(self.sdk.sync_wallet(SyncWalletRequest {}))
+            .map(|_| ())
+            .map_err(|error| describe("read", &error.to_string()))
+    }
+
+    fn spark_address(&self) -> Result<String, String> {
+        self.receive(ReceivePaymentMethod::SparkAddress)
+    }
+
+    fn bitcoin_address(&self) -> Result<String, String> {
+        self.receive(ReceivePaymentMethod::BitcoinAddress { new_address: None })
+    }
+
+    fn invoice(&self, amount_sats: Option<u64>, description: &str) -> Result<String, String> {
+        self.receive(ReceivePaymentMethod::Bolt11Invoice {
+            description: description.to_owned(),
+            amount_sats,
+            expiry_secs: None,
+            payment_hash: None,
+            receiver_identity_public_key: None,
+        })
+    }
+
+    fn quote(&self, input: &str, amount_sats: Option<u64>) -> Result<Quote, QuoteFailure> {
+        self.quote_input(input, amount_sats)
+    }
+
+    fn pay(&self, quote: u64, idempotency_key: &str) -> Result<PaymentRow, String> {
+        let prepared = self
+            .prepared
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner())
+            .remove(&quote)
+            .ok_or_else(|| "That quote has expired. Review the payment again.".to_string())?;
+        let payment = match prepared {
+            Prepared::Send(prepare_response, options) => self
+                .runtime
+                .block_on(self.sdk.send_payment(SendPaymentRequest {
+                    prepare_response: *prepare_response,
+                    options,
+                    idempotency_key: Some(idempotency_key.to_owned()),
+                }))
+                .map(|response| response.payment),
+            Prepared::Lnurl(prepare_response) => self
+                .runtime
+                .block_on(self.sdk.lnurl_pay(LnurlPayRequest {
+                    prepare_response: *prepare_response,
+                    idempotency_key: Some(idempotency_key.to_owned()),
+                }))
+                .map(|response| response.payment),
+        };
+        payment
+            .map(|payment| row(&payment))
+            .map_err(|error| describe("pay", &error.to_string()))
+    }
+
+    fn payments(&self, limit: u32) -> Result<Vec<PaymentRow>, String> {
+        self.runtime
+            .block_on(self.sdk.list_payments(ListPaymentsRequest {
+                limit: Some(limit),
+                ..ListPaymentsRequest::default()
+            }))
+            .map(|response| response.payments.iter().map(row).collect())
+            .map_err(|error| describe("read", &error.to_string()))
+    }
+
+    fn buy(&self, provider: Provider, amount_sats: u64) -> Result<String, String> {
+        let request = match provider {
+            Provider::Moonpay => BuyBitcoinRequest::Moonpay {
+                locked_amount_sat: Some(amount_sats),
+                redirect_url: None,
+            },
+            Provider::CashApp => BuyBitcoinRequest::CashApp { amount_sats },
+        };
+        self.runtime
+            .block_on(self.sdk.buy_bitcoin(request))
+            .map(|response| response.url)
+            .map_err(|error| describe("buy", &error.to_string()))
+    }
+
+    fn deposits(&self) -> Result<Vec<DepositRow>, String> {
+        let deposits = self
+            .runtime
+            .block_on(
+                self.sdk
+                    .list_unclaimed_deposits(ListUnclaimedDepositsRequest {}),
+            )
+            .map_err(|error| describe("read", &error.to_string()))?
+            .deposits;
+        Ok(deposits
+            .into_iter()
+            // A refunded deposit is no longer the wallet's to claim.
+            .filter(|deposit| deposit.refund_tx_id.is_none())
+            .map(|deposit| DepositRow {
+                problem: deposit.claim_error.as_ref().map(|error| match error {
+                    DepositClaimError::MaxDepositClaimFeeExceeded {
+                        required_fee_sats, ..
+                    } => format!(
+                        "Claiming it costs {}, above the automatic limit.",
+                        crate::wallet::sats(*required_fee_sats)
+                    ),
+                    DepositClaimError::MissingUtxo { .. } => {
+                        "The deposit wasn't found on the chain.".to_string()
+                    }
+                    DepositClaimError::Generic { message } => {
+                        format!("The last claim failed ({message}).")
+                    }
+                }),
+                txid: deposit.txid,
+                vout: deposit.vout,
+                amount_sats: deposit.amount_sats,
+                mature: deposit.is_mature,
+            })
+            .collect())
+    }
+
+    fn claim_quote(&self, txid: &str, vout: u32) -> Result<ClaimQuote, String> {
+        let quote = self
+            .runtime
+            .block_on(
+                self.sdk
+                    .fetch_claim_deposit_quote(FetchClaimDepositQuoteRequest {
+                        txid: txid.to_owned(),
+                        vout,
+                    }),
+            )
+            .map_err(|error| describe("claim", &error.to_string()))?;
+        let (chosen, early) = match quote.instant {
+            Some(instant) => (instant, true),
+            None => (quote.mature, false),
+        };
+        Ok(ClaimQuote {
+            fee_sats: chosen.fee_sats,
+            credit_sats: chosen.credit_amount_sats,
+            early,
+            confirmations: quote.confirmations,
+            confirmations_required: chosen.confirmations_required,
+        })
+    }
+
+    fn claim(&self, txid: &str, vout: u32, max_fee_sats: u64) -> Result<String, String> {
+        let response = self
+            .runtime
+            .block_on(self.sdk.claim_deposit(ClaimDepositRequest {
+                txid: txid.to_owned(),
+                vout,
+                max_fee: Some(MaxFee::Fixed {
+                    amount: max_fee_sats,
+                }),
+            }))
+            .map_err(|error| describe("claim", &error.to_string()))?;
+        Ok(match response.outcome {
+            ClaimDepositOutcome::Settled { .. } => "Claimed. It's in your balance.".into(),
+            ClaimDepositOutcome::Submitted => {
+                "Claim submitted. It reaches your balance shortly.".into()
+            }
+            ClaimDepositOutcome::Deferred { .. } => {
+                "Not claimable yet. The wallet claims it on its own as it confirms.".into()
+            }
+        })
+    }
+
+    fn subscribe(&self, notify: Arc<dyn Fn() + Send + Sync>) {
+        self.runtime
+            .block_on(self.sdk.add_event_listener(Box::new(Listener(notify))));
+    }
+}
+
+impl SparkNode {
+    fn receive(&self, payment_method: ReceivePaymentMethod) -> Result<String, String> {
+        self.runtime
+            .block_on(
+                self.sdk
+                    .receive_payment(ReceivePaymentRequest { payment_method }),
+            )
+            .map(|response| response.payment_request)
+            .map_err(|error| describe("read", &error.to_string()))
+    }
+}
+
+/// A payment as the history shows it.
+fn row(payment: &Payment) -> PaymentRow {
+    PaymentRow {
+        id: payment.id.clone(),
+        received: payment.payment_type == PaymentType::Receive,
+        amount_sats: u64::try_from(payment.amount).unwrap_or(u64::MAX),
+        fee_sats: u64::try_from(payment.fees).unwrap_or(u64::MAX),
+        method: match payment.method {
+            PaymentMethod::Lightning => "Lightning",
+            PaymentMethod::Spark => "Spark",
+            PaymentMethod::Token => "Token",
+            PaymentMethod::Deposit => "Bitcoin deposit",
+            PaymentMethod::Withdraw => "Bitcoin withdrawal",
+            PaymentMethod::Unknown => "Payment",
+        }
+        .to_owned(),
+        status: match payment.status {
+            PaymentStatus::Completed => "completed",
+            PaymentStatus::Pending => "pending",
+            PaymentStatus::Failed => "failed",
+        }
+        .to_owned(),
+        at: payment.timestamp,
+    }
+}
