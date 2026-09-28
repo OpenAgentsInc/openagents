@@ -70,3 +70,12 @@ pub const JUDGE_READY: Setting = Setting::new("judge.ready", 0.8);
 /// only for an answer, not a change. Written as `>= 0.6` before settings
 /// existed; unmeasured.
 pub const TERMINAL_ASKS_ONLY: Setting = Setting::new("terminal.asks_only", 0.6);
+
+/// `issue_turn.depends`: how sure Jev must be that a place depends on a
+/// changed count to flag it.
+pub const ISSUE_TURN_DEPENDS: Setting =
+    Setting::new("issue_turn.depends", crate::issue::DEPENDS_FLAG);
+
+/// `issue_turn.plain`: how sure Jev must be that a newcomer understands a
+/// text for it to pass.
+pub const ISSUE_TURN_PLAIN: Setting = Setting::new("issue_turn.plain", crate::issue::PLAIN_FLAG);

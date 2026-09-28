@@ -4717,6 +4717,7 @@ dependencies = [
  "atif",
  "base64 0.22.1",
  "coder-boundary",
+ "coder-delegate",
  "codex-transport",
  "futures-util",
  "libc",

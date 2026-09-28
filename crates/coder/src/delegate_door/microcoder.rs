@@ -23,6 +23,19 @@
 //!
 //! No stronger model is routed to: the loop's acceptance tests and routing
 //! are off here, as they are for repository runs.
+//!
+//! # A turn that works an issue
+//!
+//! [`respond`] runs `coder_delegate::issue`'s flow when a turn asks to work
+//! a GitHub issue and the operator's permit lets work run: code finds the
+//! issue references in the request and the conversation, and Jev chooses
+//! among them or answers none. The flow checks out a new branch under
+//! `~/.openagents/coder/issues/`, and its sessions (the work, a review, and
+//! up to three fixes after the host's gate) each run as a Microcoder turn
+//! in that checkout ([`IssueWorker`]), with the same providers and
+//! failover. It ends in a draft pull request. With no provider that has
+//! capacity, it ends before anything is checked out, with the plain
+//! no-capacity sentence.
 
 use std::cell::RefCell;
 use std::collections::VecDeque;
@@ -45,6 +58,7 @@ use serde_json::{Value, json};
 use super::{Delegated, Update};
 use crate::generate::{GenerateError, Usage};
 use crate::shell::{Outcome, Proposal, Status};
+use coder_delegate::terminal;
 
 /// The word the door, the trace, and `coder doctor` name this executor by.
 pub const WORD: &str = "microcoder";
@@ -83,6 +97,15 @@ pub const MAX_STEPS: usize = 40;
 
 /// Dollars of model and Jev spend one turn may reach.
 pub const MAX_USD: f64 = 2.0;
+
+/// Steps one session of the issue flow may take.
+pub const ISSUE_MAX_STEPS: usize = 80;
+
+/// Dollars one session of the issue flow may reach.
+pub const ISSUE_MAX_USD: f64 = 5.0;
+
+/// Seconds one session of the issue flow may run.
+pub const ISSUE_SECONDS: u64 = 1800;
 
 /// One provider the loop may generate through, and where it stands.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -459,6 +482,7 @@ fn task(request: &str, earlier: &str) -> String {
 }
 
 /// One turn, as the door hands it to the loop.
+#[derive(Clone)]
 pub struct Turn {
     pub request: String,
     pub earlier: String,
@@ -475,6 +499,15 @@ pub struct Turn {
     pub script: Option<Vec<(Provider, Script)>>,
     /// The loop's wall-clock bound, in seconds.
     pub max_seconds: u64,
+    /// The loop's step bound.
+    pub max_steps: usize,
+    /// The loop's spend bound, in dollars.
+    pub max_usd: f64,
+    /// Whether a step may end the turn by asking the user.
+    pub ask: bool,
+    /// Whether a request to work a GitHub issue may start the issue flow.
+    /// The operator's permit decides, not the turn's route.
+    pub issues: bool,
     /// The clock, in Unix seconds.
     pub now: fn() -> u64,
 }
@@ -574,12 +607,12 @@ pub async fn answer(turn: Turn, on: Rc<dyn Fn(Update)>) -> Delegated {
     let set = microcoder_loop::models::question_set();
     let routing = microcoder_loop::models::route_set();
     let limits = Limits {
-        max_steps: Some(MAX_STEPS),
+        max_steps: Some(turn.max_steps),
         max_seconds: turn.max_seconds,
-        max_usd: MAX_USD,
+        max_usd: turn.max_usd,
         acceptance: false,
         route: Routing::Never,
-        ask: true,
+        ask: turn.ask,
         ..Limits::default()
     };
     let state = State {
@@ -695,4 +728,266 @@ fn refreshed(
 #[must_use]
 pub fn now() -> u64 {
     failover::unix_now()
+}
+
+/// The request a turn is, in the terms of `coder_delegate`'s terminal
+/// turn, which the issue flow reads.
+fn flow_request(turn: &Turn) -> terminal::Request {
+    terminal::Request {
+        workdir: turn.workdir.clone(),
+        request: turn.request.clone(),
+        earlier: turn.earlier.clone(),
+        resume: None,
+        read_only: turn.read_only,
+        clarify: false,
+        agent: coder_delegate::delegate::Agent::Codex,
+        model: None,
+        binary: None,
+        credential: coder_delegate::delegate::Credential::Missing,
+        jev: turn.jev.clone(),
+        artifacts: std::env::temp_dir(),
+        issues: turn.issues,
+        issue: false,
+        review: false,
+        extra: (),
+    }
+}
+
+/// Answers a turn: the issue flow when the turn asks to work a GitHub
+/// issue and [`Turn::issues`] lets it, and one Microcoder turn otherwise.
+pub async fn respond(turn: Turn, on: Rc<dyn Fn(Update)>) -> Delegated {
+    if !turn.issues || turn.jev.is_none() {
+        return answer(turn, on).await;
+    }
+    let recorder = coder_delegate::record::Recorder::default();
+    let request = flow_request(&turn);
+    let chosen = {
+        let heard = on.clone();
+        let _captured = coder_delegate::say::capture(Box::new(move |line| {
+            heard(Update::Line(line.trim().to_string()));
+        }));
+        coder_delegate::issue::asked(&request, &recorder).await
+    };
+    match chosen {
+        Some(reference) => issue(turn, &request, reference, on, recorder).await,
+        None => {
+            let mut done = answer(turn, on).await;
+            let mut steps = recorder.steps();
+            steps.append(&mut done.steps);
+            done.steps = steps;
+            done
+        }
+    }
+}
+
+/// Runs the issue flow for `reference` on Microcoder.
+pub(crate) async fn issue(
+    turn: Turn,
+    request: &terminal::Request,
+    reference: coder_delegate::issue::Reference,
+    on: Rc<dyn Fn(Update)>,
+    recorder: coder_delegate::record::Recorder,
+) -> Delegated {
+    let number = reference.number;
+    // A flow no provider can work checks nothing out.
+    if !turn.providers.iter().any(ProviderState::usable) {
+        return Delegated {
+            text: String::new(),
+            failure: Some(GenerateError::NoCapacity(none_left(&turn.providers))),
+            usage: None,
+            cost_usd: Some(0.0),
+            steps: recorder.steps(),
+            summary: json!({"agent": WORD, "issue": number, "ending": "no_capacity"}),
+            model: WORD.to_string(),
+            commands: 0,
+        };
+    }
+    let heard = on.clone();
+    let _captured = coder_delegate::say::capture(Box::new(move |line| {
+        heard(Update::Line(line.trim().to_string()));
+    }));
+    coder_delegate::say::say!(
+        "route ▸ issue #{number} asks for work, so Coder works it on a new branch with Microcoder"
+    );
+    let worker = IssueWorker::new(turn, on);
+    let progress: Rc<dyn Fn(terminal::Progress)> = Rc::new(|_| {});
+    let answer = coder_delegate::issue::run(&worker, request, reference, progress, &recorder).await;
+    worker.delegated(&answer, number)
+}
+
+/// Microcoder as the issue flow's worker: each session is a Microcoder
+/// turn in the flow's checkout, on the turn's providers with failover.
+pub struct IssueWorker {
+    turn: Turn,
+    on: Rc<dyn Fn(Update)>,
+    /// The no-capacity sentence of the first session, when no session had
+    /// worked before it.
+    no_capacity: RefCell<Option<String>>,
+    commands: std::cell::Cell<usize>,
+    usage: RefCell<Usage>,
+    model: RefCell<Option<String>>,
+    /// Whether any session did work: a no-capacity ending before any
+    /// ends the flow with the no-capacity sentence.
+    worked: std::cell::Cell<bool>,
+}
+
+impl IssueWorker {
+    /// A worker for `turn`'s providers, reporting to `on`.
+    #[must_use]
+    pub fn new(turn: Turn, on: Rc<dyn Fn(Update)>) -> Self {
+        IssueWorker {
+            turn,
+            on,
+            no_capacity: RefCell::new(None),
+            commands: std::cell::Cell::new(0),
+            usage: RefCell::new(Usage::default()),
+            model: RefCell::new(None),
+            worked: std::cell::Cell::new(false),
+        }
+    }
+
+    /// The flow's answer in the door's terms.
+    #[must_use]
+    pub fn delegated(&self, answer: &terminal::Answer, number: u64) -> Delegated {
+        let failure = self
+            .no_capacity
+            .borrow()
+            .clone()
+            .map(GenerateError::NoCapacity);
+        let usage = *self.usage.borrow();
+        Delegated {
+            text: answer.report.summary.result.clone().unwrap_or_default(),
+            failure,
+            usage: Some(usage),
+            cost_usd: answer.cost_usd(),
+            steps: answer.steps.clone(),
+            summary: json!({
+                "agent": WORD,
+                "issue": number,
+                "status": answer.report.status.word(),
+                "stuck": answer.stuck,
+                "summaries": answer.summaries,
+            }),
+            model: self
+                .model
+                .borrow()
+                .clone()
+                .unwrap_or_else(|| WORD.to_string()),
+            commands: self.commands.get(),
+        }
+    }
+}
+
+impl coder_delegate::issue::Worker<()> for IssueWorker {
+    async fn answer(
+        &self,
+        request: &terminal::Request,
+        _on: Rc<dyn Fn(terminal::Progress)>,
+    ) -> terminal::Answer {
+        use coder_delegate::delegate::{Agent, Briefing, Report, Status, Summary};
+        let directions = if request.review {
+            format!(
+                "{} {}",
+                terminal::ISSUE_DIRECTIONS,
+                terminal::REVIEW_DIRECTIONS
+            )
+        } else {
+            terminal::ISSUE_DIRECTIONS.to_string()
+        };
+        let task = format!("{}\n\n{directions}", request.request.trim());
+        let turn = Turn {
+            request: task.clone(),
+            earlier: request.earlier.clone(),
+            read_only: request.read_only,
+            workdir: request.workdir.clone(),
+            max_seconds: ISSUE_SECONDS,
+            max_steps: ISSUE_MAX_STEPS,
+            max_usd: ISSUE_MAX_USD,
+            ask: false,
+            issues: false,
+            ..self.turn.clone()
+        };
+        let done = answer(turn, self.on.clone()).await;
+        self.commands.set(self.commands.get() + done.commands);
+        if let Some(usage) = done.usage {
+            let mut total = self.usage.borrow_mut();
+            total.input_tokens += usage.input_tokens;
+            total.output_tokens += usage.output_tokens;
+        }
+        let status = match &done.failure {
+            None => {
+                self.worked.set(true);
+                Status::Answered
+            }
+            Some(GenerateError::NoCapacity(sentence)) => {
+                if !self.worked.get() && self.no_capacity.borrow().is_none() {
+                    *self.no_capacity.borrow_mut() = Some(sentence.clone());
+                }
+                Status::Refused(sentence.clone())
+            }
+            Some(failure) => Status::Harness(failure.to_string()),
+        };
+        let provider = self
+            .turn
+            .providers
+            .iter()
+            .find(|state| state.model == done.model);
+        if done.model != WORD {
+            *self.model.borrow_mut() = Some(done.model.clone());
+        }
+        let text = if done.text.is_empty() {
+            done.failure
+                .as_ref()
+                .map(ToString::to_string)
+                .unwrap_or_default()
+        } else {
+            done.text.clone()
+        };
+        terminal::Answer {
+            report: Report {
+                status,
+                summary: Summary {
+                    has_result: true,
+                    result: Some(text.clone()),
+                    is_error: Some(done.failure.is_some()),
+                    total_cost_usd: done.cost_usd,
+                    ..Summary::default()
+                },
+                milliseconds: 0,
+                stderr: String::new(),
+                stream: None,
+            },
+            briefing: Briefing {
+                text: task,
+                cap: 0,
+                included: Vec::new(),
+                omitted: Vec::new(),
+            },
+            steps: done.steps,
+            usage: json!({"cost": {"amount_usd": done.cost_usd}}),
+            session_id: None,
+            resumed: false,
+            agent: match provider.map(|state| state.provider) {
+                Some(Provider::Claude) => Agent::ClaudeCode,
+                _ => Agent::Codex,
+            },
+            model: done.model,
+            boundary: if request.read_only {
+                "read-only"
+            } else {
+                "workspace-writable"
+            }
+            .to_string(),
+            summaries: if done.failure.is_none() && !text.trim().is_empty() {
+                vec![text]
+            } else {
+                Vec::new()
+            },
+            stuck: false,
+        }
+    }
+
+    fn runs(&self) -> Option<PathBuf> {
+        coder_delegate::credentials::openagents_dir().map(|home| home.join("coder").join("issues"))
+    }
 }

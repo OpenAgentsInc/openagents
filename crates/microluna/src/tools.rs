@@ -970,26 +970,7 @@ pub fn withhold_credentials(command: &mut std::process::Command) {
     }
 }
 
-/// A variable a model's command must not see: a named credential, any
-/// `*_API_KEY`, `*_TOKEN`, or `*_SECRET`, the Codex login's path, or the
-/// host's policy manifest.
-pub fn is_withheld(name: &str) -> bool {
-    const NAMED: &[&str] = &[
-        "OPENAGENTS_API_KEY",
-        "TYPESAFE_API_KEY",
-        "CLAUDE_CODE_OAUTH_TOKEN",
-        "ANTHROPIC_API_KEY",
-        "ANTHROPIC_AUTH_TOKEN",
-        "OPENAI_API_KEY",
-        "CODEX_AUTH_JSON_PATH",
-        "CODER_ONE_POLICY",
-    ];
-    let upper = name.to_ascii_uppercase();
-    NAMED.contains(&upper.as_str())
-        || upper.ends_with("_API_KEY")
-        || upper.ends_with("_TOKEN")
-        || upper.ends_with("_SECRET")
-}
+pub use coder_delegate::seal::is_withheld;
 
 #[cfg(test)]
 mod tests {

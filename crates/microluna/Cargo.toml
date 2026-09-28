@@ -11,6 +11,7 @@ atif = { path = "../atif" }
 base64 = "0.22"
 libc = "0.2"
 codex-transport = { path = "../codex-transport" }
+coder-delegate = { path = "../coder-delegate" }
 coder-boundary = { path = "../coder-boundary" }
 futures-util = "0.3"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }

@@ -179,12 +179,39 @@ a delegate tool, and the door is chosen before a turn generates a word.
 
 ## A turn that works an issue
 
-The issue flow in `coder_one::issue_turn`, which clones a repository,
-works an issue on a new branch, and opens a draft pull request, ran on
-Microluna's loop. Microcoder replaced Microluna in this door on
-2026-09-28, so the terminal no longer starts the issue flow. Work sent
-from the OpenAgents phone app runs through `microcoder repository`
-instead; see [host auto-start](host-autostart.md).
+When a turn asks to work a GitHub issue, such as "work on #9597", or "do
+it" after a reply that proposed one, and the operator's permit runs
+commands, the door runs the issue flow on Microcoder
+([#9890](https://github.com/OpenAgentsInc/openagents/issues/9890)). Code
+finds the issue references in the request and the conversation (`#N`,
+`issue N`, or a GitHub issue URL), and Jev chooses among them or answers
+none; a turn that names no issue asks Jev nothing, and a turn without a
+Jev key never starts the flow.
+
+The flow is `coder_delegate::issue`, the same one Coder One runs on
+Microluna:
+
+1. It fetches the issue with `gh`, then creates a worktree of the local
+   checkout on a new `coder/issue-N-…` branch from `origin`'s default
+   branch, or clones the repository, under `~/.openagents/coder/issues/`.
+2. A Microcoder turn works the issue in that checkout, told to make the
+   change, add and run the tests, and not commit. It can write only the
+   checkout. Each session of the flow is bounded at 80 steps, $5.00, and
+   1,800 seconds, and never asks the user a question.
+3. When the work finished and it changed Rust code with callers, a review
+   session checks the callers, then the host's gate runs: the changed
+   packages' tests inside a boundary with credentials withheld, and the
+   style, figure, link, and plain-language checks. Up to three fix sessions
+   follow while the gate finds problems.
+4. The host commits, pushes the branch, and opens a draft pull request
+   whose body lists what the gate still finds.
+
+Every session generates through the door's providers with the same
+failover: a usage or rate-limit refusal is recorded and the session goes
+on with the next provider. With no provider that has capacity, the turn
+ends before anything is checked out, with the plain no-capacity sentence.
+Work sent from the OpenAgents phone app runs through `microcoder
+repository` instead; see [host auto-start](host-autostart.md).
 
 ## What the terminal shows
 

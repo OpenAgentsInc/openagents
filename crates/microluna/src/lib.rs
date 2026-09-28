@@ -38,7 +38,7 @@ pub mod finish;
 pub mod openrouter;
 pub mod patch;
 pub mod remote;
-pub mod seal;
+pub use coder_delegate::seal;
 pub mod session;
 pub mod tools;
 

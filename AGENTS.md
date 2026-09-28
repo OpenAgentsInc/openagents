@@ -394,7 +394,9 @@ uses, and marks which are implemented and which are only specified.
   briefing, and Claude Code or Codex when one is installed, signed in, and
   has capacity, with the Open Responses door as the fallback. The permit
   maps to its `coder-boundary` boundary, and `coder-worker` never reaches
-  it. Read `docs/coder/runtime/delegate-door.md` before changing it.
+  it. A turn that asks to work a GitHub issue runs the issue flow on
+  Microcoder, ending in a draft pull request, when the operator's permit
+  runs commands. Read `docs/coder/runtime/delegate-door.md` before changing it.
   `scripts/install-coder.sh` installs the binary as `coder`, and
   `coder doctor` says which door a turn uses and why.
   `docs/coder/guides/headless.md` covers the headless flags and
@@ -468,7 +470,8 @@ uses, and marks which are implemented and which are only specified.
   Claude Code and Codex adapters, the probe battery and Jev's judge, the
   briefing, the policy sections a turn reads, and the terminal turn
   (`coder_delegate::terminal`), with an `Engine` hook an in-process loop
-  answers through. Coder One re-exports each module under its old path.
+  answers through, and the issue flow (`coder_delegate::issue`), which runs
+  on any `Worker`: Microcoder in Coder's door, Microluna in Coder One. Coder One re-exports each module under its old path.
   It must not depend on `crates/microluna`; `cargo tree -p coder -i
   microluna` finds no package.
 - `crates/coder-one` — Coder One, a minimal standalone agent that turns a

@@ -3,7 +3,7 @@
 //!
 //! An evaluation that replays a past issue is worthless if the model can
 //! read the closed issue and its merged fix. [`Seal`] closes the two ways
-//! a command would do that. Every command a sealed [`crate::Workspace`]
+//! a command would do that. Every command a sealed Microluna workspace
 //! runs gets:
 //!
 //! - no GitHub credential: every `GH_*` and `GITHUB_*` variable is
@@ -17,6 +17,9 @@
 //!   what's already fetched instead of failing on the index.
 //!
 //! Git keeps working on the local checkout.
+//!
+//! Moved from Microluna, which re-exports it; the issue flow's test gate
+//! seals its commands the same way.
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
@@ -123,7 +126,7 @@ impl Seal {
     }
 
     /// Sets `command`'s environment as the module docs say. The network
-    /// half is the boundary's, not this: see [`crate::Workspace::sealed_by`].
+    /// half is the boundary's, not this: see Microluna's `Workspace::sealed_by`.
     pub fn apply(&self, command: &mut Command) {
         for (name, _) in std::env::vars_os() {
             if name.to_str().is_some_and(is_github) {
@@ -162,6 +165,27 @@ impl Seal {
 pub fn is_github(name: &str) -> bool {
     let upper = name.to_ascii_uppercase();
     upper.starts_with("GH_") || upper.starts_with("GITHUB_")
+}
+
+/// A variable a model's command must not see: a named credential, any
+/// `*_API_KEY`, `*_TOKEN`, or `*_SECRET`, the Codex login's path, or the
+/// host's policy manifest.
+pub fn is_withheld(name: &str) -> bool {
+    const NAMED: &[&str] = &[
+        "OPENAGENTS_API_KEY",
+        "TYPESAFE_API_KEY",
+        "CLAUDE_CODE_OAUTH_TOKEN",
+        "ANTHROPIC_API_KEY",
+        "ANTHROPIC_AUTH_TOKEN",
+        "OPENAI_API_KEY",
+        "CODEX_AUTH_JSON_PATH",
+        "CODER_ONE_POLICY",
+    ];
+    let upper = name.to_ascii_uppercase();
+    NAMED.contains(&upper.as_str())
+        || upper.ends_with("_API_KEY")
+        || upper.ends_with("_TOKEN")
+        || upper.ends_with("_SECRET")
 }
 
 #[cfg(test)]

@@ -28,8 +28,8 @@ use jev::Threshold;
 use serde_json::json;
 
 pub use coder_delegate::decision::{
-    EVIDENCE_EDIT_TARGET, EVIDENCE_YES, JUDGE_READY, PACK_SELECTED, SYSTEM_SELECT, Setting,
-    TERMINAL_ASKS_ONLY,
+    EVIDENCE_EDIT_TARGET, EVIDENCE_YES, ISSUE_TURN_DEPENDS, ISSUE_TURN_PLAIN, JUDGE_READY,
+    PACK_SELECTED, SYSTEM_SELECT, Setting, TERMINAL_ASKS_ONLY,
 };
 
 /// `stall.next`: the lowest probability of the pick for a next-step
@@ -39,16 +39,6 @@ pub const STALL_NEXT: Setting = Setting::new("stall.next", crate::stall::NEXT_P)
 /// `grade.faithful`: the probability at or above which a line's
 /// expectation follows.
 pub const GRADE_FAITHFUL: Setting = Setting::new("grade.faithful", crate::grade::THRESHOLD);
-
-/// `issue_turn.depends`: how sure Jev must be that a place depends on a
-/// changed count to flag it.
-pub const ISSUE_TURN_DEPENDS: Setting =
-    Setting::new("issue_turn.depends", crate::issue_turn::DEPENDS_FLAG);
-
-/// `issue_turn.plain`: how sure Jev must be that a newcomer understands a
-/// text for it to pass.
-pub const ISSUE_TURN_PLAIN: Setting =
-    Setting::new("issue_turn.plain", crate::issue_turn::PLAIN_FLAG);
 
 /// `micro.parallel.shared`: the probability at which two units share a
 /// file, for planning.

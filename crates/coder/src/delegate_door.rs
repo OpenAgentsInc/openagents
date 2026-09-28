@@ -667,6 +667,9 @@ pub struct DelegateDoor {
     session: Mutex<Option<String>>,
     /// Scripted Microcoder replies per provider, for a test.
     script: Option<Vec<(Provider, microcoder::Script)>>,
+    /// Whether a turn that asks to work a GitHub issue runs the issue flow:
+    /// the operator's permit runs commands.
+    issues: bool,
     /// The capacity book's directory, which Microcoder reads before each
     /// turn and writes when a provider refuses.
     book: PathBuf,
@@ -759,6 +762,7 @@ impl DelegateDoor {
             jev_source,
             session: Mutex::new(None),
             script: None,
+            issues: crate::permit::Permit::operator().executes(),
             book: capacity_dir().unwrap_or_else(std::env::temp_dir),
             now: microcoder::now,
             turns: AtomicUsize::new(0),
@@ -771,6 +775,14 @@ impl DelegateDoor {
     #[must_use]
     pub fn reading_capacity_in(mut self, dir: PathBuf) -> Self {
         self.book = dir;
+        self
+    }
+
+    /// The same door, starting the issue flow for a turn that asks to work
+    /// an issue only when `on`.
+    #[must_use]
+    pub fn issues(mut self, on: bool) -> Self {
+        self.issues = on;
         self
     }
 
@@ -1002,6 +1014,13 @@ impl DelegateDoor {
             providers,
             script: self.script.clone(),
             max_seconds: deadline().as_secs(),
+            max_steps: microcoder::MAX_STEPS,
+            max_usd: microcoder::MAX_USD,
+            ask: true,
+            // The issue flow works in a checkout of its own and opens a
+            // draft pull request, so the operator's permit governs it, not
+            // this turn's route.
+            issues: self.issues,
             now: self.now,
         };
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<FromLoop>();
@@ -1019,7 +1038,7 @@ impl DelegateDoor {
                     }
                 };
                 let progress = tx.clone();
-                let done = runtime.block_on(microcoder::answer(
+                let done = runtime.block_on(microcoder::respond(
                     turn,
                     Rc::new(move |update| {
                         let _ = progress.send(FromLoop::Update(update));
@@ -2077,6 +2096,196 @@ echo "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"num_turn
             state.describe(),
             "Vertex can't be used (no Vertex access token)"
         );
+    }
+
+    /// A Microcoder turn for the issue flow's tests, over `providers`, with
+    /// the capacity book in `dir`.
+    fn issue_turn(
+        dir: &Path,
+        providers: Vec<ProviderState>,
+        script: Vec<(Provider, Vec<microcoder::Scripted>)>,
+    ) -> microcoder::Turn {
+        microcoder::Turn {
+            request: "work on #1".to_string(),
+            earlier: String::new(),
+            read_only: false,
+            workdir: dir.join("work"),
+            jev: None,
+            jev_missing: "no Jev key in a test".to_string(),
+            book: dir.join("tasks"),
+            providers,
+            script: Some(
+                script
+                    .into_iter()
+                    .map(|(provider, replies)| {
+                        (
+                            provider,
+                            std::sync::Arc::new(std::sync::Mutex::new(replies.into())),
+                        )
+                    })
+                    .collect(),
+            ),
+            max_seconds: 60,
+            max_steps: microcoder::ISSUE_MAX_STEPS,
+            max_usd: microcoder::ISSUE_MAX_USD,
+            ask: false,
+            issues: true,
+            now: at_two_thousand,
+        }
+    }
+
+    fn git(dir: &Path, args: &[&str]) {
+        let status = std::process::Command::new("git")
+            .args(args)
+            .current_dir(dir)
+            .status()
+            .unwrap();
+        assert!(status.success(), "git {args:?}");
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn the_issue_flow_works_on_microcoder_and_fails_over_mid_session() {
+        let dir = tempfile::tempdir().unwrap();
+        let repo = dir.path().join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        if let Err(why) = boundary_available(&repo) {
+            eprintln!("skipped: {why}");
+            return;
+        }
+        git(&repo, &["init", "-q"]);
+        git(&repo, &["config", "user.email", "test@example.com"]);
+        git(&repo, &["config", "user.name", "test"]);
+        git(&repo, &["commit", "--allow-empty", "-qm", "base"]);
+        let script = vec![
+            (Provider::Codex, vec![Err(codex_refusal())]),
+            (
+                Provider::Claude,
+                vec![
+                    Ok(running("printf done > note.txt")),
+                    Ok(finish("Wrote note.txt.")),
+                ],
+            ),
+        ];
+        let turn = issue_turn(dir.path(), providers(true, false, true), script);
+        let lines = Rc::new(std::cell::RefCell::new(Vec::new()));
+        let heard = lines.clone();
+        let worker = microcoder::IssueWorker::new(
+            turn,
+            Rc::new(move |update| {
+                if let Update::Line(line) = update {
+                    heard.borrow_mut().push(line);
+                }
+            }),
+        );
+        let reference = coder_delegate::issue::Reference {
+            repository: Some("example/example".to_string()),
+            number: 1,
+        };
+        let prepared = coder_delegate::issue::Prepared {
+            inner: terminal::Request {
+                workdir: repo.clone(),
+                request: "# Issue #1: Add a note\n\nWrite note.txt saying done.".to_string(),
+                earlier: String::new(),
+                resume: None,
+                read_only: false,
+                clarify: false,
+                agent: Cli::Codex,
+                model: None,
+                binary: None,
+                credential: Credential::Missing,
+                jev: None,
+                artifacts: dir.path().join("artifacts"),
+                issues: false,
+                issue: true,
+                review: false,
+                extra: (),
+            },
+            workdir: repo.clone(),
+            source: None,
+            branch: "coder/issue-1-test".to_string(),
+            issue: coder_delegate::issue::Fetched {
+                url: "https://github.com/example/example/issues/1".to_string(),
+                title: "Add a note".to_string(),
+                body: "Write note.txt saying done.".to_string(),
+            },
+        };
+        let (answer, _) = coder_delegate::issue::work(
+            &worker,
+            prepared,
+            reference,
+            Rc::new(|_| {}),
+            &coder_delegate::record::Recorder::default(),
+            false,
+        )
+        .await;
+        // The session finished on Claude after Codex refused mid-session.
+        assert_eq!(
+            std::fs::read_to_string(repo.join("note.txt")).unwrap(),
+            "done"
+        );
+        let result = answer.report.summary.result.clone().unwrap_or_default();
+        assert!(result.contains("Wrote note.txt."), "{result}");
+        assert!(result.contains("Published nothing"), "{result}");
+        let book = capacity::Book::load(&dir.path().join("tasks"));
+        assert_eq!(
+            book.blocking(Provider::Codex, 2_000),
+            Some(&codex_refusal())
+        );
+        let switched = answer.steps.iter().any(|step| {
+            serde_json::to_value(step)
+                .unwrap()
+                .to_string()
+                .contains("route_switch")
+        });
+        assert!(switched, "no route_switch step");
+        let done = worker.delegated(&answer, 1);
+        assert!(done.failure.is_none(), "{:?}", done.failure);
+        assert_eq!(done.commands, 1);
+        assert_eq!(done.model, microcoder::CLAUDE_MODEL);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn with_no_provider_the_issue_flow_ends_before_it_checks_anything_out() {
+        let dir = tempfile::tempdir().unwrap();
+        let turn = issue_turn(dir.path(), providers(true, true, false), Vec::new());
+        let request = terminal::Request {
+            workdir: dir.path().to_path_buf(),
+            request: "work on #1".to_string(),
+            earlier: String::new(),
+            resume: None,
+            read_only: false,
+            clarify: false,
+            agent: Cli::Codex,
+            model: None,
+            binary: None,
+            credential: Credential::Missing,
+            jev: None,
+            artifacts: dir.path().join("artifacts"),
+            issues: true,
+            issue: false,
+            review: false,
+            extra: (),
+        };
+        let reference = coder_delegate::issue::Reference {
+            repository: Some("example/example".to_string()),
+            number: 1,
+        };
+        let done = microcoder::issue(
+            turn,
+            &request,
+            reference,
+            Rc::new(|_| {}),
+            coder_delegate::record::Recorder::default(),
+        )
+        .await;
+        let Some(GenerateError::NoCapacity(sentence)) = &done.failure else {
+            panic!("{:?}", done.failure);
+        };
+        assert!(
+            sentence.contains("the Codex login is out of its usage limit until"),
+            "{sentence}"
+        );
+        assert!(!dir.path().join("coder").exists());
     }
 
     #[tokio::test]
