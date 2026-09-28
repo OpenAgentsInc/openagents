@@ -179,6 +179,24 @@ pub const CODEX_EXEC: Steering = Steering {
     ],
 };
 
+/// The local Devin CLI driven over ACP (`devin acp`), as a repository
+/// run's engine. ACP takes one prompt at a time per session: a message for
+/// a running turn is not delivered into it. `session/cancel` ends the turn
+/// as `cancelled`, and the next turn reattaches to the same Devin session
+/// with `session/load` and prompts it with the message, so the steer is
+/// consumed when that turn starts.
+pub const DEVIN_ACP: Steering = Steering {
+    adapter: "devin-acp",
+    native: Native::TurnBoundary,
+    emulation: Some(Emulation::CancelAndContinue),
+    acknowledgment: Acknowledgment::NextTurnStart,
+    limitations: &[
+        "ACP v1 takes one session/prompt at a time; a running turn takes no message.",
+        "A new turn reattaches the same Devin session with session/load and prompts it.",
+        "Emulation sends session/cancel, stops the process group, and continues in the next turn.",
+    ],
+};
+
 /// Microluna in process.
 pub const MICROLUNA: Steering = Steering {
     adapter: "microluna",
@@ -205,6 +223,15 @@ mod tests {
             Ok(Plan::CancelAndContinue)
         );
         assert_eq!(
+            DEVIN_ACP.admit(Turn::Running, Request::Native),
+            Err(Refusal::Unsupported)
+        );
+        assert_eq!(
+            DEVIN_ACP.admit(Turn::Running, Request::Emulated),
+            Ok(Plan::CancelAndContinue)
+        );
+        assert!(DEVIN_ACP.acknowledgment.confirms_consumption());
+        assert_eq!(
             MICROLUNA.admit(Turn::Running, Request::Native),
             Err(Refusal::Unsupported)
         );
@@ -226,7 +253,7 @@ mod tests {
 
     #[test]
     fn a_steer_for_an_ended_turn_becomes_a_new_turn() {
-        for steering in [CLAUDE_CODE, CODEX_EXEC] {
+        for steering in [CLAUDE_CODE, CODEX_EXEC, DEVIN_ACP] {
             for request in [Request::Native, Request::Emulated] {
                 assert_eq!(steering.admit(Turn::Ended, request), Ok(Plan::NewTurn));
             }

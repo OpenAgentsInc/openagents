@@ -231,7 +231,10 @@ context records the task revision it read, and the run's trace records each
 correction it consumed as its own System step with a `steer_consumed`
 extension (the correction's revision and reason, the adapter, and the
 acknowledgment), after the user step and before the admission step.
-The repository adapter also lists its row under `capabilities.steering`.
+The repository adapter also lists its row under `capabilities.steering`. A
+grant whose route is the Devin CLI lists `coder_delegate::steering::DEVIN_ACP`
+instead: also `turn_boundary` with `next_turn_start`, with cancel and continue
+as its emulation (see [the Devin route](devin.md#steering)).
 
 Accepting a correction is not consuming it. `Task::unconsumed_steers` is the
 ledger of routed corrections that no admitted run has read yet: those newer

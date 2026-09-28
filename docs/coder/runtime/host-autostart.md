@@ -27,7 +27,7 @@ coder host autostart on --workspace openagents --max-running 1
 | `--workspace LABEL` | Required | A workspace label the host admits, from `coder host init` or `coder link setup --workspace`. Repeat for more. |
 | `--max-running N` | `1` | At most N auto-started tasks run at once, 1 to 8. The rest wait queued. |
 | `--model ID` | `gpt-6-luna` | The Codex model each eligible task records and its grant admits, when no `--route` is given. |
-| `--route PROVIDER:MODEL` | None | An admitted provider (`codex` or `claude`; repository runs don't generate through `vertex`) and model, in preference order. Repeat for more, up to five. The first route's model is the one each task records. Use instead of `--model`. See [Routes and capacity](#routes-and-capacity). |
+| `--route PROVIDER:MODEL` | None | An admitted provider (`codex`, `claude`, or `devin`; repository runs don't generate through `vertex`) and model, in preference order. A `devin` route hands the whole turn to the local Devin CLI; see [the Devin route](devin.md). Repeat for more, up to five. The first route's model is the one each task records. Use instead of `--model`. See [Routes and capacity](#routes-and-capacity). |
 | `--probe-usage` | Off | Read each admitted provider's usage windows before routing, with its local login, and prefer a route below the threshold. See [Usage probes](#usage-probes). |
 | `--usage-threshold PERCENT` | `90` | The utilization, 1 to 100, at or above which a probed provider is passed over. Implies `--probe-usage`. |
 | `--effort LEVEL` | `medium` | `low`, `medium`, `high`, or `xhigh`, for every route. |
@@ -122,7 +122,10 @@ coder host autostart on --workspace openagents \
 
 A Claude route's model is the exact name Claude Code reports for the served
 model, because the engine refuses a reply from a model other than the admitted
-one. A policy written before routes existed has one route, the Codex login
+one. A Devin route (`devin:default`, or `devin:MODEL` with a model name the
+Devin CLI lists) hands the whole turn to the local Devin CLI over ACP instead of
+the Microcoder loop; [the Devin route](devin.md) covers its access, follow-up
+turns, and capacity. A policy written before routes existed has one route, the Codex login
 with its `model`, and keeps exactly that meaning.
 
 Each start chooses its route when it starts, not when the task was created:
@@ -130,7 +133,8 @@ Each start chooses its route when it starts, not when the task was created:
 1. **Connected.** With more than one route, the host skips a provider without
    a usable local login: a Codex login in `~/.codex/auth.json` (or
    `$CODEX_HOME`) whose access token is not about to expire, or a `claude`
-   binary with a Claude Code sign-in. The probe makes no network request and
+   binary with a Claude Code sign-in, or a `devin` binary with Devin's stored
+   CLI login. The probe makes no network request and
    reads no credential into a log. A one-route policy skips the probe, as
    before, and a login problem shows in the task's diagnostic file.
 2. **Capacity.** The host skips a provider whose usage or rate limit holds in

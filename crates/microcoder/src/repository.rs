@@ -416,10 +416,56 @@ fn client(
     }
 }
 
+/// One stage of a run: consecutive admitted model routes the loop fails
+/// over among, or one Devin route that takes the whole turn.
+enum Stage<T> {
+    Loop(Vec<(GrantRoute, Client<T>)>),
+    Devin(GrantRoute, PathBuf),
+}
+
+/// The admitted routes as stages, in preference order, and the routes that
+/// cannot be used on this host with why. The primary route must be usable.
+fn stages(
+    routes: Vec<GrantRoute>,
+    access: coder::task::adapter::Access,
+    session: &str,
+) -> Result<
+    (
+        Vec<Stage<codex_transport::codex::CodexTransport>>,
+        Vec<Value>,
+    ),
+    String,
+> {
+    let mut stages: Vec<Stage<_>> = Vec::new();
+    let mut unavailable = Vec::new();
+    for (index, route) in routes.into_iter().enumerate() {
+        let built = if Provider::from_config(&route.provider) == Some(Provider::Devin) {
+            devin::binary().map(|program| Stage::Devin(route.clone(), program))
+        } else {
+            client(&route, access, session).map(|client| Stage::Loop(vec![(route.clone(), client)]))
+        };
+        match built {
+            Ok(Stage::Loop(mut lane)) => match stages.last_mut() {
+                Some(Stage::Loop(lanes)) => lanes.append(&mut lane),
+                _ => stages.push(Stage::Loop(lane)),
+            },
+            Ok(stage) => stages.push(stage),
+            Err(why) if index == 0 => return Err(why),
+            Err(why) => unavailable.push(json!({"route":route,"unavailable":why})),
+        }
+    }
+    Ok((stages, unavailable))
+}
+
 /// Construct real clients only after exact configuration validation. Building a
 /// client performs no model call; the host must admit before run starts one.
 /// The primary route's client must build; a fallback that cannot (no login or
 /// no binary here) is left out, and the transcript says why.
+///
+/// A Devin route is its own stage: the Devin CLI takes the whole turn
+/// ([`devin`]). When a stage runs out of capacity (Devin refuses before it
+/// works, or every route of a loop stage refuses), the run moves to the
+/// next stage; the last stage's result is the task's.
 pub async fn execute(
     directory: &Path,
     bytes: &[u8],
@@ -437,15 +483,7 @@ pub async fn execute(
         return Err("The configured decision client differs from the execution grant.".into());
     }
     let session = format!("repository-{}-1", grant.task_id);
-    let mut clients = Vec::new();
-    let mut unavailable = Vec::new();
-    for (index, route) in config.routes().into_iter().enumerate() {
-        match client(&route, config.access, &session) {
-            Ok(client) => clients.push((route, client)),
-            Err(why) if index == 0 => return Err(why),
-            Err(why) => unavailable.push(json!({"route":route,"unavailable":why})),
-        }
-    }
+    let (stages, unavailable) = stages(config.routes(), config.access, &session)?;
     let host = Host::admit(directory, bytes)
         .await
         .map_err(|error| error.to_string())?;
@@ -459,11 +497,108 @@ pub async fn execute(
         );
     }
     let book = host.store().to_path_buf();
-    native::run(host, book, clients, judge.client, session)
+    run_stages(host, book, stages, judge.client, &session)
         .await
         .map_err(|error| error.to_string())
 }
 
+async fn run_stages<T: codex_transport::Transport>(
+    host: Host,
+    book: PathBuf,
+    stages: Vec<Stage<T>>,
+    client: jev::Client,
+    session: &str,
+) -> Result<task::Task, task::Error> {
+    let count = stages.len();
+    let mut refusals: Vec<Refusal> = Vec::new();
+    for (index, stage) in stages.into_iter().enumerate() {
+        let last = index + 1 == count;
+        match stage {
+            Stage::Loop(clients) => {
+                let (state, outcome) =
+                    native::run_stage(&host, book.clone(), clients, client.clone(), session)
+                        .await?;
+                if matches!(outcome.ending, Ending::NoCapacity { .. }) && !last && !host.cancelled()
+                {
+                    continue;
+                }
+                return finish(host, state, outcome);
+            }
+            Stage::Devin(route, program) => {
+                let now = task::autostart::unix_now();
+                if let Some(held) = capacity::Book::load(&book).blocking(Provider::Devin, now) {
+                    refusals.push(held.clone());
+                    let _ = host.append(
+                        &Step::said(
+                            Source::System,
+                            "Devin has no recorded capacity; the run passes over its route.",
+                        )
+                        .noting("route_capacity", json!({"route":route,"refusal":held})),
+                    );
+                    if last {
+                        return no_capacity(host, &book, &refusals);
+                    }
+                    continue;
+                }
+                match devin::turn(&host, &route, program).await {
+                    devin::Turn::Ended(ended) => {
+                        let (ending, completed) = ended.ending(host.cancelled());
+                        if let Some(error) = &ended.error {
+                            let _ = host.append(
+                                &Step::said(
+                                    Source::System,
+                                    &format!("Devin could not finish the turn: {error}"),
+                                )
+                                .noting("devin_error", json!({"error": error})),
+                            );
+                        }
+                        let summary = json!({"configuration":host.configuration(),"route":route,
+                            "devin":ended.summary(),"independent_checks":"not_run",
+                            "billing":"unknown","automatic_crash_resume":false});
+                        return host.finish(ending, completed, summary);
+                    }
+                    devin::Turn::Refused(refusal) => {
+                        let recorded = capacity::record(&book, refusal.clone()).err();
+                        refusals.push(refusal.clone());
+                        let book_state = recorded
+                            .map_or_else(|| json!("recorded"), |why| json!({"unrecorded":why}));
+                        let _ = host.append(
+                            &Step::said(
+                                Source::System,
+                                "Devin refused for a usage or rate limit; the run switches to the next admitted route.",
+                            )
+                            .noting(
+                                if last { "route_exhausted" } else { "route_switch" },
+                                json!({"from":route,"refusal":refusal,"capacity_book":book_state}),
+                            ),
+                        );
+                        if last {
+                            return no_capacity(host, &book, &refusals);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    no_capacity(host, &book, &refusals)
+}
+
+/// End a run no stage could serve: `no_capacity`, with the earliest reset.
+fn no_capacity(host: Host, book: &Path, refusals: &[Refusal]) -> Result<task::Task, task::Error> {
+    let now = task::autostart::unix_now();
+    let providers: Vec<Provider> = refusals.iter().map(|refusal| refusal.provider).collect();
+    let resets_at = capacity::Book::load(book).earliest_reset(&providers, now);
+    let configuration = host.configuration().clone();
+    host.finish(
+        capacity::NO_CAPACITY_ENDING,
+        false,
+        json!({"configuration":configuration,
+            "outcome":{"ending":{"reason":"no_capacity","detail":{"resets_at":resets_at}}},
+            "independent_checks":"not_run","billing":"unknown","automatic_crash_resume":false}),
+    )
+}
+
+mod devin;
 pub mod launch;
 mod native;
 #[cfg(test)]

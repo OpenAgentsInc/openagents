@@ -104,10 +104,12 @@ Known engine behavior, as adapter capability rows:
 | Codex, `codex exec` | `turn_boundary` | `next_turn_start` | Reads one prompt and closes its input; a new turn is `codex exec resume`. |
 | ACP agents | `mid_turn` only with an advertised steering extension; otherwise `turn_boundary` | Per the extension; otherwise `next_turn_start` | Without the extension, emulation is cancel and re-prompt at a step boundary, only when chosen. |
 | Microcoder (`microcoder-repository`) | `turn_boundary` | `next_turn_start` | A run reads its instructions once, at admission. |
+| Devin CLI, `devin acp` (a repository run on a `devin` route) | `turn_boundary` | `next_turn_start` | ACP v1 takes one `session/prompt` at a time and Devin 3000.11.3 advertises no steering extension. Emulation is `session/cancel`, then the next turn reattaches the same session with `session/load` and prompts it with the message. |
 
 The adapters in this repository state their rows in code: `coder_one::steering`
-for the Claude Code, Codex, and Microluna session adapters, and
-`coder::task::adapter::STEERING` for Microcoder, which each repository
+for the Claude Code, Codex, and Microluna session adapters,
+`coder::task::adapter::STEERING` for Microcoder, and
+`coder_delegate::steering::DEVIN_ACP` for a Devin route, which each repository
 admission records among its capabilities.
 
 A configuration artifact is `openagents.session-configuration.v1` with

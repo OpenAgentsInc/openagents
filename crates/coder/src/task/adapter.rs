@@ -159,7 +159,10 @@ impl Configuration {
 
     pub fn validate(&self) -> Result<(), Error> {
         if self.schema != CONFIG_SCHEMA
-            || !matches!(self.provider.as_str(), "codex" | "claude" | "synthetic")
+            || !matches!(
+                self.provider.as_str(),
+                "codex" | "claude" | "devin" | "synthetic"
+            )
             || !identifier(&self.model, true)
             || !identifier(&self.decision_model, true)
             || self
@@ -199,6 +202,12 @@ impl Configuration {
         for (index, route) in routes.iter().enumerate() {
             let known = if self.provider == "synthetic" {
                 route.provider == "synthetic"
+            } else if route.provider == "devin" {
+                // Devin is a whole agent behind `devin acp`: no effort, and
+                // the endpoint names the local process, not a URL.
+                route.effort.is_none()
+                    && route.generation_endpoint == super::capacity::DEVIN_ENDPOINT
+                    && self.container.is_none()
             } else {
                 matches!(route.provider.as_str(), "codex" | "claude")
             };
@@ -218,7 +227,12 @@ impl Configuration {
             }
         }
         let endpoints = std::iter::once(&self.decision_endpoint)
-            .chain(routes.iter().map(|route| &route.generation_endpoint))
+            .chain(
+                routes
+                    .iter()
+                    .filter(|route| route.provider != "devin")
+                    .map(|route| &route.generation_endpoint),
+            )
             .collect::<Vec<_>>();
         for endpoint in endpoints {
             if self.provider == "synthetic" {
@@ -255,13 +269,17 @@ impl Configuration {
             "knowledge":"unsupported", "hard_dollar_limit":"unsupported",
             "billing":"unknown",
             "effort_confirmation":"not_reported",
-            "cost_reporting": if self.provider == "claude" { "provider-reported-list-price" } else { "token-list-price" },
+            "cost_reporting": match self.provider.as_str() {
+                "claude" => "provider-reported-list-price",
+                "devin" => "provider-reported-tokens",
+                _ => "token-list-price",
+            },
             "provider_artifact_attestation":"unsupported",
             "container_adapter": if self.container.is_some() { "docker-per-command-workspace-persistence" } else { "not_requested" },
             "provider_failover": if self.fallbacks.is_empty() { "not_requested" } else { "on-capacity-refusal" },
             "frozen_knowledge_context":self.knowledge == "frozen-context",
             "access":self.access.as_str(),
-            "steering": STEERING
+            "steering": if self.provider == "devin" { coder_delegate::steering::DEVIN_ACP } else { STEERING }
         })
     }
 }
@@ -372,6 +390,19 @@ fn last_reply(path: &Path) -> Option<String> {
         }
     }
     reply.map(|text| bounded(&text))
+}
+
+/// One retained trace line, as far as [`Host::earlier_note`] reads it.
+#[derive(Deserialize)]
+struct TraceLine {
+    #[serde(default)]
+    step: Option<TraceStep>,
+}
+
+#[derive(Deserialize)]
+struct TraceStep {
+    #[serde(default)]
+    extensions: serde_json::Map<String, Value>,
 }
 
 /// Full bounded process observation; prompt summaries are a caller's projection.
@@ -697,6 +728,29 @@ impl Host {
         } else {
             self.workspace()
         }
+    }
+
+    /// The owner's login-shell environment, read at admission for a
+    /// full-access run; `None` under the boundary. Credential variables are
+    /// already left out.
+    pub fn login_environment(&self) -> Option<&login::Environment> {
+        self.login.as_ref()
+    }
+
+    /// The newest value an earlier turn of this task recorded under the
+    /// step extension `key`, read from the earlier turns' retained traces,
+    /// newest turn first. An engine that keeps its own session across turns
+    /// (the Devin CLI) finds it here.
+    pub fn earlier_note(&self, key: &str) -> Option<Value> {
+        self.task.earlier.iter().rev().find_map(|run| {
+            let bytes = std::fs::read(self.owner.dir.join(&run.admission.trace_file)).ok()?;
+            bytes
+                .split(|byte| *byte == b'\n')
+                .filter_map(|line| serde_json::from_slice::<TraceLine>(line).ok())
+                .filter_map(|line| line.step)
+                .filter_map(|mut step| step.extensions.remove(key))
+                .next_back()
+        })
     }
 
     pub fn wall_seconds(&self) -> u64 {

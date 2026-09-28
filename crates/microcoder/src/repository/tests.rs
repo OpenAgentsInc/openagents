@@ -17,6 +17,15 @@ fn system_shell() -> std::path::PathBuf {
 }
 
 pub(super) fn fixture() -> (tempfile::TempDir, std::path::PathBuf, Vec<u8>) {
+    fixture_with("fixture-model", |_| {})
+}
+
+/// A fixture task that requests `model`, with its grant's configuration
+/// changed by `change`.
+pub(super) fn fixture_with(
+    model: &str,
+    change: impl FnOnce(&mut Configuration),
+) -> (tempfile::TempDir, std::path::PathBuf, Vec<u8>) {
     let root = tempfile::tempdir().unwrap();
     let repo = root.path().join("repo");
     let checkout = root.path().join("checkout");
@@ -68,7 +77,7 @@ pub(super) fn fixture() -> (tempfile::TempDir, std::path::PathBuf, Vec<u8>) {
                 },
                 configuration: RequestedConfiguration {
                     adapter: NAME.into(),
-                    model: Some("fixture-model".into()),
+                    model: Some(model.into()),
                 },
             },
         },
@@ -108,6 +117,10 @@ pub(super) fn fixture() -> (tempfile::TempDir, std::path::PathBuf, Vec<u8>) {
             access: coder::task::adapter::Access::Boundary,
         }),
     };
+    let mut grant = grant;
+    if let Some(configuration) = grant.adapter_configuration.as_mut() {
+        change(configuration);
+    }
     (root, store, serde_json::to_vec(&grant).unwrap())
 }
 

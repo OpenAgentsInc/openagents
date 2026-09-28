@@ -1,0 +1,736 @@
+//! A repository turn on a Devin route: the local Devin CLI over ACP.
+//!
+//! Devin is a whole coding agent, so the Microcoder step loop does not run:
+//! the host starts `devin acp` in the admitted workspace, opens a session
+//! (or reattaches, with `session/load`, the Devin session an earlier turn of
+//! the same task used), and prompts it with the turn's message. The task
+//! owner keeps its authority and evidence:
+//!
+//! - **Effects**: starting the agent and each prompt are effect intents
+//!   retained before dispatch, with their observations after.
+//! - **Transcript**: Devin's streamed reply, reasoning, and completed tool
+//!   calls are appended to the ATIF transcript as they arrive, bounded.
+//! - **Identity**: the model the session reports must be the route's model;
+//!   `default` admits Devin's own default and records what it reported.
+//! - **Access**: full access is Devin's `bypass` mode. Under the boundary,
+//!   Devin runs with its own `--sandbox`, in `accept-edits` mode (workspace
+//!   edits only), and the host answers every permission request with
+//!   Devin's own `reject` option, so it runs no command it had to ask for.
+//! - **Cancellation**: a cancelled task, or one at its wall deadline, sends
+//!   `session/cancel`, waits a grace, and stops the agent's process group.
+//! - **Capacity**: a prompt refusal Devin marks retryable (a typed
+//!   `data.retryable: true`) is a rate-limit refusal for the capacity book,
+//!   and the run fails over to the next admitted route.
+//! - **Marker**: the session opens with the engine mark in its `_meta`, so
+//!   the chat list leaves Coder's own Devin sessions out.
+//!
+//! Usage is Devin's: tokens from its `usage_update`s and `turn_stats`.
+//! Devin bills in its own credits and reports no dollar price over ACP, so
+//! the turn's cost is unknown.
+
+use std::collections::BTreeMap;
+use std::ffi::OsString;
+use std::path::PathBuf;
+use std::time::Duration;
+
+use acp_client::wire::Update;
+use acp_client::{ClientError, Handler, Opening, PermissionAnswer, PermissionRequest, StopReason};
+use atif::{Call, Outcome as CallOutcome, Source, Step};
+use coder::task::adapter::{Access, Host, Route as GrantRoute};
+use coder::task::capacity::{Kind, Provider, Refusal};
+use serde_json::{Value, json};
+
+/// The step extension that names the Devin session a turn used, which the
+/// next turn of the task reattaches.
+pub const SESSION_NOTE: &str = "devin_session";
+/// The longest Devin may write nothing during a prompt.
+const SILENCE: Duration = Duration::from_secs(20 * 60);
+/// How long a cancelled prompt may take to answer `cancelled`.
+const CANCEL_GRACE: Duration = Duration::from_secs(10);
+/// How long the agent may take to exit before its group is killed.
+const STOP_GRACE: Duration = Duration::from_secs(5);
+/// The most bytes of one tool output the transcript keeps.
+const TOOL_OUTPUT: usize = 16 * 1024;
+/// The most bytes of one reply or reasoning segment the transcript keeps.
+const SEGMENT: usize = 256 * 1024;
+
+/// How a Devin turn ended.
+pub(crate) enum Turn {
+    /// The turn ran; the host finishes the task with this.
+    Ended(Ended),
+    /// Devin refused for capacity before doing the turn's work.
+    Refused(Refusal),
+}
+
+/// What a Devin turn that ran left.
+#[derive(Debug, Default)]
+pub(crate) struct Ended {
+    pub session: Option<String>,
+    pub resumed: bool,
+    pub model: Option<String>,
+    pub stop: Option<StopReason>,
+    pub reply: String,
+    pub error: Option<String>,
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    pub stats: BTreeMap<String, f64>,
+    pub tool_calls: usize,
+}
+
+impl Ended {
+    /// The task's result ending and whether the turn completed.
+    pub fn ending(&self, cancelled: bool) -> (&'static str, bool) {
+        match self.stop {
+            _ if cancelled => ("cancelled_or_host_refusal", false),
+            Some(StopReason::EndTurn) => ("model_finished", true),
+            Some(StopReason::Cancelled) => ("cancelled_or_host_refusal", false),
+            _ => ("engine_incomplete", false),
+        }
+    }
+
+    pub fn summary(&self) -> Value {
+        json!({
+            "engine": "devin-acp",
+            "session": self.session,
+            "resumed": self.resumed,
+            "model": self.model,
+            "stop_reason": self.stop.map(StopReason::as_str),
+            "error": self.error,
+            "tool_calls": self.tool_calls,
+            "usage": {
+                "input_tokens": self.input_tokens,
+                "output_tokens": self.output_tokens,
+                "turn_stats": self.stats,
+            },
+            "cost_usd": null,
+            "cost_unknown": "Devin bills in its own credits and reports no dollar price over ACP",
+        })
+    }
+}
+
+/// A tool call in flight: what it asked for, as its updates arrive.
+struct Pending {
+    title: String,
+    kind: String,
+    tool: Option<String>,
+    input: Value,
+    output: String,
+    started: std::time::Instant,
+}
+
+/// The handler that turns Devin's stream into transcript steps.
+struct Recorder<'a> {
+    host: &'a Host,
+    model: String,
+    access: Access,
+    text: String,
+    thought: String,
+    tools: BTreeMap<String, Pending>,
+    input_tokens: u64,
+    output_tokens: u64,
+    stats: BTreeMap<String, f64>,
+    tool_calls: usize,
+    /// The last reply segment, which is the turn's answer.
+    reply: String,
+}
+
+fn bounded(text: &str, limit: usize) -> String {
+    if text.len() <= limit {
+        return text.to_owned();
+    }
+    let mut end = limit;
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}…", &text[..end])
+}
+
+impl Recorder<'_> {
+    fn append(&self, step: &Step) {
+        if let Err(error) = self.host.append(step) {
+            self.host.fail(error.to_string());
+        }
+    }
+
+    /// Write the reasoning and reply gathered so far as their own steps.
+    fn flush(&mut self) {
+        if !self.thought.trim().is_empty() {
+            let thought = std::mem::take(&mut self.thought);
+            self.append(&Step::thought(&bounded(&thought, SEGMENT)).by(&self.model));
+        }
+        self.thought.clear();
+        if !self.text.trim().is_empty() {
+            let text = bounded(&std::mem::take(&mut self.text), SEGMENT);
+            self.append(&Step::said(Source::Agent, &text).by(&self.model));
+            self.reply = text;
+        }
+        self.text.clear();
+    }
+
+    fn finish_tool(&mut self, id: &str, status: &str) {
+        let Some(pending) = self.tools.remove(id) else {
+            return;
+        };
+        self.flush();
+        self.tool_calls += 1;
+        let outcome = match status {
+            "completed" => CallOutcome::Completed,
+            "cancelled" => CallOutcome::Cancelled,
+            _ => CallOutcome::Failed,
+        };
+        let call = Call {
+            id: id.to_owned(),
+            name: pending.tool.unwrap_or(pending.kind.clone()),
+            arguments: pending.input,
+            output: bounded(&pending.output, TOOL_OUTPUT),
+            outcome,
+            milliseconds: pending
+                .started
+                .elapsed()
+                .as_millis()
+                .try_into()
+                .unwrap_or(u64::MAX),
+            purpose: Some(pending.title),
+            extra: serde_json::Map::new(),
+        };
+        self.append(&Step::called(call).by(&self.model).noting(
+            "devin_tool",
+            json!({"kind": pending.kind, "status": status}),
+        ));
+    }
+}
+
+impl Handler for Recorder<'_> {
+    fn update(&mut self, update: Update) {
+        match update {
+            Update::AgentText(piece) => {
+                if !self.thought.is_empty() {
+                    let thought = std::mem::take(&mut self.thought);
+                    self.append(&Step::thought(&bounded(&thought, SEGMENT)).by(&self.model));
+                }
+                self.text.push_str(&piece);
+            }
+            Update::Thought(piece) => self.thought.push_str(&piece),
+            Update::ToolCall {
+                id,
+                title,
+                kind,
+                raw_input,
+                tool,
+                status,
+            } => {
+                self.flush();
+                self.tools.insert(
+                    id.clone(),
+                    Pending {
+                        title,
+                        kind,
+                        tool,
+                        input: raw_input,
+                        output: String::new(),
+                        started: std::time::Instant::now(),
+                    },
+                );
+                if matches!(status.as_str(), "completed" | "failed") {
+                    self.finish_tool(&id, &status);
+                }
+            }
+            Update::ToolCallUpdate {
+                id,
+                status,
+                title,
+                text,
+            } => {
+                if let Some(pending) = self.tools.get_mut(&id) {
+                    if let Some(title) = title {
+                        pending.title = title;
+                    }
+                    // Devin sends the tool's whole output so far in each
+                    // update, so the latest replaces the earlier.
+                    if let Some(text) = text {
+                        pending.output = text;
+                    }
+                }
+                if let Some(status) = status
+                    && matches!(status.as_str(), "completed" | "failed" | "cancelled")
+                {
+                    self.finish_tool(&id, &status);
+                }
+            }
+            Update::Usage(usage) if !usage.subagent => {
+                self.input_tokens = self
+                    .input_tokens
+                    .saturating_add(usage.input_tokens.unwrap_or_default());
+                self.output_tokens = self
+                    .output_tokens
+                    .saturating_add(usage.output_tokens.unwrap_or_default());
+            }
+            Update::Plan(entries) => {
+                self.flush();
+                self.append(
+                    &Step::said(Source::System, "Devin's plan.")
+                        .noting("devin_plan", json!(entries)),
+                );
+            }
+            _ => {}
+        }
+    }
+
+    fn notification(&mut self, method: &str, params: &Value) {
+        if method == acp_client::devin::TURN_STATS
+            && let Some(stats) = acp_client::devin::TurnStats::parse(params)
+        {
+            self.stats = stats.numbers();
+        }
+    }
+
+    fn permission(&mut self, request: &PermissionRequest) -> PermissionAnswer {
+        // Full access is Devin's bypass mode, which asks nothing; anything
+        // it still asks is allowed. Under the boundary, nothing is.
+        let chosen = match self.access {
+            Access::Full => request.allow(),
+            Access::Boundary => request.reject(),
+        };
+        self.append(
+            &Step::said(Source::System, "Devin asked for a permission.").noting(
+                "devin_permission",
+                json!({"kind": request.tool_call.kind, "title": request.tool_call.title,
+                    "answer": chosen, "access": self.access.as_str()}),
+            ),
+        );
+        chosen.map_or(PermissionAnswer::Cancelled, |option| {
+            PermissionAnswer::Selected(option.to_owned())
+        })
+    }
+}
+
+/// The Devin process's environment: the owner's login environment under
+/// full access, else this process's, less credential variables either way.
+fn environment(host: &Host) -> Vec<(String, String)> {
+    let variables: Vec<(OsString, OsString)> = match host.login_environment() {
+        Some(login) => login.variables.clone(),
+        None => std::env::vars_os().collect(),
+    };
+    variables
+        .into_iter()
+        .filter_map(|(key, value)| Some((key.into_string().ok()?, value.into_string().ok()?)))
+        .filter(|(key, _)| !acp_client::process::is_credential_name(key))
+        .collect()
+}
+
+/// The Devin binary for this host, or why there is none.
+pub(crate) fn binary() -> Result<PathBuf, String> {
+    acp_client::devin::binary(&|name| std::env::var_os(name))
+        .ok_or_else(|| "no devin binary in DEVIN_BIN, PATH, or ~/.local/bin".to_owned())
+}
+
+/// Run one turn on `route` with the Devin binary `program`.
+pub(crate) async fn turn(host: &Host, route: &GrantRoute, program: PathBuf) -> Turn {
+    let access = host.configuration().access;
+    let mut arguments = acp_client::devin::arguments(&route.model);
+    if access == Access::Boundary {
+        arguments.insert(0, "--sandbox".into());
+    }
+    let permission = match access {
+        Access::Full => acp_client::devin::Permission::Bypass,
+        Access::Boundary => acp_client::devin::Permission::AcceptEdits,
+    };
+    let resume = host.earlier_note(SESSION_NOTE).and_then(|note| {
+        note.get("session")
+            .and_then(Value::as_str)
+            .map(str::to_owned)
+    });
+    let opening = Opening {
+        spec: acp_client::process::Spec {
+            program: program.clone(),
+            arguments: arguments.clone(),
+            cwd: host.workspace().to_path_buf(),
+            environment: environment(host),
+        },
+        resume: resume.clone(),
+        meta: Some(acp_client::devin::engine_meta(coder_history_mark())),
+        mode: Some(permission.mode_id().into()),
+    };
+    let mut ended = Ended::default();
+    let sequence = match host.effect(
+        "devin_session",
+        json!({"program": program, "arguments": arguments, "cwd": host.workspace(),
+            "mode": permission.mode_id(), "resume": resume, "model": route.model}),
+    ) {
+        Ok(sequence) => sequence,
+        Err(error) => {
+            ended.error = Some(error.to_string());
+            return Turn::Ended(ended);
+        }
+    };
+    let cancelled = || host.cancelled();
+    let mut session = match acp_client::Session::open(&opening, &cancelled).await {
+        Ok(session) => session,
+        Err(failure) => {
+            let why = failure.to_string();
+            let _ = host.result(sequence, "devin_session", json!({"error": why}));
+            ended.error = Some(why);
+            return Turn::Ended(ended);
+        }
+    };
+    let reported = session.opened.model().map(str::to_owned);
+    ended.session = Some(session.id().to_owned());
+    ended.resumed = session.resumed;
+    ended.model.clone_from(&reported);
+    let observed = json!({"session": session.id(), "pid": session.pid(), "resumed": session.resumed,
+        "resume_refused": session.resume_refused, "model": reported,
+        "agent": session.initialized.agent_info,
+        "mode": session.opened.modes.as_ref().map(|modes| modes.current_mode_id.clone())});
+    if let Err(error) = host.result(sequence, "devin_session", observed) {
+        ended.error = Some(error.to_string());
+        session.close(STOP_GRACE).await;
+        return Turn::Ended(ended);
+    }
+    if let Err(error) = host.append(
+        &Step::said(Source::System, "The Devin session this turn runs in.").noting(
+            SESSION_NOTE,
+            json!({"session": session.id(), "model": reported, "resumed": session.resumed}),
+        ),
+    ) {
+        ended.error = Some(error.to_string());
+        session.close(STOP_GRACE).await;
+        return Turn::Ended(ended);
+    }
+    if !acp_client::devin::admits(&route.model, reported.as_deref()) {
+        host.fail("Devin reported a model different from the admitted model");
+        ended.error = Some(format!(
+            "Requested {}, Devin reported {}; refusing the turn.",
+            route.model,
+            reported.as_deref().unwrap_or("no model")
+        ));
+        session.close(STOP_GRACE).await;
+        return Turn::Ended(ended);
+    }
+    // A reattached session remembers the conversation; a new one is told it.
+    let prompt = if session.resumed {
+        host.prompt().to_owned()
+    } else {
+        host.engine_prompt()
+    };
+    let model = reported.unwrap_or_else(|| route.model.clone());
+    let prompted = match host.effect(
+        "devin_prompt",
+        json!({"session": session.id(), "prompt": prompt, "model": model}),
+    ) {
+        Ok(sequence) => sequence,
+        Err(error) => {
+            ended.error = Some(error.to_string());
+            session.close(STOP_GRACE).await;
+            return Turn::Ended(ended);
+        }
+    };
+    let mut recorder = Recorder {
+        host,
+        model,
+        access,
+        text: String::new(),
+        thought: String::new(),
+        tools: BTreeMap::new(),
+        input_tokens: 0,
+        output_tokens: 0,
+        stats: BTreeMap::new(),
+        tool_calls: 0,
+        reply: String::new(),
+    };
+    let silence = SILENCE.min(Duration::from_secs(host.wall_seconds().max(1)));
+    let result = session
+        .prompt(&prompt, silence, &cancelled, CANCEL_GRACE, &mut recorder)
+        .await;
+    recorder.flush();
+    let pending: Vec<String> = recorder.tools.keys().cloned().collect();
+    for id in pending {
+        recorder.finish_tool(&id, "cancelled");
+    }
+    ended.reply = std::mem::take(&mut recorder.reply);
+    ended.input_tokens = recorder.input_tokens;
+    ended.output_tokens = recorder.output_tokens;
+    ended.stats = std::mem::take(&mut recorder.stats);
+    ended.tool_calls = recorder.tool_calls;
+    let stderr = session.stderr_tail();
+    let group_clear = session.close(STOP_GRACE).await;
+    if !group_clear {
+        host.fail("the Devin process group did not stop");
+    }
+    let refusal = match &result {
+        Ok(reply) => {
+            ended.stop = Some(reply.stop_reason);
+            if ended.input_tokens == 0
+                && let Some(usage) = reply.usage
+            {
+                ended.input_tokens = usage.input_tokens.unwrap_or_default();
+                ended.output_tokens = usage.output_tokens.unwrap_or_default();
+            }
+            None
+        }
+        Err(ClientError::Refused { error, .. })
+            if error.retryable() && ended.tool_calls == 0 && ended.reply.is_empty() =>
+        {
+            Some(Refusal::new(
+                Provider::Devin,
+                Kind::RateLimit,
+                coder::task::autostart::unix_now(),
+                None,
+            ))
+        }
+        Err(error) => {
+            ended.error = Some(error.to_string());
+            None
+        }
+    };
+    let observation = json!({"stop_reason": ended.stop.map(StopReason::as_str),
+        "error": ended.error, "refusal": refusal, "group_clear": group_clear,
+        "input_tokens": ended.input_tokens, "output_tokens": ended.output_tokens,
+        "turn_stats": ended.stats, "tool_calls": ended.tool_calls,
+        "stderr_tail": if ended.error.is_some() { json!(stderr) } else { Value::Null },
+        "cost_usd": null, "billing": "unknown"});
+    if let Err(error) = host.result(prompted, "devin_prompt", observation) {
+        ended.error = Some(error.to_string());
+    }
+    match refusal {
+        Some(refusal) => Turn::Refused(refusal),
+        None => Turn::Ended(ended),
+    }
+}
+
+/// The engine mark Coder's own sessions carry, which the chat list leaves
+/// out.
+fn coder_history_mark() -> &'static str {
+    coder_history::engine::MARK
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::tests::fixture_with;
+    use super::super::{Stage, run_stages};
+    use super::*;
+    use acp_client::replay;
+    use coder::task::adapter::Configuration;
+    use coder::task::{self, Action, Command, Store};
+
+    const MODEL: &str = "swe-2-high";
+
+    fn devin(configuration: &mut Configuration, access: Access) {
+        configuration.provider = "devin".into();
+        configuration.model = MODEL.into();
+        configuration.effort = None;
+        configuration.generation_endpoint = coder::task::capacity::DEVIN_ENDPOINT.into();
+        configuration.decision_endpoint = "https://decision.example.invalid".into();
+        configuration.access = access;
+    }
+
+    fn jev() -> jev::Client {
+        jev::Client::new(
+            jev::Config::default()
+                .api_key("unused-fixture-key")
+                .base_url("https://decision.example.invalid")
+                .default_model("fixture-judge"),
+        )
+        .unwrap()
+    }
+
+    fn route() -> GrantRoute {
+        GrantRoute {
+            provider: "devin".into(),
+            model: MODEL.into(),
+            effort: None,
+            generation_endpoint: coder::task::capacity::DEVIN_ENDPOINT.into(),
+        }
+    }
+
+    async fn run_turn(store: &std::path::Path, grant: &[u8], agent: PathBuf) -> task::Task {
+        let host = Host::admit(store, grant).await.unwrap();
+        let stages: Vec<Stage<codex_transport::codex::CodexTransport>> =
+            vec![Stage::Devin(route(), agent)];
+        run_stages(host, store.to_path_buf(), stages, jev(), "fixture-session")
+            .await
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn a_devin_route_runs_the_recorded_turn_under_full_access() {
+        let (_root, store, grant) = fixture_with(MODEL, |c| devin(c, Access::Full));
+        let agent_dir = tempfile::tempdir().unwrap();
+        let agent = replay::script(agent_dir.path(), &replay::blocks(replay::DEVIN_TURN));
+        let task = run_turn(&store, &grant, agent).await;
+        assert_eq!(task.execution, task::Execution::Finished);
+        let result = task.run.as_ref().unwrap().result.as_ref().unwrap();
+        assert_eq!(result.ending, "model_finished");
+        assert_eq!(result.exit_code, Some(0));
+        let trace = std::fs::read_to_string(store.join("fixture.1.atif.jsonl")).unwrap();
+        for expected in [
+            "Created `hello.txt` with \\\"hi\\\"",
+            "Ran echo, ls",
+            "\"session\":\"cheddar-cashew\"",
+            "\"kind\":\"devin_prompt\"",
+            "Write result.txt containing output.",
+            "\"output_tokens\":95.0",
+        ] {
+            assert!(trace.contains(expected), "missing {expected}");
+        }
+        assert_eq!(
+            replay::arguments(agent_dir.path()),
+            vec!["acp", "--model", MODEL]
+        );
+        let sent = replay::received(agent_dir.path());
+        assert_eq!(sent[1]["method"], "session/new");
+        assert_eq!(
+            sent[1]["params"]["_meta"][acp_client::devin::ENGINE_META_KEY],
+            coder_history::engine::MARK
+        );
+        assert_eq!(sent[2]["params"]["modeId"], "bypass");
+        assert_eq!(
+            sent[3]["params"]["prompt"][0]["text"],
+            "Write result.txt containing output."
+        );
+    }
+
+    #[tokio::test]
+    async fn the_boundary_runs_devin_sandboxed_and_refuses_what_it_asks() {
+        let (_root, store, grant) = fixture_with(MODEL, |c| devin(c, Access::Boundary));
+        let agent_dir = tempfile::tempdir().unwrap();
+        let mut blocks = replay::blocks(replay::DEVIN_TURN);
+        let ask = serde_json::json!({"jsonrpc":"2.0","id":"ask-1","method":"session/request_permission",
+            "params":{"sessionId":"cheddar-cashew","toolCall":{"kind":"execute","title":"Ran echo"},
+            "options":[{"optionId":"allow_once","kind":"allow_once"},{"optionId":"reject_once","kind":"reject_once"}]}});
+        blocks[3].insert(0, ask);
+        let agent = replay::script(agent_dir.path(), &blocks);
+        let task = run_turn(&store, &grant, agent).await;
+        assert_eq!(
+            task.run.as_ref().unwrap().result.as_ref().unwrap().ending,
+            "model_finished"
+        );
+        assert_eq!(
+            replay::arguments(agent_dir.path()),
+            vec!["--sandbox", "acp", "--model", MODEL]
+        );
+        let sent = replay::received(agent_dir.path());
+        assert_eq!(sent[2]["params"]["modeId"], "accept-edits");
+        let answer = sent
+            .iter()
+            .find(|line| line["id"] == "ask-1")
+            .expect("the permission answer");
+        assert_eq!(answer["result"]["outcome"]["optionId"], "reject_once");
+    }
+
+    #[tokio::test]
+    async fn a_follow_up_reattaches_the_same_devin_session() {
+        let (_root, store, grant) = fixture_with(MODEL, |c| devin(c, Access::Full));
+        let first_dir = tempfile::tempdir().unwrap();
+        let first = replay::script(first_dir.path(), &replay::blocks(replay::DEVIN_TURN));
+        let ended = run_turn(&store, &grant, first).await;
+        let follow_up = Command {
+            schema: task::COMMAND_SCHEMA.into(),
+            command_id: "follow-up-fixture".into(),
+            task_id: "fixture".into(),
+            expected_revision: Some(ended.revision),
+            action: Action::Continue {
+                prompt: "Now delete hello.txt.".into(),
+            },
+        };
+        let receipt = Store::open(&store)
+            .unwrap()
+            .apply(&serde_json::to_vec(&follow_up).unwrap())
+            .unwrap();
+        let mut next: task::owner::Grant = serde_json::from_slice(&grant).unwrap();
+        next.expected_revision = receipt.revision;
+        let mut blocks = replay::blocks(replay::DEVIN_TURN);
+        // session/load answers with the session's modes and options, and
+        // no new session ID.
+        let mut loaded = blocks[1].last().unwrap().clone();
+        loaded["result"]
+            .as_object_mut()
+            .unwrap()
+            .remove("sessionId");
+        blocks[1] = vec![loaded];
+        let second_dir = tempfile::tempdir().unwrap();
+        let second = replay::script(second_dir.path(), &blocks);
+        let task = run_turn(&store, &serde_json::to_vec(&next).unwrap(), second).await;
+        assert_eq!(task.turn(), 2);
+        let sent = replay::received(second_dir.path());
+        assert_eq!(sent[1]["method"], "session/load");
+        assert_eq!(sent[1]["params"]["sessionId"], "cheddar-cashew");
+        // The reattached session remembers the conversation: only the new
+        // message is sent.
+        assert_eq!(
+            sent[3]["params"]["prompt"][0]["text"],
+            "Now delete hello.txt."
+        );
+        let trace = std::fs::read_to_string(store.join("fixture.2.atif.jsonl")).unwrap();
+        assert!(trace.contains("\"resumed\":true"));
+    }
+
+    #[tokio::test]
+    async fn a_retryable_refusal_is_recorded_and_ends_without_capacity() {
+        let (_root, store, grant) = fixture_with(MODEL, |c| devin(c, Access::Full));
+        let agent_dir = tempfile::tempdir().unwrap();
+        let mut blocks = replay::blocks(replay::DEVIN_TURN);
+        blocks[3] = vec![serde_json::json!({"jsonrpc":"2.0","id":4,
+            "error":{"code":-32000,"message":"rate limited","data":{"retryable":true}}})];
+        let agent = replay::script(agent_dir.path(), &blocks);
+        let task = run_turn(&store, &grant, agent).await;
+        assert_eq!(
+            task.run.as_ref().unwrap().result.as_ref().unwrap().ending,
+            coder::task::capacity::NO_CAPACITY_ENDING
+        );
+        let now = coder::task::autostart::unix_now();
+        let book = coder::task::capacity::Book::load(&store);
+        assert!(!book.has_capacity(Provider::Devin, now));
+        // The next turn passes over Devin without starting it.
+        let trace = std::fs::read_to_string(store.join("fixture.1.atif.jsonl")).unwrap();
+        assert!(trace.contains("route_exhausted"));
+    }
+
+    #[test]
+    fn a_devin_route_is_closed() {
+        let (_root, _store, grant) = fixture_with(MODEL, |c| devin(c, Access::Full));
+        let grant = task::owner::Grant::parse(&grant).unwrap();
+        let configuration = grant.adapter_configuration.unwrap();
+        configuration.validate().unwrap();
+        let mut effort = configuration.clone();
+        effort.effort = Some("medium".into());
+        assert!(effort.validate().is_err());
+        let mut endpoint = configuration.clone();
+        endpoint.generation_endpoint = "https://api.devin.ai".into();
+        assert!(endpoint.validate().is_err());
+        let mut fallback = configuration.clone();
+        fallback.fallbacks = vec![GrantRoute {
+            provider: "codex".into(),
+            model: "gpt-6-luna".into(),
+            effort: Some("medium".into()),
+            generation_endpoint: coder::task::capacity::Provider::Codex.endpoint().into(),
+        }];
+        fallback.validate().unwrap();
+        assert_eq!(
+            configuration.capabilities()["steering"]["adapter"],
+            "devin-acp"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_model_other_than_the_admitted_one_is_refused() {
+        let (_root, store, grant) = fixture_with("claude-opus-5-5-medium", |c| {
+            devin(c, Access::Full);
+            c.model = "claude-opus-5-5-medium".into();
+        });
+        let agent_dir = tempfile::tempdir().unwrap();
+        let agent = replay::script(agent_dir.path(), &replay::blocks(replay::DEVIN_TURN));
+        let host = Host::admit(&store, &grant).await.unwrap();
+        let mut admitted = route();
+        admitted.model = "claude-opus-5-5-medium".into();
+        let stages: Vec<Stage<codex_transport::codex::CodexTransport>> =
+            vec![Stage::Devin(admitted, agent)];
+        let task = run_stages(host, store.clone(), stages, jev(), "fixture-session")
+            .await
+            .unwrap();
+        let result = task.run.as_ref().unwrap().result.as_ref().unwrap();
+        assert_ne!(result.exit_code, Some(0));
+        // No prompt was sent.
+        let sent = replay::received(agent_dir.path());
+        assert!(sent.iter().all(|line| line["method"] != "session/prompt"));
+    }
+}

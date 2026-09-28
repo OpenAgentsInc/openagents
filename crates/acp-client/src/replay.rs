@@ -38,7 +38,8 @@ pub fn blocks(recording: &str) -> Vec<Vec<Value>> {
 }
 
 /// Write the stand-in for `blocks` into `dir` and return its path. The
-/// script appends each line it reads to `dir/received.jsonl`.
+/// script writes its arguments to `dir/arguments`, one a line, and appends
+/// each line it reads to `dir/received.jsonl`.
 ///
 /// # Panics
 /// The directory cannot be written.
@@ -54,6 +55,7 @@ pub fn script(dir: &Path, blocks: &[Vec<Value>]) -> PathBuf {
         r#"#!/bin/sh
 dir='{dir}'
 n=0
+printf '%s\n' "$@" > "$dir/arguments"
 while IFS= read -r line; do
   printf '%s\n' "$line" >> "$dir/received.jsonl"
   case "$line" in
@@ -76,6 +78,16 @@ done
     std::fs::write(&path, script).expect("script");
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).expect("mode");
     path
+}
+
+/// The arguments the stand-in in `dir` was started with.
+#[must_use]
+pub fn arguments(dir: &Path) -> Vec<String> {
+    std::fs::read_to_string(dir.join("arguments"))
+        .unwrap_or_default()
+        .lines()
+        .map(str::to_owned)
+        .collect()
 }
 
 /// The lines the stand-in in `dir` received, parsed.

@@ -188,48 +188,44 @@ impl<T: codex_transport::Transport> Lane for Native<'_, T> {
     }
 }
 
-pub(super) async fn run<T: codex_transport::Transport>(
-    host: Host,
+/// Run the loop over one stage of admitted model routes, failing over
+/// among them, and return its state and outcome for the caller to finish.
+pub(super) async fn run_stage<T: codex_transport::Transport>(
+    host: &Host,
     book: PathBuf,
     clients: Vec<(GrantRoute, Client<T>)>,
     client: jev::Client,
-    session: String,
-) -> Result<task::Task, task::Error> {
-    let (state, outcome) = {
-        let lanes = clients
-            .into_iter()
-            .map(|(route, client)| {
-                let lane = match client {
-                    Client::Codex(transport) => Native::Codex(crate::models::CodexGenerator {
-                        transport: Transport {
-                            host: &host,
-                            inner: transport,
-                            model: route.model.clone(),
-                            refusal: RefCell::new(None),
-                        },
+    session: &str,
+) -> Result<(State, crate::run::Outcome), task::Error> {
+    let lanes = clients
+        .into_iter()
+        .map(|(route, client)| {
+            let lane = match client {
+                Client::Codex(transport) => Native::Codex(crate::models::CodexGenerator {
+                    transport: Transport {
+                        host,
+                        inner: transport,
                         model: route.model.clone(),
-                        effort: route.effort.clone(),
-                        cache_key: session.clone(),
-                    }),
-                    Client::Claude(generator) => Native::Claude(Claude {
-                        host: &host,
-                        inner: generator,
                         refusal: RefCell::new(None),
-                    }),
-                };
-                (route, lane)
-            })
-            .collect();
-        let journal = Transcript(&host);
-        let generator = failover(&host, &journal, book, lanes, task::autostart::unix_now);
-        generator.record_start();
-        let judge = NativeJudge {
-            host: &host,
-            client,
-        };
-        run_loop(&host, &generator, &judge).await?
-    };
-    finish(host, state, outcome)
+                    },
+                    model: route.model.clone(),
+                    effort: route.effort.clone(),
+                    cache_key: session.to_owned(),
+                }),
+                Client::Claude(generator) => Native::Claude(Claude {
+                    host,
+                    inner: generator,
+                    refusal: RefCell::new(None),
+                }),
+            };
+            (route, lane)
+        })
+        .collect();
+    let journal = Transcript(host);
+    let generator = failover(host, &journal, book, lanes, task::autostart::unix_now);
+    generator.record_start();
+    let judge = NativeJudge { host, client };
+    run_loop(host, &generator, &judge).await
 }
 
 #[cfg(test)]

@@ -187,6 +187,15 @@ The switch is `microcoder_loop::failover`, which Coder's delegate door also
 runs for a terminal or `coder -p` turn over its own provider list, so a
 refusal either one meets holds for the other.
 
+## Devin routes
+
+A route whose provider is `devin` (`"generation_endpoint": "local:devin-acp"`,
+no `effort`) does not generate through the loop: the local Devin CLI takes the
+whole turn over ACP, under the same task owner, grant, and transcript. Each
+Devin route is its own stage, and consecutive `codex` and `claude` routes form
+one loop stage; a stage that runs out of capacity passes the turn to the next.
+A container grant refuses a Devin route. Read [the Devin route](devin.md).
+
 ## Isolated container commands
 
 An optional closed `container` field in `adapter_configuration` selects a local

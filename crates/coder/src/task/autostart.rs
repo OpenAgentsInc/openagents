@@ -318,7 +318,10 @@ impl Policy {
         let route = |route: &Route| adapter::Route {
             provider: route.provider.as_str().into(),
             model: route.model.clone(),
-            effort: route.effort.clone().or_else(|| engine.effort.clone()),
+            // Devin takes no effort: its model names carry their own.
+            effort: (route.provider != Provider::Devin)
+                .then(|| route.effort.clone().or_else(|| engine.effort.clone()))
+                .flatten(),
             generation_endpoint: route.provider.endpoint().into(),
         };
         let primary = route(&order[0]);
@@ -1072,9 +1075,11 @@ pub const USAGE: &str = "usage: coder host autostart COMMAND
      [--probe-usage] [--usage-threshold PERCENT] [--full-access]
                        Start tasks that enrolled devices with `operate` create
                        in these workspaces, at most N at once (default 1).
-                       Each --route admits a provider (codex or claude) and
-                       model, in preference order; a task starts on the
-                       first one that is connected and has capacity.
+                       Each --route admits a provider (codex, claude, or
+                       devin) and model, in preference order; a task starts
+                       on the first one that is connected and has capacity.
+                       A devin route (devin:default, or devin:MODEL) hands
+                       the whole turn to the local Devin CLI over ACP.
                        --probe-usage reads each provider's usage windows
                        with its local login and prefers a route below
                        PERCENT (default 90) used.
@@ -1325,15 +1330,10 @@ fn parse_route(text: &str) -> std::result::Result<Route, String> {
         .split_once(':')
         .ok_or_else(|| format!("usage: --route takes PROVIDER:MODEL, not `{text}`"))?;
     let provider = match Provider::from_config(provider) {
-        Some(provider @ (Provider::Codex | Provider::Claude)) => provider,
+        Some(provider @ (Provider::Codex | Provider::Claude | Provider::Devin)) => provider,
         Some(Provider::Vertex) => {
             return Err(format!(
-                "usage: `{text}`: repository runs don't generate through vertex; use codex or claude"
-            ));
-        }
-        Some(Provider::Devin) => {
-            return Err(format!(
-                "usage: `{text}`: this build does not run repository turns on devin"
+                "usage: `{text}`: repository runs don't generate through vertex; use codex, claude, or devin"
             ));
         }
         Some(Provider::OpenCode) => {
@@ -1343,7 +1343,7 @@ fn parse_route(text: &str) -> std::result::Result<Route, String> {
         }
         None => {
             return Err(format!(
-                "usage: the provider in `{text}` is not codex or claude"
+                "usage: the provider in `{text}` is not codex, claude, or devin"
             ));
         }
     };
@@ -2269,6 +2269,20 @@ mod tests {
         assert_eq!(on(&["--route", "gemini:x"]), 2);
         assert_eq!(on(&["--route", "vertex:qwen/qwen3"]), 2);
         assert_eq!(on(&["--route", "codex:a", "--route", "codex:a"]), 1);
+        // A Devin route takes the whole turn: no effort, and the local
+        // `devin acp` process as its endpoint.
+        assert_eq!(
+            on(&["--route", "devin:default", "--route", "codex:gpt-6-luna"]),
+            0
+        );
+        let policy = Policy::load(&root).unwrap().unwrap();
+        assert_eq!(policy.engine.model, "default");
+        let configuration = policy.configuration(&policy.routes());
+        assert_eq!(configuration.provider, "devin");
+        assert_eq!(configuration.effort, None);
+        assert_eq!(configuration.generation_endpoint, capacity::DEVIN_ENDPOINT);
+        assert_eq!(configuration.fallbacks[0].effort.as_deref(), Some("medium"));
+        configuration.validate().unwrap();
     }
     /// The recorded usage answers: Codex at its limit, Claude at 66%.
     fn recorded(provider: Provider) -> Result<usage::Response, usage::Failure> {

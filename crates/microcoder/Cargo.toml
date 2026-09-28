@@ -11,6 +11,8 @@ name = "microcoder"
 path = "src/main.rs"
 
 [dependencies]
+acp-client = { path = "../acp-client" }
+coder-history = { path = "../coder-history", default-features = false }
 atif = { path = "../atif" }
 coder = { path = "../coder" }
 futures-util = "0.3"
