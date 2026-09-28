@@ -51,9 +51,9 @@ impl Limits {
 mod project;
 pub use project::{readable_record, readable_record_full};
 
-/// How Coder's engine marks a Claude Code, Codex, or OpenCode session it
-/// starts for its own work (a delegated turn, an explorer handoff, a
-/// terminal answer, a repository run), so the session's own store records
+/// How Coder's engine marks a Claude Code, Codex, OpenCode, or Devin
+/// session it starts for its own work (a delegated turn, an explorer
+/// handoff, a terminal answer, a repository run), so the session's own store records
 /// that it is not a chat the user typed.
 ///
 /// The engine sets [`CODEX_VARIABLE`](engine::CODEX_VARIABLE) or
@@ -68,6 +68,10 @@ pub use project::{readable_record, readable_record_full};
 /// the session keeps OpenCode's logins but is saved in
 /// `openagents-coder-engine.db`, never in the `opencode.db` the host
 /// mirrors into the catalog.
+/// Devin keeps the `_meta` of the ACP `session/new` that started a session;
+/// the engine sets [`DEVIN_META_KEY`](engine::DEVIN_META_KEY) there to
+/// [`MARK`](engine::MARK), and the host's Devin mirror never writes such a
+/// session.
 /// The catalog leaves such a session out: the task's own Coder transcript is
 /// the chat.
 pub mod engine {
@@ -82,6 +86,9 @@ pub mod engine {
     /// The engine's OpenCode database: a relative name, which OpenCode
     /// resolves in its data directory (`~/.local/share/opencode`).
     pub const OPENCODE_DATABASE: &str = "openagents-coder-engine.db";
+    /// The `session/new` `_meta` key Devin keeps as the session's
+    /// `metadata.client_meta`.
+    pub const DEVIN_META_KEY: &str = "openagents.com/engine";
 
     /// The engine's OpenCode database in OpenCode's data directory `data`:
     /// the file every engine-started OpenCode session is saved in.
@@ -112,6 +119,21 @@ pub enum Harness {
     /// (`opencode::mirror`, feature `opencode`).
     #[serde(rename = "opencode")]
     OpenCode,
+    /// A Devin CLI session, as the host mirrors it from Devin's session
+    /// store (`devin::mirror`, feature `devin`).
+    Devin,
+}
+
+/// Whether `id` is a Devin session ID the host mirrors: lowercase letters,
+/// digits, and hyphens, at most 64 bytes, such as `serene-crayfish`.
+#[must_use]
+pub fn devin_session_id(id: &str) -> bool {
+    !id.is_empty()
+        && id.len() <= 64
+        && !id.starts_with('-')
+        && id
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -286,6 +308,8 @@ impl fmt::Display for Error {
 }
 impl std::error::Error for Error {}
 
+#[cfg(all(feature = "devin", any(target_os = "linux", target_os = "macos")))]
+pub mod devin;
 #[cfg(feature = "host")]
 mod host;
 #[cfg(all(feature = "opencode", any(target_os = "linux", target_os = "macos")))]

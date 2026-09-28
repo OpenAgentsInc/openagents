@@ -32,8 +32,8 @@ pub(super) fn scan(history: &History) -> Result<(Vec<Source>, Vec<Notice>), Erro
                 tasks(root_index, root, &mut sources, &mut notices, &mut visited)?;
                 continue;
             }
-            Harness::OpenCode => {
-                opencode(root_index, root, &mut sources, &mut notices, &mut visited)?;
+            Harness::OpenCode | Harness::Devin => {
+                mirrored(root_index, root, &mut sources, &mut notices, &mut visited)?;
                 continue;
             }
         };
@@ -280,9 +280,10 @@ fn tasks(
     Ok(())
 }
 
-/// The host's OpenCode mirror is flat: each `ses_*.jsonl` directly inside it
+/// The host's OpenCode and Devin mirrors are flat: each session file directly
+/// inside one (`ses_*.jsonl` for OpenCode, `<session id>.jsonl` for Devin)
 /// is one session. The title index and every other file are not sources.
-fn opencode(
+fn mirrored(
     root_index: usize,
     root: &confined::Root,
     sources: &mut Vec<Source>,
@@ -309,10 +310,13 @@ fn opencode(
             return Err(Error::ResourceLimit);
         }
         let path = PathBuf::from(&name);
-        if !name
-            .to_str()
-            .is_some_and(|n| n.starts_with("ses_") && n.ends_with(".jsonl"))
-        {
+        let session = |n: &str| match root.harness {
+            Harness::Devin => n
+                .strip_suffix(".jsonl")
+                .is_some_and(crate::devin_session_id),
+            _ => n.starts_with("ses_") && n.ends_with(".jsonl"),
+        };
+        if !name.to_str().is_some_and(session) {
             continue;
         }
         match confined::entry(&directory, &name) {
@@ -426,7 +430,10 @@ fn titles(
     root: &confined::Root,
     notices: &mut Vec<Notice>,
 ) -> Result<std::sync::Arc<BTreeMap<String, Title>>, Error> {
-    if !matches!(root.harness, Harness::Codex | Harness::OpenCode) {
+    if !matches!(
+        root.harness,
+        Harness::Codex | Harness::OpenCode | Harness::Devin
+    ) {
         return Ok(Default::default());
     }
     let stat = root
@@ -755,7 +762,8 @@ fn read_head(root: &confined::Root, source: &Source) -> (Head, bool) {
         sessionId: Option<serde_json::Value>,
         customTitle: Option<serde_json::Value>,
         summary: Option<serde_json::Value>,
-        /// The OpenCode mirror's header (`opencode.session`).
+        /// The OpenCode and Devin mirrors' headers (`opencode.session`,
+        /// `devin.session`).
         session_id: Option<serde_json::Value>,
         parent_id: Option<serde_json::Value>,
     }
@@ -766,7 +774,7 @@ fn read_head(root: &confined::Root, source: &Source) -> (Head, bool) {
         Harness::Claude => header.as_ref().and_then(|h| h.sessionId.as_ref()),
         // The file name, not the header, names a Coder task.
         Harness::Coder => None,
-        Harness::OpenCode => header.as_ref().and_then(|h| h.session_id.as_ref()),
+        Harness::OpenCode | Harness::Devin => header.as_ref().and_then(|h| h.session_id.as_ref()),
     }
     .and_then(|v| v.as_str())
     .filter(|v| !v.is_empty() && v.len() <= 128)
@@ -804,6 +812,10 @@ fn read_head(root: &confined::Root, source: &Source) -> (Head, bool) {
                 .and_then(|p| p.as_str())
                 .is_some_and(|p| !p.is_empty()),
         ),
+        // The Devin mirror never writes a session the engine started
+        // ([`crate::engine::DEVIN_META_KEY`]), and a Devin subagent runs
+        // inside its parent's session.
+        Harness::Devin => (false, false),
     };
     (
         Head {
@@ -957,6 +969,7 @@ pub(super) fn page(
                 Harness::Claude => "Saved Claude chat",
                 Harness::Coder => "Saved Coder chat",
                 Harness::OpenCode => "Saved OpenCode chat",
+                Harness::Devin => "Saved Devin chat",
             };
             let named = title.map(|t| t.name.as_str()).or(from_title.as_deref());
             if named.is_none() {

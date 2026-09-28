@@ -30,6 +30,7 @@ impl Fixture {
             claude: None,
             coder: None,
             opencode: None,
+            devin: None,
         })
         .unwrap()
     }
@@ -320,7 +321,8 @@ fn symlink_sources_and_directories_cannot_escape_selected_roots() {
             codex: Some(alias),
             claude: None,
             coder: None,
-            opencode: None
+            opencode: None,
+            devin: None
         }),
         Err(Error::InvalidRoot)
     ));
@@ -358,6 +360,7 @@ fn claude_projects_and_subagents_are_separate_read_only_sources() {
         claude: Some(fixture.0.clone()),
         coder: None,
         opencode: None,
+        devin: None,
     })
     .unwrap();
     let page = history.catalog(CatalogRequest::default()).unwrap();
@@ -486,7 +489,8 @@ fn unconfigured_harness_trees_and_credentials_are_never_cataloged() {
             codex: Some(Path::new("relative").into()),
             claude: None,
             coder: None,
-            opencode: None
+            opencode: None,
+            devin: None
         }),
         Err(Error::InvalidRoot)
     ));
@@ -616,6 +620,7 @@ fn coder_history(fixture: &Fixture) -> History {
         claude: None,
         coder: Some(fixture.0.clone()),
         opencode: None,
+        devin: None,
     })
     .unwrap()
 }
@@ -1130,6 +1135,7 @@ fn a_claude_session_the_engine_started_is_not_a_chat() {
         claude: Some(fixture.0.clone()),
         coder: None,
         opencode: None,
+        devin: None,
     })
     .unwrap();
     let page = history.catalog(CatalogRequest::default()).unwrap();

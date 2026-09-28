@@ -12,6 +12,7 @@ fn invite(f: &Fixture) -> String {
                 claude: None,
                 coder: None,
                 opencode: None,
+                devin: None,
             },
             f.now,
             f.now + 3600,
@@ -368,6 +369,7 @@ fn expired_admissions_are_pruned_by_the_invitation_flow() {
                     claude: None,
                     coder: None,
                     opencode: None,
+                    devin: None,
                 },
                 f.now,
                 f.now + 3600,
@@ -394,6 +396,7 @@ fn expired_admissions_are_pruned_by_the_invitation_flow() {
                 claude: None,
                 coder: None,
                 opencode: None,
+                devin: None,
             },
             later,
             later + 3600,
@@ -477,6 +480,7 @@ fn coder_task_source_pairs_and_pages_backward_through_the_observer() {
                 claude: None,
                 coder: Some(tasks.clone()),
                 opencode: None,
+                devin: None,
             },
             f.now,
             f.now + 3600,
@@ -573,6 +577,7 @@ fn opencode_mirror_source_pairs_and_lists_its_sessions_through_the_observer() {
                 claude: None,
                 coder: None,
                 opencode: Some(mirror.clone()),
+                devin: None,
             },
             f.now,
             f.now + 3600,
@@ -616,6 +621,73 @@ fn opencode_mirror_source_pairs_and_lists_its_sessions_through_the_observer() {
     assert_eq!(chat.title, "Synthetic OpenCode chat");
 }
 
+#[test]
+fn devin_mirror_source_pairs_and_lists_its_sessions_through_the_observer() {
+    let f = Fixture::new("wss://relay.example/");
+    let mirror = f.root.parent().unwrap().join("devin-mirror");
+    std::fs::create_dir_all(&mirror).unwrap();
+    // Two lines of the host's Devin mirror (`coder_history::devin`).
+    std::fs::write(
+        mirror.join("synthetic-otter.jsonl"),
+        concat!(
+            r#"{"type":"devin.session","session_id":"synthetic-otter","directory":"/work","model":"swe-2-high","time":1000}"#,
+            "\n",
+            r#"{"type":"devin.item","session_id":"synthetic-otter","node_id":2,"time":2000,"item":"message","role":"user","text":"Synthetic Devin chat"}"#,
+            "\n",
+        ),
+    )
+    .unwrap();
+    let code = f
+        .host()
+        .invite(
+            &f.code.relay,
+            coder_history::Config {
+                codex: Some(f.root.clone()),
+                devin: Some(mirror.clone()),
+                ..coder_history::Config::default()
+            },
+            f.now,
+            f.now + 3600,
+        )
+        .unwrap();
+    let (invitation, pending) = prepare(&f, &code, &f.client_secret);
+    let connection = redeem_local(&f, &invitation, &pending, &f.client_secret).unwrap();
+    assert_eq!(
+        connection
+            .sources
+            .iter()
+            .map(|s| s.kind)
+            .collect::<Vec<_>>(),
+        [SourceKind::Codex, SourceKind::Devin]
+    );
+    let bytes = serde_json::to_vec(&connection).unwrap();
+    assert!(String::from_utf8_lossy(&bytes).contains("\"devin\""));
+    let client = Client::new_with_policy(
+        connection.clone(),
+        f.client_secret,
+        RelayPolicy::LoopbackTest,
+    )
+    .unwrap();
+    let pending = client
+        .prepare(Query::Catalog(CatalogRequest::default()), f.now)
+        .unwrap();
+    let reply = f
+        .host()
+        .handle(&pending.event, &connection.relay, f.now)
+        .unwrap();
+    let Observation::Catalog(catalog) = client.verify_reply(&pending, &reply, f.now).unwrap()
+    else {
+        panic!("catalog expected")
+    };
+    let chat = catalog
+        .entries
+        .iter()
+        .find(|c| c.harness == coder_history::Harness::Devin)
+        .unwrap();
+    assert_eq!(chat.native_id.as_deref(), Some("synthetic-otter"));
+    assert_eq!(chat.title, "Synthetic Devin chat");
+}
+
 fn paired(f: &Fixture, client: &SecretKey, now: u64) -> ConnectionCode {
     f.host()
         .pair(
@@ -626,6 +698,7 @@ fn paired(f: &Fixture, client: &SecretKey, now: u64) -> ConnectionCode {
                 claude: None,
                 coder: None,
                 opencode: None,
+                devin: None,
             },
             now,
             now + 3600,
@@ -672,6 +745,7 @@ fn repair(f: &Fixture, secret: &SecretKey, now: u64) -> (pairing::Pending, Conne
                 claude: None,
                 coder: None,
                 opencode: None,
+                devin: None,
             },
             now,
             now + 3600,
@@ -745,6 +819,7 @@ fn revoked_grants_never_block_a_new_pairing() {
             claude: None,
             coder: None,
             opencode: None,
+            devin: None,
         },
         f.now,
         f.now + 3600,

@@ -48,6 +48,7 @@ impl Root {
             SourceKind::Claude => "Claude retained history",
             SourceKind::Coder => "Coder task history",
             SourceKind::OpenCode => "OpenCode session history",
+            SourceKind::Devin => "Devin session history",
         };
         Ok(Self {
             scope: SourceScope {
@@ -146,6 +147,9 @@ impl Host {
         }
         if let Some(path) = config.opencode {
             roots.push(Root::admit(path, SourceKind::OpenCode)?);
+        }
+        if let Some(path) = config.devin {
+            roots.push(Root::admit(path, SourceKind::Devin)?);
         }
         if roots.is_empty() {
             return fail(
@@ -773,6 +777,7 @@ fn sources(roots: &[Root]) -> coder_history::Config {
             SourceKind::Claude => config.claude = Some(root.path.clone()),
             SourceKind::Coder => config.coder = Some(root.path.clone()),
             SourceKind::OpenCode => config.opencode = Some(root.path.clone()),
+            SourceKind::Devin => config.devin = Some(root.path.clone()),
         }
     }
     config

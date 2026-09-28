@@ -11,6 +11,8 @@ default = ["host"]
 host = ["dep:base64", "dep:libc"]
 # The host's mirror of OpenCode's SQLite session store (`opencode`).
 opencode = ["host", "dep:rusqlite"]
+# The host's mirror of the Devin CLI's SQLite session store (`devin`).
+devin = ["host", "dep:rusqlite"]
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }

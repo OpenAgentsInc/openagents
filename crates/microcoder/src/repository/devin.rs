@@ -589,6 +589,29 @@ mod tests {
         );
     }
 
+    /// The live smoke: the installed Devin CLI, with the owner's login, runs
+    /// the fixture's turn under full access. Its Devin session carries the
+    /// engine mark, so the host's Devin mirror leaves it out of the chats.
+    /// Run with `cargo test -p microcoder --lib live_devin -- --ignored`.
+    #[tokio::test]
+    #[ignore = "runs the installed Devin CLI with the owner's login and spends Devin credits"]
+    async fn live_devin_cli_runs_a_repository_turn() {
+        let agent = binary().unwrap();
+        let (root, store, grant) = fixture_with(MODEL, |c| devin(c, Access::Full));
+        // A real turn takes longer than the fixture's eight seconds.
+        let mut grant: task::owner::Grant = serde_json::from_slice(&grant).unwrap();
+        grant.wall_seconds = 300;
+        let grant = serde_json::to_vec(&grant).unwrap();
+        let task = run_turn(&store, &grant, agent).await;
+        let result = task.run.as_ref().unwrap().result.as_ref().unwrap();
+        let trace = std::fs::read_to_string(store.join("fixture.1.atif.jsonl")).unwrap();
+        assert_eq!(result.ending, "model_finished", "{result:?}\n{trace}");
+        let written = std::fs::read_to_string(root.path().join("checkout/result.txt")).unwrap();
+        assert!(written.contains("output"), "{written}");
+        assert!(trace.contains("\"kind\":\"devin_prompt\""));
+        eprintln!("{result:?}");
+    }
+
     #[tokio::test]
     async fn the_boundary_runs_devin_sandboxed_and_refuses_what_it_asks() {
         let (_root, store, grant) = fixture_with(MODEL, |c| devin(c, Access::Boundary));

@@ -818,6 +818,7 @@ fn catalog_view(state: &State) -> Node<Intent> {
                 Harness::Claude => "Claude",
                 Harness::Coder => "Coder",
                 Harness::OpenCode => "OpenCode",
+                Harness::Devin => "Devin",
             };
             let mut detail = format!("{harness} · {}", computer.saved.label);
             if let Some(updated) = chat.updated_at.as_deref() {
@@ -874,6 +875,7 @@ fn reader(reading: &Conversation) -> Node<Intent> {
         Harness::Claude => "Claude",
         Harness::Coder => "Coder",
         Harness::OpenCode => "OpenCode",
+        Harness::Devin => "Devin",
     };
     page(vec![
         row(

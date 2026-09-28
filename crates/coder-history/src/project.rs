@@ -57,6 +57,9 @@ fn project(raw: &[u8], text_limit: usize) -> Option<Readable> {
     if let Some(readable) = opencode(&value, text_limit) {
         return Some(readable);
     }
+    if let Some(readable) = devin(&value, text_limit) {
+        return Some(readable);
+    }
     let outer = value
         .get("type")
         .and_then(Value::as_str)
@@ -642,6 +645,76 @@ fn opencode(value: &Value, text_limit: usize) -> Option<Readable> {
             };
             Some(Readable {
                 native_id,
+                ..projected
+            })
+        }
+        _ => None,
+    }
+}
+
+/// Project one record of the host's Devin mirror (`devin::mirror`): the
+/// `devin.session` header or a `devin.item`. Returns None for any other
+/// record.
+///
+/// | Record | `kind` | `role` | `text` |
+/// | --- | --- | --- | --- |
+/// | `devin.session` | `session_meta` | none | empty; `native_id` is the session ID |
+/// | `message` item | `message` | `user` or `assistant` | the text |
+/// | `reasoning` item | `reasoning` | none | the reasoning |
+/// | `tool_call` item | `tool_call` (the tool's name) | none | a summary of the call's arguments |
+/// | `tool_result` item | `tool_result` | `tool` | the result |
+/// | an item cut to its kind, or another kind | `adapter` | none | empty |
+///
+/// An item's `native_id` is the Devin node it came from.
+fn devin(value: &Value, text_limit: usize) -> Option<Readable> {
+    let kind = value.get("type").and_then(Value::as_str)?;
+    let at = value.get("time").and_then(Value::as_u64).map(iso_ms);
+    let readable = |kind: &str, role: Option<&str>, text: &str| {
+        let (text, text_truncated) = trim(text, text_limit);
+        Readable {
+            kind: kind.into(),
+            native_id: None,
+            role: role.map(str::to_owned),
+            timestamp: at.clone(),
+            tool_name: None,
+            call_id: None,
+            text,
+            text_truncated,
+            unknown: false,
+        }
+    };
+    match kind {
+        "devin.session" => Some(Readable {
+            native_id: field(value, "session_id"),
+            ..readable("session_meta", None, "")
+        }),
+        "devin.item" => {
+            let text = value.get("text").and_then(Value::as_str);
+            let projected = match (value.get("item").and_then(Value::as_str), text) {
+                (Some("message"), Some(text)) => {
+                    let role = value
+                        .get("role")
+                        .and_then(Value::as_str)
+                        .filter(|r| matches!(*r, "user" | "assistant"));
+                    readable("message", role, text)
+                }
+                (Some("reasoning"), Some(text)) => readable("reasoning", None, text),
+                (Some("tool_call"), _) if value.get("tool").is_some() => Readable {
+                    tool_name: field(value, "tool"),
+                    call_id: field(value, "call_id"),
+                    ..readable("tool_call", None, &summary(value.get("arguments")))
+                },
+                (Some("tool_result"), Some(text)) => Readable {
+                    call_id: field(value, "call_id"),
+                    ..readable("tool_result", Some("tool"), text)
+                },
+                _ => readable("adapter", None, ""),
+            };
+            Some(Readable {
+                native_id: value
+                    .get("node_id")
+                    .and_then(Value::as_i64)
+                    .map(|n| n.to_string()),
                 ..projected
             })
         }

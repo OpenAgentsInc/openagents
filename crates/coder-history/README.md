@@ -48,6 +48,22 @@ subagent. `coder host` runs a pass every five seconds. A part projects as a
 tool's title or input, then its output or error), or an `adapter` record
 with no text; an error line is a `system` message.
 
+The Devin adapter reads the host's mirror of the Devin CLI's sessions, such
+as `~/.openagents/devin/mirror`. The Devin CLI keeps sessions in a SQLite
+store (`devin/cli/sessions.db` in its data directory) as a forest of message
+nodes, so `devin::mirror` (feature `devin`) copies each session's
+conversation, read from its `main_chain_id` back and across compactions
+(`summarized_from`, with a carried node called by the node it copies), into
+`<session id>.jsonl`: a `devin.session` header, then `devin.item` lines. It
+opens the store read-only, writes only the mirror, and never writes a session
+whose `metadata.client_meta` carries Coder's engine mark. The catalog lists
+the session files directly inside the mirror; titles, update times, and
+hidden sessions (as archived) come from its `session_index.jsonl`. An item
+projects as a `message` (the owner's typed prompt or the assistant's reply),
+`reasoning`, `tool_call` (the tool's name, and a summary of its arguments),
+or `tool_result`; Devin's system prompts and its own prompts to itself are
+not mirrored.
+
 These adapters follow locally observed saved-file structures, not a guaranteed
 provider API. Unknown records remain available. The reader does not inspect
 credentials or unrelated configuration files. Catalog requests rescan the

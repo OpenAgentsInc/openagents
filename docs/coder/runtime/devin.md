@@ -16,6 +16,7 @@ The pieces:
 | The repository turn on a Devin route | [`microcoder::repository`](../../../crates/microcoder/src/repository/devin.rs) |
 | The `devin:MODEL` route, its connection probe, and the capacity book | `coder::task::autostart`, `microcoder_loop::capacity::Provider::Devin` |
 | The steering row | `coder_delegate::steering::DEVIN_ACP` |
+| The chat-list mirror of the owner's Devin sessions | [`coder_history::devin`](../../../crates/coder-history/src/devin.rs) |
 
 ## Turn it on
 
@@ -142,11 +143,28 @@ so the turn's cost is recorded as unknown.
 
 ## The chat list
 
+Devin chats the owner starts in Devin itself appear in the phone's chats as
+their own source, labeled Devin. Devin keeps its local sessions in a SQLite
+store, `~/.local/share/devin/cli/sessions.db` (or under `XDG_DATA_HOME`),
+not in transcript files, so `coder host` mirrors it: when the store exists, a
+chat invitation offers the mirror directory `~/.openagents/devin/mirror`, and
+the host brings it up to date every five seconds
+(`coder_history::devin::mirror`). A pass opens the store read-only and writes
+one append-only `<session id>.jsonl` per session plus a `session_index.jsonl`
+of titles; a session Devin hides lists as archived. The first pass over a
+large store takes a while (about 35 seconds for 800 sessions and 4.6 GB on
+the owner's Mac); later passes touch only sessions with new activity.
+
+The mirror follows the conversation Devin shows: the session's newest node
+back to its start, across compactions, without Devin's system prompts or the
+prompts Devin writes to itself (a compaction's request, a cache keep-alive).
+A turn and a compaction only append; a rewound or edited conversation starts
+a new file. Subagent chains inside a session are not mirrored.
+
 A Devin session a Coder task starts carries the engine mark in its `_meta`,
-which `session/list` returns, so a chat list can leave it out: the task's own
-Coder transcript is the chat. Devin keeps its local sessions in a SQLite
-store, `~/.local/share/devin/cli/sessions.db`, not in transcript files, so
-Devin chats the owner starts in Devin itself are not yet a chat-list source.
+which Devin keeps as the session's `metadata.client_meta` and `session/list`
+returns. The mirror never writes such a session, so it never lists as a
+chat: the task's own Coder transcript is the chat.
 
 ## Tests and the live smoke
 
@@ -158,7 +176,26 @@ access, the boundary's sandbox and refused permission, a follow-up that
 reattaches the session, a retryable refusal recorded as `no_capacity`, and a
 model other than the admitted one refused before any prompt.
 
+`coder-history`'s `devin` tests mirror rows recorded from Devin CLI
+3000.11.3's own store (`crates/coder-history/fixtures/devin/capture.rows.json`):
+an owner's session that ran a command, and an engine-marked session that is
+left out.
+
 ```sh
 cargo test -p acp-client
 cargo test -p microcoder --lib repository::devin
+cargo test -p coder-history --features devin --lib devin
 ```
+
+The live smoke runs the same repository turn through the installed Devin CLI
+with the owner's login, under full access, in a scratch repository and task
+store that the test removes. It spends Devin credits, so it is ignored by
+default:
+
+```sh
+cargo test -p microcoder --lib live_devin -- --ignored
+```
+
+On 2026-09-28, on the owner's Mac with Devin CLI 3000.11.3 and `swe-2-high`,
+it ended `model_finished` in about 20 seconds, wrote `result.txt`, and its
+Devin session carried the engine mark, so the host's mirror left it out.

@@ -135,6 +135,7 @@ fn catalog(app: &App) -> Vec<Node<Intent>> {
                 coder_history::Harness::Claude => "Claude",
                 coder_history::Harness::Coder => "Coder",
                 coder_history::Harness::OpenCode => "OpenCode",
+                coder_history::Harness::Devin => "Devin",
             };
             let updated = chat.updated_at.as_deref().unwrap_or("");
             button(
@@ -651,6 +652,7 @@ mod tests {
             claude: None,
             coder: None,
             opencode: None,
+            devin: None,
         })
         .unwrap();
         let mut app = App::new(Config {
@@ -760,6 +762,7 @@ mod tests {
             claude: None,
             coder: None,
             opencode: None,
+            devin: None,
         })
         .unwrap();
         let mut app = App::new(Config {

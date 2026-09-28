@@ -130,8 +130,10 @@ pub async fn run(arguments: impl IntoIterator<Item = String>) -> Result<()> {
                 codex: select(codex, args.no_codex, ".codex")?,
                 claude: select(claude, args.no_claude, ".claude")?,
                 coder,
-                // `coder host` keeps the OpenCode mirror; this command does not.
+                // `coder host` keeps the OpenCode and Devin mirrors; this
+                // command does not.
                 opencode: None,
+                devin: None,
             };
             let lifetime = args
                 .value("--expires-secs")
@@ -211,6 +213,7 @@ pub async fn run(arguments: impl IntoIterator<Item = String>) -> Result<()> {
                     claude,
                     coder,
                     opencode: None,
+                    devin: None,
                 },
                 now,
                 expires,

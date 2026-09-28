@@ -15,6 +15,11 @@ pub struct Config {
     /// `session_index.jsonl` of titles, written by `opencode::mirror`. Only
     /// those files directly inside it are read.
     pub opencode: Option<PathBuf>,
+    /// The host's mirror of the Devin CLI's sessions, such as
+    /// `~/.openagents/devin/mirror`: one `<session id>.jsonl` per session and
+    /// a `session_index.jsonl` of titles, written by `devin::mirror`. Only
+    /// those files directly inside it are read.
+    pub devin: Option<PathBuf>,
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
@@ -41,6 +46,7 @@ impl History {
             (Harness::Claude, config.claude),
             (Harness::Coder, config.coder),
             (Harness::OpenCode, config.opencode),
+            (Harness::Devin, config.devin),
         ] {
             if let Some(path) = path {
                 roots.push(confined::Root::open(harness, path)?);

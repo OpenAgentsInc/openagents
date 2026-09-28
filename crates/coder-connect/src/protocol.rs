@@ -97,6 +97,9 @@ pub enum SourceKind {
     /// (`coder_history::opencode`).
     #[serde(rename = "opencode")]
     OpenCode,
+    /// Devin CLI sessions, as the host mirrors them from Devin's session
+    /// store (`coder_history::devin`).
+    Devin,
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

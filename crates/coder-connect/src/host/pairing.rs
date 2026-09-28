@@ -52,6 +52,9 @@ impl Host {
         if let Some(path) = config.opencode {
             roots.push(Root::admit(path, SourceKind::OpenCode)?);
         }
+        if let Some(path) = config.devin {
+            roots.push(Root::admit(path, SourceKind::Devin)?);
+        }
         if roots.is_empty() {
             return fail(
                 ErrorCode::Forbidden,

@@ -1,0 +1,510 @@
+{
+ "sessions": [
+  {
+   "id": "rhetorical-leopard",
+   "working_directory": "/work/repo",
+   "backend_type": "windsurf",
+   "model": "swe-2-high",
+   "agent_mode": "accept-edits",
+   "created_at": 1790633250,
+   "last_activity_at": 1790633254,
+   "title": "Reply with the single word ok. Do not use any tools.",
+   "main_chain_id": 27,
+   "shell_last_seen_index": 0,
+   "cogs_json": null,
+   "workspace_dirs": "[]",
+   "hidden": 0,
+   "metadata": "{\"total_credit_cost\":0,\"total_acu_cost\":0.0,\"client_meta\":{\"openagents.com/engine\":\"openagents-coder-engine\"}}"
+  },
+  {
+   "id": "serene-crayfish",
+   "working_directory": "/work/repo",
+   "backend_type": "windsurf",
+   "model": "swe-2-high",
+   "agent_mode": "bypass",
+   "created_at": 1790633263,
+   "last_activity_at": 1790633267,
+   "title": "mirror-fixture",
+   "main_chain_id": 30,
+   "shell_last_seen_index": 0,
+   "cogs_json": null,
+   "workspace_dirs": "[]",
+   "hidden": 0,
+   "metadata": "{\"total_credit_cost\":0,\"total_acu_cost\":0.0}"
+  }
+ ],
+ "message_nodes": [
+  {
+   "session_id": "rhetorical-leopard",
+   "node_id": 0,
+   "parent_node_id": null,
+   "chat_message": "{\"message_id\":\"ccc29455-906c-4fa1-a4a8-5659f8c22b9b\",\"role\":\"system\",\"content\":\"(Devin's system prompt, left out of the fixture)\",\"metadata\":{\"num_tokens\":null,\"is_user_input\":null,\"request_id\":null,\"metrics\":null,\"finish_reason\":null,\"extensions\":{\"affogato/cog-context\":{\"key\":\"workspace/context\"}},\"created_at\":\"2026-09-28T22:07:30.741018Z\",\"telemetry\":{\"source\":\"system\",\"operation\":\"unknown\"}}}",
+   "created_at": 1790633254,
+   "metadata": "null"
+  },
+  {
+   "session_id": "rhetorical-leopard",
+   "node_id": 1,
+   "parent_node_id": 0,
+   "chat_message": "{\"message_id\":\"0bda302e-0b22-40bd-a5d4-da102c5262ec\",\"role\":\"system\",\"content\":\"(Devin's system prompt, left out of the fixture)\",\"metadata\":{\"num_tokens\":null,\"is_user_input\":null,\"request_id\":null,\"metrics\":null,\"finish_reason\":null,\"extensions\":{\"agent-ext/rules-loaded\":{\"rule_paths\":[\"/home/owner/.codeium/windsurf/memories/global_rules.md\"],\"available_rule_paths\":[],\"content_bytes\":0,\"is_always_on\":true,\"preserve_on_compaction\":true}},\"created_at\":\"2026-09-28T22:07:30.742771Z\",\"telemetry\":{\"source\":\"rules\",\"operation\":\"content\"}}}",
+   "created_at": 1790633254,
+   "metadata": "null"
+  },
+  {
+   "session_id": "rhetorical-leopard",
+   "node_id": 2,
+   "parent_node_id": 1,
+   "chat_message": "{\"message_id\":\"c2b67675-3470-415f-922b-045019d0dcd2\",\"role\":\"user\",\"content\":\"Reply with the single word ok. Do not use any tools.\",\"metadata\":{\"num_tokens\":null,\"is_user_input\":true,\"request_id\":null,\"metrics\":null,\"finish_reason\":null,\"created_at\":\"2026-09-28T22:07:30.784136Z\",\"telemetry\":{\"source\":\"user\",\"operation\":\"unknown\"}}}",
+   "created_at": 1790633254,
+   "metadata": "null"
+  },
+  {
+   "session_id": "rhetorical-leopard",
+   "node_id": 3,
+   "parent_node_id": null,
+   "chat_message": "{\"message_id\":\"36fcc94d-266e-4555-b9d5-388e98414f9f\",\"role\":\"system\",\"content\":\"(Devin's system prompt, left out of the fixture)\",\"metadata\":{\"num_tokens\":null,\"is_user_input\":null,\"request_id\":null,\"metrics\":null,\"finish_reason\":null,\"created_at\":\"2026-09-28T22:07:30.735509Z\",\"telemetry\":{\"source\":\"sysprompt\",\"operation\":\"normal\"}}}",
+   "created_at": 1790633254,
+   "metadata": "{\"summarized_from\":null,\"num_tokens_preceding\":null,\"is_system_prefix\":true}"
+  },
+  {
+   "session_id": "rhetorical-leopard",
+   "node_id": 4,
+   "parent_node_id": 3,
+   "chat_message": "{\"message_id\":\"8215351c-7f37-48a3-97ba-b2ac07dc950c\",\"role\":\"system\",\"content\":\"(Devin's system prompt, left out of the fixture)\",\"metadata\":{\"num_tokens\":null,\"is_user_input\":null,\"request_id\":null,\"metrics\":null,\"finish_reason\":null,\"created_at\":\"2026-09-28T22:07:30.740388Z\",\"telemetry\":{\"source\":\"sysprompt\",\"operation\":\"subagent_profiles\"}}}",
+   "created_at": 1790633254,
+   "metadata": "{\"summarized_from\":null,\"num_tokens_preceding\":null,\"is_system_prefix\":true}"
+  },
+  {
+   "session_id": "rhetorical-leopard",
+   "node_id": 5,
+   "parent_node_id": 4,
+   "chat_message": "{\"message_id\":\"ce372a41-97d2-44a0-b053-ed9a0d02320a\",\"role\":\"system\",\"content\":\"(Devin's system prompt, left out of the fixture)\",\"metadata\":{\"num_tokens\":null,\"is_user_input\":null,\"request_id\":null,\"metrics\":null,\"finish_reason\":null,\"created_at\":\"2026-09-28T22:07:30.740375Z\",\"telemetry\":{\"source\":\"system\",\"operation\":\"unknown\"}}}",
+   "created_at": 1790633254,
+   "metadata": "{\"summarized_from\":null,\"num_tokens_preceding\":null,\"is_system_prefix\":true}"
+  },
+  {
+   "session_id": "rhetorical-leopard",
+   "node_id": 6,
+   "parent_node_id": 5,
+   "chat_message": "{\"message_id\":\"2068168a-6fee-4ec4-a6cd-50d5b17904a8\",\"role\":\"system\",\"content\":\"(Devin's system prompt, left out of the fixture)\",\"metadata\":{\"num_tokens\":null,\"is_user_input\":null,\"request_id\":null,\"metrics\":null,\"finish_reason\":null,\"created_at\":\"2026-09-28T22:07:30.740357Z\",\"telemetry\":{\"source\":\"system\",\"operation\":\"unknown\"}}}",
+   "created_at": 1790633254,
+   "metadata": "{\"summarized_from\":null,\"num_tokens_preceding\":null,\"is_system_prefix\":true}"
+  },
+  {
+   "session_id": "rhetorical-leopard",
+   "node_id": 7,
+   "parent_node_id": 6,
+   "chat_message": "{\"message_id\":\"ccc29455-906c-4fa1-a4a8-5659f8c22b9b\",\"role\":\"system\",\"content\":\"(Devin's system prompt, left out of the fixture)\",\"metadata\":{\"num_tokens\":null,\"is_user_input\":null,\"request_id\":null,\"metrics\":null,\"finish_reason\":null,\"extensions\":{\"affogato/cog-context\":{\"key\":\"workspace/context\"}},\"created_at\":\"2026-09-28T22:07:30.741018Z\",\"telemetry\":{\"source\":\"system\",\"operation\":\"unknown\"}}}",
+   "created_at": 1790633254,
+   "metadata": "{\"summarized_from\":null,\"num_tokens_preceding\":null,\"is_system_prefix\":null,\"extensions\":{\"compact/prior_node_ids\":[0]}}"
+  },
+  {
+   "session_id": "rhetorical-leopard",
+   "node_id": 8,
+   "parent_node_id": 7,
+   "chat_message": "{\"message_id\":\"0bda302e-0b22-40bd-a5d4-da102c5262ec\",\"role\":\"system\",\"content\":\"(Devin's system prompt, left out of the fixture)\",\"metadata\":{\"num_tokens\":null,\"is_user_input\":null,\"request_id\":null,\"metrics\":null,\"finish_reason\":null,\"extensions\":{\"agent-ext/rules-loaded\":{\"rule_paths\":[\"/home/owner/.codeium/windsurf/memories/global_rules.md\"],\"available_rule_paths\":[],\"content_bytes\":0,\"is_always_on\":true,\"preserve_on_compaction\":true}},\"created_at\":\"2026-09-28T22:07:30.742771Z\",\"telemetry\":{\"source\":\"rules\",\"operation\":\"content\"}}}",
+   "created_at": 1790633254,
+   "metadata": "{\"summarized_from\":null,\"num_tokens_preceding\":null,\"is_system_prefix\":null,\"extensions\":{\"compact/prior_node_ids\":[1]}}"
+  },
+  {
+   "session_id": "rhetorical-leopard",
+   "node_id": 9,
+   "parent_node_id": 8,
+   "chat_message": "{\"message_id\":\"c2b67675-3470-415f-922b-045019d0dcd2\",\"role\":\"user\",\"content\":\"Reply with the single word ok. Do not use any tools.\",\"metadata\":{\"num_tokens\":null,\"is_user_input\":true,\"request_id\":null,\"metrics\":null,\"finish_reason\":null,\"created_at\":\"2026-09-28T22:07:30.784136Z\",\"telemetry\":{\"source\":\"user\",\"operation\":\"unknown\"}}}",
+   "created_at": 1790633254,
+   "metadata": "{\"summarized_from\":null,\"num_tokens_preceding\":null,\"is_system_prefix\":null,\"extensions\":{\"compact/prior_node_ids\":[2]}}"
+  },
+  {
+   "session_id": "rhetorical-leopard",
+   "node_id": 10,
+   "parent_node_id": null,
+   "chat_message": "{\"message_id\":\"36fcc94d-266e-4555-b9d5-388e98414f9f\",\"role\":\"system\",\"content\":\"(Devin's system prompt, left out of the fixture)\",\"metadata\":{\"num_tokens\":null,\"is_user_input\":null,\"request_id\":null,\"metrics\":null,\"finish_reason\":null,\"created_at\":\"2026-09-28T22:07:30.735509Z\",\"telemetry\":{\"source\":\"sysprompt\",\"operation\":\"normal\"}}}",
+   "created_at": 1790633254,
+   "metadata": "{\"summarized_from\":null,\"num_tokens_preceding\":null,\"is_system_prefix\":true}"
+  },
+  {
+   "session_id": "rhetorical-leopard",
+   "node_id": 11,
+   "parent_node_id": 10,
+   "chat_message": "{\"message_id\":\"8215351c-7f37-48a3-97ba-b2ac07dc950c\",\"role\":\"system\",\"content\":\"(Devin's system prompt, left out of the fixture)\",\"metadata\":{\"num_tokens\":null,\"is_user_input\":null,\"request_id\":null,\"metrics\":null,\"finish_reason\":null,\"created_at\":\"2026-09-28T22:07:30.740388Z\",\"telemetry\":{\"source\":\"sysprompt\",\"operation\":\"subagent_profiles\"}}}",
+   "created_at": 1790633254,
+   "metadata": "{\"summarized_from\":null,\"num_tokens_preceding\":null,\"is_system_prefix\":true}"
+  },
+  {
+   "session_id": "rhetorical-leopard",
+   "node_id": 12,
+   "parent_node_id": 11,
+   "chat_message": "{\"message_id\":\"ce372a41-97d2-44a0-b053-ed9a0d02320a\",\"role\":\"system\",\"content\":\"(Devin's system prompt, left out of the fixture)\",\"metadata\":{\"num_tokens\":null,\"is_user_input\":null,\"request_id\":null,\"metrics\":null,\"finish_reason\":null,\"created_at\":\"2026-09-28T22:07:30.740375Z\",\"telemetry\":{\"source\":\"system\",\"operation\":\"unknown\"}}}",
+   "created_at": 1790633254,
+   "metadata": "{\"summarized_from\":null,\"num_tokens_preceding\":null,\"is_system_prefix\":true}"
+  },
+  {
+   "session_id": "rhetorical-leopard",
+   "node_id": 13,
+   "parent_node_id": 12,
+   "chat_message": "{\"message_id\":\"2068168a-6fee-4ec4-a6cd-50d5b17904a8\",\"role\":\"system\",\"content\":\"(Devin's system prompt, left out of the fixture)\",\"metadata\":{\"num_tokens\":null,\"is_user_input\":null,\"request_id\":null,\"metrics\":null,\"finish_reason\":null,\"created_at\":\"2026-09-28T22:07:30.740357Z\",\"telemetry\":{\"source\":\"system\",\"operation\":\"unknown\"}}}",
+   "created_at": 1790633254,
+   "metadata": "{\"summarized_from\":null,\"num_tokens_preceding\":null,\"is_system_prefix\":true}"
+  },
+  {
+   "session_id": "rhetorical-leopard",
+   "node_id": 14,
+   "parent_node_id": 13,
+   "chat_message": "{\"message_id\":\"ccc29455-906c-4fa1-a4a8-5659f8c22b9b\",\"role\":\"system\",\"content\":\"(Devin's system prompt, left out of the fixture)\",\"metadata\":{\"num_tokens\":null,\"is_user_input\":null,\"request_id\":null,\"metrics\":null,\"finish_reason\":null,\"extensions\":{\"affogato/cog-context\":{\"key\":\"workspace/context\"}},\"created_at\":\"2026-09-28T22:07:30.741018Z\",\"telemetry\":{\"source\":\"system\",\"operation\":\"unknown\"}}}",
+   "created_at": 1790633254,
+   "metadata": "{\"summarized_from\":null,\"num_tokens_preceding\":null,\"is_system_prefix\":null,\"extensions\":{\"compact/prior_node_ids\":[0]}}"
+  },
+  {
+   "session_id": "rhetorical-leopard",
+   "node_id": 15,
+   "parent_node_id": 14,
+   "chat_message": "{\"message_id\":\"0bda302e-0b22-40bd-a5d4-da102c5262ec\",\"role\":\"system\",\"content\":\"(Devin's system prompt, left out of the fixture)\",\"metadata\":{\"num_tokens\":null,\"is_user_input\":null,\"request_id\":null,\"metrics\":null,\"finish_reason\":null,\"extensions\":{\"agent-ext/rules-loaded\":{\"rule_paths\":[\"/home/owner/.codeium/windsurf/memories/global_rules.md\"],\"available_rule_paths\":[],\"content_bytes\":0,\"is_always_on\":true,\"preserve_on_compaction\":true}},\"created_at\":\"2026-09-28T22:07:30.742771Z\",\"telemetry\":{\"source\":\"rules\",\"operation\":\"content\"}}}",
+   "created_at": 1790633254,
+   "metadata": "{\"summarized_from\":null,\"num_tokens_preceding\":null,\"is_system_prefix\":null,\"extensions\":{\"compact/prior_node_ids\":[1]}}"
+  },
+  {
+   "session_id": "rhetorical-leopard",
+   "node_id": 16,
+   "parent_node_id": 15,
+   "chat_message": "{\"message_id\":\"c2b67675-3470-415f-922b-045019d0dcd2\",\"role\":\"user\",\"content\":\"Reply with the single word ok. Do not use any tools.\",\"metadata\":{\"num_tokens\":null,\"is_user_input\":true,\"request_id\":null,\"metrics\":null,\"finish_reason\":null,\"created_at\":\"2026-09-28T22:07:30.784136Z\",\"telemetry\":{\"source\":\"user\",\"operation\":\"unknown\"}}}",
+   "created_at": 1790633254,
+   "metadata": "{\"summarized_from\":null,\"num_tokens_preceding\":null,\"is_system_prefix\":null,\"extensions\":{\"compact/prior_node_ids\":[2]}}"
+  },
+  {
+   "session_id": "rhetorical-leopard",
+   "node_id": 17,
+   "parent_node_id": 2,
+   "chat_message": "{\"message_id\":\"b3ce40ed-727c-4961-94a3-d346ae824327\",\"role\":\"system\",\"content\":\"(Devin's system prompt, left out of the fixture)\",\"metadata\":{\"num_tokens\":null,\"is_user_input\":null,\"request_id\":null,\"metrics\":null,\"finish_reason\":null,\"extensions\":{\"agent-ext/skills-loaded\":{\"skills\":[{\"name\":\"devin-cli\",\"description\":\"Look up Devin CLI documentation (skills, extensibility, configuration, commands, models, troubleshooting)\",\"path\":\"/home/owner/.local/share/devin/cli/_versions/3000.11.3/share/devin/docs\",\"model_invocable\":true,\"provider\":\"builtin\",\"skill_id\":\"builtin:devin-cli\"},{\"name\":\"declarative-repo-setup\",\"description\":\"Generate and verify a working environment.yaml (Devin snapshot-setup blueprint) for a repo\",\"path\":\"builtin:drs\",\"model_invocable\":true,\"provider\":\"builtin\",\"skill_id\":\"builtin:declarative-repo-setup\"},{\"name\":\"upload-secrets\",\"description\":\"Securely upload local secrets (dotenv files, env vars, API keys) to the Devin Cloud secrets manager \\u2014 values never enter the conversation\",\"path\":\"builtin:upload-secrets\",\"model_invocable\":true,\"provider\":\"builtin\",\"skill_id\":\"builtin:upload-secrets\"}],\"is_initial_listing\":true}},\"created_at\":\"2026-09-28T22:07:30.794196Z\",\"telemetry\":{\"source\":\"system\",\"operation\":\"unknown\"}}}",
+   "created_at": 1790633254,
+   "metadata": "null"
+  },
+  {
+   "session_id": "rhetorical-leopard",
+   "node_id": 18,
+   "parent_node_id": null,
+   "chat_message": "{\"message_id\":\"36fcc94d-266e-4555-b9d5-388e98414f9f\",\"role\":\"system\",\"content\":\"(Devin's system prompt, left out of the fixture)\",\"metadata\":{\"num_tokens\":null,\"is_user_input\":null,\"request_id\":null,\"metrics\":null,\"finish_reason\":null,\"created_at\":\"2026-09-28T22:07:30.735509Z\",\"telemetry\":{\"source\":\"sysprompt\",\"operation\":\"normal\"}}}",
+   "created_at": 1790633254,
+   "metadata": "{\"summarized_from\":null,\"num_tokens_preceding\":null,\"is_system_prefix\":true}"
+  },
+  {
+   "session_id": "rhetorical-leopard",
+   "node_id": 19,
+   "parent_node_id": 18,
+   "chat_message": "{\"message_id\":\"8215351c-7f37-48a3-97ba-b2ac07dc950c\",\"role\":\"system\",\"content\":\"(Devin's system prompt, left out of the fixture)\",\"metadata\":{\"num_tokens\":null,\"is_user_input\":null,\"request_id\":null,\"metrics\":null,\"finish_reason\":null,\"created_at\":\"2026-09-28T22:07:30.740388Z\",\"telemetry\":{\"source\":\"sysprompt\",\"operation\":\"subagent_profiles\"}}}",
+   "created_at": 1790633254,
+   "metadata": "{\"summarized_from\":null,\"num_tokens_preceding\":null,\"is_system_prefix\":true}"
+  },
+  {
+   "session_id": "rhetorical-leopard",
+   "node_id": 20,
+   "parent_node_id": 19,
+   "chat_message": "{\"message_id\":\"ce372a41-97d2-44a0-b053-ed9a0d02320a\",\"role\":\"system\",\"content\":\"(Devin's system prompt, left out of the fixture)\",\"metadata\":{\"num_tokens\":null,\"is_user_input\":null,\"request_id\":null,\"metrics\":null,\"finish_reason\":null,\"created_at\":\"2026-09-28T22:07:30.740375Z\",\"telemetry\":{\"source\":\"system\",\"operation\":\"unknown\"}}}",
+   "created_at": 1790633254,
+   "metadata": "{\"summarized_from\":null,\"num_tokens_preceding\":null,\"is_system_prefix\":true}"
+  },
+  {
+   "session_id": "rhetorical-leopard",
+   "node_id": 21,
+   "parent_node_id": 20,
+   "chat_message": "{\"message_id\":\"2068168a-6fee-4ec4-a6cd-50d5b17904a8\",\"role\":\"system\",\"content\":\"(Devin's system prompt, left out of the fixture)\",\"metadata\":{\"num_tokens\":null,\"is_user_input\":null,\"request_id\":null,\"metrics\":null,\"finish_reason\":null,\"created_at\":\"2026-09-28T22:07:30.740357Z\",\"telemetry\":{\"source\":\"system\",\"operation\":\"unknown\"}}}",
+   "created_at": 1790633254,
+   "metadata": "{\"summarized_from\":null,\"num_tokens_preceding\":null,\"is_system_prefix\":true}"
+  },
+  {
+   "session_id": "rhetorical-leopard",
+   "node_id": 22,
+   "parent_node_id": 21,
+   "chat_message": "{\"message_id\":\"ccc29455-906c-4fa1-a4a8-5659f8c22b9b\",\"role\":\"system\",\"content\":\"(Devin's system prompt, left out of the fixture)\",\"metadata\":{\"num_tokens\":null,\"is_user_input\":null,\"request_id\":null,\"metrics\":null,\"finish_reason\":null,\"extensions\":{\"affogato/cog-context\":{\"key\":\"workspace/context\"}},\"created_at\":\"2026-09-28T22:07:30.741018Z\",\"telemetry\":{\"source\":\"system\",\"operation\":\"unknown\"}}}",
+   "created_at": 1790633254,
+   "metadata": "{\"summarized_from\":null,\"num_tokens_preceding\":null,\"is_system_prefix\":null,\"extensions\":{\"compact/prior_node_ids\":[0]}}"
+  },
+  {
+   "session_id": "rhetorical-leopard",
+   "node_id": 23,
+   "parent_node_id": 22,
+   "chat_message": "{\"message_id\":\"0bda302e-0b22-40bd-a5d4-da102c5262ec\",\"role\":\"system\",\"content\":\"(Devin's system prompt, left out of the fixture)\",\"metadata\":{\"num_tokens\":null,\"is_user_input\":null,\"request_id\":null,\"metrics\":null,\"finish_reason\":null,\"extensions\":{\"agent-ext/rules-loaded\":{\"rule_paths\":[\"/home/owner/.codeium/windsurf/memories/global_rules.md\"],\"available_rule_paths\":[],\"content_bytes\":0,\"is_always_on\":true,\"preserve_on_compaction\":true}},\"created_at\":\"2026-09-28T22:07:30.742771Z\",\"telemetry\":{\"source\":\"rules\",\"operation\":\"content\"}}}",
+   "created_at": 1790633254,
+   "metadata": "{\"summarized_from\":null,\"num_tokens_preceding\":null,\"is_system_prefix\":null,\"extensions\":{\"compact/prior_node_ids\":[1]}}"
+  },
+  {
+   "session_id": "rhetorical-leopard",
+   "node_id": 24,
+   "parent_node_id": 23,
+   "chat_message": "{\"message_id\":\"c2b67675-3470-415f-922b-045019d0dcd2\",\"role\":\"user\",\"content\":\"Reply with the single word ok. Do not use any tools.\",\"metadata\":{\"num_tokens\":null,\"is_user_input\":true,\"request_id\":null,\"metrics\":null,\"finish_reason\":null,\"created_at\":\"2026-09-28T22:07:30.784136Z\",\"telemetry\":{\"source\":\"user\",\"operation\":\"unknown\"}}}",
+   "created_at": 1790633254,
+   "metadata": "{\"summarized_from\":null,\"num_tokens_preceding\":null,\"is_system_prefix\":null,\"extensions\":{\"compact/prior_node_ids\":[2]}}"
+  },
+  {
+   "session_id": "rhetorical-leopard",
+   "node_id": 25,
+   "parent_node_id": 24,
+   "chat_message": "{\"message_id\":\"b3ce40ed-727c-4961-94a3-d346ae824327\",\"role\":\"system\",\"content\":\"(Devin's system prompt, left out of the fixture)\",\"metadata\":{\"num_tokens\":null,\"is_user_input\":null,\"request_id\":null,\"metrics\":null,\"finish_reason\":null,\"extensions\":{\"agent-ext/skills-loaded\":{\"skills\":[{\"name\":\"devin-cli\",\"description\":\"Look up Devin CLI documentation (skills, extensibility, configuration, commands, models, troubleshooting)\",\"path\":\"/home/owner/.local/share/devin/cli/_versions/3000.11.3/share/devin/docs\",\"model_invocable\":true,\"provider\":\"builtin\",\"skill_id\":\"builtin:devin-cli\"},{\"name\":\"declarative-repo-setup\",\"description\":\"Generate and verify a working environment.yaml (Devin snapshot-setup blueprint) for a repo\",\"path\":\"builtin:drs\",\"model_invocable\":true,\"provider\":\"builtin\",\"skill_id\":\"builtin:declarative-repo-setup\"},{\"name\":\"upload-secrets\",\"description\":\"Securely upload local secrets (dotenv files, env vars, API keys) to the Devin Cloud secrets manager \\u2014 values never enter the conversation\",\"path\":\"builtin:upload-secrets\",\"model_invocable\":true,\"provider\":\"builtin\",\"skill_id\":\"builtin:upload-secrets\"}],\"is_initial_listing\":true}},\"created_at\":\"2026-09-28T22:07:30.794196Z\",\"telemetry\":{\"source\":\"system\",\"operation\":\"unknown\"}}}",
+   "created_at": 1790633254,
+   "metadata": "{\"summarized_from\":null,\"num_tokens_preceding\":null,\"is_system_prefix\":null,\"extensions\":{\"compact/prior_node_ids\":[17]}}"
+  },
+  {
+   "session_id": "rhetorical-leopard",
+   "node_id": 26,
+   "parent_node_id": 25,
+   "chat_message": "{\"message_id\":\"89eed2bd-92e3-4e18-a0ce-096f8b97e0c4\",\"role\":\"assistant\",\"content\":\"ok\",\"tool_calls\":[],\"thinking\":{\"thinking\":\"I need to respond with only the single word \\\"ok\\\". No tools should be used, and the final output must be exactly \\\"ok\\\" with no extra characters.\",\"signature\":\"sealed.v1.aZLMAAEUqeSjTRnM1yrVS7EQzjDyqWXIyT_Xyz21R7ep0BQsZU-VoSuhAfd0tW6A3uH_c1eVKUEY8clJ2AdPZX6-gVKMvuU-_SEQ3gZ0NRr6XghbS629EkKcG4vVN3LNWkJHWTwRtC7Skg\",\"signature_type\":\"sealed\"},\"metadata\":{\"num_tokens\":33,\"is_user_input\":null,\"request_id\":\"be0f928d-d102-4a9e-ac72-f2819491b8fe\",\"metrics\":{\"ttft_ms\":3151,\"total_time_ms\":3166,\"input_tokens\":2703,\"output_tokens\":33,\"cache_read_tokens\":8192,\"cache_creation_tokens\":null,\"tpot_ms\":0.45454545454545453,\"tokens_per_sec\":2200.0},\"finish_reason\":\"stop\",\"response_dimensions\":[{\"uid\":\"agent_messages\",\"group_title\":\"Response Statistics\",\"kind\":{\"CumulativeMetric\":{\"label\":\"Agent messages\",\"value\":1.0,\"tail\":\" message\",\"plural_tail\":\" messages\",\"prefix\":\"\"}}},{\"uid\":\"model\",\"group_title\":\"Response Statistics\",\"kind\":{\"Metric\":{\"label\":\"Model\",\"value\":\"SWE-2 High\"}}},{\"uid\":\"input_tokens\",\"group_title\":\"Token Usage\",\"kind\":{\"CumulativeMetric\":{\"label\":\"Input tokens\",\"value\":2703.0,\"tail\":\" token\",\"plural_tail\":\" tokens\",\"prefix\":\"\"}}},{\"uid\":\"output_tokens\",\"group_title\":\"Token Usage\",\"kind\":{\"CumulativeMetric\":{\"label\":\"Output tokens\",\"value\":33.0,\"tail\":\" token\",\"plural_tail\":\" tokens\",\"prefix\":\"\"}}},{\"uid\":\"cached_input_tokens\",\"group_title\":\"Token Usage\",\"kind\":{\"CumulativeMetric\":{\"label\":\"Cached input tokens\",\"value\":8192.0,\"tail\":\" token\",\"plural_tail\":\" tokens\",\"prefix\":\"\"}}}],\"started_generation_at\":\"2026-09-28T22:07:32.825713Z\",\"created_at\":\"2026-09-28T22:07:34.007174Z\",\"generation_model\":\"swe-2-high\",\"telemetry\":{\"source\":\"assistant\",\"operation\":\"inference\"}}}",
+   "created_at": 1790633254,
+   "metadata": "null"
+  },
+  {
+   "session_id": "rhetorical-leopard",
+   "node_id": 27,
+   "parent_node_id": 25,
+   "chat_message": "{\"message_id\":\"89eed2bd-92e3-4e18-a0ce-096f8b97e0c4\",\"role\":\"assistant\",\"content\":\"ok\",\"tool_calls\":[],\"thinking\":{\"thinking\":\"I need to respond with only the single word \\\"ok\\\". No tools should be used, and the final output must be exactly \\\"ok\\\" with no extra characters.\",\"signature\":\"sealed.v1.aZLMAAEUqeSjTRnM1yrVS7EQzjDyqWXIyT_Xyz21R7ep0BQsZU-VoSuhAfd0tW6A3uH_c1eVKUEY8clJ2AdPZX6-gVKMvuU-_SEQ3gZ0NRr6XghbS629EkKcG4vVN3LNWkJHWTwRtC7Skg\",\"signature_type\":\"sealed\"},\"metadata\":{\"num_tokens\":33,\"is_user_input\":null,\"request_id\":\"be0f928d-d102-4a9e-ac72-f2819491b8fe\",\"metrics\":{\"ttft_ms\":3151,\"total_time_ms\":3166,\"input_tokens\":2703,\"output_tokens\":33,\"cache_read_tokens\":8192,\"cache_creation_tokens\":null,\"tpot_ms\":0.45454545454545453,\"tokens_per_sec\":2200.0},\"finish_reason\":\"stop\",\"response_dimensions\":[{\"uid\":\"agent_messages\",\"group_title\":\"Response Statistics\",\"kind\":{\"CumulativeMetric\":{\"label\":\"Agent messages\",\"value\":1.0,\"tail\":\" message\",\"plural_tail\":\" messages\",\"prefix\":\"\"}}},{\"uid\":\"model\",\"group_title\":\"Response Statistics\",\"kind\":{\"Metric\":{\"label\":\"Model\",\"value\":\"SWE-2 High\"}}},{\"uid\":\"input_tokens\",\"group_title\":\"Token Usage\",\"kind\":{\"CumulativeMetric\":{\"label\":\"Input tokens\",\"value\":2703.0,\"tail\":\" token\",\"plural_tail\":\" tokens\",\"prefix\":\"\"}}},{\"uid\":\"output_tokens\",\"group_title\":\"Token Usage\",\"kind\":{\"CumulativeMetric\":{\"label\":\"Output tokens\",\"value\":33.0,\"tail\":\" token\",\"plural_tail\":\" tokens\",\"prefix\":\"\"}}},{\"uid\":\"cached_input_tokens\",\"group_title\":\"Token Usage\",\"kind\":{\"CumulativeMetric\":{\"label\":\"Cached input tokens\",\"value\":8192.0,\"tail\":\" token\",\"plural_tail\":\" tokens\",\"prefix\":\"\"}}}],\"started_generation_at\":\"2026-09-28T22:07:32.825713Z\",\"created_at\":\"2026-09-28T22:07:34.007174Z\",\"generation_model\":\"swe-2-high\",\"telemetry\":{\"source\":\"assistant\",\"operation\":\"inference\"}}}",
+   "created_at": 1790633254,
+   "metadata": "{\"summarized_from\":null,\"num_tokens_preceding\":10895,\"is_system_prefix\":null}"
+  },
+  {
+   "session_id": "serene-crayfish",
+   "node_id": 0,
+   "parent_node_id": null,
+   "chat_message": "{\"message_id\":\"678a0be7-cdd8-4b3c-862f-dcf64ff12e6c\",\"role\":\"system\",\"content\":\"(Devin's system prompt, left out of the fixture)\",\"metadata\":{\"num_tokens\":null,\"is_user_input\":null,\"request_id\":null,\"metrics\":null,\"finish_reason\":null,\"extensions\":{\"affogato/cog-context\":{\"key\":\"workspace/context\"}},\"created_at\":\"2026-09-28T22:07:43.000054Z\",\"telemetry\":{\"source\":\"system\",\"operation\":\"unknown\"}}}",
+   "created_at": 1790633267,
+   "metadata": "null"
+  },
+  {
+   "session_id": "serene-crayfish",
+   "node_id": 1,
+   "parent_node_id": 0,
+   "chat_message": "{\"message_id\":\"2279508a-d624-4de9-9dfe-cb8e1a701983\",\"role\":\"system\",\"content\":\"(Devin's system prompt, left out of the fixture)\",\"metadata\":{\"num_tokens\":null,\"is_user_input\":null,\"request_id\":null,\"metrics\":null,\"finish_reason\":null,\"extensions\":{\"agent-ext/rules-loaded\":{\"rule_paths\":[\"/home/owner/.codeium/windsurf/memories/global_rules.md\"],\"available_rule_paths\":[],\"content_bytes\":0,\"is_always_on\":true,\"preserve_on_compaction\":true}},\"created_at\":\"2026-09-28T22:07:43.003910Z\",\"telemetry\":{\"source\":\"rules\",\"operation\":\"content\"}}}",
+   "created_at": 1790633267,
+   "metadata": "null"
+  },
+  {
+   "session_id": "serene-crayfish",
+   "node_id": 2,
+   "parent_node_id": 1,
+   "chat_message": "{\"message_id\":\"671ca48e-7da6-425c-ba9c-499ca1f101f0\",\"role\":\"user\",\"content\":\"Run the shell command `echo mirror-fixture` and tell me what it printed, in one short sentence.\",\"metadata\":{\"num_tokens\":null,\"is_user_input\":true,\"request_id\":null,\"metrics\":null,\"finish_reason\":null,\"created_at\":\"2026-09-28T22:07:43.115066Z\",\"telemetry\":{\"source\":\"user\",\"operation\":\"unknown\"}}}",
+   "created_at": 1790633267,
+   "metadata": "null"
+  },
+  {
+   "session_id": "serene-crayfish",
+   "node_id": 3,
+   "parent_node_id": null,
+   "chat_message": "{\"message_id\":\"7ac1781a-c9d7-439a-bd26-4644679c57c1\",\"role\":\"system\",\"content\":\"(Devin's system prompt, left out of the fixture)\",\"metadata\":{\"num_tokens\":null,\"is_user_input\":null,\"request_id\":null,\"metrics\":null,\"finish_reason\":null,\"created_at\":\"2026-09-28T22:07:42.994344Z\",\"telemetry\":{\"source\":\"sysprompt\",\"operation\":\"normal\"}}}",
+   "created_at": 1790633267,
+   "metadata": "{\"summarized_from\":null,\"num_tokens_preceding\":null,\"is_system_prefix\":true}"
+  },
+  {
+   "session_id": "serene-crayfish",
+   "node_id": 4,
+   "parent_node_id": 3,
+   "chat_message": "{\"message_id\":\"f05e08f5-142a-4288-a9c7-589da90b442a\",\"role\":\"system\",\"content\":\"(Devin's system prompt, left out of the fixture)\",\"metadata\":{\"num_tokens\":null,\"is_user_input\":null,\"request_id\":null,\"metrics\":null,\"finish_reason\":null,\"created_at\":\"2026-09-28T22:07:42.998917Z\",\"telemetry\":{\"source\":\"sysprompt\",\"operation\":\"subagent_profiles\"}}}",
+   "created_at": 1790633267,
+   "metadata": "{\"summarized_from\":null,\"num_tokens_preceding\":null,\"is_system_prefix\":true}"
+  },
+  {
+   "session_id": "serene-crayfish",
+   "node_id": 5,
+   "parent_node_id": 4,
+   "chat_message": "{\"message_id\":\"f8cefeb5-4a15-445b-bb21-02f0b133d513\",\"role\":\"system\",\"content\":\"(Devin's system prompt, left out of the fixture)\",\"metadata\":{\"num_tokens\":null,\"is_user_input\":null,\"request_id\":null,\"metrics\":null,\"finish_reason\":null,\"created_at\":\"2026-09-28T22:07:42.998905Z\",\"telemetry\":{\"source\":\"system\",\"operation\":\"unknown\"}}}",
+   "created_at": 1790633267,
+   "metadata": "{\"summarized_from\":null,\"num_tokens_preceding\":null,\"is_system_prefix\":true}"
+  },
+  {
+   "session_id": "serene-crayfish",
+   "node_id": 6,
+   "parent_node_id": 5,
+   "chat_message": "{\"message_id\":\"2648603c-5b42-4f30-ad7e-be8124a6dbf1\",\"role\":\"system\",\"content\":\"(Devin's system prompt, left out of the fixture)\",\"metadata\":{\"num_tokens\":null,\"is_user_input\":null,\"request_id\":null,\"metrics\":null,\"finish_reason\":null,\"created_at\":\"2026-09-28T22:07:42.998886Z\",\"telemetry\":{\"source\":\"system\",\"operation\":\"unknown\"}}}",
+   "created_at": 1790633267,
+   "metadata": "{\"summarized_from\":null,\"num_tokens_preceding\":null,\"is_system_prefix\":true}"
+  },
+  {
+   "session_id": "serene-crayfish",
+   "node_id": 7,
+   "parent_node_id": 6,
+   "chat_message": "{\"message_id\":\"678a0be7-cdd8-4b3c-862f-dcf64ff12e6c\",\"role\":\"system\",\"content\":\"(Devin's system prompt, left out of the fixture)\",\"metadata\":{\"num_tokens\":null,\"is_user_input\":null,\"request_id\":null,\"metrics\":null,\"finish_reason\":null,\"extensions\":{\"affogato/cog-context\":{\"key\":\"workspace/context\"}},\"created_at\":\"2026-09-28T22:07:43.000054Z\",\"telemetry\":{\"source\":\"system\",\"operation\":\"unknown\"}}}",
+   "created_at": 1790633267,
+   "metadata": "{\"summarized_from\":null,\"num_tokens_preceding\":null,\"is_system_prefix\":null,\"extensions\":{\"compact/prior_node_ids\":[0]}}"
+  },
+  {
+   "session_id": "serene-crayfish",
+   "node_id": 8,
+   "parent_node_id": 7,
+   "chat_message": "{\"message_id\":\"2279508a-d624-4de9-9dfe-cb8e1a701983\",\"role\":\"system\",\"content\":\"(Devin's system prompt, left out of the fixture)\",\"metadata\":{\"num_tokens\":null,\"is_user_input\":null,\"request_id\":null,\"metrics\":null,\"finish_reason\":null,\"extensions\":{\"agent-ext/rules-loaded\":{\"rule_paths\":[\"/home/owner/.codeium/windsurf/memories/global_rules.md\"],\"available_rule_paths\":[],\"content_bytes\":0,\"is_always_on\":true,\"preserve_on_compaction\":true}},\"created_at\":\"2026-09-28T22:07:43.003910Z\",\"telemetry\":{\"source\":\"rules\",\"operation\":\"content\"}}}",
+   "created_at": 1790633267,
+   "metadata": "{\"summarized_from\":null,\"num_tokens_preceding\":null,\"is_system_prefix\":null,\"extensions\":{\"compact/prior_node_ids\":[1]}}"
+  },
+  {
+   "session_id": "serene-crayfish",
+   "node_id": 9,
+   "parent_node_id": 8,
+   "chat_message": "{\"message_id\":\"671ca48e-7da6-425c-ba9c-499ca1f101f0\",\"role\":\"user\",\"content\":\"Run the shell command `echo mirror-fixture` and tell me what it printed, in one short sentence.\",\"metadata\":{\"num_tokens\":null,\"is_user_input\":true,\"request_id\":null,\"metrics\":null,\"finish_reason\":null,\"created_at\":\"2026-09-28T22:07:43.115066Z\",\"telemetry\":{\"source\":\"user\",\"operation\":\"unknown\"}}}",
+   "created_at": 1790633267,
+   "metadata": "{\"summarized_from\":null,\"num_tokens_preceding\":null,\"is_system_prefix\":null,\"extensions\":{\"compact/prior_node_ids\":[2]}}"
+  },
+  {
+   "session_id": "serene-crayfish",
+   "node_id": 10,
+   "parent_node_id": null,
+   "chat_message": "{\"message_id\":\"7ac1781a-c9d7-439a-bd26-4644679c57c1\",\"role\":\"system\",\"content\":\"(Devin's system prompt, left out of the fixture)\",\"metadata\":{\"num_tokens\":null,\"is_user_input\":null,\"request_id\":null,\"metrics\":null,\"finish_reason\":null,\"created_at\":\"2026-09-28T22:07:42.994344Z\",\"telemetry\":{\"source\":\"sysprompt\",\"operation\":\"normal\"}}}",
+   "created_at": 1790633267,
+   "metadata": "{\"summarized_from\":null,\"num_tokens_preceding\":null,\"is_system_prefix\":true}"
+  },
+  {
+   "session_id": "serene-crayfish",
+   "node_id": 11,
+   "parent_node_id": 10,
+   "chat_message": "{\"message_id\":\"f05e08f5-142a-4288-a9c7-589da90b442a\",\"role\":\"system\",\"content\":\"(Devin's system prompt, left out of the fixture)\",\"metadata\":{\"num_tokens\":null,\"is_user_input\":null,\"request_id\":null,\"metrics\":null,\"finish_reason\":null,\"created_at\":\"2026-09-28T22:07:42.998917Z\",\"telemetry\":{\"source\":\"sysprompt\",\"operation\":\"subagent_profiles\"}}}",
+   "created_at": 1790633267,
+   "metadata": "{\"summarized_from\":null,\"num_tokens_preceding\":null,\"is_system_prefix\":true}"
+  },
+  {
+   "session_id": "serene-crayfish",
+   "node_id": 12,
+   "parent_node_id": 11,
+   "chat_message": "{\"message_id\":\"f8cefeb5-4a15-445b-bb21-02f0b133d513\",\"role\":\"system\",\"content\":\"(Devin's system prompt, left out of the fixture)\",\"metadata\":{\"num_tokens\":null,\"is_user_input\":null,\"request_id\":null,\"metrics\":null,\"finish_reason\":null,\"created_at\":\"2026-09-28T22:07:42.998905Z\",\"telemetry\":{\"source\":\"system\",\"operation\":\"unknown\"}}}",
+   "created_at": 1790633267,
+   "metadata": "{\"summarized_from\":null,\"num_tokens_preceding\":null,\"is_system_prefix\":true}"
+  },
+  {
+   "session_id": "serene-crayfish",
+   "node_id": 13,
+   "parent_node_id": 12,
+   "chat_message": "{\"message_id\":\"2648603c-5b42-4f30-ad7e-be8124a6dbf1\",\"role\":\"system\",\"content\":\"(Devin's system prompt, left out of the fixture)\",\"metadata\":{\"num_tokens\":null,\"is_user_input\":null,\"request_id\":null,\"metrics\":null,\"finish_reason\":null,\"created_at\":\"2026-09-28T22:07:42.998886Z\",\"telemetry\":{\"source\":\"system\",\"operation\":\"unknown\"}}}",
+   "created_at": 1790633267,
+   "metadata": "{\"summarized_from\":null,\"num_tokens_preceding\":null,\"is_system_prefix\":true}"
+  },
+  {
+   "session_id": "serene-crayfish",
+   "node_id": 14,
+   "parent_node_id": 13,
+   "chat_message": "{\"message_id\":\"678a0be7-cdd8-4b3c-862f-dcf64ff12e6c\",\"role\":\"system\",\"content\":\"(Devin's system prompt, left out of the fixture)\",\"metadata\":{\"num_tokens\":null,\"is_user_input\":null,\"request_id\":null,\"metrics\":null,\"finish_reason\":null,\"extensions\":{\"affogato/cog-context\":{\"key\":\"workspace/context\"}},\"created_at\":\"2026-09-28T22:07:43.000054Z\",\"telemetry\":{\"source\":\"system\",\"operation\":\"unknown\"}}}",
+   "created_at": 1790633267,
+   "metadata": "{\"summarized_from\":null,\"num_tokens_preceding\":null,\"is_system_prefix\":null,\"extensions\":{\"compact/prior_node_ids\":[0]}}"
+  },
+  {
+   "session_id": "serene-crayfish",
+   "node_id": 15,
+   "parent_node_id": 14,
+   "chat_message": "{\"message_id\":\"2279508a-d624-4de9-9dfe-cb8e1a701983\",\"role\":\"system\",\"content\":\"(Devin's system prompt, left out of the fixture)\",\"metadata\":{\"num_tokens\":null,\"is_user_input\":null,\"request_id\":null,\"metrics\":null,\"finish_reason\":null,\"extensions\":{\"agent-ext/rules-loaded\":{\"rule_paths\":[\"/home/owner/.codeium/windsurf/memories/global_rules.md\"],\"available_rule_paths\":[],\"content_bytes\":0,\"is_always_on\":true,\"preserve_on_compaction\":true}},\"created_at\":\"2026-09-28T22:07:43.003910Z\",\"telemetry\":{\"source\":\"rules\",\"operation\":\"content\"}}}",
+   "created_at": 1790633267,
+   "metadata": "{\"summarized_from\":null,\"num_tokens_preceding\":null,\"is_system_prefix\":null,\"extensions\":{\"compact/prior_node_ids\":[1]}}"
+  },
+  {
+   "session_id": "serene-crayfish",
+   "node_id": 16,
+   "parent_node_id": 15,
+   "chat_message": "{\"message_id\":\"671ca48e-7da6-425c-ba9c-499ca1f101f0\",\"role\":\"user\",\"content\":\"Run the shell command `echo mirror-fixture` and tell me what it printed, in one short sentence.\",\"metadata\":{\"num_tokens\":null,\"is_user_input\":true,\"request_id\":null,\"metrics\":null,\"finish_reason\":null,\"created_at\":\"2026-09-28T22:07:43.115066Z\",\"telemetry\":{\"source\":\"user\",\"operation\":\"unknown\"}}}",
+   "created_at": 1790633267,
+   "metadata": "{\"summarized_from\":null,\"num_tokens_preceding\":null,\"is_system_prefix\":null,\"extensions\":{\"compact/prior_node_ids\":[2]}}"
+  },
+  {
+   "session_id": "serene-crayfish",
+   "node_id": 17,
+   "parent_node_id": 2,
+   "chat_message": "{\"message_id\":\"c87d94fd-5d49-4282-9a6a-55e0b20ddda6\",\"role\":\"system\",\"content\":\"(Devin's system prompt, left out of the fixture)\",\"metadata\":{\"num_tokens\":null,\"is_user_input\":null,\"request_id\":null,\"metrics\":null,\"finish_reason\":null,\"extensions\":{\"agent-ext/skills-loaded\":{\"skills\":[{\"name\":\"devin-cli\",\"description\":\"Look up Devin CLI documentation (skills, extensibility, configuration, commands, models, troubleshooting)\",\"path\":\"/home/owner/.local/share/devin/cli/_versions/3000.11.3/share/devin/docs\",\"model_invocable\":true,\"provider\":\"builtin\",\"skill_id\":\"builtin:devin-cli\"},{\"name\":\"declarative-repo-setup\",\"description\":\"Generate and verify a working environment.yaml (Devin snapshot-setup blueprint) for a repo\",\"path\":\"builtin:drs\",\"model_invocable\":true,\"provider\":\"builtin\",\"skill_id\":\"builtin:declarative-repo-setup\"},{\"name\":\"upload-secrets\",\"description\":\"Securely upload local secrets (dotenv files, env vars, API keys) to the Devin Cloud secrets manager \\u2014 values never enter the conversation\",\"path\":\"builtin:upload-secrets\",\"model_invocable\":true,\"provider\":\"builtin\",\"skill_id\":\"builtin:upload-secrets\"}],\"is_initial_listing\":true}},\"created_at\":\"2026-09-28T22:07:43.123087Z\",\"telemetry\":{\"source\":\"system\",\"operation\":\"unknown\"}}}",
+   "created_at": 1790633267,
+   "metadata": "null"
+  },
+  {
+   "session_id": "serene-crayfish",
+   "node_id": 18,
+   "parent_node_id": null,
+   "chat_message": "{\"message_id\":\"7ac1781a-c9d7-439a-bd26-4644679c57c1\",\"role\":\"system\",\"content\":\"(Devin's system prompt, left out of the fixture)\",\"metadata\":{\"num_tokens\":null,\"is_user_input\":null,\"request_id\":null,\"metrics\":null,\"finish_reason\":null,\"created_at\":\"2026-09-28T22:07:42.994344Z\",\"telemetry\":{\"source\":\"sysprompt\",\"operation\":\"normal\"}}}",
+   "created_at": 1790633267,
+   "metadata": "{\"summarized_from\":null,\"num_tokens_preceding\":null,\"is_system_prefix\":true}"
+  },
+  {
+   "session_id": "serene-crayfish",
+   "node_id": 19,
+   "parent_node_id": 18,
+   "chat_message": "{\"message_id\":\"f05e08f5-142a-4288-a9c7-589da90b442a\",\"role\":\"system\",\"content\":\"(Devin's system prompt, left out of the fixture)\",\"metadata\":{\"num_tokens\":null,\"is_user_input\":null,\"request_id\":null,\"metrics\":null,\"finish_reason\":null,\"created_at\":\"2026-09-28T22:07:42.998917Z\",\"telemetry\":{\"source\":\"sysprompt\",\"operation\":\"subagent_profiles\"}}}",
+   "created_at": 1790633267,
+   "metadata": "{\"summarized_from\":null,\"num_tokens_preceding\":null,\"is_system_prefix\":true}"
+  },
+  {
+   "session_id": "serene-crayfish",
+   "node_id": 20,
+   "parent_node_id": 19,
+   "chat_message": "{\"message_id\":\"f8cefeb5-4a15-445b-bb21-02f0b133d513\",\"role\":\"system\",\"content\":\"(Devin's system prompt, left out of the fixture)\",\"metadata\":{\"num_tokens\":null,\"is_user_input\":null,\"request_id\":null,\"metrics\":null,\"finish_reason\":null,\"created_at\":\"2026-09-28T22:07:42.998905Z\",\"telemetry\":{\"source\":\"system\",\"operation\":\"unknown\"}}}",
+   "created_at": 1790633267,
+   "metadata": "{\"summarized_from\":null,\"num_tokens_preceding\":null,\"is_system_prefix\":true}"
+  },
+  {
+   "session_id": "serene-crayfish",
+   "node_id": 21,
+   "parent_node_id": 20,
+   "chat_message": "{\"message_id\":\"2648603c-5b42-4f30-ad7e-be8124a6dbf1\",\"role\":\"system\",\"content\":\"(Devin's system prompt, left out of the fixture)\",\"metadata\":{\"num_tokens\":null,\"is_user_input\":null,\"request_id\":null,\"metrics\":null,\"finish_reason\":null,\"created_at\":\"2026-09-28T22:07:42.998886Z\",\"telemetry\":{\"source\":\"system\",\"operation\":\"unknown\"}}}",
+   "created_at": 1790633267,
+   "metadata": "{\"summarized_from\":null,\"num_tokens_preceding\":null,\"is_system_prefix\":true}"
+  },
+  {
+   "session_id": "serene-crayfish",
+   "node_id": 22,
+   "parent_node_id": 21,
+   "chat_message": "{\"message_id\":\"678a0be7-cdd8-4b3c-862f-dcf64ff12e6c\",\"role\":\"system\",\"content\":\"(Devin's system prompt, left out of the fixture)\",\"metadata\":{\"num_tokens\":null,\"is_user_input\":null,\"request_id\":null,\"metrics\":null,\"finish_reason\":null,\"extensions\":{\"affogato/cog-context\":{\"key\":\"workspace/context\"}},\"created_at\":\"2026-09-28T22:07:43.000054Z\",\"telemetry\":{\"source\":\"system\",\"operation\":\"unknown\"}}}",
+   "created_at": 1790633267,
+   "metadata": "{\"summarized_from\":null,\"num_tokens_preceding\":null,\"is_system_prefix\":null,\"extensions\":{\"compact/prior_node_ids\":[0]}}"
+  },
+  {
+   "session_id": "serene-crayfish",
+   "node_id": 23,
+   "parent_node_id": 22,
+   "chat_message": "{\"message_id\":\"2279508a-d624-4de9-9dfe-cb8e1a701983\",\"role\":\"system\",\"content\":\"(Devin's system prompt, left out of the fixture)\",\"metadata\":{\"num_tokens\":null,\"is_user_input\":null,\"request_id\":null,\"metrics\":null,\"finish_reason\":null,\"extensions\":{\"agent-ext/rules-loaded\":{\"rule_paths\":[\"/home/owner/.codeium/windsurf/memories/global_rules.md\"],\"available_rule_paths\":[],\"content_bytes\":0,\"is_always_on\":true,\"preserve_on_compaction\":true}},\"created_at\":\"2026-09-28T22:07:43.003910Z\",\"telemetry\":{\"source\":\"rules\",\"operation\":\"content\"}}}",
+   "created_at": 1790633267,
+   "metadata": "{\"summarized_from\":null,\"num_tokens_preceding\":null,\"is_system_prefix\":null,\"extensions\":{\"compact/prior_node_ids\":[1]}}"
+  },
+  {
+   "session_id": "serene-crayfish",
+   "node_id": 24,
+   "parent_node_id": 23,
+   "chat_message": "{\"message_id\":\"671ca48e-7da6-425c-ba9c-499ca1f101f0\",\"role\":\"user\",\"content\":\"Run the shell command `echo mirror-fixture` and tell me what it printed, in one short sentence.\",\"metadata\":{\"num_tokens\":null,\"is_user_input\":true,\"request_id\":null,\"metrics\":null,\"finish_reason\":null,\"created_at\":\"2026-09-28T22:07:43.115066Z\",\"telemetry\":{\"source\":\"user\",\"operation\":\"unknown\"}}}",
+   "created_at": 1790633267,
+   "metadata": "{\"summarized_from\":null,\"num_tokens_preceding\":null,\"is_system_prefix\":null,\"extensions\":{\"compact/prior_node_ids\":[2]}}"
+  },
+  {
+   "session_id": "serene-crayfish",
+   "node_id": 25,
+   "parent_node_id": 24,
+   "chat_message": "{\"message_id\":\"c87d94fd-5d49-4282-9a6a-55e0b20ddda6\",\"role\":\"system\",\"content\":\"(Devin's system prompt, left out of the fixture)\",\"metadata\":{\"num_tokens\":null,\"is_user_input\":null,\"request_id\":null,\"metrics\":null,\"finish_reason\":null,\"extensions\":{\"agent-ext/skills-loaded\":{\"skills\":[{\"name\":\"devin-cli\",\"description\":\"Look up Devin CLI documentation (skills, extensibility, configuration, commands, models, troubleshooting)\",\"path\":\"/home/owner/.local/share/devin/cli/_versions/3000.11.3/share/devin/docs\",\"model_invocable\":true,\"provider\":\"builtin\",\"skill_id\":\"builtin:devin-cli\"},{\"name\":\"declarative-repo-setup\",\"description\":\"Generate and verify a working environment.yaml (Devin snapshot-setup blueprint) for a repo\",\"path\":\"builtin:drs\",\"model_invocable\":true,\"provider\":\"builtin\",\"skill_id\":\"builtin:declarative-repo-setup\"},{\"name\":\"upload-secrets\",\"description\":\"Securely upload local secrets (dotenv files, env vars, API keys) to the Devin Cloud secrets manager \\u2014 values never enter the conversation\",\"path\":\"builtin:upload-secrets\",\"model_invocable\":true,\"provider\":\"builtin\",\"skill_id\":\"builtin:upload-secrets\"}],\"is_initial_listing\":true}},\"created_at\":\"2026-09-28T22:07:43.123087Z\",\"telemetry\":{\"source\":\"system\",\"operation\":\"unknown\"}}}",
+   "created_at": 1790633267,
+   "metadata": "{\"summarized_from\":null,\"num_tokens_preceding\":null,\"is_system_prefix\":null,\"extensions\":{\"compact/prior_node_ids\":[17]}}"
+  },
+  {
+   "session_id": "serene-crayfish",
+   "node_id": 26,
+   "parent_node_id": 25,
+   "chat_message": "{\"message_id\":\"c69542ef-61bd-4af0-8fd3-810a81adf419\",\"role\":\"assistant\",\"content\":\"\",\"tool_calls\":[{\"id\":\"call_2d8bbba0fddf4edf9d4ea54e#d046a7e85b9948f0889a1e30efdf1584\",\"name\":\"exec\",\"arguments\":{\"command\":\"echo mirror-fixture\"},\"index\":0,\"kind\":\"function\"}],\"thinking\":{\"thinking\":\"I need to run `echo mirror-fixture` and then summarize its output in a single sentence.\",\"signature\":\"sealed.v1.YzqFJq1J5BTQoLqfZ2XDffM9ysNLGfL2wLGY_xuQU2q7f2DZtLBGSkCIj3ni8VVA7nxEuYKwmV3BLTwaA9fZo_qFoWoj6s0OAxAqHqCcrAKt_UwEIGDE34Fl2eP3D8frYEPD_jY2tU4oSp8mcLPu7NUmlKhHtzMWM1Y\",\"signature_type\":\"sealed\"},\"metadata\":{\"num_tokens\":74,\"is_user_input\":null,\"request_id\":\"51d181fc-2d19-4b69-9e6d-c83828cb55e1\",\"metrics\":{\"ttft_ms\":3213,\"total_time_ms\":3222,\"input_tokens\":10904,\"output_tokens\":74,\"cache_read_tokens\":null,\"cache_creation_tokens\":null,\"tpot_ms\":0.12162162162162163,\"tokens_per_sec\":8222.22222222222},\"finish_reason\":\"tool_calls\",\"response_dimensions\":[{\"uid\":\"agent_messages\",\"group_title\":\"Response Statistics\",\"kind\":{\"CumulativeMetric\":{\"label\":\"Agent messages\",\"value\":1.0,\"tail\":\" message\",\"plural_tail\":\" messages\",\"prefix\":\"\"}}},{\"uid\":\"model\",\"group_title\":\"Response Statistics\",\"kind\":{\"Metric\":{\"label\":\"Model\",\"value\":\"SWE-2 High\"}}},{\"uid\":\"input_tokens\",\"group_title\":\"Token Usage\",\"kind\":{\"CumulativeMetric\":{\"label\":\"Input tokens\",\"value\":10904.0,\"tail\":\" token\",\"plural_tail\":\" tokens\",\"prefix\":\"\"}}},{\"uid\":\"output_tokens\",\"group_title\":\"Token Usage\",\"kind\":{\"CumulativeMetric\":{\"label\":\"Output tokens\",\"value\":74.0,\"tail\":\" token\",\"plural_tail\":\" tokens\",\"prefix\":\"\"}}},{\"uid\":\"cached_input_tokens\",\"group_title\":\"Token Usage\",\"kind\":{\"CumulativeMetric\":{\"label\":\"Cached input tokens\",\"value\":0.0,\"tail\":\" token\",\"plural_tail\":\" tokens\",\"prefix\":\"\"}}}],\"started_generation_at\":\"2026-09-28T22:07:45.358002Z\",\"created_at\":\"2026-09-28T22:07:46.381190Z\",\"generation_model\":\"swe-2-high\",\"telemetry\":{\"source\":\"assistant\",\"operation\":\"inference\"}}}",
+   "created_at": 1790633267,
+   "metadata": "null"
+  },
+  {
+   "session_id": "serene-crayfish",
+   "node_id": 27,
+   "parent_node_id": 25,
+   "chat_message": "{\"message_id\":\"c69542ef-61bd-4af0-8fd3-810a81adf419\",\"role\":\"assistant\",\"content\":\"\",\"tool_calls\":[{\"id\":\"call_2d8bbba0fddf4edf9d4ea54e#d046a7e85b9948f0889a1e30efdf1584\",\"name\":\"exec\",\"arguments\":{\"command\":\"echo mirror-fixture\"},\"index\":0,\"kind\":\"function\"}],\"thinking\":{\"thinking\":\"I need to run `echo mirror-fixture` and then summarize its output in a single sentence.\",\"signature\":\"sealed.v1.YzqFJq1J5BTQoLqfZ2XDffM9ysNLGfL2wLGY_xuQU2q7f2DZtLBGSkCIj3ni8VVA7nxEuYKwmV3BLTwaA9fZo_qFoWoj6s0OAxAqHqCcrAKt_UwEIGDE34Fl2eP3D8frYEPD_jY2tU4oSp8mcLPu7NUmlKhHtzMWM1Y\",\"signature_type\":\"sealed\"},\"metadata\":{\"num_tokens\":74,\"is_user_input\":null,\"request_id\":\"51d181fc-2d19-4b69-9e6d-c83828cb55e1\",\"metrics\":{\"ttft_ms\":3213,\"total_time_ms\":3222,\"input_tokens\":10904,\"output_tokens\":74,\"cache_read_tokens\":null,\"cache_creation_tokens\":null,\"tpot_ms\":0.12162162162162163,\"tokens_per_sec\":8222.22222222222},\"finish_reason\":\"tool_calls\",\"extensions\":{\"chisel/tool_call_content\":{\"call_2d8bbba0fddf4edf9d4ea54e#d046a7e85b9948f0889a1e30efdf1584\":{\"toolCallId\":\"call_2d8bbba0fddf4edf9d4ea54e#d046a7e85b9948f0889a1e30efdf1584\",\"title\":\"Ran echo\",\"status\":\"pending\",\"content\":[{\"type\":\"content\",\"content\":{\"type\":\"resource\",\"resource\":{\"mimeType\":\"text/x-shellscript\",\"text\":\"echo mirror-fixture\",\"uri\":\"tool://preview\"},\"_meta\":{\"cognition.ai/preview_is_shell_command\":true}}}],\"kind\":\"execute\",\"rawInput\":{\"command\":\"echo mirror-fixture\"},\"_meta\":{\"cognition.ai/commandNames\":[\"echo\"]}}}},\"response_dimensions\":[{\"uid\":\"agent_messages\",\"group_title\":\"Response Statistics\",\"kind\":{\"CumulativeMetric\":{\"label\":\"Agent messages\",\"value\":1.0,\"tail\":\" message\",\"plural_tail\":\" messages\",\"prefix\":\"\"}}},{\"uid\":\"model\",\"group_title\":\"Response Statistics\",\"kind\":{\"Metric\":{\"label\":\"Model\",\"value\":\"SWE-2 High\"}}},{\"uid\":\"input_tokens\",\"group_title\":\"Token Usage\",\"kind\":{\"CumulativeMetric\":{\"label\":\"Input tokens\",\"value\":10904.0,\"tail\":\" token\",\"plural_tail\":\" tokens\",\"prefix\":\"\"}}},{\"uid\":\"output_tokens\",\"group_title\":\"Token Usage\",\"kind\":{\"CumulativeMetric\":{\"label\":\"Output tokens\",\"value\":74.0,\"tail\":\" token\",\"plural_tail\":\" tokens\",\"prefix\":\"\"}}},{\"uid\":\"cached_input_tokens\",\"group_title\":\"Token Usage\",\"kind\":{\"CumulativeMetric\":{\"label\":\"Cached input tokens\",\"value\":0.0,\"tail\":\" token\",\"plural_tail\":\" tokens\",\"prefix\":\"\"}}}],\"started_generation_at\":\"2026-09-28T22:07:45.358002Z\",\"created_at\":\"2026-09-28T22:07:46.381190Z\",\"generation_model\":\"swe-2-high\",\"telemetry\":{\"source\":\"assistant\",\"operation\":\"inference\"}}}",
+   "created_at": 1790633267,
+   "metadata": "{\"summarized_from\":null,\"num_tokens_preceding\":10904,\"is_system_prefix\":null}"
+  },
+  {
+   "session_id": "serene-crayfish",
+   "node_id": 28,
+   "parent_node_id": 27,
+   "chat_message": "{\"message_id\":\"12725c46-e426-4ee6-944e-02906126a86f\",\"role\":\"tool\",\"content\":\"Output from command in shell a40180:\\nmirror-fixture\\n\\n\\nExit code: 0\",\"tool_call_id\":\"call_2d8bbba0fddf4edf9d4ea54e#d046a7e85b9948f0889a1e30efdf1584\",\"metadata\":{\"num_tokens\":null,\"is_user_input\":null,\"request_id\":null,\"metrics\":null,\"finish_reason\":null,\"extensions\":{\"chisel/tool_call_timing\":{\"started_at\":\"2026-09-28T22:07:46.393778Z\",\"finished_at\":\"2026-09-28T22:07:46.429995Z\",\"duration_ms\":36},\"chisel/terminal_output\":{\"text\":\"mirror-fixture\\n\",\"cwd\":\"/work/repo\",\"exit\":{\"terminal_id\":\"a40180\",\"exit_code\":0}},\"chisel/tool_result_meta\":{\"success\":true,\"kind\":\"execute\"}},\"created_at\":\"2026-09-28T22:07:46.430557Z\",\"telemetry\":{\"source\":\"tool_result\",\"operation\":\"exec\"}}}",
+   "created_at": 1790633267,
+   "metadata": "null"
+  },
+  {
+   "session_id": "serene-crayfish",
+   "node_id": 29,
+   "parent_node_id": 28,
+   "chat_message": "{\"message_id\":\"3e8dcd49-7a70-4075-8811-e4baefdb8064\",\"role\":\"assistant\",\"content\":\"It printed `mirror-fixture`.\",\"tool_calls\":[],\"metadata\":{\"num_tokens\":20,\"is_user_input\":null,\"request_id\":\"a91a0a0c-dcf1-458b-a86c-2acfac9c701b\",\"metrics\":{\"ttft_ms\":1314,\"total_time_ms\":1437,\"input_tokens\":122,\"output_tokens\":20,\"cache_read_tokens\":10903,\"cache_creation_tokens\":null,\"tpot_ms\":6.15,\"tokens_per_sec\":162.60162601626016},\"finish_reason\":\"stop\",\"response_dimensions\":[{\"uid\":\"agent_messages\",\"group_title\":\"Response Statistics\",\"kind\":{\"CumulativeMetric\":{\"label\":\"Agent messages\",\"value\":1.0,\"tail\":\" message\",\"plural_tail\":\" messages\",\"prefix\":\"\"}}},{\"uid\":\"model\",\"group_title\":\"Response Statistics\",\"kind\":{\"Metric\":{\"label\":\"Model\",\"value\":\"SWE-2 High\"}}},{\"uid\":\"input_tokens\",\"group_title\":\"Token Usage\",\"kind\":{\"CumulativeMetric\":{\"label\":\"Input tokens\",\"value\":122.0,\"tail\":\" token\",\"plural_tail\":\" tokens\",\"prefix\":\"\"}}},{\"uid\":\"output_tokens\",\"group_title\":\"Token Usage\",\"kind\":{\"CumulativeMetric\":{\"label\":\"Output tokens\",\"value\":20.0,\"tail\":\" token\",\"plural_tail\":\" tokens\",\"prefix\":\"\"}}},{\"uid\":\"cached_input_tokens\",\"group_title\":\"Token Usage\",\"kind\":{\"CumulativeMetric\":{\"label\":\"Cached input tokens\",\"value\":10903.0,\"tail\":\" token\",\"plural_tail\":\" tokens\",\"prefix\":\"\"}}}],\"started_generation_at\":\"2026-09-28T22:07:47.690619Z\",\"created_at\":\"2026-09-28T22:07:47.882596Z\",\"generation_model\":\"swe-2-high\",\"telemetry\":{\"source\":\"assistant\",\"operation\":\"inference\"}}}",
+   "created_at": 1790633267,
+   "metadata": "null"
+  },
+  {
+   "session_id": "serene-crayfish",
+   "node_id": 30,
+   "parent_node_id": 28,
+   "chat_message": "{\"message_id\":\"3e8dcd49-7a70-4075-8811-e4baefdb8064\",\"role\":\"assistant\",\"content\":\"It printed `mirror-fixture`.\",\"tool_calls\":[],\"metadata\":{\"num_tokens\":20,\"is_user_input\":null,\"request_id\":\"a91a0a0c-dcf1-458b-a86c-2acfac9c701b\",\"metrics\":{\"ttft_ms\":1314,\"total_time_ms\":1437,\"input_tokens\":122,\"output_tokens\":20,\"cache_read_tokens\":10903,\"cache_creation_tokens\":null,\"tpot_ms\":6.15,\"tokens_per_sec\":162.60162601626016},\"finish_reason\":\"stop\",\"response_dimensions\":[{\"uid\":\"agent_messages\",\"group_title\":\"Response Statistics\",\"kind\":{\"CumulativeMetric\":{\"label\":\"Agent messages\",\"value\":1.0,\"tail\":\" message\",\"plural_tail\":\" messages\",\"prefix\":\"\"}}},{\"uid\":\"model\",\"group_title\":\"Response Statistics\",\"kind\":{\"Metric\":{\"label\":\"Model\",\"value\":\"SWE-2 High\"}}},{\"uid\":\"input_tokens\",\"group_title\":\"Token Usage\",\"kind\":{\"CumulativeMetric\":{\"label\":\"Input tokens\",\"value\":122.0,\"tail\":\" token\",\"plural_tail\":\" tokens\",\"prefix\":\"\"}}},{\"uid\":\"output_tokens\",\"group_title\":\"Token Usage\",\"kind\":{\"CumulativeMetric\":{\"label\":\"Output tokens\",\"value\":20.0,\"tail\":\" token\",\"plural_tail\":\" tokens\",\"prefix\":\"\"}}},{\"uid\":\"cached_input_tokens\",\"group_title\":\"Token Usage\",\"kind\":{\"CumulativeMetric\":{\"label\":\"Cached input tokens\",\"value\":10903.0,\"tail\":\" token\",\"plural_tail\":\" tokens\",\"prefix\":\"\"}}}],\"started_generation_at\":\"2026-09-28T22:07:47.690619Z\",\"created_at\":\"2026-09-28T22:07:47.882596Z\",\"generation_model\":\"swe-2-high\",\"telemetry\":{\"source\":\"assistant\",\"operation\":\"inference\"}}}",
+   "created_at": 1790633267,
+   "metadata": "{\"summarized_from\":null,\"num_tokens_preceding\":11025,\"is_system_prefix\":null}"
+  }
+ ]
+}
