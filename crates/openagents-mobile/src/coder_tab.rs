@@ -817,10 +817,6 @@ impl CoderTab {
         self.tokens(&Choice::offered(phase)).1
     }
 
-    fn composer(&self, placeholder: String, enabled: bool, busy: bool) -> Node<Intent> {
-        self.composer_with(placeholder, enabled, busy, &[], None)
-    }
-
     /// The composer's tokens: the send control's, and one per choice.
     fn tokens(&self, choices: &[Choice]) -> (String, Vec<(String, Choice)>) {
         let token = format!("coder-composer-{}", self.composers);
@@ -839,6 +835,7 @@ impl CoderTab {
         busy: bool,
         choices: &[Choice],
         draft: Option<String>,
+        focus: bool,
     ) -> Node<Intent> {
         let (token, minted) = self.tokens(choices);
         node(
@@ -858,6 +855,7 @@ impl CoderTab {
                     })
                     .collect(),
                 draft,
+                focus,
             },
         )
     }
@@ -998,7 +996,8 @@ impl CoderTab {
             }
             Availability::NotConfigured => "Message Coder".to_owned(),
         };
-        children.push(self.composer(placeholder, ready.is_some(), false));
+        // The New Chat screen exists to write a message: it opens ready to type.
+        children.push(self.composer_with(placeholder, ready.is_some(), false, &[], None, true));
         page(children)
     }
 
@@ -1151,7 +1150,7 @@ impl CoderTab {
             Vec::new()
         };
         let allowed = computers.is_some_and(|c| c.can_operate(&open.host));
-        children.push(self.composer_with(placeholder, allowed, false, &choices, editing));
+        children.push(self.composer_with(placeholder, allowed, false, &choices, editing, false));
         page(children)
     }
 

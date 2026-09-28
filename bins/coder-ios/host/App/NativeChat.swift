@@ -32,6 +32,8 @@ struct NativeComposerProps: Equatable {
     /// Text to put in the field when the token is new, such as a message to
     /// edit.
     var draft: String? = nil
+    /// Put the text cursor in the field when the token is new.
+    var focus: Bool = false
 }
 
 /// Another way to send a composer's text.
@@ -885,7 +887,8 @@ private struct NativeComposer: View {
     var body: some View {
         HStack(alignment: .bottom, spacing: 8) {
             NativeComposerField(text: $text, placeholder: props.placeholder, maxBytes: props.maxBytes,
-                                enabled: props.enabled, send: send)
+                                enabled: props.enabled, focusToken: props.focus ? props.token : nil,
+                                send: send)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .overlay(alignment: .topLeading) {
                     if text.isEmpty {
@@ -998,6 +1001,8 @@ private struct NativeComposerField: UIViewRepresentable {
     let placeholder: String
     let maxBytes: Int
     let enabled: Bool
+    /// The composer token to focus the field for, once, when it first shows.
+    let focusToken: String?
     let send: () -> Void
 
     private static let font = UIFontMetrics(forTextStyle: .body).scaledFont(for: .systemFont(ofSize: 16))
@@ -1026,6 +1031,10 @@ private struct NativeComposerField: UIViewRepresentable {
         if view.text != text { view.text = text }
         view.isEditable = enabled
         view.accessibilityLabel = placeholder
+        if enabled, let token = focusToken, context.coordinator.focused != token {
+            context.coordinator.focused = token
+            DispatchQueue.main.async { view.becomeFirstResponder() }
+        }
     }
 
     func sizeThatFits(_ proposal: ProposedViewSize, uiView: NativeComposerTextView,
@@ -1043,6 +1052,8 @@ private struct NativeComposerField: UIViewRepresentable {
 
     final class Coordinator: NSObject, UITextViewDelegate {
         var parent: NativeComposerField
+        /// The composer token the field last took focus for.
+        var focused: String?
 
         init(_ parent: NativeComposerField) { self.parent = parent }
 

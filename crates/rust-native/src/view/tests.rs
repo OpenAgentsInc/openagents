@@ -460,6 +460,7 @@ mod conversation {
                 stop: Some(Chat::Stop),
                 choices: vec![],
                 draft: None,
+                focus: false,
             },
         );
         View::new(
@@ -513,6 +514,7 @@ mod conversation {
                 stop: None,
                 choices: vec![],
                 draft: None,
+                focus: false,
             };
         }
         assert_eq!(bad.validate().unwrap_err(), ViewError::Identity);
@@ -540,6 +542,7 @@ mod conversation {
                         stop: None,
                         choices,
                         draft: draft.map(str::to_owned),
+                        focus: false,
                     },
                 ),
             )

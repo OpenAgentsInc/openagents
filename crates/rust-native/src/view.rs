@@ -120,7 +120,9 @@ pub enum Element<I> {
     /// adapter offers as a long press on the send control (a menu); choosing
     /// one answers with that choice's token instead. `draft` is text the
     /// adapter puts in the field when `token` is new, such as a message to
-    /// edit; otherwise the field keeps what the person typed.
+    /// edit; otherwise the field keeps what the person typed. `focus` puts
+    /// the text cursor in the field when `token` is new, so a screen whose
+    /// purpose is to write, such as a new chat, opens ready to type.
     Composer {
         token: String,
         placeholder: String,
@@ -132,6 +134,8 @@ pub enum Element<I> {
         choices: Vec<ComposerChoice>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         draft: Option<String>,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        focus: bool,
     },
 }
 

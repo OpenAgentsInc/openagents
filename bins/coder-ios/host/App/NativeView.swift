@@ -70,7 +70,7 @@ indirect enum NativeElement: Decodable, Equatable {
     private enum Props: String, CodingKey {
         case axis, children, label, value, role, enabled, resource, icon
         case earlier, note, blocks, name, detail, state
-        case token, placeholder, max_bytes, busy, stop, choices, draft
+        case token, placeholder, max_bytes, busy, stop, choices, draft, focus
     }
 
     init(from decoder: Decoder) throws {
@@ -112,7 +112,8 @@ indirect enum NativeElement: Decodable, Equatable {
                 busy: try props.decode(Bool.self, forKey: .busy),
                 stoppable: stop,
                 choices: try props.decodeIfPresent([NativeComposerChoice].self, forKey: .choices) ?? [],
-                draft: try props.decodeIfPresent(String.self, forKey: .draft)))
+                draft: try props.decodeIfPresent(String.self, forKey: .draft),
+                focus: try props.decodeIfPresent(Bool.self, forKey: .focus) ?? false))
         default:
             throw DecodingError.dataCorruptedError(forKey: .kind, in: object,
                                                     debugDescription: "Unsupported native element")

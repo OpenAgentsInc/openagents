@@ -333,6 +333,8 @@ fn new_chat_is_its_own_screen() {
         .find(|node| node["element"]["kind"] == "composer")
         .expect("composer");
     assert_eq!(composer["element"]["props"]["enabled"], true);
+    // The screen exists to write: it opens with the cursor in the field.
+    assert_eq!(composer["element"]["props"]["focus"], true);
     assert!(node(&screen, "coder-chats").is_none());
     let list = fixture.tap("coder-back");
     assert!(node(&list, "coder-new").is_some());
