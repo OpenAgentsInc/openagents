@@ -76,6 +76,8 @@ ndk-sys = "0.6"
 # Signed BOLT11 invoices for the agent-spending tests.
 nostr = { path = "../nostr", features = ["test-invoice"] }
 tempfile = "3"
+# A paused clock for the Chats time-to-first-rows tests.
+tokio = { version = "1", features = ["test-util"] }
 
 # This crate is its own workspace, excluded from the repository's: Breez's
 # SQLite store links `libsqlite3-sys` 0.30 and `ldk-node` (the computers'

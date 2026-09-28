@@ -724,7 +724,10 @@ impl App {
             Cache::open(&config.state_dir.join("chats"), &secret),
             format!("chats:{}", id()),
         )
-        .with_pulled_transcripts(launch.pulled_transcripts);
+        .with_pulled_transcripts(launch.pulled_transcripts)
+        .with_transcripts(crate::transcripts::Transcripts::chats(
+            Cache::open(&config.state_dir.join("chats-transcripts"), &secret).ok(),
+        ));
         let admissions = Cache::open(&config.state_dir.join("admissions"), &secret);
         // Chats read directly at each admitted computer's tailnet listener,
         // including pairings made before the phone remembered its address.

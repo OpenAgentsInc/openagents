@@ -7,11 +7,12 @@
 //! pairing. Reads run in the background; the host polls with `snapshot`.
 
 use crate::conversation::Conversation;
+use crate::transcripts::Transcripts;
 use coder_computers::cache::Cache;
 use coder_connect::direct::Change;
 use coder_connect::protocol::Route;
 use coder_connect::{Client, ConnectionCode, Observation, Query, RelayPolicy};
-use coder_history::{CatalogRequest, Chat, Harness};
+use coder_history::{CatalogCursor, CatalogPage, CatalogRequest, Chat, Harness};
 use rust_native::input::InputRequest;
 use rust_native::layout::source;
 use rust_native::style::{Color, Space, Style, TextWeight};
@@ -29,6 +30,14 @@ const CATALOG_PAGES: usize = 8;
 /// Stop reading a computer's catalog once this many chats would show.
 const CATALOG_WANTED: usize = 60;
 const SHOWN_CHATS: usize = 200;
+/// The prefix of each computer's kept chat list; its observer key follows.
+const CATALOG_KEY: &str = "chats-catalog-";
+/// The most chats kept per computer across a relaunch, newest first.
+const KEPT_CHATS: usize = 160;
+/// The most plaintext one kept chat list may take.
+const KEPT_BYTES: usize = 150 * 1024;
+/// Keep an open chat's transcript at most this often while it changes.
+const KEEP_EVERY: u64 = 5;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -72,7 +81,11 @@ struct Saved {
 }
 
 enum Status {
+    /// Nothing to show yet: the first read is running.
     Loading,
+    /// The chats kept from the last read show while the computer is read
+    /// again.
+    Refreshing,
     Ready,
     Failed(String),
 }
@@ -89,6 +102,45 @@ struct Computer {
     heads: u64,
     heads_done: u64,
     head_running: bool,
+    /// Changes with each catalog read started; an older read stops at its
+    /// next page.
+    generation: u64,
+}
+
+impl Computer {
+    fn new(
+        saved: Saved,
+        client: Result<Arc<Client>, String>,
+        watch: Option<tokio::task::AbortHandle>,
+        chats: Vec<Chat>,
+    ) -> Self {
+        Self {
+            saved,
+            client,
+            watch,
+            status: if chats.is_empty() {
+                Status::Loading
+            } else {
+                Status::Refreshing
+            },
+            chats,
+            heads: 0,
+            heads_done: 0,
+            head_running: false,
+            generation: 0,
+        }
+    }
+
+    /// Start a catalog read: the chats kept show while it runs.
+    fn start(&mut self) -> u64 {
+        self.generation += 1;
+        self.status = if self.chats.is_empty() {
+            Status::Loading
+        } else {
+            Status::Refreshing
+        };
+        self.generation
+    }
 }
 
 impl Drop for Computer {
@@ -108,6 +160,8 @@ struct State {
     named: Option<String>,
     /// The saved pairings changed off the app thread.
     dirty: bool,
+    /// Computers whose chat list changed since it was last kept.
+    changed: std::collections::BTreeSet<String>,
 }
 
 pub struct Chats {
@@ -123,6 +177,11 @@ pub struct Chats {
     reading: Option<Conversation>,
     /// The host's transcript layout reads a chat's rows from Rust.
     pulled: bool,
+    /// Chats' transcripts as last shown, so a chat opens at once.
+    transcripts: Transcripts,
+    /// The open chat's key in `transcripts`, and the version and time it
+    /// was last kept.
+    kept: Option<(String, u64, u64)>,
 }
 
 fn lock(state: &Mutex<State>) -> MutexGuard<'_, State> {
@@ -145,20 +204,23 @@ impl Chats {
             state.notice = Some(format!("Chats can't be saved: {error}"));
         }
         let shared = Arc::new(Mutex::new(State::default()));
+        // Each computer's chats as last read show at once; the reads below
+        // bring them up to date.
         state.computers = saved
             .into_iter()
             .map(|saved| {
                 let client = client(&saved, secret);
-                Computer {
-                    watch: watch(&runtime, &shared, &saved, &client),
-                    client,
-                    saved,
-                    status: Status::Loading,
-                    chats: vec![],
-                    heads: 0,
-                    heads_done: 0,
-                    head_running: false,
-                }
+                let kept = store
+                    .as_ref()
+                    .ok()
+                    .and_then(|cache| kept(cache, &saved.code.host))
+                    .unwrap_or_default();
+                Computer::new(
+                    saved.clone(),
+                    client.clone(),
+                    watch(&runtime, &shared, &saved, &client),
+                    kept,
+                )
             })
             .collect();
         *lock(&shared) = state;
@@ -174,6 +236,8 @@ impl Chats {
             tokens: 0,
             reading: None,
             pulled: false,
+            transcripts: Transcripts::chats(None),
+            kept: None,
         };
         chats.refresh();
         chats
@@ -181,6 +245,13 @@ impl Chats {
 
     pub fn input(&self) -> Option<&InputRequest<Purpose>> {
         self.input.as_ref()
+    }
+
+    /// Keep each opened chat's transcript in `transcripts`, which survives
+    /// a relaunch.
+    pub fn with_transcripts(mut self, transcripts: Transcripts) -> Self {
+        self.transcripts = transcripts;
+        self
     }
 
     pub fn loading(&self) -> bool {
@@ -195,36 +266,25 @@ impl Chats {
 
     /// Read every computer's catalog again.
     pub fn refresh(&mut self) {
-        let jobs: Vec<(String, Arc<Client>)> = {
+        let jobs: Vec<(String, u64, Arc<Client>)> = {
             let mut state = lock(&self.state);
             state
                 .computers
                 .iter_mut()
                 .filter_map(|computer| {
                     let client = computer.client.as_ref().ok()?.clone();
-                    computer.status = Status::Loading;
-                    Some((computer.saved.code.host.clone(), client))
+                    let generation = computer.start();
+                    Some((computer.saved.code.host.clone(), generation, client))
                 })
                 .collect()
         };
-        for (host, client) in jobs {
+        for (host, generation, client) in jobs {
             let state = self.state.clone();
             self.runtime.spawn(async move {
-                let result = catalog(&client).await;
-                let mut state = lock(&state);
-                if let Some(computer) = state
-                    .computers
-                    .iter_mut()
-                    .find(|c| c.saved.code.host == host)
-                {
-                    match result {
-                        Ok(chats) => {
-                            computer.chats = chats;
-                            computer.status = Status::Ready;
-                        }
-                        Err(error) => computer.status = Status::Failed(error),
-                    }
-                }
+                read_catalog(&state, &host, generation, |after| {
+                    catalog_page(&client, after)
+                })
+                .await;
             });
         }
     }
@@ -241,7 +301,11 @@ impl Chats {
         match intent {
             Intent::AddComputer => self.ask(Purpose::Pair),
             Intent::Refresh => self.refresh(),
-            Intent::Back => self.reading = None,
+            Intent::Back => {
+                self.keep(true);
+                self.reading = None;
+                self.kept = None;
+            }
             Intent::Earlier => {
                 if let Some(reading) = &self.reading {
                     reading.earlier();
@@ -251,6 +315,9 @@ impl Chats {
                 lock(&self.state)
                     .computers
                     .retain(|c| c.saved.code.host != computer);
+                if let Ok(cache) = &self.store {
+                    let _ = cache.erase(&format!("{CATALOG_KEY}{computer}"));
+                }
                 self.save();
             }
             Intent::Open { computer, source } => self.open(computer, source),
@@ -374,6 +441,13 @@ impl Chats {
                     .find(|c| c.saved.code.host == host)
                     .map_or_else(|| format!("Computer {number}"), |c| c.saved.label.clone())
             });
+            // Paired again: its chats keep showing while they are read.
+            let known = guard
+                .computers
+                .iter_mut()
+                .find(|c| c.saved.code.host == host)
+                .map(|c| std::mem::take(&mut c.chats))
+                .unwrap_or_default();
             guard.computers.retain(|c| c.saved.code.host != host);
             let saved = Saved {
                 code,
@@ -382,46 +456,52 @@ impl Chats {
                 direct,
             };
             let client = client(&saved, secret);
-            guard.computers.push(Computer {
-                watch: watch(&handle, &state, &saved, &client),
-                saved,
-                client: client.clone(),
-                status: Status::Loading,
-                chats: vec![],
-                heads: 0,
-                heads_done: 0,
-                head_running: false,
-            });
+            let mut computer = Computer::new(
+                saved.clone(),
+                client.clone(),
+                watch(&handle, &state, &saved, &client),
+                known,
+            );
+            let generation = computer.start();
+            guard.computers.push(computer);
             guard.named = (!named).then(|| host.clone());
             guard.dirty = true;
             drop(guard);
             if let Ok(client) = client {
                 let state = state.clone();
                 handle.spawn(async move {
-                    let result = catalog(&client).await;
-                    let mut state = lock(&state);
-                    if let Some(computer) = state.computers.iter_mut().find(|c| c.saved.code.host == host) {
-                        match result {
-                            Ok(chats) => {
-                                computer.chats = chats;
-                                computer.status = Status::Ready;
-                            }
-                            Err(error) => computer.status = Status::Failed(error),
-                        }
-                    }
+                    read_catalog(&state, &host, generation, |after| catalog_page(&client, after))
+                        .await;
                 });
             }
         });
     }
 
-    /// Called on each packet: save a new pairing and ask for its name.
+    /// Called on each packet: save a new pairing and each chat list that
+    /// changed, and ask for a new pairing's name.
     pub fn settle(&mut self) {
-        let (wants_name, dirty) = {
+        let (wants_name, dirty, lists) = {
             let mut state = lock(&self.state);
-            (state.named.is_some(), std::mem::take(&mut state.dirty))
+            let changed = std::mem::take(&mut state.changed);
+            let lists: Vec<(String, Vec<Chat>)> = state
+                .computers
+                .iter()
+                .filter(|c| changed.contains(&c.saved.code.host))
+                .map(|c| (c.saved.code.host.clone(), c.chats.clone()))
+                .collect();
+            (
+                state.named.is_some(),
+                std::mem::take(&mut state.dirty),
+                lists,
+            )
         };
         if dirty {
             self.save();
+        }
+        if let Ok(cache) = &self.store {
+            for (observer, chats) in lists {
+                keep(cache, &observer, chats);
+            }
         }
         if wants_name && self.input.is_none() {
             self.ask(Purpose::Name);
@@ -459,8 +539,54 @@ impl Chats {
                 })
         };
         if let Some((client, chat)) = found {
-            self.reading = Some(Conversation::open(self.runtime.clone(), client, chat));
+            // The chat as last shown, at once, while its computer is read
+            // for what changed since.
+            let key = transcript_key(&computer, &chat.id);
+            let cached = self
+                .transcripts
+                .get(&key)
+                .filter(|cached| cached.chat.id == chat.id);
+            self.reading = Some(Conversation::resume(
+                self.runtime.clone(),
+                client,
+                chat,
+                cached,
+            ));
+            self.kept = Some((key, 0, 0));
         }
+    }
+
+    /// Keep the open chat's transcript for its next opening: when `now`, or
+    /// when it changed and was last kept a while ago.
+    fn keep(&mut self, now: bool) {
+        let (Some(reading), Some((key, version, at))) = (&self.reading, self.kept.as_mut()) else {
+            return;
+        };
+        let current = reading.version();
+        let time = unix_now();
+        if current == *version || !now && time.saturating_sub(*at) < KEEP_EVERY {
+            return;
+        }
+        if let Some(cached) = reading.cached() {
+            *version = current;
+            *at = time;
+            let key = key.clone();
+            self.transcripts.put(&key, cached);
+        }
+    }
+
+    /// Whether the computer whose Computers host key is `host` tells this
+    /// phone when its chat list changes: it reads over a direct connection
+    /// that has read its catalog, so a timed read of its newest chats can
+    /// wait longer.
+    pub fn nudged(&self, host: &str) -> bool {
+        lock(&self.state).computers.iter().any(|c| {
+            c.saved.host.as_deref() == Some(host)
+                && c.client
+                    .as_ref()
+                    .is_ok_and(|client| client.route() == Route::Direct)
+                && (c.heads_done > 0 || matches!(c.status, Status::Ready))
+        })
     }
 
     /// The saved chat of Coder task `task` on the machine whose Computers
@@ -553,13 +679,9 @@ impl Chats {
             };
             computer.head_running = false;
             if let Ok(Observation::Catalog(page)) = result {
-                for chat in page.entries {
-                    match computer.chats.iter_mut().find(|known| known.id == chat.id) {
-                        Some(known) => *known = chat,
-                        None => computer.chats.push(chat),
-                    }
-                }
+                merge(&mut computer.chats, &page.entries);
                 computer.heads_done = computer.heads_done.max(round);
+                state.changed.insert(observer);
             }
         });
         Some(round)
@@ -607,6 +729,7 @@ impl Chats {
     }
 
     pub fn render(&mut self) -> Option<serde_json::Value> {
+        self.keep(false);
         self.revision += 1;
         let view = loop {
             let mut root = match &self.reading {
@@ -683,12 +806,8 @@ fn watch(
                     .iter_mut()
                     .find(|c| c.saved.code.host == observer),
             ) {
-                for chat in page.entries {
-                    match computer.chats.iter_mut().find(|known| known.id == chat.id) {
-                        Some(known) => *known = chat,
-                        None => computer.chats.push(chat),
-                    }
-                }
+                merge(&mut computer.chats, &page.entries);
+                state.changed.insert(observer.clone());
             }
         }
     });
@@ -707,22 +826,164 @@ async fn observe(
         .map_err(|error| error.to_string())
 }
 
-/// The computer's newest chats, until enough would show. The host lists
-/// newest first; a chat that moved between pages is kept once.
-async fn catalog(client: &Client) -> Result<Vec<Chat>, String> {
+/// Read the catalog of computer `observer` with `fetch` into its list: each
+/// page shows as it arrives, over the chats kept from the last read, and a
+/// read `generation` no longer names stops at its next page.
+async fn read_catalog<F, Fut>(state: &Arc<Mutex<State>>, observer: &str, generation: u64, fetch: F)
+where
+    F: FnMut(Option<CatalogCursor>) -> Fut,
+    Fut: std::future::Future<Output = Result<CatalogPage, String>>,
+{
+    let current = |state: &mut State| -> Option<usize> {
+        state
+            .computers
+            .iter()
+            .position(|c| c.saved.code.host == observer && c.generation == generation)
+    };
+    let mut merged = 0;
+    let result = catalog_pages(fetch, |chats| {
+        let mut state = lock(state);
+        let Some(index) = current(&mut state) else {
+            return false;
+        };
+        let computer = &mut state.computers[index];
+        merge(&mut computer.chats, &chats[merged..]);
+        merged = chats.len();
+        if matches!(computer.status, Status::Loading) && !computer.chats.is_empty() {
+            computer.status = Status::Refreshing;
+        }
+        state.changed.insert(observer.to_owned());
+        true
+    })
+    .await;
+    let mut state = lock(state);
+    let Some(index) = current(&mut state) else {
+        return;
+    };
+    let computer = &mut state.computers[index];
+    match result {
+        Ok((fresh, complete)) => {
+            prune(&mut computer.chats, &fresh, complete);
+            computer.status = Status::Ready;
+            state.changed.insert(observer.to_owned());
+        }
+        Err(error) => computer.status = Status::Failed(error),
+    }
+}
+
+/// Merge `fresh` chats into `list`: a chat already listed is replaced in
+/// place, a new one is added. The view orders them.
+fn merge(list: &mut Vec<Chat>, fresh: &[Chat]) {
+    for chat in fresh {
+        match list.iter_mut().find(|known| known.id == chat.id) {
+            Some(known) => known.clone_from(chat),
+            None => list.push(chat.clone()),
+        }
+    }
+}
+
+/// After a whole read of `fresh` chats, drop the kept chats the computer no
+/// longer lists: those within the span the read covered, or every one when
+/// it read the whole catalog. A chat newer than the read, as a nudge brings
+/// while it runs, stays.
+fn prune(list: &mut Vec<Chat>, fresh: &[Chat], complete: bool) {
+    let newest = fresh
+        .iter()
+        .map(|c| c.updated_at.as_deref())
+        .max()
+        .flatten();
+    let oldest = fresh
+        .iter()
+        .map(|c| c.updated_at.as_deref())
+        .min()
+        .flatten();
+    list.retain(|chat| {
+        fresh.iter().any(|known| known.id == chat.id)
+            || chat.updated_at.as_deref() > newest
+            || !complete && chat.updated_at.as_deref() < oldest
+    });
+}
+
+/// Newest first, then by ID, so rows keep their places across reads.
+fn order(a: &Chat, b: &Chat) -> std::cmp::Ordering {
+    b.updated_at
+        .cmp(&a.updated_at)
+        .then_with(|| a.id.cmp(&b.id))
+}
+
+/// The chats kept for computer `observer`.
+fn kept(cache: &Cache, observer: &str) -> Option<Vec<Chat>> {
+    cache
+        .read(&format!("{CATALOG_KEY}{observer}"))
+        .ok()
+        .flatten()
+}
+
+/// Keep computer `observer`'s newest chats for the next launch. An empty
+/// list is not kept, so a relaunch never shows a computer as empty while a
+/// read that found nothing is still possible to redo.
+fn keep(cache: &Cache, observer: &str, mut chats: Vec<Chat>) {
+    if chats.is_empty() {
+        return;
+    }
+    chats.sort_by(order);
+    chats.truncate(KEPT_CHATS);
+    while serde_json::to_vec(&chats).map_or(0, |bytes| bytes.len()) > KEPT_BYTES {
+        chats.truncate(chats.len() * 3 / 4);
+    }
+    let _ = cache.write(&format!("{CATALOG_KEY}{observer}"), &chats);
+}
+
+/// The store key of chat `id` of computer `observer`: a 64-bit FNV-1a
+/// digest in hex, since a chat ID may hold any character. A kept
+/// transcript names its chat, which is checked on reading.
+fn transcript_key(observer: &str, id: &str) -> String {
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for byte in observer.bytes().chain(*b"\n").chain(id.bytes()) {
+        hash ^= u64::from(byte);
+        hash = hash.wrapping_mul(0x0100_0000_01b3);
+    }
+    format!("{hash:016x}")
+}
+
+fn unix_now() -> u64 {
+    now()
+}
+
+/// One catalog page after `after`.
+async fn catalog_page(
+    client: &Client,
+    after: Option<CatalogCursor>,
+) -> Result<CatalogPage, String> {
+    let make = |route: Route| {
+        Query::Catalog(CatalogRequest {
+            cursor: after.clone(),
+            limit: head_limit(route),
+        })
+    };
+    match observe(client, &make).await? {
+        Observation::Catalog(page) => Ok(page),
+        _ => Err("The computer answered with the wrong page.".into()),
+    }
+}
+
+/// Read catalog pages with `fetch`, newest first, until enough chats would
+/// show. `arrived` sees the chats read so far after each page and returns
+/// whether to read on.
+async fn catalog_pages<F, Fut>(
+    mut fetch: F,
+    mut arrived: impl FnMut(&[Chat]) -> bool,
+) -> Result<(Vec<Chat>, bool), String>
+where
+    F: FnMut(Option<CatalogCursor>) -> Fut,
+    Fut: std::future::Future<Output = Result<CatalogPage, String>>,
+{
     let mut chats: Vec<Chat> = vec![];
     let mut cursor = None;
+    let mut complete = false;
     for _ in 0..CATALOG_PAGES {
-        let after = cursor.take();
-        let make = |route: Route| {
-            Query::Catalog(CatalogRequest {
-                cursor: after.clone(),
-                limit: head_limit(route),
-            })
-        };
-        let page = match observe(client, &make).await {
-            Ok(Observation::Catalog(page)) => page,
-            Ok(_) => return Err("The computer answered with the wrong page.".into()),
+        let page = match fetch(cursor.take()).await {
+            Ok(page) => page,
             // A later page can fail when the chat list changed; keep what
             // arrived.
             Err(_) if !chats.is_empty() => break,
@@ -733,15 +994,18 @@ async fn catalog(client: &Client) -> Result<Vec<Chat>, String> {
                 chats.push(chat);
             }
         }
-        if chats.iter().filter(|chat| shown(chat)).count() >= CATALOG_WANTED {
+        if !arrived(&chats) || chats.iter().filter(|chat| shown(chat)).count() >= CATALOG_WANTED {
             break;
         }
         match page.next {
             Some(next) => cursor = Some(next),
-            None => break,
+            None => {
+                complete = true;
+                break;
+            }
         }
     }
-    Ok(chats)
+    Ok((chats, complete))
 }
 
 /// Whether the list shows a chat: not archived, not a subagent's, and
@@ -773,7 +1037,7 @@ fn catalog_view(state: &State) -> Node<Intent> {
             _ if expired => "Pairing expired. Add it again.".to_string(),
             (Err(error), _) => error.clone(),
             (_, Status::Loading) => "Loading chats…".to_string(),
-            (_, Status::Ready) => match computer.chats.len() {
+            (_, Status::Ready | Status::Refreshing) => match computer.chats.len() {
                 1 => "1 chat".into(),
                 n => format!("{n} chats"),
             },
@@ -806,7 +1070,7 @@ fn catalog_view(state: &State) -> Node<Intent> {
         .flat_map(|computer| computer.chats.iter().map(move |chat| (computer, chat)))
         .filter(|(_, chat)| shown(chat))
         .collect();
-    all.sort_by(|a, b| b.1.updated_at.cmp(&a.1.updated_at));
+    all.sort_by(|a, b| order(a.1, b.1));
     let total = all.len();
     let rows: Vec<Node<Intent>> = all
         .into_iter()
@@ -974,4 +1238,327 @@ fn now() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |elapsed| elapsed.as_secs())
+}
+
+#[cfg(test)]
+mod speed {
+    //! Time to first rows, against a fake computer whose every catalog page
+    //! takes [`PAGE`] under a paused clock, so the numbers are exact.
+    use super::*;
+    use coder_history::SourceStatus;
+    use std::time::Duration;
+
+    /// One catalog page's round trip, as over the relay.
+    const PAGE: Duration = Duration::from_millis(250);
+    const OBSERVER: &str = "observer";
+
+    /// Chat `n`: newest first; three in four are subagents' and do not show.
+    fn chat(n: usize) -> Chat {
+        Chat {
+            id: format!("chat-{n}"),
+            harness: Harness::Claude,
+            native_id: None,
+            title: format!("Chat {n}"),
+            title_truncated: false,
+            updated_at: Some(format!("2026-09-{:02}T00:00:00Z", 28 - n / 20)),
+            archived: false,
+            subagent: !n.is_multiple_of(4),
+            source_id: Some(format!("source-{n}")),
+            status: SourceStatus::Available,
+        }
+    }
+
+    async fn fake(after: Option<CatalogCursor>) -> Result<CatalogPage, String> {
+        tokio::time::sleep(PAGE).await;
+        let start = after.map_or(0, |c| c.after.parse::<usize>().unwrap());
+        let end = start + 32;
+        Ok(CatalogPage {
+            snapshot: "s".into(),
+            entries: (start..end).map(chat).collect(),
+            next: (end < 32 * 10).then(|| CatalogCursor {
+                snapshot: "s".into(),
+                after: end.to_string(),
+            }),
+            notices: vec![],
+        })
+    }
+
+    /// A pairing of this device's key `secret` with a computer whose relay
+    /// no test reaches, signed as a host signs one.
+    pub(crate) fn code(secret: &SecretKey) -> ConnectionCode {
+        use coder_connect::protocol::{CONNECTION, GRANT, pubkey, random_id, seal};
+        use coder_connect::{Grant, SourceKind, SourceScope};
+        let host = SecretKey::from_byte_array([0x42; 32]).unwrap();
+        let now = now();
+        let expires_at = now + 7 * 24 * 60 * 60;
+        let grant = Grant {
+            v: GRANT.into(),
+            requires: vec![],
+            grant: random_id(),
+            host: pubkey(&host),
+            client: pubkey(secret),
+            relay: "wss://relay.invalid".into(),
+            sources: vec![SourceScope {
+                id: random_id(),
+                label: "Claude".into(),
+                kind: SourceKind::Claude,
+            }],
+            issued_at: now,
+            expires_at,
+        };
+        let authorization = seal(
+            &grant,
+            GRANT,
+            &host,
+            &grant.client,
+            &grant.grant,
+            now,
+            expires_at,
+        )
+        .unwrap();
+        ConnectionCode {
+            v: CONNECTION.into(),
+            requires: vec![],
+            host: grant.host.clone(),
+            client: grant.client.clone(),
+            relay: grant.relay.clone(),
+            grant: grant.grant.clone(),
+            sources: grant.sources.clone(),
+            expires_at,
+            authorization,
+        }
+    }
+
+    fn computer() -> Computer {
+        let mut code = code(&SecretKey::from_byte_array([0x11; 32]).unwrap());
+        code.host = OBSERVER.into();
+        Computer::new(
+            Saved {
+                code,
+                label: "Desk".into(),
+                host: None,
+                direct: None,
+            },
+            Err("no client in tests".into()),
+            None,
+            vec![],
+        )
+    }
+
+    fn visible(state: &Arc<Mutex<State>>) -> usize {
+        lock(state).computers[0]
+            .chats
+            .iter()
+            .filter(|chat| shown(chat))
+            .count()
+    }
+
+    /// A computer's first catalog page shows as soon as it arrives; later
+    /// pages follow in the background. Before, its chats showed only after
+    /// every page it read: eight sequential pages here, 2.01 s.
+    #[test]
+    fn the_first_catalog_page_shows_before_the_rest_arrive() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_time()
+            .start_paused(true)
+            .build()
+            .unwrap();
+        runtime.block_on(async {
+            let state = Arc::new(Mutex::new(State::default()));
+            lock(&state).computers.push(computer());
+            let started = tokio::time::Instant::now();
+            let reading = tokio::spawn({
+                let state = state.clone();
+                async move { read_catalog(&state, OBSERVER, 0, fake).await }
+            });
+            while visible(&state) == 0 {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+            let first = started.elapsed();
+            reading.await.unwrap();
+            let all = started.elapsed();
+            eprintln!("chats list: first rows after {first:?}, every page after {all:?}");
+            assert!(first <= PAGE + Duration::from_millis(10), "{first:?}");
+            assert!(all >= PAGE * 8, "{all:?}");
+            assert_eq!(visible(&state), 64);
+            assert!(matches!(lock(&state).computers[0].status, Status::Ready));
+        });
+    }
+
+    /// A read a newer one replaced stops at its next page and changes
+    /// nothing after.
+    #[test]
+    fn a_replaced_read_stops() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_time()
+            .start_paused(true)
+            .build()
+            .unwrap();
+        runtime.block_on(async {
+            let state = Arc::new(Mutex::new(State::default()));
+            lock(&state).computers.push(computer());
+            let reading = tokio::spawn({
+                let state = state.clone();
+                async move { read_catalog(&state, OBSERVER, 0, fake).await }
+            });
+            tokio::time::sleep(PAGE + Duration::from_millis(1)).await;
+            let shown = visible(&state);
+            assert_eq!(shown, 8);
+            lock(&state).computers[0].start();
+            reading.await.unwrap();
+            assert_eq!(visible(&state), shown);
+            assert!(matches!(
+                lock(&state).computers[0].status,
+                Status::Refreshing
+            ));
+        });
+    }
+
+    /// A read merges by ID without moving rows, keeps a chat newer than the
+    /// read, and drops one the computer no longer lists.
+    #[test]
+    fn a_read_merges_in_place_and_drops_what_vanished() {
+        let mut list = vec![chat(0), chat(4), chat(8)];
+        let mut renamed = chat(4);
+        renamed.title = "Renamed".into();
+        let mut newer = chat(100);
+        newer.updated_at = Some("2026-09-29T00:00:00Z".into());
+        list.push(newer.clone());
+        merge(&mut list, &[renamed.clone(), chat(0), chat(12)]);
+        assert_eq!(list[1].title, "Renamed");
+        prune(&mut list, &[renamed, chat(0), chat(12)], true);
+        let ids: Vec<&str> = list.iter().map(|c| c.id.as_str()).collect();
+        assert_eq!(ids, ["chat-0", "chat-4", "chat-100", "chat-12"]);
+        let mut sorted = list.clone();
+        sorted.sort_by(order);
+        let ids: Vec<&str> = sorted.iter().map(|c| c.id.as_str()).collect();
+        assert_eq!(ids, ["chat-100", "chat-0", "chat-12", "chat-4"]);
+    }
+
+    fn render(chats: &mut Chats) -> String {
+        serde_json::to_string(&chats.render().unwrap()).unwrap()
+    }
+
+    fn listed(view: &str) -> usize {
+        view.matches("\"key\":\"chat-").count()
+            - usize::from(view.contains("\"key\":\"chat-list\""))
+    }
+
+    /// On relaunch the Chats list paints the chats kept from the last read
+    /// in its first view, before any computer answers. Before, the first
+    /// view showed "Loading chats…" and no rows until every catalog page
+    /// arrived.
+    #[test]
+    fn a_relaunch_paints_the_kept_chats_list_at_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let secret = SecretKey::from_byte_array([0x11; 32]).unwrap();
+        // A runtime that is never driven: no read reaches a computer.
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+        let store = || Cache::open(&dir.path().join("chats"), &secret);
+        let saved = vec![Saved {
+            code: code(&secret),
+            label: "Desk".into(),
+            host: None,
+            direct: None,
+        }];
+        store().unwrap().write("chats", &saved).unwrap();
+        let observer = saved[0].code.host.clone();
+
+        let mut first = Chats::new(runtime.handle().clone(), secret, store(), "chats:t".into());
+        let view = render(&mut first);
+        assert!(view.contains("Loading chats…"));
+        assert_eq!(listed(&view), 0);
+        assert!(first.loading());
+        // The computer's read arrives.
+        {
+            let mut state = lock(&first.state);
+            let computer = &mut state.computers[0];
+            merge(&mut computer.chats, &(0..32).map(chat).collect::<Vec<_>>());
+            computer.status = Status::Ready;
+            state.changed.insert(observer.clone());
+        }
+        first.settle();
+        drop(first);
+
+        let started = std::time::Instant::now();
+        let mut again = Chats::new(runtime.handle().clone(), secret, store(), "chats:t".into());
+        let view = render(&mut again);
+        let elapsed = started.elapsed();
+        eprintln!(
+            "chats list on relaunch: {} rows in the first view, {elapsed:?}",
+            listed(&view)
+        );
+        assert!(!view.contains("Loading chats…"), "{view}");
+        assert!(view.contains("8 chats"), "{view}");
+        assert_eq!(listed(&view), 8);
+        // The read runs quietly behind the kept rows.
+        assert!(!again.loading());
+    }
+
+    /// Opening a chat again, after a relaunch, shows its transcript as last
+    /// shown in the first view, then reads what is newer. Before, it showed
+    /// no rows until the computer answered.
+    #[test]
+    fn a_reopened_chat_paints_its_kept_transcript_at_once() {
+        use crate::conversation::{Cached, CachedRow, Entry};
+        let dir = tempfile::tempdir().unwrap();
+        let secret = SecretKey::from_byte_array([0x11; 32]).unwrap();
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+        let store = || Cache::open(&dir.path().join("chats"), &secret);
+        let transcripts =
+            || Transcripts::chats(Cache::open(&dir.path().join("chats-transcripts"), &secret).ok());
+        let saved = vec![Saved {
+            code: code(&secret),
+            label: "Desk".into(),
+            host: None,
+            direct: None,
+        }];
+        store().unwrap().write("chats", &saved).unwrap();
+        let observer = saved[0].code.host.clone();
+        let opened = chat(0);
+        keep(&store().unwrap(), &observer, vec![opened.clone()]);
+        transcripts().put(
+            &transcript_key(&observer, &opened.id),
+            Cached {
+                chat: opened.clone(),
+                sources: vec![opened.source_id.clone().unwrap()],
+                rows: (0..3)
+                    .map(|n| CachedRow {
+                        segment: 0,
+                        offset: n * 10,
+                        end: n * 10 + 10,
+                        part: 0,
+                        entry: Entry::Message {
+                            role: rust_native::MessageRole::Assistant,
+                            text: format!("Kept reply {n}"),
+                        },
+                    })
+                    .collect(),
+                previous: None,
+                through: 30,
+            },
+        );
+
+        let mut chats = Chats::new(runtime.handle().clone(), secret, store(), "chats:t".into())
+            .with_transcripts(transcripts());
+        render(&mut chats);
+        let started = std::time::Instant::now();
+        chats.open(observer.clone(), opened.source_id.clone().unwrap());
+        let view = render(&mut chats);
+        eprintln!(
+            "chat reopened: kept transcript in the first view, {:?}",
+            started.elapsed()
+        );
+        for n in 0..3 {
+            assert!(view.contains(&format!("Kept reply {n}")), "{view}");
+        }
+        // A chat never kept opens empty and reads as before.
+        let mut fresh = Chats::new(runtime.handle().clone(), secret, store(), "chats:u".into());
+        fresh.open(observer, opened.source_id.clone().unwrap());
+        assert!(!render(&mut fresh).contains("Kept reply"));
+    }
 }

@@ -172,6 +172,9 @@ const QUEUE_READ_EVERY: u64 = 15;
 /// How often a running chat's computer is asked for its newest chats, so a
 /// turn's transcript is found as soon as it starts, in seconds.
 const HEAD_EVERY: u64 = 3;
+/// The same, on a direct connection whose computer nudges the phone when
+/// its chat list changes.
+const HEAD_NUDGED_EVERY: u64 = 30;
 /// How often a running chat's transcript is kept for the next opening, in
 /// seconds; an ended one is kept at once.
 const KEEP_EVERY: u64 = 5;
@@ -902,7 +905,14 @@ impl CoderTab {
             open.head_round = None;
             open.settle_read = None;
         }
-        if busy && now.saturating_sub(open.head_at) >= HEAD_EVERY {
+        // A computer that says when its chat list changes is read on its
+        // nudge; the timed read is then only a backstop.
+        let every = if chats.nudged(&open.host) {
+            HEAD_NUDGED_EVERY
+        } else {
+            HEAD_EVERY
+        };
+        if busy && now.saturating_sub(open.head_at) >= every {
             open.head_wanted = true;
         }
         if let Some(round) = open.head_round

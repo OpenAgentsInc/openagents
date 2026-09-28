@@ -1,6 +1,7 @@
-//! The Coder chats' transcripts as last shown, kept in memory and in the
-//! app's encrypted store, so an open chat shows at once while its computer
-//! is read again in the background.
+//! Chats' transcripts as last shown, kept in memory and in the app's
+//! encrypted store, so an open chat shows at once while its computer is
+//! read again in the background: Coder chats by task, and the Chats tab's
+//! chats by a digest of their computer and chat ID.
 //!
 //! It is a display cache: a chat read from its computer always replaces
 //! its copy, a copy of a turn the computer moved past is replaced by the
@@ -10,18 +11,23 @@ use crate::conversation::Cached;
 use coder_computers::cache::Cache;
 use std::collections::HashMap;
 
-/// The key of the list of kept chats, newest use last.
+/// The key of the list of kept Coder chats, newest use last.
 const INDEX: &str = "coder-transcripts";
-/// The prefix of each kept chat's key; the task ID follows.
+/// The prefix of each kept Coder chat's key; the task ID follows.
 const PREFIX: &str = "coder-transcript-";
+/// The same for the Chats tab's chats.
+const CHATS_INDEX: &str = "chats-transcripts";
+const CHATS_PREFIX: &str = "chats-transcript-";
 /// The most chats kept on disk.
 pub const MAX_KEPT: usize = 32;
 /// The most plaintext one kept chat may take; older rows go first.
 const MAX_BYTES: usize = 160 * 1024;
 
-/// Kept transcripts by task.
+/// Kept transcripts by task, or by chat digest.
 pub struct Transcripts {
     cache: Option<Cache>,
+    index_key: &'static str,
+    prefix: &'static str,
     memory: HashMap<String, Cached>,
     /// Kept tasks, least recently used first.
     index: Vec<String>,
@@ -31,12 +37,24 @@ impl Transcripts {
     /// Transcripts kept in `cache`. Without one they are kept only while
     /// the app runs.
     pub fn open(cache: Option<Cache>) -> Self {
+        Self::named(cache, INDEX, PREFIX)
+    }
+
+    /// The Chats tab's transcripts kept in `cache`, keyed by a hexadecimal
+    /// digest of each chat's computer and ID.
+    pub fn chats(cache: Option<Cache>) -> Self {
+        Self::named(cache, CHATS_INDEX, CHATS_PREFIX)
+    }
+
+    fn named(cache: Option<Cache>, index_key: &'static str, prefix: &'static str) -> Self {
         let index = cache
             .as_ref()
-            .and_then(|cache| cache.read::<Vec<String>>(INDEX).ok().flatten())
+            .and_then(|cache| cache.read::<Vec<String>>(index_key).ok().flatten())
             .unwrap_or_default();
         Self {
             cache,
+            index_key,
+            prefix,
             memory: HashMap::new(),
             index,
         }
@@ -47,7 +65,12 @@ impl Transcripts {
         if let Some(cached) = self.memory.get(task) {
             return Some(cached.clone());
         }
-        let cached: Cached = self.cache.as_ref()?.read(&key(task)?).ok().flatten()?;
+        let cached: Cached = self
+            .cache
+            .as_ref()?
+            .read(&key(self.prefix, task)?)
+            .ok()
+            .flatten()?;
         self.memory.insert(task.to_owned(), cached.clone());
         Some(cached)
     }
@@ -59,7 +82,7 @@ impl Transcripts {
         }
         fit(&mut cached);
         self.memory.insert(task.to_owned(), cached.clone());
-        let (Some(cache), Some(name)) = (self.cache.as_ref(), key(task)) else {
+        let (Some(cache), Some(name)) = (self.cache.as_ref(), key(self.prefix, task)) else {
             return;
         };
         if cache.write(&name, &cached).is_err() {
@@ -70,18 +93,19 @@ impl Transcripts {
         while self.index.len() > MAX_KEPT {
             let dropped = self.index.remove(0);
             self.memory.remove(&dropped);
-            if let Some(name) = key(&dropped) {
+            if let Some(name) = key(self.prefix, &dropped) {
                 let _ = cache.erase(&name);
             }
         }
-        let _ = cache.write(INDEX, &self.index);
+        let _ = cache.write(self.index_key, &self.index);
     }
 }
 
-/// A task's store key. A task ID is hexadecimal; anything else is not kept.
-fn key(task: &str) -> Option<String> {
+/// A kept chat's store key. A task ID or chat digest is hexadecimal;
+/// anything else is not kept.
+fn key(prefix: &str, task: &str) -> Option<String> {
     (!task.is_empty() && task.len() <= 128 && task.bytes().all(|b| b.is_ascii_hexdigit()))
-        .then(|| format!("{PREFIX}{task}"))
+        .then(|| format!("{prefix}{task}"))
 }
 
 /// Drop the oldest rows until the transcript fits one stored item; "Load
