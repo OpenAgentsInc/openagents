@@ -10,7 +10,7 @@ Start with the [documentation index](README.md), [master roadmap](roadmap.md),
 [glossary](glossary.md), or [maintenance rules](documentation.md). The separate
 [transcript index](transcripts/README.md) owns the video archive.
 
-This catalog lists 497 documents plus itself as of September 27, 2026.
+This catalog lists 498 documents plus itself as of September 27, 2026.
 It retains historical and evidence paths rather than copying their content.
 
 Crate-owned documentation sits outside this inventory and its count. The
@@ -617,6 +617,7 @@ files are included below.
 | [verse/world-interactions.md](verse/world-interactions.md) | Design and guide | Maps, companions, and local door demos |
 | [verse/chat.md](verse/chat.md) | Reference | Verse chat |
 | [verse/gdd.md](verse/gdd.md) | Reference | Verse game design document (draft) |
+| [verse/agent-trainer-leveling.md](verse/agent-trainer-leveling.md) | Design / assessment | Agent trainer leveling: XP, levels, raids, credentials, and the Gym |
 
 ## voyager
 

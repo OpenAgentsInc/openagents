@@ -172,6 +172,11 @@ revocations, and achievement labels from a relay and shows them. It never
 publishes them: `microcoder xp` is the referee's tool
 ([guide](../coder/guides/xp.md)).
 
+[Agent trainer leveling](agent-trainer-leveling.md) specifies where this
+goes next: everyone starts at level 1 and levels up as an agent trainer
+through verified traces, knowledge, reproductions, Gym challenges, and
+raids, with levels over heads in the Grid and a portable trainer card.
+
 **See the live quests.** The OpenAgents referee publishes its quests to
 `wss://relay.openagents.com`. Point the board at that relay and trust the
 referee, either in `~/.openagents/knowledge/xp-trust.json` or with a flag:
@@ -546,7 +551,8 @@ speeds, and a retained win read through the Gym. They do not need a GPU.
 ## Game design
 
 The draft game design document is [`gdd.md`](gdd.md): an MMORPG plus
-agents. Each player builds an agent whose stats set how it decides, sends
+agents. The trainer progression system is specified separately in
+[`agent-trainer-leveling.md`](agent-trainer-leveling.md). Each player builds an agent whose stats set how it decides, sends
 it on visible visits to do real work, and keeps its condition up.
 
 ## Next
