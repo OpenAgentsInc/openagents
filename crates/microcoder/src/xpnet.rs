@@ -165,8 +165,20 @@ fn record_bytes(path: &Path) -> Result<Vec<u8>, String> {
     std::fs::read(&file).map_err(|e| format!("can't read {}: {e}", file.display()))
 }
 
+/// Loads a signing key: 64 hex characters, or an `nsec`, such as the
+/// trainer key the OpenAgents app reveals. A missing file is created as a
+/// new hex key, as the referee key is.
 fn load_key(key: &Path, role: &str) -> Result<Identity, String> {
-    let identity = Identity::load_from(key)?;
+    let identity = match std::fs::read_to_string(key) {
+        Ok(text) if text.trim().starts_with("nsec1") => {
+            let bytes = nostr::nip19::decode_nsec(text.trim())
+                .map_err(|_| format!("{} isn't a valid nsec", key.display()))?;
+            let secret = secp256k1::SecretKey::from_byte_array(bytes)
+                .map_err(|_| format!("{} isn't a valid secret key", key.display()))?;
+            Identity::from_secret(secret)?
+        }
+        _ => Identity::load_from(key)?,
+    };
     println!(
         "{role} {} (key in {})",
         npub(identity.pubkey()),

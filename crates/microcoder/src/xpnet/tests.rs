@@ -703,3 +703,16 @@ async fn a_claim_a_reproduction_and_its_award_level_up_the_reproducer() {
         0
     );
 }
+
+#[tokio::test]
+async fn a_trainer_key_file_may_hold_an_nsec() {
+    let home = scratch("xp-nsec");
+    let path = home.join("trainer-key");
+    let secret = [7u8; 32];
+    std::fs::write(&path, nostr::nip19::encode_nsec(&secret)).unwrap();
+    let identity = load_key(&path, "signing as").unwrap();
+    let hex = RelaySigner::from_secret_hex(&"07".repeat(32)).unwrap();
+    assert_eq!(identity.pubkey(), hex.pubkey());
+    std::fs::write(&path, "nsec1notakey").unwrap();
+    assert!(load_key(&path, "signing as").is_err());
+}
