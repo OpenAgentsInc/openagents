@@ -1495,9 +1495,30 @@ mod tests {
 
     #[tokio::test]
     async fn every_component_runs_on_the_checked_in_fixtures_with_recorded_jev() {
+        let make = std::process::Command::new("make")
+            .arg("--version")
+            .output()
+            .is_ok();
         for component in registry() {
-            let dirs = fixtures_for(&fixtures(), component.id());
+            let mut dirs = fixtures_for(&fixtures(), component.id());
             assert!(!dirs.is_empty(), "no fixture for {}", component.id());
+            // A fixture whose retained run is `make` needs `make`: it is
+            // skipped, and says so, on a host without it.
+            if !make {
+                dirs.retain(|dir| {
+                    let file = dir.join(format!("{}.json", component.id()));
+                    let needs = std::fs::read_to_string(&file)
+                        .ok()
+                        .and_then(|text| serde_json::from_str::<Value>(&text).ok())
+                        .and_then(|v| v.pointer("/retained/runs").cloned())
+                        .and_then(|runs| runs.as_array().cloned())
+                        .is_some_and(|runs| runs.iter().any(|r| r["kind"] == "make"));
+                    if needs {
+                        eprintln!("skipped {}: this host has no make", dir.display());
+                    }
+                    !needs
+                });
+            }
             let suite = suite(
                 component.as_ref(),
                 &dirs,

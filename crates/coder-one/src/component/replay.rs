@@ -83,6 +83,20 @@ pub(crate) fn first_packer_briefing(dir: &Path, manifest: &Value) -> bool {
             .is_none_or(|packer| packer == "sections")
 }
 
+/// Whether a retained briefing carries the host's knowledge section or
+/// Jev's flagged requirements (issue #9746). The replayed packer doesn't
+/// place those sections, so a replay leaves such a briefing out.
+pub(crate) fn knowing_briefing(manifest: &Value) -> bool {
+    manifest
+        .pointer("/delegate/delegation/briefing/included")
+        .and_then(Value::as_array)
+        .is_some_and(|items| {
+            items.iter().filter_map(Value::as_str).any(|item| {
+                item.starts_with("knowledge ") || item.starts_with("flagged requirement ")
+            })
+        })
+}
+
 /// Every episode directory under `traces` that holds a manifest.
 pub(crate) fn episodes(traces: &Path) -> Vec<PathBuf> {
     let mut out = Vec::new();
@@ -255,18 +269,7 @@ pub fn replay_tree(traces: &Path, params: Params) -> Report {
             coverage_packed += 1;
             continue;
         }
-        // A briefing with the host's knowledge section or Jev's flagged
-        // requirements (issue #9746) has sections the replayed packer
-        // doesn't place, so it stays out.
-        let knowing = manifest
-            .pointer("/delegate/delegation/briefing/included")
-            .and_then(Value::as_array)
-            .is_some_and(|items| {
-                items.iter().filter_map(Value::as_str).any(|item| {
-                    item.starts_with("knowledge ") || item.starts_with("flagged requirement ")
-                })
-            });
-        if knowing {
+        if knowing_briefing(&manifest) {
             continue;
         }
         briefings += 1;

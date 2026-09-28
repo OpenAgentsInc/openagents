@@ -1907,6 +1907,7 @@ async fn the_lean_loop_holds_a_done_finish_until_the_score_ran_after_the_last_ed
     assert_eq!(session["turns"], 5);
 }
 
+/// Needs `make`: skipped, and says so, on a host without it.
 #[tokio::test]
 async fn the_baseline_runs_before_session_one_and_the_finish_rule_requires_it() {
     if coder_boundary::Boundary::writing(std::env::temp_dir())
@@ -1914,6 +1915,14 @@ async fn the_baseline_runs_before_session_one_and_the_finish_rule_requires_it() 
         .build()
         .is_err()
     {
+        return;
+    }
+    if std::process::Command::new("make")
+        .arg("--version")
+        .output()
+        .is_err()
+    {
+        eprintln!("skipped: this host has no make");
         return;
     }
     let dir = tempfile::tempdir().unwrap();

@@ -213,8 +213,13 @@ pub fn load_cases(traces: &Path, fixtures: &Path) -> (Vec<Case>, Vec<(String, St
     let mut cases = Vec::new();
     let mut skipped = Vec::new();
     for dir in crate::component::replay::episodes(traces) {
-        let first_packer = read_json(&dir.join("manifest.json"))
-            .is_some_and(|m| crate::component::replay::first_packer_briefing(&dir, &m));
+        // The study reads briefings the first packer built from its own
+        // sections, so one with a knowledge section or flagged
+        // requirements (issue #9746) stays out, as it does in the replay.
+        let first_packer = read_json(&dir.join("manifest.json")).is_some_and(|m| {
+            crate::component::replay::first_packer_briefing(&dir, &m)
+                && !crate::component::replay::knowing_briefing(&m)
+        });
         if !first_packer {
             continue;
         }
@@ -1419,7 +1424,9 @@ mod tests {
             .map(|c| (c, score(c, &base.policy.brief)))
             .collect();
         let aggregate = aggregate(&scored);
-        assert_eq!(aggregate.tasks, 8);
+        // The eight labeled tasks, and any unlabeled task a newer retained
+        // run added, such as `sound-change-cascade`.
+        assert!(aggregate.tasks >= 8, "{}", aggregate.tasks);
         assert!(
             aggregate.label_coverage > 0.0 && aggregate.label_coverage <= aggregate.label_coverable
         );
