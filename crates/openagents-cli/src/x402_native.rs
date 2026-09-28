@@ -15,8 +15,9 @@ use nostr::domain::Event;
 use nostr::private_artifact;
 use openagents_x402::facilitator::Facilitator;
 use openagents_x402::native::{
-    self, BYTES_SCHEMA, Emit, NATIVE_ONLY, Offer, PROFILE, Provider, PurchaseStore, RECORD_SCHEMA,
-    Record, RecordType, Signed, artifact_bytes, buyer, bytes_artifact, parse_record, parse_status,
+    self, BYTES_SCHEMA, Emit, NATIVE_ONLY, OPERATOR_CAUSES, Offer, PROFILE, Provider,
+    PurchaseStore, RECORD_SCHEMA, Record, RecordType, Recovery, Signed, artifact_bytes, buyer,
+    bytes_artifact, operator_cause, parse_record, parse_status,
 };
 use openagents_x402::server::Receiver;
 use openagents_x402::{FileReplayStore, PaymentPayload, network_id};
@@ -30,7 +31,7 @@ use crate::x402::{
 };
 use crate::{Args, Output};
 
-const SWITCHES: &[&str] = &["show-proof"];
+const SWITCHES: &[&str] = &["show-proof", "rerun-safe", "list"];
 const ACK: Duration = Duration::from_secs(20);
 /// How far back a provider reads stored records on start, so a request
 /// sealed while it was down is still answered.
@@ -183,6 +184,28 @@ fn publish_records(
     Ok(ids)
 }
 
+/// Publish a run's stdout as a bytes artifact to the buyer and return its
+/// reference; a failed run or a refused publication passes through as the
+/// cause `finish` records.
+fn publish_output(
+    client: &mut Client,
+    party: &Party,
+    buyer: &str,
+    purchase: &str,
+    result: Result<Vec<u8>, &'static str>,
+) -> Result<Value, &'static str> {
+    let stdout = result?;
+    let inline = bytes_artifact(&stdout);
+    let bytes = jcs(&inline).unwrap_or_default();
+    match party
+        .seal(buyer, purchase, BYTES_SCHEMA, &inline, unix_now())
+        .and_then(|event| client.publish(event.clone(), ACK).map(|ack| (event, ack)))
+    {
+        Ok((event, ack)) if ack.accepted => Ok(reference(&event, &bytes, BYTES_SCHEMA)),
+        Ok(_) | Err(_) => Err("output could not be published"),
+    }
+}
+
 fn run_command(program: &str, args: &[String], input: &[u8]) -> Result<Vec<u8>, &'static str> {
     use std::io::Write;
     use std::process::{Command, Stdio};
@@ -294,11 +317,87 @@ pub fn serve(output: &Output, words: &[String]) -> u8 {
     let relay = relay_url(args.option("relay"));
     let mut client = Client::connect(&relay, party.signer.clone());
     let started = unix_now();
-    if let Err(message) = client.listen(vec![inbox_filter(
+    // Work a previous process left open: fail it, or with --rerun-safe fetch
+    // its input again and run it once more.
+    let recovered = match provider.recover(args.switch("rerun-safe"), started) {
+        Ok(recovered) => recovered,
+        Err(cause) => return output.fail("x402", &format!("recovery: {cause}")),
+    };
+    let mut reruns: HashMap<String, (String, String, native::Phase)> = HashMap::new();
+    let mut rerun_ids = Vec::new();
+    for recovery in &recovered {
+        if let Recovery::Rerun { input, .. } = recovery
+            && let Some(id) = input["event"]["id"].as_str()
+        {
+            rerun_ids.push(id.to_owned());
+        }
+    }
+    let mut filters = vec![inbox_filter(
         &party.pubkey,
         started.saturating_sub(CATCH_UP),
-    )]) {
+    )];
+    if !rerun_ids.is_empty() {
+        filters.push(json!({"ids": rerun_ids}));
+    }
+    if let Err(message) = client.listen(filters) {
         return output.fail("x402", &message);
+    }
+    for recovery in recovered {
+        match recovery {
+            Recovery::Failed {
+                buyer,
+                purchase,
+                was,
+                emit,
+            } => {
+                let published = publish_records(&mut client, &party, &buyer, &purchase, &emit);
+                output.line(
+                    &json!({
+                        "event": "recovered",
+                        "buyer": buyer,
+                        "purchase": purchase,
+                        "was": was.name(),
+                        "phase": "failed",
+                        "cause": native::PROVIDER_RESTARTED,
+                        "records": published.as_ref().ok(),
+                        "relay_error": published.as_ref().err(),
+                    }),
+                    |value| {
+                        format!(
+                            "recovered purchase {} ({} -> failed: provider_restarted)",
+                            &value["purchase"].as_str().unwrap_or_default()[..16],
+                            value["was"].as_str().unwrap_or_default()
+                        )
+                    },
+                );
+            }
+            Recovery::Rerun {
+                buyer,
+                purchase,
+                phase,
+                input,
+                execute_until,
+            } => {
+                let digest = input["digest"].as_str().unwrap_or_default().to_owned();
+                output.line(
+                    &json!({
+                        "event": "rerun_pending",
+                        "buyer": buyer,
+                        "purchase": purchase,
+                        "was": phase.name(),
+                        "input": input,
+                        "execute_until": execute_until,
+                    }),
+                    |value| {
+                        format!(
+                            "rerun pending for purchase {} once its input arrives",
+                            &value["purchase"].as_str().unwrap_or_default()[..16]
+                        )
+                    },
+                );
+                reruns.insert(digest, (buyer, purchase, phase));
+            }
+        }
     }
     output.line(
         &json!({
@@ -346,6 +445,51 @@ pub fn serve(output: &Output, words: &[String]) -> u8 {
             if let Ok(value) = contracts::parse_strict(&opened.bytes)
                 && let Ok(bytes) = artifact_bytes(&value)
             {
+                if let Some((buyer, purchase, phase)) = reruns.remove(&opened.digest) {
+                    let now = unix_now();
+                    let started = if phase == native::Phase::Admitted {
+                        provider.start(&buyer, &purchase, now).map(|running| {
+                            if let Err(message) =
+                                publish_records(&mut client, &party, &buyer, &purchase, &running)
+                            {
+                                output.line(
+                                    &json!({"event": "relay_failed", "purchase": purchase, "cause": message}),
+                                    |value| format!("relay failed: {}", value["cause"]),
+                                );
+                            }
+                        })
+                    } else {
+                        Ok(())
+                    };
+                    let result = started.and_then(|()| run_command(program, program_args, &bytes));
+                    let finished = publish_output(&mut client, &party, &buyer, &purchase, result);
+                    served += 1;
+                    let outcome = provider.finish(&buyer, &purchase, finished, unix_now());
+                    let (emit, cause) = match outcome {
+                        Ok(emit) => (emit, None),
+                        Err(cause) => (Emit::default(), Some(cause)),
+                    };
+                    let published = publish_records(&mut client, &party, &buyer, &purchase, &emit);
+                    output.line(
+                        &json!({
+                            "event": "rerun",
+                            "buyer": buyer,
+                            "purchase": purchase,
+                            "phase": emit.records.last().and_then(|r| parse_status(&r["body"]).ok()).map(|s| s.phase.name()),
+                            "cause": cause,
+                            "records": published.as_ref().ok(),
+                            "relay_error": published.as_ref().err(),
+                        }),
+                        |value| {
+                            format!(
+                                "rerun purchase {} -> {}",
+                                &value["purchase"].as_str().unwrap_or_default()[..16],
+                                value["phase"].as_str().unwrap_or("error")
+                            )
+                        },
+                    );
+                    continue;
+                }
                 inputs.insert(opened.digest.clone(), bytes);
             }
             continue;
@@ -414,23 +558,7 @@ pub fn serve(output: &Output, words: &[String]) -> u8 {
                             Err(cause) => Err(cause),
                         },
                     };
-                    let finished = match result {
-                        Ok(stdout) => {
-                            let inline = bytes_artifact(&stdout);
-                            let bytes = jcs(&inline).unwrap_or_default();
-                            match party
-                                .seal(&buyer, &purchase, BYTES_SCHEMA, &inline, unix_now())
-                                .and_then(|event| {
-                                    client.publish(event.clone(), ACK).map(|ack| (event, ack))
-                                }) {
-                                Ok((event, ack)) if ack.accepted => {
-                                    Ok(reference(&event, &bytes, BYTES_SCHEMA))
-                                }
-                                Ok(_) | Err(_) => Err("output could not be published"),
-                            }
-                        }
-                        Err(cause) => Err(cause),
-                    };
+                    let finished = publish_output(&mut client, &party, &buyer, &purchase, result);
                     served += 1;
                     provider
                         .finish(&buyer, &purchase, finished, unix_now())
@@ -1084,23 +1212,180 @@ fn finish(
         });
     }
     if code != 0 && phase == "unknown" {
-        eprintln!(
-            "openagents x402: no terminal status yet; ask again with `openagents x402 status {} {}` (nothing is paid twice)",
-            receipt.provider, receipt.purchase
-        );
+        let recover_until = receipt
+            .statuses
+            .iter()
+            .filter_map(|body| parse_status(body).ok())
+            .map(|status| status.recover_until)
+            .max();
+        match recover_until {
+            Some(until) if unix_now() >= until => eprintln!(
+                "openagents x402: the provider answered nothing before its recovery window closed at {until}; the purchase is lost to it, and nothing is paid twice"
+            ),
+            _ => eprintln!(
+                "openagents x402: the provider has not answered; ask again with `openagents x402 status {} {}` (nothing is paid twice)",
+                receipt.provider, receipt.purchase
+            ),
+        }
     }
     code
 }
 
 // ------------------------------------------------------------------ status
 
+/// A receiver for provider commands that never mint an invoice: listing and
+/// finishing purchases touch only the purchase ledger, not the wallet.
+struct NoReceiver;
+
+impl Receiver for NoReceiver {
+    fn pay_to(&self) -> String {
+        String::new()
+    }
+
+    fn invoice(&self, _: u64, _: [u8; 32], _: u32) -> Result<String, String> {
+        Err("this command does not mint invoices".to_owned())
+    }
+}
+
+/// `status --list` lists the provider's open purchases; `status --finish
+/// BUYER:PURCHASE --cause CAUSE` ends one by hand and publishes the status.
+fn provider_status(output: &Output, args: &Args) -> u8 {
+    let party = match Party::load(args.option("as")) {
+        Ok(party) => party,
+        Err(message) => return output.fail("x402", &message),
+    };
+    let facilitator = match FileReplayStore::open(&replay_dir()) {
+        Ok(store) => {
+            Facilitator::with_profiles(store, nostr::x402::DEFAULT_CLOCK_SKEW, NATIVE_ONLY)
+        }
+        Err(error) => return output.fail("x402", &format!("replay store: {error}")),
+    };
+    let store = match PurchaseStore::open(&purchases_dir()) {
+        Ok(store) => store,
+        Err(error) => return output.fail("x402", &error.to_string()),
+    };
+    let receiver = NoReceiver;
+    let provider = Provider {
+        pubkey: party.pubkey.clone(),
+        offer: Offer {
+            capability_id: String::new(),
+            operation: String::new(),
+            network: String::new(),
+            amount_msat: 0,
+            timeout_secs: 0,
+            description: String::new(),
+            per_buyer_hourly: None,
+        },
+        receiver: &receiver,
+        facilitator: &facilitator,
+        store: &store,
+        skew: nostr::x402::DEFAULT_CLOCK_SKEW,
+    };
+    let Some(target) = args.option("finish") else {
+        let open = match provider.open_purchases() {
+            Ok(open) => open,
+            Err(cause) => return output.fail("x402", cause),
+        };
+        let now = unix_now();
+        let entries: Vec<Value> = open
+            .iter()
+            .map(|purchase| {
+                json!({
+                    "buyer": purchase.buyer,
+                    "purchase": purchase.purchase,
+                    "phase": purchase.phase().map(|phase| phase.name()).unwrap_or("unknown"),
+                    "statuses": purchase.statuses.len(),
+                    "execute_until": purchase.execute_until,
+                    "recover_until": purchase.recover_until,
+                    "execute_window_open": now < purchase.execute_until,
+                })
+            })
+            .collect();
+        output.emit(
+            &json!({
+                "provider": party.pubkey,
+                "purchases": purchases_dir(),
+                "count": entries.len(),
+                "open": entries,
+            }),
+            |value| {
+                let mut lines = vec![format!("{} open purchase(s)", value["count"])];
+                for entry in value["open"].as_array().into_iter().flatten() {
+                    lines.push(format!(
+                        "  {} {} from {} ({}, execute_until {})",
+                        entry["phase"].as_str().unwrap_or_default(),
+                        &entry["purchase"].as_str().unwrap_or_default()[..16],
+                        &entry["buyer"].as_str().unwrap_or_default()[..16],
+                        if entry["execute_window_open"].as_bool() == Some(true) {
+                            "window open"
+                        } else {
+                            "window passed"
+                        },
+                        entry["execute_until"]
+                    ));
+                }
+                lines.join("\n")
+            },
+        );
+        return 0;
+    };
+    let Some((buyer, purchase)) = target.split_once(':') else {
+        return usage(output, "--finish takes BUYER:PURCHASE (both hex)");
+    };
+    let Some(cause) = args.option("cause").and_then(operator_cause) else {
+        return usage(
+            output,
+            &format!(
+                "--finish needs --cause, one of: {}",
+                OPERATOR_CAUSES.join(", ")
+            ),
+        );
+    };
+    let emit = match provider.finish(buyer, purchase, Err(cause), unix_now()) {
+        Ok(emit) => emit,
+        Err(cause) => return output.fail("x402", cause),
+    };
+    let relay = relay_url(args.option("relay"));
+    let mut client = Client::connect(&relay, party.signer.clone());
+    let published = publish_records(&mut client, &party, buyer, purchase, &emit);
+    client.close();
+    output.emit(
+        &json!({
+            "buyer": buyer,
+            "purchase": purchase,
+            "phase": "failed",
+            "cause": cause,
+            "records": published.as_ref().ok(),
+            "relay_error": published.as_ref().err(),
+        }),
+        |value| {
+            format!(
+                "purchase {} finished as failed: {}{}",
+                &value["purchase"].as_str().unwrap_or_default()[..16],
+                value["cause"].as_str().unwrap_or_default(),
+                value["relay_error"]
+                    .as_str()
+                    .map(|error| format!(" (status not published: {error})"))
+                    .unwrap_or_default()
+            )
+        },
+    );
+    if published.is_err() { 1 } else { 0 }
+}
+
 pub fn status(output: &Output, words: &[String]) -> u8 {
     let args = match Args::parse(words, SWITCHES) {
         Ok(args) => args,
         Err(message) => return usage(output, &message),
     };
+    if args.switch("list") || args.option("finish").is_some() {
+        return provider_status(output, &args);
+    }
     let [provider, purchase] = args.positional() else {
-        return usage(output, "status needs PROVIDER PURCHASE");
+        return usage(
+            output,
+            "status needs PROVIDER PURCHASE (buyer), or --list / --finish BUYER:PURCHASE --cause CAUSE (provider)",
+        );
     };
     let wait = match args.number::<u64>("wait", 30) {
         Ok(n) if n > 0 => n,
