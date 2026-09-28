@@ -14,8 +14,14 @@ against the current plans:
   [Gym leaderboard](../verse/gym-leaderboard.md)
 - [NIP-XP](../../nips/openagents/NIP-XP.md) and the [XP guide](../coder/guides/xp.md)
 - the [Verse GDD](../verse/gdd.md)
-- [Wasm plugins](../extensions/plugins.md) and the
-  [agent labor plan](../agents/market-infrastructure.md)
+- programs and extensions: the [extension architecture](../extensions/architecture.md),
+  [packages](../extensions/packages.md), [Wasm plugins](../extensions/plugins.md),
+  [programs](../programs.md), and [NIP-PRG](../../nips/openagents/NIP-PRG.md),
+  [NIP-EXT](../../nips/openagents/NIP-EXT.md), and [NIP-CAP](../../nips/openagents/NIP-CAP.md)
+- the marketplace and network: the [networked Coder plan](../coder/design/networked-coder-plan.md),
+  the [agent labor plan](../agents/market-infrastructure.md),
+  [Beat Fable together](../coder/beat-fable-together.md), and
+  [NIP-MKT](../../nips/openagents/NIP-MKT.md) and [NIP-LAB](../../nips/openagents/NIP-LAB.md)
 
 Tassadar was retired on 2026-07-08 "until an explicit owner decision". This
 document proposes bringing back specific *patterns and policies* from it,
@@ -47,6 +53,8 @@ and bounded coding jobs. What they lack is the loop's missing pieces:
 - `trace-admit` and `gym-trial` are proposed rules with no implementation.
 - The Gym challenge board does not exist.
 - Wasm module results always carry `verification: not_run`.
+- No component says how it can be checked, and nobody earns credit or pay
+  for checking someone else's work.
 - No quest pays sats.
 - Nothing shows a verified-work feed in the Grid.
 
@@ -59,10 +67,11 @@ we already have, in the order the current milestones need it:
 | 2 | Worker ↔ validator pairing discipline for `reproduce` | NIP-XP `reproduce` rule, referee tool | M6, by 2026-10-26 |
 | 3 | Automatic reproduction windows and "next unpaired" discovery | Gym challenge board dailies | Trainer leveling Phase 3 (can start in M6) |
 | 4 | Trace-factory admission policy | `trace-admit` rule, Gym corpus | Trainer leveling Phase 3 |
-| 5 | Exact-replay verification class for deterministic steps | Wasm `module` steps, NIP-EVAL, provider admission | R6 / R8, after M6 |
-| 6 | Receipted capability self-tests | Labor provider and host capacity admission | R8, with M18 |
-| 7 | Owner-gated per-verified-pair settlement and the settled feed | Quest purses, labor settlement, a Grid feed | After M7–M9 and one recorded NIP-X402 round trip (trainer leveling Phase 4) |
-| — | Executor weights, ALM compiler, Percepta model, compute-market run | Stays in `psionic` | Owner decision only |
+| 5 | Exact-replay verification class for deterministic steps | Wasm `module` steps, step receipts | R6, after M6 |
+| 6 | Verification classes (E/D/S/N) on components, independent assessors, and per-class network measurement | NIP-EXT descriptors and assessments, progressive discovery, NIP-XP | R6 / R7, with networked Coder stage 5 |
+| 7 | Receipted capability self-tests | NIP-CAP probes, labor provider and host capacity admission | R8, with M18 |
+| 8 | Owner-gated per-verified-pair settlement, paying the checking role, and the settled feed | Quest purses, labor settlement, a Grid feed | After M7–M9 and one recorded NIP-X402 round trip (trainer leveling Phase 4) |
+| — | Executor weights, ALM compiler, Percepta model, compute-market run, a module store | Stays in `psionic` or retired | Owner decision only |
 
 ## 1. Evidence-display and claim invariants (now)
 
@@ -183,60 +192,168 @@ Coder's traces are private workspace content. The trainer-leveling design
 already requires redaction and opt-in upload, and that stays a prerequisite.
 Nothing in this item may weaken it.
 
-## 5. Exact-replay verification for deterministic steps (R6 / R8)
+## 5. Exact-replay verification for deterministic steps (R6)
 
-This is the idea in Tassadar most specific to it: *a computation that is
-exact is verified by replaying it, and the verdict is a digest comparison*,
-which is "the cheapest verification grade that can exist". The Tassadar
-program applied it to transformer weights. The current system has a better
-target: the [Wasm plugin host](../extensions/plugins.md), which already runs
-bounded, fuel-limited, digest-pinned guests as program `module` steps. Every
-result is labeled `verification: not_run` "because a guest doesn't verify
-its own output".
+This is the idea most specific to Tassadar: an exact computation is verified
+by replaying it, and the verdict is a digest comparison, "the cheapest
+verification grade that can exist". Tassadar applied it to transformer
+weights. The current system has a better target in the
+[Wasm plugin host](../extensions/plugins.md), which already runs bounded,
+fuel-limited, digest-pinned guests as program `module` steps. NIP-PRG's two
+profiles, `pure` and `snapshot-read`, both deny "ambient clock/randomness,
+and model calls", and "a fresh instance serves each invocation". That is
+most of a determinism contract already. Today every result is labeled
+`verification: not_run` "because a guest doesn't verify its own output".
 
-Proposed: an `exact_replay` verification class for deterministic `module`
-steps. A second host, one the first host doesn't control, reruns the same
-guest digest on the same input snapshot under the same bounds. Matching
-output digests upgrade the step's receipt from `not_run` to `exact_replay`.
-A mismatch refuses the step and names both digests.
+Proposed: an `exact_replay` **verification class**. A second host, one the
+first host doesn't control, reruns the same guest digest on the same input
+snapshot digest, under the same bounds and a recorded engine configuration.
+Matching output digests set the step's verification to `passed` with class
+`exact_replay`. A mismatch sets it to `failed` and names both digests.
 
-This gives:
+The class is a separate field beside the shared verdict. It does not become
+a new verdict value. [Shared contracts](../../nips/openagents/contracts.md)
+fix verification as `passed`, `failed`, `unverifiable`, or `not_run`, and
+widening that enum would be an invariant change across every NIP that reuses
+it. A class field says *how* a `passed` was obtained, which is what item 6
+needs.
 
-- a verification grade for labor deliverables and evidence transformations
-  that needs no model and no human;
-- a real, checkable meaning for the GDD's "Rigor" stat and its "proving
-  ground" visit;
-- the replay-before-purchase property the Tassadar marketplace audit wanted
-  for exact modules, delivered through the extension system that R6 already
-  owns, not through a new store.
+Prerequisites taken from the plugin docs' own gaps:
 
-Acceptance: a determinism audit of the host profile covers imports, clock,
-randomness and float behavior, and names every nondeterministic import it
-refuses. Tamper fixtures come first, as in item 2. A separate study then
-measures how many real program steps are deterministic enough to qualify; if
-it is few, the class stays narrow.
+- The host records the Wasmtime version and engine configuration. It "doesn't
+  record" them today.
+- The host writes the digested invocation receipt, which is still listed as
+  not built.
+- `snapshot-read` inputs are named by snapshot digest, so the rerun reads
+  the same bytes.
+- A determinism audit covers float behavior (NaN bit patterns), fuel
+  accounting across engine versions, and any import the host adds later.
+  Each nondeterministic import it refuses is named.
 
-## 6. Receipted capability self-tests (R8)
+Acceptance: tamper fixtures come first, as in item 2. Then a study measures
+how many real program steps qualify. The three evidence guests (repository
+map, code search, test report) are the natural first subjects. If few steps
+qualify, the class stays narrow.
+
+## 6. Verification classes on components, and who checks them (R6 / R7)
+
+The **Tassadar marketplace audit** ("The Store We Built Twice") traced three
+generations of an OpenAgents store:
+
+1. the 2024 agent store with paid Wasm plugins;
+2. Blueprint programs;
+3. replay-verifiable compiled modules.
+
+It proposed shelf tiers by how a buyer could check a good:
+
+- **E**: exact replay.
+- **D**: deterministic tests.
+- **S**: statistical evidence.
+- **N**: none.
+
+Its rules were "replay before purchase clears" and "the store is built last".
+
+**The current plans already agree on the conclusion** and have better
+parts:
+
+- The roadmap's legacy map says of the Extism-era marketplace: "do not
+  revive an unused registry as a success metric."
+- The roadmap states that shared knowledge and reusable programs, by their
+  existence alone, are "not a network effect".
+- The [networked Coder plan](../coder/design/networked-coder-plan.md)
+  measures the network as **incremental out-of-sample verified passes per
+  adopted contribution**.
+- Programs ([NIP-PRG](../../nips/openagents/NIP-PRG.md)), packages
+  ([NIP-EXT](../../nips/openagents/NIP-EXT.md)), and capabilities
+  ([NIP-CAP](../../nips/openagents/NIP-CAP.md)) give exact identities,
+  inert installation, revocation, and third-party assessments.
+
+So the store stays retired. The shelf tiers come back as a vocabulary the
+existing system is missing.
+
+**What is missing is a way to say how well a component can be checked.** An
+EXT operation descriptor can list `evaluation` references. A component-set
+assessment gives `eligible`, `ineligible`, or `unknown`. Neither says
+whether the component's result can be replayed, tested, or only measured.
+Proposed: map the tiers onto evidence the system already produces, and let
+readers filter and report by class.
+
+| Tier | Verification class | Existing evidence behind it | Checked by |
+| --- | --- | --- | --- |
+| E | `exact_replay` | Item 5's second-host rerun of a `pure` or `snapshot-read` module step | Any host that holds the bytes, with no model and no human |
+| D | `checker` | A NIP-LAB checker receipt under `all-pass-v1`, or Coder's frozen independent checks | The declared checker, which the worker cannot edit |
+| S | `measured` | A NIP-EVAL report with a baseline, paired on/off runs, and `written_from` exclusion | An evaluator other than the author, as NIP-XP's `kb-transfer` requires |
+| N | none | The author's claim or a `not_run` result | Nobody. Show it as unchecked |
+
+**Where it plugs in:**
+
+- **Step receipts** (NIP-PRG step envelope) carry the class of their
+  `passed` verdict.
+- **EXT operation descriptors** may declare the class a component *claims*,
+  with evidence references. A reader treats that as a claim until it has
+  its own replay, checker receipt, or trusted report. EXT already says
+  "candidate provenance does not establish evaluation success".
+- **Component-set assessments** (EXT) gain the class the assessor actually
+  verified. The assessor is Tassadar's validator role, applied to
+  components: a key other than the publisher that reran or measured the
+  component and signed the result.
+- **Progressive discovery** can filter on class the way it filters on
+  compatibility. An operator can say "admit only E and D components
+  automatically; propose S; never auto-admit N". Selection and admission
+  stay separate, as the extension architecture requires.
+
+**What it does for the network effect.** Tassadar's commercial thesis was
+that cheaper verification lowers the cost of trusting a stranger's work, so
+more of it gets adopted. That is testable with the metric the networked
+Coder plan already defines. Report incremental verified passes per adopted
+contribution *by verification class*, together with verification cost per
+class. If E- and D-class components are not adopted more, or do not help
+more per unit of verification spend, the thesis fails here too and the
+class stays a label. The plugin docs already require a measurement plan
+that decides whether each evidence guest stays. This extends that plan
+across operators.
+
+**Credit before money.** Assessors have no role in XP today, and no payee in
+MKT or LAB. The first step is an XP rule, not a payment. A `component-assess`
+quest rule (or a generalized `reproduce`) would award an independent key for
+an exact replay or a checker run on another publisher's component, under the
+same "claimant and reproducer MUST be different keys" rule. This builds the
+validator pool before any purse exists, the same way item 2 builds the
+runner pool for `kb-transfer`.
+
+## 7. Receipted capability self-tests (R8)
 
 A Pylon declared `capability.tassadar_poc.numeric_model_executor` only after
 a digest-verified self-test passed on the device (#4750). The Worker refused
 dispatch to an unreceipted claim with
 `blocker.public.pylon_dispatch.tassadar_capability_unreceipted`.
 
-Today, capacity routing already records "each route's capacity when a
-repository run starts" (`4340294fd8`). The agent labor plan needs providers
-to "offer explicit capacity". Proposed: a provider or host advertises a
-capability only with a fresh self-test receipt that a buyer or router can
-check. For example, "can run the TB2.1 image and pass a pinned smoke task",
-signed with the task digest and the observed result. The historical Coder
-Earn verification floor (pinned probes, replicated dispatches, held receipts)
-is the same idea from the sibling repository and should be read with it.
+NIP-CAP already has most of this shape:
 
-## 7. Per-verified-pair settlement and the settled feed (Phase 4, gated)
+- presence states `present | absent | unavailable | unprobed | unknown`,
+  where "only `present` can become a route";
+- probes run only under host-owned approval and "MUST NOT start paid or
+  effectful task execution";
+- `support.evidence` lists receipt schema IDs.
+
+What it lacks is the receipt itself. A "signed claim does not prove
+enforcement". Proposed: a probe result that carries a self-test receipt. It
+names a pinned smoke task digest and the observed result, for example "ran
+the TB2.1 image and passed task X under these bounds". A NIP-MKT offering's
+exact `capability` reference can then point at a capability whose presence
+a buyer or router can check.
+
+Capacity routing already records "each route's capacity when a repository
+run starts" (`4340294fd8`). This extends that record from capacity to
+demonstrated ability. The historical Coder Earn verification floor (pinned
+probes, replicated dispatches, held receipts) is the same idea in the
+sibling repository and should be read with it.
+
+## 8. Per-verified-pair settlement and the settled feed (Phase 4, gated)
 
 Tassadar's settlement code is the most reusable engineering it produced. It
-is also the part most dangerous to bring back early. Once the current
-prerequisites hold, port its design into Rust:
+is also the part most dangerous to bring back early. Port its design into
+Rust only once the current prerequisites hold:
 
 - the trainer-leveling "Rewards" list, including a recorded NIP-X402 paid
   round trip and legal review;
@@ -244,29 +361,45 @@ prerequisites hold, port its design into Rust:
 
 The design to port:
 
-- **A typed, fail-closed owner gate** (`OPENAGENTS_REAL_SETTLEMENT_GATE`),
-  with a per-payout cap, a daily cap, and scoping to one run (here, one quest
-  season or one labor order).
-- **Receipt-first, idempotent payment.** The chain is intent → attempt →
+- **A typed, fail-closed owner gate** (`OPENAGENTS_REAL_SETTLEMENT_GATE`).
+  It has a per-payout cap and a daily cap, and it is scoped to one run: here,
+  one quest season or one labor order.
+- **Receipt-first, idempotent payment.** The chain runs intent → attempt →
   reconciliation → recorded receipt, with at most one dispatch per window and
-  recipient. The intent's persistence is verified before dispatch: the first
+  recipient. The intent is confirmed persisted before dispatch; the first
   real Tassadar payout failed closed on exactly this (`ef6afeef5d`).
-- **Pay both roles.** Each verified pair paid the worker *and* the validator
-  (5 + 5 sats). The June 16 economics review found that validators had been
-  unpaid, and unpaid validators are the scarce role. A quest purse should
-  split between reproducer and referee-side verification, or between
-  runner and author, the way NIP-XP already splits XP. It stays a separate
-  payment and never creates XP.
+- **Pay the checking role.** Each verified Tassadar pair paid the worker
+  *and* the validator (5 + 5 sats). The June 16 economics review found that
+  validators had been unpaid, and unpaid validators are the scarce role.
+  - NIP-LAB today pays only the provider. Its reviewer and resolver are
+    required to be distinct, but have no payee.
+  - A quest purse or labor order should be able to pay the verifying key:
+    the reproducer, the reviewer, or item 6's assessor. It should do so
+    under terms fixed before dispatch, the way NIP-XP already splits XP
+    between author and runner.
+  - It stays a separate payment and never creates XP.
+- **Author payment follows measured contribution, not trace presence.**
+  Tassadar wanted "revenue splits decomposed from traces". The labor plan
+  already keeps worker, component-author, and data-owner payments distinct.
+  It also says a recorded use "does not prove an entry caused a win". MKT
+  and LAB exclude royalty splits. Reconcile them this way:
+  - a run lock proves which component digests executed, which makes an
+    author *eligible*;
+  - an S- or D-class result against the component's absence sets the
+    *basis* for payment;
+  - any author share is a declared reuse term in the buyer's quote, under a
+    new payment profile. It is never an automatic royalty to every entry
+    that retrieval displayed.
 - **A scrubbed public settled feed.** Tassadar's feed published settled
-  events stripped of raw payment strings (invoices, addresses, preimages,
-  64-hex values). In the Grid, it becomes the GDD's "visible work: jobs,
-  payments, and quests as world objects, carried over from the episode 240
-  run board". It is the natural successor to the Tassadar Run Board and
-  should obey item 1's invariants.
+  events with raw payment strings stripped out: invoices, addresses,
+  preimages, and 64-hex values. In the Grid it becomes the GDD's "visible
+  work: jobs, payments, and quests as world objects, carried over from the
+  episode 240 run board". It is the natural successor to the Tassadar Run
+  Board and should obey item 1's invariants.
 
-Also carry over the lesson about amounts: 1,020 sats across 12 traces proved
-the mechanism, not demand. The purse milestone should be measured the way the
-[master roadmap](../roadmap.md) measures labor, in accepted outcomes and
+Also carry over the lesson about amounts. 1,020 sats across 12 traces proved
+the mechanism, not demand. Measure the purse milestone the way the
+[master roadmap](../roadmap.md) measures labor: in accepted outcomes and
 repeat buyers, not sats moved.
 
 ## What stays retired
@@ -291,6 +424,10 @@ Tassadar's own audits:
   labor work. They don't need a synthetic run to animate.
 - **The TypeScript executor, Worker routes, SpacetimeDB world, and replay
   packages.** The Rust Verse, Gym, and NIP-EVAL/NIP-XP stack supersede them.
+- **The compiled-module marketplace and its listing routes.** Item 6 keeps
+  its shelf tiers as a verification vocabulary. It does not keep a store.
+  Components are distributed through NIP-EXT and sold only as part of labor
+  under NIP-MKT and NIP-LAB, where a buyer pays for an accepted outcome.
 - **World-first claims.** They are not needed and were never green.
 
 One research result is worth keeping as a citation rather than as code. The
@@ -309,9 +446,10 @@ on synthetic programs, not as evidence about coding agents.
 | 2 | [NIP-XP](../../nips/openagents/NIP-XP.md) `reproduce`, [XP guide](../coder/guides/xp.md) | #9847, #9885 |
 | 3 | [Agent trainer leveling](../verse/agent-trainer-leveling.md) Phase 3, [Gym leaderboard](../verse/gym-leaderboard.md) | New |
 | 4 | Trainer leveling `trace-admit`, [traces](../coder/runtime/traces.md) | New |
-| 5 | [Wasm plugins](../extensions/plugins.md), [NIP-EVAL](../../nips/openagents/NIP-EVAL.md) | New, under R6 |
-| 6 | [Agent labor plan](../agents/market-infrastructure.md) | New, under R8 / M18 |
-| 7 | Trainer leveling Phase 4, [NIP-X402](../../nips/openagents/NIP-X402.md), [NIP-LAB](../../nips/openagents/NIP-LAB.md) | After #9863, #9832, #9864 |
+| 5 | [Wasm plugins](../extensions/plugins.md), [NIP-PRG](../../nips/openagents/NIP-PRG.md) step envelope, [shared contracts](../../nips/openagents/contracts.md) (class field only) | New, under R6 |
+| 6 | [NIP-EXT](../../nips/openagents/NIP-EXT.md) descriptors and assessments, [extension architecture](../extensions/architecture.md) discovery, [networked Coder plan](../coder/design/networked-coder-plan.md) metric, NIP-XP rule | New, under R6 / R7 |
+| 7 | [NIP-CAP](../../nips/openagents/NIP-CAP.md) probes, [agent labor plan](../agents/market-infrastructure.md) | New, under R8 / M18 |
+| 8 | Trainer leveling Phase 4, [NIP-LAB](../../nips/openagents/NIP-LAB.md) payees and reuse terms, [NIP-MKT](../../nips/openagents/NIP-MKT.md) payment profile, [NIP-X402](../../nips/openagents/NIP-X402.md) | After #9863, #9832, #9864 |
 
 Recover the original Tassadar code and policy text with the commands in the
 [history's recovery table](../history/2026-09-28-tassadar-percepta.md#how-to-recover-deleted-material).
