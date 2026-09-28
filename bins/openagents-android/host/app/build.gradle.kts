@@ -23,7 +23,7 @@ android {
         minSdk = 26
         targetSdk = 35
         versionCode = providers.gradleProperty("openagentsVersionCode").orElse("1").get().toInt()
-        versionName = "1.0.0"
+        versionName = providers.gradleProperty("openagentsVersionName").orElse("1.0.0").get()
         ndk { abiFilters += openagentsAbi }
     }
 
@@ -50,8 +50,13 @@ android {
     packaging { jniLibs.useLegacyPackaging = false }
     buildTypes {
         debug { isJniDebuggable = true }
+        // Release builds shrink Kotlin with R8 and drop unused resources.
+        // BuildConfig.DEBUG is false there, so R8 removes the debug-only
+        // launch extras (fixtures, previews, scripted walks, secret captures).
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             if (releaseStore != null) signingConfig = signingConfigs.getByName("release")
         }
     }

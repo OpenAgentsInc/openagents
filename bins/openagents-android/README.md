@@ -255,26 +255,72 @@ adb shell am start -n com.openagents.app/.MainActivity --es tab verse \
 | Application ID | `com.openagents.app` |
 | Version name and code | `1.0.0` / `1` (`OPENAGENTS_ANDROID_VERSION_CODE` overrides the code) |
 | Minimum and target API | 26 / 35 |
-| ABI in a release bundle | `arm64-v8a` |
+| ABI in a release APK or bundle | `arm64-v8a` (`OPENAGENTS_ANDROID_ABI=x86_64` for an x86_64 APK) |
+| Release signing key | alias `openagents`, certificate SHA-256 `DB:D0:E9:65:5A:7A:0D:E2:E7:A4:F6:D4:59:F9:AF:52:A8:54:D8:CB:C1:FC:3B:B0:62:7E:2B:C2:AD:44:44:80` |
 
-Google Play takes an Android App Bundle signed with the upload key. With the
-owner's upload keystore outside the checkout:
+The Android version code counts Android builds on its own, starting at `1`
+for the 2026-09-29 playtest APK. It doesn't follow the iPhone build number
+(1.0.0 build 15 on TestFlight then), because the two apps ship different
+commits. The app shows `1.0.0 (1)` under **Account > About this device**, and
+a playtest report names the platform and that pair. Raise the code for
+every APK you hand out; Android installs an update over an older one only
+when the code is higher and the signing key is the same.
+
+### Direct-download APK
+
+The playtest APK is a signed release build, downloaded from a GitHub
+release and installed by hand:
 
 ```sh
-OPENAGENTS_ANDROID_KEYSTORE=/path/to/upload-keystore.jks \
-OPENAGENTS_ANDROID_KEY_ALIAS=upload \
-OPENAGENTS_ANDROID_KEYSTORE_PASSWORD=... \
-OPENAGENTS_ANDROID_KEY_PASSWORD=... \
+OPENAGENTS_ANDROID_SIGNING_ENV=/Users/christopherdavid/work/.secrets/openagents-android-release.env \
 OPENAGENTS_ANDROID_VERSION_CODE=1 \
+  bins/openagents-android/build.sh release
+
+# Install it on a device or emulator (an existing debug install has another
+# signing key; uninstall that first, which erases its data).
+OPENAGENTS_ANDROID_SERIAL=emulator-5600 bins/openagents-android/build.sh install-release
+```
+
+`release` builds the Rust library with the release profile, then
+`assembleRelease` with R8 shrinking and resource shrinking. Release builds
+have `BuildConfig.DEBUG` false, so the debug launch extras above (fixtures,
+previews, scripted walks, secret captures) are compiled out, and the debug
+sample conversation isn't packaged. The script refuses to build an unsigned
+release, checks 16 KiB alignment, verifies the signature with `apksigner`,
+and writes `release/OpenAgents-1.0.0-<code>-<abi>.apk`, its `.sha256`, and
+the R8 `-mapping.txt` (keep it to read release stack traces) under the output
+directory.
+
+The release key is the keystore
+`/Users/christopherdavid/work/.secrets/openagents-android-release.jks`
+(PKCS12, alias `openagents`, created 2026-09-28, valid to 2054). Its
+passwords are in `openagents-android-release.env` beside it, which the
+script reads through `OPENAGENTS_ANDROID_SIGNING_ENV` and passes to Gradle
+in `ORG_GRADLE_PROJECT_` variables, never on a command line. Both files are
+outside Git (the workspace ignores `.secrets/`) and must never be committed
+or printed. Losing the key means testers must uninstall, losing the app's
+data, before a build signed with a new key installs; the owner keeps an
+offline backup (workspace `NEEDS_OWNER.md`).
+
+### Google Play
+
+Google Play takes an Android App Bundle signed with the upload key:
+
+```sh
+OPENAGENTS_ANDROID_SIGNING_ENV=/Users/christopherdavid/work/.secrets/openagents-android-release.env \
+OPENAGENTS_ANDROID_VERSION_CODE=2 \
   scripts/build-openagents-android.sh bundle
 ```
 
 The bundle is `gradle/app/outputs/bundle/release/app-release.aab` under the
 output directory. Upload it in Play Console under **Test and release >
-Testing > Internal testing > Create new release**. Raise the version code for
-every upload. The script never uploads, and never commits or prints a key;
-Git ignores `*.jks` and `*.keystore` files here. Creating the Play Console
-app, the upload key, and the testers list are owner steps.
+Testing > Internal testing > Create new release**. So that people who
+installed the APK can update from Play, choose Play App Signing with **Use
+the key from a Java keystore** and upload this release key as the app
+signing key; letting Google generate one would make the Play build a
+different app to Android. The script never uploads, and never commits or
+prints a key; Git ignores `*.jks` and `*.keystore` files here. Creating the
+Play Console app and the testers list are owner steps.
 
 ## Graphics backends
 
@@ -333,6 +379,17 @@ On 2026-09-28, the debug APK ran on the `coder_mobile_api35` emulator
   avatars on the horizon. Walking into the ball rolled it. The same frame
   rendered with `debug.verse.backend` set to `vulkan`. `adb logcat` showed no
   wgpu errors on either backend.
+
+Release APK (2026-09-28): `OpenAgents-1.0.0-1-arm64-v8a.apk` (63 MB; the
+stripped Rust library is 62 MB of it, stored uncompressed and page-aligned),
+signed with the release key and built by `release`, installed on a fresh
+`coder_mobile_api35` instance (not debuggable, `1.0.0 (1)`). It opened on
+Coder's empty state; Verse drew the Grid with the Gym, the ball, and the
+sticks; Wallet created and synced a new mainnet wallet at ₿0 (no funds
+moved) and opened it again after a force stop and relaunch; Account showed
+Trainer, Computers, Tailnet, and About this device. `logcat` showed no
+crash, and the release dex has none of the debug launch extras. Captures
+are in `verification/2026-09-28-release`.
 
 Rust: `cargo test`, `cargo clippy`, and `cargo fmt --check` for
 `openagents-mobile` on the host; `cargo ndk clippy` for `aarch64-linux-android`

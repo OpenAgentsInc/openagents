@@ -89,8 +89,8 @@ until the owner creates and pins a publisher key.
   done).
 
 Honest limits: real bitcoin; use amounts you can lose. No receiving Lightning
-address, no paying users by npub, no unclaimed on-chain deposit handling, and
-no Android Wallet yet. See [Wallet design](../breez/wallet-design.md) and
+address, no paying users by npub, and no unclaimed on-chain deposit handling. Android has the
+Wallet too (`e56d173480`). See [Wallet design](../breez/wallet-design.md) and
 [`INVARIANTS.md`](../../INVARIANTS.md), Phone wallet.
 
 ### Account
@@ -106,10 +106,11 @@ no Android Wallet yet. See [Wallet design](../breez/wallet-design.md) and
 Landed: the JNI surface and app (`098ccb1bb0`, `49f5363860`), Verse on OpenGL
 ES (`85a91f63cc`), the Gym and RESULTS panels
 (`82663b935d`, [#9876](https://github.com/OpenAgentsInc/openagents/issues/9876)),
-Coder chats, Computers, Tailnet, and About. Missing: the Wallet (a placeholder;
-[#9861](https://github.com/OpenAgentsInc/openagents/issues/9861), the Rust
-side builds for Android but the Kotlin screen and Keystore-wrapped seed
-remain). Verified on the emulator only: a live tailnet chat, QR scanning, the
+Coder chats, Computers, Tailnet, About, and the Spark Wallet (`e56d173480`,
+`e1aeec7413`; [#9861](https://github.com/OpenAgentsInc/openagents/issues/9861)
+closed). Missing: the Rust-laid-out transcript. The playtest APK is a signed
+release build, 1.0.0 version code 1, from a draft GitHub release the owner
+publishes (see the Android README's Release section). Verified on the emulator only: a live tailnet chat, QR scanning, the
 terminal, motion look, and Vulkan on a physical device haven't been checked.
 
 ## Done by launch (2026-09-28)

@@ -176,7 +176,7 @@ Status words follow the [glossary](../glossary.md).
 | Piece | Status |
 | --- | --- |
 | The OpenAgents app on iOS (`com.openagents.app`) with four tabs: Coder, Verse (the Grid), Wallet, and Account ([README](../../bins/openagents-ios/README.md)) | Implemented. Version 1.0.0 builds 1 to 14 went to TestFlight on 2026-09-28; build 15 (`be94321643`) carries that day's fixes and follows build 14 to testers. |
-| OpenAgents for Android ([`bins/openagents-android`](../../bins/openagents-android/README.md)), the same Rust library | Partial ([#9838](https://github.com/OpenAgentsInc/openagents/issues/9838)). Coder, Verse (with the Gym and RESULTS panels, `82663b935d`), and Account work; the **Wallet** tab is a "Coming soon" placeholder ([#9861](https://github.com/OpenAgentsInc/openagents/issues/9861)). Verified on the emulator only; a live tailnet chat, QR scanning, the terminal, and motion look haven't been checked on a device. Distributed as a signed APK that testers install by hand. |
+| OpenAgents for Android ([`bins/openagents-android`](../../bins/openagents-android/README.md)), the same Rust library | Partial ([#9838](https://github.com/OpenAgentsInc/openagents/issues/9838)). Coder, Verse (with the Gym and RESULTS panels, `82663b935d`), Wallet (`e56d173480`, `e1aeec7413`; [#9861](https://github.com/OpenAgentsInc/openagents/issues/9861) closed), and Account work. Verified on the emulator only; a live tailnet chat, QR scanning, the terminal, and motion look haven't been checked on a device. Distributed as a signed release APK (1.0.0, version code 1) from a GitHub release that testers install by hand. |
 | Public distribution | Planned for 2026-09-29: a public TestFlight link for iOS and a public APK download for Android (owner steps in the workspace's `NEEDS_OWNER.md`). |
 | TestFlight's own feedback: a tester takes a screenshot or uses **Send Beta Feedback** in the TestFlight app, and it reaches App Store Connect with the build number, device, and OS. Crash reports reach it too. | Exists, from Apple. Nothing in this repository reads it. |
 | The owner's build notes ("1.0.0 Build 13 Feedback") turned into commits by agents, followed by a build bump (for example `e84de16fd5`, `06d033d663`) | The current loop. It isn't written down anywhere except in commit history. |
@@ -241,9 +241,10 @@ Positions:
   first build of a version goes through Apple's Beta App Review, which can
   take a day, and the public link has a tester cap that the owner sets (up
   to Apple's 10,000). Not every internal build goes to the public link.
-- **Android is behind iOS.** Android testers get Coder, Verse, and Account;
-  the Wallet is a placeholder until
-  [#9861](https://github.com/OpenAgentsInc/openagents/issues/9861). Reports
+- **Android is behind iOS.** Android testers get Coder, Verse, Wallet, and
+  Account, but the chat transcript isn't laid out by Rust yet and the build
+  has run on the emulator only
+  ([#9838](https://github.com/OpenAgentsInc/openagents/issues/9838)). Reports
   name the platform.
 
 ## Onboarding, consent, and privacy
@@ -622,9 +623,8 @@ Coder and Verse launch to playtesters on Tuesday 2026-09-29. Season 1
 - **Android:** the signed OpenAgents APK from
   [`bins/openagents-android`](../../bins/openagents-android/README.md),
   linked publicly next to the TestFlight link. Android has Coder, Verse (the
-  Grid, the Gym and RESULTS panels, Lagrange 1), and Account; the Wallet is
-  a placeholder ([#9861](https://github.com/OpenAgentsInc/openagents/issues/9861)),
-  and the build has run on the emulator but not yet on a range of devices
+  Grid, the Gym and RESULTS panels, Lagrange 1), Wallet, and Account, and
+  the build has run on the emulator but not yet on a range of devices
   ([#9838](https://github.com/OpenAgentsInc/openagents/issues/9838)).
 - **The brief** from [Onboarding, consent, and privacy](#onboarding-consent-and-privacy),
   the known issues below, and the three ways to give feedback.
@@ -681,8 +681,11 @@ Published with the link so testers don't spend reports on them:
   [#9862](https://github.com/OpenAgentsInc/openagents/issues/9862)). Amounts
   show in sats and BTC; the BIP 177 display is
   [#9881](https://github.com/OpenAgentsInc/openagents/issues/9881).
-- **Android:** no Wallet; not yet checked on physical devices for Vulkan,
-  QR scanning, the terminal, or motion look.
+- **Android:** the APK (1.0.0, version code 1) has the Wallet since
+  `e56d173480`, but the chat transcript isn't laid out by Rust yet
+  ([#9838](https://github.com/OpenAgentsInc/openagents/issues/9838)); it has
+  run on the emulator only, not yet on physical devices for Vulkan, QR
+  scanning, the terminal, or motion look.
 - **Rewards aren't visible in the app yet.** Accepted contributions are
   recorded in the triage log and signed later
   ([#9885](https://github.com/OpenAgentsInc/openagents/issues/9885),

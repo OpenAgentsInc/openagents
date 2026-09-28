@@ -19,18 +19,21 @@ if [[ "${OPENAGENTS_ANDROID_SANITIZED:-}" != 1 ]]; then
     OPENAGENTS_ANDROID_KEY_ALIAS="${OPENAGENTS_ANDROID_KEY_ALIAS:-}" \
     OPENAGENTS_ANDROID_KEYSTORE_PASSWORD="${OPENAGENTS_ANDROID_KEYSTORE_PASSWORD:-}" \
     OPENAGENTS_ANDROID_KEY_PASSWORD="${OPENAGENTS_ANDROID_KEY_PASSWORD:-}" \
+    OPENAGENTS_ANDROID_SIGNING_ENV="${OPENAGENTS_ANDROID_SIGNING_ENV:-}" \
     OPENAGENTS_ANDROID_SANITIZED=1 /bin/bash "$root/scripts/build-openagents-android.sh" "$@"
 fi
 
 usage() {
   cat >&2 <<'USAGE'
-usage: scripts/build-openagents-android.sh rust|apk|package|install|launch|run|bundle|check|abi
+usage: scripts/build-openagents-android.sh rust|apk|package|install|launch|run|release|install-release|bundle|check|abi
 
 rust builds libopenagents_mobile.so; apk packages it as a debug APK; package
 does both. install updates the debug app without clearing its data. launch
 opens it. run builds, installs, and launches. bundle builds a release Android
-App Bundle (.aab) for Google Play, signed when a keystore is set. check runs
-Android lint and unit tests.
+App Bundle (.aab) for Google Play, signed when a keystore is set. release
+builds a signed, R8-shrunk release APK for direct download (it refuses to
+build unsigned); install-release installs it. check runs Android lint and
+unit tests.
 
 Set OPENAGENTS_ANDROID_SERIAL for install, launch, and run.
 Set OPENAGENTS_ANDROID_ABI to arm64-v8a (default) or x86_64.
@@ -38,14 +41,19 @@ bundle builds arm64-v8a with the release Rust profile. It signs with
 OPENAGENTS_ANDROID_KEYSTORE, OPENAGENTS_ANDROID_KEY_ALIAS,
 OPENAGENTS_ANDROID_KEYSTORE_PASSWORD, and OPENAGENTS_ANDROID_KEY_PASSWORD, and
 takes its version code from OPENAGENTS_ANDROID_VERSION_CODE (default 1).
+release builds OPENAGENTS_ANDROID_ABI (default arm64-v8a) with the release
+Rust profile and signs it the same way. OPENAGENTS_ANDROID_SIGNING_ENV may
+name a file of KEY=value lines for the four signing variables instead.
 No command creates, resets, or launches an emulator, or uploads an app.
 USAGE
 }
 
 command="${1:-package}"
-case "$command" in rust|apk|package|install|launch|run|bundle|check|abi) ;; *) usage; exit 64 ;; esac
+case "$command" in rust|apk|package|install|launch|run|release|install-release|bundle|check|abi) ;; *) usage; exit 64 ;; esac
 [[ $# -le 1 ]] || { usage; exit 64; }
 if [[ "$command" == bundle ]]; then OPENAGENTS_ANDROID_ABI=arm64-v8a; OPENAGENTS_ANDROID_PROFILE=release; fi
+if [[ "$command" == release ]]; then OPENAGENTS_ANDROID_PROFILE=release; fi
+version_name=1.0.0
 case "$OPENAGENTS_ANDROID_ABI" in arm64-v8a|x86_64) ;; *) echo 'Unsupported Android ABI; use arm64-v8a or x86_64.' >&2; exit 64 ;; esac
 case "$OPENAGENTS_ANDROID_PROFILE" in dev|release) ;; *) echo 'Android profile must be dev or release.' >&2; exit 64 ;; esac
 [[ "$OPENAGENTS_ANDROID_VERSION_CODE" =~ ^[1-9][0-9]{0,8}$ ]] || { echo 'Version code must be a positive integer.' >&2; exit 64; }
@@ -67,6 +75,9 @@ host="$root/bins/openagents-android/host"
 native="$output/jniLibs"
 apk_path="$output/gradle/app/outputs/apk/debug/app-debug.apk"
 bundle_path="$output/gradle/app/outputs/bundle/release/app-release.aab"
+release_apk="$output/gradle/app/outputs/apk/release/app-release.apk"
+release_dir="$output/release"
+release_name="OpenAgents-$version_name-$OPENAGENTS_ANDROID_VERSION_CODE-$OPENAGENTS_ANDROID_ABI.apk"
 case "$OPENAGENTS_ANDROID_ABI" in arm64-v8a) triple=aarch64-linux-android ;; x86_64) triple=x86_64-linux-android ;; esac
 profile_dir=debug; [[ "$OPENAGENTS_ANDROID_PROFILE" == release ]] && profile_dir=release
 mkdir -p "$output"
@@ -81,20 +92,35 @@ require_device() {
   export ANDROID_SERIAL="$OPENAGENTS_ANDROID_SERIAL"
 }
 
+# Read the four signing variables from a KEY=value file (for example one kept
+# in the operator's secrets directory). Other keys are ignored, and nothing is
+# evaluated or printed.
+if [[ -n "$OPENAGENTS_ANDROID_SIGNING_ENV" ]]; then
+  [[ -f "$OPENAGENTS_ANDROID_SIGNING_ENV" ]] || { echo 'The signing environment file does not exist.' >&2; exit 1; }
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    case "$line" in
+      OPENAGENTS_ANDROID_KEYSTORE=*|OPENAGENTS_ANDROID_KEY_ALIAS=*|OPENAGENTS_ANDROID_KEYSTORE_PASSWORD=*|OPENAGENTS_ANDROID_KEY_PASSWORD=*)
+        printf -v "${line%%=*}" '%s' "${line#*=}" ;;
+    esac
+  done < "$OPENAGENTS_ANDROID_SIGNING_ENV"
+fi
+
 gradle_() {
+  # Signing settings reach Gradle through ORG_GRADLE_PROJECT_ variables, so
+  # the passwords never appear in a process's arguments.
   local signing=()
   if [[ -n "$OPENAGENTS_ANDROID_KEYSTORE" ]]; then
     [[ -f "$OPENAGENTS_ANDROID_KEYSTORE" ]] || { echo 'The release keystore does not exist.' >&2; exit 1; }
-    signing+=("-PopenagentsReleaseStoreFile=$OPENAGENTS_ANDROID_KEYSTORE"
-      "-PopenagentsReleaseKeyAlias=$OPENAGENTS_ANDROID_KEY_ALIAS"
-      "-PopenagentsReleaseStorePassword=$OPENAGENTS_ANDROID_KEYSTORE_PASSWORD"
-      "-PopenagentsReleaseKeyPassword=$OPENAGENTS_ANDROID_KEY_PASSWORD")
+    signing+=("ORG_GRADLE_PROJECT_openagentsReleaseStoreFile=$OPENAGENTS_ANDROID_KEYSTORE"
+      "ORG_GRADLE_PROJECT_openagentsReleaseKeyAlias=$OPENAGENTS_ANDROID_KEY_ALIAS"
+      "ORG_GRADLE_PROJECT_openagentsReleaseStorePassword=$OPENAGENTS_ANDROID_KEYSTORE_PASSWORD"
+      "ORG_GRADLE_PROJECT_openagentsReleaseKeyPassword=$OPENAGENTS_ANDROID_KEY_PASSWORD")
   fi
-  "$host/gradlew" --no-daemon --console=plain -p "$host" \
+  env ${signing[@]+"${signing[@]}"} "$host/gradlew" --no-daemon --console=plain -p "$host" \
     --project-cache-dir "$output/project-cache" \
     "-PopenagentsOutputDir=$output/gradle" "-PopenagentsNativeDir=$native" \
-    "-PopenagentsAbi=$OPENAGENTS_ANDROID_ABI" \
-    "-PopenagentsVersionCode=$OPENAGENTS_ANDROID_VERSION_CODE" ${signing[@]+"${signing[@]}"} "$@"
+    "-PopenagentsAbi=$OPENAGENTS_ANDROID_ABI" "-PopenagentsVersionName=$version_name" \
+    "-PopenagentsVersionCode=$OPENAGENTS_ANDROID_VERSION_CODE" "$@"
 }
 
 rust() {
@@ -128,6 +154,29 @@ bundle() {
   [[ -n "$OPENAGENTS_ANDROID_KEYSTORE" ]] || echo 'The bundle is unsigned; set the keystore variables to sign it for Google Play.'
 }
 
+release() {
+  [[ -n "$OPENAGENTS_ANDROID_KEYSTORE" ]] || { echo 'A release APK must be signed; set the keystore variables or OPENAGENTS_ANDROID_SIGNING_ENV.' >&2; exit 64; }
+  rust
+  gradle_ assembleRelease
+  local tools="$ANDROID_HOME/build-tools/35.0.0"
+  "$tools/zipalign" -c -P 16 4 "$release_apk"
+  "$tools/apksigner" verify --min-sdk-version 26 "$release_apk"
+  mkdir -p "$release_dir"
+  cp "$release_apk" "$release_dir/$release_name"
+  local mapping="$output/gradle/app/outputs/mapping/release/mapping.txt"
+  [[ ! -f "$mapping" ]] || cp "$mapping" "$release_dir/${release_name%.apk}-mapping.txt"
+  (cd "$release_dir" && shasum -a 256 "$release_name" > "$release_name.sha256")
+  "$tools/apksigner" verify --print-certs "$release_apk" | grep -E 'Signer #1 certificate (DN|SHA-256)'
+  echo "Built $release_dir/$release_name ($(du -h "$release_dir/$release_name" | cut -f1 | tr -d ' '))"
+  cat "$release_dir/$release_name.sha256"
+}
+
+install_release() {
+  require_device
+  [[ -f "$release_dir/$release_name" ]] || { echo 'Build the release APK first with the release command.' >&2; exit 1; }
+  adb -s "$OPENAGENTS_ANDROID_SERIAL" install -r "$release_dir/$release_name"
+}
+
 install() {
   require_device
   [[ -f "$apk_path" ]] || { echo 'Build the APK first with the package command.' >&2; exit 1; }
@@ -144,4 +193,4 @@ launch() {
 package() { rust; apk; }
 run() { require_device; package; install; launch; }
 check() { gradle_ lintDebug testDebugUnitTest; }
-"$command"
+"${command//-/_}"
