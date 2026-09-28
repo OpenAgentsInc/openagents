@@ -161,6 +161,18 @@
           else
             evaluates "coder-compositor-checkout" host;
 
+        # The example workstation, `examples/workstation/configuration.nix`,
+        # with stub file systems in place of the hardware file its flake
+        # lists, so a machine that is not yours can copy it and build.
+        example-workstation = evaluates "example-workstation" (lib.nixosSystem {
+          inherit system;
+          modules = [
+            self.nixosModules.coderos
+            ./examples/workstation/configuration.nix
+            ./tests/stub-hardware.nix
+          ];
+        });
+
         # A host's own launchers and window rules, set through
         # `coderos.desktop.extraBinds` and `extraWindowRules` the way a
         # private host flake sets them, reach Hyprland as the exact lines

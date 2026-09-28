@@ -16,7 +16,7 @@ The plan for moving CoderOS here, and the list of what moves next, is
 | `devShells.x86_64-linux.compositor` | `pkg-config` and the system libraries Smithay links, for `cargo test -p coder-wm -p coder-compositor` with the pinned toolchain. |
 | `devShells.x86_64-linux.android` | The Android SDK, NDK, JDK 17, Gradle, and `cargo-ndk` that `scripts/build-coder-android.sh` and `scripts/build-openagents-android.sh` build with. |
 | `packages.x86_64-linux` | `coder-desk`, the desk command the CoderOS scripts run instead of `hyprctl`, built from `crates/coder-desk-cli` by `pkgs/coder-desk.nix`, and `coder-compositor`, the optional Coder Wayland compositor, built from `crates/coder-compositor` by `pkgs/coder-compositor.nix`. Modules that run a program from this workspace add its build here. |
-| `checks.x86_64-linux` | Evaluates a stub host with the base module alone, and with every capability turned on. |
+| `checks.x86_64-linux` | Evaluates a stub host with the base module alone, and with every capability turned on, and the example workstation against a stub hardware file. |
 
 `nixpkgs` is pinned to one revision in `flake.nix` and `flake.lock`. A host
 flake that follows this input builds against the same packages the checks
@@ -25,7 +25,11 @@ evaluated.
 ## Use it from your own host flake
 
 Keep your hardware file, accounts, keys, and personal modules in a private
-flake of your own. Import the module set and add your host:
+flake of your own. [`examples/workstation/`](examples/workstation/README.md)
+is a complete host to start from: a host flake, a workstation configuration
+with every personal value replaced by a placeholder, and the steps to copy
+it into a private repository. A host flake imports the module set and adds
+your host:
 
 ```nix
 {
@@ -268,6 +272,10 @@ host's own launchers and window rules, and the `extension-points` check
 compares what they render with the lines such a host reads today. The
 `coder-compositor-host` check evaluates a host that runs the Coder
 compositor on tty1 and Hyprland on a trial TTY.
+The `example-workstation` check evaluates
+`examples/workstation/configuration.nix` with `tests/stub-hardware.nix` in
+place of the hardware file a real machine generates. When you change an
+option the example sets, update the example in the same change.
 
 The scripts under `bin/` have shell tests under `tests/` that stub every
 program they call, so they need no desktop. Run them by hand:
