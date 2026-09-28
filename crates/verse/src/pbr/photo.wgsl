@@ -46,9 +46,9 @@ struct Frame {
     // x metering target; y, z gain bounds; w 1 when exposure adapts.
     metering: vec4<f32>,
     // Neon stage: x fog start, y fog end (m), z line width (px), w mode
-    // (0 space, 1 neon, 2 neon mirror pass).
+    // (0 space, 1 neon).
     neon: vec4<f32>,
-    // rgb field color; w floor reflectance at grazing incidence.
+    // rgb field color; w unused.
     field: vec4<f32>,
 };
 
@@ -141,19 +141,6 @@ fn neon_fog(color: vec3<f32>, world: vec3<f32>, weight: f32) -> vec3<f32> {
     return mix(color, f.field.rgb, t * t * weight);
 }
 
-// The mirror pass reflects only what stands above the floor.
-fn mirror_skips(world: vec3<f32>) -> bool {
-    return f.neon.w > 1.5 && world.y < 0.05;
-}
-
-// A polished floor is not a perfect mirror: its micro-roughness spreads the
-// reflection of anything far above it, so reflections fade with height.
-fn mirror_fade(world: vec3<f32>) -> f32 {
-    if f.neon.w > 1.5 {
-        return exp(-world.y / 14.0);
-    }
-    return 1.0;
-}
 
 fn hash3(p: vec3<f32>) -> vec3<f32> {
     var q = fract(p * vec3<f32>(0.1031, 0.1030, 0.0973));
@@ -901,45 +888,13 @@ fn vs_legacy(v: LegacyIn) -> LegacyOut {
 
 @fragment
 fn fs_legacy(i: LegacyOut) -> @location(0) vec4<f32> {
-    if mirror_skips(i.world) {
-        discard;
-    }
     var c = i.color;
     if f.neon.w < 0.5 {
         c = c * guide_scale();
     }
-    return vec4<f32>(neon_fog(c * mirror_fade(i.world), i.world, i.fog), 1.0);
+    return vec4<f32>(neon_fog(c, i.world, i.fog), 1.0);
 }
 
-// The polished floor of the neon stage: black glass whose Fresnel
-// reflectance reveals the mirrored city drawn beneath it (Schlick 1994).
-struct FloorOut {
-    @builtin(position) clip: vec4<f32>,
-    @location(0) world: vec3<f32>,
-};
-
-@vertex
-fn vs_floor(@builtin(vertex_index) index: u32) -> FloorOut {
-    let k = QUAD[index];
-    let p = vec3<f32>(k.x * 1200.0, -0.02, k.y * 1200.0);
-    var o: FloorOut;
-    o.clip = f.view_proj * vec4<f32>(p, 1.0);
-    o.world = p;
-    return o;
-}
-
-@fragment
-fn fs_floor(i: FloorOut) -> @location(0) vec4<f32> {
-    let v = normalize(f.eye.xyz - i.world);
-    let cos_v = clamp(abs(v.y), 0.0, 1.0);
-    let fresnel = 0.04 + 0.96 * pow(1.0 - cos_v, 5.0);
-    // Reflections fade into the fog with the floor itself.
-    let d = distance(i.world.xz, f.eye.xz);
-    let t = clamp((d - f.neon.x) / max(f.neon.y - f.neon.x, 1e-3), 0.0, 1.0);
-    let reflect = clamp(fresnel * f.field.w * (1.0 - t * t), 0.0, 1.0);
-    let cover = 1.0 - reflect;
-    return vec4<f32>(expose(f.field.rgb) * cover, cover);
-}
 
 // Guide lines as antialiased screen-space quads (Chan and Durand 2005).
 struct WideIn {
@@ -952,7 +907,9 @@ struct WideIn {
 struct WideOut {
     @builtin(position) clip: vec4<f32>,
     @location(0) color: vec3<f32>,
-    @location(1) across: f32,
+    // Pixels from the line's center: a screen-space quantity, so it must not
+    // be perspective-corrected across a quad whose ends differ greatly in depth.
+    @location(1) @interpolate(linear) across: f32,
     @location(2) world: vec3<f32>,
     @location(3) fog: f32,
     @location(4) width: f32,
@@ -965,16 +922,26 @@ fn vs_wide(w: WideIn, @builtin(vertex_index) index: u32) -> WideOut {
     var ca = f.view_proj * vec4<f32>(w.a, 1.0);
     var cb = f.view_proj * vec4<f32>(w.b, 1.0);
     // Clip the segment to the near plane so both ends project.
-    let near = 1e-4;
+    // The camera's near plane is 0.1 m; clip there, not at w = 0, so a clipped
+    // end projects to a finite point.
+    let near = 0.1;
     if ca.w < near && cb.w < near {
         var o: WideOut;
         o.clip = vec4<f32>(2.0, 2.0, 2.0, 1.0);
         return o;
     }
+    // Clip to the near plane, moving the world endpoints with the clip ones
+    // so fog is evaluated where the visible fragment really is.
+    var wa = w.a;
+    var wb = w.b;
     if ca.w < near {
-        ca = mix(ca, cb, (near - ca.w) / (cb.w - ca.w));
+        let t = (near - ca.w) / (cb.w - ca.w);
+        ca = mix(ca, cb, t);
+        wa = mix(w.a, w.b, t);
     } else if cb.w < near {
-        cb = mix(cb, ca, (near - cb.w) / (ca.w - cb.w));
+        let t = (near - cb.w) / (ca.w - cb.w);
+        cb = mix(cb, ca, t);
+        wb = mix(w.b, w.a, t);
     }
     let sa = ca.xy / ca.w * f.viewport.xy * 0.5;
     let sb = cb.xy / cb.w * f.viewport.xy * 0.5;
@@ -994,7 +961,7 @@ fn vs_wide(w: WideIn, @builtin(vertex_index) index: u32) -> WideOut {
     o.clip = c;
     o.color = w.color * guide_scale();
     o.across = side * extent;
-    o.world = mix(w.a, w.b, end);
+    o.world = mix(wa, wb, end);
     o.fog = w.fog;
     o.width = width;
     return o;
@@ -1002,13 +969,10 @@ fn vs_wide(w: WideIn, @builtin(vertex_index) index: u32) -> WideOut {
 
 @fragment
 fn fs_wide(i: WideOut) -> @location(0) vec4<f32> {
-    if mirror_skips(i.world) {
-        discard;
-    }
     let coverage = clamp(i.width * 0.5 + 0.5 - abs(i.across), 0.0, 1.0);
     var c = i.color;
     if f.neon.w > 0.5 {
-        c = expose(neon_fog(c * mirror_fade(i.world), i.world, i.fog));
+        c = expose(neon_fog(c, i.world, i.fog));
     }
     return vec4<f32>(c * coverage, coverage);
 }

@@ -290,7 +290,7 @@ fn the_plaza_renders_as_a_neon_stage_in_its_own_palette() {
     assert_eq!(neon.field, crate::palette::field());
     assert_eq!(neon.fog_start, crate::render::FOG_START);
     assert_eq!(neon.fog_end, crate::render::FOG_END);
-    assert!((0.0..1.0).contains(&neon.reflectivity) && neon.line_gain >= 1.0);
+    assert!(neon.line_gain >= 1.0);
     runtime.zone_intent(Intent::Enter).unwrap();
     let station = runtime.dynamic_mesh();
     assert!(station.neon.is_none() && station.sky.is_some());

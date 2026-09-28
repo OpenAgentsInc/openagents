@@ -16,7 +16,8 @@ the chat reader remains read-only.
 **Latest internal TestFlight: 0.5.0 (53).** App Store Connect confirms `VALID`
 and `IN_BETA_TESTING`. The [build 53 record](verification/2026-09-27-plaza-neon-build53/README.md)
 binds it to clean source commit `f3bb5b36ab`. The plaza draws as a neon
-stage in its own amber palette: glowing lines and a reflective black floor.
+stage in its own amber palette with glowing lines. (Build 53's floor
+reflection was removed afterward.)
 
 Build 52 ([record](verification/2026-09-27-lagrange-realism-build52/README.md))
 renders Lagrange 1 with physical light: real-unit sunlight and shadows,

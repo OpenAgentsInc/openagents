@@ -170,7 +170,6 @@ struct Pipelines {
     glow: wgpu::RenderPipeline,
     legacy: wgpu::RenderPipeline,
     wide: wgpu::RenderPipeline,
-    floor: wgpu::RenderPipeline,
 }
 
 struct PostPipelines {
@@ -213,9 +212,6 @@ pub(crate) struct Photo {
     capability: Capability,
     output_format: wgpu::TextureFormat,
     frame: wgpu::Buffer,
-    /// The frame seen through the floor, for the neon stage's reflection.
-    mirror_frame: wgpu::Buffer,
-    mirror_group: wgpu::BindGroup,
     /// Whether the Sun, Earth, Moon, and star data are uploaded.
     space_ready: bool,
     guide_layout: wgpu::BindGroupLayout,
@@ -409,23 +405,6 @@ impl Photo {
             device,
             &scene_layout,
             &frame,
-            &shadow,
-            &shadow_compare,
-            &probes,
-            &linear_clamp,
-            &sky_textures,
-            &linear_repeat,
-        );
-        let mirror_frame = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("verse photo mirror frame"),
-            size: std::mem::size_of::<Frame>() as u64,
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-        let mirror_group = self::scene_group(
-            device,
-            &scene_layout,
-            &mirror_frame,
             &shadow,
             &shadow_compare,
             &probes,
@@ -692,17 +671,6 @@ impl Photo {
                 Some(PREMULTIPLIED),
                 samples,
             ),
-            floor: make(
-                &layout,
-                "verse neon floor",
-                "vs_floor",
-                Some("fs_floor"),
-                &[],
-                triangles,
-                depth_state(true, wgpu::CompareFunction::GreaterEqual),
-                Some(PREMULTIPLIED),
-                samples,
-            ),
         };
         let _ = LEGACY;
         let post = capability
@@ -718,8 +686,6 @@ impl Photo {
             capability,
             output_format,
             frame,
-            mirror_frame,
-            mirror_group,
             space_ready: false,
             guide_layout,
             scene_layout,
@@ -773,24 +739,17 @@ impl Photo {
     }
 
     fn rebuild_groups(&mut self, device: &wgpu::Device) {
-        for (frame, space) in [(&self.frame, true), (&self.mirror_frame, false)] {
-            let group = scene_group(
-                device,
-                &self.scene_layout,
-                frame,
-                &self.shadow,
-                &self.shadow_compare,
-                &self.probes,
-                &self.linear_clamp,
-                &self.sky_textures,
-                &self.linear_repeat,
-            );
-            if space {
-                self.scene_group = group;
-            } else {
-                self.mirror_group = group;
-            }
-        }
+        self.scene_group = scene_group(
+            device,
+            &self.scene_layout,
+            &self.frame,
+            &self.shadow,
+            &self.shadow_compare,
+            &self.probes,
+            &self.linear_clamp,
+            &self.sky_textures,
+            &self.linear_repeat,
+        );
     }
 
     fn update_probes(
@@ -1308,8 +1267,8 @@ impl Photo {
         );
     }
 
-    /// The neon stage: the city mirrored in a polished floor, the floor,
-    /// faces, emissive lines, and the post chain with a hue-preserving curve.
+    /// The neon stage: faces, emissive lines, and the post chain with a
+    /// hue-preserving curve.
     #[allow(clippy::too_many_arguments)]
     fn encode_neon(
         &mut self,
@@ -1323,7 +1282,6 @@ impl Photo {
     ) {
         let [width, height] = targets.size;
         let reversed = reversed_depth() * view.view_proj;
-        let mirror = reversed * Mat4::from_scale(Vec3::new(1.0, -1.0, 1.0));
         let frame = |view_proj: Mat4, width_px: f32, mode: f32| Frame {
             view_proj: view_proj.to_cols_array_2d(),
             inv_view_proj: view_proj.inverse().to_cols_array_2d(),
@@ -1354,23 +1312,12 @@ impl Photo {
             params: [0.0, neon.time, 0.0, neon.line_gain],
             metering: [0.18, 1.0, 1.0, 0.0],
             neon: [neon.fog_start, neon.fog_end, width_px, mode],
-            field: [
-                neon.field[0],
-                neon.field[1],
-                neon.field[2],
-                neon.reflectivity,
-            ],
+            field: [neon.field[0], neon.field[1], neon.field[2], 0.0],
         };
         queue.write_buffer(
             &self.frame,
             0,
             bytemuck::bytes_of(&frame(reversed, neon.line_width, 1.0)),
-        );
-        // Reflections are softer: the floor's micro-roughness spreads them.
-        queue.write_buffer(
-            &self.mirror_frame,
-            0,
-            bytemuck::bytes_of(&frame(mirror, neon.line_width * 2.2, 2.0)),
         );
         let direct = self.post.is_none();
         let (target, resolve) = match (&targets.msaa, direct) {
@@ -1427,13 +1374,7 @@ impl Photo {
                 }
             };
             pass.set_bind_group(1, &targets.guide_groups[0], &[]);
-            if neon.reflectivity > 0.0 {
-                pass.set_bind_group(0, &self.mirror_group, &[]);
-                draw_world(&mut pass);
-            }
             pass.set_bind_group(0, &self.scene_group, &[]);
-            pass.set_pipeline(&self.pipelines.floor);
-            pass.draw(0..6, 0..1);
             draw_world(&mut pass);
             if self.glow.count > 0 {
                 pass.set_pipeline(&self.pipelines.glow);

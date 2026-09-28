@@ -418,9 +418,7 @@ ridge line at 900 m ignores the fog and marks the horizon.
 color. Lines are emissive in their ladder colors, 1.8 times brighter at
 the core, so they glow through energy-conserving bloom, and they are
 antialiased screen-space strips instead of one-pixel hardware lines. The
-floor is polished black glass: the city is drawn mirrored beneath it and
-shows through with Schlick Fresnel reflectance, strongest at grazing angles
-and fading with height above the floor and into the fog. A hue-preserving
+floor stays the plain field, with no reflection. A hue-preserving
 tone curve compresses bright cores along their own hue, so every step stays
 amber. Adapters without a floating-point target draw the same stage with the
 curve applied per draw and no bloom. `VERSE_PLAZA_LEGACY=1 verse --capture`
