@@ -1,7 +1,10 @@
 # CoderOS audit: what moves from `~/coder` into OpenAgents
 
-**Status: proposal (2026-09-28).** Nothing has moved yet. This document is
-the plan for the first move, and the
+**Status: delivered (2026-09-28).** Everything this plan marks to carry or
+rewrite is in `os/` and `crates/`, and `coderos-4080` runs from the owner's
+private host flake over these modules. Issue
+[#9866](https://github.com/OpenAgentsInc/openagents/issues/9866) and its
+sub-issues record each step. This document was the plan for the move, and the
 [migration assessment](../coder/design/coder-suite-migration.md#coderos-and-execution-environments)
 and milestone M12 in the [migration tracker](../coder/migration-status.md)
 are the requirements it has to meet.
