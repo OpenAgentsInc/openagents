@@ -29,13 +29,22 @@ struct SpendState: Decodable, Equatable {
         let expires_at: UInt64
         let authenticate: Bool
         let ready: Bool
+        let can_trust: Bool
         var id: String { request }
+    }
+    struct Trusted: Decodable, Equatable, Identifiable {
+        let payee: String
+        let label: String
+        let limit: String
+        var id: String { payee }
     }
     struct Computer: Decodable, Equatable, Identifiable {
         let host: String
         let computer: String
         let blocked: Bool
         let remaining: String
+        let automatic: String?
+        let trusted: [Trusted]
         var id: String { host }
     }
     struct Entry: Decodable, Equatable, Identifiable {
@@ -46,6 +55,7 @@ struct SpendState: Decodable, Equatable {
         let amount: String
         let fee: String?
         let state: String
+        let auto: Bool
         let detail: String?
         let at: UInt64
         var id: String { request }
@@ -100,7 +110,9 @@ struct SpendApprovalSheet: View {
                 } header: {
                     Text("Paid to")
                 } footer: {
-                    Text("Read from the invoice itself, not from the agent's description.")
+                    Text(sheet.can_trust
+                         ? "Read from the invoice itself, not from the agent's description. Trusting the payee lets this computer pay it small amounts without asking, within daily limits."
+                         : "Read from the invoice itself, not from the agent's description.")
                 }
                 Section {
                     row("Fee ceiling", sheet.fee_ceiling)
@@ -122,6 +134,15 @@ struct SpendApprovalSheet: View {
                     }
                     .disabled(!sheet.ready || busy)
                     .accessibilityIdentifier("spend-approve")
+                    if sheet.can_trust {
+                        Button {
+                            approveAndTrust()
+                        } label: {
+                            HStack { Spacer(); Text("Approve and trust this payee"); Spacer() }
+                        }
+                        .disabled(!sheet.ready || busy)
+                        .accessibilityIdentifier("spend-approve-trust")
+                    }
                     Button(role: .destructive) {
                         bridge.spend("spend_deny", ["request": sheet.request])
                     } label: {
@@ -157,6 +178,29 @@ struct SpendApprovalSheet: View {
             Text(label).foregroundStyle(.secondary)
             Spacer()
             Text(value).multilineTextAlignment(.trailing).textSelection(.enabled)
+        }
+    }
+
+    /// Trusting a payee widens what pays without a tap, so it always asks
+    /// for Face ID or the passcode first.
+    private func approveAndTrust() {
+        failure = nil
+        let context = LAContext()
+        var error: NSError?
+        guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) else {
+            failure = "Set a passcode on this phone to trust a payee."
+            return
+        }
+        let request = sheet.request
+        context.evaluatePolicy(.deviceOwnerAuthentication,
+                               localizedReason: "Pay \(sheet.amount) and trust this payee") { success, _ in
+            DispatchQueue.main.async {
+                if success {
+                    bridge.spend("spend_approve_trust", ["request": request])
+                } else {
+                    failure = "Not approved. Nothing was paid."
+                }
+            }
         }
     }
 
@@ -208,15 +252,35 @@ struct AgentPaymentsSection: View {
                     }
                 }
                 ForEach(spend.computers) { computer in
-                    HStack {
-                        VStack(alignment: .leading) {
-                            Text(computer.computer).font(.subheadline)
-                            Text(computer.remaining).font(.caption).foregroundStyle(.secondary)
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            VStack(alignment: .leading) {
+                                Text(computer.computer).font(.subheadline)
+                                Text(computer.remaining).font(.caption).foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            if computer.blocked {
+                                Button("Allow") { bridge.spend("spend_allow", ["host": computer.host]) }
+                                    .font(.footnote)
+                            }
                         }
-                        Spacer()
-                        if computer.blocked {
-                            Button("Allow") { bridge.spend("spend_allow", ["host": computer.host]) }
-                                .font(.footnote)
+                        if let automatic = computer.automatic {
+                            Text(automatic).font(.caption).foregroundStyle(.secondary)
+                            ForEach(computer.trusted) { payee in
+                                HStack {
+                                    Text("\(payee.label) · \(payee.limit)").font(.caption.monospaced())
+                                    Spacer()
+                                    Button("Remove") {
+                                        bridge.spend("spend_untrust", ["host": computer.host, "payee": payee.payee])
+                                    }
+                                    .font(.caption)
+                                }
+                            }
+                            Button("Ask me for every payment") {
+                                bridge.spend("spend_manual", ["host": computer.host])
+                            }
+                            .font(.caption)
+                            .accessibilityIdentifier("spend-manual")
                         }
                     }
                 }
@@ -231,7 +295,7 @@ struct AgentPaymentsSection: View {
                         Spacer()
                         VStack(alignment: .trailing, spacing: 2) {
                             Text(entry.amount).font(.subheadline.monospacedDigit())
-                            Text(entry.state.capitalized)
+                            Text(entry.auto && entry.state == "paid" ? "Paid automatically" : entry.state.capitalized)
                                 .font(.caption)
                                 .foregroundStyle(entry.state == "paid" ? .green : .secondary)
                         }

@@ -1,5 +1,8 @@
-//! Agent spending, phase 1: an agent on a Coder host asks, and the owner
-//! approves each payment on the phone (`mode: request`).
+//! Agent spending: an agent on a Coder host asks, and the phone pays. In
+//! `request` mode the owner approves each payment on the phone; in
+//! `standing` mode the phone also pays, without a tap, what the grant's
+//! [`AutoPay`] section admits (trusted payees and purposes, each under its own
+//! rolling-window cap), and asks the owner about everything else.
 //!
 //! Three formats, written up in `docs/breez/spend-protocol.md`:
 //!
@@ -46,12 +49,15 @@ pub const WALLET_KIND: &str = "spark";
 pub const MAX_PAYMENT: usize = 4096;
 const MAX_SAFE: u64 = 9_007_199_254_740_991;
 
-/// How a grant's payments are approved. Phase 1 has only `request`: the
-/// owner approves each payment on the phone.
+/// How a grant's payments are approved.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Mode {
+    /// The owner approves each payment on the phone.
     Request,
+    /// The phone pays what the grant's [`AutoPay`] admits without a tap,
+    /// while it is reachable, and asks the owner about the rest.
+    Standing,
 }
 
 /// Why a payment is made.
@@ -127,6 +133,29 @@ pub struct WalletRef {
     pub network: String,
 }
 
+/// A standing grant's automatic payments: what the phone pays without the
+/// owner's tap. Every ceiling counts only automatic payments, fees
+/// included, in the grant's rolling window (`period`); the grant's own
+/// ceilings still count everything. A payment that fails any of these goes
+/// to the approval sheet instead: it is never refused for them.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AutoPay {
+    /// The most for one automatic payment, fee ceiling included: the
+    /// design's `auto_approve_max`.
+    pub per_payment_max: u64,
+    /// The most paid automatically in the window.
+    pub period_max: u64,
+    /// Purposes paid automatically, each with its own ceiling in the window.
+    pub purposes: BTreeMap<Purpose, u64>,
+    /// Payees (Lightning node keys) paid automatically, each with its own
+    /// ceiling in the window. Empty means none.
+    pub payees: BTreeMap<String, u64>,
+}
+
+/// The most payees one grant's automatic payments name.
+pub const MAX_AUTO_PAYEES: usize = 64;
+
 /// `openagents.spend-grant.v1`: what a host may ask the phone to pay.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -154,14 +183,18 @@ pub struct Grant {
     /// Allowed payees: Lightning node keys (compressed, hex). Empty means
     /// none, unless `any_payee` is set.
     pub payees: Vec<String>,
-    /// Any payee may be asked for. Only in `request` mode, where the owner
-    /// sees the payee decoded from the invoice and approves each payment.
+    /// Any payee may be asked for. The owner sees the payee decoded from the
+    /// invoice and approves each such payment; only the payees named in
+    /// `auto` are ever paid without a tap.
     pub any_payee: bool,
     pub purposes: Vec<Purpose>,
     /// The grantee's epoch at the phone. Revocation advances it.
     pub epoch: u64,
     pub issued_at: u64,
     pub expires_at: u64,
+    /// Present exactly in `standing` mode: what is paid without a tap.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auto: Option<AutoPay>,
 }
 
 /// What the phone issues each host by default in phase 1. In `request`
@@ -181,6 +214,17 @@ pub mod defaults {
     pub const FEE_PPM: u32 = 1_000_000;
     /// 30 days.
     pub const LIFETIME: u64 = super::MAX_GRANT_LIFETIME;
+    /// Automatic payments when the owner turns them on for a computer:
+    /// 1,000 sats at most each, which is never above the amount the phone
+    /// asks Face ID for.
+    pub const AUTO_PER_PAYMENT_MAX: u64 = 1_000_000;
+    /// 5,000 sats a day paid automatically.
+    pub const AUTO_PERIOD_MAX: u64 = 5_000_000;
+    /// 2,000 sats a day to one trusted payee.
+    pub const AUTO_PAYEE_MAX: u64 = 2_000_000;
+    /// Each purpose's automatic ceiling: tips 1,000 sats a day, the rest the
+    /// whole automatic ceiling.
+    pub const AUTO_TIP_MAX: u64 = 1_000_000;
 }
 
 impl Grant {
@@ -215,7 +259,32 @@ impl Grant {
             epoch,
             issued_at: now,
             expires_at: now + defaults::LIFETIME,
+            auto: None,
         }
+    }
+
+    /// A `standing`-mode grant with the phase 1 bounds and the default
+    /// automatic ceilings, trusting `payees` (node key and its own ceiling).
+    #[must_use]
+    pub fn standing(
+        grant: String,
+        issuer: &str,
+        grantee: &str,
+        epoch: u64,
+        now: u64,
+        payees: BTreeMap<String, u64>,
+    ) -> Self {
+        let mut standing = Self::request_mode(grant, issuer, grantee, epoch, now);
+        standing.mode = Mode::Standing;
+        standing.auto = Some(AutoPay::defaults(payees));
+        standing
+    }
+
+    /// The same grant expiring at `expires_at`.
+    #[must_use]
+    pub fn with_expiry(mut self, expires_at: u64) -> Self {
+        self.expires_at = expires_at;
+        self
     }
 
     pub fn validate(&self) -> Result<()> {
@@ -250,11 +319,15 @@ impl Grant {
         for payee in &self.payees {
             node_key(payee)?;
         }
-        if self.any_payee && self.mode != Mode::Request {
-            return fail(
-                Code::Forbidden,
-                "only a request-mode grant admits any payee",
-            );
+        match (&self.mode, &self.auto) {
+            (Mode::Request, None) => {}
+            (Mode::Standing, Some(auto)) => auto.validate(self)?,
+            _ => {
+                return fail(
+                    Code::Malformed,
+                    "a standing grant, and only one, names its automatic payments",
+                );
+            }
         }
         for value in [
             self.per_payment_max,
@@ -287,6 +360,57 @@ impl Grant {
 
     fn admits_payee(&self, payee: &str) -> bool {
         self.any_payee || self.payees.iter().any(|p| p == payee)
+    }
+}
+
+impl AutoPay {
+    /// The default automatic ceilings, trusting `payees`.
+    #[must_use]
+    pub fn defaults(payees: BTreeMap<String, u64>) -> Self {
+        Self {
+            per_payment_max: defaults::AUTO_PER_PAYMENT_MAX,
+            period_max: defaults::AUTO_PERIOD_MAX,
+            purposes: Purpose::ALL
+                .into_iter()
+                .map(|purpose| {
+                    let max = match purpose {
+                        Purpose::Tip => defaults::AUTO_TIP_MAX,
+                        _ => defaults::AUTO_PERIOD_MAX,
+                    };
+                    (purpose, max)
+                })
+                .collect(),
+            payees,
+        }
+    }
+
+    /// Check the automatic ceilings against the grant: never above its own
+    /// ceilings, only its purposes, and only payees it admits.
+    fn validate(&self, grant: &Grant) -> Result<()> {
+        safe(self.per_payment_max)?;
+        safe(self.period_max)?;
+        if self.per_payment_max == 0
+            || self.per_payment_max > grant.per_payment_max
+            || self.per_payment_max > self.period_max
+            || self.period_max > grant.period_max
+        {
+            return fail(Code::Bounds, "automatic ceilings exceed the grant's");
+        }
+        if self.payees.len() > MAX_AUTO_PAYEES {
+            return fail(Code::Bounds, "too many automatic payees");
+        }
+        for (purpose, max) in &self.purposes {
+            if !grant.purposes.contains(purpose) || *max == 0 || *max > self.period_max {
+                return fail(Code::Bounds, "an automatic purpose exceeds the grant");
+            }
+        }
+        for (payee, max) in &self.payees {
+            node_key(payee)?;
+            if !grant.admits_payee(payee) || *max == 0 || *max > self.period_max {
+                return fail(Code::Bounds, "an automatic payee exceeds the grant");
+            }
+        }
+        Ok(())
     }
 }
 
@@ -630,6 +754,9 @@ pub struct LedgerEntry {
     /// The host has recorded this entry's final receipt.
     #[serde(default)]
     pub delivered: bool,
+    /// Paid without the owner's tap, under a standing grant.
+    #[serde(default)]
+    pub auto: bool,
 }
 impl LedgerEntry {
     /// What the entry holds against its grant: nothing when refused, the
@@ -672,12 +799,34 @@ pub const LEDGER_RETENTION: u64 = 90 * 24 * 60 * 60;
 /// The most entries a ledger keeps.
 pub const LEDGER_MAX: usize = 1024;
 
+/// Grants at the same epoch that a computer's current grant replaced.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Earlier<'a> {
+    /// Requests made under these are checked against the current grant
+    /// rather than refused as `revoked`: the owner changed a setting or the
+    /// phone renewed the grant while they waited.
+    pub accepted: &'a [String],
+    /// Payments under these count against the current grant's total: the
+    /// owner changed a setting, which never refills the total.
+    pub counted: &'a [String],
+}
+
 impl Ledger {
-    /// Everything held under `grant` since `since`.
-    fn held_since(&self, grant: &str, since: u64) -> u64 {
+    /// Everything held under `grant` (and `counted`) since `since`.
+    fn held_since(&self, grant: &str, counted: &[String], since: u64) -> u64 {
         self.entries
             .values()
-            .filter(|e| e.grant == grant && e.at >= since)
+            .filter(|e| (e.grant == grant || counted.contains(&e.grant)) && e.at >= since)
+            .map(LedgerEntry::held)
+            .fold(0, u64::saturating_add)
+    }
+
+    /// Everything held for `host` since `since` that `keep` selects, under
+    /// any grant: a new grant never refills a window.
+    fn held_for(&self, host: &str, since: u64, keep: impl Fn(&LedgerEntry) -> bool) -> u64 {
+        self.entries
+            .values()
+            .filter(|e| e.host == host && e.at >= since && keep(e))
             .map(LedgerEntry::held)
             .fold(0, u64::saturating_add)
     }
@@ -685,8 +834,15 @@ impl Ledger {
     /// What `grant` has left at `now`.
     #[must_use]
     pub fn remaining(&self, grant: &Grant, now: u64) -> Remaining {
-        let period = self.held_since(&grant.grant, now.saturating_sub(grant.period));
-        let total = self.held_since(&grant.grant, 0);
+        self.remaining_in(grant, Earlier::default(), now)
+    }
+
+    /// What `grant` has left at `now`, counting the grants it replaced. The
+    /// window counts every payment for the host, under any grant.
+    #[must_use]
+    pub fn remaining_in(&self, grant: &Grant, earlier: Earlier<'_>, now: u64) -> Remaining {
+        let period = self.held_for(&grant.grantee, now.saturating_sub(grant.period), |_| true);
+        let total = self.held_since(&grant.grant, earlier.counted, 0);
         Remaining {
             period_msat: grant.period_max.saturating_sub(period),
             total_msat: grant.total_max.saturating_sub(total),
@@ -703,6 +859,18 @@ impl Ledger {
         request: &SpendRequest,
         now: u64,
     ) -> std::result::Result<Admitted, Refusal> {
+        self.check_in(grant, Earlier::default(), request, now)
+    }
+
+    /// As [`Ledger::check`], also admitting requests made under the grants
+    /// the current one replaced at its epoch.
+    pub fn check_in(
+        &self,
+        grant: Option<&Grant>,
+        earlier: Earlier<'_>,
+        request: &SpendRequest,
+        now: u64,
+    ) -> std::result::Result<Admitted, Refusal> {
         let invoice = request.validate().map_err(|error| match error.code {
             Code::Unsupported => Refusal::RailNotAllowed,
             _ => Refusal::Malformed,
@@ -711,7 +879,8 @@ impl Ledger {
         if request.grantee != grant.grantee {
             return Err(Refusal::Revoked);
         }
-        if request.grant != grant.grant {
+        let replaced = request.epoch == grant.epoch && earlier.accepted.contains(&request.grant);
+        if request.grant != grant.grant && !replaced {
             // A request under an older epoch was overtaken by revocation or
             // replacement; anything else names no grant the phone holds.
             return Err(if request.epoch < grant.epoch {
@@ -751,7 +920,7 @@ impl Ledger {
             .entries
             .get(&request.request)
             .map_or(0, LedgerEntry::held);
-        let remaining = self.remaining(grant, now);
+        let remaining = self.remaining_in(grant, earlier, now);
         if cost > remaining.period_msat.saturating_add(own) {
             return Err(Refusal::OverPeriodCap);
         }
@@ -770,6 +939,56 @@ impl Ledger {
         })
     }
 
+    /// Whether a request the checks admitted may be paid without the
+    /// owner's tap: the grant is `standing`, and the payment fits its
+    /// [`AutoPay`] section: at most `per_payment_max`, a trusted purpose and
+    /// payee, and each automatic ceiling in the window, counting only
+    /// earlier automatic payments for this host. `false` sends the request
+    /// to the approval sheet; it never refuses it.
+    #[must_use]
+    pub fn automatic(
+        &self,
+        grant: &Grant,
+        request: &SpendRequest,
+        admitted: &Admitted,
+        now: u64,
+    ) -> bool {
+        let Some(auto) = grant.auto.as_ref().filter(|_| grant.mode == Mode::Standing) else {
+            return false;
+        };
+        let cost = request.amount_msat.saturating_add(request.fee_max_msat);
+        let (Some(purpose_max), Some(payee_max)) = (
+            auto.purposes.get(&request.purpose),
+            auto.payees.get(&admitted.payee),
+        ) else {
+            return false;
+        };
+        if self.entries.contains_key(&request.request) {
+            return false;
+        }
+        let since = now.saturating_sub(grant.period);
+        let host = &grant.grantee;
+        let spent =
+            |keep: &dyn Fn(&LedgerEntry) -> bool| self.held_for(host, since, |e| e.auto && keep(e));
+        let within = |spent: u64, max: u64| spent.saturating_add(cost) <= max;
+        cost <= auto.per_payment_max
+            && within(spent(&|_| true), auto.period_max)
+            && within(spent(&|e| e.purpose == request.purpose), *purpose_max)
+            && within(spent(&|e| e.payee == admitted.payee), *payee_max)
+    }
+
+    /// What `grant`'s automatic payments have left in the window at `now`,
+    /// or `None` when it pays nothing without a tap.
+    #[must_use]
+    pub fn automatic_remaining(&self, grant: &Grant, now: u64) -> Option<u64> {
+        let auto = grant.auto.as_ref()?;
+        let since = now.saturating_sub(grant.period);
+        Some(
+            auto.period_max
+                .saturating_sub(self.held_for(&grant.grantee, since, |e| e.auto)),
+        )
+    }
+
     /// Reserve an approved request: check it again and hold its amount plus
     /// fee ceiling. A retry of an entry already reserved, pending, or paid
     /// returns it unchanged; it never reserves twice.
@@ -778,6 +997,20 @@ impl Ledger {
         grant: Option<&Grant>,
         request: &SpendRequest,
         now: u64,
+    ) -> std::result::Result<LedgerEntry, Refusal> {
+        self.reserve_in(grant, Earlier::default(), request, now, false)
+    }
+
+    /// As [`Ledger::reserve`], admitting requests under the grants the
+    /// current one replaced, and marking the entry `auto` when it is paid
+    /// without the owner's tap.
+    pub fn reserve_in(
+        &mut self,
+        grant: Option<&Grant>,
+        earlier: Earlier<'_>,
+        request: &SpendRequest,
+        now: u64,
+        auto: bool,
     ) -> std::result::Result<LedgerEntry, Refusal> {
         let digest = request.digest().map_err(|_| Refusal::Malformed)?;
         if let Some(existing) = self.entries.get(&request.request) {
@@ -789,7 +1022,7 @@ impl Ledger {
             }
             return Err(existing.code.unwrap_or(Refusal::Malformed));
         }
-        let admitted = self.check(grant, request, now)?;
+        let admitted = self.check_in(grant, earlier, request, now)?;
         self.prune(now);
         if self.entries.len() >= LEDGER_MAX {
             return Err(Refusal::OverTotalCap);
@@ -812,6 +1045,7 @@ impl Ledger {
             at: now,
             settled_at: None,
             delivered: false,
+            auto,
         };
         self.entries.insert(request.request.clone(), entry.clone());
         Ok(entry)
@@ -854,6 +1088,7 @@ impl Ledger {
                 at: now,
                 settled_at: Some(now),
                 delivered: false,
+                auto: false,
             },
         );
     }

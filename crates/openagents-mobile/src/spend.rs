@@ -26,8 +26,8 @@ use coder_computers::cache::Cache;
 use coder_computers::live::Terminals;
 use coder_host::access::protocol::{Operation, Outcome};
 use coder_host::access::spend::{
-    Admitted, Entry, Grant, Ledger, RECEIPT, Receipt, Refusal, Remaining, Settlement, SpendRequest,
-    State, hex,
+    Admitted, Earlier, Entry, Grant, Ledger, Mode, RECEIPT, Receipt, Refusal, Remaining,
+    Settlement, SpendRequest, State, defaults, hex,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -46,6 +46,8 @@ const LEDGER_KEEP: usize = 300;
 const HISTORY: usize = 20;
 /// A grant is renewed this long before it expires.
 const RENEW_BEFORE: u64 = 24 * 60 * 60;
+/// How many replaced grants' requests the phone still accepts.
+const LINEAGE: usize = 8;
 
 /// What agent spending needs from the wallet: a fee quote and one payment
 /// of a BOLT11 invoice. [`NodePayer`] is the running Spark wallet's.
@@ -163,6 +165,44 @@ struct HostGrant {
     #[serde(default)]
     unannounced: bool,
     label: String,
+    /// Grants at this epoch the current one replaced, newest last: requests
+    /// made under them are still checked against the current grant.
+    #[serde(default)]
+    accepted: Vec<String>,
+    /// Of those, the ones replaced by a setting change, whose payments count
+    /// against the current grant's total. A renewal starts a new total.
+    #[serde(default)]
+    counted: Vec<String>,
+}
+
+impl HostGrant {
+    fn earlier(&self) -> Earlier<'_> {
+        Earlier {
+            accepted: &self.accepted,
+            counted: &self.counted,
+        }
+    }
+
+    /// Replace the grant with `next`, remembering the old one's requests,
+    /// and, for a setting change, its payments.
+    fn replace(&mut self, next: Grant, carry_total: bool) {
+        let old = std::mem::replace(&mut self.grant, next);
+        if old.epoch != self.grant.epoch {
+            self.accepted.clear();
+            self.counted.clear();
+            return;
+        }
+        self.accepted.push(old.grant.clone());
+        if carry_total {
+            self.counted.push(old.grant);
+        } else {
+            self.counted.clear();
+        }
+        let excess = self.accepted.len().saturating_sub(LINEAGE);
+        self.accepted.drain(..excess);
+        let excess = self.counted.len().saturating_sub(LINEAGE);
+        self.counted.drain(..excess);
+    }
 }
 
 /// What the phone keeps across launches.
@@ -196,6 +236,8 @@ struct Shared {
     backoff: BTreeMap<String, Instant>,
     /// Pending payments to ask the wallet about on this pass.
     recheck: Vec<(String, SpendRequest)>,
+    /// Requests a standing grant pays without a tap, on this pass.
+    automatic: Vec<(String, SpendRequest)>,
     /// How amounts are shown; the app's choice.
     format: crate::amounts::Format,
 }
@@ -235,6 +277,9 @@ pub struct Sheet {
     pub authenticate: bool,
     /// The fee quote is in and fits: Approve can pay.
     pub ready: bool,
+    /// The owner may approve and trust this payee: later payments to it
+    /// from this computer, within the automatic ceilings, need no tap.
+    pub can_trust: bool,
 }
 
 /// One computer that may ask.
@@ -244,6 +289,21 @@ pub struct ComputerRow {
     pub computer: String,
     pub blocked: bool,
     pub remaining: String,
+    /// What this computer's agents are paid without a tap, when anything.
+    pub automatic: Option<String>,
+    /// Payees paid without a tap, with their daily ceilings.
+    pub trusted: Vec<TrustedRow>,
+}
+
+/// A payee a standing grant pays without a tap.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct TrustedRow {
+    /// The node key, for `spend_untrust`.
+    pub payee: String,
+    /// The key shortened, for the screen.
+    pub label: String,
+    /// Its ceiling in the window.
+    pub limit: String,
 }
 
 /// One ledger entry, tagged with the computer and task that asked.
@@ -257,6 +317,8 @@ pub struct HistoryRow {
     pub fee: Option<String>,
     /// `paid`, `pending`, `paying`, or `refused`.
     pub state: &'static str,
+    /// Paid without the owner's tap, under a standing grant.
+    pub auto: bool,
     pub detail: Option<String>,
     pub at: u64,
 }
@@ -342,6 +404,7 @@ impl Spending {
                 last_poll: None,
                 backoff: BTreeMap::new(),
                 recheck: vec![],
+                automatic: vec![],
                 format: crate::amounts::Format::default(),
             })),
             clock: now,
@@ -457,8 +520,81 @@ impl Spending {
             self.take(&mut shared, host, listed, now);
         }
         self.quote(node);
+        self.pay_automatic(node);
         self.recheck(node);
         self.deliver(transport);
+    }
+
+    /// Pay what the standing grants admit without a tap, once each: check
+    /// again under the lock, quote the fee, reserve as automatic, and pay.
+    /// A quote above the request's fee ceiling, or a check that no longer
+    /// admits it, sends the request to the approval sheet instead.
+    fn pay_automatic(&self, node: Option<&dyn Payer>) {
+        let queued = std::mem::take(&mut self.lock().automatic);
+        let Some(node) = node else {
+            // The wallet is still starting; the next pass finds them again.
+            return;
+        };
+        for (host, request) in queued {
+            let fee = node.invoice_fee(&request.payment);
+            let now = (self.clock)();
+            let mut shared = self.lock();
+            if shared.busy.is_some() {
+                continue;
+            }
+            let Some(held) = shared
+                .saved
+                .grants
+                .get(&host)
+                .filter(|held| !held.blocked)
+                .cloned()
+            else {
+                continue;
+            };
+            let admitted =
+                match shared
+                    .saved
+                    .ledger
+                    .check_in(Some(&held.grant), held.earlier(), &request, now)
+                {
+                    Ok(admitted) => admitted,
+                    Err(code) => {
+                        refuse(&mut shared, &host, &request, code, now);
+                        self.save(&mut shared);
+                        continue;
+                    }
+                };
+            let fits = matches!(fee, Ok(fee) if fee.saturating_mul(1000) <= request.fee_max_msat);
+            if !fits
+                || !shared
+                    .saved
+                    .ledger
+                    .automatic(&held.grant, &request, &admitted, now)
+            {
+                shared.waiting.insert(
+                    request.request.clone(),
+                    Waiting {
+                        host,
+                        request,
+                        admitted,
+                        fee: Some(fee),
+                    },
+                );
+                continue;
+            }
+            if shared
+                .saved
+                .ledger
+                .reserve_in(Some(&held.grant), held.earlier(), &request, now, true)
+                .is_err()
+            {
+                continue;
+            }
+            shared.busy = Some(request.request.clone());
+            self.save(&mut shared);
+            drop(shared);
+            self.pay(&host, &request, node);
+        }
     }
 
     /// Ask the wallet again about payments it reported pending. The same
@@ -503,7 +639,18 @@ impl Spending {
                 held.label = label.to_owned();
                 return Some(held.grant.clone());
             }
-            Some(held) => Grant::request_mode(random_id(), &device, host, held.grant.epoch, now),
+            // Renewed with the same settings; what waits under the old one
+            // is still answered, and the total starts again.
+            Some(held) => {
+                let mut next = held.grant.clone();
+                next.grant = random_id();
+                next.issued_at = now;
+                next.expires_at = now + defaults::LIFETIME;
+                held.replace(next.clone(), false);
+                held.label = label.to_owned();
+                self.save(shared);
+                return Some(next);
+            }
             None => Grant::request_mode(random_id(), &device, host, 0, now),
         };
         shared.saved.grants.insert(
@@ -513,6 +660,8 @@ impl Spending {
                 blocked: false,
                 unannounced: false,
                 label: label.to_owned(),
+                accepted: vec![],
+                counted: vec![],
             },
         );
         self.save(shared);
@@ -521,12 +670,14 @@ impl Spending {
 
     /// Sort what `host` listed: refuse, resend, or wait for the owner.
     fn take(&self, shared: &mut Shared, host: &str, listed: Vec<Entry>, now: u64) {
-        let grant = shared
+        let held = shared
             .saved
             .grants
             .get(host)
             .filter(|held| !held.blocked)
-            .map(|held| held.grant.clone());
+            .cloned();
+        let grant = held.as_ref().map(|held| held.grant.clone());
+        let earlier = held.as_ref().map(HostGrant::earlier).unwrap_or_default();
         let mut listed_ids = vec![];
         let mut changed = false;
         for entry in listed {
@@ -556,10 +707,29 @@ impl Spending {
                 }
                 continue;
             }
-            if shared.waiting.contains_key(&request.request) {
+            if shared.waiting.contains_key(&request.request)
+                || shared
+                    .automatic
+                    .iter()
+                    .any(|(_, queued)| queued.request == request.request)
+            {
                 continue;
             }
-            match shared.saved.ledger.check(grant.as_ref(), &request, now) {
+            match shared
+                .saved
+                .ledger
+                .check_in(grant.as_ref(), earlier, &request, now)
+            {
+                Ok(admitted)
+                    if grant.as_ref().is_some_and(|grant| {
+                        shared
+                            .saved
+                            .ledger
+                            .automatic(grant, &request, &admitted, now)
+                    }) =>
+                {
+                    shared.automatic.push((host.to_owned(), request));
+                }
                 Ok(admitted) => {
                     shared.waiting.insert(
                         request.request.clone(),
@@ -679,19 +849,21 @@ impl Spending {
             let Some(waiting) = shared.waiting.get(request).cloned() else {
                 return;
             };
-            let grant = shared
+            let held = shared
                 .saved
                 .grants
                 .get(&waiting.host)
                 .filter(|held| !held.blocked)
-                .map(|held| held.grant.clone());
+                .cloned();
             // Check and reserve again, now: the ledger may have moved since
             // the sheet opened.
-            match shared
-                .saved
-                .ledger
-                .reserve(grant.as_ref(), &waiting.request, now)
-            {
+            match shared.saved.ledger.reserve_in(
+                held.as_ref().map(|held| &held.grant),
+                held.as_ref().map(HostGrant::earlier).unwrap_or_default(),
+                &waiting.request,
+                now,
+                false,
+            ) {
                 Ok(_) => {}
                 Err(code) => {
                     shared.waiting.remove(request);
@@ -769,7 +941,17 @@ impl Spending {
                     .saved
                     .unsent
                     .insert(request.request.clone(), (host.to_owned(), receipt));
+                let automatically = shared
+                    .saved
+                    .ledger
+                    .entries
+                    .get(&request.request)
+                    .is_some_and(|entry| entry.auto);
                 shared.notice = Some(match outcome {
+                    Settlement::Paid if automatically => format!(
+                        "Paid {} automatically for {label}.",
+                        amount(request.amount_msat, shared.format)
+                    ),
                     Settlement::Paid => {
                         format!(
                             "Paid {} for {label}.",
@@ -852,10 +1034,110 @@ impl Spending {
             return;
         }
         held.grant = Grant::request_mode(random_id(), &device, host, held.grant.epoch, now);
+        held.accepted.clear();
+        held.counted.clear();
         held.blocked = false;
         held.unannounced = false;
         shared.last_poll = None;
         self.save(&mut shared);
+    }
+
+    /// Change `host`'s grant with `change` under a new ID at the same epoch.
+    /// The old grant's waiting requests are still answered and its payments
+    /// still count. The computer receives the new grant on the next pass.
+    fn change(&self, host: &str, change: impl FnOnce(&mut Grant)) -> bool {
+        let now = (self.clock)();
+        let mut shared = self.lock();
+        let Some(held) = shared
+            .saved
+            .grants
+            .get_mut(host)
+            .filter(|held| !held.blocked)
+        else {
+            return false;
+        };
+        let mut next = held.grant.clone();
+        change(&mut next);
+        next.grant = random_id();
+        next.issued_at = now.min(next.expires_at.saturating_sub(1));
+        if next.validate().is_err() {
+            return false;
+        }
+        held.replace(next, true);
+        shared.last_poll = None;
+        self.save(&mut shared);
+        true
+    }
+
+    /// Trust `payee` (a node key) for `host`: payments to it, within the
+    /// automatic ceilings, need no tap from now on. Makes the grant
+    /// `standing` if it was not.
+    pub fn trust(&self, host: &str, payee: &str) {
+        let payee = payee.to_owned();
+        let changed = self.change(host, |grant| {
+            if grant.mode == Mode::Request {
+                *grant = Grant::standing(
+                    grant.grant.clone(),
+                    &grant.issuer,
+                    &grant.grantee,
+                    grant.epoch,
+                    grant.issued_at,
+                    Default::default(),
+                )
+                .with_expiry(grant.expires_at);
+            }
+            if let Some(auto) = grant.auto.as_mut() {
+                auto.payees.insert(payee, defaults::AUTO_PAYEE_MAX);
+            }
+        });
+        if changed {
+            self.lock().notice =
+                Some("Payments to this payee within your limits won't ask again.".into());
+        }
+    }
+
+    /// Stop paying `payee` without a tap. When none is left, the computer's
+    /// grant goes back to asking for every payment.
+    pub fn untrust(&self, host: &str, payee: &str) {
+        self.change(host, |grant| {
+            if let Some(auto) = grant.auto.as_mut() {
+                auto.payees.remove(payee);
+                if auto.payees.is_empty() {
+                    grant.mode = Mode::Request;
+                    grant.auto = None;
+                }
+            }
+        });
+    }
+
+    /// Stop every automatic payment for `host`: it asks for each payment.
+    pub fn manual(&self, host: &str) {
+        let changed = self.change(host, |grant| {
+            grant.mode = Mode::Request;
+            grant.auto = None;
+        });
+        if changed {
+            self.lock().notice = Some("Every payment from this computer asks you first.".into());
+        }
+    }
+
+    /// The owner tapped "Approve and trust" on the sheet: pay this request
+    /// and trust its payee for later ones.
+    pub fn approve_and_trust(
+        &self,
+        request: &str,
+        node: Option<Arc<dyn Payer>>,
+        transport: Option<Arc<dyn Transport>>,
+    ) {
+        let target = self
+            .lock()
+            .waiting
+            .get(request)
+            .map(|waiting| (waiting.host.clone(), waiting.admitted.payee.clone()));
+        self.approve(request, node, transport);
+        if let Some((host, payee)) = target {
+            self.trust(&host, &payee);
+        }
     }
 
     /// Whether the sheet or a payment waits, so the host asks for packets.
@@ -913,6 +1195,14 @@ impl Spending {
                 expires_at: w.request.expires_at,
                 authenticate: w.request.amount_msat > AUTHENTICATE_ABOVE_MSAT,
                 ready: ready && shared.busy.is_none(),
+                can_trust: w.request.amount_msat.saturating_add(w.request.fee_max_msat)
+                    <= defaults::AUTO_PER_PAYMENT_MAX
+                    && shared.saved.grants.get(&w.host).is_some_and(|held| {
+                        held.grant
+                            .auto
+                            .as_ref()
+                            .is_none_or(|auto| !auto.payees.contains_key(&w.admitted.payee))
+                    }),
             }
         });
         let computers = shared
@@ -926,8 +1216,38 @@ impl Spending {
                 remaining: if held.blocked {
                     "Can't ask for payments".into()
                 } else {
-                    remaining_text(shared.saved.ledger.remaining(&held.grant, now), format)
+                    remaining_text(
+                        shared
+                            .saved
+                            .ledger
+                            .remaining_in(&held.grant, held.earlier(), now),
+                        format,
+                    )
                 },
+                automatic: (!held.blocked)
+                    .then(|| shared.saved.ledger.automatic_remaining(&held.grant, now))
+                    .flatten()
+                    .map(|left| {
+                        format!(
+                            "Pays trusted payees without asking, up to {} each: {} left today",
+                            amount(
+                                held.grant.auto.as_ref().map_or(0, |a| a.per_payment_max),
+                                format
+                            ),
+                            amount(left, format)
+                        )
+                    }),
+                trusted: held
+                    .grant
+                    .auto
+                    .iter()
+                    .flat_map(|auto| auto.payees.iter())
+                    .map(|(payee, limit)| TrustedRow {
+                        payee: payee.clone(),
+                        label: short(payee),
+                        limit: format!("{} a day", amount(*limit, format)),
+                    })
+                    .collect(),
             })
             .collect();
         let mut entries: Vec<_> = shared.saved.ledger.entries.values().collect();
@@ -948,6 +1268,7 @@ impl Spending {
                     State::Reserved => "paying",
                     State::Refused => "refused",
                 },
+                auto: e.auto,
                 detail: e.code.map(|code| code.describe().to_owned()),
                 at: e.at,
             })

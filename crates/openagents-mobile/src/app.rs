@@ -346,6 +346,22 @@ pub enum Request {
     },
     /// Clear the last agent payment's notice.
     SpendDismiss,
+    /// Pay the request on the sheet and trust its payee: later payments to
+    /// it from that computer, within the automatic ceilings, need no tap.
+    /// The host sends it only after the owner's tap and Face ID or the
+    /// passcode.
+    SpendApproveTrust {
+        request: String,
+    },
+    /// Stop paying a trusted payee without a tap.
+    SpendUntrust {
+        host: String,
+        payee: String,
+    },
+    /// Stop every automatic payment for a computer.
+    SpendManual {
+        host: String,
+    },
     /// The platform issued or reissued its push token: an APNs device token
     /// as lowercase hex, or an FCM registration token. Rust registers it
     /// with the push gateway and publishes the device's push lease.
@@ -1109,6 +1125,12 @@ impl App {
             Request::SpendBlock { host } => self.spend.block(&host),
             Request::SpendAllow { host } => self.spend.allow(&host),
             Request::SpendDismiss => self.spend.dismiss(),
+            Request::SpendApproveTrust { request } => {
+                self.spend
+                    .approve_and_trust(&request, self.payer(), self.spend_transport.clone())
+            }
+            Request::SpendUntrust { host, payee } => self.spend.untrust(&host, &payee),
+            Request::SpendManual { host } => self.spend.manual(&host),
             Request::PushToken { token } => self.push_token(Some(&token)),
             Request::PushDisable => self.push_token(None),
         }

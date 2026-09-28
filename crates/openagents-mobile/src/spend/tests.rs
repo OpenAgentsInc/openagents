@@ -1,7 +1,7 @@
 use super::*;
 use crate::wallet::{InvoicePayment, PaymentRow};
 use coder_host::access::spend::{Context, Purpose, REQUEST};
-use nostr::x402::test_invoice::{described, payee, signed_at};
+use nostr::x402::test_invoice::{described, payee, payee_of, signed_at, signed_by};
 
 const T0: u64 = 1_800_000_000;
 const PHONE: &str = "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9";
@@ -613,4 +613,164 @@ fn coming_to_the_foreground_reads_requests_without_waiting() {
     // ...until the app comes to the foreground, as from a wake.
     spending.soon();
     assert_eq!(pass(&spending), 2);
+}
+
+/// `request`, invoiced by the node whose secret is `node` repeated.
+fn from_node(grant: &Grant, byte: u8, hrp: &str, amount_msat: u64, node: u8) -> SpendRequest {
+    let mut asked = request(grant, byte, hrp, amount_msat);
+    asked.payment = signed_by(
+        [node; 32],
+        hrp,
+        described([byte; 32], "Search API call", 600),
+        false,
+        false,
+        T0,
+    );
+    asked
+}
+
+fn settle_receipts(computer: &Computer, count: usize) {
+    for _ in 0..100 {
+        if computer.receipts().len() >= count {
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+#[test]
+fn a_trusted_payee_is_paid_without_a_tap_within_its_ceilings() {
+    let (spending, computer, wallet, grant) = phone();
+    computer.ask(request(&grant, 1, "lnbc250n", 25_000));
+    spending.poll_now(&hosts(), &computer, Some(&wallet));
+    let sheet = spending.view().sheet.unwrap();
+    assert!(sheet.can_trust);
+    let (wallet, computer) = (Arc::new(wallet), Arc::new(computer));
+    // Approve and trust: pays this one, after the owner's tap.
+    spending.approve_and_trust(
+        &sheet.request,
+        Some(wallet.clone()),
+        Some(computer.clone() as Arc<dyn Transport>),
+    );
+    settle_receipts(&computer, 1);
+    assert_eq!(wallet.paid().len(), 1);
+    // The computer receives a standing grant that trusts the payee.
+    spending.poll_now(&hosts(), computer.as_ref(), Some(wallet.as_ref()));
+    let standing = computer.last_grant();
+    standing.validate().unwrap();
+    assert_eq!(standing.mode, Mode::Standing);
+    assert_eq!(standing.epoch, grant.epoch);
+    let trusted = hex(&payee());
+    assert_eq!(
+        standing.auto.as_ref().unwrap().payees[&trusted],
+        defaults::AUTO_PAYEE_MAX
+    );
+    let view = spending.view();
+    assert_eq!(view.computers[0].trusted[0].payee, trusted);
+    assert!(view.computers[0].automatic.is_some());
+
+    // A request made under the old grant and one under the new are paid
+    // without the sheet, and their receipts go back.
+    computer.ask(request(&grant, 2, "lnbc250n", 25_000));
+    computer.ask(request(&standing, 3, "lnbc250n", 25_000));
+    spending.poll_now(&hosts(), computer.as_ref(), Some(wallet.as_ref()));
+    assert_eq!(wallet.paid().len(), 3);
+    let view = spending.view();
+    assert!(view.sheet.is_none());
+    assert!(view.history[0].auto && view.history[1].auto && !view.history[2].auto);
+    assert_eq!(
+        view.notice.as_deref(),
+        Some("Paid ₿25 automatically for Studio Mac.")
+    );
+    assert_eq!(computer.receipts().len(), 3);
+    assert!(
+        computer
+            .receipts()
+            .iter()
+            .all(|r| r.outcome == Settlement::Paid)
+    );
+
+    // A payee the owner did not trust still asks.
+    computer.ask(from_node(&standing, 4, "lnbc250n", 25_000, 9));
+    spending.poll_now(&hosts(), computer.as_ref(), Some(wallet.as_ref()));
+    assert_eq!(wallet.paid().len(), 3);
+    let asked = spending.view().sheet.unwrap();
+    assert_eq!(asked.payee, short(&hex(&payee_of([9; 32]))));
+    spending.deny(&asked.request);
+    // Above the automatic ceiling for one payment (₿1,000 with the fee
+    // ceiling) still asks.
+    computer.ask(request(&standing, 5, "lnbc10u", 1_000_000));
+    spending.poll_now(&hosts(), computer.as_ref(), Some(wallet.as_ref()));
+    assert_eq!(wallet.paid().len(), 3);
+    let big = spending.view().sheet.unwrap();
+    assert!(!big.can_trust);
+    spending.deny(&big.request);
+    // Two payments of ₿902 fit the payee's ₿2,000 a day with the ₿54
+    // already paid automatically; a third would not, and asks.
+    computer.ask(request(&standing, 6, "lnbc9u", 900_000));
+    computer.ask(request(&standing, 7, "lnbc9u", 900_000));
+    spending.poll_now(&hosts(), computer.as_ref(), Some(wallet.as_ref()));
+    assert_eq!(wallet.paid().len(), 5);
+    computer.ask(request(&standing, 8, "lnbc9u", 900_000));
+    spending.poll_now(&hosts(), computer.as_ref(), Some(wallet.as_ref()));
+    assert_eq!(wallet.paid().len(), 5);
+    let over = spending.view().sheet.unwrap();
+    assert_eq!(over.request, hex(&[8; 32]));
+    spending.deny(&over.request);
+
+    // Stopping automatic payments: the next request asks again.
+    spending.manual(HOST);
+    spending.poll_now(&hosts(), computer.as_ref(), Some(wallet.as_ref()));
+    let manual = computer.last_grant();
+    assert_eq!(manual.mode, Mode::Request);
+    assert!(manual.auto.is_none());
+    computer.ask(request(&manual, 9, "lnbc250n", 25_000));
+    spending.poll_now(&hosts(), computer.as_ref(), Some(wallet.as_ref()));
+    assert_eq!(wallet.paid().len(), 5);
+    assert!(spending.view().sheet.is_some());
+}
+
+#[test]
+fn a_fee_above_the_ceiling_or_no_wallet_sends_an_automatic_payment_to_the_sheet() {
+    let (spending, computer, mut wallet, grant) = phone();
+    spending.trust(HOST, &hex(&payee()));
+    spending.poll_now(&hosts(), &computer, Some(&wallet));
+    let standing = computer.last_grant();
+    // Without a running wallet nothing pays, and the request waits.
+    computer.ask(request(&standing, 1, "lnbc250n", 25_000));
+    spending.poll_now(&hosts(), &computer, None);
+    assert!(wallet.paid().is_empty());
+    assert!(spending.view().sheet.is_none());
+    // The wallet quotes ₿3 against a ₿2 ceiling: the owner decides.
+    wallet.fee_sats = 3;
+    spending.poll_now(&hosts(), &computer, Some(&wallet));
+    assert!(wallet.paid().is_empty());
+    let sheet = spending.view().sheet.unwrap();
+    assert!(!sheet.ready);
+    // Blocking the computer stops automatic payments with the rest.
+    spending.block(HOST);
+    wallet.fee_sats = 1;
+    computer.ask(request(&standing, 2, "lnbc250n", 25_000));
+    spending.poll_now(&hosts(), &computer, Some(&wallet));
+    assert!(wallet.paid().is_empty());
+    let _ = grant;
+}
+
+#[test]
+fn renewing_a_standing_grant_keeps_its_trusted_payees() {
+    fn near_expiry() -> u64 {
+        T0 + defaults::LIFETIME - 60 * 60
+    }
+    let (mut spending, computer, wallet, _) = phone();
+    spending.trust(HOST, &hex(&payee()));
+    spending.poll_now(&hosts(), &computer, Some(&wallet));
+    let standing = computer.last_grant();
+    spending.clock = near_expiry;
+    spending.poll_now(&hosts(), &computer, Some(&wallet));
+    let renewed = computer.last_grant();
+    assert_ne!(renewed.grant, standing.grant);
+    assert_eq!(renewed.mode, Mode::Standing);
+    assert_eq!(renewed.auto, standing.auto);
+    assert_eq!(renewed.expires_at, near_expiry() + defaults::LIFETIME);
+    renewed.validate().unwrap();
 }

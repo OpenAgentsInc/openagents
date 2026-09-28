@@ -1,15 +1,21 @@
-# Agent spend protocol, phase 1
+# Agent spend protocol
 
 Status: implemented for phase 1 ([#9863](https://github.com/OpenAgentsInc/openagents/issues/9863),
-epic [#9854](https://github.com/OpenAgentsInc/openagents/issues/9854)). The
+epic [#9854](https://github.com/OpenAgentsInc/openagents/issues/9854)) and the
+later phases of [#9864](https://github.com/OpenAgentsInc/openagents/issues/9864):
+[wakes](#wakes), [standing grants](#standing-grants-mode-b), and
+[allowance wallets](#allowance-wallets-mode-c).
+[Operator allowances](#operator-allowances-mode-d) are scoped out. The
 owner decided not to wait for a NIP (2026-09-28): this page is the contract,
 and it becomes a NIP later. It narrows [the wallet design's spending
 grants](wallet-design.md#spending-grants) to what phase 1 runs.
 
 Phase 1 is mode A of [agent wallets](wallet-design.md#agent-wallets): an
 agent on one of the owner's computers asks, and the owner approves each
-payment on the phone. **Nothing pays without the owner's tap.** Only
-`mode: request` exists, Lightning (BOLT11) is the only rail, mainnet is the
+payment on the phone. **Nothing pays without the owner's tap** unless the
+owner trusted that payee for that computer (a
+[standing grant](#standing-grants-mode-b)), and then only small amounts
+within daily ceilings. Lightning (BOLT11) is the only rail, mainnet is the
 only network, and amounts are exact millisatoshis (`unit: "msat"`).
 
 Code:
@@ -106,23 +112,32 @@ NIP-HOST `spend.list` request, encrypted to the host. Unknown fields refuse.
 | `issuer` | The phone's device key. It must be the requesting key. |
 | `grantee` | The host key. It must be the host that receives it. |
 | `wallet` | `{kind: "spark", network: "bitcoin"}`. |
-| `mode` | `request`. |
+| `mode` | `request`, or `standing` once the owner trusts a payee ([below](#standing-grants-mode-b)). |
 | `unit` | `msat`. |
 | `per_payment_max` | Ceiling for one payment, fee ceiling included. Default ₿10,000. |
 | `period`, `period_max` | Rolling window in seconds and its ceiling. Default 24 hours, ₿50,000. |
 | `total_max` | Ceiling over the grant's life. Default ₿500,000. |
 | `fee_max` | `{absolute, ppm}`; a fee above either ceiling refuses. Default ₿100 and 1,000,000 ppm (never more than the amount). |
 | `rails` | `["lightning"]`. |
-| `payees`, `any_payee` | Allowed Lightning node keys; empty means none unless `any_payee`. `any_payee` is allowed only in `request` mode, where the owner sees the decoded payee and approves each payment. Phase 1 grants set it. |
+| `payees`, `any_payee` | Allowed Lightning node keys; empty means none unless `any_payee`. `any_payee` admits a payee only to the approval sheet, where the owner sees the decoded payee and approves the payment; only the payees named in `auto` are paid without a tap. The phone's grants set it. |
 | `purposes` | Sorted subset of `x402_purchase`, `labor_payment`, `tip`, `transfer`. Phase 1 grants list all four. |
 | `epoch` | The computer's epoch at the phone. |
 | `issued_at`, `expires_at` | At most 30 days apart. |
+| `auto` | Present exactly in `standing` mode: `{per_payment_max, period_max, purposes, payees}`, what the phone pays without a tap. Absent from a `request` grant on the wire. |
 
 Checks: `per_payment_max ≤ period_max ≤ total_max`, a period of at most 30
 days, `ppm ≤ 1,000,000`, keys valid and distinct.
 
 In `request` mode the grant moves nothing by itself: it bounds only what a
-computer can ask for. Only the owner, on the phone, creates one.
+computer can ask for. Only the owner, on the phone, creates or widens one.
+
+The phone replaces a computer's grant with a new ID at the same epoch when
+it renews it (a day before expiry, same settings) or when the owner changes
+a setting. Requests made under the replaced grants (the last eight) are
+still checked against the current one rather than refused as `revoked`.
+The rolling window counts every payment for that computer under any grant,
+so a new grant never refills it; the total carries across setting changes
+and starts again at a renewal.
 
 ## `openagents.spend-request.v1`
 
@@ -213,6 +228,53 @@ left (it expired a minute before it was sent): the host marks what waits under t
 the owner taps **Allow** in the Wallet tab, which issues a new grant at the
 new epoch. A grant at an epoch below the last one a phone sent refuses as
 `stale`.
+
+## Standing grants (mode B)
+
+A standing grant lets the phone pay some of a computer's requests without
+the owner's tap, while the phone is reachable (the app open, or opened from
+a [wake](#wakes)). Its `auto` section:
+
+| Field | Meaning | Default |
+| --- | --- | --- |
+| `per_payment_max` | The most one automatic payment may cost, fee ceiling included: the design's `auto_approve_max`. At most the grant's `per_payment_max`. | ₿1,000, the amount above which Approve asks for Face ID |
+| `period_max` | The most paid automatically in the grant's rolling window. At most the grant's `period_max`. | ₿5,000 a day |
+| `purposes` | Purposes paid automatically, each with its own ceiling in the window, each a grant purpose and at most `period_max`. | All four; tips ₿1,000 a day, the rest ₿5,000 |
+| `payees` | Lightning node keys paid automatically, each with its own ceiling in the window, each admitted by the grant and at most `period_max`. At most 64. | Only the payees the owner trusted, ₿2,000 a day each |
+
+A request the grant's checks admit is paid without a tap only when every
+one of these holds: its amount plus fee ceiling is at most
+`per_payment_max`; its purpose and its decoded payee are listed; and the
+automatic payments for that computer in the window, plus this one, stay
+within `period_max`, the purpose's ceiling, and the payee's ceiling. Those
+ceilings count only automatic payments; the grant's own ceilings count
+everything. The phone then quotes the fee, reserves the payment in the
+ledger marked automatic, pays it once with the same idempotency key an
+approval would use, and sends the receipt. Anything else (an untrusted
+payee, a larger amount, a used-up ceiling, a fee quote above the request's
+ceiling, the wallet not yet running) goes to the approval sheet. Nothing
+is refused for failing an automatic ceiling.
+
+The owner makes a grant standing on the approval sheet with **Approve and
+trust this payee** (after Face ID or the passcode), offered for payments
+within the automatic ceiling for one payment. The Wallet tab lists each
+computer's trusted payees with **Remove**, and **Ask me for every
+payment** returns the computer to `request` mode. **Stop payment requests**
+revokes everything, standing or not; **Allow** starts again in `request`
+mode. The history marks automatic payments **Paid automatically**.
+
+Wake and expiry: iOS shows the fixed wake notification and does not run
+the app until the owner opens it, so an automatic payment happens when the
+phone next reads the computer's requests. A request nobody reads within its
+life (at most an hour) is refused on the host as `phone_unreachable`, as in
+mode A; it is never retried under another mode. Automatic payment is a
+convenience over mode A, not a way to pay while the phone is off; that is
+[mode C](#allowance-wallets-mode-c).
+
+Code: `AutoPay`, `Ledger::automatic`, and `Earlier` in
+[`crates/coder-access/src/spend.rs`](../../crates/coder-access/src/spend.rs);
+`Spending::trust`, `untrust`, `manual`, and `pay_automatic` in
+[`crates/openagents-mobile/src/spend.rs`](../../crates/openagents-mobile/src/spend.rs).
 
 ## Trust and limits
 

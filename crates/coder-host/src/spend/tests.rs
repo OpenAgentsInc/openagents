@@ -230,3 +230,29 @@ fn a_newer_epoch_makes_waiting_requests_stale_and_an_old_grant_is_refused() {
     );
     assert_eq!(book.request(HOST, &ask(8), T0 + 10), Err(Refused::NoGrant));
 }
+
+#[test]
+fn a_standing_grant_is_held_and_asked_under_as_a_request_grant_is() {
+    let (_dir, mut book) = book();
+    let standing = Grant::standing(
+        hex(&[0x55; 32]),
+        PHONE,
+        HOST,
+        0,
+        T0,
+        BTreeMap::from([(hex(&nostr::x402::test_invoice::payee()), 2_000_000)]),
+    );
+    book.list(PHONE, &standing, T0).unwrap();
+    let request = book.request(HOST, &ask(1), T0 + 1).unwrap();
+    assert_eq!(request.grant, standing.grant);
+    // The owner changes a setting: the next grant at the same epoch replaces
+    // it, and what waits is still listed for the phone to answer.
+    let changed = grant(0, PHONE);
+    let listed = book.list(PHONE, &changed, T0 + 2).unwrap();
+    assert_eq!(listed.len(), 1);
+    assert!(listed[0].receipt.is_none());
+    assert_eq!(
+        book.request(HOST, &ask(2), T0 + 3).unwrap().grant,
+        changed.grant
+    );
+}

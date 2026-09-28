@@ -515,8 +515,12 @@ pub mod test_invoice {
     }
     /// The payee key [`signed`] and [`signed_at`] sign with, compressed.
     pub fn payee() -> [u8; 33] {
+        payee_of([1; 32])
+    }
+    /// The payee key [`signed_by`] signs with for `node`, compressed.
+    pub fn payee_of(node: [u8; 32]) -> [u8; 33] {
         let secp = Secp256k1::new();
-        let secret = SecretKey::from_byte_array([1; 32]).unwrap();
+        let secret = SecretKey::from_byte_array(node).unwrap();
         PublicKey::from_secret_key(&secp, &secret).serialize()
     }
     pub fn signed_at(
@@ -526,8 +530,20 @@ pub mod test_invoice {
         high_s: bool,
         created_at: u64,
     ) -> String {
+        signed_by([1; 32], hrp, fields, explicit, high_s, created_at)
+    }
+    /// As [`signed_at`], signed by the node whose secret is `node`, so tests
+    /// can make invoices from several payees.
+    pub fn signed_by(
+        node: [u8; 32],
+        hrp: &str,
+        fields: Vec<u8>,
+        explicit: bool,
+        high_s: bool,
+        created_at: u64,
+    ) -> String {
         let secp = Secp256k1::new();
-        let secret = SecretKey::from_byte_array([1; 32]).unwrap();
+        let secret = SecretKey::from_byte_array(node).unwrap();
         let mut unsigned = vec![0; 7];
         let time = number(created_at);
         unsigned[7 - time.len()..].copy_from_slice(&time);

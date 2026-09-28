@@ -1,5 +1,5 @@
 use super::*;
-use nostr::x402::test_invoice::{described, payee, signed_at};
+use nostr::x402::test_invoice::{described, payee, payee_of, signed_at, signed_by};
 
 const T0: u64 = 1_800_000_000;
 const PHONE: &str = "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9";
@@ -344,4 +344,208 @@ fn only_a_matching_preimage_proves_a_paid_receipt() {
     let mut leaky = refused;
     leaky.proof = Some(hex(&[5; 32]));
     assert_eq!(leaky.validate().unwrap_err().code, Code::Malformed);
+}
+
+/// A standing grant trusting the test payee for `payee_max` a day.
+fn standing(payee_max: u64) -> Grant {
+    Grant::standing(
+        id(0x30),
+        PHONE,
+        HOST,
+        0,
+        T0,
+        BTreeMap::from([(hex(&payee()), payee_max)]),
+    )
+}
+
+/// `small`, from the node whose secret is `node` repeated.
+fn from_node(grant: &Grant, byte: u8, node: u8) -> SpendRequest {
+    let mut request = small(grant, byte);
+    request.payment = signed_by(
+        [node; 32],
+        "lnbc250n",
+        described([byte; 32], "Search API call", 600),
+        false,
+        false,
+        T0,
+    );
+    request
+}
+
+#[test]
+fn a_standing_grant_names_automatic_payments_within_its_own_bounds() {
+    let grant = standing(defaults::AUTO_PAYEE_MAX);
+    grant.validate().unwrap();
+    assert_eq!(grant.mode, Mode::Standing);
+    let auto = grant.auto.clone().unwrap();
+    // Automatic payments never exceed the amount the phone asks Face ID for.
+    assert!(auto.per_payment_max <= 1_000_000);
+    assert_eq!(auto.purposes[&Purpose::Tip], defaults::AUTO_TIP_MAX);
+    // It round-trips, and a request-mode grant still has no `auto` on the wire.
+    let json = serde_json::to_value(&grant).unwrap();
+    assert_eq!(serde_json::from_value::<Grant>(json).unwrap(), grant);
+    let plain = serde_json::to_value(super::tests::grant(0)).unwrap();
+    assert!(plain.get("auto").is_none());
+    let refuse = |change: &dyn Fn(&mut Grant)| {
+        let mut bad = grant.clone();
+        change(&mut bad);
+        bad.validate().unwrap_err().code
+    };
+    // A standing grant names its automatic payments, and only it does.
+    assert_eq!(refuse(&|g| g.auto = None), Code::Malformed);
+    assert_eq!(refuse(&|g| g.mode = Mode::Request), Code::Malformed);
+    // Automatic ceilings never exceed the grant's.
+    assert_eq!(
+        refuse(&|g| g.auto.as_mut().unwrap().per_payment_max = g.per_payment_max + 1),
+        Code::Bounds
+    );
+    assert_eq!(
+        refuse(&|g| g.auto.as_mut().unwrap().period_max = g.period_max + 1),
+        Code::Bounds
+    );
+    assert_eq!(
+        refuse(&|g| {
+            g.auto
+                .as_mut()
+                .unwrap()
+                .purposes
+                .insert(Purpose::X402Purchase, defaults::AUTO_PERIOD_MAX + 1);
+        }),
+        Code::Bounds
+    );
+    // Only the grant's purposes, and only payees it admits.
+    assert_eq!(
+        refuse(&|g| g.purposes = vec![Purpose::LaborPayment]),
+        Code::Bounds
+    );
+    assert_eq!(
+        refuse(&|g| {
+            g.any_payee = false;
+            g.payees = vec![];
+        }),
+        Code::Bounds
+    );
+    assert_eq!(
+        refuse(&|g| {
+            g.auto.as_mut().unwrap().payees.insert("02zz".into(), 1);
+        }),
+        Code::Malformed
+    );
+    // Unknown fields in the section refuse.
+    let mut json = serde_json::to_value(&grant).unwrap();
+    json["auto"]["auto_approve_max"] = 1.into();
+    assert!(serde_json::from_value::<Grant>(json).is_err());
+}
+
+#[test]
+fn only_trusted_payees_and_purposes_within_their_caps_pay_automatically() {
+    // The trusted payee may take 60 sats a day automatically.
+    let grant = standing(60_000);
+    let now = T0 + 10;
+    let mut ledger = Ledger::default();
+    let automatic = |ledger: &Ledger, request: &SpendRequest| {
+        let admitted = ledger.check(Some(&grant), request, now).unwrap();
+        ledger.automatic(&grant, request, &admitted, now)
+    };
+    // 25 sats plus a 1 sat fee ceiling to the trusted payee: automatic.
+    let first = small(&grant, 1);
+    assert!(automatic(&ledger, &first));
+    ledger
+        .reserve_in(Some(&grant), Earlier::default(), &first, now, true)
+        .unwrap();
+    assert!(ledger.entries[&first.request].auto);
+    // An untrusted payee goes to the sheet; the grant still admits it.
+    assert!(!automatic(&ledger, &from_node(&grant, 2, 9)));
+    // A purpose with no automatic ceiling goes to the sheet.
+    let mut labor = small(&grant, 3);
+    labor.purpose = Purpose::LaborPayment;
+    let mut narrow = grant.clone();
+    narrow
+        .auto
+        .as_mut()
+        .unwrap()
+        .purposes
+        .remove(&Purpose::LaborPayment);
+    let admitted = ledger.check(Some(&narrow), &labor, now).unwrap();
+    assert!(!ledger.automatic(&narrow, &labor, &admitted, now));
+    // Above the automatic ceiling for one payment: the sheet.
+    let big = request(&grant, 4, "lnbc10u", 1_000_000);
+    assert!(!automatic(&ledger, &big));
+    // A second 26 sats fits the payee's 60; a third would not.
+    let second = small(&grant, 5);
+    assert!(automatic(&ledger, &second));
+    ledger
+        .reserve_in(Some(&grant), Earlier::default(), &second, now, true)
+        .unwrap();
+    assert!(!automatic(&ledger, &small(&grant, 6)));
+    // The owner's own approvals don't use the automatic ceilings...
+    let mut roomy = standing(80_000);
+    roomy.grant = grant.grant.clone();
+    let tapped = from_node(&grant, 7, 9);
+    ledger.reserve(Some(&grant), &tapped, now).unwrap();
+    let admitted = ledger.check(Some(&roomy), &small(&roomy, 8), now).unwrap();
+    assert!(ledger.automatic(&roomy, &small(&roomy, 8), &admitted, now));
+    // ...and a day later the window has room again.
+    let later = now + grant.period + 1;
+    assert_eq!(
+        ledger.automatic_remaining(&grant, later),
+        Some(defaults::AUTO_PERIOD_MAX)
+    );
+    // A request-mode grant pays nothing without a tap.
+    let plain = super::tests::grant(0);
+    let asked = small(&plain, 9);
+    let admitted = Ledger::default().check(Some(&plain), &asked, now).unwrap();
+    assert!(!Ledger::default().automatic(&plain, &asked, &admitted, now));
+    assert_eq!(Ledger::default().automatic_remaining(&plain, now), None);
+    // A request already in the ledger is never paid automatically again.
+    assert!(!automatic(&ledger, &first));
+    let _ = payee_of([9; 32]);
+}
+
+#[test]
+fn a_replaced_grant_keeps_its_requests_and_never_refills_a_window() {
+    let old = grant(0);
+    let now = T0 + 10;
+    let mut ledger = Ledger::default();
+    ledger.reserve(Some(&old), &small(&old, 1), now).unwrap();
+    // The owner changes a setting: a new grant at the same epoch.
+    let mut new = standing(defaults::AUTO_PAYEE_MAX);
+    new.grant = id(0x31);
+    let waiting = small(&old, 2);
+    // Without the lineage the old grant's request is not the phone's.
+    assert_eq!(
+        ledger.check(Some(&new), &waiting, now).unwrap_err(),
+        Refusal::Revoked
+    );
+    let ids = [old.grant.clone()];
+    let earlier = Earlier {
+        accepted: &ids,
+        counted: &ids,
+    };
+    assert!(ledger.check_in(Some(&new), earlier, &waiting, now).is_ok());
+    // The window counts the host's payments under any grant, and the total
+    // counts the replaced grant's.
+    let held = small(&old, 1).amount_msat + small(&old, 1).fee_max_msat;
+    let remaining = ledger.remaining_in(&new, earlier, now);
+    assert_eq!(remaining.period_msat, new.period_max - held);
+    assert_eq!(remaining.total_msat, new.total_max - held);
+    // A renewal accepts the waiting request but starts a new total.
+    let renewal = Earlier {
+        accepted: &ids,
+        counted: &[],
+    };
+    let remaining = ledger.remaining_in(&new, renewal, now);
+    assert_eq!(remaining.period_msat, new.period_max - held);
+    assert_eq!(remaining.total_msat, new.total_max);
+    // An older epoch's grant is never accepted.
+    let mut stale = small(&old, 3);
+    stale.epoch = 0;
+    let mut next = new.clone();
+    next.epoch = 1;
+    assert_eq!(
+        ledger
+            .check_in(Some(&next), earlier, &stale, now)
+            .unwrap_err(),
+        Refusal::Stale
+    );
 }

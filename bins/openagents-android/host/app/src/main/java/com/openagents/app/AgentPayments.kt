@@ -23,10 +23,12 @@ class AgentPayments(private val activity: MainActivity, private val bridge: Mobi
     private var shown: String? = null
     private var failure: String? = null
     private var authenticating: String? = null
+    /** The operation the screen lock guards: `spend_approve` or `spend_approve_trust`. */
+    private var authenticatingOp = "spend_approve"
     private val unlock = activity.registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         val request = authenticating; authenticating = null
         if (request == null) return@registerForActivityResult
-        if (result.resultCode == Activity.RESULT_OK) bridge.spend("spend_approve", "request" to request)
+        if (result.resultCode == Activity.RESULT_OK) bridge.spend(authenticatingOp, "request" to request)
         else { failure = "Not approved. Nothing was paid."; shown = null; update(bridge.packet) }
     }
 
@@ -76,6 +78,12 @@ class AgentPayments(private val activity: MainActivity, private val bridge: Mobi
         add(activity.pill(if (busy) "Paying…" else "Approve and pay ${sheet.getString("amount")}", "spend-approve", primary = true) {
             approve(sheet)
         }.enabled(sheet.optBoolean("ready") && !busy), 16)
+        if (sheet.optBoolean("can_trust")) {
+            add(activity.pill("Approve and trust this payee", "spend-approve-trust") { approve(sheet, trust = true) }
+                .enabled(sheet.optBoolean("ready") && !busy), 8)
+            add(activity.label("Trusting the payee lets this computer pay it small amounts without asking, within daily limits.",
+                12f, Palette.SECONDARY), 4)
+        }
         add(activity.pill("Deny", "spend-deny") { bridge.spend("spend_deny", "request" to sheet.getString("request")) }.enabled(!busy), 8)
         add(activity.label("Stop payment requests from ${sheet.getString("computer")}", 14f, Palette.FAILURE, key = "spend-block").apply {
             gravity = Gravity.CENTER; setPadding(0, activity.dp(14), 0, activity.dp(6))
@@ -96,21 +104,31 @@ class AgentPayments(private val activity: MainActivity, private val bridge: Mobi
             LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = activity.dp(12) })
     }
 
-    /** The screen lock first when Rust asks for it; then the tap. */
-    private fun approve(sheet: JSONObject) {
+    /**
+     * The screen lock first when Rust asks for it, and always before trusting
+     * a payee, which widens what pays without a tap; then the tap.
+     */
+    private fun approve(sheet: JSONObject, trust: Boolean = false) {
         failure = null
         val request = sheet.getString("request")
-        if (!sheet.optBoolean("authenticate")) { bridge.spend("spend_approve", "request" to request); return }
+        val op = if (trust) "spend_approve_trust" else "spend_approve"
+        if (!trust && !sheet.optBoolean("authenticate")) { bridge.spend(op, "request" to request); return }
         val keyguard = activity.getSystemService(KeyguardManager::class.java)
         if (keyguard == null || !keyguard.isDeviceSecure) {
-            failure = "Set a screen lock on this phone to approve larger payments."; shown = null; update(bridge.packet); return
+            failure = if (trust) "Set a screen lock on this phone to trust a payee."
+                else "Set a screen lock on this phone to approve larger payments."
+            shown = null; update(bridge.packet); return
         }
         @Suppress("DEPRECATION")
         val intent = keyguard.createConfirmDeviceCredentialIntent("Approve payment",
             "Pay ${sheet.getString("amount")} for ${sheet.getString("computer")}") ?: run {
-            bridge.spend("spend_approve", "request" to request); return
+            if (trust) {
+                failure = "Set a screen lock on this phone to trust a payee."; shown = null; update(bridge.packet)
+            } else bridge.spend(op, "request" to request)
+            return
         }
         authenticating = request
+        authenticatingOp = op
         unlock.launch(intent)
     }
 
@@ -144,6 +162,25 @@ class AgentPayments(private val activity: MainActivity, private val bridge: Mobi
                         setOnClickListener { bridge.spend("spend_allow", "host" to computer.getString("host")) }
                     })
                     add(row, 10)
+                    computer.textOrNull("automatic")?.let { automatic ->
+                        add(activity.label(automatic, 12f, Palette.SECONDARY), 4)
+                        for (payee in computer.optJSONArray("trusted")?.objects() ?: emptyList()) {
+                            val trusted = activity.row().apply { gravity = Gravity.CENTER_VERTICAL }
+                            trusted.addView(activity.label("${payee.getString("label")} · ${payee.getString("limit")}", 12f),
+                                LinearLayout.LayoutParams(0, -2, 1f))
+                            trusted.addView(activity.label("Remove", 13f, Palette.LINK).apply {
+                                setPadding(activity.dp(12), activity.dp(6), 0, activity.dp(6))
+                                setOnClickListener {
+                                    bridge.spend("spend_untrust", "host" to computer.getString("host"), "payee" to payee.getString("payee"))
+                                }
+                            })
+                            add(trusted, 2)
+                        }
+                        add(activity.label("Ask me for every payment", 13f, Palette.LINK, key = "spend-manual").apply {
+                            setPadding(0, activity.dp(6), 0, activity.dp(6))
+                            setOnClickListener { bridge.spend("spend_manual", "host" to computer.getString("host")) }
+                        }, 2)
+                    }
                 }
                 for (entry in history) {
                     val row = activity.row()
@@ -156,7 +193,9 @@ class AgentPayments(private val activity: MainActivity, private val bridge: Mobi
                     row.addView(activity.column().apply {
                         gravity = Gravity.END
                         add(activity.label(entry.getString("amount"), 14f).apply { gravity = Gravity.END })
-                        add(activity.label(state.replaceFirstChar { it.uppercase() }, 12f,
+                        val stateText = if (entry.optBoolean("auto") && state == "paid") "Paid automatically"
+                            else state.replaceFirstChar { it.uppercase() }
+                        add(activity.label(stateText, 12f,
                             if (state == "paid") Palette.SUCCESS else Palette.SECONDARY).apply { gravity = Gravity.END }, 2)
                     })
                     add(row, 10)

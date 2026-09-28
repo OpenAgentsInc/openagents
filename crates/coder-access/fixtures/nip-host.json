@@ -377,6 +377,68 @@
         }
       }
     },
+    "request_spend_list_standing": {
+      "v": "openagents.host-request.v1",
+      "requires": [],
+      "request": "a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3",
+      "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+      "grant": "1111111111111111111111111111111111111111111111111111111111111111",
+      "epoch": 0,
+      "relay": "wss://relay.example.com/",
+      "issued_at": 1790000000,
+      "expires_at": 1790000060,
+      "op": {
+        "kind": "spend.list",
+        "grant": {
+          "v": "openagents.spend-grant.v1",
+          "requires": [],
+          "grant": "8787878787878787878787878787878787878787878787878787878787878787",
+          "issuer": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+          "grantee": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+          "wallet": {
+            "kind": "spark",
+            "network": "bitcoin"
+          },
+          "mode": "standing",
+          "unit": "msat",
+          "per_payment_max": 10000000,
+          "period": 86400,
+          "period_max": 50000000,
+          "total_max": 500000000,
+          "fee_max": {
+            "absolute": 100000,
+            "ppm": 500000
+          },
+          "rails": [
+            "lightning"
+          ],
+          "payees": [],
+          "any_payee": true,
+          "purposes": [
+            "x402_purchase",
+            "labor_payment",
+            "tip",
+            "transfer"
+          ],
+          "epoch": 0,
+          "issued_at": 1790000000,
+          "expires_at": 1792592000,
+          "auto": {
+            "per_payment_max": 1000000,
+            "period_max": 5000000,
+            "purposes": {
+              "x402_purchase": 5000000,
+              "labor_payment": 5000000,
+              "tip": 1000000,
+              "transfer": 5000000
+            },
+            "payees": {
+              "031b84c5567b126440995d3ed5aaba0565d71e1834604819ff9c17f5e9d5dd078f": 2000000
+            }
+          }
+        }
+      }
+    },
     "request_spend_settle": {
       "v": "openagents.host-request.v1",
       "requires": [],
