@@ -161,7 +161,7 @@ impl Configuration {
         if self.schema != CONFIG_SCHEMA
             || !matches!(
                 self.provider.as_str(),
-                "codex" | "claude" | "devin" | "synthetic"
+                "codex" | "claude" | "devin" | "opencode" | "synthetic"
             )
             || !identifier(&self.model, true)
             || !identifier(&self.decision_model, true)
@@ -208,6 +208,13 @@ impl Configuration {
                 route.effort.is_none()
                     && route.generation_endpoint == super::capacity::DEVIN_ENDPOINT
                     && self.container.is_none()
+            } else if route.provider == "opencode" {
+                // OpenCode is a whole agent behind `opencode acp`, and its
+                // model is OpenCode's own `provider/model`.
+                route.effort.is_none()
+                    && route.generation_endpoint == super::capacity::OPENCODE_ENDPOINT
+                    && self.container.is_none()
+                    && acp_client::opencode::Model::parse(&route.model).is_ok()
             } else {
                 matches!(route.provider.as_str(), "codex" | "claude")
             };
@@ -230,7 +237,7 @@ impl Configuration {
             .chain(
                 routes
                     .iter()
-                    .filter(|route| route.provider != "devin")
+                    .filter(|route| !matches!(route.provider.as_str(), "devin" | "opencode"))
                     .map(|route| &route.generation_endpoint),
             )
             .collect::<Vec<_>>();
@@ -272,6 +279,7 @@ impl Configuration {
             "cost_reporting": match self.provider.as_str() {
                 "claude" => "provider-reported-list-price",
                 "devin" => "provider-reported-tokens",
+                "opencode" => "provider-reported-list-price",
                 _ => "token-list-price",
             },
             "provider_artifact_attestation":"unsupported",
@@ -279,7 +287,11 @@ impl Configuration {
             "provider_failover": if self.fallbacks.is_empty() { "not_requested" } else { "on-capacity-refusal" },
             "frozen_knowledge_context":self.knowledge == "frozen-context",
             "access":self.access.as_str(),
-            "steering": if self.provider == "devin" { coder_delegate::steering::DEVIN_ACP } else { STEERING }
+            "steering": match self.provider.as_str() {
+                "devin" => coder_delegate::steering::DEVIN_ACP,
+                "opencode" => coder_delegate::steering::OPENCODE_ACP,
+                _ => STEERING,
+            }
         })
     }
 }

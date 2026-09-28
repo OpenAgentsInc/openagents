@@ -531,10 +531,7 @@ impl Manifest {
             problems.extend(system.validate(executor.agent.agent()));
         }
         if let Some(handoff) = &self.policy.control.handoff {
-            let first = crate::handoff::Tier::new(
-                executor.agent.agent().word(),
-                &executor.model,
-            );
+            let first = crate::handoff::Tier::new(executor.agent.agent().word(), &executor.model);
             if let Err(problem) = handoff.check(&first) {
                 problems.push(problem);
             }

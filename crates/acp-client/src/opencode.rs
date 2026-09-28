@@ -103,6 +103,11 @@ pub enum Permission {
     /// Every tool inside the working directory; reaching outside it is
     /// refused.
     Workspace,
+    /// Reading, searching, and editing inside the working directory run;
+    /// every other tool (commands, the web, subagents) asks, and reaching
+    /// outside the directory or asking the user a question is refused. The
+    /// task owner's boundary: the host answers each ask with a rejection.
+    Edits,
 }
 
 impl Permission {
@@ -112,6 +117,21 @@ impl Permission {
         match self {
             Permission::Full => json!("allow"),
             Permission::Workspace => json!({"*": "allow", "external_directory": "deny"}),
+            // OpenCode applies the last rule that matches, and `*` sorts
+            // first, so the named tools override it.
+            Permission::Edits => json!({
+                "*": "ask",
+                "read": "allow",
+                "edit": "allow",
+                "glob": "allow",
+                "grep": "allow",
+                "list": "allow",
+                "lsp": "allow",
+                "todoread": "allow",
+                "todowrite": "allow",
+                "external_directory": "deny",
+                "question": "deny",
+            }),
         }
     }
 }
@@ -315,9 +335,9 @@ mod tests {
 
     /// Recorded from `opencode acp` 1.18.26 on 2026-09-28: `cat` through
     /// the bash tool, then `done`, on `google/gemini-3.6-flash`.
-    pub const TURN: &str = include_str!("../fixtures/opencode-1.18.26-turn.jsonl");
+    pub const TURN: &str = replay::OPENCODE_TURN;
     /// The same, on a model the provider refused with HTTP 403.
-    pub const REFUSED: &str = include_str!("../fixtures/opencode-1.18.26-refused.jsonl");
+    pub const REFUSED: &str = replay::OPENCODE_REFUSED;
 
     #[derive(Default)]
     struct Kept {
@@ -465,6 +485,14 @@ mod tests {
         assert_eq!(config["share"], "disabled");
         let full = config_of(Permission::Full);
         assert_eq!(full["permission"], "allow");
+        let edits = config_of(Permission::Edits);
+        assert_eq!(edits["permission"]["*"], "ask");
+        assert_eq!(edits["permission"]["edit"], "allow");
+        assert_eq!(edits["permission"]["external_directory"], "deny");
+        // The catch-all comes first, so OpenCode's last-match rule lets the
+        // named tools override it.
+        let keys: Vec<&String> = edits["permission"].as_object().unwrap().keys().collect();
+        assert_eq!(keys[0], "*");
     }
 
     fn config_of(permission: Permission) -> Value {

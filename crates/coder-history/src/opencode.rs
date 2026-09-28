@@ -206,6 +206,40 @@ pub fn mirror(database: &Path, dir: &Path) -> Result<Report, String> {
     Ok(report)
 }
 
+/// The error the newest message of `session` in `database` ended with,
+/// as OpenCode saved it (`name`, and `data` with the provider's
+/// `statusCode` and `responseHeaders` for an `APIError`), or `None` when the
+/// newest message has none or the database can't be read. Opened read-only.
+///
+/// OpenCode's ACP server reports only the error's name and message when a
+/// prompt fails; the engine reads the status and headers here, from its own
+/// database, to tell a rate limit from any other failure.
+#[must_use]
+pub fn last_error(database: &Path, session: &str) -> Option<Value> {
+    if !database.is_file() {
+        return None;
+    }
+    let connection = Connection::open_with_flags(
+        database,
+        OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )
+    .ok()?;
+    connection
+        .busy_timeout(std::time::Duration::from_secs(5))
+        .ok()?;
+    let data: String = connection
+        .query_row(
+            "SELECT data FROM message WHERE session_id = ?1 \
+             ORDER BY time_created DESC, id DESC LIMIT 1",
+            params![session],
+            |row| row.get(0),
+        )
+        .optional()
+        .ok()??;
+    let mut data: Value = serde_json::from_str(&data).ok()?;
+    data.get_mut("error").map(Value::take)
+}
+
 fn sessions(connection: &Connection) -> Result<Vec<Session>, String> {
     let mut statement = connection
         .prepare(

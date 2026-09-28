@@ -196,6 +196,11 @@ Devin route is its own stage, and consecutive `codex` and `claude` routes form
 one loop stage; a stage that runs out of capacity passes the turn to the next.
 A container grant refuses a Devin route. Read [the Devin route](devin.md).
 
+An `opencode` route (`"generation_endpoint": "local:opencode-acp"`, no
+`effort`, a model that is OpenCode's `provider/model`) is a stage of its own in
+the same way: `opencode acp` takes the whole turn. Read [the OpenCode
+route](opencode.md).
+
 ## Isolated container commands
 
 An optional closed `container` field in `adapter_configuration` selects a local

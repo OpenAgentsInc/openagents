@@ -417,10 +417,67 @@ fn client(
 }
 
 /// One stage of a run: consecutive admitted model routes the loop fails
-/// over among, or one Devin route that takes the whole turn.
+/// over among, or one route to a whole coding agent (Devin or OpenCode)
+/// that takes the whole turn.
 enum Stage<T> {
     Loop(Vec<(GrantRoute, Client<T>)>),
-    Devin(GrantRoute, PathBuf),
+    Agent(AgentEngine, GrantRoute, PathBuf),
+}
+
+/// A whole coding agent a route hands the turn to over ACP.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum AgentEngine {
+    /// The local Devin CLI, `devin acp` ([`devin`]).
+    Devin,
+    /// OpenCode, `opencode acp` ([`opencode`]).
+    OpenCode,
+}
+
+impl AgentEngine {
+    fn of(provider: Option<Provider>) -> Option<Self> {
+        match provider? {
+            Provider::Devin => Some(AgentEngine::Devin),
+            Provider::OpenCode => Some(AgentEngine::OpenCode),
+            Provider::Codex | Provider::Claude | Provider::Vertex => None,
+        }
+    }
+
+    fn provider(self) -> Provider {
+        match self {
+            AgentEngine::Devin => Provider::Devin,
+            AgentEngine::OpenCode => Provider::OpenCode,
+        }
+    }
+
+    /// The agent's name in the transcript's words.
+    fn name(self) -> &'static str {
+        match self {
+            AgentEngine::Devin => "Devin",
+            AgentEngine::OpenCode => "OpenCode",
+        }
+    }
+
+    /// The prefix of the step extensions and summary key it records.
+    fn note(self) -> &'static str {
+        match self {
+            AgentEngine::Devin => "devin",
+            AgentEngine::OpenCode => "opencode",
+        }
+    }
+
+    fn binary(self) -> Result<PathBuf, String> {
+        match self {
+            AgentEngine::Devin => devin::binary(),
+            AgentEngine::OpenCode => opencode::binary(),
+        }
+    }
+
+    async fn turn(self, host: &Host, route: &GrantRoute, program: PathBuf) -> devin::Turn {
+        match self {
+            AgentEngine::Devin => devin::turn(host, route, program).await,
+            AgentEngine::OpenCode => opencode::turn(host, route, program).await,
+        }
+    }
 }
 
 /// The admitted routes as stages, in preference order, and the routes that
@@ -439,8 +496,10 @@ fn stages(
     let mut stages: Vec<Stage<_>> = Vec::new();
     let mut unavailable = Vec::new();
     for (index, route) in routes.into_iter().enumerate() {
-        let built = if Provider::from_config(&route.provider) == Some(Provider::Devin) {
-            devin::binary().map(|program| Stage::Devin(route.clone(), program))
+        let built = if let Some(engine) = AgentEngine::of(Provider::from_config(&route.provider)) {
+            engine
+                .binary()
+                .map(|program| Stage::Agent(engine, route.clone(), program))
         } else {
             client(&route, access, session).map(|client| Stage::Loop(vec![(route.clone(), client)]))
         };
@@ -462,10 +521,10 @@ fn stages(
 /// The primary route's client must build; a fallback that cannot (no login or
 /// no binary here) is left out, and the transcript says why.
 ///
-/// A Devin route is its own stage: the Devin CLI takes the whole turn
-/// ([`devin`]). When a stage runs out of capacity (Devin refuses before it
-/// works, or every route of a loop stage refuses), the run moves to the
-/// next stage; the last stage's result is the task's.
+/// A Devin or OpenCode route is its own stage: the agent takes the whole
+/// turn ([`devin`], [`opencode`]). When a stage runs out of capacity (the
+/// agent refuses before it works, or every route of a loop stage refuses),
+/// the run moves to the next stage; the last stage's result is the task's.
 pub async fn execute(
     directory: &Path,
     bytes: &[u8],
@@ -524,14 +583,17 @@ async fn run_stages<T: codex_transport::Transport>(
                 }
                 return finish(host, state, outcome);
             }
-            Stage::Devin(route, program) => {
+            Stage::Agent(engine, route, program) => {
+                let (name, note) = (engine.name(), engine.note());
                 let now = task::autostart::unix_now();
-                if let Some(held) = capacity::Book::load(&book).blocking(Provider::Devin, now) {
+                if let Some(held) = capacity::Book::load(&book).blocking(engine.provider(), now) {
                     refusals.push(held.clone());
                     let _ = host.append(
                         &Step::said(
                             Source::System,
-                            "Devin has no recorded capacity; the run passes over its route.",
+                            &format!(
+                                "{name} has no recorded capacity; the run passes over its route."
+                            ),
                         )
                         .noting("route_capacity", json!({"route":route,"refusal":held})),
                     );
@@ -540,20 +602,20 @@ async fn run_stages<T: codex_transport::Transport>(
                     }
                     continue;
                 }
-                match devin::turn(&host, &route, program).await {
+                match engine.turn(&host, &route, program).await {
                     devin::Turn::Ended(ended) => {
                         let (ending, completed) = ended.ending(host.cancelled());
                         if let Some(error) = &ended.error {
                             let _ = host.append(
                                 &Step::said(
                                     Source::System,
-                                    &format!("Devin could not finish the turn: {error}"),
+                                    &format!("{name} could not finish the turn: {error}"),
                                 )
-                                .noting("devin_error", json!({"error": error})),
+                                .noting(&format!("{note}_error"), json!({"error": error})),
                             );
                         }
                         let summary = json!({"configuration":host.configuration(),"route":route,
-                            "devin":ended.summary(),"independent_checks":"not_run",
+                            note:ended.summary(),"independent_checks":"not_run",
                             "billing":"unknown","automatic_crash_resume":false});
                         return host.finish(ending, completed, summary);
                     }
@@ -565,7 +627,7 @@ async fn run_stages<T: codex_transport::Transport>(
                         let _ = host.append(
                             &Step::said(
                                 Source::System,
-                                "Devin refused for a usage or rate limit; the run switches to the next admitted route.",
+                                &format!("{name} refused for a usage or rate limit; the run switches to the next admitted route."),
                             )
                             .noting(
                                 if last { "route_exhausted" } else { "route_switch" },
@@ -601,5 +663,6 @@ fn no_capacity(host: Host, book: &Path, refusals: &[Refusal]) -> Result<task::Ta
 mod devin;
 pub mod launch;
 mod native;
+mod opencode;
 #[cfg(test)]
 mod tests;

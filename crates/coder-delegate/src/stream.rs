@@ -1031,7 +1031,12 @@ mod tests {
                 output: "hello\n".into()
             }
         );
-        assert_eq!(events[4].kind, Kind::AssistantClaim { text: "done".into() });
+        assert_eq!(
+            events[4].kind,
+            Kind::AssistantClaim {
+                text: "done".into()
+            }
+        );
         let refused = normalize(Format::OpenCode, OPENCODE_REFUSED);
         assert!(matches!(
             &refused.last().unwrap().kind,
@@ -1047,8 +1052,14 @@ mod tests {
             .to_string()
         };
         let stream = [
-            tool("write", json!({"filePath":"/w/a.py","content":"print(1)\n"})),
-            tool("edit", json!({"filePath":"/w/a.py","oldString":"1","newString":"2"})),
+            tool(
+                "write",
+                json!({"filePath":"/w/a.py","content":"print(1)\n"}),
+            ),
+            tool(
+                "edit",
+                json!({"filePath":"/w/a.py","oldString":"1","newString":"2"}),
+            ),
         ]
         .join("\n");
         let files = final_files(&writes(Format::OpenCode, &stream));

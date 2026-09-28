@@ -400,3 +400,13 @@ fn a_long_tool_output_is_cut_and_says_so() {
     let small = clip(json!({"type": "text", "text": "hi", "time": {"start": 1, "end": 2}}));
     assert!(small.get("openagents_clipped").is_none());
 }
+
+#[test]
+fn the_newest_message_error_is_read_with_its_status() {
+    let fixture = Fixture::new();
+    let error = last_error(&fixture.database(), REFUSED).expect("the refusal");
+    assert_eq!(error["name"], "APIError");
+    assert_eq!(error["data"]["statusCode"], 403);
+    assert_eq!(last_error(&fixture.database(), ANSWERED), None);
+    assert_eq!(last_error(&fixture.root.join("missing.db"), REFUSED), None);
+}

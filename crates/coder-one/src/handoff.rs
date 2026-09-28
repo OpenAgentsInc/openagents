@@ -2086,10 +2086,7 @@ pub fn manifest_candidate(manifest: &crate::policy::Manifest) -> Candidate {
             .handoff
             .clone()
             .unwrap_or_else(Policy::single),
-        first: Tier::new(
-            executor.agent.agent().word(),
-            &executor.model,
-        ),
+        first: Tier::new(executor.agent.agent().word(), &executor.model),
     }
 }
 

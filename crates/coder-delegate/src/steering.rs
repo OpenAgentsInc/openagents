@@ -210,6 +210,22 @@ pub const OPENCODE_RUN: Steering = Steering {
     ],
 };
 
+/// OpenCode driven over ACP (`opencode acp`), as a repository run's
+/// engine. As with Devin, a running turn takes no message: `session/cancel`
+/// ends it, and the next turn reattaches the same OpenCode session with
+/// `session/load` and prompts it with the message.
+pub const OPENCODE_ACP: Steering = Steering {
+    adapter: "opencode-acp",
+    native: Native::TurnBoundary,
+    emulation: Some(Emulation::CancelAndContinue),
+    acknowledgment: Acknowledgment::NextTurnStart,
+    limitations: &[
+        "ACP v1 takes one session/prompt at a time; a running turn takes no message.",
+        "A new turn reattaches the same OpenCode session with session/load and prompts it.",
+        "Emulation sends session/cancel, stops the process group, and continues in the next turn.",
+    ],
+};
+
 /// Microluna in process.
 pub const MICROLUNA: Steering = Steering {
     adapter: "microluna",
@@ -266,7 +282,13 @@ mod tests {
 
     #[test]
     fn a_steer_for_an_ended_turn_becomes_a_new_turn() {
-        for steering in [CLAUDE_CODE, CODEX_EXEC, DEVIN_ACP] {
+        for steering in [
+            CLAUDE_CODE,
+            CODEX_EXEC,
+            DEVIN_ACP,
+            OPENCODE_ACP,
+            OPENCODE_RUN,
+        ] {
             for request in [Request::Native, Request::Emulated] {
                 assert_eq!(steering.admit(Turn::Ended, request), Ok(Plan::NewTurn));
             }

@@ -43,12 +43,14 @@ use serde_json::{Value, json};
 /// The step extension that names the Devin session a turn used, which the
 /// next turn of the task reattaches.
 pub const SESSION_NOTE: &str = "devin_session";
+/// The engine a Devin turn records.
+pub const ENGINE: &str = "devin-acp";
 /// The longest Devin may write nothing during a prompt.
-const SILENCE: Duration = Duration::from_secs(20 * 60);
+pub(super) const SILENCE: Duration = Duration::from_secs(20 * 60);
 /// How long a cancelled prompt may take to answer `cancelled`.
-const CANCEL_GRACE: Duration = Duration::from_secs(10);
+pub(super) const CANCEL_GRACE: Duration = Duration::from_secs(10);
 /// How long the agent may take to exit before its group is killed.
-const STOP_GRACE: Duration = Duration::from_secs(5);
+pub(super) const STOP_GRACE: Duration = Duration::from_secs(5);
 /// The most bytes of one tool output the transcript keeps.
 const TOOL_OUTPUT: usize = 16 * 1024;
 /// The most bytes of one reply or reasoning segment the transcript keeps.
@@ -65,6 +67,8 @@ pub(crate) enum Turn {
 /// What a Devin turn that ran left.
 #[derive(Debug, Default)]
 pub(crate) struct Ended {
+    /// The engine, such as `devin-acp` or `opencode-acp`.
+    pub engine: &'static str,
     pub session: Option<String>,
     pub resumed: bool,
     pub model: Option<String>,
@@ -75,6 +79,8 @@ pub(crate) struct Ended {
     pub output_tokens: u64,
     pub stats: BTreeMap<String, f64>,
     pub tool_calls: usize,
+    /// The turn's cost in US dollars, when the agent reported one.
+    pub cost_usd: Option<f64>,
 }
 
 impl Ended {
@@ -90,7 +96,7 @@ impl Ended {
 
     pub fn summary(&self) -> Value {
         json!({
-            "engine": "devin-acp",
+            "engine": self.engine,
             "session": self.session,
             "resumed": self.resumed,
             "model": self.model,
@@ -102,8 +108,14 @@ impl Ended {
                 "output_tokens": self.output_tokens,
                 "turn_stats": self.stats,
             },
-            "cost_usd": null,
-            "cost_unknown": "Devin bills in its own credits and reports no dollar price over ACP",
+            "cost_usd": self.cost_usd,
+            "cost_unknown": if self.cost_usd.is_some() {
+                Value::Null
+            } else if self.engine == ENGINE {
+                json!("Devin bills in its own credits and reports no dollar price over ACP")
+            } else {
+                json!("the agent reported no dollar price")
+            },
         })
     }
 }
@@ -118,20 +130,27 @@ struct Pending {
     started: std::time::Instant,
 }
 
-/// The handler that turns Devin's stream into transcript steps.
-struct Recorder<'a> {
+/// The handler that turns an ACP agent's stream (Devin's, or OpenCode's)
+/// into transcript steps.
+pub(super) struct Recorder<'a> {
     host: &'a Host,
+    /// The agent's name in the transcript's own words, such as `Devin`.
+    name: &'static str,
+    /// The prefix of the step extensions it notes, such as `devin`.
+    note: &'static str,
     model: String,
     access: Access,
     text: String,
     thought: String,
     tools: BTreeMap<String, Pending>,
-    input_tokens: u64,
-    output_tokens: u64,
-    stats: BTreeMap<String, f64>,
-    tool_calls: usize,
+    pub(super) input_tokens: u64,
+    pub(super) output_tokens: u64,
+    pub(super) stats: BTreeMap<String, f64>,
+    pub(super) tool_calls: usize,
+    /// The newest cost the agent reported, in US dollars.
+    pub(super) cost_usd: Option<f64>,
     /// The last reply segment, which is the turn's answer.
-    reply: String,
+    pub(super) reply: String,
 }
 
 fn bounded(text: &str, limit: usize) -> String {
@@ -145,7 +164,43 @@ fn bounded(text: &str, limit: usize) -> String {
     format!("{}…", &text[..end])
 }
 
-impl Recorder<'_> {
+impl<'a> Recorder<'a> {
+    /// A recorder for `name`'s turn on `model`, noting under `note`.
+    pub(super) fn new(
+        host: &'a Host,
+        name: &'static str,
+        note: &'static str,
+        model: String,
+        access: Access,
+    ) -> Self {
+        Recorder {
+            host,
+            name,
+            note,
+            model,
+            access,
+            text: String::new(),
+            thought: String::new(),
+            tools: BTreeMap::new(),
+            input_tokens: 0,
+            output_tokens: 0,
+            stats: BTreeMap::new(),
+            tool_calls: 0,
+            cost_usd: None,
+            reply: String::new(),
+        }
+    }
+
+    /// Write what is still gathered and close the tool calls still open
+    /// as cancelled, once the prompt has ended.
+    pub(super) fn close(&mut self) {
+        self.flush();
+        let pending: Vec<String> = self.tools.keys().cloned().collect();
+        for id in pending {
+            self.finish_tool(&id, "cancelled");
+        }
+    }
+
     fn append(&self, step: &Step) {
         if let Err(error) = self.host.append(step) {
             self.host.fail(error.to_string());
@@ -194,7 +249,7 @@ impl Recorder<'_> {
             extra: serde_json::Map::new(),
         };
         self.append(&Step::called(call).by(&self.model).noting(
-            "devin_tool",
+            &format!("{}_tool", self.note),
             json!({"kind": pending.kind, "status": status}),
         ));
     }
@@ -264,12 +319,15 @@ impl Handler for Recorder<'_> {
                 self.output_tokens = self
                     .output_tokens
                     .saturating_add(usage.output_tokens.unwrap_or_default());
+                if usage.cost_usd.is_some() {
+                    self.cost_usd = usage.cost_usd;
+                }
             }
             Update::Plan(entries) => {
                 self.flush();
                 self.append(
-                    &Step::said(Source::System, "Devin's plan.")
-                        .noting("devin_plan", json!(entries)),
+                    &Step::said(Source::System, &format!("{}'s plan.", self.name))
+                        .noting(&format!("{}_plan", self.note), json!(entries)),
                 );
             }
             _ => {}
@@ -285,15 +343,20 @@ impl Handler for Recorder<'_> {
     }
 
     fn permission(&mut self, request: &PermissionRequest) -> PermissionAnswer {
-        // Full access is Devin's bypass mode, which asks nothing; anything
-        // it still asks is allowed. Under the boundary, nothing is.
+        // Full access asks nothing (Devin's bypass mode, OpenCode's allow
+        // rule); anything still asked is allowed. Under the boundary,
+        // nothing is.
         let chosen = match self.access {
             Access::Full => request.allow(),
             Access::Boundary => request.reject(),
         };
         self.append(
-            &Step::said(Source::System, "Devin asked for a permission.").noting(
-                "devin_permission",
+            &Step::said(
+                Source::System,
+                &format!("{} asked for a permission.", self.name),
+            )
+            .noting(
+                &format!("{}_permission", self.note),
                 json!({"kind": request.tool_call.kind, "title": request.tool_call.title,
                     "answer": chosen, "access": self.access.as_str()}),
             ),
@@ -304,9 +367,9 @@ impl Handler for Recorder<'_> {
     }
 }
 
-/// The Devin process's environment: the owner's login environment under
+/// The agent process's environment: the owner's login environment under
 /// full access, else this process's, less credential variables either way.
-fn environment(host: &Host) -> Vec<(String, String)> {
+pub(super) fn environment(host: &Host) -> Vec<(String, String)> {
     let variables: Vec<(OsString, OsString)> = match host.login_environment() {
         Some(login) => login.variables.clone(),
         None => std::env::vars_os().collect(),
@@ -351,7 +414,10 @@ pub(crate) async fn turn(host: &Host, route: &GrantRoute, program: PathBuf) -> T
         meta: Some(acp_client::devin::engine_meta(coder_history_mark())),
         mode: Some(permission.mode_id().into()),
     };
-    let mut ended = Ended::default();
+    let mut ended = Ended {
+        engine: ENGINE,
+        ..Ended::default()
+    };
     let sequence = match host.effect(
         "devin_session",
         json!({"program": program, "arguments": arguments, "cwd": host.workspace(),
@@ -424,28 +490,12 @@ pub(crate) async fn turn(host: &Host, route: &GrantRoute, program: PathBuf) -> T
             return Turn::Ended(ended);
         }
     };
-    let mut recorder = Recorder {
-        host,
-        model,
-        access,
-        text: String::new(),
-        thought: String::new(),
-        tools: BTreeMap::new(),
-        input_tokens: 0,
-        output_tokens: 0,
-        stats: BTreeMap::new(),
-        tool_calls: 0,
-        reply: String::new(),
-    };
+    let mut recorder = Recorder::new(host, "Devin", "devin", model, access);
     let silence = SILENCE.min(Duration::from_secs(host.wall_seconds().max(1)));
     let result = session
         .prompt(&prompt, silence, &cancelled, CANCEL_GRACE, &mut recorder)
         .await;
-    recorder.flush();
-    let pending: Vec<String> = recorder.tools.keys().cloned().collect();
-    for id in pending {
-        recorder.finish_tool(&id, "cancelled");
-    }
+    recorder.close();
     ended.reply = std::mem::take(&mut recorder.reply);
     ended.input_tokens = recorder.input_tokens;
     ended.output_tokens = recorder.output_tokens;
@@ -506,7 +556,7 @@ fn coder_history_mark() -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::super::tests::fixture_with;
-    use super::super::{Stage, run_stages};
+    use super::super::{AgentEngine, Stage, run_stages};
     use super::*;
     use acp_client::replay;
     use coder::task::adapter::Configuration;
@@ -545,7 +595,7 @@ mod tests {
     async fn run_turn(store: &std::path::Path, grant: &[u8], agent: PathBuf) -> task::Task {
         let host = Host::admit(store, grant).await.unwrap();
         let stages: Vec<Stage<codex_transport::codex::CodexTransport>> =
-            vec![Stage::Devin(route(), agent)];
+            vec![Stage::Agent(AgentEngine::Devin, route(), agent)];
         run_stages(host, store.to_path_buf(), stages, jev(), "fixture-session")
             .await
             .unwrap()
@@ -746,7 +796,7 @@ mod tests {
         let mut admitted = route();
         admitted.model = "claude-opus-5-5-medium".into();
         let stages: Vec<Stage<codex_transport::codex::CodexTransport>> =
-            vec![Stage::Devin(admitted, agent)];
+            vec![Stage::Agent(AgentEngine::Devin, admitted, agent)];
         let task = run_stages(host, store.clone(), stages, jev(), "fixture-session")
             .await
             .unwrap();

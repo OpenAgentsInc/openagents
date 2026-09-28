@@ -103,3 +103,11 @@ pub fn received(dir: &Path) -> Vec<Value> {
 /// The recorded Devin 3000.11.3 turn: initialize, a new session in
 /// `/workspace`, `bypass` mode, and one prompt that runs `echo` and `ls`.
 pub const DEVIN_TURN: &str = include_str!("../fixtures/devin-3000.11.3-turn.jsonl");
+
+/// The recorded OpenCode 1.18.26 turn: initialize, a new session on
+/// `google/gemini-3.6-flash`, and one prompt that runs `cat` through the
+/// bash tool and answers `done`.
+pub const OPENCODE_TURN: &str = include_str!("../fixtures/opencode-1.18.26-turn.jsonl");
+
+/// The same, on a model the provider refused with HTTP 403.
+pub const OPENCODE_REFUSED: &str = include_str!("../fixtures/opencode-1.18.26-refused.jsonl");

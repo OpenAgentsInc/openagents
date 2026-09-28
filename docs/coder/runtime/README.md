@@ -22,6 +22,7 @@ and unfinished suite acceptance, use the [migration tracker](../migration-status
 | [Knowledge studies](knowledge-studies.md) | Frozen assignments, per-attempt receipts, and prospective report bookkeeping |
 | [Repository Microcoder](microcoder-repository.md) | Explicit model admission through the shared task owner |
 | [The Devin route](devin.md) | A repository turn handed to the local Devin CLI over ACP |
+| [The OpenCode route](opencode.md) | A repository turn handed to OpenCode over ACP, and OpenCode as a delegate executor |
 | [Free agent labor](free-labor.md) | Recoverable free orders, bounded provider execution, separate buyer checks, and acceptance |
 | [Frozen task context](frozen-task-context.md) | Exact knowledge bytes, source lineage, scoped instructions, and protected independent checks |
 | [Portable host](portable-host.md) | Digest-pinned installation, rollback, and one-shot task service packaging |

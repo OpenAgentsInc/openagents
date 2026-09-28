@@ -1016,6 +1016,7 @@ dependencies = [
 name = "coder"
 version = "0.1.0"
 dependencies = [
+ "acp-client",
  "atif",
  "capability",
  "coder-boundary",
@@ -4697,6 +4698,7 @@ dependencies = [
  "nostr",
  "openrouter",
  "reqwest",
+ "rusqlite",
  "secp256k1 0.31.1",
  "serde",
  "serde_json",

@@ -1272,7 +1272,10 @@ mod tests {
             steerable: false,
         };
         let args = cli.live_args(&launch);
-        assert_eq!(args, ["run", "--format", "json", "-m", "stand-in", "--auto"]);
+        assert_eq!(
+            args,
+            ["run", "--format", "json", "-m", "stand-in", "--auto"]
+        );
         let _ = std::fs::remove_dir_all(dir);
     }
 

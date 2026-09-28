@@ -12,7 +12,7 @@ path = "src/main.rs"
 
 [dependencies]
 acp-client = { path = "../acp-client" }
-coder-history = { path = "../coder-history", default-features = false }
+coder-history = { path = "../coder-history", default-features = false, features = ["opencode"] }
 atif = { path = "../atif" }
 coder = { path = "../coder" }
 futures-util = "0.3"
@@ -34,6 +34,8 @@ tokio-tungstenite = { version = "0.30.0", features = ["rustls-tls-webpki-roots"]
 
 [dev-dependencies]
 tempfile = "3"
+# The engine's OpenCode database a refusal test writes.
+rusqlite = { version = "0.31", features = ["bundled"] }
 tokio = { version = "1", features = ["macros", "rt", "time", "process", "io-util", "signal", "test-util", "net"] }
 
 [lints]

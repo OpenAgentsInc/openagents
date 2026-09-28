@@ -1235,7 +1235,10 @@ impl SummaryReader {
                 reading.output += tokens("/tokens/output");
                 reading.reasoning += tokens("/tokens/reasoning");
                 self.summary.input_per_call.push(input + read + write);
-                reading.reason = part.get("reason").and_then(Value::as_str).map(str::to_string);
+                reading.reason = part
+                    .get("reason")
+                    .and_then(Value::as_str)
+                    .map(str::to_string);
             }
             Some("error") => reading.error = event.get("error").cloned(),
             _ => {}
@@ -1423,7 +1426,10 @@ impl SummaryReader {
         };
         summary.subtype = reading.reason.clone();
         if let Some(error) = &reading.error {
-            let name = error.get("name").and_then(Value::as_str).unwrap_or_default();
+            let name = error
+                .get("name")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
             let status = error.pointer("/data/statusCode").and_then(Value::as_u64);
             let said = error
                 .pointer("/data/message")
@@ -4049,7 +4055,10 @@ pub mod tests {
         );
         let limited = include_str!("../fixtures/opencode/run-403.jsonl")
             .replace("\"statusCode\":403", "\"statusCode\":429")
-            .replace("\"cf-placement\"", "\"retry-after\":\"90\",\"cf-placement\"");
+            .replace(
+                "\"cf-placement\"",
+                "\"retry-after\":\"90\",\"cf-placement\"",
+            );
         let summary = Summary::parse_opencode(&limited, "opencode/gpt-5-nano");
         let limit = summary.limit.clone().unwrap();
         assert_eq!(limit.provider, "opencode");
@@ -4082,7 +4091,11 @@ pub mod tests {
         assert_eq!(credential, Credential::Missing);
         let data = dir.path().join(".local/share/opencode");
         std::fs::create_dir_all(&data).unwrap();
-        std::fs::write(data.join("auth.json"), r#"{"google":{"type":"api","key":"k"}}"#).unwrap();
+        std::fs::write(
+            data.join("auth.json"),
+            r#"{"google":{"type":"api","key":"k"}}"#,
+        )
+        .unwrap();
         assert_eq!(resolve(Agent::OpenCode, env).1, Credential::OpenCodeLogin);
         let named = |name: &str| match name {
             "HOME" => Some(home.clone()),

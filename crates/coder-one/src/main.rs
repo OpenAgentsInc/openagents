@@ -5,7 +5,7 @@
 //! coder-one <issue-url> [--lane free|flash|pro] [--max-steps N]
 //!                       [--timeout SECONDS] [--no-jev] [--deep] [--open-pr]
 //!                       [--delegate off|always|auto] [--explore-steps N]
-//!                       [--delegate-agent claude-code|codex]
+//!                       [--delegate-agent claude-code|codex|opencode]
 //!                       [--delegate-model MODEL] [--delegate-timeout SECONDS]
 //! coder-one --version
 //! coder-one ask "QUESTION" [--scope gym|repo] [--executor luna|opus] [--budget USD] [--json]
@@ -36,8 +36,9 @@
 //!
 //! `--delegate always` lets the loop explore for `--explore-steps` steps
 //! without editing, then hands the task to Claude Code, or to Codex CLI
-//! with `--delegate-agent codex`, with a briefing
-//! built from what it found; `--delegate auto` delegates only when the
+//! with `--delegate-agent codex` or OpenCode with `--delegate-agent
+//! opencode` (`--delegate-model PROVIDER/MODEL`, else OpenCode's configured
+//! default), with a briefing built from what it found; `--delegate auto` delegates only when the
 //! explorer stalls. `coder_one::delegate` documents the phases.
 
 use std::io::Write as _;
@@ -60,7 +61,7 @@ const USAGE: &str = "usage: coder-one doctor
        coder-one <github-issue-url> [--lane free|flash|pro] [--max-steps N]
                  [--timeout SECONDS] [--no-jev] [--deep] [--open-pr]
                  [--delegate off|always|auto] [--explore-steps N]
-                 [--delegate-agent claude-code|codex]
+                 [--delegate-agent claude-code|codex|opencode]
                  [--delegate-model MODEL] [--delegate-timeout SECONDS]
        coder-one --version
        coder-one ask \"QUESTION\" [--scope gym|repo] [--executor luna|opus] [--budget USD] [--json]

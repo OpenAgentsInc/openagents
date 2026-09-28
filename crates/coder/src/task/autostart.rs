@@ -318,8 +318,9 @@ impl Policy {
         let route = |route: &Route| adapter::Route {
             provider: route.provider.as_str().into(),
             model: route.model.clone(),
-            // Devin takes no effort: its model names carry their own.
-            effort: (route.provider != Provider::Devin)
+            // Devin and OpenCode take no effort: their model names carry
+            // their own.
+            effort: (!matches!(route.provider, Provider::Devin | Provider::OpenCode))
                 .then(|| route.effort.clone().or_else(|| engine.effort.clone()))
                 .flatten(),
             generation_endpoint: route.provider.endpoint().into(),
@@ -1075,11 +1076,13 @@ pub const USAGE: &str = "usage: coder host autostart COMMAND
      [--probe-usage] [--usage-threshold PERCENT] [--full-access]
                        Start tasks that enrolled devices with `operate` create
                        in these workspaces, at most N at once (default 1).
-                       Each --route admits a provider (codex, claude, or
-                       devin) and model, in preference order; a task starts
-                       on the first one that is connected and has capacity.
-                       A devin route (devin:default, or devin:MODEL) hands
-                       the whole turn to the local Devin CLI over ACP.
+                       Each --route admits a provider (codex, claude,
+                       devin, or opencode) and model, in preference order; a
+                       task starts on the first one that is connected and
+                       has capacity. A devin route (devin:default, or
+                       devin:MODEL) hands the whole turn to the local Devin
+                       CLI over ACP; an opencode route
+                       (opencode:PROVIDER/MODEL) hands it to OpenCode.
                        --probe-usage reads each provider's usage windows
                        with its local login and prefers a route below
                        PERCENT (default 90) used.
@@ -1330,25 +1333,29 @@ fn parse_route(text: &str) -> std::result::Result<Route, String> {
         .split_once(':')
         .ok_or_else(|| format!("usage: --route takes PROVIDER:MODEL, not `{text}`"))?;
     let provider = match Provider::from_config(provider) {
-        Some(provider @ (Provider::Codex | Provider::Claude | Provider::Devin)) => provider,
+        Some(
+            provider @ (Provider::Codex | Provider::Claude | Provider::Devin | Provider::OpenCode),
+        ) => provider,
         Some(Provider::Vertex) => {
             return Err(format!(
-                "usage: `{text}`: repository runs don't generate through vertex; use codex, claude, or devin"
-            ));
-        }
-        Some(Provider::OpenCode) => {
-            return Err(format!(
-                "usage: `{text}`: this build does not run repository turns on opencode"
+                "usage: `{text}`: repository runs don't generate through vertex; use codex, claude, devin, or opencode"
             ));
         }
         None => {
             return Err(format!(
-                "usage: the provider in `{text}` is not codex, claude, or devin"
+                "usage: the provider in `{text}` is not codex, claude, devin, or opencode"
             ));
         }
     };
     if model.is_empty() {
         return Err(format!("usage: `{text}` names no model"));
+    }
+    if provider == Provider::OpenCode
+        && let Err(why) = acp_client::opencode::Model::parse(model)
+    {
+        return Err(format!(
+            "usage: `{text}`: an opencode route names OpenCode's PROVIDER/MODEL: {why}"
+        ));
     }
     Ok(Route {
         provider,
@@ -2283,6 +2290,33 @@ mod tests {
         assert_eq!(configuration.generation_endpoint, capacity::DEVIN_ENDPOINT);
         assert_eq!(configuration.fallbacks[0].effort.as_deref(), Some("medium"));
         configuration.validate().unwrap();
+        // An OpenCode route takes the whole turn too, and names OpenCode's
+        // own PROVIDER/MODEL.
+        assert_eq!(on(&["--route", "opencode:sonnet"]), 2);
+        assert_eq!(
+            on(&[
+                "--route",
+                "opencode:anthropic/claude-sonnet-5",
+                "--route",
+                "devin:default"
+            ]),
+            0
+        );
+        let policy = Policy::load(&root).unwrap().unwrap();
+        let configuration = policy.configuration(&policy.routes());
+        assert_eq!(configuration.provider, "opencode");
+        assert_eq!(configuration.model, "anthropic/claude-sonnet-5");
+        assert_eq!(configuration.effort, None);
+        assert_eq!(
+            configuration.generation_endpoint,
+            capacity::OPENCODE_ENDPOINT
+        );
+        assert_eq!(configuration.fallbacks[0].provider, "devin");
+        configuration.validate().unwrap();
+        assert_eq!(
+            configuration.capabilities()["steering"]["adapter"],
+            "opencode-acp"
+        );
     }
     /// The recorded usage answers: Codex at its limit, Claude at 66%.
     fn recorded(provider: Provider) -> Result<usage::Response, usage::Failure> {
