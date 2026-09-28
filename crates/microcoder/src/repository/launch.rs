@@ -83,8 +83,13 @@ pub fn start(directory: &Path, bytes: &[u8]) -> Result<Launched, String> {
         // These stay in the model host. Its supervised shell children clear
         // their environment again and never receive provider credentials.
         // CLAUDE_BIN names the claude binary when it is off the fixed PATH.
+        // USER and LOGNAME name the account: Claude Code on macOS finds its
+        // sign-in in the Keychain under the user's name, and reports "Not
+        // logged in" without it.
         for key in [
             "HOME",
+            "USER",
+            "LOGNAME",
             crate::claude::BIN_VAR,
             "TYPESAFE_API_KEY",
             "TYPESAFE_BASE_URL",
