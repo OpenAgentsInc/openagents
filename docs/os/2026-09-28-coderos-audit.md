@@ -295,15 +295,22 @@ Steps 1 to 5 close most of M12's configuration work. M12 still needs a clean
 install, missing-hardware behavior, disk pressure, an interrupted upgrade,
 and rollback verified on a machine other than `coderos-4080`.
 
+## Decisions
+
+On 2026-09-28 the owner decided:
+
+- The private host flake is a private repository on the owner's personal
+  GitHub account, seeded from `~/coder/os` with the host, its hardware
+  file, and the five private modules.
+- `coderos-4080` keeps the Coder compositor on tty1 and does not switch back
+  to Hyprland. So the host switches to the new flake only after phase 2 has
+  moved the compositor, the camera, and hands.
+
+Issue [#9866](https://github.com/OpenAgentsInc/openagents/issues/9866) tracks
+the work, with one sub-issue for each step above.
+
 ## Open questions
 
-- **Where does the private flake live?** A private GitHub repository is the
-  simplest. A directory under `~/work` with no remote works too, but then the
-  machine is the only copy of its own description.
-- **Does `coderos-4080` switch its default compositor back to Hyprland** while
-  the Coder compositor waits for phase 2? It has run the Coder compositor on
-  tty1 since 2026-09-17. Your private flake can keep building it from `~/coder`
-  in the meantime, so nothing forces the switch.
 - **Does the example host ship Docker on by default?** The base module turns
   it on because the Microcoder container path uses it. A distribution might
   prefer it as an option.
