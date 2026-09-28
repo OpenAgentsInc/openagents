@@ -172,6 +172,14 @@ cargo test -p microcoder --lib repository::opencode
 cargo test -p coder-delegate
 ```
 
-The live smoke, on a host with OpenCode signed in, is an owner step: turn on
-an `opencode:PROVIDER/MODEL` route, create a task from the phone, watch it
+A live repository turn through the installed OpenCode is an ignored test; it
+passed on 2026-09-28 with OpenCode 1.18.26 on `google/gemini-3.6-flash`:
+
+```sh
+OPENCODE_LIVE_MODEL=google/gemini-3.6-flash \
+  cargo test -p microcoder --lib a_live_opencode_turn -- --ignored
+```
+
+The end-to-end smoke from the phone is an owner step: turn on an
+`opencode:PROVIDER/MODEL` route, create a task from the phone, watch it
 answer, and archive it.
