@@ -711,6 +711,21 @@ buyer, inbound on the provider). Two things had to be fixed on the way:
 broadcast, and `pay` waits up to 20 s for a just-started node to reconnect
 its channel peers before it sends.
 
+First paid round trip across machines (testnet, 2026-09-27, #9815): the
+provider ran on `coderos-4080` over the tailnet, `wallet serve` resident
+(`com.openagents.wallet`, node `02dc6c…b75d`, listening on `9735`) and
+`x402 native-serve --slug echo --msat 1000 --as north -- cat`, started and
+read back with `openagents computer exec coderos`. The buyer node here
+(`03125b…44e7`) opened a 40,000 sat channel to it with `wallet channel open
+02dc6c…b75d@100.74.238.61:9735 --sats 40000`; the channel became ready
+(`channel_ready` in the resident's log) once both nodes were online after
+7 confirmations. `x402 buy 3e7e66…da5ad --slug echo --max-msat 2000 --as
+buyer` went `offered → claim_pending → admitted → running → completed`
+for purchase `6d9481…7f08`, payment hash `0648b2…d0f8`, 1000 msat, 0 msat
+fee; `wallet lookup` on both machines holds preimage `070dba…26eb`
+(outbound here, inbound on coderos), and `x402 ledger` here shows the one
+entry in phase `completed`.
+
 ### Spending policy and ledger (`x402 policy`, `x402 ledger`)
 
 Every buyer (`fetch`, `call`, `buy`) reads `~/.openagents/x402/policy.json`
