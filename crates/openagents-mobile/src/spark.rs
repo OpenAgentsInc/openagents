@@ -8,18 +8,18 @@
 //! traces is written anywhere.
 
 use crate::wallet::{
-    Ask, ClaimQuote, DepositRow, Destination, LnurlTerms, Node, Paid, PaymentRow, Provider, Quote,
-    QuoteFailure, SendRequest,
+    Ask, ClaimQuote, DepositRow, Destination, FeeRates, LnurlTerms, Node, Paid, PaymentRow,
+    Provider, Quote, QuoteFailure, SendRequest, Speed,
 };
 use breez_sdk_spark::{
     BreezSdk, BuyBitcoinRequest, ClaimDepositOutcome, ClaimDepositRequest, DepositClaimError,
-    EventListener, FetchClaimDepositQuoteRequest, GetInfoRequest, InputType, ListPaymentsRequest,
-    ListUnclaimedDepositsRequest, LnurlPayRequest, MaxFee, Network, OnchainConfirmationSpeed,
-    Payment, PaymentMethod, PaymentRequest, PaymentStatus, PaymentType, PrepareLnurlPayRequest,
-    PrepareLnurlPayResponse, PrepareSendPaymentRequest, PrepareSendPaymentResponse,
-    ReceivePaymentMethod, ReceivePaymentRequest, SdkBuilder, SdkEvent, Seed, SendPaymentMethod,
-    SendPaymentOptions, SendPaymentRequest, SuccessActionProcessed, SyncWalletRequest,
-    default_config,
+    EventListener, Fee, FetchClaimDepositQuoteRequest, GetInfoRequest, InputType,
+    ListPaymentsRequest, ListUnclaimedDepositsRequest, LnurlPayRequest, MaxFee, Network,
+    OnchainConfirmationSpeed, Payment, PaymentMethod, PaymentRequest, PaymentStatus, PaymentType,
+    PrepareLnurlPayRequest, PrepareLnurlPayResponse, PrepareSendPaymentRequest,
+    PrepareSendPaymentResponse, ReceivePaymentMethod, ReceivePaymentRequest, RefundDepositRequest,
+    SdkBuilder, SdkEvent, Seed, SendPaymentMethod, SendPaymentOptions, SendPaymentRequest,
+    SuccessActionProcessed, SyncWalletRequest, default_config,
 };
 use std::collections::HashMap;
 use std::path::Path;
@@ -257,14 +257,27 @@ impl SparkNode {
             ));
         }
         let amount_sats = sats_of(prepared.amount)?;
+        let mut speeds = vec![];
         let (destination, fee_sats, options) = match &prepared.payment_method {
-            SendPaymentMethod::BitcoinAddress { address, fee_quote } => (
-                Destination::Bitcoin(address.address.clone()),
-                fee_quote.speed_medium.user_fee_sat + fee_quote.speed_medium.l1_broadcast_fee_sat,
-                Some(SendPaymentOptions::BitcoinAddress {
-                    confirmation_speed: OnchainConfirmationSpeed::Medium,
-                }),
-            ),
+            SendPaymentMethod::BitcoinAddress { address, fee_quote } => {
+                // Every speed's fee is in the quote; medium until the person
+                // chooses.
+                let fee = |speed: &breez_sdk_spark::SendOnchainSpeedFeeQuote| {
+                    speed.user_fee_sat + speed.l1_broadcast_fee_sat
+                };
+                speeds = vec![
+                    (Speed::Slow, fee(&fee_quote.speed_slow)),
+                    (Speed::Medium, fee(&fee_quote.speed_medium)),
+                    (Speed::Fast, fee(&fee_quote.speed_fast)),
+                ];
+                (
+                    Destination::Bitcoin(address.address.clone()),
+                    fee(&fee_quote.speed_medium),
+                    Some(SendPaymentOptions::BitcoinAddress {
+                        confirmation_speed: OnchainConfirmationSpeed::Medium,
+                    }),
+                )
+            }
             SendPaymentMethod::Bolt11Invoice {
                 invoice_details,
                 spark_transfer_fee_sats,
@@ -304,6 +317,8 @@ impl SparkNode {
             fee_sats,
             note: note.filter(|note| !note.trim().is_empty()),
             comment: None,
+            speed: (!speeds.is_empty()).then_some(Speed::Medium),
+            speeds,
         })
     }
 
@@ -347,6 +362,8 @@ impl SparkNode {
             fee_sats,
             note: terms.description,
             comment,
+            speeds: vec![],
+            speed: None,
         })
     }
 }
@@ -378,6 +395,8 @@ fn describe(step: &str, detail: &str) -> String {
         "pay" => format!("The payment did not go through ({detail})."),
         "buy" => format!("The purchase could not start ({detail})."),
         "claim" => format!("The deposit could not be claimed ({detail})."),
+        "refund" => format!("The deposit could not be refunded ({detail})."),
+        "fees" => format!("The network's fee rates could not be read ({detail})."),
         _ => format!("Spark could not be read ({detail}). Refresh to try again."),
     }
 }
@@ -397,6 +416,7 @@ impl EventListener for Listener {
                 | SdkEvent::ClaimedDeposits { .. }
                 | SdkEvent::UnclaimedDeposits { .. }
                 | SdkEvent::NewDeposits { .. }
+                | SdkEvent::UnilateralExitStateChanged
         ) {
             (self.0)();
         }
@@ -517,8 +537,6 @@ impl Node for SparkNode {
             .deposits;
         Ok(deposits
             .into_iter()
-            // A refunded deposit is no longer the wallet's to claim.
-            .filter(|deposit| deposit.refund_tx_id.is_none())
             .map(|deposit| DepositRow {
                 problem: deposit.claim_error.as_ref().map(|error| match error {
                     DepositClaimError::MaxDepositClaimFeeExceeded {
@@ -538,6 +556,7 @@ impl Node for SparkNode {
                 vout: deposit.vout,
                 amount_sats: deposit.amount_sats,
                 mature: deposit.is_mature,
+                refund_txid: deposit.refund_tx_id,
             })
             .collect())
     }
@@ -586,6 +605,63 @@ impl Node for SparkNode {
                 "Not claimable yet. The wallet claims it on its own as it confirms.".into()
             }
         })
+    }
+
+    fn fee_rates(&self) -> Result<FeeRates, String> {
+        self.runtime
+            .block_on(self.sdk.recommended_fees())
+            .map(|fees| FeeRates {
+                fastest: fees.fastest_fee,
+                half_hour: fees.half_hour_fee,
+                hour: fees.hour_fee,
+            })
+            .map_err(|error| describe("fees", &error.to_string()))
+    }
+
+    fn refund(
+        &self,
+        txid: &str,
+        vout: u32,
+        address: &str,
+        sat_per_vbyte: u64,
+    ) -> Result<String, String> {
+        self.runtime
+            .block_on(self.sdk.refund_deposit(RefundDepositRequest {
+                txid: txid.to_owned(),
+                vout,
+                destination_address: address.to_owned(),
+                fee: Fee::Rate { sat_per_vbyte },
+            }))
+            .map(|response| response.tx_id)
+            .map_err(|error| describe("refund", &error.to_string()))
+    }
+
+    fn set_speed(&self, quote: u64, speed: Speed) -> Result<u64, String> {
+        let mut kept = self
+            .prepared
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        let Some(Prepared::Send(prepared, options)) = kept.get_mut(&quote) else {
+            return Err("That quote has expired. Review the payment again.".into());
+        };
+        let SendPaymentMethod::BitcoinAddress { fee_quote, .. } = &prepared.payment_method else {
+            return Err("Only a Bitcoin address payment has speeds.".into());
+        };
+        let (chosen, confirmation_speed) = match speed {
+            Speed::Slow => (&fee_quote.speed_slow, OnchainConfirmationSpeed::Slow),
+            Speed::Medium => (&fee_quote.speed_medium, OnchainConfirmationSpeed::Medium),
+            Speed::Fast => (&fee_quote.speed_fast, OnchainConfirmationSpeed::Fast),
+        };
+        let fee = chosen.user_fee_sat + chosen.l1_broadcast_fee_sat;
+        *options = Some(SendPaymentOptions::BitcoinAddress { confirmation_speed });
+        Ok(fee)
+    }
+
+    fn exit_state(&self) -> Result<String, String> {
+        self.runtime
+            .block_on(self.sdk.export_unilateral_exit_state())
+            .map(|response| response.exit_state)
+            .map_err(|error| describe("read", &error.to_string()))
     }
 
     fn subscribe(&self, notify: Arc<dyn Fn() + Send + Sync>) {

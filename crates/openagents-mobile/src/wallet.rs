@@ -72,6 +72,23 @@ pub trait Node: Send + Sync {
     fn claim_quote(&self, txid: &str, vout: u32) -> Result<ClaimQuote, String>;
     /// Claim a deposit for at most `max_fee_sats`; what happened, in words.
     fn claim(&self, txid: &str, vout: u32, max_fee_sats: u64) -> Result<String, String>;
+    /// The network's recommended on-chain fee rates.
+    fn fee_rates(&self) -> Result<FeeRates, String>;
+    /// Send a deposit back on-chain to `address` at `sat_per_vbyte`; the
+    /// refund transaction's ID.
+    fn refund(
+        &self,
+        txid: &str,
+        vout: u32,
+        address: &str,
+        sat_per_vbyte: u64,
+    ) -> Result<String, String>;
+    /// Choose how fast a quoted on-chain withdrawal confirms; its fee.
+    fn set_speed(&self, quote: u64, speed: Speed) -> Result<u64, String>;
+    /// The unilateral-exit state (Breez's `export_unilateral_exit_state`):
+    /// what lets the recovery words take the balance out on-chain while
+    /// Spark's operators are down. It holds no keys. Read locally.
+    fn exit_state(&self) -> Result<String, String>;
     /// Call `notify` when the wallet syncs, a payment changes, or a deposit
     /// arrives.
     fn subscribe(&self, notify: Arc<dyn Fn() + Send + Sync>);
@@ -108,6 +125,78 @@ pub struct DepositRow {
     pub mature: bool,
     /// Why the last claim failed, in words.
     pub problem: Option<String>,
+    /// A refund of it was broadcast in this transaction.
+    #[serde(default)]
+    pub refund_txid: Option<String>,
+}
+
+/// Recommended on-chain fee rates, in sat/vB.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct FeeRates {
+    pub fastest: u64,
+    pub half_hour: u64,
+    pub hour: u64,
+}
+
+impl FeeRates {
+    fn rate(self, speed: Speed) -> u64 {
+        match speed {
+            Speed::Fast => self.fastest,
+            Speed::Medium => self.half_hour,
+            Speed::Slow => self.hour,
+        }
+        .max(1)
+    }
+}
+
+/// How fast an on-chain transaction should confirm.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Speed {
+    Slow,
+    Medium,
+    Fast,
+}
+
+impl Speed {
+    pub const ALL: [Self; 3] = [Self::Slow, Self::Medium, Self::Fast];
+
+    pub fn id(self) -> &'static str {
+        match self {
+            Self::Slow => "slow",
+            Self::Medium => "medium",
+            Self::Fast => "fast",
+        }
+    }
+
+    fn parse(id: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|speed| speed.id() == id)
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::Slow => "Slow · about an hour or more",
+            Self::Medium => "Medium · about half an hour",
+            Self::Fast => "Fast · the next block or two",
+        }
+    }
+}
+
+/// About how large a deposit refund is: one Taproot input and one output.
+pub const REFUND_VBYTES: u64 = 111;
+
+/// Keeps the unilateral-exit state outside the SDK's store, encrypted on
+/// this phone ([`crate::app`] keys it with the device key).
+pub trait Vault: Send + Sync {
+    fn save(&self, saved: &SavedExit) -> Result<(), String>;
+    fn load(&self) -> Option<SavedExit>;
+    fn clear(&self);
+}
+
+/// The last unilateral-exit state saved, and when.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SavedExit {
+    pub state: String,
+    pub saved_at: u64,
 }
 
 /// The cost of claiming a deposit now.
@@ -162,6 +251,10 @@ pub struct Quote {
     pub note: Option<String>,
     /// The comment sent to an LNURL recipient.
     pub comment: Option<String>,
+    /// For an on-chain withdrawal: each speed and its fee, and the one
+    /// chosen. Empty otherwise.
+    pub speeds: Vec<(Speed, u64)>,
+    pub speed: Option<Speed>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -405,6 +498,27 @@ struct Addresses {
     bitcoin: Option<String>,
 }
 
+/// A deposit refund the person started: fee rates, then a reviewed
+/// address and speed, then its outcome.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct Refund {
+    txid: String,
+    vout: u32,
+    rates: Option<FeeRates>,
+    review: Option<RefundReview>,
+    busy: bool,
+    message: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct RefundReview {
+    address: String,
+    speed: Speed,
+    rate: u64,
+    fee_sats: u64,
+    amount_sats: u64,
+}
+
 /// A deposit claim the person started: its quote, then its outcome.
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct Claim {
@@ -437,6 +551,11 @@ struct Shared {
     trust_acknowledged: bool,
     deposits: Vec<DepositRow>,
     claim: Option<Claim>,
+    refund: Option<Refund>,
+    /// When the exit state was last saved, and why the last save failed.
+    exit_saved_at: Option<u64>,
+    exit_error: Option<String>,
+    vault: Option<Arc<dyn Vault>>,
     buy_busy: bool,
     buy_error: Option<String>,
     /// A purchase page for the host to open once.
@@ -538,6 +657,43 @@ pub struct Summary {
     pub deposits: Vec<DepositView>,
     /// A claim the person started.
     pub claim: Option<ClaimView>,
+    /// A refund the person started.
+    pub refund: Option<RefundView>,
+    /// The unilateral-exit backup.
+    pub backup: BackupView,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct RefundView {
+    pub txid: String,
+    pub vout: u32,
+    pub busy: bool,
+    /// The speeds to choose from, once the fee rates are read.
+    pub speeds: Vec<SpeedView>,
+    /// "Refund 48,890 sats to bc1q…; about 110 sats fee at 1 sat/vB."
+    pub review: Option<String>,
+    pub message: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct SpeedView {
+    /// Send this back as `speed`.
+    pub id: &'static str,
+    pub label: &'static str,
+    /// "1,200 sats", or "about 1,110 sats at 10 sat/vB" for a refund.
+    pub fee: String,
+    pub chosen: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct BackupView {
+    pub title: &'static str,
+    pub detail: &'static str,
+    /// When the exit state was last saved on this phone.
+    pub saved_at: Option<u64>,
+    /// There is a saved state to export.
+    pub can_export: bool,
+    pub error: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -562,6 +718,8 @@ pub struct DepositView {
     pub amount: String,
     /// Where the deposit stands, in words.
     pub status: String,
+    /// It can still be claimed or refunded; false once a refund is out.
+    pub actionable: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -637,6 +795,8 @@ pub struct QuoteView {
     pub note: Option<String>,
     /// The comment sent to the recipient.
     pub comment: Option<String>,
+    /// For an on-chain withdrawal, the speeds and their fees.
+    pub speeds: Vec<SpeedView>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -673,6 +833,10 @@ impl Wallet {
             trust_acknowledged: home.join(TRUST_FILE).exists(),
             deposits: vec![],
             claim: None,
+            refund: None,
+            exit_saved_at: None,
+            exit_error: None,
+            vault: None,
             buy_busy: false,
             buy_error: None,
             open_url: None,
@@ -683,6 +847,16 @@ impl Wallet {
             seed: None,
             shared: Arc::new(Mutex::new(shared)),
         }
+    }
+
+    /// Keep the unilateral-exit state in `vault` after each sync.
+    pub fn with_vault(self, vault: Arc<dyn Vault>) -> Self {
+        {
+            let mut shared = self.lock();
+            shared.exit_saved_at = vault.load().map(|saved| saved.saved_at);
+            shared.vault = Some(vault);
+        }
+        self
     }
 
     fn lock(&self) -> MutexGuard<'_, Shared> {
@@ -739,6 +913,9 @@ impl Wallet {
             shared.send = Sending::Idle;
             shared.deposits.clear();
             shared.claim = None;
+            shared.refund = None;
+            shared.exit_saved_at = None;
+            shared.exit_error = None;
             shared.buy_busy = false;
             shared.buy_error = None;
             shared.open_url = None;
@@ -746,6 +923,10 @@ impl Wallet {
         };
         for file in [BALANCE_FILE, ADDRESSES_FILE, PAYMENTS_FILE] {
             let _ = std::fs::remove_file(self.home.join(file));
+        }
+        // The old wallet's exit state is no use without its words.
+        if let Some(vault) = self.lock().vault.clone() {
+            vault.clear();
         }
         // Disconnecting reaches the network; do it off the app thread.
         if let Some(old) = old {
@@ -1112,6 +1293,196 @@ impl Wallet {
         });
     }
 
+    /// Choose how fast the quoted on-chain withdrawal confirms (`slow`,
+    /// `medium`, or `fast`); the quote's fee follows.
+    pub fn speed(&mut self, quote_id: u64, speed: &str) {
+        let Some(speed) = Speed::parse(speed) else {
+            return;
+        };
+        let mut shared = self.lock();
+        let Some(node) = shared.node.clone() else {
+            return;
+        };
+        let Sending::Quoted(quote) = &mut shared.send else {
+            return;
+        };
+        if quote.id != quote_id || !quote.speeds.iter().any(|(offered, _)| *offered == speed) {
+            return;
+        }
+        // Only the node's stored quote changes; nothing reaches the network.
+        match node.set_speed(quote_id, speed) {
+            Ok(fee) => {
+                quote.fee_sats = fee;
+                quote.speed = Some(speed);
+            }
+            Err(message) => shared.send = Sending::Failed(message),
+        }
+    }
+
+    /// Start refunding a waiting deposit: read the fee rates.
+    pub fn refund_start(&mut self, txid: &str, vout: u32) {
+        let (node, generation) = {
+            let mut shared = self.lock();
+            let open = shared.deposits.iter().any(|deposit| {
+                deposit.txid == txid && deposit.vout == vout && deposit.refund_txid.is_none()
+            });
+            let Some(node) = shared.node.clone().filter(|_| open) else {
+                return;
+            };
+            if shared.refund.as_ref().is_some_and(|refund| refund.busy) {
+                return;
+            }
+            shared.refund = Some(Refund {
+                txid: txid.to_owned(),
+                vout,
+                rates: None,
+                review: None,
+                busy: true,
+                message: None,
+            });
+            (node, shared.generation)
+        };
+        let (shared, txid) = (self.shared.clone(), txid.to_owned());
+        std::thread::spawn(move || {
+            let rates = node.fee_rates();
+            let mut state = lock(&shared);
+            if state.generation != generation {
+                return;
+            }
+            if let Some(refund) = state.refund.as_mut().filter(|refund| refund.txid == txid) {
+                refund.busy = false;
+                match rates {
+                    Ok(rates) => refund.rates = Some(rates),
+                    Err(message) => refund.message = Some(message),
+                }
+            }
+        });
+    }
+
+    /// Review a refund to `address` at `speed`, from the rates read. Nothing
+    /// is sent until [`Wallet::refund`].
+    pub fn refund_review(&mut self, txid: &str, vout: u32, address: &str, speed: &str) {
+        let mut shared = self.lock();
+        let amount = shared
+            .deposits
+            .iter()
+            .find(|deposit| deposit.txid == txid && deposit.vout == vout)
+            .map(|deposit| deposit.amount_sats);
+        let own = shared.addresses.bitcoin.clone();
+        let Some(refund) = shared
+            .refund
+            .as_mut()
+            .filter(|refund| refund.txid == txid && refund.vout == vout && !refund.busy)
+        else {
+            return;
+        };
+        let (Some(rates), Some(amount)) = (refund.rates, amount) else {
+            return;
+        };
+        refund.review = None;
+        let address = address.trim();
+        let Some(speed) = Speed::parse(speed) else {
+            refund.message = Some("Choose how fast the refund should confirm.".into());
+            return;
+        };
+        if !bitcoin_address_shape(address) {
+            refund.message = Some("Enter a Bitcoin address to refund to.".into());
+            return;
+        }
+        if own
+            .as_deref()
+            .is_some_and(|own| own.eq_ignore_ascii_case(address))
+        {
+            refund.message =
+                Some("That is this wallet's own deposit address. Refund to another wallet.".into());
+            return;
+        }
+        let rate = rates.rate(speed);
+        let fee_sats = rate.saturating_mul(REFUND_VBYTES);
+        if fee_sats >= amount {
+            refund.message = Some(format!(
+                "At {rate} sat/vB the fee would take the whole deposit. Choose a slower speed or claim it instead."
+            ));
+            return;
+        }
+        refund.message = None;
+        refund.review = Some(RefundReview {
+            address: address.to_owned(),
+            speed,
+            rate,
+            fee_sats,
+            amount_sats: amount,
+        });
+    }
+
+    /// Send the reviewed refund, once.
+    pub fn refund(&mut self, txid: &str, vout: u32) {
+        let (node, review, generation) = {
+            let mut shared = self.lock();
+            let Some(node) = shared.node.clone() else {
+                return;
+            };
+            let generation = shared.generation;
+            let Some(refund) = shared.refund.as_mut() else {
+                return;
+            };
+            let Some(review) = refund
+                .review
+                .take()
+                .filter(|_| refund.txid == txid && refund.vout == vout && !refund.busy)
+            else {
+                return;
+            };
+            refund.busy = true;
+            refund.message = None;
+            (node, review, generation)
+        };
+        let (shared, home, txid) = (self.shared.clone(), self.home.clone(), txid.to_owned());
+        std::thread::spawn(move || {
+            let sent = node.refund(&txid, vout, &review.address, review.rate);
+            {
+                let mut state = lock(&shared);
+                if state.generation != generation {
+                    return;
+                }
+                if let Some(refund) = state.refund.as_mut().filter(|refund| refund.txid == txid) {
+                    refund.busy = false;
+                    refund.message = Some(match sent {
+                        Ok(refund_txid) => format!(
+                            "Refund sent to {} in transaction {}. It arrives once it confirms.",
+                            shorten(&review.address),
+                            shorten(&refund_txid)
+                        ),
+                        Err(message) => message,
+                    });
+                }
+            }
+            read(&shared, &home, generation, false);
+        });
+    }
+
+    /// Close the refund step.
+    pub fn refund_reset(&mut self) {
+        let mut shared = self.lock();
+        if !shared.refund.as_ref().is_some_and(|refund| refund.busy) {
+            shared.refund = None;
+        }
+    }
+
+    /// The saved unilateral-exit state as a file for the person to keep:
+    /// its name and contents. Only the direct reply to an explicit export
+    /// carries it.
+    pub fn exit_export(&self) -> Result<(String, String), String> {
+        let vault = self.lock().vault.clone();
+        let saved = vault.and_then(|vault| vault.load()).ok_or_else(|| {
+            "No exit backup has been saved yet. Refresh the wallet first.".to_string()
+        })?;
+        Ok((
+            format!("openagents-spark-exit-{}.json", saved.saved_at),
+            saved.state,
+        ))
+    }
+
     /// Close the claim step.
     pub fn claim_reset(&mut self) {
         let mut shared = self.lock();
@@ -1143,6 +1514,7 @@ impl Wallet {
             || shared.invoice_busy
             || shared.buy_busy
             || shared.claim.as_ref().is_some_and(|claim| claim.busy)
+            || shared.refund.as_ref().is_some_and(|refund| refund.busy)
             || matches!(shared.send, Sending::Quoting | Sending::Paying(_))
     }
 
@@ -1239,6 +1611,14 @@ impl Wallet {
             },
             deposits: shared.deposits.iter().map(deposit_view).collect(),
             claim: shared.claim.as_ref().map(claim_view),
+            refund: shared.refund.as_ref().map(refund_view),
+            backup: BackupView {
+                title: "Exit backup",
+                detail: "If Spark's operators ever stop, this file and your recovery words let you take your bitcoin out on the Bitcoin chain yourself. The wallet saves it on this phone after each sync. It holds no keys, but it shows your balance, so keep the exported file private.",
+                saved_at: shared.exit_saved_at,
+                can_export: shared.exit_saved_at.is_some(),
+                error: shared.exit_error.clone(),
+            },
         }))
     }
 }
@@ -1254,6 +1634,11 @@ fn read(shared: &Mutex<Shared>, home: &Path, generation: u64, sync: bool) {
         return;
     };
     let synced = if sync { node.sync() } else { Ok(()) };
+    let vault = lock(shared).vault.clone();
+    let backup = match (&synced, vault) {
+        (Ok(()), Some(vault)) => Some(back_up(node.as_ref(), vault.as_ref())),
+        _ => None,
+    };
     let balance = node.balance();
     let payments = node.payments(HISTORY_LIMIT);
     let deposits = node.deposits();
@@ -1284,6 +1669,32 @@ fn read(shared: &Mutex<Shared>, home: &Path, generation: u64, sync: bool) {
     if let Ok(deposits) = deposits {
         state.deposits = deposits;
     }
+    match backup {
+        Some(Ok(saved_at)) => {
+            state.exit_saved_at = Some(saved_at);
+            state.exit_error = None;
+        }
+        Some(Err(message)) => state.exit_error = Some(message),
+        None => {}
+    }
+}
+
+/// Save the exit state when it changed; when the saved one dates from.
+fn back_up(node: &dyn Node, vault: &dyn Vault) -> Result<u64, String> {
+    let state = node
+        .exit_state()
+        .map_err(|_| "The exit backup could not be read from the wallet.".to_string())?;
+    if let Some(saved) = vault.load().filter(|saved| saved.state == state) {
+        return Ok(saved.saved_at);
+    }
+    let saved = SavedExit {
+        state,
+        saved_at: now(),
+    };
+    vault
+        .save(&saved)
+        .map_err(|_| "The exit backup could not be saved on this phone.".to_string())?;
+    Ok(saved.saved_at)
 }
 
 fn code(text: &str, uri: &str, caption: String) -> Code {
@@ -1353,11 +1764,56 @@ fn deposit_view(row: &DepositRow) -> DepositView {
         txid: row.txid.clone(),
         vout: row.vout,
         amount: sats(row.amount_sats),
-        status: match (&row.problem, row.mature) {
-            (Some(problem), _) => problem.clone(),
-            (None, false) => "Waiting for confirmations.".into(),
-            (None, true) => "Confirmed; the wallet is claiming it.".into(),
+        status: match (&row.refund_txid, &row.problem, row.mature) {
+            (Some(refund), _, _) => format!(
+                "Refund sent in transaction {}. It leaves the wallet once it confirms.",
+                shorten(refund)
+            ),
+            (None, Some(problem), _) => {
+                format!("{problem} Claim it at a quoted fee, or refund it on-chain.")
+            }
+            (None, None, false) => "Waiting for 3 confirmations.".into(),
+            (None, None, true) => "Confirmed; the wallet is claiming it.".into(),
         },
+        actionable: row.refund_txid.is_none(),
+    }
+}
+
+fn refund_view(refund: &Refund) -> RefundView {
+    RefundView {
+        txid: refund.txid.clone(),
+        vout: refund.vout,
+        busy: refund.busy,
+        speeds: refund.rates.map_or_else(Vec::new, |rates| {
+            Speed::ALL
+                .into_iter()
+                .map(|speed| {
+                    let rate = rates.rate(speed);
+                    SpeedView {
+                        id: speed.id(),
+                        label: speed.label(),
+                        fee: format!(
+                            "about {} at {rate} sat/vB",
+                            sats(rate.saturating_mul(REFUND_VBYTES))
+                        ),
+                        chosen: refund
+                            .review
+                            .as_ref()
+                            .is_some_and(|review| review.speed == speed),
+                    }
+                })
+                .collect()
+        }),
+        review: refund.review.as_ref().map(|review| {
+            format!(
+                "Refund {} to {}; about {} fee at {} sat/vB.",
+                sats(review.amount_sats.saturating_sub(review.fee_sats)),
+                shorten(&review.address),
+                sats(review.fee_sats),
+                review.rate
+            )
+        }),
+        message: refund.message.clone(),
     }
 }
 
@@ -1400,6 +1856,16 @@ fn quote_view(quote: &Quote) -> QuoteView {
         total: sats(quote.amount_sats.saturating_add(quote.fee_sats)),
         note: quote.note.clone(),
         comment: quote.comment.clone(),
+        speeds: quote
+            .speeds
+            .iter()
+            .map(|(speed, fee)| SpeedView {
+                id: speed.id(),
+                label: speed.label(),
+                fee: sats(*fee),
+                chosen: quote.speed == Some(*speed),
+            })
+            .collect(),
     }
 }
 
@@ -1417,6 +1883,24 @@ fn payment_view(row: &PaymentRow) -> PaymentView {
         status: row.status.clone(),
         at: row.at,
     }
+}
+
+/// A mainnet Bitcoin address by its shape: bech32 `bc1…`, or base58 `1…`
+/// or `3…`. The SDK checks it fully when it builds the transaction.
+fn bitcoin_address_shape(address: &str) -> bool {
+    let lower = address.to_ascii_lowercase();
+    let bech32 = lower.starts_with("bc1")
+        && (42..=62).contains(&lower.len())
+        && (address == lower || address == address.to_ascii_uppercase())
+        && lower[3..]
+            .chars()
+            .all(|c| "qpzry9x8gf2tvdw0s3jn54khce6mua7l".contains(c));
+    let base58 = (address.starts_with('1') || address.starts_with('3'))
+        && (26..=35).contains(&address.len())
+        && address
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() && !matches!(c, '0' | 'O' | 'I' | 'l'));
+    bech32 || base58
 }
 
 /// The start and end of a long code, for the confirm screen.
@@ -1528,6 +2012,9 @@ mod tests {
         payments: Mutex<Vec<PaymentRow>>,
         deposits: Mutex<Vec<DepositRow>>,
         claims: Mutex<Vec<(String, u32, u64)>>,
+        refunds: Mutex<Vec<(String, u32, String, u64)>>,
+        speeds: Mutex<Vec<(u64, Speed)>>,
+        exit: Mutex<String>,
         notify: Mutex<Option<Arc<dyn Fn() + Send + Sync>>>,
     }
 
@@ -1562,6 +2049,18 @@ mod tests {
                     fee_sats: 3,
                     note: Some("Coffee".into()),
                     comment: None,
+                    speeds: vec![],
+                    speed: None,
+                }),
+                ("bc1qfriend", Some(amount)) => Ok(Quote {
+                    id: 10,
+                    destination: Destination::Bitcoin("bc1qfriend".into()),
+                    amount_sats: amount,
+                    fee_sats: 400,
+                    note: None,
+                    comment: None,
+                    speeds: vec![(Speed::Slow, 250), (Speed::Medium, 400), (Speed::Fast, 900)],
+                    speed: Some(Speed::Medium),
                 }),
                 ("spark1friend", None) => Err(QuoteFailure::NeedsAmount(Ask::amount(
                     "Enter the amount to send to this address.",
@@ -1573,6 +2072,8 @@ mod tests {
                     fee_sats: 0,
                     note: None,
                     comment: None,
+                    speeds: vec![],
+                    speed: None,
                 }),
                 // A Lightning address and an LNURL code resolve to a pay
                 // request, whose terms decide what is asked.
@@ -1596,6 +2097,8 @@ mod tests {
                         fee_sats: 2,
                         note: terms.description,
                         comment,
+                        speeds: vec![],
+                        speed: None,
                     })
                 }
                 _ => Err(QuoteFailure::Refused(
@@ -1652,9 +2155,364 @@ mod tests {
             self.balance.fetch_add(48_800, Ordering::SeqCst);
             Ok("Claimed. It's in your balance.".into())
         }
+        fn fee_rates(&self) -> Result<FeeRates, String> {
+            Ok(FeeRates {
+                fastest: 20,
+                half_hour: 8,
+                hour: 0,
+            })
+        }
+        fn refund(
+            &self,
+            txid: &str,
+            vout: u32,
+            address: &str,
+            rate: u64,
+        ) -> Result<String, String> {
+            self.refunds
+                .lock()
+                .unwrap()
+                .push((txid.to_owned(), vout, address.to_owned(), rate));
+            for deposit in self.deposits.lock().unwrap().iter_mut() {
+                if deposit.txid == txid {
+                    deposit.refund_txid = Some("cd".repeat(32));
+                }
+            }
+            Ok("cd".repeat(32))
+        }
+        fn set_speed(&self, quote: u64, speed: Speed) -> Result<u64, String> {
+            self.speeds.lock().unwrap().push((quote, speed));
+            Ok(match speed {
+                Speed::Slow => 250,
+                Speed::Medium => 400,
+                Speed::Fast => 900,
+            })
+        }
+        fn exit_state(&self) -> Result<String, String> {
+            Ok(self.exit.lock().unwrap().clone())
+        }
         fn subscribe(&self, notify: Arc<dyn Fn() + Send + Sync>) {
             *self.notify.lock().unwrap() = Some(notify);
         }
+    }
+
+    #[derive(Default)]
+    struct MemoryVault {
+        saved: Mutex<Option<SavedExit>>,
+        saves: AtomicU64,
+    }
+
+    impl Vault for MemoryVault {
+        fn save(&self, saved: &SavedExit) -> Result<(), String> {
+            self.saves.fetch_add(1, Ordering::SeqCst);
+            *self.saved.lock().unwrap() = Some(saved.clone());
+            Ok(())
+        }
+        fn load(&self) -> Option<SavedExit> {
+            self.saved.lock().unwrap().clone()
+        }
+        fn clear(&self) {
+            *self.saved.lock().unwrap() = None;
+        }
+    }
+
+    fn deposit(
+        txid: &str,
+        mature: bool,
+        problem: Option<&str>,
+        refund: Option<&str>,
+    ) -> DepositRow {
+        DepositRow {
+            txid: txid.into(),
+            vout: 0,
+            amount_sats: 40_000,
+            mature,
+            problem: problem.map(str::to_owned),
+            refund_txid: refund.map(str::to_owned),
+        }
+    }
+
+    #[test]
+    fn each_deposit_state_reads_plainly_and_only_open_ones_can_be_acted_on() {
+        let home = tempfile::tempdir().expect("temp dir");
+        let node = Arc::new(Fake::default());
+        *node.deposits.lock().unwrap() = vec![
+            deposit("aa", false, None, None),
+            deposit("bb", true, None, None),
+            deposit(
+                "cc",
+                true,
+                Some("Claiming it costs 1,200 sats, above the automatic limit."),
+                None,
+            ),
+            deposit(
+                "dd",
+                true,
+                Some("The deposit wasn't found on the chain."),
+                None,
+            ),
+            deposit("ee", true, Some("The last claim failed (timeout)."), None),
+            deposit("ff", true, None, Some(&"12".repeat(32))),
+        ];
+        let mut wallet = Wallet::new(
+            home.path().to_path_buf(),
+            opener(node, Arc::new(Mutex::new(vec![]))),
+        );
+        wallet.open(ENTROPY, false);
+        settle(&wallet);
+        let rows: Vec<(String, bool)> = ready(&wallet)
+            .deposits
+            .into_iter()
+            .map(|row| (row.status, row.actionable))
+            .collect();
+        assert_eq!(
+            rows,
+            vec![
+                ("Waiting for 3 confirmations.".into(), true),
+                ("Confirmed; the wallet is claiming it.".into(), true),
+                (
+                    "Claiming it costs 1,200 sats, above the automatic limit. Claim it at a quoted fee, or refund it on-chain.".into(),
+                    true
+                ),
+                (
+                    "The deposit wasn't found on the chain. Claim it at a quoted fee, or refund it on-chain.".into(),
+                    true
+                ),
+                (
+                    "The last claim failed (timeout). Claim it at a quoted fee, or refund it on-chain.".into(),
+                    true
+                ),
+                (
+                    "Refund sent in transaction 12121212121212…1212121212. It leaves the wallet once it confirms.".into(),
+                    false
+                ),
+            ]
+        );
+        // A deposit already refunded can't start another refund.
+        wallet.refund_start("ff", 0);
+        assert!(ready(&wallet).refund.is_none());
+    }
+
+    #[test]
+    fn a_refund_is_sent_once_to_a_reviewed_address_at_a_chosen_speed() {
+        let home = tempfile::tempdir().expect("temp dir");
+        let node = Arc::new(Fake::default());
+        *node.deposits.lock().unwrap() = vec![deposit("cc", true, Some("Too costly."), None)];
+        let mut wallet = Wallet::new(
+            home.path().to_path_buf(),
+            opener(node.clone(), Arc::new(Mutex::new(vec![]))),
+        );
+        wallet.open(ENTROPY, false);
+        settle(&wallet);
+        // Nothing to review before the rates are read.
+        wallet.refund_review(
+            "cc",
+            0,
+            "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq",
+            "slow",
+        );
+        assert!(ready(&wallet).refund.is_none());
+        wallet.refund_start("cc", 0);
+        settle(&wallet);
+        let started = ready(&wallet).refund.expect("refund");
+        let speeds: Vec<(&str, String)> = started
+            .speeds
+            .iter()
+            .map(|speed| (speed.id, speed.fee.clone()))
+            .collect();
+        // A zero rate is raised to 1 sat/vB.
+        assert_eq!(
+            speeds,
+            vec![
+                ("slow", "about 111 sats at 1 sat/vB".to_string()),
+                ("medium", "about 888 sats at 8 sat/vB".to_string()),
+                ("fast", "about 2,220 sats at 20 sat/vB".to_string()),
+            ]
+        );
+        for (address, expected) in [
+            ("not an address", "Enter a Bitcoin address to refund to."),
+            (
+                "bitcoin:bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq",
+                "Enter a Bitcoin address to refund to.",
+            ),
+            ("bc1qfakedeposit", "Enter a Bitcoin address to refund to."),
+        ] {
+            wallet.refund_review("cc", 0, address, "fast");
+            let refund = ready(&wallet).refund.expect("refund");
+            assert_eq!(refund.message.as_deref(), Some(expected), "{address}");
+            assert_eq!(refund.review, None);
+        }
+        wallet.refund_review(
+            "cc",
+            0,
+            "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq",
+            "warp",
+        );
+        assert!(
+            ready(&wallet)
+                .refund
+                .unwrap()
+                .message
+                .unwrap()
+                .contains("how fast")
+        );
+        // Refunding without a review sends nothing.
+        wallet.refund("cc", 0);
+        assert!(node.refunds.lock().unwrap().is_empty());
+        wallet.refund_review(
+            "cc",
+            0,
+            " bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq ",
+            "medium",
+        );
+        let reviewed = ready(&wallet).refund.expect("refund");
+        assert_eq!(
+            reviewed.review.as_deref(),
+            Some(
+                "Refund 39,112 sats to bc1qar0srrr7xf…gtzzwf5mdq; about 888 sats fee at 8 sat/vB."
+            )
+        );
+        assert!(
+            reviewed
+                .speeds
+                .iter()
+                .any(|speed| speed.id == "medium" && speed.chosen)
+        );
+        wallet.refund("cc", 0);
+        wallet.refund("cc", 0);
+        settle(&wallet);
+        assert_eq!(
+            *node.refunds.lock().unwrap(),
+            vec![(
+                "cc".to_string(),
+                0,
+                "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq".to_string(),
+                8
+            )]
+        );
+        let done = ready(&wallet);
+        assert!(
+            done.refund
+                .unwrap()
+                .message
+                .unwrap()
+                .starts_with("Refund sent to bc1q")
+        );
+        assert!(!done.deposits[0].actionable);
+        wallet.refund_reset();
+        assert!(ready(&wallet).refund.is_none());
+
+        // A fee that would take the whole deposit is refused.
+        *node.deposits.lock().unwrap() = vec![DepositRow {
+            amount_sats: 500,
+            ..deposit("small", true, None, None)
+        }];
+        wallet.refresh();
+        settle(&wallet);
+        wallet.refund_start("small", 0);
+        settle(&wallet);
+        wallet.refund_review(
+            "small",
+            0,
+            "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq",
+            "fast",
+        );
+        assert!(
+            ready(&wallet)
+                .refund
+                .unwrap()
+                .message
+                .unwrap()
+                .contains("take the whole deposit")
+        );
+    }
+
+    #[test]
+    fn an_onchain_withdrawal_shows_each_speed_and_pays_the_chosen_one() {
+        let home = tempfile::tempdir().expect("temp dir");
+        let node = Arc::new(Fake::default());
+        node.balance.store(90_000, Ordering::SeqCst);
+        let mut wallet = Wallet::new(
+            home.path().to_path_buf(),
+            opener(node.clone(), Arc::new(Mutex::new(vec![]))),
+        );
+        wallet.open(ENTROPY, false);
+        settle(&wallet);
+        wallet.quote("bc1qfriend", "50000", "");
+        settle(&wallet);
+        let quote = ready(&wallet).send.quote.expect("quote");
+        let speeds: Vec<(&str, &str, bool)> = quote
+            .speeds
+            .iter()
+            .map(|speed| (speed.id, speed.fee.as_str(), speed.chosen))
+            .collect();
+        assert_eq!(
+            speeds,
+            vec![
+                ("slow", "250 sats", false),
+                ("medium", "400 sats", true),
+                ("fast", "900 sats", false)
+            ]
+        );
+        wallet.speed(quote.id, "fast");
+        wallet.speed(quote.id, "warp");
+        wallet.speed(999, "slow");
+        let fast = ready(&wallet).send.quote.expect("quote");
+        assert_eq!(
+            (fast.fee.as_str(), fast.total.as_str()),
+            ("900 sats", "50,900 sats")
+        );
+        assert_eq!(*node.speeds.lock().unwrap(), vec![(10, Speed::Fast)]);
+        wallet.pay(fast.id);
+        settle(&wallet);
+        assert_eq!(node.paid.lock().unwrap()[0].0, 10);
+        // A Lightning quote has no speeds.
+        wallet.reset_send();
+        wallet.quote("lnbc-with-amount", "", "");
+        settle(&wallet);
+        assert!(ready(&wallet).send.quote.unwrap().speeds.is_empty());
+    }
+
+    #[test]
+    fn the_exit_state_is_saved_after_each_sync_and_exported_on_request() {
+        let home = tempfile::tempdir().expect("temp dir");
+        let node = Arc::new(Fake::default());
+        *node.exit.lock().unwrap() = r#"{"version":2,"pedigrees":["a"]}"#.into();
+        let vault = Arc::new(MemoryVault::default());
+        let mut wallet = Wallet::new(
+            home.path().to_path_buf(),
+            opener(node.clone(), Arc::new(Mutex::new(vec![]))),
+        )
+        .with_vault(vault.clone());
+        assert!(!ready(&wallet).backup.can_export);
+        assert!(wallet.exit_export().is_err());
+        wallet.open(ENTROPY, false);
+        settle(&wallet);
+        let backup = ready(&wallet).backup;
+        assert!(backup.can_export && backup.saved_at.is_some() && backup.error.is_none());
+        let (name, text) = wallet.exit_export().expect("export");
+        assert!(name.starts_with("openagents-spark-exit-") && name.ends_with(".json"));
+        assert_eq!(text, r#"{"version":2,"pedigrees":["a"]}"#);
+        // An unchanged state is not written again; a changed one is.
+        wallet.refresh();
+        settle(&wallet);
+        assert_eq!(vault.saves.load(Ordering::SeqCst), 1);
+        *node.exit.lock().unwrap() = r#"{"version":2,"pedigrees":["a","b"]}"#.into();
+        wallet.refresh();
+        settle(&wallet);
+        assert_eq!(vault.saves.load(Ordering::SeqCst), 2);
+        assert!(wallet.exit_export().unwrap().1.contains("\"b\""));
+        // The state never reaches the app packet.
+        let json = serde_json::to_string(&wallet.screen()).unwrap();
+        assert!(!json.contains("pedigrees"), "{json}");
+        // A new lifetime shows when it was saved before the wallet starts.
+        let again =
+            Wallet::new(home.path().to_path_buf(), spark_opener()).with_vault(vault.clone());
+        assert!(ready(&again).backup.can_export);
+        // Replacing the wallet forgets the old one's exit state.
+        wallet.open(&hex(&[7; 32]), true);
+        assert!(vault.load().is_none());
+        assert!(!ready(&wallet).backup.can_export);
     }
 
     fn opener(node: Arc<Fake>, seen: Arc<Mutex<Vec<String>>>) -> Opener {
@@ -2132,6 +2990,7 @@ mod tests {
             amount_sats: 50_000,
             mature: true,
             problem: Some("Claiming it costs 1,200 sats, above the automatic limit.".into()),
+            refund_txid: None,
         });
         let mut wallet = Wallet::new(
             home.path().to_path_buf(),
@@ -2241,6 +3100,31 @@ mod tests {
             }),
             Err(QuoteFailure::Refused(_) | QuoteFailure::NeedsAmount(_))
         ));
+    }
+
+    /// The deposit and exit calls against Lightspark's hosted regtest with a
+    /// fresh wallet: fee rates read, no deposits waiting, and an exit state
+    /// that exports and names its network. Funding a deposit there to claim
+    /// and refund it needs the faucet's credentials (`FAUCET_USERNAME` and
+    /// `FAUCET_PASSWORD` in Breez's `spark-itest`), which this repository
+    /// does not hold. Run with `--ignored`; it reaches the network.
+    #[test]
+    #[ignore = "reaches Lightspark's hosted regtest"]
+    fn a_regtest_wallet_reads_fee_rates_deposits_and_its_exit_state() {
+        let home = tempfile::tempdir().expect("temp dir");
+        let mnemonic = bip39::Mnemonic::from_entropy(&rand_entropy())
+            .unwrap()
+            .to_string();
+        let node = crate::spark::SparkNode::open(home.path(), Network::Regtest, &mnemonic)
+            .expect("regtest wallet");
+        node.sync().expect("sync");
+        let rates = node.fee_rates().expect("fee rates");
+        assert!(rates.fastest >= rates.hour, "{rates:?}");
+        assert!(node.deposits().expect("deposits").is_empty());
+        let exit = node.exit_state().expect("exit state");
+        let parsed: serde_json::Value = serde_json::from_str(&exit).expect("json");
+        assert!(parsed.get("version").is_some(), "{exit}");
+        eprintln!("rates {rates:?}; exit state {} bytes", exit.len());
     }
 
     /// A throwaway mainnet wallet with the committed API key: it connects,

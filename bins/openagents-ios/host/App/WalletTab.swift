@@ -5,6 +5,7 @@
 // this view only in a direct reply, and only while their sheet is open.
 import SwiftUI
 import UIKit
+import UniformTypeIdentifiers
 
 /// Rust's Wallet screen (`wallet::Screen`): `failed`, or `ready` with the
 /// summary. `ready` shows from launch: while the wallet starts it carries
@@ -37,6 +38,28 @@ struct WalletState: Decodable, Equatable {
         let total: String
         let note: String?
         let comment: String?
+        let speeds: [Speed]?
+    }
+    struct Speed: Decodable, Equatable, Identifiable {
+        let id: String
+        let label: String
+        let fee: String
+        let chosen: Bool
+    }
+    struct Refund: Decodable, Equatable {
+        let txid: String
+        let vout: UInt32
+        let busy: Bool
+        let speeds: [Speed]
+        let review: String?
+        let message: String?
+    }
+    struct Backup: Decodable, Equatable {
+        let title: String
+        let detail: String
+        let saved_at: UInt64?
+        let can_export: Bool
+        let error: String?
     }
     struct Payment: Decodable, Equatable, Identifiable {
         let id: String
@@ -75,6 +98,7 @@ struct WalletState: Decodable, Equatable {
         let vout: UInt32
         let amount: String
         let status: String
+        let actionable: Bool?
         var id: String { "\(txid):\(vout)" }
     }
     struct Claim: Decodable, Equatable {
@@ -105,6 +129,8 @@ struct WalletState: Decodable, Equatable {
     let buy: Buy?
     let deposits: [Deposit]?
     let claim: Claim?
+    let refund: Refund?
+    let backup: Backup?
 }
 
 struct WalletTab: View {
@@ -125,11 +151,16 @@ struct WalletTab: View {
     @State private var words: [String]?
     @State private var restoring = false
     @State private var showTrust = false
+    @State private var refundAddress = ""
+    @State private var refundSpeed = "medium"
+    @State private var exportFile: ExitFile?
+    @State private var exportError: String?
 
     private var wallet: WalletState? { bridge.packet?.wallet }
     private var loading: Bool { bridge.packet?.wallet_loading == true }
 
     var body: some View {
+        ScrollViewReader { scroller in
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 HStack(alignment: .firstTextBaseline) {
@@ -147,6 +178,27 @@ struct WalletTab: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 20)
             .padding(.vertical, 16)
+        }
+        .task {
+            // Simulator checks: open a refund review, or the backup.
+            let refund = AppTabLaunch.wallet("--wallet-refund")
+            let backup = AppTabLaunch.wallet("--wallet-backup")
+            guard refund != nil || backup != nil else { return }
+            while !Task.isCancelled, wallet?.status != nil || wallet == nil {
+                try? await Task.sleep(for: .seconds(1))
+            }
+            if backup != nil { scroller.scrollTo("wallet-backup", anchor: .bottom); return }
+            guard let refund, let deposit = wallet?.deposits?.first else { return }
+            refundAddress = refund
+            bridge.wallet("wallet_refund_start", ["txid": deposit.txid, "vout": deposit.vout])
+            try? await Task.sleep(for: .seconds(2))
+            if AppTabLaunch.wallet("--wallet-refund-review") != nil {
+                bridge.wallet("wallet_refund_review", ["txid": deposit.txid, "vout": deposit.vout,
+                                                       "address": refund, "speed": refundSpeed])
+                try? await Task.sleep(for: .seconds(2))
+            }
+            scroller.scrollTo("wallet-deposits", anchor: .top)
+        }
         }
         .scrollDismissesKeyboard(.interactively)
         .dismissesKeyboard()
@@ -237,10 +289,11 @@ struct WalletTab: View {
         case .buy: buy(wallet)
         }
         if let deposits = wallet.deposits, !deposits.isEmpty {
-            depositsView(deposits, claim: wallet.claim)
+            depositsView(deposits, claim: wallet.claim, refund: wallet.refund)
         }
         history(wallet.payments ?? [])
         recovery(wallet)
+        if let backup = wallet.backup { backupView(backup) }
     }
 
     private func balance(_ wallet: WalletState) -> some View {
@@ -442,6 +495,17 @@ struct WalletTab: View {
             if let note = quote.note { row("For", note) }
             if let comment = quote.comment { row("Comment", comment) }
             row("Amount", quote.amount)
+            if let speeds = quote.speeds, !speeds.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Speed").foregroundStyle(.gray).font(.callout)
+                    ForEach(speeds) { speed in
+                        speedButton(speed, disabled: paying) {
+                            bridge.wallet("wallet_speed", ["quote": quote.id, "speed": speed.id])
+                        }
+                    }
+                }
+                .accessibilityIdentifier("wallet-speeds")
+            }
             row("Fee", quote.fee)
             Divider().overlay(Color.white.opacity(0.3))
             row("Total", quote.total).fontWeight(.semibold)
@@ -459,6 +523,23 @@ struct WalletTab: View {
         }
         .padding(14)
         .background(Color(white: 0.1), in: RoundedRectangle(cornerRadius: 14))
+    }
+
+    private func speedButton(_ speed: WalletState.Speed, disabled: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack {
+                Image(systemName: speed.chosen ? "largecircle.fill.circle" : "circle")
+                Text(speed.label).multilineTextAlignment(.leading)
+                Spacer()
+                Text(speed.fee).monospacedDigit()
+            }
+            .font(.footnote)
+            .foregroundStyle(.white)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(disabled)
+        .accessibilityAddTraits(speed.chosen ? .isSelected : [])
     }
 
     private func row(_ label: String, _ value: String) -> some View {
@@ -504,19 +585,30 @@ struct WalletTab: View {
 
     // MARK: Deposits, history, recovery
 
-    private func depositsView(_ deposits: [WalletState.Deposit], claim: WalletState.Claim?) -> some View {
+    private func depositsView(_ deposits: [WalletState.Deposit], claim: WalletState.Claim?, refund: WalletState.Refund?) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Bitcoin deposits").font(.headline).foregroundStyle(.white)
+                .id("wallet-deposits")
             ForEach(deposits) { deposit in
                 VStack(alignment: .leading, spacing: 6) {
                     HStack {
                         Text(deposit.amount).foregroundStyle(.white)
                         Spacer()
-                        Button("Claim") {
-                            bridge.wallet("wallet_claim_quote", ["txid": deposit.txid, "vout": deposit.vout])
+                        if deposit.actionable != false {
+                            Button("Claim") {
+                                bridge.wallet("wallet_claim_quote", ["txid": deposit.txid, "vout": deposit.vout])
+                            }
+                            .buttonStyle(.bordered).tint(.white)
+                            .disabled(claim?.busy == true)
+                            Button("Refund") {
+                                refundAddress = ""
+                                refundSpeed = "medium"
+                                bridge.wallet("wallet_refund_start", ["txid": deposit.txid, "vout": deposit.vout])
+                            }
+                            .buttonStyle(.bordered).tint(.white)
+                            .disabled(refund?.busy == true)
+                            .accessibilityIdentifier("wallet-refund")
                         }
-                        .buttonStyle(.bordered).tint(.white)
-                        .disabled(claim?.busy == true)
                     }
                     Text(deposit.status).font(.footnote).foregroundStyle(.gray)
                     if let claim, claim.txid == deposit.txid, claim.vout == deposit.vout {
@@ -535,10 +627,87 @@ struct WalletTab: View {
                             Text(message).font(.footnote).foregroundStyle(.white)
                         }
                     }
+                    if let refund, refund.txid == deposit.txid, refund.vout == deposit.vout {
+                        refundView(refund)
+                    }
                 }
                 .padding(12)
                 .background(Color(white: 0.08), in: RoundedRectangle(cornerRadius: 12))
             }
+        }
+    }
+
+    @ViewBuilder private func refundView(_ refund: WalletState.Refund) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Refund on-chain").font(.subheadline.weight(.semibold)).foregroundStyle(.white)
+            if refund.busy { ProgressView() }
+            if !refund.speeds.isEmpty && refund.review == nil {
+                TextField("Bitcoin address to refund to", text: $refundAddress)
+                    .autocorrectionDisabled().textInputAutocapitalization(.never)
+                    .textFieldStyle(.roundedBorder)
+                    .accessibilityIdentifier("wallet-refund-address")
+                ForEach(refund.speeds) { speed in
+                    let chosen = WalletState.Speed(id: speed.id, label: speed.label, fee: speed.fee, chosen: speed.id == refundSpeed)
+                    speedButton(chosen, disabled: false) { refundSpeed = speed.id }
+                }
+                HStack {
+                    Button("Review refund") {
+                        bridge.wallet("wallet_refund_review", ["txid": refund.txid, "vout": refund.vout,
+                                                               "address": refundAddress, "speed": refundSpeed])
+                    }
+                    .buttonStyle(.borderedProminent).tint(.white).foregroundStyle(.black)
+                    .disabled(refundAddress.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    Button("Cancel") { bridge.wallet("wallet_refund_reset") }.tint(.white)
+                }
+            }
+            if let review = refund.review {
+                Text(review).font(.footnote).foregroundStyle(.white)
+                HStack {
+                    Button("Refund") {
+                        bridge.wallet("wallet_refund", ["txid": refund.txid, "vout": refund.vout])
+                    }
+                    .buttonStyle(.borderedProminent).tint(.white).foregroundStyle(.black)
+                    .disabled(refund.busy)
+                    .accessibilityIdentifier("wallet-refund-confirm")
+                    Button("Cancel") { bridge.wallet("wallet_refund_reset") }.tint(.white)
+                }
+            }
+            if let message = refund.message {
+                Text(message).font(.footnote).foregroundStyle(.white)
+                if refund.review == nil && refund.speeds.isEmpty && !refund.busy {
+                    Button("Close") { bridge.wallet("wallet_refund_reset") }.tint(.white)
+                }
+            }
+        }
+        .padding(.top, 4)
+    }
+
+    private func backupView(_ backup: WalletState.Backup) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(backup.title).font(.headline).foregroundStyle(.white)
+            Text(backup.detail).font(.footnote).foregroundStyle(.gray)
+            Text(backup.saved_at.map { "Saved on this phone " + Date(timeIntervalSince1970: TimeInterval($0)).formatted(.relative(presentation: .named)) } ?? "Not saved yet. It saves after the wallet syncs.")
+                .font(.footnote).foregroundStyle(.white)
+            if let error = backup.error ?? exportError { Text(error).font(.footnote).foregroundStyle(.white) }
+            Button("Export to Files", systemImage: "square.and.arrow.down") {
+                exportError = nil
+                bridge.walletExitExport { result in
+                    switch result {
+                    case .success(let (name, text)): exportFile = ExitFile(name: name, text: text)
+                    case .failure(let error): exportError = error.message
+                    }
+                }
+            }
+            .buttonStyle(.bordered).tint(.white)
+            .disabled(!backup.can_export)
+            .accessibilityIdentifier("wallet-export-exit")
+        }
+        .id("wallet-backup")
+        .fileExporter(isPresented: Binding(get: { exportFile != nil }, set: { if !$0 { exportFile = nil } }),
+                      document: exportFile, contentType: .json,
+                      defaultFilename: exportFile?.name ?? "openagents-spark-exit.json") { result in
+            if case .failure(let error) = result { exportError = error.localizedDescription }
+            exportFile = nil
         }
     }
 
@@ -716,13 +885,27 @@ private struct RestoreSheet: View {
     }
 }
 
+/// The exit backup as a document for the Files exporter. It exists only
+/// while the exporter is open.
+struct ExitFile: FileDocument {
+    static var readableContentTypes: [UTType] { [.json] }
+    let name: String
+    let text: String
+
+    init(name: String, text: String) { self.name = name; self.text = text }
+    init(configuration: ReadConfiguration) throws { throw CocoaError(.fileReadUnsupportedScheme) }
+    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
+        FileWrapper(regularFileWithContents: Data(text.utf8))
+    }
+}
+
 extension WalletState {
     /// The screen before Rust's first packet arrives.
     static let opening = WalletState(
         state: "ready", message: nil, network: "Bitcoin · Spark", balance: nil, balance_btc: nil,
         empty: nil, synced_at: nil, refreshing: true, error: nil, balance_unknown: true,
         status: "Opening the wallet…", warning: nil, trust: nil, receive: nil, send: nil,
-        payments: nil, can_show_words: false, buy: nil, deposits: nil, claim: nil)
+        payments: nil, can_show_words: false, buy: nil, deposits: nil, claim: nil, refund: nil, backup: nil)
 }
 
 /// Dismiss the keyboard from a Done bar just above it and from a tap

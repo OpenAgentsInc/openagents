@@ -82,7 +82,12 @@ The app has four tabs, shown as icons:
   (`com.openagents.app.spark`). The **i** button opens the trust note.
   Simulator arguments: `--wallet-section receive|send|buy`,
   `--wallet-method lightning|spark|bitcoin`, `--wallet-invoice AMOUNT`,
-  `--wallet-send TEXT` (with `--wallet-amount SATS`), and `--wallet-info 1`.
+  `--wallet-send TEXT` (with `--wallet-amount SATS`), `--wallet-info 1`, and,
+  on the offline fixture wallet `--wallet-fixture 1` (debug builds, no
+  money), `--wallet-refund ADDRESS` with `--wallet-refund-review 1` and
+  `--wallet-backup 1`. On-chain withdrawals show three speeds; deposits that
+  need attention offer a quoted claim or an on-chain refund; the exit backup
+  exports to Files.
 - **Account** holds **Computers**, **Tailnet**, **Identity keys**, **About
   this device**, and **Changelog**, and links to the source code and to
   OpenAgents on X. See [Account](#account).

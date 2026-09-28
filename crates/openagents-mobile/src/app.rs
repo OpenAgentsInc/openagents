@@ -60,6 +60,11 @@ pub struct Launch {
     /// length is not bounded by the view's size.
     #[serde(default)]
     pub pulled_transcripts: bool,
+    /// Run the Wallet tab on an offline fixture wallet, for simulator
+    /// screenshots. Honored only in debug builds; it holds no money and
+    /// reaches no network.
+    #[serde(default)]
+    pub wallet_fixture: bool,
 }
 
 /// What this phone's Computers screens can do.
@@ -222,6 +227,34 @@ pub enum Request {
     },
     /// Close the deposit claim step.
     WalletClaimReset,
+    /// Choose how fast a quoted on-chain withdrawal confirms: `slow`,
+    /// `medium`, or `fast`.
+    WalletSpeed {
+        quote: u64,
+        speed: String,
+    },
+    /// Start refunding a waiting deposit: read the fee rates.
+    WalletRefundStart {
+        txid: String,
+        vout: u32,
+    },
+    /// Review a refund to `address` at `speed`; nothing is sent.
+    WalletRefundReview {
+        txid: String,
+        vout: u32,
+        address: String,
+        speed: String,
+    },
+    /// Send the reviewed refund, which the person confirmed.
+    WalletRefund {
+        txid: String,
+        vout: u32,
+    },
+    /// Close the refund step.
+    WalletRefundReset,
+    /// The saved unilateral-exit state as a file, in the direct reply only.
+    /// The host sends it when the person taps Export.
+    WalletExitExport,
     /// The person read the wallet's trust note.
     WalletAcknowledge,
     /// The recovery words, in the direct reply only. The host sends it after
@@ -242,6 +275,77 @@ pub struct WalletSecretPacket {
     pub words: Option<Vec<String>>,
     pub entropy_hex: Option<String>,
     pub error: Option<String>,
+}
+
+/// The direct reply to [`Request::WalletExitExport`]. It never reaches the
+/// app packet.
+#[derive(Serialize)]
+pub struct WalletFilePacket {
+    pub schema: &'static str,
+    pub file_name: Option<String>,
+    pub text: Option<String>,
+    pub error: Option<String>,
+}
+
+/// The unilateral-exit backup in the app's encrypted store. The store takes
+/// items up to 192 KiB and an exit state grows with the wallet's leaves, so
+/// it is kept in parts under an index written last.
+struct ExitVault(Cache);
+
+#[derive(Serialize, Deserialize)]
+struct ExitIndex {
+    saved_at: u64,
+    parts: usize,
+}
+
+/// Characters per part, well inside the store's item bound.
+const EXIT_PART: usize = 120 * 1024;
+/// The most parts kept: about 7.5 MB.
+const EXIT_PARTS: usize = 64;
+
+impl crate::wallet::Vault for ExitVault {
+    fn save(&self, saved: &crate::wallet::SavedExit) -> Result<(), String> {
+        let chars: Vec<char> = saved.state.chars().collect();
+        let parts: Vec<String> = chars
+            .chunks(EXIT_PART)
+            .map(|part| part.iter().collect())
+            .collect();
+        if parts.is_empty() || parts.len() > EXIT_PARTS {
+            return Err("exit state size out of bounds".into());
+        }
+        for (index, part) in parts.iter().enumerate() {
+            self.0.write(&format!("spark-exit-{index}"), part)?;
+        }
+        self.0.write(
+            "spark-exit",
+            &ExitIndex {
+                saved_at: saved.saved_at,
+                parts: parts.len(),
+            },
+        )
+    }
+    fn load(&self) -> Option<crate::wallet::SavedExit> {
+        let index: ExitIndex = self.0.read("spark-exit").ok().flatten()?;
+        if index.parts == 0 || index.parts > EXIT_PARTS {
+            return None;
+        }
+        let mut state = String::new();
+        for part in 0..index.parts {
+            state.push_str(
+                &self
+                    .0
+                    .read::<String>(&format!("spark-exit-{part}"))
+                    .ok()??,
+            );
+        }
+        Some(crate::wallet::SavedExit {
+            state,
+            saved_at: index.saved_at,
+        })
+    }
+    fn clear(&self) {
+        let _ = self.0.write("spark-exit", &Option::<ExitIndex>::None);
+    }
 }
 
 impl Request {
@@ -468,10 +572,25 @@ impl App {
             admissions: Cache::open(&config.state_dir.join("admissions"), &secret),
             tailnet_revision: 0,
             tailnet_view: None,
-            wallet: crate::wallet::Wallet::new(
-                config.state_dir.join("spark"),
-                crate::wallet::spark_opener(),
-            ),
+            wallet: {
+                // The fixture keeps its own folders, so it never touches the
+                // real wallet's caches or exit backup.
+                let fixture = launch.wallet_fixture && cfg!(debug_assertions);
+                let (home, exit, opener) = if fixture {
+                    (
+                        "spark-fixture",
+                        "spark-fixture-exit",
+                        crate::wallet_fixture::opener(),
+                    )
+                } else {
+                    ("spark", "spark-exit", crate::wallet::spark_opener())
+                };
+                let wallet = crate::wallet::Wallet::new(config.state_dir.join(home), opener);
+                match Cache::open(&config.state_dir.join(exit), &secret) {
+                    Ok(cache) => wallet.with_vault(Arc::new(ExitVault(cache))),
+                    Err(_) => wallet,
+                }
+            },
             notices,
         })
     }
@@ -492,6 +611,22 @@ impl App {
             Request::WalletWords | Request::WalletRestoreCheck { .. }
         ) {
             let packet = self.wallet_secret(request);
+            return serde_json::to_vec(&packet).unwrap_or_default();
+        }
+        if matches!(request, Request::WalletExitExport) {
+            let mut packet = WalletFilePacket {
+                schema: "openagents.wallet-file.v1",
+                file_name: None,
+                text: None,
+                error: None,
+            };
+            match self.wallet.exit_export() {
+                Ok((name, text)) => {
+                    packet.file_name = Some(name);
+                    packet.text = Some(text);
+                }
+                Err(error) => packet.error = Some(error),
+            }
             return serde_json::to_vec(&packet).unwrap_or_default();
         }
         let packet = self.call(request);
@@ -667,10 +802,22 @@ impl App {
             Request::WalletClaimQuote { txid, vout } => self.wallet.claim_quote(&txid, vout),
             Request::WalletClaim { txid, vout } => self.wallet.claim(&txid, vout),
             Request::WalletClaimReset => self.wallet.claim_reset(),
+            Request::WalletSpeed { quote, speed } => self.wallet.speed(quote, &speed),
+            Request::WalletRefundStart { txid, vout } => self.wallet.refund_start(&txid, vout),
+            Request::WalletRefundReview {
+                txid,
+                vout,
+                address,
+                speed,
+            } => self.wallet.refund_review(&txid, vout, &address, &speed),
+            Request::WalletRefund { txid, vout } => self.wallet.refund(&txid, vout),
+            Request::WalletRefundReset => self.wallet.refund_reset(),
             Request::WalletAcknowledge => self.wallet.acknowledge(),
             // `respond` answers these directly; the app packet never
             // carries recovery words or a seed.
-            Request::WalletWords | Request::WalletRestoreCheck { .. } => {}
+            Request::WalletWords
+            | Request::WalletRestoreCheck { .. }
+            | Request::WalletExitExport => {}
         }
         self.packet(open_url)
     }
@@ -1127,4 +1274,39 @@ fn id() -> String {
     let mut bytes = [0u8; 16];
     secp256k1::rand::rng().fill_bytes(&mut bytes);
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+#[cfg(test)]
+mod exit_vault_tests {
+    use super::*;
+    use crate::wallet::{SavedExit, Vault};
+
+    #[test]
+    fn a_large_exit_state_round_trips_encrypted_in_parts_and_clears() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let secret = SecretKey::from_byte_array([3; 32]).expect("key");
+        let vault = ExitVault(Cache::open(dir.path(), &secret).expect("cache"));
+        assert_eq!(vault.load(), None);
+        // Larger than one store item, with multibyte text at part edges.
+        let state: String = std::iter::repeat_n("é{\"leaf\":\"0a1b\"}", 30_000).collect();
+        let saved = SavedExit {
+            state: state.clone(),
+            saved_at: 1_790_000_000,
+        };
+        vault.save(&saved).expect("saved");
+        assert!(std::fs::read_dir(dir.path()).unwrap().count() > 3);
+        assert_eq!(vault.load(), Some(saved));
+        // Nothing on disk is the plaintext.
+        for entry in std::fs::read_dir(dir.path()).unwrap() {
+            let bytes = std::fs::read(entry.unwrap().path()).unwrap();
+            assert!(!String::from_utf8_lossy(&bytes).contains("leaf"));
+        }
+        vault.clear();
+        assert_eq!(vault.load(), None);
+        let too_big = SavedExit {
+            state: "x".repeat(EXIT_PART * EXIT_PARTS + 1),
+            saved_at: 1,
+        };
+        assert!(vault.save(&too_big).is_err());
+    }
 }

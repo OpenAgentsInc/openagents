@@ -93,6 +93,17 @@ struct WalletSecretPacket: Decodable {
     let error: String?
 }
 
+/// Rust's direct reply with the wallet's exit backup as a file. It is never
+/// part of the app packet.
+struct WalletFilePacket: Decodable {
+    let schema: String
+    let file_name: String?
+    let text: String?
+    let error: String?
+}
+
+struct WalletExportError: Error { let message: String }
+
 /// One released version and what it brought.
 struct Release: Decodable, Hashable {
     struct Item: Decodable, Hashable {
@@ -139,7 +150,7 @@ final class MobileBridge: ObservableObject {
     init() {
         do {
             let secret = try DeviceKey.loadOrCreate()
-            let options: [String: Any] = [
+            var options: [String: Any] = [
                 "state_dir": try DeviceKey.stateDirectory().path,
                 "secret_hex": secret.map { String(format: "%02x", $0) }.joined(),
                 // This host draws the Computers list and its navigation.
@@ -147,6 +158,8 @@ final class MobileBridge: ObservableObject {
                 // Its transcript layout reads chat rows from Rust.
                 "pulled_transcripts": true,
             ]
+            // Simulator screenshots: an offline wallet with no money.
+            if AppTabLaunch.wallet("--wallet-fixture") != nil { options["wallet_fixture"] = true }
             let configuration = try JSONSerialization.data(withJSONObject: options)
             handle = configuration.withUnsafeBytes { bytes in
                 openagents_mobile_create(bytes.bindMemory(to: UInt8.self).baseAddress, bytes.count)
@@ -198,6 +211,23 @@ final class MobileBridge: ObservableObject {
             guard let packet = try? JSONDecoder().decode(WalletSecretPacket.self, from: data),
                   packet.schema == "openagents.wallet-secret.v1", let words = packet.words else { return }
             received(words)
+        }
+    }
+
+    /// The saved unilateral-exit backup, for a Files export the person
+    /// asked for: its file name and text, or why there is none.
+    func walletExitExport(received: @escaping (Result<(String, String), WalletExportError>) -> Void) {
+        call(["op": "wallet_exit_export"]) { data in
+            guard let packet = try? JSONDecoder().decode(WalletFilePacket.self, from: data),
+                  packet.schema == "openagents.wallet-file.v1" else {
+                received(.failure(WalletExportError(message: "The backup could not be read.")))
+                return
+            }
+            if let name = packet.file_name, let text = packet.text {
+                received(.success((name, text)))
+            } else {
+                received(.failure(WalletExportError(message: packet.error ?? "The backup could not be read.")))
+            }
         }
     }
 

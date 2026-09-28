@@ -30,6 +30,7 @@ mod tailnet_view;
 mod transcripts;
 mod verse;
 mod wallet;
+mod wallet_fixture;
 
 pub use app::{App, Config, Launch, Packet, Request};
 

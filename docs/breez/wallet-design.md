@@ -385,7 +385,58 @@ payee key on hosts. Neither can do the other's job.
   is a real feature.
 - Export Spark's unilateral-exit state periodically into the app's encrypted
   store, and offer an export to Files. A seed alone does not recover funds
-  during an operator outage.
+  during an operator outage. **Shipped (#9862):** after every successful
+  sync, and when the SDK reports `UnilateralExitStateChanged`, the phone
+  reads `export_unilateral_exit_state` (a local read; it holds leaf
+  transactions, no keys) and, when it changed, saves it in the app's store
+  encrypted with the device key (`spark-exit`, in parts under 192 KiB each,
+  at most 64 parts). The Wallet's **Exit backup** section says when it was
+  last saved and exports it to Files on a tap, as JSON that
+  `import_unilateral_exit_state` takes unchanged; the state reaches the
+  interface only in that direct reply (`openagents.wallet-file.v1`), never
+  in the app packet. A restore to other words clears it. Importing it and
+  running the exit is a later recovery tool.
+
+### On-chain deposits and withdrawals (shipped on the phone, #9862)
+
+- **Deposits that need attention.** The Wallet lists every unclaimed
+  deposit from `list_unclaimed_deposits` with its state in words: waiting
+  for 3 confirmations; confirmed and being claimed; a claim fee above the
+  automatic limit (with the required fee); not found on the chain; the last
+  claim's error; or a refund already broadcast (with its transaction, and no
+  further actions). The automatic limit is the network's recommended rate
+  plus 1 sat/vB (`sdk_config`).
+- **Claim** shows `fetch_claim_deposit_quote`'s fee and credit, and
+  `claim_deposit` runs only after that quote, with its fee as the ceiling.
+- **Refund** reads `recommended_fees`, offers slow (hour), medium
+  (half-hour), and fast (fastest) rates, each at least 1 sat/vB, with an
+  estimated fee for a 111 vB refund (one Taproot input, one output). The
+  person enters a mainnet Bitcoin address (not this wallet's own deposit
+  address), reviews "Refund N sats to address; about F sats fee at R sat/vB",
+  and confirms; `refund_deposit` then runs once at that rate. A rate whose
+  fee would take the whole deposit is refused.
+- **Withdrawals** to a Bitcoin address show the SDK quote's three speeds and
+  their fees (user fee plus broadcast fee); medium is chosen until the person
+  picks another, and the confirm total follows. Choosing a speed changes only
+  the stored quote; nothing reaches the network until **Send**.
+- **Checked by:** `each_deposit_state_reads_plainly_and_only_open_ones_can_be_acted_on`,
+  `a_refund_is_sent_once_to_a_reviewed_address_at_a_chosen_speed`,
+  `an_onchain_withdrawal_shows_each_speed_and_pays_the_chosen_one`,
+  `buying_opens_the_provider_page_once_and_deposits_are_claimed_at_the_quoted_fee`,
+  `the_exit_state_is_saved_after_each_sync_and_exported_on_request`, and
+  `a_large_exit_state_round_trips_encrypted_in_parts_and_clears`. The ignored
+  `a_regtest_wallet_reads_fee_rates_deposits_and_its_exit_state` runs the
+  same SDK calls against Lightspark's hosted regtest (2026-09-28: rates 1/1/1
+  sat/vB, no deposits, a 139-byte exit state). A funded regtest deposit,
+  claim, and refund needs the regtest faucet, which answers "Not logged in"
+  without the credentials Breez's `spark-itest` reads from
+  `FAUCET_USERNAME` and `FAUCET_PASSWORD`; this repository holds none, so
+  that run is not recorded.
+- **Simulator:** `--wallet-fixture 1` runs the Wallet on an offline fixture
+  (`wallet_fixture.rs`, debug builds only, its own folders) with a deposit
+  above the fee limit; `--wallet-refund ADDRESS` (with
+  `--wallet-refund-review 1`) opens its refund, and `--wallet-backup 1`
+  scrolls to the exit backup.
 - The Breez API key is committed in source by owner decision (2026-09-28):
   the Breez team confirmed it is a basic validation key that any shipped app
   exposes. It authorizes no spending. Plan rotation if Breez asks.
