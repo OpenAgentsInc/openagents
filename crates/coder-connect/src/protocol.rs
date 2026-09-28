@@ -448,7 +448,9 @@ pub fn open_detached<T: DeserializeOwned>(
     schema: &str,
     max: usize,
 ) -> Result<T> {
-    if event.content.len() > 400 * 1024 || payload.len() > 4 * max / 3 + 1024 {
+    // NIP-44 pads a plaintext by up to an eighth and adds 65 bytes before
+    // base64; decryption bounds it again and the plaintext is checked below.
+    if event.content.len() > 400 * 1024 || payload.len() > 4 * (max + max / 8 + 128) / 3 + 64 {
         return fail(
             ErrorCode::Bounds,
             "observer detached body exceeds its bound",

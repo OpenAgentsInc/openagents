@@ -131,9 +131,10 @@ fn a_request_is_read_once_on_either_route() {
     // signed conflict the book keeps in place of the direct reply's bytes.
     let relayed = f.host().handle(&pending.event, &f.code.relay, now).unwrap();
     assert_ne!(relayed.id, first.reply.id);
+    // The host signed it at its own clock, which may be a second later.
     assert_eq!(
         client
-            .verify_reply_via(&pending, &relayed, now, Route::Direct)
+            .verify_reply_via(&pending, &relayed, unix_time().unwrap(), Route::Direct)
             .unwrap_err()
             .code,
         ErrorCode::Conflict
