@@ -291,6 +291,21 @@ impl WorldRuntime {
                 lagrange.tick();
                 self.zone_state.error = None;
             }
+            Intent::Tether => {
+                let lagrange = self
+                    .zone_state
+                    .lagrange
+                    .as_mut()
+                    .ok_or("Enter Lagrange 1 first")?;
+                let station = &mut lagrange.station;
+                station.apply(if station.tethered() {
+                    Input::Unclip
+                } else {
+                    Input::Clip
+                })?;
+                lagrange.tick();
+                self.zone_state.error = None;
+            }
             Intent::KnobPrev
             | Intent::KnobNext
             | Intent::Decrease
@@ -320,8 +335,8 @@ impl WorldRuntime {
     /// Applies a NIP-MV zone command from an authorized operator to the
     /// loaded simulation and returns what changed.
     ///
-    /// Verbs: `fly X,Y,Z` or `fly LANDMARK`, `grab`, `release`, `stop`,
-    /// `status`, and `parts`. `install` and `wait` are headless-only, since
+    /// Verbs: `fly X,Y,Z` or `fly LANDMARK`, `grab`, `release`, `unclip`,
+    /// `clip`, `stop`, `status`, and `parts`. `install` and `wait` are headless-only, since
     /// the desktop simulation runs in real time. Anything else is refused.
     ///
     /// # Errors
@@ -377,6 +392,14 @@ impl WorldRuntime {
             "stop" => {
                 station.apply(Input::Stop)?;
                 json!({ "stopped": true })
+            }
+            "unclip" => {
+                station.apply(Input::Unclip)?;
+                json!({ "tethered": false })
+            }
+            "clip" => {
+                station.apply(Input::Clip)?;
+                json!({ "tethered": true })
             }
             "status" => serde_json::to_value(station.snapshot()).map_err(|e| e.to_string())?,
             "parts" => json!(
@@ -487,6 +510,14 @@ impl WorldRuntime {
                 add("grab", "Grab", Intent::Grab, s.can_grab);
             }
             add(
+                "tether",
+                if s.tethered { "Unclip" } else { "Clip" },
+                Intent::Tether,
+                s.tethered
+                    || s.clip_distance_m
+                        .is_some_and(|d| d <= verse_lagrange::station::CLIP_RANGE),
+            );
+            add(
                 "forces",
                 if lagrange.overlay {
                     "Hide forces"
@@ -511,6 +542,8 @@ impl WorldRuntime {
                 }
             } else if let Some(message) = &s.message {
                 message.clone()
+            } else if let Some(d) = s.clip_distance_m {
+                format!("Unclipped · tether clip {d:.0} m away")
             } else if let Some(next) = s.next_part {
                 format!("Next: {} at the depot", next.name().to_lowercase())
             } else {

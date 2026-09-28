@@ -439,3 +439,62 @@ fn the_bare_world_is_named_the_grid_and_coders_plaza_keeps_its_name() {
     assert_eq!(plaza.zone_label(), ZoneId::Plaza.label());
     assert_eq!(plaza.zone_snapshot(1.0).label, "Amber plaza");
 }
+
+#[test]
+fn the_tether_button_unclips_and_clips_back_on() {
+    let mut runtime = at_l1_portal();
+    runtime.zone_intent(Intent::Enter).unwrap();
+    let control = |runtime: &WorldRuntime| {
+        runtime
+            .zone_snapshot(1.0)
+            .controls
+            .into_iter()
+            .find(|c| c.action == Intent::Tether)
+            .expect("a tether control")
+    };
+    let unclip = control(&runtime);
+    assert_eq!((unclip.label.as_str(), unclip.enabled), ("Unclip", true));
+    runtime.zone_intent(Intent::Tether).unwrap();
+    let clip = control(&runtime);
+    // The clip is still at hand, so it clips straight back on.
+    assert_eq!((clip.label.as_str(), clip.enabled), ("Clip", true));
+    // Out of reach of the clip, the control is shown but disabled.
+    runtime
+        .zone_state
+        .lagrange
+        .as_mut()
+        .unwrap()
+        .station
+        .translate(glam::DVec3::new(10.0, 0.0, 0.0));
+    let far = control(&runtime);
+    assert_eq!((far.label.as_str(), far.enabled), ("Clip", false));
+    assert!(runtime.zone_intent(Intent::Tether).is_err());
+    runtime
+        .zone_state
+        .lagrange
+        .as_mut()
+        .unwrap()
+        .station
+        .translate(glam::DVec3::new(-10.0, 0.0, 0.0));
+    runtime.zone_intent(Intent::Tether).unwrap();
+    assert_eq!(control(&runtime).label, "Unclip");
+    assert!(runtime.zone_snapshot(1.0).station.unwrap().tethered);
+}
+
+/// The solids the lines wrap around follow the drawn structure: every
+/// vertex of the station and its wings lies within a centimeter of one.
+#[test]
+fn the_lines_wrap_the_structure_as_it_is_drawn() {
+    let solids = verse_lagrange::station::structure_solids();
+    let mut drawn = Vec::new();
+    super::lagrange::structure_vertices(&mut drawn);
+    assert!(drawn.len() > 1_000);
+    for vertex in drawn {
+        let p = glam::DVec3::from(vertex.map(f64::from));
+        let nearest = solids
+            .iter()
+            .map(|solid| solid.distance(p).0)
+            .fold(f64::INFINITY, f64::min);
+        assert!(nearest < 0.01, "{p} is {nearest} m from every solid");
+    }
+}

@@ -527,6 +527,8 @@ Verbs are zone-defined. The Lagrange 1 construction zone recognizes:
 | `grab` | none | Take the nearest drifting part, or the next part at the depot. |
 | `install` | none | Carry the held part to its jig slot, correcting for the carry offset, and latch it. Fails if the part does not latch. |
 | `release` | none | Let go of the held part; within latch range and speed it locks into the jig. |
+| `unclip` | none | Let go of the safety tether; its reel winds the loose end in. |
+| `clip` | none | Clip the safety tether back on; refused unless its clip is within 3 m. |
 | `stop` | none | Cancel the current flight target and hold position. |
 | `status` | none | Report the simulation snapshot as a `zone-ok` gesture. |
 

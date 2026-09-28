@@ -193,8 +193,9 @@ the zone panel's **The Grid** button, or a tap on that arch.
   autopilot line, the next part's outline, the airlock refill ring, the
   forces overlay, and the return arch. A carried part's slot outline is gray
   until aligned and white when it latches (Coder draws amber, then green).
-  The zone panel (caption, **Grab**/**Latch**, **Forces**, **Art**/**Photo**,
-  **The Grid**) is drawn in the neutral palette above the sticks.
+  The zone panel (caption, **Grab**/**Latch**, **Unclip**/**Clip**,
+  **Forces**, **Art**/**Photo**, **The Grid**) is drawn in the neutral palette
+  above the sticks.
   Coder's plaza, its three arches with their buttons, and its amber Lagrange
   1 are unchanged.
 - **Presence.** Lagrange 1 is local, as every zone is in Coder: its station

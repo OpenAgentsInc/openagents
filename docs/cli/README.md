@@ -329,7 +329,9 @@ openagents zone build --json             # every part from depot to jig slot
 ```
 
 Verbs: `fly X,Y,Z`, `fly depot|jig|airlock|spawn|PART`, `grab`, `install`,
-`release`, `stop`, `wait SECONDS`, `status`, `parts`. `install` carries the
+`release`, `unclip`, `clip`, `stop`, `wait SECONDS`, `status`, `parts`.
+`unclip` lets the safety tether go and `clip` clips it back on within 3 m
+of its clip. `install` carries the
 held part to its slot, correcting for the carry offset, and fails if it does
 not latch. The speed, thrust, tether, and latch limits are the simulation's
 own.
@@ -343,8 +345,8 @@ The Verse desktop client is an operator for the zone it has loaded. It
 admits commands from its own key and from the keys listed one per line in
 `<VERSE_HOME>/zone-operators` or comma-separated in `VERSE_ZONE_OPERATORS`
 (64-character lowercase hex; `#` starts a comment). It applies `fly`,
-`grab`, `release`, `stop`, `status`, and `parts` to the loaded Lagrange
-station and answers each command with a `zone-ok` or `zone-refused`
+`grab`, `release`, `unclip`, `clip`, `stop`, `status`, and `parts` to the
+loaded Lagrange station and answers each command with a `zone-ok` or `zone-refused`
 gesture, which `zone send` waits for. Commands for another zone, from an
 unlisted key, or naming `install` or `wait` (headless-only verbs) are
 refused without touching the simulation.

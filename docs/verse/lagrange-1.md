@@ -132,7 +132,8 @@ station itself. The renderer works in physical units:
   shadows, energy-conserving bloom, a six-blade diffraction pattern around
   the Sun, faint lens ghosts, vignetting, and grain. The art preset brightens
   shadows and stars.
-- **Effects:** tethers and depot lines are tubes along their ropes; the solar
+- **Effects:** tethers and depot lines are tubes along their ropes, wrapped
+  on what they touch, with a clip on an unclipped end; the solar
   wings bend with their structural modes; cold-gas plumes show only a brief
   glint of sunlit condensate; ice flakes from the habitat vent drift
   anti-sunward under radiation pressure and glint as they tumble. Every effect
@@ -188,7 +189,7 @@ through it.
 | Specific impulse (cold N₂) | 70 s |
 | Flight-control speed limit | 2 m/s relative to the station |
 | Minimum-impulse deadband | 4 mm/s |
-| Safety tether | 140 m from the airlock, holds 3 kN |
+| Safety tether | 140 m from the airlock, holds 3 kN, unclips |
 
 The pack is a hypothetical construction unit comparable to the Manned
 Maneuvering Unit, not a model of a specific flight article. Its fly-by-wire
@@ -250,32 +251,70 @@ iteration each per physics step. The methods follow Jakobsen (2001), Müller
 et al. (2007), and Macklin et al. (XPBD, 2016; "Small Steps", 2019). Both
 ends are pinned to the tether joint's anchors. Long-range attachments (Kim et
 al., 2012) keep every particle within its rest path length of each end, so at
-full length the rope lies exactly on the joint line, and shorter than that it
-curves and carries transverse waves when an end moves. A reel at each anchor
-pays out as fast as the end moves away and takes in slack at 0.25 m/s, so
-flying back toward the airlock faster than that leaves a slack, whipping
-tether. The ropes are one-way by default: the rigid tether joints stay
-authoritative for arrest, tension, and the ledger. Ropes are part of
-`StationState`, so save, restore, and replay reproduce their shapes bit for
-bit.
+full length in open space the rope lies exactly on the joint line, and shorter
+than that it curves and carries transverse waves when an end moves. A reel at
+each anchor pays out as fast as the end moves away and takes in slack at
+0.25 m/s, so flying back toward the airlock faster than that leaves a slack,
+whipping tether. Ropes are part of `StationState`, so save, restore, and
+replay reproduce their shapes bit for bit.
+
+**Contact and wrapping.** The ropes collide with the station as it is drawn
+(`station::structure_solids`: the truss, radiators, pods, habitat, node and
+hatch, arm, solar wings and masts, every member of the keel jig, and the
+depot), with the parts, and, for a part's line, with the astronaut. Each rope
+keeps its drawn radius from every solid: 12 mm for the tether and 8 mm for a
+line. After the constraints in each substep, a segment that comes within that
+radius of a solid is pushed back out along the solid's normal, shared between
+its two particles by where it touched, twice per substep so a corner settles,
+with Coulomb friction (0.3) against sliding (Müller et al., 2007; Macklin et
+al., "Unified Particle Physics", 2014). A line therefore wraps around the node,
+a jig member, or a part instead of passing through it. A line never meets its
+own body, racked parts beside it in the depot, or a solid its station anchor
+lies inside (the depot boom, for the part lines).
+
+The rigid tether joint follows the wrap. When a line's resting path (from the
+anchor through every particle resting on fixed structure, then to its end)
+comes within 2 m of the line's full length, the line could be taut, so the
+station finds where it would bend if pulled taut without changing sides of
+anything: from the anchor, each chord runs to the farthest particle it can
+see past the fixed solids, and the particle where the view is blocked is a
+bend ("string pulling", `Rope::bends`). The joint then runs from the last bend
+with the line left after the path to it (lengthened 2% for the rope rounding
+each corner at its radius). A tether wrapped around the habitat therefore
+arrests the astronaut closer to the airlock than a straight one would, and a
+new bend never shortens the joint past where the astronaut already is, so it
+holds without yanking. The reel takes in slack only down to the resting path,
+so a wrapped line is never pulled through what it rests on.
+
+**Unclipping.** **Unclip** lets the safety tether go: its end floats free with
+the motion it had, collides like the rest of the rope, and the reel winds it
+in at 1 m/s. Nothing then holds the astronaut to the station but the EVA
+boundary 142 m from the airlock. **Clip** clips it back on when the tether's
+clip is within 3 m of the astronaut, which is always true at the airlock once
+the reel has wound it in. A part's depot line unclips when the part latches
+into the jig, and its reel winds it back to the depot; a part reeled back to
+the rack brings its line in with it.
 
 `Station::ropes` returns one `RopeView` per line, the safety tether first and
 then each part's line in `PartKind::ALL` order: the particle positions from the
-station anchor to the free end's center of mass after the last step, the
-positions before it for interpolation with `Station::alpha`, whether the line
-is taut (the joint is pulling or the rope is at full length), the tension in
-newtons (the joint's pull when taut, otherwise the rope's own pull on its
-ends), and the paid-out length.
+station anchor to the free end's center of mass (or the loose clip) after the
+last step, the positions before it for interpolation with `Station::alpha`,
+whether the line is taut (the joint is pulling or the rope is at full length),
+the tension in newtons (the joint's pull when taut, otherwise the rope's own
+pull on its ends), the paid-out length, and whether it is clipped.
 
 `Station::rope_coupling` turns on two-way coupling: each rope's free end joins
 the solve with its body's effective inverse mass, and the rope's pull goes to
 the body as equal and opposite impulses. It stays off. With it on, the ledger
-still balances to 10⁻¹² with the ropes' momentum included, and energy never
-grows, but the rope is a second load path in parallel with the joint, so the
-arrest force exceeds the joint's 3 kN cap by the rope's own pull (about 3,004
-N in the arrest test). Scripted setups that move a body without calling
-`Station::settle_lines` also leave a stretched coupled rope that yanks the
-body; half of the existing tests do that and fail with coupling on.
+still balances with the ropes' momentum included: linear momentum to 10⁻¹²,
+and angular momentum to the rope solver's accuracy (a few parts in a million
+in the busy test), since projecting a curved rope's particles is not exactly
+central. What the solids push into the ropes enters as the `structure` term.
+Energy never grows, but the rope is a second load path in parallel with the
+joint, so the arrest force exceeds the joint's 3 kN cap by the rope's own pull
+(about 3,004 N in the arrest test). Scripted setups that move a body without
+calling `Station::settle_lines` also leave a stretched coupled rope that yanks
+the body; half of the existing tests do that and fail with coupling on.
 
 ### Flexible solar arrays
 
@@ -439,8 +478,14 @@ latches (yellow, magenta at their limit), and each firing thruster's force
   only the solar array wings feel the structure's acceleration; free bodies do
   not.
 - Ropes follow their anchors and never pull on bodies unless `rope_coupling`
-  is on, the reel is idealized, ropes do not collide with anything, and
-  paid-out line has the rope's full particle count at any length.
+  is on, the reel is idealized, and paid-out line has the rope's full particle
+  count at any length. A rope pushes out of solids but never pushes them: a
+  drifting part or the astronaut moves a line aside without feeling it. The
+  lines wrap the drawn shapes, while the astronaut and parts collide with the
+  coarser station boxes. Only the joint's bends count toward arrest; rope
+  friction holds a wrap in place but does not add to the joint's limit, as a
+  capstan would. A rope laid straight through structure by a scripted setup
+  (`Station::settle_lines`) is pushed out toward the nearer side.
 - Array flex is drawn and stored but does not move the rigid array colliders.
 - The station attitude is fixed; real arrays would track the Sun with
   gimbals.
@@ -477,19 +522,28 @@ moving a free part with the ledger balanced, plumes on structure as the
 `impingement` term, the carried-part plume setting, a station-keeping burn
 ringing the arrays down, real station-keeping burns firing the pods, plume
 pulse onsets and seeds, the array mode shapes and masses, and the coupled
-ropes' ledger through an arrest.
+ropes' ledger through an arrest. The line tests check the tether wrapping the
+node instead of passing through it, a wrapped tether arresting along its path
+without adding energy, unclipping and clipping back on at the clip (and its
+replay), a latched part's line reeling back to the depot, and every line
+keeping clear of the structure through the busy scene with the coupled
+ledger balanced.
 `cargo run --release -p verse-lagrange --example step_budget` reports the
 physics step time for a busy scene. `cargo test -p physics` covers the shared mechanisms, including box manifolds
 through a scripted tilt, yaw, penetration, and slide sweep, friction
 breakaway, torsional friction, tunneling, momentum through collisions, and a
 small stack. It also covers the rope (straight when taut, curving and carrying
 a whip when slack, a hanging catenary without energy gain, bit-for-bit
-restore, and coupled momentum), the plume (the lobe carrying exactly the
+restore, coupled momentum, wrapping a post it is swung around, a loose end
+reeled in past a block, a wrapped rope's restore, and the taut path's bends),
+the solids' distances, normals, bounds, and segment queries, the plume (the lobe carrying exactly the
 thrust, dynamic pressure on a plate, an enclosure catching the whole thrust,
 and culling), and the modes (the exact ring-down envelope, a step load, and
 stability at any step).
-`cargo test -p verse --lib zones` covers portal entry and return, flight, and
-the grab-carry-latch flow, and that only Lagrange frames carry a physical sky
+`cargo test -p verse --lib zones` covers portal entry and return, flight, the
+grab-carry-latch flow, the **Unclip** and **Clip** control, that the solids
+the lines wrap follow every drawn vertex of the structure to within a
+centimeter, and that only Lagrange frames carry a physical sky
 with the Sun, Earth, and illuminance at their true values.
 `cargo test -p verse --lib pbr` covers the ephemeris (epoch, the Sun on the
 scene axis, the ecliptic pole), star colors and magnitudes, catalogue and

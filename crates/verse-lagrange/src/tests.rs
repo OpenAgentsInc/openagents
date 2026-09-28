@@ -1279,3 +1279,199 @@ fn coupled_ropes_keep_the_ledger_through_an_arrest() {
     assert!(farthest < station::EVA_RANGE + 0.15, "{farthest} m");
     assert!(peak > station::TETHER_TENSION && peak < station::TETHER_TENSION + 50.0);
 }
+
+/// Deepest any segment of a rope reaches into the drawn structure, m;
+/// negative while the whole rope keeps clear. Solids the rope's station
+/// anchor lies inside (the depot boom for the part lines) do not count.
+fn deepest_in_structure(points: &[DVec3]) -> f64 {
+    let anchor = points[0];
+    points
+        .windows(2)
+        .flat_map(|w| {
+            station::structure_solids()
+                .iter()
+                .filter(move |solid| solid.distance(anchor).0 > 0.02)
+                .map(move |solid| {
+                    let t = solid.nearest_on_segment(w[0], w[1]);
+                    -solid.distance(w[0].lerp(w[1], t)).0
+                })
+        })
+        .fold(f64::NEG_INFINITY, f64::max)
+}
+
+/// Fly beside the habitat from the airlock: the straight line back to the
+/// hatch now runs through the node, so the tether wraps its corner instead.
+#[test]
+fn the_safety_tether_wraps_the_node_instead_of_passing_through_it() {
+    let mut station = Station::new();
+    station.tide = false;
+    station.astronaut_mut().pos = DVec3::new(4.0, 6.0, 19.0);
+    station.settle_lines();
+    fly(&mut station, -DVec3::Z, 8.0);
+    fly(&mut station, DVec3::ZERO, 2.0);
+    let astronaut = station.astronaut().pos;
+    assert!(astronaut.z < 14.0 && astronaut.x > 2.5, "{astronaut}");
+    let rope = station.ropes()[0];
+    assert!(rope.clipped);
+    let depth = deepest_in_structure(rope.points);
+    assert!(
+        depth < 0.0,
+        "the tether reaches {depth} m into the structure"
+    );
+    // The straight line from the hatch cuts the node; the rope does not.
+    let node = station::structure_solids()[2];
+    let t = node.nearest_on_segment(station::AIRLOCK, astronaut);
+    assert!(node.distance(station::AIRLOCK.lerp(astronaut, t)).0 < 0.0);
+    // The rope rests on it, and pulled taut it would bend there.
+    let solids = [physics::Bounded::new(node)];
+    let (bends, _) = station.lines[0].rope.bends(&solids);
+    assert!(!bends.is_empty());
+}
+
+/// A wrapped tether arrests the astronaut at the length left after the
+/// wrap, closer to the airlock than a straight tether would, and gives back
+/// no more energy than it took.
+#[test]
+fn a_wrapped_tether_arrests_along_its_path() {
+    let mut station = Station::new();
+    station.tide = false;
+    station.astronaut_mut().pos = DVec3::new(5.0, 6.0, 19.0);
+    station.settle_lines();
+    let length = 13.0;
+    station.lines[0].max_length = length;
+    fly(&mut station, -DVec3::Z, 10.0);
+    // Coast on at 1.5 m/s with the pack empty.
+    station.propellant = 0.0;
+    station.set_velocity(-DVec3::Z * 1.5);
+    let energy = |s: &Station| 0.5 * s.astronaut().mass * s.astronaut().vel.length_squared();
+    let start = energy(&station);
+    let mut held = None;
+    for _ in 0..(8 * 60) {
+        station.step(1.0 / 60.0, &Command::default());
+        assert!(energy(&station) <= start * 1.001, "the tether added energy");
+        let line = &station.lines[0];
+        let joint = station.world.joint(station.tether).unwrap();
+        if let (Some(k), true) = (line.pivot, joint.impulse != DVec3::ZERO) {
+            let physics::JointKind::Tether { length: left } = joint.kind else {
+                panic!("the safety tether is a tether joint");
+            };
+            held.get_or_insert((station.astronaut().pos, line.rope.pos[k], left));
+        }
+    }
+    let (astronaut, bend, left) = held.expect("the wrapped tether arrested the astronaut");
+    // Held at the line left after the wrap, with the rope clear of the
+    // structure, though a straight line would still have slack.
+    assert!(astronaut.distance(bend) <= left + 0.15);
+    assert!(left < length - 1.0, "{left}");
+    assert!(astronaut.distance(station::AIRLOCK) < length - 0.1);
+    assert!(station.ledger.external.contains_key("tether"));
+    assert!(deepest_in_structure(station.ropes()[0].points) < 0.0);
+}
+
+#[test]
+fn the_tether_unclips_and_clips_back_on_at_its_clip() {
+    let mut station = Station::new();
+    station.record();
+    let start = station.clone();
+    assert!(station.snapshot().tethered);
+    station.apply(Input::Unclip).unwrap();
+    assert!(!station.tethered());
+    assert!(station.apply(Input::Unclip).is_err());
+    assert!(!station.ropes()[0].clipped);
+    // Fly away: the loose tether does not follow, and its reel winds it in.
+    let away = DVec3::new(1.0, 0.0, 0.3).normalize();
+    fly(&mut station, away, 10.0);
+    let snapshot = station.snapshot();
+    assert!(!snapshot.tethered);
+    let far = snapshot
+        .clip_distance_m
+        .expect("an unclipped tether reports its clip");
+    assert!(far > station::CLIP_RANGE, "{far}");
+    let refused = station.apply(Input::Clip).unwrap_err();
+    assert!(refused.contains("m away"), "{refused}");
+    assert!(station.lines[0].rope.length <= 1.0 + 1e-9);
+    assert!(station.clip_point().distance(station::AIRLOCK) < 1.5);
+    // Back to the airlock, where the reel holds the clip.
+    let target = station.landmark("airlock").unwrap() + DVec3::new(1.5, 0.0, 1.5);
+    station.apply(Input::FlyTo { target }).unwrap();
+    for _ in 0..(40 * 60) {
+        station.step(
+            1.0 / 60.0,
+            &Command {
+                yaw: f64::NAN,
+                ..Command::default()
+            },
+        );
+        if station.clip_distance() <= station::CLIP_RANGE && station.target.is_none() {
+            break;
+        }
+    }
+    station.apply(Input::Clip).unwrap();
+    assert!(station.tethered() && station.ropes()[0].clipped);
+    for _ in 0..60 {
+        station.step(1.0 / 60.0, &Command::default());
+    }
+    let rope = station.ropes()[0];
+    assert_eq!(*rope.points.last().unwrap(), station.astronaut().pos);
+    // The journal replays the same session.
+    let journal = station.journal.clone().unwrap();
+    let replayed = Station::replay(&start, &journal, station.world.tick);
+    same_physics(&replayed, &station);
+}
+
+#[test]
+fn a_latched_part_lets_its_line_go_back_to_the_depot() {
+    let mut station = at_slot();
+    let kind = station.release().unwrap();
+    assert_eq!(station.parts[0].state, PartState::Installed);
+    assert!(station.world.joint(station.parts[0].line).is_none());
+    let index = 1 + PartKind::ALL.iter().position(|k| *k == kind).unwrap();
+    assert!(!station.ropes()[index].clipped);
+    for _ in 0..(30 * 60) {
+        station.step(1.0 / 60.0, &Command::default());
+    }
+    let rope = station.ropes()[index];
+    assert!((rope.length - station::REEL_MIN).abs() < 1e-9);
+    assert!(rope.points.last().unwrap().distance(station::DEPOT) <= station::REEL_MIN + 1e-6);
+    // The other lines stay clipped to their parts.
+    assert!(station.ropes()[index + 1].clipped);
+}
+
+/// Every station line keeps clear of the drawn structure while the busy
+/// scene throws parts about, and with rope coupling on the ledger balances
+/// with the solids' pushes on the ropes: linear momentum exactly, angular
+/// momentum to the rope solver's accuracy, since projecting a curved rope's
+/// particles is not exactly central.
+#[test]
+fn lines_stay_out_of_the_structure_and_coupled_ropes_keep_the_ledger() {
+    let mut station = busy_station();
+    station.tide = false;
+    station.rope_coupling = true;
+    station.grab().unwrap();
+    // The scripted start moved the astronaut to the depot at once; let the
+    // tether that was laid straight through the habitat settle around it.
+    for _ in 0..120 {
+        station.step(1.0 / 60.0, &Command::default());
+    }
+    station.reset_ledger();
+    let command = Command {
+        direction: DVec3::new(0.6, 0.1, 1.0),
+        yaw: 0.5,
+        climb: false,
+    };
+    let mut worst: f64 = f64::NEG_INFINITY;
+    for _ in 0..(20 * 60) {
+        station.step(1.0 / 60.0, &command);
+        for rope in station.ropes() {
+            worst = worst.max(deepest_in_structure(rope.points));
+        }
+        let momentum = station.momentum();
+        let error = station.ledger.error(momentum);
+        let scale = momentum.angular.length().max(1.0);
+        assert!(
+            error.linear < 1e-9 && error.angular < 1e-5 * scale,
+            "{error:?}"
+        );
+    }
+    assert!(worst < 0.005, "a line reached {worst} m into the structure");
+}

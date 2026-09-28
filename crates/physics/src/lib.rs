@@ -19,9 +19,11 @@
 //! - [`oracle`]: scenes shared with the offline Genesis oracle.
 //! - [`sensors`]: raycasts, per-body contact force, an IMU, and debug lines
 //!   for contacts and joints.
-//! - [`rope`]: a deterministic XPBD rope pinned at both ends, with
-//!   long-range limits from each end, one-way by default or coupled to its
-//!   end bodies.
+//! - [`rope`]: a deterministic XPBD rope pinned at both ends or loose at
+//!   one, with long-range limits from each pinned end, one-way by default or
+//!   coupled to its end bodies, that collides with and wraps around solids.
+//! - [`solid`]: placed boxes, capsules, and cylinders with signed distance
+//!   and segment queries, the obstacles a rope wraps around.
 //! - [`plume`]: free-molecular plume impingement forces on colliders.
 //! - [`modal`]: damped structural modes with an exact discrete update, for
 //!   flexible appendages.
@@ -44,6 +46,7 @@ pub mod oracle;
 pub mod plume;
 pub mod rope;
 pub mod sensors;
+pub mod solid;
 pub mod thrusters;
 pub mod trace;
 pub mod world;
@@ -58,6 +61,7 @@ pub use modal::Mode;
 pub use plume::{Plume, Reflection, Sample};
 pub use rope::{Rope, RopeSettings};
 pub use sensors::{DebugKind, DebugLine, Imu, ImuReading, RayHit};
+pub use solid::{Bounded, Solid};
 pub use thrusters::{Pid, Thruster, ThrusterSet, Wrench};
 pub use trace::{Divergence, Tolerance, Trace, attitude_difference};
 pub use world::{BodyId, Field, NoField, SleepSettings, StepStats, Uniform, World};

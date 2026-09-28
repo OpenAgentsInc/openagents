@@ -26,12 +26,12 @@ const USAGE: &str = "usage: openagents zone COMMAND [OPTIONS]
                             that simulates the zone, and wait for its report.
   listen [--wait SECONDS]   Print zone commands addressed to this identity.
 Verbs: fly X,Y,Z | fly depot|jig|airlock|spawn|PART | grab | install | release |
-       stop | wait SECONDS | status | parts
+       unclip | clip | stop | wait SECONDS | status | parts
   install                   Carry the held part to its jig slot and latch it.
 Options for send/listen: --as PROFILE, --relay URL, --world ID.";
 
 const VERBS: &[&str] = &[
-    "fly", "grab", "install", "release", "stop", "wait", "status", "parts",
+    "fly", "grab", "install", "release", "unclip", "clip", "stop", "wait", "status", "parts",
 ];
 
 /// One verb with its arguments, as typed or as received.
@@ -288,6 +288,14 @@ impl Sim {
                     .iter()
                     .any(|part| part.kind == kind && part.state == PartState::Installed);
                 Ok(json!({ "released": kind.name(), "installed": installed }))
+            }
+            "unclip" => {
+                self.station.unclip()?;
+                Ok(json!({ "tethered": false }))
+            }
+            "clip" => {
+                self.station.clip()?;
+                Ok(json!({ "tethered": true }))
             }
             "stop" => {
                 self.station.step(

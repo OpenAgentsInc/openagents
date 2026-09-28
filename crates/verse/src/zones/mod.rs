@@ -167,6 +167,9 @@ pub enum Intent {
     Fireball,
     Grab,
     Release,
+    /// Lagrange 1: unclip the safety tether, or clip it back on within reach
+    /// of its clip.
+    Tether,
     /// Show or hide the physics overlay: contacts, joints, and thrust.
     Forces,
     /// Lagrange 1: switch between the photographic camera and the readable

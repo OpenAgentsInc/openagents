@@ -5,11 +5,13 @@
 //! Earth, and +X completes a right-handed frame (the rotating frame's +y,
 //! the direction of Earth's orbital motion). Units are SI.
 
+use std::sync::OnceLock;
+
 use glam::{DQuat, DVec3};
 use physics::{
-    Body, BodyId, BodyKind, Collider, ColliderId, Composite, DebugKind, DebugLine, Filter,
+    Body, BodyId, BodyKind, Bounded, Collider, ColliderId, Composite, DebugKind, DebugLine, Filter,
     FixedStep, Imu, Joint, JointId, JointKind, Ledger, Material, Momentum, Plume as Exhaust,
-    Reflection, Rope, RopeSettings, Sample, Shape, ThrusterSet, World,
+    Reflection, Rope, RopeSettings, Sample, Shape, Solid, ThrusterSet, World,
 };
 use serde::{Deserialize, Serialize};
 
@@ -78,7 +80,7 @@ pub const PHYSICS_DT: f64 = 1.0 / 120.0;
 /// Most physics steps one frame may run (0.1 s); longer frames drop time.
 pub const MAX_STEPS_PER_FRAME: u32 = 12;
 /// Layout version of [`StationState`].
-pub const STATE_VERSION: u32 = 2;
+pub const STATE_VERSION: u32 = 3;
 /// Particles in the safety tether's rope and in each part line's rope.
 pub const TETHER_PARTICLES: usize = 96;
 pub const LINE_PARTICLES: usize = 48;
@@ -88,6 +90,20 @@ pub const LINE_DENSITY: f64 = 0.05;
 pub const REEL_SPEED: f64 = 0.25;
 /// Shortest line a reel leaves out, m.
 pub const REEL_MIN: f64 = 0.5;
+/// Speed at which a reel winds in a line whose end is unclipped, m/s.
+pub const LOOSE_REEL_SPEED: f64 = 1.0;
+/// Radius of the safety tether and of the part lines, m: the tubes drawn
+/// and the distance each rope keeps from solids.
+pub const TETHER_RADIUS: f64 = 0.012;
+pub const LINE_RADIUS: f64 = 0.008;
+/// Coulomb coefficient between a line and the structure it rests on.
+pub const LINE_FRICTION: f64 = 0.3;
+/// How much longer a line lies over its bends than the taut chords between
+/// them: it rounds each corner at its radius rather than cutting it.
+pub const BEND_ALLOWANCE: f64 = 1.02;
+/// Reach for clipping the safety tether back on, m, from the body center to
+/// the tether's clip.
+pub const CLIP_RANGE: f64 = 3.0;
 /// Station-keeping thruster pods at the truss tips.
 pub const KEEPING_PODS: [DVec3; 2] = [DVec3::new(-30.8, 6.0, 0.0), DVec3::new(30.8, 6.0, 0.0)];
 /// Thrust of each station-keeping pod, N.
@@ -358,6 +374,117 @@ pub const OBSTACLES: [Obstacle; 6] = [
     },
 ];
 
+/// The station's structure as it is drawn, for the lines to rest on and
+/// wrap around: the truss, radiators, thruster pods, habitat, node and
+/// hatch, the arm, the solar wings and their masts, every member of the keel
+/// jig, and the depot. Coarser [`OBSTACLES`] stop the astronaut and parts;
+/// these follow the drawn shapes to within a centimeter, so a line lies on
+/// the surface it appears to touch.
+#[must_use]
+pub fn structure_solids() -> &'static [Solid] {
+    static SOLIDS: OnceLock<Vec<Solid>> = OnceLock::new();
+    SOLIDS.get_or_init(|| {
+        let v = DVec3::new;
+        // A square member of width `width` from `a` to `b`, turned as the
+        // renderer turns it.
+        let member = |a: DVec3, b: DVec3, width: f64| Solid::Cuboid {
+            center: (a + b) * 0.5,
+            rotation: DQuat::from_rotation_arc(DVec3::Z, (b - a).normalize()),
+            half: v(width / 2.0, width / 2.0, a.distance(b) / 2.0),
+        };
+        let block = |center: DVec3, half: DVec3| Solid::Cuboid {
+            center,
+            rotation: DQuat::IDENTITY,
+            half,
+        };
+        let cylinder = |a: DVec3, b: DVec3, radius: f64| Solid::Cylinder { a, b, radius };
+        let mut solids = vec![
+            // The truss: a lattice 1.4 m square, 0.1 m chords.
+            Solid::aabb(v(-30.05, 5.25, -0.75), v(30.05, 6.75, 0.75)),
+            // Habitat with its insulation bands, node, and hatch.
+            cylinder(v(0.0, 6.0, 2.0), v(0.0, 6.0, 14.0), 2.14),
+            block(v(0.0, 6.0, 15.5), v(1.6, 1.6, 1.5)),
+            Solid::aabb(v(-0.74, 5.26, 17.0), v(0.74, 6.74, 17.08)),
+            // The arm.
+            cylinder(v(-6.0, 6.8, 0.0), v(-6.0, 12.5, 4.5), 0.35),
+            cylinder(v(-6.0, 12.5, 4.5), v(-2.5, 9.5, 8.0), 0.3),
+            block(v(-2.5, 9.5, 8.0), DVec3::splat(0.35)),
+            block(v(-6.0, 12.5, 4.5), DVec3::splat(0.3)),
+            // Depot backboard and the boom to the jig.
+            block(v(-15.3, -6.0, 1.25), v(0.3, 3.0, 7.75)),
+            member(v(-15.0, -6.0, 1.0), v(-3.5, -6.0, 1.0), 0.12),
+        ];
+        for side in [-1.0, 1.0] {
+            let x = 8.0 * side;
+            // Radiator and its stem.
+            solids.push(block(v(x, 10.85, 4.2), v(0.04, 4.15, 4.8)));
+            solids.push(member(v(x, 6.6, 4.2), v(x, 6.7, 4.2), 0.3));
+            // Station-keeping pod and its three nozzles.
+            let pod = v(30.8 * side, 6.0, 0.0);
+            solids.push(block(pod, DVec3::splat(0.6)));
+            for d in [DVec3::Y, -DVec3::Y, DVec3::Z] {
+                solids.push(cylinder(pod + d * 0.575, pod + d * 0.825, 0.16));
+            }
+            // Solar wing, with room for its flex, and its mast.
+            let (a, b) = (13.0 * side, 30.0 * side);
+            solids.push(Solid::aabb(
+                v(a.min(b), -0.5, -1.11),
+                v(a.max(b), 12.5, -1.05),
+            ));
+            solids.push(member(v(a, 6.0, 0.0), v(a, 6.0, -1.08), 0.2));
+        }
+        // The keel jig's longerons, frames, and hangers.
+        let corners = [(-3.5, -3.5), (3.5, -3.5), (3.5, 3.5), (-3.5, 3.5)];
+        for (x, y) in corners {
+            solids.push(member(JIG + v(x, y, -12.5), JIG + v(x, y, 9.5), 0.14));
+        }
+        for i in 0..=7 {
+            let z = -12.5 + f64::from(i) * 22.0 / 7.0;
+            for k in 0..4 {
+                let (a, b) = (corners[k], corners[(k + 1) % 4]);
+                solids.push(member(JIG + v(a.0, a.1, z), JIG + v(b.0, b.1, z), 0.1));
+            }
+        }
+        for x in [-3.5, 3.5] {
+            solids.push(member(v(x, 5.3, 0.0), JIG + v(x, 3.5, 0.0), 0.16));
+        }
+        // Rack arms from the backboard to each stowed part.
+        for kind in PartKind::ALL {
+            let at = kind.stowage();
+            solids.push(member(v(-15.0, at.y, at.z), at - DVec3::X * 1.1, 0.08));
+        }
+        solids
+    })
+}
+
+/// [`structure_solids`] with their bounds, less any a line anchored at
+/// `anchor` with `radius` starts inside. The airlock's and the depot's
+/// lists are built once.
+fn structure_around(anchor: DVec3, radius: f64) -> std::borrow::Cow<'static, [Bounded]> {
+    static AROUND: OnceLock<Vec<(DVec3, f64, Vec<Bounded>)>> = OnceLock::new();
+    let lists = AROUND.get_or_init(|| {
+        [(AIRLOCK, TETHER_RADIUS), (DEPOT, LINE_RADIUS)]
+            .into_iter()
+            .map(|(at, r)| (at, r, clear_of(at, r)))
+            .collect()
+    });
+    match lists
+        .iter()
+        .find(|(at, r, _)| *at == anchor && *r == radius)
+    {
+        Some((_, _, list)) => std::borrow::Cow::Borrowed(list),
+        None => std::borrow::Cow::Owned(clear_of(anchor, radius)),
+    }
+}
+
+fn clear_of(anchor: DVec3, radius: f64) -> Vec<Bounded> {
+    structure_solids()
+        .iter()
+        .filter(|solid| solid.distance(anchor).0 > radius)
+        .map(|solid| Bounded::new(*solid))
+        .collect()
+}
+
 /// One frame of pilot input, already mapped into scene axes.
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize)]
 pub struct Command {
@@ -396,6 +523,10 @@ pub enum Input {
     },
     /// Cancel the autopilot target.
     Stop,
+    /// Unclip the safety tether; its reel winds the loose end in.
+    Unclip,
+    /// Clip the safety tether back on, within reach of its clip.
+    Clip,
 }
 
 /// A saved station: restore it and continue, or replay inputs from it.
@@ -432,13 +563,24 @@ pub struct PlumePulse {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Line {
     /// The rigid tether joint, which stays authoritative for arrest,
-    /// tension, and the ledger.
+    /// tension, and the ledger. While the rope is wrapped on structure the
+    /// joint runs from the last point where it bends, with the line left
+    /// after the wrap. Absent from the world while the line is unclipped.
     pub joint: JointId,
     /// The body on the line's free end.
     pub body: BodyId,
+    /// Where the line leaves the station: the airlock or the depot.
+    pub anchor: DVec3,
     /// The joint's length, m: the most the reel pays out.
     pub max_length: f64,
     pub rope: Rope,
+    /// The rope particle the joint runs from while the line is wrapped: its
+    /// last bend when pulled taut around fixed solids.
+    #[serde(default)]
+    pub pivot: Option<usize>,
+    /// Length of the taut line from the anchor to the pivot, m.
+    #[serde(default)]
+    pub bent: f64,
 }
 
 /// A rope as drawn: particle positions from the anchor on the station to
@@ -457,6 +599,9 @@ pub struct RopeView<'a> {
     pub tension: f64,
     /// Rope length the reel has paid out, m.
     pub length: f64,
+    /// The line's end is clipped to its body. Unclipped, the end is loose
+    /// and the reel winds it in.
+    pub clipped: bool,
 }
 
 impl RopeView<'_> {
@@ -510,6 +655,10 @@ pub struct Snapshot {
     pub refilling: bool,
     /// A station-keeping burn fired within the last second.
     pub keeping_active: bool,
+    /// The safety tether is clipped on.
+    pub tethered: bool,
+    /// While unclipped, how far the tether's clip is from the astronaut, m.
+    pub clip_distance_m: Option<f64>,
     pub message: Option<String>,
 }
 
@@ -730,21 +879,33 @@ impl Station {
         station.lines.push(Line {
             joint: tether,
             body: astronaut,
+            anchor: AIRLOCK,
             max_length: EVA_RANGE,
-            rope: Rope::new(AIRLOCK, SPAWN, 1.0, TETHER_PARTICLES, line_settings()),
+            rope: Rope::new(
+                AIRLOCK,
+                SPAWN,
+                1.0,
+                TETHER_PARTICLES,
+                line_settings(TETHER_RADIUS),
+            ),
+            pivot: None,
+            bent: 0.0,
         });
         for part in station.parts.clone() {
             station.lines.push(Line {
                 joint: part.line,
                 body: part.body,
+                anchor: DEPOT,
                 max_length: PART_TETHER,
                 rope: Rope::new(
                     DEPOT,
                     part.kind.stowage(),
                     1.0,
                     LINE_PARTICLES,
-                    line_settings(),
+                    line_settings(LINE_RADIUS),
                 ),
+                pivot: None,
+                bent: 0.0,
             });
         }
         station.settle_lines();
@@ -942,6 +1103,8 @@ impl Station {
                 self.target = None;
                 Ok(None)
             }
+            Input::Unclip => self.unclip().map(|()| None),
+            Input::Clip => self.clip().map(|()| None),
         }
     }
 
@@ -1428,13 +1591,14 @@ impl Station {
                 RopeView {
                     points: &line.rope.pos,
                     prev: &line.rope.prev,
-                    taut: pulling > 0.0 || line.rope.taut(1e-3),
+                    taut: pulling > 0.0 || (!line.rope.loose && line.rope.taut(1e-3)),
                     tension: if pulling > 0.0 {
                         pulling
                     } else {
                         line.rope.tension(PHYSICS_DT)
                     },
                     length: line.rope.length,
+                    clipped: !line.rope.loose,
                 }
             })
             .collect()
@@ -1448,26 +1612,159 @@ impl Station {
         self.wings[wing.min(1)].flex(self.alpha())
     }
 
-    /// Lay every line's rope straight from its anchor to its end, at rest,
-    /// with the reel taken in to the gap. For scripted setups that move
-    /// bodies directly.
+    /// Lay every clipped line's rope straight from its anchor to its end,
+    /// at rest, with the reel taken in to the gap and the joint back at the
+    /// anchor. For scripted setups that move bodies directly.
     pub fn settle_lines(&mut self) {
         for i in 0..self.lines.len() {
-            let Some(joint) = self.world.joint(self.lines[i].joint).copied() else {
+            let (id, anchor, max_length) = {
+                let line = &self.lines[i];
+                (line.joint, line.anchor, line.max_length)
+            };
+            let Some(joint) = self.world.joint_mut(id) else {
                 continue;
             };
+            joint.anchor_a = anchor;
+            joint.kind = JointKind::Tether { length: max_length };
+            let joint = *joint;
             let (a, b) = joint.anchors(&self.world);
             let line = &mut self.lines[i];
             let length = a.distance(b).clamp(REEL_MIN, line.max_length);
             let count = line.rope.pos.len();
             line.rope = Rope::new(a, b, length, count, line.rope.settings);
+            line.pivot = None;
         }
     }
 
-    /// After the world step: reel each line to its free end and step its
-    /// rope. With [`Station::rope_coupling`], a rope whose free end is in
-    /// the free system pulls it, the rope's momentum joins the system, and
-    /// the pull at the station anchor enters the ledger under `tether`.
+    /// Whether the safety tether is clipped on.
+    #[must_use]
+    pub fn tethered(&self) -> bool {
+        self.world.joint(self.tether).is_some()
+    }
+
+    /// Where the safety tether's clip is: on the astronaut, or at the loose
+    /// end of the line.
+    #[must_use]
+    pub fn clip_point(&self) -> DVec3 {
+        self.lines
+            .first()
+            .and_then(|line| line.rope.pos.last().copied())
+            .unwrap_or(AIRLOCK)
+    }
+
+    /// Distance from the astronaut to the tether's clip, m.
+    #[must_use]
+    pub fn clip_distance(&self) -> f64 {
+        self.clip_point().distance(self.astronaut().pos)
+    }
+
+    /// Unclip the safety tether. Its end floats free with the motion it had
+    /// and the reel winds it in at [`LOOSE_REEL_SPEED`]; nothing then holds
+    /// the astronaut to the station but the EVA boundary.
+    pub fn unclip(&mut self) -> Result<(), String> {
+        self.world
+            .remove_joint(self.tether)
+            .ok_or("The safety tether is already unclipped")?;
+        if let Some(line) = self.lines.first_mut() {
+            line.rope.loosen();
+            line.pivot = None;
+        }
+        self.message = Some("Tether unclipped; the reel winds it in".into());
+        Ok(())
+    }
+
+    /// Clip the safety tether back on: the clip must be within
+    /// [`CLIP_RANGE`] of the astronaut.
+    pub fn clip(&mut self) -> Result<(), String> {
+        if self.tethered() {
+            return Err("The safety tether is already clipped on".into());
+        }
+        let reach = self.clip_distance();
+        if reach > CLIP_RANGE {
+            return Err(format!("The tether's clip is {reach:.0} m away"));
+        }
+        let joint = self.world.add_joint(
+            Joint::new(
+                self.anchor,
+                AIRLOCK,
+                self.astronaut,
+                DVec3::ZERO,
+                JointKind::Tether { length: EVA_RANGE },
+            )
+            .limited(TETHER_TENSION, 0.0),
+        );
+        self.tether = joint;
+        if let Some(line) = self.lines.first_mut() {
+            line.joint = joint;
+            line.pivot = None;
+            line.rope.tie();
+            line.rope.length = line.rope.length.max(REEL_MIN);
+        }
+        self.message = Some("Clipped to the safety tether".into());
+        Ok(())
+    }
+
+    /// Unclip a part's depot line: its reel winds the loose end back to the
+    /// depot.
+    fn unclip_line(&mut self, body: BodyId) {
+        let Some(line) = self.lines.iter_mut().find(|line| line.body == body) else {
+            return;
+        };
+        self.world.remove_joint(line.joint);
+        line.rope.loosen();
+        line.pivot = None;
+    }
+
+    /// Solids line `index`'s rope collides with, and whether each is fixed,
+    /// so the rope may wrap on it: the station structure as drawn, and the
+    /// parts, fixed while racked or latched. A part line also meets the
+    /// astronaut. A line never meets its own body, racked parts beside it in
+    /// the depot, or a solid its station anchor lies inside.
+    fn rope_solids(&self, index: usize) -> (Vec<Bounded>, Vec<bool>) {
+        let line = &self.lines[index];
+        let tether = line.body == self.astronaut;
+        let radius = line.rope.settings.radius;
+        let clear = |solid: &Solid| solid.distance(line.anchor).0 > radius;
+        let mut solids = structure_around(line.anchor, radius).into_owned();
+        let mut fixed = vec![true; solids.len()];
+        for part in &self.parts {
+            if part.body == line.body || (!tether && part.state == PartState::Stowed) {
+                continue;
+            }
+            let collider = &self.world.colliders()[part.collider.0 as usize];
+            let solid = Solid::of(collider, &self.world);
+            if clear(&solid) {
+                solids.push(Bounded::new(solid));
+                fixed.push(matches!(
+                    part.state,
+                    PartState::Stowed | PartState::Installed
+                ));
+            }
+        }
+        if !tether
+            && let Some(collider) = self
+                .world
+                .colliders()
+                .iter()
+                .find(|c| c.body == self.astronaut)
+        {
+            let solid = Solid::of(collider, &self.world);
+            if clear(&solid) {
+                solids.push(Bounded::new(solid));
+                fixed.push(false);
+            }
+        }
+        (solids, fixed)
+    }
+
+    /// After the world step: reel each line and step its rope among the
+    /// solids, then move each clipped line's joint to where the rope last
+    /// bends on fixed structure, with the length left after the wrap. An
+    /// unclipped line's reel winds its loose end in. With
+    /// [`Station::rope_coupling`], a rope whose free end is in the free
+    /// system pulls it, the rope's momentum joins the system, its pull at
+    /// the station anchor enters the ledger under `tether`, and what solids
+    /// gave it under `structure`.
     fn step_lines(&mut self, dt: f64) {
         let (c2, tidal) = (self.orbit.l1.c2, self.tide);
         let field = move |p: DVec3, v: DVec3| {
@@ -1475,46 +1772,115 @@ impl Station {
         };
         let origin = self.ledger.origin;
         for i in 0..self.lines.len() {
-            let Some(joint) = self.world.joint(self.lines[i].joint).copied() else {
-                continue;
-            };
-            let coupled = self.rope_coupling && self.in_system(self.lines[i].body);
-            let (a, b) = joint.anchors(&self.world);
+            let (solids, fixed) = self.rope_solids(i);
+            let joint = self.world.joint(self.lines[i].joint).copied();
+            let coupled =
+                joint.is_some() && self.rope_coupling && self.in_system(self.lines[i].body);
             let line = &mut self.lines[i];
             let before = line.rope.momentum(origin);
-            line.rope.length = if joint.impulse == DVec3::ZERO {
-                reel(line.rope.length, a.distance(b), line.max_length, dt)
+            let anchor = line.anchor;
+            if let Some(joint) = joint {
+                let end = self.world[joint.b].to_world(joint.anchor_b);
+                // The line out, at most: through every particle resting on a
+                // fixed solid, then straight to the end. Taken in no shorter
+                // than that, a wrapped line is never pulled through what it
+                // rests on.
+                let needed = resting_path(&line.rope, &fixed, end);
+                // A joint on a racked part holds nothing, whatever impulse it
+                // last reported.
+                let pulling = joint.impulse != DVec3::ZERO && self.world[joint.b].moves();
+                line.rope.length = if pulling {
+                    line.max_length
+                } else {
+                    reel(line.rope.length, needed, line.max_length, dt)
+                };
+                // Paid-out line starts at rest on the reel.
+                let reeled = line.rope.momentum(origin) - before;
+                line.rope.coupled = coupled;
+                line.rope.step_between(
+                    &mut self.world,
+                    (self.anchor, anchor),
+                    (joint.b, joint.anchor_b),
+                    &field,
+                    &solids,
+                );
+                // Where the line bends when pulled taut around the fixed
+                // solids it passes: the joint runs from the last bend with
+                // the line left after the path to it. A line whose resting
+                // path is well short of its full length cannot be taut, so
+                // the joint stays at the anchor, where it cannot pull either.
+                let line = &mut self.lines[i];
+                let previous = line.pivot;
+                let slack = resting_path(&line.rope, &fixed, end) * BEND_ALLOWANCE
+                    < line.max_length - TETHER_MARGIN;
+                let (bends, bent) = if slack {
+                    (Vec::new(), 0.0)
+                } else {
+                    let fixed: Vec<Bounded> = solids
+                        .iter()
+                        .zip(&fixed)
+                        .filter_map(|(solid, &fixed)| fixed.then_some(*solid))
+                        .collect();
+                    line.rope.bends(&fixed)
+                };
+                line.pivot = bends.last().copied();
+                line.bent = bent;
+                let (bend, length) = match line.pivot {
+                    Some(k) => {
+                        let left = (line.max_length - bent * BEND_ALLOWANCE).max(REEL_MIN);
+                        // A new bend never shortens the line past the end:
+                        // the joint holds from here and does not yank.
+                        let reach = line.rope.pos[k].distance(end);
+                        let left = if previous == Some(k) {
+                            left
+                        } else {
+                            left.max(reach)
+                        };
+                        (line.rope.pos[k], left)
+                    }
+                    None => (anchor, line.max_length),
+                };
+                let id = line.joint;
+                if let Some(joint) = self.world.joint_mut(id) {
+                    joint.anchor_a = bend;
+                    joint.kind = JointKind::Tether { length };
+                }
+                if self.rope_coupling {
+                    self.account_rope(i, reeled, !coupled);
+                }
             } else {
-                line.max_length
-            };
-            // Paid-out line starts at rest on the reel.
-            let reeled = line.rope.momentum(origin) - before;
-            line.rope.coupled = coupled;
-            line.rope.step_between(
-                &mut self.world,
-                (joint.a, joint.anchor_a),
-                (joint.b, joint.anchor_b),
-                &field,
-            );
-            if self.rope_coupling {
-                let rope = &self.lines[i].rope;
-                if reeled != Momentum::ZERO {
-                    self.ledger.add("reel", reeled);
-                }
-                let mut pinned = vec![0];
-                if !coupled {
-                    pinned.push(1);
-                }
-                for end in pinned {
-                    self.ledger.add(
-                        "tether",
-                        Momentum {
-                            linear: -rope.end_impulse[end],
-                            angular: -rope.end_moment[end],
-                        },
-                    );
+                line.rope.length = (line.rope.length - LOOSE_REEL_SPEED * dt).max(REEL_MIN);
+                let reeled = line.rope.momentum(origin) - before;
+                line.rope.coupled = false;
+                line.rope.step_among(dt, anchor, anchor, &field, &solids);
+                if self.rope_coupling {
+                    self.account_rope(i, reeled, false);
                 }
             }
+        }
+    }
+
+    /// With rope coupling, enter line `index`'s last step in the ledger:
+    /// line paid out or taken in, the pull at the station anchor (and at the
+    /// far end when `far_pinned`), and what solids gave the rope.
+    fn account_rope(&mut self, index: usize, reeled: Momentum, far_pinned: bool) {
+        let rope = &self.lines[index].rope;
+        let (impulse, moment, contact) = (rope.end_impulse, rope.end_moment, rope.contact);
+        if reeled != Momentum::ZERO {
+            self.ledger.add("reel", reeled);
+        }
+        let ends: &[usize] = if far_pinned { &[0, 1] } else { &[0] };
+        for &end in ends {
+            self.ledger.add(
+                "tether",
+                Momentum {
+                    linear: -impulse[end],
+                    angular: -moment[end],
+                },
+            );
+        }
+        if contact != Momentum::ZERO {
+            self.ledger.add("structure", contact);
         }
     }
 
@@ -1587,6 +1953,17 @@ impl Station {
             if body.pos.distance(DEPOT) > PART_TETHER + TETHER_MARGIN {
                 *body = Body::new(kind.mass(), kind.inertia(), kind.stowage());
                 self.set_state(i, PartState::Stowed);
+                // The line comes back with the part, reeled in to the rack.
+                let (id, body) = (self.parts[i].line, self.parts[i].body);
+                if let Some(joint) = self.world.joint_mut(id) {
+                    joint.impulse = DVec3::ZERO;
+                }
+                if let Some(line) = self.lines.iter_mut().find(|line| line.body == body) {
+                    let count = line.rope.pos.len();
+                    let length = DEPOT.distance(kind.stowage()).max(REEL_MIN);
+                    line.rope = Rope::new(DEPOT, kind.stowage(), length, count, line.rope.settings);
+                    line.pivot = None;
+                }
                 self.message = Some(format!(
                     "Tether reeled the {} back to the depot",
                     kind.name().to_lowercase()
@@ -1774,6 +2151,8 @@ impl Station {
             );
             self.parts[index].latch = Some(self.world.add_joint(weld));
             self.account("latch", before);
+            // Welded to the jig, the part no longer needs its depot line.
+            self.unclip_line(self.parts[index].body);
             let installed = self
                 .parts
                 .iter()
@@ -1850,6 +2229,8 @@ impl Station {
             latch_distance_m: latch_distance,
             refilling: self.refilling,
             keeping_active: self.keeping_glow > 0.0,
+            tethered: self.tethered(),
+            clip_distance_m: (!self.tethered()).then(|| self.clip_distance()),
             message: self.message.clone(),
         }
     }
@@ -1892,12 +2273,32 @@ pub fn tide(c2: f64, pos: DVec3, vel: DVec3) -> DVec3 {
 }
 
 /// Rope settings for the safety tether and the part lines: light webbing
-/// that barely stretches and hardly resists bending.
-fn line_settings() -> RopeSettings {
+/// that barely stretches, hardly resists bending, and keeps `radius` from
+/// solids.
+fn line_settings(radius: f64) -> RopeSettings {
     RopeSettings {
         linear_density: LINE_DENSITY,
+        radius,
+        friction: LINE_FRICTION,
         ..RopeSettings::default()
     }
+}
+
+/// Length of the path from a rope's first particle through every particle
+/// that rests on a fixed solid, then straight to `end`: at least the taut
+/// line's length, since the taut line is the shortest such path.
+fn resting_path(rope: &Rope, fixed: &[bool], end: DVec3) -> f64 {
+    let n = rope.pos.len();
+    let mut last = rope.pos[0];
+    let mut length = 0.0;
+    for k in 1..n - 1 {
+        let t = rope.touch.get(k).copied().unwrap_or(0) as usize;
+        if t > 0 && fixed.get(t - 1).copied().unwrap_or(false) {
+            length += last.distance(rope.pos[k]);
+            last = rope.pos[k];
+        }
+    }
+    length + last.distance(end)
 }
 
 /// A reel's paid-out length: it pays out as fast as the end moves away,

@@ -314,6 +314,13 @@ fn baked() -> (
     (mesh, wings, all)
 }
 
+/// Positions of every drawn vertex of the fixed structure and the
+/// undeflected wings.
+#[cfg(test)]
+pub(crate) fn structure_vertices(out: &mut Vec<[f32; 3]>) {
+    out.extend(structure_with_wings().iter().map(|v| v.pos));
+}
+
 /// The wings bent by their structural modes this frame.
 fn flexed_wings(out: &mut Vec<LitVertex>, s: &Station) {
     for (index, wing) in wings().iter().enumerate() {
@@ -329,19 +336,33 @@ fn flexed_wings(out: &mut Vec<LitVertex>, s: &Station) {
 }
 
 /// Tethers and depot lines as round tubes along their ropes, with frames
-/// carried along the curve so the tube never twists (Wang et al. 2008).
+/// carried along the curve so the tube never twists (Wang et al. 2008). The
+/// tubes have the radius each rope keeps from the structure, so a line lies
+/// on what it wraps. An unclipped line ends in its clip.
 fn ropes(out: &mut Vec<LitVertex>, s: &Station) {
     let alpha = s.alpha();
     for (index, rope) in s.ropes().iter().enumerate() {
         let (radius, surface) = if index == 0 {
-            (0.012, Surface::from(Material::Fabric))
+            (station::TETHER_RADIUS, Surface::from(Material::Fabric))
         } else {
-            (0.008, Surface::from(Material::SafetyPaint))
+            (station::LINE_RADIUS, Surface::from(Material::SafetyPaint))
         };
         let points: Vec<Vec3> = (0..rope.points.len())
             .map(|i| rope.point(i, alpha).as_vec3())
             .collect();
-        tube(out, &points, radius, surface);
+        tube(out, &points, radius as f32, surface);
+        if !rope.clipped
+            && let [.., before, end] = points.as_slice()
+        {
+            let along = (*end - *before).try_normalize().unwrap_or(Vec3::Z);
+            block(
+                out,
+                *end,
+                Vec3::new(0.025, 0.025, 0.05),
+                Quat::from_rotation_arc(Vec3::Z, along),
+                Material::Aluminium,
+            );
+        }
     }
 }
 
