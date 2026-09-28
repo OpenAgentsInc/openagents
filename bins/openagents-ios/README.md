@@ -73,6 +73,14 @@ build with `--rust-native-fixture` to see the sample conversation from
 
 ## Account
 
+**Computers** lists your computers as a native list: each row names the
+computer and a one-word status with its route, and its menu switches it off
+or on, tries it now, opens its access, or forgets it. Tapping a row opens
+Coder's shared Computers screens for that computer (status, order work,
+terminal, access, recent work); **Add a computer** and **Activity** open the
+same screens. Rust builds the list from the Computers snapshot and runs
+every choice through the same authority check as the shared screens.
+
 **Identity keys** shows this device's Nostr key. The public key comes first
 in NIP-19 form (`npub1…`), with its hex beside it, each with **Copy**. The
 secret key (`nsec1…`) stays hidden until you tap **Reveal nsec** and confirm
@@ -90,7 +98,11 @@ version.
 In simulator builds, `--tab account --account-route
 computers|tailnet|identity|device|changelog` opens a screen directly, and
 `--identity-script warn|reveal` shows the reveal warning or reveals the nsec
-without taps.
+without taps. Launching with
+`SIMCTL_CHILD_OPENAGENTS_COMPUTERS_FIXTURE=1` draws Computers from Coder's
+offline fixture (`coder_computers::synthetic`), which contacts no host, and
+`--computers-script open|add|activity` opens its first computer, adding a
+computer, or activity.
 
 ## Automatic setup over the tailnet
 

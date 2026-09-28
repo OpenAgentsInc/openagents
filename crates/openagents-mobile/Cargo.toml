@@ -13,6 +13,8 @@ crate-type = ["rlib", "staticlib", "cdylib"]
 # Coder's Computers screens, live host client, encrypted store, and phone
 # terminal screen: enrollment, presence, direct channels, and commands.
 coder-computers = { path = "../coder-computers" }
+# Route classes, for the Computers list's short status.
+coder-reach = { path = "../coder-reach" }
 coder-vt = { path = "../coder-vt" }
 nostr = { path = "../nostr" }
 # The tailnet admission client (NIP-HOST): no host code is linked.

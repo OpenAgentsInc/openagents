@@ -139,7 +139,7 @@ struct AccountTab: View {
 
     @ViewBuilder private func destination(_ route: AccountRoute) -> some View {
         switch route {
-        case .computers: ComputersTab(bridge: bridge).navigationTitle("") // The screen draws its own heading.
+        case .computers: ComputersTab(bridge: bridge) // It sets its own title.
         case .tailnet: TailnetTab(bridge: bridge).navigationTitle("") // The screen draws its own heading.
         case .identity: IdentityKeysScreen(bridge: bridge).navigationTitle("Identity keys")
         case .device: AboutDeviceScreen(bridge: bridge).navigationTitle("About this device")

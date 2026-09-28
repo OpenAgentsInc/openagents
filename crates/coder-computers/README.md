@@ -56,7 +56,9 @@ against the current snapshot, and then calls the service. The host still
 checks its own grant record for every operation; passing the check grants
 nothing. Invitations only narrow: a device can share only rights it holds,
 and approval grants the intersection of the request and the approver's
-rights.
+rights. A platform that draws a control natively, such as a row
+in a native list, runs its intent through `Computers::perform`, which makes
+the same check.
 
 ## Services
 

@@ -32,11 +32,39 @@ struct ComputersQR: Decodable, Equatable {
     let rows: [String]
 }
 
+/// The native Computers list, while Coder's shared Computers screens are on
+/// their list. Rust builds every row and checks every choice.
+struct ComputersHome: Decodable, Equatable {
+    struct Item: Decodable, Equatable, Hashable {
+        let choice: String
+        let label: String
+        /// For a destructive choice, the question to ask before sending it.
+        let confirm: String?
+    }
+
+    struct Row: Decodable, Equatable, Identifiable {
+        let host: String
+        let name: String
+        let status: String
+        /// `online`, `pending`, `offline`, or `alert`.
+        let tone: String
+        let menu: [Item]
+        var id: String { host }
+    }
+
+    let rows: [Row]
+    let empty: String?
+    let notice: String?
+    let owner_key: Bool
+    let keep_directory: Bool
+}
+
 struct AppPacket: Decodable {
     let schema: String
     let device: String
     let device_npub: String
     let computers: NativeView?
+    let computers_home: ComputersHome?
     let computers_input: ComputersInput?
     let computers_qr: ComputersQR?
     let coder: NativeView?
@@ -98,10 +126,13 @@ final class MobileBridge: ObservableObject {
     init() {
         do {
             let secret = try DeviceKey.loadOrCreate()
-            let configuration = try JSONSerialization.data(withJSONObject: [
+            let options: [String: Any] = [
                 "state_dir": try DeviceKey.stateDirectory().path,
                 "secret_hex": secret.map { String(format: "%02x", $0) }.joined(),
-            ])
+                // This host draws the Computers list and its navigation.
+                "native_computers": true,
+            ]
+            let configuration = try JSONSerialization.data(withJSONObject: options)
             handle = configuration.withUnsafeBytes { bytes in
                 openagents_mobile_create(bytes.bindMemory(to: UInt8.self).baseAddress, bytes.count)
             }
@@ -135,6 +166,15 @@ final class MobileBridge: ObservableObject {
         send(["op": "wallet_open", "entropy_hex": entropy.map { String(format: "%02x", $0) }.joined()])
     }
     func refreshWallet() { send(["op": "wallet_refresh"]) }
+
+    /// Open a computer from the native Computers list.
+    func openComputer(_ host: String) { send(["op": "computers_open", "host": host]) }
+    /// A choice from a Computers row's menu, already confirmed when it asks.
+    func chooseComputer(_ host: String, _ choice: String) {
+        send(["op": "computers_choose", "host": host, "choice": choice])
+    }
+    /// `home`, `add`, `activity`, `owner_key`, `keep_directory`, or `refresh`.
+    func computersGo(_ destination: String) { send(["op": "computers_go", "to": destination]) }
 
     /// Answer or close an input request on the Computers or Chats surface.
     func submit(_ surface: String, token: String, value: String) {

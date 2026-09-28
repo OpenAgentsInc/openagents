@@ -52,8 +52,13 @@ struct SurfaceView: View {
     }
 }
 
+/// Computers: a native list of your computers, then Coder's shared screens
+/// for one computer, adding one, and activity. Rust builds both and checks
+/// every choice.
 struct ComputersTab: View {
     @ObservedObject var bridge: MobileBridge
+
+    private var home: ComputersHome? { bridge.packet?.computers_home }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -63,12 +68,16 @@ struct ComputersTab: View {
             if let failure = bridge.failure {
                 Text(failure).font(.caption).padding(.horizontal)
             }
-            SurfaceView(view: bridge.packet?.computers) { view, node in
-                bridge.activate("computers", view: view, node: node)
-            }
-            if let qr = bridge.packet?.computers_qr {
-                InvitationQR(qr: qr).frame(width: 220, height: 220).padding()
-                    .accessibilityLabel("Invitation QR code")
+            if let home {
+                ComputersList(home: home, bridge: bridge)
+            } else {
+                SurfaceView(view: bridge.packet?.computers) { view, node in
+                    bridge.activate("computers", view: view, node: node)
+                }
+                if let qr = bridge.packet?.computers_qr {
+                    InvitationQR(qr: qr).frame(width: 220, height: 220).padding()
+                        .accessibilityLabel("Invitation QR code")
+                }
             }
             if let input = bridge.packet?.computers_input {
                 InputBar(input: input, busy: bridge.busy,
@@ -78,6 +87,59 @@ struct ComputersTab: View {
             }
         }
         .background(Color.black.ignoresSafeArea())
+        .navigationTitle(home == nil ? "" : "Computers")
+        .navigationBarTitleDisplayMode(.inline)
+        // Past the list, back returns to it rather than to Account.
+        .navigationBarBackButtonHidden(home == nil)
+        .toolbar {
+            if let home {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Button("Activity", systemImage: "list.bullet") { bridge.computersGo("activity") }
+                        Button("Refresh", systemImage: "arrow.clockwise") { bridge.computersGo("refresh") }
+                        if home.owner_key {
+                            Button("Enter owner key", systemImage: "key") { bridge.computersGo("owner_key") }
+                        }
+                        if home.keep_directory {
+                            Button("Keep this device's version", systemImage: "checkmark.circle") {
+                                bridge.computersGo("keep_directory")
+                            }
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis")
+                    }
+                    .accessibilityLabel("More")
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { bridge.computersGo("add") } label: { Image(systemName: "plus") }
+                        .accessibilityLabel("Add a computer")
+                }
+            } else {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button { bridge.computersGo("home") } label: { Image(systemName: "chevron.left") }
+                        .accessibilityLabel("Computers")
+                }
+            }
+        }
+        .onAppear {
+            bridge.computersGo("home")
+            #if targetEnvironment(simulator)
+            // `--computers-script open|add|activity` opens the first computer,
+            // adding a computer, or activity, so a simulator check needs no taps.
+            let arguments = ProcessInfo.processInfo.arguments
+            if let index = arguments.firstIndex(of: "--computers-script"), index + 1 < arguments.count {
+                let step = arguments[index + 1]
+                Task {
+                    try? await Task.sleep(for: .seconds(1))
+                    if step == "open", let first = bridge.packet?.computers_home?.rows.first {
+                        bridge.openComputer(first.host)
+                    } else if step == "add" || step == "activity" {
+                        bridge.computersGo(step)
+                    }
+                }
+            }
+            #endif
+        }
         // Host status moves on its own; poll while no value is being entered.
         .task(id: bridge.packet?.computers_input == nil) {
             guard bridge.packet?.computers_input == nil else { return }
@@ -86,6 +148,111 @@ struct ComputersTab: View {
                 if !Task.isCancelled && !bridge.busy { bridge.refreshComputers() }
             }
         }
+    }
+}
+
+/// One row per computer: a status dot, its name, and a short status. A tap
+/// opens it; its menu holds the rest.
+private struct ComputersList: View {
+    let home: ComputersHome
+    @ObservedObject var bridge: MobileBridge
+    @State private var confirming: (row: ComputersHome.Row, item: ComputersHome.Item)?
+
+    var body: some View {
+        List {
+            if let empty = home.empty {
+                Section {
+                    VStack(spacing: 12) {
+                        Image(systemName: "desktopcomputer")
+                            .font(.system(size: 40, weight: .light))
+                            .foregroundStyle(.secondary)
+                        Text(empty)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                        Button("Add a computer") { bridge.computersGo("add") }
+                            .buttonStyle(.borderedProminent)
+                            .tint(.white)
+                            .foregroundStyle(.black)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 24)
+                }
+            } else {
+                Section {
+                    ForEach(home.rows) { row in
+                        Button { bridge.openComputer(row.host) } label: { ComputerRow(row: row) }
+                            .accessibilityIdentifier("computer-\(row.name)")
+                            .contextMenu {
+                                ForEach(row.menu, id: \.self) { item in
+                                    Button(item.label, role: item.confirm == nil ? nil : .destructive) {
+                                        choose(row, item)
+                                    }
+                                }
+                            }
+                            .swipeActions {
+                                if let forget = row.menu.first(where: { $0.choice == "forget" }) {
+                                    Button("Forget", systemImage: "trash", role: .destructive) {
+                                        choose(row, forget)
+                                    }
+                                }
+                            }
+                    }
+                } footer: {
+                    if let notice = home.notice { Text(notice) }
+                }
+            }
+        }
+        .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
+        .background(Color.black.ignoresSafeArea())
+        .confirmationDialog(confirming?.item.confirm ?? "", isPresented: Binding(
+            get: { confirming != nil }, set: { if !$0 { confirming = nil } }),
+            titleVisibility: .visible) {
+            if let confirming {
+                Button(confirming.item.label, role: .destructive) {
+                    bridge.chooseComputer(confirming.row.host, confirming.item.choice)
+                }
+            }
+        }
+    }
+
+    private func choose(_ row: ComputersHome.Row, _ item: ComputersHome.Item) {
+        if item.confirm == nil {
+            bridge.chooseComputer(row.host, item.choice)
+        } else {
+            confirming = (row, item)
+        }
+    }
+}
+
+private struct ComputerRow: View {
+    let row: ComputersHome.Row
+
+    private var tone: Color {
+        switch row.tone {
+        case "online": .green
+        case "pending": .yellow
+        case "alert": .red
+        default: Color(white: 0.45)
+        }
+    }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Circle().fill(tone).frame(width: 8, height: 8)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(row.name).foregroundStyle(.white)
+                Text(row.status).font(.subheadline).foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 8)
+            Image(systemName: "chevron.right")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(.tertiary)
+        }
+        .padding(.vertical, 2)
+        .contentShape(Rectangle())
     }
 }
 

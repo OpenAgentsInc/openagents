@@ -1930,3 +1930,34 @@ fn task_titles_are_one_bounded_line() {
     assert_eq!(task_title("   "), "Task");
     assert_eq!(task_title(&"x".repeat(300)).chars().count(), 80);
 }
+
+#[test]
+fn a_native_control_runs_an_intent_through_the_same_check() {
+    let mut computers = open(Platform::Phone);
+    let host = computers.snapshot().hosts[0].key.clone();
+    assert_eq!(
+        computers.perform(Intent::Show {
+            screen: Screen::Host { host: host.clone() }
+        }),
+        Ok(Outcome::Updated)
+    );
+    assert_eq!(computers.screen(), &Screen::Host { host });
+    // An unknown host is refused, as a stale button would be, and the
+    // refusal shows as the screen's notice.
+    assert!(
+        computers
+            .perform(Intent::Show {
+                screen: Screen::Access {
+                    host: "unknown".into()
+                }
+            })
+            .is_err()
+    );
+    assert!(computers.notice().is_some());
+    // Confirming a forget nobody asked for is stale.
+    let other = computers.snapshot().hosts[1].key.clone();
+    assert_eq!(
+        computers.perform(Intent::ConfirmForget { host: other }),
+        Err(Refusal::Stale)
+    );
+}

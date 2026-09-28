@@ -3,6 +3,9 @@
 
 use crate::chats::{Chats, Purpose as ChatsPurpose};
 use crate::coder_tab::CoderTab;
+use crate::computers_home::{
+    self, Choice as ComputersChoice, Destination as ComputersDestination, Home,
+};
 use crate::tailnet::{Client, Outcome as TailnetOutcome};
 use crate::tailnet_view::{self, Admit, Intent as TailnetIntent, Screen as TailnetScreen};
 use coder_computers::cache::Cache;
@@ -39,6 +42,27 @@ fn fixture_requested() -> bool {
     cfg!(debug_assertions) && std::env::var_os("OPENAGENTS_COMPUTERS_FIXTURE").is_some()
 }
 
+/// Launch options beside [`Config`] in the host's configuration.
+#[derive(Default, Deserialize)]
+pub struct Launch {
+    /// Draw Computers from Coder's offline fixture instead of real hosts,
+    /// as [`fixture_requested`] does, for tests. It contacts no host or
+    /// relay.
+    #[serde(default)]
+    pub computers_fixture: bool,
+    /// The host draws the Computers list natively (`computers_home`) and
+    /// its own navigation, so the shared screens drop their tab row. The iOS
+    /// host sets it; the Android host draws the shared screens whole.
+    #[serde(default)]
+    pub native_computers: bool,
+}
+
+/// What this phone's Computers screens can do.
+const CAPABILITIES: Capabilities = Capabilities {
+    platform: Platform::Phone,
+    camera: true,
+};
+
 #[derive(Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Request {
@@ -61,6 +85,21 @@ pub enum Request {
         token: String,
     },
     ComputersRefresh,
+    /// Open a computer from the native Computers list.
+    ComputersOpen {
+        host: String,
+    },
+    /// A choice from a row's menu on the native Computers list. The host
+    /// confirms a destructive choice before it sends it.
+    ComputersChoose {
+        host: String,
+        choice: ComputersChoice,
+    },
+    /// The list's own controls, and back to the list from a computer's
+    /// screens.
+    ComputersGo {
+        to: ComputersDestination,
+    },
     ChatsActivate {
         instance: String,
         revision: u64,
@@ -166,7 +205,10 @@ pub struct Packet {
     pub device: String,
     /// The same key in NIP-19 form (`npub1…`).
     pub device_npub: String,
+    /// Coder's shared Computers screens, while they are past the list.
     pub computers: Option<serde_json::Value>,
+    /// The native Computers list, while the shared screens are on it.
+    pub computers_home: Option<Home>,
     /// A value the Computers surface asks the host to collect.
     pub computers_input: Option<InputRequest>,
     pub computers_qr: Option<QrModules>,
@@ -226,6 +268,7 @@ const ADMISSION_LIMIT: Duration = Duration::from_secs(5);
 
 pub struct App {
     runtime: tokio::runtime::Runtime,
+    native_computers: bool,
     /// The device key. It leaves the app only through an explicit
     /// [`Request::Account`] reveal.
     secret: SecretKey,
@@ -248,6 +291,10 @@ pub struct App {
 
 impl App {
     pub fn new(config: Config) -> Result<Self, String> {
+        Self::open(config, Launch::default())
+    }
+
+    pub fn open(config: Config, launch: Launch) -> Result<Self, String> {
         let secret = SecretKey::from_str(&config.secret_hex).map_err(|_| "invalid device key")?;
         let (device, device_npub) = crate::account::public(&secret);
         // Both ring and aws-lc-rs are linked; TLS clients that use the
@@ -262,42 +309,39 @@ impl App {
         let mut terminals = None;
         // A phone never runs a host; it reaches hosts through the live
         // client, which keeps its grants in their own encrypted store.
-        let service: Box<dyn coder_computers::ComputersService + Send> = if fixture_requested() {
-            Box::new(coder_computers::synthetic::Synthetic::fixture(
-                Platform::Phone,
-                now,
-            ))
-        } else {
-            match Cache::open(&config.state_dir.join("computers"), &secret).and_then(|cache| {
-                let mut settings = Settings::new(Platform::Phone);
-                settings.now = now;
-                Live::open(
-                    settings,
-                    secret,
-                    Box::new(ComputersStore(cache)),
-                    runtime.handle().clone(),
-                )
-                .map_err(|error| coder_computers::describe(&error))
-            }) {
-                Ok(live) => {
-                    terminals = Some(live.terminals());
-                    Box::new(live)
+        let service: Box<dyn coder_computers::ComputersService + Send> =
+            if launch.computers_fixture || fixture_requested() {
+                Box::new(coder_computers::synthetic::Synthetic::fixture(
+                    Platform::Phone,
+                    now,
+                ))
+            } else {
+                match Cache::open(&config.state_dir.join("computers"), &secret).and_then(|cache| {
+                    let mut settings = Settings::new(Platform::Phone);
+                    settings.now = now;
+                    Live::open(
+                        settings,
+                        secret,
+                        Box::new(ComputersStore(cache)),
+                        runtime.handle().clone(),
+                    )
+                    .map_err(|error| coder_computers::describe(&error))
+                }) {
+                    Ok(live) => {
+                        terminals = Some(live.terminals());
+                        Box::new(live)
+                    }
+                    Err(reason) => {
+                        notices.push(format!("Computers unavailable: {reason}"));
+                        Box::new(coder_computers::Unavailable::new(
+                            device.clone(),
+                            LocalHost::NotSupported,
+                            now,
+                        ))
+                    }
                 }
-                Err(reason) => {
-                    notices.push(format!("Computers unavailable: {reason}"));
-                    Box::new(coder_computers::Unavailable::new(
-                        device.clone(),
-                        LocalHost::NotSupported,
-                        now,
-                    ))
-                }
-            }
-        };
-        let capabilities = Capabilities {
-            platform: Platform::Phone,
-            camera: true,
-        };
-        let computers = match Computers::new(service, capabilities, format!("computers:{}", id())) {
+            };
+        let computers = match Computers::new(service, CAPABILITIES, format!("computers:{}", id())) {
             Ok(mut computers) => {
                 // Hosts arrive through tailnet admission or an invitation;
                 // the phone skips Coder's first-run page.
@@ -318,6 +362,7 @@ impl App {
         let tailnet_client = Client::open(&config.state_dir.join("tailscale")).map(Arc::new);
         Ok(Self {
             runtime,
+            native_computers: launch.native_computers,
             secret,
             device,
             device_npub,
@@ -410,6 +455,22 @@ impl App {
             Request::ComputersRefresh => {
                 if let Some(computers) = self.computers.as_mut() {
                     let _ = computers.refresh();
+                }
+            }
+            // A refusal shows as the list's or the screen's notice.
+            Request::ComputersOpen { host } => {
+                if let Some(computers) = self.computers.as_mut() {
+                    let _ = computers_home::open(computers, &host);
+                }
+            }
+            Request::ComputersChoose { host, choice } => {
+                if let Some(computers) = self.computers.as_mut() {
+                    let _ = computers_home::choose(computers, &host, choice);
+                }
+            }
+            Request::ComputersGo { to } => {
+                if let Some(computers) = self.computers.as_mut() {
+                    let _ = computers_home::go(computers, to);
                 }
             }
             Request::ChatsActivate {
@@ -736,14 +797,32 @@ impl App {
         self.coder.flush(self.computers.as_mut());
         let coder = self.coder.render(self.computers.as_ref(), &mut self.chats);
         let computers = self.computers.as_ref();
+        let computers_home = computers
+            .filter(|_| self.native_computers)
+            .and_then(|c| computers_home::home(c, CAPABILITIES));
+        let native = self.native_computers;
         Packet {
             schema: "openagents.mobile.v1",
             device: self.device.clone(),
             device_npub: self.device_npub.clone(),
+            // The host's navigation replaces the shared screens' tab row and
+            // a computer's back and refresh row, and a phone never runs a
+            // local host.
             computers: computers
+                .filter(|_| computers_home.is_none())
                 .and_then(Computers::view)
                 .and_then(|view| serde_json::to_value(view.view()).ok())
-                .map(|view| neutral(without(view, &["directory"]))),
+                .map(|view| {
+                    if native {
+                        framed(neutral(without(
+                            view,
+                            &["directory", "tabs", "host-end", "local"],
+                        )))
+                    } else {
+                        neutral(without(view, &["directory"]))
+                    }
+                }),
+            computers_home,
             computers_input: computers.and_then(Computers::input).cloned(),
             computers_qr: computers
                 .and_then(Computers::invitation_qr)
@@ -890,6 +969,19 @@ fn neutral(mut view: serde_json::Value) -> serde_json::Value {
             serde_json::Value::Array(items) => pending.extend(items.iter_mut()),
             _ => {}
         }
+    }
+    view
+}
+
+/// Draw the shared screens on the app's black with its page margins.
+fn framed(mut view: serde_json::Value) -> serde_json::Value {
+    if let Some(style) = view["root"]["style"].as_object_mut() {
+        style.remove("background");
+        for side in ["padding_start", "padding_end"] {
+            style.insert(side.into(), "md".into());
+        }
+        style.insert("padding_top".into(), "sm".into());
+        style.insert("gap".into(), "md".into());
     }
     view
 }

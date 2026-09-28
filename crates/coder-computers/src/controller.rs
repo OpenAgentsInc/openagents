@@ -362,6 +362,15 @@ impl Computers {
         self.finish(result)
     }
 
+    /// Check and run an intent that a platform's own native control chose,
+    /// such as a row in a native list, rather than a button in the current
+    /// view. It runs through the same authority check as [`Self::activate`];
+    /// a refusal is also shown as the screen's notice.
+    pub fn perform(&mut self, intent: Intent) -> Result<Outcome, Refusal> {
+        let result = self.apply(intent);
+        self.finish(result)
+    }
+
     /// Whether this device may order work on `host` now: the same check the
     /// Order work screen makes.
     pub fn can_operate(&self, host: &str) -> bool {

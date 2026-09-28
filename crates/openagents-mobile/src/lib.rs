@@ -20,6 +20,7 @@ mod app;
 mod chats;
 mod coder_list;
 mod coder_tab;
+mod computers_home;
 mod conversation;
 mod outbox;
 mod tailnet;
@@ -27,7 +28,7 @@ mod tailnet_view;
 mod verse;
 mod wallet;
 
-pub use app::{App, Config, Packet, Request};
+pub use app::{App, Config, Launch, Packet, Request};
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::ptr;
@@ -63,7 +64,8 @@ pub unsafe extern "C" fn openagents_mobile_create(bytes: *const u8, len: usize) 
     catch_unwind(AssertUnwindSafe(|| {
         let bytes = unsafe { std::slice::from_raw_parts(bytes, len) };
         let config: Config = serde_json::from_slice(bytes).ok()?;
-        App::new(config)
+        let launch: Launch = serde_json::from_slice(bytes).ok()?;
+        App::open(config, launch)
             .ok()
             .map(|app| Box::into_raw(Box::new(app)))
     }))
