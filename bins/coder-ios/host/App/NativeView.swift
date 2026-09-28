@@ -216,7 +216,11 @@ struct NativeRenderer: View {
         switch node.element {
         case let .stack(axis, children):
             if axis == "horizontal" {
-                return AnyView(HStack(alignment: .top, spacing: NativeStyle.points(node.style.gap)) {
+                // A centered row, such as a header, shares one line: a title
+                // beside a round button, or a back link beside its status.
+                // Other rows keep their text level at the top.
+                let alignment: VerticalAlignment = node.style.align == "center" ? .center : .top
+                return AnyView(HStack(alignment: alignment, spacing: NativeStyle.points(node.style.gap)) {
                     ForEach(children) { child in render(child) }
                 })
             }

@@ -890,7 +890,7 @@ impl CoderTab {
             Intent::NewChat,
         );
         new.style.align = Some(TextAlign::End);
-        let mut children = vec![row(
+        let mut children = vec![header(
             "coder-header",
             vec![heading("coder-title", "Coder"), new],
         )];
@@ -943,7 +943,7 @@ impl CoderTab {
     /// first message starts it.
     fn new_chat(&self, computers: Option<&Computers>) -> Node<Intent> {
         let availability = self.availability(computers);
-        let mut children = vec![row(
+        let mut children = vec![header(
             "coder-new-header",
             vec![icon_button(
                 "coder-back",
@@ -1032,7 +1032,7 @@ impl CoderTab {
         let mut children = vec![
             // The breadcrumb bar: back to the chats list, and where the
             // chat runs.
-            row(
+            header(
                 "coder-chat-header",
                 vec![
                     icon_button("coder-back", "Coder", Glyph::Back, false, Intent::Back),
@@ -1555,6 +1555,14 @@ fn row(key: &str, children: Vec<Node<Intent>>) -> Node<Intent> {
             children,
         },
     }
+}
+
+/// A header row: its children share one line, centered on it, as a title
+/// beside a round button or a back link beside its status.
+fn header(key: &str, children: Vec<Node<Intent>>) -> Node<Intent> {
+    let mut node = row(key, children);
+    node.style.align = Some(TextAlign::Center);
+    node
 }
 
 fn text(key: &str, value: &str, role: TextRole, foreground: Color, bold: bool) -> Node<Intent> {
