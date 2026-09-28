@@ -32,6 +32,14 @@ fn values(view: &serde_json::Value) -> Vec<String> {
                 out.push(value.to_owned());
             }
         }
+        // Markdown: the text of its paragraphs and headings.
+        if let Some(blocks) = props["blocks"].as_array() {
+            for block in blocks {
+                if let Some(spans) = block["spans"].as_array() {
+                    out.push(spans.iter().filter_map(|s| s["text"].as_str()).collect());
+                }
+            }
+        }
         if let Some(children) = props["children"].as_array() {
             pending.extend(children.iter().rev());
         }
@@ -608,5 +616,69 @@ fn live_coder_chat_shows_a_task_transcript() {
         }
         assert!(std::time::Instant::now() < deadline, "{:?}", values(&chat));
         std::thread::sleep(std::time::Duration::from_millis(500));
+    }
+}
+
+/// A real Coder chat on a real host with tailnet admission and auto-start:
+/// the task runs and its transcript shows the reply. It sends one harmless
+/// task. Set `OPENAGENTS_TEST_ADMISSION` and `OPENAGENTS_TEST_PROMPT`.
+#[test]
+#[ignore = "network: runs a real task on a real host"]
+fn live_coder_chat_runs_a_task() {
+    let address = std::env::var("OPENAGENTS_TEST_ADMISSION").expect("address");
+    let prompt = std::env::var("OPENAGENTS_TEST_PROMPT").expect("prompt");
+    let (mut app, _dir) = app();
+    app.call(Request::Lifecycle { active: true });
+    app.set_tailnet(Screen::Devices(Tailnet {
+        name: None,
+        this_device: None,
+        devices: vec![Device {
+            name: "test-computer".into(),
+            os: "macOS".into(),
+            address,
+            online: Some(true),
+        }],
+    }));
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(900);
+    let coder = loop {
+        let coder = app.call(Request::ComputersRefresh).coder.unwrap();
+        if values(&coder)
+            .iter()
+            .any(|t| t.starts_with("On ") && t.contains(" · "))
+        {
+            break coder;
+        }
+        assert!(std::time::Instant::now() < deadline, "{:?}", values(&coder));
+        std::thread::sleep(std::time::Duration::from_millis(500));
+    };
+    let composer = nodes_of(&coder, "composer")[0].clone();
+    let token = composer["element"]["props"]["token"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    app.call(Request::CoderInput {
+        token,
+        value: prompt,
+    });
+    let mut last = String::new();
+    loop {
+        let chat = app.call(Request::ComputersRefresh).coder.unwrap();
+        let text = values(&chat);
+        let place = text.get(1).cloned().unwrap_or_default();
+        if place != last {
+            eprintln!("status: {place}");
+            last = place.clone();
+        }
+        let running = nodes_of(&chat, "working").len() > 0;
+        if !running
+            && (place.starts_with("Done")
+                || place.starts_with("Failed")
+                || place.starts_with("Stopped"))
+        {
+            eprintln!("final: {text:?}");
+            return;
+        }
+        assert!(std::time::Instant::now() < deadline, "{text:?}");
+        std::thread::sleep(std::time::Duration::from_secs(3));
     }
 }

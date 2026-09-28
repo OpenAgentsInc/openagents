@@ -86,10 +86,13 @@ pub fn start(directory: &Path, bytes: &[u8]) -> Result<Launched, String> {
         // USER and LOGNAME name the account: Claude Code on macOS finds its
         // sign-in in the Keychain under the user's name, and reports "Not
         // logged in" without it.
+        // A service manager such as launchd may start the host without USER,
+        // so the name comes from the account database when it is missing.
+        if let Some(name) = std::env::var_os("USER").or_else(account_name) {
+            process.env("USER", &name).env("LOGNAME", name);
+        }
         for key in [
             "HOME",
-            "USER",
-            "LOGNAME",
             crate::claude::BIN_VAR,
             "TYPESAFE_API_KEY",
             "TYPESAFE_BASE_URL",
@@ -127,4 +130,19 @@ pub fn start(directory: &Path, bytes: &[u8]) -> Result<Launched, String> {
         })
     };
     attempt().map_err(|error| error.to_string())
+}
+
+/// This process's account name from the account database.
+fn account_name() -> Option<std::ffi::OsString> {
+    use std::os::unix::ffi::OsStrExt;
+    // SAFETY: getpwuid returns a pointer into static storage or null; the
+    // name is copied before any other call that could reuse it.
+    unsafe {
+        let entry = libc::getpwuid(libc::getuid());
+        if entry.is_null() || (*entry).pw_name.is_null() {
+            return None;
+        }
+        let name = std::ffi::CStr::from_ptr((*entry).pw_name);
+        Some(std::ffi::OsStr::from_bytes(name.to_bytes()).to_os_string())
+    }
 }
