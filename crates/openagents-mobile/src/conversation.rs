@@ -8,9 +8,12 @@
 //! without splitting a record.
 //!
 //! A chat can start from a copy the phone kept ([`Cached`]), shown at once
-//! while the computer is read again, and can move to a newer source, as a
-//! Coder task's next turn; the rows it shows stay until the new source's
-//! first read replaces them, and a read for an older source is dropped.
+//! while the computer is read again. A Coder task's next turn is a newer
+//! source that begins with the earlier turns' messages, marked as carried;
+//! the chat moves to it by reading it backward only as far as those carried
+//! messages and showing its rows after the ones it has, so a follow-up's
+//! reply shows after a read or two. Each source is a segment of the chat,
+//! and a read for a source the chat moved past is dropped.
 
 use coder_connect::{Client, Observation, Query};
 use coder_history::{Chat, RecordChunk, TranscriptRequest};
@@ -30,13 +33,15 @@ const OBSERVE_LIMIT: Duration = Duration::from_secs(20);
 const PAGE_BYTES: u32 = 16 * 1024;
 /// Backward pages read for one batch.
 const BATCH_PAGES: usize = 12;
-/// Backward pages one poll reads to reach what it has. A Coder turn writes
-/// large bookkeeping records, each a page of its own.
+/// Backward pages one poll, or one read of a new turn, reads to reach what
+/// it has.
 const NEWER_PAGES: usize = 48;
 /// Conversational messages a batch looks for.
 const BATCH_MESSAGES: usize = 10;
 /// Rows kept for one chat; older rows are not read past this.
 const MAX_ROWS: usize = 240;
+/// Sources one chat follows before it starts again from its newest.
+const MAX_SEGMENTS: usize = 200;
 const MESSAGE_BYTES: usize = 6_000;
 const TOOL_BYTES: usize = 1_500;
 /// A tool row's output in a chat too large for one view.
@@ -62,11 +67,17 @@ pub enum Entry {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Row {
-    /// The record's offset: with `part`, a stable row key.
+    /// The source the row was read from, in the order the chat followed
+    /// them; with `offset` and `part`, a stable row key.
+    pub segment: u8,
+    /// The record's offset.
     pub offset: u64,
     /// Where the record ends.
     pub end: u64,
     pub part: u8,
+    /// The record repeats an earlier turn's message at the start of a
+    /// later turn's source.
+    pub carried: bool,
     pub entry: Entry,
     /// A message's Markdown, parsed once when the row is made.
     pub blocks: Vec<markdown::Block>,
@@ -79,9 +90,11 @@ impl Row {
             _ => vec![],
         };
         Row {
+            segment: 0,
             offset,
             end,
             part,
+            carried: false,
             entry,
             blocks,
         }
@@ -91,16 +104,20 @@ impl Row {
 /// A chat as the phone last showed it, kept so it opens at once.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Cached {
+    /// The newest source's chat.
     pub chat: Chat,
+    /// Each segment's source ID, oldest first.
+    pub sources: Vec<String>,
     pub rows: Vec<CachedRow>,
-    /// Where earlier records end, when there are any.
-    pub previous: Option<u64>,
-    /// The end of the newest whole record read.
+    /// Where earlier records end: a segment and an offset in its source.
+    pub previous: Option<(u8, u64)>,
+    /// The end of the newest source's newest whole record read.
     pub through: u64,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CachedRow {
+    pub segment: u8,
     pub offset: u64,
     pub end: u64,
     pub part: u8,
@@ -116,21 +133,24 @@ pub struct Pending<'a> {
 
 #[derive(Default)]
 struct Inner {
+    /// Each segment's source ID, oldest first; the last is read for new
+    /// records.
+    sources: Vec<String>,
     rows: Vec<Row>,
-    /// Where earlier records end, when there are any.
-    previous: Option<u64>,
-    /// The end of the newest whole record read, shown or not, so a poll
-    /// does not read bookkeeping records again.
+    /// Where earlier records end: a segment and an offset in its source.
+    previous: Option<(u8, u64)>,
+    /// The end of the newest whole record of the newest source read, shown
+    /// or not, so a poll does not read bookkeeping records again.
     through: u64,
-    /// A first read of the current source is running.
+    /// A read of the newest source's newest records is running.
     loading: bool,
     earlier: bool,
     polling: bool,
     error: Option<String>,
-    /// The current source's newest batch has not been read: the rows shown,
-    /// if any, came from the phone's copy or an earlier source.
+    /// The newest source's newest records have not been read: the rows
+    /// shown, if any, came from the phone's copy or earlier sources.
     stale: bool,
-    /// Changes with the source; a read for an older source is dropped.
+    /// Changes with the sources; a read for older ones is dropped.
     generation: u64,
     /// Reads started, and the newest one that finished without an error.
     started: u64,
@@ -140,14 +160,40 @@ struct Inner {
     /// How much of a tool row's output shows: 0 all, 1 a little, 2 none,
     /// for a chat too large for one view.
     compact: u8,
-    /// The first read that is showing its pages as they arrive: one that
-    /// started with nothing to show.
+    /// The read showing its pages as they arrive.
     partial: Option<u64>,
+}
+
+impl Inner {
+    fn newest(&self) -> (u8, String) {
+        let segment = self.sources.len().saturating_sub(1);
+        (
+            u8::try_from(segment).unwrap_or(u8::MAX),
+            self.sources.last().cloned().unwrap_or_default(),
+        )
+    }
+
+    /// Show `found`, read from the newest records of `segment`: the first
+    /// segment's rows replace every row; a later one's follow the rows of
+    /// the segments before it, leaving out the messages it carries.
+    fn show(&mut self, segment: u8, found: &[Row], previous: Option<u64>) {
+        let found = found.iter().map(|row| Row {
+            segment,
+            ..row.clone()
+        });
+        if segment == 0 {
+            self.rows = found.collect();
+            self.previous = previous.map(|end| (0, end));
+        } else {
+            self.rows.retain(|row| row.segment != segment);
+            self.rows.extend(found.filter(|row| !row.carried));
+        }
+        self.version += 1;
+    }
 }
 
 pub struct Conversation {
     pub chat: Chat,
-    source: String,
     client: Arc<Client>,
     runtime: Handle,
     inner: Arc<Mutex<Inner>>,
@@ -163,9 +209,9 @@ impl Conversation {
         Self::resume(runtime, client, chat, None)
     }
 
-    /// Open `chat` showing the phone's copy of it, then read what changed:
-    /// the records after the copy's newest when it is of the same source,
-    /// else the source's newest batch, which replaces the copy.
+    /// Open `chat` showing the phone's copy of a chat, then read what
+    /// changed: the records after the copy's newest when its newest source
+    /// is `chat`'s, else `chat`'s newest batch, which replaces the copy.
     pub fn resume(
         runtime: Handle,
         client: Arc<Client>,
@@ -174,6 +220,7 @@ impl Conversation {
     ) -> Self {
         let source = chat.source_id.clone().unwrap_or_default();
         let mut inner = Inner {
+            sources: vec![source.clone()],
             stale: true,
             ..Inner::default()
         };
@@ -181,17 +228,27 @@ impl Conversation {
             inner.rows = cached
                 .rows
                 .into_iter()
-                .map(|row| Row::new(row.offset, row.end, row.part, row.entry))
+                .map(|row| Row {
+                    segment: row.segment,
+                    ..Row::new(row.offset, row.end, row.part, row.entry)
+                })
                 .collect();
-            if cached.chat.source_id.as_deref() == Some(source.as_str()) {
+            if cached.sources.last() == Some(&source) {
+                inner.sources = cached.sources;
                 inner.previous = cached.previous;
                 inner.through = cached.through;
                 inner.stale = false;
+            } else {
+                // The copy is of another source: it shows as the first
+                // segment's rows until this source's newest batch replaces
+                // them.
+                for row in &mut inner.rows {
+                    row.segment = 0;
+                }
             }
         }
         let conversation = Self {
             chat,
-            source,
             client,
             runtime,
             inner: Arc::new(Mutex::new(inner)),
@@ -201,19 +258,24 @@ impl Conversation {
     }
 
     /// Move to `chat`, a newer source of the same conversation, such as a
-    /// Coder task's next turn. The rows shown stay until its newest batch
-    /// replaces them.
+    /// Coder task's next turn: its records after the messages it carries
+    /// show after the rows shown now.
     pub fn switch(&mut self, chat: Chat) {
-        self.source = chat.source_id.clone().unwrap_or_default();
+        let source = chat.source_id.clone().unwrap_or_default();
         self.chat = chat;
         {
             let mut inner = lock(&self.inner);
             inner.generation += 1;
+            if inner.sources.len() >= MAX_SEGMENTS {
+                inner.sources.clear();
+                inner.rows.clear();
+                inner.previous = None;
+            }
+            inner.sources.push(source);
             inner.stale = true;
             inner.loading = false;
             inner.polling = false;
             inner.earlier = false;
-            inner.previous = None;
             inner.through = 0;
         }
         self.poll();
@@ -226,45 +288,47 @@ impl Conversation {
 
     /// Read the batch before the oldest row.
     pub fn earlier(&self) {
-        let previous = {
+        let (segment, source, previous) = {
             let mut inner = lock(&self.inner);
-            if inner.loading || inner.earlier || inner.stale || inner.rows.len() >= MAX_ROWS {
+            if inner.loading || inner.earlier || inner.rows.len() >= MAX_ROWS {
                 return;
             }
-            let Some(previous) = inner.previous else {
+            let Some((segment, previous)) = inner.previous else {
+                return;
+            };
+            let Some(source) = inner.sources.get(usize::from(segment)).cloned() else {
                 return;
             };
             inner.earlier = true;
-            previous
+            (segment, source, previous)
         };
-        self.read(previous, Read::Earlier);
+        self.read(Read::Earlier, segment, source, previous);
     }
 
-    /// Read records added since the newest one read, or, while the source's
-    /// newest batch has not been read, as after a failed first read or a
-    /// move to a newer source, that batch. Returns whether a read started.
+    /// Read records added since the newest one read, or, while the newest
+    /// source's newest records have not been read, as after a failed read
+    /// or a move to a newer source, those. Returns whether a read started.
     pub fn poll(&self) -> bool {
-        let first = {
+        let (kind, segment, source) = {
             let mut inner = lock(&self.inner);
             if inner.loading || inner.polling {
                 return false;
             }
-            if inner.stale {
+            let kind = if inner.stale {
                 inner.loading = true;
+                Read::Head
             } else {
                 inner.polling = true;
-            }
-            inner.stale
+                Read::Newer
+            };
+            let (segment, source) = inner.newest();
+            (kind, segment, source)
         };
-        if first {
-            self.read(coder_history::NEWEST, Read::First);
-        } else {
-            self.read(coder_history::NEWEST, Read::Newer);
-        }
+        self.read(kind, segment, source, coder_history::NEWEST);
         true
     }
 
-    /// The source's newest batch was not read, as after a failed first
+    /// The newest source's newest records were not read, as after a failed
     /// read: the chat needs another read even when its task has ended.
     pub fn failed(&self) -> bool {
         let inner = lock(&self.inner);
@@ -279,8 +343,8 @@ impl Conversation {
     }
 
     /// Whether a read that started after [`Conversation::reads`] returned
-    /// `ticket` finished without an error, with the source's newest batch
-    /// read.
+    /// `ticket` finished without an error, with the newest source's newest
+    /// records read.
     pub fn read_since(&self, ticket: u64) -> bool {
         let inner = lock(&self.inner);
         inner.finished > ticket && !inner.stale
@@ -291,7 +355,8 @@ impl Conversation {
         lock(&self.inner).version
     }
 
-    /// The chat as shown, for the phone's copy, once its source was read.
+    /// The chat as shown, for the phone's copy, once its newest source was
+    /// read.
     pub fn cached(&self) -> Option<Cached> {
         let inner = lock(&self.inner);
         if inner.stale || inner.rows.is_empty() {
@@ -299,10 +364,12 @@ impl Conversation {
         }
         Some(Cached {
             chat: self.chat.clone(),
+            sources: inner.sources.clone(),
             rows: inner
                 .rows
                 .iter()
                 .map(|row| CachedRow {
+                    segment: row.segment,
                     offset: row.offset,
                     end: row.end,
                     part: row.part,
@@ -326,13 +393,12 @@ impl Conversation {
             .count()
     }
 
-    fn read(&self, end: u64, kind: Read) {
-        let (client, source, inner) =
-            (self.client.clone(), self.source.clone(), self.inner.clone());
+    fn read(&self, kind: Read, segment: u8, source: String, end: u64) {
+        let (client, inner) = (self.client.clone(), self.inner.clone());
         let (generation, ticket, through) = {
             let mut state = lock(&inner);
             state.started += 1;
-            if matches!(kind, Read::First) && state.rows.is_empty() {
+            if matches!(kind, Read::Head) && (segment > 0 || state.rows.is_empty()) {
                 state.partial = Some(state.started);
             }
             (state.generation, state.started, state.through)
@@ -340,27 +406,24 @@ impl Conversation {
         self.runtime.spawn(async move {
             let result = match kind {
                 Read::Newer => newer(&client, &source, through).await,
-                Read::First => {
+                Read::Head => {
                     // Show each page as it arrives: the newest messages
-                    // first, then the rest of the batch.
+                    // first, then the rest.
                     let shown = inner.clone();
-                    let show = move |rows: &[Row], previous: Option<u64>, through: u64| {
+                    let show = move |rows: &[Row], previous: Option<u64>| {
                         let mut state = lock(&shown);
                         if state.generation == generation
                             && state.partial == Some(ticket)
                             && !rows.is_empty()
                         {
-                            state.rows = rows.to_vec();
-                            state.previous = previous;
-                            state.through = state.through.max(through);
-                            state.version += 1;
+                            state.show(segment, rows, previous);
                         }
                     };
-                    batch(&client, &source, end, &show).await
+                    batch(&client, &source, segment, end, &show).await
                 }
-                Read::Earlier => batch(&client, &source, end, &|_, _, _| {}).await,
+                Read::Earlier => batch(&client, &source, segment, end, &|_, _| {}).await,
             };
-            finish(&mut lock(&inner), kind, generation, ticket, result);
+            finish(&mut lock(&inner), kind, segment, generation, ticket, result);
         });
     }
 
@@ -423,16 +486,17 @@ fn shrink(inner: &mut Inner) -> bool {
         return false;
     }
     inner.rows.drain(..half);
-    inner.previous = inner.rows.first().map(|row| row.offset);
+    inner.previous = inner.rows.first().map(|row| (row.segment, row.offset));
     inner.version += 1;
     true
 }
 
-/// What a finished read changes. A read for an older source changes
-/// nothing.
+/// What a finished read changes. A read for sources the chat moved past
+/// changes nothing.
 fn finish(
     state: &mut Inner,
     kind: Read,
+    segment: u8,
     generation: u64,
     ticket: u64,
     result: Result<Found, String>,
@@ -441,42 +505,50 @@ fn finish(
         return;
     }
     match kind {
-        Read::First => state.loading = false,
+        Read::Head => state.loading = false,
         Read::Earlier => state.earlier = false,
         Read::Newer => state.polling = false,
     }
     match (result, kind) {
-        (Ok(read), Read::First) => {
-            state.rows = read.rows;
-            state.previous = read.previous;
+        (Ok(read), Read::Head) => {
+            state.show(segment, &read.rows, read.previous);
             state.through = read.through;
             state.error = None;
             state.stale = false;
             state.partial = None;
-            state.version += 1;
             state.finished = state.finished.max(ticket);
         }
         (Ok(mut read), Read::Earlier) => {
+            for row in &mut read.rows {
+                row.segment = segment;
+            }
             read.rows.append(&mut state.rows);
             state.rows = read.rows;
             state.previous = if state.rows.len() >= MAX_ROWS {
                 None
             } else {
-                read.previous
+                read.previous.map(|end| (segment, end))
             };
             state.version += 1;
         }
         (Ok(read), Read::Newer) => {
             state.error = None;
-            let known = state.rows.last().map_or(0, |row| row.end);
-            let before = state.rows.len();
-            state
+            let known = state
                 .rows
-                .extend(read.rows.into_iter().filter(|row| row.offset >= known));
+                .iter()
+                .rev()
+                .find(|row| row.segment == segment)
+                .map_or(0, |row| row.end);
+            let before = state.rows.len();
+            state.rows.extend(
+                read.rows
+                    .into_iter()
+                    .filter(|row| row.offset >= known && !row.carried),
+            );
             let excess = state.rows.len().saturating_sub(MAX_ROWS);
             state.rows.drain(..excess);
             if excess > 0 {
-                state.previous = state.rows.first().map(|row| row.offset);
+                state.previous = state.rows.first().map(|row| (row.segment, row.offset));
             }
             if state.rows.len() != before || excess > 0 {
                 state.version += 1;
@@ -487,8 +559,8 @@ fn finish(
         // A missed poll is retried by the next one; it is not the reader's
         // problem.
         (Err(_), Read::Newer) => {}
-        // A failed first read keeps what shows and says why only when
-        // nothing does; the next poll reads again.
+        // A failed read keeps what shows and says why only when nothing
+        // does; the next poll reads again.
         (Err(error), _) => {
             state.partial = None;
             state.error = Some(error);
@@ -536,7 +608,7 @@ fn transcript<I: Clone>(
             children,
             earlier: inner
                 .previous
-                .filter(|_| !inner.stale && inner.rows.len() < MAX_ROWS)
+                .filter(|_| inner.rows.len() < MAX_ROWS)
                 .map(|_| Earlier {
                     label: "Load earlier messages".into(),
                     loading: inner.earlier,
@@ -548,7 +620,8 @@ fn transcript<I: Clone>(
 
 #[derive(Clone, Copy)]
 enum Read {
-    First,
+    /// The newest source's newest records.
+    Head,
     Earlier,
     Newer,
 }
@@ -595,33 +668,53 @@ fn page_through(page: &coder_history::TranscriptPage) -> u64 {
         .unwrap_or(0)
 }
 
-/// Sees a batch's rows, where earlier records end, and the newest record's
-/// end after each page.
-type Show = dyn Fn(&[Row], Option<u64>, u64) + Send + Sync;
+/// Sees a read's rows and where earlier records end after each page.
+type Show = dyn Fn(&[Row], Option<u64>) + Send + Sync;
 
-/// Up to a batch of messages ending at `end`, oldest first, and where
-/// earlier records end. `show` sees the rows found after each page.
-async fn batch(client: &Client, source: &str, mut end: u64, show: &Show) -> Result<Found, String> {
+/// Rows ending at `end`, oldest first, and where earlier records end. The
+/// first segment's batch looks for a batch of messages; a later segment's,
+/// a turn after the first, reads back to the messages it carries. `show`
+/// sees the rows found after each page.
+async fn batch(
+    client: &Client,
+    source: &str,
+    segment: u8,
+    mut end: u64,
+    show: &Show,
+) -> Result<Found, String> {
     let mut found = Found {
         rows: vec![],
         previous: None,
         through: 0,
     };
-    for _ in 0..BATCH_PAGES {
+    let pages = if segment == 0 {
+        BATCH_PAGES
+    } else {
+        NEWER_PAGES
+    };
+    for _ in 0..pages {
         let page = back(client, source, end).await?;
         let mut page_rows = rows(&page.chunks);
+        for row in &mut page_rows {
+            row.segment = segment;
+        }
         page_rows.append(&mut found.rows);
         found.rows = page_rows;
         found.previous = page.previous;
         found.through = found.through.max(page_through(&page));
-        show(&found.rows, found.previous, found.through);
-        let conversational = found
-            .rows
-            .iter()
-            .filter(|row| matches!(row.entry, Entry::Message { .. }))
-            .count();
+        show(&found.rows, found.previous);
+        let enough = if segment == 0 {
+            found
+                .rows
+                .iter()
+                .filter(|row| matches!(row.entry, Entry::Message { .. }))
+                .count()
+                >= BATCH_MESSAGES
+        } else {
+            found.rows.iter().any(|row| row.carried)
+        };
         match page.previous {
-            Some(earlier) if conversational < BATCH_MESSAGES => end = earlier,
+            Some(earlier) if !enough => end = earlier,
             _ => break,
         }
     }
@@ -696,7 +789,7 @@ pub fn rows(chunks: &[RecordChunk]) -> Vec<Row> {
         let group = &chunks[start..index];
         let end = group.last().map_or(record, |c| c.end_offset);
         let whole = group[0].offset == record && group.last().is_some_and(|c| c.complete);
-        let full = whole
+        let bytes = whole
             .then(|| {
                 let mut bytes = vec![];
                 for chunk in group {
@@ -706,18 +799,33 @@ pub fn rows(chunks: &[RecordChunk]) -> Vec<Row> {
                             .ok()?,
                     );
                 }
-                coder_history::readable_record_full(&bytes)
+                Some(bytes)
             })
             .flatten();
+        let full = bytes
+            .as_deref()
+            .and_then(coder_history::readable_record_full);
+        let carried = bytes.as_deref().is_some_and(carried);
         let Some(readable) = full.or_else(|| group.iter().rev().find_map(|c| c.readable.clone()))
         else {
             continue;
         };
         for (part, entry) in entries(&readable).into_iter().enumerate() {
-            out.push(Row::new(record, end, part as u8, entry));
+            out.push(Row {
+                carried,
+                ..Row::new(record, end, part as u8, entry)
+            });
         }
     }
     out
+}
+
+/// Whether a Coder transcript record repeats an earlier turn's message:
+/// a step whose extensions name the turn it was carried from.
+fn carried(bytes: &[u8]) -> bool {
+    serde_json::from_slice::<serde_json::Value>(bytes)
+        .ok()
+        .is_some_and(|record| record.pointer("/step/extensions/carried_from").is_some())
 }
 
 /// What one record shows: messages by role, tool calls and results, or
@@ -866,7 +974,7 @@ fn sent<I>(pending: &Pending<'_>) -> Node<I> {
 }
 
 fn draw<I>(row: &Row, compact: u8) -> Node<I> {
-    let key = format!("r{}-{}", row.offset, row.part);
+    let key = format!("r{}-{}-{}", row.segment, row.offset, row.part);
     match &row.entry {
         Entry::Message {
             role: MessageRole::System,
@@ -1002,6 +1110,7 @@ mod tests {
     #[test]
     fn a_read_for_an_older_source_changes_nothing() {
         let mut inner = Inner {
+            sources: vec!["a".into(), "b".into()],
             rows: vec![message(0, MessageRole::User, "Turn one")],
             generation: 2,
             stale: true,
@@ -1009,71 +1118,107 @@ mod tests {
             ..Inner::default()
         };
         let old = found(vec![message(0, MessageRole::Assistant, "Old")], None);
-        finish(&mut inner, Read::First, 1, 1, Ok(old));
+        finish(&mut inner, Read::Head, 1, 1, 1, Ok(old));
         assert!(inner.loading && inner.stale);
         assert_eq!(inner.rows.len(), 1);
     }
 
+    /// A follow-up's turn is a new source that begins with the earlier
+    /// turns' messages: its rows after them follow the rows shown, and a
+    /// poll adds only its records after the newest one read.
     #[test]
-    fn a_new_turn_replaces_the_rows_once_read_and_earlier_stays_loadable() {
-        // The phone's copy of turn one shows while turn two is read.
+    fn a_new_turn_adds_its_own_rows_after_the_ones_shown() {
         let mut inner = Inner {
-            rows: vec![message(0, MessageRole::User, "Turn one")],
+            sources: vec!["turn-1".into(), "turn-2".into()],
+            rows: vec![
+                message(0, MessageRole::User, "Ask me."),
+                message(10, MessageRole::Assistant, "Apple or pear?"),
+            ],
+            previous: Some((0, 0)),
             stale: true,
             loading: true,
             generation: 3,
             started: 5,
             ..Inner::default()
         };
-        assert!(inner.finished <= 4);
+        let carried = |offset, role, text| Row {
+            carried: true,
+            ..message(offset, role, text)
+        };
         let turn = found(
             vec![
-                message(500, MessageRole::User, "Turn one"),
-                message(510, MessageRole::Assistant, "Asked."),
-                message(520, MessageRole::User, "Pear."),
+                carried(100, MessageRole::User, "Ask me."),
+                carried(110, MessageRole::Assistant, "Apple or pear?"),
+                message(120, MessageRole::User, "Pear."),
             ],
-            Some(500),
+            Some(100),
         );
-        finish(&mut inner, Read::First, 3, 5, Ok(turn));
+        finish(&mut inner, Read::Head, 1, 3, 5, Ok(turn));
         assert!(!inner.stale && !inner.loading);
         assert_eq!(inner.finished, 5);
-        assert_eq!(inner.through, 530);
-        let node = transcript(&inner, "t", (), &[], None);
-        let Element::Transcript { earlier, .. } = &node.element else {
-            unreachable!()
-        };
-        assert!(earlier.is_some());
-        // A poll adds only records after the newest one read.
+        assert_eq!(inner.through, 130);
+        let texts: Vec<&str> = inner
+            .rows
+            .iter()
+            .map(|row| match &row.entry {
+                Entry::Message { text, .. } => text.as_str(),
+                Entry::Tool { .. } => "",
+            })
+            .collect();
+        assert_eq!(texts, ["Ask me.", "Apple or pear?", "Pear."]);
+        assert_eq!(inner.rows[2].segment, 1);
+        // Earlier records still come from the first turn's source.
+        assert_eq!(inner.previous, Some((0, 0)));
         let polled = found(
             vec![
-                message(520, MessageRole::User, "Pear."),
-                message(530, MessageRole::Assistant, "pear"),
+                message(120, MessageRole::User, "Pear."),
+                message(130, MessageRole::Assistant, "pear"),
             ],
             None,
         );
         inner.polling = true;
         let version = inner.version;
-        finish(&mut inner, Read::Newer, 3, 6, Ok(polled));
+        finish(&mut inner, Read::Newer, 1, 3, 6, Ok(polled));
         assert_eq!(inner.rows.len(), 4);
         assert!(inner.version > version);
         assert_eq!(inner.finished, 6);
         // A failed poll changes nothing and is not a finished read.
         inner.polling = true;
-        finish(&mut inner, Read::Newer, 3, 7, Err("late".into()));
+        finish(&mut inner, Read::Newer, 1, 3, 7, Err("late".into()));
         assert_eq!((inner.rows.len(), inner.finished), (4, 6));
+        // Row keys stay distinct across sources.
+        let node = transcript(&inner, "t", (), &[], None);
+        let Element::Transcript { children, .. } = &node.element else {
+            unreachable!()
+        };
+        let mut keys: Vec<&str> = children.iter().map(|child| child.key.as_str()).collect();
+        keys.dedup();
+        assert_eq!(keys.len(), 4);
     }
 
     #[test]
-    fn a_failed_first_read_keeps_what_shows() {
+    fn a_first_read_replaces_the_copy_of_another_source() {
         let mut inner = Inner {
+            sources: vec!["turn-2".into()],
             rows: vec![message(0, MessageRole::User, "Kept")],
             stale: true,
             loading: true,
             ..Inner::default()
         };
-        finish(&mut inner, Read::First, 0, 1, Err("late".into()));
+        finish(&mut inner, Read::Head, 0, 0, 1, Err("late".into()));
         assert!(inner.stale && !inner.loading);
         assert_eq!(kinds(&transcript(&inner, "t", (), &[], None)), ["User:"]);
+        inner.loading = true;
+        let read = found(
+            vec![
+                message(0, MessageRole::User, "Kept"),
+                message(10, MessageRole::Assistant, "Reply"),
+            ],
+            Some(0),
+        );
+        finish(&mut inner, Read::Head, 0, 0, 2, Ok(read));
+        assert_eq!(inner.rows.len(), 2);
+        assert_eq!(inner.previous, Some((0, 0)));
     }
 
     #[test]
@@ -1115,7 +1260,7 @@ mod tests {
         // Then the oldest half goes, and stays loadable.
         assert!(shrink(&mut inner));
         assert_eq!(inner.rows.len(), 2);
-        assert_eq!(inner.previous, Some(20));
+        assert_eq!(inner.previous, Some((0, 20)));
         inner.rows.clear();
         assert!(!shrink(&mut inner));
     }

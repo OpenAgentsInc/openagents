@@ -92,7 +92,7 @@ fn fit(cached: &mut Cached) {
     {
         let drop = cached.rows.len().div_ceil(4);
         cached.rows.drain(..drop);
-        cached.previous = cached.rows.first().map(|row| row.offset);
+        cached.previous = cached.rows.first().map(|row| (row.segment, row.offset));
     }
 }
 
@@ -125,8 +125,10 @@ mod tests {
     fn transcript(rows: usize, text: &str) -> Cached {
         Cached {
             chat: chat("source"),
+            sources: vec!["source".into()],
             rows: (0..rows as u64)
                 .map(|index| CachedRow {
+                    segment: 0,
                     offset: index * 10,
                     end: index * 10 + 10,
                     part: 0,
@@ -163,7 +165,7 @@ mod tests {
             .unwrap();
         assert!(kept.rows.len() < 200 && !kept.rows.is_empty());
         assert_eq!(kept.rows.last().unwrap().end, 2_000);
-        assert_eq!(kept.previous, Some(kept.rows[0].offset));
+        assert_eq!(kept.previous, Some((0, kept.rows[0].offset)));
     }
 
     #[test]

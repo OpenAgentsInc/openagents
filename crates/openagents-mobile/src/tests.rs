@@ -1074,3 +1074,92 @@ fn live_coder_chat_edits_its_queue() {
         );
     });
 }
+
+/// The owner's reports on build 13, end to end on a real host with tailnet
+/// admission and auto-start: a new chat runs within seconds, a running
+/// turn's steps show while it runs, one working row shows at a time, a
+/// follow-up shows at once and its reply arrives, and a reopened chat shows
+/// its messages at once. Set `OPENAGENTS_TEST_ADMISSION`.
+#[test]
+#[ignore = "network: runs real turns on a real host"]
+fn live_coder_chat_starts_promptly_follows_its_turns_and_reopens_at_once() {
+    let prompt = "Run the command `sleep 5; echo first-step`, then run the command \
+                  `sleep 5; echo second-step`, then reply with only the word finished.";
+    let follow_up = "Reply with only the word again.";
+    let started = std::time::Instant::now();
+    let at = |what: &str| eprintln!("{:>6.1}s {what}", started.elapsed().as_secs_f32());
+    let (mut app, _dir, task) = live_chat(prompt);
+    at("sent");
+    archiving(&mut app, task.clone(), |app| {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(900);
+        // The message shows at once, before the computer lists the chat.
+        let chat = app.call(Request::Snapshot).coder.unwrap();
+        // Markdown shows the code spans without their backticks.
+        let shown = prompt.replace('`', "");
+        assert!(values(&chat).contains(&shown), "{:?}", values(&chat));
+        // Follow the turn at the app's own cadence while it changes.
+        let follow = |app: &mut App, done: &dyn Fn(&[String]) -> bool| {
+            let mut last = String::new();
+            let mut working = None;
+            let mut steps_while_running = 0;
+            loop {
+                let packet = app.call(Request::ComputersRefresh);
+                let chat = packet.coder.unwrap();
+                let text = values(&chat);
+                let place = text.get(1).cloned().unwrap_or_default();
+                assert!(nodes_of(&chat, "working").len() <= 1, "{text:?}");
+                if place != last {
+                    at(&format!("status: {place}"));
+                    last.clone_from(&place);
+                }
+                if place.starts_with("Working") && working.is_none() {
+                    working = Some(started.elapsed());
+                }
+                let steps = nodes_of(&chat, "tool").len();
+                if place.starts_with("Working") && steps > steps_while_running {
+                    at(&format!("{steps} tool rows while it runs"));
+                    steps_while_running = steps;
+                }
+                if nodes_of(&chat, "working").is_empty() && done(&text) {
+                    at(&format!("ended: {text:?}"));
+                    return (chat, working, steps_while_running);
+                }
+                assert!(std::time::Instant::now() < deadline, "{text:?}");
+                std::thread::sleep(std::time::Duration::from_secs(1));
+            }
+        };
+        let (ended, working, steps) = follow(app, &|text| {
+            text.get(1).is_some_and(|place| place.starts_with("Done"))
+                && text
+                    .iter()
+                    .any(|t| t.trim().eq_ignore_ascii_case("finished"))
+        });
+        eprintln!("working after {working:?}; tool rows seen while running: {steps}");
+        assert!(working.is_some(), "the chat never showed Working");
+        assert!(steps >= 1, "no step showed before the turn ended");
+        // A follow-up shows at once, and its reply arrives.
+        let sent = send_as(app, &ended, None, follow_up).coder.unwrap();
+        assert!(
+            values(&sent).iter().any(|t| t == follow_up),
+            "{:?}",
+            values(&sent)
+        );
+        at("follow-up sent");
+        follow(app, &|text| {
+            text.get(1).is_some_and(|place| place.starts_with("Done"))
+                && text.iter().any(|t| t.trim().eq_ignore_ascii_case("again"))
+        });
+        // Back on the list and in again: the messages show at once.
+        let chat = app.call(Request::Snapshot).coder.unwrap();
+        let list = tap(app, &chat, &key_for(&chat, "Coder").expect("back"));
+        let row = format!("task-{}", &task.1[..16]);
+        let reopened = tap(app, &list, &row);
+        let text = values(&reopened);
+        at(&format!("reopened: {text:?}"));
+        assert!(text.iter().any(|t| t == follow_up), "{text:?}");
+        assert!(
+            text.iter().any(|t| t.trim().eq_ignore_ascii_case("again")),
+            "{text:?}"
+        );
+    });
+}
