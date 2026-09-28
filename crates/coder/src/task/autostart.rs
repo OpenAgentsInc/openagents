@@ -62,6 +62,10 @@ pub const DEFAULT_DECISION_MODEL: &str = "jev-1.13.0";
 const PENDING_GRACE: u64 = 120;
 /// How often the host looks for eligible tasks it could not start earlier.
 pub const SWEEP_EVERY: Duration = Duration::from_secs(10);
+/// How long a sweep waits for a busy task store. A save's disk sync can
+/// hold the store lock for seconds while a build writes to a nearly full
+/// volume, as on a host being updated; no device waits on a sweep.
+pub const STORE_WAIT: Duration = Duration::from_secs(120);
 
 /// The owner's policy.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -562,6 +566,7 @@ pub struct Autostart {
     fetch: usage::Fetch,
     sweeping: Mutex<()>,
     background: bool,
+    store_wait: Duration,
 }
 
 impl std::fmt::Debug for Autostart {
@@ -593,7 +598,16 @@ impl Autostart {
             fetch: usage::fetch,
             sweeping: Mutex::new(()),
             background: true,
+            store_wait: STORE_WAIT,
         }
+    }
+
+    /// Wait up to `wait` for a busy task store instead of [`STORE_WAIT`],
+    /// for tests.
+    #[must_use]
+    pub fn with_store_wait(mut self, wait: Duration) -> Self {
+        self.store_wait = wait;
+        self
     }
 
     /// Decide which providers are connected with `probe` instead of the
@@ -738,8 +752,18 @@ impl Autostart {
         // Read the store once, then release its lock before any launch: the
         // launched owner opens the same store.
         let plans = {
-            let mut store = match Store::open(&self.store) {
+            // A busy store is waited out: its eligible tasks stay eligible,
+            // and a store still busy after the wait leaves them to the next
+            // sweep.
+            let mut store = match Store::open_waiting(&self.store, self.store_wait) {
                 Ok(store) => store,
+                Err(super::Error::Busy) => {
+                    eprintln!(
+                        "coder host: auto-start: the task store stayed busy for {} seconds; the next sweep tries again",
+                        self.store_wait.as_secs()
+                    );
+                    return written;
+                }
                 Err(error) => {
                     eprintln!("coder host: auto-start cannot open the task store: {error}");
                     return written;
@@ -1616,6 +1640,66 @@ mod tests {
             s.autostart.sweep().iter().all(|e| e.event != "started"),
             "nothing starts twice"
         );
+    }
+
+    /// Hold the task store's lock on another thread for `hold`.
+    fn hold_store(store: &Path, hold: Duration) -> std::thread::JoinHandle<()> {
+        let store = store.to_path_buf();
+        let (held, taken) = std::sync::mpsc::channel();
+        let holder = std::thread::spawn(move || {
+            let _held = Store::open(&store).unwrap();
+            held.send(()).unwrap();
+            std::thread::sleep(hold);
+        });
+        taken.recv().unwrap();
+        holder
+    }
+
+    #[test]
+    fn a_sweep_waits_out_a_busy_store_and_its_tasks_stay_eligible() {
+        let s = setup();
+        policy(1).save(&s.root).unwrap();
+        let (first, second) = ("b".repeat(64), "c".repeat(64));
+        s.inbox.create(&first, "phone", &create("allowed")).unwrap();
+        s.inbox
+            .create(&second, "phone", &create("allowed"))
+            .unwrap();
+        assert_eq!(s.launched.lock().unwrap().len(), 1);
+        advance(PENDING_GRACE + 1);
+        let sweeper = |wait: Duration| {
+            Autostart::new(
+                s.root.clone(),
+                s.store.clone(),
+                s.autostart.workspaces.clone(),
+                Box::new(Fake(s.launched.clone())),
+                clock,
+            )
+            .with_probe(|_| Connection::Connected)
+            .with_usage_fetch(offline)
+            .with_store_wait(wait)
+            .foreground()
+        };
+        // A store busy past the sweep's wait leaves the task eligible.
+        let holder = hold_store(&s.store, Duration::from_millis(1500));
+        let gave_up = sweeper(Duration::from_millis(200)).sweep();
+        holder.join().unwrap();
+        assert!(gave_up.iter().all(|e| e.event != "started"), "{gave_up:?}");
+        assert_eq!(s.launched.lock().unwrap().len(), 1);
+        assert!(
+            !events(&s.root).contains(&("skipped".into(), Some(second.clone()))),
+            "a busy store decides nothing"
+        );
+        // A sweep that waits longer than the holder starts it.
+        let holder = hold_store(&s.store, Duration::from_millis(1500));
+        let started = sweeper(Duration::from_secs(30)).sweep();
+        holder.join().unwrap();
+        assert!(
+            started
+                .iter()
+                .any(|e| e.event == "started" && e.task.as_deref() == Some(second.as_str())),
+            "{started:?}"
+        );
+        assert_eq!(s.launched.lock().unwrap().len(), 2);
     }
 
     fn follow_up(task: &str, command: &str, based_on: u64) -> coder_host::TaskCommand {

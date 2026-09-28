@@ -509,7 +509,16 @@ pub struct Store {
 
 impl Store {
     /// Open or initialize a dedicated private directory outside any checkout.
+    /// Waits up to five seconds for another holder of the store lock.
     pub fn open(dir: &Path) -> Result<Self, Error> {
+        Self::open_waiting(dir, LOCK_WAIT)
+    }
+
+    /// [`Store::open`], waiting up to `wait` for another holder of the store
+    /// lock before it refuses with [`Error::Busy`]. A background caller with
+    /// no one waiting on it, such as an auto-start sweep, can wait out a
+    /// holder whose disk sync is slow.
+    pub fn open_waiting(dir: &Path, wait: Duration) -> Result<Self, Error> {
         if !cfg!(unix) {
             return Err(Error::UnsupportedPlatform);
         }
@@ -540,7 +549,7 @@ impl Store {
             loop {
                 match lock.try_lock() {
                     Ok(()) => break,
-                    Err(std::fs::TryLockError::WouldBlock) if started.elapsed() < LOCK_WAIT => {
+                    Err(std::fs::TryLockError::WouldBlock) if started.elapsed() < wait => {
                         std::thread::sleep(Duration::from_millis(10));
                     }
                     Err(std::fs::TryLockError::WouldBlock) => return Err(Error::Busy),

@@ -102,7 +102,10 @@ While the policy is on:
    artifacts.
 3. A task that waits for a slot starts on a later sweep, every 10 seconds.
    A started task counts against the bound while it runs, or for 120
-   seconds while its owner process admits it.
+   seconds while its owner process admits it. A sweep waits up to two
+   minutes for a busy task store, such as one whose disk sync is slow while
+   a build writes to a nearly full volume; a store still busy after that
+   leaves its eligible tasks to the next sweep.
 
 ## Routes and capacity
 
