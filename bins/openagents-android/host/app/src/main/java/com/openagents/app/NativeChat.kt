@@ -31,6 +31,7 @@ import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
+import android.widget.PopupMenu
 import android.widget.ProgressBar
 import android.widget.TableLayout
 import android.widget.TableRow
@@ -557,7 +558,9 @@ class Transcript(private val context: Context, private val activate: (String) ->
 /**
  * A multi-line text field with a send control. A send is an input answer
  * bound to the composer's token; while Rust reports `busy`, the control
- * becomes stop, which activates the composer node.
+ * becomes stop, which activates the composer node. With `choices`, a long
+ * press on send offers the other ways to send, each answering with its own
+ * token. A new token with a `draft` puts the draft in the field.
  */
 class Composer(private val context: Context, private val send: (String, String) -> Unit,
                private val stop: (String) -> Unit) {
@@ -569,6 +572,8 @@ class Composer(private val context: Context, private val send: (String, String) 
     private var enabled = true
     private var busy = false
     private var stoppable = false
+    /** Each choice's token and label, in order. */
+    private var choices: List<Pair<String, String>> = emptyList()
 
     init {
         root.gravity = Gravity.BOTTOM
@@ -599,6 +604,7 @@ class Composer(private val context: Context, private val send: (String, String) 
             setTypeface(typeface, Typeface.BOLD)
             background = context.rounded(Palette.PRIMARY, 18f)
             setOnClickListener { if (busy) doStop() else doSend() }
+            setOnLongClickListener { offerChoices() }
         }
         root.addView(field, LinearLayout.LayoutParams(0, -2, 1f))
         root.addView(control, LinearLayout.LayoutParams(context.dp(36), context.dp(36)).apply {
@@ -606,7 +612,15 @@ class Composer(private val context: Context, private val send: (String, String) 
     }
 
     fun update(props: JSONObject) {
-        token = props.getString("token")
+        val next = props.getString("token")
+        if (next != token && props.has("draft") && !props.isNull("draft")) {
+            field.setText(props.getString("draft"))
+            field.setSelection(field.text.length)
+        }
+        token = next
+        choices = props.optJSONArray("choices")?.let { list ->
+            (0 until list.length()).map { list.getJSONObject(it).let { c -> c.getString("token") to c.getString("label") } }
+        } ?: emptyList()
         maxBytes = props.getInt("max_bytes").coerceIn(1, 65_536)
         enabled = props.getBoolean("enabled")
         busy = props.getBoolean("busy")
@@ -625,16 +639,32 @@ class Composer(private val context: Context, private val send: (String, String) 
         val active = if (busy) stoppable else canSend
         control.text = if (busy) "■" else "↑"
         control.contentDescription = if (busy) "Stop" else "Send"
+        control.isLongClickable = !busy && choices.isNotEmpty()
         control.tag = if (busy) "composer-stop" else "composer-send"
         control.isEnabled = active
         control.alpha = if (active) 1f else 0.3f
     }
 
-    private fun doSend() {
+    private fun doSend() = doSend(token)
+
+    private fun doSend(answer: String) {
         if (!canSend) return
         val value = field.text.toString()
         field.setText("")
-        send(token, value)
+        send(answer, value)
+    }
+
+    /** A long press on send: a menu of the other ways to send. */
+    private fun offerChoices(): Boolean {
+        if (busy || choices.isEmpty() || !canSend) return false
+        val menu = PopupMenu(context, control)
+        choices.forEachIndexed { index, (_, label) -> menu.menu.add(0, index, index, label) }
+        menu.setOnMenuItemClickListener { item ->
+            choices.getOrNull(item.itemId)?.let { (choice, _) -> doSend(choice) }
+            true
+        }
+        menu.show()
+        return true
     }
 
     private fun doStop() {

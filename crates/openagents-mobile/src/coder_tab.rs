@@ -10,13 +10,22 @@
 //!
 //! Everything sent to an open chat is a NIP-HOST `task.command` kept in the
 //! durable [`Outbox`] until the computer answers, so it survives a relaunch
-//! and bad connectivity and never runs twice. The composer's one action
+//! and bad connectivity and never runs twice. A command that cannot reach
+//! its computer leaves the computer a relay nudge, and goes again as soon as
+//! the computer answers with fresh presence. The composer's one action
 //! follows the task's state and this device's `operate` right, never the
 //! text: in a finished chat it sends a follow-up that continues the same
-//! task; while Coder works it queues the message for the next turn, or,
-//! after **Steer now**, stops the turn and continues with the message (the
+//! task; while Coder works it queues the message for the next turn; and
+//! when Coder asked a question it answers it. A long press on the send
+//! control offers the other ways to send while Coder works: queue for the
+//! next turn, steer a turn that has not started, or stop and send (the
 //! engine's emulated steering, chosen explicitly). **Stop** interrupts the
-//! current turn.
+//! current turn. An approval request adds **Approve** and **Deny**.
+//!
+//! **Edit queue** opens the computer's queue for the chat (NIP-HOST
+//! `task.queue`) under an edit lease this device renews while the panel is
+//! open, so nothing runs a message being edited: edit, move up, send now,
+//! or remove this device's own queued messages.
 
 use crate::chats::Chats;
 use crate::coder_list::{List, Row, Store};
@@ -26,11 +35,12 @@ use coder_computers::{
     Action, Capabilities, Computers, Denial, HostRecord, HostStatus, OfflineCause, Platform,
     Snapshot, authority,
 };
-use coder_host::CommandAction;
-use nostr::activity_summary::{ActivitySummary, Phase, SubjectKind};
+use coder_host::{CommandAction, QueueEdit, TaskQueue};
+use nostr::activity_summary::{ActivitySummary, Attention, Phase, SubjectKind};
 use rust_native::style::{Color, Space, Style, TextAlign, TextWeight};
 use rust_native::{
-    Activation, Axis, Element, Glyph, Icon, MessageRole, Node, TextRole, ValidatedView, View,
+    Activation, Axis, ComposerChoice, Element, Glyph, Icon, MessageRole, Node, TextRole,
+    ValidatedView, View,
 };
 use serde::{Deserialize, Serialize};
 
@@ -52,9 +62,76 @@ pub enum Intent {
     Stop,
     /// Open the New chat screen.
     NewChat,
-    /// Switch the running chat's composer between queueing and steering.
-    Steer,
+    /// Open the chat's queue on the computer, taking its edit lease.
+    EditQueue,
+    /// Close the queue and give the lease up.
+    DoneQueue,
+    /// Put a queued message's text in the composer to edit it.
+    EditQueued {
+        command: String,
+    },
+    RemoveQueued {
+        command: String,
+    },
+    /// Send a queued message now: stop the turn and continue with it.
+    SendQueuedNow {
+        command: String,
+    },
+    MoveQueuedUp {
+        command: String,
+    },
+    /// Answer Coder's request for approval.
+    Approve,
+    Deny,
 }
+
+/// Another way to send the composer's text while Coder works, which a long
+/// press on the send control offers.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Choice {
+    /// Queue the message for the next turn: the send control's own action.
+    Queue,
+    /// Replace the instructions of a turn that has not started.
+    SteerNow,
+    /// Stop the running turn and continue with the message: the engine's
+    /// emulated steering.
+    StopAndSend,
+}
+
+impl Choice {
+    fn label(self) -> &'static str {
+        match self {
+            Choice::Queue => "Queue for next turn",
+            Choice::SteerNow => "Steer now",
+            Choice::StopAndSend => "Stop and send",
+        }
+    }
+
+    fn command(self) -> (CommandAction, bool) {
+        match self {
+            Choice::Queue => (CommandAction::Queue, false),
+            Choice::SteerNow => (CommandAction::Steer, false),
+            Choice::StopAndSend => (CommandAction::Steer, true),
+        }
+    }
+
+    /// The choices a busy chat offers: a turn that has not started takes new
+    /// instructions; a running one stops for the message.
+    pub(crate) fn offered(phase: Option<Phase>) -> Vec<Choice> {
+        match phase {
+            Some(Phase::Queued) => vec![Choice::Queue, Choice::SteerNow],
+            None | Some(Phase::Running) => vec![Choice::Queue, Choice::StopAndSend],
+            _ => vec![],
+        }
+    }
+}
+
+/// The least time between two reads of an open chat's queue while its
+/// summary does not move, in seconds.
+const QUEUE_READ_EVERY: u64 = 15;
+/// How often the open queue panel renews its edit lease, in seconds; the
+/// host holds a lease for 60.
+const LEASE_RENEW_EVERY: u64 = 20;
 
 /// An open chat: one task on one computer.
 struct Open {
@@ -65,8 +142,17 @@ struct Open {
     chat: Option<String>,
     /// The summary sequence last seen, to notice a new turn.
     seen: Option<u64>,
-    /// The composer steers the running turn instead of queueing.
-    steer: bool,
+    /// The computer's queue for this task as last read, and the summary
+    /// sequence and time it was read at.
+    queue: Option<TaskQueue>,
+    listed: Option<(u64, u64)>,
+    /// The computer does not list queues, as an older host.
+    unlisted: bool,
+    /// The queue panel is open, holding the edit lease this device last
+    /// renewed at this time.
+    leased_at: Option<u64>,
+    /// The queued message the composer edits.
+    editing: Option<String>,
 }
 
 pub struct CoderTab {
@@ -83,6 +169,9 @@ pub struct CoderTab {
     /// The New chat screen shows, where a first message starts a chat.
     composing: bool,
     outbox: Outbox,
+    /// The current composer's choices: each token this tab minted and what
+    /// it sends.
+    choices: Vec<(String, Choice)>,
 }
 
 impl CoderTab {
@@ -98,6 +187,7 @@ impl CoderTab {
             open: None,
             composing: false,
             outbox: Outbox::open(None),
+            choices: Vec::new(),
         }
     }
 
@@ -115,26 +205,142 @@ impl CoderTab {
 
     /// Send every command that is due, keeping any the computer did not
     /// answer for a later try with the same ID. A refusal shows its reason.
+    /// A computer that was not reached gets a relay nudge, and a command
+    /// goes again as soon as the computer publishes presence after its
+    /// failed try. Then keep the open chat's queue current.
     pub fn flush(&mut self, computers: Option<&mut Computers>) {
         let Some(computers) = computers else { return };
         let now = computers.snapshot().now;
-        for pending in self.outbox.due(now) {
+        let due = {
+            let snapshot = computers.snapshot();
+            let awake = |host: &str| {
+                snapshot
+                    .host(host)
+                    .and_then(|record| record.presence.as_ref())
+                    .map(|received| received.presence.observed_at)
+            };
+            self.outbox.due_or_awake(now, &awake)
+        };
+        let mut unreached: Vec<String> = Vec::new();
+        for pending in due {
             let attempt = match computers.command_task(&pending.host, &pending.command) {
                 Ok(()) => Attempt::Answered,
-                Err(coder_computers::Refusal::Failed(error))
-                    if matches!(
-                        error.code,
-                        coder_host::Code::Transport | coder_host::Code::Unavailable
-                    ) =>
-                {
-                    Attempt::Unreached
-                }
+                Err(refusal) if unreachable(&refusal) => Attempt::Unreached,
                 Err(refusal) => Attempt::Refused(refusal.reason()),
             };
-            if let Attempt::Refused(reason) = &attempt {
-                self.notice = Some(reason.clone());
+            match &attempt {
+                Attempt::Refused(reason) => self.notice = Some(reason.clone()),
+                Attempt::Unreached if !unreached.contains(&pending.host) => {
+                    unreached.push(pending.host.clone());
+                }
+                Attempt::Answered if pending.command.action == CommandAction::Queue => {
+                    // Read the queue again to show the message there.
+                    if let Some(open) = self.open.as_mut() {
+                        open.listed = None;
+                    }
+                }
+                _ => {}
             }
             self.outbox.settle(&pending.command.command, &attempt, now);
+        }
+        // Best effort: the command itself stays in the outbox.
+        for host in unreached {
+            let _ = computers.nudge_host(&host);
+        }
+        self.keep_queue(computers, now);
+    }
+
+    /// Read the open chat's queue when its summary moved or it is old, and
+    /// renew the edit lease while the queue panel is open.
+    fn keep_queue(&mut self, computers: &mut Computers, now: u64) {
+        let Some(open) = self.open.as_mut() else {
+            return;
+        };
+        if open.unlisted {
+            return;
+        }
+        let summary = Self::summary(computers.snapshot(), &open.host, &open.task);
+        let sequence = summary.map_or(0, |summary| summary.sequence);
+        let busy = summary.is_none_or(|summary| Self::running(summary.phase));
+        let edit = match open.leased_at {
+            Some(at) if now.saturating_sub(at) >= LEASE_RENEW_EVERY => QueueEdit::Lease {},
+            Some(_) => return,
+            None if !busy && open.queue.as_ref().is_none_or(|q| q.items.is_empty()) => return,
+            None if open.listed.is_some_and(|(seen, at)| {
+                seen == sequence && now.saturating_sub(at) < QUEUE_READ_EVERY
+            }) =>
+            {
+                return;
+            }
+            None => QueueEdit::List {},
+        };
+        let (host, task) = (open.host.clone(), open.task.clone());
+        let result = computers.queue_task(&host, &task, &edit);
+        let Some(open) = self.open.as_mut() else {
+            return;
+        };
+        match result {
+            Ok(queue) => {
+                if matches!(edit, QueueEdit::Lease {}) {
+                    open.leased_at = Some(now);
+                }
+                open.queue = Some(queue);
+                open.listed = Some((sequence, now));
+            }
+            Err(refusal) => match refusal_code(&refusal) {
+                // An older host has no queue to read.
+                Some(coder_host::Code::Malformed | coder_host::Code::Unsupported) => {
+                    open.unlisted = true;
+                }
+                Some(coder_host::Code::Conflict) => {
+                    open.leased_at = None;
+                    open.editing = None;
+                    self.notice = Some("Another device is editing this queue.".into());
+                }
+                _ => open.listed = Some((sequence, now)),
+            },
+        }
+    }
+
+    /// Change the open chat's queue on the computer and show the result.
+    fn edit_queue(&mut self, edit: QueueEdit, computers: &mut Computers) {
+        let Some(open) = &self.open else { return };
+        let (host, task) = (open.host.clone(), open.task.clone());
+        let now = computers.snapshot().now;
+        let result = computers.queue_task(&host, &task, &edit);
+        let Some(open) = self.open.as_mut() else {
+            return;
+        };
+        match result {
+            Ok(queue) => {
+                self.notice = None;
+                match edit {
+                    QueueEdit::Lease {} => open.leased_at = Some(now),
+                    QueueEdit::Release {} => {
+                        open.leased_at = None;
+                        open.editing = None;
+                    }
+                    _ => {}
+                }
+                open.queue = Some(queue);
+                open.listed = Some((open.seen.unwrap_or(0), now));
+            }
+            Err(refusal) => {
+                if matches!(edit, QueueEdit::Lease {} | QueueEdit::Release {}) {
+                    open.leased_at = None;
+                    open.editing = None;
+                }
+                self.notice = Some(match refusal_code(&refusal) {
+                    Some(coder_host::Code::Conflict) if matches!(edit, QueueEdit::Lease {}) => {
+                        "Another device is editing this queue.".into()
+                    }
+                    Some(coder_host::Code::Malformed | coder_host::Code::Unsupported) => {
+                        open.unlisted = true;
+                        "This computer can't edit queued messages yet.".into()
+                    }
+                    _ => refusal.reason(),
+                });
+            }
         }
     }
 
@@ -264,10 +470,60 @@ impl CoderTab {
                 let reason = "Stopped from a phone.";
                 self.command(CommandAction::Interrupt, reason, false, computers);
             }
-            Intent::Steer => {
+            Intent::Approve | Intent::Deny => {
+                let Some(computers) = computers else { return };
+                let answer = if intent == Intent::Approve {
+                    "Approved."
+                } else {
+                    "Denied."
+                };
+                self.command(CommandAction::Answer, answer, false, computers);
+            }
+            Intent::EditQueue => {
+                let Some(computers) = computers else { return };
+                self.edit_queue(QueueEdit::Lease {}, computers);
+            }
+            Intent::DoneQueue => {
+                let Some(computers) = computers else { return };
+                self.edit_queue(QueueEdit::Release {}, computers);
+            }
+            Intent::EditQueued { command } => {
                 if let Some(open) = self.open.as_mut() {
-                    open.steer = !open.steer;
+                    open.editing = Some(command);
+                    // A new composer takes the message as its draft.
+                    self.composers += 1;
                 }
+            }
+            Intent::RemoveQueued { command } => {
+                let Some(computers) = computers else { return };
+                self.edit_queue(QueueEdit::Remove { command }, computers);
+            }
+            Intent::SendQueuedNow { command } => {
+                let Some(computers) = computers else { return };
+                self.edit_queue(QueueEdit::SendNow { command }, computers);
+            }
+            Intent::MoveQueuedUp { command } => {
+                let Some(computers) = computers else { return };
+                let Some(mut order) = self.open.as_ref().and_then(|open| {
+                    open.queue.as_ref().map(|queue| {
+                        queue
+                            .items
+                            .iter()
+                            .filter(|item| !item.priority)
+                            .map(|item| item.command.clone())
+                            .collect::<Vec<_>>()
+                    })
+                }) else {
+                    return;
+                };
+                let Some(at) = order.iter().position(|item| *item == command) else {
+                    return;
+                };
+                if at == 0 {
+                    return;
+                }
+                order.swap(at - 1, at);
+                self.edit_queue(QueueEdit::Reorder { commands: order }, computers);
             }
         }
     }
@@ -279,7 +535,11 @@ impl CoderTab {
             conversation: None,
             chat: None,
             seen: None,
-            steer: false,
+            queue: None,
+            listed: None,
+            unlisted: false,
+            leased_at: None,
+            editing: None,
         });
         self.attach(chats);
     }
@@ -338,18 +598,41 @@ impl CoderTab {
             return;
         }
         if let Some(open) = &self.open {
-            let phase = Self::summary(computers.snapshot(), &open.host, &open.task)
-                .map(|summary| summary.phase);
-            let (action, emulate) = match Mode::of(phase, open.steer) {
-                Mode::Send => (CommandAction::Send, false),
-                Mode::Queue => (CommandAction::Queue, false),
-                Mode::Steer => (CommandAction::Steer, true),
+            // The composer edits a queued message.
+            if let Some(command) = open.editing.clone() {
+                self.composers += 1;
+                if let Some(open) = self.open.as_mut() {
+                    open.editing = None;
+                }
+                let edit = QueueEdit::Edit {
+                    command,
+                    text: prompt.to_owned(),
+                };
+                self.edit_queue(edit, computers);
+                return;
+            }
+            let summary = Self::summary(computers.snapshot(), &open.host, &open.task);
+            let (phase, attention) = (
+                summary.map(|summary| summary.phase),
+                summary.map(|summary| summary.attention),
+            );
+            // The send control's token sends as the chat's state says; a
+            // choice's token, one this tab minted, sends its own way.
+            let chosen = self
+                .choices
+                .iter()
+                .find(|(minted, _)| minted == token)
+                .map(|(_, choice)| *choice);
+            let (action, emulate) = match chosen {
+                Some(choice) => choice.command(),
+                None => match Mode::of(phase, attention) {
+                    Mode::Send => (CommandAction::Send, false),
+                    Mode::Queue => (CommandAction::Queue, false),
+                    Mode::Answer => (CommandAction::Answer, false),
+                },
             };
             if self.command(action, prompt, emulate, computers) {
                 self.composers += 1;
-                if let Some(open) = self.open.as_mut() {
-                    open.steer = false;
-                }
             }
             return;
         }
@@ -517,19 +800,64 @@ impl CoderTab {
         };
         let value = serde_json::to_value(view.view()).ok();
         self.current = Some(view);
+        self.choices = self.current_choices(computers);
         value
     }
 
+    /// The choices the open chat's composer offers now, with their tokens.
+    fn current_choices(&self, computers: Option<&Computers>) -> Vec<(String, Choice)> {
+        let Some(open) = &self.open else {
+            return Vec::new();
+        };
+        let summary = computers.and_then(|c| Self::summary(c.snapshot(), &open.host, &open.task));
+        let (phase, attention) = (summary.map(|s| s.phase), summary.map(|s| s.attention));
+        if open.editing.is_some() || Mode::of(phase, attention) != Mode::Queue {
+            return Vec::new();
+        }
+        self.tokens(&Choice::offered(phase)).1
+    }
+
     fn composer(&self, placeholder: String, enabled: bool, busy: bool) -> Node<Intent> {
+        self.composer_with(placeholder, enabled, busy, &[], None)
+    }
+
+    /// The composer's tokens: the send control's, and one per choice.
+    fn tokens(&self, choices: &[Choice]) -> (String, Vec<(String, Choice)>) {
+        let token = format!("coder-composer-{}", self.composers);
+        let minted = choices
+            .iter()
+            .enumerate()
+            .map(|(index, choice)| (format!("{token}-choice-{index}"), *choice))
+            .collect();
+        (token, minted)
+    }
+
+    fn composer_with(
+        &self,
+        placeholder: String,
+        enabled: bool,
+        busy: bool,
+        choices: &[Choice],
+        draft: Option<String>,
+    ) -> Node<Intent> {
+        let (token, minted) = self.tokens(choices);
         node(
             "coder-composer",
             Element::Composer {
-                token: format!("coder-composer-{}", self.composers),
+                token,
                 placeholder,
                 max_bytes: MAX_PROMPT_BYTES,
                 enabled,
                 busy,
                 stop: busy.then_some(Intent::Stop),
+                choices: minted
+                    .into_iter()
+                    .map(|(token, choice)| ComposerChoice {
+                        token,
+                        label: choice.label().into(),
+                    })
+                    .collect(),
+                draft,
             },
         )
     }
@@ -677,6 +1005,8 @@ impl CoderTab {
     fn chat(&self, open: &Open, computers: Option<&Computers>) -> Node<Intent> {
         let summary = computers.and_then(|c| Self::summary(c.snapshot(), &open.host, &open.task));
         let phase = summary.map(|s| s.phase);
+        let attention = summary.map(|s| s.attention);
+        let mode = Mode::of(phase, attention);
         // The host's typed note, such as a missing model capacity.
         let note = summary
             .filter(|s| {
@@ -690,6 +1020,8 @@ impl CoderTab {
         let working = match phase {
             Some(Phase::Queued) | None => Some("Queued"),
             Some(Phase::Running) => Some("Coder is working"),
+            // Coder asked this device: the answer goes in the composer.
+            Some(Phase::Waiting) if mode == Mode::Answer => None,
             Some(Phase::Waiting) => Some("Waiting for you on the computer"),
             _ => None,
         };
@@ -765,32 +1097,153 @@ impl CoderTab {
                 },
             ));
         }
-        let mode = Mode::of(phase, open.steer);
-        if running {
-            children.push(row(
-                "coder-controls",
-                vec![
-                    button("coder-stop", "Stop", Intent::Stop),
-                    button(
-                        "coder-steer",
-                        if open.steer {
-                            "Queue instead"
-                        } else {
-                            "Steer now"
-                        },
-                        Intent::Steer,
-                    ),
-                ],
+        if mode == Mode::Answer {
+            let approval = attention == Some(Attention::Approval);
+            children.push(status(
+                "coder-asked",
+                if approval {
+                    "Coder is waiting for your approval."
+                } else {
+                    "Coder is waiting for your answer."
+                },
             ));
+            if approval {
+                children.push(row(
+                    "coder-approval",
+                    vec![
+                        button("coder-approve", "Approve", Intent::Approve),
+                        button("coder-deny", "Deny", Intent::Deny),
+                    ],
+                ));
+            }
         }
-        let placeholder = match mode {
-            Mode::Send => format!("Message Coder on {label}"),
-            Mode::Queue => "Queue a message for Coder's next turn".to_owned(),
-            Mode::Steer => "Steer Coder: stop this turn and continue with your message".to_owned(),
+        let me = computers.map(|c| c.snapshot().device.clone());
+        let queued = open.queue.as_ref().map_or(0, |queue| queue.items.len());
+        if open.leased_at.is_some() {
+            children.extend(self.queue_panel(open, me.as_deref()));
+        }
+        if running && mode != Mode::Answer {
+            let mut controls = vec![button("coder-stop", "Stop", Intent::Stop)];
+            if queued > 0 && open.leased_at.is_none() && !open.unlisted {
+                controls.push(button("coder-edit-queue", "Edit queue", Intent::EditQueue));
+            }
+            children.push(row("coder-controls", controls));
+        }
+        let editing = open.editing.as_ref().and_then(|command| {
+            open.queue
+                .as_ref()?
+                .items
+                .iter()
+                .find(|item| item.command == *command)
+                .and_then(|item| item.text.clone())
+        });
+        let placeholder = match (editing.is_some(), mode) {
+            (true, _) => "Edit your queued message".to_owned(),
+            (false, Mode::Send) => format!("Message Coder on {label}"),
+            (false, Mode::Queue) => "Queue a message for Coder's next turn".to_owned(),
+            (false, Mode::Answer) => "Answer Coder".to_owned(),
+        };
+        let choices = if editing.is_none() && mode == Mode::Queue {
+            Choice::offered(phase)
+        } else {
+            Vec::new()
         };
         let allowed = computers.is_some_and(|c| c.can_operate(&open.host));
-        children.push(self.composer(placeholder, allowed, false));
+        children.push(self.composer_with(placeholder, allowed, false, &choices, editing));
         page(children)
+    }
+
+    /// The open queue: each held message in the order it runs, with this
+    /// device's own messages editable under the lease.
+    fn queue_panel(&self, open: &Open, me: Option<&str>) -> Vec<Node<Intent>> {
+        let mut children = vec![row(
+            "coder-queue-header",
+            vec![
+                heading("coder-queue-title", "Queued messages"),
+                button("coder-queue-done", "Done", Intent::DoneQueue),
+            ],
+        )];
+        let items = open
+            .queue
+            .as_ref()
+            .map(|queue| queue.items.as_slice())
+            .unwrap_or_default();
+        if items.is_empty() {
+            children.push(status("coder-queue-empty", "No messages are queued."));
+            return children;
+        }
+        let first_queued = items.iter().position(|item| !item.priority);
+        for (index, item) in items.iter().enumerate() {
+            let key = &item.command[..16.min(item.command.len())];
+            let own = me == Some(item.device.as_str());
+            let text = match (&item.text, item.priority) {
+                (Some(text), false) => text.clone(),
+                (Some(text), true) => format!("Sending next: {text}"),
+                (None, _) => "A message from another device".to_owned(),
+            };
+            let mut row_children = vec![body(&format!("coder-queued-{key}"), &text)];
+            if own && !item.priority {
+                let command = item.command.clone();
+                row_children.push(button(
+                    &format!("coder-queued-edit-{key}"),
+                    "Edit",
+                    Intent::EditQueued {
+                        command: command.clone(),
+                    },
+                ));
+                if first_queued.is_some_and(|first| index > first) {
+                    row_children.push(button(
+                        &format!("coder-queued-up-{key}"),
+                        "Move up",
+                        Intent::MoveQueuedUp {
+                            command: command.clone(),
+                        },
+                    ));
+                }
+                row_children.push(button(
+                    &format!("coder-queued-now-{key}"),
+                    "Send now",
+                    Intent::SendQueuedNow {
+                        command: command.clone(),
+                    },
+                ));
+                row_children.push(button(
+                    &format!("coder-queued-remove-{key}"),
+                    "Remove",
+                    Intent::RemoveQueued { command },
+                ));
+            }
+            children.push(node(
+                &format!("coder-queued-row-{key}"),
+                Element::Stack {
+                    axis: Axis::Vertical,
+                    children: row_children,
+                },
+            ));
+        }
+        children
+    }
+}
+
+/// Whether a refusal means the computer was not reached, so the command
+/// waits and tries again: a transport failure, or a computer that is offline
+/// or out of date right now.
+fn unreachable(refusal: &coder_computers::Refusal) -> bool {
+    match refusal {
+        coder_computers::Refusal::Failed(error) => matches!(
+            error.code,
+            coder_host::Code::Transport | coder_host::Code::Unavailable
+        ),
+        coder_computers::Refusal::Denied(Denial::Offline | Denial::OutOfDate) => true,
+        _ => false,
+    }
+}
+
+/// The host's refusal code, when the computer answered.
+fn refusal_code(refusal: &coder_computers::Refusal) -> Option<coder_host::Code> {
+    match refusal {
+        coder_computers::Refusal::Failed(error) => Some(error.code),
+        _ => None,
     }
 }
 
@@ -853,23 +1306,24 @@ pub(crate) fn availability<'a>(snapshot: &'a Snapshot, selected: Option<&str>) -
     }
 }
 
-/// What the open chat's composer does, from the task's phase and the
-/// device's explicit steer choice; never from the text.
+/// What the open chat's send control does, from the task's phase and the
+/// attention its summary asks for; never from the text. A long press
+/// offers the other ways to send ([`Choice`]).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Mode {
     /// Continue a finished chat with a follow-up turn.
     Send,
     /// Queue the message for the next turn.
     Queue,
-    /// Stop the running turn and continue with the message.
-    Steer,
+    /// Answer the question or approval request Coder ended its turn with.
+    Answer,
 }
 
 impl Mode {
-    pub(crate) fn of(phase: Option<Phase>, steer: bool) -> Self {
-        match phase {
-            None | Some(Phase::Queued | Phase::Running | Phase::Waiting) if steer => Mode::Steer,
-            None | Some(Phase::Queued | Phase::Running | Phase::Waiting) => Mode::Queue,
+    pub(crate) fn of(phase: Option<Phase>, attention: Option<Attention>) -> Self {
+        match (phase, attention) {
+            (Some(Phase::Waiting), Some(Attention::Input | Attention::Approval)) => Mode::Answer,
+            (None | Some(Phase::Queued | Phase::Running | Phase::Waiting), _) => Mode::Queue,
             _ => Mode::Send,
         }
     }

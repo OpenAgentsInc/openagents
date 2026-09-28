@@ -29,6 +29,11 @@ pub struct Pending {
     /// Unix seconds before which it is not tried again.
     pub next_try: u64,
     pub tries: u32,
+    /// When an attempt last failed to reach the host. Presence the host
+    /// published after this, as its answer to a nudge, makes the command
+    /// due at once.
+    #[serde(default)]
+    pub unreached_at: Option<u64>,
 }
 
 /// A command before it has an ID.
@@ -90,16 +95,31 @@ impl Outbox {
             },
             next_try: now,
             tries: 0,
+            unreached_at: None,
         });
         self.save();
         self.pending.last()
     }
 
     /// The commands due to be tried at `now`, oldest first.
+    #[cfg(test)]
     pub fn due(&self, now: u64) -> Vec<Pending> {
+        self.due_or_awake(now, &|_| None)
+    }
+
+    /// The commands due at `now`, and those whose host has published
+    /// presence since they last failed to reach it: `awake` gives a host's
+    /// newest presence time.
+    pub fn due_or_awake(&self, now: u64, awake: &dyn Fn(&str) -> Option<u64>) -> Vec<Pending> {
         self.pending
             .iter()
-            .filter(|pending| pending.next_try <= now)
+            .filter(|pending| {
+                pending.next_try <= now
+                    || pending
+                        .unreached_at
+                        .zip(awake(&pending.host))
+                        .is_some_and(|(failed, seen)| seen > failed)
+            })
             .cloned()
             .collect()
     }
@@ -126,6 +146,7 @@ impl Outbox {
                     .find(|pending| pending.command.command == command)
                 {
                     pending.tries = pending.tries.saturating_add(1);
+                    pending.unreached_at = Some(now);
                     let wait = FIRST_BACKOFF
                         .saturating_mul(1 << pending.tries.min(6))
                         .min(MAX_BACKOFF);
@@ -185,6 +206,12 @@ mod tests {
         let again = outbox.due(200);
         assert_eq!(again[0].command, due[0].command);
         assert_eq!(outbox.waiting(&task), 1);
+        // Presence the host published after the failure, as its answer to
+        // a nudge, makes it due before its backoff ends.
+        outbox.settle(&id, &Attempt::Unreached, 200);
+        assert!(outbox.due(201).is_empty());
+        assert!(outbox.due_or_awake(201, &|_| Some(199)).is_empty());
+        assert_eq!(outbox.due_or_awake(201, &|_| Some(201)).len(), 1);
         // A refusal or an answer ends it, durably.
         outbox.settle(&id, &Attempt::Refused("Stale".into()), 200);
         assert_eq!(outbox.waiting(&task), 0);

@@ -447,3 +447,336 @@ fn a_first_launch_with_no_summaries_has_no_rows() {
     let view = fixture.render();
     assert!(!keys(&view).iter().any(|key| key.starts_with("task-")));
 }
+
+/// What a [`Scripted`] service shows and records, shared with the test.
+#[derive(Default)]
+struct Script {
+    /// The open task's newest summary: its phase and attention.
+    phase: Option<(
+        nostr::activity_summary::Phase,
+        nostr::activity_summary::Attention,
+    )>,
+    /// The computer cannot be reached.
+    offline: bool,
+    /// Commands the computer answered: action and text.
+    commands: Vec<(coder_host::CommandAction, String, bool)>,
+    /// Queue edits, by action name.
+    edits: Vec<String>,
+    nudges: usize,
+}
+
+/// The fixture's hosts with the first task's summary set by the test, and
+/// the task commands, queue edits, and nudges recorded.
+struct Scripted {
+    inner: Synthetic,
+    script: std::sync::Arc<std::sync::Mutex<Script>>,
+}
+
+impl ComputersService for Scripted {
+    fn snapshot(&mut self) -> Answer<coder_computers::Snapshot> {
+        let mut snapshot = self.inner.snapshot()?;
+        // One more task, on the computer that is online, newest of all.
+        if let Some((phase, attention)) = self.script.lock().unwrap().phase
+            && let Some(mut summary) = snapshot
+                .activity
+                .iter()
+                .find(|s| s.subject_kind == nostr::activity_summary::SubjectKind::Task)
+                .cloned()
+        {
+            summary.host = snapshot.hosts[0].key.clone();
+            summary.subject = "f".repeat(64);
+            summary.sequence = 7;
+            summary.headline = "Scripted task".into();
+            summary.updated_at = NOW + 1;
+            summary.phase = phase;
+            summary.attention = attention;
+            snapshot.activity.push(summary);
+        }
+        Ok(snapshot)
+    }
+    fn command_task(&mut self, host: &str, command: &coder_host::TaskCommand) -> Answer<()> {
+        let mut script = self.script.lock().unwrap();
+        if script.offline {
+            return Err(coder_host::access::Error::new(
+                coder_host::Code::Transport,
+                "not connected",
+            ));
+        }
+        script
+            .commands
+            .push((command.action, command.text.clone(), command.emulate));
+        drop(script);
+        self.inner.command_task(host, command)
+    }
+    fn queue_task(
+        &mut self,
+        host: &str,
+        task: &str,
+        edit: &coder_host::QueueEdit,
+    ) -> Answer<coder_host::TaskQueue> {
+        let name = serde_json::to_value(edit).unwrap()["action"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        self.script.lock().unwrap().edits.push(name);
+        self.inner.queue_task(host, task, edit)
+    }
+    fn nudge_host(&mut self, host: &str) -> Answer<()> {
+        self.script.lock().unwrap().nudges += 1;
+        self.inner.nudge_host(host)
+    }
+    fn set_enabled(&mut self, host: &str, enabled: bool) -> Answer<()> {
+        self.inner.set_enabled(host, enabled)
+    }
+    fn retry_now(&mut self, host: &str) -> Answer<()> {
+        self.inner.retry_now(host)
+    }
+    fn forget(&mut self, host: &str) -> Answer<()> {
+        self.inner.forget(host)
+    }
+    fn redeem_invitation(&mut self, invitation: &str) -> Answer<String> {
+        self.inner.redeem_invitation(invitation)
+    }
+    fn approve_enrollment(
+        &mut self,
+        host: &str,
+        enrollment: &str,
+        code: &str,
+        rights: &coder_host::access::Rights,
+        grant_expires_at: u64,
+    ) -> Answer<()> {
+        self.inner
+            .approve_enrollment(host, enrollment, code, rights, grant_expires_at)
+    }
+    fn deny_enrollment(&mut self, host: &str, enrollment: &str) -> Answer<()> {
+        self.inner.deny_enrollment(host, enrollment)
+    }
+    fn connect_ssh(&mut self, destination: &str) -> Answer<()> {
+        self.inner.connect_ssh(destination)
+    }
+    fn run_without_local_host(&mut self) -> Answer<()> {
+        self.inner.run_without_local_host()
+    }
+    fn refresh_devices(&mut self, host: &str) -> Answer<()> {
+        self.inner.refresh_devices(host)
+    }
+    fn create_invitation(
+        &mut self,
+        host: &str,
+        rights: &coder_host::access::Rights,
+        grant_expires_at: u64,
+    ) -> Answer<coder_computers::CreatedInvitation> {
+        self.inner.create_invitation(host, rights, grant_expires_at)
+    }
+    fn cancel_invitation(&mut self, host: &str, invitation: &str) -> Answer<()> {
+        self.inner.cancel_invitation(host, invitation)
+    }
+    fn revoke(&mut self, host: &str, device: &str) -> Answer<()> {
+        self.inner.revoke(host, device)
+    }
+    fn complete_first_run(&mut self) -> Answer<()> {
+        self.inner.complete_first_run()
+    }
+}
+
+impl Fixture {
+    /// The fixture with a scripted first task, opened.
+    fn scripted(
+        phase: nostr::activity_summary::Phase,
+        attention: nostr::activity_summary::Attention,
+    ) -> (Self, std::sync::Arc<std::sync::Mutex<Script>>, Value) {
+        let script = std::sync::Arc::new(std::sync::Mutex::new(Script {
+            phase: Some((phase, attention)),
+            ..Script::default()
+        }));
+        let mut fixture = Self::new(Scripted {
+            inner: Synthetic::fixture(Platform::Phone, now),
+            script: script.clone(),
+        });
+        fixture.computers.refresh().expect("refresh");
+        let list = fixture.render();
+        let chat = fixture.tap(&first_task(&list));
+        (fixture, script, chat)
+    }
+
+    /// Send `text` with the composer's token, or with one of its choices'.
+    fn send(&mut self, view: &Value, choice: Option<&str>, text: &str) -> Value {
+        let props = &node(view, "coder-composer").expect("composer")["element"]["props"];
+        let token = match choice {
+            None => props["token"].as_str().unwrap().to_owned(),
+            Some(label) => props["choices"]
+                .as_array()
+                .expect("choices")
+                .iter()
+                .find(|choice| choice["label"] == label)
+                .unwrap_or_else(|| panic!("no choice {label}: {props}"))["token"]
+                .as_str()
+                .unwrap()
+                .to_owned(),
+        };
+        self.coder
+            .submit(&token, text, Some(&mut self.computers), &mut self.chats);
+        self.coder.flush(Some(&mut self.computers));
+        self.render()
+    }
+}
+
+fn choice_labels(view: &Value) -> Vec<String> {
+    node(view, "coder-composer").expect("composer")["element"]["props"]["choices"]
+        .as_array()
+        .map(|choices| {
+            choices
+                .iter()
+                .map(|choice| choice["label"].as_str().unwrap().to_owned())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+#[test]
+fn a_long_press_offers_queue_or_stop_and_send_while_coder_works() {
+    use coder_host::CommandAction;
+    use nostr::activity_summary::{Attention, Phase};
+    let (mut fixture, script, chat) = Fixture::scripted(Phase::Running, Attention::None);
+    assert_eq!(
+        choice_labels(&chat),
+        ["Queue for next turn", "Stop and send"]
+    );
+    // The Rust-drawn steer switch is gone; Stop stays.
+    assert!(node(&chat, "coder-steer").is_none());
+    assert!(node(&chat, "coder-stop").is_some());
+    let chat = fixture.send(&chat, None, "Then the changelog.");
+    let chat = fixture.send(&chat, Some("Stop and send"), "Only the parser.");
+    fixture.send(&chat, Some("Queue for next turn"), "And the docs.");
+    assert_eq!(
+        script.lock().unwrap().commands,
+        [
+            (CommandAction::Queue, "Then the changelog.".into(), false),
+            (CommandAction::Steer, "Only the parser.".into(), true),
+            (CommandAction::Queue, "And the docs.".into(), false),
+        ]
+    );
+    // A turn that has not started takes new instructions instead.
+    let (_, _, queued) = Fixture::scripted(Phase::Queued, Attention::None);
+    assert_eq!(choice_labels(&queued), ["Queue for next turn", "Steer now"]);
+    // A finished chat sends a follow-up and offers nothing else.
+    let (_, _, done) = Fixture::scripted(Phase::Completed, Attention::Completed);
+    assert!(choice_labels(&done).is_empty());
+}
+
+#[test]
+fn a_question_is_answered_and_an_approval_has_its_own_controls() {
+    use coder_host::CommandAction;
+    use nostr::activity_summary::{Attention, Phase};
+    let (mut fixture, script, chat) = Fixture::scripted(Phase::Waiting, Attention::Input);
+    assert!(texts(&chat).contains(&"Coder is waiting for your answer.".to_owned()));
+    assert!(node(&chat, "coder-stop").is_none());
+    assert!(choice_labels(&chat).is_empty());
+    let placeholder = &node(&chat, "coder-composer").unwrap()["element"]["props"]["placeholder"];
+    assert_eq!(placeholder, "Answer Coder");
+    fixture.send(&chat, None, "Two lines.");
+    assert_eq!(
+        script.lock().unwrap().commands,
+        [(CommandAction::Answer, "Two lines.".into(), false)]
+    );
+    let (mut fixture, script, chat) = Fixture::scripted(Phase::Waiting, Attention::Approval);
+    assert!(texts(&chat).contains(&"Coder is waiting for your approval.".to_owned()));
+    fixture.tap("coder-approve");
+    fixture.tap("coder-deny");
+    assert_eq!(
+        script.lock().unwrap().commands,
+        [
+            (CommandAction::Answer, "Approved.".into(), false),
+            (CommandAction::Answer, "Denied.".into(), false),
+        ]
+    );
+}
+
+#[test]
+fn the_queue_panel_edits_reorders_and_removes_under_the_lease() {
+    use nostr::activity_summary::{Attention, Phase};
+    let (mut fixture, script, chat) = Fixture::scripted(Phase::Running, Attention::None);
+    let chat = fixture.send(&chat, None, "First queued.");
+    let chat = fixture.send(&chat, None, "Second queued.");
+    // The queue shows once the computer lists it.
+    let chat = fixture.tap(
+        &keys(&chat)
+            .into_iter()
+            .find(|key| key == "coder-edit-queue")
+            .unwrap_or_else(|| panic!("no Edit queue in {:?}", texts(&chat))),
+    );
+    let rows: Vec<String> = keys(&chat)
+        .into_iter()
+        .filter(|key| key.starts_with("coder-queued-row-"))
+        .collect();
+    assert_eq!(rows.len(), 2, "{:?}", texts(&chat));
+    assert!(texts(&chat).contains(&"First queued.".to_owned()));
+    // Move the second up.
+    let up = keys(&chat)
+        .into_iter()
+        .find(|key| key.starts_with("coder-queued-up-"))
+        .expect("move up");
+    let chat = fixture.tap(&up);
+    let queued: Vec<String> = texts(&chat)
+        .into_iter()
+        .filter(|text| text.ends_with("queued."))
+        .collect();
+    assert_eq!(queued, ["Second queued.", "First queued."]);
+    // Edit one: its text becomes the composer's draft, and a send edits it.
+    let edit = keys(&chat)
+        .into_iter()
+        .find(|key| key.starts_with("coder-queued-edit-"))
+        .expect("edit");
+    let chat = fixture.tap(&edit);
+    let props = &node(&chat, "coder-composer").unwrap()["element"]["props"];
+    assert_eq!(props["draft"], "Second queued.");
+    assert_eq!(props["placeholder"], "Edit your queued message");
+    assert!(choice_labels(&chat).is_empty());
+    let chat = fixture.send(&chat, None, "Second, edited.");
+    assert!(texts(&chat).contains(&"Second, edited.".to_owned()));
+    let remove = keys(&chat)
+        .into_iter()
+        .find(|key| key.starts_with("coder-queued-remove-"))
+        .expect("remove");
+    let chat = fixture.tap(&remove);
+    assert_eq!(
+        keys(&chat)
+            .into_iter()
+            .filter(|key| key.starts_with("coder-queued-row-"))
+            .count(),
+        1
+    );
+    let chat = fixture.tap("coder-queue-done");
+    assert!(node(&chat, "coder-queue-title").is_none());
+    let edits = script.lock().unwrap().edits.clone();
+    assert_eq!(edits.first().map(String::as_str), Some("list"));
+    for action in ["lease", "reorder", "edit", "remove", "release"] {
+        assert!(edits.iter().any(|edit| edit == action), "{edits:?}");
+    }
+    // Each queued message was sent once, however often the panel moved.
+    assert_eq!(script.lock().unwrap().commands.len(), 2);
+}
+
+#[test]
+fn an_unreached_computer_is_nudged_and_the_command_waits() {
+    use nostr::activity_summary::{Attention, Phase};
+    let (mut fixture, script, chat) = Fixture::scripted(Phase::Completed, Attention::Completed);
+    script.lock().unwrap().offline = true;
+    let chat = fixture.send(&chat, None, "Follow up.");
+    assert!(
+        texts(&chat)
+            .iter()
+            .any(|text| text.starts_with("1 message waiting to reach")),
+        "{:?}",
+        texts(&chat)
+    );
+    assert_eq!(script.lock().unwrap().nudges, 1);
+    assert!(script.lock().unwrap().commands.is_empty());
+    // The command waits for its backoff or the computer's fresh presence
+    // (the outbox's own test covers both); a second failure in the same
+    // window nudges no more.
+    script.lock().unwrap().offline = false;
+    fixture.coder.flush(Some(&mut fixture.computers));
+    assert!(script.lock().unwrap().commands.is_empty());
+    assert_eq!(script.lock().unwrap().nudges, 1);
+}

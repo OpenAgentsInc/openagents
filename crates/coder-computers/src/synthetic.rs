@@ -10,7 +10,10 @@ use crate::model::{
     PendingEnrollment, Platform, ServiceState, Snapshot,
 };
 use crate::service::{ComputersService, Result};
-use coder_access::protocol::{DeviceState, INVITATION_PREFIX, OriginKind, TaskCommand, TaskCreate};
+use coder_access::protocol::{
+    CommandAction, DeviceState, INVITATION_PREFIX, OriginKind, QueueEdit, QueueItem, QueueLease,
+    TaskCommand, TaskCreate, TaskQueue,
+};
 use coder_access::{Code, Error, Right, Rights};
 use coder_link::{
     AttemptId, BlockReason, Command, ConnectionId, Failure, Moment, Policy, Report, Signal,
@@ -21,6 +24,7 @@ use nostr::activity_summary::{
     ActivitySummary, Attention, Phase, SubjectKind, SummaryDraft, encode,
 };
 use secp256k1::{Keypair, Secp256k1, SecretKey};
+use std::collections::BTreeMap;
 use std::str::FromStr;
 
 /// The fixture key for `tag`: the x-only public key of the secret key whose
@@ -126,6 +130,11 @@ pub struct Synthetic {
     owner_key: bool,
     /// Every effect the screens requested, in order. Tests read it.
     pub calls: Vec<String>,
+    /// Each task's queued messages and edit lease holder, as a host keeps
+    /// them.
+    pub queues: BTreeMap<String, (Option<String>, Vec<QueueItem>)>,
+    /// Hosts this device nudged, in order.
+    pub nudged: Vec<String>,
 }
 
 impl Synthetic {
@@ -314,6 +323,8 @@ impl Synthetic {
             ssh: None,
             owner_key: false,
             calls: Vec::new(),
+            queues: BTreeMap::new(),
+            nudged: Vec::new(),
         }
     }
 
@@ -653,6 +664,81 @@ impl ComputersService for Synthetic {
             command.task, command.action, command.command
         ));
         self.host(host)?;
+        if command.action == CommandAction::Queue {
+            let (_, items) = self.queues.entry(command.task.clone()).or_default();
+            if !items.iter().any(|item| item.command == command.command) {
+                items.push(QueueItem {
+                    command: command.command.clone(),
+                    device: device(),
+                    text: Some(command.text.clone()),
+                    priority: false,
+                });
+            }
+        }
+        Ok(())
+    }
+    fn queue_task(&mut self, host: &str, task: &str, edit: &QueueEdit) -> Result<TaskQueue> {
+        self.calls
+            .push(format!("queue_task {host} {task} {}", queue_action(edit)));
+        self.host(host)?;
+        let me = device();
+        let now = (self.now)();
+        let (lease, items) = self.queues.entry(task.to_owned()).or_default();
+        let conflict = || Error::new(Code::Conflict, "another device holds the queue");
+        let holds = lease.as_deref() == Some(me.as_str());
+        let position = |items: &[QueueItem], command: &str| {
+            items
+                .iter()
+                .position(|item| item.command == command)
+                .ok_or_else(|| Error::new(Code::Forbidden, "no such queued message"))
+        };
+        match edit {
+            QueueEdit::List {} => {}
+            QueueEdit::Lease {} if lease.is_some() && !holds => return Err(conflict()),
+            QueueEdit::Lease {} => *lease = Some(me.clone()),
+            QueueEdit::Release {} => {
+                if holds {
+                    *lease = None;
+                }
+            }
+            _ if !holds => return Err(conflict()),
+            QueueEdit::Edit { command, text } => {
+                let at = position(items, command)?;
+                items[at].text = Some(text.clone());
+            }
+            QueueEdit::Remove { command } => {
+                if let Ok(at) = position(items, command) {
+                    items.remove(at);
+                }
+            }
+            QueueEdit::SendNow { command } => {
+                let at = position(items, command)?;
+                items.remove(at);
+            }
+            QueueEdit::Reorder { commands } => {
+                let mut reordered = Vec::new();
+                for command in commands {
+                    reordered.push(items[position(items, command)?].clone());
+                }
+                if reordered.len() != items.len() {
+                    return Err(conflict());
+                }
+                *items = reordered;
+            }
+        }
+        Ok(TaskQueue {
+            task: task.to_owned(),
+            revision: 1,
+            lease: lease.clone().map(|device| QueueLease {
+                device,
+                expires_at: now + 60,
+            }),
+            items: items.clone(),
+        })
+    }
+    fn nudge_host(&mut self, host: &str) -> Result<()> {
+        self.calls.push(format!("nudge_host {host}"));
+        self.nudged.push(host.to_owned());
         Ok(())
     }
     fn cancel_task(&mut self, host: &str, task: &str, revision: u64, _: &str) -> Result<()> {
@@ -692,5 +778,18 @@ impl ComputersService for Synthetic {
             }
         }
         Ok(())
+    }
+}
+
+/// A queue edit's action name, for the call log. Never a message's text.
+fn queue_action(edit: &QueueEdit) -> &'static str {
+    match edit {
+        QueueEdit::List {} => "list",
+        QueueEdit::Lease {} => "lease",
+        QueueEdit::Release {} => "release",
+        QueueEdit::Edit { .. } => "edit",
+        QueueEdit::Remove { .. } => "remove",
+        QueueEdit::Reorder { .. } => "reorder",
+        QueueEdit::SendNow { .. } => "send_now",
     }
 }

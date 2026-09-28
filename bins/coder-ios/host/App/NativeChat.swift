@@ -26,6 +26,18 @@ struct NativeComposerProps: Equatable {
     let busy: Bool
     /// The view carries a stop intent, so the busy control can stop.
     let stoppable: Bool
+    /// Other ways to send the text, offered on a long press of send. Each
+    /// answers with its own token, whose meaning stays in Rust.
+    var choices: [NativeComposerChoice] = []
+    /// Text to put in the field when the token is new, such as a message to
+    /// edit.
+    var draft: String? = nil
+}
+
+/// Another way to send a composer's text.
+struct NativeComposerChoice: Decodable, Equatable, Hashable {
+    let token: String
+    let label: String
 }
 
 /// One inline run of parsed Markdown. A link destination is never opened.
@@ -887,21 +899,9 @@ private struct NativeComposer: View {
                 }
                 .padding(.leading, 18)
                 .padding(.vertical, 14)
-            Button(action: props.busy ? stop : send) {
-                Image(systemName: props.busy ? "stop.fill" : "arrow.up")
-                    .font(.system(size: props.busy ? 11 : 15, weight: .bold))
-                    .foregroundStyle(controlEnabled ? Color(uiColor: .systemBackground)
-                                                    : Color(uiColor: .tertiaryLabel))
-                    .frame(width: 34, height: 34)
-                    .background(Circle().fill(controlEnabled ? Color(uiColor: .label)
-                                                             : Color(uiColor: .label).opacity(0.075)))
-            }
-            .buttonStyle(.plain)
-            .disabled(!controlEnabled)
-            .accessibilityLabel(props.busy ? "Stop" : "Send")
-            .accessibilityIdentifier("\(key)-\(props.busy ? "stop" : "send")")
-            .padding(.trailing, 8)
-            .padding(.bottom, 8)
+            control
+                .padding(.trailing, 8)
+                .padding(.bottom, 8)
         }
         .frame(minHeight: 50)
         .modifier(NativeComposerSurface())
@@ -911,15 +911,64 @@ private struct NativeComposer: View {
         .frame(maxWidth: .infinity)
         .opacity(props.enabled ? 1 : 0.6)
         .accessibilityIdentifier(key)
+        .onAppear(perform: takeDraft)
+        .onChange(of: props.token) { _, _ in takeDraft() }
     }
 
     private var controlEnabled: Bool { props.busy ? props.stoppable : canSend }
 
-    private func send() {
+    private var controlImage: some View {
+        Image(systemName: props.busy ? "stop.fill" : "arrow.up")
+            .font(.system(size: props.busy ? 11 : 15, weight: .bold))
+            .foregroundStyle(controlEnabled ? Color(uiColor: .systemBackground)
+                                            : Color(uiColor: .tertiaryLabel))
+            .frame(width: 34, height: 34)
+            .background(Circle().fill(controlEnabled ? Color(uiColor: .label)
+                                                     : Color(uiColor: .label).opacity(0.075)))
+    }
+
+    /// The round send control. With choices, a tap sends and a long press
+    /// opens a menu of the other ways to send.
+    @ViewBuilder private var control: some View {
+        if !props.busy && !props.choices.isEmpty {
+            Menu {
+                ForEach(props.choices, id: \.token) { choice in
+                    Button(choice.label) { send(as: choice.token) }
+                        .accessibilityIdentifier("\(key)-choice-\(choice.label)")
+                }
+            } label: {
+                controlImage
+            } primaryAction: {
+                send()
+            }
+            .menuStyle(.button)
+            .buttonStyle(.plain)
+            .disabled(!controlEnabled)
+            .accessibilityLabel("Send")
+            .accessibilityHint("Touch and hold for other ways to send.")
+            .accessibilityIdentifier("\(key)-send")
+        } else {
+            Button(action: props.busy ? stop : send) { controlImage }
+                .buttonStyle(.plain)
+                .disabled(!controlEnabled)
+                .accessibilityLabel(props.busy ? "Stop" : "Send")
+                .accessibilityIdentifier("\(key)-\(props.busy ? "stop" : "send")")
+        }
+    }
+
+    private func send() { send(as: props.token) }
+
+    private func send(as token: String) {
         guard canSend, let submit else { return }
         let value = text
         text = ""
-        submit(props.token, value)
+        submit(token, value)
+    }
+
+    /// A new composer with a draft, such as a queued message to edit, puts
+    /// the draft in the field.
+    private func takeDraft() {
+        if let draft = props.draft { text = draft }
     }
 
     private func stop() {

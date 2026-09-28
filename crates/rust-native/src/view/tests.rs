@@ -458,6 +458,8 @@ mod conversation {
                 enabled: true,
                 busy: true,
                 stop: Some(Chat::Stop),
+                choices: vec![],
+                draft: None,
             },
         );
         View::new(
@@ -509,6 +511,8 @@ mod conversation {
                 enabled: true,
                 busy: false,
                 stop: None,
+                choices: vec![],
+                draft: None,
             };
         }
         assert_eq!(bad.validate().unwrap_err(), ViewError::Identity);
@@ -517,6 +521,73 @@ mod conversation {
             children[1].element = Element::Working { label: " ".into() };
         }
         assert_eq!(bad.validate().unwrap_err(), ViewError::MissingLabel);
+    }
+
+    #[test]
+    fn a_composer_answers_with_its_token_or_a_choices_token() {
+        let composer = |choices: Vec<ComposerChoice>, draft: Option<&str>| {
+            View::new(
+                "chat",
+                1,
+                node(
+                    "composer",
+                    Element::<Chat>::Composer {
+                        token: "send-1".into(),
+                        placeholder: "Message Coder".into(),
+                        max_bytes: 16,
+                        enabled: true,
+                        busy: false,
+                        stop: None,
+                        choices,
+                        draft: draft.map(str::to_owned),
+                    },
+                ),
+            )
+        };
+        let choice = |token: &str, label: &str| ComposerChoice {
+            token: token.into(),
+            label: label.into(),
+        };
+        let view = composer(
+            vec![
+                choice("queue-1", "Queue for next turn"),
+                choice("stop-1", "Stop and send"),
+            ],
+            Some("Edit me"),
+        )
+        .validate()
+        .expect("valid");
+        for token in ["send-1", "queue-1", "stop-1"] {
+            assert_eq!(view.accept_composer(token, "hello"), Ok(()));
+        }
+        assert_eq!(
+            view.accept_composer("other-1", "hello"),
+            Err(crate::InputError::Stale)
+        );
+        // A choice reuses no token and has a label; a draft fits the bound.
+        for bad in [
+            composer(vec![choice("send-1", "Again")], None),
+            composer(vec![choice("a-1", "One"), choice("a-1", "Two")], None),
+            composer(vec![choice("not an id", "One")], None),
+        ] {
+            assert_eq!(bad.validate().unwrap_err(), ViewError::Identity);
+        }
+        assert_eq!(
+            composer(vec![choice("a-1", " ")], None)
+                .validate()
+                .unwrap_err(),
+            ViewError::MissingLabel
+        );
+        assert_eq!(
+            composer(vec![], Some("far too long for sixteen bytes"))
+                .validate()
+                .unwrap_err(),
+            ViewError::TextLimit
+        );
+        // A composer without choices or a draft encodes as before.
+        let plain = serde_json::to_value(composer(vec![], None)).unwrap();
+        let props = &plain["root"]["element"]["props"];
+        assert!(props.get("choices").is_none() && props.get("draft").is_none());
     }
 
     /// The fixture native adapters render and test against. Regenerate with

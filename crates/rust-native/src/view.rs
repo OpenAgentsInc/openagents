@@ -116,7 +116,11 @@ pub enum Element<I> {
     },
     /// A text field with a send control. The adapter answers a send as an
     /// input answer bound to `token`; activating the node while `busy` runs
-    /// `stop`.
+    /// `stop`. `choices` are other ways to send the same text, which the
+    /// adapter offers as a long press on the send control (a menu); choosing
+    /// one answers with that choice's token instead. `draft` is text the
+    /// adapter puts in the field when `token` is new, such as a message to
+    /// edit; otherwise the field keeps what the person typed.
     Composer {
         token: String,
         placeholder: String,
@@ -124,7 +128,24 @@ pub enum Element<I> {
         enabled: bool,
         busy: bool,
         stop: Option<I>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        choices: Vec<ComposerChoice>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        draft: Option<String>,
     },
+}
+
+/// The most choices a composer offers.
+pub const MAX_COMPOSER_CHOICES: usize = 4;
+
+/// Another way to send a composer's text: its own input token and label.
+/// The application gives each choice's token its meaning; the adapter never
+/// reads one.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ComposerChoice {
+    pub token: String,
+    pub label: String,
 }
 
 /// A glyph a button draws. An adapter that cannot draw it shows the
@@ -351,6 +372,8 @@ impl<I: Serialize> View<I> {
                     token,
                     placeholder,
                     max_bytes,
+                    choices,
+                    draft,
                     ..
                 } => {
                     if !crate::valid_id(token) {
@@ -359,6 +382,26 @@ impl<I: Serialize> View<I> {
                     check_text(placeholder)?;
                     if *max_bytes == 0 || *max_bytes > crate::input::MAX_INPUT_VALUE_BYTES {
                         return Err(ViewError::TextLimit);
+                    }
+                    if draft.as_ref().is_some_and(|draft| draft.len() > *max_bytes) {
+                        return Err(ViewError::TextLimit);
+                    }
+                    if choices.len() > MAX_COMPOSER_CHOICES {
+                        return Err(ViewError::NodeLimit);
+                    }
+                    for (index, choice) in choices.iter().enumerate() {
+                        // A choice's token is distinct from the send's and
+                        // every other choice's, so an answer names one.
+                        if !crate::valid_id(&choice.token)
+                            || choice.token == *token
+                            || choices[..index].iter().any(|c| c.token == choice.token)
+                        {
+                            return Err(ViewError::Identity);
+                        }
+                        check_text(&choice.label)?;
+                        if choice.label.trim().is_empty() {
+                            return Err(ViewError::MissingLabel);
+                        }
                     }
                 }
             }
@@ -433,8 +476,9 @@ impl<I> ValidatedView<I> {
 
 impl<I> ValidatedView<I> {
     /// Accept a composer's text: `token` must name an enabled composer in
-    /// this view, and the text must fit its bound. The application still
-    /// validates what the text means.
+    /// this view, or one of its choices, and the text must fit its bound.
+    /// The application still validates what the text means, and gives a
+    /// choice's token its meaning.
     pub fn accept_composer(&self, token: &str, text: &str) -> Result<(), crate::InputError> {
         let mut pending = vec![&self.0.root];
         while let Some(node) = pending.pop() {
@@ -443,8 +487,9 @@ impl<I> ValidatedView<I> {
                     token: current,
                     enabled,
                     max_bytes,
+                    choices,
                     ..
-                } if current == token => {
+                } if current == token || choices.iter().any(|choice| choice.token == token) => {
                     if !enabled {
                         return Err(crate::InputError::Stale);
                     }

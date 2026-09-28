@@ -19,9 +19,12 @@ The app has four tabs, shown as icons:
   the host runs Coder's engine right away. An open chat reads the task's
   ATIF transcript through the computer's read-only history observer (its
   `coder` source) and follows it while the task runs: the model's replies,
-  the commands it ran with their output, and how the run ended. While Coder
-  works, the send control stops the task (`task.cancel`). A message in a
-  finished chat starts a new chat.
+  the commands it ran with their output, and how the run ended. A message in
+  a finished chat continues the same task, and a message while Coder works
+  queues for its next turn; a long press on send offers the other ways to
+  send, **Edit queue** edits what waits, and a question or approval request
+  from Coder is answered in the chat. Every message is a durable NIP-HOST
+  `task.command` (see [what comes later](docs/chat-later.md#built-since-build-6)).
 - **Verse** (globe) is Verse's bare world: the plaza's ground grid in white
   and gray on a dark field, with your character in the center, the other
   players in the same world, and one large ball ahead of you. Walk into the

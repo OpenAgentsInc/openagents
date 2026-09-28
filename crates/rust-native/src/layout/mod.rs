@@ -782,6 +782,8 @@ pub fn without_intents<I>(node: &Node<I>) -> Node<()> {
             enabled,
             busy,
             stop,
+            choices,
+            draft,
         } => Element::Composer {
             token: token.clone(),
             placeholder: placeholder.clone(),
@@ -789,6 +791,8 @@ pub fn without_intents<I>(node: &Node<I>) -> Node<()> {
             enabled: *enabled,
             busy: *busy,
             stop: stop.as_ref().map(|_| ()),
+            choices: choices.clone(),
+            draft: draft.clone(),
         },
     };
     Node {

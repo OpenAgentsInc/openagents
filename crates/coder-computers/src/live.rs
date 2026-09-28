@@ -42,7 +42,7 @@ use crate::model::{
 };
 use crate::service::{ComputersService, Result};
 use coder_access::client::{OpenedEnrollment, pending_enrollments, redeem};
-use coder_access::protocol::{DeviceEntry, TaskCommand, TaskCreate};
+use coder_access::protocol::{DeviceEntry, QueueEdit, TaskCommand, TaskCreate, TaskQueue};
 use coder_access::{Access, Code, Error, Operation, Outcome, RelayPolicy, Right, Rights};
 use coder_host::client::{
     Connector, Device, Link, Reports, Route, fetch_directory_revisions, fetch_reach,
@@ -362,6 +362,11 @@ impl SshSetup {
     }
 }
 
+/// The least time between two relay nudges to one host.
+const NUDGE_EVERY: Duration = Duration::from_secs(120);
+/// How many times, three seconds apart, a nudge watches for fresh presence.
+const NUDGE_WATCH: usize = 30;
+
 fn unix_now() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -384,6 +389,8 @@ struct HostLive {
     caught_up: Option<(u64, Instant)>,
     catching_up: bool,
     nudged: bool,
+    /// When this device last left the host a relay nudge.
+    woken_at: Option<Instant>,
 }
 
 /// The owner directory's read state.
@@ -1652,6 +1659,72 @@ impl ComputersService for Live {
     fn archive_task(&mut self, host: &str, task: &str) -> Result<()> {
         self.dispatched(host, Operation::ArchiveTask { task: task.into() })
             .map(|_| ())
+    }
+
+    fn queue_task(&mut self, host: &str, task: &str, edit: &QueueEdit) -> Result<TaskQueue> {
+        let op = Operation::QueueTask {
+            task: task.into(),
+            edit: edit.clone(),
+        };
+        let Outcome::Queue { queue } = self.call(host, op)? else {
+            return Err(Error::new(
+                Code::Malformed,
+                "the host did not answer with the queue",
+            ));
+        };
+        Ok(queue)
+    }
+
+    /// Leave the host a relay nudge, at most every [`NUDGE_EVERY`], then
+    /// watch for the fresh presence it answers with. Fresh presence asks
+    /// the host's supervisor to try at once and reads the host again.
+    fn nudge_host(&mut self, host: &str) -> Result<()> {
+        let device = {
+            let mut state = lock(&self.shared.state);
+            let Some(live) = state.hosts.get_mut(host) else {
+                return Ok(());
+            };
+            if live.woken_at.is_some_and(|at| at.elapsed() < NUDGE_EVERY) {
+                return Ok(());
+            }
+            let Some(device) = live.device.clone() else {
+                return Ok(());
+            };
+            live.woken_at = Some(Instant::now());
+            device
+        };
+        let shared = self.shared.clone();
+        let host = host.to_owned();
+        self.runtime.spawn(async move {
+            let relay = device.relay().to_owned();
+            let sent_at = unix_now();
+            if coder_host::client::nudge(&device, &relay).await.is_err() {
+                return;
+            }
+            for _ in 0..NUDGE_WATCH {
+                tokio::time::sleep(Duration::from_secs(3)).await;
+                let Ok(reach) = fetch_reach(&device, &relay).await else {
+                    continue;
+                };
+                if reach.presence.presence.observed_at < sent_at {
+                    continue;
+                }
+                let key = {
+                    let mut state = lock(&shared.state);
+                    let Some(live) = state.hosts.get_mut(&host) else {
+                        return;
+                    };
+                    live.presence = Some(reach.presence);
+                    live.nudged = true;
+                    live.key.clone()
+                };
+                if let Some(key) = key {
+                    let _ = lock(&shared.registry).signal(&key, Signal::RetryNow);
+                }
+                return;
+            }
+        });
+        Ok(())
     }
 
     fn complete_first_run(&mut self) -> Result<()> {

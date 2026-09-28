@@ -570,10 +570,17 @@ fn live_coder_chat_creates_a_task() {
             "{text:?}"
         );
         assert_eq!(nodes_of(&chat, "transcript").len(), 1);
-        // A running chat offers stop and steer, and its composer queues.
+        // A running chat offers stop, and its composer queues, with the
+        // other ways to send on a long press.
         assert!(key_for(&chat, "Stop").is_some(), "{text:?}");
-        assert!(key_for(&chat, "Steer now").is_some(), "{text:?}");
         let composer = &nodes_of(&chat, "composer")[0]["element"]["props"];
+        let choices: Vec<&str> = composer["choices"]
+            .as_array()
+            .expect("choices")
+            .iter()
+            .filter_map(|choice| choice["label"].as_str())
+            .collect();
+        assert_eq!(choices[0], "Queue for next turn", "{choices:?}");
         assert_eq!(composer["busy"], false);
         assert_eq!(composer["enabled"], true);
         // Back on the list, the host's activity summary lists it.
@@ -738,20 +745,28 @@ fn the_coder_list_leaves_out_archived_tasks() {
     assert!(!crate::coder_tab::archived(None));
 }
 
-/// The composer's action comes from the task's phase and the explicit steer
-/// choice, never from the text.
+/// The composer's action comes from the task's phase and the attention its
+/// summary asks for, never from the text; a long press offers the ways to
+/// send that fit the turn.
 #[test]
-fn the_composer_mode_follows_the_task_and_the_steer_choice() {
-    use crate::coder_tab::Mode;
-    use nostr::activity_summary::Phase;
+fn the_composer_mode_follows_the_task_and_its_attention() {
+    use crate::coder_tab::{Choice, Mode};
+    use nostr::activity_summary::{Attention, Phase};
     for phase in [
         None,
         Some(Phase::Queued),
         Some(Phase::Running),
         Some(Phase::Waiting),
     ] {
-        assert_eq!(Mode::of(phase, false), Mode::Queue);
-        assert_eq!(Mode::of(phase, true), Mode::Steer);
+        assert_eq!(Mode::of(phase, None), Mode::Queue);
+        assert_eq!(Mode::of(phase, Some(Attention::None)), Mode::Queue);
+    }
+    // A turn that ended with a question or an approval request is answered.
+    for attention in [Attention::Input, Attention::Approval] {
+        assert_eq!(
+            Mode::of(Some(Phase::Waiting), Some(attention)),
+            Mode::Answer
+        );
     }
     for phase in [
         Phase::Completed,
@@ -759,10 +774,19 @@ fn the_composer_mode_follows_the_task_and_the_steer_choice() {
         Phase::Cancelled,
         Phase::Unknown,
     ] {
-        assert_eq!(Mode::of(Some(phase), false), Mode::Send);
-        // A finished chat cannot be steered; the choice does nothing.
-        assert_eq!(Mode::of(Some(phase), true), Mode::Send);
+        assert_eq!(Mode::of(Some(phase), None), Mode::Send);
+        assert!(Choice::offered(Some(phase)).is_empty());
     }
+    // A turn that has not started can be steered; a running one stops for
+    // the message.
+    assert_eq!(
+        Choice::offered(Some(Phase::Queued)),
+        [Choice::Queue, Choice::SteerNow]
+    );
+    assert_eq!(
+        Choice::offered(Some(Phase::Running)),
+        [Choice::Queue, Choice::StopAndSend]
+    );
 }
 
 /// A finished Coder chat continues on the same task: the follow-up runs as
@@ -848,5 +872,183 @@ fn live_coder_chat_continues_with_a_follow_up() {
             assert!(std::time::Instant::now() < deadline, "{text:?}");
             std::thread::sleep(std::time::Duration::from_secs(3));
         }
+    });
+}
+
+/// Open a Coder chat on the tailnet computer at `OPENAGENTS_TEST_ADMISSION`
+/// and send `prompt`; return the app, its directory, and the chat's task.
+fn live_chat(prompt: &str) -> (App, tempfile::TempDir, (String, String)) {
+    let address = std::env::var("OPENAGENTS_TEST_ADMISSION").expect("address");
+    let (mut app, dir) = app();
+    app.call(Request::Lifecycle { active: true });
+    app.set_tailnet(Screen::Devices(Tailnet {
+        name: None,
+        this_device: None,
+        devices: vec![Device {
+            name: "test-computer".into(),
+            os: "macOS".into(),
+            address,
+            online: Some(true),
+        }],
+    }));
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(120);
+    let coder = new_chat(&mut app, deadline, |text| {
+        text.iter()
+            .any(|t| t.starts_with("On ") && t.contains(" · "))
+    });
+    send_as(&mut app, &coder, None, prompt);
+    let task = app.open_coder_task().expect("the chat opens on its task");
+    (app, dir, task)
+}
+
+/// Send `value` from the chat's composer, with its send token or the token
+/// of the choice labeled `choice`.
+fn send_as(
+    app: &mut App,
+    view: &serde_json::Value,
+    choice: Option<&str>,
+    value: &str,
+) -> crate::app::Packet {
+    let props = nodes_of(view, "composer")[0]["element"]["props"].clone();
+    let token = match choice {
+        None => props["token"].as_str().unwrap().to_owned(),
+        Some(label) => props["choices"]
+            .as_array()
+            .expect("choices")
+            .iter()
+            .find(|c| c["label"] == label)
+            .unwrap_or_else(|| panic!("no choice {label}"))["token"]
+            .as_str()
+            .unwrap()
+            .to_owned(),
+    };
+    app.call(Request::CoderInput {
+        token,
+        value: value.into(),
+    })
+}
+
+/// Refresh until `done` holds for the open chat, then return it.
+fn until(
+    app: &mut App,
+    deadline: std::time::Instant,
+    done: impl Fn(&serde_json::Value, &[String]) -> bool,
+) -> serde_json::Value {
+    loop {
+        let chat = app.call(Request::ComputersRefresh).coder.unwrap();
+        let text = values(&chat);
+        if done(&chat, &text) {
+            return chat;
+        }
+        assert!(std::time::Instant::now() < deadline, "{text:?}");
+        std::thread::sleep(std::time::Duration::from_secs(2));
+    }
+}
+
+fn tap(app: &mut App, view: &serde_json::Value, key: &str) -> serde_json::Value {
+    app.call(Request::CoderActivate {
+        instance: view["instance"].as_str().unwrap().into(),
+        revision: view["revision"].as_u64().unwrap(),
+        node: key.into(),
+    })
+    .coder
+    .unwrap()
+}
+
+/// Coder ends its turn with a question; the phone answers it, and the
+/// answer runs as the task's next turn. Needs a host with tailnet admission,
+/// auto-start, and this commit's engine; set `OPENAGENTS_TEST_ADMISSION`.
+#[test]
+#[ignore = "network: runs real turns on a real host"]
+fn live_coder_chat_answers_a_question() {
+    let prompt = "Before you do anything else, ask me with a question (set ask to \
+                  question) whether I want the word apple or the word pear. Don't \
+                  run any command. After I answer, reply with only the word I chose.";
+    let (mut app, _dir, task) = live_chat(prompt);
+    archiving(&mut app, task, |app| {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(900);
+        let asked = until(app, deadline, |_, text| {
+            text.contains(&"Coder is waiting for your answer.".to_owned())
+        });
+        eprintln!("asked: {:?}", values(&asked));
+        let composer = &nodes_of(&asked, "composer")[0]["element"]["props"];
+        assert_eq!(composer["placeholder"], "Answer Coder");
+        send_as(app, &asked, None, "Pear.");
+        let answered = until(app, deadline, |chat, text| {
+            let place = text.get(1).cloned().unwrap_or_default();
+            nodes_of(chat, "working").is_empty()
+                && place.starts_with("Done")
+                && text.iter().any(|t| t.contains("Pear."))
+        });
+        let text = values(&answered);
+        eprintln!("answered: {text:?}");
+        assert!(
+            text.iter()
+                .any(|t| t.to_lowercase().contains("pear") && t != "Pear."),
+            "{text:?}"
+        );
+    });
+}
+
+/// While Coder works, messages queue on the computer; the queue panel
+/// lists them under the edit lease, edits, reorders, and removes them, and
+/// the queue then runs in its new order. Needs a host with tailnet
+/// admission, auto-start, and this commit's host; set
+/// `OPENAGENTS_TEST_ADMISSION`.
+#[test]
+#[ignore = "network: runs real turns on a real host"]
+fn live_coder_chat_edits_its_queue() {
+    let prompt = "Run the command `sleep 45`, then reply with only the word ready.";
+    let (mut app, _dir, task) = live_chat(prompt);
+    archiving(&mut app, task, |app| {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(1200);
+        let running = until(app, deadline, |_, text| {
+            text.get(1)
+                .is_some_and(|place| place.starts_with("Working"))
+        });
+        let running = send_as(
+            app,
+            &running,
+            Some("Queue for next turn"),
+            "Reply with only the word one.",
+        )
+        .coder
+        .unwrap();
+        send_as(app, &running, None, "Reply with only the word two.");
+        let listed = until(app, deadline, |chat, _| {
+            key_for(chat, "Edit queue").is_some()
+        });
+        let key = key_for(&listed, "Edit queue").unwrap();
+        let panel = tap(app, &listed, &key);
+        let text = values(&panel);
+        eprintln!("queue: {text:?}");
+        assert!(text.contains(&"Queued messages".to_owned()), "{text:?}");
+        assert!(text.contains(&"Reply with only the word one.".to_owned()));
+        // Move the second up, then remove it: only "one" is left to run.
+        let up = key_for(&panel, "Move up").expect("move up");
+        let panel = tap(app, &panel, &up);
+        let first = values(&panel)
+            .into_iter()
+            .find(|t| t.starts_with("Reply with only the word"))
+            .unwrap();
+        assert_eq!(first, "Reply with only the word two.");
+        let remove = key_for(&panel, "Remove").expect("remove");
+        let panel = tap(app, &panel, &remove);
+        assert!(!values(&panel).contains(&"Reply with only the word two.".to_owned()));
+        let done = key_for(&panel, "Done").expect("done");
+        tap(app, &panel, &done);
+        // The first turn ends and the one queued message runs next.
+        let ended = until(app, deadline, |chat, text| {
+            let place = text.get(1).cloned().unwrap_or_default();
+            nodes_of(chat, "working").is_empty()
+                && place.starts_with("Done")
+                && text.iter().any(|t| t == "Reply with only the word one.")
+        });
+        let text = values(&ended);
+        eprintln!("ended: {text:?}");
+        assert!(
+            !text.contains(&"Reply with only the word two.".to_owned()),
+            "{text:?}"
+        );
     });
 }

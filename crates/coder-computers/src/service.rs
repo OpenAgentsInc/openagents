@@ -12,7 +12,7 @@
 //! against its own grant records; the screens' checks only avoid offering a
 //! control that cannot work.
 use crate::model::{CreatedInvitation, ListingChange, LocalHost, ServiceState, Snapshot};
-use coder_access::protocol::{TaskCommand, TaskCreate};
+use coder_access::protocol::{QueueEdit, TaskCommand, TaskCreate, TaskQueue};
 use coder_access::{Code, Error, Rights};
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -202,6 +202,22 @@ pub trait ComputersService {
             Code::Unavailable,
             "this client can't archive work",
         ))
+    }
+    /// List or edit a task's held messages (`task.queue`), under the
+    /// device's edit lease for a change.
+    fn queue_task(&mut self, host: &str, task: &str, edit: &QueueEdit) -> Result<TaskQueue> {
+        let _ = (host, task, edit);
+        Err(Error::new(
+            Code::Unavailable,
+            "this client can't edit queued messages",
+        ))
+    }
+    /// Leave a nudge for a host this device could not reach: a stored note
+    /// that commands wait, which the host answers with fresh presence when
+    /// it reads it. Best effort; the default does nothing.
+    fn nudge_host(&mut self, host: &str) -> Result<()> {
+        let _ = host;
+        Ok(())
     }
 }
 

@@ -15,7 +15,9 @@ The app has four tabs, shown as white icons on black:
 
 - **Coder** (`</>`) chats with Coder on your computers. Sending a message
   starts a NIP-HOST `task.create` on the chosen computer, and the chat follows
-  the task's transcript; while Coder works, the send control stops the task.
+  the task's transcript. Later messages are durable `task.command`s that
+  continue, queue, steer, or answer; a long press on send offers the other
+  ways to send, as a menu.
   This is the iPhone app's Coder tab; Rust decides everything it shows.
 - **Verse** (globe) mounts Verse's bare world (`coder_mobile::VerseHandle` in
   bare mode) in a `SurfaceView` and forwards touches, pinch, and rotation

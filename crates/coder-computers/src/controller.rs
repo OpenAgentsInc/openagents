@@ -420,6 +420,37 @@ impl Computers {
         self.rebuild().map_err(Refusal::Failed)
     }
 
+    /// List or edit a task's held messages on `host` (`task.queue`).
+    pub fn queue_task(
+        &mut self,
+        host: &str,
+        task: &str,
+        edit: &coder_access::protocol::QueueEdit,
+    ) -> Result<coder_access::protocol::TaskQueue, Refusal> {
+        self.allow(Action::Operate { host })?;
+        let queue = self
+            .service
+            .queue_task(host, task, edit)
+            .map_err(Refusal::Failed)?;
+        if !matches!(edit, coder_access::protocol::QueueEdit::List {}) {
+            self.reload();
+            self.rebuild().map_err(Refusal::Failed)?;
+        }
+        Ok(queue)
+    }
+
+    /// Leave a nudge for `host`, which this device could not reach with a
+    /// waiting command. It carries nothing and grants nothing.
+    pub fn nudge_host(&mut self, host: &str) -> Result<(), Refusal> {
+        self.allow(Action::Operate { host })
+            .or_else(|denial| match denial {
+                // A host that is offline is the one to nudge.
+                Refusal::Denied(crate::Denial::Offline) => Ok(()),
+                other => Err(other),
+            })?;
+        self.service.nudge_host(host).map_err(Refusal::Failed)
+    }
+
     /// Take a finished or cancelled task on `host` off every device's
     /// lists (`task.archive`). The host keeps its record and transcript.
     pub fn archive_task(&mut self, host: &str, task: &str) -> Result<(), Refusal> {
