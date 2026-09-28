@@ -73,6 +73,9 @@ pub struct CoderTab {
     composers: u64,
     /// The first line of each chat this device started, by task ID.
     titles: BTreeMap<String, String>,
+    /// When this device sent each chat's first message, by task ID: its last
+    /// message until the computer lists the chat.
+    sent: BTreeMap<String, u64>,
     open: Option<Open>,
     outbox: Outbox,
 }
@@ -87,6 +90,7 @@ impl CoderTab {
             notice: None,
             composers: 1,
             titles: BTreeMap::new(),
+            sent: BTreeMap::new(),
             open: None,
             outbox: Outbox::open(None),
         }
@@ -366,6 +370,7 @@ impl CoderTab {
                     .take(80)
                     .collect();
                 self.titles.insert(task.clone(), title);
+                self.sent.insert(task.clone(), computers.snapshot().now);
                 self.notice = None;
                 self.open(host, task, chats);
             }
@@ -447,7 +452,8 @@ impl CoderTab {
         if let Some(notice) = &self.notice {
             children.push(status("coder-notice", notice));
         }
-        let rows = tasks(computers.snapshot(), &self.titles, chats);
+        let saved = |host: &str, task: &str| chats.coder_chat(host, task).map(|(_, _, chat)| chat);
+        let rows = tasks(computers.snapshot(), &self.titles, &self.sent, &saved);
         if rows.is_empty() {
             children.push(status(
                 "coder-none",
@@ -614,12 +620,16 @@ pub(crate) fn archived(chat: Option<&coder_history::Chat>) -> bool {
     chat.is_some_and(|chat| chat.archived)
 }
 
-/// One tappable row per task, newest first, from the newest summary of each.
-/// Archived tasks are left out.
-fn tasks(
+/// The saved chat of a task on a host, when the computer listed it.
+pub(crate) type Saved<'a> = dyn Fn(&str, &str) -> Option<coder_history::Chat> + 'a;
+
+/// One tappable row per task, newest message first, from the newest summary
+/// of each. Archived tasks are left out.
+pub(crate) fn tasks(
     snapshot: &Snapshot,
     titles: &BTreeMap<String, String>,
-    chats: &Chats,
+    sent: &BTreeMap<String, u64>,
+    saved: &Saved<'_>,
 ) -> Vec<Node<Intent>> {
     let mut newest: Vec<&ActivitySummary> = vec![];
     for summary in snapshot
@@ -636,28 +646,30 @@ fn tasks(
             None => newest.push(summary),
         }
     }
-    newest.retain(|summary| {
-        !archived(
-            chats
-                .coder_chat(&summary.host, &summary.subject)
-                .as_ref()
-                .map(|(_, _, chat)| chat),
-        )
-    });
-    newest.sort_by_key(|summary| std::cmp::Reverse(summary.updated_at));
+    newest.retain(|summary| !archived(saved(&summary.host, &summary.subject).as_ref()));
+    // A summary's time is when the host last published it, which a host
+    // restart resets for every task; a chat's time is its last message.
+    let last = |summary: &ActivitySummary| {
+        saved(&summary.host, &summary.subject)
+            .and_then(|chat| chat.updated_at.as_deref().and_then(unix_seconds))
+            .or_else(|| sent.get(&summary.subject).copied())
+    };
+    let mut newest: Vec<(&ActivitySummary, Option<u64>)> =
+        newest.into_iter().map(|s| (s, last(s))).collect();
+    // Newest message first; chats with no known message time go last.
+    newest.sort_by_key(|(summary, last)| std::cmp::Reverse((*last, summary.updated_at)));
     newest
         .into_iter()
         .take(SHOWN_TASKS)
-        .map(|summary| {
+        .map(|(summary, last)| {
             let label = snapshot
                 .host(&summary.host)
                 .map_or("a computer", |host| host.label.as_str());
             // The first line this device sent, else the transcript's title,
             // else the host's generic headline.
             let title = titles.get(&summary.subject).cloned().unwrap_or_else(|| {
-                chats
-                    .coder_chat(&summary.host, &summary.subject)
-                    .map(|(_, _, chat)| chat.title)
+                saved(&summary.host, &summary.subject)
+                    .map(|chat| chat.title)
                     .filter(|title| !title.is_empty() && !title.starts_with("Saved "))
                     .unwrap_or_else(|| summary.headline.clone())
             });
@@ -671,12 +683,12 @@ fn tasks(
             } else {
                 String::new()
             };
+            let when = last.map_or_else(String::new, |at| format!(" · {}", ago(snapshot.now, at)));
             button(
                 &format!("task-{}", &summary.subject[..16.min(summary.subject.len())]),
                 &format!(
-                    "{title}\n{} · {label} · {}{note}",
+                    "{title}\n{} · {label}{when}{note}",
                     phase_label(summary.phase),
-                    ago(snapshot.now, summary.updated_at)
                 ),
                 Intent::Open {
                     host: summary.host.clone(),
@@ -697,6 +709,66 @@ fn phase_label(phase: Phase) -> &'static str {
         Phase::Cancelled => "Stopped",
         Phase::Unknown => "Unknown",
     }
+}
+
+/// Unix seconds of an RFC 3339 time (`2026-09-28T07:21:00Z`, with an
+/// optional fraction and offset) or a bare date, as history catalogs write.
+pub(crate) fn unix_seconds(text: &str) -> Option<u64> {
+    let number = |range: std::ops::Range<usize>| -> Option<i64> {
+        let part = text.get(range)?;
+        part.bytes()
+            .all(|b| b.is_ascii_digit())
+            .then(|| part.parse().ok())?
+    };
+    let (year, month, day) = (number(0..4)?, number(5..7)?, number(8..10)?);
+    if text.get(4..5) != Some("-") || text.get(7..8) != Some("-") {
+        return None;
+    }
+    if !(1..=12).contains(&month) || !(1..=31).contains(&day) {
+        return None;
+    }
+    // Days since 1970-01-01 in the proleptic Gregorian calendar.
+    let (y, m) = if month <= 2 {
+        (year - 1, month + 9)
+    } else {
+        (year, month - 3)
+    };
+    let era = y.div_euclid(400);
+    let of_era = y - era * 400;
+    let of_year = (153 * m + 2) / 5 + day - 1;
+    let of_cycle = of_era * 365 + of_era / 4 - of_era / 100 + of_year;
+    let days = era * 146_097 + of_cycle - 719_468;
+    let mut seconds = days * 86_400;
+    if text.len() > 10 {
+        if !matches!(text.get(10..11), Some("T" | "t" | " ")) {
+            return None;
+        }
+        let (hour, minute, second) = (number(11..13)?, number(14..16)?, number(17..19)?);
+        if hour > 23 || minute > 59 || second > 60 {
+            return None;
+        }
+        seconds += hour * 3_600 + minute * 60 + second;
+        let mut rest = &text[19..];
+        if let Some(fraction) = rest.strip_prefix('.') {
+            let digits = fraction.bytes().take_while(u8::is_ascii_digit).count();
+            rest = &fraction[digits..];
+        }
+        match rest {
+            "" | "Z" | "z" => {}
+            offset if offset.len() == 6 && &offset[3..4] == ":" => {
+                let sign = match &offset[..1] {
+                    "+" => 1,
+                    "-" => -1,
+                    _ => return None,
+                };
+                let hours: i64 = offset[1..3].parse().ok()?;
+                let minutes: i64 = offset[4..6].parse().ok()?;
+                seconds -= sign * (hours * 3_600 + minutes * 60);
+            }
+            _ => return None,
+        }
+    }
+    u64::try_from(seconds).ok()
 }
 
 fn ago(now: u64, then: u64) -> String {

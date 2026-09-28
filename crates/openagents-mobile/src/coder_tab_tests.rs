@@ -143,3 +143,93 @@ fn an_open_chat_shows_no_title_above_its_messages() {
     let root = chat["root"]["element"]["props"]["children"][0]["key"].clone();
     assert_eq!(root, "coder-chat-header");
 }
+
+#[test]
+fn times_read_rfc3339_and_bare_dates() {
+    use crate::coder_tab::unix_seconds;
+    assert_eq!(unix_seconds("1970-01-01T00:00:00Z"), Some(0));
+    assert_eq!(unix_seconds("2023-11-14T22:13:20Z"), Some(1_700_000_000));
+    assert_eq!(
+        unix_seconds("2023-11-14T22:13:20.123456Z"),
+        Some(1_700_000_000)
+    );
+    assert_eq!(
+        unix_seconds("2023-11-15T00:13:20+02:00"),
+        Some(1_700_000_000)
+    );
+    assert_eq!(unix_seconds("2026-01-01"), Some(1_767_225_600));
+    for bad in [
+        "",
+        "new",
+        "2026-13-01",
+        "2026-01-01T25:00:00Z",
+        "2026-01-01T00:00:00Q",
+    ] {
+        assert_eq!(unix_seconds(bad), None, "{bad}");
+    }
+}
+
+/// Every row's time is its chat's last message, not when the host last
+/// published the summary, which a host restart resets for every task.
+#[test]
+fn each_chat_shows_the_time_of_its_last_message() {
+    use std::collections::BTreeMap;
+    let fixture = Fixture::hosts();
+    let mut snapshot = fixture.computers.snapshot().clone();
+    // A host restart republishes every summary at the same moment.
+    for summary in &mut snapshot.activity {
+        summary.updated_at = NOW - 60;
+    }
+    let mut tasks: Vec<_> = snapshot
+        .activity
+        .iter()
+        .filter(|s| s.subject_kind == nostr::activity_summary::SubjectKind::Task)
+        .map(|s| (s.host.clone(), s.subject.clone()))
+        .collect();
+    tasks.dedup();
+    assert!(tasks.len() >= 3);
+    let chat = |updated: &str| coder_history::Chat {
+        id: "chat".into(),
+        harness: coder_history::Harness::Coder,
+        native_id: None,
+        title: "A chat".into(),
+        title_truncated: false,
+        updated_at: Some(updated.into()),
+        archived: false,
+        subagent: false,
+        source_id: Some("source".into()),
+        status: coder_history::SourceStatus::Available,
+    };
+    let (first, second) = (tasks[0].1.clone(), tasks[1].1.clone());
+    let saved = move |_: &str, task: &str| {
+        if task == first {
+            // Three hours before the fixture's clock.
+            Some(chat("2026-09-21T11:13:20Z"))
+        } else if task == second {
+            Some(chat("2026-09-21T13:53:20Z"))
+        } else {
+            None
+        }
+    };
+    assert_eq!(
+        crate::coder_tab::unix_seconds("2026-09-21T14:13:20Z"),
+        Some(NOW)
+    );
+    let sent = BTreeMap::new();
+    let rows = crate::coder_tab::tasks(&snapshot, &BTreeMap::new(), &sent, &saved);
+    let labels: Vec<String> = rows
+        .iter()
+        .map(|row| match &row.element {
+            rust_native::Element::Button { label, .. } => label.clone(),
+            _ => String::new(),
+        })
+        .collect();
+    // Newest message first, each with its own time; a chat the computer
+    // has not listed shows no time rather than the summary's.
+    assert!(labels[0].contains("20 min ago"), "{labels:?}");
+    assert!(labels[1].contains("3 h ago"), "{labels:?}");
+    assert!(
+        labels[2..].iter().all(|label| !label.contains("ago")),
+        "{labels:?}"
+    );
+}
