@@ -467,6 +467,16 @@ impl Chats {
         });
     }
 
+    /// Whether a current chat pairing is linked to the machine whose
+    /// Computers host key is `host`. A pairing made before the link, or one
+    /// near its end, needs tailnet admission again.
+    pub fn linked(&self, host: &str, until: u64) -> bool {
+        lock(&self.state)
+            .computers
+            .iter()
+            .any(|c| c.saved.host.as_deref() == Some(host) && c.saved.code.expires_at > until)
+    }
+
     pub fn runtime(&self) -> Handle {
         self.runtime.clone()
     }

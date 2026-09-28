@@ -166,6 +166,9 @@ impl Conversation {
                     let excess = state.rows.len().saturating_sub(MAX_ROWS);
                     state.rows.drain(..excess);
                 }
+                // A missed poll is retried by the next one; it is not the
+                // reader's problem.
+                (Err(_), Read::Newer) => {}
                 (Err(error), _) => state.error = Some(error),
             }
         });

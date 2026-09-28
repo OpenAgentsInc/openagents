@@ -142,6 +142,13 @@ impl Tasks for Inbox {
         })
     }
 
+    fn current(&self) -> Vec<TaskRef> {
+        Store::open(&self.store)
+            .and_then(|store| store.list())
+            .map(|tasks| tasks.iter().map(current).collect())
+            .unwrap_or_default()
+    }
+
     fn cancel(
         &self,
         key: &str,
@@ -159,6 +166,24 @@ impl Tasks for Inbox {
                 reason: reason.into(),
             },
         })
+    }
+}
+
+/// A stored task's revision and phase. A finished run that failed or was
+/// stopped reports that, not completion.
+fn current(task: &super::Task) -> TaskRef {
+    use super::Execution;
+    TaskRef {
+        task: task.task_id.clone(),
+        revision: task.revision,
+        phase: match (task.status, task.execution) {
+            (Status::Queued, _) => Phase::Queued,
+            (Status::Running | Status::CancelRequested, _) => Phase::Running,
+            (Status::Cancelled, _) | (Status::Finished, Execution::Stopped) => Phase::Cancelled,
+            (Status::Finished, Execution::Failed) => Phase::Failed,
+            (Status::Finished, _) => Phase::Completed,
+            (Status::Unknown, _) => Phase::Unknown,
+        },
     }
 }
 

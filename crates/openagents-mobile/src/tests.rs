@@ -551,3 +551,62 @@ fn live_coder_chat_creates_a_task() {
         std::thread::sleep(std::time::Duration::from_millis(500));
     }
 }
+
+/// Coder chats against a real host with tailnet admission that already ran
+/// a task: opening one shows its transcript. It only reads.
+#[test]
+#[ignore = "network: needs a host with tailnet admission and a finished task"]
+fn live_coder_chat_shows_a_task_transcript() {
+    let address = std::env::var("OPENAGENTS_TEST_ADMISSION").expect("address");
+    let (mut app, _dir) = app();
+    app.call(Request::Lifecycle { active: true });
+    app.set_tailnet(Screen::Devices(Tailnet {
+        name: None,
+        this_device: None,
+        devices: vec![Device {
+            name: "test-computer".into(),
+            os: "macOS".into(),
+            address,
+            online: Some(true),
+        }],
+    }));
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(180);
+    let coder = loop {
+        let coder = app.call(Request::ComputersRefresh).coder.unwrap();
+        let rows: Vec<String> = values(&coder)
+            .into_iter()
+            .filter(|t| t.contains('\n'))
+            .collect();
+        if !rows.is_empty() {
+            eprintln!("chats: {:?}", &rows[..rows.len().min(3)]);
+            break coder;
+        }
+        assert!(std::time::Instant::now() < deadline, "{:?}", values(&coder));
+        std::thread::sleep(std::time::Duration::from_millis(500));
+    };
+    let row = nodes_of(&coder, "button")
+        .into_iter()
+        .find(|b| {
+            b["element"]["props"]["label"]
+                .as_str()
+                .unwrap_or("")
+                .contains('\n')
+        })
+        .unwrap()
+        .clone();
+    app.call(Request::CoderActivate {
+        instance: coder["instance"].as_str().unwrap().into(),
+        revision: coder["revision"].as_u64().unwrap(),
+        node: row["key"].as_str().unwrap().into(),
+    });
+    loop {
+        let chat = app.call(Request::ComputersRefresh).coder.unwrap();
+        let messages = nodes_of(&chat, "message").len();
+        if messages > 0 && nodes_of(&chat, "working").is_empty() {
+            eprintln!("transcript: {:?}", values(&chat));
+            return;
+        }
+        assert!(std::time::Instant::now() < deadline, "{:?}", values(&chat));
+        std::thread::sleep(std::time::Duration::from_millis(500));
+    }
+}

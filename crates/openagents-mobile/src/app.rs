@@ -590,6 +590,7 @@ impl App {
             if let Some(admitted) = known.get(&address)
                 && hosts.contains(&admitted.host)
                 && admitted.chats_until > soon
+                && self.chats.linked(&admitted.host, soon)
             {
                 self.lock_tailnet().admits.insert(address, Admit::Connected);
                 continue;

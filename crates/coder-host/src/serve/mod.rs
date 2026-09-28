@@ -10,6 +10,7 @@
 //! grant check reads them too, and it is closed when the grant stops
 //! admitting it.
 
+use std::collections::BTreeMap;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
@@ -161,6 +162,7 @@ pub async fn start(config: Config, tasks: Arc<dyn Tasks>) -> Result<Running> {
         tokio::spawn(direct::listen(shared.clone(), listener, acceptor)),
         tokio::spawn(relay::serve(shared.clone(), ready)),
         tokio::spawn(presence_loop(shared.clone())),
+        tokio::spawn(summary_loop(shared.clone())),
         tokio::spawn(cj::serve(shared.clone())),
     ]);
     let _ = tokio::time::timeout(RELAY_READY_WAIT, relay_ready).await;
@@ -398,6 +400,40 @@ fn merge_hints(listeners: Vec<Hint>, advertised: Vec<Hint>, relays: Vec<Hint>) -
     }
     merged.truncate(coder_reach::hints::MAX_HINTS);
     merged
+}
+
+/// The most task summaries the first sweep publishes.
+const FIRST_SWEEP_TASKS: usize = 50;
+
+/// Publish a summary whenever a task's revision changes outside a device
+/// operation, such as an auto-started run starting or finishing. The first
+/// sweep publishes the newest tasks so devices catch up after a restart.
+async fn summary_loop(shared: Arc<Shared>) {
+    let mut known: BTreeMap<String, u64> = BTreeMap::new();
+    let mut first = true;
+    let mut ticker = tokio::time::interval(Duration::from_secs(5));
+    loop {
+        ticker.tick().await;
+        let tasks = shared.tasks.clone();
+        let Ok(current) = tokio::task::spawn_blocking(move || tasks.current()).await else {
+            continue;
+        };
+        let mut changed: Vec<TaskRef> = current
+            .into_iter()
+            .filter(|task| known.get(&task.task) != Some(&task.revision))
+            .collect();
+        for task in &changed {
+            known.insert(task.task.clone(), task.revision);
+        }
+        if first {
+            changed.sort_by_key(|task| std::cmp::Reverse(task.revision));
+            changed.truncate(FIRST_SWEEP_TASKS);
+            first = false;
+        }
+        for task in &changed {
+            summarize(&shared, task).await;
+        }
+    }
 }
 
 /// Publish an activity summary for a changed task to every device that

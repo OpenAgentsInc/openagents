@@ -61,6 +61,14 @@ pub trait Tasks: Send + Sync {
         revision: u64,
         reason: &str,
     ) -> Result<TaskRef, Code>;
+
+    /// Every task's current revision and phase, including changes made
+    /// outside a device operation, such as an auto-started run finishing.
+    /// The host publishes a summary when a revision changes. The default
+    /// reports none.
+    fn current(&self) -> Vec<TaskRef> {
+        Vec::new()
+    }
 }
 
 /// A host without a task owner. Every task operation refuses as
