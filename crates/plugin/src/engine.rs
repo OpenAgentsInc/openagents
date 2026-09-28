@@ -33,7 +33,7 @@ pub enum Profile {
 }
 
 /// Ceilings for one invocation.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Limits {
     /// Guest instruction fuel, including the start function.
     pub fuel: u64,
@@ -152,24 +152,35 @@ pub struct Call<'a> {
 ///
 /// Returns a typed host error. The instance is not reused after a trap.
 pub fn invoke(call: Call<'_>) -> Result<GuestValue, HostError> {
+    metered(call).0
+}
+
+/// Run one guest and report the fuel it consumed, zero when it never
+/// started.
+pub(crate) fn metered(call: Call<'_>) -> (Result<GuestValue, HostError>, u64) {
     if call.wasm.len() > call.limits.module_bytes {
-        return Err(HostError::Limit("module bytes".into()));
+        return (Err(HostError::Limit("module bytes".into())), 0);
     }
     if call.cancelled.load(Ordering::SeqCst) {
-        return Err(HostError::Cancelled);
+        return (Err(HostError::Cancelled), 0);
     }
+    // `replay::ENGINE` names this configuration. Change both together.
     let mut config = wasmtime::Config::new();
     config.consume_fuel(true);
     config.epoch_interruption(true);
-    let engine = Engine::new(&config).map_err(|error| HostError::Failed(error.to_string()))?;
+    let engine = match Engine::new(&config) {
+        Ok(engine) => engine,
+        Err(error) => return (Err(HostError::Failed(error.to_string())), 0),
+    };
     let cancelled = Arc::clone(&call.cancelled);
     let done = AtomicBool::new(false);
     std::thread::scope(|scope| {
         let watcher = scope.spawn(|| interrupt_on_cancel(&engine, &cancelled, &done));
-        let outcome = run_guest(&engine, call);
+        let mut fuel = 0;
+        let outcome = run_guest(&engine, call, &mut fuel);
         done.store(true, Ordering::SeqCst);
         watcher.thread().unpark();
-        outcome
+        (outcome, fuel)
     })
 }
 
@@ -185,7 +196,7 @@ fn interrupt_on_cancel(engine: &Engine, cancelled: &AtomicBool, done: &AtomicBoo
     }
 }
 
-fn run_guest(engine: &Engine, call: Call<'_>) -> Result<GuestValue, HostError> {
+fn run_guest(engine: &Engine, call: Call<'_>, fuel: &mut u64) -> Result<GuestValue, HostError> {
     let Call {
         wasm,
         profile,
@@ -218,6 +229,30 @@ fn run_guest(engine: &Engine, call: Call<'_>) -> Result<GuestValue, HostError> {
     store
         .set_fuel(limits.fuel)
         .map_err(|error| HostError::Failed(error.to_string()))?;
+    let outcome = drive(
+        &mut store, engine, &module, profile, invocation, operation, input, handles, limits,
+        &cancelled, required,
+    );
+    *fuel = limits.fuel - store.get_fuel().unwrap_or(limits.fuel).min(limits.fuel);
+    outcome
+}
+
+/// Instantiate the guest in `store`, pass the packet, and read the
+/// response.
+#[allow(clippy::too_many_arguments)]
+fn drive(
+    mut store: &mut Store<GuestState>,
+    engine: &Engine,
+    module: &Module,
+    profile: Profile,
+    invocation: &str,
+    operation: &str,
+    input: &Value,
+    handles: &BTreeMap<String, String>,
+    limits: Limits,
+    cancelled: &AtomicBool,
+    required: bool,
+) -> Result<GuestValue, HostError> {
     // The epoch starts at zero and the watcher bumps it once, on cancel. A
     // bump that landed before this deadline was set would not trap, so the
     // flag is read again after it.
@@ -232,7 +267,7 @@ fn run_guest(engine: &Engine, call: Call<'_>) -> Result<GuestValue, HostError> {
             .func_wrap("oa_host", "call", host_call)
             .map_err(|error| HostError::Failed(error.to_string()))?;
     }
-    let instance = linker.instantiate(&mut store, &module).map_err(map_trap)?;
+    let instance = linker.instantiate(&mut store, module).map_err(map_trap)?;
     let memory = instance
         .get_memory(&mut store, "memory")
         .ok_or_else(|| HostError::Malformed("guest exports no memory".into()))?;

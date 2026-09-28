@@ -194,6 +194,13 @@ Nothing in this item may weaken it.
 
 ## 5. Exact-replay verification for deterministic steps (R6)
 
+**Status:** the host half landed in
+[#9901](https://github.com/OpenAgentsInc/openagents/issues/9901). `crates/plugin`
+now writes invocation receipts and replays them, as the
+[plugin docs](../extensions/plugins.md#invocation-receipts-and-exact-replay)
+describe. The program runtime doesn't request receipts yet, and no second
+host replays them yet.
+
 This is the idea most specific to Tassadar: an exact computation is verified
 by replaying it, and the verdict is a digest comparison, "the cheapest
 verification grade that can exist". Tassadar applied it to transformer

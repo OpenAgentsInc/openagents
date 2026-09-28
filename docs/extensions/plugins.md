@@ -4,7 +4,8 @@ Status: partly implemented. The host core and the program `module` step
 landed in #9519 on 2026-09-21, and step bounds, workspace snapshot grants,
 and cancellation reached the `module` step on 2026-09-25. Three evidence
 guests and the program that runs them landed in #9630 on 2026-09-25, off by
-default and not yet measured. The rest of this
+default and not yet measured. Invocation receipts and exact replay landed
+in #9901 on 2026-09-28, in the host only. The rest of this
 document is the target specification for typed operations, shared
 evidence, and [program execution](programs.md);
 [What is built](#what-is-built) says which parts exist today.
@@ -73,6 +74,60 @@ because a guest doesn't verify its own output.
 `plugin::build_receipt` binds a guest build to the PDK source it was
 compiled against: the SHA-256 digests of the PDK source and the guest bytes,
 and the profile the guest was built for.
+
+### Invocation receipts and exact replay
+
+`plugin::invoke_with_receipt` runs a guest exactly as `plugin::invoke`
+does and also returns an `openagents.plugin-invocation-receipt.v1`. The
+receipt records these fields:
+
+- the digest of the module bytes, the profile, the operation, and the
+  invocation ID;
+- the digest of the input's canonical JSON, with keys sorted at every level;
+- one digest over every snapshot entry, in name order, and the handle
+  table;
+- the limits, and whether a guest refusal fails the call;
+- the engine identity, `plugin::ENGINE`, which names the locked Wasmtime
+  version and the two configuration flags the host sets;
+- the outcome: the value's status and the digest of its canonical JSON, or
+  the host error's kind;
+- the fuel the guest consumed.
+
+The detail of a `limit` or `refused` error is recorded, because the host
+writes it. Other error details can carry engine text, so they aren't
+recorded. `InvocationReceipt::to_json` and `from_json` encode a receipt.
+Parsing refuses duplicate keys, unknown or missing fields, and malformed
+digests, so a receipt can move to another host.
+
+`plugin::replay` takes a receipt and a call. It checks, before running
+anything, that the call's module, profile, operation, invocation, input,
+snapshot, handles, limits, and requirement match the receipt's digests, and
+that the receipt names this host's engine. Then it reruns the guest and
+compares the outcome and the fuel. The verdict uses the shared
+verification words:
+
+| Verdict | When |
+| --- | --- |
+| `passed`, class `exact_replay` | The rerun's outcome and fuel match the receipt. A deterministic host error, such as running out of fuel, replays too. |
+| `failed` | The rerun used the receipt's inputs and diverged. The verdict names the field, `outcome` or `fuel_consumed`, and both values. |
+| `unverifiable` | An input or the engine differs, the receipt records a cancellation, or the replay was cancelled. The guest doesn't run, or its result isn't compared. |
+
+A pass proves that the same bytes on the same engine configuration gave
+the same output and consumed the same fuel. It isn't remote attestation,
+and it says nothing about whether the output is correct. It is only as
+independent as the replaying host is from the host that wrote the receipt.
+Upgrading Wasmtime changes `plugin::ENGINE`, so older receipts become
+`unverifiable` rather than being compared on a different engine. A guest
+that computes with floats can produce different NaN bit patterns on
+different architectures. Such a guest can replay as `failed` across
+machines, but it can't produce a false `passed`.
+
+`GuestValue::verification` stays `not_run`: recording a receipt isn't a
+check. `crates/plugin/tests/replay.rs` replays the pure fixture and the
+three evidence guests, tampers with each recorded field, and changes each
+input.
+
+### The program runtime
 
 In `crates/coder`, the program runtime runs a `module` step through
 `plugin::invoke` (`run_module` in `crates/coder/src/runtime.rs`), on the same
@@ -149,10 +204,11 @@ The following aren't built yet:
   bound on a guest is the run's deadline.
 - The [host roles](#host-roles): evidence preparation, output processing,
   and hook registration.
-- The full [build provenance](#authoring-and-build-provenance) and the
+- The full [build provenance](#authoring-and-build-provenance) and the full
   [invocation receipt](#invocation-receipt). The build receipt holds only the
-  three fields above, and the run records a module step's output, not a
-  digested invocation receipt.
+  three fields above. The host's invocation receipt has no program, step, or
+  call IDs, grants, or timing. The program runtime records a module step's
+  output and doesn't request a receipt or a replay.
 - The authoring surface: no command initializes, packages, installs, or
   lists a plugin. `scripts/build-plugin-guests.sh` builds and pins the
   three evidence guests, and nothing else.

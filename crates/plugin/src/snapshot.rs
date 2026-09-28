@@ -61,6 +61,13 @@ impl Snapshot {
         self.entries.get(name)
     }
 
+    /// Every entry, in name order.
+    pub fn entries(&self) -> impl Iterator<Item = (&str, &Entry)> {
+        self.entries
+            .iter()
+            .map(|(name, entry)| (name.as_str(), entry))
+    }
+
     /// Metadata for `name`.
     ///
     /// # Errors
