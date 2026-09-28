@@ -466,3 +466,66 @@ async fn durable_commands_and_queue_edits_travel_over_cj_as_over_the_artifact_bi
     assert_eq!(execution, artifact);
     fixture.running.shutdown().await;
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn spend_lists_and_receipts_travel_over_cj_as_over_the_artifact_binding() {
+    use coder_host::access::spend::{Grant, Refusal, hex};
+
+    let fixture = fixture().await;
+    let device = fixture.enroll(Rights::standard(), key()).await;
+    let observer = fixture
+        .enroll(Rights::new([Right::Observe]).unwrap(), key())
+        .await;
+    let capability = fixture.capability(&device.secret).await;
+    for operation in ["spend.list", "spend.settle"] {
+        assert!(
+            capability.definition()["binding_contract"]["operations"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|name| name == operation),
+            "the host advertises {operation}"
+        );
+    }
+    // The phone's grant reaches the host by either binding, with the same
+    // answer: nothing waits yet.
+    let host = fixture.running.host_key().to_owned();
+    let grant = Grant::request_mode(hex(&[5; 32]), &pubkey(&device.secret), &host, 0, now());
+    let list = |grant: &Grant| Operation::ListSpends {
+        grant: Box::new(grant.clone()),
+    };
+    let prepare = || device.client.prepare(list(&grant), now()).unwrap();
+    let (artifact, execution) = both(&capability, &device, prepare).await;
+    assert_eq!(artifact, "ok Spends { spends: [] }");
+    assert_eq!(execution, artifact);
+
+    // A grant in another device's name is forbidden either way.
+    let foreign = Grant::request_mode(hex(&[6; 32]), &pubkey(&key()), &host, 0, now());
+    let prepare = || device.client.prepare(list(&foreign), now()).unwrap();
+    let (artifact, execution) = both(&capability, &device, prepare).await;
+    assert_eq!(artifact, "refused Forbidden None");
+    assert_eq!(execution, artifact);
+
+    // A device without `operate` is refused naming the right either way.
+    let watching = Grant::request_mode(hex(&[7; 32]), &pubkey(&observer.secret), &host, 0, now());
+    let prepare = || observer.client.prepare(list(&watching), now()).unwrap();
+    let (artifact, execution) = both(&capability, &observer, prepare).await;
+    assert_eq!(artifact, "refused MissingRight Some(Operate)");
+    assert_eq!(execution, artifact);
+
+    // A receipt for a request the host never recorded is forbidden either way.
+    let receipt = coder_host::access::spend::Receipt::refused(
+        &hex(&[8; 32]),
+        &grant.grant,
+        Refusal::DeclinedByOwner,
+        now(),
+    );
+    let settle = || Operation::SettleSpend {
+        receipt: Box::new(receipt.clone()),
+    };
+    let prepare = || device.client.prepare(settle(), now()).unwrap();
+    let (artifact, execution) = both(&capability, &device, prepare).await;
+    assert_eq!(artifact, "refused Forbidden None");
+    assert_eq!(execution, artifact);
+    fixture.running.shutdown().await;
+}

@@ -259,3 +259,31 @@ ASC_API_KEY_ID=... ASC_API_ISSUER_ID=... ASC_API_PRIVATE_KEY_PATH=... \
 
 Build products go to `$CARGO_TARGET_DIR/openagents-ios`. The archive command
 records the source commit and workspace status beside the archive.
+
+## Push wakes for payment requests
+
+When an agent on one of your computers asks for a payment, the computer
+publishes a spend wake (`openagents.spend-wake.v1`, see
+[the spend protocol](../../docs/breez/spend-protocol.md#wakes)) to this phone.
+A relay whose push executor holds this phone's lease turns it into a
+notification with the fixed wake text; it never carries the amount, payee,
+or task. Opening the app reads the request and shows the approval sheet.
+
+Push is off by default. A default build asks for no notification permission,
+never calls `registerForRemoteNotifications`, and signs without the
+`aps-environment` entitlement, so it keeps signing with the existing
+`OpenAgents App Store` profile. A push build needs two switches, both
+environment variables for `build.sh`:
+
+- **Push settings.** `OPENAGENTS_PUSH_RELAY_URL` (`wss://`),
+  `OPENAGENTS_PUSH_GATEWAY_URL` (`https://`), and
+  `OPENAGENTS_PUSH_APP_PROFILE` reach `Info.plist`. When all three are set,
+  the app passes them to Rust, asks for notification permission, registers
+  for remote notifications, and hands Rust the APNs token (`push_token`),
+  which registers it with the gateway and publishes the phone's push lease.
+  The Wallet tab's **Agent payments** section shows the wake status.
+- **Entitlement.** `OPENAGENTS_IOS_PUSH=development` or `production` signs
+  with `host/Push/OpenAgents-Push.entitlements`. An archive needs
+  `production`, after **Push Notifications** is turned on for
+  `com.openagents.app` and the `OpenAgents App Store` profile is regenerated.
+  The owner steps are in the workspace's `NEEDS_OWNER.md`.

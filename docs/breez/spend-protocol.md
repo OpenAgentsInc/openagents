@@ -62,8 +62,37 @@ A request nobody answers is refused by the host as `phone_unreachable` when
 it expires; it is never retried under another mode. A phone that paid at the
 last moment still records its proven payment over that refusal.
 
-The push gateway does not wake the phone for spend requests yet: phase 1
-reads them while the app is open. A request lives at most an hour.
+A request lives at most an hour. While the app is closed, the computer wakes
+the phone (below); opening the app reads the request at once.
+
+## Wakes
+
+A computer publishes `openagents.spend-wake.v1` when it records a request:
+a private `3188` artifact, signed by the host and encrypted to the device
+whose grant the request draws on, on the mailbox
+`SHA-256("openagents.host-mailbox.spend-wakes.v1\0" || conversation key)`
+that only the two keys compute. Its body is `{v, requires: [], host, device,
+issued_at, expires_at}`, with `expires_at` one hour after `issued_at` (a
+request's longest life). It carries no request, amount, payee, or task and
+grants nothing; the relay stores it for its life. Each request wakes its
+phone once, and only a device that still holds `operate` is woken.
+
+A relay whose NIP-PL executor holds the phone's push lease (`kind 3188`,
+`#p` the device key, which is the lease every OpenAgents phone registers)
+wakes the phone with the fixed wake body, never the artifact. The app
+registers the lease only in a build configured for push
+([iOS](../../bins/openagents-ios/README.md#push-wakes-for-payment-requests));
+the owner steps (APNs key, push gateway credentials, and a push build) are
+in the workspace's `NEEDS_OWNER.md`. When the app comes to the foreground
+it sends `spend.list` to every computer at once instead of waiting for the
+next 10-second pass. A forged or replayed wake costs one `spend.list`.
+
+Code: [`coder_host::spend::wake`](../../crates/coder-host/src/spend/wake.rs)
+and the host's `spend_wake_loop` in
+[`serve`](../../crates/coder-host/src/serve/mod.rs).
+
+`spend.list` and `spend.settle` also travel over the CAP/CJ binding of
+NIP-HOST, with the same admission and answers as the artifact binding.
 
 ## `openagents.spend-grant.v1`
 

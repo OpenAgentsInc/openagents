@@ -86,6 +86,8 @@ struct AppPacket: Decodable {
     let spend: SpendState?
     /// How bitcoin amounts show and are typed, app-wide (BIP 177 or BTC).
     let amounts: AmountsState?
+    /// Push wake status, present once push is configured or requested.
+    let push: String?
 }
 
 /// Rust's direct reply with the recovery words or a checked restore. It is
@@ -276,6 +278,8 @@ final class MobileBridge: ObservableObject {
                 // Its transcript layout reads chat rows from Rust.
                 "pulled_transcripts": true,
             ]
+            // Push stays off unless this build names a relay and a gateway.
+            if let push = PushSettings.configured { options["push"] = push.rust }
             // Simulator screenshots: an offline wallet with no money.
             if AppTabLaunch.wallet("--wallet-fixture") != nil { options["wallet_fixture"] = true }
             let configuration = try JSONSerialization.data(withJSONObject: options)
@@ -318,6 +322,17 @@ final class MobileBridge: ObservableObject {
     /// An agent payment request's answer: `spend_approve` or `spend_deny`
     /// with `request`, `spend_block` or `spend_allow` with `host`, or
     /// `spend_dismiss`. Rust checks every field.
+    /// Why this device couldn't obtain a push token, if it couldn't.
+    @Published private(set) var pushFailure: String?
+    /// Push wake status: the native failure, or Rust's.
+    var pushStatus: String? { pushFailure ?? packet?.push }
+    func pushFailed(_ reason: String) { pushFailure = reason }
+    /// The platform issued a push token, as lowercase hex. Rust registers it.
+    func pushToken(_ token: String) {
+        pushFailure = nil
+        send(["op": "push_token", "token": token])
+    }
+
     func spend(_ op: String, _ fields: [String: Any] = [:]) {
         var request = fields
         request["op"] = op

@@ -27,7 +27,9 @@ pub struct PushConfig {
     pub app_profile: String,
 }
 
-pub(crate) struct Push {
+/// The phone's push enrollment: its lease at the relay and its token at the
+/// gateway. The OpenAgents app uses it too.
+pub struct Push {
     config: PushConfig,
     cache: Cache,
     pub status: String,

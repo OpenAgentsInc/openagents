@@ -17,7 +17,9 @@
         "task.command",
         "task.queue",
         "workspace.list",
-        "terminal.open"
+        "terminal.open",
+        "spend.list",
+        "spend.settle"
       ],
       "remote": {
         "relays": [
@@ -59,7 +61,7 @@
     },
     "profile": "adapter",
     "requires": [],
-    "summary": "Answers NIP-HOST requests from enrolled devices under the host's own grants: enrollment, invitations, device listing and revocation, task creation, steering, cancellation, archiving, durable task commands, and queue editing, workspace listing, and terminal opening.",
+    "summary": "Answers NIP-HOST requests from enrolled devices under the host's own grants: enrollment, invitations, device listing and revocation, task creation, steering, cancellation, archiving, durable task commands, and queue editing, workspace listing, terminal opening, and agent spend requests and receipts.",
     "support": {
       "bounds": {
         "input_bytes": "enforced"

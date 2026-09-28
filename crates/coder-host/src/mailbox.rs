@@ -14,13 +14,15 @@ use sha2::{Digest, Sha256};
 use crate::{Error, Result};
 
 /// Which stream a mailbox carries: host to device, except
-/// [`Stream::Nudges`], which a device sends its host.
+/// [`Stream::Nudges`], which a device sends its host. [`Stream::SpendWakes`]
+/// carries the host's spend wakes (`crate::spend::wake`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Stream {
     Presence,
     Hints,
     Summaries,
     Nudges,
+    SpendWakes,
 }
 
 impl Stream {
@@ -30,6 +32,7 @@ impl Stream {
             Self::Hints => b"openagents.host-mailbox.hints.v1\0",
             Self::Summaries => b"openagents.host-mailbox.summaries.v1\0",
             Self::Nudges => b"openagents.host-mailbox.nudges.v1\0",
+            Self::SpendWakes => b"openagents.host-mailbox.spend-wakes.v1\0",
         }
     }
 }

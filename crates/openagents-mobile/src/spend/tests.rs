@@ -592,3 +592,25 @@ fn live_a_spend_request_reaches_the_sheet_and_is_denied() {
         std::thread::sleep(Duration::from_secs(1));
     }
 }
+
+#[test]
+fn coming_to_the_foreground_reads_requests_without_waiting() {
+    let spending = Spending::new(PHONE.into(), None).at(at_t0);
+    let computer = Arc::new(Computer::default());
+    let pass = |spending: &Spending| {
+        spending.poll(hosts(), computer.clone(), None);
+        for _ in 0..200 {
+            if !spending.lock().polling {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        computer.grants.lock().unwrap().len()
+    };
+    assert_eq!(pass(&spending), 1);
+    // Within the poll interval nothing is read again...
+    assert_eq!(pass(&spending), 1);
+    // ...until the app comes to the foreground, as from a wake.
+    spending.soon();
+    assert_eq!(pass(&spending), 2);
+}

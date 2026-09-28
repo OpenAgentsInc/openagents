@@ -9,6 +9,9 @@
 # OPENAGENTS_IOS_DEVICE names the simulator (default: booted).
 # OPENAGENTS_IOS_BUILD_NUMBER overrides the checked-in build number.
 # upload reads ASC_API_KEY_ID, ASC_API_ISSUER_ID, and ASC_API_PRIVATE_KEY_PATH.
+# Push wakes are off by default. OPENAGENTS_IOS_PUSH=development|production
+# signs with the push entitlement, and OPENAGENTS_PUSH_RELAY_URL,
+# OPENAGENTS_PUSH_GATEWAY_URL, and OPENAGENTS_PUSH_APP_PROFILE turn them on.
 # bench builds optimized Rust and a development-signed app with the
 # transcript fixture and benchmarks compiled in (RUST_NATIVE_BENCH), under its
 # own bundle ID (com.openagents.app.bench) so it never replaces the installed
@@ -59,6 +62,18 @@ rust=(cargo build --locked --manifest-path crates/openagents-mobile/Cargo.toml -
 args=(-project "$host/OpenAgents.xcodeproj" -scheme OpenAgents -configuration Release
       -destination "$destination" -derivedDataPath "$output/DerivedData"
       "OPENAGENTS_RUST_LIBRARY_DIR=$CARGO_TARGET_DIR/$triple/$profile")
+args+=("OPENAGENTS_PUSH_RELAY_URL=${OPENAGENTS_PUSH_RELAY_URL:-}"
+      "OPENAGENTS_PUSH_GATEWAY_URL=${OPENAGENTS_PUSH_GATEWAY_URL:-}"
+      "OPENAGENTS_PUSH_APP_PROFILE=${OPENAGENTS_PUSH_APP_PROFILE:-}")
+case "${OPENAGENTS_IOS_PUSH:-}" in
+  "") ;;
+  development|production)
+    if [[ "$command" == archive && "$OPENAGENTS_IOS_PUSH" != production ]]; then
+      echo "An archive for TestFlight needs OPENAGENTS_IOS_PUSH=production." >&2; exit 64
+    fi
+    args+=(CODE_SIGN_ENTITLEMENTS=Push/OpenAgents-Push.entitlements "OPENAGENTS_APS_ENVIRONMENT=$OPENAGENTS_IOS_PUSH") ;;
+  *) echo "OPENAGENTS_IOS_PUSH must be development, production, or empty." >&2; exit 64 ;;
+esac
 if [[ -n "${OPENAGENTS_IOS_BUILD_NUMBER:-}" ]]; then
   [[ "$OPENAGENTS_IOS_BUILD_NUMBER" =~ ^[1-9][0-9]*$ ]] || { echo "Build number must be a positive integer." >&2; exit 64; }
   args+=("CURRENT_PROJECT_VERSION=$OPENAGENTS_IOS_BUILD_NUMBER")

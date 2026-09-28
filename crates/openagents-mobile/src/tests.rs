@@ -93,6 +93,49 @@ fn computers_surface_opens_with_the_device_key() {
 }
 
 #[test]
+fn push_wakes_are_off_unless_the_build_names_a_relay_and_gateway() {
+    // A default build: no status until a token arrives, then "off".
+    let (mut app, _dir) = app();
+    assert_eq!(app.call(Request::Snapshot).push, None);
+    let packet = app.call(Request::PushToken {
+        token: "ab".repeat(32),
+    });
+    assert_eq!(packet.push.as_deref(), Some("Wakes are off in this build."));
+    // A build configured for push starts with wakes off until it registers,
+    // and refuses a relay that is not wss:// outside loopback tests.
+    let dir = tempfile::tempdir().expect("temp dir");
+    let open = |relay: &str| {
+        App::open(
+            Config {
+                state_dir: dir.path().to_path_buf(),
+                secret_hex: "11".repeat(32),
+            },
+            crate::app::Launch {
+                push: Some(
+                    serde_json::from_value(serde_json::json!({
+                        "relay_url": relay,
+                        "gateway_url": "https://push.example.com",
+                        "app_profile": "openagents-ios",
+                    }))
+                    .unwrap(),
+                ),
+                ..crate::app::Launch::default()
+            },
+        )
+        .expect("app")
+    };
+    let mut configured = open("wss://relay.example.com");
+    assert_eq!(
+        configured.call(Request::Snapshot).push.as_deref(),
+        Some("Wakes off")
+    );
+    drop(configured);
+    let mut insecure = open("ws://relay.example.com");
+    let status = insecure.call(Request::Snapshot).push.unwrap();
+    assert!(status.starts_with("Wakes unavailable"), "{status}");
+}
+
+#[test]
 fn the_amount_format_is_saved_and_reaches_the_wallet() {
     let (mut app, dir) = app();
     let invoice_error = |app: &mut App, amount: &str| {

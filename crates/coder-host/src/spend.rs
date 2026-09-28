@@ -95,6 +95,9 @@ struct Stored {
     /// Receipts the phone did not sign: a request that expired unanswered.
     #[serde(default)]
     host_refused: bool,
+    /// A spend wake went out for it ([`wake`]).
+    #[serde(default)]
+    woken: bool,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -291,6 +294,7 @@ impl Book {
                     issuer: grant.issuer.clone(),
                     receipt: None,
                     host_refused: false,
+                    woken: false,
                 },
             );
             Ok((request, true))
@@ -342,6 +346,32 @@ impl Book {
                 .collect();
             Ok((listed, true))
         })
+    }
+
+    /// The devices to wake: each that holds an open request no wake went
+    /// out for yet. Marks those requests woken, so each request wakes its
+    /// phone once; the phone's `spend.list` reads every open one.
+    pub fn wakes(&self, now: u64) -> Result<Vec<String>, Refused> {
+        self.with(|state| {
+            state.expire(now);
+            let mut devices = std::collections::BTreeSet::new();
+            for stored in state.entries.values_mut() {
+                if stored.receipt.is_none() && !stored.woken {
+                    stored.woken = true;
+                    devices.insert(stored.issuer.clone());
+                }
+            }
+            let save = !devices.is_empty();
+            Ok((devices.into_iter().collect(), save))
+        })
+    }
+
+    /// Whether the book has changed since `seen` (its file's modification
+    /// time and length), so the host reads it only when it moved.
+    #[must_use]
+    pub fn stamp(&self) -> Option<(std::time::SystemTime, u64)> {
+        let metadata = std::fs::metadata(self.directory.join(FILE)).ok()?;
+        Some((metadata.modified().ok()?, metadata.len()))
     }
 
     fn list_for(&self, device: &str, grant: &Grant, now: u64) -> Result<Vec<Entry>, Code> {
@@ -443,3 +473,4 @@ impl coder_access::host::Spends for Book {
 pub mod cli;
 #[cfg(test)]
 mod tests;
+pub mod wake;

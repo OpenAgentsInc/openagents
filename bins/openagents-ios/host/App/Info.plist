@@ -24,6 +24,12 @@
 	<string>Scan the invitation shown on your computer to add it.</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Confirm larger payments your agents ask you to approve.</string>
+	<key>OpenAgentsPushAppProfile</key>
+	<string>$(OPENAGENTS_PUSH_APP_PROFILE)</string>
+	<key>OpenAgentsPushGatewayURL</key>
+	<string>$(OPENAGENTS_PUSH_GATEWAY_URL)</string>
+	<key>OpenAgentsPushRelayURL</key>
+	<string>$(OPENAGENTS_PUSH_RELAY_URL)</string>
 	<key>NSMotionUsageDescription</key>
 	<string>Use the phone's orientation to look around the world when you turn on motion look.</string>
 	<key>ITSAppUsesNonExemptEncryption</key>

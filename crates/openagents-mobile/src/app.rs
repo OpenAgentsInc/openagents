@@ -65,6 +65,11 @@ pub struct Launch {
     /// reaches no network.
     #[serde(default)]
     pub wallet_fixture: bool,
+    /// Push wakes through a relay's NIP-PL executor and a push gateway, so
+    /// a computer's spend request reaches a phone that is not looking.
+    /// Absent, the default, leaves push off.
+    #[serde(default)]
+    pub push: Option<coder_mobile::PushConfig>,
 }
 
 /// What this phone's Computers screens can do.
@@ -341,6 +346,14 @@ pub enum Request {
     },
     /// Clear the last agent payment's notice.
     SpendDismiss,
+    /// The platform issued or reissued its push token: an APNs device token
+    /// as lowercase hex, or an FCM registration token. Rust registers it
+    /// with the push gateway and publishes the device's push lease.
+    PushToken {
+        token: String,
+    },
+    /// Revoke the push lease and forget the token at the gateway.
+    PushDisable,
     /// Show and read amounts app-wide as `bip177` (₿12,345) or `btc`
     /// (0.00012345 BTC). The choice is saved.
     AmountFormat {
@@ -495,6 +508,9 @@ pub struct Packet {
     pub spend: crate::spend::View,
     /// How amounts show and are typed, app-wide, and the transitional note.
     pub amounts: crate::amounts::AmountsView,
+    /// Push wake status (`Wakes on`, `Wakes off`, or why not), once the
+    /// build is configured for push or a push request arrived.
+    pub push: Option<String>,
 }
 
 /// The encrypted store for the Computers record, keyed by the device key.
@@ -559,6 +575,9 @@ pub struct App {
     playtest: crate::playtest::Playtest,
     /// The amount format, applied to every surface that shows bitcoin.
     amounts: crate::amounts::Amounts,
+    /// Push wakes, when this build is configured for them.
+    push: Option<coder_mobile::Push>,
+    push_status: Option<String>,
     notices: Vec<String>,
 }
 
@@ -664,6 +683,22 @@ impl App {
         let _ = std::fs::remove_dir_all(config.state_dir.join("wallet"));
         let amounts = crate::amounts::Amounts::open(&config.state_dir);
         spend.set_format(amounts.format());
+        // Loopback relay and gateway URLs are for simulator tests only.
+        let (push, push_status) = match launch.push {
+            None => (None, None),
+            Some(settings) => match coder_mobile::Push::open(
+                settings,
+                &config.state_dir,
+                &secret,
+                cfg!(debug_assertions),
+            ) {
+                Ok(push) => {
+                    let status = push.status.clone();
+                    (Some(push), Some(status))
+                }
+                Err(reason) => (None, Some(format!("Wakes unavailable: {reason}"))),
+            },
+        };
         Ok(Self {
             runtime,
             native_computers: launch.native_computers,
@@ -729,6 +764,8 @@ impl App {
                 Cache::open(&config.state_dir.join("playtest"), &secret).ok(),
             ),
             amounts,
+            push,
+            push_status,
             notices,
         })
     }
@@ -869,6 +906,9 @@ impl App {
                     self.trainer.pause();
                 }
                 if active {
+                    // Opened from a wake or brought back: read the
+                    // computers' payment requests now.
+                    self.spend.soon();
                     self.wallet.refresh_if_open();
                     self.chats.refresh();
                     self.load_tailnet(None, TAILNET_REFRESH_LIMIT);
@@ -1073,6 +1113,8 @@ impl App {
             Request::SpendBlock { host } => self.spend.block(&host),
             Request::SpendAllow { host } => self.spend.allow(&host),
             Request::SpendDismiss => self.spend.dismiss(),
+            Request::PushToken { token } => self.push_token(Some(&token)),
+            Request::PushDisable => self.push_token(None),
         }
         self.packet(open_url)
     }
@@ -1349,6 +1391,24 @@ impl App {
         self.spend.poll(hosts, transport, self.payer());
     }
 
+    /// Register `token` for wakes, or with `None` revoke the lease.
+    fn push_token(&mut self, token: Option<&str>) {
+        let Some(push) = self.push.as_mut() else {
+            if self.push_status.is_none() {
+                self.push_status = Some("Wakes are off in this build.".into());
+            }
+            return;
+        };
+        let result = match token {
+            Some(token) => push.token(&self.runtime, &self.secret, &self.device, token, now()),
+            None => push.disable(&self.runtime, &self.secret, &self.device, now()),
+        };
+        self.push_status = Some(match result {
+            Ok(()) => push.status.clone(),
+            Err(reason) => format!("{}: {reason}", push.status),
+        });
+    }
+
     /// The running wallet as agent spending's payer.
     fn payer(&self) -> Option<Arc<dyn crate::spend::Payer>> {
         self.wallet
@@ -1432,6 +1492,7 @@ impl App {
             wallet_loading: self.wallet.loading(),
             wallet_open_url: self.wallet.take_open_url(),
             spend: self.spend.view(),
+            push: self.push_status.clone(),
             amounts: self.amounts.view(),
         }
     }

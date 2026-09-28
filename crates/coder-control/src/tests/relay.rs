@@ -12,7 +12,7 @@ use tokio_tungstenite::{
     tungstenite::{Message, protocol::WebSocketConfig},
 };
 
-type Events = Arc<Mutex<BTreeMap<String, Event>>>;
+pub type Events = Arc<Mutex<BTreeMap<String, Event>>>;
 fn visible(event: &Event, principal: &str) -> bool {
     // A capability discovery head is public.
     event.kind == 30180

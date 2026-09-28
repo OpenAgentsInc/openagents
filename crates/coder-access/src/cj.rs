@@ -53,7 +53,7 @@ pub const CALL_SCHEMA: &[u8] = include_bytes!("../../../nips/openagents/schemas/
 pub const ANSWER_SCHEMA: &[u8] =
     include_bytes!("../../../nips/openagents/schemas/host-answer.v1.json");
 /// Every NIP-HOST operation this binding carries.
-pub const OPERATIONS: [&str; 15] = [
+pub const OPERATIONS: [&str; 17] = [
     "enroll.redeem",
     "enroll.approve",
     "enroll.deny",
@@ -69,6 +69,8 @@ pub const OPERATIONS: [&str; 15] = [
     "task.queue",
     "workspace.list",
     "terminal.open",
+    "spend.list",
+    "spend.settle",
 ];
 
 const LOCK: &str = "openagents.lock.v1";
@@ -294,7 +296,7 @@ pub fn definition(host: &str, relays: &[String]) -> Value {
         "requires": [],
         "id": format!("{host}:{PACKAGE}/{SLUG}"),
         "profile": "adapter",
-        "summary": "Answers NIP-HOST requests from enrolled devices under the host's own grants: enrollment, invitations, device listing and revocation, task creation, steering, cancellation, archiving, durable task commands, and queue editing, workspace listing, and terminal opening.",
+        "summary": "Answers NIP-HOST requests from enrolled devices under the host's own grants: enrollment, invitations, device listing and revocation, task creation, steering, cancellation, archiving, durable task commands, and queue editing, workspace listing, terminal opening, and agent spend requests and receipts.",
         "input": schema_ref(CALL_SCHEMA),
         "output": schema_ref(ANSWER_SCHEMA),
         "effects": {

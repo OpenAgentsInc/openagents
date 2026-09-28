@@ -30,6 +30,7 @@ fn key() -> SecretKey {
 struct Fixture {
     temp: tempfile::TempDir,
     relay: String,
+    events: relay::Events,
     store: coder_host::access::host::Host,
     running: coder_host::Running,
 }
@@ -51,7 +52,7 @@ async fn fixture(generation: u64) -> Fixture {
 
 async fn fixture_with(generation: u64, workspace: Workspace) -> Fixture {
     let temp = tempfile::tempdir().unwrap();
-    let (relay, _task, _events) = relay::start().await;
+    let (relay, _task, events) = relay::start().await;
     let access = temp.path().join("access");
     let store = coder_host::access::host::Host::new(&access, POLICY);
     store.init(&pubkey(&key())).unwrap();
@@ -74,6 +75,7 @@ async fn fixture_with(generation: u64, workspace: Workspace) -> Fixture {
     Fixture {
         temp,
         relay,
+        events,
         store,
         running,
     }
@@ -81,6 +83,10 @@ async fn fixture_with(generation: u64, workspace: Workspace) -> Fixture {
 
 impl Fixture {
     async fn enroll(&self, rights: Rights) -> Arc<Device> {
+        self.enroll_keyed(rights).await.0
+    }
+
+    async fn enroll_keyed(&self, rights: Rights) -> (Arc<Device>, SecretKey) {
         let now = coder_host::unix_time().unwrap();
         let code = self
             .store
@@ -91,7 +97,10 @@ impl Fixture {
         let access = coder_host::access::client::redeem(&code, &secret, POLICY)
             .await
             .unwrap();
-        Arc::new(Device::new(access, secret, POLICY).unwrap())
+        (
+            Arc::new(Device::new(access, secret, POLICY).unwrap()),
+            secret,
+        )
     }
 
     async fn direct(&self, device: &Arc<Device>) -> Link {
@@ -337,5 +346,72 @@ async fn a_nudge_from_an_enrolled_device_brings_fresh_presence_at_once() {
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
     assert!(fresh, "the nudge brought no fresh presence");
+    fixture.running.shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_new_spend_request_wakes_the_phone_whose_grant_it_draws_on() {
+    use coder_host::access::spend::{Context, Grant, Purpose, hex};
+    use coder_host::spend::wake::Wake;
+    use coder_host::spend::{Ask, Book};
+    use nostr::x402::test_invoice::{described, signed_at};
+
+    let fixture = fixture(4).await;
+    let (device, secret) = fixture.enroll_keyed(Rights::standard()).await;
+    let device_key = pubkey(&secret);
+    let host = fixture.running.host_key().to_owned();
+    let now = coder_host::unix_time().unwrap();
+    // The phone hands the host its grant with `spend.list`.
+    let link = fixture.direct(&device).await;
+    let grant = Grant::request_mode(hex(&[7; 32]), &device_key, &host, 0, now);
+    let listed = link
+        .call(Operation::ListSpends {
+            grant: Box::new(grant),
+        })
+        .await
+        .unwrap();
+    assert!(matches!(listed, Outcome::Spends { spends } if spends.is_empty()));
+    let wakes = || async {
+        fixture
+            .events
+            .lock()
+            .await
+            .values()
+            .filter(|event| Wake::open(event, &secret, now).is_ok())
+            .count()
+    };
+    assert_eq!(wakes().await, 0, "nothing waits yet");
+
+    // Another process records a request; the host wakes that phone once.
+    let book = Book::open(&fixture.temp.path().join("access"));
+    let ask = Ask {
+        payment: signed_at(
+            "lnbc250n",
+            described([9; 32], "Search API call", 600),
+            false,
+            false,
+            now,
+        ),
+        fee_max_msat: None,
+        purpose: Purpose::X402Purchase,
+        context: Context::default(),
+        ttl: 300,
+        id: None,
+    };
+    book.request(&host, &ask, now).unwrap();
+    let mut woken = 0;
+    for _ in 0..50 {
+        woken = wakes().await;
+        if woken > 0 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    assert_eq!(woken, 1, "the host woke the phone");
+    // The wake names only the pair; asking again for the same invoice is the
+    // same request and wakes nobody twice.
+    book.request(&host, &ask, now).unwrap();
+    tokio::time::sleep(Duration::from_millis(1_500)).await;
+    assert_eq!(wakes().await, 1);
     fixture.running.shutdown().await;
 }

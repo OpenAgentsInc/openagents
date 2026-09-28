@@ -5,6 +5,7 @@ import SwiftUI
 
 @main
 struct OpenAgentsApp: App {
+    @UIApplicationDelegateAdaptor(PushAppDelegate.self) private var pushDelegate
     @StateObject private var bridge = MobileBridge()
     @Environment(\.scenePhase) private var scenePhase
 
@@ -15,6 +16,11 @@ struct OpenAgentsApp: App {
                     if phase != .inactive { bridge.lifecycle(phase == .active) }
                 }
                 .nativeFixture()
+                .task {
+                    // Does nothing unless this build is configured for push.
+                    PushRegistration.shared.start(deliver: { bridge.pushToken($0) },
+                                                  failed: { bridge.pushFailed($0) })
+                }
         }
     }
 }

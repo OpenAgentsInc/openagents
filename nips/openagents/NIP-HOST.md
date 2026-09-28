@@ -463,8 +463,11 @@ device whose grant the request draws on, refuses a `paid` receipt whose
 preimage does not hash to the invoice's payment hash as `forbidden`, keeps
 the first final receipt (a different later one refuses as `conflict`), and
 answers `settled` with the recorded receipt. Neither operation moves money
-or grants anything; the phone's wallet pays, after the owner's tap. They are
-not carried over CAP/CJ in phase 1. `dispatched` returns
+or grants anything; the phone's wallet pays, after the owner's tap. The
+host wakes the phone for a new request with a spend wake
+(`openagents.spend-wake.v1`), a private artifact on a derived host-to-device
+mailbox that carries nothing about the request, as the spend protocol
+describes. `dispatched` returns
 `{operation, reference}`: the handling receipt, not evidence that a task ran
 or a terminal produced output. Other profiles can register further
 operations with exactly one required right each.

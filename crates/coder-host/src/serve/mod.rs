@@ -167,6 +167,7 @@ pub async fn start(config: Config, tasks: Arc<dyn Tasks>) -> Result<Running> {
         tokio::spawn(relay::serve(shared.clone(), ready)),
         tokio::spawn(presence_loop(shared.clone())),
         tokio::spawn(summary_loop(shared.clone())),
+        tokio::spawn(spend_wake_loop(shared.clone())),
         tokio::spawn(cj::serve(shared.clone())),
     ]);
     let _ = tokio::time::timeout(RELAY_READY_WAIT, relay_ready).await;
@@ -485,6 +486,48 @@ async fn summary_loop(shared: Arc<Shared>) {
         }
         for task in &changed {
             summarize(&shared, task).await;
+        }
+    }
+}
+
+/// How often the host looks for new spend requests to wake a phone for.
+const SPEND_WAKE_EVERY: Duration = Duration::from_secs(1);
+
+/// Wake the phone a new spend request draws on: publish a spend wake
+/// (`crate::spend::wake`) to each device that holds an open request no wake
+/// went out for. Requests are recorded by other processes (`coder host spend
+/// request`, the x402 phone payer), so the host watches the book's file and
+/// reads it only when it moved.
+async fn spend_wake_loop(shared: Arc<Shared>) {
+    let book = crate::spend::Book::open(&shared.config.access);
+    let mut seen = None;
+    let mut ticker = tokio::time::interval(SPEND_WAKE_EVERY);
+    loop {
+        ticker.tick().await;
+        let stamp = book.stamp();
+        if stamp.is_none() || stamp == seen {
+            continue;
+        }
+        seen = stamp;
+        let Ok(now) = unix_time() else { continue };
+        let reader = book.clone();
+        let Ok(Ok(devices)) = tokio::task::spawn_blocking(move || reader.wakes(now)).await else {
+            continue;
+        };
+        // Saving the book moved its stamp; that is not news.
+        if !devices.is_empty() {
+            seen = book.stamp();
+        }
+        let operators = shared.authority.active_devices(Some(Right::Operate), now);
+        for device in devices {
+            if !operators.contains(&device) {
+                continue;
+            }
+            if let Ok(event) =
+                crate::spend::wake::Wake::new(&shared.secret, &device, now).seal(&shared.secret)
+            {
+                shared.publisher.everywhere(&event).await;
+            }
         }
     }
 }

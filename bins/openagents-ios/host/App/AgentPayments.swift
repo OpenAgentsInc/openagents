@@ -196,6 +196,10 @@ struct AgentPaymentsSection: View {
         if !spend.computers.isEmpty || !spend.history.isEmpty {
             VStack(alignment: .leading, spacing: 10) {
                 Text("Agent payments").font(.headline)
+                if let wakes = bridge.pushStatus {
+                    Text(wakes).font(.caption).foregroundStyle(.secondary)
+                        .accessibilityIdentifier("spend-wakes")
+                }
                 if let notice = spend.notice {
                     HStack {
                         Text(notice).font(.footnote)

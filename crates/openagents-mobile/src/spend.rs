@@ -358,6 +358,14 @@ impl Spending {
         lock(&self.shared)
     }
 
+    /// Read the computers' requests on the next pass, without waiting for
+    /// [`POLL_EVERY`]: the app came to the foreground, perhaps from a wake.
+    pub fn soon(&self) {
+        let mut shared = self.lock();
+        shared.last_poll = None;
+        shared.backoff.clear();
+    }
+
     /// Show amounts in `format` from now on.
     pub fn set_format(&self, format: crate::amounts::Format) {
         self.lock().format = format;
