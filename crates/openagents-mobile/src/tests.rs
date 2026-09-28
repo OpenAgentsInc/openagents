@@ -819,19 +819,29 @@ fn live_coder_chat_continues_with_a_follow_up() {
         eprintln!("first turn: {:?}", values(&first));
         send(app, &first, &follow_up);
         assert_eq!(app.open_coder_task(), Some(task.clone()), "same task");
-        // The next turn starts, then ends, and its transcript shows both.
+        // The host's summary moves off the first turn's ending once the
+        // follow-up is queued; the next turn may wait for a free slot.
         loop {
             let chat = app.call(Request::ComputersRefresh).coder.unwrap();
-            if !nodes_of(&chat, "working").is_empty() {
+            let place = values(&chat).get(1).cloned().unwrap_or_default();
+            if !place.starts_with("Done") {
+                eprintln!("follow-up: {place}");
                 break;
             }
             assert!(std::time::Instant::now() < deadline, "{:?}", values(&chat));
             std::thread::sleep(std::time::Duration::from_secs(2));
         }
-        let second = ended(app);
-        let text = values(&second);
-        eprintln!("second turn: {text:?}");
-        assert!(text.iter().any(|t| t.contains(&follow_up)), "{text:?}");
-        assert!(text.iter().any(|t| t.contains(&prompt)), "{text:?}");
+        // The next turn ends, and its transcript shows both turns.
+        loop {
+            let second = ended(app);
+            let text = values(&second);
+            if text.iter().any(|t| t.contains(&follow_up)) {
+                eprintln!("second turn: {text:?}");
+                assert!(text.iter().any(|t| t.contains(&prompt)), "{text:?}");
+                return;
+            }
+            assert!(std::time::Instant::now() < deadline, "{text:?}");
+            std::thread::sleep(std::time::Duration::from_secs(3));
+        }
     });
 }
