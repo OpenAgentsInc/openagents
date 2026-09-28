@@ -45,7 +45,11 @@ struct ResultsCaveat: Decodable, Hashable { let code: String; let text: String }
 struct ResultsReference: Decodable { let name: String; let rule: String; let conditions: String }
 
 struct ResultsBoardsPage: Decodable {
+    /// One board's plain-language sentence, built in Rust; nil when no
+    /// board has a beat.
+    let summary: Summary?
     let rows: [Row]
+    struct Summary: Decodable { let board: String; let text: String; let source: String }
     let footer: String?
     struct Row: Decodable, Identifiable {
         let id: String
@@ -63,6 +67,7 @@ struct ResultsBoardPage: Decodable {
     let title: String
     let benchmark: String
     let question: String
+    let summary: String
     let headline: String
     let headline_note: String?
     let labels: [ResultsChip]
@@ -181,6 +186,20 @@ struct VerseResultsPanel: View {
     // Screen 1: every board, in the publication's order.
     private func boards(_ page: ResultsBoardsPage) -> some View {
         VStack(alignment: .leading, spacing: 14) {
+            if let summary = page.summary {
+                Button { world.results(["do": "board", "id": summary.board]) } label: {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(summary.text).font(.body.weight(.semibold)).multilineTextAlignment(.leading)
+                        Text(summary.source).font(.caption).foregroundStyle(.secondary)
+                            .multilineTextAlignment(.leading)
+                    }.frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("\(summary.text) \(summary.source)")
+                .accessibilityAddTraits(.isButton)
+                .accessibilityIdentifier("results-summary")
+                Divider().overlay(.white.opacity(0.3))
+            }
             Text("Published Terminal-Bench results").font(.headline)
             ForEach(page.rows) { row in
                 Button { world.results(["do": "board", "id": row.id]) } label: {
@@ -210,6 +229,8 @@ struct VerseResultsPanel: View {
     // Screen 2: one board.
     private func board(_ page: ResultsBoardPage) -> some View {
         VStack(alignment: .leading, spacing: 12) {
+            Text(page.summary).font(.body.weight(.semibold))
+                .accessibilityIdentifier("results-board-summary")
             Text(page.title).font(.headline)
             Text(page.benchmark).font(.caption).foregroundStyle(.secondary)
             Text(page.headline).font(.callout).accessibilityIdentifier("results-headline")

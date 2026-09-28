@@ -248,7 +248,7 @@ fn rule_8_no_cross_board_ranking() {
     let value = serde_json::to_value(&list).unwrap();
     assert_eq!(
         value.as_object().unwrap().keys().collect::<Vec<_>>(),
-        ["rows", "footer"]
+        ["summary", "rows", "footer"]
     );
 }
 
@@ -585,4 +585,104 @@ fn the_footer_names_the_digest_commit_and_freshness() {
         panic!()
     };
     assert!(list.footer.unwrap().contains("offline"));
+}
+
+/// Rule 11: every board's summary is built from its data, keeps whole
+/// denominators, and carries the qualifiers that limit it.
+#[test]
+fn rule_11_summaries_come_from_the_data_with_their_qualifiers() {
+    let lb = leaderboard();
+    for board in &lb.boards {
+        let page = board_page_of(&lb, &board.id, Filter::All, false);
+        let text = &page.summary;
+        assert_eq!(text, &crate::summary::board_summary(board));
+        assert!(text.ends_with('.'), "{text}");
+        assert_eq!(text.matches(". ").count(), 0, "one sentence: {text}");
+        assert!(!text.contains('$'), "no dollar figure: {text}");
+        if board.kind == crate::contract::BoardKind::Reference {
+            assert!(text.contains("not a result of ours"), "{text}");
+            continue;
+        }
+        assert!(text.contains(&board.subject.agent), "{text}");
+        assert!(text.contains(&board.reference.name), "{text}");
+        let t = &board.totals;
+        if board.kind != crate::contract::BoardKind::CostBelowReferencePerTrial || t.beats == 0 {
+            assert!(
+                text.contains(&format!("{} of {}", t.beats, t.attempts)),
+                "{text}"
+            );
+        }
+        let beats: Vec<_> = board.attempts.iter().filter(|a| a.beat).collect();
+        if beats.iter().any(|a| a.labels.contains(&Label::InSample)) {
+            assert!(text.contains("in-sample"), "{text}");
+        }
+        if beats.iter().any(|a| a.labels.contains(&Label::ThinMargin)) {
+            assert!(text.contains("margin under 5%"), "{text}");
+        }
+        if board.labels.contains(&Label::OutOfSample) {
+            assert!(text.contains("held-out"), "{text}");
+        }
+        if !board.labels.contains(&Label::PreRegistered) {
+            assert!(text.contains("not pre-registered"), "{text}");
+        }
+    }
+
+    // The committed publication's sentences, so a change is reviewed.
+    let delegate = board_page_of(&lb, DELEGATE, Filter::All, false).summary;
+    assert_eq!(
+        delegate,
+        "Coder One beats Fable 5.1 low's cheapest and fastest win on both cost and time in 4 of 28 attempts on Terminal-Bench 4.0 tasks, all in-sample: using knowledge written from earlier runs of the same task; 2 of the 4 by a margin under 5%."
+    );
+    let tb21 = board_page_of(&lb, TB21, Filter::All, false).summary;
+    assert_eq!(
+        tb21,
+        "Microcoder's median pass cost 2.9% of Fable 5 xhigh's cost per trial on 65 held-out Terminal-Bench 2.1 tasks (83 passes with a known cost), but first runs passed only 31 of 65, against Fable 5 xhigh's 299 of 325 trials."
+    );
+}
+
+/// The per-trial summary's share is the median of the passes' own cost
+/// ratios: changing them changes the sentence.
+#[test]
+fn the_per_trial_summary_is_computed_not_typed() {
+    let mut lb = leaderboard();
+    let board = lb.boards.iter_mut().find(|b| b.id == TB21).unwrap();
+    for a in board.attempts.iter_mut().filter(|a| a.passed) {
+        a.cost_ratio = Some(0.5);
+    }
+    let text = crate::summary::board_summary(board);
+    assert!(text.contains("median pass cost 50% of"), "{text}");
+}
+
+/// The list's top sentence is one board's summary, chosen by evidence
+/// (a beat, held-out, pre-registered, not in-sample), not by a score, and
+/// it names that board.
+#[test]
+fn the_top_summary_is_the_strongest_boards_own_sentence() {
+    let lb = leaderboard();
+    let Page::Boards(list) = render(&Nav::default(), &lb, None, None).unwrap() else {
+        panic!()
+    };
+    let top = list.summary.unwrap();
+    assert_eq!(top.board, TB21);
+    let board = lb.boards.iter().find(|b| b.id == TB21).unwrap();
+    assert_eq!(top.text, crate::summary::board_summary(board));
+    assert!(top.source.contains(&board.title), "{}", top.source);
+    assert!(top.text.contains("held-out"));
+
+    // Order doesn't pick it: reversing the publication picks the same one.
+    let mut reversed = lb.clone();
+    reversed.boards.reverse();
+    assert_eq!(crate::summary::top_summary(&reversed).unwrap().board, TB21);
+
+    // Without the held-out board, an in-sample board's sentence says so.
+    let mut rest = lb.clone();
+    rest.boards
+        .retain(|b| !b.labels.contains(&Label::OutOfSample));
+    let top = crate::summary::top_summary(&rest).unwrap();
+    assert!(top.text.contains("in-sample"), "{}", top.text);
+
+    // No board with a beat: no top sentence rather than a stronger one.
+    let mut none = lb;
+    none.boards.retain(|b| b.totals.beats == 0);
+    assert!(crate::summary::top_summary(&none).is_none());
 }

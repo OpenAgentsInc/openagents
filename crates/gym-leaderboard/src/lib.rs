@@ -27,6 +27,7 @@
 
 pub mod contract;
 pub mod evidence;
+pub mod summary;
 pub mod verify;
 pub mod view;
 

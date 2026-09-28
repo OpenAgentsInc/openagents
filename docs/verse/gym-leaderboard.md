@@ -281,17 +281,40 @@ enforce the rest, and each viewer issue carries a test for them.
    are separate splits, and a board states when they disagree ("0 of 14 in
    pass 1, 4 of 14 in pass 2").
 6. **The headline is the board's.** A viewer shows `headline` verbatim and
-   doesn't compose a stronger sentence from the numbers.
+   doesn't compose a stronger sentence from the numbers. The one-sentence
+   summaries (rule 11) are built by the shared view model, never by a
+   viewer, and sit beside the headline rather than replacing it.
 7. **Caveats are one tap away, never hidden.** The board panel shows the
    caveat count and at least the first caveat without scrolling; the
    `in_sample` and `thin_margin` caveats show on any beat's row.
 8. **No cross-board ranking.** The boards list is ordered by publication,
-   not by score, and no view sums or averages across boards.
+   not by score, and no view sums or averages across boards. Choosing the
+   list's top sentence (rule 11) is by the evidence behind a beat, never by
+   a rate or a dollar figure, and doesn't reorder the list.
 9. **Reference conditions are shown beside the bar.** A bar is always shown
    with the reference's name and the `reference.conditions` sentence one
    tap away.
 10. **Cost is list price.** Every dollar figure is labeled list price the
     first time it appears on a screen.
+11. **One sentence, from the data, qualified inline.**
+    [`summary.rs`](../../crates/gym-leaderboard/src/summary.rs) builds one
+    plain-language sentence per board from its tallies and rows (no
+    hand-typed number, no dollar figure), shown at the top of the board
+    screen. It says who beats whom on what, as a whole-denominator rate
+    ("4 of 28 attempts"), and carries its limits in the same sentence:
+    "held-out" for `out_of_sample`, "all in-sample" (or "k of those n") when
+    a beat carries `in_sample`, the count of beats with a margin under 5%,
+    and "not pre-registered". A `cost_below_reference_per_trial` board
+    states the median pass's share of the reference's cost with its pass
+    count and, beside it, the first split's passes against the reference's
+    passes of trials. A board with no beat says it hasn't beaten the
+    reference yet; a `reference` board says it is context, not a result.
+    The boards list shows one of these sentences at the top, from the board
+    with the strongest evidence behind a beat: a beat at all, then held-out,
+    then pre-registered, then not in-sample, ties in publication order. It
+    names the board it came from, opens it on tap, and is absent when no
+    board has a beat. Tested by `rule_11_*` and `the_top_summary_*` in
+    `view::tests`.
 
 ## Gym UX in the Grid
 
@@ -323,11 +346,12 @@ against a mirror.
 
 ### Screens
 
-1. **Boards list.** One row per board: title, benchmark, the headline, and
-   the board's labels as chips. Ordered as `leaderboard.v1.json` lists them.
+1. **Boards list.** At the top, one summary sentence and the board it
+   came from (rule 11). Then one row per board: title, benchmark, the
+   headline, and the board's labels as chips. Ordered as `leaderboard.v1.json` lists them.
    A footer shows the publication's digest (first 8 characters), its
    commit, and whether it's cached or current.
-2. **Board.** The headline; the tallies as "passes / beats / attempts" with
+2. **Board.** The board's summary sentence (rule 11); the headline; the tallies as "passes / beats / attempts" with
    each split; spend (reported, then the bound, labeled); the caveats (first
    one shown, rest expandable); and the task table: task, bar (cost and
    time), each attempt as a compact cell (pass or fail, beat, cost or

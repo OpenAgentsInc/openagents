@@ -65,3 +65,20 @@ steps the viewer through every row of that bundle and checks the replay's
 visit has the same row and time, and
 `bare_results_tests::an_open_trace_plays_as_a_ghost_in_the_gym_and_closing_removes_it`
 drives it through the Grid's scene.
+
+## One-sentence summaries
+
+Build 13 feedback asked for a one-sentence summary at the top. Rust builds
+them from each board's data (`gym_leaderboard::summary`, presentation
+rule 11):
+
+- [`summary-boards.png`](summary-boards.png): the list's top sentence, from
+  the board with the strongest evidence behind a beat (held-out,
+  pre-registered), naming that board; tapping it opens the board.
+- [`summary-board.png`](summary-board.png): `tb4-fable-delegate-repro-9776`
+  opens with its own sentence: 4 of 28, all in-sample, 2 of the 4 by a
+  margin under 5%.
+
+Tested by `rule_11_summaries_come_from_the_data_with_their_qualifiers`,
+`the_per_trial_summary_is_computed_not_typed`, and
+`the_top_summary_is_the_strongest_boards_own_sentence` in `view::tests`.

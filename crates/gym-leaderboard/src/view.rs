@@ -26,6 +26,9 @@
 //!    across boards.
 //! 9. A bar is shown with the reference's name and conditions.
 //! 10. The first dollar figure on each screen is labeled list price.
+//! 11. The one-sentence summaries ([`crate::summary`]) are built from the
+//!     board's data with their qualifiers inline, and the list's top
+//!     sentence names the one board it came from.
 //!
 //! A page is one screen's slice, far under the 1 MiB native packet cap
 //! ([`MAX_PAGE_BYTES`]); a whole leaderboard or bundle never crosses the
@@ -39,6 +42,7 @@ use crate::contract::{
     Attempt, Board, Cost, Label, Leaderboard, Miss, StepKind, Tally, TaskKnowledge, TaskRow,
     TaskStatus, Text, TraceBundle, TraceRef,
 };
+use crate::summary::{TopSummary, board_summary, top_summary};
 use crate::{THIN_MARGIN, pct, usd};
 
 /// Trace steps shown per page.
@@ -500,6 +504,10 @@ pub enum Page {
 /// Screen 1: every board, in the publication's order.
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct BoardsPage {
+    /// One board's plain-language summary, shown above the list: the
+    /// board with the strongest evidence behind a beat
+    /// ([`crate::summary::top_summary`]). `None` when no board has one.
+    pub summary: Option<TopSummary>,
     pub rows: Vec<BoardsRow>,
     /// The publication's digest, commit, and freshness.
     pub footer: Option<String>,
@@ -526,6 +534,9 @@ pub struct BoardPage {
     pub title: String,
     pub benchmark: String,
     pub question: String,
+    /// One plain-language sentence built from the board's data, shown at
+    /// the top ([`crate::summary::board_summary`]).
+    pub summary: String,
     /// The board's own headline, verbatim.
     pub headline: String,
     pub headline_note: Option<&'static str>,
@@ -896,6 +907,7 @@ fn boards_page(leaderboard: &Leaderboard, source: Option<&Source>) -> BoardsPage
         })
         .collect();
     BoardsPage {
+        summary: top_summary(leaderboard),
         rows,
         footer: source.map(Source::footer),
     }
@@ -969,6 +981,7 @@ fn board_page(board: &Board, filter: Filter, caveats_open: bool) -> BoardPage {
         title: board.title.clone(),
         benchmark: benchmark(board),
         question: board.question.clone(),
+        summary: board_summary(board),
         headline: board.headline.clone(),
         headline_note: note,
         labels: chips(board.labels.iter().copied()),
