@@ -486,7 +486,20 @@ impl Host {
             )
             .await?,
         );
-        let before = Snapshot::observe(&workspace);
+        // The owner's login environment, for a full-access run, is read
+        // while the workspace is observed: both take a moment, and neither
+        // depends on the other.
+        let observing = {
+            let workspace = workspace.clone();
+            tokio::task::spawn_blocking(move || Snapshot::observe(&workspace))
+        };
+        let login = match configuration.access {
+            Access::Full => Some(login::capture().await),
+            Access::Boundary => None,
+        };
+        let before = observing
+            .await
+            .map_err(|_| Error::InvalidCommand("the workspace could not be observed"))?;
         if !before.is_complete()
             || grant
                 .expected_source_snapshot
@@ -515,10 +528,6 @@ impl Host {
             container.admit(&workspace, &owner.dir).await?;
         }
         let context = checks::Context::capture(&task, &workspace, grant.requirements.as_ref())?;
-        let login = match configuration.access {
-            Access::Full => Some(login::capture().await),
-            Access::Boundary => None,
-        };
         let controller = std::env::current_exe()?.canonicalize()?;
         let controller_digest = digest_bytes(&std::fs::read(&controller)?);
         if configuration
