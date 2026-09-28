@@ -297,6 +297,10 @@ pub struct TurnUsage {
     pub input_tokens: Option<u64>,
     #[serde(default)]
     pub output_tokens: Option<u64>,
+    /// Input tokens read from the provider's cache, when the agent says
+    /// (OpenCode's `cachedReadTokens`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cached_read_tokens: Option<u64>,
 }
 
 /// The `session/prompt` reply.

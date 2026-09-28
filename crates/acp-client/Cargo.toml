@@ -3,7 +3,7 @@ name = "acp-client"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-description = "The Agent Client Protocol as Coder speaks it to a local coding agent: typed frames, one client over an agent's stdio, the agent process in its own group, and the Devin CLI's specifics."
+description = "The Agent Client Protocol as Coder speaks it to a local coding agent: typed frames, one client over an agent's stdio, the agent process in its own group, and the Devin CLI's and OpenCode's specifics."
 publish.workspace = true
 
 [dependencies]
