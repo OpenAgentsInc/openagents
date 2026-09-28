@@ -384,9 +384,17 @@ Implemented now (`cargo test -p gym-leaderboard`):
 | `every_bundle_fits_its_bound_and_matched_no_credential_rule`, `a_beat_bundle_steps_through_jev_the_delegate_and_the_verifier` | Bounds, and a beat's bundle has Jev, the briefing, the delegate's steps on a forward clock, and the verifier. |
 | `generation_is_deterministic`, `the_committed_publication_matches_the_evidence` | Same bytes twice, and the committed files match. |
 
-Each user interface issue adds its own checks: the presentation rules as
-unit tests on the Rust view model, and a capture of each screen on a
-simulator.
+The results panel's view model is
+[`crates/gym-leaderboard/src/view.rs`](../../crates/gym-leaderboard/src/view.rs):
+a `Nav` (boards list, board with a filter, attempt, or trace with a tab,
+a page of 50 steps, and a playhead) and `render`, which returns one
+screen's `Page` with every figure formatted and labeled. Its tests
+(`cargo test -p gym-leaderboard --lib view`) check presentation rules 1 to
+10 one test each (`rule_1_unknown_cost_is_never_zero` through
+`rule_10_first_dollar_figure_is_list_price`) on the committed publication,
+and `every_page_fits_its_slice_bound` renders every board, filter,
+attempt, bundle, tab, and page under 256 KiB, a quarter of the native
+packet cap. Each Grid issue adds a capture of each screen on a simulator.
 
 ## Work breakdown
 

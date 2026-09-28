@@ -24,6 +24,7 @@ pub mod evidence;
 pub mod scrub;
 pub mod tb21_oos;
 pub mod tb4_delegate;
+pub mod view;
 
 use std::path::Path;
 
