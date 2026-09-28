@@ -1344,3 +1344,161 @@ fn a_direct_backward_page_is_large_and_keeps_the_newest_records_that_fit() {
         assert_eq!(pair[0].end_offset, pair[1].offset);
     }
 }
+
+/// A large session's prefix hash is taken onward from remembered marks,
+/// and still equals the hash of every byte before the cursor: through
+/// backward pages, after an append, and after a same-length rewrite, which
+/// drops the marks and refuses the old cursor as before.
+#[test]
+fn marked_prefix_hashes_match_the_whole_prefix_and_a_rewrite_still_refuses() {
+    let fixture = Fixture::new();
+    let line = format!(
+        "{{\"type\":\"event_msg\",\"payload\":{{\"type\":\"agent_message\",\"message\":\"{}\"}}}}\n",
+        "z".repeat(900)
+    );
+    let path = fixture.codex("marked", &line.repeat(2600));
+    let history = fixture.history();
+    let source = first(&history).source_id.unwrap();
+    let whole = fs::read(&path).unwrap();
+    assert!(whole.len() > 2 << 20, "spans several marks");
+
+    let mut end = NEWEST;
+    let mut newest_next = None;
+    for _ in 0..12 {
+        let page = back(&history, &source, end, 16 * 1024);
+        let next = &page.next;
+        assert_eq!(
+            next.prefix_sha256,
+            digest(&whole[..next.offset as usize]),
+            "offset {}",
+            next.offset
+        );
+        newest_next.get_or_insert(page.next.clone());
+        end = page.previous.unwrap();
+        // A backward page's forward cursor reads on from its own offset.
+        let start = page.chunks[0].offset as usize;
+        let from = read(
+            &history,
+            &source,
+            Some(TranscriptCursor {
+                source_id: source.clone(),
+                incarnation: page.incarnation.clone(),
+                offset: start as u64,
+                record_offset: start as u64,
+                record_index: whole[..start].iter().filter(|b| **b == b'\n').count() as u64,
+                prefix_sha256: digest(&whole[..start]),
+            }),
+            64,
+        );
+        assert_eq!(from.chunks[0].offset, start as u64);
+    }
+    let newest_next = newest_next.unwrap();
+
+    // An append continues from the newest cursor.
+    let mut file = OpenOptions::new().append(true).open(&path).unwrap();
+    file.write_all(line.as_bytes()).unwrap();
+    drop(file);
+    let appended = read(&history, &source, Some(newest_next.clone()), MAX_PAGE_BYTES);
+    assert_eq!(appended.chunks.len(), 1);
+    let grown = fs::read(&path).unwrap();
+    assert_eq!(appended.next.prefix_sha256, digest(&grown));
+
+    // The same length, rewritten in place in the middle: the old cursor
+    // refuses and fresh pages hash the new bytes.
+    let mut changed = grown.clone();
+    changed[grown.len() / 2] = b'Z';
+    fs::write(&path, &changed).unwrap();
+    assert_eq!(
+        history.transcript(TranscriptRequest {
+            source_id: source.clone(),
+            cursor: Some(appended.next),
+            max_bytes: 64,
+            end: None,
+        }),
+        Err(Error::SourceChanged)
+    );
+    let page = back(&history, &source, NEWEST, 16 * 1024);
+    assert_eq!(page.next.prefix_sha256, digest(&changed));
+
+    // Shorter than when marked: the marks go and the hash is whole again.
+    changed.truncate(changed.len() - line.len());
+    fs::write(&path, &changed).unwrap();
+    let page = back(&history, &source, NEWEST, 16 * 1024);
+    assert_eq!(page.next.prefix_sha256, digest(&changed));
+}
+
+/// Timing, not correctness: serve the newest page of a large session and
+/// page back twelve times, as the phone's first batch does, through a
+/// fresh `History` per request as the host opens one. Run with
+/// `cargo test -p coder-history --release -- --ignored --nocapture
+/// large_session_timing` (`CODER_HISTORY_TIMING_MB` sets the size).
+#[test]
+#[ignore = "timing benchmark; run explicitly"]
+fn large_session_timing() {
+    use std::time::Instant;
+    let megabytes: usize = std::env::var("CODER_HISTORY_TIMING_MB")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(100);
+    let fixture = Fixture::new();
+    let line = format!(
+        "{{\"type\":\"response_item\",\"payload\":{{\"type\":\"message\",\"role\":\"assistant\",\"content\":[{{\"type\":\"output_text\",\"text\":\"{}\"}}]}}}}\n",
+        "y".repeat(1900)
+    );
+    let path = fixture.codex("timing", "");
+    let mut file = OpenOptions::new().append(true).open(&path).unwrap();
+    let block = line.repeat((1 << 20) / line.len() + 1);
+    let mut written = 0;
+    while written < megabytes << 20 {
+        file.write_all(block.as_bytes()).unwrap();
+        written += block.len();
+    }
+    drop(file);
+    let source = first(&fixture.history()).source_id.unwrap();
+    for (name, limits, max) in [
+        ("relay 16 KiB", Limits::RELAY, 16 * 1024),
+        ("direct 160 KiB", Limits::DIRECT, Limits::DIRECT.page_bytes),
+    ] {
+        let mut end = NEWEST;
+        let mut times = Vec::new();
+        let mut next = None;
+        for _ in 0..13 {
+            let started = Instant::now();
+            let page = fixture
+                .history()
+                .transcript_within(
+                    TranscriptRequest {
+                        source_id: source.clone(),
+                        cursor: None,
+                        max_bytes: max,
+                        end: Some(end),
+                    },
+                    limits,
+                )
+                .unwrap();
+            times.push(started.elapsed());
+            end = page.previous.unwrap();
+            next.get_or_insert(page.next);
+        }
+        let started = Instant::now();
+        fixture
+            .history()
+            .transcript_within(
+                TranscriptRequest {
+                    source_id: source.clone(),
+                    cursor: next,
+                    max_bytes: max,
+                    end: None,
+                },
+                limits,
+            )
+            .unwrap();
+        let forward = started.elapsed();
+        let back: std::time::Duration = times[1..].iter().sum();
+        println!(
+            "{megabytes} MB {name}: newest {:?}, 12 back {back:?}, total {:?}, forward poll {forward:?}",
+            times[0],
+            times[0] + back
+        );
+    }
+}

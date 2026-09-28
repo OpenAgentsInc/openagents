@@ -162,10 +162,19 @@ sensitive regular file or hard link inside an admitted history tree.
 A transcript cursor binds the file incarnation and a SHA-256 digest of every
 previously consumed byte. The host verifies the prefix again before returning a
 page. Replacement, consumed-prefix rewrite, truncation, and forged cursor
-positions fail explicitly. The current implementation streams the prefix again
-for each page rather than maintaining a trusted persistent index. Memory stays
-bounded, but reading a very large conversation takes repeated prefix I/O; a
-cache optimization must preserve these identity checks.
+positions fail explicitly.
+
+To keep pages of a very large conversation fast, the host remembers, for the
+life of the process, the hash state at record boundaries about every 1 MiB of
+each file it has read (at most 64 files, keyed by incarnation), and hashes
+onward from the nearest such mark instead of from byte 0. For an append-only
+file this is exactly the prefix hash. Marks are dropped, and the hash is taken
+from byte 0 again, when the file is shorter than when marked, is the same
+length with a different last-write time, or has different first 4 KiB; the
+bytes from the nearest mark to the cursor are hashed and compared on every
+read. The one change a mark can hide is an in-place rewrite that keeps the
+inode and the first 4 KiB, makes the file longer, and lies more than a mark
+interval before the cursor (see `INVARIANTS.md`).
 
 Opening a root grants local read access only. A caller must separately authorize
 any device or relay disclosure, expiry, revocation, recipients, and encrypted

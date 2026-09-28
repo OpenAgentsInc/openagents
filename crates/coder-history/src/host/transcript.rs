@@ -2,8 +2,11 @@ use super::{History, catalog, confined, digest, encoded_len};
 use crate::*;
 use base64::{Engine, engine::general_purpose::STANDARD};
 use sha2::{Digest, Sha256};
-use std::fs::File;
+use std::collections::{BTreeMap, HashMap};
+use std::fs::{File, Metadata};
 use std::io::{Read, Seek, SeekFrom};
+use std::sync::{LazyLock, Mutex};
+use std::time::SystemTime;
 
 struct Prefix {
     hash: Sha256,
@@ -12,23 +15,163 @@ struct Prefix {
     tail: Vec<u8>,
 }
 
-fn prefix(file: &mut File, through: u64) -> Result<Prefix, Error> {
-    file.seek(SeekFrom::Start(0))
+/// The hash state of a file's bytes up to a record boundary, so a later
+/// read hashes onward from there rather than from byte 0.
+#[derive(Clone)]
+struct Mark {
+    hash: Sha256,
+    record_index: u64,
+}
+
+/// Bytes between marks: hashing onward from the nearest one costs at most
+/// this much before the requested offset.
+const MARK_INTERVAL: u64 = 1024 * 1024;
+/// The most leading bytes kept to recognize a marked file.
+const HEAD_BYTES: u64 = 4096;
+/// Files whose marks are kept, the least recently used leaving first.
+const MARKED_FILES: usize = 64;
+
+/// A file's marks, and the length and last write they were taken under.
+struct Marked {
+    size: u64,
+    modified: Option<SystemTime>,
+    /// The file's first bytes when marked, which a reused inode or a
+    /// rewritten file almost always changes.
+    head: Vec<u8>,
+    marks: BTreeMap<u64, Mark>,
+    used: u64,
+}
+
+#[derive(Default)]
+struct Marks {
+    files: HashMap<String, Marked>,
+    clock: u64,
+}
+
+/// Prefix-hash marks for the life of the process, keyed by file identity
+/// (the incarnation: device, inode, and creation time).
+///
+/// A mark stands for the hash of `0..offset` without reading those bytes
+/// again, which holds while the file only grows by appending, as the
+/// harnesses write their session files. A file that is no longer
+/// append-only is caught as far as its length and last write show it:
+/// shorter than when marked, or the same length with a different last
+/// write, or with different first bytes (a reused inode with no creation
+/// time, or a rewrite), and every mark for it is dropped, so the read hashes from byte 0
+/// as it always did and a changed prefix refuses. A file rewritten in place
+/// and made longer between two reads, without a new inode, is the one case
+/// a mark can hide; the bytes from the nearest mark onward are still hashed
+/// and compared on every read.
+static MARKS: LazyLock<Mutex<Marks>> = LazyLock::new(Mutex::default);
+
+fn marks() -> std::sync::MutexGuard<'static, Marks> {
+    MARKS
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+/// The nearest usable mark at or before `through`, or `None` when the file
+/// has none or has changed in a way appending cannot explain.
+fn nearest_mark(
+    incarnation: &str,
+    meta: &Metadata,
+    head: &[u8],
+    through: u64,
+) -> Option<(u64, Mark)> {
+    let mut marks = marks();
+    marks.clock += 1;
+    let clock = marks.clock;
+    let marked = marks.files.get_mut(incarnation)?;
+    let modified = meta.modified().ok();
+    if meta.len() < marked.size
+        || (meta.len() == marked.size && modified != marked.modified)
+        || !head.starts_with(&marked.head)
+    {
+        marks.files.remove(incarnation);
+        return None;
+    }
+    marked.used = clock;
+    marked
+        .marks
+        .range(..=through)
+        .next_back()
+        .map(|(offset, mark)| (*offset, mark.clone()))
+}
+
+/// Keep `found` for this file, taken while it was as `meta` describes. The
+/// length and last write are those seen before hashing, so a rewrite during
+/// the read shows as a changed last write at the next.
+fn remember(incarnation: &str, meta: &Metadata, head: Vec<u8>, found: Vec<(u64, Mark)>) {
+    let mut marks = marks();
+    marks.clock += 1;
+    let clock = marks.clock;
+    let modified = meta.modified().ok();
+    if !marks.files.contains_key(incarnation) {
+        if found.is_empty() {
+            return;
+        }
+        if marks.files.len() >= MARKED_FILES {
+            let oldest = marks
+                .files
+                .iter()
+                .min_by_key(|(_, marked)| marked.used)
+                .map(|(key, _)| key.clone());
+            if let Some(oldest) = oldest {
+                marks.files.remove(&oldest);
+            }
+        }
+    }
+    let marked = marks
+        .files
+        .entry(incarnation.to_owned())
+        .or_insert_with(|| Marked {
+            size: meta.len(),
+            modified,
+            head: Vec::new(),
+            marks: BTreeMap::new(),
+            used: clock,
+        });
+    marked.size = meta.len();
+    marked.modified = modified;
+    marked.head = head;
+    marked.used = clock;
+    marked.marks.extend(found);
+}
+
+/// The hash, record count, and unfinished record of `0..through`, hashing
+/// only onward from the file's nearest mark, and keeping the marks passed.
+fn prefix(
+    file: &mut File,
+    incarnation: &str,
+    meta: &Metadata,
+    through: u64,
+) -> Result<Prefix, Error> {
+    let head = read_at(file, 0, meta.len().min(HEAD_BYTES))?;
+    let (start, mark) = nearest_mark(incarnation, meta, &head, through).unwrap_or((
+        0,
+        Mark {
+            hash: Sha256::new(),
+            record_index: 0,
+        },
+    ));
+    file.seek(SeekFrom::Start(start))
         .map_err(|_| Error::SourceUnreadable)?;
     let mut out = Prefix {
-        hash: Sha256::new(),
-        record_offset: 0,
-        record_index: 0,
+        hash: mark.hash,
+        record_offset: start,
+        record_index: mark.record_index,
         tail: Vec::new(),
     };
-    let mut position = 0;
-    let mut buffer = [0u8; 64 * 1024];
+    let mut found = Vec::new();
+    let mut last_mark = start;
+    let mut position = start;
+    let mut buffer = vec![0u8; 256 * 1024];
     while position < through {
         let count = usize::try_from((through - position).min(buffer.len() as u64))
             .map_err(|_| Error::ResourceLimit)?;
         file.read_exact(&mut buffer[..count])
             .map_err(|_| Error::SourceChanged)?;
-        out.hash.update(&buffer[..count]);
+        let mut hashed = 0;
         let mut chunk_end = position;
         for chunk in buffer[..count].split_inclusive(|b| *b == b'\n') {
             chunk_end += chunk.len() as u64;
@@ -41,10 +184,25 @@ fn prefix(file: &mut File, through: u64) -> Result<Prefix, Error> {
                 out.record_offset = chunk_end;
                 out.record_index += 1;
                 out.tail.clear();
+                if chunk_end - last_mark >= MARK_INTERVAL {
+                    let upto = (chunk_end - position) as usize;
+                    out.hash.update(&buffer[hashed..upto]);
+                    hashed = upto;
+                    found.push((
+                        chunk_end,
+                        Mark {
+                            hash: out.hash.clone(),
+                            record_index: out.record_index,
+                        },
+                    ));
+                    last_mark = chunk_end;
+                }
             }
         }
+        out.hash.update(&buffer[hashed..count]);
         position += count as u64;
     }
+    remember(incarnation, meta, head, found);
     Ok(out)
 }
 
@@ -95,7 +253,7 @@ pub(super) fn page(
         let (mut start, end) =
             backward_window(&mut file, meta.len(), end, request.max_bytes, limits.chunks)?;
         loop {
-            let progress = prefix(&mut file, start)?;
+            let progress = prefix(&mut file, &incarnation, &meta, start)?;
             match read_range(
                 root,
                 &source,
@@ -131,7 +289,7 @@ pub(super) fn page(
     {
         return Err(Error::SourceChanged);
     }
-    let progress = prefix(&mut file, cursor.offset)?;
+    let progress = prefix(&mut file, &incarnation, &meta, cursor.offset)?;
     if cursor.record_offset != progress.record_offset
         || cursor.record_index != progress.record_index
         || cursor.prefix_sha256 != hash_string(&progress.hash)
@@ -347,7 +505,7 @@ fn read_range(
     if confined::incarnation(&current_meta) != incarnation || current_meta.len() < position {
         return Err(Error::SourceChanged);
     }
-    let verified = prefix(&mut current, position)?;
+    let verified = prefix(&mut current, &incarnation, &current_meta, position)?;
     if hash_string(&verified.hash) != hash_string(&progress.hash) {
         return Err(Error::SourceChanged);
     }
