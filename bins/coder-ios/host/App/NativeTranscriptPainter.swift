@@ -206,7 +206,7 @@ final class NativeTranscriptLayout: @unchecked Sendable {
                 }
                 if let reply = Self.take(reply) {
                     summary = try? JSONDecoder().decode(Summary.self, from: reply)
-                    #if DEBUG || targetEnvironment(simulator)
+                    #if DEBUG || targetEnvironment(simulator) || RUST_NATIVE_BENCH
                     if summary == nil {
                         print("transcript layout refused an update: \(String(decoding: reply, as: UTF8.self))")
                     }
@@ -1302,7 +1302,7 @@ final class NativeTranscriptView: UIScrollView, UIScrollViewDelegate, UIGestureR
     private var buttonShown = false
     private let fallback = UILabel()
     fileprivate(set) var stats = NativeTranscriptStats()
-    #if DEBUG || targetEnvironment(simulator)
+    #if DEBUG || targetEnvironment(simulator) || RUST_NATIVE_BENCH
     private var bench: NativeTranscriptBench?
     private var prependChecked = false
     private var selectedOnce = false
@@ -1469,7 +1469,7 @@ final class NativeTranscriptView: UIScrollView, UIScrollViewDelegate, UIGestureR
             if let summary = result.summary, let frame = result.frame {
                 self.present(frame, epoch: requestEpoch)
                 self.stats.record(update: summary, encode: result.encode, total: result.total, rows: rows.count)
-                #if DEBUG || targetEnvironment(simulator)
+                #if DEBUG || targetEnvironment(simulator) || RUST_NATIVE_BENCH
                 if self.bench == nil, summary.count > 0, NativeTranscriptBench.requested {
                     self.bench = NativeTranscriptBench(view: self)
                 }
@@ -1610,7 +1610,7 @@ final class NativeTranscriptView: UIScrollView, UIScrollViewDelegate, UIGestureR
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
                            shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool { true }
 
-    #if DEBUG || targetEnvironment(simulator)
+    #if DEBUG || targetEnvironment(simulator) || RUST_NATIVE_BENCH
     /// The first visible row's key and its distance from the top of the
     /// screen, for the scripted prepend check.
     func debugAnchor() -> (key: String, offset: CGFloat)? {
@@ -1724,7 +1724,7 @@ final class NativeTranscriptView: UIScrollView, UIScrollViewDelegate, UIGestureR
     }
 }
 
-#if DEBUG || targetEnvironment(simulator)
+#if DEBUG || targetEnvironment(simulator) || RUST_NATIVE_BENCH
 /// A scripted fling benchmark: after the transcript settles, scroll up for
 /// four seconds and back down at a fixed speed on the display link, then
 /// print frame times. A
@@ -1857,7 +1857,7 @@ struct NativeTranscriptStats {
         lastUpdate = update
         worstUpdate = max(worstUpdate, total)
         worstEncode = max(worstEncode, encode)
-        #if DEBUG || targetEnvironment(simulator)
+        #if DEBUG || targetEnvironment(simulator) || RUST_NATIVE_BENCH
         if NativeTranscriptStats.logging {
             print(String(format: "transcript update: %d rows sent, %d rows, %d relaid, %d measured, rust %.2f ms, total %.2f ms",
                          rows, update.count, update.relaid, update.measured, Double(update.micros) / 1000, total * 1000))

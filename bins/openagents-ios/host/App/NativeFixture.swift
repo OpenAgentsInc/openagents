@@ -11,7 +11,7 @@ import SwiftUI
 
 enum NativeFixture {
     static var requested: Bool {
-        #if DEBUG || targetEnvironment(simulator)
+        #if DEBUG || targetEnvironment(simulator) || RUST_NATIVE_BENCH
         return ProcessInfo.processInfo.arguments.contains("--rust-native-fixture")
         #else
         return false

@@ -4,10 +4,22 @@
 #   bins/openagents-ios/build.sh sim       build, install, and launch on a simulator
 #   bins/openagents-ios/build.sh archive   signed App Store archive; does not upload
 #   bins/openagents-ios/build.sh upload    upload the archive to TestFlight
+#   bins/openagents-ios/build.sh bench     transcript benchmark build on a device
 #
 # OPENAGENTS_IOS_DEVICE names the simulator (default: booted).
 # OPENAGENTS_IOS_BUILD_NUMBER overrides the checked-in build number.
 # upload reads ASC_API_KEY_ID, ASC_API_ISSUER_ID, and ASC_API_PRIVATE_KEY_PATH.
+# bench builds optimized Rust and a development-signed app with the
+# transcript fixture and benchmarks compiled in (RUST_NATIVE_BENCH), under its
+# own bundle ID (com.openagents.app.bench) so it never replaces the installed
+# app, and installs it on OPENAGENTS_IOS_DEVICE_ID (from `xcrun devicectl list
+# devices`). Launch it on the unlocked phone with the fixture arguments, for
+# example:
+#   xcrun devicectl device process launch --device ID --console \
+#     com.openagents.app.bench --rust-native-fixture \
+#     --rust-native-fixture-rows 3000 --rust-native-transcript-bench
+# Remove it afterward with `xcrun devicectl device uninstall app --device ID
+# com.openagents.app.bench`.
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -22,6 +34,9 @@ archive="$output/OpenAgents.xcarchive"
 
 case "$command" in
   sim) triple=aarch64-apple-ios-sim; profile=debug; destination='generic/platform=iOS Simulator' ;;
+  bench)
+    [[ -n "${OPENAGENTS_IOS_DEVICE_ID:-}" ]] || { echo "OPENAGENTS_IOS_DEVICE_ID is not set." >&2; exit 64; }
+    triple=aarch64-apple-ios; profile=release; destination='generic/platform=iOS' ;;
   archive) triple=aarch64-apple-ios; profile=release; destination='generic/platform=iOS' ;;
   upload)
     [[ -d "$archive" ]] || { echo "No archive; run archive first." >&2; exit 1; }
@@ -33,7 +48,7 @@ case "$command" in
       -authenticationKeyPath "$ASC_API_PRIVATE_KEY_PATH" \
       -authenticationKeyID "$ASC_API_KEY_ID" -authenticationKeyIssuerID "$ASC_API_ISSUER_ID"
     exit ;;
-  *) echo "usage: bins/openagents-ios/build.sh sim|archive|upload" >&2; exit 64 ;;
+  *) echo "usage: bins/openagents-ios/build.sh sim|archive|upload|bench" >&2; exit 64 ;;
 esac
 
 # openagents-mobile is its own Cargo workspace (see its Cargo.toml).
@@ -49,7 +64,13 @@ if [[ -n "${OPENAGENTS_IOS_BUILD_NUMBER:-}" ]]; then
   args+=("CURRENT_PROJECT_VERSION=$OPENAGENTS_IOS_BUILD_NUMBER")
 fi
 
-if [[ "$command" == sim ]]; then
+if [[ "$command" == bench ]]; then
+  xcodebuild "${args[@]}" PRODUCT_BUNDLE_IDENTIFIER=com.openagents.app.bench CODE_SIGN_STYLE=Automatic \
+    "CODE_SIGN_IDENTITY=Apple Development" PROVISIONING_PROFILE_SPECIFIER= \
+    'SWIFT_ACTIVE_COMPILATION_CONDITIONS=$(inherited) RUST_NATIVE_BENCH' -allowProvisioningUpdates build
+  xcrun devicectl device install app --device "$OPENAGENTS_IOS_DEVICE_ID" \
+    "$output/DerivedData/Build/Products/Release-iphoneos/OpenAgents.app"
+elif [[ "$command" == sim ]]; then
   xcodebuild "${args[@]}" CODE_SIGN_IDENTITY=- PROVISIONING_PROFILE_SPECIFIER= build
   app="$output/DerivedData/Build/Products/Release-iphonesimulator/OpenAgents.app"
   xcrun simctl install "$device" "$app"
