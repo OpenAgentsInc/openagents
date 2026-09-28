@@ -288,7 +288,7 @@ struct VerseTab: View {
                 path.addLine(to: CGPoint(x: min(max(anchor.x, left + 20), left + width - 20), y: bounds.minY))
             }.stroke(.white.opacity(0.6), lineWidth: 2).allowsHitTesting(false)
             panel()
-                .frame(width: width, height: bounds.height)
+                .frame(width: width, height: bounds.height, alignment: .top)
                 .position(x: left + width / 2, y: bounds.minY + bounds.height / 2)
         }
         .frame(width: size.width, height: size.height)

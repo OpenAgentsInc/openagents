@@ -195,6 +195,12 @@ impl Nav {
         self.trace.playing
     }
 
+    /// The trace viewer's current row, an index into [`row_times`].
+    #[must_use]
+    pub fn current_row(&self) -> usize {
+        self.trace.step
+    }
+
     /// Opens a board from the list. Its filter and caveats start closed.
     pub fn select_board(&mut self, leaderboard: &Leaderboard, id: &str) -> Result<(), String> {
         find_board(leaderboard, id)?;
@@ -1340,6 +1346,30 @@ impl Clock {
     fn step_at(&self, ms: f64) -> usize {
         self.rows.partition_point(|&at| at <= ms).saturating_sub(1)
     }
+}
+
+/// One row of a trace on the viewer's clock: its index in `bundle.steps`
+/// and its time in milliseconds. A replay reads the same rows, so the
+/// viewer's step `n` and the replay's visit `n` are one step at one time.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct RowTime {
+    pub step: usize,
+    pub at_ms: u64,
+}
+
+/// The trace's rows (every step but usage) on the viewer's clock, in the
+/// viewer's order.
+#[must_use]
+pub fn row_times(bundle: &TraceBundle) -> Vec<RowTime> {
+    let clock = Clock::of(bundle);
+    rows(bundle)
+        .into_iter()
+        .zip(clock.rows)
+        .map(|(step, at)| RowTime {
+            step,
+            at_ms: at as u64,
+        })
+        .collect()
 }
 
 /// The indices in `bundle.steps` of the trace's rows.

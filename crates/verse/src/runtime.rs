@@ -114,6 +114,9 @@ pub struct WorldRuntime {
     /// Other players' avatars where they are drawn, feet positions. The
     /// player cannot walk through them.
     avatars: Vec<Vec3>,
+    /// A published trace's ghost in the Grid's Gym, where the results
+    /// panel's replay puts it; drawn only in the bare world.
+    pub trace_ghost: Option<Vec3>,
 }
 
 impl Default for WorldRuntime {
@@ -142,6 +145,7 @@ impl WorldRuntime {
             bare: false,
             ball: None,
             avatars: Vec::new(),
+            trace_ghost: None,
         }
     }
 
@@ -936,6 +940,9 @@ impl WorldRuntime {
             ));
             display.neutralize();
             player.extend(&display);
+            if let Some(at) = self.trace_ghost {
+                player.extend(&crate::gym_replay::ghost_mesh(at));
+            }
             return player;
         }
         if self.bare {

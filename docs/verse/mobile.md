@@ -160,7 +160,10 @@ Coder's plaza Gym is unchanged and amber.
   board (or VoiceOver's **Open results board**) opens the white-on-black
   results panel: the boards list, a board, an attempt, and its trace (a
   scrubber with play, pause, and step over Jev, the briefing, the agent's
-  steps, and the verifier), each drawn from Rust's view model. `--verse-script walk,walk,walk,right,wait,results`
+  steps, and the verifier), each drawn from Rust's view model. An open
+  trace also plays as a ghost moving between stations under the RESULTS
+  board (workbench, oracle, library, proving ground), in step with the
+  viewer. `--verse-script walk,walk,walk,right,wait,results`
   opens it in the preview, and `r=board:<id>`, `r=attempt:<id>`, and the
   other `r=` steps choose in it. A host without the panel (Android, for
   now) shows the lettering but no tap cue, and loads nothing.

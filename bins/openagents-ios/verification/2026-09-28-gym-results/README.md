@@ -48,3 +48,20 @@ Opened from an attempt with `r=trace`, then `r=tab:<tab>` (and `r=seek`,
 published bundle through the panel, verified against its `TraceRef` and
 cached, and renders each tab under 256 KiB. A frame packet carries only the
 panel's revision, and playback bumps it only when the current row changes.
+
+## Replay in the Gym
+
+With `--trace-watch` (only the timeline shows) and `zoom` before `results`:
+
+- [`replay-workbench.png`](replay-workbench.png): `coq-block-bound.p2` at
+  step 17 of 33 (a command result): the ghost at the workbench, first in
+  the row of stations under the RESULTS board, and the panel says so.
+- [`replay-proving-ground.png`](replay-proving-ground.png): at the end,
+  after the delegate's own end: the ghost at the proving ground, where the
+  verifier grades.
+
+`gym_replay::tests::the_replay_and_the_viewer_agree_on_every_step_and_time`
+steps the viewer through every row of that bundle and checks the replay's
+visit has the same row and time, and
+`bare_results_tests::an_open_trace_plays_as_a_ghost_in_the_gym_and_closing_removes_it`
+drives it through the Grid's scene.

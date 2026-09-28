@@ -13,6 +13,8 @@ struct ResultsView: Decodable {
     let loading: Bool
     let status: String
     let error: String?
+    /// Where the open trace's replay ghost stands in the Gym.
+    let replay: String?
     let can_back: Bool
     let page: ResultsPage?
 }
@@ -156,7 +158,7 @@ struct VerseResultsPanel: View {
                 case .boards(let page)?: ScrollView { boards(page) }
                 case .board(let page)?: ScrollView { board(page) }
                 case .attempt(let page)?: ScrollView { attempt(page) }
-                case .trace(let page)?: VerseTraceViewer(world: world, page: page)
+                case .trace(let page)?: VerseTraceViewer(world: world, page: page, replay: view.replay)
                 case .unknown?: Text("This screen needs a newer app.")
                 case nil:
                     if view.loading { ProgressView(view.status).accessibilityIdentifier("results-loading") }

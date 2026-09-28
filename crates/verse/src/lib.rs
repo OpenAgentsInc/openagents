@@ -25,6 +25,7 @@ pub mod edr;
 pub mod feed;
 pub(crate) mod gles;
 pub mod gym;
+pub mod gym_replay;
 pub mod gym_results;
 pub mod hud;
 pub mod identity;

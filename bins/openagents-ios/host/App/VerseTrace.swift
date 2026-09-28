@@ -87,12 +87,46 @@ struct ResultsTracePage: Decodable {
 struct VerseTraceViewer: View {
     @ObservedObject var world: VerseWorld
     let page: ResultsTracePage
+    /// Where the replay's ghost stands in the Gym, from Rust.
+    let replay: String?
     @State private var scrub: Double?
+    /// Only the timeline shows, so the replay in the Gym is in view.
+    @State private var watching = Self.watchAtLaunch
+
+    /// Simulator and debug builds take `--trace-watch` to start with only
+    /// the timeline, for captures of the replay.
+    private static var watchAtLaunch: Bool {
+        #if DEBUG || targetEnvironment(simulator)
+        ProcessInfo.processInfo.arguments.contains("--trace-watch")
+        #else
+        false
+        #endif
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            ResultsHeaderView(header: page.header)
+            if watching {
+                Text("\(page.header.task) · \(page.header.result) · \(page.header.beat)").font(.subheadline.bold())
+            } else {
+                ResultsHeaderView(header: page.header)
+            }
             timeline
+            HStack {
+                if let replay { Text(replay).font(.caption).accessibilityIdentifier("trace-replay") }
+                Spacer()
+                Button(watching ? "Show the trace" : "Watch in the Gym",
+                       systemImage: watching ? "rectangle.expand.vertical" : "figure.walk") {
+                    watching.toggle()
+                }
+                .font(.caption)
+                .accessibilityIdentifier("trace-watch")
+            }
+            if !watching { tabs }
+        }
+    }
+
+    @ViewBuilder private var tabs: some View {
+        VStack(alignment: .leading, spacing: 8) {
             Picker("Tab", selection: Binding(get: { page.tab }, set: { world.results(["do": "tab", "tab": $0]) })) {
                 ForEach(page.tabs, id: \.self) { tab in
                     Text(tab.text).tag(tab.tab)

@@ -3,7 +3,7 @@
 Specified September 28, 2026. Status: the data contract and generator are
 implemented in [`crates/gym-leaderboard`](../../crates/gym-leaderboard/), and
 the OpenAgents app's Grid has the **RESULTS** board with its boards list,
-board, and attempt screens and the trace viewer on iOS
+board, and attempt screens, the trace viewer, and its replay on iOS
 ([captures](../../bins/openagents-ios/verification/2026-09-28-gym-results/)).
 
 The Gym building shows live run observations from a host the player
@@ -352,10 +352,18 @@ against a mirror.
    The header always shows the task, pass or fail, beat or not, cost (or
    "unknown"), time against the bar, and the labels.
 
-A later step, not part of the first viewer, plays a bundle in the world as a
-replay, using the landmark mapping in [Run replays](README.md#run-replays):
-commands at the workbench, the Jev decision at the oracle, the verifier at
-the proving ground.
+An open trace also plays in the world as a replay
+([`crates/verse/src/gym_replay.rs`](../../crates/verse/src/gym_replay.rs)),
+with the landmark mapping in [Run replays](README.md#run-replays): the
+agent's commands and words at the workbench, the Jev decision at the
+oracle, retrieval at the library, and tests and the verifier at the
+proving ground. In the Grid the places are stations in a row under the
+**RESULTS** board, and a ghost glides to the station of the viewer's
+current row; the panel names the place, and **Watch in the Gym** shrinks
+the panel to its timeline. The replay reads the viewer's rows on the
+viewer's clock (`view::row_times`), so its visit `n` is the viewer's step
+`n` at the same time. The ghost of the reference's cheapest win isn't
+drawn: the bundles don't carry the reference's transcript.
 
 ### Mobile limits
 

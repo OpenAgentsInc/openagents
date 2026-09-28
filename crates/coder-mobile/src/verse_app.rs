@@ -1586,6 +1586,19 @@ impl Scene {
         if self.results_open {
             self.results.tick(f64::from(dt));
         }
+        // An open trace plays in the Gym: its ghost glides to the station
+        // of the viewer's current row.
+        let target = self
+            .results_open
+            .then(|| self.results.replay_place())
+            .flatten()
+            .zip(self.world.gym_site())
+            .map(|(place, site)| verse::gym_replay::ghost_at(site, place));
+        self.world.trace_ghost = target.map(|target| {
+            self.world
+                .trace_ghost
+                .map_or(target, |at| at + (target - at) * (dt * 4.0).min(1.0))
+        });
         let now = Instant::now();
         if let Some(session) = &mut self.session
             && self.world.is_bare()

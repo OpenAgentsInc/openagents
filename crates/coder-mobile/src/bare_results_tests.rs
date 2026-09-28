@@ -236,3 +236,54 @@ fn the_native_json_path_carries_the_results_screens_under_the_packet_cap() {
     assert_eq!(live["results_open"], false);
     assert!(live["gym"]["inside"].as_bool().unwrap());
 }
+
+#[test]
+fn an_open_trace_plays_as_a_ghost_in_the_gym_and_closing_removes_it() {
+    let mut scene = scene(true);
+    scene.activate(true).unwrap();
+    stand_before_results(&mut scene);
+    scene.update(1.0).unwrap();
+    let mut t = settle(&mut scene, 1.0, |s| !s.results.view().loading);
+    scene.action(Request::InteractResults).unwrap();
+    for command in [
+        verse::gym_results::Action::Board {
+            id: "tb4-fable-delegate-repro-9776".into(),
+        },
+        verse::gym_results::Action::Attempt {
+            id: "coq-block-bound.p2".into(),
+        },
+        verse::gym_results::Action::Trace,
+    ] {
+        scene.action(Request::Results { command }).unwrap();
+    }
+    t = settle(&mut scene, t, |s| s.results.open_trace().is_some());
+    scene.update(t + 0.1).unwrap();
+    let site = scene.world.gym_site().unwrap();
+    let ghost = scene
+        .world
+        .trace_ghost
+        .expect("the ghost stands in the Gym");
+    assert!(site.inside(ghost));
+    assert!(
+        scene
+            .results
+            .view()
+            .replay
+            .unwrap()
+            .contains("the replay is at")
+    );
+    // Stepping to the end moves the ghost to the verifier's station.
+    scene
+        .action(Request::Results {
+            command: verse::gym_results::Action::Seek { fraction: 1.0 },
+        })
+        .unwrap();
+    for frame in 1..=120 {
+        scene.update(t + 0.1 + f64::from(frame) / 60.0).unwrap();
+    }
+    let end = verse::gym_replay::ghost_at(site, verse::replay::Place::ProvingGround);
+    assert!(scene.world.trace_ghost.unwrap().distance(end) < 0.1);
+    scene.action(Request::CloseResults).unwrap();
+    scene.update(t + 3.0).unwrap();
+    assert!(scene.world.trace_ghost.is_none());
+}

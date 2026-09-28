@@ -92,6 +92,8 @@ pub struct ResultsView {
     pub loading: bool,
     pub status: String,
     pub error: Option<String>,
+    /// Where the open trace's replay ghost stands in the Gym, in words.
+    pub replay: Option<String>,
     /// The player is past the boards list, so Back applies (also while an
     /// opened trace is still loading and there's no page yet).
     pub can_back: bool,
@@ -109,6 +111,8 @@ pub struct Results {
     leaderboard: Option<Arc<Leaderboard>>,
     source: Option<Source>,
     bundle: Option<Arc<TraceBundle>>,
+    /// The open bundle as a replay in the Gym.
+    replay: Option<crate::gym_replay::TraceReplay>,
     /// The bundle the open trace needs.
     wanted: Option<TraceRef>,
     nav: Nav,
@@ -128,6 +132,7 @@ impl Results {
             leaderboard: None,
             source: None,
             bundle: None,
+            replay: None,
             wanted: None,
             nav: Nav::default(),
             error: None,
@@ -231,6 +236,7 @@ impl Results {
                     return;
                 }
                 self.fetching = None;
+                self.replay = Some(crate::gym_replay::TraceReplay::of(&bundle));
                 self.bundle = Some(bundle);
                 self.error = None;
             }
@@ -370,6 +376,16 @@ impl Results {
         self.bundle.as_deref()
     }
 
+    /// Where the open trace's ghost stands for the viewer's current row.
+    #[must_use]
+    pub fn replay_place(&self) -> Option<crate::replay::Place> {
+        self.open_trace()?;
+        self.replay
+            .as_ref()?
+            .visit(self.nav.current_row())
+            .map(|v| v.place)
+    }
+
     fn loading(&self) -> bool {
         self.refresh.is_some() || self.fetching.is_some()
     }
@@ -401,6 +417,9 @@ impl Results {
             loading,
             status,
             error: self.error.clone(),
+            replay: self
+                .replay_place()
+                .map(|p| format!("In the Gym, the replay is at the {}", p.name())),
             can_back: self.nav.board().is_some(),
             page,
         }
