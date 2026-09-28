@@ -1359,9 +1359,9 @@ impl Scene {
         if let Some(session) = &mut self.session
             && self.world.is_bare()
         {
-            // Presence alone: the bare world's session has no agent to scan
-            // or greet with.
-            session.tick(now, &self.world.player, &self.world.agent);
+            // Presence and the shared ball and blocks: the bare world's
+            // session has no agent to scan or greet with.
+            session.tick_world(now, &mut self.world);
         } else if let Some(session) = &mut self.session {
             session.tick(now, &self.world.player, &self.world.agent);
             if self.world.agent.take_scan() {
@@ -2285,6 +2285,9 @@ impl Scene {
     }
 }
 
+#[cfg(test)]
+#[path = "bare_bodies_tests.rs"]
+mod bare_bodies_tests;
 #[cfg(test)]
 #[path = "bare_presence_tests.rs"]
 mod bare_presence_tests;

@@ -8,7 +8,7 @@ use verse::controller::PlayerController;
 use verse::session::{BARE_WORLD, Session, Status};
 
 #[path = "../../verse/tests/support/loopback_relay.rs"]
-mod loopback_relay;
+pub(super) mod loopback_relay;
 
 fn bare_scene(relay: &str) -> Scene {
     let mut scene = Scene::new(Config {

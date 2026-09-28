@@ -38,6 +38,7 @@ pub mod render;
 pub mod replay;
 pub mod runtime;
 pub mod session;
+pub mod shared;
 pub mod ui;
 pub mod world;
 #[cfg(feature = "xp-host")]

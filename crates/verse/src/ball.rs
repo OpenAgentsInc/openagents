@@ -14,6 +14,11 @@
 //! drawn with physical materials under a studio [`Key`] light: a lacquered
 //! octant pattern, so its rotation reads. Nothing is drawn on the floor
 //! under it: the grid's lines alone ground it.
+//!
+//! The ball and the blocks stand at fixed places in the world, and every
+//! player in it shares one arrangement: [`Shared`]
+//! decides who moves each body and records where it came to rest, and the
+//! session carries that over NIP-MV.
 
 use std::sync::OnceLock;
 use std::time::Duration;
@@ -23,7 +28,9 @@ use physics::{Body, BodyId, BodyKind, Collider, FixedStep, Material, Shape, Unif
 
 use crate::controller::{PlayerController, RADIUS as PLAYER_RADIUS};
 use crate::mesh::Mesh;
+use crate::mv::{EntityPose, State};
 use crate::pbr::{Key, LitVertex, Material as Surface};
+use crate::shared::{Pose, Shared};
 
 /// Fixed step length, s: Lagrange 1's `PHYSICS_DT`.
 pub const DT: f64 = 1.0 / 120.0;
@@ -78,10 +85,10 @@ pub struct Ball {
     blocks: crate::blocks::Blocks,
     player: BodyId,
     ground: BodyId,
-    /// Where the ball rests when reset.
-    start: DVec3,
     /// The frame the ball and blocks were laid out in.
     layout: crate::blocks::Layout,
+    /// Who moves each body, and where each last came to rest.
+    shared: Shared,
     /// Wall-clock time of the last frame's steps.
     pub step_time: Duration,
     /// Steps the last frame ran.
@@ -147,6 +154,20 @@ impl Ball {
         );
         let layout = crate::blocks::Layout::new(crate::world::SPAWN.as_dvec3(), DVec3::Z);
         let blocks = crate::blocks::Blocks::new(&mut world, &layout);
+        let pose = |pos, orientation| Pose { pos, orientation };
+        let mut bodies = vec![("ball".to_owned(), ball, pose(START, DQuat::IDENTITY))];
+        let (mut cubes, mut dominoes) = (0, 0);
+        for (id, pos, orientation) in blocks.homes() {
+            let name = if blocks.cubes().contains(&id) {
+                cubes += 1;
+                format!("cube-{}", cubes - 1)
+            } else {
+                dominoes += 1;
+                format!("domino-{}", dominoes - 1)
+            };
+            bodies.push((name, id, pose(pos, orientation)));
+        }
+        let shared = Shared::new(bodies);
         let spawn = capsule_center(crate::world::SPAWN);
         let player = world.add(Body::new(1.0, DVec3::ONE, spawn).with_kind(BodyKind::Kinematic));
         let r = f64::from(PLAYER_RADIUS);
@@ -176,8 +197,8 @@ impl Ball {
             blocks,
             player,
             ground,
-            start: START,
             layout,
+            shared,
             step_time: Duration::ZERO,
             steps: 0,
         }
@@ -199,8 +220,9 @@ impl Ball {
         &mut self.world
     }
 
-    /// The frame the ball and the blocks were laid out in: the spawn's
-    /// forward axis and its side axis, shifted inside the world's walls.
+    /// The frame the ball and the blocks are laid out in: the world spawn's
+    /// forward axis and its side axis. It is fixed, like the arrangement
+    /// every player shares.
     #[must_use]
     pub fn layout(&self) -> crate::blocks::Layout {
         self.layout
@@ -218,11 +240,85 @@ impl Ball {
         &self.world
     }
 
+    /// Who moves each body, and where each last came to rest.
+    #[must_use]
+    pub fn shared(&self) -> &Shared {
+        &self.shared
+    }
+
+    /// The simulated pose of shared body `id`.
+    #[must_use]
+    pub fn body_pose(&self, id: &str) -> Option<(DVec3, DQuat)> {
+        let index = self.shared.ids().position(|name| name == id)?;
+        let body = match index {
+            0 => self.ball,
+            n => *self
+                .blocks
+                .cubes()
+                .iter()
+                .chain(self.blocks.dominoes())
+                .nth(n - 1)?,
+        };
+        Some((self.world[body].pos, self.world[body].orientation))
+    }
+
+    /// Names this client in the shared world, by public key.
+    pub fn join(&mut self, me: &str) {
+        self.shared.join(me);
+    }
+
+    /// Applies another client's report of one shared body.
+    pub fn receive(&mut self, from: &str, pose: &EntityPose, t: u64) {
+        self.shared.receive(&mut self.world, from, pose, t);
+    }
+
+    /// Applies a client's snapshot of the shared bodies' rest poses.
+    pub fn receive_snapshot(&mut self, from: &str, state: &State) {
+        self.shared.receive_snapshot(&mut self.world, from, state);
+    }
+
+    /// Whether this client has body reports to send.
+    #[must_use]
+    pub fn has_outgoing(&self) -> bool {
+        self.shared.has_outgoing(&self.world)
+    }
+
+    /// Up to `max` body reports for the next pose frame.
+    pub fn frame_entries(&mut self, max: usize) -> Vec<EntityPose> {
+        self.shared.frame_entries(&self.world, max)
+    }
+
+    /// The rest-pose snapshot to publish, if a rest pose changed.
+    #[must_use]
+    pub fn snapshot(&self, t: u64) -> Option<State> {
+        self.shared.snapshot(t)
+    }
+
+    /// Whether the pending snapshot records a reset.
+    #[must_use]
+    pub fn snapshot_urgent(&self) -> bool {
+        self.shared.urgent()
+    }
+
+    /// Records that the snapshot went out.
+    pub fn snapshot_sent(&mut self) {
+        self.shared.snapshot_sent();
+    }
+
+    /// Returns the ball and every block home, for everyone in the world.
+    pub fn press_reset(&mut self) {
+        self.shared.reset(&mut self.world);
+    }
+
     /// The ball's pose between its last two steps, for drawing.
     #[must_use]
     pub fn pose(&self) -> (Vec3, Quat) {
         let (pos, orientation) = self.body().interpolated(self.clock.alpha());
-        (pos.as_vec3(), orientation.as_quat())
+        let (shift, turn) = self.shared.offset(self.ball);
+        (
+            (pos + shift).as_vec3(),
+            (turn * orientation).normalize().as_quat(),
+        )
     }
 
     /// Advances the ball by `dt` seconds of frame time. The player moved from
@@ -255,10 +351,12 @@ impl Ball {
             body.vel = DVec3::ZERO;
         }
         self.steps = self.clock.advance(dt);
+        self.shared.advance(dt);
         let gravity = Uniform(DVec3::new(0.0, -G, 0.0));
         for _ in 0..self.steps {
             self.apply_resistance();
             self.world.step(&gravity);
+            self.shared.observe(&self.world, self.player);
         }
         self.world[self.player].vel = DVec3::ZERO;
         let body = self.world[self.ball];
@@ -272,34 +370,13 @@ impl Ball {
 
     /// Puts the ball back at rest where it started.
     pub fn reset(&mut self) {
-        let start = self.start;
-        self.place(start);
+        self.place(START);
     }
 
-    /// Puts the ball at rest in front of a player standing at `feet` and
-    /// facing `yaw`, as far ahead as [`START`] is from the world's spawn.
-    /// Later resets return it there.
-    pub fn place_ahead(&mut self, feet: Vec3, yaw: f32) {
-        let half = f64::from(crate::world::HALF) - RADIUS - 1.0;
-        let feet_at = feet.as_dvec3();
-        let forward = crate::controller::forward(yaw).as_dvec3();
-        let clamp = |p: DVec3| DVec3::new(p.x.clamp(-half, half), RADIUS, p.z.clamp(-half, half));
-        let mut start = clamp(feet_at + forward * AHEAD);
-        // Facing the world's edge, the ball goes behind instead.
-        let clear = RADIUS + f64::from(PLAYER_RADIUS) + 1.0;
-        if DVec3::new(start.x - feet_at.x, 0.0, start.z - feet_at.z).length() < clear {
-            start = clamp(feet_at - forward * AHEAD);
-        }
-        self.start = start;
-        self.place(start);
-        // The blocks stand beyond the ball, in the direction it was placed.
-        let layout = crate::blocks::Layout::new(feet_at, start - feet_at);
-        let layout = crate::blocks::Layout {
-            origin: layout.origin + inside(&layout),
-            ..layout
-        };
-        self.blocks.place(&mut self.world, &layout);
-        self.layout = layout;
+    /// Moves the player's capsule to a player standing at `feet`, without
+    /// sweeping the way there. The ball and the blocks stay where they are:
+    /// everyone in the world shares their arrangement.
+    pub fn place_player(&mut self, feet: Vec3) {
         let player = capsule_center(feet);
         let body = &mut self.world[self.player];
         body.pos = player;
@@ -345,12 +422,14 @@ impl Ball {
         if reaction > 0.0 && rate > 0.0 {
             let inertia = body.inertia.x;
             let moment = (ROLLING * reaction * RADIUS).min(inertia * rate / dt);
-            body.apply_torque(-rolling / rate * moment);
+            // Added directly: `apply_torque` wakes the body, which would
+            // restart its sleep timer every step while it creeps to rest.
+            body.torque += -rolling / rate * moment;
         }
         let speed = body.vel.length();
         if speed > 0.0 {
             let area = std::f64::consts::PI * RADIUS * RADIUS;
-            body.apply_force(-body.vel * (0.5 * AIR * DRAG * area * speed));
+            body.force += -body.vel * (0.5 * AIR * DRAG * area * speed);
         }
     }
 
@@ -392,8 +471,9 @@ impl Ball {
                 .iter()
                 .map(|v| place(v, &transform, &Mat4::from_quat(orientation))),
         );
+        let offset = |id| self.shared.offset(id);
         self.blocks
-            .draw(&self.world, self.clock.alpha(), &mut mesh.lit);
+            .draw(&self.world, self.clock.alpha(), &offset, &mut mesh.lit);
         if let Some(neon) = &mut mesh.neon {
             let mut light = key(Vec3::new(pos.x, RADIUS as f32 * 0.5, pos.z));
             // One shadow region over the ball and the blocks while they
@@ -431,29 +511,6 @@ pub fn key(center: Vec3) -> Key {
         shadow_center: center,
         shadow_half: POOL + 1.0,
     }
-}
-
-/// The shift that keeps the blocks laid out in `layout` inside the world's
-/// walls.
-fn inside(layout: &crate::blocks::Layout) -> DVec3 {
-    let limit = f64::from(crate::world::HALF) - 4.0;
-    let mut low = DVec3::splat(f64::MAX);
-    let mut high = DVec3::splat(f64::MIN);
-    for (side, ahead) in [(-8.0, 12.0), (-8.0, 24.0), (12.0, 12.0), (12.0, 24.0)] {
-        let p = layout.at(side, ahead, 0.0);
-        low = low.min(p);
-        high = high.max(p);
-    }
-    let shift = |low: f64, high: f64| {
-        if low < -limit {
-            -limit - low
-        } else if high > limit {
-            limit - high
-        } else {
-            0.0
-        }
-    };
-    DVec3::new(shift(low.x, high.x), 0.0, shift(low.z, high.z))
 }
 
 /// The capsule's center for a player whose feet are at `feet`.
@@ -642,20 +699,17 @@ mod tests {
     }
 
     #[test]
-    fn a_restored_spawn_finds_the_ball_ahead() {
+    fn a_restored_spawn_leaves_the_shared_arrangement_in_place() {
         let mut ball = Ball::new();
         let feet = Vec3::new(19.6, 0.0, 40.9);
-        ball.place_ahead(feet, std::f32::consts::FRAC_PI_2);
+        ball.place_player(feet);
         let body = *ball.body();
-        assert!((body.pos - DVec3::new(26.6, RADIUS, 40.9)).length() < 1e-3);
+        assert!((body.pos - START).length() < 1e-9);
         assert!(body.vel == DVec3::ZERO && body.omega == DVec3::ZERO);
-        // Near the world's edge it stays inside the walls.
-        let edge = crate::world::HALF - 1.0;
-        ball.place_ahead(Vec3::new(edge, 0.0, 0.0), std::f32::consts::FRAC_PI_2);
-        assert!(ball.body().pos.x < f64::from(crate::world::HALF) - RADIUS);
-        let mut player = PlayerController::new(Vec3::new(edge, 0.0, 0.0), 0.0);
+        let mut player = PlayerController::new(feet, std::f32::consts::FRAC_PI_2);
         idle(&mut ball, &mut player, 60);
         assert!(ball.body().vel.length() < 0.1);
+        assert_eq!(ball.world().stats.awake, 0);
     }
 
     #[test]

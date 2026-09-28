@@ -478,6 +478,8 @@ mod tests {
                     online: false,
                     follows: None,
                     name: None,
+                    set: None,
+                    b: None,
                 },
             },
             t0,

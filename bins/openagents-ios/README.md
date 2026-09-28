@@ -31,7 +31,9 @@ The app has four tabs, shown as icons:
   [Lagrange 1](../../docs/verse/lagrange-1.md) with its guides and panel in
   white, and fly back through the station's **THE GRID** arch (or tap
   **The Grid**) to return (see
-  [the Grid's portal](../../docs/verse/mobile.md#the-grids-portal-to-lagrange-1)). It fills the screen behind the status bar and the tab bar. The
+  [the Grid's portal](../../docs/verse/mobile.md#the-grids-portal-to-lagrange-1)). Everyone in
+  the world shares the ball and the blocks, and finds them where they were
+  left (see [sharing the ball](../../docs/verse/mobile.md#sharing-the-ball)). It fills the screen behind the status bar and the tab bar. The
   controls are Coder's: drag anywhere to look, push the stick at the bottom
   left to walk, double-tap to jump, and pinch to zoom. The hand/gyroscope
   icon switches touch and motion look, and the crosshair recenters the

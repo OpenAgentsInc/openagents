@@ -8,11 +8,11 @@
 //! fixed rate. A stack placed at rest sleeps at once and stands until
 //! something touches it; the player's kinematic capsule and the ball wake it.
 //!
-//! The blocks are laid out in the frame the ball was placed in: the spawn's
-//! forward axis and the side axis to its right as seen from above, so a new
-//! world shows the ball straight ahead, the stack beyond it to one side, and
-//! the dominoes beyond it to the other. Like the ball they are local to the
-//! device and are not networked.
+//! The blocks are laid out in the world spawn's frame: its forward axis and
+//! the side axis to its right as seen from above, so the default spawn shows
+//! the ball straight ahead, the stack beyond it to one side, and the dominoes
+//! beyond it to the other. The layout is fixed in the world, because every
+//! player shares one arrangement ([`crate::shared`]).
 
 use std::sync::OnceLock;
 
@@ -227,16 +227,11 @@ impl Blocks {
         pool_around(&self.homes[self.cubes.len()..], 1.6)
     }
 
-    /// Stands every block at rest again in `layout`, which later resets
-    /// return to.
-    pub fn place(&mut self, world: &mut World, layout: &Layout) {
-        let mut homes = stack_homes(layout);
-        homes.extend(domino_homes(layout));
-        self.homes = homes;
-        let ids: Vec<BodyId> = self.bodies().collect();
-        for (id, home) in ids.into_iter().zip(self.homes.clone()) {
-            rest(&mut world[id], home);
-        }
+    /// Every block with its resting pose: the cubes, then the dominoes.
+    pub(crate) fn homes(&self) -> impl Iterator<Item = (BodyId, DVec3, DQuat)> + '_ {
+        self.bodies()
+            .zip(&self.homes)
+            .map(|(id, home)| (id, home.pos, home.orientation))
     }
 
     /// Returns any block that left the world, or whose state is no longer
@@ -254,8 +249,16 @@ impl Blocks {
         }
     }
 
-    /// The blocks between their last two steps, lit and lacquered.
-    pub fn draw(&self, world: &World, alpha: f64, out: &mut Vec<LitVertex>) {
+    /// The blocks between their last two steps, each moved by `offset` (a
+    /// drawn correction, see [`crate::shared::Shared::offset`]), lit and
+    /// lacquered.
+    pub fn draw(
+        &self,
+        world: &World,
+        alpha: f64,
+        offset: &dyn Fn(BodyId) -> (DVec3, DQuat),
+        out: &mut Vec<LitVertex>,
+    ) {
         for (n, id) in self.cubes.iter().enumerate() {
             let [across, deep, _] = STACK;
             let (i, j, layer) = (n % deep, (n / deep) % across, n / (across * deep));
@@ -264,10 +267,10 @@ impl Blocks {
             } else {
                 CHARCOAL
             };
-            draw_body(&world[*id], alpha, cube(), color, out);
+            draw_body(&world[*id], alpha, offset(*id), cube(), color, out);
         }
         for id in &self.dominoes {
-            draw_body(&world[*id], alpha, domino(), WHITE, out);
+            draw_body(&world[*id], alpha, offset(*id), domino(), WHITE, out);
         }
     }
 }
@@ -312,9 +315,19 @@ struct Solid {
     accent: Vec<bool>,
 }
 
-fn draw_body(body: &Body, alpha: f64, solid: &Solid, color: [f32; 3], out: &mut Vec<LitVertex>) {
+fn draw_body(
+    body: &Body,
+    alpha: f64,
+    (shift, turn): (DVec3, DQuat),
+    solid: &Solid,
+    color: [f32; 3],
+    out: &mut Vec<LitVertex>,
+) {
     let (pos, orientation) = body.interpolated(alpha);
-    let (pos, orientation): (Vec3, Quat) = (pos.as_vec3(), orientation.as_quat());
+    let (pos, orientation): (Vec3, Quat) = (
+        (pos + shift).as_vec3(),
+        (turn * orientation).normalize().as_quat(),
+    );
     let transform = Mat4::from_rotation_translation(orientation, pos);
     let rotation = Mat4::from_quat(orientation);
     out.extend(solid.vertices.iter().zip(&solid.accent).map(|(v, accent)| {
@@ -576,20 +589,8 @@ mod tests {
     }
 
     #[test]
-    fn a_restored_spawn_lays_the_blocks_out_ahead() {
-        let mut ball = Ball::new();
-        let feet = Vec3::new(19.6, 0.0, 40.9);
-        ball.place_ahead(feet, std::f32::consts::FRAC_PI_2);
-        let (stack, _) = ball.blocks().stack_pool();
-        let (dominoes, _) = ball.blocks().domino_pool();
-        // Facing +X, both stand ahead of the ball.
-        assert!(stack.x > 26.6 + 5.0 && dominoes.x > 26.6 + 5.0);
-        let mut player = PlayerController::new(feet, std::f32::consts::FRAC_PI_2);
-        run(&mut ball, &mut player, 120, false);
-        assert_eq!(ball.world().stats.awake, 0);
-        // At the world's edge they stay inside the walls.
-        let edge = crate::world::HALF - 1.0;
-        ball.place_ahead(Vec3::new(edge, 0.0, edge), 0.7);
+    fn the_blocks_stand_inside_the_walls() {
+        let ball = Ball::new();
         let limit = f64::from(crate::world::HALF);
         for id in ball.blocks().cubes().iter().chain(ball.blocks().dominoes()) {
             let p = ball.world()[*id].pos;

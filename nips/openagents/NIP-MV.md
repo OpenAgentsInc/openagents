@@ -29,6 +29,8 @@ discover or admit signed scene definitions.
 | Cell | A square area of the world floor used to scope subscriptions. |
 | Loaded zone | A separately loaded scene with its own world identity, assets, presentation, and supported simulation profiles. This differs from a chat district identified by a `z` tag inside one world. |
 | Scene manifest | A content-pinned description of the scene and the host-supported formats and profiles it requires. A signature identifies its publisher; it does not authorize code execution. |
+| Shared body | An object the world defines, such as a ball, that any participant may move. Its id names the same object whoever publishes it. See [Shared bodies](#shared-bodies). |
+| Stamp | A shared body's authority: `[epoch, rev]` plus the pubkey that stamped it. |
 
 ## Kinds
 
@@ -241,8 +243,9 @@ The durable record of one entity. Relays store the latest per publisher and
   is 1 to 64 bytes of `[a-z0-9_-]`.
 - `role` names what the entity is. This NIP defines `avatar` (the
   publisher's own presence), `agent` (an autonomous entity the publisher
-  controls), and `object`. Clients MUST accept unknown roles and MAY skip
-  drawing them.
+  controls), `object`, `body` (a [shared body](#shared-bodies), in pose frames
+  only), and `bodies` (a shared-body snapshot). Clients MUST accept unknown
+  roles and MAY skip drawing them.
 
 | Content field | Meaning |
 | --- | --- |
@@ -254,6 +257,8 @@ The durable record of one entity. Relays store the latest per publisher and
 | `online` | `true` while the publisher is streaming frames for this entity, `false` after it leaves. |
 | `follows` | Optional entity id of the same publisher that this entity accompanies, such as an agent that follows its owner's avatar. |
 | `name` | Optional display name. |
+| `set` | A `bodies` snapshot's body set. Required for `bodies`, absent otherwise. |
+| `b` | A `bodies` snapshot's rest poses. Required for `bodies`, absent otherwise. |
 
 A publisher SHOULD write entity state when an entity joins, when it comes
 to rest after moving, at most every few seconds while it moves, and when it
@@ -291,7 +296,14 @@ them.
 
 Each entry in `e` has `id`, `role`, `p`, and `q`, and MAY have `v`
 (velocity), `follows`, and `a` (a short animation state such as `idle`,
-`walk`, `run`, `jump`).
+`walk`, `run`, `jump`). An entry with role `body` reports a
+[shared body](#shared-bodies): it MUST have `k` and MAY have `w` and `r`.
+
+| Entry field | Meaning |
+| --- | --- |
+| `w` | A shared body's angular velocity, world frame, rad/s. |
+| `k` | A shared body's stamp, `[epoch, rev]`. The publisher is the owner. Required for role `body` and forbidden for other roles. |
+| `r` | `true` when the shared body came to rest at this pose. Omitted otherwise. |
 
 Rules:
 
@@ -308,6 +320,126 @@ Rules:
   for about 10 seconds, and fall back to its entity state.
 - A frame MUST NOT be used as durable state. A client that joins late learns
   positions from entity states, then from frames.
+
+## Shared bodies
+
+**Status: Implemented** for the Verse bare world (`verse-bare`), body set
+`verse-bare.bodies.v1`. This profile allocates no new kinds. It lets
+participants move the same objects in one world, with no server, and
+keeps where those objects came to rest after everyone leaves.
+
+### Body set
+
+The world defines its shared bodies: their ids, shapes, masses, and home
+poses. A body set is named by an identifier of at most 64 bytes and fixed
+for that name; a changed catalog needs a new name. The Verse bare world's
+set is compiled into the client: `ball`, `cube-0` to `cube-15`, and
+`domino-0` to `domino-9`. Clients MUST ignore reports of ids outside their
+admitted set, and snapshots of another set.
+
+Every client simulates every body locally. The protocol decides only whose
+simulation is authoritative for each body.
+
+### Stamps and authority
+
+Each body has a stamp: an `epoch` (the reset generation), a `rev` (one per
+motion episode), and the `owner` pubkey that stamped it. Stamps order
+totally by epoch, then rev, then owner compared as lowercase hex. A body
+nobody has moved has the stamp `[0, 0]` with no owner, which every other
+stamp outranks. A client applies a report or rest pose only when its stamp
+outranks the one it holds, so every client converges on the same owner
+without coordination.
+
+- **Last toucher.** When a client's own avatar touches a body it does not
+  own, or a body it owns strikes one while moving, it claims that body:
+  same epoch, `rev + 1`, its own pubkey. A client SHOULD NOT claim back a
+  body it lost within a short interval (Verse: 0.3 s), so two players
+  leaning on one body do not exchange it at every step.
+- **Episodes.** An owner whose body wakes from rest raises its rev, so one
+  stamp names one motion and its one rest pose.
+- **Yielding.** A client that receives a higher stamp for a body it owns
+  stops reporting it and follows the new owner.
+- **Orphans.** A body still moving locally whose owner has reported
+  nothing about it for a while (Verse: 6 s) MAY be claimed by any client,
+  so a body left moving by a departed owner still comes to rest on record.
+- **Plausibility.** Receivers MUST discard reports outside the world's
+  bounds, or with speed or spin beyond the world's limits (Verse: 60 m/s
+  and 60 rad/s).
+
+### Reports
+
+The owner reports each awake body in its pose frames, as an entry with role
+`body`, its stamp in `k`, and `v` and `w`. It SHOULD report while any owned
+body moves, at a rate the relay's limits allow, and when more bodies are
+awake than a frame holds, rotate among them. When a body falls asleep, the
+owner reports its final pose once with `r: true`. A frame carries the
+owner's own avatar as usual, so reports cost no extra events.
+
+Receivers order reports of one stamp by the frame's `t`, and snap their
+local body to each newer report, then keep simulating it. A receiver
+SHOULD hide the snap behind a drawn correction that decays over a fraction
+of a second. A report with `r: true` puts the body to sleep at that pose.
+
+### Snapshots
+
+A client records every body's last rest pose in one entity state with
+`role` and `id` both `bodies`, so its `d` is `<world>/bodies`. The state's
+`p` and `q` are the world origin and identity. Its `set` names the body set,
+and `b` holds 0 to 64 rest poses:
+
+| Rest field | Meaning |
+| --- | --- |
+| `id` | The body id. Each id appears once. |
+| `p`, `q` | Rest position and orientation. |
+| `k` | The stamp, `[epoch, rev]`, of the motion that ended there. |
+| `o` | The pubkey that stamped it, when not this snapshot's publisher. |
+
+```json
+{
+  "kind": 33301,
+  "tags": [
+    ["d", "verse-bare/bodies"],
+    ["w", "verse-bare"],
+    ["role", "bodies"],
+    ["c", "0,0"]
+  ],
+  "content": "{\"v\":1,\"id\":\"bodies\",\"role\":\"bodies\",\"p\":[0,0,0],\"q\":[0,0,0,1],\"t\":1790000000000,\"online\":true,\"set\":\"verse-bare.bodies.v1\",\"b\":[{\"id\":\"ball\",\"p\":[0.0,1.2,19.4],\"q\":[0.1,0.7,0.1,0.7],\"k\":[1,4]}]}"
+}
+```
+
+A client publishes its snapshot after a body it owns comes to rest, at a
+bounded rate (Verse: at most every ten seconds on mobile), and at once
+after a reset. Bodies that nobody has moved are omitted. Because the relay
+keeps each publisher's latest snapshot, a client that joins later reads
+every snapshot for the world and keeps, per body, the rest pose with the
+highest stamp. For one stamp, a snapshot also ends the episode a receiver
+last heard reported, if the `r` report was lost. Successive snapshots from
+one publisher MUST have increasing `created_at`, since addressable events
+order by whole seconds.
+
+### Reset
+
+A reset raises the epoch by one above the highest seen, returns every body
+home at rest, stamps each `[epoch, 0]` with the resetting client's pubkey,
+and publishes the snapshot at once. A reset outranks every older stamp, so
+it reaches clients online now through their live `33301` subscription and
+clients who join later through the relay. A client that receives any report
+or rest pose from a newer epoch first returns every body of an older epoch
+home.
+
+### Event budget
+
+Reports ride in frames that the client sends anyway, so the profile adds
+only snapshots. A mobile client still publishes frames faster while it owns
+moving bodies. Verse mobile clients report every 1.5 seconds while they own
+a moving body and cap every publication, frames and states together, at 54
+events in any minute, under a relay's 60-event default. A frame leaves four
+of those slots for durable states.
+
+The profile makes no claim of honesty: any participant can claim any body.
+It suits shared toys and games without stakes. Worlds where a body's
+position decides combat, trade, or scores need an authority that validates
+motion, which this NIP does not define.
 
 ## Gesture — kind `23301`
 
@@ -448,6 +580,7 @@ Typical filters:
 {"kinds": [33301], "authors": ["<own pubkey>"], "#d": ["<world>/avatar"]}
 {"kinds": [9], "#w": ["<world>"], "limit": 100}
 {"kinds": [23302], "#w": ["<world>"], "#p": ["<own pubkey>"]}
+{"kinds": [33301], "#w": ["<world>"], "#d": ["<world>/bodies"]}
 ```
 
 A client SHOULD resubscribe with new `#c` values as it crosses cells.
@@ -467,7 +600,9 @@ A client SHOULD resubscribe with new `#c` values as it crosses cells.
 
 - A signature proves who published a pose, not that the pose is honest.
   Worlds that need authoritative positions (for combat or trade) need an
-  authority that validates movement; this NIP does not define one.
+  authority that validates movement; this NIP does not define one. The
+  [shared-body](#shared-bodies) authority orders claims; it does not
+  validate them.
 - Pose frames reveal a participant's presence and movement to every
   subscriber of the world. Private worlds need a relay that restricts reads.
 - Receivers MUST bound the number of entities they track per publisher and

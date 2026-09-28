@@ -11,6 +11,11 @@
 //!   A queued leave state is best effort, not a delivery acknowledgment.
 //! - **Scans.** When the agent looks around, the session queries entity
 //!   states in the surrounding cells and reports what is near.
+//! - **Shared bodies.** In the bare world, the session carries the ball and
+//!   the blocks ([`crate::shared`]): reports of the bodies this client moves
+//!   ride in its pose frames, and a snapshot of their rest poses is an
+//!   addressable state. A presence session keeps every publication inside
+//!   [`EVENT_BUDGET`] events a minute.
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -50,6 +55,13 @@ pub const BUBBLE_TIME: Duration = Duration::from_secs(7);
 const MAX_PEOPLE: usize = 1024;
 /// Zone commands held for the application before older ones are dropped.
 const MAX_ZONE_COMMANDS: usize = 64;
+/// Most events a presence session publishes in any minute: under the
+/// 60-event-a-minute default of a mobile relay, with room to spare.
+pub const EVENT_BUDGET: usize = 54;
+/// Budget slots a pose frame leaves free for durable states.
+const FRAME_RESERVE: usize = 4;
+/// Shared-body reports held until the world takes them.
+const MAX_BODY_INBOX: usize = 512;
 const MAX_CHAT_IDS: usize = 4096;
 const CHAT_SUB: &str = "chat-world";
 const ROOM_SUB: &str = "chat-rooms";
@@ -115,6 +127,48 @@ impl PublishIntervals {
         Ok(())
     }
 }
+/// A sliding one-minute count of published events against a limit.
+#[derive(Debug, Default)]
+struct Budget {
+    limit: Option<usize>,
+    sent: VecDeque<Instant>,
+}
+
+impl Budget {
+    /// Whether one more event fits while leaving `reserve` slots free.
+    fn allows(&mut self, now: Instant, reserve: usize) -> bool {
+        while self
+            .sent
+            .front()
+            .is_some_and(|t| now.saturating_duration_since(*t) >= Duration::from_secs(60))
+        {
+            self.sent.pop_front();
+        }
+        self.limit
+            .is_none_or(|limit| self.sent.len() + reserve < limit)
+    }
+
+    fn record(&mut self, now: Instant) {
+        if self.limit.is_some() {
+            self.sent.push_back(now);
+        }
+    }
+}
+
+/// A shared-body report waiting for the world.
+#[derive(Clone, Debug)]
+enum BodyIn {
+    Entry {
+        from: String,
+        pose: EntityPose,
+        t: u64,
+    },
+    Snapshot {
+        from: String,
+        state: State,
+    },
+}
+
 struct PendingSpawn {
     deadline: Instant,
     found: Option<State>,
@@ -187,6 +241,15 @@ pub struct Session {
     /// Avatar presence alone: no chat, rooms, gestures, commands, profiles,
     /// names, or agent entity.
     presence_only: bool,
+    /// Events published in the last minute, against the budget.
+    budget: Budget,
+    /// Shared-body reports and snapshots, oldest first.
+    bodies_in: Vec<BodyIn>,
+    /// When the last body snapshot went out, and its `created_at`.
+    last_snapshot: Option<(Instant, u64)>,
+    /// Every event handed to the link, for tests.
+    #[cfg(test)]
+    published: std::cell::RefCell<Vec<nostr::domain::Event>>,
 }
 
 /// A NIP-MV zone command (kind 23302) addressed to this operator.
@@ -362,6 +425,14 @@ impl Session {
             room_authority: None,
             world,
             presence_only,
+            budget: Budget {
+                limit: presence_only.then_some(EVENT_BUDGET),
+                sent: VecDeque::new(),
+            },
+            bodies_in: Vec::new(),
+            last_snapshot: None,
+            #[cfg(test)]
+            published: std::cell::RefCell::default(),
         })
     }
 
@@ -467,10 +538,65 @@ impl Session {
         }
     }
 
+    /// Limits every publication to `limit` events in any minute, or lifts
+    /// the limit. A presence session starts at [`EVENT_BUDGET`].
+    pub fn set_event_budget(&mut self, limit: Option<usize>) {
+        self.budget.limit = limit;
+    }
+
+    /// How often the owner of moving shared bodies reports them: twice the
+    /// moving cadence, between 0.1 and 1.5 seconds.
+    #[must_use]
+    pub fn body_interval(&self) -> Duration {
+        (self.intervals.moving / 2).clamp(Duration::from_millis(100), Duration::from_millis(1500))
+    }
+
+    /// Least time between body snapshots that record ordinary rests: a third
+    /// of the state cadence, between 2 and 60 seconds. A reset goes at once.
+    #[must_use]
+    pub fn snapshot_interval(&self) -> Duration {
+        (self.intervals.state / 3).clamp(Duration::from_secs(2), Duration::from_secs(60))
+    }
+
     /// Drains the relay and publishes what is due, once per game frame.
     pub fn tick(&mut self, now: Instant, player: &PlayerController, agent: &Agent) {
+        self.tick_bodies(now, player, agent, None);
+    }
+
+    /// As [`Session::tick`] for a whole world: in the bare world it also
+    /// exchanges the shared bodies.
+    pub fn tick_world(&mut self, now: Instant, world: &mut crate::runtime::WorldRuntime) {
+        let crate::runtime::WorldRuntime {
+            player,
+            agent,
+            ball,
+            ..
+        } = world;
+        self.tick_bodies(now, player, agent, ball.as_deref_mut());
+    }
+
+    /// As [`Session::tick`], with the shared `bodies`: applies the reports
+    /// that arrived, puts this client's in its pose frames, and publishes a
+    /// rest-pose snapshot when one is due.
+    pub fn tick_bodies(
+        &mut self,
+        now: Instant,
+        player: &PlayerController,
+        agent: &Agent,
+        mut bodies: Option<&mut crate::ball::Ball>,
+    ) {
         for message in self.link.drain() {
             self.handle(message, now);
+        }
+        let arrived = std::mem::take(&mut self.bodies_in);
+        if let Some(bodies) = bodies.as_deref_mut() {
+            bodies.join(self.id.signer.pubkey());
+            for report in arrived {
+                match report {
+                    BodyIn::Entry { from, pose, t } => bodies.receive(&from, &pose, t),
+                    BodyIn::Snapshot { from, state } => bodies.receive_snapshot(&from, &state),
+                }
+            }
         }
         self.crowd.prune(now);
         self.my_pos = player.pos;
@@ -493,18 +619,30 @@ impl Session {
         } else {
             self.intervals.idle
         };
+        if bodies
+            .as_deref()
+            .is_some_and(crate::ball::Ball::has_outgoing)
+        {
+            interval = interval.min(self.body_interval());
+        }
         if self.throttled_until.is_some_and(|t| now < t) {
             interval *= 4;
         }
-        if self.last_frame.is_none_or(|t| now - t >= interval) {
+        if self.last_frame.is_none_or(|t| now - t >= interval)
+            && self.budget.allows(now, FRAME_RESERVE)
+        {
             self.last_frame = Some(now);
             self.seq += 1;
+            let mut e = self.poses(player, agent);
+            if let Some(bodies) = bodies.as_deref_mut() {
+                e.extend(bodies.frame_entries(mv::MAX_ENTITIES - e.len()));
+            }
             let frame = Frame {
                 v: 1,
                 s: self.session.clone(),
                 n: self.seq,
                 t: unix_millis(),
-                e: self.poses(player, agent),
+                e,
             };
             self.publish_now(mv::frame_event(
                 &self.id.signer,
@@ -512,6 +650,7 @@ impl Session {
                 &frame,
                 unix_now(),
             ));
+            self.budget.record(now);
         }
 
         let due = match self.last_state {
@@ -521,10 +660,43 @@ impl Session {
                     && (pos.distance(player.pos) > 0.5 || (yaw - player.yaw).abs() > 0.2)
             }
         };
-        if due {
+        if due && self.budget.allows(now, 0) {
             self.last_state = Some((now, player.pos, player.yaw));
             self.publish_states(player, agent, true);
+            self.budget.record(now);
         }
+        if let Some(bodies) = bodies {
+            self.publish_snapshot(now, bodies);
+        }
+    }
+
+    /// Publishes the shared bodies' rest poses when a rest changed, at most
+    /// once per [`Session::snapshot_interval`], or at once for a reset.
+    fn publish_snapshot(&mut self, now: Instant, bodies: &mut crate::ball::Ball) {
+        let gap = if bodies.snapshot_urgent() {
+            // Addressable events order by whole seconds.
+            Duration::from_millis(1100)
+        } else {
+            self.snapshot_interval()
+        };
+        if self
+            .last_snapshot
+            .is_some_and(|(at, _)| now.saturating_duration_since(at) < gap)
+            || !self.budget.allows(now, 0)
+        {
+            return;
+        }
+        let Some(state) = bodies.snapshot(unix_millis()) else {
+            return;
+        };
+        let created = self
+            .last_snapshot
+            .map_or(unix_now(), |(_, last)| unix_now().max(last + 1));
+        let event = mv::state_event(&self.id.signer, self.world, &state, created);
+        self.publish_now(event);
+        self.budget.record(now);
+        self.last_snapshot = Some((now, created));
+        bodies.snapshot_sent();
     }
 
     /// Starts a scan of the cells around `from` for the agent.
@@ -689,13 +861,17 @@ impl Session {
                 online,
                 follows: pose.follows.clone(),
                 name: name.clone(),
+                set: None,
+                b: None,
             };
             let event = mv::state_event(&self.id.signer, self.world, &state, unix_now());
-            self.link.send(Out::Publish(event));
+            self.publish_now(event);
         }
     }
 
     fn publish_now(&self, event: nostr::domain::Event) {
+        #[cfg(test)]
+        self.published.borrow_mut().push(event.clone());
         self.link.send(Out::Publish(event));
     }
 
@@ -801,6 +977,9 @@ impl Session {
             }
             In::Event { event, .. } => {
                 if let Ok(received) = mv::decode(&event, self.world) {
+                    let Some(received) = self.take_bodies(received) else {
+                        return;
+                    };
                     if let Received::State { pubkey, state } = &received
                         && let Some(name) = &state.name
                     {
@@ -888,6 +1067,41 @@ impl Session {
                 }
             }
             In::Ok { .. } | In::Closed(..) | In::Notice(_) => {}
+        }
+    }
+
+    /// Moves shared-body reports out of `received` into the body inbox, and
+    /// returns what remains for the crowd.
+    fn take_bodies(&mut self, received: Received) -> Option<Received> {
+        let room = |inbox: &Vec<BodyIn>| inbox.len() < MAX_BODY_INBOX;
+        match received {
+            Received::Frame { pubkey, mut frame } => {
+                let (bodies, rest): (Vec<EntityPose>, Vec<EntityPose>) = frame
+                    .e
+                    .into_iter()
+                    .partition(|pose| pose.role == mv::BODY_ROLE);
+                for pose in bodies {
+                    if room(&self.bodies_in) {
+                        self.bodies_in.push(BodyIn::Entry {
+                            from: pubkey.clone(),
+                            pose,
+                            t: frame.t,
+                        });
+                    }
+                }
+                frame.e = rest;
+                (!frame.e.is_empty()).then_some(Received::Frame { pubkey, frame })
+            }
+            Received::State { pubkey, state } if state.role == mv::BODIES_ROLE => {
+                if room(&self.bodies_in) {
+                    self.bodies_in.push(BodyIn::Snapshot {
+                        from: pubkey,
+                        state,
+                    });
+                }
+                None
+            }
+            other => Some(other),
         }
     }
 
@@ -1447,10 +1661,126 @@ mod tests {
     }
 
     use super::*;
+    use glam::DVec3;
 
     fn isolated() -> Session {
         let key = secp256k1::SecretKey::from_byte_array([1; 32]).unwrap();
         Session::with_link(Identity::from_secret("phone", key).unwrap(), Link::idle()).unwrap()
+    }
+
+    /// A bare-world presence session on a link that goes nowhere, online.
+    fn online_presence() -> Session {
+        let identity = Identity::from_secret("phone", identity::random_secret()).unwrap();
+        let mut session = Session::with_link_in(identity, Link::idle(), BARE_WORLD, true).unwrap();
+        session
+            .set_publish_intervals(PublishIntervals::mobile())
+            .unwrap();
+        let now = Instant::now();
+        for message in [
+            In::Connected,
+            In::Eose(LIVE_SUB.into()),
+            In::Eose(STATE_SUB.into()),
+        ] {
+            session.handle(message, now);
+        }
+        assert_eq!(session.status, Status::Online);
+        session
+    }
+
+    #[test]
+    fn a_bare_world_player_stays_within_the_event_budget_while_playing() {
+        let mut session = online_presence();
+        let mut world = crate::runtime::WorldRuntime::bare();
+        let base = Instant::now();
+        let step = Duration::from_millis(16);
+        let mut log: Vec<(Duration, u16, bool)> = Vec::new();
+        // Three simulated minutes of the worst case: the avatar walks on and
+        // off, the ball never stops, and the reset button is pressed every
+        // four seconds.
+        for k in 0..(180_000 / 16) {
+            let now = base + step * k;
+            let input = crate::controller::InputState {
+                forward: (k / 125) % 2 == 0,
+                ..crate::controller::InputState::default()
+            };
+            world.tick(&input, 1.0 / 60.0);
+            let ball = world.ball.as_deref_mut().unwrap();
+            if k % 250 == 1 {
+                ball.press_reset();
+            }
+            let id = ball.ball_id();
+            let body = &mut ball.world_mut()[id];
+            body.vel = DVec3::new(0.0, 0.0, 2.0);
+            body.wake();
+            let before = session.published.borrow().len();
+            session.tick_world(now, &mut world);
+            for event in &session.published.borrow()[before..] {
+                let bodies = event.content.contains("\"role\":\"body\"");
+                log.push((now - base, event.kind, bodies));
+            }
+        }
+        let busiest = log
+            .iter()
+            .map(|(start, ..)| {
+                log.iter()
+                    .filter(|(at, ..)| *at >= *start && *at < *start + Duration::from_secs(60))
+                    .count()
+            })
+            .max()
+            .unwrap();
+        assert!(busiest <= EVENT_BUDGET, "{busiest} events in one minute");
+        // The ball was reported all along, and resets and rests were recorded.
+        let reports = log
+            .iter()
+            .filter(|(_, kind, bodies)| *kind == mv::FRAME_KIND && *bodies);
+        assert!(reports.count() >= 100, "the ball's owner kept reporting it");
+        let snapshots = session
+            .published
+            .borrow()
+            .iter()
+            .filter(|e| e.kind == mv::STATE_KIND && e.content.contains("\"bodies\""))
+            .count();
+        assert!(snapshots >= 10, "{snapshots} snapshots");
+    }
+
+    #[test]
+    fn body_reports_reach_the_inbox_and_never_the_crowd() {
+        let mut session = online_presence();
+        let other = nostr::domain::RelaySigner::from_secret_hex(&"02".repeat(32)).unwrap();
+        let mut ball = EntityPose::new(
+            "ball",
+            mv::BODY_ROLE,
+            Vec3::new(0.0, 1.2, 4.0),
+            Quat::IDENTITY,
+        );
+        ball.k = Some([0, 3]);
+        ball.v = Some([0.0, 0.0, 2.0]);
+        let frame = Frame {
+            v: 1,
+            s: "ab".into(),
+            n: 1,
+            t: 10,
+            e: vec![
+                EntityPose::new("avatar", "avatar", Vec3::ZERO, Quat::IDENTITY),
+                ball,
+            ],
+        };
+        let now = Instant::now();
+        session.handle(
+            In::Event {
+                sub: LIVE_SUB.into(),
+                event: Box::new(mv::frame_event(&other, BARE_WORLD, &frame, unix_now())),
+            },
+            now,
+        );
+        assert_eq!(session.crowd.len(), 1, "only the avatar joins the crowd");
+        assert_eq!(session.bodies_in.len(), 1);
+        let mut world = crate::runtime::WorldRuntime::bare();
+        session.tick_world(now, &mut world);
+        assert!(session.bodies_in.is_empty());
+        let ball = world.ball().unwrap();
+        assert!((ball.body().pos.z - 4.0).abs() < 1e-6);
+        assert_eq!(ball.shared().stamp("ball").unwrap().owner, other.pubkey());
     }
 
     #[test]
@@ -1494,6 +1824,8 @@ mod tests {
             online: false,
             follows: None,
             name: None,
+            set: None,
+            b: None,
         };
         let foreign = nostr::domain::RelaySigner::from_secret_hex(&"02".repeat(32)).unwrap();
         session.handle(

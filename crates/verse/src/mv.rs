@@ -29,6 +29,14 @@ pub const CELL: f32 = 64.0;
 pub const MAX_ENTITIES: usize = 16;
 /// Largest coordinate magnitude a receiver accepts, in meters.
 const MAX_COORD: f32 = 1.0e6;
+/// Role of a shared body: an entity the world defines and any participant
+/// may move, under the shared-body authority rules.
+pub const BODY_ROLE: &str = "body";
+/// Role and entity id of a shared-body snapshot: one participant's record of
+/// every shared body's rest pose.
+pub const BODIES_ROLE: &str = "bodies";
+/// Most bodies one snapshot records.
+pub const MAX_BODIES: usize = 64;
 
 /// One entity's pose inside a frame or a state.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -50,6 +58,16 @@ pub struct EntityPose {
     /// Short animation state.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub a: Option<String>,
+    /// A shared body's angular velocity, world frame, rad/s.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub w: Option<[f32; 3]>,
+    /// A shared body's authority stamp: `[epoch, rev]`. The publisher is
+    /// the owner.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub k: Option<[u64; 2]>,
+    /// A shared body that came to rest at this pose.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub r: bool,
 }
 
 impl EntityPose {
@@ -64,6 +82,9 @@ impl EntityPose {
             v: None,
             follows: None,
             a: None,
+            w: None,
+            k: None,
+            r: false,
         }
     }
 
@@ -90,13 +111,32 @@ impl EntityPose {
         if !self.q.iter().all(|c| c.is_finite()) || Quat::from_array(self.q).length() < 1e-3 {
             return Err("orientation is not a usable quaternion".into());
         }
-        if let Some(v) = self.v
-            && !v.iter().all(|c| c.is_finite() && c.abs() < MAX_COORD)
-        {
-            return Err("velocity is not finite".into());
+        for v in [self.v, self.w].into_iter().flatten() {
+            if !v.iter().all(|c| c.is_finite() && c.abs() < MAX_COORD) {
+                return Err("velocity is not finite".into());
+            }
+        }
+        if (self.role == BODY_ROLE) != self.k.is_some() {
+            return Err("a shared body, and only a shared body, carries a stamp".into());
         }
         Ok(())
     }
+}
+
+/// One shared body's rest pose in a snapshot.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct BodyRest {
+    /// Body id, from the world's body set.
+    pub id: String,
+    /// Rest position.
+    pub p: [f32; 3],
+    /// Rest orientation.
+    pub q: [f32; 4],
+    /// Authority stamp, `[epoch, rev]`, of the motion that ended here.
+    pub k: [u64; 2],
+    /// The owner that stamped it, when not the snapshot's publisher.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub o: Option<String>,
 }
 
 /// Content of a pose frame.
@@ -137,6 +177,12 @@ pub struct State {
     /// Display name.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
+    /// A snapshot's body set: the world-defined catalog its ids name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub set: Option<String>,
+    /// A snapshot's rest poses, one per body.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub b: Option<Vec<BodyRest>>,
 }
 
 impl State {
@@ -144,14 +190,59 @@ impl State {
     #[must_use]
     pub fn pose(&self) -> EntityPose {
         EntityPose {
-            id: self.id.clone(),
-            role: self.role.clone(),
-            p: self.p,
-            q: self.q,
-            v: None,
             follows: self.follows.clone(),
-            a: None,
+            ..EntityPose::new(
+                &self.id,
+                &self.role,
+                Vec3::from(self.p),
+                Quat::from_array(self.q),
+            )
         }
+    }
+
+    /// Checks a shared-body snapshot's set and bodies.
+    fn check_bodies(&self) -> Result<(), String> {
+        let is_snapshot = self.role == BODIES_ROLE;
+        if is_snapshot != (self.set.is_some() && self.b.is_some()) {
+            return Err("a snapshot, and only a snapshot, names a set and bodies".into());
+        }
+        if self.role == BODY_ROLE {
+            return Err("a shared body's state belongs in a snapshot".into());
+        }
+        let (Some(set), Some(bodies)) = (&self.set, &self.b) else {
+            return Ok(());
+        };
+        if set.is_empty() || set.len() > 64 {
+            return Err("a body set is 1 to 64 bytes".into());
+        }
+        if bodies.len() > MAX_BODIES {
+            return Err("a snapshot records at most 64 bodies".into());
+        }
+        let mut ids = std::collections::HashSet::new();
+        for body in bodies {
+            let pose = EntityPose {
+                k: Some(body.k),
+                ..EntityPose::new(
+                    &body.id,
+                    BODY_ROLE,
+                    Vec3::ZERO,
+                    Quat::from_array(body.q).normalize(),
+                )
+            };
+            EntityPose {
+                p: body.p,
+                q: body.q,
+                ..pose
+            }
+            .check()?;
+            if !ids.insert(body.id.as_str()) {
+                return Err("a snapshot records each body once".into());
+            }
+            if body.o.as_deref().is_some_and(|o| !is_hex_key(o)) {
+                return Err("a body's owner is a malformed pubkey".into());
+            }
+        }
+        Ok(())
     }
 }
 
@@ -531,6 +622,7 @@ pub fn decode(event: &Event, world: &str) -> Result<Received, String> {
                 return Err("the role tag does not match the entity".into());
             }
             state.pose().check()?;
+            state.check_bodies()?;
             Ok(Received::State { pubkey, state })
         }
         GESTURE_KIND => {
@@ -701,6 +793,8 @@ mod tests {
             online: false,
             follows: Some("avatar".into()),
             name: None,
+            set: None,
+            b: None,
         };
         let event = state_event(&signer(), WORLD, &state, 1_790_000_000);
         assert_eq!(event.kind, STATE_KIND);
@@ -712,6 +806,99 @@ mod tests {
             decode(&event, WORLD),
             Ok(Received::State { state: got, .. }) if got == state
         ));
+    }
+
+    fn snapshot() -> State {
+        State {
+            v: 1,
+            id: BODIES_ROLE.into(),
+            role: BODIES_ROLE.into(),
+            p: [0.0; 3],
+            q: [0.0, 0.0, 0.0, 1.0],
+            t: 9,
+            online: true,
+            follows: None,
+            name: None,
+            set: Some("verse-bare.bodies.v1".into()),
+            b: Some(vec![
+                BodyRest {
+                    id: "ball".into(),
+                    p: [0.0, 1.2, 12.0],
+                    q: [0.0, 0.0, 0.0, 1.0],
+                    k: [1, 4],
+                    o: None,
+                },
+                BodyRest {
+                    id: "cube-0".into(),
+                    p: [-5.0, 0.4, 8.0],
+                    q: [0.0, 0.38, 0.0, 0.92],
+                    k: [1, 2],
+                    o: Some("ab".repeat(32)),
+                },
+            ]),
+        }
+    }
+
+    #[test]
+    fn a_body_snapshot_round_trips_and_is_checked() {
+        let event = state_event(&signer(), WORLD, &snapshot(), 1);
+        assert_eq!(
+            event.tag_values("d").collect::<Vec<_>>(),
+            ["test-world/bodies"]
+        );
+        assert!(matches!(
+            decode(&event, WORLD),
+            Ok(Received::State { state, .. }) if state == snapshot()
+        ));
+        let mut twice = snapshot();
+        let first = twice.b.as_ref().unwrap()[0].clone();
+        twice.b.as_mut().unwrap().push(first);
+        let mut owner = snapshot();
+        owner.b.as_mut().unwrap()[1].o = Some("nobody".into());
+        let mut far = snapshot();
+        far.b.as_mut().unwrap()[0].p = [2.0e6, 0.0, 0.0];
+        let mut unnamed = snapshot();
+        unnamed.set = None;
+        let mut crowded = snapshot();
+        let one = crowded.b.as_ref().unwrap()[0].clone();
+        crowded.b = Some(
+            (0..=MAX_BODIES)
+                .map(|n| BodyRest {
+                    id: format!("b-{n}"),
+                    ..one.clone()
+                })
+                .collect(),
+        );
+        let mut avatar = snapshot();
+        avatar.id = "avatar".into();
+        avatar.role = "avatar".into();
+        for bad in [twice, owner, far, unnamed, crowded, avatar] {
+            let event = state_event(&signer(), WORLD, &bad, 1);
+            assert!(decode(&event, WORLD).is_err(), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn only_a_shared_body_carries_a_stamp() {
+        let mut body = EntityPose {
+            k: Some([0, 1]),
+            w: Some([0.0, 3.0, 0.0]),
+            ..EntityPose::new("ball", BODY_ROLE, Vec3::new(0.0, 1.2, 4.0), Quat::IDENTITY)
+        };
+        let mut with_body = frame();
+        with_body.e.push(body.clone());
+        let event = frame_event(&signer(), WORLD, &with_body, 1);
+        assert!(matches!(
+            decode(&event, WORLD),
+            Ok(Received::Frame { frame, .. }) if frame == with_body
+        ));
+        body.k = None;
+        let mut unstamped = frame();
+        unstamped.e.push(body);
+        assert!(decode(&frame_event(&signer(), WORLD, &unstamped, 1), WORLD).is_err());
+        let mut stamped = frame();
+        stamped.e[0].k = Some([0, 1]);
+        assert!(decode(&frame_event(&signer(), WORLD, &stamped, 1), WORLD).is_err());
     }
 
     #[test]

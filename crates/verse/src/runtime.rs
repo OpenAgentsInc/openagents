@@ -110,7 +110,7 @@ pub struct WorldRuntime {
     /// portals, or interactions, drawn in the neutral palette.
     bare: bool,
     /// The bare world's ball, which the player pushes.
-    ball: Option<Box<crate::ball::Ball>>,
+    pub(crate) ball: Option<Box<crate::ball::Ball>>,
     /// Other players' avatars where they are drawn, feet positions. The
     /// player cannot walk through them.
     avatars: Vec<Vec3>,
@@ -879,11 +879,12 @@ impl WorldRuntime {
     /// Sets a finite spawn inside the world. Source admission checks placement.
     pub fn set_spawn(&mut self, position: Vec3, yaw: f32) -> Result<(), String> {
         self.place_player(position, yaw)?;
-        // A restored or chosen spawn finds the bare world's ball ahead.
+        // The bare world's bodies stay where everyone left them; only the
+        // player's capsule moves.
         if self.is_plaza()
             && let Some(ball) = &mut self.ball
         {
-            ball.place_ahead(self.player.pos, self.player.yaw);
+            ball.place_player(self.player.pos);
         }
         Ok(())
     }

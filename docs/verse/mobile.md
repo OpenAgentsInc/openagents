@@ -27,9 +27,9 @@ plaza keeps its own fog, from 60 m to 250 m.
 ### The ball
 
 The bare world has three physical objects: a ball, a stack of cubes, and an
-arc of dominoes. The ball is a 2.4 m sphere resting 7 m ahead of where you
-start, including a restored position (or behind you when you face the
-world's edge). Walk into it to push it. It slides, spins up, rolls, and comes to rest on its
+arc of dominoes. Everyone in the world shares them (see [Sharing the ball](#sharing-the-ball)). The ball
+is a 2.4 m sphere resting 7 m ahead of the world's spawn. Walk into it to
+push it. It slides, spins up, rolls, and comes to rest on its
 own. It lives in [`verse::ball`](../../crates/verse/src/ball.rs) on the shared
 [`physics`](../../crates/physics/) crate, the one Lagrange 1 and the Physics
 Lab use:
@@ -81,16 +81,15 @@ ball, and the player's capsule, at the ball's fixed step:
   charcoal bar across each face, stand 0.7 m apart along a quarter arc of
   4 m radius, starting 16 m ahead and 2.5 m to the right and curving
   away. Walk into the first and the row falls in turn.
-- Both share the ball's frame: a restored spawn lays them out beyond the
-  ball in the direction it was placed, shifted inside the world's walls. A
-  block that leaves the world returns to where it stood.
+- Both stand at fixed places in the world, laid out in the spawn's frame, so
+  every player sees the same arrangement. A restored position moves only the
+  player. A block that leaves the world returns to where it stood.
 - The studio key's shadow region widens to cover the ball and both demos
   while the ball is near them, so the ball shades the blocks. The player
   is kinematic, so walking on through fallen blocks shoves them aside.
 - Asleep, the blocks cost nothing. A tumbling stack costs about 12 µs per
   step in a release build and 0.2 ms in a debug build
-  (`cargo test -p verse --lib blocks -- --nocapture` prints it). Like the
-  ball, the blocks are local to each device.
+  (`cargo test -p verse --lib blocks -- --nocapture` prints it).
 
 To render it offline:
 
@@ -146,16 +145,43 @@ the zone panel's **The Grid** button, or a tap on that arch.
 
 #### Sharing the ball
 
-The ball is local: each player pushes their own, and other players' avatars
-pass through it. Bare-world presence (`verse-bare`) shares only avatars.
-NIP-MV's pose frame admits an `object` role, but objects are owned per
-publisher and nothing decides who controls a shared one. Sharing the ball
-needs a new, reviewed protocol step: one owner simulates it and publishes
-snapshots with angular velocity and a tick, ownership passes to the last
-player in push range under an ordered claim, and receivers validate speed,
-bounds, and range before blending. Mobile presence's three-second cadence is
-also far too slow for a rolling ball, so the owner would publish faster
-while it moves. This is the next step, not part of this change.
+Everyone in the bare world pushes the same ball and topples the same blocks,
+and finds them where the last player left them, over NIP-MV's
+[shared-body profile](../../nips/openagents/NIP-MV.md#shared-bodies)
+([`verse::shared`](../../crates/verse/src/shared.rs)):
+
+- **Every client simulates every body**; the protocol decides whose
+  simulation counts. Each body carries a stamp: the reset epoch, a revision
+  per motion, and the owner's key. Stamps order totally, so every client
+  settles every conflict the same way.
+- **The last toucher owns.** Walking into a body, or striking one with a
+  body you own (the ball into the stack), claims it with the next revision.
+  If two players claim at once, the higher key wins everywhere.
+- **The owner reports.** While you own a moving body, your pose frames carry
+  it, with velocity and spin, every 1.5 seconds, and its rest pose once when
+  it stops. Other players snap their copy to each report and keep simulating
+  it, and the drawn body glides to the correction over about 0.15 s instead
+  of jumping. A frame holds your avatar and up to 15 bodies; when more are
+  moving, reports rotate among them.
+- **Rest poses persist.** After a body you own comes to rest, you publish a
+  snapshot of every rest pose you know as one addressable state
+  (`verse-bare/bodies`), at most every ten seconds. The relay keeps each
+  player's latest snapshot, so a player who joins after everyone left
+  merges them and keeps, per body, the newest.
+- **Orphans.** A body still rolling whose owner has said nothing about it
+  for six seconds (the owner left) is adopted by a player who sees it, so
+  its rest is still recorded.
+- **Plausibility.** Reports outside the world's walls, below the floor, or
+  faster than 60 m/s or 60 rad/s are ignored.
+- **Budget.** Reports ride in the frames you send anyway. Every bare-world
+  publication, frames and states together, is capped at 54 events in any
+  minute, under the public relay's 60-event default. While you own a moving
+  body, that is about 40 frames, 6 snapshots, and 2 avatar states a minute.
+
+Other players' avatars are drawn 3.3 seconds in the past, but bodies are
+not, so a remote player reaches the ball on screen a little after it
+starts to move. Anyone can move anything: the stamps order claims but do
+not validate them, which suits a toy with no stakes.
 
 ## Walk the world
 
@@ -437,8 +463,10 @@ bare world needs:
   other; they do not see Coder's plaza, and Coder does not see them.
 - **Presence only.** `Session::start_presence` subscribes to pose frames and
   entity states for that world and publishes the avatar's frames and states
-  with no display name. It subscribes to and publishes no chat, rooms,
-  private messages, gestures, zone commands, profiles, or companion entity.
+  with no display name, and the shared ball and blocks
+  ([Sharing the ball](#sharing-the-ball)) in those same frames and states.
+  It subscribes to and publishes no chat, rooms, private messages,
+  gestures, zone commands, profiles, or companion entity.
 - **Its own identity.** A separate secp256k1 key in Keychain
   (`com.openagents.app.verse`, this device only, available while unlocked)
   signs world events. The device key that holds host grants never signs a
@@ -446,8 +474,11 @@ bare world needs:
   cannot provide the key, the world stays offline.
 - **Cadence.** The tab publishes at Coder's mobile cadence: a pose frame every
   three seconds while moving and every five seconds at rest, and durable
-  state on join and at most every thirty seconds while moving. That keeps
-  each player within the public relay's per-key event limit. On join, it
+  state on join and at most every thirty seconds while moving. While a
+  player owns a moving body, frames go every 1.5 seconds. A presence
+  session caps everything it publishes at 54 events in any minute
+  (`verse::session::EVENT_BUDGET`), within the public relay's per-key
+  event limit. On join, it
   restores its own saved position in the bare world within 1.5 seconds, or
   spawns at random.
 - **Rendering.** Other players' avatars are drawn in the neutral palette,
