@@ -68,7 +68,8 @@ const USAGE: &str = "usage: openagents x402 COMMAND [OPTIONS]
                           the advertised endpoint and the payTo must be one it
                           advertises.
   native-serve --slug SLUG --msat N [--expiry SECONDS] [--per-buyer N]
-        [--seconds N] [--as PROFILE] [--relay URL] -- CMD [ARGS...]
+        [--rerun-safe] [--seconds N] [--as PROFILE] [--relay URL]
+        -- CMD [ARGS...]
                           Sell CMD over the relay (x402 exact/lnbtc,
                           nostr:openagents:1): every record is a private kind
                           3188 artifact sealed to the other party. A request
@@ -79,6 +80,11 @@ const USAGE: &str = "usage: openagents x402 COMMAND [OPTIONS]
                           a status chain (offered, claim_pending, admitted,
                           running, completed or failed). --per-buyer refuses a
                           buyer's Nth+1 request in a rolling hour (rate_limited).
+                          On start, purchases a previous process left admitted
+                          or running are finished as failed
+                          (provider_restarted); with --rerun-safe, one whose
+                          execution window is still open is run again instead
+                          once its input is read back from the relay.
   buy PROVIDER --slug SLUG [--input FILE|-] [--max-msat N] [--max-fee-msat F]
         [--wait SECONDS] [--as PROFILE] [--relay URL] [--show-proof]
                           Buy one run: resolve PROVIDER:SLUG on the relay, seal
@@ -90,7 +96,15 @@ const USAGE: &str = "usage: openagents x402 COMMAND [OPTIONS]
                           is never paid again.
   status PROVIDER PURCHASE [--wait SECONDS] [--as PROFILE] [--relay URL]
                           Ask PROVIDER for the status chain of PURCHASE and
-                          print the newest status and any output.
+                          print the newest status and any output. `unknown`
+                          means the provider has not answered; nothing is paid
+                          twice in any case.
+  status --list [--as PROFILE]
+  status --finish BUYER:PURCHASE --cause CAUSE [--as PROFILE] [--relay URL]
+                          Provider side: list this key's open purchases, or
+                          finish one by hand as failed with a recorded cause
+                          (provider_restarted, operator_cancelled,
+                          execute_until_passed) and publish the status.
   advertise --slug SLUG --merchant ID [--url PUBLIC_URL]
         [--binding http:1|mcp:1|nostr:openagents:1] [--relays URL]...
         [--summary TEXT] [--dry-run] [--as PROFILE] [--relay URL]

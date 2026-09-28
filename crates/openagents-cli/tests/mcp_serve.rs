@@ -158,6 +158,35 @@ fn x402_refuses_bad_arguments_with_json() {
 
     let no_max = run(&["fetch", "https://example.com/run"]);
     assert_eq!(no_max.status.code(), Some(64));
+
+    let provider = |args: &[&str]| {
+        std::process::Command::new(env!("CARGO_BIN_EXE_openagents"))
+            .env("OPENAGENTS_WALLET_HOME", home.join("wallet"))
+            .env("OPENAGENTS_X402_HOME", home.join("x402"))
+            .env("VERSE_HOME", home.join("verse"))
+            .arg("--json")
+            .arg("x402")
+            .arg("status")
+            .args(args)
+            .output()
+            .unwrap()
+    };
+    let empty = provider(&["--list"]);
+    assert_eq!(empty.status.code(), Some(0), "{empty:?}");
+    let doc: serde_json::Value = serde_json::from_slice(&empty.stdout).unwrap();
+    assert_eq!(doc["count"], 0, "{doc}");
+
+    let bad_target = provider(&["--finish", "nocolon", "--cause", "operator_cancelled"]);
+    assert_eq!(bad_target.status.code(), Some(64), "{bad_target:?}");
+    let bad_cause = provider(&["--finish", "aa:bb", "--cause", "because"]);
+    assert_eq!(bad_cause.status.code(), Some(64), "{bad_cause:?}");
+    let unknown = provider(&["--finish", "aa:bb", "--cause", "operator_cancelled"]);
+    assert_eq!(unknown.status.code(), Some(1), "{unknown:?}");
+    let doc: serde_json::Value = serde_json::from_slice(&unknown.stdout).unwrap();
+    assert!(
+        doc["error"].as_str().unwrap().contains("unknown_purchase"),
+        "{doc}"
+    );
     let _ = std::fs::remove_dir_all(&home);
 }
 

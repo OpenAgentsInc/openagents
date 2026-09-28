@@ -1236,6 +1236,64 @@ impl<S: ReplayStore> Provider<'_, S> {
         })
     }
 
+    /// Every purchase whose status chain has not ended.
+    pub fn open_purchases(&self) -> Result<Vec<Purchase>, &'static str> {
+        let mut open: Vec<Purchase> = self
+            .store
+            .list()
+            .map_err(|_| "purchase ledger read failed")?
+            .into_iter()
+            .filter(|purchase| purchase.phase().is_ok_and(|phase| !phase.terminal()))
+            .collect();
+        open.sort_by(|a, b| a.purchase.cmp(&b.purchase));
+        Ok(open)
+    }
+
+    /// Settle what a previous provider process left in `admitted` or
+    /// `running`. With `rerun_safe`, a purchase whose execution window is
+    /// still open comes back as [`Recovery::Rerun`] for the caller to run
+    /// again; everything else is finished as `failed` with cause
+    /// `provider_restarted` and its status returned for publication.
+    pub fn recover(&self, rerun_safe: bool, now: u64) -> Result<Vec<Recovery>, &'static str> {
+        let mut out = Vec::new();
+        for purchase in self.open_purchases()? {
+            let phase = purchase.phase()?;
+            if !matches!(phase, Phase::Admitted | Phase::Running) {
+                continue;
+            }
+            if rerun_safe && now < purchase.execute_until {
+                let input = purchase
+                    .request
+                    .value()?
+                    .get("body")
+                    .and_then(|body| body.get("input"))
+                    .cloned()
+                    .ok_or("request has no input")?;
+                out.push(Recovery::Rerun {
+                    buyer: purchase.buyer,
+                    purchase: purchase.purchase,
+                    phase,
+                    input,
+                    execute_until: purchase.execute_until,
+                });
+                continue;
+            }
+            let emit = self.finish(
+                &purchase.buyer,
+                &purchase.purchase,
+                Err(PROVIDER_RESTARTED),
+                now,
+            )?;
+            out.push(Recovery::Failed {
+                buyer: purchase.buyer,
+                purchase: purchase.purchase,
+                was: phase,
+                emit,
+            });
+        }
+        Ok(out)
+    }
+
     /// Answer a status query with every status issued so far.
     pub fn statuses(&self, query: &Signed) -> Result<Emit, &'static str> {
         let value = query.value()?;
@@ -1261,6 +1319,44 @@ impl<S: ReplayStore> Provider<'_, S> {
             .map_err(|_| "purchase ledger read failed")?
             .ok_or("unknown_purchase")
     }
+}
+
+/// The failure cause a restarted provider records for work it lost.
+pub const PROVIDER_RESTARTED: &str = "provider_restarted";
+
+/// The causes an operator may record by hand when finishing an open purchase.
+pub const OPERATOR_CAUSES: [&str; 3] = [
+    PROVIDER_RESTARTED,
+    "operator_cancelled",
+    "execute_until_passed",
+];
+
+/// Map a cause name to its stable form, or `None` when it is not one an
+/// operator may record.
+pub fn operator_cause(name: &str) -> Option<&'static str> {
+    OPERATOR_CAUSES.iter().copied().find(|cause| *cause == name)
+}
+
+/// One purchase a restarted provider dealt with.
+#[derive(Debug)]
+pub enum Recovery {
+    /// Finished as `failed`; `emit` is the status to publish.
+    Failed {
+        buyer: String,
+        purchase: String,
+        was: Phase,
+        emit: Emit,
+    },
+    /// Left open for the caller to run again with `input`, an artifact
+    /// reference to fetch from the relay. `phase` is `admitted` (call
+    /// [`Provider::start`] first) or `running` (finish directly).
+    Rerun {
+        buyer: String,
+        purchase: String,
+        phase: Phase,
+        input: Value,
+        execute_until: u64,
+    },
 }
 
 /// A settled purchase the caller may now execute.
@@ -1494,6 +1590,16 @@ mod tests {
                 dir,
             }
         }
+        /// The fixture receiver mints one fixed invoice, so a second
+        /// purchase in the same store needs a replay store that has not
+        /// seen that preimage yet.
+        fn fresh_settlement(&mut self, tag: &str) {
+            self.facilitator = Facilitator::with_profiles(
+                FileReplayStore::open(&self.dir.join(format!("replay-{tag}"))).unwrap(),
+                60,
+                NATIVE_ONLY,
+            );
+        }
         fn provider(&self) -> Provider<'_, FileReplayStore> {
             Provider {
                 pubkey: PROVIDER.into(),
@@ -1692,6 +1798,100 @@ mod tests {
             assert_eq!(parsed.prev, prev);
             prev = Some(Signed::new(status).unwrap().digest());
         }
+    }
+
+    #[test]
+    fn restart_fails_open_purchases_or_hands_them_back_to_rerun() {
+        let mut bench = Bench::new("recover");
+        let admitted_id = purchase_id(1);
+        let running_id = purchase_id(2);
+        let offered_id = purchase_id(3);
+        for (id, run_to) in [
+            (&admitted_id, Phase::Admitted),
+            (&running_id, Phase::Running),
+        ] {
+            bench.fresh_settlement(id);
+            let provider = bench.provider();
+            let (_, _, _, claim) = offer_and_claim(&bench, id);
+            provider
+                .claim(&Signed::new(&claim).unwrap(), NOW + 1)
+                .unwrap();
+            if run_to == Phase::Running {
+                provider.start(BUYER, id, NOW + 2).unwrap();
+            }
+        }
+        let provider = bench.provider();
+        provider.offer(&request(&offered_id, 30_000), NOW).unwrap();
+        assert_eq!(provider.open_purchases().unwrap().len(), 3);
+
+        let reruns = provider.recover(true, NOW + 10).unwrap();
+        assert_eq!(
+            reruns.len(),
+            2,
+            "offered purchases are the buyer's to claim"
+        );
+        for recovery in &reruns {
+            let Recovery::Rerun {
+                phase,
+                input: got,
+                execute_until,
+                ..
+            } = recovery
+            else {
+                panic!("inside the execution window, rerun-safe reruns");
+            };
+            assert!(matches!(phase, Phase::Admitted | Phase::Running));
+            assert_eq!(*got, input());
+            assert_eq!(*execute_until, NOW + 1200);
+        }
+        assert_eq!(
+            provider.open_purchases().unwrap().len(),
+            3,
+            "rerun changes nothing yet"
+        );
+
+        let failed = provider.recover(false, NOW + 10).unwrap();
+        assert_eq!(failed.len(), 2);
+        for recovery in &failed {
+            let Recovery::Failed { emit, purchase, .. } = recovery else {
+                panic!("without rerun-safe every open run fails");
+            };
+            let status = parse_status(&emit.records[0]["body"]).unwrap();
+            assert_eq!(status.phase, Phase::Failed);
+            assert_eq!(status.cause.as_deref(), Some(PROVIDER_RESTARTED));
+            assert_eq!(
+                bench
+                    .store
+                    .get(BUYER, purchase)
+                    .unwrap()
+                    .unwrap()
+                    .phase()
+                    .unwrap(),
+                Phase::Failed
+            );
+        }
+        let open = provider.open_purchases().unwrap();
+        assert_eq!(open.len(), 1);
+        assert_eq!(open[0].purchase, offered_id);
+        assert!(provider.recover(true, NOW + 10).unwrap().is_empty());
+        drop(provider);
+
+        bench.fresh_settlement("late");
+        let provider = bench.provider();
+        let (_, _, _, claim) = offer_and_claim(&bench, &purchase_id(4));
+        provider
+            .claim(&Signed::new(&claim).unwrap(), NOW + 1)
+            .unwrap();
+        let late = provider.recover(true, NOW + 1201).unwrap();
+        assert!(
+            matches!(late.as_slice(), [Recovery::Failed { .. }]),
+            "past execute_until, rerun-safe still fails the run"
+        );
+        assert_eq!(
+            operator_cause("operator_cancelled"),
+            Some("operator_cancelled")
+        );
+        assert_eq!(operator_cause("whatever"), None);
     }
 
     #[test]
