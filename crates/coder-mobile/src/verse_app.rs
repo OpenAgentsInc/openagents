@@ -215,6 +215,8 @@ pub(crate) struct Packet {
     camera_yaw: f32,
     camera_pitch: f32,
     camera_distance: f32,
+    /// Zoomed all the way in: the camera is at the player's head.
+    camera_first_person: bool,
     motion_needed: bool,
     companion: Companion,
     computer: Computer,
@@ -455,6 +457,7 @@ fn packet(
         camera_yaw: 0.0,
         camera_pitch: verse::camera::FollowCamera::default().pitch,
         camera_distance: verse::camera::FollowCamera::default().distance,
+        camera_first_person: false,
         motion_needed: false,
         companion: Companion {
             near: false,
@@ -1620,6 +1623,7 @@ impl Scene {
             verse::controller::wrap(self.world.player.yaw + self.world.camera.yaw_offset);
         packet.camera_pitch = self.world.camera.pitch;
         packet.camera_distance = self.world.camera.distance;
+        packet.camera_first_person = self.world.first_person();
         packet.motion_needed = self.motion_needed();
         let companion = self.world.companion(self.aspect());
         packet.companion = Companion {
@@ -3517,6 +3521,52 @@ mod tests {
         scene.world.set_spawn(desk, 0.0).unwrap();
         assert!(scene.action(Request::InteractComputer).is_err());
         assert!(scene.world_target(200.0, 300.0).is_none());
+    }
+
+    /// An offline bare world, active and past its first frame.
+    fn bare_scene() -> Scene {
+        let mut scene = Scene::new(Config {
+            secret_hex: "11".repeat(32),
+            width: 800,
+            height: 1200,
+            scale: 2.0,
+            synthetic: false,
+            gym_code: None,
+            synthetic_gym: false,
+            world_relay: None,
+            world_offline: true,
+            door_preferences: None,
+            zone_cache_directory: None,
+            computer_hud: false,
+            hdr: false,
+            bare: true,
+        })
+        .unwrap();
+        scene.activate(true).unwrap();
+        scene.update(1.0).unwrap();
+        scene
+    }
+
+    #[test]
+    fn pinching_all_the_way_in_on_the_grid_enters_first_person() {
+        let mut grid = bare_scene();
+        for _ in 0..40 {
+            grid.action(Request::PinchZoom { scale: 1.1 }).unwrap();
+        }
+        let packet = serde_json::to_value(grid.packet()).unwrap();
+        assert_eq!(packet["camera_first_person"], true);
+        for _ in 0..3 {
+            grid.action(Request::PinchZoom { scale: 0.9 }).unwrap();
+        }
+        let packet = serde_json::to_value(grid.packet()).unwrap();
+        assert_eq!(packet["camera_first_person"], false);
+        // Coder's plaza keeps its nearest orbit.
+        let mut plaza = scene();
+        plaza.activate(true).unwrap();
+        for _ in 0..40 {
+            plaza.action(Request::PinchZoom { scale: 1.1 }).unwrap();
+        }
+        assert!(!plaza.packet().camera_first_person);
     }
 
     #[test]

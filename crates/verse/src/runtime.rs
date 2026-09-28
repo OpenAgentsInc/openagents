@@ -165,6 +165,19 @@ impl WorldRuntime {
         self.ball.as_deref()
     }
 
+    /// Zooming in past the nearest orbit enters first person on the bare
+    /// world's grid. Coder's plaza and the zones keep the third-person orbit.
+    #[must_use]
+    pub fn first_person_allowed(&self) -> bool {
+        self.bare && self.is_plaza()
+    }
+
+    /// The camera is at the player's head and the local avatar is hidden.
+    #[must_use]
+    pub fn first_person(&self) -> bool {
+        self.camera.first_person && self.first_person_allowed()
+    }
+
     /// The plaza with its objects: not a zone and not the bare world.
     pub(crate) fn furnished_plaza(&self) -> bool {
         self.is_plaza() && !self.bare
@@ -244,10 +257,12 @@ impl WorldRuntime {
                 }
             }
             Action::Zoom { lines } if lines.is_finite() && lines.abs() <= 100.0 => {
-                self.camera.zoom(lines);
+                let allow = self.first_person_allowed();
+                self.camera.zoom_by(0.88f32.powf(-lines), allow);
             }
             Action::PinchZoom { scale } if scale.is_finite() && (0.1..=10.0).contains(&scale) => {
-                self.camera.pinch(scale);
+                let allow = self.first_person_allowed();
+                self.camera.zoom_by(scale, allow);
             }
             _ => return Err("camera input is nonfinite or exceeds its bound".into()),
         }
@@ -277,6 +292,9 @@ impl WorldRuntime {
             return 0.0;
         }
         let previous = self.player;
+        if self.camera.first_person && !self.first_person_allowed() {
+            self.camera.leave_first_person();
+        }
         self.doors.tick(dt);
         if input.forward
             || input.backward
@@ -796,8 +814,13 @@ impl WorldRuntime {
     #[must_use]
     pub fn dynamic_mesh_with_interactions(&self, computer: bool, gym: bool) -> Mesh {
         if self.bare {
-            // The player alone, on the neutral stage.
-            let mut player = avatar::mesh(&self.player, &self.gait);
+            // The player alone, on the neutral stage; in first person the
+            // camera is inside the avatar, which is hidden.
+            let mut player = if self.first_person() {
+                Mesh::default()
+            } else {
+                avatar::mesh(&self.player, &self.gait)
+            };
             player.neutralize();
             player.neon = Some(crate::pbr::Neon::neutral(0.0));
             if let Some(ball) = &self.ball {
@@ -1033,6 +1056,48 @@ mod tests {
         );
         runtime.tick(&InputState::default(), 0.1);
         assert!(runtime.player.airborne());
+    }
+
+    #[test]
+    fn zooming_all_the_way_in_on_the_grid_looks_through_the_players_eyes() {
+        let mut runtime = WorldRuntime::bare();
+        let third_person = runtime.dynamic_mesh().lines.len();
+        for _ in 0..40 {
+            runtime.apply(Action::PinchZoom { scale: 1.1 }).unwrap();
+        }
+        assert!(runtime.first_person());
+        let view = runtime.view(0.5);
+        let head = runtime.player.pos + Vec3::Y * crate::camera::FOCUS_HEIGHT;
+        assert!(view.eye.distance(head) < 1e-5, "{:?}", view.eye);
+        // The avatar is hidden; the ball and blocks still draw.
+        let mesh = runtime.dynamic_mesh();
+        assert!(mesh.lines.len() < third_person && mesh.faces.is_empty());
+        assert!(!mesh.lit.is_empty());
+        // Walking keeps the eye on the head.
+        let walk = InputState {
+            forward: true,
+            ..InputState::default()
+        };
+        for _ in 0..30 {
+            runtime.tick(&walk, 1.0 / 60.0);
+        }
+        let head = runtime.player.pos + Vec3::Y * crate::camera::FOCUS_HEIGHT;
+        assert!(runtime.view(0.5).eye.distance(head) < 1e-5);
+        // Zooming out returns to third person with the avatar.
+        for _ in 0..3 {
+            runtime.apply(Action::PinchZoom { scale: 0.9 }).unwrap();
+        }
+        assert!(!runtime.first_person());
+        assert_eq!(runtime.dynamic_mesh().lines.len(), third_person);
+        assert!(runtime.camera.distance >= crate::camera::MIN_DISTANCE);
+        // Coder's plaza stops at the nearest orbit.
+        let mut plaza = WorldRuntime::new();
+        for _ in 0..40 {
+            plaza.apply(Action::PinchZoom { scale: 1.1 }).unwrap();
+            plaza.apply(Action::Zoom { lines: 3.0 }).unwrap();
+        }
+        assert!(!plaza.first_person() && !plaza.camera.first_person);
+        assert_eq!(plaza.camera.distance, crate::camera::MIN_DISTANCE);
     }
 
     #[test]

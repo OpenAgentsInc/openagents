@@ -25,6 +25,10 @@ pub const MAX_DISTANCE: f32 = 40.0;
 pub const FOCUS_HEIGHT: f32 = 1.6;
 /// Vertical field of view in radians.
 pub const FOV_Y: f32 = 1.0;
+/// Further zoom, as the natural log of the distance ratio, that carries the
+/// camera from the nearest orbit into first person, or back out. The
+/// margin keeps a pinch's small reversals from flipping the view.
+pub const FIRST_PERSON_PUSH: f32 = 0.15;
 
 /// The orbit around the player, relative to the player's facing.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -33,8 +37,14 @@ pub struct FollowCamera {
     pub yaw_offset: f32,
     /// Downward view angle in radians. Negative values look up.
     pub pitch: f32,
-    /// Distance from the focus point, in meters.
+    /// Distance from the focus point, in meters. In first person it keeps
+    /// the nearest orbit, which zooming out returns to.
     pub distance: f32,
+    /// The eye is at the player's head and the avatar is hidden.
+    pub first_person: bool,
+    /// Zoom accumulated past the nearest orbit (or, in first person, back
+    /// out), toward [`FIRST_PERSON_PUSH`].
+    push: f32,
 }
 
 impl Default for FollowCamera {
@@ -43,6 +53,8 @@ impl Default for FollowCamera {
             yaw_offset: 0.0,
             pitch: 0.28,
             distance: 9.0,
+            first_person: false,
+            push: 0.0,
         }
     }
 }
@@ -78,6 +90,51 @@ impl FollowCamera {
         self.distance = (self.distance / scale).clamp(MIN_DISTANCE, MAX_DISTANCE);
     }
 
+    /// Zooms by `factor`, where a factor above one moves the camera closer.
+    /// When `allow_first_person` is set, zooming in past the nearest orbit
+    /// enters first person, and zooming back out leaves it.
+    pub fn zoom_by(&mut self, factor: f32, allow_first_person: bool) {
+        if !factor.is_finite() || factor <= 0.0 {
+            return;
+        }
+        let step = factor.ln();
+        if self.first_person {
+            if !allow_first_person {
+                self.leave_first_person();
+                self.zoom_by(factor, false);
+                return;
+            }
+            // Only zooming out counts toward leaving first person.
+            self.push = if step < 0.0 { self.push - step } else { 0.0 };
+            if self.push >= FIRST_PERSON_PUSH {
+                self.leave_first_person();
+            }
+            return;
+        }
+        let wanted = self.distance / factor;
+        if allow_first_person && step > 0.0 && wanted < MIN_DISTANCE {
+            // Only the part of this step beyond the nearest orbit counts.
+            self.push += (MIN_DISTANCE / wanted).ln();
+            self.distance = MIN_DISTANCE;
+            if self.push >= FIRST_PERSON_PUSH {
+                self.first_person = true;
+                self.push = 0.0;
+            }
+        } else {
+            self.push = 0.0;
+            self.distance = wanted.clamp(MIN_DISTANCE, MAX_DISTANCE);
+        }
+    }
+
+    /// Returns to the nearest third-person orbit.
+    pub fn leave_first_person(&mut self) {
+        if self.first_person {
+            self.first_person = false;
+            self.distance = MIN_DISTANCE;
+        }
+        self.push = 0.0;
+    }
+
     /// Swings the orbit back behind a moving character.
     pub fn settle(&mut self, dt: f32) {
         self.yaw_offset *= 0.02f32.powf(dt);
@@ -97,6 +154,9 @@ impl FollowCamera {
 
     /// Orbit position before applying the active world's ground clearance.
     pub(crate) fn unclamped_eye(&self, feet: Vec3, player_yaw: f32) -> Vec3 {
+        if self.first_person {
+            return focus(feet);
+        }
         let yaw = player_yaw + self.yaw_offset;
         let back = -crate::controller::forward(yaw) * self.pitch.cos();
         focus(feet) + (back + Vec3::Y * self.pitch.sin()) * self.distance
@@ -163,6 +223,7 @@ mod tests {
                     pitch,
                     distance,
                     yaw_offset: 0.3,
+                    ..Default::default()
                 };
                 let eye = cam.eye(Vec3::ZERO, 0.4);
                 assert!(eye.y >= 0.4);
@@ -217,6 +278,50 @@ mod tests {
             cam.settle(1.0 / 60.0);
         }
         assert!(cam.yaw_offset < 0.05);
+    }
+
+    #[test]
+    fn zooming_past_the_nearest_orbit_enters_first_person_and_back() {
+        let mut cam = FollowCamera::default();
+        // Without permission the nearest orbit is a hard stop.
+        for _ in 0..50 {
+            cam.zoom_by(1.1, false);
+        }
+        assert!(!cam.first_person);
+        assert_eq!(cam.distance, MIN_DISTANCE);
+        // A small overshoot, then a reversal, stays in third person.
+        cam.zoom_by(1.05, true);
+        assert!(!cam.first_person);
+        cam.zoom_by(0.99, true);
+        assert!(!cam.first_person && cam.distance > MIN_DISTANCE);
+        // Pinching on carries the eye to the player's head.
+        for _ in 0..4 {
+            cam.zoom_by(1.06, true);
+        }
+        assert!(cam.first_person);
+        let feet = Vec3::new(3.0, 0.0, -2.0);
+        assert!(cam.eye(feet, 0.4).distance(focus(feet)) < 1e-6);
+        // It looks where the orbit looked: along the heading, at its pitch.
+        let inverse = cam.view_proj(feet, 0.4, 0.6).inverse();
+        let near = inverse.project_point3(Vec3::ZERO);
+        let far = inverse.project_point3(Vec3::Z * 0.9);
+        let direction = (far - near).normalize();
+        assert!((-direction.y.asin() - cam.pitch).abs() < 1e-4);
+        assert!((direction.x.atan2(direction.z) - 0.4).abs() < 1e-4);
+        // More zooming in and a small reversal keep first person.
+        cam.zoom_by(2.0, true);
+        cam.zoom_by(0.95, true);
+        assert!(cam.first_person);
+        // Zooming out leaves it at the nearest orbit, then keeps going.
+        cam.zoom_by(0.9, true);
+        assert!(!cam.first_person);
+        assert_eq!(cam.distance, MIN_DISTANCE);
+        cam.zoom_by(0.5, true);
+        assert!((cam.distance - MIN_DISTANCE * 2.0).abs() < 1e-4);
+        // A world that no longer allows it drops first person at once.
+        cam.first_person = true;
+        cam.zoom_by(1.1, false);
+        assert!(!cam.first_person && cam.distance == MIN_DISTANCE);
     }
 
     #[test]

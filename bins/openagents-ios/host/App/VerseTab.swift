@@ -19,6 +19,8 @@ struct WorldPacket: Decodable {
     let camera_yaw: Double
     let camera_pitch: Double
     let camera_distance: Double
+    /// Zoomed all the way in: the camera is at the player's head.
+    let camera_first_person: Bool?
     let motion_needed: Bool
     /// Other players' avatars with a recent pose.
     let live_remote_entities: UInt64?
@@ -359,9 +361,10 @@ final class VerseWorldView: UIView {
     /// Debug and simulator builds expose position and camera to UI checks.
     private func observe(_ packet: WorldPacket) {
         #if DEBUG || targetEnvironment(simulator)
-        let value = String(format: "frames %llu position %.2f %.2f %.2f yaw %.2f pitch %.2f zoom %.2f %@ world %@ players %llu key %@",
+        let value = String(format: "frames %llu position %.2f %.2f %.2f yaw %.2f pitch %.2f zoom %.2f%@ %@ world %@ players %llu key %@",
                            packet.frames_presented, packet.position[0], packet.position[1], packet.position[2],
-                           packet.camera_yaw, packet.camera_pitch, packet.camera_distance, packet.camera_mode,
+                           packet.camera_yaw, packet.camera_pitch, packet.camera_distance,
+                           packet.camera_first_person == true ? " first-person" : "", packet.camera_mode,
                            packet.connection?.state ?? "unknown", packet.live_remote_entities ?? 0,
                            packet.world_public_key ?? "")
         if accessibilityValue != value { accessibilityValue = value }
@@ -501,7 +504,8 @@ final class VerseWorldView: UIView {
 /// drives the world through the same pointer path as a finger, so the
 /// controls can be checked on a simulator without touching the screen.
 /// `push` holds the stick forward for the whole step, walking into the ball
-/// ahead of the spawn, and `wait` does nothing for a step.
+/// ahead of the spawn, `closer` pinches in past the nearest orbit into first
+/// person, and `wait` does nothing for a step.
 /// Debug and simulator builds only.
 @MainActor
 private final class VerseWorldScript {
@@ -547,6 +551,7 @@ private final class VerseWorldScript {
         case ("jump", 0), ("jump", 6): view.pointer(pointer + UInt64(t), phase: "down", at: center)
         case ("jump", 2), ("jump", 8): view.pointer(pointer + UInt64(t - 2), phase: "up", at: center)
         case ("zoom", 0..<20): view.send(["action": "pinch_zoom", "scale": 0.97])
+        case ("closer", 0..<40): view.send(["action": "pinch_zoom", "scale": 1.1])
         case ("recenter", 0): view.send(["action": "recenter_camera"])
         default: break
         }

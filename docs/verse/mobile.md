@@ -144,6 +144,10 @@ shows **WALK CLOSER** until you are within reach, then **TAP TO OPEN**.
   zoom out. A deliberate pinch owns those touches until you lift them. Adding
   a look drag after movement starts keeps independent controls active.
   The HUD has no walk/sprint toggle, jump button, or zoom buttons.
+  In the OpenAgents app's bare world, keep spreading past the nearest orbit
+  to enter first person: the camera moves to the player's head and the
+  avatar is hidden. Pinch inward to return to third person. Coder's plaza
+  and the zones stop at the nearest orbit.
 - Use the world computer to reach your linked computers: see each one's
   status and route, open it, order work, and follow that work in
   **Activity**. Its **CHATS** page keeps QR pairing and the read-only Codex
