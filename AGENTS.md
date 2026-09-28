@@ -52,6 +52,13 @@ changes remain exempt from Rust checks. Read `docs/verification.md` for scope
 and prerequisites. Use a separate Cargo target directory per worktree, and keep
 workspace formatting changes separate from behavior changes.
 
+Deploy host builds only from a commit rebased on current `origin/main`, and
+give each checkout its own install build directory: `scripts/link-device.sh`
+shares `~/.cache/openagents/target-install-coder` unless
+`CODER_INSTALL_TARGET_DIR` is set, so an older checkout can overwrite a newer
+build there, and a deploy of an older commit rolls the host back. After a
+deploy, check the host's running commit.
+
 Live tests and smokes against the owner's real computers must not leave
 chats in the owner's lists. Archive every Coder task a smoke creates when it
 ends (`coder task archive TASK_ID --reason ...` on the host, or NIP-HOST
