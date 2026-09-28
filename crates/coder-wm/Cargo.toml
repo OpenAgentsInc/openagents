@@ -1,0 +1,14 @@
+# Dwindle tiling for Coder surfaces, matching the CoderOS Hyprland session.
+[package]
+name = "coder-wm"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Dwindle tiling, workspaces, screens, and Super-chord layout for Coder surfaces."
+publish.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[lints]
+workspace = true

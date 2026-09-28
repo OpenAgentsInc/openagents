@@ -1,0 +1,72 @@
+# The Coder compositor: a Wayland compositor for a CoderOS desktop, nested
+# in a window or on a TTY. Carried from the private Coder repository on
+# 2026-09-28 by the owner's decision to publish it.
+[package]
+name = "coder-compositor"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "The Coder Wayland compositor: dwindle tiling, the bind table, and the desk protocol."
+publish.workspace = true
+
+[[bin]]
+name = "coder-compositor"
+path = "src/main.rs"
+
+[dependencies]
+# The window rules: the rows `desktop.nix` writes for Hyprland, applied
+# here when a window maps and when its title changes.
+coder-binds = { path = "../coder-binds" }
+# The desk protocol's types, in `coder_desk::protocol`, and its server:
+# the socket, the framing, and the dispatch.
+coder-desk = { path = "../coder-desk" }
+# Hand tracking reads `coder-hands`, which moves with the camera daemon in
+# #9874. Until then `src/hands.rs` keeps the interface with tracking off,
+# and that change adds the dependency here.
+#
+# The one dwindle layout: nine desks, floats, fullscreen, and maximize.
+coder-wm = { path = "../coder-wm" }
+log = "0.4"
+env_logger = "0.11"
+# The xcursor theme reader the pointer loads its images with. It is already
+# in `Cargo.lock` through `wayland-cursor`, so it adds no crate.
+xcursor = "0.3"
+# The PNG a `shot` writes. It is already in `Cargo.lock` through `verse`,
+# so it adds no crate.
+png = "0.18"
+# Smithay on two backends. The `winit` backend opens a window in a session.
+# The hardware backend takes the seat through `libseat` (`libseat`,
+# `libseat-sys`), drives the monitors through DRM and KMS with GBM buffers
+# (`drm`, `drm-ffi`, `drm-sys`, `gbm`, `gbm-sys`), reads input through
+# `libinput` (`input`, `input-sys`), and follows hotplug through `udev`
+# (`udev`, `libudev-sys`, `io-lifetimes`). `renderer_multi` adds
+# `aliasable`, and gives the renderer on a GBM device without an `unsafe`
+# block in this crate. The rest of the crates the features add to
+# `Cargo.lock` are older versions of `linux-raw-sys`, `windows-sys`, and
+# their targets that `io-lifetimes` names. The system libraries are
+# `libudev`, `libinput`, `libseat`, and `libgbm` at link time, which
+# `os/pkgs/coder-compositor.nix` and the flake's `compositor` shell supply. The `xwayland` feature needs the `Xwayland`
+# binary on `PATH` at run time and nothing at link time.
+smithay = { version = "0.7", default-features = false, features = [
+    "backend_drm",
+    "backend_gbm",
+    "backend_libinput",
+    "backend_session_libseat",
+    "backend_udev",
+    "backend_winit",
+    "desktop",
+    "renderer_gl",
+    "renderer_multi",
+    "wayland_frontend",
+    "xwayland",
+] }
+
+[dev-dependencies]
+# `serve::ask` writes one request and reads one answer, which is what the
+# server's own tests do over a real socket.
+coder-desk = { path = "../coder-desk", features = ["test-support"] }
+# The Xwayland answer's round trip through its wire form.
+serde_json = "1"
+
+[lints]
+workspace = true

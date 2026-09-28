@@ -1,0 +1,416 @@
+# The Coder compositor's session: start the compositor, learn the two
+# sockets it announces, and open the session's start list in it.
+#
+# `os/modules/coderos/desktop.nix` runs this file when
+# `coderos.desktop.compositor` is `coder`, and on the trial TTY when
+# `coderos.desktop.trialTty` names one. The Hyprland session reads its start
+# list from the same option, as `exec-once` rows in the configuration that
+# module writes, so the two sessions open the same windows.
+#
+# What the host granted is `/etc/coderos/compositor.json`: the compositor to
+# run, the backend it runs on, the window a chord opens, the terminal that
+# window falls back to, the command a Coder tile runs, and the start list.
+# `CODER_COMPOSITOR_CONFIG` names another file, and a checkout with no file at
+# all runs on the defaults below, which is how the session is driven by hand
+# while it is being tested.
+#
+# # Why this file exists rather than an `exec` line
+#
+# The compositor picks its own Wayland socket, `wayland-2` when `wayland-1`
+# is taken, and its desk socket carries its process id, so neither name can
+# be written down in advance. It prints both on its first log line. This
+# file reads that line, exports `WAYLAND_DISPLAY` and `CODER_DESK_SOCKET`,
+# opens the start list against them, and hands the same two variables to
+# `uwsm finalize`, which is what the session manager waits for before it
+# calls the session started.
+#
+# # Which backend
+#
+# A login on a TTY has no session around it, so the compositor takes the
+# seat and drives the monitors itself: the `udev` backend. A run inside a
+# session that is already on the screen opens the compositor as a window in
+# it: the `winit` backend. The grant's `backend` key, or
+# `CODER_COMPOSITOR_BACKEND`, names one; with neither, a run that finds
+# `WAYLAND_DISPLAY` in its environment is inside a session. A `winit` run
+# from a TTY looks for the socket of the session on tty1 and opens its
+# window there, which is how the trial TTY looked at the compositor before
+# the hardware backend existed.
+#
+# # What the compositor's exit ends
+#
+# When the compositor exits the run stops every process its start list
+# opened, by the process group each row leads, before it returns the
+# compositor's own status, so a session's children do not keep the console
+# after it. A run with
+# `CODER_COMPOSITOR_RESTART=1` — the trial TTY's login sets it — starts the
+# compositor again after a pause when the exit was clean, and a failure or
+# a Ctrl+C at the pause leaves you at the shell.
+
+APP="coder-compositor-session"
+
+CONFIG="${CODER_COMPOSITOR_CONFIG:-/etc/coderos/compositor.json}"
+
+# The defaults a checkout runs on when the host granted no file: the
+# compositor on PATH, the window a chord opens, the terminal that window
+# falls back to, the command a Coder tile runs, and no start list.
+DEFAULT_COMPOSITOR="coder-compositor"
+DEFAULT_PANE="coder-pane"
+DEFAULT_TERMINAL="foot"
+DEFAULT_COMMAND="coder"
+
+# How long to wait for the compositor to announce its sockets. It prints the
+# line as soon as both are bound, which is under a second on this host; the
+# wait is long enough to cover a first start on a busy machine.
+WAIT_SECONDS="${CODER_COMPOSITOR_WAIT:-15}"
+
+# One string from the grant, or the default when the file, the key, or the
+# value is missing.
+setting() {
+    local key=$1 fallback=$2 value=""
+    if [[ -r $CONFIG ]]; then
+        value=$(jq -r --arg key "$key" '.[$key] // empty' "$CONFIG" 2> /dev/null || true)
+    fi
+    printf '%s\n' "${value:-$fallback}"
+}
+
+# The start list the host granted, one row a line.
+rows() {
+    [[ -r $CONFIG ]] || return 0
+    jq -r '.start[]? // empty' "$CONFIG" 2> /dev/null || true
+}
+
+# The launchers the host granted, one a line, each named by the
+# `coderos.desktop` option that gates it: `deck` for `coderos.desktop.deck`,
+# `camera` for `coderos.desktop.camera`, and so on. The compositor answers
+# the launcher chord for each one, Super+Shift+D for the deck and Super+C
+# for the camera among them, and leaves the other launcher chords to the
+# client, the way the Hyprland session writes a `bind` line for each
+# option that is on and none for the rest.
+launchers() {
+    [[ -r $CONFIG ]] || return 0
+    jq -r '.launchers[]? // empty' "$CONFIG" 2> /dev/null || true
+}
+
+# The backend this run starts: the one the environment or the grant names,
+# or `winit` inside a session and `udev` on a TTY.
+choose_backend() {
+    local named="${CODER_COMPOSITOR_BACKEND:-}"
+    [[ -n $named ]] || named=$(setting backend "")
+    case "$named" in
+        udev | winit)
+            printf '%s\n' "$named"
+            return 0
+            ;;
+        "") ;;
+        *)
+            printf '%s\n' "$APP: the backend $named is neither udev nor winit" >&2
+            return 1
+            ;;
+    esac
+    if [[ -n ${WAYLAND_DISPLAY:-} ]]; then
+        printf 'winit\n'
+    else
+        printf 'udev\n'
+    fi
+}
+
+# The session a `winit` run draws its window in.
+#
+# A login on the trial TTY has none of its own, so the sockets in the
+# runtime directory are what is left to read: each `wayland-<n>` there is a
+# compositor this account is running, and the one on tty1 is the session on
+# the screen. The lock file beside each socket is skipped, and so is the
+# socket this run is about to bind, since nothing has bound it yet.
+host_display() {
+    if [[ -n ${WAYLAND_DISPLAY:-} ]]; then
+        printf '%s\n' "$WAYLAND_DISPLAY"
+        return 0
+    fi
+    local runtime socket
+    runtime="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+    for socket in "$runtime"/wayland-*; do
+        [[ -S $socket ]] || continue
+        basename "$socket"
+        return 0
+    done
+    return 1
+}
+
+# The two sockets out of the compositor's first log line, as
+# `<display> <desk socket>`, or nothing while the line has not been printed.
+#
+# The line the compositor prints is:
+#
+#   the compositor listens on wayland-2, and its desk socket is /path.sock
+announcement() {
+    sed -n 's/.*listens on \([^,]*\), and its desk socket is \(.*\)$/\1 \2/p' "$1" \
+        | head -n 1
+}
+
+# How long the announcement is still read for once the compositor is gone.
+# The compositor's output reaches the log through `tee`, which writes what it
+# read only after the compositor has exited, and bash reaps a compositor that
+# exits as soon as it has announced before the first read of the log. A run
+# that gave up at the first sign the compositor had gone read an empty log,
+# said the compositor announced no sockets, and opened no start list at all,
+# which is the other half of what a misconfigured host showed.
+GONE_SECONDS="${CODER_COMPOSITOR_GONE_WAIT:-1}"
+
+# The same line, waited for. A compositor that has exited is read for a
+# moment longer rather than given up on at once, and a compositor that ended
+# without printing the line is not waited for the whole time: the caller
+# reports the status it exited with.
+await_announcement() {
+    local log=$1 running=$2 line="" waited=0 gone=0
+    while ((waited < WAIT_SECONDS * 10)); do
+        line=$(announcement "$log")
+        if [[ -n $line ]]; then
+            printf '%s\n' "$line"
+            return 0
+        fi
+        if ! kill -0 "$running" 2> /dev/null; then
+            ((gone < GONE_SECONDS * 10)) || return 1
+            gone=$((gone + 1))
+        fi
+        sleep 0.1
+        waited=$((waited + 1))
+    done
+    return 1
+}
+
+# The pids of what the start list opened. The compositor's exit leaves them
+# running with the console as their output — `camera-overlay`'s `mpv` printed
+# a camera error per frame until it died — so the run stops them before it
+# returns, by process group and never by name, which would reach a process
+# this run never started.
+started=()
+
+# The start list, opened in the compositor. Each row runs through `sh -c`,
+# the way Hyprland's `exec-once` and the compositor's own `exec` rows do, so
+# a row with arguments and quoting behaves the same on both sessions. A row
+# that fails is left to say so on its own output: the session goes on
+# without it, because a notification daemon that did not start is no reason
+# to have no screen.
+#
+# A row is not open until its shell has begun: the flag line is its first
+# act, and this file waits for one per row before it returns. A compositor
+# that exits the instant it announces, which is what a misconfigured host
+# does, otherwise has its stop reach a row before the row's own `sh` has
+# started, and the row is lost without having run. The row string is
+# an argument rather than part of the command, so `$$` and the quoting a
+# row holds keep their meaning.
+open_start_list() {
+    local flag="${XDG_RUNTIME_DIR:-/tmp}/coder-compositor-started.$$"
+    : > "$flag"
+    local row
+    for row in "$@"; do
+        [[ -n $row ]] || continue
+        # Job control on for the one spawn gives the row a process group of
+        # its own, so the stop at the end of the run reaches every process
+        # the row ever forked — even one reparented to init, which a walk of
+        # the tree by parent would no longer see. `disown` keeps the job's
+        # end from printing a `Terminated` line over the console.
+        set -m
+        sh -c 'printf ".\n" >> "$1"; eval "$2"' sh "$flag" "$row" &
+        set +m
+        started+=($!)
+        disown "$!" 2> /dev/null || true
+    done
+    local want=${#started[@]} waited=0
+    while ((want > 0)) && ((waited < 50)); do
+        [[ $(wc -l < "$flag" 2> /dev/null || echo 0) -ge $want ]] && break
+        sleep 0.1
+        waited=$((waited + 1))
+    done
+    rm -f "$flag"
+}
+
+# Whether the pid is a live process: `kill -0` also answers a zombie, which
+# a row becomes between its exit and this file's `wait`, and a zombie needs
+# no second signal.
+alive() {
+    local stat
+    stat=$(ps -o stat= -p "$1" 2> /dev/null)
+    [[ -n $stat && $stat != *Z* ]]
+}
+
+# Stop the start list's processes, each by the process group its row leads:
+# TERM, a beat for the ones that close on it, KILL for the rest, then `wait`
+# so none is left a zombie.
+stop_started() {
+    ((${#started[@]})) || return 0
+    local pid
+    for pid in "${started[@]}"; do
+        kill -TERM -- "-$pid" 2> /dev/null || true
+    done
+    sleep 1
+    for pid in "${started[@]}"; do
+        kill -KILL -- "-$pid" 2> /dev/null || true
+    done
+    wait "${started[@]}" 2> /dev/null || true
+    return 0
+}
+
+COMPOSITOR=$(setting compositor "$DEFAULT_COMPOSITOR")
+PANE=$(setting pane "$DEFAULT_PANE")
+TERMINAL=$(setting terminal "$DEFAULT_TERMINAL")
+COMMAND=$(setting command "$DEFAULT_COMMAND")
+
+# `os/tests/coder-compositor-session.sh` sources this file with
+# The file one run's log goes to, which no other run writes. `$1` is the
+# terminal the run holds, as `tty` prints it. A session on a TTY names its
+# log after that TTY, so a session on tty1 always writes
+# `coder-compositor.tty1.log` and an operator knows the name without
+# looking it up; a run from a shell with no terminal of its own, which is
+# what a test run over SSH is, names its log after its process id. Before
+# this every run wrote `coder-compositor.log` and emptied it first, so a
+# test compositor threw the session's own records away, and the log that
+# would have said why hand tracking never started was one line long.
+compositor_log() {
+    local here=${1:-} dir="${XDG_RUNTIME_DIR:-/tmp}"
+    case "$here" in
+        /dev/tty[0-9]*) printf '%s/coder-compositor.%s.log' "$dir" "${here#/dev/}" ;;
+        *) printf '%s/coder-compositor.%s.log' "$dir" "$$" ;;
+    esac
+}
+
+# Where the camera daemon keeps its sockets, named for this session rather
+# than left to each side's default. The daemon this session starts and the
+# compositor that reads its landmarks then name one directory, and a person
+# reading the session's environment sees which socket the compositor means.
+# Both sides derive the same path when the variables are unset, so this
+# changes no path; it writes the path down.
+camera_sockets() {
+    export CODEROS_CAMERA_DIR="${XDG_RUNTIME_DIR:-$HOME/.openagents}/coderos-camera"
+    export CODEROS_HANDS_SOCKET="$CODEROS_CAMERA_DIR/hands.sock"
+}
+
+# `CODER_COMPOSITOR_SESSION_LIB` set to reach the functions above with no
+# compositor running.
+if [[ -n ${CODER_COMPOSITOR_SESSION_LIB:-} ]]; then
+    return 0
+fi
+
+# `mapfile` is bash 4, and macOS ships bash 3.2, where a contributor may run
+# this script's tests. A read loop is the same list.
+START=()
+while IFS= read -r start_row; do START+=("$start_row"); done < <(rows)
+
+backend=$(choose_backend) || exit 2
+
+if [[ $backend == winit ]]; then
+    if ! display=$(host_display); then
+        complaint="$APP: the winit backend opens the compositor as a window, and no"
+        complaint="$complaint Wayland session is running to open it in. Start the desktop"
+        complaint="$complaint on tty1 first, or run the udev backend from a TTY."
+        printf '%s\n' "$complaint" >&2
+        exit 1
+    fi
+    # The window the nested compositor opens.
+    export WAYLAND_DISPLAY="$display"
+    # A compositor nested in a window owns no TTY, so it names no X11
+    # display; a value left over from the host session must not leak in.
+    unset CODER_COMPOSITOR_X11_DISPLAY
+else
+    # A compositor on a TTY picks its backend from the environment too, and
+    # a display left over from another session would send it to a window.
+    unset WAYLAND_DISPLAY DISPLAY
+
+    # The X11 display this session asks Xwayland to take: its TTY's number,
+    # so the sessions on a host each hold their own display whichever order
+    # they started in, and a grant such as `game`'s can name one. A login
+    # that names no VT leaves the choice to the compositor, which takes the
+    # first free display.
+    if [[ -n ${XDG_VTNR:-} ]]; then
+        export CODER_COMPOSITOR_X11_DISPLAY=":${XDG_VTNR}"
+    fi
+fi
+
+# What the compositor's own rows open.
+export CODER_COMPOSITOR_PANE="$PANE"
+export CODER_COMPOSITOR_TERMINAL="$TERMINAL"
+export CODER_COMPOSITOR_COMMAND="$COMMAND"
+
+# The launchers the compositor answers, as one line of option names. A
+# host with a grant gets the list the grant holds, empty when every
+# launcher option is off; a checkout with no grant leaves the variable
+# unset, and the compositor then answers every launcher chord.
+if [[ -r $CONFIG ]]; then
+    CODER_COMPOSITOR_LAUNCHERS=$(launchers | paste -sd ' ' -)
+    export CODER_COMPOSITOR_LAUNCHERS
+fi
+
+# Where the camera daemon keeps its sockets, named here rather than left
+# to each side's default, so the daemon this session starts and the
+# compositor that reads its landmarks name one directory. Both derive the
+# same path when the variables are unset; naming them puts the path in the
+# session's environment, where a person reading it can see which socket
+# the compositor means.
+camera_sockets
+
+# One run of the compositor: announce, hand the session manager the two
+# sockets, open the start list, wait for the exit, and stop what the start
+# list opened before the status returns.
+run_compositor() {
+    local log announced
+    log="$(compositor_log "$(tty 2> /dev/null || true)")"
+    started=()
+    : > "$log"
+    printf '%s\n' "$APP: the compositor's log is $log"
+
+    # `tee` keeps the compositor's log on standard output, where the session
+    # manager's journal holds it, and in a file this run reads the
+    # announcement out of. It is a process substitution rather than a
+    # pipeline, so the recorded process id is the compositor's and the status
+    # this file exits with is the compositor's.
+    "$COMPOSITOR" --backend "$backend" > >(tee "$log") 2>&1 &
+    local compositor=$!
+
+    if announced=$(await_announcement "$log" "$compositor"); then
+        export WAYLAND_DISPLAY="${announced%% *}"
+        export CODER_DESK_SOCKET="${announced#* }"
+
+        # The session manager waits for the compositor's variables before it
+        # calls the session started, and takes the unit down when they never
+        # arrive. Outside a managed session this says so and changes nothing.
+        uwsm finalize WAYLAND_DISPLAY CODER_DESK_SOCKET > /dev/null 2>&1 || true
+
+        open_start_list "${START[@]}"
+    else
+        printf '%s\n' "$APP: the compositor announced no sockets, so nothing started in it." >&2
+    fi
+
+    local status=0
+    wait "$compositor" || status=$?
+    stop_started
+    return "$status"
+}
+
+# A signal that ends the run takes the start list's processes with it: the
+# rows run in process groups of their own, which the console's Ctrl+C does
+# not reach once it has ended the compositor and this file.
+trap 'trap - INT TERM HUP; stop_started; exit 130' INT
+trap 'trap - INT TERM HUP; stop_started; exit 143' TERM
+trap 'trap - INT TERM HUP; stop_started; exit 129' HUP
+
+# The pause between runs when the restart below is on: long enough to read
+# the line and reach for Ctrl+C, short enough that the fresh compositor is
+# up within a few seconds.
+RESTART_SECONDS="${CODER_COMPOSITOR_RESTART_PAUSE:-3}"
+
+# A run that asks for it with `CODER_COMPOSITOR_RESTART=1` restarts when the
+# compositor exits on purpose — a clean exit, the way the quit chord ends it
+# — so the trial TTY's login comes back to a fresh compositor rather than a
+# prompt. A compositor that fails ends the run with its own status,
+# so a broken start leaves a shell instead of a loop of failures, and the
+# line between runs is where Ctrl+C keeps the shell.
+status=0
+while :; do
+    run_compositor
+    status=$?
+    ((status == 0)) || break
+    [[ ${CODER_COMPOSITOR_RESTART:-} == 1 ]] || break
+    printf '%s\n' "$APP: the compositor ended; a fresh one starts in ${RESTART_SECONDS}s, and Ctrl+C stays at this shell."
+    sleep "$RESTART_SECONDS" || break
+done
+exit "$status"

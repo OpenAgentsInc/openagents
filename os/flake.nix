@@ -55,6 +55,30 @@
         pkgs.runCommand "coderos-${name}-evaluates" { } ''
           echo ${builtins.unsafeDiscardStringContext host.config.system.build.toplevel.drvPath} > $out
         '';
+
+      # The shell that builds and tests the Coder compositor with the pinned
+      # toolchain: `nix develop ./os#compositor` from the repository root,
+      # then `cargo test -p coder-wm -p coder-compositor`. It carries the
+      # libraries Smithay links, and the ones the nested backend opens by
+      # name at run time.
+      compositorShell = pkgs.mkShell {
+        packages = [ pkgs.pkg-config ];
+        buildInputs = with pkgs; [
+          libxkbcommon
+          wayland
+          systemdLibs
+          libinput
+          seatd
+          libgbm
+        ];
+
+        LD_LIBRARY_PATH = lib.makeLibraryPath (with pkgs; [
+          libxkbcommon
+          wayland
+          libglvnd
+          vulkan-loader
+        ]) + ":/run/opengl-driver/lib";
+      };
     in
     {
       # The CoderOS module set. A host flake imports this and adds its own
@@ -70,6 +94,9 @@
       packages.${system} = {
         # The desk command every CoderOS script asks the session through.
         coder-desk = pkgs.callPackage ./pkgs/coder-desk.nix { };
+        # The Coder Wayland compositor, which a host runs with
+        # `coderos.desktop.compositor = "coder"` or on its trial TTY.
+        coder-compositor = pkgs.callPackage ./pkgs/coder-compositor.nix { };
       };
 
       # A host with only the base module, and a host with every capability
@@ -85,25 +112,29 @@
       # `scripts/build-openagents-android.sh`. The Rust toolchain comes from
       # the machine's `rustup`, which reads `rust-toolchain.toml`, with the
       # `aarch64-linux-android` and `x86_64-linux-android` targets added.
-      devShells.${system}.android = pkgs.mkShell {
-        packages = [
-          androidSdk
-          pkgs.jdk17
-          pkgs.gradle
-          pkgs.cargo-ndk
-          pkgs.watchexec
-        ];
+      devShells.${system} = {
+        android = pkgs.mkShell {
+          packages = [
+            androidSdk
+            pkgs.jdk17
+            pkgs.gradle
+            pkgs.cargo-ndk
+            pkgs.watchexec
+          ];
 
-        ANDROID_HOME = androidSdkRoot;
-        ANDROID_SDK_ROOT = androidSdkRoot;
-        ANDROID_NDK_HOME = "${androidSdkRoot}/ndk/${androidNdkVersion}";
-        JAVA_HOME = pkgs.jdk17.home;
+          ANDROID_HOME = androidSdkRoot;
+          ANDROID_SDK_ROOT = androidSdkRoot;
+          ANDROID_NDK_HOME = "${androidSdkRoot}/ndk/${androidNdkVersion}";
+          JAVA_HOME = pkgs.jdk17.home;
 
-        shellHook = ''
-          echo "Android SDK: $ANDROID_HOME"
-          echo "NDK: $ANDROID_NDK_HOME"
-          echo "Build with scripts/build-coder-android.sh or scripts/build-openagents-android.sh."
-        '';
+          shellHook = ''
+            echo "Android SDK: $ANDROID_HOME"
+            echo "NDK: $ANDROID_NDK_HOME"
+            echo "Build with scripts/build-coder-android.sh or scripts/build-openagents-android.sh."
+          '';
+        };
+
+        compositor = compositorShell;
       };
     };
 }

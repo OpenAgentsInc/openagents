@@ -13,8 +13,9 @@ The plan for moving CoderOS here, and the list of what moves next, is
 | Output | What it is |
 | --- | --- |
 | `nixosModules.coderos` | The base system and every optional capability, each off by default. `nixosModules.default` is the same module. |
+| `devShells.x86_64-linux.compositor` | `pkg-config` and the system libraries Smithay links, for `cargo test -p coder-wm -p coder-compositor` with the pinned toolchain. |
 | `devShells.x86_64-linux.android` | The Android SDK, NDK, JDK 17, Gradle, and `cargo-ndk` that `scripts/build-coder-android.sh` and `scripts/build-openagents-android.sh` build with. |
-| `packages.x86_64-linux` | `coder-desk`, the desk command the CoderOS scripts run instead of `hyprctl`, built from `crates/coder-desk-cli` by `pkgs/coder-desk.nix`. Modules that run a program from this workspace add its build here. |
+| `packages.x86_64-linux` | `coder-desk`, the desk command the CoderOS scripts run instead of `hyprctl`, built from `crates/coder-desk-cli` by `pkgs/coder-desk.nix`, and `coder-compositor`, the optional Coder Wayland compositor, built from `crates/coder-compositor` by `pkgs/coder-compositor.nix`. Modules that run a program from this workspace add its build here. |
 | `checks.x86_64-linux` | Evaluates a stub host with the base module alone, and with every capability turned on. |
 
 `nixpkgs` is pinned to one revision in `flake.nix` and `flake.lock`. A host
@@ -171,6 +172,10 @@ A check evaluates a stub host's toplevel without building it. The stub,
 `tests/stub-host.nix`, supplies only file systems, a host name, and a state
 version. `tests/all-capabilities.nix` turns every capability on. When you add
 a module, add its option to that file.
+
+The scripts under `bin/` have shell tests under `tests/` that stub every
+program they call, so they need no desktop. Run one by hand, such as
+`os/tests/coder-compositor-session.sh`.
 
 ## Nix and shell in this repository
 

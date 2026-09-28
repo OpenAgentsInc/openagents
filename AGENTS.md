@@ -283,6 +283,14 @@ uses, and marks which are implemented and which are only specified.
   `os/pkgs/coder-desk.nix` builds it. `crates/coder-binds` is the one table
   of desktop chords and window rules the Hyprland configuration renders
   from. Read the crate READMEs before changing a verb or the generation.
+- `crates/coder-compositor` — the optional Coder Wayland compositor for
+  CoderOS, on Smithay 0.7, with a nested and a hardware (DRM, `libinput`,
+  `libseat`) backend, Xwayland, and the desk protocol through
+  `coder_desk::serve`. `crates/coder-wm` is its dwindle layout, and
+  `os/pkgs/coder-compositor.nix` builds it; `nix develop ./os#compositor`
+  has the system libraries its build needs. Hand tracking is a stub in
+  `src/hands.rs` until `coder-hands` moves. Never run it on a seat someone
+  is using; its tests need no display. Read its README first.
 - `crates/coder-computers` — Coder's Computers screens (host status, add a
   computer, access, first run, activity) as Rust Native projections with typed
   intents and one shared authority check. Its `live` service owns the client's
