@@ -91,6 +91,10 @@ pub const XP_REVOCATION: u16 = 3_194;
 pub const XP_PLAYTEST_SESSION: u16 = 3_196;
 /// NIP-XP content-free playtest report.
 pub const XP_PLAYTEST_REPORT: u16 = 3_197;
+/// NIP-ATIF public trajectory declaration.
+pub const ATIF_DECLARATION: u16 = 3_198;
+/// NIP-ATIF public trajectory chunk.
+pub const ATIF_CHUNK: u16 = 3_199;
 /// NIP-XP frozen quest version.
 pub const XP_QUEST: u16 = 30_193;
 /// NIP-XP trainer profile.
@@ -130,6 +134,12 @@ pub const REGISTRY: &[Claim] = &[
     claim(EVAL_GYM_RESULTS, "NIP-EVAL", "Gym results publication"),
     claim(XP_PLAYTEST_SESSION, "NIP-XP", "Playtest session record"),
     claim(XP_PLAYTEST_REPORT, "NIP-XP", "Content-free playtest report"),
+    claim(
+        ATIF_DECLARATION,
+        "NIP-ATIF",
+        "Public trajectory declaration",
+    ),
+    claim(ATIF_CHUNK, "NIP-ATIF", "Public trajectory chunk"),
     claim(XP_PROFILE, "NIP-XP", "Trainer profile"),
     claim(XP_LINK, "NIP-XP", "Key link"),
     claim(MV_FRAME, "NIP-MV", "Pose frame"),

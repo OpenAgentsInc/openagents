@@ -1,0 +1,10 @@
+{
+  "v": "openagents.atif-chunk.v1",
+  "requires": [],
+  "trajectory_id": "fix-readme.1",
+  "artifact": "sha256:79e2a4d69d08694fc039e8ca47cd09c7563c5cf77feaf54ab73bd739ce77be8a",
+  "index": 1,
+  "count": 2,
+  "digest": "sha256:b26686947360c9bc8d85a66a72e085a71066b7619444b90cd2f4696036639361",
+  "text": "{\"record\":\"step\",\"step\":{\"at\":1790553609800,\"source\":\"Agent\",\"message\":\"The sub-agent fixed the typo; README.md now reads correctly.\",\"tokens\":[1204,31]}}\n{\"record\":\"end\",\"at\":1790553609900,\"state\":\"ended\"}\n"
+}

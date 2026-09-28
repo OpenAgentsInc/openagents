@@ -318,7 +318,7 @@ profile defines read ACLs, retention, fanout, and COUNT/search behavior.
 
 Kind `3188` is a regular immutable declaration of one scoped artifact for
 one recipient. CTX, POL, COORD, EVAL, OPT, KB, CTRL, MKT, LAB, SESS, WS,
-WORK, AUTO, ENV, LIVE, HOST, REACH, TERM, SOV, X402, and private EXT records use it when
+WORK, AUTO, ENV, LIVE, HOST, REACH, TERM, SOV, X402, ATIF, and private EXT records use it when
 a separately signed artifact is needed outside a RUN controller's journal.
 It does not dispatch work. A control or market consumer separately validates
 and admits the operation; receiving an artifact alone grants no effect. The event has

@@ -1,0 +1,10 @@
+{
+  "v": "openagents.atif-chunk.v1",
+  "requires": [],
+  "trajectory_id": "fix-readme.1",
+  "artifact": "sha256:79e2a4d69d08694fc039e8ca47cd09c7563c5cf77feaf54ab73bd739ce77be8a",
+  "index": 0,
+  "count": 2,
+  "digest": "sha256:c58f07a06fc822064cd0143c3481bf25c6f28c83b972ef720c39c7183f8c0cc9",
+  "text": "{\"record\":\"session\",\"schema_version\":\"ATIF-v1.7\",\"at\":1790553600000,\"session\":{\"id\":\"fix-readme.1\",\"model\":\"example/model-1\",\"door\":\"example\",\"repository\":\"\",\"directive\":\"\",\"state\":\"\",\"seconds\":0,\"version\":\"0.1.0\"}}\n{\"record\":\"step\",\"step\":{\"at\":1790553600100,\"source\":\"User\",\"message\":\"Fix the typo in README.md.\"}}\n{\"record\":\"step\",\"step\":{\"at\":1790553601200,\"source\":\"Agent\",\"message\":\"Delegating the edit to a sub-agent.\",\"tokens\":[812,64],\"extensions\":{\"subagent\":{\"trajectory_id\":\"fix-readme.1.child-1\"}}}}\n"
+}

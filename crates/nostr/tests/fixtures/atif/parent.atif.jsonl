@@ -1,0 +1,5 @@
+{"record":"session","schema_version":"ATIF-v1.7","at":1790553600000,"session":{"id":"fix-readme.1","model":"example/model-1","door":"example","repository":"","directive":"","state":"","seconds":0,"version":"0.1.0"}}
+{"record":"step","step":{"at":1790553600100,"source":"User","message":"Fix the typo in README.md."}}
+{"record":"step","step":{"at":1790553601200,"source":"Agent","message":"Delegating the edit to a sub-agent.","tokens":[812,64],"extensions":{"subagent":{"trajectory_id":"fix-readme.1.child-1"}}}}
+{"record":"step","step":{"at":1790553609800,"source":"Agent","message":"The sub-agent fixed the typo; README.md now reads correctly.","tokens":[1204,31]}}
+{"record":"end","at":1790553609900,"state":"ended"}

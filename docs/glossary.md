@@ -563,7 +563,7 @@ These portable target contracts come from [NIP-OPT](../nips/openagents/NIP-OPT.m
 
 The [NIP index](../nips/README.md) separates pinned official Nostr specifications,
 pinned Block extensions, and OpenAgents drafts authored here. The OpenAgents
-lane contains 27 NIPs and their shared contract. Event kinds are draft
+lane contains 28 NIPs and their shared contract. Event kinds are draft
 assignments, not upstream registrations. Implementation status applies to the
 role described below; storing an event does not implement its application.
 

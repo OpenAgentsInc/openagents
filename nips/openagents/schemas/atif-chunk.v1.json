@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "openagents.atif-chunk.v1",
+  "title": "NIP-ATIF trajectory chunk: the body of a public 3199 event or a private 3188 artifact",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["v", "requires", "trajectory_id", "artifact", "index", "count", "digest", "text"],
+  "properties": {
+    "v": { "const": "openagents.atif-chunk.v1" },
+    "requires": { "type": "array", "maxItems": 0 },
+    "trajectory_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "artifact": { "type": "string", "minLength": 71, "maxLength": 71 },
+    "index": { "type": "integer", "minimum": 0 },
+    "count": { "type": "integer", "minimum": 1, "maximum": 4096 },
+    "digest": { "type": "string", "minLength": 71, "maxLength": 71 },
+    "text": { "type": "string", "minLength": 1, "maxLength": 32768 }
+  }
+}

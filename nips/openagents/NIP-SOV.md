@@ -413,7 +413,7 @@ Retain ordered, attributable evidence for admitted goals, context references,
 typed decisions, tools, observations, delegated work, approvals, resource and
 payment attempts, outcomes, unknowns, costs, and timing. Use RUN's controller
 chain and gap/fork rules. Link full authorized local trajectories through
-[ATIF](../../docs/coder/runtime/traces.md); preserve source identities and
+[ATIF](../../docs/coder/runtime/traces.md), carried as [NIP-ATIF](NIP-ATIF.md) specifies; preserve source identities and
 distinguish recorded timestamps from estimates. A digest of an unordered set
 of events is not a replayable history. Hidden model reasoning is not required;
 observable decisions and supporting evidence are the contract.
@@ -464,7 +464,7 @@ forward through the current contracts, without restoring the old runtime.
 | `39210` tick request and `39211` result | AUTO/CAP/CJ execution with COORD admission, actual enforcement, and RUN outcomes. |
 | `39212` guardian request and `39213` approval | POL exact-action requests/decisions plus the separately admitted SOV guardian policy. |
 | `39220` skill license and `39221` delivery | EXT release identity and a supported MKT terms/delivery profile using private artifacts. No implicit gift-wrap or DRM guarantee. |
-| `39230` trajectory session and `39231` event | RUN durable ordered evidence, ATIF artifacts, and separately authorized SESS/CTRL observation. |
+| `39230` trajectory session and `39231` event | RUN durable ordered evidence, [NIP-ATIF](NIP-ATIF.md) trajectories (private `3188` artifacts or public `3198`/`3199` events), and separately authorized SESS/CTRL observation. |
 | `39260` delegation | WORK/CAP/CJ delegation, attenuated POL authority, COORD reservations, and RUN parent/child evidence. |
 | Historical AC, SKL, and NIP-90 dependencies | Current execution, EXT, MKT/LAB, and X402 contracts where applicable. No implicit legacy adapter or settlement compatibility. |
 

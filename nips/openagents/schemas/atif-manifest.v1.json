@@ -1,0 +1,153 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "openagents.atif-manifest.v1",
+  "title": "NIP-ATIF trajectory manifest: the body of a public 3198 declaration or a private 3188 artifact",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "v",
+    "requires",
+    "trajectory_id",
+    "session_id",
+    "schema_version",
+    "form",
+    "artifact",
+    "steps_digest",
+    "step_count",
+    "state",
+    "coverage",
+    "derivation",
+    "chunks",
+    "task",
+    "run",
+    "parent",
+    "children",
+    "previous"
+  ],
+  "properties": {
+    "v": { "const": "openagents.atif-manifest.v1" },
+    "requires": { "type": "array", "maxItems": 0 },
+    "trajectory_id": { "$ref": "#/$defs/id" },
+    "session_id": { "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/id" }] },
+    "schema_version": { "type": "string", "minLength": 6, "maxLength": 32 },
+    "form": { "enum": ["log", "document"] },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["digest", "size", "media_type", "schema"],
+      "properties": {
+        "digest": { "$ref": "#/$defs/digest" },
+        "size": { "type": "integer", "minimum": 1 },
+        "media_type": { "enum": ["application/jsonl", "application/json"] },
+        "schema": { "type": "string", "minLength": 6, "maxLength": 32 },
+        "sources": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["url"],
+            "properties": { "url": { "type": "string", "minLength": 8, "maxLength": 2048 } }
+          }
+        }
+      }
+    },
+    "steps_digest": { "$ref": "#/$defs/hex" },
+    "step_count": { "type": "integer", "minimum": 0 },
+    "state": { "enum": ["ended", "interrupted"] },
+    "coverage": { "enum": ["complete", "partial"] },
+    "derivation": {
+      "anyOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "source"],
+          "properties": {
+            "kind": { "enum": ["redacted", "truncated", "converted"] },
+            "source": { "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/hex" }] }
+          }
+        }
+      ]
+    },
+    "chunks": {
+      "type": "array",
+      "maxItems": 4096,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["index", "digest", "size"],
+        "properties": {
+          "index": { "type": "integer", "minimum": 0 },
+          "digest": { "$ref": "#/$defs/digest" },
+          "size": { "type": "integer", "minimum": 1, "maximum": 32768 },
+          "event": { "$ref": "#/$defs/hex" }
+        }
+      }
+    },
+    "task": {
+      "anyOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["task_id", "attempt"],
+          "properties": {
+            "task_id": { "$ref": "#/$defs/id" },
+            "attempt": { "type": "integer", "minimum": 1 }
+          }
+        }
+      ]
+    },
+    "run": { "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/hex" }] },
+    "parent": {
+      "anyOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["trajectory_id", "step_id"],
+          "properties": {
+            "trajectory_id": { "$ref": "#/$defs/id" },
+            "step_id": { "type": "integer", "minimum": 1 }
+          }
+        }
+      ]
+    },
+    "children": {
+      "type": "array",
+      "maxItems": 256,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["trajectory_id", "step_id", "steps_digest", "artifact"],
+        "properties": {
+          "trajectory_id": { "$ref": "#/$defs/id" },
+          "step_id": { "type": "integer", "minimum": 1 },
+          "steps_digest": { "$ref": "#/$defs/hex" },
+          "artifact": { "$ref": "#/$defs/digest" },
+          "event": { "$ref": "#/$defs/hex" }
+        }
+      }
+    },
+    "previous": {
+      "anyOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["trajectory_id", "steps_digest"],
+          "properties": {
+            "trajectory_id": { "$ref": "#/$defs/id" },
+            "steps_digest": { "$ref": "#/$defs/hex" }
+          }
+        }
+      ]
+    }
+  },
+  "$defs": {
+    "id": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "hex": { "type": "string", "minLength": 64, "maxLength": 64 },
+    "digest": { "type": "string", "minLength": 71, "maxLength": 71 }
+  }
+}

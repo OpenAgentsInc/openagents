@@ -42,6 +42,12 @@ SA; it allocates no kinds and implements no custody, wallet, or autonomous
 host. The [source and migration map](NIP-SOV.md#provenance-and-migration)
 retain the original draft and explain the changes.
 
+[NIP-ATIF](NIP-ATIF.md) is a **Designed** draft for carrying agent trajectories
+in the Agent Trajectory Interchange Format that Coder already records. Trajectories
+stay owner-encrypted by default; a public copy is a separate, usually redacted,
+publication with its own digest. It replaces the historical SA `39230`/`39231`
+records with two regular kinds, `3198` and `3199`, and implements no publisher yet.
+
 The [81-document teardown review](../../docs/protocol/2026-09-26-teardown-coverage.md)
 adds six draft profiles: persistent engine sessions (SESS), workspace resources
 and synchronized views (WS), tracked work (WORK), bounded automation (AUTO),
@@ -216,6 +222,7 @@ conformance requires validation and enforcement for each advertised role.
 | [NIP-REACH](NIP-REACH.md) | Owner host directory, host presence with bounded telemetry and receipt-time freshness, reachability hints without loopback fallback, authenticated direct channels bound to a grant and host generation, and placement. Implemented in [`coder-reach`](../../crates/coder-reach/README.md) with synthetic loopback-socket tests over TCP and WebSocket; [`coder-host`](../../crates/coder-host/README.md) publishes presence and hints and serves TCP and WebSocket direct channels, `ws` or TLS-terminated `wss`, with the real grant store. | Shared `3188`; no new kinds. |
 | [NIP-TERM](NIP-TERM.md) | Interactive terminal sessions: open, attach, detach, input, resize, signal, and close under the `terminal` right; per-terminal output sequence numbers, bounded replay with explicit gaps, idle expiry, and `lost` after a host restart. Implemented in [`coder-pty`](../../crates/coder-pty/README.md) with real-PTY tests on macOS; [`coder-host`](../../crates/coder-host/README.md) wires NIP-HOST rights, NIP-REACH channels, and `3188` sealing. | Shared `3188` or NIP-REACH data frames; no new kinds. |
 | [NIP-SOV](NIP-SOV.md) | Designed successor to historical SA: durable agent identity, admitted custody, bounded lifecycle, guardians, treasury policy, market participation, and retained recovery evidence. | Shared `3188`; existing AUTO/CAP/CJ/COORD/RUN contracts; no new kinds. |
+| [NIP-ATIF](NIP-ATIF.md) | Designed carriage of ATIF agent trajectories: exact-byte and ATIF-rule step digests, owner-encrypted private carriage, public declarations with ordered chunks, and links to Coder tasks, RUN runs, delegated sub-agents, and continued segments. Maps Block AO/AM/AE onto ATIF steps. | `3198`, `3199`; private manifests and chunks on shared `3188`. |
 | [NIP-MV](NIP-MV.md) | Shared 3D worlds: ephemeral pose frames and gestures, durable entity state, world definitions, and cell-scoped subscriptions. Its optional runtime-loaded scene manifest and rules profile are Designed; the curated local Ruins zone is not general world discovery. Standalone: it depends on no other contract here. | `23300`, `23301`, `23302`, `33300`, `33301`. |
 
 Discovery heads are mutable. Exact signed records and artifact digests pin
@@ -265,6 +272,8 @@ NIP-32 `1985` labels or Block `24200` frames, aren't claims.
 | `3195` | [NIP-EVAL](NIP-EVAL.md) | Gym results publication |
 | `3196` | [NIP-XP](NIP-XP.md) | Playtest session record |
 | `3197` | [NIP-XP](NIP-XP.md) | Content-free playtest report |
+| `3198` | [NIP-ATIF](NIP-ATIF.md) | Public trajectory declaration |
+| `3199` | [NIP-ATIF](NIP-ATIF.md) | Public trajectory chunk |
 | `13193` | [NIP-XP](NIP-XP.md) | Trainer profile |
 | `13195` | [NIP-XP](NIP-XP.md) | Key link |
 | `23300` | [NIP-MV](NIP-MV.md) | Pose frame |

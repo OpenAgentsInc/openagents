@@ -114,7 +114,7 @@ Read the spec before the code. The files you need most often:
 - `docs/protocol/block-nips.md` — what the relay does with each Block NIP,
   including what it deliberately doesn't advertise.
 
-The OpenAgents lane contains 27 NIPs plus the shared contracts. X402, SESS, WS,
+The OpenAgents lane contains 28 NIPs plus the shared contracts. X402, SESS, WS,
 WORK, AUTO, ENV, LIVE, and SOV are **Designed** drafts, as are POL's learned
 preference lifecycle and EXT's import/component-set assessment additions.
 They allocate no new event kinds: private artifacts use `3188`, remote host
@@ -124,6 +124,9 @@ SOV does not restore the legacy `392xx` allocations or imply working key
 custody, guardians, or payments. REACH has a narrower `coder-reach`
 implementation; consult its role limits before treating reachability as
 availability or controller-transfer authority.
+ATIF is a **Designed** draft that does allocate kinds: public trajectory
+declarations `3198` and chunks `3199`; private trajectories ride `3188`. It
+replaces historical `39230`/`39231`; no component publishes trajectories yet.
 MKT/LAB has a bounded free-order host in `crates/coder-labor`, with retained relay
 and process fixtures. Paid settlement, independently operated service delivery,
 and broader market roles remain unfinished. CTRL has a bounded local-owner bridge in `crates/coder-control`; read

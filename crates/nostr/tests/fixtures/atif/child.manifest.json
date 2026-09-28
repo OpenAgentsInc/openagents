@@ -1,0 +1,34 @@
+{
+  "v": "openagents.atif-manifest.v1",
+  "requires": [],
+  "trajectory_id": "fix-readme.1.child-1",
+  "session_id": "fix-readme.1.child-1",
+  "schema_version": "ATIF-v1.7",
+  "form": "log",
+  "artifact": {
+    "digest": "sha256:8a882c21f8b66026f7620b4592d09df7977a3e0d0168b30deecd05bccea55c74",
+    "size": 537,
+    "media_type": "application/jsonl",
+    "schema": "ATIF-v1.7"
+  },
+  "steps_digest": "7bb260e1ed230e3694e9d8093bb76dc5b9ea94e09fd0634ae053a382ebe2bc23",
+  "step_count": 2,
+  "state": "ended",
+  "coverage": "complete",
+  "derivation": null,
+  "chunks": [
+    {
+      "index": 0,
+      "digest": "sha256:8a882c21f8b66026f7620b4592d09df7977a3e0d0168b30deecd05bccea55c74",
+      "size": 537
+    }
+  ],
+  "task": null,
+  "run": null,
+  "parent": {
+    "trajectory_id": "fix-readme.1",
+    "step_id": 2
+  },
+  "children": [],
+  "previous": null
+}
