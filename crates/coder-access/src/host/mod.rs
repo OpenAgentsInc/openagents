@@ -281,6 +281,38 @@ impl Host {
         Ok(())
     }
 
+    /// Issue grants to `devices` in one commit, as if each had redeemed an
+    /// invitation from the host, so a test can fill the book quickly.
+    #[cfg(test)]
+    pub(crate) fn issue_for_test(
+        &self,
+        devices: &[String],
+        relay: &str,
+        rights: &Rights,
+        now: u64,
+        expires_at: u64,
+    ) -> Result<()> {
+        let (mut store, secret, mut book) = self.open()?;
+        for device in devices {
+            let origin = Origin {
+                kind: OriginKind::Invitation,
+                id: random_id(),
+                issuer: book.host.clone(),
+            };
+            issue(
+                &mut book,
+                &secret,
+                device,
+                relay,
+                rights.clone(),
+                origin,
+                now,
+                expires_at,
+            )?;
+        }
+        Ok(store.save(&book)?)
+    }
+
     pub fn handle(
         &self,
         event: &Event,
@@ -751,9 +783,20 @@ fn issue(
     expires_at: u64,
 ) -> Result<Event> {
     book.prune(now);
-    if book.grants.len() >= MAX_GRANTS {
-        return fail(Code::Bounds, "grant retention limit reached");
-    }
+    // Only a grant live until now hands on its delegations; a grant that
+    // was already revoked keeps its invitations refused.
+    let live = |r: &GrantRecord| {
+        r.revoked_at.is_none()
+            && r.grant.expires_at > now
+            && r.grant.epoch == book.epoch(&r.grant.device)
+    };
+    let handed_on: Vec<String> = book
+        .grants
+        .values()
+        .filter(|r| r.grant.device == device && live(r))
+        .map(|r| r.grant.grant.clone())
+        .collect();
+    make_room(book, device, now)?;
     let grant = Grant {
         v: GRANT.into(),
         requires: vec![],
@@ -780,7 +823,106 @@ fn issue(
             seen_at: None,
         },
     );
+    reparent(book, device, &handed_on);
     Ok(authorization)
+}
+
+/// Grant IDs that a retained invitation or approved enrollment names. They
+/// stay in the book, so the record's retry answers `revoked`, until the
+/// record leaves it.
+fn named_grants(book: &Book) -> std::collections::BTreeSet<String> {
+    book.invitations
+        .values()
+        .filter_map(|i| i.grant.clone())
+        .chain(book.enrollments.values().filter_map(|e| e.approved_grant()))
+        .collect()
+}
+
+/// Make room for a new grant to `device`, whose earlier grants the new
+/// grant supersedes: one device key holds one grant. A superseded grant is revoked in the same commit as the
+/// new grant and leaves the book once no retained record names it. The
+/// device's epoch does not advance, so the new grant is current and grants
+/// that other devices hold, including ones this device delegated, are
+/// untouched. While the book is full, the grant that stopped being live
+/// longest ago (revoked, expired, or at an old epoch) leaves it, so a dead
+/// grant never blocks a new one. A request under a grant that left the book
+/// is refused and reads nothing.
+///
+/// Nothing changes unless the new grant fits.
+///
+/// # Errors
+/// Refuses with `Bounds` when every retained grant is live or named.
+fn make_room(book: &mut Book, device: &str, now: u64) -> Result<()> {
+    let named = named_grants(book);
+    let superseded: Vec<String> = book
+        .grants
+        .values()
+        .filter(|r| r.grant.device == device)
+        .map(|r| r.grant.grant.clone())
+        .collect();
+    let dead = |id: &str, r: &GrantRecord| {
+        superseded.iter().any(|s| s == id)
+            || r.revoked_at.is_some()
+            || r.grant.expires_at <= now
+            || r.grant.epoch != book.epoch(&r.grant.device)
+    };
+    let mut evictable: Vec<(u64, String)> = book
+        .grants
+        .iter()
+        .filter(|(id, r)| dead(id, r) && !named.contains(*id))
+        .map(|(id, r)| {
+            let died = if superseded.contains(id) {
+                r.revoked_at.unwrap_or(now)
+            } else {
+                r.revoked_at.unwrap_or(r.grant.expires_at).min(now)
+            };
+            (died, id.clone())
+        })
+        .collect();
+    let departing = superseded.iter().filter(|id| !named.contains(*id)).count();
+    let kept = book.grants.len() - departing;
+    let removable = evictable.len() - departing;
+    if kept.saturating_sub(removable) >= MAX_GRANTS {
+        return fail(Code::Bounds, "grant retention limit reached");
+    }
+    for id in &superseded {
+        if named.contains(id) {
+            let record = book.grants.get_mut(id).expect("listed grant");
+            record.revoked_at.get_or_insert(now);
+        } else {
+            book.grants.remove(id);
+        }
+    }
+    evictable.retain(|(_, id)| book.grants.contains_key(id));
+    evictable.sort();
+    let mut evictable = evictable.into_iter();
+    while book.grants.len() >= MAX_GRANTS {
+        let (_, id) = evictable.next().expect("counted above");
+        book.grants.remove(&id);
+    }
+    Ok(())
+}
+
+/// Move `device`'s unredeemed delegated invitations from a grant that was
+/// live until the new grant superseded it to the new one, only where the new grant alone could have issued them:
+/// it holds `access_admin`, every invited right, and outlives the invited
+/// grant. Any other such invitation stays on its superseded grant and is
+/// refused as `revoked` at redemption.
+fn reparent(book: &mut Book, device: &str, handed_on: &[String]) {
+    if handed_on.is_empty() {
+        return;
+    }
+    let Some(current) = book
+        .grants
+        .values()
+        .find(|r| r.grant.device == device && r.revoked_at.is_none())
+        .map(|r| r.grant.clone())
+    else {
+        return;
+    };
+    for invitation in book.invitations.values_mut() {
+        invitation.reparent(device, handed_on, &current);
+    }
 }
 
 pub(crate) fn same_digest(a: &str, b: &str) -> bool {

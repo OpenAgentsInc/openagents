@@ -115,6 +115,17 @@ before the command returns. Later requests refuse as `revoked`, and a request
 that names an old epoch refuses as `stale`. Revocation cannot erase data a
 device already received.
 
+A device key holds one grant. When a device enrolls again (it redeems another
+invitation, or an administrator approves it again), the new grant supersedes
+its earlier ones in the same commit: they are revoked without advancing the
+device's epoch, and they leave the store once no retained invitation or
+enrollment names them. Grants other devices hold, including ones this device
+delegated, are untouched. An unredeemed invitation the device issued under a
+grant that was live until then moves to the new grant only when the new grant
+holds `access_admin` and every invited right and outlives the invited grant;
+otherwise it is refused as `revoked`. A grant that was already revoked hands
+on nothing.
+
 `serve-once` answers one request and exits; use it for tests. A resident host
 service composes the library's `host::serve` loop. The global
 `--loopback-test` option permits `ws` to a numeric loopback address for
@@ -167,7 +178,11 @@ observer access.
 ## Bounds
 
 The store retains at most 128 grants, 64 invitations, 32 enrollment
-requests, 1,024 retained replies, and 1,024 device epochs. Requests are valid
+requests, 1,024 retained replies, and 1,024 device epochs. A dead grant
+(revoked, superseded, expired, or at an old epoch) never blocks a new one:
+while the store holds 128 grants, the one that stopped being live longest ago
+leaves it, unless a retained invitation or enrollment names it. Only 128 live
+or named grants refuse a new device, as `bounds`. Requests are valid
 for at most 60 seconds. Invitations and enrollment requests live five
 minutes. An invitation admits at most 32 replies. Revocation tombstones are
 kept until grant expiry plus the request window.

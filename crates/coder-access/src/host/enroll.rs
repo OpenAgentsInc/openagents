@@ -19,8 +19,28 @@ pub(super) struct InvitationRecord {
     issuer: String,
     issuer_grant: Option<String>,
     cancelled: bool,
-    grant: Option<String>,
+    pub(super) grant: Option<String>,
     replies: u32,
+}
+
+impl InvitationRecord {
+    /// See `reparent` in the host module.
+    pub(super) fn reparent(&mut self, device: &str, handed_on: &[String], current: &Grant) {
+        let covered = current.rights.contains(Right::AccessAdmin)
+            && self.rights.first_missing(&current.rights).is_none()
+            && self.grant_expires_at <= current.expires_at;
+        if self.issuer == device
+            && self.grant.is_none()
+            && !self.cancelled
+            && covered
+            && self
+                .issuer_grant
+                .as_ref()
+                .is_some_and(|g| handed_on.contains(g))
+        {
+            self.issuer_grant = Some(current.grant.clone());
+        }
+    }
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -49,6 +69,15 @@ pub(super) struct EnrollmentRecord {
     pub(super) expires_at: u64,
     attempts: u32,
     state: EnrollmentState,
+}
+
+impl EnrollmentRecord {
+    pub(super) fn approved_grant(&self) -> Option<String> {
+        match &self.state {
+            EnrollmentState::Approved { grant, .. } => Some(grant.clone()),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
