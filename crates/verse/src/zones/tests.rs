@@ -388,7 +388,8 @@ fn walking_through_the_grid_portal_enters_a_neutral_lagrange_1_and_flying_back_r
     assert!((runtime.player.yaw - crate::controller::wrap(away)).abs() < 1e-5);
     assert_eq!(runtime.grid_gate(), Some(gate));
     assert!(runtime.ball().unwrap().body().pos.distance(ball_at) < 1e-6);
-    assert!(runtime.world.mesh.faces.is_empty());
+    // The Grid's static world again: its ground and its Gym.
+    assert_eq!(runtime.world.mesh.faces, crate::world::bare().mesh.faces);
     assert!(runtime.world.mesh.lines.iter().all(|v| gray(v.color)));
     // Walking on leads away; turning back and walking in enters again.
     assert!(!walk_until_zone_changes(&mut runtime, 1.0));

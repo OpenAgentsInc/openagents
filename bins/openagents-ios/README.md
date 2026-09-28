@@ -57,8 +57,15 @@ The app has four tabs, shown as icons:
   log line `verse-world` reports the connection, live players, and the world
   public key. `push` holds the stick forward for a whole step, into the
   ball, `closer` pinches in past the nearest orbit into first person,
-  `walkpinch` holds the stick while pinching in, and `wait` pauses a step;
-  the log line also reports the ball's position, speed, and physics time.
+  `walkpinch` holds the stick while pinching in, `board` taps the Gym's
+  board, and `wait` pauses a step; the log line also reports the ball's
+  position, speed, and physics time. The Grid's
+  [Gym](../../docs/verse/mobile.md#the-grids-gym) stands straight ahead of
+  the spawn; its board opens in a native white-on-black panel
+  (`host/App/VerseGym.swift`, over the packet types it shares with Coder in
+  `GymBoard.swift`), and its connection is kept in Keychain
+  (`com.openagents.app.gym`). `--gym-preview` shows the labeled synthetic
+  board offline.
 - **Wallet** is a placeholder.
 - **Account** holds **Computers**, **Tailnet**, **Identity keys**, **About
   this device**, and **Changelog**, and links to the source code and to

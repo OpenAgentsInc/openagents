@@ -13,8 +13,9 @@ The OpenAgents app's **Verse** tab mounts the same surface in its bare mode
 (`WorldRuntime::zone_label`, the zone snapshot's label, and the return
 controls); Coder's plaza keeps its own name. The Grid has only the plaza's ground grid, drawn in the neutral
 palette (each amber step's lightness in white light), and the player with the
-controls below, and other players' avatars. It has no chat, map, doors,
-computer, Gym, or companion, and one zone: a walk-in portal to Lagrange 1
+controls below, and other players' avatars, and the Gym
+([below](#the-grids-gym)). It has no chat, map, doors, computer, or
+companion, and one zone: a walk-in portal to Lagrange 1
 ([below](#the-grids-portal-to-lagrange-1)). See
 [presence in the OpenAgents app](#presence-in-the-openagents-app) and
 [OpenAgents for iOS](../../bins/openagents-ios/README.md).
@@ -100,6 +101,37 @@ cargo run -p verse --release --features capture --example bare_capture -- target
 
 The arguments are seconds of walking forward, seconds of waiting, and a
 sideways camera orbit in pixels.
+
+### The Grid's Gym
+
+The Grid has Coder's [Gym](gym.md), drawn in white and gray like the grid:
+the same hall, low walls, open roof, **GYM** lettering, and boards, with the
+same board, connection, and recipe rules. Only its place and palette differ;
+Coder's plaza Gym is unchanged and amber.
+
+- **Placement.** `verse::world::GymSite::GRID` turns the Gym a quarter turn
+  so that its doorway stands 36 m straight ahead of the spawn
+  (`GRID_GYM_AHEAD`), facing it, and the hall runs 24 m farther along the
+  spawn's heading. From the spawn, the **GYM** lettering stands above the
+  doorway in the middle of the view, past the ball and between the stack and
+  the dominoes. Every block, the ball, the reset pillar, and the Lagrange 1
+  portal stand at least 14 m short of its walls. `GymSite::PLAZA` is the
+  identity, so every `GYM_*` constant stays in the Gym's own frame.
+- **Walls.** The walls block walking, and the same boxes stand in the ball's
+  physics world, so the ball and blocks bounce off them.
+- **Board.** Walk in and up to the central board: from within 6 m it reads
+  **TAP TO OPEN**, and a tap on it (not a drag, and not with the stick) opens
+  the host's Gym panel. VoiceOver offers **Open Gym board**. Walking out
+  closes the panel and pauses observation, as in Coder.
+- **Connection.** The Gym grant is for the world key (the key the panel
+  shows). The OpenAgents app keeps the pasted `gym-connect:` code in its own
+  Keychain item (`com.openagents.app.gym`, this device only) and passes it as
+  `gym_code` when the world mounts. A host without a Gym panel (Android, for
+  now) shows the building but no tap cue, and its board never opens.
+- **Preview.** Simulator and debug builds take `--gym-preview`: the labeled
+  synthetic board, offline, starting just outside the doorway.
+  `--verse-script walk,walk,walk,wait,board` walks up to the board and taps
+  it.
 
 ### The Grid's portal to Lagrange 1
 

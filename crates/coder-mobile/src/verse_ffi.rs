@@ -22,12 +22,40 @@ pub struct BarePresence {
     pub relay: Option<String>,
 }
 
+/// The bare world's Gym connection: the host's `gym-connect:` code, as in
+/// Coder, or the labeled synthetic preview for simulator checks. The default
+/// has neither, and its board asks for a connection.
+#[derive(Default)]
+pub struct BareGym {
+    /// A `gym-connect:` code the host saved for this world identity.
+    pub code: Option<String>,
+    /// Show the labeled synthetic board and start outside the Gym's doorway.
+    /// The world then stays offline, as Coder's preview does.
+    pub preview: bool,
+    /// The host shows the native Gym panel when the board opens. Without it
+    /// the Gym stands in the world, but its board shows no tap cue and never
+    /// opens.
+    pub panel: bool,
+}
+
+#[cfg(test)]
 pub(crate) fn bare_config(
     width: u32,
     height: u32,
     scale: f32,
     hdr: bool,
     presence: Option<BarePresence>,
+) -> Config {
+    bare_config_with_gym(width, height, scale, hdr, presence, BareGym::default())
+}
+
+pub(crate) fn bare_config_with_gym(
+    width: u32,
+    height: u32,
+    scale: f32,
+    hdr: bool,
+    presence: Option<BarePresence>,
+    gym: BareGym,
 ) -> Config {
     let (secret_hex, world_relay, world_offline) = match presence {
         Some(presence) => (presence.secret_hex, presence.relay, false),
@@ -46,11 +74,11 @@ pub(crate) fn bare_config(
         width,
         height,
         scale,
-        synthetic: false,
-        gym_code: None,
-        synthetic_gym: false,
+        synthetic: gym.preview,
+        gym_code: gym.code,
+        synthetic_gym: gym.preview,
         world_relay,
-        world_offline,
+        world_offline: world_offline || gym.preview,
         door_preferences: None,
         zone_cache_directory: None,
         computer_hud: false,
@@ -256,8 +284,8 @@ pub unsafe extern "C" fn coder_verse_call(
 
 impl VerseHandle {
     /// Mounts Verse's bare world on a Metal layer: the plaza's ground grid in
-    /// the neutral palette, with Coder's player, touch, and motion controls
-    /// and nothing else. With `presence`, it joins the bare world's own NIP-MV
+    /// the neutral palette, with Coder's player, touch, and motion controls,
+    /// the shared ball and blocks, the portal to Lagrange 1, and the Gym. With `presence`, it joins the bare world's own NIP-MV
     /// world for avatar presence alone while active; without it, it joins no
     /// relay and uses a throwaway identity.
     ///
@@ -272,10 +300,40 @@ impl VerseHandle {
         hdr: bool,
         presence: Option<BarePresence>,
     ) -> Result<Self, String> {
+        unsafe {
+            Self::create_bare_with_gym(
+                layer,
+                width,
+                height,
+                scale,
+                hdr,
+                presence,
+                BareGym::default(),
+            )
+        }
+    }
+
+    /// As [`Self::create_bare`], with the bare world's Gym connection.
+    ///
+    /// # Safety
+    /// As `coder_verse_create`.
+    pub unsafe fn create_bare_with_gym(
+        layer: *mut c_void,
+        width: u32,
+        height: u32,
+        scale: f32,
+        hdr: bool,
+        presence: Option<BarePresence>,
+        gym: BareGym,
+    ) -> Result<Self, String> {
         if layer.is_null() {
             return Err("No native layer to draw in".into());
         }
-        let scene = Scene::new(bare_config(width, height, scale, hdr, presence))?;
+        let panel = gym.panel;
+        let mut scene = Scene::new(bare_config_with_gym(
+            width, height, scale, hdr, presence, gym,
+        ))?;
+        scene.gym_panel = panel;
         create_renderer(layer, scene)
     }
 
@@ -363,7 +421,10 @@ impl VerseHandle {
                         renderer.set_atmosphere(self.scene.world.atmosphere())?;
                         self.rendered_zone_revision = self.scene.world.zone_revision;
                     }
-                    let mut mesh = self.scene.world.dynamic_mesh_with_interactions(true, true);
+                    let mut mesh = self
+                        .scene
+                        .world
+                        .dynamic_mesh_with_interactions(true, self.scene.gym_panel);
                     let entities = self
                         .scene
                         .session

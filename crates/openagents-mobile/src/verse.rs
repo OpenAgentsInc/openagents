@@ -10,11 +10,17 @@
 //! gestures, companion, or profile. The world key is a separate protected
 //! identity; the device key that holds host grants never signs world events.
 //!
+//! The Grid's Gym stands straight ahead of the spawn. Its board opens in the
+//! host's native Gym panel after a tap on it from inside. Its connection is
+//! the host's own `gym-connect:` grant for the world key, as in Coder, which
+//! the host keeps in Keychain and passes at creation; a debug build may ask
+//! for the labeled synthetic preview instead.
+//!
 //! Create, call, and destroy a handle on the main thread while its
 //! CAMetalLayer stays alive. Requests and replies are Coder's native Verse
 //! JSON (`coder.verse.v1`).
 use crate::{OpenAgentsMobileBuffer, buffer};
-use coder_mobile::{BarePresence, VerseHandle};
+use coder_mobile::{BareGym, BarePresence, VerseHandle};
 use serde::Deserialize;
 use std::cell::RefCell;
 use std::ffi::c_void;
@@ -23,8 +29,11 @@ use std::ptr;
 
 thread_local! { static CREATE_ERROR: RefCell<Option<String>> = const { RefCell::new(None) }; }
 
-/// A world request carries no panel feeds, so it stays small.
-const MAX_REQUEST_BYTES: usize = 4096;
+/// The largest world request: a Gym connection code. Every other request
+/// stays within Coder's 4 KiB request bound, which it enforces per request.
+const MAX_REQUEST_BYTES: usize = 96 * 1024;
+/// The largest mount configuration, with a Gym connection code.
+const MAX_CONFIG_BYTES: usize = 96 * 1024;
 
 /// The host's mount: the layer's drawable size in pixels, its scale, whether
 /// the layer is set up for extended dynamic range, and the world identity.
@@ -41,6 +50,15 @@ struct Config {
     /// stays offline.
     #[serde(default)]
     world_secret_hex: Option<String>,
+    /// The Gym connection the host saved for the world key, a
+    /// `gym-connect:` code. Rust validates it; an invalid code shows on the
+    /// Gym board rather than refusing the world.
+    #[serde(default)]
+    gym_code: Option<String>,
+    /// Show the labeled synthetic Gym board and start outside the Gym's
+    /// doorway, offline. For simulator checks only.
+    #[serde(default)]
+    gym_preview: bool,
 }
 
 impl Config {
@@ -70,7 +88,7 @@ pub unsafe extern "C" fn openagents_verse_create(
     len: usize,
 ) -> *mut VerseHandle {
     CREATE_ERROR.with(|error| *error.borrow_mut() = None);
-    if layer.is_null() || bytes.is_null() || len == 0 || len > 1024 {
+    if layer.is_null() || bytes.is_null() || len == 0 || len > MAX_CONFIG_BYTES {
         return ptr::null_mut();
     }
     let result = catch_unwind(AssertUnwindSafe(|| {
@@ -78,14 +96,27 @@ pub unsafe extern "C" fn openagents_verse_create(
         let config: Config = serde_json::from_slice(bytes)
             .map_err(|_| "Invalid native Verse configuration".to_owned())?;
         let presence = config.presence()?;
+        if config
+            .gym_code
+            .as_ref()
+            .is_some_and(|code| code.len() > 65_536)
+        {
+            return Err("The Gym connection exceeds its size limit".to_owned());
+        }
+        let gym = BareGym {
+            code: config.gym_code,
+            preview: config.gym_preview,
+            panel: true,
+        };
         unsafe {
-            VerseHandle::create_bare(
+            VerseHandle::create_bare_with_gym(
                 layer,
                 config.width,
                 config.height,
                 config.scale,
                 config.hdr,
                 presence,
+                gym,
             )
         }
     }));
@@ -177,6 +208,27 @@ mod tests {
             assert_eq!(text, b"Invalid Verse world identity");
             unsafe { crate::openagents_mobile_buffer_free(error) };
         }
+        // The Gym's connection and preview are part of the mount; an
+        // oversized code is refused before the world starts.
+        let gym: Config = serde_json::from_value(serde_json::json!({
+            "width": 1, "height": 1, "scale": 1.0,
+            "gym_code": "gym-connect:x", "gym_preview": true,
+        }))
+        .unwrap();
+        assert_eq!(gym.gym_code.as_deref(), Some("gym-connect:x"));
+        assert!(gym.gym_preview);
+        let oversized = serde_json::to_vec(&serde_json::json!({
+            "width": 1, "height": 1, "scale": 1.0, "gym_code": "x".repeat(70_000),
+        }))
+        .unwrap();
+        assert!(
+            unsafe { openagents_verse_create(layer, oversized.as_ptr(), oversized.len()) }
+                .is_null()
+        );
+        let error = openagents_verse_create_error();
+        let text = unsafe { std::slice::from_raw_parts(error.data, error.len) };
+        assert_eq!(text, b"The Gym connection exceeds its size limit");
+        unsafe { crate::openagents_mobile_buffer_free(error) };
         #[cfg(not(target_os = "ios"))]
         {
             assert!(

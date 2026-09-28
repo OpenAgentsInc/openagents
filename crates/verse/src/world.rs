@@ -37,6 +37,154 @@ pub const GYM_BOARD_SCREEN: Vec3 = Vec3::new(58.788, 2.8, 0.0);
 pub const GYM_BOARD_HALF: [f32; 2] = [2.5, 1.55];
 /// Maximum ground-plane distance for opening the board from inside the hall.
 pub const GYM_BOARD_RANGE: f32 = 6.0;
+/// How far ahead of the spawn the Grid's Gym doorway stands, m. The hall
+/// lies beyond it along the spawn's heading, past the ball, the stack, and
+/// the dominoes, with the doorway facing the spawn between the stack and the
+/// dominoes.
+pub const GRID_GYM_AHEAD: f32 = 36.0;
+/// The Gym's walls in its own (plaza) frame: min and max x and z, m. The
+/// west wall has a six-meter doorway between its two halves.
+pub const GYM_WALLS: [([f32; 2], [f32; 2]); 5] = [
+    ([36.0, -9.0], [60.0, -8.5]),
+    ([36.0, 8.5], [60.0, 9.0]),
+    ([59.5, -8.5], [60.0, 8.5]),
+    ([36.0, -8.5], [36.5, -3.0]),
+    ([36.0, 3.0], [36.5, 8.5]),
+];
+/// The Gym walls' height, m: low, so the third-person camera sees over them.
+pub const GYM_WALL_HEIGHT: f32 = 1.2;
+
+/// Where a world stands its Gym. The Gym's geometry and interaction
+/// constants (`GYM_*`) are in its own frame, which is Coder's plaza; a site
+/// turns that frame `yaw` about the vertical and then moves it by `offset`.
+/// Coder's plaza uses [`GymSite::PLAZA`], the identity, so its Gym is
+/// unchanged; the Grid uses [`GymSite::GRID`].
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct GymSite {
+    /// Rotation about +Y, radians, as `glam::Quat::from_rotation_y`.
+    pub yaw: f32,
+    /// Translation after the rotation, m.
+    pub offset: Vec3,
+}
+
+impl GymSite {
+    /// Coder's plaza: the Gym east of the plaza, its doorway facing west.
+    pub const PLAZA: Self = Self {
+        yaw: 0.0,
+        offset: Vec3::ZERO,
+    };
+    /// The Grid: the Gym turned a quarter turn so that its doorway faces the
+    /// spawn from [`GRID_GYM_AHEAD`] meters straight ahead, and its hall
+    /// runs away from the spawn.
+    pub const GRID: Self = Self {
+        yaw: -std::f32::consts::FRAC_PI_2,
+        offset: Vec3::new(SPAWN.x, 0.0, SPAWN.z + GRID_GYM_AHEAD - GYM_ENTRANCE.x),
+    };
+
+    fn rotation(self) -> glam::Quat {
+        glam::Quat::from_rotation_y(self.yaw)
+    }
+
+    fn identity(self) -> bool {
+        self == Self::PLAZA
+    }
+
+    /// A Gym-frame point in the world.
+    #[must_use]
+    pub fn point(self, local: Vec3) -> Vec3 {
+        if self.identity() {
+            local
+        } else {
+            self.rotation() * local + self.offset
+        }
+    }
+
+    /// A Gym-frame direction in the world.
+    #[must_use]
+    pub fn direction(self, local: Vec3) -> Vec3 {
+        if self.identity() {
+            local
+        } else {
+            self.rotation() * local
+        }
+    }
+
+    /// A world point in the Gym's frame.
+    #[must_use]
+    pub fn local(self, world: Vec3) -> Vec3 {
+        if self.identity() {
+            world
+        } else {
+            self.rotation().inverse() * (world - self.offset)
+        }
+    }
+
+    /// A world direction in the Gym's frame.
+    #[must_use]
+    pub fn local_direction(self, world: Vec3) -> Vec3 {
+        if self.identity() {
+            world
+        } else {
+            self.rotation().inverse() * world
+        }
+    }
+
+    /// A Gym-frame heading (the controller's yaw) in the world.
+    #[must_use]
+    pub fn yaw_of(self, local: f32) -> f32 {
+        crate::controller::wrap(local + self.yaw)
+    }
+
+    /// A Gym-frame footprint in the world, as the box around its corners.
+    /// Quarter turns keep it exact.
+    #[must_use]
+    pub fn footprint(self, local: Footprint) -> Footprint {
+        if self.identity() {
+            return local;
+        }
+        let corners = [
+            [local.min[0], local.min[1]],
+            [local.max[0], local.min[1]],
+            [local.max[0], local.max[1]],
+            [local.min[0], local.max[1]],
+        ]
+        .map(|[x, z]| self.point(Vec3::new(x, 0.0, z)));
+        let fold = |f: fn(f32, f32) -> f32, pick: fn(Vec3) -> f32| {
+            corners.iter().copied().map(pick).reduce(f).unwrap_or(0.0)
+        };
+        // Round away the rotation's float noise, so quarter turns land on
+        // the millimeter the walls were drawn on.
+        let snap = |v: f32| (v * 1000.0).round() / 1000.0;
+        Footprint {
+            min: [snap(fold(f32::min, |p| p.x)), snap(fold(f32::min, |p| p.z))],
+            max: [snap(fold(f32::max, |p| p.x)), snap(fold(f32::max, |p| p.z))],
+        }
+    }
+
+    /// The Gym's wall footprints in the world.
+    #[must_use]
+    pub fn walls(self) -> [Footprint; 5] {
+        GYM_WALLS.map(|(min, max)| self.footprint(Footprint { min, max }))
+    }
+
+    /// Whether world feet at `position` stand inside the hall, below its
+    /// upper structure.
+    #[must_use]
+    pub fn inside(self, position: Vec3) -> bool {
+        let p = self.local(position);
+        (36.5..59.5).contains(&p.x) && (-8.5..8.5).contains(&p.z) && (0.0..=4.5).contains(&p.y)
+    }
+
+    fn transform(self, mesh: &mut Mesh) {
+        if self.identity() {
+            return;
+        }
+        for vertex in mesh.lines.iter_mut().chain(mesh.faces.iter_mut()) {
+            vertex.pos = self.point(Vec3::from_array(vertex.pos)).to_array();
+        }
+    }
+}
+
 /// Where the pylon stands.
 pub const PYLON: Vec3 = Vec3::new(0.0, 0.0, 14.0);
 /// Where the quest board stands, facing the plaza.
@@ -73,7 +221,7 @@ pub fn build() -> World {
     ground(&mut world.mesh);
     city(&mut world);
     computer(&mut world);
-    gym(&mut world);
+    gym(&mut world, GymSite::PLAZA);
     pylon(&mut world);
     quest_board(&mut world);
     workbench(&mut world);
@@ -96,12 +244,14 @@ pub fn build() -> World {
     world
 }
 
-/// Builds the bare world: the plaza's ground grid alone, in the neutral
-/// palette. Nothing stands on it and nothing blocks walking.
+/// Builds the bare world: the plaza's ground grid and the Gym standing on
+/// it at [`GymSite::GRID`], in the neutral palette. Only the Gym's low walls
+/// block walking.
 #[must_use]
 pub fn bare() -> World {
     let mut world = World::default();
     ground(&mut world.mesh);
+    gym(&mut world, GymSite::GRID);
     world.mesh.neutralize();
     world
 }
@@ -317,9 +467,10 @@ fn computer_glyph(letter: u8) -> &'static [&'static [(f32, f32)]] {
     }
 }
 
-/// Depth-tested text on the physical Gym board. Hosts opt into the action cue
-/// only when they implement its tap action; geometry alone starts no service.
-pub(crate) fn gym_display(interaction: Option<bool>) -> Mesh {
+/// Depth-tested text on the physical Gym board at `site`. Hosts opt into the
+/// action cue only when they implement its tap action; geometry alone starts
+/// no service.
+pub(crate) fn gym_display(site: GymSite, interaction: Option<bool>) -> Mesh {
     let mut mesh = Mesh::default();
     let step = if interaction == Some(true) {
         Intensity::Full
@@ -344,28 +495,34 @@ pub(crate) fn gym_display(interaction: Option<bool>) -> Mesh {
             step,
         );
     }
+    site.transform(&mut mesh);
     mesh
 }
 
-fn gym(world: &mut World) {
+/// Builds the Gym in its own frame and stands it at `site`.
+fn gym(world: &mut World, site: GymSite) {
+    let mut mesh = Mesh::default();
     // Low solid walls keep the third-person camera usable. Upper posts and
     // beams define a hall without an opaque roof hiding the player.
-    for (min, max) in [
-        ([36.0, -9.0], [60.0, -8.5]),
-        ([36.0, 8.5], [60.0, 9.0]),
-        ([59.5, -8.5], [60.0, 8.5]),
-        ([36.0, -8.5], [36.5, -3.0]),
-        ([36.0, 3.0], [36.5, 8.5]),
-    ] {
-        let center = Vec3::new((min[0] + max[0]) / 2.0, 0.6, (min[1] + max[1]) / 2.0);
-        world.mesh.cube(
+    for (min, max) in GYM_WALLS {
+        let center = Vec3::new(
+            (min[0] + max[0]) / 2.0,
+            GYM_WALL_HEIGHT / 2.0,
+            (min[1] + max[1]) / 2.0,
+        );
+        mesh.cube(
             Mat4::from_translation(center)
-                * Mat4::from_scale(Vec3::new(max[0] - min[0], 1.2, max[1] - min[1])),
+                * Mat4::from_scale(Vec3::new(max[0] - min[0], GYM_WALL_HEIGHT, max[1] - min[1])),
             Intensity::Half,
         );
-        world.blockers.push(Footprint { min, max });
     }
-    let mesh = &mut world.mesh;
+    world.blockers.extend(site.walls());
+    gym_structure(&mut mesh);
+    site.transform(&mut mesh);
+    world.mesh.extend(&mesh);
+}
+
+fn gym_structure(mesh: &mut Mesh) {
     for (x, z) in [
         (36.25, -8.75),
         (36.25, -3.25),
@@ -984,9 +1141,9 @@ mod tests {
 
     #[test]
     fn gym_display_is_readable_geometry_inside_the_board_with_host_owned_action_cues() {
-        let neutral = gym_display(None);
-        let distant = gym_display(Some(false));
-        let nearby = gym_display(Some(true));
+        let neutral = gym_display(GymSite::PLAZA, None);
+        let distant = gym_display(GymSite::PLAZA, Some(false));
+        let nearby = gym_display(GymSite::PLAZA, Some(true));
         assert!(neutral.faces.len() < distant.faces.len());
         assert!(neutral.faces.len() < nearby.faces.len());
         assert!(!nearby.faces.is_empty());
@@ -1024,6 +1181,100 @@ mod tests {
         assert!(average_x(&title.faces[..30]) < average_x(&title.faces[title.faces.len() - 24..]));
         for letter in b"GYM" {
             assert!(!computer_glyph(*letter).is_empty());
+        }
+    }
+
+    #[test]
+    fn the_plaza_site_is_the_identity_and_the_grid_site_faces_the_spawn() {
+        let p = Vec3::new(40.0, 1.0, -3.0);
+        assert_eq!(GymSite::PLAZA.point(p), p);
+        assert_eq!(GymSite::PLAZA.local(p), p);
+        let grid = GymSite::GRID;
+        for p in [GYM_ENTRANCE, GYM_BOARD, Vec3::new(3.0, -2.0, 7.0)] {
+            assert!(grid.local(grid.point(p)).distance(p) < 1e-4);
+        }
+        // The doorway stands straight ahead of the spawn, and the hall runs
+        // away from it.
+        let door = grid.point(GYM_ENTRANCE);
+        assert!(
+            (door - (SPAWN + Vec3::Z * GRID_GYM_AHEAD)).length() < 1e-4,
+            "{door}"
+        );
+        assert!(grid.point(GYM_BOARD).z > door.z + 20.0);
+        // Walking into the plaza's Gym (east, yaw π/2) is walking ahead on
+        // the Grid (yaw 0).
+        assert!(grid.yaw_of(std::f32::consts::FRAC_PI_2).abs() < 1e-6);
+        assert!(
+            grid.direction(Vec3::X)
+                .distance(crate::controller::forward(0.0))
+                < 1e-6,
+            "{}",
+            grid.direction(Vec3::X)
+        );
+        // Quarter turns keep every wall an exact box.
+        let walls = grid.walls();
+        assert!(
+            walls
+                .iter()
+                .any(|w| w.min == [-9.0, 26.0] && w.max == [-8.5, 50.0])
+        );
+        assert!(
+            walls
+                .iter()
+                .any(|w| w.min == [-8.5, 49.5] && w.max == [8.5, 50.0])
+        );
+        // The doorway is open, the jambs are not.
+        assert!(!walls.iter().any(|w| w.contains(0.0, 26.25, 0.0)));
+        assert!(walls.iter().any(|w| w.contains(5.0, 26.25, 0.0)));
+        assert!(grid.inside(grid.point(GYM_CENTER)));
+        assert!(!grid.inside(door - Vec3::Z));
+    }
+
+    #[test]
+    fn the_grids_gym_is_neutral_world_geometry_with_its_sign_facing_the_spawn() {
+        let world = bare();
+        let gray = |v: &crate::mesh::Vertex| v.color[0] == v.color[1] && v.color[1] == v.color[2];
+        assert!(world.mesh.lines.iter().chain(&world.mesh.faces).all(gray));
+        assert_eq!(world.blockers, GymSite::GRID.walls().to_vec());
+        // The GYM lettering stands above the doorway on the face toward the
+        // spawn, and reads left to right from there: G on the viewer's left
+        // (+X, since the viewer faces +Z) and M on the right.
+        let door = GymSite::GRID.point(GYM_ENTRANCE);
+        let sign: Vec<Vec3> = world
+            .mesh
+            .lines
+            .iter()
+            .map(|v| Vec3::from(v.pos))
+            .filter(|p| p.y > 6.3 && (p.z - door.z).abs() < 0.3)
+            .collect();
+        assert!(sign.len() > 60, "{}", sign.len());
+        assert!(sign.iter().all(|p| p.x.abs() < 4.0));
+        let camera = crate::camera::FollowCamera::default();
+        let view = camera.view_proj(SPAWN, 0.0, 0.6);
+        let on_screen = |p: Vec3| {
+            let clip = view * p.extend(1.0);
+            clip.x / clip.w
+        };
+        let g = GymSite::GRID.point(Vec3::new(35.9, 7.3, -3.0));
+        let m = GymSite::GRID.point(Vec3::new(35.9, 7.3, 3.0));
+        assert!(on_screen(g) < on_screen(m));
+        // From the spawn, in a portrait view, the sign is in the frame.
+        for p in [g, m] {
+            let clip = view * p.extend(1.0);
+            let ndc = clip.truncate() / clip.w;
+            assert!(
+                clip.w > 0.0 && ndc.x.abs() < 0.9 && ndc.y.abs() < 0.95,
+                "{ndc}"
+            );
+        }
+        // The board display turns with the building and stays on its face.
+        let display = gym_display(GymSite::GRID, Some(true));
+        let screen = GymSite::GRID.point(GYM_BOARD_SCREEN);
+        assert!(!display.faces.is_empty());
+        for vertex in &display.faces {
+            let offset = Vec3::from(vertex.pos) - screen;
+            assert!(offset.z.abs() < 1e-4, "{offset}");
+            assert!(offset.x.abs() < GYM_BOARD_HALF[0]);
         }
     }
 

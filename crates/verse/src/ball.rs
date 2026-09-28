@@ -194,6 +194,21 @@ impl Ball {
                 restitution: 0.0,
             }),
         );
+        // The Grid's Gym walls stop the ball and the blocks as they stop the
+        // player. They come last, so every shared body keeps its identity.
+        for wall in crate::world::GymSite::GRID.walls() {
+            let half = DVec3::new(
+                f64::from(wall.max[0] - wall.min[0]) / 2.0,
+                f64::from(crate::world::GYM_WALL_HEIGHT) / 2.0,
+                f64::from(wall.max[1] - wall.min[1]) / 2.0,
+            );
+            let center = DVec3::new(
+                f64::from(wall.min[0]) + half.x,
+                half.y,
+                f64::from(wall.min[1]) + half.z,
+            );
+            fixed(&mut world, center, half);
+        }
         Self {
             world,
             clock: FixedStep::new(DT, MAX_STEPS),
@@ -759,6 +774,33 @@ mod tests {
         assert!((ball.body().pos - START).length() < 1e-6);
         assert!(!ball.shared().displaced(ball.world()));
         assert_eq!(ball.shared().epoch(), 1);
+    }
+
+    #[test]
+    fn the_grids_gym_walls_stop_the_ball() {
+        let mut ball = Ball::new();
+        // Roll the ball across the hall at its east wall, which stands
+        // between x 8.5 and 9 m along the hall.
+        let wall = crate::world::GymSite::GRID
+            .walls()
+            .into_iter()
+            .find(|w| w.min[0] == 8.5 && w.max[1] - w.min[1] > 20.0)
+            .expect("the hall's long east wall");
+        let z = f64::from(wall.min[1] + wall.max[1]) / 2.0;
+        let id = ball.ball_id();
+        let body = &mut ball.world_mut()[id];
+        body.pos = DVec3::new(2.0, RADIUS, z);
+        body.prev_pos = body.pos;
+        body.vel = DVec3::X * 6.0;
+        body.omega = DVec3::Z * (-6.0 / RADIUS);
+        body.wake();
+        let mut player = PlayerController::new(Vec3::new(-30.0, 0.0, -30.0), 0.0);
+        idle(&mut ball, &mut player, 180);
+        let x = ball.body().pos.x;
+        assert!(
+            x < f64::from(wall.min[0]) - RADIUS + 0.05,
+            "the wall stopped the ball: {x}"
+        );
     }
 
     #[test]

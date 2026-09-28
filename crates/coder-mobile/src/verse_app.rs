@@ -46,10 +46,12 @@ pub(crate) struct Config {
     #[serde(default)]
     pub hdr: bool,
     /// Mount Verse's bare world: the plaza grid in the neutral palette with
-    /// the same player controls and nothing else. It has no map, zones,
-    /// doors, computer, Gym, or companion. Unless offline, it joins its own
-    /// NIP-MV world ([`verse::session::BARE_WORLD`]) for avatar presence
-    /// alone: no chat, gestures, agent, or profile.
+    /// the same player controls, its shared ball and blocks, its portal to
+    /// Lagrange 1, and its Gym. It has no map, doors, computer, or
+    /// companion. Unless offline, it joins its own NIP-MV world
+    /// ([`verse::session::BARE_WORLD`]) for avatar presence alone: no chat,
+    /// gestures, agent, or profile. Its Gym takes the same `gym_code` and
+    /// `synthetic_gym` preview as Coder's.
     #[serde(default)]
     pub bare: bool,
 }
@@ -634,6 +636,10 @@ pub(crate) struct Scene {
     gym_open: bool,
     gym_configuration_error: Option<String>,
     pub gym_board: verse::gym::Board,
+    /// The host shows the native Gym panel, so a tap on the board may open
+    /// it and the board shows its tap cue. A host without the panel keeps the
+    /// building but never opens a panel it cannot close.
+    pub(crate) gym_panel: bool,
     pub frames: u64,
     pub error: Option<String>,
 }
@@ -657,13 +663,11 @@ impl Scene {
         )
         .map_err(|e| e.to_string())?;
         if config.bare
-            && (config.gym_code.is_some()
-                || config.synthetic_gym
-                || config.door_preferences.is_some()
+            && (config.door_preferences.is_some()
                 || config.zone_cache_directory.is_some()
                 || config.computer_hud)
         {
-            return Err("The bare world has no Gym, doors, zones, or panels".into());
+            return Err("The bare world has no doors, zone downloads, or computer".into());
         }
         let selected_relay = if config.world_offline {
             None
@@ -714,12 +718,18 @@ impl Scene {
             .door_preferences
             .as_deref()
             .and_then(|value| world.restore_door_state(value).err());
-        if config.synthetic_gym {
-            // This explicit fixture starts outside the entrance. The real touch
-            // path must cross the boundary before the board loads its rows.
+        if config.synthetic_gym
+            && let Some(site) = world.gym_site()
+        {
+            // This explicit fixture starts outside the entrance, facing in. The
+            // real touch path must cross the boundary before the board loads
+            // its rows.
             let mut outside = verse::world::GYM_ENTRANCE;
             outside.x -= 2.0;
-            world.set_spawn(outside, std::f32::consts::FRAC_PI_2)?;
+            world.set_spawn(
+                site.point(outside),
+                site.yaw_of(std::f32::consts::FRAC_PI_2),
+            )?;
         }
         Ok(Self {
             world,
@@ -762,6 +772,7 @@ impl Scene {
             gym_open: false,
             gym_configuration_error: initial_gym_error,
             gym_board,
+            gym_panel: true,
             frames: 0,
             error: initial_error,
         })
@@ -2268,7 +2279,8 @@ impl Scene {
 
     fn gym_hit(&self, x: f32, y: f32) -> bool {
         let size = self.lifecycle.viewport().logical_size();
-        self.world.is_plaza()
+        self.gym_panel
+            && self.world.is_plaza()
             && !self.spawn_pending
             && size[0] > 0.0
             && size[1] > 0.0
@@ -2308,6 +2320,9 @@ impl Scene {
 #[cfg(test)]
 #[path = "bare_bodies_tests.rs"]
 mod bare_bodies_tests;
+#[cfg(test)]
+#[path = "bare_gym_tests.rs"]
+mod bare_gym_tests;
 #[cfg(test)]
 #[path = "bare_presence_tests.rs"]
 mod bare_presence_tests;

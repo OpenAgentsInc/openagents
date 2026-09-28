@@ -1,15 +1,63 @@
-// Coder's native Gym board. Rust owns subscriptions, verified snapshots,
-// recipe selection, authority, and launch identity. Charts render received data.
+// The Grid's Gym board in the Verse tab: the same board as Coder's Gym, in
+// the OpenAgents app's white-on-black style. Rust owns the board's
+// subscriptions, verified snapshots, recipe selection, authority, and launch
+// identity; this panel renders what Rust sends and forwards choices. Keychain
+// stores the Gym connection's exact bytes and nothing else.
 import Charts
+import Foundation
+import Security
 import SwiftUI
 import UIKit
 
-struct GymPanel: View {
-    @ObservedObject var bridge: VerseBridge
+/// The host's Gym grant for this phone's world key, kept on this device only.
+/// It is separate from the device key's host grants and from the world key.
+enum VerseGymConnection {
+    private static var query: [String: Any] {
+        [kSecClass as String: kSecClassGenericPassword,
+         kSecAttrService as String: "com.openagents.app.gym",
+         kSecAttrAccount as String: "grant-v1",
+         kSecAttrSynchronizable as String: false]
+    }
+
+    static func load() throws -> String? {
+        var request = query
+        request[kSecReturnData as String] = true
+        var result: CFTypeRef?
+        let status = SecItemCopyMatching(request as CFDictionary, &result)
+        if status == errSecItemNotFound { return nil }
+        guard status == errSecSuccess, let data = result as? Data, data.count <= 65_536,
+              let code = String(data: data, encoding: .utf8) else {
+            throw DeviceKey.Failure.message("The saved Gym connection is unavailable. Unlock the device and try again.")
+        }
+        return code
+    }
+
+    static func save(_ code: String) throws {
+        let data = Data(code.utf8)
+        guard data.count <= 65_536 else {
+            throw DeviceKey.Failure.message("The Gym connection exceeds its size limit.")
+        }
+        let attributes: [String: Any] = [kSecValueData as String: data,
+            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly]
+        var status = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
+        if status == errSecItemNotFound {
+            status = SecItemAdd(query.merging(attributes) { _, new in new } as CFDictionary, nil)
+        }
+        guard status == errSecSuccess else {
+            throw DeviceKey.Failure.message("The Gym connection works for this session but could not be saved in Keychain.")
+        }
+    }
+}
+
+/// The Gym board panel. Each part of the board is its own section, so a new
+/// data-driven board (a leaderboard, say) is one more section over the same
+/// Rust-owned view.
+struct VerseGymPanel: View {
+    @ObservedObject var world: VerseWorld
     let close: () -> Void
     @State private var configuring = false
     @State private var code = ""
-    private var board: GymBoardView? { bridge.gymBoard }
+    private var board: GymBoardView? { world.gymBoard }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -17,12 +65,14 @@ struct GymPanel: View {
                 Label("Gym", systemImage: "chart.xyaxis.line").font(.headline)
                 Spacer()
                 Button("Back to world", systemImage: "xmark", action: close)
-                    .labelStyle(.iconOnly).accessibilityIdentifier("gym-close")
+                    .labelStyle(.iconOnly).frame(width: 44, height: 44)
+                    .accessibilityIdentifier("gym-close")
             }
             if let board {
-                Text(board.status).font(.caption).accessibilityIdentifier("gym-status")
+                Text(board.status).font(.caption).foregroundStyle(.secondary)
+                    .accessibilityIdentifier("gym-status")
                 if board.stale { Text("Snapshot is stale. New starts are unavailable.").font(.caption) }
-                if let error = board.error ?? bridge.packet?.error ?? bridge.gymStorageError ?? bridge.nativeError {
+                if let error = board.error ?? world.error ?? world.gymStorageError {
                     Text(error).font(.callout).textSelection(.enabled).accessibilityIdentifier("gym-error")
                 }
                 ScrollView {
@@ -30,14 +80,15 @@ struct GymPanel: View {
                         if !board.configured || configuring {
                             connection(board)
                         } else if let run = board.selected_run {
-                            Button("All runs") { bridge.send(["action": "gym_close_detail"]) }
+                            Button("All runs") { world.send(["action": "gym_close_detail"]) }
                                 .accessibilityIdentifier("gym-all-runs")
                             runDetails(run)
                         } else if let recipe = board.selected_recipe {
-                            Button("All runs") { bridge.send(["action": "gym_close_detail"]) }
+                            Button("All runs") { world.send(["action": "gym_close_detail"]) }
                             recipeDetails(recipe, board: board)
                         } else {
                             runList(board)
+                            recipeList(board)
                             Button("Gym connection") { configuring = true }
                                 .accessibilityIdentifier("gym-connection")
                         }
@@ -52,25 +103,28 @@ struct GymPanel: View {
             }
         }
         .padding(14)
-        .background(Color(red: 0.025, green: 0.02, blue: 0).opacity(0.97), in: RoundedRectangle(cornerRadius: 16))
-        .overlay(RoundedRectangle(cornerRadius: 16).stroke(.tint.opacity(0.7), lineWidth: 1))
+        .foregroundStyle(.white)
+        .tint(.white)
+        .background(Color(white: 0.04).opacity(0.97), in: RoundedRectangle(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(.white.opacity(0.55), lineWidth: 1))
     }
 
     private func connection(_ board: GymBoardView) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Connect a Gym host").font(.headline)
-            Text("Create a Gym connection grant on your host for this device public key, then paste its gym-connect: code.")
+            Text("Create a Gym connection grant on your host for this world key, then paste its gym-connect: code.")
             Text(board.public_key).font(.system(.caption2, design: .monospaced)).textSelection(.enabled)
                 .accessibilityIdentifier("gym-public-key")
             Button("Copy public key", systemImage: "doc.on.doc") { UIPasteboard.general.string = board.public_key }
             TextEditor(text: $code).frame(minHeight: 85, maxHeight: 130)
+                .scrollContentBackground(.hidden).background(Color(white: 0.1))
                 .textInputAutocapitalization(.never).autocorrectionDisabled()
                 .accessibilityLabel("Gym connection code").accessibilityIdentifier("gym-code")
             Button("Connect Gym") {
-                if bridge.configureGym(code) { code = ""; configuring = false }
+                if world.configureGym(code) { code = ""; configuring = false }
             }.disabled(code.isEmpty).accessibilityIdentifier("gym-connect")
-            Text("This grant is separate from saved-chat access. Only the host's listed recipes can start, after you confirm.")
-                .font(.caption)
+            Text("This grant is separate from your computers' access. Only the host's listed recipes can start, after you confirm.")
+                .font(.caption).foregroundStyle(.secondary)
             if board.configured { Button("Back to board") { configuring = false } }
         }
     }
@@ -81,21 +135,26 @@ struct GymPanel: View {
             if board.runs.isEmpty { Text("No runs are available in this snapshot.") }
             ForEach(board.runs.sorted { rank($0.category) < rank($1.category) }) { run in
                 Button {
-                    bridge.send(["action": "gym_select_run", "id": run.id])
+                    world.send(["action": "gym_select_run", "id": run.id])
                 } label: {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(run.title).font(.headline)
-                        Text("\(run.category) · \(run.status)").font(.caption)
+                        Text("\(run.category) · \(run.status)").font(.caption).foregroundStyle(.secondary)
                         progress(run)
                         Text(summary(run)).font(.caption)
                     }.frame(maxWidth: .infinity, alignment: .leading)
                 }.accessibilityIdentifier("gym-run-\(run.id)")
-                Divider()
+                Divider().overlay(.white.opacity(0.3))
             }
+        }
+    }
+
+    private func recipeList(_ board: GymBoardView) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
             Text("Supported new runs").font(.headline)
             if board.recipes.isEmpty { Text("This connection has no supported start recipes.") }
             ForEach(board.recipes) { recipe in
-                Button(recipe.title) { bridge.send(["action": "gym_select_recipe", "id": recipe.id]) }
+                Button(recipe.title) { world.send(["action": "gym_select_recipe", "id": recipe.id]) }
                     .disabled(!board.active || board.stale)
                     .accessibilityIdentifier("gym-recipe-\(recipe.id)")
             }
@@ -115,10 +174,13 @@ struct GymPanel: View {
                     else {
                         Chart(Array(metric.points.enumerated()), id: \.offset) { _, point in
                             LineMark(x: .value("Step", point.step), y: .value(metric.unit, point.value))
-                                .foregroundStyle(.tint)
+                                .foregroundStyle(.white)
                             PointMark(x: .value("Step", point.step), y: .value(metric.unit, point.value))
-                                .foregroundStyle(.tint)
-                        }.frame(height: 160).accessibilityLabel("\(metric.name), \(metric.points.count) recorded points")
+                                .foregroundStyle(.white)
+                        }
+                        .chartXAxis { AxisMarks { AxisGridLine().foregroundStyle(.white.opacity(0.2)); AxisValueLabel().foregroundStyle(.gray) } }
+                        .chartYAxis { AxisMarks { AxisGridLine().foregroundStyle(.white.opacity(0.2)); AxisValueLabel().foregroundStyle(.gray) } }
+                        .frame(height: 160).accessibilityLabel("\(metric.name), \(metric.points.count) recorded points")
                         DisclosureGroup("Recorded values") {
                             ForEach(Array(metric.points.enumerated()), id: \.offset) { _, point in
                                 Text("Step \(point.step): \(point.value.formatted()) \(metric.unit)")
@@ -129,9 +191,9 @@ struct GymPanel: View {
                 }
             }
             Text("Source: \(run.source)").font(.caption).textSelection(.enabled)
-            Text(run.provenance).font(.caption).textSelection(.enabled)
+            Text(run.provenance).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
             Text("Completed describes the recorded process; it does not by itself establish benchmark success.")
-                .font(.caption)
+                .font(.caption).foregroundStyle(.secondary)
         }
     }
 
@@ -143,7 +205,7 @@ struct GymPanel: View {
             Text(recipe.budget.spend_enforced ? "The host enforces this recipe's spending limit." : "No dollar limit is enforced for this recipe.")
             Text("Recipe revision: \(recipe.revision)").font(.caption2.monospaced()).textSelection(.enabled)
             Text("Starting submits this exact recipe to the host. Leaving the Gym does not cancel the run.")
-            Button("Start this run") { bridge.send(["action": "gym_launch"]) }
+            Button("Start this run") { world.send(["action": "gym_launch"]) }
                 .disabled(!board.active || board.stale || ["sending", "unknown"].contains(board.launch?.phase ?? ""))
                 .accessibilityIdentifier("gym-confirm-launch")
         }
@@ -160,7 +222,7 @@ struct GymPanel: View {
             if launch.phase == "sending" { ProgressView("Waiting for the host receipt…") }
             if launch.phase == "unknown" {
                 Text("The host may already have accepted this request. Retry uses the same request identity.").font(.caption)
-                Button("Retry the same request") { bridge.send(["action": "gym_retry"]) }
+                Button("Retry the same request") { world.send(["action": "gym_retry"]) }
                     .disabled(!active).accessibilityIdentifier("gym-retry")
             }
         }

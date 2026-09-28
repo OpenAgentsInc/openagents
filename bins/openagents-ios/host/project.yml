@@ -36,6 +36,9 @@ targets:
         group: App/Shared
       - path: ../../coder-ios/host/App/DeviceMotion.swift
         group: App/Shared
+      # The Gym board's packet types, which Coder's Gym panel also reads.
+      - path: ../../coder-ios/host/App/GymBoard.swift
+        group: App/Shared
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.openagents.app

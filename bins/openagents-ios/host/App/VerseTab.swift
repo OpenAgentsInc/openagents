@@ -1,8 +1,9 @@
 // The Verse tab: Verse's bare world, the plaza grid in white light with
-// Coder's player controls and the other players in it. UIKit owns the Metal
-// layer, the display clock, touches, the motion sensor, and the world key in
-// Keychain; Rust owns the world, the player, the camera, the movement stick,
-// world presence on the relay, and every frame.
+// Coder's player controls, the other players, and the Gym in it. UIKit owns
+// the Metal layer, the display clock, touches, the motion sensor, and the
+// world key and Gym connection in Keychain; Rust owns the world, the player,
+// the camera, the movement stick, world presence on the relay, the Gym board,
+// and every frame.
 import QuartzCore
 import SwiftUI
 import UIKit
@@ -31,6 +32,28 @@ struct WorldPacket: Decodable {
     let connection: WorldConnectionPacket?
     /// The bare world's ball, for diagnostics.
     let ball: BallPacket?
+    /// Where the Gym's board is and whether the player is inside, in reach,
+    /// and has it open. The board itself comes only in answer to
+    /// `gym_view` and the Gym's own requests.
+    let gym: GymPacket?
+    let gym_open: Bool?
+    let gym_active: Bool?
+    let gym_revision: UInt64?
+    let gym_board: GymBoardView?
+
+    struct GymPacket: Decodable {
+        let inside: Bool
+        let near: Bool
+        let visible: Bool
+        let screen_x: Double
+        let screen_y: Double
+        let distance: Double
+
+        var valid: Bool {
+            screen_x.isFinite && screen_y.isFinite && (0...1).contains(screen_x)
+                && (0...1).contains(screen_y) && distance.isFinite
+        }
+    }
 
     struct BallPacket: Decodable {
         let position: [Double]
@@ -43,6 +66,7 @@ struct WorldPacket: Decodable {
         schema == "coder.verse.v1" && position.count == 3 && position.allSatisfy(\.isFinite)
             && ["touch", "motion"].contains(camera_mode) && camera_yaw.isFinite
             && camera_pitch.isFinite && camera_distance.isFinite && camera_distance > 0
+            && (gym?.valid ?? true) && (gym_board?.valid ?? true)
     }
 }
 
@@ -58,6 +82,12 @@ final class VerseWorld: ObservableObject {
     @Published private(set) var cameraMode = "touch"
     @Published private(set) var error: String?
     @Published private(set) var motionError: String?
+    /// The Gym board is open, with the board's anchor on screen (0 to 1).
+    @Published private(set) var gymOpen = false
+    @Published private(set) var gymAnchor = CGPoint(x: 0.5, y: 0.5)
+    @Published private(set) var gymBoard: GymBoardView?
+    @Published private(set) var gymStorageError: String?
+    private var gymRequestedRevision: UInt64?
     let motionDriver = DeviceMotionDriver(source: CoreMotionSource())
     var motionAvailable: Bool { motionDriver.available }
     fileprivate weak var surface: VerseWorldView?
@@ -80,9 +110,56 @@ final class VerseWorld: ObservableObject {
 
     func retry() { surface?.recreate() }
 
+    @discardableResult
+    func send(_ request: [String: Any]) -> WorldPacket? { surface?.send(request) }
+
+    /// The saved Gym connection for this world key, if any.
+    func storedGymCode() -> String? {
+        do { return try VerseGymConnection.load() }
+        catch { gymStorageError = error.localizedDescription; return nil }
+    }
+
+    /// Hands a pasted `gym-connect:` code to Rust, and saves it once Rust has
+    /// accepted it for this world key.
+    func configureGym(_ code: String) -> Bool {
+        guard code.utf8.count <= 65_536 else {
+            gymStorageError = "The Gym connection exceeds its size limit."
+            return false
+        }
+        guard let packet = send(["action": "gym_configure", "code": code]), packet.error == nil,
+              packet.gym_board?.configured == true else { return false }
+        do { try VerseGymConnection.save(code); gymStorageError = nil }
+        catch { gymStorageError = error.localizedDescription }
+        return true
+    }
+
     fileprivate func receive(_ packet: WorldPacket) {
         if cameraMode != packet.camera_mode { cameraMode = packet.camera_mode }
         if error != packet.error { error = packet.error }
+        let open = packet.gym_open == true
+        if gymOpen != open { gymOpen = open }
+        if open, let gym = packet.gym {
+            let anchor = CGPoint(x: gym.screen_x, y: gym.screen_y)
+            if gymAnchor != anchor { gymAnchor = anchor }
+        }
+        let inside = packet.gym_active == true && packet.gym?.inside == true
+        if !inside {
+            if gymBoard != nil { gymBoard = nil }
+            gymRequestedRevision = nil
+        } else if let board = packet.gym_board {
+            gymBoard = board
+            gymRequestedRevision = board.revision
+        }
+        // A frame carries only the board's revision; ask for the board when
+        // it changed while open.
+        if inside, open, let revision = packet.gym_revision, gymBoard?.revision != revision,
+           gymRequestedRevision != revision {
+            gymRequestedRevision = revision
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.gymOpen else { return }
+                self.send(["action": "gym_view"])
+            }
+        }
     }
 
     fileprivate func fail(_ message: String) {
@@ -110,12 +187,23 @@ struct VerseTab: View {
             ZStack(alignment: .bottomTrailing) {
                 VerseWorldSurface(world: world, active: active, insets: safe)
                     .ignoresSafeArea()
-                controls
-                    .padding(.trailing, safe.trailing + 16)
-                    .padding(.bottom, 12)
+                    .overlay {
+                        if world.gymOpen {
+                            // The board's anchor is in the full surface's
+                            // coordinates, safe areas included.
+                            GeometryReader { full in gymPanel(size: full.size, safe: safe) }
+                                .ignoresSafeArea()
+                        }
+                    }
+                if !world.gymOpen {
+                    controls
+                        .padding(.trailing, safe.trailing + 16)
+                        .padding(.bottom, 12)
+                }
             }
             .overlay(alignment: .top) {
-                if let error = world.error {
+                // The Gym panel shows its own errors.
+                if let error = world.error, !world.gymOpen {
                     VStack(spacing: 8) {
                         Text(error).font(.callout).textSelection(.enabled)
                             .accessibilityIdentifier("verse-error")
@@ -127,6 +215,28 @@ struct VerseTab: View {
             }
         }
         .background(Color.black.ignoresSafeArea())
+    }
+
+    /// The Gym board's panel over the world, with a leader line from the
+    /// board it belongs to. Touches on it never reach the world.
+    private func gymPanel(size: CGSize, safe: EdgeInsets) -> some View {
+        let top = safe.top + 12
+        let bounds = CGRect(x: safe.leading + 12, y: top,
+                            width: max(1, size.width - safe.leading - safe.trailing - 24),
+                            height: max(80, size.height - top - safe.bottom - 16))
+        let width = min(bounds.width, 540)
+        let anchor = CGPoint(x: world.gymAnchor.x * size.width, y: world.gymAnchor.y * size.height)
+        let left = min(max(anchor.x - width / 2, bounds.minX), max(bounds.minX, bounds.maxX - width))
+        return ZStack(alignment: .topLeading) {
+            Path { path in
+                path.move(to: anchor)
+                path.addLine(to: CGPoint(x: min(max(anchor.x, left + 20), left + width - 20), y: bounds.minY))
+            }.stroke(.white.opacity(0.6), lineWidth: 2).allowsHitTesting(false)
+            VerseGymPanel(world: world) { world.send(["action": "close_gym"]) }
+                .frame(width: width, height: bounds.height)
+                .position(x: left + width / 2, y: bounds.minY + bounds.height / 2)
+        }
+        .frame(width: size.width, height: size.height)
     }
 
     /// The same camera controls as Coder's world: the touch or motion look
@@ -202,6 +312,9 @@ final class VerseWorldView: UIView {
     private var stickPointers: Set<UInt64> = []
     private var wantsHDR = false
     private lazy var script = VerseWorldScript.fromLaunchArguments()
+    /// The Gym board's place on screen in the last packet.
+    fileprivate private(set) var latestGym: WorldPacket.GymPacket?
+    private var gymAccessible = false
 
     init(world: VerseWorld) {
         self.world = world
@@ -268,6 +381,14 @@ final class VerseWorldView: UIView {
             // Keychain cannot provide it, the world stays offline.
             if let secret = try? DeviceKey.loadOrCreateVerse() {
                 configuration["world_secret_hex"] = secret.map { String(format: "%02x", $0) }.joined()
+            }
+            // The Gym's saved connection, or in a debug build the labeled
+            // synthetic board (`--gym-preview`), which keeps the world
+            // offline and starts outside the Gym's doorway.
+            if Self.gymPreview {
+                configuration["gym_preview"] = true
+            } else if let code = world.storedGymCode() {
+                configuration["gym_code"] = code
             }
             guard let data = try? JSONSerialization.data(withJSONObject: configuration) else { return }
             handle = data.withUnsafeBytes {
@@ -337,11 +458,21 @@ final class VerseWorldView: UIView {
         }
     }
 
+    private static var gymPreview: Bool {
+        #if DEBUG || targetEnvironment(simulator)
+        ProcessInfo.processInfo.arguments.contains("--gym-preview")
+        #else
+        false
+        #endif
+    }
+
     @discardableResult
     func send(_ request: [String: Any]) -> WorldPacket? {
+        // A Gym connection code is the one large request.
+        let limit = request["action"] as? String == "gym_configure" ? 96 * 1024 : 4096
         guard let handle,
               let input = try? JSONSerialization.data(withJSONObject: request),
-              input.count <= 4096 else { return nil }
+              input.count <= limit else { return nil }
         let output = input.withUnsafeBytes {
             openagents_verse_call(handle, $0.bindMemory(to: UInt8.self).baseAddress, $0.count)
         }
@@ -360,6 +491,8 @@ final class VerseWorldView: UIView {
         }
         world.receive(packet)
         syncMotion(packet)
+        latestGym = packet.gym
+        updateGymAccessibility(packet)
         observe(packet)
         return packet
     }
@@ -384,6 +517,23 @@ final class VerseWorldView: UIView {
             }
         }
         #endif
+    }
+
+    /// VoiceOver opens the Gym board with the same checks as a tap on it.
+    private func updateGymAccessibility(_ packet: WorldPacket) {
+        let available = running && packet.gym_active == true && packet.gym?.inside == true
+            && packet.gym?.near == true && packet.gym?.visible == true && packet.gym_open != true
+        guard available != gymAccessible else { return }
+        gymAccessible = available
+        accessibilityCustomActions = available
+            ? [UIAccessibilityCustomAction(name: "Open Gym board", target: self,
+                                           selector: #selector(openGymAccessibly))]
+            : []
+    }
+
+    @objc private func openGymAccessibly() -> Bool {
+        guard running, gymAccessible else { return false }
+        return send(["action": "interact_gym"])?.gym_open == true
     }
 
     private func syncMotion(_ packet: WorldPacket) {
@@ -527,7 +677,9 @@ final class VerseWorldView: UIView {
 /// ahead of the spawn, `closer` pinches in past the nearest orbit into first
 /// person, `walkpinch` holds the stick forward while pinching in, `face`
 /// turns toward the Grid's portal to Lagrange 1 (39° right of the spawn's
-/// heading; `walk,walk` then goes through it), and `wait` does nothing for a
+/// heading; `walk,walk` then goes through it), `board` taps the Gym's board
+/// where the last packet placed it (with `--gym-preview`, `walk,walk,walk`
+/// first walks into the Gym and up to it), and `wait` does nothing for a
 /// step.
 /// Debug and simulator builds only.
 @MainActor
@@ -582,6 +734,11 @@ private final class VerseWorldScript {
         case ("walkpinch", 2..<60): view.send(["action": "pinch_zoom", "scale": 1.02])
         case ("walkpinch", 89): view.pointer(pointer, phase: "up", at: CGPoint(x: stick.x, y: stick.y - 56))
         case ("recenter", 0): view.send(["action": "recenter_camera"])
+        case ("board", 0), ("board", 2):
+            if let gym = view.latestGym {
+                let at = CGPoint(x: gym.screen_x * bounds.width, y: gym.screen_y * bounds.height)
+                view.pointer(pointer, phase: t == 0 ? "down" : "up", at: at)
+            }
         // 171.5 points at 0.004 rad per point turn the player 0.686 rad right.
         case ("face", 0): view.pointer(pointer, phase: "down", at: center)
         case ("face", 1...35):

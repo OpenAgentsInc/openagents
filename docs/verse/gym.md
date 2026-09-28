@@ -6,6 +6,10 @@ Its doorway faces the plaza. Inside, approach the boards to inspect recorded
 Microcoder experiments and Terminal-Bench evaluations. The transport also
 accepts explicitly configured model-training summaries as a secondary source.
 
+In the OpenAgents app's Verse tab (the Grid), the same Gym stands straight
+ahead of the spawn in white and gray, its doorway facing the spawn. See
+[the Grid's Gym](mobile.md#the-grids-gym).
+
 The building is shared desktop/iOS geometry. Its walls have separate collision
 footprints and an open doorway; the low walls and open roof preserve the
 third-person view. The boards show source observations, not an independently
