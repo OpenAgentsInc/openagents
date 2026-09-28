@@ -36,6 +36,38 @@ pub struct Item {
 pub const CHANGELOG: &[Release] = &[
     Release {
         version: "1.0.0",
+        build: "17",
+        title: "Chat",
+        what_to_test: "Open the Chat tab without a computer connected, start a new chat, and watch the basic Coder's reply stream in; then tap Run Coder to hand the conversation to a computer. Check that Devin and OpenCode sessions from your computer show up in the chat list. In Account, Trainer, turn Show my level on and off, and export your trainer card.",
+        items: &[
+            Item {
+                title: "Chat tab",
+                detail: "The first tab is Chat. A new chat talks to the basic Coder in the OpenAgents cloud, with no computer needed, and its reply streams in as it's written.",
+            },
+            Item {
+                title: "Run Coder",
+                detail: "From a conversation, Run Coder carries it to one of your computers, or Connect a computer leads to Account, Computers.",
+            },
+            Item {
+                title: "Devin and OpenCode chats",
+                detail: "The chat list shows Devin CLI and OpenCode sessions from your computers alongside Coder chats.",
+            },
+            Item {
+                title: "Cloud fallback",
+                detail: "A computer with no coding agent signed in can still finish a Coder turn through the OpenAgents cloud.",
+            },
+            Item {
+                title: "Trainer level and card",
+                detail: "Choose whether your level shows over your head in the Grid, link your keys, and export your trainer card as a signed link.",
+            },
+            Item {
+                title: "Automatic payments",
+                detail: "A standing spend grant lets the phone pay trusted payees small amounts without a tap, within the grant's limits.",
+            },
+        ],
+    },
+    Release {
+        version: "1.0.0",
         build: "16",
         title: "Playtesting",
         what_to_test: "Report something from Account, Report a problem, or long-press the tab bar on any screen, and find it in My reports. Turn on Playtest session in Account, Playtest, move around, and check that the log shows only tabs, screens, and times.",
