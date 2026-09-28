@@ -122,6 +122,28 @@ pub(crate) struct SurfaceConfig {
     pub(crate) width: u32,
     pub(crate) height: u32,
     pub(crate) scale: f32,
+    /// At creation only: the world identity's secret as 64 hexadecimal
+    /// characters, a key kept only for avatar presence and never the device
+    /// key, as in `openagents_verse_create`. Without it the world stays
+    /// offline.
+    #[serde(default)]
+    pub(crate) world_secret_hex: Option<String>,
+}
+
+impl SurfaceConfig {
+    #[cfg_attr(not(target_os = "android"), allow(dead_code))]
+    pub(crate) fn presence(&self) -> Result<Option<coder_mobile::BarePresence>, BridgeError> {
+        let Some(secret) = &self.world_secret_hex else {
+            return Ok(None);
+        };
+        if secret.len() != 64 || !secret.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+            return Err(error("Invalid Verse world identity"));
+        }
+        Ok(Some(coder_mobile::BarePresence {
+            secret_hex: secret.clone(),
+            relay: None,
+        }))
+    }
 }
 
 pub(crate) fn surface_config(text: &str) -> Result<SurfaceConfig, BridgeError> {
@@ -226,6 +248,21 @@ mod tests {
         ] {
             assert!(surface_config(bad).is_err(), "{bad}");
         }
+        let world = |key: String| {
+            surface_config(&format!(
+                r#"{{"width":10,"height":10,"scale":1,"world_secret_hex":"{key}"}}"#
+            ))
+            .expect("config")
+            .presence()
+        };
+        assert!(world("ab".repeat(32)).expect("presence").is_some());
+        for key in ["zz".repeat(32), "11".repeat(31)] {
+            assert_eq!(
+                world(key).err().map(|e| e.0).as_deref(),
+                Some("Invalid Verse world identity")
+            );
+        }
+        assert!(ok.presence().expect("offline").is_none());
     }
 
     #[test]

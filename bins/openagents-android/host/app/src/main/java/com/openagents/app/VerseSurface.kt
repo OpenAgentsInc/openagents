@@ -83,7 +83,12 @@ class VerseSurface(context: Context, private val changed: (JSONObject?, String?)
     private fun create() {
         if (disposed || !holder.surface.isValid || width <= 0 || height <= 0) return
         try {
-            handle = OpenAgentsNative.verseCreate(holder.surface, surfaceConfig())
+            // Avatar presence signs with its own world key, never the device key.
+            // Without one, the world stays offline.
+            val config = JSONObject(surfaceConfig())
+            runCatching { DeviceKey.loadOrCreate(context, DeviceKey.Purpose.WORLD) }
+                .onSuccess { config.put("world_secret_hex", it) }
+            handle = OpenAgentsNative.verseCreate(holder.surface, config.toString())
             check(handle != 0L) { "The world renderer couldn't start on this device." }
             attached = true
             sendHudInsets()

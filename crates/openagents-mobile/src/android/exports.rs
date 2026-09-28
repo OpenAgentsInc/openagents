@@ -228,6 +228,7 @@ pub extern "system" fn Java_com_openagents_app_OpenAgentsNative_verseCreate<'loc
                             config.height,
                             config.scale,
                             false,
+                            config.presence()?,
                         )
                     }?;
                     let id = next_handle()?;
