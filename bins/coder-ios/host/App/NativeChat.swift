@@ -868,6 +868,8 @@ private struct NativeComposer: View {
             && text.utf8.count <= props.maxBytes
     }
 
+    // One capsule, as in Zeron's resting composer: the text between the
+    // capsule's ends and a round send control inside its trailing end.
     var body: some View {
         HStack(alignment: .bottom, spacing: 8) {
             NativeComposerField(text: $text, placeholder: props.placeholder, maxBytes: props.maxBytes,
@@ -878,28 +880,31 @@ private struct NativeComposer: View {
                         Text(props.placeholder)
                             .font(.system(size: 16))
                             .foregroundStyle(.tertiary)
+                            .lineLimit(1)
                             .allowsHitTesting(false)
                             .accessibilityHidden(true)
                     }
                 }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 9)
-                .background(Color(uiColor: NativeChatPalette.raised),
-                            in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                .padding(.leading, 18)
+                .padding(.vertical, 14)
             Button(action: props.busy ? stop : send) {
                 Image(systemName: props.busy ? "stop.fill" : "arrow.up")
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundStyle(Color(uiColor: .systemBackground))
-                    .frame(width: 36, height: 36)
-                    .background(Circle().fill(Color(uiColor: .label)))
-                    .opacity(controlEnabled ? 1 : 0.3)
+                    .font(.system(size: props.busy ? 11 : 15, weight: .bold))
+                    .foregroundStyle(controlEnabled ? Color(uiColor: .systemBackground)
+                                                    : Color(uiColor: .tertiaryLabel))
+                    .frame(width: 34, height: 34)
+                    .background(Circle().fill(controlEnabled ? Color(uiColor: .label)
+                                                             : Color(uiColor: .label).opacity(0.075)))
             }
             .buttonStyle(.plain)
             .disabled(!controlEnabled)
             .accessibilityLabel(props.busy ? "Stop" : "Send")
             .accessibilityIdentifier("\(key)-\(props.busy ? "stop" : "send")")
-            .padding(.bottom, 1)
+            .padding(.trailing, 8)
+            .padding(.bottom, 8)
         }
+        .frame(minHeight: 50)
+        .modifier(NativeComposerSurface())
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .frame(maxWidth: NativeChatPalette.readingWidth + 24)
@@ -920,6 +925,21 @@ private struct NativeComposer: View {
     private func stop() {
         guard props.busy, props.stoppable else { return }
         activate(key)
+    }
+}
+
+/// The composer's capsule: Liquid Glass where the system has it, else a
+/// raised fill with a hairline edge. It rounds to a card as the text grows.
+private struct NativeComposerSurface: ViewModifier {
+    func body(content: Content) -> some View {
+        let shape = RoundedRectangle(cornerRadius: 25, style: .continuous)
+        if #available(iOS 26.0, *) {
+            content.glassEffect(.regular, in: shape)
+        } else {
+            content
+                .background(Color(uiColor: NativeChatPalette.raised), in: shape)
+                .overlay(shape.strokeBorder(Color(uiColor: NativeChatPalette.border), lineWidth: 0.5))
+        }
     }
 }
 
