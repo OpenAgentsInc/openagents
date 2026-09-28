@@ -7,6 +7,8 @@ repo script and supervised as a child process. Coder's iOS host at `bins/coder-i
 callbacks, as explicitly requested for that surface. Keep its application state,
 domain logic, permissions, and transport in Rust; the implemented observer keeps these in `coder-mobile` and `coder-connect`. Read `crates/rust-native/docs/spec.md` and `docs/coder/rust-native/architecture.md`
 before adding that boundary.
+The OpenAgents iOS host at `bins/openagents-ios/host` follows the same thin
+SwiftUI boundary; its application state lives in `crates/openagents-mobile`.
 The Android host at `bins/coder-android/host` uses the equivalent thin Kotlin
 boundary for Android framework widgets, `SurfaceView`, camera, sensors, and
 Keystore access. Keep domain state, Nostr, authorization, cache, and world

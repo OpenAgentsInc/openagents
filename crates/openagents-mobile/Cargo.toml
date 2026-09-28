@@ -1,0 +1,20 @@
+[package]
+name = "openagents-mobile"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Rust-owned application state and native bridge for the OpenAgents mobile app."
+
+[lib]
+crate-type = ["rlib", "staticlib"]
+
+[dependencies]
+rust-native = { path = "../rust-native" }
+serde = { version = "1", features = ["derive"] }
+
+[dev-dependencies]
+serde_json = "1"
+
+[lints]
+workspace = true

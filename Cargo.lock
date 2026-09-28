@@ -4848,6 +4848,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "openagents-mobile"
+version = "0.1.0"
+dependencies = [
+ "rust-native",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "openagents-wallet"
 version = "0.1.0"
 dependencies = [
