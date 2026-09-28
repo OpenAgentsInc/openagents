@@ -430,7 +430,7 @@ impl Host {
             ));
         }
         let (owner, task) = {
-            let store = Store::open(directory)?;
+            let store = Store::open_for_owner(directory)?;
             let owner = owner::Owner::acquire(&store, &grant.task_id)?;
             let task = store.show(&grant.task_id)?;
             if task.run.is_some() || task.status != Status::Queued {
@@ -625,7 +625,11 @@ impl Host {
         }
         // The epoch effect is durable in the common journal. Individual effects
         // retain their exact intents and results in this same fsynced ATIF log.
-        if Store::open(&owner.dir)?.show(&task.task_id)?.status != Status::CancelRequested {
+        if Store::open_for_owner(&owner.dir)?
+            .show(&task.task_id)?
+            .status
+            != Status::CancelRequested
+        {
             owner.record(owner::Event::EffectIntent {
                 effect_id: owner::effect_id_for(&task),
             })?;
@@ -892,7 +896,7 @@ impl Host {
             }
         };
         let live = {
-            let store = Store::open(&self.owner.dir)?;
+            let store = Store::open_for_owner(&self.owner.dir)?;
             if store.show(&self.task.task_id)?.status != Status::Running {
                 self.stopped.set(true);
                 return Err(Error::InvalidTransition);

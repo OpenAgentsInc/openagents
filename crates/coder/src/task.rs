@@ -51,6 +51,11 @@ pub const STORE_FILE: &str = "tasks.json";
 pub const LOCK_FILE: &str = "tasks.lock";
 const PENDING_FILE: &str = ".tasks.pending";
 const LOCK_WAIT: Duration = Duration::from_secs(5);
+/// How long a task's own owner process, which no device waits on, waits out
+/// another holder of the store lock before it refuses with [`Error::Busy`]:
+/// a store save's disk sync on a nearly full volume can take longer than
+/// [`Store::open`]'s five seconds.
+pub const OWNER_LOCK_WAIT: Duration = Duration::from_secs(120);
 
 /// A requested adapter and model, not an admitted execution configuration.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -512,6 +517,13 @@ impl Store {
     /// Waits up to five seconds for another holder of the store lock.
     pub fn open(dir: &Path) -> Result<Self, Error> {
         Self::open_waiting(dir, LOCK_WAIT)
+    }
+
+    /// [`Store::open`] for a task's own owner process (its launcher, its
+    /// admission, and every record it makes while it runs), waiting up to
+    /// [`OWNER_LOCK_WAIT`] for a busy store instead of failing the task.
+    pub fn open_for_owner(dir: &Path) -> Result<Self, Error> {
+        Self::open_waiting(dir, OWNER_LOCK_WAIT)
     }
 
     /// [`Store::open`], waiting up to `wait` for another holder of the store

@@ -105,7 +105,10 @@ While the policy is on:
    seconds while its owner process admits it. A sweep waits up to two
    minutes for a busy task store, such as one whose disk sync is slow while
    a build writes to a nearly full volume; a store still busy after that
-   leaves its eligible tasks to the next sweep.
+   leaves its eligible tasks to the next sweep. The started task's own
+   process (its launcher, its admission, and every record it makes while it
+   runs) waits the same two minutes for a busy store instead of failing the
+   task; only a store still busy after that fails it.
 
 ## Routes and capacity
 

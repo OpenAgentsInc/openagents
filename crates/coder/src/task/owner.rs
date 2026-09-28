@@ -470,7 +470,7 @@ impl Owner {
     }
 
     pub(super) fn record(&self, event: Event) -> Result<Task, Error> {
-        Store::open(&self.dir)?.record(self, event, 1)
+        Store::open_for_owner(&self.dir)?.record(self, event, 1)
     }
 }
 
@@ -498,7 +498,7 @@ pub async fn check(
     trust: &crate::capability::Trust,
 ) -> Result<Task, Error> {
     let (owner, task) = {
-        let mut store = Store::open(directory)?;
+        let mut store = Store::open_for_owner(directory)?;
         let owner = Owner::acquire(&store, id)?;
         let task = store.record(&owner, Event::CheckIntent, 1)?;
         (owner, task)
@@ -550,7 +550,7 @@ pub async fn execute(directory: &Path, bytes: &[u8]) -> Result<Task, Error> {
         ));
     }
     let (owner, task) = {
-        let store = Store::open(directory)?;
+        let store = Store::open_for_owner(directory)?;
         let owner = Owner::acquire(&store, &grant.task_id)?;
         let task = store.show(&grant.task_id)?;
         if task.run.is_some() || task.status != Status::Queued {
@@ -649,7 +649,7 @@ pub async fn execute(directory: &Path, bytes: &[u8]) -> Result<Task, Error> {
             .noting("admission", json!(admission)),
     )?;
     let effect_id = effect_id_for(&task);
-    let state = Store::open(&owner.dir)?.show(&task.task_id)?;
+    let state = Store::open_for_owner(&owner.dir)?.show(&task.task_id)?;
     // A cancellation accepted before dispatch permits no effect.
     let mut output_incomplete = false;
     let mut retained_stdout = 0usize;
@@ -679,7 +679,7 @@ pub async fn execute(directory: &Path, bytes: &[u8]) -> Result<Task, Error> {
             .env_clear()
             .env("PATH", SYSTEM_PATH);
         let live = {
-            let mut dispatch = Store::open(&owner.dir)?;
+            let mut dispatch = Store::open_for_owner(&owner.dir)?;
             if dispatch.show(&task.task_id)?.status == Status::CancelRequested {
                 None
             } else {
@@ -713,7 +713,7 @@ pub async fn execute(directory: &Path, bytes: &[u8]) -> Result<Task, Error> {
                 if live.finished() {
                     break Some(live.wait().await);
                 }
-                let state = Store::open(&owner.dir)?.show(&task.task_id)?;
+                let state = Store::open_for_owner(&owner.dir)?.show(&task.task_id)?;
                 if state.status == Status::CancelRequested {
                     break Some(live.stop().await);
                 }

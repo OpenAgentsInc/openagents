@@ -29,7 +29,8 @@ pub fn start(directory: &Path, bytes: &[u8]) -> Result<Launched, String> {
         if !matches!(configuration.provider.as_str(), "codex" | "claude") {
             return Err("the detached repository CLI requires the codex or claude provider".into());
         }
-        let store = Store::open(directory)?;
+        // The launcher, like the owner it starts, waits out a busy store.
+        let store = Store::open_for_owner(directory)?;
         let task = store.show(&grant.task_id)?;
         if task.status != task::Status::Queued || task.run.is_some() {
             return Err(task::Error::InvalidTransition.into());

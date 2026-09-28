@@ -652,3 +652,35 @@ async fn cancellation_before_result_commit_cannot_be_reduced_as_finished() {
     drop(store);
     assert_eq!(Store::open(&dir).unwrap().show("task-one").unwrap(), task);
 }
+
+/// Hold the task store's lock on another thread for `hold`.
+fn hold_store(store: &Path, hold: Duration) -> std::thread::JoinHandle<()> {
+    let store = store.to_path_buf();
+    let (held, taken) = std::sync::mpsc::channel();
+    let holder = std::thread::spawn(move || {
+        let _held = Store::open(&store).unwrap();
+        held.send(()).unwrap();
+        std::thread::sleep(hold);
+    });
+    taken.recv().unwrap();
+    holder
+}
+
+#[tokio::test]
+async fn the_owner_process_waits_out_a_store_busy_past_the_lock_wait() {
+    let (root, _workspace, grant) = fixture();
+    let dir = root.path().join("store");
+    let bytes = serde_json::to_vec(&grant).unwrap();
+    // Another process's slow disk sync holds the store past the five
+    // seconds a device-facing open waits.
+    let holder = hold_store(&dir, LOCK_WAIT + Duration::from_secs(2));
+    assert!(matches!(
+        Store::open_waiting(&dir, Duration::from_millis(100)),
+        Err(Error::Busy)
+    ));
+    // The task's own process waits it out and runs the task, where it
+    // used to fail at admission.
+    let task = execute(&dir, &bytes).await.unwrap();
+    holder.join().unwrap();
+    assert_eq!(task.execution, Execution::Finished);
+}
