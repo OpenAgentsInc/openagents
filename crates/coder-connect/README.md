@@ -110,8 +110,10 @@ cargo run -p coder-connect -- serve
 ```
 
 If the store has grants for several relays, select one with `--relay URL`.
-Each host process serves one admitted relay. Its finite subscription reconnects
-with bounded backoff; Ctrl+C stops serving without changing source files or
+Each host process serves one admitted relay and answers up to eight of its
+requests at once. Its subscription renews at once when its two-minute lease
+ends, without answering a request twice, and otherwise reconnects with
+bounded backoff; Ctrl+C stops serving without changing source files or
 revoking a paired grant. It cancels an unused invitation. Starting `serve` again
 uses the same private state and key.
 
@@ -191,12 +193,17 @@ Polling uses a new request identity for a new observation. A disconnected
 client must label its content cached and distinguish receipt time from source
 or host capture time.
 
-The same `Client` reuses a serial connection for up to 24 successful exchanges
-or 75 seconds, within a fixed 90-second transport lease and frame budget. Each
-read has an eight-second network deadline. Cancellation or an unsuccessful
-exchange drops the socket; the next read authenticates a new connection.
-Callers can apply a shorter deadline without leaving a half-consumed socket
-in the connection pool.
+The same `Client` reads through one standing relay link: an authenticated
+socket that subscribes once to the host's replies to this device, then
+publishes each request as it comes, up to eight at once, and matches each
+reply to its request by mailbox. A reply is accepted only after its request
+was published and the relay acknowledged it. A link takes new reads for 105
+seconds of its 120-second transport lease; the next read opens a new one.
+`Client::warm` opens the relay link, and the direct connection when the host
+has one, ahead of the first read: call it when the app comes to the
+foreground. Each read has an eight-second network deadline. Cancelling a
+read forgets its request without closing the link; a socket failure fails
+every read in flight, and the next read opens a new link.
 
 ## Bounds and verification
 
@@ -208,11 +215,18 @@ data inside the 128 KiB observer-body ceiling. The shared envelope and NIP-44
 limits still apply. Exhaustion is explicit; source bytes are not silently
 truncated and presented as complete.
 
-The private store holds at most 64 retained grants and 256 current reply entries
-per grant within a 64 MiB store ceiling. Local administration and reads use a
-short exclusive store lock. The host saves exact reply evidence before sending
-it. An uncertain save returns no reply; reopening uses the last atomically
-retained state. Revocations survive process restart and are kept through the
+The private store holds at most 64 retained grants and 256 current request
+bindings per grant within a 64 MiB store ceiling. Local administration and a
+read's admission use a short exclusive store lock; the read itself and its
+signing run outside it, so independent reads run at once. A read never
+rewrites the grant book. Before reading, the host binds the request to its
+exact event and advances its grant's read window in an append-only request
+log, and it appends a relay reply there before sending it. A failed append
+returns no reply. Another process sharing the store catches up on the log
+before admitting a request, so it never reads a bound request again. The log
+is not synced per read: it survives a host process crash, but an OS crash
+can lose its last lines. It is rewritten with only live requests past 4 MiB.
+Grant changes rewrite and sync the book. Revocations survive process restart and are kept through the
 grant's expiry and request window. It also holds at most 64 invitations and 32
 bootstrap replies per invitation. Expired invitations and grants are pruned
 when creating an invitation; reaching the bound with active grants refuses.
@@ -240,6 +254,14 @@ history, model call, or benchmark was used.
 cargo test -p coder-connect
 cargo clippy -p coder-connect --all-targets -- -D warnings
 cargo clippy -p coder-connect --no-default-features --lib -- -D warnings
+```
+
+An ignored benchmark measures read latency and throughput, one at a time and
+four at once, for host handling alone and end to end over a direct
+connection and an in-process relay, with synthetic history:
+
+```sh
+cargo test -p coder-connect --release bench_ -- --ignored --nocapture --test-threads 1
 ```
 
 The production smoke is ignored by default. Run it only when publication of

@@ -13,7 +13,9 @@ use std::{
     collections::BTreeMap,
     path::{Path, PathBuf},
 };
+mod log;
 mod pairing;
+use log::{Answer, Binding, Reads};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -107,6 +109,7 @@ struct Book {
 }
 
 /// Each call opens a short exclusive local lock, allowing concurrent CLI revocation.
+#[derive(Clone)]
 pub struct Host {
     directory: PathBuf,
     policy: RelayPolicy,
@@ -118,10 +121,16 @@ impl Host {
             policy,
         }
     }
+    /// The host key, read from the store once per process.
     pub fn key(&self) -> Result<SecretKey> {
         let gate = self.gate();
-        let _serial = gate.lock().unwrap_or_else(|poison| poison.into_inner());
-        Store::open(&self.directory, false)?.key(false)
+        let mut reads = lock(&gate);
+        if let Some(secret) = reads.secret {
+            return Ok(secret);
+        }
+        let secret = Store::open(&self.directory, false)?.key(false)?;
+        reads.secret = Some(secret);
+        Ok(secret)
     }
     pub fn pair(
         &self,
@@ -294,9 +303,6 @@ impl Host {
         via: Via<'_>,
         mut clock: impl FnMut() -> Result<u64>,
     ) -> Result<Handled> {
-        let gate = self.gate();
-        let _serial = gate.lock().unwrap_or_else(|poison| poison.into_inner());
-        let now = clock()?;
         let route = match via {
             Via::Relay(relay) => {
                 self.policy.validate(relay)?;
@@ -304,13 +310,10 @@ impl Host {
             }
             Via::Direct => Route::Direct,
         };
-        let mut store = Store::open(&self.directory, false)?;
-        let secret = store.key(false)?;
+        let secret = self.key()?;
         let host = pubkey(&secret);
-        let mut book = self.book(&store, &secret, false)?;
         let request: Request = open(event, &secret, &event.pubkey, &host, REQUEST)?;
         request.validate_for(route)?;
-        fresh(request.issued_at, request.expires_at, now)?;
         let envelope = nostr::private_artifact::open(event, &secret)
             .map_err(|_| Error::new(ErrorCode::Forbidden, "request envelope unavailable"))?;
         if event.tag_values("h").collect::<Vec<_>>() != [request.request.as_str()]
@@ -322,11 +325,98 @@ impl Host {
                 "request lifetime or mailbox differs from envelope",
             );
         }
-        // A reply is retained only through its request's lifetime: drop every
-        // grant's expired replies, so the book stays small.
-        for admission in book.admissions.values_mut() {
-            admission.replies.retain(|_, r| r.expires_at > now);
+        let now = clock()?;
+        fresh(request.issued_at, request.expires_at, now)?;
+        // Admission holds this store's gate and lock only to check and bind
+        // the request; the read and the signing run outside them, so
+        // independent reads run at once.
+        let roots = match self.admit(event, &request, via, route, &secret, now)? {
+            Admitted::Read(roots) => roots,
+            Admitted::Retained(handled) => return Ok(*handled),
+            Admitted::Refused(code) => {
+                return self
+                    .reply(&secret, event, &request, ReplyResult::Refused { code }, now)
+                    .map(Handled::from);
+            }
+        };
+        let answered = self.answer(event, &request, route, &secret, &roots, clock);
+        let gate = self.gate();
+        let mut reads = lock(&gate);
+        let (reply, payload, length) = match answered {
+            Ok(answered) => answered,
+            Err(error) => {
+                // No reply exists: this process holds the request no longer.
+                reads.bindings.remove(&request.request);
+                return Err(error);
+            }
+        };
+        let answer = match &payload {
+            Some(payload) => Answer::Direct {
+                reply: reply.clone(),
+                payload: payload.clone(),
+            },
+            None => {
+                // The exact relay reply is recorded before it is sent.
+                let record = Store::open(&self.directory, false).and_then(|store| {
+                    let mut memo = memo();
+                    let book = self.current(&store, &secret, &mut memo, &mut reads)?;
+                    reads.catch_up(store.directory(), book)?;
+                    let admission = book.admissions.get(&request.grant);
+                    reads.append(
+                        store.directory(),
+                        &log::Record {
+                            request: request.request.clone(),
+                            grant: request.grant.clone(),
+                            request_event: event.id.clone(),
+                            expires_at: request.expires_at,
+                            window_start: admission.map_or(0, |a| a.window_start),
+                            reads: admission.map_or(0, |a| a.reads),
+                            reply: Some(reply.clone()),
+                        },
+                    )
+                });
+                if let Err(error) = record {
+                    reads.bindings.remove(&request.request);
+                    return Err(error);
+                }
+                Answer::Relay(reply.clone())
+            }
+        };
+        if let Some(binding) = reads.bindings.get_mut(&request.request) {
+            binding.answer = answer;
         }
+        drop(reads);
+        let read = length.map(|length| Read {
+            grant: request.grant.clone(),
+            query: request.query.clone(),
+            sources: sources(&roots),
+            length,
+        });
+        Ok(Handled {
+            reply,
+            payload,
+            read,
+        })
+    }
+    /// Check a request against current admission and bind it to its exact
+    /// event, in memory and in the request log, before any read.
+    fn admit(
+        &self,
+        event: &Event,
+        request: &Request,
+        via: Via<'_>,
+        route: Route,
+        secret: &SecretKey,
+        now: u64,
+    ) -> Result<Admitted> {
+        let gate = self.gate();
+        let mut reads = lock(&gate);
+        let store = Store::open(&self.directory, false)?;
+        let mut memo = memo();
+        let book = self.current(&store, secret, &mut memo, &mut reads)?;
+        reads.catch_up(store.directory(), book)?;
+        // A binding is held only through its request's lifetime.
+        reads.bindings.retain(|_, b| b.expires_at > now);
         let admission = book
             .admissions
             .get_mut(&request.grant)
@@ -346,52 +436,36 @@ impl Host {
                 "request differs from original admitted client, relay, or grant",
             );
         }
-        let current = if admission.revoked_at.is_some() {
-            Err(ErrorCode::Revoked)
+        if admission.revoked_at.is_some() {
+            return Ok(Admitted::Refused(ErrorCode::Revoked));
         } else if admission.grant.expires_at <= now {
-            Err(ErrorCode::Expired)
+            return Ok(Admitted::Refused(ErrorCode::Expired));
         } else if request.expires_at > admission.grant.expires_at
             || request.issued_at < admission.grant.issued_at
         {
-            Err(ErrorCode::Forbidden)
-        } else {
-            Ok(())
-        };
-        if let Err(code) = current {
-            return self
-                .reply(&secret, event, &request, ReplyResult::Refused { code }, now)
-                .map(Handled::from);
+            return Ok(Admitted::Refused(ErrorCode::Forbidden));
         }
-        if let Some(old) = admission.replies.get(&request.request) {
-            if old.request_event == event.id {
-                // A direct reply's bytes are kept in memory through its
-                // request's lifetime, for a direct retry; the book holds a
-                // signed conflict in their place, which any other retry gets.
-                let kept = kept()
-                    .get(&(self.directory.clone(), request.request.clone()))
-                    .filter(|kept| {
-                        route == Route::Direct
-                            && kept.request_event == event.id
-                            && kept.expires_at > now
-                    })
-                    .map(|kept| Handled {
-                        reply: kept.reply.clone(),
-                        payload: Some(kept.payload.clone()),
-                        read: None,
-                    });
-                return Ok(kept.unwrap_or_else(|| Handled::from(old.event.clone())));
+        if let Some(old) = reads.bindings.get(&request.request) {
+            if old.request_event != event.id {
+                return Ok(Admitted::Refused(ErrorCode::Conflict));
             }
-            return self
-                .reply(
-                    &secret,
-                    event,
-                    &request,
-                    ReplyResult::Refused {
-                        code: ErrorCode::Conflict,
-                    },
-                    now,
-                )
-                .map(Handled::from);
+            return match (&old.answer, route) {
+                (Answer::Relay(reply), _) => Ok(Admitted::Retained(Box::new(reply.clone().into()))),
+                (Answer::Direct { reply, payload }, Route::Direct) => {
+                    Ok(Admitted::Retained(Box::new(Handled {
+                        reply: reply.clone(),
+                        payload: Some(payload.clone()),
+                        read: None,
+                    })))
+                }
+                // A direct reply's bytes travel only on a direct connection.
+                (Answer::Direct { .. }, Route::Relay) => Ok(Admitted::Refused(ErrorCode::Conflict)),
+                // Whoever admitted it answers it; no second read, no reply here.
+                (Answer::Pending | Answer::Claimed, _) => fail(
+                    ErrorCode::Unavailable,
+                    "this request is already being answered",
+                ),
+            };
         }
         if now < admission.window_start {
             return fail(
@@ -403,107 +477,94 @@ impl Host {
             admission.window_start = now;
             admission.reads = 0;
         }
+        if admission.reads >= MAX_READS_PER_MINUTE {
+            return Ok(Admitted::Refused(ErrorCode::RateLimited));
+        }
+        let grant = &request.grant;
+        if reads
+            .bindings
+            .values()
+            .filter(|b| &b.grant == grant)
+            .count()
+            >= MAX_REPLIES
+        {
+            return fail(ErrorCode::Bounds, "observer reply retention limit reached");
+        }
+        admission.reads += 1;
+        let record = log::Record {
+            request: request.request.clone(),
+            grant: grant.clone(),
+            request_event: event.id.clone(),
+            expires_at: request.expires_at,
+            window_start: admission.window_start,
+            reads: admission.reads,
+            reply: None,
+        };
+        let roots = admission.roots.clone();
+        if let Err(error) = reads.append(store.directory(), &record) {
+            if let Some(admission) = book.admissions.get_mut(grant) {
+                admission.reads -= 1;
+            }
+            return Err(error);
+        }
+        reads.bindings.insert(
+            request.request.clone(),
+            Binding {
+                grant: grant.clone(),
+                request_event: event.id.clone(),
+                expires_at: request.expires_at,
+                answer: Answer::Pending,
+            },
+        );
+        reads.compact(store.directory(), book, now)?;
+        Ok(Admitted::Read(roots))
+    }
+    /// Read and sign the reply to an admitted request, with no lock held.
+    #[allow(clippy::type_complexity)]
+    fn answer(
+        &self,
+        event: &Event,
+        request: &Request,
+        route: Route,
+        secret: &SecretKey,
+        roots: &[Root],
+        mut clock: impl FnMut() -> Result<u64>,
+    ) -> Result<(Event, Option<String>, Option<Option<(String, u64)>>)> {
         let mut answered = None;
-        let result = if admission.reads >= MAX_READS_PER_MINUTE {
-            ReplyResult::Refused {
-                code: ErrorCode::RateLimited,
-            }
-        } else {
-            admission.reads += 1;
-            match read(
-                &self.directory,
-                &admission.roots,
-                &request.query,
-                route.limits(),
-            ) {
-                Ok(observation) => {
-                    answered = Some(match &observation {
-                        Observation::Page(page) => {
-                            Some((page.incarnation.clone(), page.snapshot_bytes))
-                        }
-                        Observation::Catalog(_) => None,
-                    });
-                    ReplyResult::Ok {
-                        observation: Box::new(observation),
+        let result = match read(&self.directory, roots, &request.query, route.limits()) {
+            Ok(observation) => {
+                answered = Some(match &observation {
+                    Observation::Page(page) => {
+                        Some((page.incarnation.clone(), page.snapshot_bytes))
                     }
+                    Observation::Catalog(_) => None,
+                });
+                ReplyResult::Ok {
+                    observation: Box::new(observation),
                 }
-                Err(error) => ReplyResult::Refused { code: error.code },
             }
+            Err(error) => ReplyResult::Refused { code: error.code },
         };
         // A slow reader must not extend a request's grant or freshness window.
         let final_now = clock()?;
         fresh(request.issued_at, request.expires_at, final_now)?;
-        let (response, payload) = match route {
-            Route::Relay => (
-                self.reply(&secret, event, &request, result, final_now)?,
-                None,
-            ),
+        let (reply, payload) = match route {
+            Route::Relay => (self.reply(secret, event, request, result, final_now)?, None),
             Route::Direct => {
                 let (reply, payload) =
-                    self.reply_detached(&secret, event, &request, result, final_now)?;
+                    self.reply_detached(secret, event, request, result, final_now)?;
                 (reply, Some(payload))
             }
         };
-        if admission.replies.len() >= MAX_REPLIES {
-            return fail(ErrorCode::Bounds, "observer reply retention limit reached");
-        }
-        // The book binds the request to this exact event either way. A
-        // direct reply, up to four times a relay reply's size, stays out of
-        // the book, which is written on every read.
-        let retained = match route {
-            Route::Relay => response.clone(),
-            Route::Direct => self.reply(
-                &secret,
-                event,
-                &request,
-                ReplyResult::Refused {
-                    code: ErrorCode::Conflict,
-                },
-                final_now,
-            )?,
-        };
-        admission.replies.insert(
-            request.request.clone(),
-            RetainedReply {
-                request_event: event.id.clone(),
-                expires_at: request.expires_at,
-                event: retained,
-            },
-        );
-        let read = answered.map(|length| Read {
-            grant: request.grant.clone(),
-            query: request.query.clone(),
-            sources: sources(&admission.roots),
-            length,
-        });
-        self.save(&mut store, &book)?;
-        if let Some(payload) = &payload {
-            let mut kept = kept();
-            kept.retain(|_, kept| kept.expires_at > final_now);
-            if kept.len() < 64 * MAX_REPLIES {
-                kept.insert(
-                    (self.directory.clone(), request.request.clone()),
-                    Kept {
-                        request_event: event.id.clone(),
-                        expires_at: request.expires_at,
-                        reply: response.clone(),
-                        payload: payload.clone(),
-                    },
-                );
-            }
-        }
-        Ok(Handled {
-            reply: response,
-            payload,
-            read,
-        })
+        Ok((reply, payload, answered))
     }
-    /// This host's lock within the process, around every use of its store:
-    /// the relay loop and direct connections share one store.
-    fn gate(&self) -> std::sync::Arc<std::sync::Mutex<()>> {
+    /// This host's gate within the process, around every use of its store
+    /// and around its read state: the relay loop and direct connections
+    /// share one store.
+    fn gate(&self) -> std::sync::Arc<std::sync::Mutex<Reads>> {
         static GATES: std::sync::OnceLock<
             std::sync::Mutex<
-                std::collections::HashMap<PathBuf, std::sync::Arc<std::sync::Mutex<()>>>,
+                std::collections::HashMap<PathBuf, std::sync::Arc<std::sync::Mutex<Reads>>>,
             >,
         > = std::sync::OnceLock::new();
         GATES
@@ -513,6 +574,45 @@ impl Host {
             .entry(self.directory.clone())
             .or_default()
             .clone()
+    }
+    /// The validated book in `memo`, read again only when its file changed.
+    /// Replies an older book retained move into the read state.
+    fn current<'m>(
+        &self,
+        store: &Store,
+        secret: &SecretKey,
+        memo: &'m mut std::collections::HashMap<PathBuf, Memo>,
+        reads: &mut Reads,
+    ) -> Result<&'m mut Book> {
+        let stamp = store
+            .stamp()
+            .ok_or_else(|| Error::new(ErrorCode::Unavailable, "observer store is incomplete"))?;
+        let directory = store.directory();
+        let known = memo
+            .get(directory)
+            .is_some_and(|m| m.stamp == stamp && m.book.host == pubkey(secret));
+        if !known {
+            let mut book = self.load(store, secret, false)?;
+            if let Some(old) = memo.get(directory) {
+                keep_windows(&old.book, &mut book);
+            }
+            memo.insert(directory.to_path_buf(), Memo { stamp, book });
+        }
+        let book = &mut memo
+            .get_mut(directory)
+            .ok_or_else(|| Error::new(ErrorCode::Unavailable, "observer store is incomplete"))?
+            .book;
+        for (grant, admission) in &mut book.admissions {
+            for (request, retained) in std::mem::take(&mut admission.replies) {
+                reads.bindings.entry(request).or_insert(Binding {
+                    grant: grant.clone(),
+                    request_event: retained.request_event,
+                    expires_at: retained.expires_at,
+                    answer: Answer::Relay(retained.event),
+                });
+            }
+        }
+        Ok(book)
     }
     fn reply(
         &self,
@@ -599,7 +699,10 @@ impl Host {
         {
             return Ok(known.book.clone());
         }
-        let book = self.load(store, secret, initialize)?;
+        let mut book = self.load(store, secret, initialize)?;
+        if let Some(old) = memo().get(store.directory()) {
+            keep_windows(&old.book, &mut book);
+        }
         if let Some(stamp) = stamp {
             memo().insert(
                 store.directory().to_path_buf(),
@@ -758,20 +861,28 @@ pub(crate) enum Via<'a> {
     Direct,
 }
 
-/// A direct reply kept for an exact retry through its request's lifetime.
-struct Kept {
-    request_event: String,
-    expires_at: u64,
-    reply: Event,
-    payload: String,
+/// What admission decided for a request.
+enum Admitted {
+    /// Bound to its event: read for it.
+    Read(Vec<Root>),
+    /// An exact retry: the reply this host keeps.
+    Retained(Box<Handled>),
+    /// A signed refusal, which binds nothing.
+    Refused(ErrorCode),
 }
-fn kept() -> std::sync::MutexGuard<'static, std::collections::HashMap<(PathBuf, String), Kept>> {
-    static KEPT: std::sync::OnceLock<
-        std::sync::Mutex<std::collections::HashMap<(PathBuf, String), Kept>>,
-    > = std::sync::OnceLock::new();
-    KEPT.get_or_init(Default::default)
-        .lock()
-        .unwrap_or_else(|poison| poison.into_inner())
+
+/// Read windows this process advanced stay advanced when another writer's
+/// save replaces the book it validated.
+fn keep_windows(old: &Book, new: &mut Book) {
+    for (grant, admission) in &mut new.admissions {
+        if let Some(known) = old.admissions.get(grant) {
+            log::merge_window(admission, known.window_start, known.reads);
+        }
+    }
+}
+
+fn lock<T>(mutex: &std::sync::Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    mutex.lock().unwrap_or_else(|poison| poison.into_inner())
 }
 
 fn sources(roots: &[Root]) -> coder_history::Config {

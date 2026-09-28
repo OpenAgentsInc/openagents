@@ -226,23 +226,21 @@ fn durable_revocation_blocks_cached_retries_and_source_revocation_ends_grant() {
     f.host().revoke(&f.code.grant, None, f.now).unwrap();
 }
 
+/// A read never rewrites the book. A request is bound in the request log
+/// before the host reads for it: when the log cannot be written, no reply
+/// exists, and once it can, the request is read and an exact retry gets the
+/// same reply.
 #[test]
-fn failed_atomic_reply_save_returns_no_reply_and_reopen_reconciles_retained_state() {
+fn a_failed_request_log_write_returns_no_reply_and_a_retry_reads() {
     let f = Fixture::new("wss://relay.example/");
     let pending = f.catalog();
     let before = std::fs::read(f.state.join("observer.json")).unwrap();
-    // A directory cannot be replaced as the private regular staging file. This
-    // fails after the read but before any terminal reply can be published.
-    let blocked = f.state.join(".observer.pending");
+    let blocked = f.state.join("observer.requests");
     std::fs::create_dir(&blocked).unwrap();
     assert!(
         f.host()
             .handle(&pending.event, &f.code.relay, f.now)
             .is_err()
-    );
-    assert_eq!(
-        std::fs::read(f.state.join("observer.json")).unwrap(),
-        before
     );
     std::fs::remove_dir(blocked).unwrap();
     let reply = f
@@ -256,6 +254,53 @@ fn failed_atomic_reply_save_returns_no_reply_and_reopen_reconciles_retained_stat
             .unwrap()
             .id,
         reply.id
+    );
+    assert_eq!(
+        std::fs::read(f.state.join("observer.json")).unwrap(),
+        before,
+        "a read leaves the book alone"
+    );
+}
+
+/// Another process sharing the store (here, a second gate on the same
+/// directory) catches up on the request log: an exact relay retry gets the
+/// same reply bytes, and a request the first process answered directly is
+/// neither read again nor answered.
+#[test]
+fn another_process_never_reads_a_bound_request_again() {
+    let f = Fixture::new("wss://relay.example/");
+    let spelled = f.state.join("..").join(f.state.file_name().unwrap());
+    let other = host::Host::new(&spelled, RelayPolicy::LoopbackTest);
+    let pending = f.catalog();
+    let reply = f
+        .host()
+        .handle(&pending.event, &f.code.relay, f.now)
+        .unwrap();
+    assert_eq!(
+        other
+            .handle(&pending.event, &f.code.relay, f.now)
+            .unwrap()
+            .id,
+        reply.id
+    );
+    let direct = f
+        .client()
+        .prepare_for(
+            Query::Catalog(CatalogRequest::default()),
+            unix_time().unwrap(),
+            Route::Direct,
+        )
+        .unwrap();
+    assert!(
+        f.host()
+            .handle_direct(&direct.event)
+            .unwrap()
+            .read
+            .is_some()
+    );
+    assert_eq!(
+        other.handle_direct(&direct.event).unwrap_err().code,
+        ErrorCode::Unavailable
     );
 }
 
@@ -379,28 +424,24 @@ fn a_revocation_another_writer_saved_ends_reads_at_once() {
     }
 }
 
-/// A reply is retained only through its request's lifetime, for every
-/// grant: a read under one grant drops another grant's expired replies, so
-/// the book does not grow with every read ever answered.
+/// A binding is retained only through its request's lifetime, for every
+/// grant: once the request log passes its size bound, it is rewritten with
+/// only live requests, so it does not grow with every read ever answered.
 #[test]
-fn expired_replies_of_every_grant_leave_the_book() {
+fn expired_replies_of_every_grant_leave_the_log() {
     let f = Fixture::new("wss://relay.example/");
-    let pending = f.catalog();
-    f.host()
-        .handle(&pending.event, &f.code.relay, f.now)
-        .unwrap();
-    let replies = |f: &Fixture| {
-        let store = crate::store::Store::open(&f.state, false).unwrap();
-        let book: serde_json::Value = store.load().unwrap().unwrap();
-        book["admissions"]
-            .as_object()
-            .unwrap()
-            .values()
-            .map(|a| a["replies"].as_object().unwrap().len())
-            .sum::<usize>()
-    };
-    assert_eq!(replies(&f), 1);
-    // A second grant reads after the first reply's request expired.
+    let log = f.state.join("observer.requests");
+    let mut expired = Vec::new();
+    for _ in 0..3 {
+        let pending = f.catalog();
+        f.host()
+            .handle(&pending.event, &f.code.relay, f.now)
+            .unwrap();
+        expired.push(pending.request.request);
+    }
+    let holds = |id: &str| std::fs::read_to_string(&log).unwrap().contains(id);
+    assert!(expired.iter().all(|id| holds(id)));
+    // A second grant reads after the first grant's requests expired.
     let later = f.now + MAX_REQUEST_LIFETIME + 1;
     let other = SecretKey::new(&mut secp256k1::rand::rng());
     let code = f
@@ -420,12 +461,34 @@ fn expired_replies_of_every_grant_leave_the_book() {
         )
         .unwrap();
     let client = Client::new_with_policy(code.clone(), other, RelayPolicy::LoopbackTest).unwrap();
-    let pending = client
-        .prepare(Query::Catalog(CatalogRequest::default()), later)
-        .unwrap();
-    let reply = f.host().handle(&pending.event, &code.relay, later).unwrap();
-    assert!(client.verify_reply(&pending, &reply, later).is_ok());
-    assert_eq!(replies(&f), 1);
+    let mut size = std::fs::metadata(&log).unwrap().len();
+    for _ in 0..64 {
+        let pending = client
+            .prepare(Query::Catalog(CatalogRequest::default()), later)
+            .unwrap();
+        let reply = f.host().handle(&pending.event, &code.relay, later).unwrap();
+        assert!(client.verify_reply(&pending, &reply, later).is_ok());
+        let now = std::fs::metadata(&log).unwrap().len();
+        if now < size {
+            break;
+        }
+        size = now;
+    }
+    assert!(
+        std::fs::metadata(&log).unwrap().len() < size,
+        "log compacted"
+    );
+    assert!(expired.iter().all(|id| !holds(id)));
+    // Reads never put a reply in the book.
+    let book: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(f.state.join("observer.json")).unwrap()).unwrap();
+    assert!(
+        book["admissions"]
+            .as_object()
+            .unwrap()
+            .values()
+            .all(|a| a["replies"].as_object().unwrap().is_empty())
+    );
 }
 
 #[test]
@@ -692,6 +755,41 @@ async fn authenticated_encrypted_relay_roundtrip_uses_synthetic_data_only() {
     let _ = relay.await;
 }
 
+/// A warmed client reads through one standing relay link: several reads at
+/// once, each matched to its own reply, while the host's serve loop answers
+/// them at once.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_warm_link_carries_concurrent_reads_to_a_concurrent_host() {
+    let (url, relay, _) = relay::start().await;
+    let f = Fixture::new(&url);
+    let serving = tokio::spawn(crate::cli::serve_observer(
+        f.host(),
+        url.clone(),
+        RelayPolicy::LoopbackTest,
+    ));
+    let client = std::sync::Arc::new(f.client());
+    client.warm().await;
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    let reads: Vec<_> = (0..12)
+        .map(|_| {
+            let client = client.clone();
+            tokio::spawn(async move {
+                client
+                    .observe(Query::Catalog(CatalogRequest::default()))
+                    .await
+            })
+        })
+        .collect();
+    for read in reads {
+        assert!(matches!(
+            read.await.unwrap().unwrap(),
+            Observation::Catalog(_)
+        ));
+    }
+    serving.abort();
+    relay.abort();
+}
+
 #[tokio::test]
 async fn cancelled_exchange_discards_socket_before_the_next_observation() {
     let (url, relay, _) = relay::start().await;
@@ -723,5 +821,6 @@ async fn cancelled_exchange_discards_socket_before_the_next_observation() {
     let _ = relay.await;
 }
 
+mod bench;
 mod direct;
 mod pairing;

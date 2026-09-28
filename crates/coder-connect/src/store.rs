@@ -45,6 +45,33 @@ pub(crate) fn private(path: &Path, create: bool) -> Result<File> {
     }
     Ok(file)
 }
+/// Open a private append-only file, creating it when `create` is set; `None`
+/// when it does not exist and is not created. The same ownership, link, and
+/// mode checks as [`private`] apply.
+pub(crate) fn private_append(path: &Path, create: bool) -> Result<Option<File>> {
+    let file = match OpenOptions::new()
+        .read(true)
+        .append(true)
+        .create(create)
+        .mode(0o600)
+        .custom_flags(libc::O_NOFOLLOW)
+        .open(path)
+    {
+        Ok(file) => file,
+        Err(e) if !create && e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(io(e)),
+    };
+    let m = file.metadata().map_err(io)?;
+    // SAFETY: geteuid has no pointers or preconditions.
+    let uid = unsafe { libc::geteuid() };
+    if !m.is_file() || m.nlink() != 1 || m.uid() != uid || m.permissions().mode() & 0o077 != 0 {
+        return Err(Error::new(
+            ErrorCode::Forbidden,
+            "observer files must be private owned singly linked regular files",
+        ));
+    }
+    Ok(Some(file))
+}
 impl Store {
     pub fn open(directory: &Path, create: bool) -> Result<Self> {
         Self::open_named(directory, "observer", create)

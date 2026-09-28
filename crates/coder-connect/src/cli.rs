@@ -7,6 +7,7 @@ use crate::{
     transport::Receiver,
     unix_time,
 };
+use nostr::domain::Event;
 use std::{collections::BTreeMap, path::PathBuf, time::Duration};
 
 fn bad(message: &str) -> Error {
@@ -267,6 +268,12 @@ pub async fn serve_observer(host: Host, relay: String, policy: RelayPolicy) -> R
     serve(host, relay, policy, false, None).await
 }
 
+/// Requests the relay loop answers at once.
+const ANSWERING: usize = 8;
+/// A relay connection that lasted this long ended with its lease, not a
+/// fault: the next one opens at once.
+const LEASED: Duration = Duration::from_secs(30);
+
 async fn serve(
     host: Host,
     relay: String,
@@ -275,10 +282,18 @@ async fn serve(
     mut display: Option<pairing_ui::Display>,
 ) -> Result<()> {
     let secret = host.key()?;
+    let host = std::sync::Arc::new(host);
     let mut backoff = 1;
     let mut tick = tokio::time::interval(Duration::from_secs(1));
     let stop = tokio::signal::ctrl_c();
     tokio::pin!(stop);
+    // Requests are answered off this loop, several at once; their replies
+    // come back here, to whichever connection is open, to be published.
+    let (answered, mut replies) = tokio::sync::mpsc::unbounded_channel::<Result<Event>>();
+    let permits = std::sync::Arc::new(tokio::sync::Semaphore::new(ANSWERING));
+    // Requests this loop took, by event, so a renewed subscription's replay
+    // of the last minute is not answered and published again.
+    let mut taken: std::collections::HashMap<String, u64> = std::collections::HashMap::new();
     loop {
         let expiry_wait = display
             .as_ref()
@@ -293,23 +308,12 @@ async fn serve(
             _ = &mut stop => {cancel_display(&host,&mut display);return Ok(());},
             _ = tokio::time::sleep(Duration::from_secs(expiry_wait)), if display.as_ref().is_some_and(|d|d.active) => {update_display(&host,&mut display)?;continue;},
         };
+        let opened = std::time::Instant::now();
         match connection {
-            Ok(mut receiver) => {
-                loop {
-                    let next = tokio::select! {
-                        event = receiver.next_request() => event,
-                        _ = &mut stop => {cancel_display(&host,&mut display);return Ok(());},
-                        _ = tick.tick(), if display.as_ref().is_some_and(|d|d.active) => {
-                            update_display(&host,&mut display)?;
-                            continue;
-                        },
-                    };
-                    let request = match next {
-                        Ok(event) => event,
-                        Err(_) => break,
-                    };
-                    match host.handle_current(&request, &relay) {
-                        Ok(reply) => {
+            Ok(mut receiver) => loop {
+                tokio::select! {
+                    reply = replies.recv() => match reply {
+                        Some(Ok(reply)) => {
                             if let Err(error) = receiver.publish(&reply).await {
                                 if once {
                                     return Err(error);
@@ -322,16 +326,42 @@ async fn serve(
                                 return Ok(());
                             }
                         }
-                        Err(error) => {
+                        Some(Err(error)) => {
                             // Record only a stable code, never source bodies, ciphertext, or paths.
                             eprintln!("observation refused: {:?}", error.code);
                             if once {
                                 return Err(error);
                             }
                         }
-                    }
+                        None => return Err(Error::new(ErrorCode::Unavailable, "observer stopped")),
+                    },
+                    event = receiver.next_request() => {
+                        let Ok(request) = event else { break };
+                        let now = unix_time()?;
+                        taken.retain(|_, until| *until > now);
+                        if taken.insert(request.id.clone(), now + 120).is_some() {
+                            continue;
+                        }
+                        let (host, relay, answered, permits) =
+                            (host.clone(), relay.clone(), answered.clone(), permits.clone());
+                        tokio::spawn(async move {
+                            let Ok(_permit) = permits.acquire_owned().await else { return };
+                            let reply = tokio::task::spawn_blocking(move || {
+                                host.handle_current(&request, &relay)
+                            })
+                            .await
+                            .unwrap_or_else(|_| {
+                                Err(Error::new(ErrorCode::Unavailable, "observation failed"))
+                            });
+                            let _ = answered.send(reply);
+                        });
+                    },
+                    _ = &mut stop => {cancel_display(&host,&mut display);return Ok(());},
+                    _ = tick.tick(), if display.as_ref().is_some_and(|d| d.active) => {
+                        update_display(&host, &mut display)?;
+                    },
                 }
-            }
+            },
             Err(error) if once => return Err(error),
             Err(_) => eprintln!("relay unavailable; reconnecting after bounded backoff"),
         }
@@ -341,6 +371,10 @@ async fn serve(
                 ErrorCode::Transport,
                 "finite observer connection ended",
             ));
+        }
+        if opened.elapsed() >= LEASED {
+            backoff = 1;
+            continue;
         }
         tokio::select! {
             _ = tokio::time::sleep(Duration::from_secs(backoff.min(expiry_wait.max(1)))) => {},

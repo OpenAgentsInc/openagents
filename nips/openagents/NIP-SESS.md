@@ -652,12 +652,11 @@ whole records do not fit the encoded bound together holds the newest of
 them that do, down to one record.
 
 Replay protection is unchanged across routes: the host binds each request
-ID to its exact event in its book on first answer, and a request ID is read
-at most once whichever route carries it. Because a direct reply can be four
+ID to its exact event before reading for it, and a request ID is read at
+most once whichever route carries it. Because a direct reply can be four
 times a relay reply, the host keeps its bytes in memory through the request
-lifetime and keeps a signed `conflict` reply for that request in the book
-instead; an exact retry gets the kept bytes, or that conflict once the host
-no longer has them.
+lifetime only; an exact direct retry gets the kept bytes, and any other
+retry a signed `conflict`.
 
 The host may also send a nudge, `{"changed": {source}}` or `"catalog"`, when
 a source this connection read grew or changed, or when the chat list of a

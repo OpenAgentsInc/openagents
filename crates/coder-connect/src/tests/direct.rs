@@ -270,7 +270,7 @@ fn a_detached_body_must_be_the_bytes_its_envelope_names() {
 
 /// Emulate the host's tailnet listener: welcome one connection, then serve
 /// it. The owner check itself is `coder-host`'s.
-async fn listener(host: Arc<host::Host>) -> std::net::SocketAddr {
+pub(super) async fn listener(host: Arc<host::Host>) -> std::net::SocketAddr {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
     tokio::spawn(async move {

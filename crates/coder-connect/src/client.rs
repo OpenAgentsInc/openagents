@@ -13,9 +13,9 @@ pub struct Client {
     code: ConnectionCode,
     secret: SecretKey,
     policy: RelayPolicy,
-    /// Relay sessions between exchanges; each exchange takes one or opens
-    /// one, so reads do not wait for each other.
-    idle: std::sync::Mutex<Vec<transport::Session>>,
+    /// The standing relay link every relay read shares while it lasts.
+    link: std::sync::Mutex<Option<Arc<transport::Link>>>,
+    linking: tokio::sync::Mutex<()>,
     relay_slots: tokio::sync::Semaphore,
     direct: std::sync::Mutex<DirectState>,
     connecting: tokio::sync::Mutex<()>,
@@ -23,7 +23,9 @@ pub struct Client {
 }
 
 /// Relay exchanges one client runs at once.
-const RELAY_SESSIONS: usize = 3;
+const RELAY_IN_FLIGHT: usize = 8;
+/// How long a relay read waits for its reply.
+const RELAY_LIMIT: Duration = Duration::from_secs(8);
 /// How long a direct read waits for its reply.
 const DIRECT_LIMIT: Duration = Duration::from_secs(8);
 /// After a direct connection fails, reads use the relay for this long.
@@ -58,8 +60,9 @@ impl Client {
             code,
             secret,
             policy,
-            idle: std::sync::Mutex::new(Vec::new()),
-            relay_slots: tokio::sync::Semaphore::new(RELAY_SESSIONS),
+            link: std::sync::Mutex::new(None),
+            linking: tokio::sync::Mutex::new(()),
+            relay_slots: tokio::sync::Semaphore::new(RELAY_IN_FLIGHT),
             direct: std::sync::Mutex::new(DirectState::default()),
             connecting: tokio::sync::Mutex::new(()),
             changes: tokio::sync::broadcast::channel(64).0,
@@ -175,6 +178,37 @@ impl Client {
         }
         Ok(connection)
     }
+    /// Open, ahead of the next read, the connections it will use: the
+    /// direct connection when the host has a direct address, and the relay
+    /// link, which is the fallback either way. Call it when the app comes to
+    /// the foreground. A failure is left for the read itself to meet.
+    pub async fn warm(&self) {
+        let direct = async {
+            if self.route() == Route::Direct && self.direct_connection().await.is_err() {
+                self.direct_failed();
+            }
+        };
+        let relay = async {
+            let _ = self.relay_link().await;
+        };
+        tokio::join!(direct, relay);
+    }
+    async fn relay_link(&self) -> Result<Arc<transport::Link>> {
+        let current = || lock(&self.link).clone().filter(|link| link.reusable());
+        if let Some(link) = current() {
+            return Ok(link);
+        }
+        let _one = self.linking.lock().await;
+        if let Some(link) = current() {
+            return Ok(link);
+        }
+        let link = Arc::new(
+            transport::Link::connect(&self.code.relay, &self.secret, self.policy, &self.code.host)
+                .await?,
+        );
+        *lock(&self.link) = Some(link.clone());
+        Ok(link)
+    }
     fn direct_failed(&self) {
         let mut state = lock(&self.direct);
         state.connection = None;
@@ -188,35 +222,24 @@ impl Client {
             .await
             .map_err(|_| Error::new(ErrorCode::Transport, "client is closing"))?;
         self.check_pending(pending, unix_time()?, Route::Relay)?;
-        // Take a session before awaiting. Cancellation or any error drops the
-        // uncertain socket; only a completely checked exchange can reuse it.
-        let previous = {
-            let mut idle = lock(&self.idle);
-            idle.retain(transport::Session::reusable);
-            idle.pop()
-        };
-        let (session, response) = tokio::time::timeout(Duration::from_secs(8), async {
-            let mut session = match previous {
-                Some(session) => session,
-                None => {
-                    transport::Session::connect(&self.code.relay, &self.secret, self.policy).await?
+        let response = tokio::time::timeout(RELAY_LIMIT, async {
+            let link = self.relay_link().await?;
+            let response = link.exchange(pending).await;
+            if response
+                .as_ref()
+                .is_err_and(|e| e.code == ErrorCode::Transport)
+            {
+                // The next read opens a new link.
+                let mut current = lock(&self.link);
+                if current.as_ref().is_some_and(|c| Arc::ptr_eq(c, &link)) {
+                    *current = None;
                 }
-            };
-            let response = session
-                .exchange(pending, &self.code.host, &self.code.client)
-                .await?;
-            Ok::<_, Error>((session, response))
+            }
+            response
         })
         .await
         .map_err(|_| Error::new(ErrorCode::Transport, "observation deadline exceeded"))??;
-        let observation = self.verify_reply(pending, &response, unix_time()?);
-        if observation.is_ok() {
-            let mut idle = lock(&self.idle);
-            if idle.len() < RELAY_SESSIONS {
-                idle.push(session);
-            }
-        }
-        observation
+        self.verify_reply(pending, &response, unix_time()?)
     }
     fn check_pending(&self, pending: &Pending, now: u64, route: Route) -> Result<()> {
         self.code.verify(&self.secret, now, self.policy)?;
