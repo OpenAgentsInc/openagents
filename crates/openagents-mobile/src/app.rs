@@ -114,6 +114,13 @@ pub enum Request {
     TerminalPaste {
         text: String,
     },
+    /// This device's identity keys and the changelog. `reveal` returns the
+    /// secret key too; the Identity Keys screen sends it only after the
+    /// person asks to see the nsec and confirms a warning.
+    Account {
+        #[serde(default)]
+        reveal: bool,
+    },
 }
 
 impl Request {
@@ -140,8 +147,10 @@ pub struct QrModules {
 #[derive(Serialize)]
 pub struct Packet {
     pub schema: &'static str,
-    /// This device's public key, for display.
+    /// This device's public key in hex, for display.
     pub device: String,
+    /// The same key in NIP-19 form (`npub1…`).
+    pub device_npub: String,
     pub computers: Option<serde_json::Value>,
     /// A value the Computers surface asks the host to collect.
     pub computers_input: Option<InputRequest>,
@@ -198,7 +207,11 @@ const ADMISSION_LIMIT: Duration = Duration::from_secs(5);
 
 pub struct App {
     runtime: tokio::runtime::Runtime,
+    /// The device key. It leaves the app only through an explicit
+    /// [`Request::Account`] reveal.
+    secret: SecretKey,
     device: String,
+    device_npub: String,
     computers: Option<Computers>,
     chats: Chats,
     coder: CoderTab,
@@ -216,10 +229,7 @@ pub struct App {
 impl App {
     pub fn new(config: Config) -> Result<Self, String> {
         let secret = SecretKey::from_str(&config.secret_hex).map_err(|_| "invalid device key")?;
-        let device = secret
-            .x_only_public_key(&secp256k1::Secp256k1::new())
-            .0
-            .to_string();
+        let (device, device_npub) = crate::account::public(&secret);
         // Both ring and aws-lc-rs are linked; TLS clients that use the
         // process default need one chosen. An earlier install is kept.
         let _ = rustls::crypto::ring::default_provider().install_default();
@@ -282,7 +292,9 @@ impl App {
         let tailnet_client = Client::open(&config.state_dir.join("tailscale")).map(Arc::new);
         Ok(Self {
             runtime,
+            secret,
             device,
+            device_npub,
             computers,
             chats,
             coder: CoderTab::new(format!("coder:{}", id())).with_outbox(
@@ -312,6 +324,10 @@ impl App {
     pub fn respond(&mut self, request: Request) -> Vec<u8> {
         if request.terminal() {
             let packet = self.terminal_request(request);
+            return serde_json::to_vec(&packet).unwrap_or_default();
+        }
+        if let Request::Account { reveal } = request {
+            let packet = crate::account::packet(&self.secret, reveal);
             return serde_json::to_vec(&packet).unwrap_or_default();
         }
         let packet = self.call(request);
@@ -450,6 +466,9 @@ impl App {
             | Request::TerminalPaste { .. } => {
                 let _ = self.terminal_request(request);
             }
+            // `respond` answers it with the account packet; the app packet
+            // never carries the secret key.
+            Request::Account { .. } => {}
         }
         self.packet(open_url)
     }
@@ -685,6 +704,7 @@ impl App {
         Packet {
             schema: "openagents.mobile.v1",
             device: self.device.clone(),
+            device_npub: self.device_npub.clone(),
             computers: computers
                 .and_then(Computers::view)
                 .and_then(|view| serde_json::to_value(view.view()).ok())

@@ -46,6 +46,13 @@ See [the auto-start guide](docs/coder/runtime/host-autostart.md).
 | A host with NIP-HOST tailnet admission on issues a single-use invitation, never a grant, only to a caller that its local `tailscale whois` names as the host machine's own untagged Tailscale user, with the rights the operator chose. Every other caller gets a refusal and no invitation. | New on 2026-09-27, owner-approved. It relaxes the row above only when the operator runs `coder host serve --tailnet-admission RIGHTS`: Tailscale identity then admits the device to an invitation, and the host still signs the grant on redemption. Off by default. | `refuses_malformed_and_non_tailnet_callers_before_whois` and `parses_status_and_whois` in `crates/coder-host`; `live_tailnet_admission_adds_the_computer_and_its_chats` (ignored, live) in `crates/openagents-mobile` |
 | The owner secret key stays in one private file on the owner's computer; `coder link` never puts it, or an invitation, in an argument or a log line. | New on 2026-09-27. | `an_open_or_malformed_key_refuses_without_echoing_it`, `remote_commands_quote_every_word_and_expand_only_home` |
 
+## Device identity key
+
+| Invariant | Status | Checked by |
+| --- | --- | --- |
+| The OpenAgents app's device key is a random secp256k1 key the host creates on the device and keeps in a this-device-only store (Keychain `com.openagents.app.device`, `AfterFirstUnlockThisDeviceOnly`, not synchronized). It is not derived from a NIP-06 seed phrase, and the app says so. | New on 2026-09-28. | `keys_show_as_npub_first_with_hex_beside_it` in `crates/openagents-mobile` |
+| The device's secret key reaches the interface only in the answer to an explicit `account` request with `reveal: true`, which the Identity Keys screen sends after the person taps **Reveal nsec** and confirms a warning. The app packet never carries it, and no log line, file, or setting records it. The screen drops it when it closes or the app leaves the foreground, and copies it only on an explicit tap, to this device's pasteboard alone, expiring after 60 seconds. | New on 2026-09-28 ([owner request](bins/openagents-ios/README.md#account)). It adds the first export path for the device key; before, the key never left Keychain and the Rust library. | `only_an_explicit_reveal_returns_the_nsec`, `the_app_packet_never_carries_the_secret_key` in `crates/openagents-mobile` |
+
 ## Mobile terminal
 
 | Invariant | Status | Checked by |

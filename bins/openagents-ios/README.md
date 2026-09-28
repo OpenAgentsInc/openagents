@@ -51,9 +51,9 @@ The app has four tabs, shown as icons:
   ball, and `wait` pauses a step; the log line also reports the ball's
   position, speed, and physics time.
 - **Wallet** is a placeholder.
-- **Account** holds **Computers** (Coder's shared Computers screens: add a
-  computer, access, activity, order work, terminal), **Tailnet**, and
-  **About this device**.
+- **Account** holds **Computers**, **Tailnet**, **Identity keys**, **About
+  this device**, and **Changelog**, and links to the source code and to
+  OpenAgents on X. See [Account](#account).
 
 The Coder chat screen draws Rust Native's conversation elements: a
 bottom-anchored transcript with a jump to the bottom and **Load earlier**,
@@ -64,6 +64,27 @@ t3code iOS chat (pingdotgg/t3code, MIT) in UIKit and SwiftUI. What is left
 for later is in [docs/chat-later.md](docs/chat-later.md). Launch a simulator
 build with `--rust-native-fixture` to see the sample conversation from
 `crates/rust-native/fixtures/conversation.json`.
+
+## Account
+
+**Identity keys** shows this device's Nostr key. The public key comes first
+in NIP-19 form (`npub1…`), with its hex beside it, each with **Copy**. The
+secret key (`nsec1…`) stays hidden until you tap **Reveal nsec** and confirm
+a warning; the screen hides it again when you leave it or the app goes to
+the background, and **Copy nsec** puts it on this device's pasteboard only,
+for 60 seconds. The key is random, made on this device and kept in its
+Keychain, and not derived from a NIP-06 seed phrase, so the nsec is its only
+backup. Anyone with the nsec can act as this device on your computers.
+**About this device** shows the same public key in both forms and the app's
+version.
+
+**Changelog** lists what each release brought, from Rust
+(`crates/openagents-mobile/src/account.rs`).
+
+In simulator builds, `--tab account --account-route
+computers|tailnet|identity|device|changelog` opens a screen directly, and
+`--identity-script warn|reveal` shows the reveal warning or reveals the nsec
+without taps.
 
 ## Automatic setup over the tailnet
 

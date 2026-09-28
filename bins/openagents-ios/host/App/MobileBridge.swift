@@ -35,6 +35,7 @@ struct ComputersQR: Decodable, Equatable {
 struct AppPacket: Decodable {
     let schema: String
     let device: String
+    let device_npub: String
     let computers: NativeView?
     let computers_input: ComputersInput?
     let computers_qr: ComputersQR?
@@ -47,6 +48,28 @@ struct AppPacket: Decodable {
     let open_url: String?
     let terminal: Bool
     let notices: [String]
+}
+
+/// One released version and what it brought.
+struct Release: Decodable, Hashable {
+    struct Item: Decodable, Hashable {
+        let title: String
+        let detail: String
+    }
+    let version: String
+    let title: String
+    let items: [Item]
+}
+
+/// This device's identity keys and the changelog. `nsec` is present only in
+/// the answer to an explicit reveal.
+struct AccountPacket: Decodable {
+    let schema: String
+    let npub: String
+    let public_hex: String
+    let origin: String
+    let changelog: [Release]
+    let nsec: String?
 }
 
 struct TerminalPacket: Decodable {
@@ -109,6 +132,17 @@ final class MobileBridge: ObservableObject {
         send(["op": "\(surface)_input", "token": token, "value": value])
     }
     func cancel(_ surface: String, token: String) { send(["op": "\(surface)_cancel", "token": token]) }
+
+    /// This device's keys and the changelog. With `reveal`, the answer also
+    /// carries the nsec: ask for it only after the person chose to see it,
+    /// and keep it no longer than it shows. Nothing here logs it.
+    func account(reveal: Bool = false, received: @escaping (AccountPacket) -> Void) {
+        call(["op": "account", "reveal": reveal]) { data in
+            guard let packet = try? JSONDecoder().decode(AccountPacket.self, from: data),
+                  packet.schema == "openagents.account.v1" else { return }
+            received(packet)
+        }
+    }
 
     /// A terminal request: a resize, typed text, a key, or a paste.
     func terminal(_ request: [String: Any]) {

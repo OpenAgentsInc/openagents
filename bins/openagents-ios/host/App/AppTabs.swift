@@ -28,7 +28,7 @@ enum AppTab: String, CaseIterable {
 
 /// A screen that the Account tab pushes.
 enum AccountRoute: String, Hashable {
-    case computers, tailnet, device
+    case computers, tailnet, identity, device, changelog
 }
 
 /// Developer launch arguments that open a tab or an Account screen directly,
@@ -115,7 +115,14 @@ struct AccountTab: View {
                     NavigationLink("Tailnet", value: AccountRoute.tailnet)
                 }
                 Section {
+                    NavigationLink("Identity keys", value: AccountRoute.identity)
                     NavigationLink("About this device", value: AccountRoute.device)
+                    NavigationLink("Changelog", value: AccountRoute.changelog)
+                }
+                Section {
+                    ExternalLink(title: "Source code", symbol: "chevron.left.forwardslash.chevron.right",
+                                 url: "https://github.com/OpenAgentsInc/openagents")
+                    ExternalLink(title: "Follow us on X", symbol: "at", url: "https://x.com/OpenAgentsInc")
                 }
             }
             .listStyle(.insetGrouped)
@@ -134,35 +141,29 @@ struct AccountTab: View {
         switch route {
         case .computers: ComputersTab(bridge: bridge).navigationTitle("") // The screen draws its own heading.
         case .tailnet: TailnetTab(bridge: bridge).navigationTitle("") // The screen draws its own heading.
-        case .device: AboutDeviceScreen(device: bridge.packet?.device).navigationTitle("About this device")
+        case .identity: IdentityKeysScreen(bridge: bridge).navigationTitle("Identity keys")
+        case .device: AboutDeviceScreen(bridge: bridge).navigationTitle("About this device")
+        case .changelog: ChangelogScreen(bridge: bridge).navigationTitle("Changelog")
         }
     }
 }
 
-/// This device's public key and the app's version.
-struct AboutDeviceScreen: View {
-    let device: String?
-
-    private var version: String {
-        let info = Bundle.main.infoDictionary
-        let short = info?["CFBundleShortVersionString"] as? String ?? "?"
-        let build = info?["CFBundleVersion"] as? String ?? "?"
-        return "\(short) (\(build))"
-    }
+/// A row that opens a web page in the browser.
+private struct ExternalLink: View {
+    let title: String
+    let symbol: String
+    let url: String
 
     var body: some View {
-        List {
-            Section("Device public key") {
-                Text(device ?? "Not available yet.")
-                    .font(.system(.footnote, design: .monospaced))
-                    .textSelection(.enabled)
+        if let destination = URL(string: url) {
+            Link(destination: destination) {
+                HStack {
+                    Label(title, systemImage: symbol)
+                    Spacer()
+                    Image(systemName: "arrow.up.right").font(.footnote).foregroundStyle(.secondary)
+                }
             }
-            Section("App version") {
-                Text(version).textSelection(.enabled)
-            }
+            .foregroundStyle(.white)
         }
-        .listStyle(.insetGrouped)
-        .scrollContentBackground(.hidden)
-        .background(Color.black.ignoresSafeArea())
     }
 }
