@@ -265,6 +265,7 @@ NIP-32 `1985` labels or Block `24200` frames, aren't claims.
 | `3195` | [NIP-EVAL](NIP-EVAL.md) | Gym results publication |
 | `3196` | [NIP-XP](NIP-XP.md) | Playtest session record |
 | `3197` | [NIP-XP](NIP-XP.md) | Content-free playtest report |
+| `13193` | [NIP-XP](NIP-XP.md) | Trainer profile |
 | `23300` | [NIP-MV](NIP-MV.md) | Pose frame |
 | `23301` | [NIP-MV](NIP-MV.md) | Gesture |
 | `23302` | [NIP-MV](NIP-MV.md) | Zone command |

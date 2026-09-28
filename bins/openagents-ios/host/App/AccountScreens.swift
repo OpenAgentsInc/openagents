@@ -235,6 +235,7 @@ struct TrainerScreen: View {
     @State private var card: TrainerPacket?
     @State private var nsec: String?
     @State private var warning = false
+    @State private var showWarning = false
     private let refresh = Timer.publish(every: 2, on: .main, in: .common).autoconnect()
 
     private var progress: Double {
@@ -277,7 +278,7 @@ struct TrainerScreen: View {
                         Text("\(card.to_next) XP to level \(card.level + 1) · \(card.curve)")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
-                        Text("Over your head in the Grid: \(card.tag)\(card.xp > 0 ? " · lv \(card.level)" : "")")
+                        Text("Over your head in the Grid: \(card.tag)\(card.xp > 0 && card.profile == "shown" ? " · lv \(card.level)" : "")")
                             .font(.footnote.monospaced())
                             .foregroundStyle(.secondary)
                     }
@@ -289,6 +290,34 @@ struct TrainerScreen: View {
             } footer: {
                 if let card, card.state != "ready", card.state != "preview" {
                     Text("Reading awards from \(card.relay)…")
+                }
+            }
+            if let card {
+                Section {
+                    if card.profile == "shown" {
+                        Label("Shown in the Grid and on boards", systemImage: "eye")
+                        Button("Hide my level", systemImage: "eye.slash") {
+                            bridge.trainerProfile(shown: false) { self.card = $0 }
+                        }
+                        .disabled(card.profile_status == "publishing")
+                        .accessibilityIdentifier("trainer-hide-level")
+                    } else {
+                        Label(card.profile == "hidden" ? "Hidden" : "Not shown yet", systemImage: "eye.slash")
+                            .foregroundStyle(.secondary)
+                        Button("Show my level", systemImage: "eye") { showWarning = true }
+                            .disabled(card.profile_status == "publishing")
+                            .accessibilityIdentifier("trainer-show-level")
+                    }
+                    if card.profile_status == "publishing" {
+                        HStack { ProgressView(); Text("Publishing…").foregroundStyle(.secondary) }
+                    }
+                    if let error = card.profile_error {
+                        Text(error).font(.footnote).foregroundStyle(.red)
+                    }
+                } header: {
+                    Text("Level over your head")
+                } footer: {
+                    Text("Other players see your level only after you choose to show it. Your XP stays public either way: anyone can compute it from the relay.")
                 }
             }
             if let card, !card.titles.isEmpty {
@@ -353,6 +382,14 @@ struct TrainerScreen: View {
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
         .background(Color.black.ignoresSafeArea())
+        .alert("Show your level?", isPresented: $showWarning) {
+            Button("Show") {
+                bridge.trainerProfile(shown: true) { self.card = $0 }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This publishes a trainer profile signed by your trainer key to relay.openagents.com. Your level then shows over your head in the Grid and on boards. You can hide it again at any time.")
+        }
         .alert("Reveal your trainer nsec?", isPresented: $warning) {
             Button("Reveal", role: .destructive) {
                 bridge.trainer(reveal: true) { packet in nsec = packet.nsec }

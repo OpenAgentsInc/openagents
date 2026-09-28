@@ -121,7 +121,10 @@ level, the curve (`trainer-curve-v1`), your titles, and the counted awards
 behind the level, each linked to its signed award. Rust derives it on the
 phone from NIP-XP events on `wss://relay.openagents.com`, trusting the
 OpenAgents referee alone, with the same reader that puts
-`<prefix> · lv <n>` over players' heads in the Grid. Your trainer key is the
+`<prefix> · lv <n>` over players' heads in the Grid. Other players see
+your level there only after you tap **Show my level** and confirm, which
+publishes a trainer profile (NIP-XP `13193`) signed by your trainer key;
+**Hide my level** replaces it. Your trainer key is the
 Verse world key, the one over your head; **Reveal nsec** exports it, behind
 a warning, to sign a reproduction on a computer
 ([tutorial quests](../../docs/verse/tutorial-quests.md)). `--xp-preview`

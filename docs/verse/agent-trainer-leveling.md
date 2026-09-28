@@ -159,6 +159,7 @@ document or NIP defines it and no code does it yet.
 | Titles from achievement labels, shown only while the award counts and only when the award's referee signed the label | `xp::snapshot` | Implemented, desktop. |
 | Grid name tags: the first eight hex characters of each player's pubkey, then ` · lv n` when the key has XP under the OpenAgents referee | `crates/coder-mobile/src/verse_app.rs` (`player_tags`, `verse::xp::name_tag`), wrapped by `crates/openagents-mobile/src/verse.rs` | Implemented on iOS 2026-09-28; the mobile build links Verse's read-only XP reader, which since #9897 pulls in `crates/xp-ledger` rather than `knowledge`. The Android library builds with it under NDK 27.1. |
 | Account trainer card: level, XP, XP to next level, curve, titles, counted awards with links, and the trainer key (the Verse world key) with an explicit reveal | `crates/openagents-mobile/src/trainer.rs`, `bins/openagents-ios/host/App/AccountScreens.swift` | Implemented on iOS 2026-09-28. |
+| Trainer profiles (`13193`): a key's opt-in to having its level shown. Grid name tags and desktop Verse tags on other players show a level only for a key whose newest profile says `shown: true`; **Account > Trainer > Show my level** publishes one after a confirmation, and **Hide my level** replaces it | NIP-XP, `crates/xp-ledger/src/trainers.rs`, `verse::xp::trainer_level_tag` | Implemented 2026-09-28 ([#9895](https://github.com/OpenAgentsInc/openagents/issues/9895)). |
 | Six tutorial `reproduce` quests, 50 XP each, season `tb21-tutorial-s1` | [tutorial quests](tutorial-quests.md), `knowledge/quests/tb21.*.reproduce@1.json` | Published 2026-09-28. No award yet. |
 | Classes Commander, Artisan, and Scout; stat points per level; grants unlocked in stages | [GDD](gdd.md#progression) | Specified for *agents*, not trainers. Draft, not committed scope. |
 | Guild XP with contributor attribution that reconciles to one fixed award | [Minecraft economy](../minecraft/economy.md#xp-and-winning) | Specified. |
@@ -457,7 +458,8 @@ section fixes what leveling adds to it.
 - **Keys are pseudonyms.** A trainer can train under a key tied to no other
   identity. Linking keys is opt-in and visible.
 - **Boards are opt-in.** Rank boards and name-tag levels show only keys that
-  published a trainer profile. The ledger stays computable for everyone, but
+  published a trainer profile (implemented for name tags: a `13193` with
+  `shown: true`). The ledger stays computable for everyone, but
   the app doesn't advertise a key that didn't ask.
 - **Traces must be redacted before submission** and submitted only by an
   explicit action. Coder records traces locally today, with no redaction

@@ -93,6 +93,8 @@ pub const XP_PLAYTEST_SESSION: u16 = 3_196;
 pub const XP_PLAYTEST_REPORT: u16 = 3_197;
 /// NIP-XP frozen quest version.
 pub const XP_QUEST: u16 = 30_193;
+/// NIP-XP trainer profile.
+pub const XP_PROFILE: u16 = 13_193;
 /// NIP-MV pose frame.
 pub const MV_FRAME: u16 = 23_300;
 /// NIP-MV gesture.
@@ -124,6 +126,7 @@ pub const REGISTRY: &[Claim] = &[
     claim(EVAL_GYM_RESULTS, "NIP-EVAL", "Gym results publication"),
     claim(XP_PLAYTEST_SESSION, "NIP-XP", "Playtest session record"),
     claim(XP_PLAYTEST_REPORT, "NIP-XP", "Content-free playtest report"),
+    claim(XP_PROFILE, "NIP-XP", "Trainer profile"),
     claim(MV_FRAME, "NIP-MV", "Pose frame"),
     claim(MV_GESTURE, "NIP-MV", "Gesture"),
     claim(MV_COMMAND, "NIP-MV", "Zone command"),

@@ -1349,6 +1349,8 @@ pub use playtest::{
     check_playtest, parse_playtest_report, parse_playtest_session, playtest_award, playtest_report,
     playtest_session,
 };
+pub mod trainer;
+pub use trainer::{PROFILE_KIND, TrainerProfile, parse_profile, profile};
 pub mod reproduce;
 pub use reproduce::{
     RECIPE_SCHEMA, RUN_MARKER, Recipe, RunEvidence, RunRecord, bind_reproduction, check_reproduce,

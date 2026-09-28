@@ -414,7 +414,11 @@ async fn read_relay(relay: &str, secret: &SecretKey, filter: Value) -> Result<Ve
     Ok(events)
 }
 
-async fn write_relay(relay: &str, secret: &SecretKey, event: &Event) -> Result<(), String> {
+pub(crate) async fn write_relay(
+    relay: &str,
+    secret: &SecretKey,
+    event: &Event,
+) -> Result<(), String> {
     let mut socket = connect(relay, secret).await?;
     socket.send(json!(["EVENT", event])).await?;
     for _ in 0..16 {

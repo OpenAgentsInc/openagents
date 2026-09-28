@@ -2,8 +2,8 @@
 
 `draft` `optional` — v1, 2026-09-26; the `reproduce` rule added
 2026-09-28; the `playtest` rule added 2026-09-28; the `per-awardee`
-uniqueness policy added 2026-09-28. The [shared contracts](contracts.md)
-are normative.
+uniqueness policy and trainer profiles added 2026-09-28. The
+[shared contracts](contracts.md) are normative.
 
 This NIP publishes quests, a referee's acceptance of a completed quest, and
 the experience points (XP) that acceptance carries, as signed Nostr events.
@@ -44,10 +44,11 @@ OpenAgents kind once.
 | `1985` | Regular (NIP-32) | Optional achievement label that points at an award. It carries no XP. |
 | `3196` | Regular | A moderator's record of a completed playtest session (the `playtest` rule). |
 | `3197` | Regular | A tester's content-free playtest report (the `playtest` rule). |
+| `13193` | Replaceable | A trainer profile: the key's opt-in to having its level shown, and its other keys. It carries no XP. |
 
-Every XP body (`30193`, `3193`, `3194`) is a UTF-8 JSON object with `v: 1`,
+Every XP body (`30193`, `3193`, `3194`, `13193`) is a UTF-8 JSON object with `v: 1`,
 `requires` (the empty list in this version), and `type`: `quest`, `award`,
-or `revocation`. Each event carries exactly one `t` marker
+`revocation`, or `profile`. Each event carries exactly one `t` marker
 `oa:xp:<type>:v1`. A body whose `type`, marker, and kind disagree is
 refused. Unknown body keys, rules, roles, and uniqueness policies are
 refused. Every `t` value is lowercase.
@@ -56,7 +57,8 @@ refused. Every `t` value is lowercase.
 `schemas/xp-revocation.v1.json` describe the three bodies, and
 `schemas/xp-recipe.v1.json` the recipe a `reproduce` quest pins, and
 `schemas/xp-playtest-report.v1.json` and
-`schemas/xp-playtest-session.v1.json` the two `playtest` records. The schema
+`schemas/xp-playtest-session.v1.json` the two `playtest` records, and
+`schemas/xp-profile.v1.json` the trainer profile. The schema
 dialect has no `pattern` keyword, so the validator checks the ID grammar,
 the hex fields, and the coordinates itself.
 
@@ -579,6 +581,38 @@ ledger, not part of this NIP. A client MAY show levels from XP; it MUST NOT
 turn XP into spending authority, wider tool access, file-system scope, or
 disclosure of private evidence.
 
+## Trainer profiles (`13193`)
+
+XP is public by construction: anyone can derive any key's ledger from the
+awards. A trainer profile doesn't change what counts. It is the key's
+opt-in to being advertised: a client shows a level on a name tag or a rank
+board only for a key whose newest valid profile says `shown: true`, and a
+key that never published one, or whose newest profile says `false`, gets
+no level there. The ledger stays computable for every key, and a trainer
+still sees its own XP.
+
+```json
+{
+  "v": 1,
+  "requires": [],
+  "type": "profile",
+  "shown": true,
+  "keys": ["<hex public key>"]
+}
+```
+
+| Field | Contract |
+| --- | --- |
+| `shown` | Whether clients may show this trainer's level on name tags and boards. |
+| `keys` | The trainer's other keys, at most 16, each 64 lowercase hex characters, distinct, and never the signer. A listed key counts toward the trainer only when it signs a matching link back; a profile alone never claims a key. |
+
+Tags: the marker `oa:xp:profile:v1` and one `p` per listed key, in the
+order of `keys`. The event is replaceable: a reader takes the author's
+newest valid profile, by `created_at` and then the lowest event ID, as
+NIP-01 orders replaceable events. To hide its level, a trainer publishes a
+newer profile with `shown: false`. A profile carries no XP and no level;
+a reader never reads a level or a total from it.
+
 ## Trust
 
 Trust is per reader, as in [NIP-KB](NIP-KB.md#trust). A reader keeps its
@@ -611,6 +645,7 @@ subscription they arrived on.
 | **Rewriting a quest**: changing a frozen version's bar after the fact. | A second event at one address is a conflict, and awards bind the exact quest event ID. |
 | **Referee equivocation**: two live awards for one quest version. | The key counts for no one until the referee revokes the extras. |
 | **Referee compromise**: a stolen referee key signs awards. | The referee revokes what it can while it still holds the key. Every reader removes the key from its trust list, which drops all of that key's awards at once. A reader that retained the award IDs it counted before the compromise can keep those; timestamps alone don't help, because an attacker can backdate `created_at` and `accepted_at`. |
+| **Advertising a key that didn't ask**: showing a stranger's level over their head. | Clients show levels on tags and boards only for keys whose newest profile says `shown: true`, signed by that key. |
 | **Colluding referee and runner.** | Per-reader trust is the remedy: a reader trusts referees whose acceptances it can audit, and every award names the evidence needed to audit it. |
 
 ## Validation

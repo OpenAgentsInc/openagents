@@ -165,6 +165,9 @@ struct TrainerPacket: Decodable {
     let awards: [TrainerAward]
     let open_quests: Int
     let note: String
+    let profile: String
+    let profile_status: String
+    let profile_error: String?
     let playtest: PlaytestXP
     let nsec: String?
 }
@@ -432,6 +435,18 @@ final class MobileBridge: ObservableObject {
         let hex = secret.map { String(format: "%02x", $0) }.joined()
         call(["op": "trainer", "world_secret_hex": hex, "reveal": reveal,
               "preview": AppTabLaunch.xpPreview]) { data in
+            guard let packet = try? JSONDecoder().decode(TrainerPacket.self, from: data),
+                  packet.schema == "openagents.trainer.v1" else { return }
+            received(packet)
+        }
+    }
+
+    /// Publish the trainer profile after the person confirms: `shown`
+    /// puts their level over their head in other players' Grids.
+    func trainerProfile(shown: Bool, received: @escaping (TrainerPacket) -> Void) {
+        guard let secret = try? DeviceKey.loadOrCreateVerse() else { return }
+        let hex = secret.map { String(format: "%02x", $0) }.joined()
+        call(["op": "trainer_profile", "world_secret_hex": hex, "shown": shown]) { data in
             guard let packet = try? JSONDecoder().decode(TrainerPacket.self, from: data),
                   packet.schema == "openagents.trainer.v1" else { return }
             received(packet)

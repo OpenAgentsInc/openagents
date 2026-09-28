@@ -2336,10 +2336,10 @@ impl App {
                 out.push(hud::Overhead {
                     feet: e.pos,
                     lift: 2.2,
-                    name: Some(tagged(
-                        s.name_of(&e.pubkey),
-                        std::slice::from_ref(&e.pubkey),
-                    )),
+                    name: Some(match xp::trainer_level_tag(snapshot, &e.pubkey) {
+                        Some(level) => format!("{} · {level}", s.name_of(&e.pubkey)),
+                        None => s.name_of(&e.pubkey),
+                    }),
                     name_step: if e.online {
                         Intensity::Half
                     } else {

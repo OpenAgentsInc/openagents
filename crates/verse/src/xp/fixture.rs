@@ -327,8 +327,9 @@ pub const TUTORIAL_TASKS: &[&str] = &[
 ];
 
 /// Signed events in which `reproducer` completed `count` tutorial
-/// reproductions of 50 XP each, refereed by `referee`: a labeled fixture
-/// for captures and tests. The claims are signed by a throwaway key.
+/// reproductions of 50 XP each, refereed by `referee`, and published a
+/// trainer profile that asks to be shown: a labeled fixture for captures
+/// and tests. The claims are signed by a throwaway key.
 #[must_use]
 pub fn tutorial_events(
     referee: &RelaySigner,
@@ -337,11 +338,17 @@ pub fn tutorial_events(
     at: u64,
 ) -> Vec<Event> {
     let claimant = signer(0x7c_1a_1b);
-    TUTORIAL_TASKS
+    let mut events: Vec<Event> = TUTORIAL_TASKS
         .iter()
         .take(count)
         .flat_map(|task| Reproduction::new(referee, &claimant, reproducer, task, 50, at).events(at))
-        .collect()
+        .collect();
+    events.push(sign(
+        reproducer,
+        at,
+        xp::profile(reproducer.pubkey(), true, &[]).expect("a valid profile"),
+    ));
+    events
 }
 
 /// Signed events in which `reproducer` completed version 2 of the

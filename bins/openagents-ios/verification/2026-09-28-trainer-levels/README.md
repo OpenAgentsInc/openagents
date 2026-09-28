@@ -11,3 +11,12 @@ library, for [#9847](https://github.com/OpenAgentsInc/openagents/issues/9847).
 
 No award exists on the relay yet, so the live captures show level 1; a level
 over a head in the live Grid needs the first accepted reproduction.
+
+## Trainer profile opt-in (#9895)
+
+- `profile-shown-preview.png`: the labeled preview, whose fixture includes a
+  shown profile: **Level over your head** says it's shown and offers
+  **Hide my level**.
+- `profile-not-shown-live.png`: a fresh world key on the live relay: no
+  profile yet, so the Grid tag is the prefix alone and the screen offers
+  **Show my level** (published only after a confirmation).

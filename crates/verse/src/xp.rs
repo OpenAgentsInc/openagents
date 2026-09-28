@@ -26,10 +26,10 @@ use coder_ui::theme::Intensity;
 use nostr::domain::{Event, RelaySigner, Tag};
 use nostr::xp;
 use serde_json::json;
-pub use xp_ledger::XpTrust;
 use xp_ledger::{
     Credit, derive, own_pubkey, parse_key as parse_author, referee_key_file, trust_file,
 };
+pub use xp_ledger::{Trainers, XpTrust};
 
 use crate::net::{In, Link, Out};
 
@@ -171,6 +171,8 @@ pub struct Snapshot {
     pub conflicts: usize,
     /// Trusted referees.
     pub referees: usize,
+    /// Who published a trainer profile, and whether it asks to be shown.
+    pub trainers: Trainers,
 }
 
 impl Snapshot {
@@ -344,6 +346,7 @@ pub fn snapshot(events: &[Event], trust: &XpTrust) -> Snapshot {
         refused: ledger.refused.len(),
         conflicts: ledger.conflicts.len(),
         referees: trust.referees.len(),
+        trainers: Trainers::read(events),
     }
 }
 
@@ -413,7 +416,7 @@ pub fn my_keys(profile: Option<&str>, extra: &[String]) -> Vec<String> {
 
 enum Update {
     Connected(bool),
-    Snapshot(Snapshot),
+    Snapshot(Box<Snapshot>),
 }
 
 /// The game's handle on the XP reader thread.
@@ -486,7 +489,7 @@ impl Board {
         for update in self.rx.try_iter() {
             match update {
                 Update::Connected(up) => self.connected = up,
-                Update::Snapshot(s) => self.snapshot = Some(s),
+                Update::Snapshot(s) => self.snapshot = Some(*s),
             }
         }
     }
@@ -500,7 +503,7 @@ impl Board {
             match self.rx.recv_timeout(Duration::from_millis(50)) {
                 Ok(Update::Connected(up)) => self.connected = up,
                 Ok(Update::Snapshot(s)) => {
-                    self.snapshot = Some(s);
+                    self.snapshot = Some(*s);
                     last = Instant::now();
                 }
                 Err(mpsc::RecvTimeoutError::Timeout) => {
@@ -531,6 +534,7 @@ fn filters() -> Vec<serde_json::Value> {
     vec![
         json!({"kinds": [xp::QUEST_KIND, xp::AWARD_KIND, xp::REVOCATION_KIND], "limit": LIMIT}),
         json!({"kinds": [xp::LABEL_KIND], "#L": [xp::LABEL_NAMESPACE], "limit": LIMIT}),
+        json!({"kinds": [xp::PROFILE_KIND], "limit": LIMIT}),
     ]
 }
 
@@ -628,7 +632,10 @@ fn run(
                 });
             }
             let all: Vec<Event> = events.values().cloned().collect();
-            if tx.send(Update::Snapshot(snapshot(&all, trust))).is_err() {
+            if tx
+                .send(Update::Snapshot(Box::new(snapshot(&all, trust))))
+                .is_err()
+            {
                 return;
             }
             dirty = false;
@@ -899,12 +906,27 @@ pub fn level_tag(snapshot: Option<&Snapshot>, keys: &[String]) -> Option<String>
     (xp > 0).then(|| format!("lv {}", level_of(xp)))
 }
 
+/// Another player's level for a name tag: only when `pubkey`'s trainer
+/// published a profile that asks to be shown, and has XP. The level sums
+/// the trainer's keys. A key that never opted in gets no level, though
+/// its ledger stays computable.
+#[must_use]
+pub fn trainer_level_tag(snapshot: Option<&Snapshot>, pubkey: &str) -> Option<String> {
+    let snapshot = snapshot?;
+    if !snapshot.trainers.shown(pubkey) {
+        return None;
+    }
+    let trainer = snapshot.trainers.trainer_of(pubkey)?;
+    level_tag(Some(snapshot), &snapshot.trainers.keys_of(trainer))
+}
+
 /// A name tag: the first eight hex characters of `pubkey`, then ` · lv n`
-/// when the key has XP under `snapshot`, such as `650a2a22 · lv 3`.
+/// when its trainer opted in with a shown profile and has XP under
+/// `snapshot`, such as `650a2a22 · lv 3`.
 #[must_use]
 pub fn name_tag(snapshot: Option<&Snapshot>, pubkey: &str) -> String {
     let prefix = &pubkey[..pubkey.len().min(8)];
-    match level_tag(snapshot, &[pubkey.to_owned()]) {
+    match trainer_level_tag(snapshot, pubkey) {
         Some(level) => format!("{prefix} · {level}"),
         None => prefix.to_owned(),
     }

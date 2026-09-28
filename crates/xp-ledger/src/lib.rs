@@ -25,6 +25,9 @@ use serde::Serialize;
 
 pub mod entry;
 pub mod front;
+pub mod trainers;
+
+pub use trainers::{Profile, Trainers};
 
 use crate::entry::{Entry, task_of};
 

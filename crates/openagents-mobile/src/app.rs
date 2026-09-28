@@ -195,6 +195,14 @@ pub enum Request {
         #[serde(default)]
         preview: bool,
     },
+    /// Publish the world key's trainer profile (NIP-XP `13193`), which the
+    /// Trainer screen sends only after the person taps **Show my level** or
+    /// **Hide my level** and confirms. The direct reply is the trainer
+    /// packet.
+    TrainerProfile {
+        world_secret_hex: String,
+        shown: bool,
+    },
     /// Report a problem: the form for the tab and screen the tester is on.
     /// The direct reply is a draft packet, never the app packet.
     ReportDraft {
@@ -816,6 +824,24 @@ impl App {
                 .unwrap_or_default(),
             };
         }
+        if let Request::TrainerProfile {
+            world_secret_hex,
+            shown,
+        } = request
+        {
+            let packet = self
+                .trainer
+                .set_profile(&world_secret_hex, Some(shown), None)
+                .and_then(|()| self.trainer.packet(&world_secret_hex, false, false));
+            return match packet {
+                Ok(packet) => serde_json::to_vec(&packet).unwrap_or_default(),
+                Err(error) => serde_json::to_vec(&serde_json::json!({
+                    "schema": "openagents.trainer.v1",
+                    "error": error,
+                }))
+                .unwrap_or_default(),
+            };
+        }
         if let Some(bytes) = self.playtest_request(&request) {
             return bytes;
         }
@@ -1064,6 +1090,7 @@ impl App {
             // never carries the secret key.
             Request::Account { .. }
             | Request::Trainer { .. }
+            | Request::TrainerProfile { .. }
             | Request::ReportDraft { .. }
             | Request::ReportSend { .. }
             | Request::Reports { .. }

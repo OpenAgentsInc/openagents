@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "openagents.xp-profile.v1",
+  "title": "NIP-XP trainer profile (kind 13193) body",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["v", "requires", "type", "shown", "keys"],
+  "properties": {
+    "v": { "const": 1 },
+    "requires": { "type": "array", "maxItems": 0 },
+    "type": { "const": "profile" },
+    "shown": { "type": "boolean" },
+    "keys": {
+      "description": "The trainer's other keys: 64 lowercase hex characters each, distinct, never the signer. A listed key counts only when it signs a matching link back.",
+      "type": "array",
+      "maxItems": 16,
+      "items": { "type": "string", "minLength": 64, "maxLength": 64 }
+    }
+  }
+}

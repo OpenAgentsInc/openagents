@@ -6,15 +6,22 @@
 //! revocations from the public relay with Verse's reader
 //! ([`verse::xp::Board`]), trusts the OpenAgents referee alone, re-checks
 //! every award against the signed evidence it names, and names the curve
-//! its level uses (`trainer-curve-v1`). It only reads: nothing here
-//! publishes, spends, or pays.
+//! its level uses (`trainer-curve-v1`). It never spends or pays, and it
+//! publishes one thing: the trainer profile (NIP-XP `13193`), signed by the
+//! world key, and only after the person taps **Show my level** or **Hide
+//! my level** and confirms. Until a shown profile exists, no one's Grid
+//! shows a level over this player's head.
 //!
 //! The world key's secret reaches the interface only in the direct reply
 //! to a `trainer` request with `reveal: true`, which the Trainer Key screen
 //! sends after the person taps **Reveal nsec** and confirms a warning, so
 //! they can sign a reproduction with it on a computer.
 
+use std::sync::Arc;
+use std::sync::mpsc::{self, Receiver};
+
 use ::verse::xp::{Board, Snapshot};
+use nostr::domain::Event;
 use secp256k1::{Secp256k1, SecretKey};
 use serde::Serialize;
 
@@ -64,6 +71,13 @@ pub struct TrainerPacket {
     /// Open quests from the trusted referee this key can still earn.
     pub open_quests: usize,
     pub note: &'static str,
+    /// The trainer profile: `none` (never published, so no level shows
+    /// over this player's head in anyone's Grid), `shown`, or `hidden`.
+    pub profile: &'static str,
+    /// `idle`, `publishing`, or `failed` for the last profile change.
+    pub profile_status: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub profile_error: Option<String>,
     /// Playtest XP and titles from the separate playtest referee, shown
     /// beside the trainer XP above and never summed into its level.
     pub playtest: PlaytestSection,
@@ -92,6 +106,35 @@ pub struct PlaytestSection {
     pub note: &'static str,
 }
 
+/// Publishes an event signed by the world key. Blocking.
+pub trait Publish: Send + Sync {
+    /// Sends `event` to the public relay, authenticating as `secret`.
+    ///
+    /// # Errors
+    ///
+    /// When the relay can't be reached or refuses the event.
+    fn publish(&self, secret: &SecretKey, event: &Event) -> Result<(), String>;
+}
+
+/// The live publisher: `wss://relay.openagents.com`, with NIP-42.
+pub struct RelayPublish;
+
+impl Publish for RelayPublish {
+    fn publish(&self, secret: &SecretKey, event: &Event) -> Result<(), String> {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|_| "The phone could not start a Nostr connection.".to_owned())?;
+        runtime
+            .block_on(crate::payees::write_relay(
+                ::verse::session::PUBLIC_RELAY,
+                secret,
+                event,
+            ))
+            .map_err(|_| "The relay didn't accept the change. Try again.".to_owned())
+    }
+}
+
 /// The card's reader. It starts on the first `trainer` request and stops
 /// when the app leaves the foreground; the last ledger stays for the card.
 #[derive(Default)]
@@ -99,6 +142,13 @@ pub struct Trainer {
     board: Option<Board>,
     snapshot: Option<Snapshot>,
     preview: bool,
+    /// Where profile changes go; the live relay when unset.
+    publisher: Option<Arc<dyn Publish>>,
+    /// A profile change on its way to the relay.
+    publishing: Option<Receiver<Result<Event, String>>>,
+    /// The newest profile this phone published, until the reader sees it.
+    published: Option<Event>,
+    publish_error: Option<String>,
     /// The playtest referee's reader, beside the trainer reader.
     playtest_board: Option<Board>,
     playtest_snapshot: Option<Snapshot>,
@@ -134,6 +184,111 @@ fn unix_now() -> u64 {
 }
 
 impl Trainer {
+    /// A trainer whose profile changes go to `publisher` and whose reader
+    /// is an empty, fixed ledger, so a test opens no connection.
+    #[cfg(test)]
+    pub fn with_publisher(publisher: Arc<dyn Publish>) -> Self {
+        Self {
+            publisher: Some(publisher),
+            board: Some(Board::fixed("wss://test.invalid", Snapshot::default())),
+            ..Self::default()
+        }
+    }
+
+    /// This key's newest trainer profile: the reader's or the one this
+    /// phone just published, whichever is newer.
+    fn own_profile(&self, public_hex: &str) -> Option<(u64, bool, Vec<String>)> {
+        let read = self
+            .snapshot
+            .as_ref()
+            .and_then(|s| s.trainers.profiles.get(public_hex))
+            .map(|p| (p.created_at, p.shown, p.keys.clone()));
+        let mine = self.published.as_ref().and_then(|event| {
+            nostr::xp::parse_profile(event)
+                .ok()
+                .map(|p| (event.created_at, p.shown, p.keys))
+        });
+        match (read, mine) {
+            (Some(a), Some(b)) => Some(if b.0 > a.0 { b } else { a }),
+            (a, b) => a.or(b),
+        }
+    }
+
+    /// Takes the answer to a profile change, when it has arrived.
+    fn settle_publish(&mut self) {
+        let Some(rx) = &self.publishing else { return };
+        match rx.try_recv() {
+            Ok(Ok(event)) => {
+                self.published = Some(event);
+                self.publish_error = None;
+                self.publishing = None;
+            }
+            Ok(Err(error)) => {
+                self.publish_error = Some(error);
+                self.publishing = None;
+            }
+            Err(mpsc::TryRecvError::Empty) => {}
+            Err(mpsc::TryRecvError::Disconnected) => {
+                self.publish_error = Some("The change didn't finish. Try again.".into());
+                self.publishing = None;
+            }
+        }
+    }
+
+    /// Publishes a new trainer profile for the world key `secret_hex`:
+    /// `shown` when given, else the current setting, listing `keys` when
+    /// given, else the current ones. In a preview it changes the card
+    /// alone and publishes nothing.
+    ///
+    /// # Errors
+    ///
+    /// A bad key, a change already on its way, or a list the profile
+    /// refuses.
+    pub fn set_profile(
+        &mut self,
+        secret_hex: &str,
+        shown: Option<bool>,
+        keys: Option<Vec<String>>,
+    ) -> Result<(), String> {
+        let secret: SecretKey = secret_hex
+            .parse()
+            .map_err(|_| "Invalid trainer key".to_owned())?;
+        let signer = nostr::domain::RelaySigner::from_secret_hex(secret_hex)
+            .map_err(|_| "Invalid trainer key".to_owned())?;
+        self.settle_publish();
+        if self.publishing.is_some() {
+            return Err("A change is still being published.".into());
+        }
+        let public_hex = signer.pubkey().to_owned();
+        let current = self.own_profile(&public_hex);
+        let shown = shown.unwrap_or_else(|| current.as_ref().is_some_and(|c| c.1));
+        let keys =
+            keys.unwrap_or_else(|| current.as_ref().map(|c| c.2.clone()).unwrap_or_default());
+        let parts =
+            nostr::xp::profile(&public_hex, shown, &keys).map_err(|error| error.to_string())?;
+        // A replaceable event must be newer than the one it replaces.
+        let created_at = current.map_or(unix_now(), |c| unix_now().max(c.0 + 1));
+        let event = signer.sign(created_at, parts.kind, parts.tags, parts.content);
+        self.publish_error = None;
+        if self.preview {
+            self.published = Some(event);
+            return Ok(());
+        }
+        let publisher = self
+            .publisher
+            .clone()
+            .unwrap_or_else(|| Arc::new(RelayPublish));
+        let (tx, rx) = mpsc::channel();
+        self.publishing = Some(rx);
+        std::thread::Builder::new()
+            .name("trainer-profile".into())
+            .spawn(move || {
+                let _ = tx.send(publisher.publish(&secret, &event).map(|()| event));
+            })
+            .map_err(|_| "The phone could not start publishing.".to_owned())?;
+        Ok(())
+    }
+
     /// The app left the foreground: close the relay connection.
     pub fn pause(&mut self) {
         self.board = None;
@@ -257,7 +412,21 @@ impl Trainer {
         let open_quests =
             ::verse::xp::open_quests(snapshot, std::slice::from_ref(&public_hex), unix_now());
         let playtest = self.playtest(&public_hex, &signer);
+        self.settle_publish();
+        let profile = match self.own_profile(&public_hex) {
+            None => "none",
+            Some((_, true, _)) => "shown",
+            Some((_, false, _)) => "hidden",
+        };
+        let profile_status = match (&self.publishing, &self.publish_error) {
+            (Some(_), _) => "publishing",
+            (None, Some(_)) => "failed",
+            (None, None) => "idle",
+        };
         Ok(TrainerPacket {
+            profile,
+            profile_status,
+            profile_error: self.publish_error.clone(),
             schema: "openagents.trainer.v1",
             playtest,
             npub: nostr::nip19::encode_npub(&key.serialize()),
@@ -344,6 +513,89 @@ mod tests {
             WORLD.parse::<SecretKey>().unwrap().secret_bytes()
         );
         assert!(trainer.packet(WORLD, false, true).unwrap().nsec.is_none());
+    }
+
+    /// Records what would reach the relay.
+    #[derive(Default)]
+    struct Recorded(std::sync::Mutex<Vec<Event>>);
+
+    impl Publish for Recorded {
+        fn publish(&self, _secret: &SecretKey, event: &Event) -> Result<(), String> {
+            self.0.lock().unwrap().push(event.clone());
+            Ok(())
+        }
+    }
+
+    fn settle(trainer: &mut Trainer) -> TrainerPacket {
+        for _ in 0..200 {
+            let packet = trainer.packet(WORLD, false, false).unwrap();
+            if packet.profile_status != "publishing" {
+                return packet;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        panic!("the profile never published");
+    }
+
+    #[test]
+    fn a_level_shows_only_after_the_trainer_publishes_a_shown_profile() {
+        let relay = Arc::new(Recorded::default());
+        let mut trainer = Trainer::with_publisher(relay.clone());
+        // Nothing is published by reading the card.
+        let packet = trainer.packet(WORLD, false, false).unwrap();
+        assert_eq!((packet.profile, packet.profile_status), ("none", "idle"));
+        assert!(relay.0.lock().unwrap().is_empty());
+
+        trainer.set_profile(WORLD, Some(true), None).unwrap();
+        let packet = settle(&mut trainer);
+        assert_eq!((packet.profile, packet.profile_status), ("shown", "idle"));
+        let sent = relay.0.lock().unwrap().clone();
+        assert_eq!(sent.len(), 1);
+        let world = WORLD.parse::<SecretKey>().unwrap();
+        let (public, _) = world.x_only_public_key(&Secp256k1::new());
+        assert_eq!(sent[0].pubkey, public.to_string());
+        assert_eq!(sent[0].kind, 13_193);
+        let profile = nostr::xp::parse_profile(&sent[0]).unwrap();
+        assert!(profile.shown && profile.keys.is_empty());
+        let json = serde_json::to_string(&packet).unwrap();
+        assert!(!json.contains(WORLD) && !json.contains("nsec1"));
+
+        // Hiding replaces it with a newer profile.
+        trainer.set_profile(WORLD, Some(false), None).unwrap();
+        let packet = settle(&mut trainer);
+        assert_eq!(packet.profile, "hidden");
+        let sent = relay.0.lock().unwrap().clone();
+        assert_eq!(sent.len(), 2);
+        assert!(sent[1].created_at > sent[0].created_at);
+        assert!(!nostr::xp::parse_profile(&sent[1]).unwrap().shown);
+    }
+
+    #[test]
+    fn a_refused_profile_says_so_and_changes_nothing() {
+        struct Refuses;
+        impl Publish for Refuses {
+            fn publish(&self, _: &SecretKey, _: &Event) -> Result<(), String> {
+                Err("The relay didn't accept the change. Try again.".into())
+            }
+        }
+        let mut trainer = Trainer::with_publisher(Arc::new(Refuses));
+        trainer.set_profile(WORLD, Some(true), None).unwrap();
+        let packet = settle(&mut trainer);
+        assert_eq!((packet.profile, packet.profile_status), ("none", "failed"));
+        assert!(packet.profile_error.unwrap().contains("Try again"));
+    }
+
+    #[test]
+    fn a_preview_profile_change_publishes_nothing() {
+        let relay = Arc::new(Recorded::default());
+        let mut trainer = Trainer::with_publisher(relay.clone());
+        assert_eq!(trainer.packet(WORLD, false, true).unwrap().profile, "shown");
+        trainer.set_profile(WORLD, Some(false), None).unwrap();
+        assert_eq!(
+            trainer.packet(WORLD, false, false).unwrap().profile,
+            "hidden"
+        );
+        assert!(relay.0.lock().unwrap().is_empty());
     }
 
     #[test]

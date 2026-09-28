@@ -645,3 +645,33 @@ fn a_quest_version_over_its_max_awards_counts_none() {
     assert_eq!(ledger.totals.get(a.pubkey()), Some(&20));
     assert_eq!(ledger.revoked.len(), 1);
 }
+
+#[test]
+fn only_a_shown_profile_advertises_a_trainer() {
+    let trainer = signer("trainer");
+    let stranger = signer("stranger");
+    let shown = sign(&trainer, xp::profile(trainer.pubkey(), true, &[]).unwrap());
+    let trainers = Trainers::read(&[shown.clone(), shown.clone()]);
+    assert!(trainers.shown(trainer.pubkey()));
+    assert_eq!(
+        trainers.trainer_of(trainer.pubkey()),
+        Some(trainer.pubkey())
+    );
+    assert_eq!(
+        trainers.keys_of(trainer.pubkey()),
+        [trainer.pubkey().to_owned()]
+    );
+    // A key with no profile isn't advertised.
+    assert!(!trainers.shown(stranger.pubkey()));
+    assert_eq!(trainers.trainer_of(stranger.pubkey()), None);
+    // A newer profile that hides the level wins.
+    let parts = xp::profile(trainer.pubkey(), false, &[]).unwrap();
+    let hidden = trainer.sign(AT + 1, parts.kind, parts.tags, parts.content);
+    let trainers = Trainers::read(&[shown.clone(), hidden.clone()]);
+    assert!(!trainers.shown(trainer.pubkey()));
+    assert_eq!(trainers.profiles[trainer.pubkey()].event, hidden.id);
+    // A profile signed by someone else doesn't count for the key it names.
+    let mut forged = shown;
+    forged.pubkey = stranger.pubkey().to_owned();
+    assert!(!Trainers::read(&[forged]).shown(stranger.pubkey()));
+}
