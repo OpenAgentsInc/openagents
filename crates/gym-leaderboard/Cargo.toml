@@ -13,6 +13,9 @@ atif = { path = "../atif" }
 # The Microcoder event reader and the beats-winner rule are the Gym's own,
 # not second copies.
 gym = { path = "../gym" }
+# Knowledge entries' provenance decides which attempts are in-sample, with
+# the task-name rule the Gym uses.
+knowledge = { path = "../knowledge" }
 regex = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }

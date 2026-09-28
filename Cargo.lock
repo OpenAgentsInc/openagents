@@ -3079,6 +3079,7 @@ version = "0.1.0"
 dependencies = [
  "atif",
  "gym",
+ "knowledge",
  "regex",
  "serde",
  "serde_json",

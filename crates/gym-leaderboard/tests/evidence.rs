@@ -9,6 +9,7 @@ use std::sync::OnceLock;
 use gym_leaderboard::contract::{Board, Cost, Label, Miss, StepKind, TaskStatus, TraceBundle};
 use gym_leaderboard::{
     Output, PUBLISHED, bundle, check, evidence::Reader, generate, microcoder, tb4_delegate,
+    tb4_delegate_dev,
 };
 use serde_json::Value;
 
@@ -174,7 +175,7 @@ fn the_tb21_board_says_what_the_essay_says() {
 #[test]
 fn every_bundle_fits_its_bound_and_matched_no_credential_rule() {
     let credential = gym_leaderboard::scrub::credential_rules();
-    assert_eq!(output().bundles.len(), 28 + 127);
+    assert_eq!(output().bundles.len(), 28 + 127 + 13);
     for (path, bytes) in &output().bundles {
         assert!(
             bytes.len() <= bundle::MAX_BUNDLE_BYTES,
@@ -576,4 +577,129 @@ fn a_planted_credential_is_redacted_and_fails_the_check() {
             .any(|p| p.contains("credential rule github-token")),
         "{problems:#?}"
     );
+}
+
+#[test]
+fn the_development_board_says_what_the_9746_report_says() {
+    let b = board(tb4_delegate_dev::BOARD_ID);
+    assert_eq!(
+        (b.totals.attempts, b.totals.passes, b.totals.beats),
+        (13, 4, 2)
+    );
+    // One split per series: the arm changed between them.
+    let per_series: Vec<(&str, u32, u32)> = b
+        .splits
+        .iter()
+        .map(|s| (s.name.as_str(), s.tally.attempts, s.tally.beats))
+        .collect();
+    assert_eq!(
+        per_series,
+        vec![
+            ("series 1", 3, 0),
+            ("series 2", 1, 0),
+            ("series 3", 3, 0),
+            ("series 4", 1, 0),
+            ("series 5", 2, 1),
+            ("series 6", 2, 0),
+            ("series 7", 1, 1),
+        ]
+    );
+    let beats: Vec<&str> = b
+        .attempts
+        .iter()
+        .filter(|a| a.beat)
+        .map(|a| a.id.as_str())
+        .collect();
+    assert_eq!(beats, vec!["fin-saccr-rwa.s5a2", "fin-saccr-rwa.s7a1"]);
+    assert!(b.headline.contains("2 of 13") && b.headline.contains("s5a2 and s7a1"));
+
+    // s7a1: $0.9429 in 149.5 s against $1.2246 and 222.5 s, with Jev's one
+    // decision keeping 5 of 12 candidates and flagging 3 of 6 requirements.
+    let find = |id: &str| b.attempts.iter().find(|a| a.id == id).unwrap();
+    let s7a1 = find("fin-saccr-rwa.s7a1");
+    assert!(matches!(s7a1.cost, Cost::Reported { usd } if (usd - 0.9429).abs() < 0.0001));
+    assert!((s7a1.seconds.unwrap() - 149.5).abs() < 0.01);
+    let saccr = b.tasks.iter().find(|t| t.task == "fin-saccr-rwa").unwrap();
+    assert!((saccr.bar.cost_usd.unwrap() - 1.2246).abs() < 0.0001);
+    assert!((saccr.bar.seconds.unwrap() - 222.5).abs() < 0.05);
+    let jev = s7a1.jev.as_ref().expect("s7a1's Jev decision");
+    assert_eq!(
+        (jev.kept, jev.candidates, jev.flagged, jev.requirements),
+        (5, 12, 3, 6)
+    );
+    // s5a2 beat the bar with no Jev decision, and says so.
+    let s5a2 = find("fin-saccr-rwa.s5a2");
+    assert!(s5a2.jev.is_none());
+    assert!(s5a2.caveats.contains(&"no_jev_decision".to_owned()));
+    assert!(matches!(s5a2.cost, Cost::Reported { usd } if (usd - 0.8816).abs() < 0.0001));
+    // Both wins are in-sample and tuned on the task, on the row and the board.
+    for a in [s5a2, s7a1] {
+        assert!(a.labels.contains(&Label::InSample), "{}", a.id);
+        for code in ["in_sample", "tuned_on_task"] {
+            assert!(a.caveats.contains(&code.to_owned()), "{}: {code}", a.id);
+            assert!(b.caveats.iter().any(|c| c.code == code));
+        }
+    }
+    assert!(b.labels.contains(&Label::InSample));
+    // Series 1 recorded no verdict; its three attempts are recomputed.
+    for a in b.attempts.iter().filter(|a| a.series == "series 1") {
+        assert!(!a.beat && a.misses.contains(&Miss::CostUnknown), "{}", a.id);
+    }
+    // Every attempt has its retained episode bundled.
+    assert!(
+        b.attempts
+            .iter()
+            .all(|a| a.trace.as_ref().is_some_and(|t| t.bytes > 0))
+    );
+    let evidence: Vec<&str> = b
+        .provenance
+        .evidence
+        .iter()
+        .map(|e| e.path.as_str())
+        .collect();
+    assert!(evidence.contains(&tb4_delegate_dev::REPLAYS));
+}
+
+#[test]
+fn a_development_row_whose_verdict_the_numbers_dont_support_refuses_to_build() {
+    let dir = tempfile::tempdir().unwrap();
+    let exp = "bench/terminal-bench/experiments/2026-09-27-fable-delegate";
+    let mut files: Vec<String> = [
+        "attempts.json",
+        "attempts-series2-5.json",
+        "attempts-series6-7.json",
+    ]
+    .iter()
+    .map(|f| format!("{exp}/{f}"))
+    .collect();
+    files.push(tb4_delegate_dev::REPLAYS.to_owned());
+    files
+        .push("bench/terminal-bench/experiments/2026-09-27-fable-delegate-repro/tasks.json".into());
+    files.push("docs/terminal-bench/2026-09-27-fable-delegate.md".into());
+    let row_files: Vec<String> = files[..3].to_vec();
+    for f in row_files {
+        let rows: Value = serde_json::from_slice(&std::fs::read(root().join(f)).unwrap()).unwrap();
+        for row in rows.as_array().unwrap() {
+            files.push(format!(
+                "bench/terminal-bench/traces/{}/{}.episode/trajectory.atif.json",
+                row["job"].as_str().unwrap(),
+                row["trial"].as_str().unwrap()
+            ));
+        }
+    }
+    for rel in &files {
+        let to = dir.path().join(rel);
+        std::fs::create_dir_all(to.parent().unwrap()).unwrap();
+        std::fs::copy(root().join(rel), to).unwrap();
+    }
+    tb4_delegate_dev::build(&Reader::new(dir.path())).expect("the copied rows build");
+    // s6a1 passed $0.042 over the cost bar; claim it beat.
+    edit_json(
+        &dir.path().join(format!("{exp}/attempts-series6-7.json")),
+        |v| {
+            v[0]["beat_the_bar"] = Value::Bool(true);
+        },
+    );
+    let err = tb4_delegate_dev::build(&Reader::new(dir.path())).unwrap_err();
+    assert!(err.0.contains("recomputed beat false"), "{err}");
 }
