@@ -4,8 +4,8 @@
 //! only in debug builds and only when the host asks (`wallet_fixture`).
 
 use crate::wallet::{
-    Ask, ClaimQuote, DepositRow, Destination, FeeRates, LnurlTerms, Node, Opener, Paid, PaymentRow,
-    Provider, Quote, QuoteFailure, SendRequest, Speed,
+    Ask, ClaimQuote, Contact, DepositRow, Destination, FeeRates, LnurlTerms, Node, Opener, Paid,
+    PaymentRow, Provider, Quote, QuoteFailure, SendRequest, Speed,
 };
 use std::sync::{Arc, Mutex};
 
@@ -22,6 +22,7 @@ struct State {
     payments: Vec<PaymentRow>,
     deposits: Vec<DepositRow>,
     fee: u64,
+    contacts: Vec<Contact>,
 }
 
 pub struct Fixture(Mutex<State>);
@@ -48,6 +49,10 @@ impl Default for Fixture {
                 refund_txid: None,
             }],
             fee: 400,
+            contacts: vec![Contact {
+                name: "Alby".into(),
+                address: "hello@getalby.com".into(),
+            }],
         }))
     }
 }
@@ -191,10 +196,37 @@ impl Node for Fixture {
         self.state().fee = fee;
         Ok(fee)
     }
+    fn contacts(&self) -> Result<Vec<Contact>, String> {
+        Ok(self.state().contacts.clone())
+    }
+    fn add_contact(&self, name: &str, address: &str) -> Result<(), String> {
+        self.state().contacts.push(Contact {
+            name: name.to_owned(),
+            address: address.to_owned(),
+        });
+        Ok(())
+    }
     fn exit_state(&self) -> Result<String, String> {
         Ok(format!(
             r#"{{"version":2,"network":"mainnet","fixture":true,"deposit":"{DEPOSIT}"}}"#
         ))
     }
     fn subscribe(&self, _notify: Arc<dyn Fn() + Send + Sync>) {}
+}
+
+/// Nostr profiles for the fixture: every npub has published the fixture's
+/// Spark address under one name. Publishing is accepted by one relay.
+pub struct Directory;
+
+impl crate::payees::Directory for Directory {
+    fn profile(&self, _pubkey: &str) -> Result<crate::payees::Profile, String> {
+        Ok(crate::payees::Profile {
+            name: Some("Fixture Friend".into()),
+            spark: Some(SPARK.into()),
+            lightning_address: Some("friend@example.com".into()),
+        })
+    }
+    fn publish(&self, _spark: Option<&str>) -> Result<usize, String> {
+        Ok(1)
+    }
 }

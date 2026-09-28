@@ -4318,6 +4318,7 @@ dependencies = [
  "libc",
  "ndk-sys",
  "nostr",
+ "nostr-transport",
  "qrcodegen",
  "rust-native",
  "rustls",

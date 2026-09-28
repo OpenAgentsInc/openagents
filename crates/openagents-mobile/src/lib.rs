@@ -24,6 +24,7 @@ mod coder_tab;
 mod computers_home;
 mod conversation;
 mod outbox;
+mod payees;
 mod spark;
 mod tailnet;
 mod tailnet_view;

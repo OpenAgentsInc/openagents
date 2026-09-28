@@ -233,6 +233,16 @@ pub enum Request {
         quote: u64,
         speed: String,
     },
+    /// Publish this wallet's Spark address in this device's Nostr payment
+    /// targets, or take it out. Only the person's setting sends it.
+    WalletPublish {
+        on: bool,
+    },
+    /// Save a Lightning address as a contact.
+    WalletSaveContact {
+        name: String,
+        address: String,
+    },
     /// Start refunding a waiting deposit: read the fee rates.
     WalletRefundStart {
         txid: String,
@@ -545,7 +555,7 @@ impl App {
             native_computers: launch.native_computers,
             secret,
             device,
-            device_npub,
+            device_npub: device_npub.clone(),
             computers,
             chats,
             coder: CoderTab::new(format!("coder:{}", id()))
@@ -585,7 +595,13 @@ impl App {
                 } else {
                     ("spark", "spark-exit", crate::wallet::spark_opener())
                 };
-                let wallet = crate::wallet::Wallet::new(config.state_dir.join(home), opener);
+                let directory: Arc<dyn crate::payees::Directory> = if fixture {
+                    Arc::new(crate::wallet_fixture::Directory)
+                } else {
+                    Arc::new(crate::payees::NostrDirectory::new(secret))
+                };
+                let wallet = crate::wallet::Wallet::new(config.state_dir.join(home), opener)
+                    .with_directory(directory, device_npub.clone());
                 match Cache::open(&config.state_dir.join(exit), &secret) {
                     Ok(cache) => wallet.with_vault(Arc::new(ExitVault(cache))),
                     Err(_) => wallet,
@@ -812,6 +828,10 @@ impl App {
             } => self.wallet.refund_review(&txid, vout, &address, &speed),
             Request::WalletRefund { txid, vout } => self.wallet.refund(&txid, vout),
             Request::WalletRefundReset => self.wallet.refund_reset(),
+            Request::WalletPublish { on } => self.wallet.publish(on),
+            Request::WalletSaveContact { name, address } => {
+                self.wallet.save_contact(&name, &address)
+            }
             Request::WalletAcknowledge => self.wallet.acknowledge(),
             // `respond` answers these directly; the app packet never
             // carries recovery words or a seed.

@@ -74,8 +74,10 @@ The app has four tabs, shown as icons:
 - **Wallet** is a Bitcoin wallet on mainnet through Breez's Spark SDK
   (`host/App/WalletTab.swift` over `crates/openagents-mobile/src/wallet.rs`):
   balance, receive (Lightning invoice, Spark address, Bitcoin deposit
-  address, each with a QR code), send (paste or scan an invoice, Lightning
-  address, LNURL code, Spark or Bitcoin address; a Lightning address shows
+  address, and this device's npub, each with a QR code, and a switch that
+  publishes the Spark address in the Nostr profile), send (paste or scan an invoice, Lightning
+  address, LNURL code, npub, Spark or Bitcoin address; an npub pays its
+  published Spark address or its profile's Lightning address; a Lightning address shows
   its range and takes a comment; then a confirm screen with amount and fee),
   buy with dollars (MoonPay or Cash App), deposit
   claims, history, and recovery words. Its seed is in Keychain

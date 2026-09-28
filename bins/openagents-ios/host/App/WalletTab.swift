@@ -28,6 +28,20 @@ struct WalletState: Decodable, Equatable {
         let lightning_error: String?
         let spark: Code?
         let bitcoin: Code?
+        let nostr: Code?
+        let publish: Publish?
+    }
+    struct Publish: Decodable, Equatable {
+        let on: Bool
+        let busy: Bool
+        let detail: String
+        let message: String?
+    }
+    struct Person: Decodable, Equatable, Identifiable {
+        let name: String
+        let detail: String
+        let input: String
+        var id: String { input }
     }
     struct Quote: Decodable, Equatable {
         let id: UInt64
@@ -82,6 +96,11 @@ struct WalletState: Decodable, Equatable {
         let comment_max: UInt16?
         /// After a payment: what the recipient said.
         let recipient_message: String?
+        /// The person an npub resolved to, and where their address came from.
+        let person: String?
+        let person_source: String?
+        /// A Lightning address just paid that could be saved as a contact.
+        let save_suggestion: String?
     }
     struct Provider: Decodable, Equatable, Identifiable {
         let id: String
@@ -131,11 +150,12 @@ struct WalletState: Decodable, Equatable {
     let claim: Claim?
     let refund: Refund?
     let backup: Backup?
+    let people: [Person]?
 }
 
 struct WalletTab: View {
     enum Section: String, CaseIterable { case receive = "Receive", send = "Send", buy = "Buy" }
-    enum Method: String, CaseIterable { case lightning = "Lightning", spark = "Spark", bitcoin = "Bitcoin" }
+    enum Method: String, CaseIterable { case lightning = "Lightning", spark = "Spark", bitcoin = "Bitcoin", nostr = "Nostr" }
 
     @ObservedObject var bridge: MobileBridge
     @State private var section = Section.receive
@@ -144,6 +164,7 @@ struct WalletTab: View {
     @State private var payInput = ""
     @State private var payAmount = ""
     @State private var payComment = ""
+    @State private var contactName = ""
     @State private var buyAmount = ""
     @State private var scanning = false
     @State private var copied: String?
@@ -367,6 +388,21 @@ struct WalletTab: View {
                 if let code = receive?.spark { codeView(code) } else { placeholderCode() }
             case .bitcoin:
                 if let code = receive?.bitcoin { codeView(code) } else { placeholderCode() }
+            case .nostr:
+                if let code = receive?.nostr { codeView(code) } else { placeholderCode() }
+                if let publish = receive?.publish {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Toggle(isOn: Binding(get: { publish.on }, set: { bridge.wallet("wallet_publish", ["on": $0]) })) {
+                            Text("Publish my Spark address").foregroundStyle(.white)
+                        }
+                        .tint(.white)
+                        .disabled(publish.busy || wallet.status != nil)
+                        .accessibilityIdentifier("wallet-publish")
+                        Text(publish.detail).font(.footnote).foregroundStyle(.gray)
+                        if publish.busy { ProgressView() }
+                        if let message = publish.message { Text(message).font(.footnote).foregroundStyle(.white) }
+                    }
+                }
             }
         }
     }
@@ -430,12 +466,28 @@ struct WalletTab: View {
                             .textSelection(.enabled)
                             .accessibilityIdentifier("wallet-recipient-message")
                     }
+                    if let address = send?.save_suggestion {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Save \(address) as a contact?").font(.footnote).foregroundStyle(.gray)
+                            HStack {
+                                TextField("Name", text: $contactName)
+                                    .textFieldStyle(.roundedBorder)
+                                    .accessibilityIdentifier("wallet-contact-name")
+                                Button("Save") {
+                                    bridge.wallet("wallet_save_contact", ["name": contactName, "address": address])
+                                    contactName = ""
+                                }
+                                .buttonStyle(.bordered).tint(.white)
+                                .disabled(contactName.trimmingCharacters(in: .whitespaces).isEmpty)
+                            }
+                        }
+                    }
                     Button("Done") { payInput = ""; payAmount = ""; payComment = ""; bridge.wallet("wallet_send_reset") }
                         .buttonStyle(.borderedProminent).tint(.white).foregroundStyle(.black)
                 }
             default:
                 if scanning {
-                    InlineQRScanner(prompt: "Point the camera at a Lightning invoice, Lightning address, or Bitcoin QR code.",
+                    InlineQRScanner(prompt: "Point the camera at a Lightning invoice, Lightning address, LNURL, Spark, Bitcoin, or Nostr (npub) QR code.",
                                     accept: QRInvitation.payment) { scanned in
                         scanning = false
                         payInput = scanned
@@ -443,7 +495,28 @@ struct WalletTab: View {
                     }
                     Button("Type instead") { scanning = false }
                 } else {
-                    TextField("Invoice, Lightning address, LNURL, or Bitcoin address", text: $payInput, axis: .vertical)
+                    if let people = wallet.people, !people.isEmpty, send?.state == "idle" || send?.state == nil {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 8) {
+                                ForEach(people) { person in
+                                    Button {
+                                        payInput = person.input
+                                        bridge.wallet("wallet_quote", ["input": person.input, "amount": payAmount, "comment": payComment])
+                                    } label: {
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(person.name).font(.callout).foregroundStyle(.white)
+                                            Text(person.detail).font(.caption2).foregroundStyle(.gray).lineLimit(1)
+                                        }
+                                        .padding(.horizontal, 12).padding(.vertical, 8)
+                                        .background(Color(white: 0.1), in: RoundedRectangle(cornerRadius: 10))
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                        }
+                        .accessibilityIdentifier("wallet-people")
+                    }
+                    TextField("Invoice, Lightning address, npub, LNURL, or Bitcoin address", text: $payInput, axis: .vertical)
                         .lineLimit(1...4)
                         .autocorrectionDisabled().textInputAutocapitalization(.never)
                         .textFieldStyle(.roundedBorder)
@@ -491,7 +564,13 @@ struct WalletTab: View {
     private func confirm(_ quote: WalletState.Quote, paying: Bool, message: String?) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Confirm payment").font(.headline).foregroundStyle(.white)
+            if let person = wallet?.send?.person {
+                row("Person", person)
+            }
             row("To", "\(quote.kind)\n\(quote.destination)")
+            if let source = wallet?.send?.person_source {
+                Text(source).font(.caption).foregroundStyle(.gray)
+            }
             if let note = quote.note { row("For", note) }
             if let comment = quote.comment { row("Comment", comment) }
             row("Amount", quote.amount)
@@ -905,7 +984,7 @@ extension WalletState {
         state: "ready", message: nil, network: "Bitcoin · Spark", balance: nil, balance_btc: nil,
         empty: nil, synced_at: nil, refreshing: true, error: nil, balance_unknown: true,
         status: "Opening the wallet…", warning: nil, trust: nil, receive: nil, send: nil,
-        payments: nil, can_show_words: false, buy: nil, deposits: nil, claim: nil, refund: nil, backup: nil)
+        payments: nil, can_show_words: false, buy: nil, deposits: nil, claim: nil, refund: nil, backup: nil, people: nil)
 }
 
 /// Dismiss the keyboard from a Done bar just above it and from a tap

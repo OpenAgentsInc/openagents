@@ -34,6 +34,13 @@ const BALANCE_FILE: &str = "last-balance";
 const ADDRESSES_FILE: &str = "addresses.json";
 const PAYMENTS_FILE: &str = "payments.json";
 const TRUST_FILE: &str = "trust-acknowledged";
+/// The Spark address this phone last published in its Nostr payment
+/// targets, when the person turned publishing on.
+const PUBLISHED_FILE: &str = "published-spark";
+/// People paid by npub, newest first.
+const PEOPLE_FILE: &str = "people.json";
+/// How many people paid by npub are kept.
+const PEOPLE_LIMIT: usize = 20;
 
 /// The trust note: what Spark is and who the person relies on.
 pub const TRUST_TITLE: &str = "About this wallet";
@@ -85,6 +92,11 @@ pub trait Node: Send + Sync {
     ) -> Result<String, String>;
     /// Choose how fast a quoted on-chain withdrawal confirms; its fee.
     fn set_speed(&self, quote: u64, speed: Speed) -> Result<u64, String>;
+    /// Saved contacts: Lightning addresses with names, from the SDK's own
+    /// contact list.
+    fn contacts(&self) -> Result<Vec<Contact>, String>;
+    /// Save a Lightning address as a contact.
+    fn add_contact(&self, name: &str, address: &str) -> Result<(), String>;
     /// The unilateral-exit state (Breez's `export_unilateral_exit_state`):
     /// what lets the recovery words take the balance out on-chain while
     /// Spark's operators are down. It holds no keys. Read locally.
@@ -128,6 +140,20 @@ pub struct DepositRow {
     /// A refund of it was broadcast in this transaction.
     #[serde(default)]
     pub refund_txid: Option<String>,
+}
+
+/// A saved contact: a name and a Lightning address.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Contact {
+    pub name: String,
+    pub address: String,
+}
+
+/// Someone paid by npub, kept so the Send screen can offer them again.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+struct PaidPerson {
+    npub: String,
+    name: Option<String>,
 }
 
 /// Recommended on-chain fee rates, in sat/vB.
@@ -556,6 +582,21 @@ struct Shared {
     exit_saved_at: Option<u64>,
     exit_error: Option<String>,
     vault: Option<Arc<dyn Vault>>,
+    /// Reads Nostr profiles and publishes payment targets.
+    directory: Option<Arc<dyn crate::payees::Directory>>,
+    /// This device's npub, which others pay through what it publishes.
+    npub: Option<String>,
+    /// The person an npub in the Send field resolved to.
+    person: Option<crate::payees::Resolved>,
+    /// The Spark address published in this device's payment targets.
+    published: Option<String>,
+    publish_busy: bool,
+    publish_message: Option<String>,
+    contact_busy: bool,
+    contacts: Vec<Contact>,
+    people: Vec<PaidPerson>,
+    /// A Lightning address just paid that isn't a contact yet.
+    save_suggestion: Option<String>,
     buy_busy: bool,
     buy_error: Option<String>,
     /// A purchase page for the host to open once.
@@ -661,6 +702,8 @@ pub struct Summary {
     pub refund: Option<RefundView>,
     /// The unilateral-exit backup.
     pub backup: BackupView,
+    /// Contacts and people paid by npub, for the Send screen.
+    pub people: Vec<PersonView>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -759,6 +802,31 @@ pub struct Receive {
     pub lightning_error: Option<String>,
     pub spark: Option<Code>,
     pub bitcoin: Option<Code>,
+    /// This device's npub, which other OpenAgents users can pay once its
+    /// Spark address is published.
+    pub nostr: Option<Code>,
+    pub publish: Option<PublishView>,
+}
+
+/// The setting that publishes the Spark address in this device's Nostr
+/// profile.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct PublishView {
+    /// The Spark address is published.
+    pub on: bool,
+    pub busy: bool,
+    pub detail: &'static str,
+    pub message: Option<String>,
+}
+
+/// Someone to pay: a saved contact or a person paid by npub before.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct PersonView {
+    pub name: String,
+    /// A Lightning address or a short npub.
+    pub detail: String,
+    /// What to put in the Send field.
+    pub input: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -778,6 +846,13 @@ pub struct SendView {
     pub comment_max: Option<u16>,
     /// After a payment: what the recipient said, as plain text.
     pub recipient_message: Option<String>,
+    /// The person an npub resolved to: "Alice (npub1abc…wxyz)".
+    pub person: Option<String>,
+    /// Where their address came from, naming it.
+    pub person_source: Option<String>,
+    /// After paying a Lightning address that isn't a contact: offer to
+    /// save it.
+    pub save_suggestion: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -837,6 +912,19 @@ impl Wallet {
             exit_saved_at: None,
             exit_error: None,
             vault: None,
+            directory: None,
+            npub: None,
+            person: None,
+            published: std::fs::read_to_string(home.join(PUBLISHED_FILE))
+                .ok()
+                .map(|text| text.trim().to_owned())
+                .filter(|text| !text.is_empty()),
+            publish_busy: false,
+            publish_message: None,
+            contact_busy: false,
+            contacts: vec![],
+            people: read_json(&home, PEOPLE_FILE).unwrap_or_default(),
+            save_suggestion: None,
             buy_busy: false,
             buy_error: None,
             open_url: None,
@@ -847,6 +935,21 @@ impl Wallet {
             seed: None,
             shared: Arc::new(Mutex::new(shared)),
         }
+    }
+
+    /// Resolve npubs and publish payment targets through `directory`, as
+    /// the device key whose npub is `npub`.
+    pub fn with_directory(
+        self,
+        directory: Arc<dyn crate::payees::Directory>,
+        npub: String,
+    ) -> Self {
+        {
+            let mut shared = self.lock();
+            shared.directory = Some(directory);
+            shared.npub = Some(npub);
+        }
+        self
     }
 
     /// Keep the unilateral-exit state in `vault` after each sync.
@@ -916,12 +1019,26 @@ impl Wallet {
             shared.refund = None;
             shared.exit_saved_at = None;
             shared.exit_error = None;
+            shared.person = None;
+            shared.contacts.clear();
+            shared.people.clear();
+            shared.save_suggestion = None;
+            shared.publish_message = None;
             shared.buy_busy = false;
             shared.buy_error = None;
             shared.open_url = None;
             shared.node.take()
         };
-        for file in [BALANCE_FILE, ADDRESSES_FILE, PAYMENTS_FILE] {
+        // A published address now names the old wallet; it stays published
+        // until the person turns publishing off or on again, and the screen
+        // says so.
+        if self.lock().published.is_some() {
+            self.lock().publish_message = Some(
+                "Your Nostr profile still names the previous wallet's Spark address. Publish again to update it."
+                    .into(),
+            );
+        }
+        for file in [BALANCE_FILE, ADDRESSES_FILE, PAYMENTS_FILE, PEOPLE_FILE] {
             let _ = std::fs::remove_file(self.home.join(file));
         }
         // The old wallet's exit state is no use without its words.
@@ -1097,7 +1214,7 @@ impl Wallet {
             amount_sats: amount,
             comment: Some(comment.trim().to_owned()).filter(|comment| !comment.is_empty()),
         };
-        let (node, generation) = {
+        let (node, directory, generation) = {
             let mut shared = self.lock();
             let Some(node) = shared.node.clone() else {
                 shared.send = Sending::Failed("The wallet is still starting.".into());
@@ -1107,20 +1224,148 @@ impl Wallet {
                 return;
             }
             shared.send = Sending::Quoting;
-            (node, shared.generation)
+            shared.person = None;
+            shared.save_suggestion = None;
+            (node, shared.directory.clone(), shared.generation)
         };
         let shared = self.shared.clone();
         std::thread::spawn(move || {
-            let quoted = node.quote(&request);
+            // An npub is paid through what its owner published.
+            let person = match crate::payees::classify(&request.input) {
+                crate::payees::Payload::Person { pubkey, npub } => Some(
+                    directory
+                        .ok_or_else(|| "Paying a Nostr profile isn't available here.".to_string())
+                        .and_then(|directory| directory.profile(&pubkey))
+                        .and_then(|profile| crate::payees::resolve(&npub, &profile)),
+                ),
+                _ => None,
+            };
+            let quoted = match &person {
+                Some(Ok(resolved)) => node.quote(&SendRequest {
+                    input: resolved.pay_to.clone(),
+                    ..request
+                }),
+                Some(Err(message)) => Err(QuoteFailure::Refused(message.clone())),
+                None => node.quote(&request),
+            };
+            let person = person.and_then(Result::ok);
             let mut state = lock(&shared);
             if state.generation != generation || state.send != Sending::Quoting {
                 return;
             }
             state.send = match quoted {
                 Ok(quote) => Sending::Quoted(quote),
-                Err(QuoteFailure::NeedsAmount(message)) => Sending::NeedsAmount(message),
+                Err(QuoteFailure::NeedsAmount(mut ask)) => {
+                    // Name the person and where their address came from.
+                    if let Some(person) = &person {
+                        ask.recipient = Some(person.label());
+                        ask.description = Some(person.source());
+                    }
+                    Sending::NeedsAmount(ask)
+                }
                 Err(QuoteFailure::Refused(message)) => Sending::Failed(message),
             };
+            state.person = person;
+        });
+    }
+
+    /// Publish this wallet's Spark address in this device's Nostr payment
+    /// targets (NIP-A3), or take it out. Only the person's explicit setting
+    /// calls this.
+    pub fn publish(&mut self, on: bool) {
+        let (directory, spark) = {
+            let mut shared = self.lock();
+            let Some(directory) = shared.directory.clone() else {
+                return;
+            };
+            if shared.publish_busy {
+                return;
+            }
+            let spark = if on {
+                match shared
+                    .addresses
+                    .spark
+                    .clone()
+                    .filter(|_| shared.node.is_some())
+                {
+                    Some(spark) => Some(spark),
+                    None => {
+                        shared.publish_message = Some("The wallet is still starting.".into());
+                        return;
+                    }
+                }
+            } else {
+                None
+            };
+            shared.publish_busy = true;
+            shared.publish_message = None;
+            (directory, spark)
+        };
+        let (shared, home) = (self.shared.clone(), self.home.clone());
+        std::thread::spawn(move || {
+            let published = directory.publish(spark.as_deref());
+            let mut state = lock(&shared);
+            state.publish_busy = false;
+            match published {
+                Ok(relays) => {
+                    match &spark {
+                        Some(spark) => {
+                            let _ = std::fs::create_dir_all(&home);
+                            let _ = std::fs::write(home.join(PUBLISHED_FILE), spark);
+                        }
+                        None => {
+                            let _ = std::fs::remove_file(home.join(PUBLISHED_FILE));
+                        }
+                    }
+                    state.published = spark.clone();
+                    state.publish_message = Some(format!(
+                        "{} on {relays} relay{}.",
+                        if spark.is_some() {
+                            "Published"
+                        } else {
+                            "Removed"
+                        },
+                        if relays == 1 { "" } else { "s" }
+                    ));
+                }
+                Err(message) => state.publish_message = Some(message),
+            }
+        });
+    }
+
+    /// Save a Lightning address as a contact.
+    pub fn save_contact(&mut self, name: &str, address: &str) {
+        let name = name.trim();
+        let Some(address) = crate::payees::lightning_address(address) else {
+            return;
+        };
+        if name.is_empty() || name.chars().count() > 100 {
+            return;
+        }
+        let (node, generation) = {
+            let mut shared = self.lock();
+            let Some(node) = shared.node.clone() else {
+                return;
+            };
+            shared.save_suggestion = None;
+            shared.contact_busy = true;
+            (node, shared.generation)
+        };
+        let (shared, name) = (self.shared.clone(), name.to_owned());
+        std::thread::spawn(move || {
+            let saved = node.add_contact(&name, &address);
+            let contacts = node.contacts();
+            let mut state = lock(&shared);
+            state.contact_busy = false;
+            if state.generation != generation {
+                return;
+            }
+            if let Ok(contacts) = contacts {
+                state.contacts = contacts;
+            }
+            if let Err(message) = saved {
+                state.send = Sending::Failed(message);
+            }
         });
     }
 
@@ -1148,10 +1393,14 @@ impl Wallet {
                 if state.generation != generation {
                     return;
                 }
+                let succeeded = matches!(&paid, Ok(paid) if paid.row.status != "failed");
                 state.send = match paid {
                     Ok(paid) => Sending::Sent(paid),
                     Err(message) => Sending::Failed(message),
                 };
+                if succeeded {
+                    remember(&mut state, &home, &quote);
+                }
             }
             read(&shared, &home, generation, false);
         });
@@ -1496,6 +1745,8 @@ impl Wallet {
         let mut shared = self.lock();
         if !matches!(shared.send, Sending::Paying(_) | Sending::Quoting) {
             shared.send = Sending::Idle;
+            shared.person = None;
+            shared.save_suggestion = None;
         }
     }
 
@@ -1515,6 +1766,8 @@ impl Wallet {
             || shared.buy_busy
             || shared.claim.as_ref().is_some_and(|claim| claim.busy)
             || shared.refund.as_ref().is_some_and(|refund| refund.busy)
+            || shared.publish_busy
+            || shared.contact_busy
             || matches!(shared.send, Sending::Quoting | Sending::Paying(_))
     }
 
@@ -1589,8 +1842,35 @@ impl Wallet {
                         "Bitcoin address: credited after 3 confirmations".into(),
                     )
                 }),
+                nostr: shared.npub.as_ref().map(|npub| {
+                    code(
+                        npub,
+                        &format!("nostr:{npub}"),
+                        if shared.published.is_some() {
+                            "Your npub: OpenAgents users pay it to your published Spark address".into()
+                        } else {
+                            "Your npub: publish your Spark address below so others can pay it".into()
+                        },
+                    )
+                }),
+                publish: shared.directory.as_ref().map(|_| PublishView {
+                    on: shared.published.is_some(),
+                    busy: shared.publish_busy,
+                    detail: "Publish this wallet's Spark address in your Nostr profile (a NIP-A3 payment target signed by this device's key), so people can pay your npub. Anyone can read it and link it to your npub.",
+                    message: shared.publish_message.clone(),
+                }),
             },
-            send: send_view(&shared.send),
+            send: {
+                let mut view = send_view(&shared.send);
+                if matches!(shared.send, Sending::Quoted(_) | Sending::Paying(_) | Sending::Sent(_))
+                    && let Some(person) = &shared.person
+                {
+                    view.person = Some(person.label());
+                    view.person_source = Some(person.source());
+                }
+                view.save_suggestion = shared.save_suggestion.clone();
+                view
+            },
             payments: shared.payments.iter().map(payment_view).collect(),
             can_show_words: self.seed.is_some(),
             buy: BuyView {
@@ -1612,6 +1892,23 @@ impl Wallet {
             deposits: shared.deposits.iter().map(deposit_view).collect(),
             claim: shared.claim.as_ref().map(claim_view),
             refund: shared.refund.as_ref().map(refund_view),
+            people: shared
+                .contacts
+                .iter()
+                .map(|contact| PersonView {
+                    name: contact.name.clone(),
+                    detail: contact.address.clone(),
+                    input: contact.address.clone(),
+                })
+                .chain(shared.people.iter().map(|person| PersonView {
+                    name: person
+                        .name
+                        .clone()
+                        .unwrap_or_else(|| crate::payees::short_npub(&person.npub)),
+                    detail: crate::payees::short_npub(&person.npub),
+                    input: person.npub.clone(),
+                }))
+                .collect(),
             backup: BackupView {
                 title: "Exit backup",
                 detail: "If Spark's operators ever stop, this file and your recovery words let you take your bitcoin out on the Bitcoin chain yourself. The wallet saves it on this phone after each sync. It holds no keys, but it shows your balance, so keep the exported file private.",
@@ -1620,6 +1917,31 @@ impl Wallet {
                 error: shared.exit_error.clone(),
             },
         }))
+    }
+}
+
+/// After a payment: keep a person paid by npub for the Send screen, and
+/// offer to save a Lightning address that isn't a contact yet.
+fn remember(state: &mut Shared, home: &Path, quote: &Quote) {
+    if let Some(person) = state.person.clone() {
+        state.people.retain(|known| known.npub != person.npub);
+        state.people.insert(
+            0,
+            PaidPerson {
+                npub: person.npub,
+                name: person.name,
+            },
+        );
+        state.people.truncate(PEOPLE_LIMIT);
+        write_json(home, PEOPLE_FILE, &state.people);
+    } else if let Destination::LightningAddress(address) = &quote.destination
+        && crate::payees::lightning_address(address).is_some()
+        && !state
+            .contacts
+            .iter()
+            .any(|contact| contact.address.eq_ignore_ascii_case(address))
+    {
+        state.save_suggestion = Some(address.clone());
     }
 }
 
@@ -1642,6 +1964,7 @@ fn read(shared: &Mutex<Shared>, home: &Path, generation: u64, sync: bool) {
     let balance = node.balance();
     let payments = node.payments(HISTORY_LIMIT);
     let deposits = node.deposits();
+    let contacts = node.contacts();
     let mut state = lock(shared);
     if state.generation != generation {
         return;
@@ -1668,6 +1991,9 @@ fn read(shared: &Mutex<Shared>, home: &Path, generation: u64, sync: bool) {
     }
     if let Ok(deposits) = deposits {
         state.deposits = deposits;
+    }
+    if let Ok(contacts) = contacts {
+        state.contacts = contacts;
     }
     match backup {
         Some(Ok(saved_at)) => {
@@ -1718,6 +2044,9 @@ fn send_view(send: &Sending) -> SendView {
         description: None,
         comment_max: None,
         recipient_message: None,
+        person: None,
+        person_source: None,
+        save_suggestion: None,
     };
     match send {
         Sending::Idle => {}
@@ -2015,6 +2344,7 @@ mod tests {
         refunds: Mutex<Vec<(String, u32, String, u64)>>,
         speeds: Mutex<Vec<(u64, Speed)>>,
         exit: Mutex<String>,
+        contacts: Mutex<Vec<Contact>>,
         notify: Mutex<Option<Arc<dyn Fn() + Send + Sync>>>,
     }
 
@@ -2191,6 +2521,16 @@ mod tests {
         fn exit_state(&self) -> Result<String, String> {
             Ok(self.exit.lock().unwrap().clone())
         }
+        fn contacts(&self) -> Result<Vec<Contact>, String> {
+            Ok(self.contacts.lock().unwrap().clone())
+        }
+        fn add_contact(&self, name: &str, address: &str) -> Result<(), String> {
+            self.contacts.lock().unwrap().push(Contact {
+                name: name.to_owned(),
+                address: address.to_owned(),
+            });
+            Ok(())
+        }
         fn subscribe(&self, notify: Arc<dyn Fn() + Send + Sync>) {
             *self.notify.lock().unwrap() = Some(notify);
         }
@@ -2230,6 +2570,236 @@ mod tests {
             problem: problem.map(str::to_owned),
             refund_txid: refund.map(str::to_owned),
         }
+    }
+
+    /// Profiles by hex key, and what was published.
+    #[derive(Default)]
+    struct Profiles {
+        known: Mutex<std::collections::HashMap<String, crate::payees::Profile>>,
+        published: Mutex<Vec<Option<String>>>,
+    }
+
+    impl crate::payees::Directory for Profiles {
+        fn profile(&self, pubkey: &str) -> Result<crate::payees::Profile, String> {
+            Ok(self
+                .known
+                .lock()
+                .unwrap()
+                .get(pubkey)
+                .cloned()
+                .unwrap_or_default())
+        }
+        fn publish(&self, spark: Option<&str>) -> Result<usize, String> {
+            self.published
+                .lock()
+                .unwrap()
+                .push(spark.map(str::to_owned));
+            Ok(3)
+        }
+    }
+
+    fn npub_of(byte: u8) -> (String, String) {
+        let secret = SecretKeyFor::from_byte_array([byte; 32]).unwrap();
+        let (key, _) = secret.x_only_public_key(&secp256k1::Secp256k1::new());
+        (key.to_string(), nostr::nip19::encode_npub(&key.serialize()))
+    }
+    use secp256k1::SecretKey as SecretKeyFor;
+
+    #[test]
+    fn an_npub_is_paid_at_its_published_address_after_the_person_confirms() {
+        let home = tempfile::tempdir().expect("temp dir");
+        let node = Arc::new(Fake::default());
+        node.balance.store(90_000, Ordering::SeqCst);
+        let profiles = Arc::new(Profiles::default());
+        let (alice_hex, alice) = npub_of(7);
+        let (bob_hex, bob) = npub_of(8);
+        let (_, carol) = npub_of(9);
+        profiles.known.lock().unwrap().insert(
+            alice_hex,
+            crate::payees::Profile {
+                name: Some("Alice".into()),
+                spark: Some("spark1friend".into()),
+                lightning_address: Some("alice@example.com".into()),
+            },
+        );
+        profiles.known.lock().unwrap().insert(
+            bob_hex,
+            crate::payees::Profile {
+                name: None,
+                spark: None,
+                lightning_address: Some("alice@example.com".into()),
+            },
+        );
+        let mut wallet = Wallet::new(
+            home.path().to_path_buf(),
+            opener(node.clone(), Arc::new(Mutex::new(vec![]))),
+        )
+        .with_directory(profiles.clone(), "npub1me".into());
+        wallet.open(ENTROPY, false);
+        settle(&wallet);
+
+        // A scanned `nostr:` code resolves to the Spark address first; the
+        // screen names the person and the address before any amount.
+        wallet.quote(&format!("nostr:{alice}"), "", "");
+        settle(&wallet);
+        let asked = ready(&wallet).send;
+        assert_eq!(asked.state, "needs_amount");
+        let label = asked.recipient.expect("person");
+        assert!(label.starts_with("Alice (npub1"), "{label}");
+        assert_eq!(
+            asked.description.as_deref(),
+            Some("Their published Spark address, spark1friend")
+        );
+        wallet.quote(&alice, "1,500", "");
+        settle(&wallet);
+        let quoted = ready(&wallet).send;
+        let quote = quoted.quote.expect("quote");
+        assert_eq!(
+            (quote.kind, quote.destination.as_str()),
+            ("Spark address", "spark1friend")
+        );
+        assert!(quoted.person.expect("person").starts_with("Alice"));
+        assert!(quoted.person_source.unwrap().contains("spark1friend"));
+        assert!(
+            node.paid.lock().unwrap().is_empty(),
+            "nothing pays before the tap"
+        );
+        wallet.pay(quote.id);
+        settle(&wallet);
+        let paid = ready(&wallet);
+        assert_eq!(paid.send.state, "sent");
+        assert_eq!(paid.people.len(), 1);
+        assert_eq!(paid.people[0].name, "Alice");
+        assert_eq!(paid.people[0].input, alice);
+        assert_eq!(
+            paid.send.save_suggestion, None,
+            "a person isn't a contact suggestion"
+        );
+        wallet.reset_send();
+
+        // Without a Spark address, the profile's Lightning address.
+        wallet.quote(&bob, "2000", "");
+        settle(&wallet);
+        let quoted = ready(&wallet).send;
+        assert_eq!(quoted.quote.expect("quote").kind, "Lightning address");
+        assert!(
+            quoted
+                .person_source
+                .unwrap()
+                .contains("Lightning address, alice@example.com")
+        );
+        wallet.reset_send();
+
+        // Neither: refused, and nothing is quoted.
+        wallet.quote(&carol, "2000", "");
+        settle(&wallet);
+        let refused = ready(&wallet).send;
+        assert_eq!(refused.state, "failed");
+        assert!(
+            refused
+                .message
+                .unwrap()
+                .contains("hasn't published a way to be paid")
+        );
+
+        // People paid by npub are remembered across launches.
+        let again = Wallet::new(home.path().to_path_buf(), spark_opener());
+        assert_eq!(ready(&again).people.len(), 1);
+    }
+
+    #[test]
+    fn a_lightning_address_paid_can_be_saved_as_a_contact() {
+        let home = tempfile::tempdir().expect("temp dir");
+        let node = Arc::new(Fake::default());
+        node.balance.store(90_000, Ordering::SeqCst);
+        let mut wallet = Wallet::new(
+            home.path().to_path_buf(),
+            opener(node.clone(), Arc::new(Mutex::new(vec![]))),
+        );
+        wallet.open(ENTROPY, false);
+        settle(&wallet);
+        wallet.quote("alice@example.com", "2000", "");
+        settle(&wallet);
+        let quote = ready(&wallet).send.quote.expect("quote");
+        wallet.pay(quote.id);
+        settle(&wallet);
+        assert_eq!(
+            ready(&wallet).send.save_suggestion.as_deref(),
+            Some("alice@example.com")
+        );
+        wallet.save_contact("", "alice@example.com");
+        wallet.save_contact("Alice", "not an address");
+        settle(&wallet);
+        assert!(node.contacts.lock().unwrap().is_empty());
+        wallet.save_contact(" Alice ", "alice@example.com");
+        settle(&wallet);
+        let saved = ready(&wallet);
+        assert_eq!(saved.send.save_suggestion, None);
+        assert_eq!(saved.people.len(), 1);
+        assert_eq!(
+            (
+                saved.people[0].name.as_str(),
+                saved.people[0].input.as_str()
+            ),
+            ("Alice", "alice@example.com")
+        );
+        // Paying a contact again suggests nothing.
+        wallet.reset_send();
+        wallet.quote("alice@example.com", "2000", "");
+        settle(&wallet);
+        let quote = ready(&wallet).send.quote.expect("quote");
+        wallet.pay(quote.id);
+        settle(&wallet);
+        assert_eq!(ready(&wallet).send.save_suggestion, None);
+    }
+
+    #[test]
+    fn the_spark_address_is_published_only_by_the_setting_and_can_be_removed() {
+        let home = tempfile::tempdir().expect("temp dir");
+        let node = Arc::new(Fake::default());
+        let profiles = Arc::new(Profiles::default());
+        let mut wallet = Wallet::new(
+            home.path().to_path_buf(),
+            opener(node.clone(), Arc::new(Mutex::new(vec![]))),
+        )
+        .with_directory(profiles.clone(), "npub1me".into());
+        let before = ready(&wallet).receive;
+        assert_eq!(
+            before.nostr.as_ref().map(|code| code.uri.as_str()),
+            Some("nostr:npub1me")
+        );
+        assert!(!before.publish.as_ref().unwrap().on);
+        // Nothing is published before the wallet runs, or without the tap.
+        wallet.publish(true);
+        assert!(profiles.published.lock().unwrap().is_empty());
+        wallet.open(ENTROPY, false);
+        settle(&wallet);
+        assert!(profiles.published.lock().unwrap().is_empty());
+        wallet.publish(true);
+        settle(&wallet);
+        let on = ready(&wallet).receive;
+        assert!(on.publish.as_ref().unwrap().on);
+        assert_eq!(
+            on.publish.unwrap().message.as_deref(),
+            Some("Published on 3 relays.")
+        );
+        assert!(
+            on.nostr
+                .unwrap()
+                .caption
+                .contains("published Spark address")
+        );
+        // It stays on across launches.
+        let again = Wallet::new(home.path().to_path_buf(), spark_opener())
+            .with_directory(profiles.clone(), "npub1me".into());
+        assert!(ready(&again).receive.publish.unwrap().on);
+        wallet.publish(false);
+        settle(&wallet);
+        assert!(!ready(&wallet).receive.publish.unwrap().on);
+        assert_eq!(
+            *profiles.published.lock().unwrap(),
+            vec![Some("spark1fakeaddress".to_string()), None]
+        );
     }
 
     #[test]

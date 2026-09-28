@@ -34,6 +34,9 @@ Computers keep `crates/wallet` (`ldk-node`) and `crates/x402`; see
 - [USDC and USDT receive](stablecoin-receive.md): how Breez's cross-chain
   receive works through Flashnet Orchestra, its custody, fees, and failure
   paths.
+- [Paying people](paying-people.md): how an npub resolves to a Spark address
+  or Lightning address, publishing the phone's Spark address, QR routing,
+  and contacts.
 - [Wallet design](wallet-design.md): human wallets, agent wallets, spending
   grants, approval flows, peer payments, x402, key custody, testing, a phased
   plan, and open questions.

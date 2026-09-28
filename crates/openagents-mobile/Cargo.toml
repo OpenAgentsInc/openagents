@@ -17,6 +17,9 @@ coder-computers = { path = "../coder-computers" }
 coder-reach = { path = "../coder-reach" }
 coder-vt = { path = "../coder-vt" }
 nostr = { path = "../nostr" }
+# The Wallet's npub payments: reading Nostr profiles and publishing the
+# phone's payment targets (`src/payees.rs`).
+nostr-transport = { path = "../nostr-transport" }
 # The tailnet admission client (NIP-HOST): no host code is linked.
 coder-host = { path = "../coder-host", default-features = false }
 # Coder's read-only chat observer: `coder-pair:` pairing, catalog and

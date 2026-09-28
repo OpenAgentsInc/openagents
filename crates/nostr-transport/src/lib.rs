@@ -99,6 +99,34 @@ impl Connection {
         }
         Ok(connection)
     }
+    /// Connect without NIP-42 authentication, for a public relay's reads
+    /// and writes of public events. The same deadline and frame budget
+    /// apply. A relay that sends an `AUTH` challenge anyway gets no answer;
+    /// the caller skips that frame.
+    pub async fn connect_open(url: &str, lifetime: Duration) -> Result<Self> {
+        if lifetime.is_zero() || lifetime > Duration::from_secs(120) {
+            return Err("relay connection lifetime must be within 120 seconds".into());
+        }
+        if !url.starts_with("wss://") {
+            return Err("an unauthenticated relay connection must use wss".into());
+        }
+        let deadline = Instant::now() + lifetime;
+        let config = WebSocketConfig::default()
+            .max_message_size(Some(MAX_BYTES))
+            .max_frame_size(Some(MAX_BYTES));
+        let (socket, _) = timeout_at(
+            deadline,
+            connect_async_tls_with_config(url, Some(config), false, Some(tls_connector()?)),
+        )
+        .await
+        .map_err(|_| "relay connection deadline exceeded")?
+        .map_err(|e| e.to_string())?;
+        Ok(Self {
+            socket,
+            deadline,
+            remaining: 256,
+        })
+    }
     pub async fn send(&mut self, value: Value) -> Result<()> {
         let text = value.to_string();
         if text.len() > MAX_BYTES {

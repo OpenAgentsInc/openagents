@@ -8,18 +8,19 @@
 //! traces is written anywhere.
 
 use crate::wallet::{
-    Ask, ClaimQuote, DepositRow, Destination, FeeRates, LnurlTerms, Node, Paid, PaymentRow,
-    Provider, Quote, QuoteFailure, SendRequest, Speed,
+    Ask, ClaimQuote, Contact, DepositRow, Destination, FeeRates, LnurlTerms, Node, Paid,
+    PaymentRow, Provider, Quote, QuoteFailure, SendRequest, Speed,
 };
 use breez_sdk_spark::{
-    BreezSdk, BuyBitcoinRequest, ClaimDepositOutcome, ClaimDepositRequest, DepositClaimError,
-    EventListener, Fee, FetchClaimDepositQuoteRequest, GetInfoRequest, InputType,
-    ListPaymentsRequest, ListUnclaimedDepositsRequest, LnurlPayRequest, MaxFee, Network,
-    OnchainConfirmationSpeed, Payment, PaymentMethod, PaymentRequest, PaymentStatus, PaymentType,
-    PrepareLnurlPayRequest, PrepareLnurlPayResponse, PrepareSendPaymentRequest,
-    PrepareSendPaymentResponse, ReceivePaymentMethod, ReceivePaymentRequest, RefundDepositRequest,
-    SdkBuilder, SdkEvent, Seed, SendPaymentMethod, SendPaymentOptions, SendPaymentRequest,
-    SuccessActionProcessed, SyncWalletRequest, default_config,
+    AddContactRequest, BreezSdk, BuyBitcoinRequest, ClaimDepositOutcome, ClaimDepositRequest,
+    DepositClaimError, EventListener, Fee, FetchClaimDepositQuoteRequest, GetInfoRequest,
+    InputType, ListContactsRequest, ListPaymentsRequest, ListUnclaimedDepositsRequest,
+    LnurlPayRequest, MaxFee, Network, OnchainConfirmationSpeed, Payment, PaymentMethod,
+    PaymentRequest, PaymentStatus, PaymentType, PrepareLnurlPayRequest, PrepareLnurlPayResponse,
+    PrepareSendPaymentRequest, PrepareSendPaymentResponse, ReceivePaymentMethod,
+    ReceivePaymentRequest, RefundDepositRequest, SdkBuilder, SdkEvent, Seed, SendPaymentMethod,
+    SendPaymentOptions, SendPaymentRequest, SuccessActionProcessed, SyncWalletRequest,
+    default_config,
 };
 use std::collections::HashMap;
 use std::path::Path;
@@ -396,6 +397,7 @@ fn describe(step: &str, detail: &str) -> String {
         "buy" => format!("The purchase could not start ({detail})."),
         "claim" => format!("The deposit could not be claimed ({detail})."),
         "refund" => format!("The deposit could not be refunded ({detail})."),
+        "contact" => format!("The contact could not be saved ({detail})."),
         "fees" => format!("The network's fee rates could not be read ({detail})."),
         _ => format!("Spark could not be read ({detail}). Refresh to try again."),
     }
@@ -655,6 +657,34 @@ impl Node for SparkNode {
         let fee = chosen.user_fee_sat + chosen.l1_broadcast_fee_sat;
         *options = Some(SendPaymentOptions::BitcoinAddress { confirmation_speed });
         Ok(fee)
+    }
+
+    fn contacts(&self) -> Result<Vec<Contact>, String> {
+        self.runtime
+            .block_on(self.sdk.list_contacts(ListContactsRequest {
+                offset: None,
+                limit: Some(100),
+            }))
+            .map(|contacts| {
+                contacts
+                    .into_iter()
+                    .map(|contact| Contact {
+                        name: contact.name,
+                        address: contact.payment_identifier,
+                    })
+                    .collect()
+            })
+            .map_err(|error| describe("read", &error.to_string()))
+    }
+
+    fn add_contact(&self, name: &str, address: &str) -> Result<(), String> {
+        self.runtime
+            .block_on(self.sdk.add_contact(AddContactRequest {
+                name: name.to_owned(),
+                payment_identifier: address.to_owned(),
+            }))
+            .map(|_| ())
+            .map_err(|error| describe("contact", &error.to_string()))
     }
 
     fn exit_state(&self) -> Result<String, String> {
