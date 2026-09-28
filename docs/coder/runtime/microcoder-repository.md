@@ -159,7 +159,10 @@ client cannot (no Codex login or no `claude` binary on this host) is left
 out, and a System step with a `routes_unavailable` extension says why.
 
 The run starts on the first route whose provider has capacity in the task
-store's capacity book, `capacity.json`. When a generation fails because the
+store's capacity book, `capacity.json`. When the grant admits more than one
+route, or the first route has no capacity, a System step with a
+`route_capacity` extension records each route's recorded refusal and the
+route the run starts on, so a run that starts on a fallback says why. When a generation fails because the
 provider refused for a usage or rate limit (a Codex HTTP 429
 `usage_limit_reached`, which the transport no longer retries, or a Claude
 Code error result with API status 429), the host:

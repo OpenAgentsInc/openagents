@@ -940,6 +940,17 @@ async fn a_run_starts_on_the_first_route_with_capacity() {
     .unwrap();
     assert_eq!((codex.calls.get(), claude.calls.get()), (0, 1));
     assert_eq!(result.execution, task::Execution::Finished);
+    // The transcript says why the run did not start on the first route.
+    let trace = std::fs::read_to_string(store.join("fixture.1.atif.jsonl")).unwrap();
+    let start = trace
+        .lines()
+        .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+        .find_map(|line| line.pointer("/step/extensions/route_capacity").cloned())
+        .unwrap();
+    assert_eq!(start["starts_on"]["provider"], "claude");
+    assert_eq!(start["routes"][0]["refusal"]["kind"], "usage_limit");
+    assert_eq!(start["routes"][0]["refusal"]["until"], RESET);
+    assert!(start["routes"][1]["refusal"].is_null());
 }
 
 #[tokio::test]

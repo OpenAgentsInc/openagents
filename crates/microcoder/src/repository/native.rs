@@ -225,6 +225,7 @@ pub(super) async fn run<T: microluna::Transport>(
             })
             .collect();
         let generator = Failover::new(&host, book, lanes, task::autostart::unix_now);
+        generator.record_start();
         let judge = NativeJudge {
             host: &host,
             client,

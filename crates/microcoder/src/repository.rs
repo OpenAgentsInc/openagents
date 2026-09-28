@@ -203,6 +203,36 @@ impl<'a, L: Lane> Failover<'a, L> {
         Provider::from_config(&route.provider)
     }
 
+    /// Record which admitted routes had capacity when the run started, so a
+    /// run that starts past its first route says why. A single route with
+    /// capacity records nothing, as before.
+    fn record_start(&self) {
+        if self.lanes.len() < 2 && self.current.get() == Some(0) {
+            return;
+        }
+        let now = (self.now)();
+        let book = capacity::Book::load(&self.book);
+        let routes: Vec<Value> = self
+            .lanes
+            .iter()
+            .map(|(route, _)| {
+                let blocked = Self::provider(route).and_then(|p| book.blocking(p, now));
+                json!({"route":route,"refusal":blocked})
+            })
+            .collect();
+        let step = Step::said(
+            Source::System,
+            "Admitted routes and their recorded capacity when the run started.",
+        )
+        .noting(
+            "route_capacity",
+            json!({"routes":routes,"starts_on":self.current.get().map(|index| &self.lanes[index].0)}),
+        );
+        if let Err(error) = self.host.append(&step) {
+            self.host.fail(error.to_string());
+        }
+    }
+
     /// Whether the route's provider has capacity now, by the book and by
     /// this run's own refusals. A provider without durable capacity, such as
     /// a fixture, always has.
@@ -425,6 +455,7 @@ pub async fn run_routes<L: Lane, J: Judge>(
 ) -> Result<task::Task, task::Error> {
     let (state, outcome) = {
         let generator = Failover::new(&host, book, lanes, now);
+        generator.record_start();
         run_loop(&host, &generator, judge).await?
     };
     finish(host, state, outcome)

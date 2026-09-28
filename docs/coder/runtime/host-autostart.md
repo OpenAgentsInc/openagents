@@ -115,7 +115,9 @@ Each start chooses its route when it starts, not when the task was created:
 3. **Grant.** The grant names the first connected route with capacity. The
    other connected routes follow as its `fallbacks`, in preference order.
    The task records the policy's first model either way; the task owner
-   admits a grant whose routes include it.
+   admits a grant whose routes include it. The run's transcript opens with
+   a `route_capacity` step that names each route's recorded refusal, so a
+   task that runs on a later route shows why.
 
 When no connected route has capacity, the host does not start a run that
 cannot succeed. It appends a `no_capacity` entry with the earliest reset,
