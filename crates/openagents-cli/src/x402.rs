@@ -10,7 +10,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use nostr::x402::{SupportedProfiles, binding_hash, http_binding, mcp_binding, validate_challenge};
-use openagents_wallet::ldk::LdkWallet;
+use openagents_wallet::open::Opened;
 use openagents_wallet::{LightningWallet, WalletConfig, WalletError, config};
 use openagents_x402::facilitator::{HTTP_ONLY, MCP_ONLY};
 use openagents_x402::mcp::{
@@ -138,12 +138,13 @@ pub(crate) fn replay_dir() -> PathBuf {
     .join("replay")
 }
 
-pub(crate) fn open_wallet() -> Result<(LdkWallet, WalletConfig), WalletError> {
+/// The resident node when `wallet serve` answers, else a node opened here.
+pub(crate) fn open_wallet() -> Result<(Opened, WalletConfig), WalletError> {
     let home = config::home();
     let wallet_config = WalletConfig::load(&home)?;
     let (mnemonic, _) = config::load_or_create_seed(&home, false, String::new)?;
     Ok((
-        LdkWallet::open(&home, &wallet_config, &mnemonic)?,
+        Opened::open(&home, &wallet_config, &mnemonic)?,
         wallet_config,
     ))
 }
@@ -155,7 +156,7 @@ pub(crate) fn fail_wallet(output: &Output, error: WalletError) -> u8 {
     }
 }
 
-pub(crate) struct Node(pub(crate) Arc<LdkWallet>);
+pub(crate) struct Node(pub(crate) Arc<Opened>);
 
 impl Receiver for Node {
     fn pay_to(&self) -> String {

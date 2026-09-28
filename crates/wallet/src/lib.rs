@@ -5,7 +5,8 @@
 //! before dispatch and returns the preimage that x402 proof requires.
 //!
 //! [`LightningWallet`] is the contract; the `ldk` feature provides the
-//! [`ldk::LdkWallet`] implementation on `ldk-node`. Everything here is
+//! [`ldk::LdkWallet`] implementation on `ldk-node`; [`resident`] lets one
+//! long-running node answer other processes over a local socket. Everything here is
 //! wallet mechanics: no facilitator, replay store, or Nostr record lives in
 //! this crate.
 
@@ -13,6 +14,10 @@ pub mod config;
 #[cfg(feature = "ldk")]
 pub mod ldk;
 pub mod model;
+#[cfg(all(feature = "ldk", unix))]
+pub mod open;
+#[cfg(unix)]
+pub mod resident;
 
 pub use config::{Network, WalletConfig};
 pub use model::{
