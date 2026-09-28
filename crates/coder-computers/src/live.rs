@@ -42,7 +42,7 @@ use crate::model::{
 };
 use crate::service::{ComputersService, Result};
 use coder_access::client::{OpenedEnrollment, pending_enrollments, redeem};
-use coder_access::protocol::{DeviceEntry, TaskCreate};
+use coder_access::protocol::{DeviceEntry, TaskCommand, TaskCreate};
 use coder_access::{Access, Code, Error, Operation, Outcome, RelayPolicy, Right, Rights};
 use coder_host::client::{
     Connector, Device, Link, Reports, Route, fetch_directory_revisions, fetch_reach,
@@ -1634,6 +1634,16 @@ impl ComputersService for Live {
                 task: task.into(),
                 revision,
                 reason: reason.into(),
+            },
+        )
+        .map(|_| ())
+    }
+
+    fn command_task(&mut self, host: &str, command: &TaskCommand) -> Result<()> {
+        self.dispatched(
+            host,
+            Operation::CommandTask {
+                command: command.clone(),
             },
         )
         .map(|_| ())

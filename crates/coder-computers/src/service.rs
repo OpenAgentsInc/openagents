@@ -12,7 +12,7 @@
 //! against its own grant records; the screens' checks only avoid offering a
 //! control that cannot work.
 use crate::model::{CreatedInvitation, ListingChange, LocalHost, ServiceState, Snapshot};
-use coder_access::protocol::TaskCreate;
+use coder_access::protocol::{TaskCommand, TaskCreate};
 use coder_access::{Code, Error, Rights};
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -182,6 +182,16 @@ pub trait ComputersService {
         Err(Error::new(
             Code::Unavailable,
             "this client can't cancel work",
+        ))
+    }
+    /// Send a durable task command (`task.command`): send, queue, steer,
+    /// interrupt, or answer. The caller keeps the command's ID and replays
+    /// the same command after a transport failure.
+    fn command_task(&mut self, host: &str, command: &TaskCommand) -> Result<()> {
+        let _ = (host, command);
+        Err(Error::new(
+            Code::Unavailable,
+            "this client can't send messages to work",
         ))
     }
     /// Take a finished or cancelled task off every device's lists

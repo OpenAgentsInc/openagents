@@ -285,7 +285,11 @@ impl App {
             device,
             computers,
             chats,
-            coder: CoderTab::new(format!("coder:{}", id())),
+            coder: CoderTab::new(format!("coder:{}", id())).with_outbox(
+                crate::outbox::Outbox::open(
+                    Cache::open(&config.state_dir.join("coder-outbox"), &secret).ok(),
+                ),
+            ),
             terminals,
             terminal: None,
             tailnet_client,
@@ -674,6 +678,8 @@ impl App {
         self.chats.settle();
         let tailnet = self.render_tailnet();
         let chats = self.chats.render();
+        // Chat commands that waited for their computer try again.
+        self.coder.flush(self.computers.as_mut());
         let coder = self.coder.render(self.computers.as_ref(), &mut self.chats);
         let computers = self.computers.as_ref();
         Packet {

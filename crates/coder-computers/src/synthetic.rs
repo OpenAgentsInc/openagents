@@ -10,7 +10,7 @@ use crate::model::{
     PendingEnrollment, Platform, ServiceState, Snapshot,
 };
 use crate::service::{ComputersService, Result};
-use coder_access::protocol::{DeviceState, INVITATION_PREFIX, OriginKind, TaskCreate};
+use coder_access::protocol::{DeviceState, INVITATION_PREFIX, OriginKind, TaskCommand, TaskCreate};
 use coder_access::{Code, Error, Right, Rights};
 use coder_link::{
     AttemptId, BlockReason, Command, ConnectionId, Failure, Moment, Policy, Report, Signal,
@@ -645,6 +645,15 @@ impl ComputersService for Synthetic {
             .push(format!("steer_task {host} {task} {revision}"));
         let (sequence, phase, headline) = self.latest(host, task, revision)?;
         self.summarize(host, task, sequence + 1, phase, &headline)
+    }
+    fn command_task(&mut self, host: &str, command: &TaskCommand) -> Result<()> {
+        // Record the action and identities, never the text.
+        self.calls.push(format!(
+            "command_task {host} {} {:?} {}",
+            command.task, command.action, command.command
+        ));
+        self.host(host)?;
+        Ok(())
     }
     fn cancel_task(&mut self, host: &str, task: &str, revision: u64, _: &str) -> Result<()> {
         self.calls

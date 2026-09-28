@@ -395,6 +395,22 @@ impl Computers {
         self.rebuild().map_err(Refusal::Failed)
     }
 
+    /// Send a durable task command to `host` (`task.command`). A chat
+    /// client mints the command once and calls this again with the same
+    /// command after a transport failure; the host never runs it twice.
+    pub fn command_task(
+        &mut self,
+        host: &str,
+        command: &coder_access::protocol::TaskCommand,
+    ) -> Result<(), Refusal> {
+        self.allow(Action::Operate { host })?;
+        self.service
+            .command_task(host, command)
+            .map_err(Refusal::Failed)?;
+        self.reload();
+        self.rebuild().map_err(Refusal::Failed)
+    }
+
     /// Take a finished or cancelled task on `host` off every device's
     /// lists (`task.archive`). The host keeps its record and transcript.
     pub fn archive_task(&mut self, host: &str, task: &str) -> Result<(), Refusal> {

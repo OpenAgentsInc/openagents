@@ -551,8 +551,12 @@ fn live_coder_chat_creates_a_task() {
             "{text:?}"
         );
         assert_eq!(nodes_of(&chat, "transcript").len(), 1);
+        // A running chat offers stop and steer, and its composer queues.
+        assert!(key_for(&chat, "Stop").is_some(), "{text:?}");
+        assert!(key_for(&chat, "Steer now").is_some(), "{text:?}");
         let composer = &nodes_of(&chat, "composer")[0]["element"]["props"];
-        assert_eq!(composer["busy"], true, "a running chat offers stop");
+        assert_eq!(composer["busy"], false);
+        assert_eq!(composer["enabled"], true);
         // Back on the list, the host's activity summary lists it.
         let back = key_for(&chat, "Coder").expect("back");
         app.call(Request::CoderActivate {
@@ -720,4 +724,114 @@ fn the_coder_list_leaves_out_archived_tasks() {
     assert!(crate::coder_tab::archived(Some(&chat(true))));
     assert!(!crate::coder_tab::archived(Some(&chat(false))));
     assert!(!crate::coder_tab::archived(None));
+}
+
+/// The composer's action comes from the task's phase and the explicit steer
+/// choice, never from the text.
+#[test]
+fn the_composer_mode_follows_the_task_and_the_steer_choice() {
+    use crate::coder_tab::Mode;
+    use nostr::activity_summary::Phase;
+    for phase in [
+        None,
+        Some(Phase::Queued),
+        Some(Phase::Running),
+        Some(Phase::Waiting),
+    ] {
+        assert_eq!(Mode::of(phase, false), Mode::Queue);
+        assert_eq!(Mode::of(phase, true), Mode::Steer);
+    }
+    for phase in [
+        Phase::Completed,
+        Phase::Failed,
+        Phase::Cancelled,
+        Phase::Unknown,
+    ] {
+        assert_eq!(Mode::of(Some(phase), false), Mode::Send);
+        // A finished chat cannot be steered; the choice does nothing.
+        assert_eq!(Mode::of(Some(phase), true), Mode::Send);
+    }
+}
+
+/// A finished Coder chat continues on the same task: the follow-up runs as
+/// the task's next turn and the chat shows it. Needs a host with tailnet
+/// admission and auto-start; set `OPENAGENTS_TEST_ADMISSION`,
+/// `OPENAGENTS_TEST_PROMPT`, and `OPENAGENTS_TEST_FOLLOW_UP`.
+#[test]
+#[ignore = "network: runs two real turns on a real host"]
+fn live_coder_chat_continues_with_a_follow_up() {
+    let address = std::env::var("OPENAGENTS_TEST_ADMISSION").expect("address");
+    let prompt = std::env::var("OPENAGENTS_TEST_PROMPT").expect("prompt");
+    let follow_up = std::env::var("OPENAGENTS_TEST_FOLLOW_UP").expect("follow-up");
+    let (mut app, _dir) = app();
+    app.call(Request::Lifecycle { active: true });
+    app.set_tailnet(Screen::Devices(Tailnet {
+        name: None,
+        this_device: None,
+        devices: vec![Device {
+            name: "test-computer".into(),
+            os: "macOS".into(),
+            address,
+            online: Some(true),
+        }],
+    }));
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(1200);
+    let send = |app: &mut App, view: &serde_json::Value, value: &str| {
+        let composer = nodes_of(view, "composer")[0].clone();
+        let token = composer["element"]["props"]["token"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        app.call(Request::CoderInput {
+            token,
+            value: value.into(),
+        })
+    };
+    let ended = |app: &mut App| loop {
+        let chat = app.call(Request::ComputersRefresh).coder.unwrap();
+        let text = values(&chat);
+        let place = text.get(1).cloned().unwrap_or_default();
+        if nodes_of(&chat, "working").is_empty()
+            && ["Done", "Failed", "Stopped"]
+                .iter()
+                .any(|word| place.starts_with(word))
+        {
+            return chat;
+        }
+        assert!(std::time::Instant::now() < deadline, "{text:?}");
+        std::thread::sleep(std::time::Duration::from_secs(3));
+    };
+    let coder = loop {
+        let coder = app.call(Request::ComputersRefresh).coder.unwrap();
+        if values(&coder)
+            .iter()
+            .any(|t| t.starts_with("On ") && t.contains(" · "))
+        {
+            break coder;
+        }
+        assert!(std::time::Instant::now() < deadline, "{:?}", values(&coder));
+        std::thread::sleep(std::time::Duration::from_millis(500));
+    };
+    send(&mut app, &coder, &prompt);
+    let task = app.open_coder_task().expect("the chat opens on its task");
+    archiving(&mut app, task.clone(), |app| {
+        let first = ended(app);
+        eprintln!("first turn: {:?}", values(&first));
+        send(app, &first, &follow_up);
+        assert_eq!(app.open_coder_task(), Some(task.clone()), "same task");
+        // The next turn starts, then ends, and its transcript shows both.
+        loop {
+            let chat = app.call(Request::ComputersRefresh).coder.unwrap();
+            if !nodes_of(&chat, "working").is_empty() {
+                break;
+            }
+            assert!(std::time::Instant::now() < deadline, "{:?}", values(&chat));
+            std::thread::sleep(std::time::Duration::from_secs(2));
+        }
+        let second = ended(app);
+        let text = values(&second);
+        eprintln!("second turn: {text:?}");
+        assert!(text.iter().any(|t| t.contains(&follow_up)), "{text:?}");
+        assert!(text.iter().any(|t| t.contains(&prompt)), "{text:?}");
+    });
 }

@@ -12,6 +12,19 @@ lays out, scrolls, and paints.
 This page lists the t3code chat features left out of build 6 on purpose, and
 what each needs before it can work. None of them are built.
 
+## Built since build 6
+
+- **Follow-ups continue one task.** A message in a finished chat is a
+  NIP-HOST `task.command` `send`: the task's next turn, whose transcript
+  carries the earlier turns.
+- **Queue and steer while Coder works.** The composer stays open: it queues
+  the message for the next turn, or after **Steer now** stops the turn and
+  continues with the message (Microcoder's emulated steering, chosen
+  explicitly). **Stop** is an `interrupt` command.
+- **A durable outbox.** Every chat command waits in the app's encrypted
+  store until the computer answers, with the same command ID on every try,
+  so a relaunch or a bad connection never sends one twice.
+
 ## Composer
 
 | Feature | What it needs |
@@ -29,8 +42,8 @@ what each needs before it can work. None of them are built.
 
 | Feature | What it needs |
 | --- | --- |
-| Follow-ups that continue one task | Today a message in a finished Coder chat starts a new task. Continuing needs a task operation that appends a turn, or engine sessions (NIP-SESS) the phone can drive. |
-| Steering a running task | NIP-HOST `task.steer` exists and replaces the task's instructions; the chat composer does not offer it yet, because it is not an ordinary message. |
+| Long-press choices on the send control (queue for next turn, steer now, stop and send) | The composer's mode is chosen in Rust and shown as a **Steer now** / **Queue instead** switch and a **Stop** button. A native long-press menu needs a Rust Native composer extension with choices and a native callback for the chosen one. |
+| A queue panel: edit, reorder, and send now | NIP-HOST `task.command` queues in order but has no edit or reorder operation, and the phone shows only how many messages wait to reach the computer, not the host's queue. |
 | Approval and question panels | The engine's approval requests and questions would have to reach the phone, for example as NIP-POL approval requests the host relays, with answers going back through the host. |
 | Streaming replies | The Coder tab polls the transcript every few seconds while a task runs. Token streaming needs a live channel from the engine, such as the NIP-REACH direct channel carrying NIP-SESS events. |
 | Editing a sent message from its menu | A way to revise a task's prompt; `task.steer` is the closest operation. |

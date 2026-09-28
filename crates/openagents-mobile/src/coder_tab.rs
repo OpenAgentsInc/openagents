@@ -6,12 +6,23 @@
 //! open chat reads the task's ATIF transcript through the computer's
 //! read-only history observer (its `coder` source) and polls it while the
 //! task runs; the host's signed activity summaries say whether it is
-//! running. Stop is NIP-HOST `task.cancel`. A message in a finished chat
-//! starts a new chat: follow-ups that continue one task are not built yet.
+//! running.
+//!
+//! Everything sent to an open chat is a NIP-HOST `task.command` kept in the
+//! durable [`Outbox`] until the computer answers, so it survives a relaunch
+//! and bad connectivity and never runs twice. The composer's one action
+//! follows the task's state and this device's `operate` right, never the
+//! text: in a finished chat it sends a follow-up that continues the same
+//! task; while Coder works it queues the message for the next turn, or,
+//! after **Steer now**, stops the turn and continues with the message (the
+//! engine's emulated steering, chosen explicitly). **Stop** interrupts the
+//! current turn.
 
 use crate::chats::Chats;
 use crate::conversation::Conversation;
+use crate::outbox::{Attempt, Draft, Outbox};
 use coder_computers::{Computers, HostRecord, Snapshot};
+use coder_host::CommandAction;
 use nostr::activity_summary::{ActivitySummary, Phase, SubjectKind};
 use rust_native::style::{Color, Space, Style, TextWeight};
 use rust_native::{Activation, Axis, Element, MessageRole, Node, TextRole, ValidatedView, View};
@@ -34,6 +45,8 @@ pub enum Intent {
     Back,
     Earlier,
     Stop,
+    /// Switch the running chat's composer between queueing and steering.
+    Steer,
 }
 
 /// An open chat: one task on one computer.
@@ -42,6 +55,12 @@ struct Open {
     task: String,
     title: String,
     conversation: Option<Conversation>,
+    /// The chat whose transcript is shown: a later turn is a newer chat.
+    chat: Option<String>,
+    /// The summary sequence last seen, to notice a new turn.
+    seen: Option<u64>,
+    /// The composer steers the running turn instead of queueing.
+    steer: bool,
 }
 
 pub struct CoderTab {
@@ -54,6 +73,7 @@ pub struct CoderTab {
     /// The first line of each chat this device started, by task ID.
     titles: BTreeMap<String, String>,
     open: Option<Open>,
+    outbox: Outbox,
 }
 
 impl CoderTab {
@@ -67,7 +87,68 @@ impl CoderTab {
             composers: 1,
             titles: BTreeMap::new(),
             open: None,
+            outbox: Outbox::open(None),
         }
+    }
+
+    /// Keep chat commands in `outbox`, which survives a relaunch.
+    pub fn with_outbox(mut self, outbox: Outbox) -> Self {
+        self.outbox = outbox;
+        self
+    }
+
+    /// Send every command that is due, keeping any the computer did not
+    /// answer for a later try with the same ID. A refusal shows its reason.
+    pub fn flush(&mut self, computers: Option<&mut Computers>) {
+        let Some(computers) = computers else { return };
+        let now = computers.snapshot().now;
+        for pending in self.outbox.due(now) {
+            let attempt = match computers.command_task(&pending.host, &pending.command) {
+                Ok(()) => Attempt::Answered,
+                Err(coder_computers::Refusal::Failed(error))
+                    if matches!(
+                        error.code,
+                        coder_host::Code::Transport | coder_host::Code::Unavailable
+                    ) =>
+                {
+                    Attempt::Unreached
+                }
+                Err(refusal) => Attempt::Refused(refusal.reason()),
+            };
+            if let Attempt::Refused(reason) = &attempt {
+                self.notice = Some(reason.clone());
+            }
+            self.outbox.settle(&pending.command.command, &attempt, now);
+        }
+    }
+
+    /// Keep a command for the open chat and try to send it now.
+    fn command(
+        &mut self,
+        action: CommandAction,
+        text: &str,
+        emulate: bool,
+        computers: &mut Computers,
+    ) -> bool {
+        let Some(open) = &self.open else { return false };
+        let based_on = Self::summary(computers.snapshot(), &open.host, &open.task)
+            .map_or(1, |summary| summary.sequence);
+        let (host, task) = (open.host.clone(), open.task.clone());
+        let now = computers.snapshot().now;
+        let draft = Draft {
+            task: &task,
+            action,
+            based_on,
+            text,
+            emulate,
+        };
+        if self.outbox.push(&host, draft, now).is_none() {
+            self.notice = Some("Too many messages are waiting to send. Try again later.".into());
+            return false;
+        }
+        self.notice = None;
+        self.flush(Some(computers));
+        true
     }
 
     /// The host and task of the open chat.
@@ -155,19 +236,14 @@ impl CoderTab {
                 }
             }
             Intent::Stop => {
-                let (Some(open), Some(computers)) = (&self.open, computers) else {
-                    return;
-                };
-                let Some(revision) =
-                    Self::summary(computers.snapshot(), &open.host, &open.task).map(|s| s.sequence)
-                else {
-                    return;
-                };
-                let (host, task) = (open.host.clone(), open.task.clone());
-                self.notice = computers
-                    .stop_task(&host, &task, revision)
-                    .err()
-                    .map(|refusal| refusal.reason());
+                let Some(computers) = computers else { return };
+                let reason = "Stopped from a phone.";
+                self.command(CommandAction::Interrupt, reason, false, computers);
+            }
+            Intent::Steer => {
+                if let Some(open) = self.open.as_mut() {
+                    open.steer = !open.steer;
+                }
             }
         }
     }
@@ -183,6 +259,9 @@ impl CoderTab {
             task,
             title,
             conversation: None,
+            chat: None,
+            seen: None,
+            steer: false,
         });
         self.attach(chats);
     }
@@ -192,22 +271,39 @@ impl CoderTab {
         let Some(open) = self.open.as_mut() else {
             return;
         };
-        if open.conversation.is_some() {
-            return;
-        }
         match chats.coder_chat(&open.host, &open.task) {
-            Some((_, client, chat)) => {
+            // A later turn's transcript is a newer chat for the same task;
+            // it carries the earlier turns, so it replaces the one shown.
+            Some((_, client, chat)) if open.chat.as_ref() != Some(&chat.id) => {
                 if !chat.title.is_empty() && !chat.title.starts_with("Saved ") {
                     open.title = chat.title.clone();
                 }
+                open.chat = Some(chat.id.clone());
                 open.conversation = Some(Conversation::open(chats.runtime(), client, chat));
             }
+            Some(_) => {}
             None => chats.refresh_linked(&open.host),
         }
     }
 
-    /// Accept a composer's message: a new chat on the chosen computer, or on
-    /// the open chat's computer.
+    /// Read the computer's chat list again when the open task's summary
+    /// moves, so a new turn's transcript is found.
+    fn follow(&mut self, computers: Option<&Computers>, chats: &mut Chats) {
+        let (Some(open), Some(computers)) = (self.open.as_mut(), computers) else {
+            return;
+        };
+        let sequence =
+            Self::summary(computers.snapshot(), &open.host, &open.task).map(|s| s.sequence);
+        if sequence != open.seen {
+            if open.seen.is_some() {
+                chats.refresh_linked(&open.host);
+            }
+            open.seen = sequence;
+        }
+    }
+
+    /// Accept a composer's message: a new chat on the chosen computer, or a
+    /// command for the open chat, whose action the chat's state chose.
     pub fn submit(
         &mut self,
         token: &str,
@@ -224,6 +320,22 @@ impl CoderTab {
         let prompt = value.trim();
         let Some(computers) = computers else { return };
         if prompt.is_empty() {
+            return;
+        }
+        if let Some(open) = &self.open {
+            let phase = Self::summary(computers.snapshot(), &open.host, &open.task)
+                .map(|summary| summary.phase);
+            let (action, emulate) = match Mode::of(phase, open.steer) {
+                Mode::Send => (CommandAction::Send, false),
+                Mode::Queue => (CommandAction::Queue, false),
+                Mode::Steer => (CommandAction::Steer, true),
+            };
+            if self.command(action, prompt, emulate, computers) {
+                self.composers += 1;
+                if let Some(open) = self.open.as_mut() {
+                    open.steer = false;
+                }
+            }
             return;
         }
         let host = match &self.open {
@@ -274,6 +386,7 @@ impl CoderTab {
         computers: Option<&Computers>,
         chats: &mut Chats,
     ) -> Option<serde_json::Value> {
+        self.follow(computers, chats);
         self.attach(chats);
         // Follow a running chat's transcript.
         if let (Some(open), Some(computers)) = (&self.open, computers)
@@ -439,13 +552,65 @@ impl CoderTab {
             }
         };
         children.push(transcript);
-        let placeholder = if running {
-            "Coder is working…".to_owned()
-        } else {
-            format!("Message Coder on {label} (starts a new chat)")
+        let waiting = self.outbox.waiting(&open.task);
+        if waiting > 0 {
+            children.push(status(
+                "coder-outbox",
+                &if waiting == 1 {
+                    format!("1 message waiting to reach {label}")
+                } else {
+                    format!("{waiting} messages waiting to reach {label}")
+                },
+            ));
+        }
+        let mode = Mode::of(phase, open.steer);
+        if running {
+            children.push(row(
+                "coder-controls",
+                vec![
+                    button("coder-stop", "Stop", Intent::Stop),
+                    button(
+                        "coder-steer",
+                        if open.steer {
+                            "Queue instead"
+                        } else {
+                            "Steer now"
+                        },
+                        Intent::Steer,
+                    ),
+                ],
+            ));
+        }
+        let placeholder = match mode {
+            Mode::Send => format!("Message Coder on {label}"),
+            Mode::Queue => "Queue a message for Coder's next turn".to_owned(),
+            Mode::Steer => "Steer Coder: stop this turn and continue with your message".to_owned(),
         };
-        children.push(self.composer(placeholder, !running, running));
+        let allowed = computers.is_some_and(|c| c.can_operate(&open.host));
+        children.push(self.composer(placeholder, allowed, false));
         page(children)
+    }
+}
+
+/// What the open chat's composer does, from the task's phase and the
+/// device's explicit steer choice; never from the text.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Mode {
+    /// Continue a finished chat with a follow-up turn.
+    Send,
+    /// Queue the message for the next turn.
+    Queue,
+    /// Stop the running turn and continue with the message.
+    Steer,
+}
+
+impl Mode {
+    pub(crate) fn of(phase: Option<Phase>, steer: bool) -> Self {
+        match phase {
+            None | Some(Phase::Queued | Phase::Running | Phase::Waiting) if steer => Mode::Steer,
+            None | Some(Phase::Queued | Phase::Running | Phase::Waiting) => Mode::Queue,
+            _ => Mode::Send,
+        }
     }
 }
 
