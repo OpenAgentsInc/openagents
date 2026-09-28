@@ -112,7 +112,8 @@ The [Gym bridge reference](../../crates/gym-bridge/README.md) defines host setup
 connection grants, source formats, supported limits, and the supervised launch
 contract. The [NIP-EVAL profile](../../nips/openagents/NIP-EVAL.md) describes the
 encrypted messages. Live board claims are separate from immutable completed
-evaluation publications.
+evaluation publications. Published Terminal-Bench results, with loadable traces,
+are specified in [the Gym leaderboard](gym-leaderboard.md).
 
 ## Scope of verification
 

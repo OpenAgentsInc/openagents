@@ -33,6 +33,10 @@ long status page is retained as a [dated snapshot](2026-09-25-status-snapshot.md
   transcripts, inspect timing quality, and navigate recorded evidence.
 - [Gym TUI](../gym/terminal-bench-tui.md) and [Gym CLI](../gym/terminal-bench-cli.md):
   browse runs, costs, grades, and retained comparisons.
+- [Published results](../../bench/terminal-bench/published/): the Gym's
+  generated leaderboard and scrubbed trace bundles for the #9776 and TB2.1
+  studies ([spec](../verse/gym-leaderboard.md)). Regenerate with
+  `cargo run -p gym-leaderboard -- build` after adding evidence.
 - [Traces](../../bench/terminal-bench/traces/) and
   [retention requirements](runbook.md#retain-the-evidence): find the original
   events and artifacts behind a result.
