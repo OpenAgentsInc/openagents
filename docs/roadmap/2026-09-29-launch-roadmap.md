@@ -108,8 +108,9 @@ ES (`85a91f63cc`), the Gym and RESULTS panels
 (`82663b935d`, [#9876](https://github.com/OpenAgentsInc/openagents/issues/9876)),
 Coder chats, Computers, Tailnet, About, and the Spark Wallet (`e56d173480`,
 `e1aeec7413`; [#9861](https://github.com/OpenAgentsInc/openagents/issues/9861)
-closed). Missing: the Rust-laid-out transcript. The playtest APK is a signed
-release build, 1.0.0 version code 1, from a draft GitHub release the owner
+closed). The transcript is painted from Rust's layout (`f55db62c44`). Missing:
+**Report a problem** and **Playtest session** (iOS only so far). The playtest APK is a signed
+release build, 1.0.0 version code 16 (the iPhone build number), from a draft GitHub release the owner
 publishes (see the Android README's Release section). Verified on the emulator only: a live tailnet chat, QR scanning, the
 terminal, motion look, and Vulkan on a physical device haven't been checked.
 

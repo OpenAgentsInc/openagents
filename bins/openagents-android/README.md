@@ -253,18 +253,19 @@ adb shell am start -n com.openagents.app/.MainActivity --es tab verse \
 | Setting | Value |
 | --- | --- |
 | Application ID | `com.openagents.app` |
-| Version name and code | `1.0.0` / `1` (`OPENAGENTS_ANDROID_VERSION_CODE` overrides the code) |
+| Version name and code | The iPhone app's: `MARKETING_VERSION` and `CURRENT_PROJECT_VERSION` in [`project.yml`](../openagents-ios/host/project.yml), `1.0.0` / `16` for the 2026-09-29 playtest APK (`OPENAGENTS_ANDROID_VERSION_CODE` overrides the code) |
 | Minimum and target API | 26 / 35 |
 | ABI in a release APK or bundle | `arm64-v8a` (`OPENAGENTS_ANDROID_ABI=x86_64` for an x86_64 APK) |
 | Release signing key | alias `openagents`, certificate SHA-256 `DB:D0:E9:65:5A:7A:0D:E2:E7:A4:F6:D4:59:F9:AF:52:A8:54:D8:CB:C1:FC:3B:B0:62:7E:2B:C2:AD:44:44:80` |
 
-The Android version code counts Android builds on its own, starting at `1`
-for the 2026-09-29 playtest APK. It doesn't follow the iPhone build number
-(1.0.0 build 15 on TestFlight then), because the two apps ship different
-commits. The app shows `1.0.0 (1)` under **Account > About this device**, and
-a playtest report names the platform and that pair. Raise the code for
-every APK you hand out; Android installs an update over an older one only
-when the code is higher and the signing key is the same.
+The Android version code is the iPhone build number of the same commit, so
+**Account > About this device** and the shared **Changelog** (whose newest
+entry is that build, `crates/openagents-mobile/src/account.rs`) name the
+same build on both phones, and a playtest report names the platform and
+that pair. Build an APK from a commit whose iPhone build number is higher
+than the last APK's; Android installs an update over an older one only when
+the code is higher and the signing key is the same. Gradle alone defaults
+to `1.0.0` / `1`.
 
 ### Direct-download APK
 
@@ -273,7 +274,6 @@ release and installed by hand:
 
 ```sh
 OPENAGENTS_ANDROID_SIGNING_ENV=/Users/christopherdavid/work/.secrets/openagents-android-release.env \
-OPENAGENTS_ANDROID_VERSION_CODE=1 \
   bins/openagents-android/build.sh release
 
 # Install it on a device or emulator (an existing debug install has another
@@ -287,7 +287,7 @@ have `BuildConfig.DEBUG` false, so the debug launch extras above (fixtures,
 previews, scripted walks, secret captures) are compiled out, and the debug
 sample conversation isn't packaged. The script refuses to build an unsigned
 release, checks 16 KiB alignment, verifies the signature with `apksigner`,
-and writes `release/OpenAgents-1.0.0-<code>-<abi>.apk`, its `.sha256`, and
+and writes `release/OpenAgents-<version>-<code>-<abi>.apk`, its `.sha256`, and
 the R8 `-mapping.txt` (keep it to read release stack traces) under the output
 directory.
 
@@ -308,7 +308,6 @@ Google Play takes an Android App Bundle signed with the upload key:
 
 ```sh
 OPENAGENTS_ANDROID_SIGNING_ENV=/Users/christopherdavid/work/.secrets/openagents-android-release.env \
-OPENAGENTS_ANDROID_VERSION_CODE=2 \
   scripts/build-openagents-android.sh bundle
 ```
 
@@ -380,14 +379,15 @@ On 2026-09-28, the debug APK ran on the `coder_mobile_api35` emulator
   rendered with `debug.verse.backend` set to `vulkan`. `adb logcat` showed no
   wgpu errors on either backend.
 
-Release APK (2026-09-28): `OpenAgents-1.0.0-1-arm64-v8a.apk` (63 MB; the
-stripped Rust library is 62 MB of it, stored uncompressed and page-aligned),
+Release APK (2026-09-28): `OpenAgents-1.0.0-16-arm64-v8a.apk` (69 MB; the
+stripped Rust library is 68 MB of it, stored uncompressed and page-aligned),
 signed with the release key and built by `release`, installed on a fresh
-`coder_mobile_api35` instance (not debuggable, `1.0.0 (1)`). It opened on
+`coder_mobile_api35` instance (not debuggable, `1.0.0 (16)`). It opened on
 Coder's empty state; Verse drew the Grid with the Gym, the ball, and the
 sticks; Wallet created and synced a new mainnet wallet at ₿0 (no funds
 moved) and opened it again after a force stop and relaunch; Account showed
-Trainer, Computers, Tailnet, and About this device. `logcat` showed no
+Trainer, Computers, Tailnet, About this device, and the Changelog headed
+`1.0.0 (16)`. `logcat` showed no
 crash, and the release dex has none of the debug launch extras. Captures
 are in `verification/2026-09-28-release`.
 
@@ -405,9 +405,6 @@ checked: the emulator isn't on a tailnet.
   been exercised on an emulator or a device.
 - Text with the Markdown role outside the conversation elements shows as
   plain text; iOS styles its inline Markdown.
-- The chat transcript is still a `RecyclerView` of Android widgets. The
-  iPhone app now lays transcripts out in Rust and paints Rust's display
-  lists (#9833, `pulled_transcripts`); Android doesn't yet.
 - Two-thumb sticks with a pinch from other fingers are covered by unit
   tests (`PinchAdmissionTest`) but not by an emulator run, since `adb`
   can't inject multi-touch.
@@ -415,5 +412,9 @@ checked: the emulator isn't on a tailnet.
   send choices are built from the iOS design but haven't been exercised
   on an emulator: neither the fixture wallet nor Coder's offline fixture
   produces a payment request or a writable running chat.
+- **Report a problem**, **Playtest session**, and **My reports** (iOS,
+  `74f2f90be0`) aren't on Android yet, although the shared Changelog's
+  `1.0.0 (16)` entry lists them. Android testers report through the GitHub
+  **Playtest report** template or the playtest email.
 - No instrumentation tests yet; checks are Rust tests, lint, unit tests,
   and the emulator runs above.

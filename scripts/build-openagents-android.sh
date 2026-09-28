@@ -14,7 +14,7 @@ if [[ "${OPENAGENTS_ANDROID_SANITIZED:-}" != 1 ]]; then
     OPENAGENTS_ANDROID_ABI="${OPENAGENTS_ANDROID_ABI:-arm64-v8a}" \
     OPENAGENTS_ANDROID_SERIAL="${OPENAGENTS_ANDROID_SERIAL:-}" \
     OPENAGENTS_ANDROID_PROFILE="${OPENAGENTS_ANDROID_PROFILE:-dev}" \
-    OPENAGENTS_ANDROID_VERSION_CODE="${OPENAGENTS_ANDROID_VERSION_CODE:-1}" \
+    OPENAGENTS_ANDROID_VERSION_CODE="${OPENAGENTS_ANDROID_VERSION_CODE:-}" \
     OPENAGENTS_ANDROID_KEYSTORE="${OPENAGENTS_ANDROID_KEYSTORE:-}" \
     OPENAGENTS_ANDROID_KEY_ALIAS="${OPENAGENTS_ANDROID_KEY_ALIAS:-}" \
     OPENAGENTS_ANDROID_KEYSTORE_PASSWORD="${OPENAGENTS_ANDROID_KEYSTORE_PASSWORD:-}" \
@@ -40,7 +40,10 @@ Set OPENAGENTS_ANDROID_ABI to arm64-v8a (default) or x86_64.
 bundle builds arm64-v8a with the release Rust profile. It signs with
 OPENAGENTS_ANDROID_KEYSTORE, OPENAGENTS_ANDROID_KEY_ALIAS,
 OPENAGENTS_ANDROID_KEYSTORE_PASSWORD, and OPENAGENTS_ANDROID_KEY_PASSWORD, and
-takes its version code from OPENAGENTS_ANDROID_VERSION_CODE (default 1).
+takes its version code from OPENAGENTS_ANDROID_VERSION_CODE, which defaults
+to the iPhone app's build number (CURRENT_PROJECT_VERSION in
+bins/openagents-ios/host/project.yml), so both apps and the shared Changelog
+name the same build.
 release builds OPENAGENTS_ANDROID_ABI (default arm64-v8a) with the release
 Rust profile and signs it the same way. OPENAGENTS_ANDROID_SIGNING_ENV may
 name a file of KEY=value lines for the four signing variables instead.
@@ -53,9 +56,14 @@ case "$command" in rust|apk|package|install|launch|run|release|install-release|b
 [[ $# -le 1 ]] || { usage; exit 64; }
 if [[ "$command" == bundle ]]; then OPENAGENTS_ANDROID_ABI=arm64-v8a; OPENAGENTS_ANDROID_PROFILE=release; fi
 if [[ "$command" == release ]]; then OPENAGENTS_ANDROID_PROFILE=release; fi
-version_name=1.0.0
+# The version name follows the iPhone app's MARKETING_VERSION.
+version_name="$(sed -n 's/^ *MARKETING_VERSION: *\([0-9][0-9.]*\) *$/\1/p' "$root/bins/openagents-ios/host/project.yml" | head -1)"
+[[ "$version_name" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Could not read MARKETING_VERSION from bins/openagents-ios/host/project.yml.' >&2; exit 1; }
 case "$OPENAGENTS_ANDROID_ABI" in arm64-v8a|x86_64) ;; *) echo 'Unsupported Android ABI; use arm64-v8a or x86_64.' >&2; exit 64 ;; esac
 case "$OPENAGENTS_ANDROID_PROFILE" in dev|release) ;; *) echo 'Android profile must be dev or release.' >&2; exit 64 ;; esac
+if [[ -z "$OPENAGENTS_ANDROID_VERSION_CODE" ]]; then
+  OPENAGENTS_ANDROID_VERSION_CODE="$(sed -n 's/^ *CURRENT_PROJECT_VERSION: *\([0-9][0-9]*\) *$/\1/p' "$root/bins/openagents-ios/host/project.yml" | head -1)"
+fi
 [[ "$OPENAGENTS_ANDROID_VERSION_CODE" =~ ^[1-9][0-9]{0,8}$ ]] || { echo 'Version code must be a positive integer.' >&2; exit 64; }
 if [[ "$command" == abi ]]; then echo "$OPENAGENTS_ANDROID_ABI"; exit; fi
 
