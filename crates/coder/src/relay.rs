@@ -72,12 +72,12 @@ pub const DEFAULT_RELAY_URL: &str = "wss://relay.openagents.com";
 
 /// The NIP-CJ job request, terminal to worker. Ephemeral: the relay fans
 /// it out and stores none of it.
-pub const REQUEST_KIND: u16 = 25_900;
+pub const REQUEST_KIND: u16 = nostr::kinds::CJ_CONVERSATION_REQUEST;
 /// The NIP-CJ job result, worker to terminal. Ephemeral.
-pub const RESULT_KIND: u16 = 26_900;
+pub const RESULT_KIND: u16 = nostr::kinds::CJ_CONVERSATION_RESULT;
 /// NIP-CJ job feedback — judgment, partial, status — worker to terminal.
 /// Ephemeral.
-pub const FEEDBACK_KIND: u16 = 27_000;
+pub const FEEDBACK_KIND: u16 = nostr::kinds::CJ_CONVERSATION_FEEDBACK;
 const AUTH_KIND: u16 = 22_242;
 
 /// How long a turn waits for the first sign that a worker is there.

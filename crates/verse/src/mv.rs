@@ -10,15 +10,15 @@ use nostr::domain::{Event, RelaySigner, Tag};
 use serde::{Deserialize, Serialize};
 
 /// World definition, addressable.
-pub const WORLD_KIND: u16 = 33_300;
+pub const WORLD_KIND: u16 = nostr::kinds::MV_WORLD;
 /// Entity state, addressable.
-pub const STATE_KIND: u16 = 33_301;
+pub const STATE_KIND: u16 = nostr::kinds::MV_STATE;
 /// Pose frame, ephemeral.
-pub const FRAME_KIND: u16 = 23_300;
+pub const FRAME_KIND: u16 = nostr::kinds::MV_FRAME;
 /// Gesture, ephemeral.
-pub const GESTURE_KIND: u16 = 23_301;
+pub const GESTURE_KIND: u16 = nostr::kinds::MV_GESTURE;
 /// Zone command, ephemeral.
-pub const COMMAND_KIND: u16 = 23_302;
+pub const COMMAND_KIND: u16 = nostr::kinds::MV_COMMAND;
 /// Most arguments one zone command carries.
 pub const MAX_COMMAND_ARGS: usize = 16;
 /// NIP-C7 chat message, used for world chat.

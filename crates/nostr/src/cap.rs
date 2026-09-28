@@ -16,9 +16,9 @@ use crate::contracts::{
 use crate::domain::{Event, Tag};
 
 /// Addressable capability discovery.
-pub const DISCOVERY_KIND: u16 = 30_180;
+pub const DISCOVERY_KIND: u16 = crate::kinds::CAP_DISCOVERY;
 /// Addressable operator preference.
-pub const PREFERENCE_KIND: u16 = 30_181;
+pub const PREFERENCE_KIND: u16 = crate::kinds::CAP_PREFERENCE;
 /// Public definition marker.
 pub const CAP_MARKER: &str = "oa:cap:v1";
 /// Public preference marker.

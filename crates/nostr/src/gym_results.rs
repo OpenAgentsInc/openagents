@@ -19,7 +19,7 @@ use crate::kb::{
 };
 
 /// One Gym results publication.
-pub const PUBLICATION_KIND: u16 = 3_195;
+pub const PUBLICATION_KIND: u16 = crate::kinds::EVAL_GYM_RESULTS;
 
 /// The body version.
 pub const PUBLICATION_VERSION: &str = "openagents.gym-results-publication.v1";

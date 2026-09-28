@@ -1,7 +1,7 @@
 //! NIP-XP's `playtest` rule and the two records it reads
 //! (`nips/openagents/NIP-XP.md`, "`playtest`").
 //!
-//! A **playtest report** (`3195`) is a small, content-free event the tester
+//! A **playtest report** (`3197`) is a small, content-free event the tester
 //! signs: the build, the platform, the report's kind, and the SHA-256 of
 //! the private report's exact bytes, which travelled to the triage key
 //! privately (NIP-17). It carries no text. A **session record** (`3196`) is
@@ -37,9 +37,9 @@ use crate::kb::{
 };
 
 /// The tester's content-free playtest report.
-pub const REPORT_KIND: u16 = 3_195;
+pub const REPORT_KIND: u16 = crate::kinds::XP_PLAYTEST_REPORT;
 /// A moderator's record of a completed moderated or group session.
-pub const SESSION_KIND: u16 = 3_196;
+pub const SESSION_KIND: u16 = crate::kinds::XP_PLAYTEST_SESSION;
 /// Every playtest uniqueness key starts with this.
 pub const KEY_PREFIX: &str = "playtest:";
 /// The contributions a `playtest` quest can name.
@@ -137,7 +137,7 @@ pub struct PlaytestAward {
     pub commit: Option<String>,
 }
 
-/// A verified `3195`.
+/// A verified `3197`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PlaytestReport {
     pub build: String,
@@ -437,7 +437,7 @@ pub(crate) fn bind_fields(award: &Award, quest: &Quest) -> Result<(), ContractEr
     Ok(())
 }
 
-/// The parts of a `3195` report for the private report whose exact bytes
+/// The parts of a `3197` report for the private report whose exact bytes
 /// hash to `digest`. It holds no text.
 ///
 /// # Errors
@@ -499,7 +499,7 @@ fn report_body(object: &Map<String, Value>) -> Result<PlaytestReport, ContractEr
     Ok(report)
 }
 
-/// Checks a signed `3195`.
+/// Checks a signed `3197`.
 ///
 /// # Errors
 ///
@@ -590,7 +590,7 @@ fn context(what: &str, error: ContractError) -> ContractError {
 
 /// The `playtest` rule. A contribution completes the quest when all hold:
 ///
-/// 1. `report` is a valid `3195` whose build is in the quest's build list,
+/// 1. `report` is a valid `3197` whose build is in the quest's build list,
 ///    whose kind the contribution accepts, and that was published inside
 ///    the season.
 /// 2. For a session, the report names the quest's script; for a moderated

@@ -50,7 +50,7 @@ docs/game/playtesting.md):
   award --quest ID@VERSION --evidence REPORT-ID --triager KEY
         [--issue OWNER/REPO#N] [--severity pN] [--commit SHA]
         [--session RECORD-ID] [--label VALUE]...
-                           accept a tester's playtest report (kind 3195): the
+                           accept a tester's playtest report (kind 3197): the
                            issue records the acceptance; a moderated or group
                            session also names the moderator's record
   playtest-session --tester KEY --script NAME --format moderated|group

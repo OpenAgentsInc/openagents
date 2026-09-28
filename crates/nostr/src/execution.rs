@@ -28,11 +28,11 @@ use crate::nip44;
 use crate::run::{self, Durability};
 
 /// Execution request or control. Ephemeral.
-pub const REQUEST_KIND: u16 = 25_920;
+pub const REQUEST_KIND: u16 = crate::kinds::CJ_EXECUTION_REQUEST;
 /// Execution result or control answer. Ephemeral.
-pub const RESULT_KIND: u16 = 26_920;
+pub const RESULT_KIND: u16 = crate::kinds::CJ_EXECUTION_RESULT;
 /// Execution admission and progress. Ephemeral.
-pub const FEEDBACK_KIND: u16 = 27_020;
+pub const FEEDBACK_KIND: u16 = crate::kinds::CJ_EXECUTION_FEEDBACK;
 /// Payload schema for every body in this family.
 pub const SCHEMA: &str = "openagents.execution.v1";
 

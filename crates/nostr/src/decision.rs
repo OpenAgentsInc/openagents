@@ -37,11 +37,11 @@ use crate::domain::{DomainError, Event, RelaySigner, Tag};
 use crate::nip44;
 
 /// The decision job request, caller to worker. Ephemeral.
-pub const REQUEST_KIND: u16 = 25_910;
+pub const REQUEST_KIND: u16 = crate::kinds::CJ_DECISION_REQUEST;
 /// The decision job result, worker to caller. Ephemeral.
-pub const RESULT_KIND: u16 = 26_910;
+pub const RESULT_KIND: u16 = crate::kinds::CJ_DECISION_RESULT;
 /// The decision job status, worker to caller. Ephemeral.
-pub const FEEDBACK_KIND: u16 = 27_010;
+pub const FEEDBACK_KIND: u16 = crate::kinds::CJ_DECISION_FEEDBACK;
 
 /// The payload schema tag every envelope in this family leads with. A
 /// string, never the integer `v` of the conversation family, so the two

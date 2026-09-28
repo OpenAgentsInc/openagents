@@ -18,8 +18,8 @@ use crate::private_artifact::OpenEnvelope;
 
 pub mod labor;
 
-pub const OFFERING_KIND: u16 = 3192;
-pub const HEAD_KIND: u16 = 30192;
+pub const OFFERING_KIND: u16 = crate::kinds::MKT_OFFERING;
+pub const HEAD_KIND: u16 = crate::kinds::MKT_HEAD;
 pub const OFFERING_SCHEMA: &str = "openagents.market-offering.v1";
 pub const HEAD_SCHEMA: &str = "openagents.market-head.v1";
 pub const TERMS_SCHEMA: &str = "openagents.market-terms.v1";

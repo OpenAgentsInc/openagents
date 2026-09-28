@@ -25,6 +25,7 @@ pub mod federated_identity;
 pub mod git_sign;
 pub mod gym_results;
 pub mod kb;
+pub mod kinds;
 pub mod lane;
 pub mod market_contracts;
 pub mod negentropy;

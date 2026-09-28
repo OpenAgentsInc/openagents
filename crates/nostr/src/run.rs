@@ -14,9 +14,9 @@ use crate::domain::Event;
 use crate::nip44::{conversation_key, decrypt, encrypt};
 
 /// One encrypted durable record.
-pub const RECORD_KIND: u16 = 3_187;
+pub const RECORD_KIND: u16 = crate::kinds::RUN_RECORD;
 /// Encrypted head hint. It is not the journal.
-pub const HEAD_KIND: u16 = 30_186;
+pub const HEAD_KIND: u16 = crate::kinds::RUN_HEAD;
 /// Marker on both kinds.
 pub const MARKER: &str = "oa:run:v1";
 /// Schema identifier mixed into the logical digest.

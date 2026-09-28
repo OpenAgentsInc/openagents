@@ -128,6 +128,12 @@ payment on the phone. The formats are in
 | `openagents x402 --pay-with phone` pays only after the computer's own x402 policy admits the payment, only mainnet invoices, and only with a receipt whose preimage proves the payment; a denial fails the call with the phone's reason. | New on 2026-09-28. | `an_approved_payment_returns_the_phones_preimage_as_proof`, `a_denied_payment_fails_with_the_phones_reason` in `crates/openagents-cli` |
 | Tests never move the owner's funds: every spend test pays through a fake wallet, and the only live check creates a request and denies it. | New on 2026-09-28. | The fakes in `crates/openagents-mobile/src/spend/tests.rs`; no live test approves |
 
+## OpenAgents event kinds
+
+| Invariant | Status | Checked by |
+| --- | --- | --- |
+| Each OpenAgents Nostr kind has exactly one owning specification under `nips/openagents`, listed once in `crates/nostr/src/kinds.rs` and the Kind registry in `nips/openagents/README.md`; no claim takes an official or Block NIP kind. | New on 2026-09-28 ([#9900](https://github.com/OpenAgentsInc/openagents/issues/9900)), after NIP-EVAL and NIP-XP both claimed `3195`; the playtest report moved to `3197` before any was published. | `no_kind_is_claimed_twice`, `the_readme_registry_lists_exactly_the_registry`, `every_kind_a_nip_declares_is_registered_to_it_or_names_its_owner`, `no_claim_takes_an_official_or_block_kind` in `crates/nostr` |
+
 ## Playtest reports and the session log
 
 | Invariant | Status | Checked by |

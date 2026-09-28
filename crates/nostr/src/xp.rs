@@ -27,11 +27,11 @@ use crate::kb::{
 };
 
 /// One frozen quest version, at its own address.
-pub const QUEST_KIND: u16 = 30_193;
+pub const QUEST_KIND: u16 = crate::kinds::XP_QUEST;
 /// A referee's acceptance of one completion.
-pub const AWARD_KIND: u16 = 3_193;
+pub const AWARD_KIND: u16 = crate::kinds::XP_AWARD;
 /// Irreversible revocation of one award.
-pub const REVOCATION_KIND: u16 = 3_194;
+pub const REVOCATION_KIND: u16 = crate::kinds::XP_REVOCATION;
 /// A NIP-32 label.
 pub const LABEL_KIND: u16 = 1_985;
 /// The NIP-32 namespace achievements use.

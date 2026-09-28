@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "openagents.xp-playtest-report.v1",
-  "title": "NIP-XP playtest report (kind 3195) body: content-free",
+  "title": "NIP-XP playtest report (kind 3197) body: content-free",
   "type": "object",
   "additionalProperties": false,
   "required": [

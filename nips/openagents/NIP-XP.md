@@ -29,14 +29,19 @@ purse never creates XP, and XP never unlocks a purse.
 
 These are OpenAgents draft assignments, not upstream registrations.
 
+The playtest report was first drafted as `3195`, which NIP-EVAL already
+owns for Gym results publications. It moved to `3197` before any report
+was published. The [kind registry](README.md#kind-registry) lists every
+OpenAgents kind once.
+
 | Kind | Class | Record |
 | --- | --- | --- |
 | `30193` | Addressable | One frozen quest version, at its own address. |
 | `3193` | Regular | An award: a referee's acceptance of one completion. |
 | `3194` | Regular | Irreversible revocation of one award. |
 | `1985` | Regular (NIP-32) | Optional achievement label that points at an award. It carries no XP. |
-| `3195` | Regular | A tester's content-free playtest report (the `playtest` rule). |
 | `3196` | Regular | A moderator's record of a completed playtest session (the `playtest` rule). |
+| `3197` | Regular | A tester's content-free playtest report (the `playtest` rule). |
 
 Every XP body (`30193`, `3193`, `3194`) is a UTF-8 JSON object with `v: 1`,
 `requires` (the empty list in this version), and `type`: `quest`, `award`,
@@ -288,7 +293,7 @@ contribution, so no quest exists for them.
 | `script`, `format` | `session` only, and required: the session script (a slug such as `session-2`) and `unmoderated`, `moderated`, or `group`. |
 | `max_awards` | Required: the most live awards this quest version pays, 1 to 10,000. |
 
-The **playtest report** (`3195`) is signed by the tester and holds no
+The **playtest report** (`3197`) is signed by the tester and holds no
 text. The report itself travels privately to the triage key (a NIP-17
 message sealed with NIP-44); this event only commits to it:
 
@@ -316,7 +321,7 @@ is the public record of the acceptance; `severity` (`bug` only, and one of
 the quest's `severities`); and `commit` (`design` only: the 40-hex commit
 that shipped the change). A contribution is accepted when all hold:
 
-1. The report is a valid `3195`, its build is in the quest's build list,
+1. The report is a valid `3197`, its build is in the quest's build list,
    its kind is one the contribution takes (`feedback`: bug, confusing,
    idea, or felt-good; `bug`: bug; `design`: bug, confusing, or idea;
    `verified-fix`: verified; `session`: session; `diary`: diary), and it

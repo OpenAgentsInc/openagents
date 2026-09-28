@@ -268,7 +268,7 @@ never move a trainer level ([playtesting](../../game/playtesting.md#rewards)).
 3. A moderator records a moderated or group session with their own key:
    `microcoder xp playtest-session --relay URL --tester NPUB --script raid
    --format group --build "1.0.0 (15)"`.
-4. Accept a tester's report (their `3195`) from a triage-log acceptance:
+4. Accept a tester's report (their `3197`) from a triage-log acceptance:
    `microcoder xp award --relay URL --quest playtest-s1.bug-minor@1
    --evidence REPORT-ID --triager NPUB --issue OpenAgentsInc/openagents#N
    --severity p2 [--label playtester]`. Add `--session RECORD-ID` for a

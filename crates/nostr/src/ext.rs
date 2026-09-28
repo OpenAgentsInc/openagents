@@ -15,15 +15,15 @@ use crate::contracts::{
 use crate::domain::{Event, Tag};
 
 /// Addressable package listing.
-pub const LISTING_KIND: u16 = 30_184;
+pub const LISTING_KIND: u16 = crate::kinds::EXT_LISTING;
 /// Immutable release.
-pub const RELEASE_KIND: u16 = 3_184;
+pub const RELEASE_KIND: u16 = crate::kinds::EXT_RELEASE;
 /// Irreversible revocation of one release.
-pub const REVOCATION_KIND: u16 = 3_185;
+pub const REVOCATION_KIND: u16 = crate::kinds::EXT_REVOCATION;
 /// Two-party namespace migration.
-pub const MIGRATION_KIND: u16 = 3_186;
+pub const MIGRATION_KIND: u16 = crate::kinds::EXT_MIGRATION;
 /// Addressable revocation checkpoint.
-pub const CHECKPOINT_KIND: u16 = 30_185;
+pub const CHECKPOINT_KIND: u16 = crate::kinds::EXT_CHECKPOINT;
 /// NIP-94 file locator. It is not an execution pin.
 pub const LOCATOR_KIND: u16 = 1_063;
 /// NIP-51 curation set. It is not an execution pin.

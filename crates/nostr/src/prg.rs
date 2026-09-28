@@ -15,7 +15,7 @@ use crate::contracts::{
 use crate::domain::Tag;
 
 /// Addressable program discovery.
-pub const DISCOVERY_KIND: u16 = 30_182;
+pub const DISCOVERY_KIND: u16 = crate::kinds::PRG_DISCOVERY;
 /// Program discovery marker.
 pub const PROGRAM_MARKER: &str = "oa:program:v1";
 /// Default ceiling on nested child programs.

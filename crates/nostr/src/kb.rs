@@ -16,13 +16,13 @@ use crate::contracts::{
 use crate::domain::{Event, Tag};
 
 /// One immutable entry version.
-pub const ENTRY_KIND: u16 = 3_190;
+pub const ENTRY_KIND: u16 = crate::kinds::KB_ENTRY;
 /// The author's current version of one entry.
-pub const HEAD_KIND: u16 = 30_190;
+pub const HEAD_KIND: u16 = crate::kinds::KB_HEAD;
 /// Irreversible withdrawal of one entry version.
-pub const WITHDRAWAL_KIND: u16 = 3_191;
+pub const WITHDRAWAL_KIND: u16 = crate::kinds::KB_WITHDRAWAL;
 /// A NIP-EVAL public evaluation declaration.
-pub const EVIDENCE_KIND: u16 = 3_189;
+pub const EVIDENCE_KIND: u16 = crate::kinds::EVAL_DECLARATION;
 
 /// The kinds an entry can be.
 pub const ENTRY_TYPES: &[&str] = &["method", "edge-case", "slip", "environment", "tool"];

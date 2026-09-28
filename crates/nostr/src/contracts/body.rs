@@ -14,7 +14,7 @@ use crate::domain::Event;
 const HEX: &str = "0123456789abcdef";
 
 /// Kind of a private artifact envelope.
-pub const ARTIFACT_ENVELOPE_KIND: u16 = 3188;
+pub const ARTIFACT_ENVELOPE_KIND: u16 = crate::kinds::PRIVATE_ARTIFACT;
 /// Discovery marker on that envelope.
 pub const ARTIFACT_MARKER: &str = "oa:artifact:v1";
 /// Media type required of a [`SchemaRef`].

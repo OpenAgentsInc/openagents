@@ -201,7 +201,7 @@ conformance requires validation and enforcement for each advertised role.
 | [NIP-EVAL](NIP-EVAL.md) | Workload evaluation, comparisons, and scoped promotion evidence. | Shared `3188`; public declaration `3189`; Gym results publication `3195`. |
 | [NIP-OPT](NIP-OPT.md) | AI signatures, implementations, studies, data partitions, candidates, materialization, trials, and results. | Shared `3188`; EXT/EVAL declarations and CJ/RUN execution. |
 | [NIP-KB](NIP-KB.md) | Shared knowledge entries: immutable versions, current-version heads, withdrawals, and evidence as EVAL publications. Trust is per reader. | `3190`, `30190`, `3191`; evidence on EVAL `3189`. |
-| [NIP-XP](NIP-XP.md) | Frozen quest versions, referee awards of verified accepted outcomes bound to KB entries and EVAL evidence, revocations, and per-reader XP ledgers. XP is never spendable; sats settle separately. | `30193`, `3193`, `3194`; achievements as NIP-32 `1985` labels. |
+| [NIP-XP](NIP-XP.md) | Frozen quest versions, referee awards of verified accepted outcomes bound to KB entries and EVAL evidence, revocations, and per-reader XP ledgers. XP is never spendable; sats settle separately. | `30193`, `3193`, `3194`; playtest session records `3196` and reports `3197`; achievements as NIP-32 `1985` labels. |
 | [NIP-CTRL](NIP-CTRL.md) | Client pairing, task-scoped control rights, revocation, acknowledged commands, and bounded catch-up. | Shared `3188`; registered CAP operations over CJ execution. |
 | [NIP-HOST](NIP-HOST.md) | Host-wide device enrollment by invitation or approved short code, closed scoped rights, delegation, revocation epochs, device listing, and typed task creation, steering, and cancellation. Draft with a bounded host and client in `crates/coder-access`, served by the resident host in [`coder-host`](../../crates/coder-host/README.md) over relay artifacts, direct channels, and CAP operations over CJ execution. | Shared `3188`; direct artifacts, or CAP operations over CJ. |
 | [NIP-MKT](NIP-MKT.md) | Immutable offerings, private negotiation, accepted orders, cancellation, and attributable Bitcoin settlement. | `3192`, `30192`; private records on shared `3188`. |
@@ -216,7 +216,7 @@ conformance requires validation and enforcement for each advertised role.
 | [NIP-REACH](NIP-REACH.md) | Owner host directory, host presence with bounded telemetry and receipt-time freshness, reachability hints without loopback fallback, authenticated direct channels bound to a grant and host generation, and placement. Implemented in [`coder-reach`](../../crates/coder-reach/README.md) with synthetic loopback-socket tests over TCP and WebSocket; [`coder-host`](../../crates/coder-host/README.md) publishes presence and hints and serves TCP and WebSocket direct channels, `ws` or TLS-terminated `wss`, with the real grant store. | Shared `3188`; no new kinds. |
 | [NIP-TERM](NIP-TERM.md) | Interactive terminal sessions: open, attach, detach, input, resize, signal, and close under the `terminal` right; per-terminal output sequence numbers, bounded replay with explicit gaps, idle expiry, and `lost` after a host restart. Implemented in [`coder-pty`](../../crates/coder-pty/README.md) with real-PTY tests on macOS; [`coder-host`](../../crates/coder-host/README.md) wires NIP-HOST rights, NIP-REACH channels, and `3188` sealing. | Shared `3188` or NIP-REACH data frames; no new kinds. |
 | [NIP-SOV](NIP-SOV.md) | Designed successor to historical SA: durable agent identity, admitted custody, bounded lifecycle, guardians, treasury policy, market participation, and retained recovery evidence. | Shared `3188`; existing AUTO/CAP/CJ/COORD/RUN contracts; no new kinds. |
-| [NIP-MV](NIP-MV.md) | Shared 3D worlds: ephemeral pose frames and gestures, durable entity state, world definitions, and cell-scoped subscriptions. Its optional runtime-loaded scene manifest and rules profile are Designed; the curated local Ruins zone is not general world discovery. Standalone: it depends on no other contract here. | `23300`, `23301`, `33300`, `33301`. |
+| [NIP-MV](NIP-MV.md) | Shared 3D worlds: ephemeral pose frames and gestures, durable entity state, world definitions, and cell-scoped subscriptions. Its optional runtime-loaded scene manifest and rules profile are Designed; the curated local Ruins zone is not general world discovery. Standalone: it depends on no other contract here. | `23300`, `23301`, `23302`, `33300`, `33301`. |
 
 Discovery heads are mutable. Exact signed records and artifact digests pin
 execution. Publication, installation, enablement, selection, grants, admission,
@@ -235,6 +235,60 @@ market are not implied. CTRL reuses current task contracts rather than
 treating Block read-state sync or live telemetry as durable task control.
 The [implementation plan](../../docs/protocol/implementation-plan.md) tracks
 the role-specific validators, host work, and fixtures still required.
+
+## Kind registry
+
+Each OpenAgents kind has exactly one owner. This table lists every kind an
+OpenAgents specification claims, in kind order; `crates/nostr/src/kinds.rs`
+holds the same list as constants the protocol code uses. Before you assign
+a kind, pick a number that isn't here, isn't in the
+[official list](../official/README.md#event-kinds), and isn't a
+[Block kind](../block/README.md), then add it to both places. The tests in
+`crates/nostr` (`kinds`) fail when two specifications claim one kind, when
+a specification declares a kind that isn't registered to it, or when this
+table and the constants disagree. Kinds a specification only uses, such as
+NIP-32 `1985` labels or Block `24200` frames, aren't claims.
+
+| Kind | Owner | Meaning |
+| --- | --- | --- |
+| `3184` | [NIP-EXT](NIP-EXT.md) | Immutable release declaration |
+| `3185` | [NIP-EXT](NIP-EXT.md) | Release revocation |
+| `3186` | [NIP-EXT](NIP-EXT.md) | Namespace migration attestation |
+| `3187` | [NIP-RUN](NIP-RUN.md) | Encrypted durable run record |
+| `3188` | [contracts](contracts.md) | Private artifact envelope |
+| `3189` | [NIP-EVAL](NIP-EVAL.md) | Public evaluation declaration |
+| `3190` | [NIP-KB](NIP-KB.md) | Immutable entry version |
+| `3191` | [NIP-KB](NIP-KB.md) | Entry withdrawal |
+| `3192` | [NIP-MKT](NIP-MKT.md) | Immutable public offering |
+| `3193` | [NIP-XP](NIP-XP.md) | Award |
+| `3194` | [NIP-XP](NIP-XP.md) | Award revocation |
+| `3195` | [NIP-EVAL](NIP-EVAL.md) | Gym results publication |
+| `3196` | [NIP-XP](NIP-XP.md) | Playtest session record |
+| `3197` | [NIP-XP](NIP-XP.md) | Content-free playtest report |
+| `23300` | [NIP-MV](NIP-MV.md) | Pose frame |
+| `23301` | [NIP-MV](NIP-MV.md) | Gesture |
+| `23302` | [NIP-MV](NIP-MV.md) | Zone command |
+| `25900` | [NIP-CJ](NIP-CJ.md) | Conversation job request |
+| `25910` | [NIP-CJ](NIP-CJ.md) | Decision job request |
+| `25920` | [NIP-CJ](NIP-CJ.md) | Execution request or control |
+| `26900` | [NIP-CJ](NIP-CJ.md) | Conversation job result |
+| `26910` | [NIP-CJ](NIP-CJ.md) | Decision job result |
+| `26920` | [NIP-CJ](NIP-CJ.md) | Execution result or control answer |
+| `27000` | [NIP-CJ](NIP-CJ.md) | Conversation job feedback |
+| `27010` | [NIP-CJ](NIP-CJ.md) | Decision job feedback |
+| `27020` | [NIP-CJ](NIP-CJ.md) | Execution admission and progress |
+| `30180` | [NIP-CAP](NIP-CAP.md) | Capability discovery head |
+| `30181` | [NIP-CAP](NIP-CAP.md) | Operator preference head |
+| `30182` | [NIP-PRG](NIP-PRG.md) | Program discovery head |
+| `30183` | [NIP-PRG](NIP-PRG.md) | Module announcement |
+| `30184` | [NIP-EXT](NIP-EXT.md) | Package listing |
+| `30185` | [NIP-EXT](NIP-EXT.md) | Revocation checkpoint |
+| `30186` | [NIP-RUN](NIP-RUN.md) | Encrypted current-head hint |
+| `30190` | [NIP-KB](NIP-KB.md) | Current entry head |
+| `30192` | [NIP-MKT](NIP-MKT.md) | Current offering head |
+| `30193` | [NIP-XP](NIP-XP.md) | Frozen quest version |
+| `33300` | [NIP-MV](NIP-MV.md) | World definition |
+| `33301` | [NIP-MV](NIP-MV.md) | Entity state |
 
 ## Current implementation evidence
 
