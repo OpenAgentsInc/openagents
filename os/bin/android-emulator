@@ -1,0 +1,119 @@
+# The Android emulator on a CoderOS desktop: open it, or focus it if it is open.
+#
+# SUPER + A runs this. The emulator is the one from the Android SDK that
+# nixpkgs packages, on KVM, with the system image os/modules/coderos/android.nix
+# names. Every flag is here, and the SDK path, the image, and the virtual
+# device come from the file that module writes, so the script and the module
+# read the same names.
+#
+# Before it starts another emulator, it asks the desk, through `coder-desk`,
+# whether the window is there. A host without the desk command skips that
+# check and always starts one. A second emulator on the same virtual device
+# refuses to start, because the first holds the device's lock, so one window
+# is the rule either way.
+#
+# The window is an X11 one. The emulator's Qt ships the xcb platform plugin
+# and no Wayland one, so the module turns Xwayland on for the session, and
+# the desk reports the window under the app-id the X11 WM_CLASS property
+# carries.
+#
+# The virtual device is data rather than configuration, so it lives under
+# ~/.openagents/android/avd, the only directory this product writes a
+# person's files to, and it is made on the first start rather than at build
+# time. The system image it boots is in the Nix store, read-only, and the
+# device holds only what the guest writes: its data partition and its
+# snapshots. Delete the directory and the next start makes a fresh device.
+
+GRANT="${CODEROS_ANDROID_GRANT:-/etc/coderos/android.json}"
+
+if [ ! -r "$GRANT" ]; then
+  echo "This host has not granted an Android emulator: $GRANT is not there. Turn on coderos.desktop.android and rebuild." >&2
+  exit 1
+fi
+
+SDK=$(jq -r '.sdk' "$GRANT")
+AVD=$(jq -r '.avd' "$GRANT")
+IMAGE=$(jq -r '.image' "$GRANT")
+DEVICE=$(jq -r '.device' "$GRANT")
+GPU=$(jq -r '.gpu' "$GRANT")
+PORT=$(jq -r '.port' "$GRANT")
+CLASS=$(jq -r '.class' "$GRANT")
+
+export ANDROID_HOME="$SDK"
+export ANDROID_SDK_ROOT="$SDK"
+export ANDROID_AVD_HOME="${ANDROID_AVD_HOME:-$HOME/.openagents/android/avd}"
+
+# The serial adb knows the guest by. The console listens on the port and adb
+# on the one after it, so the port is always even.
+SERIAL="emulator-$PORT"
+
+running() {
+  command -v coder-desk >/dev/null 2>&1 || return 1
+  coder-desk list 2>/dev/null | jq -e --arg class "$CLASS" 'any(.[]; .app_id == $class)' >/dev/null 2>&1
+}
+
+create() {
+  if [ -d "$ANDROID_AVD_HOME/$AVD.avd" ]; then
+    return 0
+  fi
+  echo "Making the virtual device $AVD from $IMAGE in $ANDROID_AVD_HOME." >&2
+  mkdir -p "$ANDROID_AVD_HOME"
+  # avdmanager asks whether to make a custom hardware profile, and `no`
+  # takes the device's own. One line rather than `yes`, which would be
+  # killed by SIGPIPE when avdmanager exits and fail the pipeline under
+  # `pipefail`. `--force` makes the same device again after a start that
+  # was interrupted between the directory and the ini.
+  echo no | avdmanager create avd --force \
+    --name "$AVD" \
+    --package "$IMAGE" \
+    --device "$DEVICE" \
+    --path "$ANDROID_AVD_HOME/$AVD.avd" >&2
+  {
+    # The keyboard on the desk types into the guest. Without this the
+    # emulator shows the on-screen keyboard and drops what the host sends.
+    echo "hw.keyboard = yes"
+    echo "hw.gpu.enabled = yes"
+    echo "hw.gpu.mode = $GPU"
+  } >> "$ANDROID_AVD_HOME/$AVD.avd/config.ini"
+}
+
+case "${1:-start}" in
+  start)
+    if running; then
+      coder-desk focus "class:$CLASS" >/dev/null
+      exit 0
+    fi
+    create
+    # `-accel on` refuses to start without KVM rather than falling back to
+    # software emulation, which would boot in minutes and run at a crawl.
+    # `-no-metrics` skips the dialog that asks to report usage to Google, and
+    # `-no-boot-anim` skips the animation the guest draws while it boots.
+    exec emulator \
+      -avd "$AVD" \
+      -port "$PORT" \
+      -gpu "$GPU" \
+      -accel on \
+      -no-boot-anim \
+      -no-metrics \
+      "${@:2}"
+    ;;
+  stop)
+    if adb -s "$SERIAL" emu kill >/dev/null 2>&1; then
+      echo "The emulator is stopping."
+    else
+      echo "No emulator on $SERIAL."
+    fi
+    ;;
+  status)
+    if running; then
+      state=$(adb -s "$SERIAL" get-state 2>/dev/null || echo "not reachable")
+      echo "The emulator is up as $SERIAL, and adb reports it $state."
+    else
+      echo "No emulator."
+    fi
+    ;;
+  *)
+    echo "Usage: android-emulator [start [emulator flags]|stop|status]" >&2
+    exit 2
+    ;;
+esac

@@ -19,6 +19,9 @@ backend or authentication implementation.
 Retained Python training and
 acceptance tooling and shell orchestration are infrastructure exceptions,
 not permission to add another product implementation language.
+The Nix and shell under `os/` (CoderOS) are infrastructure in the same sense:
+they configure a machine and launch Rust programs, and product behavior
+belongs in Rust.
 
 Documentation-only changes do not require the Rust verification gate, including
 before a push. Check links, paths, and retained artifacts for documentation
