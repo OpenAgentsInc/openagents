@@ -170,6 +170,7 @@ its wording.
 | `worker_absent` | The relay took the job and nothing at all came back from the worker within the contact wait, 30 seconds. Either nobody is listening on that key, or somebody is and said nothing while it worked. |
 | `worker_stalled` | Something came back from the worker — a judgment, a partial, a status — and then the answer never finished within the answer wait, 180 seconds. |
 | `worker_declined` | A worker answered with a typed refusal. `refusal` carries the NIP-CJ code, such as `quota_exhausted`. |
+| `no_capacity` | No model provider this host can reach has capacity: each one refused for a usage or rate limit, or has no usable login. `error` names each provider and when it resets. See [the delegate door](../runtime/delegate-door.md#which-provider-generates). |
 | `door` | An own-key door answered with an error status, or the HTTP call failed. |
 | `door_absent` | An own-key door took the request and never sent response headers, on each of three attempts 30 seconds apart. |
 | `door_stalled` | An own-key door sent its headers and then went quiet for 120 seconds, or kept sending without completing for 600 seconds. The message names the wait and how much had arrived, because a door that hung before saying anything and one that answered part way and stopped are different problems. |

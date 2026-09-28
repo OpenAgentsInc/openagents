@@ -1,0 +1,27 @@
+[package]
+name = "microcoder-loop"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "The Microcoder loop: Jev judges the state, one structured model call returns the next commands, the host runs them, with provider capacity and failover."
+publish.workspace = true
+
+[dependencies]
+atif = { path = "../atif" }
+coder-boundary = { path = "../coder-boundary" }
+jev = { path = "../jev" }
+knowledge = { path = "../knowledge" }
+microluna = { path = "../microluna" }
+nostr = { path = "../nostr" }
+openrouter = { path = "../openrouter" }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["macros", "rt", "time", "process", "io-util"] }
+
+[dev-dependencies]
+tempfile = "3"
+tokio = { version = "1", features = ["macros", "rt", "time", "process", "io-util", "test-util"] }
+
+[lints]
+workspace = true

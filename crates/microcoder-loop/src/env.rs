@@ -1,5 +1,5 @@
-//! Where commands run: a local directory, or a container reached with
-//! `docker exec`.
+//! Where commands run: a local directory, a local directory inside a
+//! `coder-boundary` boundary, or a container reached with `docker exec`.
 
 use std::path::PathBuf;
 use std::process::Stdio;
@@ -64,6 +64,76 @@ impl Env for Local {
         let mut child = Command::new("sh");
         child.arg("-c").arg(SHELL).current_dir(&self.dir);
         // The model's commands never see a key.
+        for (name, _) in std::env::vars() {
+            if name.ends_with("_API_KEY") || name.ends_with("_TOKEN") || name.ends_with("_SECRET") {
+                child.env_remove(name);
+            }
+        }
+        execute(child, command, deadline).await
+    }
+
+    async fn read(&self, path: &str) -> Option<String> {
+        let text = std::fs::read(self.dir.join(path)).ok()?;
+        Some(cut(&String::from_utf8_lossy(&text), FILE_MAX, 0))
+    }
+}
+
+/// A local working directory whose commands run inside a
+/// `coder-boundary` boundary: read-only, or writing only the directory,
+/// with a private scratch directory as `TMPDIR` either way. Coder's
+/// delegate door runs a turn's commands here, under the turn's permit.
+#[derive(Debug)]
+pub struct Bounded {
+    pub dir: PathBuf,
+    boundary: coder_boundary::Boundary,
+}
+
+impl Bounded {
+    /// Commands in `dir`, which they may write only when `writes` is set.
+    ///
+    /// # Errors
+    ///
+    /// The boundary's refusal, in a sentence, when this host cannot
+    /// enforce one.
+    pub fn new(dir: PathBuf, writes: bool) -> Result<Self, String> {
+        let spec = if writes {
+            coder_boundary::Boundary::writing(&dir)
+        } else {
+            coder_boundary::Boundary::readonly().protecting(&dir)
+        };
+        let boundary = spec
+            .owned_scratch_under(std::env::temp_dir())
+            .build()
+            .map_err(|error| format!("cannot bound the commands: {error}"))?;
+        Ok(Bounded { dir, boundary })
+    }
+
+    /// Whether the commands may write the directory.
+    #[must_use]
+    pub fn writes(&self) -> bool {
+        self.boundary.checkout().is_some()
+    }
+}
+
+impl Env for Bounded {
+    async fn run(&self, command: &str, deadline: Duration) -> CommandResult {
+        let wrapped = match self.boundary.command("/bin/sh", ["-c", SHELL]) {
+            Ok(wrapped) => wrapped,
+            Err(error) => {
+                return CommandResult {
+                    command: command.to_string(),
+                    exit: None,
+                    timed_out: false,
+                    seconds: 0.0,
+                    output: format!("the boundary refused the command: {error}"),
+                };
+            }
+        };
+        let mut child = Command::from(wrapped);
+        child.current_dir(&self.dir);
+        if let Some(scratch) = self.boundary.scratch() {
+            child.env("TMPDIR", scratch);
+        }
         for (name, _) in std::env::vars() {
             if name.ends_with("_API_KEY") || name.ends_with("_TOKEN") || name.ends_with("_SECRET") {
                 child.env_remove(name);
@@ -247,6 +317,39 @@ mod tests {
         let result = env.run("sleep 5", Duration::from_millis(200)).await;
         assert!(result.timed_out);
         assert!(result.seconds < 4.0);
+    }
+
+    #[tokio::test]
+    async fn a_bounded_directory_is_written_only_when_the_boundary_writes() {
+        let dir = tempfile::tempdir().unwrap();
+        let reading = match Bounded::new(dir.path().to_path_buf(), false) {
+            Ok(env) => env,
+            Err(why) => {
+                eprintln!("skipped: {why}");
+                return;
+            }
+        };
+        assert!(!reading.writes());
+        let refused = reading
+            .run("printf x > marker", Duration::from_secs(10))
+            .await;
+        assert!(!refused.ok(), "{}", refused.output);
+        assert!(!dir.path().join("marker").exists());
+        // The private scratch directory is writable either way.
+        let scratch = reading
+            .run(
+                "printf y > \"$TMPDIR/note\" && cat \"$TMPDIR/note\"",
+                Duration::from_secs(10),
+            )
+            .await;
+        assert!(scratch.ok(), "{}", scratch.output);
+        let writing = Bounded::new(dir.path().to_path_buf(), true).unwrap();
+        assert!(writing.writes());
+        let wrote = writing
+            .run("printf x > marker", Duration::from_secs(10))
+            .await;
+        assert!(wrote.ok(), "{}", wrote.output);
+        assert_eq!(writing.read("marker").await.as_deref(), Some("x"));
     }
 
     #[tokio::test]

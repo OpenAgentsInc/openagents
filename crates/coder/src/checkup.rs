@@ -65,7 +65,7 @@ fn report() -> (Vec<String>, bool) {
         delegate_door::AGENT_VAR,
         settings
             .preferred
-            .map_or("unset", coder_one::delegate::Agent::word),
+            .map_or("unset", delegate_door::Agent::word),
         delegate_door::MODEL_VAR,
         settings.model.as_deref().unwrap_or("unset"),
     ));
@@ -75,13 +75,14 @@ fn report() -> (Vec<String>, bool) {
             Some(Chosen::Delegate(picked)) if picked.agent == target.agent => "  (chosen)",
             _ => "",
         };
-        let state = match (&target.binary, target.credential) {
-            _ if !target.agent.is_cli() => microluna_state(),
-            (None, _) => "not installed".to_string(),
-            (Some(path), coder_one::delegate::Credential::Missing) => {
+        let state = match (&target.binary, target.credential, &target.problem) {
+            _ if !target.agent.is_cli() => "runs in this process".to_string(),
+            (None, _, _) => "not installed".to_string(),
+            (Some(path), coder_one::delegate::Credential::Missing, _) => {
                 format!("{}, not signed in", path.display())
             }
-            (Some(path), credential) => {
+            (Some(path), _, Some(problem)) => format!("{}, skipped: {problem}", path.display()),
+            (Some(path), credential, None) => {
                 format!(
                     "{}, credential found ({})",
                     path.display(),
@@ -90,47 +91,70 @@ fn report() -> (Vec<String>, bool) {
             }
         };
         lines.push(format!("  {:<12} {state}{mark}", target.agent.word()));
+        let first = target.provider().map(|state| state.provider);
+        for state in &target.providers {
+            let standing = if Some(state.provider) == first {
+                "connected, has capacity (used first)".to_string()
+            } else if state.usable() {
+                "connected, has capacity (used if the first refuses)".to_string()
+            } else {
+                format!("skipped: {}", state.describe())
+            };
+            let login = match state.provider {
+                coder::task::capacity::Provider::Codex => format!(" · {}", codex_state()),
+                coder::task::capacity::Provider::Claude => String::new(),
+            };
+            lines.push(format!(
+                "    {:<10} {} · {standing}{login}",
+                state.provider.as_str(),
+                state.model
+            ));
+        }
     }
 
     let policy = coder_one::terminal::policy();
     let executor = &policy.policy.executor;
-    let microluna = matches!(chosen, Some(Chosen::Delegate(target)) if !target.agent.is_cli());
-    let model = settings.model.clone().unwrap_or_else(|| {
-        if microluna {
-            coder_one::delegate::Agent::Microluna
-                .default_model()
-                .to_string()
-        } else {
-            executor.model.clone()
+    match chosen {
+        Some(Chosen::Delegate(target)) if !target.agent.is_cli() => {
+            let (provider, model) = target.provider().map_or(("none", "none"), |state| {
+                (state.provider.as_str(), state.model.as_str())
+            });
+            lines.push(format!(
+                "{:<10} microcoder runs {model} on {provider} in this process · up to {} steps and ${:.2} a turn · stops after {}s",
+                "executor",
+                delegate_door::microcoder::MAX_STEPS,
+                delegate_door::microcoder::MAX_USD,
+                delegate_door::deadline().as_secs(),
+            ));
         }
-    });
-    if microluna {
-        let terminal = coder_one::terminal::selected(false);
-        let bounds = terminal.bounds();
-        lines.push(format!(
-            "{:<10} microluna runs {model} in this process · up to ${:.2} a turn · stops after {}s",
-            "executor", bounds.spend_usd, terminal.manifest.policy.executor.deadline_sec,
-        ));
-        lines.push(policy_line("policy", &terminal));
-        lines.push(policy_line("issues", &coder_one::terminal::selected(true)));
-    } else {
-        lines.push(format!(
-            "{:<10} {} runs {model} · effort {} · tools {} · prompt cache {} · stops after {}s",
-            "executor",
-            executor.agent.agent().word(),
-            executor.effort.as_deref().unwrap_or("default"),
-            executor.tools.as_deref().unwrap_or("default"),
-            executor.prompt_cache_ttl.as_deref().unwrap_or("default"),
-            delegate_door::deadline().as_secs(),
-        ));
-        lines.push(format!(
-            "{:<10} {} ({}), sha256 {}",
-            "policy",
-            coder_one::terminal::POLICY_FILE,
-            policy.name.as_deref().unwrap_or("unnamed"),
-            policy.digest(),
-        ));
+        _ => {
+            let model = settings
+                .model
+                .clone()
+                .unwrap_or_else(|| executor.model.clone());
+            lines.push(format!(
+                "{:<10} {} runs {model} · effort {} · tools {} · prompt cache {} · stops after {}s",
+                "executor",
+                executor.agent.agent().word(),
+                executor.effort.as_deref().unwrap_or("default"),
+                executor.tools.as_deref().unwrap_or("default"),
+                executor.prompt_cache_ttl.as_deref().unwrap_or("default"),
+                delegate_door::deadline().as_secs(),
+            ));
+            lines.push(format!(
+                "{:<10} {} ({}), sha256 {}",
+                "policy",
+                coder_one::terminal::POLICY_FILE,
+                policy.name.as_deref().unwrap_or("unnamed"),
+                policy.digest(),
+            ));
+        }
     }
+    lines.push(format!(
+        "{:<10} {}",
+        "capacity",
+        settings.book.join(coder::task::capacity::FILE).display()
+    ));
 
     let (jev, source) = delegate_door::jev_from(&delegate_door::env_value);
     lines.push(match jev {
@@ -168,42 +192,10 @@ fn report() -> (Vec<String>, bool) {
     (lines, starts)
 }
 
-/// The loop a Microluna manifest runs, in words.
-fn loop_words(bounds: &coder_one::micro::Policy) -> String {
-    match &bounds.lean {
-        Some(lean) if bounds.mode == coder_one::micro::Mode::Requirements => format!(
-            "lean loop · up to {} work sessions{}",
-            lean.sessions,
-            if lean.self_check { " and a review" } else { "" }
-        ),
-        _ => format!(
-            "{} mode · up to {} sessions, {} per group of requirements",
-            bounds.mode.word(),
-            bounds.max_sessions,
-            bounds.max_attempts
-        ),
-    }
-}
-
-/// One line naming a Microluna manifest, its digest, and its loop, and
-/// why the operator's choice was set aside, when it was.
-fn policy_line(label: &str, selected: &coder_one::terminal::Selected) -> String {
-    let mut line = format!(
-        "{label:<10} {} · {}",
-        selected.line(),
-        loop_words(&selected.bounds())
-    );
-    if let Some(why) = &selected.refused {
-        line.push_str(" · ");
-        line.push_str(why);
-    }
-    line
-}
-
-/// Where Microluna's Codex login stands: its path and the hours its
-/// access token has left, or why it can't be used. It reads the login and
-/// never prints a token.
-fn microluna_state() -> String {
+/// Where the Codex login stands: its path and the hours its access token
+/// has left, or why it can't be used. It reads the login and never prints
+/// a token.
+fn codex_state() -> String {
     match delegate_door::codex_login(&delegate_door::env_value) {
         Ok(login) => {
             let now = std::time::SystemTime::now()
@@ -213,10 +205,7 @@ fn microluna_state() -> String {
                 || "token expiry unknown".to_string(),
                 |hours| format!("access token {hours:.1} hours left"),
             );
-            format!(
-                "runs in this process, Codex login at {} · {left}",
-                login.path.display()
-            )
+            format!("login at {} · {left}", login.path.display())
         }
         Err(why) => format!("unavailable: {why}"),
     }

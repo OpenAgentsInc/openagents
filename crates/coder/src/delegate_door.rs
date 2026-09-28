@@ -1,10 +1,17 @@
-//! The delegate door: a turn answered by Claude Code, Codex, or Microluna
-//! from a Jev briefing, with the Open Responses door as the fallback.
+//! The delegate door: a turn answered by Microcoder in this process, or by
+//! Claude Code or Codex from a Jev briefing, with the Open Responses door
+//! as the fallback.
 //!
-//! Terminal-Bench measured a Jev probe battery and a strong executor
-//! beating a model exploring on its own, so Coder Terminal answers the
-//! same way when this machine has an executor to run. One turn is four
-//! steps, all of them Coder One's library rather than a second copy here:
+//! Microcoder ([`microcoder`]) is the simple loop: Jev judges the state,
+//! one structured model call returns the next commands, and they run in
+//! the working directory inside a `coder-boundary` boundary. It generates
+//! through the first connected provider with capacity (the Codex login,
+//! then Claude Code's login), reading the capacity book the auto-start
+//! policy reads, and fails over to the next one when a provider refuses
+//! for a usage or rate limit during the turn.
+//!
+//! A turn delegated to Claude Code or Codex CLI is four steps, all of them
+//! Coder One's library rather than a second copy here:
 //!
 //! 1. The host runs the read-only probe battery in the working directory.
 //! 2. Jev judges the probes and candidate files.
@@ -18,12 +25,14 @@
 //! [`choose`] decides, from [`MODE_VAR`], [`AGENT_VAR`], the doors the
 //! environment names explicitly, and the targets this machine has:
 //!
-//! - `CODER_DELEGATE=auto`, the default, delegates to Microluna when the
-//!   Codex login (`~/.codex/auth.json`) has more than ten minutes left on
-//!   its access token; Microluna runs in this process, so nothing needs
-//!   installing. Without a usable login it delegates to an installed and
-//!   authenticated `claude`, then `codex`, and falls back to the door
-//!   [`Door::from_env`] builds when none is available, saying why.
+//! - `CODER_DELEGATE=auto`, the default, delegates to Microcoder when a
+//!   provider it can use is connected and has capacity; Microcoder runs in
+//!   this process, so nothing needs installing. Otherwise it delegates to
+//!   an installed and authenticated `claude`, then `codex`, when its login
+//!   has capacity, and falls back to the door [`Door::from_env`] builds
+//!   when none is available, saying why. When that fallback would be the
+//!   stub and a target was skipped for capacity, every turn ends with one
+//!   sentence naming each provider and when it resets.
 //! - `CODER_DELEGATE=always` delegates or refuses to start.
 //! - `CODER_DELEGATE=off` never delegates.
 //!
@@ -43,6 +52,8 @@
 //! `coder-worker` builds its door with [`Door::from_env`] and never
 //! reaches this module.
 
+pub mod microcoder;
+
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::Mutex;
@@ -54,8 +65,10 @@ use coder_one::stream::{Event as StreamEvent, Kind};
 use coder_one::terminal::{self, Progress};
 use serde_json::Value;
 
-use crate::generate::{Door, Generate, GenerateError, Message, Meta, Role, Usage};
+use crate::generate::{Door, Generate, GenerateError, Message, Meta, Role, StubGenerate, Usage};
 use crate::shell::{Outcome, Proposal, Status};
+use crate::task::capacity::{self, Connection, Provider, Refusal};
+use microcoder::ProviderState;
 
 /// The variable that turns delegation on, off, or on unconditionally:
 /// `auto`, `always`, or `off`.
@@ -65,11 +78,12 @@ use crate::shell::{Outcome, Proposal, Status};
 /// value is none of those three words. See [`crate::agent::DELEGATE_VAR`].
 pub const MODE_VAR: &str = "CODER_DELEGATE";
 
-/// The variable that names the target: `claude-code`, `codex`, or
-/// `microluna`.
+/// The variable that names the target: `microcoder`, `claude-code`, or
+/// `codex`. `microluna` still names Microcoder, which replaced it.
 pub const AGENT_VAR: &str = "CODER_DELEGATE_AGENT";
 
-/// The variable that names the target's model.
+/// The variable that names the target's model. For Microcoder it names
+/// the Codex model.
 pub const MODEL_VAR: &str = "CODER_DELEGATE_MODEL";
 
 /// What this door's name is in a trace's session header.
@@ -116,72 +130,206 @@ impl Mode {
     }
 }
 
+/// An executor a turn may be delegated to.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Agent {
+    /// The Microcoder loop, in this process.
+    Microcoder,
+    /// An installed CLI, from a Coder One briefing.
+    Cli(Cli),
+}
+
+impl Agent {
+    /// The executor `text` names.
+    ///
+    /// # Errors
+    ///
+    /// A sentence when it names none.
+    pub fn parse(text: &str) -> Result<Self, String> {
+        match text.trim().to_ascii_lowercase().as_str() {
+            // Microcoder replaced Microluna on 2026-09-28.
+            "microcoder" | "microluna" => Ok(Agent::Microcoder),
+            other => match Cli::parse(other)? {
+                Cli::Microluna => Ok(Agent::Microcoder),
+                cli => Ok(Agent::Cli(cli)),
+            },
+        }
+    }
+
+    /// The executor's word.
+    #[must_use]
+    pub fn word(self) -> &'static str {
+        match self {
+            Agent::Microcoder => microcoder::WORD,
+            Agent::Cli(cli) => cli.word(),
+        }
+    }
+
+    /// Whether it is an installed CLI rather than this process.
+    #[must_use]
+    pub fn is_cli(self) -> bool {
+        matches!(self, Agent::Cli(_))
+    }
+
+    /// The provider whose capacity a CLI spends: Claude Code spends the
+    /// Claude login, Codex CLI the Codex login.
+    #[must_use]
+    pub fn provider(self) -> Option<Provider> {
+        match self {
+            Agent::Cli(Cli::ClaudeCode) => Some(Provider::Claude),
+            Agent::Cli(Cli::Codex) => Some(Provider::Codex),
+            _ => None,
+        }
+    }
+}
+
 /// One executor this machine might delegate to, and what it has.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Target {
     /// Which executor.
-    pub agent: Cli,
-    /// Where its binary is, when it is installed. Microluna runs in this
+    pub agent: Agent,
+    /// Where its binary is, when it is installed. Microcoder runs in this
     /// process and has none.
     pub binary: Option<PathBuf>,
-    /// Where its credential comes from, by name.
+    /// Where its credential comes from, by name. Microcoder's providers
+    /// say where theirs stand instead.
     pub credential: Credential,
-    /// Why a credential that was found can't carry a turn, such as a Codex
-    /// access token about to expire.
+    /// Why a credential that was found can't carry a turn, such as a
+    /// login out of its usage limit.
     pub problem: Option<String>,
+    /// The refusal in the capacity book that keeps a CLI's login from
+    /// work, when one holds.
+    pub refusal: Option<Refusal>,
+    /// Microcoder's providers in preference order, and where each stands.
+    /// Empty for a CLI.
+    pub providers: Vec<ProviderState>,
 }
 
 impl Target {
-    /// What `env` says about `agent`: its binary and its credential.
-    pub fn find(agent: Cli, env: impl Fn(&str) -> Option<String>) -> Self {
+    /// What `env` says about the CLI `agent`: its binary, its credential,
+    /// and whether its login has capacity in `book` at `now`.
+    pub fn find(
+        agent: Cli,
+        env: impl Fn(&str) -> Option<String>,
+        book: &capacity::Book,
+        now: u64,
+    ) -> Self {
         let (binary, credential) = coder_one::delegate::resolve(agent, &env);
-        let problem = match (agent, credential) {
-            (Cli::Microluna, Credential::CodexAuthFile) => codex_login(&env).err(),
-            _ => None,
-        };
+        let agent = Agent::Cli(agent);
+        let refusal = agent
+            .provider()
+            .and_then(|provider| book.blocking(provider, now))
+            .cloned();
         Target {
             agent,
             binary,
             credential,
-            problem,
+            problem: refusal
+                .as_ref()
+                .map(|refusal| format!("its login {}", microcoder::blocked(refusal))),
+            refusal,
+            providers: Vec::new(),
         }
     }
 
-    /// Whether a turn could run on it: installed, or in this process, and
-    /// authenticated with a credential that can be used.
+    /// Microcoder, over `providers`.
+    #[must_use]
+    pub fn microcoder(providers: Vec<ProviderState>) -> Self {
+        Target {
+            agent: Agent::Microcoder,
+            binary: None,
+            credential: Credential::Missing,
+            problem: None,
+            refusal: None,
+            providers,
+        }
+    }
+
+    /// The provider Microcoder starts on: the first connected one with
+    /// capacity.
+    #[must_use]
+    pub fn provider(&self) -> Option<&ProviderState> {
+        self.providers.iter().find(|state| state.usable())
+    }
+
+    /// Whether a turn could run on it: Microcoder with a provider it can
+    /// start on, or a CLI installed and authenticated with a login that
+    /// has capacity.
     #[must_use]
     pub fn available(&self) -> bool {
-        (self.binary.is_some() || !self.agent.is_cli())
-            && self.credential != Credential::Missing
-            && self.problem.is_none()
+        match self.agent {
+            Agent::Microcoder => self.provider().is_some(),
+            Agent::Cli(_) => {
+                self.binary.is_some()
+                    && self.credential != Credential::Missing
+                    && self.problem.is_none()
+            }
+        }
+    }
+
+    /// Whether it was passed over only for capacity: a connected
+    /// provider, or an installed and authenticated CLI, whose login is out
+    /// of its limit.
+    #[must_use]
+    pub fn out_of_capacity(&self) -> bool {
+        match self.agent {
+            Agent::Microcoder => {
+                self.provider().is_none()
+                    && self
+                        .providers
+                        .iter()
+                        .any(|state| state.connection.is_connected() && state.refusal.is_some())
+            }
+            Agent::Cli(_) => {
+                self.binary.is_some()
+                    && self.credential != Credential::Missing
+                    && self.refusal.is_some()
+            }
+        }
     }
 
     /// One sentence on where it stands.
     #[must_use]
     pub fn describe(&self) -> String {
-        if !self.agent.is_cli() {
-            return match (self.credential, &self.problem) {
-                (Credential::Missing, _) => {
-                    format!("{} has no Codex login", self.agent.word())
+        if self.agent == Agent::Microcoder {
+            let every = || {
+                self.providers
+                    .iter()
+                    .map(ProviderState::describe)
+                    .collect::<Vec<_>>()
+                    .join("; ")
+            };
+            return match self.provider() {
+                Some(state) => {
+                    let skipped: Vec<String> = self
+                        .providers
+                        .iter()
+                        .take_while(|other| other.provider != state.provider)
+                        .map(|other| format!("{} because {}", other.provider, other.describe()))
+                        .collect();
+                    format!(
+                        "microcoder runs in this process on {} ({}){}",
+                        state.provider,
+                        state.model,
+                        if skipped.is_empty() {
+                            String::new()
+                        } else {
+                            format!("; it skips {}", skipped.join(" and "))
+                        }
+                    )
                 }
-                (_, Some(problem)) => {
-                    format!("{} can't use the Codex login: {problem}", self.agent.word())
-                }
-                (credential, None) => format!(
-                    "{} runs in this process on the Codex login ({})",
-                    self.agent.word(),
-                    credential.word()
-                ),
+                None => format!("microcoder has no provider to use: {}", every()),
             };
         }
-        match (&self.binary, self.credential) {
-            (None, _) => format!("{} is not installed", self.agent.word()),
-            (Some(path), Credential::Missing) => format!(
+        match (&self.binary, self.credential, &self.problem) {
+            (None, _, _) => format!("{} is not installed", self.agent.word()),
+            (Some(path), Credential::Missing, _) => format!(
                 "{} is installed at {} and has no credential",
                 self.agent.word(),
                 path.display()
             ),
-            (Some(path), credential) => format!(
+            (Some(_), _, Some(problem)) => format!("{}: {problem}", self.agent.word()),
+            (Some(path), credential, None) => format!(
                 "{} is installed at {} and authenticated ({})",
                 self.agent.word(),
                 path.display(),
@@ -191,13 +339,35 @@ impl Target {
     }
 }
 
+/// The directory of the capacity book: the task store,
+/// `~/.openagents/tasks`, where the auto-start policy and repository runs
+/// keep it.
+#[must_use]
+pub fn capacity_dir() -> Option<PathBuf> {
+    std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".openagents/tasks"))
+}
+
 /// The targets this machine has, in the order `auto` prefers them:
-/// Microluna on the Codex login, then Claude Code, then Codex CLI.
-pub fn targets(env: impl Fn(&str) -> Option<String>) -> Vec<Target> {
-    [Cli::Microluna, Cli::ClaudeCode, Cli::Codex]
-        .into_iter()
-        .map(|agent| Target::find(agent, &env))
-        .collect()
+/// Microcoder, then Claude Code, then Codex CLI. `model` names
+/// Microcoder's Codex model; `book` is the capacity book's directory,
+/// and `probe` says whether a provider has a usable login.
+pub fn targets(
+    env: impl Fn(&str) -> Option<String>,
+    model: Option<&str>,
+    book: &Path,
+    probe: &dyn Fn(Provider) -> Connection,
+    now: u64,
+) -> Vec<Target> {
+    let recorded = capacity::Book::load(book);
+    let mut found = vec![Target::microcoder(microcoder::providers(
+        model, book, probe, now,
+    ))];
+    found.extend(
+        [Cli::ClaudeCode, Cli::Codex]
+            .into_iter()
+            .map(|agent| Target::find(agent, &env, &recorded, now)),
+    );
+    found
 }
 
 /// What the Codex login says about itself, without its secrets.
@@ -219,9 +389,9 @@ impl CodexLogin {
     }
 }
 
-/// Reads the Codex login Microluna runs on, only to report on it: where
-/// it is and when its access token expires. It never refreshes the login
-/// and never returns a token.
+/// Reads the Codex login Microcoder generates through, only to report on
+/// it: where it is and when its access token expires. It never refreshes
+/// the login and never returns a token.
 ///
 /// # Errors
 ///
@@ -269,7 +439,7 @@ pub struct Choice {
 /// available, or the environment also names another door.
 pub fn choose(
     mode: Mode,
-    preferred: Option<Cli>,
+    preferred: Option<Agent>,
     explicit: Option<&str>,
     targets: &[Target],
 ) -> Result<Choice, String> {
@@ -324,36 +494,59 @@ pub fn choose(
     }
 }
 
+/// The sentence a session with no model to answer ends every turn with:
+/// each target and where it stands, reset times included.
+#[must_use]
+pub fn no_capacity(targets: &[Target]) -> String {
+    let parts: Vec<String> = targets.iter().map(Target::describe).collect();
+    format!(
+        "No model can answer now: {}. Set CODER_DOOR_KEY to answer through the Open Responses door instead.",
+        parts.join("; ")
+    )
+}
+
 /// What the environment says about delegation, read once.
 #[derive(Clone, Debug)]
 pub struct Settings {
     /// [`MODE_VAR`], read.
     pub mode: Mode,
     /// [`AGENT_VAR`], when it names a target.
-    pub preferred: Option<Cli>,
+    pub preferred: Option<Agent>,
     /// [`MODEL_VAR`], when it names a model.
     pub model: Option<String>,
     /// The door the environment names explicitly, in a sentence.
     pub explicit: Option<String>,
+    /// The capacity book's directory.
+    pub book: PathBuf,
     /// The targets this machine has.
     pub targets: Vec<Target>,
 }
 
 impl Settings {
-    /// Reads the process environment.
+    /// Reads the process environment, the logins this host has, and the
+    /// capacity book.
     ///
     /// # Errors
     ///
-    /// Returns a sentence when [`AGENT_VAR`] names neither target.
+    /// Returns a sentence when [`AGENT_VAR`] names no target.
     pub fn read() -> Result<Self, String> {
+        let model = env_value(MODEL_VAR);
+        let book = capacity_dir().unwrap_or_else(std::env::temp_dir);
         Ok(Settings {
             mode: Mode::read(env_value(MODE_VAR).as_deref()),
             preferred: env_value(AGENT_VAR)
-                .map(|text| Cli::parse(&text).map_err(|why| format!("{AGENT_VAR}: {why}")))
+                .map(|text| Agent::parse(&text).map_err(|why| format!("{AGENT_VAR}: {why}")))
                 .transpose()?,
-            model: env_value(MODEL_VAR),
             explicit: explicit_door(&env_value),
-            targets: targets(env_value),
+            targets: targets(
+                env_value,
+                model.as_deref(),
+                &book,
+                &capacity::probe,
+                microcoder::now(),
+            ),
+            model,
+            book,
         })
     }
 
@@ -392,12 +585,23 @@ pub fn open() -> Result<(Door, String), String> {
     let settings = Settings::read()?;
     let choice = settings.choose()?;
     match choice.chosen {
-        Chosen::Fallback => Ok((Door::from_env()?, choice.reason)),
+        Chosen::Fallback => {
+            let door = Door::from_env()?;
+            if matches!(door, Door::Stub(_))
+                && settings.mode != Mode::Off
+                && settings.targets.iter().any(Target::out_of_capacity)
+            {
+                let sentence = no_capacity(&settings.targets);
+                return Ok((Door::Stub(StubGenerate::refusing(sentence)), choice.reason));
+            }
+            Ok((door, choice.reason))
+        }
         Chosen::Delegate(target) => {
             let workdir = std::env::current_dir()
                 .map_err(|error| format!("the working directory: {error}"))?;
             let (jev, jev_source) = jev_from(&env_value);
-            let door = DelegateDoor::new(target, settings.model, workdir, jev, jev_source);
+            let door = DelegateDoor::new(target, settings.model, workdir, jev, jev_source)
+                .reading_capacity_in(settings.book);
             Ok((Door::Delegate(std::sync::Arc::new(door)), choice.reason))
         }
     }
@@ -451,11 +655,16 @@ pub struct DelegateDoor {
     workdir: PathBuf,
     jev: Option<jev::Client>,
     jev_source: String,
-    /// The executor's session, which the next turn resumes. Microluna
+    /// The executor's session, which the next turn resumes. Microcoder
     /// never has one: each turn rebuilds its context.
     session: Mutex<Option<String>>,
-    /// Scripted Microluna replies, for a test.
-    script: Option<Vec<microluna::Reply>>,
+    /// Scripted Microcoder replies per provider, for a test.
+    script: Option<Vec<(Provider, microcoder::Script)>>,
+    /// The capacity book's directory, which Microcoder reads before each
+    /// turn and writes when a provider refuses.
+    book: PathBuf,
+    /// The clock Microcoder's failover reads, in Unix seconds.
+    now: fn() -> u64,
     /// Turns this door has answered, which numbers their artifacts.
     turns: AtomicUsize,
     /// When the door opened, which names the artifacts directory.
@@ -521,10 +730,18 @@ impl DelegateDoor {
         jev: Option<jev::Client>,
         jev_source: String,
     ) -> Self {
-        let resolved = model.clone().unwrap_or_else(|| match target.agent {
-            Cli::ClaudeCode => terminal::policy().policy.executor.model,
-            Cli::Codex | Cli::Microluna => target.agent.default_model().to_string(),
-        });
+        let resolved = match target.agent {
+            Agent::Microcoder => target.provider().or(target.providers.first()).map_or_else(
+                || microcoder::CODEX_MODEL.to_string(),
+                |state| state.model.clone(),
+            ),
+            Agent::Cli(Cli::ClaudeCode) => model
+                .clone()
+                .unwrap_or_else(|| terminal::policy().policy.executor.model),
+            Agent::Cli(cli) => model
+                .clone()
+                .unwrap_or_else(|| cli.default_model().to_string()),
+        };
         DelegateDoor {
             label: format!("{}/{resolved}", target.agent.word()),
             target,
@@ -535,10 +752,26 @@ impl DelegateDoor {
             jev_source,
             session: Mutex::new(None),
             script: None,
+            book: capacity_dir().unwrap_or_else(std::env::temp_dir),
+            now: microcoder::now,
             turns: AtomicUsize::new(0),
             opened: atif::now_ms(),
             artifacts: None,
         }
+    }
+
+    /// The same door, reading and writing the capacity book in `dir`.
+    #[must_use]
+    pub fn reading_capacity_in(mut self, dir: PathBuf) -> Self {
+        self.book = dir;
+        self
+    }
+
+    /// The same door, with Microcoder's clock at `now`. For tests.
+    #[must_use]
+    pub fn clocked(mut self, now: fn() -> u64) -> Self {
+        self.now = now;
+        self
     }
 
     /// The same door, writing each turn's briefing and stream under `dir`.
@@ -548,11 +781,21 @@ impl DelegateDoor {
         self
     }
 
-    /// The same door, with Microluna answering from `replies` in place of
-    /// the Codex login. For tests.
+    /// The same door, with each Microcoder provider answering from its
+    /// scripted replies in place of a model call. For tests.
     #[must_use]
-    pub fn scripting(mut self, replies: Vec<microluna::Reply>) -> Self {
-        self.script = Some(replies);
+    pub fn scripting(mut self, replies: Vec<(Provider, Vec<microcoder::Scripted>)>) -> Self {
+        self.script = Some(
+            replies
+                .into_iter()
+                .map(|(provider, replies)| {
+                    (
+                        provider,
+                        std::sync::Arc::new(std::sync::Mutex::new(replies.into())),
+                    )
+                })
+                .collect(),
+        );
         self
     }
 
@@ -609,9 +852,14 @@ impl DelegateDoor {
         on: &mut (dyn FnMut(Update) + Send),
     ) -> Result<Delegated, GenerateError> {
         let turn = self.turns.fetch_add(1, Ordering::SeqCst) + 1;
-        // A CLI resumes its session. Microluna rebuilds the context from
-        // the conversation instead, so it always reads `earlier`.
-        let resume = self.session().filter(|_| self.target.agent.is_cli());
+        let cli = match self.target.agent {
+            Agent::Microcoder => {
+                return self.microcoder(request, earlier, read_only, on).await;
+            }
+            Agent::Cli(cli) => cli,
+        };
+        // A CLI resumes its session.
+        let resume = self.session();
         let request = terminal::Request {
             workdir: self.workdir.clone(),
             request: request.to_string(),
@@ -623,13 +871,13 @@ impl DelegateDoor {
             resume,
             read_only,
             clarify,
-            agent: self.target.agent,
+            agent: cli,
             model: self.named_model.clone(),
             binary: self.target.binary.clone(),
             credential: self.target.credential,
             jev: self.jev.clone(),
             artifacts: self.artifacts(turn),
-            script: self.script.clone(),
+            script: None,
             // The issue flow works in a clone of its own and opens a draft
             // pull request, so the operator's permit governs it, not this
             // turn's route.
@@ -704,6 +952,104 @@ impl DelegateDoor {
             "the delegation thread ended without an answer".to_string(),
         ))
     }
+}
+
+impl DelegateDoor {
+    /// One turn through the Microcoder loop, on a thread of its own: the
+    /// loop's generators and failover are not `Send`, so it runs on a
+    /// current-thread runtime and its updates come back over a channel.
+    async fn microcoder(
+        &self,
+        request: &str,
+        earlier: &str,
+        read_only: bool,
+        on: &mut (dyn FnMut(Update) + Send),
+    ) -> Result<Delegated, GenerateError> {
+        // The book is read again at each turn, so a refusal an earlier
+        // turn or another process recorded is honored.
+        let providers = microcoder::providers(
+            self.named_model.as_deref(),
+            &self.book,
+            &|provider| {
+                self.target
+                    .providers
+                    .iter()
+                    .find(|state| state.provider == provider)
+                    .map_or_else(
+                        || Connection::Missing("not probed".to_string()),
+                        |state| state.connection.clone(),
+                    )
+            },
+            (self.now)(),
+        );
+        let turn = microcoder::Turn {
+            request: request.to_string(),
+            earlier: earlier.to_string(),
+            read_only,
+            workdir: self.workdir.clone(),
+            jev: self.jev.clone(),
+            jev_missing: format!("no Jev key: {}", self.jev_source),
+            book: self.book.clone(),
+            providers,
+            script: self.script.clone(),
+            max_seconds: deadline().as_secs(),
+            now: self.now,
+        };
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<FromLoop>();
+        let spawned = std::thread::Builder::new()
+            .name("coder-microcoder".to_string())
+            .spawn(move || {
+                let runtime = match tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                {
+                    Ok(runtime) => runtime,
+                    Err(error) => {
+                        let _ = tx.send(FromLoop::Failed(error.to_string()));
+                        return;
+                    }
+                };
+                let progress = tx.clone();
+                let done = runtime.block_on(microcoder::answer(
+                    turn,
+                    Rc::new(move |update| {
+                        let _ = progress.send(FromLoop::Update(update));
+                    }),
+                ));
+                let _ = tx.send(FromLoop::Done(Box::new(done)));
+            });
+        if let Err(error) = spawned {
+            return Err(GenerateError::Stream(format!(
+                "could not start the Microcoder thread: {error}"
+            )));
+        }
+        while let Some(message) = rx.recv().await {
+            match message {
+                FromLoop::Update(update) => on(update),
+                FromLoop::Failed(why) => {
+                    return Err(GenerateError::Stream(format!(
+                        "the Microcoder thread could not run: {why}"
+                    )));
+                }
+                FromLoop::Done(done) => {
+                    if done.failure.is_none() && !done.text.is_empty() {
+                        on(Update::Text(done.text.clone()));
+                    }
+                    return Ok(*done);
+                }
+            }
+        }
+        Err(GenerateError::Stream(
+            "the Microcoder thread ended without an answer".to_string(),
+        ))
+    }
+}
+
+/// What the Microcoder thread sends back.
+enum FromLoop {
+    Update(Update),
+    Failed(String),
+    Done(Box<Delegated>),
 }
 
 /// What the worker thread sends back.
@@ -915,88 +1261,174 @@ pub fn boundary_available(workdir: &Path) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use microcoder_loop::models::{Ask, NextAction};
 
     fn target(agent: Cli, installed: bool, credential: Credential) -> Target {
         Target {
-            agent,
+            agent: Agent::Cli(agent),
             binary: installed.then(|| PathBuf::from(format!("/bin/{}", agent.program()))),
             credential,
             problem: None,
+            refusal: None,
+            providers: Vec::new(),
         }
     }
 
-    /// Microluna on a Codex login, with `problem` when it can't be used,
-    /// ahead of both CLIs as [`targets`] orders them.
-    fn all(login: Option<Option<&str>>, claude: bool, codex: bool) -> Vec<Target> {
-        let mut targets = vec![Target {
-            agent: Cli::Microluna,
-            binary: None,
-            credential: if login.is_some() {
-                Credential::CodexAuthFile
+    /// A Codex usage-limit refusal observed at 1000 that resets at 5000.
+    fn codex_refusal() -> Refusal {
+        Refusal::new(
+            Provider::Codex,
+            capacity::Kind::UsageLimit,
+            1_000,
+            Some(5_000),
+        )
+    }
+
+    /// Microcoder's providers: Codex, `refused` when its book entry holds,
+    /// and Claude, connected or not.
+    fn providers(codex: bool, refused: bool, claude: bool) -> Vec<ProviderState> {
+        let connection = |on: bool| {
+            if on {
+                Connection::Connected
             } else {
-                Credential::Missing
+                Connection::Missing("no login".to_string())
+            }
+        };
+        vec![
+            ProviderState {
+                provider: Provider::Codex,
+                model: microcoder::CODEX_MODEL.to_string(),
+                connection: connection(codex),
+                refusal: refused.then(codex_refusal),
             },
-            problem: login.flatten().map(str::to_string),
-        }];
+            ProviderState {
+                provider: Provider::Claude,
+                model: microcoder::CLAUDE_MODEL.to_string(),
+                connection: connection(claude),
+                refusal: None,
+            },
+        ]
+    }
+
+    /// Microcoder over `providers`, ahead of both CLIs as [`targets`]
+    /// orders them.
+    fn all(providers: Vec<ProviderState>, claude: bool, codex: bool) -> Vec<Target> {
+        let mut targets = vec![Target::microcoder(providers)];
         targets.extend(both(claude, codex));
         targets
     }
 
     #[test]
-    fn auto_prefers_microluna_on_a_usable_codex_login() {
+    fn auto_prefers_microcoder_on_a_provider_with_capacity() {
         let chosen = |targets: &[Target]| choose(Mode::Auto, None, None, targets).unwrap();
-        let usable = all(Some(None), true, true);
+        let usable = all(providers(true, false, true), true, true);
         let choice = chosen(&usable);
         assert_eq!(choice.chosen, Chosen::Delegate(usable[0].clone()));
+        assert_eq!(
+            choice.reason,
+            "microcoder runs in this process on codex (gpt-6-luna)"
+        );
+        // Codex out of its limit: Microcoder still answers, on Claude, and
+        // says why it skipped Codex.
+        let refused = all(providers(true, true, true), true, true);
+        let choice = chosen(&refused);
+        assert_eq!(choice.chosen, Chosen::Delegate(refused[0].clone()));
         assert!(
-            choice
-                .reason
-                .contains("runs in this process on the Codex login"),
+            choice.reason.contains("on claude (opus); it skips codex because the Codex login is out of its usage limit until 1970-01-01 01:23 UTC"),
             "{}",
             choice.reason
         );
-        // A token about to expire, or no login at all, falls through to
-        // Claude Code, then Codex, then the Open Responses door.
-        let expiring = all(
-            Some(Some("the Codex access token expires in 60 s")),
-            true,
-            true,
-        );
-        assert_eq!(
-            chosen(&expiring).chosen,
-            Chosen::Delegate(expiring[1].clone())
-        );
-        let none = all(None, false, true);
-        assert_eq!(chosen(&none).chosen, Chosen::Delegate(none[2].clone()));
-        let fallback = chosen(&all(Some(Some("expired")), false, false));
+        // No provider it can use falls through to Claude Code, then Codex,
+        // then the Open Responses door.
+        let none = all(providers(false, false, false), true, true);
+        assert_eq!(chosen(&none).chosen, Chosen::Delegate(none[1].clone()));
+        let fallback = chosen(&all(providers(true, true, false), false, false));
         assert_eq!(fallback.chosen, Chosen::Fallback);
         assert!(
-            fallback
-                .reason
-                .contains("microluna can't use the Codex login: expired"),
+            fallback.reason.contains(
+                "microcoder has no provider to use: the Codex login is out of its usage limit"
+            ),
             "{}",
             fallback.reason
         );
         // The operator's named agent still outranks the default.
-        let named = choose(Mode::Auto, Some(Cli::ClaudeCode), None, &usable).unwrap();
+        let named = choose(Mode::Auto, Some(Agent::Cli(Cli::ClaudeCode)), None, &usable).unwrap();
         assert_eq!(named.chosen, Chosen::Delegate(usable[1].clone()));
     }
 
     #[test]
-    fn a_microluna_target_needs_no_binary_but_a_usable_login() {
-        let [microluna, ..] = &all(Some(None), false, false)[..] else {
-            unreachable!()
-        };
-        assert!(microluna.available());
-        let [expiring, ..] = &all(Some(Some("expiring")), false, false)[..] else {
-            unreachable!()
-        };
-        assert!(!expiring.available());
-        let [missing, ..] = &all(None, false, false)[..] else {
-            unreachable!()
-        };
-        assert!(!missing.available());
-        assert_eq!(missing.describe(), "microluna has no Codex login");
+    fn the_capacity_book_skips_a_cli_whose_login_is_out_of_its_limit() {
+        let dir = tempfile::tempdir().unwrap();
+        capacity::record(dir.path(), codex_refusal()).unwrap();
+        let book = capacity::Book::load(dir.path());
+        let env = |_: &str| None;
+        let codex = Target::find(Cli::Codex, env, &book, 2_000);
+        assert!(
+            codex
+                .problem
+                .as_deref()
+                .is_some_and(|why| why.contains("usage limit"))
+        );
+        assert!(!codex.available());
+        let claude = Target::find(Cli::ClaudeCode, env, &book, 2_000);
+        assert_eq!(claude.refusal, None);
+        // After the reset, the book no longer holds it.
+        assert_eq!(Target::find(Cli::Codex, env, &book, 5_000).refusal, None);
+        // Microcoder reads the same book for its providers.
+        let connected = |_: Provider| Connection::Connected;
+        let found = targets(env, None, dir.path(), &connected, 2_000);
+        assert_eq!(found[0].agent, Agent::Microcoder);
+        assert_eq!(found[0].providers[0].refusal, Some(codex_refusal()));
+        assert_eq!(
+            found[0].provider().map(|state| state.provider),
+            Some(Provider::Claude)
+        );
+    }
+
+    #[test]
+    fn with_nothing_left_the_sentence_names_each_target_and_its_reset() {
+        let mut claude = target(Cli::ClaudeCode, false, Credential::Missing);
+        claude.problem = None;
+        let mut codex = target(Cli::Codex, true, Credential::CodexAuthFile);
+        codex.refusal = Some(codex_refusal());
+        codex.problem = Some(format!(
+            "its login {}",
+            microcoder::blocked(&codex_refusal())
+        ));
+        let targets = vec![
+            Target::microcoder(providers(true, true, false)),
+            claude,
+            codex,
+        ];
+        assert!(targets[0].out_of_capacity());
+        assert!(targets[2].out_of_capacity());
+        let sentence = no_capacity(&targets);
+        assert!(
+            sentence.starts_with("No model can answer now: "),
+            "{sentence}"
+        );
+        assert!(
+            sentence
+                .contains("the Codex login is out of its usage limit until 1970-01-01 01:23 UTC"),
+            "{sentence}"
+        );
+        assert!(
+            sentence.contains("claude-code is not installed"),
+            "{sentence}"
+        );
+        assert!(
+            sentence
+                .contains("codex: its login is out of its usage limit until 1970-01-01 01:23 UTC"),
+            "{sentence}"
+        );
+    }
+
+    #[test]
+    fn microcoder_and_microluna_both_name_microcoder() {
+        assert_eq!(Agent::parse("microcoder"), Ok(Agent::Microcoder));
+        assert_eq!(Agent::parse("microluna"), Ok(Agent::Microcoder));
+        assert_eq!(Agent::parse("claude-code"), Ok(Agent::Cli(Cli::ClaudeCode)));
+        assert!(Agent::parse("devin").is_err());
     }
 
     #[test]
@@ -1086,10 +1518,22 @@ mod tests {
 
     #[test]
     fn the_named_agent_is_the_only_one_considered() {
-        let choice = choose(Mode::Auto, Some(Cli::Codex), None, &both(true, true)).unwrap();
+        let choice = choose(
+            Mode::Auto,
+            Some(Agent::Cli(Cli::Codex)),
+            None,
+            &both(true, true),
+        )
+        .unwrap();
         assert_eq!(choice.chosen, Chosen::Delegate(both(true, true)[1].clone()));
         assert!(choice.reason.contains(AGENT_VAR));
-        let missing = choose(Mode::Auto, Some(Cli::Codex), None, &both(true, false)).unwrap();
+        let missing = choose(
+            Mode::Auto,
+            Some(Agent::Cli(Cli::Codex)),
+            None,
+            &both(true, false),
+        )
+        .unwrap();
         assert_eq!(missing.chosen, Chosen::Fallback);
     }
 
@@ -1204,10 +1648,8 @@ echo "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"num_turn
         }
         let binary = coder_one::adapter::standin::install(&dir.join("bin"), "claude", WRITER);
         let target = Target {
-            agent: Cli::ClaudeCode,
             binary: Some(binary),
-            credential: Credential::CliLogin,
-            problem: None,
+            ..target(Cli::ClaudeCode, true, Credential::CliLogin)
         };
         let door = DelegateDoor::new(target, None, workdir.clone(), None, String::new())
             .writing_under(dir.join("artifacts"));
@@ -1279,49 +1721,80 @@ echo "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"num_turn
         assert_eq!(agent.transcript().len(), 4);
     }
 
-    #[tokio::test]
-    async fn a_microluna_turn_streams_as_shell_events_and_a_follow_up_rebuilds_its_context() {
-        use microluna::fake::call;
-        let dir = tempfile::tempdir().unwrap();
-        let workdir = dir.path().join("work");
+    fn finish(reply: &str) -> NextAction {
+        NextAction {
+            rationale: "answer".to_string(),
+            commands: Vec::new(),
+            view: Vec::new(),
+            freeze_tests: false,
+            expand: Vec::new(),
+            finished: true,
+            reply: reply.to_string(),
+            ask: Ask::None,
+        }
+    }
+
+    fn running(command: &str) -> NextAction {
+        NextAction {
+            finished: false,
+            commands: vec![command.to_string()],
+            ..finish("")
+        }
+    }
+
+    /// The fixed clock the Microcoder tests run at.
+    fn at_two_thousand() -> u64 {
+        2_000
+    }
+
+    /// A Microcoder door over `providers` in a fresh workspace, with the
+    /// capacity book in `dir`, or `None` on a host that cannot enforce a
+    /// boundary.
+    fn microcoder_door(
+        dir: &Path,
+        providers: Vec<ProviderState>,
+        script: Vec<(Provider, Vec<microcoder::Scripted>)>,
+    ) -> Option<(std::sync::Arc<DelegateDoor>, PathBuf)> {
+        let workdir = dir.join("work");
         std::fs::create_dir_all(&workdir).unwrap();
         if let Err(why) = boundary_available(&workdir) {
             eprintln!("skipped: {why}");
-            return;
+            return None;
         }
-        let usage = microluna::TokenUsage {
-            input: 1_000,
-            cached: 0,
-            output: 20,
-            reasoning: 0,
+        let door = DelegateDoor::new(
+            Target::microcoder(providers),
+            None,
+            workdir.clone(),
+            None,
+            String::new(),
+        )
+        .writing_under(dir.join("artifacts"))
+        .reading_capacity_in(dir.join("tasks"))
+        .clocked(at_two_thousand)
+        .scripting(script);
+        Some((std::sync::Arc::new(door), workdir))
+    }
+
+    #[tokio::test]
+    async fn a_microcoder_turn_streams_as_shell_events_and_the_permit_bounds_its_writes() {
+        let dir = tempfile::tempdir().unwrap();
+        let script = vec![(
+            Provider::Codex,
+            vec![
+                Ok(running("printf x > marker")),
+                Ok(finish("Here is the answer.")),
+                Ok(running("printf x > marker")),
+                Ok(finish("Wrote it.")),
+            ],
+        )];
+        let Some((door, workdir)) =
+            microcoder_door(dir.path(), providers(true, false, false), script)
+        else {
+            return;
         };
-        let target = Target {
-            agent: Cli::Microluna,
-            binary: None,
-            credential: Credential::CodexAuthFile,
-            problem: None,
-        };
-        let door = DelegateDoor::new(target, None, workdir.clone(), None, String::new())
-            .writing_under(dir.path().join("artifacts"))
-            .scripting(vec![
-                call(
-                    "c1",
-                    "run_command",
-                    &serde_json::json!({ "command": "printf x > marker", "timeout_seconds": 10 }),
-                    usage,
-                ),
-                call(
-                    "c2",
-                    "finish",
-                    &serde_json::json!({ "status": "done", "summary": "Tried the marker.", "answer": "Here is the answer." }),
-                    usage,
-                ),
-            ]);
-        assert_eq!(door.label(), "microluna/gpt-6-luna");
-        let door = std::sync::Arc::new(door);
+        assert_eq!(door.label(), "microcoder/gpt-6-luna");
         let mut agent =
             crate::agent::Agent::new(None, Door::Delegate(std::sync::Arc::clone(&door)));
-
         let (read, shell, streamed) = turn(
             &mut agent,
             crate::permit::Permit::answering(),
@@ -1332,7 +1805,6 @@ echo "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"num_turn
         assert_eq!(streamed, read.text);
         assert!(!workdir.join("marker").exists(), "a read-only turn wrote");
         assert_eq!(read.commands, 1);
-        assert!(read.cost_usd.is_some_and(|usd| usd > 0.0));
         assert!(
             matches!(
                 &shell[..],
@@ -1341,27 +1813,127 @@ echo "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"num_turn
             ),
             "{shell:?}"
         );
-        assert_eq!(door.session(), None, "Microluna keeps no session to resume");
+        assert_eq!(
+            door.session(),
+            None,
+            "Microcoder keeps no session to resume"
+        );
 
-        let (wrote, shell, _) = turn(
+        let (wrote, _, _) = turn(
             &mut agent,
             crate::permit::Permit::executing(),
             "now write the marker",
         )
         .await;
-        assert_eq!(wrote.text, "Here is the answer.");
+        assert_eq!(wrote.text, "Wrote it.");
         assert!(
             workdir.join("marker").exists(),
             "a permitted turn could not write"
         );
-        assert!(
-            matches!(
-                &shell[..],
-                [crate::shell::ShellEvent::Proposed(_), crate::shell::ShellEvent::Ran(outcome)]
-                    if matches!(outcome.status, Status::Exit(0))
-            ),
-            "{shell:?}"
+    }
+
+    #[tokio::test]
+    async fn a_usage_limit_mid_turn_is_recorded_and_the_turn_finishes_on_the_next_provider() {
+        let dir = tempfile::tempdir().unwrap();
+        let script = vec![
+            (Provider::Codex, vec![Err(codex_refusal())]),
+            (Provider::Claude, vec![Ok(finish("Hello from Claude."))]),
+        ];
+        let Some((door, _)) = microcoder_door(dir.path(), providers(true, false, true), script)
+        else {
+            return;
+        };
+        let done = door
+            .answer("hello", "", true, false, &mut |_| {})
+            .await
+            .unwrap();
+        assert!(done.failure.is_none(), "{:?}", done.failure);
+        assert_eq!(done.text, "Hello from Claude.");
+        assert_eq!(done.model, microcoder::CLAUDE_MODEL);
+        // The refusal is in the book with its reset.
+        let book = capacity::Book::load(&dir.path().join("tasks"));
+        assert_eq!(
+            book.blocking(Provider::Codex, 2_000),
+            Some(&codex_refusal())
         );
+        // The trace holds the switch.
+        let switched = done.steps.iter().any(|step| {
+            serde_json::to_value(step)
+                .unwrap()
+                .to_string()
+                .contains("route_switch")
+        });
+        assert!(switched, "no route_switch step");
+        // The next turn starts on Claude without asking Codex again.
+        let script = vec![(Provider::Claude, vec![Ok(finish("Again."))])];
+        let door = DelegateDoor::new(
+            Target::microcoder(providers(true, false, true)),
+            None,
+            dir.path().join("work"),
+            None,
+            String::new(),
+        )
+        .reading_capacity_in(dir.path().join("tasks"))
+        .clocked(at_two_thousand)
+        .scripting(script);
+        let done = door
+            .answer("hello", "", true, false, &mut |_| {})
+            .await
+            .unwrap();
+        assert_eq!(done.text, "Again.");
+    }
+
+    #[tokio::test]
+    async fn with_every_provider_out_the_turn_ends_with_a_plain_sentence() {
+        let dir = tempfile::tempdir().unwrap();
+        let script = vec![(Provider::Codex, vec![Err(codex_refusal())])];
+        let Some((door, _)) = microcoder_door(dir.path(), providers(true, false, false), script)
+        else {
+            return;
+        };
+        let done = door
+            .answer("hello", "", true, false, &mut |_| {})
+            .await
+            .unwrap();
+        let Some(GenerateError::NoCapacity(sentence)) = &done.failure else {
+            panic!("{:?}", done.failure);
+        };
+        assert!(
+            sentence
+                .contains("the Codex login is out of its usage limit until 1970-01-01 01:23 UTC"),
+            "{sentence}"
+        );
+        assert!(
+            sentence.contains("the Claude Code login can't be used (no login)"),
+            "{sentence}"
+        );
+        assert_eq!(done.failure.as_ref().unwrap().to_string(), *sentence);
+        // A later turn refuses before it asks Jev or a model anything.
+        let done = door
+            .answer("hello", "", true, false, &mut |_| {})
+            .await
+            .unwrap();
+        assert!(matches!(done.failure, Some(GenerateError::NoCapacity(_))));
+        assert_eq!(done.cost_usd, Some(0.0));
+    }
+
+    #[tokio::test]
+    async fn a_session_with_no_model_left_ends_every_turn_with_the_sentence() {
+        let stub = Door::Stub(StubGenerate::refusing("No model can answer now: x."));
+        let mut agent = crate::agent::Agent::new(None, stub);
+        agent.push_user("hello");
+        let error = agent
+            .turn(
+                false,
+                crate::permit::Permit::answering(),
+                &mut |_| {},
+                &mut |_| {},
+                &mut |_| {},
+            )
+            .await
+            .unwrap_err();
+        assert_eq!(error.to_string(), "No model can answer now: x.");
+        assert_eq!(error.cause(), "no_capacity");
     }
 
     #[test]

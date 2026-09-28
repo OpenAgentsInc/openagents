@@ -5,15 +5,17 @@
 //! while next_action isn't finished:
 //!     jev_results = jev(state, user_prompt)
 //!     prompt      = state + user_prompt + jev_results
-//!     next_action = generate(prompt)        # one OpenRouter call, structured
+//!     next_action = generate(prompt)        # one structured model call
 //!     run next_action's commands
 //! ```
 //!
-//! [`run::run`] is the loop. [`models`] holds the two calls a step makes: Jev
-//! through `crates/jev`, and one structured OpenRouter call through
-//! `crates/openrouter`, GPT-6 Luna by default. [`env`] is where commands run.
-//! [`tbench`] runs the loop on a Terminal-Bench 4 task, and [`show`] streams a
-//! run to the terminal. Issues #9666 to #9669 hold the design.
+//! The loop itself lives in `crates/microcoder-loop`, which depends on
+//! nothing from `crates/coder`, so Coder's delegate door runs it too. This
+//! crate re-exports its modules under their old paths ([`run`], [`models`],
+//! [`env`], and the rest) and adds what needs `crates/coder`: the task
+//! owner's [`repository`] adapter, [`tbench`] for Terminal-Bench 4 tasks,
+//! [`show`] to stream a run to the terminal, and the knowledge network.
+//! Issues #9666 to #9669 hold the design.
 //!
 //! With the knowledge base on (`crates/knowledge`, issue #9670), each step's
 //! state also holds the entries Jev judges relevant, and the model can ask
@@ -21,20 +23,16 @@
 //! a Nostr relay and syncs other authors' entries from one (NIP-KB), and
 //! [`xpnet`] publishes quests and awards and derives the XP ledger (NIP-XP).
 
-pub mod claude;
-pub mod door;
-pub mod env;
-pub mod gate;
+pub use microcoder_loop::{
+    MODEL, STRONG_MODEL, capacity, claude, door, env, failover, gate, models, run, state, vertex,
+};
+
 pub mod kbinput;
 pub mod kbnet;
 pub mod kbstudy;
-pub mod models;
 pub mod repository;
-pub mod run;
 pub mod show;
-pub mod state;
 pub mod tbench;
-pub mod vertex;
 pub mod xpnet;
 
 /// How Microcoder takes a steer: at the next turn boundary, confirmed when
@@ -42,12 +40,32 @@ pub mod xpnet;
 /// repository adapter reports this statement in every admission.
 pub use coder::task::adapter::STEERING;
 
-/// The default model, reached through the operator's Codex login.
-pub const MODEL: &str = "gpt-6-luna";
-
-/// The stronger model that writes the acceptance tests when Jev judges a
-/// task hard.
-pub const STRONG_MODEL: &str = "gpt-6-sol";
-
 #[cfg(test)]
-mod tests;
+mod tests {
+    #[test]
+    fn microcoder_states_that_it_steers_only_at_a_turn_boundary() {
+        use coder::task::steering::{
+            Acknowledgment, Emulation, Native, Plan, Refusal, Request, Turn,
+        };
+        assert_eq!(crate::STEERING.adapter, coder::task::adapter::NAME);
+        assert_eq!(crate::STEERING.native, Native::TurnBoundary);
+        assert_eq!(
+            crate::STEERING.acknowledgment,
+            Acknowledgment::NextTurnStart
+        );
+        assert_eq!(
+            crate::STEERING.admit(Turn::Running, Request::Native),
+            Err(Refusal::Unsupported)
+        );
+        // Stopping the turn and continuing with the message runs only when
+        // the caller chose it.
+        assert_eq!(
+            crate::STEERING.emulation,
+            Some(Emulation::CancelAndContinue)
+        );
+        assert_eq!(
+            crate::STEERING.admit(Turn::Running, Request::Emulated),
+            Ok(Plan::CancelAndContinue)
+        );
+    }
+}

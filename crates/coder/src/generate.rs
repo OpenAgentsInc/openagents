@@ -303,6 +303,10 @@ pub enum GenerateError {
         /// The worker's display text for it.
         message: String,
     },
+    /// No model provider this host can reach has capacity: each one
+    /// refused for a usage or rate limit, or has no usable login. The text
+    /// is one sentence naming each and when it resets.
+    NoCapacity(String),
 }
 
 impl GenerateError {
@@ -335,6 +339,7 @@ impl GenerateError {
             GenerateError::Silent { heard: false, .. } => "worker_absent",
             GenerateError::Silent { heard: true, .. } => "worker_stalled",
             GenerateError::Refused { .. } => "worker_declined",
+            GenerateError::NoCapacity(_) => "no_capacity",
         }
     }
 
@@ -392,6 +397,7 @@ impl fmt::Display for GenerateError {
             GenerateError::Refused { code, message } => {
                 write!(f, "the worker declined ({code}): {message}")
             }
+            GenerateError::NoCapacity(sentence) => f.write_str(sentence),
         }
     }
 }
@@ -924,6 +930,9 @@ pub struct StubGenerate {
     pub line: String,
     /// Lines still to play before `line`, front first.
     script: std::sync::Mutex<std::collections::VecDeque<String>>,
+    /// The sentence every generation fails with, for a door that has no
+    /// model with capacity to answer.
+    refusal: Option<String>,
 }
 
 impl StubGenerate {
@@ -933,6 +942,18 @@ impl StubGenerate {
         Self {
             line: line.into(),
             script: std::sync::Mutex::default(),
+            refusal: None,
+        }
+    }
+
+    /// A stub whose every generation fails with
+    /// [`GenerateError::NoCapacity`] and `sentence`: what a session opens
+    /// when no model it could reach has capacity.
+    #[must_use]
+    pub fn refusing(sentence: impl Into<String>) -> Self {
+        Self {
+            refusal: Some(sentence.into()),
+            ..Self::saying(String::new())
         }
     }
 
@@ -942,6 +963,7 @@ impl StubGenerate {
         Self {
             line: line.into(),
             script: std::sync::Mutex::new(script.into()),
+            refusal: None,
         }
     }
 }
@@ -960,6 +982,9 @@ impl Generate for StubGenerate {
         sink: &'a mut (dyn FnMut(&str) + Send),
         _meta: &'a mut (dyn FnMut(Meta) + Send),
     ) -> Result<(String, Option<Usage>), GenerateError> {
+        if let Some(sentence) = &self.refusal {
+            return Err(GenerateError::NoCapacity(sentence.clone()));
+        }
         let line = self
             .script
             .lock()

@@ -1020,6 +1020,7 @@ dependencies = [
  "jev",
  "knowledge",
  "libc",
+ "microcoder-loop",
  "microluna",
  "nostr",
  "nostr-transport",
@@ -4640,6 +4641,7 @@ dependencies = [
  "jev",
  "knowledge",
  "libc",
+ "microcoder-loop",
  "microluna",
  "nostr",
  "openrouter",
@@ -4651,6 +4653,24 @@ dependencies = [
  "tokio",
  "tokio-tungstenite",
  "toml",
+]
+
+[[package]]
+name = "microcoder-loop"
+version = "0.1.0"
+dependencies = [
+ "atif",
+ "coder-boundary",
+ "jev",
+ "knowledge",
+ "microluna",
+ "nostr",
+ "openrouter",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
 ]
 
 [[package]]

@@ -180,6 +180,10 @@ The task's result ending is `no_capacity`. The session header still names the
 primary model; the `route_switch` steps and each generation effect name the
 route that served.
 
+The switch is `microcoder_loop::failover`, which Coder's delegate door also
+runs for a terminal or `coder -p` turn over its own provider list, so a
+refusal either one meets holds for the other.
+
 ## Isolated container commands
 
 An optional closed `container` field in `adapter_configuration` selects a local

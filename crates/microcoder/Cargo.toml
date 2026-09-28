@@ -17,6 +17,7 @@ futures-util = "0.3"
 jev = { path = "../jev" }
 libc = "0.2"
 knowledge = { path = "../knowledge" }
+microcoder-loop = { path = "../microcoder-loop" }
 microluna = { path = "../microluna" }
 nostr = { path = "../nostr" }
 openrouter = { path = "../openrouter" }

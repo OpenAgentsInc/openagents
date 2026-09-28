@@ -56,7 +56,7 @@ These block showing any of this well:
    login by default. The run's "cost" is Luna's list price applied to
    reported tokens, not money spent. Comparisons with Fable stay fair only
    if the report labels this "list-price equivalent" and keeps the provider
-   in the run identity. `crates/microcoder/src/models.rs` also turns an
+   in the run identity. `crates/microcoder-loop/src/models.rs` also turns an
    unpriced model into `$0` with `price::cost(..).unwrap_or(0.0)`. That is
    the same unknown-as-zero hazard as #9677, now on the default path.
 3. **Retrieval changed silently.** Embeddings go through OpenRouter, which is

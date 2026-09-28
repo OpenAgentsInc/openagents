@@ -122,6 +122,16 @@ pub struct Route {
     pub generation_endpoint: String,
 }
 
+impl microcoder_loop::failover::Admitted for Route {
+    fn provider(&self) -> Option<super::capacity::Provider> {
+        super::capacity::Provider::from_config(&self.provider)
+    }
+
+    fn model(&self) -> &str {
+        &self.model
+    }
+}
+
 impl Configuration {
     /// The route the run starts on: the configuration's own provider,
     /// model, effort, and endpoint.

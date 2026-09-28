@@ -76,7 +76,7 @@ as declared.
 
 - **Binary:** `microcoder-study-claude` on coderos-4080, built from
   `b7238446f4`: `main` at `4865afd687` plus the `claude` provider
-  (`crates/microcoder/src/claude.rs`). The provider runs the `claude`
+  (`crates/microcoder-loop/src/claude.rs`). The provider runs the `claude`
   binary once per step in print mode with every tool off, one turn, no
   settings files, and no saved session, and asks for the same `next_action`
   JSON schema the Codex route sends as its output format.

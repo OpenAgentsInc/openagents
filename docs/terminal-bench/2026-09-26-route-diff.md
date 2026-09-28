@@ -152,7 +152,7 @@ that began with prose instead of the schema's JSON.
 
 ## The fix
 
-In `crates/microcoder/src/models.rs`, a Codex step now sends what an
+In `crates/microcoder-loop/src/models.rs`, a Codex step now sends what an
 OpenRouter step sends:
 
 - **No tool.** The `next_action` schema goes in the Responses API

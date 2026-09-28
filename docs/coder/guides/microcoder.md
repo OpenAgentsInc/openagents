@@ -15,11 +15,21 @@ while next_action isn't finished:
     run next_action's commands
 ```
 
-The code is `crates/microcoder`. It depends on `crates/jev`,
-`crates/knowledge`, `crates/microluna` (for its Codex transport and
-`microluna::oneshot`, the one-tool-call request that `kb harvest` shares),
-and `crates/openrouter` (kept for `--provider openrouter`, and as the HTTP
-client for embeddings on OpenAI's API or OpenRouter).
+The loop is `crates/microcoder-loop`, which depends on nothing from
+`crates/coder`: the loop, the model and Jev calls, where commands run,
+the provider capacity book, and failover between providers. It depends on
+`crates/jev`, `crates/knowledge`, `crates/microluna` (for its Codex
+transport and `microluna::oneshot`, the one-tool-call request that `kb
+harvest` shares), and `crates/openrouter` (kept for `--provider
+openrouter`, and as the HTTP client for embeddings on OpenAI's API or
+OpenRouter). `crates/microcoder` is the `microcoder` binary and what
+needs `crates/coder`: the task owner's repository adapter, Terminal-Bench,
+and the knowledge network. It re-exports the loop's modules under their
+old paths, such as `microcoder::run`.
+
+Coder's terminal and `coder -p` answer every turn through this loop by
+default, in process, on the first connected provider with capacity; see
+[the delegate door](../runtime/delegate-door.md#a-microcoder-turn).
 
 ## Run a Terminal-Bench 4 task
 
@@ -160,7 +170,7 @@ compose-sidecar --check-grading`.
    with a query built from the state, and Jev keeps the entries that bear on
    it. The prompt shows each kept entry's summary, and the full body of
    every entry Jev rates 0.8 or more.
-2. **Jev.** Jev answers the questions in `crates/microcoder/questions.json`
+2. **Jev.** Jev answers the questions in `crates/microcoder-loop/questions.json`
    (whether the task is done, whether the last step made progress, and
    whether the steps repeat a failed approach). Its answers go into the
    prompt as evidence.
@@ -204,7 +214,7 @@ shows the results, with each failing test's numbered script and output.
 A frozen suite written by the model misses requirements the task's grader
 checks, so a run can end green, by the model finishing or by the tests
 holding, with most of its budget left. The checks below
-(`crates/microcoder/src/gate.rs`) run before such a run may end. Each is
+(`crates/microcoder-loop/src/gate.rs`) run before such a run may end. Each is
 off by default and has its own flag, so a study can pin what it
 measured; `summary.json` records them under `gates`, and each check is a
 `gated` event.
@@ -261,7 +271,7 @@ run, and so do three replies in a row that don't match the schema.
   token read before every call from `VERTEX_TOKEN_FILE` or
   `~/.openagents/vertex-token` (mode 600), which the operator keeps fresh.
   Vertex reports no cost, so the model's `cost_basis` is `list_price`: the
-  tokens at the rates in `crates/microcoder/src/vertex.rs`, taken from
+  tokens at the rates in `crates/microcoder-loop/src/vertex.rs`, taken from
   Google's [Vertex AI pricing page](https://cloud.google.com/vertex-ai/generative-ai/pricing)
   on 2026-09-26. Per million input and output tokens: gpt-oss-120b $0.09
   and $0.36, Qwen3-Coder-480B-A35B-Instruct $0.22 and $1.80,

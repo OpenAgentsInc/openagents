@@ -11,12 +11,13 @@
 //! is recorded in the task store's capacity book
 //! ([`coder::task::capacity`]), a System step with a `route_switch`
 //! extension records the switch, and the same step is generated again on the
-//! next admitted route whose provider has capacity. When none has, the loop
+//! next admitted route whose provider has capacity
+//! ([`microcoder_loop::failover`]). When none has, the loop
 //! ends with [`Ending::NoCapacity`] and the earliest reset, and the task's
 //! result ending is `no_capacity`. The step's cost adds every attempt's cost,
 //! so failover keeps the known, unknown, and upper-bound figures honest.
 
-use std::cell::{Cell, RefCell};
+use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -24,10 +25,12 @@ use atif::{Source, Step};
 use coder::task::adapter::Route as GrantRoute;
 use coder::task::capacity::{self, Provider, Refusal};
 use coder::task::{self, adapter::Host};
+use microcoder_loop::failover::{Failover, Journal, refused_generation};
+pub use microcoder_loop::failover::{Lane, Plain};
 use serde_json::{Value, json};
 
 use crate::env::Env;
-use crate::models::{Basis, Exhausted, Generate, Generated, Judge, Judgment, QuestionSet};
+use crate::models::{Generate, Generated, Judge, Judgment, QuestionSet};
 use crate::run::{Ending, Event, Limits, Models, Observer, Route};
 use crate::state::{CommandResult, State, cut};
 
@@ -74,22 +77,6 @@ impl Env for Repository<'_> {
             .ok()
             .flatten()
             .map(|bytes| cut(&String::from_utf8_lossy(&bytes), crate::env::FILE_MAX, 0))
-    }
-}
-
-fn refused_generation(model: &str, dispatched: bool, reason: &str) -> Generated {
-    Generated {
-        action: Err(reason.into()),
-        model: model.into(),
-        prompt_tokens: 0,
-        completion_tokens: 0,
-        usd: (!dispatched).then_some(0.0),
-        known_usd: 0.0,
-        cost_unknown: dispatched
-            .then(|| "interrupted model request may still consume tokens".into()),
-        usd_upper: (!dispatched).then_some(0.0),
-        cost_basis: Basis::ListPrice,
-        milliseconds: 0,
     }
 }
 
@@ -142,238 +129,64 @@ impl<G: Generate> Generate for RecordedGenerator<'_, G> {
     }
 }
 
-/// A route's generator that can say whether its last generation met a
-/// provider's capacity refusal.
-pub trait Lane: Generate {
-    /// The refusal the last generation met, if it met one. Reading clears it.
-    fn refusal(&self) -> Option<Refusal>;
-}
-
-/// A generator with no capacity signal, such as an in-process fixture.
-pub struct Plain<'a, G>(pub &'a G);
-
-impl<G: Generate> Generate for Plain<'_, G> {
-    async fn generate(&self, system: &str, prompt: &str) -> Generated {
-        self.0.generate(system, prompt).await
-    }
-}
-
-impl<G: Generate> Lane for Plain<'_, G> {
-    fn refusal(&self) -> Option<Refusal> {
-        None
-    }
-}
-
-/// The admitted routes of one run, in preference order, and the one in use.
-struct Failover<'a, L> {
+/// A route's lane, whose generations the task owner records as effects
+/// before and after they run.
+struct Recorded<'a, L> {
     host: &'a Host,
-    /// The directory of the capacity book: the task store.
+    inner: L,
+    route: GrantRoute,
+}
+
+impl<L: Lane> Generate for Recorded<'_, L> {
+    async fn generate(&self, system: &str, prompt: &str) -> Generated {
+        RecordedGenerator {
+            host: self.host,
+            inner: &self.inner,
+            route: &self.route,
+        }
+        .generate(system, prompt)
+        .await
+    }
+}
+
+impl<L: Lane> Lane for Recorded<'_, L> {
+    fn refusal(&self) -> Option<Refusal> {
+        self.inner.refusal()
+    }
+}
+
+/// The task owner's transcript, as failover's journal: a step that cannot
+/// be appended fails the task.
+struct Transcript<'a>(&'a Host);
+
+impl Journal for Transcript<'_> {
+    fn append(&self, step: &Step) {
+        if let Err(error) = self.0.append(step) {
+            self.0.fail(error.to_string());
+        }
+    }
+}
+
+/// Failover over admitted routes, each recorded by the task owner.
+fn failover<'a, L: Lane>(
+    host: &'a Host,
+    journal: &'a Transcript<'a>,
     book: PathBuf,
     lanes: Vec<(GrantRoute, L)>,
-    /// The lane in use, or `None` when no admitted provider has capacity.
-    current: Cell<Option<usize>>,
-    /// Providers that refused during this run, in case the book cannot be
-    /// written.
-    refused: RefCell<Vec<Refusal>>,
-    exhausted: Cell<Option<Exhausted>>,
     now: fn() -> u64,
-}
-
-impl<'a, L: Lane> Failover<'a, L> {
-    fn new(host: &'a Host, book: PathBuf, lanes: Vec<(GrantRoute, L)>, now: fn() -> u64) -> Self {
-        let failover = Failover {
-            host,
-            book,
-            lanes,
-            current: Cell::new(None),
-            refused: RefCell::new(Vec::new()),
-            exhausted: Cell::new(None),
-            now,
-        };
-        failover.current.set(failover.next(None));
-        if failover.current.get().is_none() {
-            failover.exhausted.set(Some(Exhausted {
-                resets_at: failover.earliest_reset(),
-            }));
-        }
-        failover
-    }
-
-    fn provider(route: &GrantRoute) -> Option<Provider> {
-        Provider::from_config(&route.provider)
-    }
-
-    /// Record which admitted routes had capacity when the run started, so a
-    /// run that starts past its first route says why. A single route with
-    /// capacity records nothing, as before.
-    fn record_start(&self) {
-        if self.lanes.len() < 2 && self.current.get() == Some(0) {
-            return;
-        }
-        let now = (self.now)();
-        let book = capacity::Book::load(&self.book);
-        let routes: Vec<Value> = self
-            .lanes
-            .iter()
-            .map(|(route, _)| {
-                let blocked = Self::provider(route).and_then(|p| book.blocking(p, now));
-                json!({"route":route,"refusal":blocked})
-            })
-            .collect();
-        let step = Step::said(
-            Source::System,
-            "Admitted routes and their recorded capacity when the run started.",
-        )
-        .noting(
-            "route_capacity",
-            json!({"routes":routes,"starts_on":self.current.get().map(|index| &self.lanes[index].0)}),
-        );
-        if let Err(error) = self.host.append(&step) {
-            self.host.fail(error.to_string());
-        }
-    }
-
-    /// Whether the route's provider has capacity now, by the book and by
-    /// this run's own refusals. A provider without durable capacity, such as
-    /// a fixture, always has.
-    fn has_capacity(&self, book: &capacity::Book, route: &GrantRoute, now: u64) -> bool {
-        Self::provider(route).is_none_or(|provider| {
-            book.has_capacity(provider, now)
-                && !self
-                    .refused
-                    .borrow()
-                    .iter()
-                    .any(|refusal| refusal.provider == provider && refusal.holds(now))
+) -> Failover<'a, GrantRoute, Recorded<'a, L>, Transcript<'a>> {
+    let lanes = lanes
+        .into_iter()
+        .map(|(route, inner)| {
+            let recorded = Recorded {
+                host,
+                inner,
+                route: route.clone(),
+            };
+            (route, recorded)
         })
-    }
-
-    /// The first lane in preference order, other than `skip`, with capacity.
-    fn next(&self, skip: Option<usize>) -> Option<usize> {
-        let now = (self.now)();
-        let book = capacity::Book::load(&self.book);
-        (0..self.lanes.len())
-            .filter(|index| Some(*index) != skip)
-            .find(|index| self.has_capacity(&book, &self.lanes[*index].0, now))
-    }
-
-    /// The earliest time an admitted provider has capacity again.
-    fn earliest_reset(&self) -> Option<u64> {
-        let now = (self.now)();
-        let book = capacity::Book::load(&self.book);
-        let refused = self.refused.borrow();
-        self.lanes
-            .iter()
-            .filter_map(|(route, _)| Self::provider(route))
-            .filter_map(|provider| {
-                let recorded = book.blocking(provider, now).map(|refusal| refusal.until);
-                let seen = refused
-                    .iter()
-                    .filter(|refusal| refusal.provider == provider && refusal.holds(now))
-                    .map(|refusal| refusal.until)
-                    .max();
-                recorded.max(seen)
-            })
-            .min()
-    }
-}
-
-/// One step's cost across a failover: every attempt's tokens and cost, with
-/// an unknown part kept unknown. The action and model are the last attempt's.
-fn merge(earlier: Option<Generated>, later: Generated) -> Generated {
-    let Some(earlier) = earlier else {
-        return later;
-    };
-    let unknown = match (earlier.cost_unknown, later.cost_unknown) {
-        (Some(a), Some(b)) => Some(format!("{a}; {b}")),
-        (a, b) => a.or(b),
-    };
-    Generated {
-        action: later.action,
-        model: later.model,
-        prompt_tokens: earlier.prompt_tokens + later.prompt_tokens,
-        completion_tokens: earlier.completion_tokens + later.completion_tokens,
-        usd: earlier.usd.zip(later.usd).map(|(a, b)| a + b),
-        known_usd: earlier.known_usd + later.known_usd,
-        cost_unknown: unknown,
-        usd_upper: earlier.usd_upper.zip(later.usd_upper).map(|(a, b)| a + b),
-        cost_basis: later.cost_basis,
-        milliseconds: earlier.milliseconds + later.milliseconds,
-    }
-}
-
-impl<L: Lane> Generate for Failover<'_, L> {
-    async fn generate(&self, system: &str, prompt: &str) -> Generated {
-        let mut spent: Option<Generated> = None;
-        loop {
-            let Some(index) = self.current.get() else {
-                let model = self
-                    .lanes
-                    .first()
-                    .map_or("none", |(route, _)| route.model.as_str());
-                return merge(
-                    spent,
-                    refused_generation(model, false, "No admitted model provider has capacity."),
-                );
-            };
-            let (route, lane) = &self.lanes[index];
-            let generated = RecordedGenerator {
-                host: self.host,
-                inner: lane,
-                route,
-            }
-            .generate(system, prompt)
-            .await;
-            let refusal = lane.refusal().filter(|_| generated.action.is_err());
-            let Some(refusal) = refusal else {
-                return merge(spent, generated);
-            };
-            let recorded = capacity::record(&self.book, refusal.clone()).err();
-            self.refused.borrow_mut().push(refusal.clone());
-            spent = Some(merge(spent, generated));
-            let next = self.next(Some(index));
-            self.current.set(next);
-            let step = match next {
-                Some(next) => Step::said(
-                    Source::System,
-                    "The provider refused for a usage or rate limit; the run switches to the next admitted route.",
-                )
-                .noting(
-                    "route_switch",
-                    json!({"from":route,"to":self.lanes[next].0,"refusal":refusal,
-                        "capacity_book":recorded.map_or_else(|| json!("recorded"), |why| json!({"unrecorded":why}))}),
-                ),
-                None => {
-                    let resets_at = self.earliest_reset();
-                    self.exhausted.set(Some(Exhausted { resets_at }));
-                    Step::said(
-                        Source::System,
-                        "The provider refused for a usage or rate limit, and no admitted route has capacity.",
-                    )
-                    .noting(
-                        "route_exhausted",
-                        json!({"from":route,"refusal":refusal,"resets_at":resets_at,
-                            "capacity_book":recorded.map_or_else(|| json!("recorded"), |why| json!({"unrecorded":why}))}),
-                    )
-                }
-            };
-            if let Err(error) = self.host.append(&step) {
-                self.host.fail(error.to_string());
-            }
-            if next.is_none() {
-                return spent.unwrap_or_else(|| {
-                    refused_generation(
-                        &route.model,
-                        false,
-                        "No admitted model provider has capacity.",
-                    )
-                });
-            }
-        }
-    }
-
-    fn out_of_capacity(&self) -> Option<Exhausted> {
-        self.exhausted.get()
-    }
+        .collect();
+    Failover::new(journal, book, lanes, now)
 }
 
 struct RecordedJudge<'a, J> {
@@ -454,7 +267,8 @@ pub async fn run_routes<L: Lane, J: Judge>(
     now: fn() -> u64,
 ) -> Result<task::Task, task::Error> {
     let (state, outcome) = {
-        let generator = Failover::new(&host, book, lanes, now);
+        let journal = Transcript(&host);
+        let generator = failover(&host, &journal, book, lanes, now);
         generator.record_start();
         run_loop(&host, &generator, judge).await?
     };

@@ -224,7 +224,8 @@ pub(super) async fn run<T: microluna::Transport>(
                 (route, lane)
             })
             .collect();
-        let generator = Failover::new(&host, book, lanes, task::autostart::unix_now);
+        let journal = Transcript(&host);
+        let generator = failover(&host, &journal, book, lanes, task::autostart::unix_now);
         generator.record_start();
         let judge = NativeJudge {
             host: &host,

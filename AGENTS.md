@@ -372,12 +372,14 @@ uses, and marks which are implemented and which are only specified.
   anything generates and narrowing from there; a reply becomes an
   executable plan only under a permit that runs one, so keep execution
   policy there rather than in what the model is told. `delegate_door`
-  answers a turn through Coder One's probes, Jev's judgments, a
-  briefing, and an executor: Microluna in process when the Codex login
-  is usable, else Claude Code or Codex when one is installed and signed
-  in, with the Open Responses door as the fallback; the permit maps to its
-  `coder-boundary` boundary, and `coder-worker` never reaches it. Read
-  `docs/coder/runtime/delegate-door.md` before changing it.
+  answers a turn through Microcoder's loop in process, on the first
+  connected provider with capacity in the capacity book (the Codex login,
+  then Claude Code's login), failing over mid-turn when one refuses for a
+  usage or rate limit; else through Coder One's probes, Jev's judgments, a
+  briefing, and Claude Code or Codex when one is installed, signed in, and
+  has capacity, with the Open Responses door as the fallback. The permit
+  maps to its `coder-boundary` boundary, and `coder-worker` never reaches
+  it. Read `docs/coder/runtime/delegate-door.md` before changing it.
   `scripts/install-coder.sh` installs the binary as `coder`, and
   `coder doctor` says which door a turn uses and why.
   `docs/coder/guides/headless.md` covers the headless flags and
@@ -415,6 +417,22 @@ uses, and marks which are implemented and which are only specified.
   job requests from a relay through an Open Responses door.
   `docs/coder/measurements/relay-transport.md` is the measured proof that the two ends
   meet, and it holds the per-transport latency and the refusal causes.
+- `crates/microcoder-loop` — the Microcoder loop, the simple loop the
+  Luna pivot runs: Jev judges the state, one structured model call returns
+  the next commands, and the host runs them. It holds the loop, the model
+  and Jev calls, where commands run (with a `coder-boundary` environment
+  for Coder's delegate door), the provider capacity book
+  (`capacity.json`, which `coder::task::capacity` re-exports), and
+  failover to the next provider with capacity. It depends on nothing from
+  `crates/coder`, so both `coder` and `microcoder` run it. Keep it the one
+  loop; stronger-model routing stays off by default. Read
+  `docs/coder/guides/microcoder.md` before changing it.
+- `crates/microcoder` — the `microcoder` binary over that loop: the task
+  owner's repository adapter (`microcoder repository`), Terminal-Bench 4
+  runs, and the knowledge network (NIP-KB, NIP-XP). It re-exports the
+  loop's modules under their old paths. Read
+  `docs/coder/runtime/microcoder-repository.md` before changing the
+  adapter.
 - `crates/microluna` — Microluna, the minimal Luna harness of the Luna
   pivot: short GPT-6 Luna sessions on the operator's logged-in Codex
   session, calling the ChatGPT Codex Responses endpoint directly with
