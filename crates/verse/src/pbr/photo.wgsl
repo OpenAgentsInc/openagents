@@ -148,6 +148,39 @@ fn hash3(p: vec3<f32>) -> vec3<f32> {
     return fract((q.xxy + q.yxx) * q.zyx);
 }
 
+// Values that must interpolate linearly in screen space, not with perspective
+// correction. GLSL ES has no `noperspective` qualifier, so its variant sends
+// the value times the vertex's clip w with perspective correction and
+// multiplies by the fragment's interpolated 1 / w, which cancels the division
+// (Heckbert and Moreton 1991).
+//#if GLES
+fn linear_out(v: vec2<f32>, w: f32) -> vec2<f32> {
+    return v * w;
+}
+fn linear_in(v: vec2<f32>, position: vec4<f32>) -> vec2<f32> {
+    return v * position.w;
+}
+fn linear_out1(v: f32, w: f32) -> f32 {
+    return v * w;
+}
+fn linear_in1(v: f32, position: vec4<f32>) -> f32 {
+    return v * position.w;
+}
+//#else
+fn linear_out(v: vec2<f32>, w: f32) -> vec2<f32> {
+    return v;
+}
+fn linear_in(v: vec2<f32>, position: vec4<f32>) -> vec2<f32> {
+    return v;
+}
+fn linear_out1(v: f32, w: f32) -> f32 {
+    return v;
+}
+fn linear_in1(v: f32, position: vec4<f32>) -> f32 {
+    return v;
+}
+//#endif
+
 fn noise_ign(pixel: vec2<f32>) -> f32 {
     // Interleaved gradient noise (Jimenez 2014).
     return fract(52.9829189 * fract(dot(pixel, vec2<f32>(0.06711056, 0.00583715))));
@@ -334,6 +367,40 @@ const POISSON: array<vec2<f32>, 16> = array<vec2<f32>, 16>(
     vec2<f32>(0.19984126, 0.78641367), vec2<f32>(0.14383161, -0.14100790)
 );
 
+//#if GLES
+// GLSL ES cannot read the values of a depth texture that is also sampled with
+// comparison, so this variant has no blocker search: every penumbra assumes
+// an occluder 1 m from the receiver. Returns the filter radius in texels.
+fn penumbra(uv: vec2<f32>, depth: f32, size: vec2<f32>, rot: mat2x2<f32>, tan_r: f32, texel: f32) -> f32 {
+    return clamp(tan_r / texel, 0.8, 12.0);
+}
+//#else
+// The blocker search of a percentage-closer soft shadow: the filter radius in
+// texels, or 0 when nothing occludes the point.
+fn penumbra(uv: vec2<f32>, depth: f32, size: vec2<f32>, rot: mat2x2<f32>, tan_r: f32, texel: f32) -> f32 {
+    let depth_range = f.earth_light.w;
+    // Search as far as a 60 m occluder distance could blur, in texels.
+    let search = clamp(60.0 * tan_r / texel, 1.5, 12.0);
+    var blockers = 0.0;
+    var sum = 0.0;
+    for (var i = 0; i < 16; i++) {
+        let o = rot * POISSON[i] * search / size;
+        let t = vec2<i32>(clamp((uv + o) * size, vec2<f32>(0.0), size - 1.0));
+        let d = textureLoad(shadow_map, t, 0);
+        if d < depth - 0.0005 {
+            blockers += 1.0;
+            sum += d;
+        }
+    }
+    if blockers < 0.5 {
+        return 0.0;
+    }
+    let gap = max(depth - sum / blockers, 0.0) * depth_range;
+    // Penumbra width is the occluder gap times the disc's full angle.
+    return max(gap * tan_r / texel, 0.8);
+}
+//#endif
+
 // Percentage-closer soft shadow whose penumbra follows the Sun's disc.
 fn sun_shadow(world: vec3<f32>, n: vec3<f32>, pixel: vec2<f32>) -> f32 {
     let texel = f.sun_disc.w;
@@ -344,29 +411,13 @@ fn sun_shadow(world: vec3<f32>, n: vec3<f32>, pixel: vec2<f32>) -> f32 {
         return 1.0;
     }
     let size = vec2<f32>(textureDimensions(shadow_map));
-    let depth_range = f.earth_light.w;
     let tan_r = tan(f.sun_disc.x);
     let angle = noise_ign(pixel) * 2.0 * PI;
     let rot = mat2x2<f32>(cos(angle), sin(angle), -sin(angle), cos(angle));
-    // Search as far as a 60 m occluder distance could blur, in texels.
-    let search = clamp(60.0 * tan_r / texel, 1.5, 12.0);
-    var blockers = 0.0;
-    var sum = 0.0;
-    for (var i = 0; i < 16; i++) {
-        let o = rot * POISSON[i] * search / size;
-        let t = vec2<i32>(clamp((uv + o) * size, vec2<f32>(0.0), size - 1.0));
-        let d = textureLoad(shadow_map, t, 0);
-        if d < c.z - 0.0005 {
-            blockers += 1.0;
-            sum += d;
-        }
-    }
-    if blockers < 0.5 {
+    let radius = penumbra(uv, c.z, size, rot, tan_r, texel);
+    if radius <= 0.0 {
         return 1.0;
     }
-    let gap = max(c.z - sum / blockers, 0.0) * depth_range;
-    // Penumbra width is the occluder gap times the disc's full angle.
-    let radius = max(gap * tan_r / texel, 0.8);
     var lit = 0.0;
     for (var i = 0; i < 16; i++) {
         let o = rot * POISSON[i] * radius / size;
@@ -628,7 +679,11 @@ fn fs_star(i: StarOut) -> @location(0) vec4<f32> {
 
 struct BodyOut {
     @builtin(position) clip: vec4<f32>,
+//#if GLES
+    @location(0) ndc: vec2<f32>,
+//#else
     @location(0) @interpolate(linear) ndc: vec2<f32>,
+//#endif
     @location(1) @interpolate(flat) kind: u32,
 };
 
@@ -663,7 +718,7 @@ fn vs_body(@builtin(vertex_index) index: u32, @builtin(instance_index) kind: u32
     c.z = 0.0;
     var o: BodyOut;
     o.clip = c;
-    o.ndc = c.xy / c.w;
+    o.ndc = linear_out(c.xy / c.w, c.w);
     o.kind = kind;
     return o;
 }
@@ -769,7 +824,7 @@ fn moon_radiance(n: vec3<f32>, to_eye: vec3<f32>, lod: f32) -> vec3<f32> {
 @fragment
 fn fs_body(i: BodyOut) -> @location(0) vec4<f32> {
     let body = body_dir(i.kind);
-    let ray = view_ray(i.ndc);
+    let ray = view_ray(linear_in(i.ndc, i.clip));
     let m = tangent_basis(body.xyz);
     let r = tan(body.w);
     let p = vec2<f32>(dot(ray, m[0]), dot(ray, m[1])) / (dot(ray, m[2]) * r);
@@ -815,14 +870,14 @@ fn vs_flare(@builtin(vertex_index) index: u32) -> BodyOut {
     if center.w <= 0.0 {
         o.clip = vec4<f32>(2.0, 2.0, 0.0, 1.0);
     }
-    o.ndc = k;
+    o.ndc = linear_out(k, o.clip.w);
     o.kind = 0u;
     return o;
 }
 
 @fragment
 fn fs_flare(i: BodyOut) -> @location(0) vec4<f32> {
-    let p = i.ndc;
+    let p = linear_in(i.ndc, i.clip);
     let r = length(p);
     var spikes = 0.0;
     for (var k = 0; k < 3; k++) {
@@ -915,7 +970,11 @@ struct WideOut {
     @location(0) color: vec3<f32>,
     // Pixels from the line's center: a screen-space quantity, so it must not
     // be perspective-corrected across a quad whose ends differ greatly in depth.
+//#if GLES
+    @location(1) across: f32,
+//#else
     @location(1) @interpolate(linear) across: f32,
+//#endif
     @location(2) world: vec3<f32>,
     @location(3) fog: f32,
     @location(4) width: f32,
@@ -966,7 +1025,7 @@ fn vs_wide(w: WideIn, @builtin(vertex_index) index: u32) -> WideOut {
     var o: WideOut;
     o.clip = c;
     o.color = w.color * guide_scale();
-    o.across = side * extent;
+    o.across = linear_out1(side * extent, c.w);
     o.world = mix(wa, wb, end);
     o.fog = w.fog;
     o.width = width;
@@ -975,7 +1034,8 @@ fn vs_wide(w: WideIn, @builtin(vertex_index) index: u32) -> WideOut {
 
 @fragment
 fn fs_wide(i: WideOut) -> @location(0) vec4<f32> {
-    let coverage = clamp(i.width * 0.5 + 0.5 - abs(i.across), 0.0, 1.0);
+    let across = linear_in1(i.across, i.clip);
+    let coverage = clamp(i.width * 0.5 + 0.5 - abs(across), 0.0, 1.0);
     var c = i.color;
     if f.neon.w > 0.5 {
         c = expose(neon_fog(c, i.world, i.fog));

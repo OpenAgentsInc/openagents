@@ -115,6 +115,8 @@ pub(crate) struct Capability {
     /// The floating-point scene format, when one is renderable and filterable.
     pub hdr: Option<wgpu::TextureFormat>,
     pub samples: u32,
+    /// Whether shaders compile to GLSL ES, which takes the `GLES` variants.
+    pub gles: bool,
 }
 
 impl Capability {
@@ -158,7 +160,11 @@ impl Capability {
         } else {
             1
         };
-        Self { hdr, samples }
+        Self {
+            hdr,
+            samples,
+            gles: crate::gles::is_gles(adapter.get_info().backend),
+        }
     }
 }
 
@@ -462,7 +468,11 @@ impl Photo {
                 bind_group_layouts: &[Some(&scene_layout), Some(&guide_layout)],
                 immediate_size: 0,
             });
-        let module = shader(device, "verse photo", include_str!("photo.wgsl"));
+        let module = shader(
+            device,
+            "verse photo",
+            &crate::gles::wgsl(include_str!("photo.wgsl"), capability.gles),
+        );
         let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("verse photo"),
             bind_group_layouts: &[Some(&scene_layout)],

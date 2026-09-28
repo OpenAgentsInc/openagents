@@ -160,9 +160,163 @@ pub struct Renderer {
     config: wgpu::SurfaceConfiguration,
     scene: Scene,
     targets: Targets,
+    /// The sRGB encoding pass into a linear surface, on OpenGL ES.
+    present: Option<Present>,
     max_extent: u32,
     drawable: bool,
     hdr: bool,
+}
+
+/// OpenGL ES presentation. wgpu's GLES backend offers an sRGB surface only
+/// through an EGL window colorspace, which some drivers (including the
+/// Android emulator's) accept and then ignore, so frames would reach the
+/// display without their sRGB encoding. The frame is drawn exactly as on
+/// other backends into an sRGB texture, which every OpenGL ES 3.0 device can
+/// render to, and `present.wgsl` encodes it into a linear surface.
+struct Present {
+    pipeline: wgpu::RenderPipeline,
+    layout: wgpu::BindGroupLayout,
+    sampler: wgpu::Sampler,
+    frame: wgpu::TextureView,
+    group: wgpu::BindGroup,
+}
+
+impl Present {
+    /// The format the scene draws into.
+    const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
+
+    fn new(device: &wgpu::Device, surface: wgpu::TextureFormat, width: u32, height: u32) -> Self {
+        let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("verse present"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+            ],
+        });
+        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("verse present"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("present.wgsl").into()),
+        });
+        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("verse present"),
+            bind_group_layouts: &[Some(&layout)],
+            immediate_size: 0,
+        });
+        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("verse present"),
+            layout: Some(&pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &shader,
+                entry_point: Some("vs"),
+                compilation_options: Default::default(),
+                buffers: &[],
+            },
+            primitive: wgpu::PrimitiveState::default(),
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState::default(),
+            fragment: Some(wgpu::FragmentState {
+                module: &shader,
+                entry_point: Some("fs"),
+                compilation_options: Default::default(),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: surface,
+                    blend: None,
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+            }),
+            multiview_mask: None,
+            cache: None,
+        });
+        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("verse present"),
+            ..Default::default()
+        });
+        let (frame, group) = Self::frame(device, &layout, &sampler, width, height);
+        Self {
+            pipeline,
+            layout,
+            sampler,
+            frame,
+            group,
+        }
+    }
+
+    fn frame(
+        device: &wgpu::Device,
+        layout: &wgpu::BindGroupLayout,
+        sampler: &wgpu::Sampler,
+        width: u32,
+        height: u32,
+    ) -> (wgpu::TextureView, wgpu::BindGroup) {
+        let frame = device
+            .create_texture(&wgpu::TextureDescriptor {
+                label: Some("verse present frame"),
+                size: extent(width, height),
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: Self::FORMAT,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                    | wgpu::TextureUsages::TEXTURE_BINDING,
+                view_formats: &[],
+            })
+            .create_view(&wgpu::TextureViewDescriptor::default());
+        let group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("verse present"),
+            layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&frame),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(sampler),
+                },
+            ],
+        });
+        (frame, group)
+    }
+
+    fn resize(&mut self, device: &wgpu::Device, width: u32, height: u32) {
+        (self.frame, self.group) = Self::frame(device, &self.layout, &self.sampler, width, height);
+    }
+
+    fn encode(&self, encoder: &mut wgpu::CommandEncoder, output: &wgpu::TextureView) {
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("verse present"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: output,
+                depth_slice: None,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: None,
+            timestamp_writes: None,
+            occlusion_query_set: None,
+            multiview_mask: None,
+        });
+        pass.set_pipeline(&self.pipeline);
+        pass.set_bind_group(0, &self.group, &[]);
+        pass.draw(0..3, 0..1);
+    }
 }
 
 impl Renderer {
@@ -238,6 +392,13 @@ impl Renderer {
 
     /// Creates an Android surface from an acquired native window.
     ///
+    /// A device tries Vulkan first and falls back to OpenGL ES when Vulkan
+    /// has no adapter or device for the window. The emulator uses OpenGL ES
+    /// only: enumerating Vulkan can stall inside emulator drivers before a
+    /// fallback is possible. Set the `debug.verse.backend` system property to
+    /// `vulkan` or `gl` to force one, for example with
+    /// `adb shell setprop debug.verse.backend vulkan`.
+    ///
     /// # Safety
     /// `window` must point to a valid ANativeWindow on its owning UI thread.
     /// The caller must retain the window until after this renderer is dropped,
@@ -254,21 +415,31 @@ impl Renderer {
         let window = std::ptr::NonNull::new(window).ok_or("native Android window is null")?;
         options.validate()?;
         validate_extent(width, height, options.max_extent)?;
-        // Use the Android GLES path explicitly. Enumerating Vulkan can stall
-        // inside emulator drivers before an adapter fallback is possible.
-        let mut descriptor = wgpu::InstanceDescriptor::new_without_display_handle_from_env();
-        descriptor.backends = wgpu::Backends::GL;
-        let instance = wgpu::Instance::new(descriptor);
-        let handle = wgpu::rwh::AndroidNdkWindowHandle::new(window);
-        // SAFETY: the caller retains the acquired window through renderer drop.
-        let surface = unsafe {
-            instance.create_surface_unsafe(wgpu::SurfaceTargetUnsafe::RawHandle {
-                raw_display_handle: Some(wgpu::rwh::AndroidDisplayHandle::new().into()),
-                raw_window_handle: handle.into(),
-            })
+        let mut failures = Vec::new();
+        for backends in android::backends() {
+            let mut descriptor = wgpu::InstanceDescriptor::new_without_display_handle_from_env();
+            descriptor.backends = backends;
+            let instance = wgpu::Instance::new(descriptor);
+            let handle = wgpu::rwh::AndroidNdkWindowHandle::new(window);
+            // SAFETY: the caller retains the acquired window through renderer
+            // drop. A failed attempt drops its surface before the next one.
+            let surface = unsafe {
+                instance.create_surface_unsafe(wgpu::SurfaceTargetUnsafe::RawHandle {
+                    raw_display_handle: Some(wgpu::rwh::AndroidDisplayHandle::new().into()),
+                    raw_window_handle: handle.into(),
+                })
+            };
+            let result = surface
+                .map_err(|error| format!("cannot create an Android surface: {error}"))
+                .and_then(|surface| {
+                    Self::from_surface(instance, surface, width, height, world, atlas, options)
+                });
+            match result {
+                Ok(renderer) => return Ok(renderer),
+                Err(error) => failures.push(format!("{backends:?}: {error}")),
+            }
         }
-        .map_err(|error| format!("cannot create an Android surface: {error}"))?;
-        Self::from_surface(instance, surface, width, height, world, atlas, options)
+        Err(failures.join("; "))
     }
 
     /// Builds the same renderer around a platform-created surface.
@@ -292,8 +463,17 @@ impl Renderer {
         let caps = surface.get_capabilities(&adapter);
         let extended = wgpu::TextureFormat::Rgba16Float;
         let hdr = options.hdr && caps.formats.contains(&extended);
+        let gles = crate::gles::is_gles(adapter.get_info().backend);
         let format = if hdr {
             extended
+        } else if gles {
+            // OpenGL ES draws into an sRGB texture and encodes it into a
+            // linear surface itself; see `Present`.
+            caps.formats
+                .iter()
+                .copied()
+                .find(|f| !f.is_srgb() && f.components() == 4 && !f.has_depth_aspect())
+                .ok_or("the surface reports no linear 8-bit format")?
         } else {
             caps.formats
                 .iter()
@@ -309,24 +489,31 @@ impl Renderer {
             height,
             present_mode: wgpu::PresentMode::AutoVsync,
             desired_maximum_frame_latency: 2,
-            alpha_mode: caps
-                .alpha_modes
-                .first()
-                .copied()
-                .unwrap_or(wgpu::CompositeAlphaMode::Auto),
+            // The world is opaque. Android's Vulkan surfaces may offer only
+            // Inherit, which the window's own opaque format then decides.
+            alpha_mode: if caps.alpha_modes.contains(&wgpu::CompositeAlphaMode::Opaque) {
+                wgpu::CompositeAlphaMode::Opaque
+            } else {
+                caps.alpha_modes
+                    .first()
+                    .copied()
+                    .unwrap_or(wgpu::CompositeAlphaMode::Auto)
+            },
             view_formats: vec![],
         };
         surface.configure(&device, &config);
+        let present = (gles && !hdr).then(|| Present::new(&device, format, width, height));
+        let drawn = present.as_ref().map_or(format, |_| Present::FORMAT);
         let scene = Scene::new(
             &device,
             &queue,
             &adapter,
-            format,
+            drawn,
             world,
             atlas,
             options.sample_count,
         );
-        let targets = Targets::new(&device, format, width, height, scene.samples);
+        let targets = Targets::new(&device, drawn, width, height, scene.samples);
         Ok(Self {
             surface,
             device,
@@ -334,6 +521,7 @@ impl Renderer {
             config,
             scene,
             targets,
+            present,
             max_extent,
             drawable: true,
             hdr,
@@ -387,9 +575,12 @@ impl Renderer {
         self.config.width = width;
         self.config.height = height;
         self.surface.configure(&self.device, &self.config);
+        if let Some(present) = &mut self.present {
+            present.resize(&self.device, width, height);
+        }
         self.targets = Targets::new(
             &self.device,
-            self.config.format,
+            self.scene.format,
             width,
             height,
             self.scene.samples,
@@ -490,15 +681,53 @@ impl Renderer {
             &self.device,
             &self.queue,
             &mut encoder,
-            &output,
+            self.present.as_ref().map_or(&output, |p| &p.frame),
             &mut self.targets,
             view,
             dynamic,
             ui,
         );
+        if let Some(present) = &self.present {
+            present.encode(&mut encoder, &output);
+        }
         self.queue.submit([encoder.finish()]);
         frame.present();
         DrawStatus::Presented
+    }
+}
+
+/// Which graphics APIs an Android surface tries, in order.
+#[cfg(target_os = "android")]
+mod android {
+    /// A system property's value, when it is set and non-empty.
+    fn property(name: &std::ffi::CStr) -> Option<String> {
+        // PROP_VALUE_MAX in <sys/system_properties.h>.
+        let mut value = [0 as libc::c_char; 92];
+        // SAFETY: the name is NUL-terminated and the buffer holds
+        // PROP_VALUE_MAX bytes, the most the call writes.
+        let length = unsafe { libc::__system_property_get(name.as_ptr(), value.as_mut_ptr()) };
+        if length <= 0 {
+            return None;
+        }
+        // SAFETY: the call NUL-terminates the value it wrote.
+        let value = unsafe { std::ffi::CStr::from_ptr(value.as_ptr()) };
+        Some(value.to_string_lossy().into_owned())
+    }
+
+    pub(super) fn backends() -> Vec<wgpu::Backends> {
+        match property(c"debug.verse.backend").as_deref() {
+            Some("gl") => return vec![wgpu::Backends::GL],
+            Some("vulkan") => return vec![wgpu::Backends::VULKAN],
+            _ => {}
+        }
+        let emulator = [c"ro.boot.qemu", c"ro.kernel.qemu"]
+            .into_iter()
+            .any(|name| property(name).as_deref() == Some("1"));
+        if emulator {
+            vec![wgpu::Backends::GL]
+        } else {
+            vec![wgpu::Backends::VULKAN, wgpu::Backends::GL]
+        }
     }
 }
 
@@ -856,8 +1085,12 @@ fn open(
 // storage.
 const INTER_STAGE: u32 = 8;
 
+// Every backend requests the OpenGL ES 3.0 floor (the WebGL 2 limits, which
+// have no storage buffers or compute), so a GLES-only device qualifies and
+// desktop validation refuses anything such a device could not run.
 fn scene_limits(available: wgpu::Limits) -> Result<wgpu::Limits, String> {
-    let mut required = wgpu::Limits::downlevel_defaults().using_resolution(available.clone());
+    let mut required =
+        wgpu::Limits::downlevel_webgl2_defaults().using_resolution(available.clone());
     required.max_inter_stage_shader_variables = INTER_STAGE;
     let mut unsupported = Vec::new();
     required.check_limits_with_fail_fn(&available, false, |name, requested, supported| {
@@ -1156,11 +1389,14 @@ impl Scene {
         ui: &UiBatch,
     ) -> bool {
         if self.photo.is_none() {
-            // Validation failures (an adapter limit, a driver shader bug) fall
-            // back to the amber renderer instead of aborting.
-            let scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
+            // Validation failures (an adapter limit) and internal ones (a
+            // driver that rejects a translated shader) fall back to the amber
+            // renderer instead of aborting.
+            let validation = device.push_error_scope(wgpu::ErrorFilter::Validation);
+            let internal = device.push_error_scope(wgpu::ErrorFilter::Internal);
             let created = Photo::new(device, queue, self.capability, self.format);
-            let failure = pollster::block_on(scope.pop());
+            let failure =
+                pollster::block_on(internal.pop()).or(pollster::block_on(validation.pop()));
             match (created, failure) {
                 (Ok(photo), None) => self.photo = Some(photo),
                 (Err(error), _) => {
@@ -1482,7 +1718,8 @@ mod tests {
 
     #[test]
     fn scene_limits_accept_mobile_varyings_without_asking_for_unused_desktop_limits() {
-        let mut mobile = wgpu::Limits::downlevel_defaults();
+        // An OpenGL ES 3.0 device: no storage buffers or compute.
+        let mut mobile = wgpu::Limits::downlevel_webgl2_defaults();
         mobile.max_texture_dimension_2d = 4096;
         let required = scene_limits(mobile.clone()).unwrap();
         assert_eq!(required.max_inter_stage_shader_variables, INTER_STAGE);

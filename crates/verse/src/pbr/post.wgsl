@@ -9,7 +9,8 @@
 // lateral chromatic aberration, and vignetting; sensor grain follows it.
 
 struct Post {
-    // x texel width, y texel height of the source; z Karis flag; w unused.
+    // x texel width, y texel height of the source; z Karis flag; w, in the
+    // output pass, one over the bloom level count.
     source: vec4<f32>,
     // x bloom strength; y local exposure; z grain; w vignette.
     look: vec4<f32>,
@@ -192,7 +193,8 @@ fn fs_output(i: Out) -> @location(0) vec4<f32> {
         textureSampleLevel(source, clamp_linear, uv, 0.0).g,
         textureSampleLevel(source, clamp_linear, uv + shift, 0.0).b
     );
-    let levels = textureNumLevels(bloom);
+    // The level count comes from the uniform: GLSL ES cannot query it.
+    let levels = u32(round(1.0 / p.source.w));
     let glow = textureSampleLevel(bloom, clamp_linear, uv, 0.0).rgb * p.source.w;
     c = mix(c, glow, p.look.x);
     // Lens ghosts: the bloom mirrored through the center at a few scales.

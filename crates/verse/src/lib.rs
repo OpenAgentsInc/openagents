@@ -22,6 +22,7 @@ pub mod doors;
 #[cfg(all(target_os = "macos", feature = "desktop"))]
 pub mod edr;
 pub mod feed;
+pub(crate) mod gles;
 pub mod gym;
 pub mod hud;
 pub mod identity;

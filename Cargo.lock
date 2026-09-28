@@ -8498,6 +8498,7 @@ dependencies = [
  "gym-bridge",
  "knowledge",
  "libc",
+ "naga",
  "nostr",
  "objc2 0.6.4",
  "physics",
