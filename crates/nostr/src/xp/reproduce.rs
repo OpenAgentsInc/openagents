@@ -18,7 +18,7 @@ use serde_json::{Map, Value, json};
 
 use super::{
     AWARD_KIND, Award, KB_TRANSFER, QUEST_KIND, Quest, REPRODUCE, REPRODUCE_ROLES, coordinate,
-    in_season, parse_quest,
+    in_season, parse_quest, uniqueness_key,
 };
 use crate::contracts::{
     ArtifactRef, ContractError, RefusalCode, check_artifact_bytes, digest_bytes, digest_value, jcs,
@@ -669,6 +669,7 @@ pub fn reproduce_award(
         return Err(mismatch("the reproduction is newer than its acceptance"));
     }
     let coordinate = coordinate(&quest.pubkey, &parsed.address);
+    let key = uniqueness_key(&quest.pubkey, &parsed, &reproduction.pubkey);
     let keys = [&claim.pubkey, &reproduction.pubkey];
     let awardees: Vec<Value> = REPRODUCE_ROLES
         .iter()
@@ -678,7 +679,7 @@ pub fn reproduce_award(
     let content = json!({
         "v": 1, "requires": [], "type": "award",
         "quest": {"id": quest.id, "pubkey": quest.pubkey, "kind": QUEST_KIND, "coordinate": coordinate},
-        "key": coordinate,
+        "key": key,
         "accepted_at": accepted_at,
         "evidence": [
             {"id": claim.id, "pubkey": claim.pubkey, "kind": kb::EVIDENCE_KIND},

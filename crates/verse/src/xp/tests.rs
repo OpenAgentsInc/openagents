@@ -352,3 +352,33 @@ fn playtest_awards_count_on_their_own_card_and_never_in_the_trainer_level() {
     assert_eq!(PLAYTEST_REFEREE, None);
     assert!(playtest_trust().is_none());
 }
+
+#[test]
+fn a_per_awardee_quest_stays_open_until_it_pays_you_or_fills() {
+    let referee = fixture::signer(0x5e_7e);
+    let me = fixture::signer(0x3e);
+    let at = 1_790_000_000;
+    let mut events = fixture::tutorial_events(&referee, &me, 2, at);
+    let trust = XpTrust {
+        referees: BTreeSet::from([referee.pubkey().to_owned()]),
+        runners: BTreeSet::new(),
+    };
+    let mine = [me.pubkey().to_owned()];
+    let someone = ["ab".repeat(32)];
+    // Two first quests, both paid to me: neither is open to anyone.
+    let snap = snapshot(&events, &trust);
+    assert_eq!(open_quests(&snap, &mine, at), 0);
+    assert_eq!(open_quests(&snap, &someone, at), 0);
+    // A per-awardee version stays open to others after it pays me.
+    events.extend(fixture::per_awardee_events(&referee, &me, 3, at));
+    let snap = snapshot(&events, &trust);
+    assert_eq!(open_quests(&snap, &mine, at), 0);
+    assert_eq!(open_quests(&snap, &someone, at), 1);
+    let lines = board_lines(Some(&Board::fixed("wss://r", snap)), at);
+    assert!(
+        lines
+            .iter()
+            .any(|(l, _)| l.contains("pays each trainer once, up to 3")),
+        "{lines:?}"
+    );
+}

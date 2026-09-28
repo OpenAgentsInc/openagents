@@ -121,6 +121,8 @@ fn quest_value(row: &QuestRow) -> Value {
         },
         "awards": row.awards,
         "counted": row.counted,
+        "completions": row.completions,
+        "max_awards": row.max_awards,
         "titles": row.titles,
     })
 }
@@ -165,7 +167,10 @@ fn render_quests(value: &Value) -> String {
                     now
                 )
             ),
-            format!("{}/{}", row["counted"], row["awards"]),
+            match row["max_awards"].as_u64() {
+                Some(max) => format!("{}/{} (max {max})", row["counted"], row["awards"]),
+                None => format!("{}/{}", row["counted"], row["awards"]),
+            },
             match (
                 row["trusted"].as_bool().unwrap_or(false),
                 row["conflict"].as_bool().unwrap_or(false),

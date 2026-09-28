@@ -133,6 +133,11 @@ pub struct QuestRow {
     pub counted: usize,
     /// Achievement labels on counted awards.
     pub titles: Vec<String>,
+    /// The uniqueness policy: `first` or `per-awardee`.
+    pub completions: String,
+    /// The most awards the version pays, when it states one
+    /// (`per-awardee` and `playtest` quests).
+    pub max_awards: Option<u64>,
 }
 
 impl QuestRow {
@@ -306,6 +311,8 @@ pub fn snapshot(events: &[Event], trust: &XpTrust) -> Snapshot {
                     .unwrap_or_default(),
                 address: quest.address.clone(),
                 referee: event.pubkey.clone(),
+                completions: quest.completions.clone(),
+                max_awards: quest.award_limit(),
             };
             (row, BTreeSet::new())
         });
@@ -814,10 +821,13 @@ pub fn board_lines(board: Option<&Board>, now: u64) -> Vec<Styled> {
             ));
         }
         let split: Vec<String> = q.split.iter().map(|(r, x)| format!("{r} {x}")).collect();
-        let awards = match (q.awards, q.counted) {
+        let mut awards = match (q.awards, q.counted) {
             (0, _) => "no awards yet".to_owned(),
             (n, c) => format!("{n} award{} ({c} counted)", if n == 1 { "" } else { "s" }),
         };
+        if let (Some(max), true) = (q.max_awards, q.completions == xp::PER_AWARDEE) {
+            awards.push_str(&format!(" · pays each trainer once, up to {max}"));
+        }
         out.push((
             format!(
                 "  award {} XP ({}) · {} · {awards}",
@@ -851,6 +861,34 @@ pub fn board_lines(board: Option<&Board>, now: u64) -> Vec<Styled> {
         Intensity::Quarter,
     ));
     out
+}
+
+/// How many quests `keys` can still earn under `snapshot` at `now`: trusted,
+/// unconflicted, in season, and not yet paid out to them. A `first`
+/// quest is taken by its first counted award; a `per-awardee` quest stays
+/// open until it pays its `max_awards` or pays one of `keys`.
+#[must_use]
+pub fn open_quests(snapshot: &Snapshot, keys: &[String], now: u64) -> usize {
+    let mine: BTreeSet<&String> = keys.iter().collect();
+    snapshot
+        .quests
+        .iter()
+        .filter(|q| {
+            let paid_me = snapshot.credits.iter().any(|c| {
+                c.quest == q.address && c.referee == q.referee && mine.contains(&c.pubkey)
+            });
+            let full = match q.max_awards {
+                Some(max) => q.counted as u64 >= max,
+                None => q.counted > 0,
+            };
+            q.trusted
+                && !q.conflict
+                && q.season.opens_at <= now
+                && now <= q.season.closes_at
+                && !paid_me
+                && !full
+        })
+        .count()
 }
 
 /// A player's level for a name tag, when they have XP. The tag is short;

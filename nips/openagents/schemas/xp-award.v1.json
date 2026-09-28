@@ -169,7 +169,7 @@
         "key": {
           "type": "string",
           "minLength": 73,
-          "maxLength": 220
+          "maxLength": 320
         },
         "accepted_at": {
           "type": "integer",
@@ -325,7 +325,7 @@
         "key": {
           "type": "string",
           "minLength": 73,
-          "maxLength": 220
+          "maxLength": 320
         },
         "accepted_at": {
           "type": "integer",

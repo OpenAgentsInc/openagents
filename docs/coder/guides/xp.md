@@ -115,6 +115,11 @@ Write the quest to a JSON file. Every field is required, except
   The author and the runner split it; they don't each get the whole.
 - `reference` is display and provenance only. Put the reference run's
   record in `source`, such as its result file in the Gym.
+- `completions` is `first` (the default: the quest version pays once) or,
+  for a `reproduce` quest, `per-awardee`, which pays each distinct
+  reproducer once. A `per-awardee` quest needs `max_awards`, the most
+  awards it pays (1 to 10,000), and its claimant's share must be 0.
+  Tutorials and dailies use it.
 
 Then publish it:
 
@@ -145,6 +150,8 @@ The command fetches the evidence and the entry it's about, reads the tasks
 the entry was written from, and runs the quest's rule. When the rule
 refuses, it prints why and publishes nothing. When the quest version
 already has a live award from you, it refuses: a quest version pays once.
+Under `per-awardee`, it refuses only when this reproducer already has a
+live award on the version, or when the version has paid its `max_awards`.
 
 Each `--label VALUE` also publishes a NIP-32 achievement label, in the
 `openagents.xp` namespace, that points at the award. Readers show a label

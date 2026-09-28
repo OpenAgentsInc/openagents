@@ -261,8 +261,10 @@ fn short(hex: &str) -> &str {
 /// `reproduce` award only when its reproducer is; the runner list doesn't
 /// apply to `playtest`, whose evidence is a tester's report.
 ///
-/// A `playtest` award's key is derived by its rule, and a quest version
-/// with more live awards than its `max_awards` counts none of them.
+/// A `playtest` award's key is derived by its rule, and a `per-awardee`
+/// award's key names its keyed awardee, so each distinct reproducer is
+/// paid once. A quest version with more live awards than its `max_awards`
+/// counts none of them.
 #[must_use]
 pub fn derive(events: &[Event], trust: &XpTrust) -> Ledger {
     let mut ledger = Ledger::default();
@@ -371,15 +373,16 @@ pub fn derive(events: &[Event], trust: &XpTrust) -> Ledger {
         }
     }
 
-    // A playtest quest version states the most awards it pays; more live
-    // awards than that is the referee overissuing, and none of them count.
+    // A `per-awardee` or `playtest` quest version states the most awards
+    // it pays; more live awards than that is the referee overissuing, and
+    // none of them count.
     let mut per_quest: BTreeMap<(String, String), (u64, usize)> = BTreeMap::new();
     for ((referee, _), awards) in &live {
         for (award, quest, _) in awards {
-            if let Some(accepted) = &quest.acceptance.playtest {
+            if let Some(limit) = quest.award_limit() {
                 per_quest
                     .entry((referee.clone(), award.coordinate.clone()))
-                    .or_insert((accepted.max_awards, 0))
+                    .or_insert((limit, 0))
                     .1 += 1;
             }
         }
@@ -405,7 +408,7 @@ referee revokes the extra ones",
         if awards.len() > 1 {
             let ids: Vec<&str> = awards.iter().map(|(_, _, id)| short(id)).collect();
             ledger.conflicts.push(format!(
-                "{key}: {} live awards ({}); a quest version pays once, so none counts until \
+                "{key}: {} live awards ({}); a uniqueness key pays once, so none counts until \
 the referee revokes the extra ones",
                 awards.len(),
                 ids.join(", ")

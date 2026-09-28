@@ -33,7 +33,8 @@ Refereeing (signed with the referee key):
         [--label VALUE]...
                            check a completion against the quest's rule, then
                            publish its award (kind 3193) and any achievement
-                           labels (NIP-32); a quest version pays once. A
+                           labels (NIP-32); a quest version pays once, or
+                           each reproducer once under per-awardee. A
                            reproduce quest needs the reproducer's run record
                            (--record), which must match the digest the
                            reproduction names
@@ -467,14 +468,34 @@ summary.json they sent",
         .filter_map(|e| xp::parse_revocation(e).ok())
         .map(|r| r.award.id)
         .collect();
-    if let Some(live) = existing
+    let live: Vec<(Event, xp::Award)> = existing
         .iter()
-        .find(|e| xp::parse_award(e).is_ok() && !revoked.contains(&e.id))
+        .filter(|e| !revoked.contains(&e.id))
+        .filter_map(|e| xp::parse_award(e).ok().map(|a| (e.clone(), a)))
+        .collect();
+    // Under `first` the key is the quest version; under `per-awardee` it
+    // names the reproducer, so each distinct reproducer is paid once, up
+    // to the quest's max_awards.
+    let key = xp::uniqueness_key(&me, &parsed, &evidence.pubkey);
+    if let Some((event, _)) = live.iter().find(|(_, award)| award.key == key) {
+        let pays = if parsed.per_awardee() {
+            "a per-awardee quest pays each reproducer once"
+        } else {
+            "a quest version pays once"
+        };
+        println!(
+            "{address}: already awarded as {}; {pays}. Revoke that award first to replace it.",
+            short(&event.id)
+        );
+        return Ok(1);
+    }
+    if let Some(limit) = parsed.max_awards
+        && live.len() as u64 >= limit
     {
         println!(
-            "{address}: already awarded as {}; a quest version pays once. Revoke that award \
-first to replace it.",
-            short(&live.id)
+            "{address}: {} live awards already, its max_awards; publish a new quest version \
+to pay more",
+            live.len()
         );
         return Ok(1);
     }

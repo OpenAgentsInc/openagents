@@ -12,10 +12,10 @@
 use std::collections::BTreeSet;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use xp_ledger::XpTrust;
 use verse::net::{In, Link, Out};
 use verse::xp::Board;
 use verse::xp::fixture::Completion;
+use xp_ledger::XpTrust;
 
 #[test]
 fn the_board_derives_xp_from_a_live_relay() {

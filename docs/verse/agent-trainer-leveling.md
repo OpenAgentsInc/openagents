@@ -11,8 +11,9 @@
 > Everything under [Design](#design) that is not listed as implemented in the
 > [inventory](#what-exists-today) is proposed. Nothing in this document pays
 > anyone, and no payout is promised. Proposed changes to NIP-XP are listed in
-> [Proposed NIP-XP changes](#proposed-nip-xp-changes); of those, only the
-> `reproduce` rule is in the NIP so far.
+> [Proposed NIP-XP changes](#proposed-nip-xp-changes); of those, the
+> `reproduce` rule and the `per-awardee` uniqueness policy are in the NIP
+> so far.
 
 Everyone starts at level 1. You level up as an *agent trainer*: a person
 whose accepted work makes agents measurably better. You earn XP by getting
@@ -139,7 +140,7 @@ document or NIP defines it and no code does it yet.
 | --- | --- | --- |
 | Quests (`30193`), awards (`3193`), revocations (`3194`), achievement labels (NIP-32 `1985`, `L=openagents.xp`) | [NIP-XP](../../nips/openagents/NIP-XP.md) | Implemented: `crates/nostr/src/xp*` validates the events. |
 | Acceptance rules `kb-transfer` (roles `author`, `runner`) and `reproduce` (roles `claimant`, `reproducer`; run evidence marked `oa:xp:run:v1`) | NIP-XP | Implemented; `reproduce` added 2026-09-28. Readers refuse unknown rules. |
-| Uniqueness policy `first`: one award per quest version | NIP-XP | Implemented. No other policy exists. |
+| Uniqueness policies `first` (one award per quest version) and `per-awardee` (each distinct reproducer once, up to a required `max_awards`) | NIP-XP | Implemented; `per-awardee` added 2026-09-28 ([#9894](https://github.com/OpenAgentsInc/openagents/issues/9894)) for `reproduce` quests, keyed `<coordinate>:<reproducer>`. |
 | Ledger derivation under a reader's trust list (referees, optional runners) | `crates/xp-ledger`, `xp_ledger::derive` (re-exported as `knowledge::xp`) | Implemented. Split from `knowledge` on 2026-09-28 so the phone doesn't link the knowledge base's model clients ([#9897](https://github.com/OpenAgentsInc/openagents/issues/9897)). |
 | Referee tool: `microcoder xp quest`, `award`, `revoke`, `ledger`, and the trainer's `claim` and `reproduce` | `crates/microcoder/src/xpnet.rs`, [XP guide](../coder/guides/xp.md) | Implemented. |
 | Reader commands: `openagents quests`, `xp`, and `board` | `crates/openagents-cli/src/quest.rs` | Implemented, read-only. |
@@ -475,6 +476,8 @@ Each is a new, versioned addition; none changes an existing event's meaning.
    NIP-XP already requires of "a future rule."
 2. **A `per-awardee` uniqueness policy** with a required `max_awards`, so a
    daily can award each distinct key once, up to a stated total.
+   *Implemented 2026-09-28 for `reproduce`, whose keyed role is the
+   reproducer; the claimant's share must be 0.*
 3. **More than two awardees**, in the order a rule defines, with the fixed
    split still summing to the quest's award.
 4. **Party charters:** a signed event listing members, roles, and shares,

@@ -407,3 +407,148 @@ fn a_reproduce_award_with_wrong_roles_or_xp_is_refused() {
     // A reproduce award can't bind to a kb-transfer rule's builder.
     assert!(xp::award(&w.quest, &w.claim, &w.reproduction, &[], AT + 20).is_err());
 }
+
+fn per_awardee(claim: &Event) -> Value {
+    let mut spec = quest_spec(claim);
+    spec["completions"] = json!("per-awardee");
+    spec["max_awards"] = json!(100);
+    spec
+}
+
+#[test]
+fn a_per_awardee_quest_states_its_max_and_pays_only_the_reproducer() {
+    let w = world();
+    let quest = sign_at(&w.referee, AT, xp::quest(&per_awardee(&w.claim)).unwrap());
+    let parsed = parse_quest(&quest).unwrap();
+    assert!(parsed.per_awardee());
+    assert_eq!(parsed.max_awards, Some(100));
+    assert_eq!(parsed.award_limit(), Some(100));
+    let body: Value = serde_json::from_str(&quest.content).unwrap();
+    schema_check(
+        include_bytes!("../../../../../nips/openagents/schemas/xp-quest.v1.json"),
+        &body,
+    );
+
+    // max_awards is required, bounded, and only for per-awardee.
+    let mut spec = per_awardee(&w.claim);
+    spec.as_object_mut().unwrap().remove("max_awards");
+    assert_eq!(code(xp::quest(&spec)), RefusalCode::Malformed);
+    for bad in [0, 10_001] {
+        let mut spec = per_awardee(&w.claim);
+        spec["max_awards"] = json!(bad);
+        assert_eq!(code(xp::quest(&spec)), RefusalCode::Malformed);
+    }
+    let mut spec = quest_spec(&w.claim);
+    spec["max_awards"] = json!(100);
+    assert_eq!(code(xp::quest(&spec)), RefusalCode::Malformed);
+    // A claimant share would pay the one claimant once per reproducer.
+    let mut spec = per_awardee(&w.claim);
+    spec["award"] = json!({"claimant": 10, "reproducer": 40});
+    assert_eq!(code(xp::quest(&spec)), RefusalCode::Malformed);
+    // kb-transfer has no keyed role, so it can't take the policy.
+    let kb = json!({
+        "id": "tb4.fix-git.beat-reference", "version": 1,
+        "season": {"id": "s", "opens_at": AT - 1_000, "closes_at": AT + 1_000},
+        "title": "t", "objective": "o",
+        "acceptance": {"rule": "kb-transfer", "task": "fix-git", "min_pass_rate": 1.0, "max_usd_per_run": null},
+        "reference": null, "award": {"author": 6, "runner": 4},
+        "completions": "per-awardee", "max_awards": 10,
+    });
+    assert_eq!(code(xp::quest(&kb)), RefusalCode::UnsupportedFeature);
+}
+
+#[test]
+fn a_per_awardee_award_is_keyed_to_its_reproducer() {
+    let w = world();
+    let quest = sign_at(&w.referee, AT, xp::quest(&per_awardee(&w.claim)).unwrap());
+    let parsed = parse_quest(&quest).unwrap();
+    let award = sign_at(
+        &w.referee,
+        AT + 20,
+        reproduce_award(&quest, &w.claim, &w.reproduction, AT + 20).unwrap(),
+    );
+    let checked = parse_award(&award).unwrap();
+    let coordinate = xp::coordinate(w.referee.pubkey(), &parsed.address);
+    assert_eq!(
+        checked.key,
+        format!("{coordinate}:{}", w.reproducer.pubkey())
+    );
+    assert_eq!(
+        award.tag_values("a").collect::<Vec<_>>(),
+        [coordinate.as_str()]
+    );
+    let bound = xp::bind_quest(&checked, &quest).unwrap();
+    bind_reproduction(&checked, &bound, &w.claim, &w.reproduction).unwrap();
+    let body: Value = serde_json::from_str(&award.content).unwrap();
+    schema_check(
+        include_bytes!("../../../../../nips/openagents/schemas/xp-award.v1.json"),
+        &body,
+    );
+
+    // A per-awardee quest's award keyed to the quest version, and a first
+    // quest's award keyed to a reproducer, don't bind.
+    let mut first_key = body.clone();
+    first_key["key"] = json!(coordinate);
+    let forged = w.referee.sign(
+        AT + 20,
+        xp::AWARD_KIND,
+        award.tags.clone(),
+        first_key.to_string(),
+    );
+    let forged = parse_award(&forged).unwrap();
+    assert_eq!(
+        code(xp::bind_quest(&forged, &quest)),
+        RefusalCode::IdentityMismatch
+    );
+    let first = w.quest.clone();
+    let first_award = sign_at(
+        &w.referee,
+        AT + 20,
+        reproduce_award(&first, &w.claim, &w.reproduction, AT + 20).unwrap(),
+    );
+    let mut keyed = serde_json::from_str::<Value>(&first_award.content).unwrap();
+    keyed["key"] = json!(format!(
+        "{}:{}",
+        keyed["key"].as_str().unwrap(),
+        w.reproducer.pubkey()
+    ));
+    let keyed = w.referee.sign(
+        AT + 20,
+        xp::AWARD_KIND,
+        first_award.tags.clone(),
+        keyed.to_string(),
+    );
+    let keyed = parse_award(&keyed).unwrap();
+    assert_eq!(
+        code(xp::bind_quest(&keyed, &first)),
+        RefusalCode::IdentityMismatch
+    );
+    // A key naming anyone but the reproducer is refused on its own.
+    let mut other = body.clone();
+    other["key"] = json!(format!("{coordinate}:{}", w.claim.pubkey));
+    let other = w.referee.sign(
+        AT + 20,
+        xp::AWARD_KIND,
+        award.tags.clone(),
+        other.to_string(),
+    );
+    assert_eq!(code(parse_award(&other)), RefusalCode::IdentityMismatch);
+
+    // Its revocation carries the key and names the quest version in `a`.
+    let revocation = sign_at(
+        &w.referee,
+        AT + 30,
+        xp::revocation(&award, "The rerun used another image.").unwrap(),
+    );
+    let parsed_revocation = xp::parse_revocation(&revocation).unwrap();
+    assert_eq!(parsed_revocation.key, checked.key);
+    assert_eq!(
+        revocation.tag_values("a").collect::<Vec<_>>(),
+        [coordinate.as_str()]
+    );
+    let body: Value = serde_json::from_str(&revocation.content).unwrap();
+    schema_check(
+        include_bytes!("../../../../../nips/openagents/schemas/xp-revocation.v1.json"),
+        &body,
+    );
+}

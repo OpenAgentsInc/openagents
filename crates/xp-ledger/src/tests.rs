@@ -271,6 +271,12 @@ fn run_summary(nonce: u64) -> Vec<u8> {
 
 impl Reproduction {
     fn new() -> Self {
+        Self::with(&json!({}))
+    }
+
+    /// The fixture with `extra` merged into the quest spec, such as a
+    /// `per-awardee` policy.
+    fn with(extra: &Value) -> Self {
         let referee = signer("referee");
         let claimant = signer("claimant");
         let reproducer = signer("reproducer");
@@ -287,21 +293,21 @@ impl Reproduction {
             )
             .unwrap(),
         );
-        let quest = sign(
-            &referee,
-            xp::quest(&json!({
-                "id": "tb21.build-pmars.reproduce", "version": 1,
-                "season": {"id": "tutorial", "opens_at": AT - 1_000, "closes_at": AT + 1_000_000},
-                "title": "Reproduce the pass on build-pmars",
-                "objective": "Rerun the published pass from its recipe.",
-                "acceptance": {"rule": "reproduce", "task": "build-pmars",
-                    "recipe": xp::recipe_digest(&recipe).unwrap(),
-                    "claim": {"id": claim.id, "pubkey": claim.pubkey, "kind": kb::EVIDENCE_KIND}},
-                "reference": null,
-                "award": {"claimant": 0, "reproducer": 50},
-            }))
-            .unwrap(),
-        );
+        let mut spec = json!({
+            "id": "tb21.build-pmars.reproduce", "version": 1,
+            "season": {"id": "tutorial", "opens_at": AT - 1_000, "closes_at": AT + 1_000_000},
+            "title": "Reproduce the pass on build-pmars",
+            "objective": "Rerun the published pass from its recipe.",
+            "acceptance": {"rule": "reproduce", "task": "build-pmars",
+                "recipe": xp::recipe_digest(&recipe).unwrap(),
+                "claim": {"id": claim.id, "pubkey": claim.pubkey, "kind": kb::EVIDENCE_KIND}},
+            "reference": null,
+            "award": {"claimant": 0, "reproducer": 50},
+        });
+        for (key, value) in extra.as_object().into_iter().flatten() {
+            spec[key] = value.clone();
+        }
+        let quest = sign(&referee, xp::quest(&spec).unwrap());
         let record = xp::record_from_summary(&run_summary(1)).unwrap();
         let reproduction = sign(
             &reproducer,
@@ -329,6 +335,29 @@ impl Reproduction {
             &self.referee,
             xp::reproduce_award(&self.quest, &self.claim, &self.reproduction, AT).unwrap(),
         )
+    }
+
+    /// Another key's passing rerun of the claim, and its award.
+    fn another(&self, label: &str, nonce: u64) -> (RelaySigner, Event, Event) {
+        let key = signer(label);
+        let recipe = xp::recipe_from_summary(&run_summary(0), "terminal-bench", "2.1").unwrap();
+        let record = xp::record_from_summary(&run_summary(nonce)).unwrap();
+        let reproduction = sign(
+            &key,
+            xp::run_evidence(
+                key.pubkey(),
+                self.claimant.pubkey(),
+                &recipe,
+                &record,
+                std::slice::from_ref(&self.claim.id),
+            )
+            .unwrap(),
+        );
+        let award = sign(
+            &self.referee,
+            xp::reproduce_award(&self.quest, &self.claim, &reproduction, AT + nonce).unwrap(),
+        );
+        (key, reproduction, award)
     }
 
     fn trust(&self) -> XpTrust {
@@ -380,6 +409,105 @@ fn a_reproduce_award_without_its_reproduction_is_refused() {
     let ledger = derive(&events, &r.trust());
     assert!(ledger.totals.is_empty());
     assert!(ledger.refused[0].contains("reproduction"));
+}
+
+#[test]
+fn a_per_awardee_quest_pays_each_reproducer_once_up_to_its_max() {
+    let r = Reproduction::with(&json!({"completions": "per-awardee", "max_awards": 2}));
+    let (second_key, second_run, second) = r.another("second reproducer", 2);
+    let mut events = vec![
+        r.quest.clone(),
+        r.claim.clone(),
+        r.reproduction.clone(),
+        r.award(),
+        second_run,
+        second,
+    ];
+    let ledger = derive(&events, &r.trust());
+    assert!(ledger.refused.is_empty(), "{:?}", ledger.refused);
+    assert!(ledger.conflicts.is_empty(), "{:?}", ledger.conflicts);
+    assert_eq!(ledger.totals.get(r.reproducer.pubkey()), Some(&50));
+    assert_eq!(ledger.totals.get(second_key.pubkey()), Some(&50));
+    assert_eq!(ledger.totals.get(r.claimant.pubkey()), None);
+
+    // A third distinct reproducer is over max_awards: 2, so none counts.
+    let (_, third_run, third) = r.another("third reproducer", 4);
+    events.extend([third_run, third]);
+    let ledger = derive(&events, &r.trust());
+    assert!(ledger.totals.is_empty(), "{:?}", ledger.totals);
+    assert!(ledger.conflicts[0].contains("over its max_awards of 2"));
+}
+
+#[test]
+fn a_per_awardee_quest_pays_one_reproducer_once() {
+    let r = Reproduction::with(&json!({"completions": "per-awardee", "max_awards": 5}));
+    // The same reproducer's second passing rerun, awarded again.
+    let recipe = xp::recipe_from_summary(&run_summary(0), "terminal-bench", "2.1").unwrap();
+    let record = xp::record_from_summary(&run_summary(3)).unwrap();
+    let rerun = sign(
+        &r.reproducer,
+        xp::run_evidence(
+            r.reproducer.pubkey(),
+            r.claimant.pubkey(),
+            &recipe,
+            &record,
+            std::slice::from_ref(&r.claim.id),
+        )
+        .unwrap(),
+    );
+    let again = sign(
+        &r.referee,
+        xp::reproduce_award(&r.quest, &r.claim, &rerun, AT + 3).unwrap(),
+    );
+    let (other, other_run, other_award) = r.another("other reproducer", 2);
+    let events = vec![
+        r.quest.clone(),
+        r.claim.clone(),
+        r.reproduction.clone(),
+        r.award(),
+        rerun,
+        again,
+        other_run,
+        other_award,
+    ];
+    let ledger = derive(&events, &r.trust());
+    assert_eq!(ledger.totals.get(r.reproducer.pubkey()), None);
+    assert_eq!(ledger.totals.get(other.pubkey()), Some(&50));
+    assert!(
+        ledger.conflicts[0].contains(r.reproducer.pubkey()),
+        "{:?}",
+        ledger.conflicts
+    );
+}
+
+#[test]
+fn a_per_awardee_key_that_names_someone_else_is_refused() {
+    let r = Reproduction::with(&json!({"completions": "per-awardee", "max_awards": 5}));
+    let award = r.award();
+    let mut body: Value = serde_json::from_str(&award.content).unwrap();
+    let coordinate = body["quest"]["coordinate"].as_str().unwrap().to_owned();
+    assert_eq!(
+        body["key"],
+        json!(format!("{coordinate}:{}", r.reproducer.pubkey()))
+    );
+    for key in [
+        coordinate.clone(),
+        format!("{coordinate}:{}", r.claimant.pubkey()),
+    ] {
+        body["key"] = json!(key);
+        let forged = r
+            .referee
+            .sign(AT, xp::AWARD_KIND, award.tags.clone(), body.to_string());
+        let events = vec![
+            r.quest.clone(),
+            r.claim.clone(),
+            r.reproduction.clone(),
+            forged,
+        ];
+        let ledger = derive(&events, &r.trust());
+        assert!(ledger.totals.is_empty());
+        assert!(ledger.refused[0].contains("key"), "{:?}", ledger.refused);
+    }
 }
 
 fn playtest_quest(referee: &RelaySigner, contribution: &str, max_awards: u64) -> Event {

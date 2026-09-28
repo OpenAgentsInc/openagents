@@ -19,7 +19,7 @@
         "kind": { "const": 3193 }
       }
     },
-    "key": { "type": "string", "minLength": 73, "maxLength": 220 },
+    "key": { "type": "string", "minLength": 73, "maxLength": 320 },
     "reason": { "type": "string", "minLength": 1, "maxLength": 1000 }
   }
 }

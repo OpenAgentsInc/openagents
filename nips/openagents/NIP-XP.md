@@ -1,7 +1,9 @@
 # NIP-XP — Quests, acceptance, and experience points
 
 `draft` `optional` — v1, 2026-09-26; the `reproduce` rule added
-2026-09-28; the `playtest` rule added 2026-09-28. The [shared contracts](contracts.md) are normative.
+2026-09-28; the `playtest` rule added 2026-09-28; the `per-awardee`
+uniqueness policy added 2026-09-28. The [shared contracts](contracts.md)
+are normative.
 
 This NIP publishes quests, a referee's acceptance of a completed quest, and
 the experience points (XP) that acceptance carries, as signed Nostr events.
@@ -132,7 +134,8 @@ The body (illustrative values):
 | `acceptance` | The rule and its parameters; see [Acceptance rules](#acceptance-rules). Each rule has its own closed set of keys. |
 | `reference` | The run the quest is measured against, or `null`: a label, its cost in dollars, its wall time in seconds, and where it's recorded. Display and provenance only; the executable bar is in `acceptance`. |
 | `award` | Fixed XP per role, with exactly the rule's roles: `author` and `runner` under `kb-transfer`, `claimant` and `reproducer` under `reproduce`. A role MAY be 0. The quest's award is the sum, at least 1 and at most 1,000. Roles split the award; they never multiply it. |
-| `completions` | The uniqueness policy. `first` is the only value in this version: the first accepted completion per uniqueness key earns the award, once. The key is the quest version's coordinate, except under `playtest`, whose rule derives it. |
+| `completions` | The uniqueness policy; see [Uniqueness policies](#uniqueness-policies). `first`: the first accepted completion per uniqueness key earns the award, once; the key is the quest version's coordinate, except under `playtest`, whose rule derives it. `per-awardee`: each distinct reproducer earns the award once, up to `max_awards`; only `reproduce` takes it. |
+| `max_awards` | Under `per-awardee`, required: the most live awards the quest version pays, 1 to 10,000. Absent under `first`. (A `playtest` quest states its own in `acceptance`.) |
 
 Tags:
 
@@ -403,7 +406,8 @@ everything a reader needs to re-check it:
   quests. `quest.id` pins the exact quest event, never only its address.
 - `key` is the **uniqueness key**. Under `completions: first` it equals the
   quest version's coordinate, so it names the quest version and nothing
-  else.
+  else. Under `per-awardee` it is the coordinate, a colon, and the
+  reproducer's public key, `30193:<referee>:<address>:<reproducer>`.
 - `entry_version` repeats the entry's ID, version, and document digest (the
   `3190`'s `x` tag) so a reader can match the award without parsing the
   document.
@@ -425,7 +429,7 @@ Tags:
 | Tag | Count | Value |
 | --- | --- | --- |
 | `t` | exactly 1 | `oa:xp:award:v1`. |
-| `a` | exactly 1 | The quest coordinate, equal to `key`. |
+| `a` | exactly 1 | The quest coordinate: equal to `key` under `first`, and its prefix under `per-awardee`. |
 | `e` | 3 | The quest, entry, and evidence event IDs; under `reproduce`, the quest, claim, and reproduction. |
 | `p` | 2 | The awardees' public keys. |
 
@@ -454,6 +458,26 @@ following never multiply it:
 A referee that wants a harder or repeated challenge publishes a new quest
 version, such as one whose bar is the current best run.
 
+### Uniqueness policies
+
+A quest's `completions` names how many completions it pays:
+
+| Policy | Uniqueness key | Pays | Rules |
+| --- | --- | --- | --- |
+| `first` | The quest version's coordinate (`playtest` derives its own) | The first accepted completion, once | All |
+| `per-awardee` | `<coordinate>:<reproducer>` | Each distinct reproducer once, and at most `max_awards` awards | `reproduce` |
+
+`per-awardee` is for tutorials and dailies: every newcomer can complete the
+same quest version once. Its rule names a keyed role, the reproducer, and
+every other role's XP MUST be 0, so the claimant that every completion
+shares is never credited once per reproducer. A reader that holds more
+live awards from the quest's referee on one quest version than its
+`max_awards` MUST report the conflict and count none of them until the
+referee revokes the extras, as for two awards on one key. A repeated
+reproducer is two live awards on one key, a conflict. A Sybil farm can
+take at most the quest's small award per key, and each key still needs a
+passing run of its own that the referee checked.
+
 ## Revocations (`3194`)
 
 A revocation ends one award:
@@ -469,7 +493,8 @@ A revocation ends one award:
 }
 ```
 
-Tags: exactly one `e` naming `award.id`, exactly one `a` equal to `key`, and
+Tags: exactly one `e` naming `award.id`, exactly one `a` naming the quest
+coordinate (equal to `key` under `first`), and
 the marker `oa:xp:revocation:v1`. The signer MUST equal `award.pubkey`: only
 the award's referee revokes it. `reason` is display text of 1 to 1,000
 characters.
@@ -536,9 +561,12 @@ its trusted runners `U`:
    missing event means the award isn't counted, never that it is assumed
    valid. When `U` is non-empty, the runner (under `reproduce`, the
    reproducer) MUST be in `U`.
-6. An awardee whose `xp` is 0 gets no credit.
 5. Group the surviving awards by referee and uniqueness key. A group with
-   more than one award is a conflict and counts for no one.
+   more than one award is a conflict and counts for no one. A quest
+   version whose `max_awards` (under `per-awardee` or `playtest`) is
+   below its number of surviving awards is a conflict too, and none of
+   its awards count.
+6. An awardee whose `xp` is 0 gets no credit.
 7. For each remaining award, credit each awardee its `xp`.
 
 The result is XP per public key, with the awards behind each credit, the
@@ -592,8 +620,10 @@ A reader accepts a `3193` only when all of these hold:
 1. The event ID and signature verify (NIP-01).
 2. The body parses with the [shared encoding rules](contracts.md#encoding-and-validation),
    has `v: 1`, an empty `requires`, `type: award`, and no unknown keys.
-3. The signer is the quest's referee, `key` equals the quest coordinate,
-   and the `a`, `e`, and `p` tags agree with the body.
+3. The signer is the quest's referee, `key` is the one the quest's
+   uniqueness policy gives (the quest coordinate under `first`; the
+   coordinate and the reproducer under `per-awardee`; the rule's key under
+   `playtest`), and the `a`, `e`, and `p` tags agree with the body.
 4. The awardees are the author, then the runner, under `kb-transfer`, the
    claimant, then the reproducer, under `reproduce`, or the tester, then
    the triager, under `playtest`; each signed the event its role names,
@@ -634,7 +664,12 @@ doesn't take, a report outside the season, an unpaid severity, a missing
 issue or severity, the tester as triager or referee, a session without its
 record or with another tester's or the tester's own, a report on another
 script, a key the rule doesn't derive, one issue paid by two quests, and a
-quest version over its `max_awards`.
+quest version over its `max_awards`. For `per-awardee`: a missing or
+out-of-range `max_awards`, `max_awards` on a `first` quest, a claimant
+share, a rule without a keyed role, a key that names the quest version or
+another key instead of the reproducer, a `first` award keyed to a
+reproducer, one reproducer paid twice, a quest version over its
+`max_awards`, and a revocation of a keyed award.
 `crates/nostr/src/xp/tests.rs`, `crates/nostr/src/xp/reproduce/tests.rs`,
 `crates/nostr/src/xp/playtest/tests.rs`,
 `crates/xp-ledger/src/tests.rs`, and

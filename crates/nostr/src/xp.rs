@@ -49,8 +49,17 @@ pub const PLAYTEST: &str = "playtest";
 /// The uniqueness policies this version implements. Under `first`, the
 /// first accepted completion per uniqueness key earns the award: the key is
 /// the quest version's coordinate, except under `playtest`, whose rule
-/// derives it ([`playtest::key`]).
-pub const COMPLETIONS: &[&str] = &["first"];
+/// derives it ([`playtest::key`]). Under [`PER_AWARDEE`], each distinct
+/// key in the rule's keyed role earns it once, up to the quest's
+/// `max_awards`.
+pub const COMPLETIONS: &[&str] = &[FIRST, PER_AWARDEE];
+/// The uniqueness policy that pays a quest version once.
+pub const FIRST: &str = "first";
+/// The uniqueness policy that pays each distinct awardee once, up to a
+/// stated number of awards: tutorials and dailies.
+pub const PER_AWARDEE: &str = "per-awardee";
+/// The most awards a `per-awardee` quest version may state.
+pub const MAX_PER_AWARDEE: u64 = 10_000;
 /// The awardee roles of `kb-transfer`, in the order an award lists them.
 pub const ROLES: &[&str] = &["author", "runner"];
 /// The awardee roles of `reproduce`, in the order an award lists them.
@@ -58,6 +67,18 @@ pub const REPRODUCE_ROLES: &[&str] = &["claimant", "reproducer"];
 /// The awardee roles of `playtest`, in the order an award lists them. For
 /// a moderated or group session, the triager is the session's moderator.
 pub const PLAYTEST_ROLES: &[&str] = &["tester", "triager"];
+
+/// The role whose key a `per-awardee` quest pays once, under `rule`: the
+/// reproducer under `reproduce`. Only rules with a keyed role take the
+/// policy; every other role of such a quest carries 0 XP, so no key is
+/// credited twice through a role every completion shares.
+#[must_use]
+pub fn keyed_role(rule: &str) -> Option<&'static str> {
+    match rule {
+        REPRODUCE => Some("reproducer"),
+        _ => None,
+    }
+}
 
 /// The awardee roles of `rule`, in the order an award lists them. An
 /// unknown rule has none.
@@ -93,6 +114,7 @@ const QUEST_KEYS: &[&str] = &[
     "reference",
     "award",
     "completions",
+    "max_awards",
 ];
 
 /// A season: a slug and the Unix-second window awards must fall in.
@@ -149,9 +171,12 @@ pub struct Quest {
     pub reference: Option<Reference>,
     /// XP per role. The award is the sum; roles split it, never multiply it.
     pub award: BTreeMap<String, u64>,
-    /// `first` in this version: the first accepted completion per
-    /// uniqueness key earns it.
+    /// `first`: the first accepted completion per uniqueness key earns
+    /// it. `per-awardee`: each distinct key in the rule's keyed role earns
+    /// it once, up to `max_awards`.
     pub completions: String,
+    /// `per-awardee`: the most live awards the quest version pays.
+    pub max_awards: Option<u64>,
     /// The `d` tag: `<id>@<version>`.
     pub address: String,
 }
@@ -161,6 +186,24 @@ impl Quest {
     #[must_use]
     pub fn total(&self) -> u64 {
         self.award.values().sum()
+    }
+
+    /// The most live awards the quest version pays, when it states one:
+    /// `max_awards` under `per-awardee`, or the `playtest` acceptance's.
+    #[must_use]
+    pub fn award_limit(&self) -> Option<u64> {
+        self.max_awards.or_else(|| {
+            self.acceptance
+                .playtest
+                .as_ref()
+                .map(|accepted| accepted.max_awards)
+        })
+    }
+
+    /// Whether each distinct awardee earns the award once.
+    #[must_use]
+    pub fn per_awardee(&self) -> bool {
+        self.completions == PER_AWARDEE
     }
 }
 
@@ -344,6 +387,29 @@ fn quest_body(object: &Map<String, Value>) -> Result<Quest, ContractError> {
     if !COMPLETIONS.contains(&completions.as_str()) {
         return Err(unsupported("completions"));
     }
+    let max_awards = if completions == PER_AWARDEE {
+        let Some(keyed) = keyed_role(&acceptance.rule) else {
+            return Err(unsupported(format!(
+                "completions: per-awardee doesn't apply to {}",
+                acceptance.rule
+            )));
+        };
+        let max_awards = number(object, "max_awards")?;
+        if !(1..=MAX_PER_AWARDEE).contains(&max_awards) {
+            return Err(malformed("max_awards"));
+        }
+        if award.iter().any(|(role, xp)| role != keyed && *xp > 0) {
+            return Err(malformed(format!(
+                "award: under per-awardee only the {keyed} earns XP"
+            )));
+        }
+        Some(max_awards)
+    } else {
+        if object.contains_key("max_awards") {
+            return Err(malformed("max_awards is for per-awardee quests"));
+        }
+        None
+    };
     Ok(Quest {
         address: address(&id, version),
         id,
@@ -355,7 +421,22 @@ fn quest_body(object: &Map<String, Value>) -> Result<Quest, ContractError> {
         reference,
         award,
         completions,
+        max_awards,
     })
+}
+
+/// The uniqueness key of an award for `quest` by `referee`, where
+/// `keyed` is the awardee in the rule's keyed role: the quest version's
+/// coordinate under `first`, and `<coordinate>:<awardee pubkey>` under
+/// `per-awardee`. A `playtest` key comes from [`playtest::key`] instead.
+#[must_use]
+pub fn uniqueness_key(referee: &str, quest: &Quest, keyed: &str) -> String {
+    let coordinate = coordinate(referee, &quest.address);
+    if quest.per_awardee() {
+        format!("{coordinate}:{keyed}")
+    } else {
+        coordinate
+    }
 }
 
 fn bounded(object: &Map<String, Value>, key: &str, max: usize) -> Result<String, ContractError> {
@@ -635,9 +716,13 @@ pub fn parse_award(event: &Event) -> Result<Award, ContractError> {
     // A `playtest` key is derived by its rule from the quest and the
     // contribution; [`bind_quest`] re-derives it. Every other key is the
     // quest version's coordinate.
+    // A `per-awardee` key appends the keyed awardee's public key; it's
+    // checked below, once the awardees are read.
     if rule == PLAYTEST {
         playtest::check_key_shape(&key)?;
-    } else if key != coordinate_value {
+    } else if key != coordinate_value
+        && (keyed_role(rule).is_none() || !key.starts_with(&format!("{coordinate_value}:")))
+    {
         return Err(mismatch("key"));
     }
     if one_tag(event, "a")? != coordinate_value {
@@ -715,6 +800,15 @@ pub fn parse_award(event: &Event) -> Result<Award, ContractError> {
     } else {
         None
     };
+    if rule != PLAYTEST
+        && key != coordinate_value
+        && keyed_role(rule)
+            .and_then(|role| awardees.iter().find(|a| a.role == role))
+            .map(|a| format!("{coordinate_value}:{}", a.pubkey))
+            != Some(key.clone())
+    {
+        return Err(mismatch("key: a per-awardee key names the keyed awardee"));
+    }
     let total: u64 = awardees.iter().map(|a| a.xp).sum();
     if total == 0 {
         return Err(malformed("awardees"));
@@ -825,6 +919,16 @@ pub fn bind_quest(award: &Award, quest: &Event) -> Result<Quest, ContractError> 
     in_season(&parsed, award.accepted_at)?;
     if award.rule == PLAYTEST {
         playtest::bind_fields(award, &parsed)?;
+    } else {
+        let keyed = keyed_role(&parsed.acceptance.rule)
+            .and_then(|role| award.role(role))
+            .map_or("", |a| a.pubkey.as_str());
+        if award.key != uniqueness_key(&quest.pubkey, &parsed, keyed) {
+            return Err(mismatch(format!(
+                "the award's key isn't the one the quest's {} policy gives",
+                parsed.completions
+            )));
+        }
     }
     for awardee in &award.awardees {
         if parsed.award.get(&awardee.role) != Some(&awardee.xp) {
@@ -1042,9 +1146,16 @@ pub fn parse_revocation(event: &Event) -> Result<Revocation, ContractError> {
         playtest::check_key_shape(&key)?;
         valid_address(a.strip_prefix(&prefix).ok_or_else(|| mismatch("a tag"))?)?;
     } else {
-        let address = key.strip_prefix(&prefix).ok_or_else(|| mismatch("key"))?;
+        let rest = key.strip_prefix(&prefix).ok_or_else(|| mismatch("key"))?;
+        // A per-awardee key is the coordinate, a colon, and the keyed
+        // awardee's public key; the `a` tag names the quest version.
+        let address = match rest.split_once(':') {
+            Some((address, awardee)) if is_hex(awardee) => address,
+            Some(_) => return Err(malformed("key")),
+            None => rest,
+        };
         valid_address(address)?;
-        if a != key {
+        if a != format!("{prefix}{address}") {
             return Err(mismatch("a tag"));
         }
     }

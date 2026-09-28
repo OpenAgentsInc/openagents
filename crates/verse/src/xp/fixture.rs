@@ -196,6 +196,46 @@ impl Reproduction {
         xp_award: u64,
         at: u64,
     ) -> Self {
+        Self::build(referee, claimant, reproducer, task, xp_award, at, None)
+    }
+
+    /// As [`Reproduction::new`], with version 2 of the quest paying each
+    /// distinct reproducer once, up to `max_awards` (`per-awardee`).
+    ///
+    /// # Panics
+    ///
+    /// Never for a task without whitespace, `xp` from 1 to 1,000, and
+    /// `max_awards` from 1 to 10,000.
+    #[must_use]
+    pub fn per_awardee(
+        referee: &RelaySigner,
+        claimant: &RelaySigner,
+        reproducer: &RelaySigner,
+        task: &str,
+        xp_award: u64,
+        at: u64,
+        max_awards: u64,
+    ) -> Self {
+        Self::build(
+            referee,
+            claimant,
+            reproducer,
+            task,
+            xp_award,
+            at,
+            Some(max_awards),
+        )
+    }
+
+    fn build(
+        referee: &RelaySigner,
+        claimant: &RelaySigner,
+        reproducer: &RelaySigner,
+        task: &str,
+        xp_award: u64,
+        at: u64,
+        max_awards: Option<u64>,
+    ) -> Self {
         let recipe = xp::recipe_from_summary(&run_summary(task, 1.0, 0), "terminal-bench", "2.1")
             .expect("a valid recipe");
         let claim = sign(
@@ -210,10 +250,7 @@ impl Reproduction {
             )
             .expect("a valid claim"),
         );
-        let quest = sign(
-            referee,
-            at,
-            xp::quest(&json!({
+        let mut spec = json!({
                 "id": format!("tb21.{task}.reproduce"), "version": 1,
                 "season": {"id": "tb21-tutorial-s1", "opens_at": at - 1_000, "closes_at": at + 90 * 86_400},
                 "title": format!("Reproduce Microcoder's pass on {task}"),
@@ -223,9 +260,13 @@ impl Reproduction {
                     "claim": {"id": claim.id, "pubkey": claim.pubkey, "kind": kb::EVIDENCE_KIND}},
                 "reference": null,
                 "award": {"claimant": 0, "reproducer": xp_award},
-            }))
-            .expect("a valid quest"),
-        );
+        });
+        if let Some(max_awards) = max_awards {
+            spec["version"] = json!(2);
+            spec["completions"] = json!(xp::PER_AWARDEE);
+            spec["max_awards"] = json!(max_awards);
+        }
+        let quest = sign(referee, at, xp::quest(&spec).expect("a valid quest"));
         let reproduction = sign(
             reproducer,
             at,
@@ -301,6 +342,29 @@ pub fn tutorial_events(
         .take(count)
         .flat_map(|task| Reproduction::new(referee, &claimant, reproducer, task, 50, at).events(at))
         .collect()
+}
+
+/// Signed events in which `reproducer` completed version 2 of the
+/// `prove-plus-comm` tutorial, which pays each distinct reproducer 50 XP
+/// once, up to `max_awards`: a labeled fixture for tests.
+#[must_use]
+pub fn per_awardee_events(
+    referee: &RelaySigner,
+    reproducer: &RelaySigner,
+    max_awards: u64,
+    at: u64,
+) -> Vec<Event> {
+    let claimant = signer(0x7c_1a_1b);
+    Reproduction::per_awardee(
+        referee,
+        &claimant,
+        reproducer,
+        TUTORIAL_TASKS[0],
+        50,
+        at,
+        max_awards,
+    )
+    .events(at)
 }
 
 /// Signed events in which `tester` has accepted playtest contributions

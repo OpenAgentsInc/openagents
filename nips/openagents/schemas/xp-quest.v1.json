@@ -158,8 +158,15 @@
     },
     "completions": {
       "enum": [
-        "first"
+        "first",
+        "per-awardee"
       ]
+    },
+    "max_awards": {
+      "description": "Required under per-awardee and absent under first: the most live awards the quest version pays. Only the reproduce rule takes per-awardee, and only its reproducer role may carry XP.",
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 10000
     }
   },
   "$defs": {

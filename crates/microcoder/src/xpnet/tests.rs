@@ -705,6 +705,126 @@ async fn a_claim_a_reproduction_and_its_award_level_up_the_reproducer() {
 }
 
 #[tokio::test]
+async fn a_per_awardee_tutorial_pays_each_reproducer_once_up_to_its_max() {
+    let (url, store) = relay().await;
+    let home = scratch("xp-per-awardee");
+    let referee_key = home.join("referee-key");
+    let claimed = pmars_run(&home, "claim", 1.0, 0);
+    let claim_options = options(&["--relay", &url, "--record", claimed.to_str().unwrap()]);
+    assert_eq!(
+        claim(&claim_options, &home.join("claimant-key"))
+            .await
+            .unwrap(),
+        0
+    );
+    let claim_event = store
+        .lock()
+        .unwrap()
+        .iter()
+        .find(|e| e.kind == kb::EVIDENCE_KIND)
+        .cloned()
+        .unwrap();
+    let parsed_claim = xp::parse_run_evidence(&claim_event).unwrap();
+    let spec = json!({
+        "id": "tb21.build-pmars.reproduce", "version": 2,
+        "season": {"id": "tb21-tutorial-s1", "opens_at": 0, "closes_at": 4_000_000_000_u64},
+        "title": "Reproduce Microcoder's pass on build-pmars",
+        "objective": "Rerun the published pass from its recipe.",
+        "acceptance": {"rule": "reproduce", "task": "build-pmars",
+            "recipe": parsed_claim.recipe_digest,
+            "claim": {"id": claim_event.id, "pubkey": claim_event.pubkey, "kind": kb::EVIDENCE_KIND}},
+        "reference": null,
+        "award": {"claimant": 0, "reproducer": 50},
+        "completions": "per-awardee",
+        "max_awards": 2,
+    });
+    let file = home.join("tutorial.json");
+    std::fs::write(&file, spec.to_string()).unwrap();
+    let publish = options(&[file.to_str().unwrap(), "--relay", &url]);
+    assert_eq!(quest(&publish, &referee_key).await.unwrap(), 0);
+    let referee = remote::own_pubkey(&referee_key).unwrap();
+    let address = "tb21.build-pmars.reproduce@2";
+
+    // Each reproducer reruns and sends the referee its run record.
+    let mut runs = Vec::new();
+    for (n, name) in ["alice", "bob", "carol"].iter().enumerate() {
+        let key = home.join(format!("{name}-key"));
+        let run = pmars_run(&home, name, 1.0, 10 + n as u64);
+        let rerun = options(&[
+            "--relay",
+            &url,
+            "--quest",
+            address,
+            "--referee",
+            &referee,
+            "--record",
+            run.to_str().unwrap(),
+        ]);
+        assert_eq!(reproduce(&rerun, &key).await.unwrap(), 0);
+        let me = remote::own_pubkey(&key).unwrap();
+        let event = store
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|e| e.kind == kb::EVIDENCE_KIND && e.pubkey == me)
+            .cloned()
+            .unwrap();
+        runs.push((me, event, run));
+    }
+    let award_for = |event: &Event, run: &PathBuf| {
+        options(&[
+            "--relay",
+            &url,
+            "--quest",
+            address,
+            "--evidence",
+            &event.id,
+            "--record",
+            run.to_str().unwrap(),
+        ])
+    };
+    let (alice, alice_run, alice_file) = &runs[0];
+    let (bob, bob_run, bob_file) = &runs[1];
+    let (_, carol_run, carol_file) = &runs[2];
+    assert_eq!(
+        award(&award_for(alice_run, alice_file), &referee_key)
+            .await
+            .unwrap(),
+        0
+    );
+    // Alice is paid once; Bob is a distinct reproducer and is paid too.
+    assert_eq!(
+        award(&award_for(alice_run, alice_file), &referee_key)
+            .await
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        award(&award_for(bob_run, bob_file), &referee_key)
+            .await
+            .unwrap(),
+        0
+    );
+    // Carol is over the quest's max_awards of 2.
+    assert_eq!(
+        award(&award_for(carol_run, carol_file), &referee_key)
+            .await
+            .unwrap(),
+        1
+    );
+    assert_eq!(count(&store, xp::AWARD_KIND), 2);
+
+    let trust = XpTrust {
+        referees: BTreeSet::from([referee.clone()]),
+        runners: BTreeSet::new(),
+    };
+    let derived = derive_from(&store, &trust);
+    assert_eq!(derived.totals.get(alice), Some(&50));
+    assert_eq!(derived.totals.get(bob), Some(&50));
+    assert_eq!(derived.totals.len(), 2);
+}
+
+#[tokio::test]
 async fn a_trainer_key_file_may_hold_an_nsec() {
     let home = scratch("xp-nsec");
     let path = home.join("trainer-key");

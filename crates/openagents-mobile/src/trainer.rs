@@ -61,7 +61,7 @@ pub struct TrainerPacket {
     pub to_next: u64,
     pub titles: Vec<String>,
     pub awards: Vec<AwardRow>,
-    /// Open quests from the trusted referee that no counted award has taken.
+    /// Open quests from the trusted referee this key can still earn.
     pub open_quests: usize,
     pub note: &'static str,
     /// Playtest XP and titles from the separate playtest referee, shown
@@ -254,20 +254,8 @@ impl Trainer {
         let empty = Snapshot::default();
         let snapshot = self.snapshot.as_ref().unwrap_or(&empty);
         let card = ::verse::xp::card(snapshot, std::slice::from_ref(&public_hex));
-        let now = unix_now();
-        let taken: std::collections::BTreeSet<&str> =
-            snapshot.credits.iter().map(|c| c.quest.as_str()).collect();
-        let open_quests = snapshot
-            .quests
-            .iter()
-            .filter(|q| {
-                q.trusted
-                    && !q.conflict
-                    && q.season.opens_at <= now
-                    && now <= q.season.closes_at
-                    && !taken.contains(q.address.as_str())
-            })
-            .count();
+        let open_quests =
+            ::verse::xp::open_quests(snapshot, std::slice::from_ref(&public_hex), unix_now());
         let playtest = self.playtest(&public_hex, &signer);
         Ok(TrainerPacket {
             schema: "openagents.trainer.v1",
