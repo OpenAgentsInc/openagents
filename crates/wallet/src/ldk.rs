@@ -23,7 +23,11 @@ use crate::{LightningWallet, parse_hash32};
 
 /// How long a send waits for the node to reconnect its channel peers
 /// after a start.
-const PEER_RECONNECT_WAIT: Duration = Duration::from_secs(20);
+const PEER_RECONNECT_WAIT: Duration = Duration::from_secs(30);
+
+/// How often a wait or a resident dials stored peers that are not
+/// connected; the node's own retry runs once a minute.
+const PEER_DIAL_INTERVAL: Duration = Duration::from_secs(5);
 
 pub struct LdkWallet {
     node: Node,
@@ -121,6 +125,7 @@ impl LdkWallet {
     /// has no channels at all.
     fn await_usable_channel(&self, wait: Duration) {
         let deadline = Instant::now() + wait;
+        let mut next_dial = Instant::now();
         loop {
             let channels = self.node.list_channels();
             if channels.is_empty() || channels.iter().any(|channel| channel.is_usable) {
@@ -129,9 +134,34 @@ impl LdkWallet {
             if Instant::now() >= deadline {
                 return;
             }
+            if Instant::now() >= next_dial {
+                self.dial_stored_peers();
+                next_dial = Instant::now() + PEER_DIAL_INTERVAL;
+            }
             self.drain_events();
             std::thread::sleep(Duration::from_millis(250));
         }
+    }
+
+    /// Dial every stored peer that is not connected. Returns how many
+    /// connections the calls made; a peer that does not answer is left for
+    /// the next round.
+    pub fn dial_stored_peers(&self) -> usize {
+        self.node
+            .list_peers()
+            .into_iter()
+            .filter(|peer| peer.is_persisted && !peer.is_connected)
+            .filter(|peer| {
+                self.node
+                    .connect(peer.node_id, peer.address.clone(), true)
+                    .is_ok()
+            })
+            .count()
+    }
+
+    /// How often a resident should call `dial_stored_peers`.
+    pub const fn peer_dial_interval() -> Duration {
+        PEER_DIAL_INTERVAL
     }
 
     fn payment(&self, hash: [u8; 32]) -> Option<PaymentDetails> {
@@ -483,6 +513,13 @@ fn describe(event: &Event) -> serde_json::Value {
             "reason": reason.as_ref().map(|r| r.to_string()),
         }),
         other => json!({ "event": "other", "detail": format!("{other:?}") }),
+    }
+}
+
+#[cfg(unix)]
+impl crate::resident::Served for LdkWallet {
+    fn status(&self) -> serde_json::Value {
+        LdkWallet::status(self)
     }
 }
 

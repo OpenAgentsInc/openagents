@@ -474,8 +474,25 @@ openagents wallet channel list
 openagents wallet invoice --msat 1000 --request-hash HEX64 --json
 openagents wallet pay BOLT11 --max-fee-msat 50 --wait 60 --json
 openagents wallet lookup PAYMENT_HASH
-openagents wallet serve --seconds 3600       # keep the node online; events as JSON lines
+openagents wallet serve                      # the resident node: events as JSON lines, answers control.sock
+openagents wallet service install            # run `wallet serve` from login on (launchd or systemd --user)
 ```
+
+`wallet serve` is the resident node. It binds `control.sock` in the wallet
+home and answers every other wallet command, and every `x402` command that
+needs the node, over that socket; `info` then reports `resident` with the
+serving pid and uptime, and a payment through it completes in well under a
+second. A command that finds no resident opens the node itself, acts, and
+stops it, which costs a chain sync each time and leaves nothing online to
+receive on. A second `serve` under the same home is refused while the first
+answers; a socket left by a killed resident is replaced. The resident dials
+its stored channel peers every 5 seconds until they connect, so a
+counterpart that comes online is usable within seconds rather than the
+node's own one-minute retry. `wallet service install` writes a launchd
+agent (`com.openagents.wallet`, `gui/UID`) or a systemd user unit that runs
+`openagents --json wallet serve` for this wallet home with restart on exit,
+and `service status` reports both the manager's view and the resident that
+answers.
 
 `invoice` puts the request hash in the BOLT11 description hash (`h`) and
 uses no memo, so `crates/nostr::x402` accepts it for that amount, hash, and

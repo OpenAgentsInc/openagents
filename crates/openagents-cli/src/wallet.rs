@@ -1,10 +1,12 @@
 //! `openagents wallet`: the Lightning node this machine holds alone, for
-//! both x402 roles. Every command opens the node, syncs, acts, and stops;
-//! `serve` keeps it running so payers can reach it.
+//! both x402 roles. `serve` keeps the node online as the resident and
+//! answers other wallet commands over `control.sock`; a command that finds
+//! no resident opens the node, acts, and stops it.
 
 use std::time::Duration;
 
-use openagents_wallet::ldk::LdkWallet;
+use openagents_wallet::open::Opened;
+use openagents_wallet::resident::Server;
 use openagents_wallet::{
     LightningWallet, Network, WalletConfig, WalletError, config, parse_hash32,
 };
@@ -36,9 +38,16 @@ const USAGE: &str = "usage: openagents wallet COMMAND [OPTIONS]
                           Pay within the fee cap and print the preimage
                           (x402 payer). Paying twice returns the same proof.
   lookup PAYMENT_HASH     The store's record of a payment, either direction.
-  serve [--seconds N]     Keep the node online and print events as JSON lines.
+  serve [--seconds N]     Keep the node online as the resident: print events
+                          as JSON lines and answer other wallet and x402
+                          commands over control.sock in the wallet home.
+  service install|uninstall|status [--binary PATH]
+                          Run `wallet serve` as a launchd agent or systemd
+                          user unit, started at login.
 Files live in ~/.openagents/wallet (OPENAGENTS_WALLET_HOME overrides). The
-seed is never printed. Add --json before `wallet` for one JSON document.";
+seed is never printed. Add --json before `wallet` for one JSON document.
+While a resident serves, every other command acts through it and `info`
+reports `resident`; without one, each command opens and stops the node.";
 
 const SWITCHES: &[&str] = &["announce"];
 
@@ -63,7 +72,7 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
             while let Some(event) = wallet.next_event()? {
                 events.push(event);
             }
-            Ok(json!({ "node_id": wallet.node_id(), "status": wallet.status(), "events": events }))
+            Ok(json!({ "node_id": wallet.node_id(), "status": wallet.status()?, "events": events }))
         })
         .map(|v| (v, render_json as _)),
         "fund" => with_node(|wallet| {
@@ -85,6 +94,7 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
         "pay" => pay(&args).map(|v| (v, render_json as _)),
         "lookup" => lookup(&args).map(|v| (v, render_json as _)),
         "serve" => return serve(output, &args),
+        "service" => return service::run(output, &args, USAGE),
         other => return output.usage("wallet", &format!("unknown command `{other}`"), USAGE),
     };
     match result {
@@ -188,12 +198,12 @@ fn init(args: &Args) -> Result<Value, Failure> {
     Ok(value)
 }
 
-fn open(home: &std::path::Path, wallet_config: &WalletConfig) -> Result<LdkWallet, Failure> {
+fn open(home: &std::path::Path, wallet_config: &WalletConfig) -> Result<Opened, Failure> {
     let (mnemonic, _) = config::load_or_create_seed(home, false, String::new)?;
-    Ok(LdkWallet::open(home, wallet_config, &mnemonic)?)
+    Ok(Opened::open(home, wallet_config, &mnemonic)?)
 }
 
-fn with_node<T>(act: impl FnOnce(&LdkWallet) -> Result<T, Failure>) -> Result<T, Failure> {
+fn with_node<T>(act: impl FnOnce(&Opened) -> Result<T, Failure>) -> Result<T, Failure> {
     let home = config::home();
     let wallet_config = WalletConfig::load(&home)?;
     let wallet = open(&home, &wallet_config)?;
@@ -204,12 +214,20 @@ fn with_node<T>(act: impl FnOnce(&LdkWallet) -> Result<T, Failure>) -> Result<T,
     Ok(value)
 }
 
-fn info(wallet: &LdkWallet) -> Result<Value, Failure> {
+fn info(wallet: &Opened) -> Result<Value, Failure> {
     let home = config::home();
     let wallet_config = WalletConfig::load(&home)?;
     let balance = wallet.balance()?;
     let channels = wallet.channels()?;
+    let resident = match wallet {
+        Opened::Resident(remote) => {
+            let status = remote.status()?;
+            json!({ "pid": status.pid, "uptime_secs": status.uptime_secs, "socket": remote.path().display().to_string() })
+        }
+        Opened::Local(_) => Value::Null,
+    };
     Ok(json!({
+        "resident": resident,
         "node_id": wallet.node_id(),
         "network": wallet_config.network.as_str(),
         "esplora_url": wallet_config.esplora_url,
@@ -228,7 +246,7 @@ fn info(wallet: &LdkWallet) -> Result<Value, Failure> {
 fn render_info(value: &Value) -> String {
     let balance = &value["balance"];
     format!(
-        "node {}\nnetwork {}  esplora {}\nonchain {} sats ({} spendable)  lightning {} sats\nchannels {} ({} usable)  inbound {} msat  outbound {} msat\nhome {}{}",
+        "node {}\nnetwork {}  esplora {}\nonchain {} sats ({} spendable)  lightning {} sats\nchannels {} ({} usable)  inbound {} msat  outbound {} msat\nhome {}{}{}",
         value["node_id"].as_str().unwrap_or(""),
         value["network"].as_str().unwrap_or(""),
         value["esplora_url"].as_str().unwrap_or(""),
@@ -244,6 +262,13 @@ fn render_info(value: &Value) -> String {
             " (new seed)"
         } else {
             ""
+        },
+        match value["resident"]["pid"].as_u64() {
+            Some(pid) => format!(
+                "\nresident pid {pid} up {}s",
+                value["resident"]["uptime_secs"]
+            ),
+            None => "\nresident none (this command opened the node)".to_owned(),
         }
     )
 }
@@ -275,6 +300,18 @@ fn channel(args: &Args) -> Result<Value, Failure> {
                 let mut state = "negotiating";
                 let mut events = Vec::new();
                 while std::time::Instant::now() < deadline {
+                    if wallet.is_resident() {
+                        let listed = wallet
+                            .channels()?
+                            .into_iter()
+                            .any(|c| c.user_channel_id == user_channel_id);
+                        if listed {
+                            state = "pending";
+                            break;
+                        }
+                        std::thread::sleep(Duration::from_millis(500));
+                        continue;
+                    }
                     match wallet.next_event()? {
                         Some(event) => {
                             let kind = event["event"].as_str().unwrap_or("");
@@ -364,40 +401,305 @@ fn hex_lower(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
+static SHUTDOWN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+extern "C" fn on_signal(_: libc::c_int) {
+    SHUTDOWN.store(true, std::sync::atomic::Ordering::Relaxed);
+}
+
 fn serve(output: &Output, args: &Args) -> u8 {
+    use std::sync::Arc;
+    use std::sync::atomic::Ordering;
+
     let seconds: u64 = match args.number("seconds", 0) {
         Ok(seconds) => seconds,
         Err(message) => return output.usage("wallet", &message, USAGE),
     };
     let home = config::home();
+    let server = match Server::bind(&home) {
+        Ok(server) => server,
+        Err(error) => return output.fail("wallet", &error.to_string()),
+    };
     let wallet = match WalletConfig::load(&home)
         .map_err(Failure::from)
-        .and_then(|c| open(&home, &c))
-    {
-        Ok(wallet) => wallet,
+        .and_then(|c| {
+            let (mnemonic, _) = config::load_or_create_seed(&home, false, String::new)?;
+            Ok(openagents_wallet::ldk::LdkWallet::open(
+                &home, &c, &mnemonic,
+            )?)
+        }) {
+        Ok(wallet) => Arc::new(wallet),
         Err(Failure::Usage(message)) => return output.usage("wallet", &message, USAGE),
         Err(Failure::Wallet(error)) => return output.fail("wallet", &error.to_string()),
     };
+    // SAFETY: the handler only stores to an atomic.
+    unsafe {
+        libc::signal(libc::SIGINT, on_signal as *const () as usize);
+        libc::signal(libc::SIGTERM, on_signal as *const () as usize);
+    }
     output.line(
-        &json!({ "event": "serving", "node_id": wallet.node_id(), "status": wallet.status() }),
-        |value| format!("serving {}", value["node_id"].as_str().unwrap_or("")),
+        &json!({
+            "event": "serving",
+            "node_id": wallet.node_id(),
+            "pid": std::process::id(),
+            "socket": server.path().display().to_string(),
+            "status": wallet.status(),
+        }),
+        |value| {
+            format!(
+                "serving {} (pid {}, socket {})",
+                value["node_id"].as_str().unwrap_or(""),
+                value["pid"],
+                value["socket"].as_str().unwrap_or("")
+            )
+        },
     );
+    let stop = server.stop_flag();
+    let served = Arc::clone(&wallet);
+    let accepting = std::thread::spawn(move || server.run(served));
     let deadline = (seconds > 0).then(|| std::time::Instant::now() + Duration::from_secs(seconds));
+    let mut failed = None;
+    let mut next_dial = std::time::Instant::now();
     loop {
+        if std::time::Instant::now() >= next_dial {
+            let dialed = wallet.dial_stored_peers();
+            if dialed > 0 {
+                output.line(
+                    &json!({ "event": "peers_dialed", "count": dialed }),
+                    render_json,
+                );
+            }
+            next_dial =
+                std::time::Instant::now() + openagents_wallet::ldk::LdkWallet::peer_dial_interval();
+        }
         match wallet.next_event() {
             Ok(Some(event)) => output.line(&event, render_json),
             Ok(None) => std::thread::sleep(Duration::from_millis(250)),
             Err(error) => {
-                let _ = wallet.stop();
-                return output.fail("wallet", &error.to_string());
+                failed = Some(error);
+                break;
             }
         }
-        if deadline.is_some_and(|deadline| std::time::Instant::now() >= deadline) {
+        if SHUTDOWN.load(Ordering::Relaxed)
+            || deadline.is_some_and(|deadline| std::time::Instant::now() >= deadline)
+        {
             break;
         }
     }
-    match wallet.stop() {
-        Ok(()) => 0,
-        Err(error) => output.fail("wallet", &error.to_string()),
+    stop.store(true, Ordering::Relaxed);
+    let _ = accepting.join();
+    output.line(&json!({ "event": "stopping" }), |_| "stopping".to_owned());
+    match (wallet.stop(), failed) {
+        (Ok(()), None) => 0,
+        (_, Some(error)) | (Err(error), None) => output.fail("wallet", &error.to_string()),
+    }
+}
+
+mod service {
+    //! `wallet service`: a launchd agent or systemd user unit that runs
+    //! `openagents wallet serve` from login on, so the resident is there
+    //! whenever a payer or another command needs it.
+
+    use std::path::PathBuf;
+    use std::process::Command;
+
+    use coder_service::service::Platform;
+    use serde_json::{Value, json};
+
+    use crate::{Args, Output};
+
+    const LABEL: &str = "com.openagents.wallet";
+
+    pub fn run(output: &Output, args: &Args, usage: &str) -> u8 {
+        let Some(platform) = Platform::current() else {
+            return output.fail("wallet", "wallet service needs macOS or Linux");
+        };
+        let home_dir = std::env::var_os("HOME")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from("."));
+        let path = platform
+            .default_registration_dir(&home_dir)
+            .join(match platform {
+                Platform::Macos => format!("{LABEL}.plist"),
+                Platform::Linux => format!("{LABEL}.service"),
+            });
+        let result = match args.positional().first().map(String::as_str) {
+            Some("install") => install(platform, &path, args.option("binary")),
+            Some("uninstall") => uninstall(platform, &path),
+            Some("status") => status(platform, &path),
+            _ => {
+                return output.usage(
+                    "wallet",
+                    "service needs install, uninstall, or status",
+                    usage,
+                );
+            }
+        };
+        match result {
+            Ok(value) => {
+                output.emit(&value, |v| {
+                    format!(
+                        "{} {} ({})",
+                        v["service"].as_str().unwrap_or(""),
+                        v["state"].as_str().unwrap_or(""),
+                        v["path"].as_str().unwrap_or("")
+                    )
+                });
+                0
+            }
+            Err(message) => output.fail("wallet", &message),
+        }
+    }
+
+    fn binary(flag: Option<&str>) -> Result<PathBuf, String> {
+        match flag {
+            Some(path) => Ok(PathBuf::from(path)),
+            None => std::env::current_exe().map_err(|error| format!("current binary: {error}")),
+        }
+    }
+
+    fn render(
+        platform: Platform,
+        binary: &std::path::Path,
+        wallet_home: &std::path::Path,
+    ) -> String {
+        let binary = binary.display();
+        let wallet_home = wallet_home.display();
+        match platform {
+            Platform::Macos => format!(
+                r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>{LABEL}</string>
+  <key>ProgramArguments</key>
+  <array><string>{binary}</string><string>--json</string><string>wallet</string><string>serve</string></array>
+  <key>EnvironmentVariables</key>
+  <dict><key>OPENAGENTS_WALLET_HOME</key><string>{wallet_home}</string></dict>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>StandardOutPath</key><string>{wallet_home}/serve.log</string>
+  <key>StandardErrorPath</key><string>{wallet_home}/serve.log</string>
+</dict>
+</plist>
+"#
+            ),
+            Platform::Linux => format!(
+                "[Unit]\nDescription=openagents wallet resident node\nAfter=network-online.target\n\n[Service]\nEnvironment=OPENAGENTS_WALLET_HOME={wallet_home}\nExecStart={binary} --json wallet serve\nRestart=always\nRestartSec=5\n\n[Install]\nWantedBy=default.target\n"
+            ),
+        }
+    }
+
+    fn sh(program: &str, args: &[&str]) -> Result<String, String> {
+        let done = Command::new(program)
+            .args(args)
+            .output()
+            .map_err(|error| format!("{program}: {error}"))?;
+        let text = String::from_utf8_lossy(&done.stdout).into_owned()
+            + &String::from_utf8_lossy(&done.stderr);
+        if done.status.success() {
+            Ok(text)
+        } else {
+            Err(format!("{program} {}: {}", args.join(" "), text.trim()))
+        }
+    }
+
+    fn uid() -> String {
+        // SAFETY: getuid has no preconditions.
+        unsafe { libc::getuid() }.to_string()
+    }
+
+    fn install(
+        platform: Platform,
+        path: &std::path::Path,
+        flag: Option<&str>,
+    ) -> Result<Value, String> {
+        let binary = binary(flag)?;
+        let wallet_home = openagents_wallet::config::home();
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|error| format!("{}: {error}", parent.display()))?;
+        }
+        std::fs::write(path, render(platform, &binary, &wallet_home))
+            .map_err(|error| format!("{}: {error}", path.display()))?;
+        match platform {
+            Platform::Macos => {
+                let domain = format!("gui/{}", uid());
+                let _ = sh("launchctl", &["bootout", &format!("{domain}/{LABEL}")]);
+                sh(
+                    "launchctl",
+                    &["bootstrap", &domain, &path.display().to_string()],
+                )?;
+            }
+            Platform::Linux => {
+                sh("systemctl", &["--user", "daemon-reload"])?;
+                sh(
+                    "systemctl",
+                    &["--user", "enable", "--now", &format!("{LABEL}.service")],
+                )?;
+            }
+        }
+        Ok(json!({
+            "service": LABEL,
+            "state": "installed",
+            "path": path.display().to_string(),
+            "binary": binary.display().to_string(),
+            "wallet_home": wallet_home.display().to_string(),
+        }))
+    }
+
+    fn uninstall(platform: Platform, path: &std::path::Path) -> Result<Value, String> {
+        match platform {
+            Platform::Macos => {
+                let _ = sh("launchctl", &["bootout", &format!("gui/{}/{LABEL}", uid())]);
+            }
+            Platform::Linux => {
+                let _ = sh(
+                    "systemctl",
+                    &["--user", "disable", "--now", &format!("{LABEL}.service")],
+                );
+            }
+        }
+        let existed = path.exists();
+        if existed {
+            std::fs::remove_file(path).map_err(|error| format!("{}: {error}", path.display()))?;
+        }
+        if platform == Platform::Linux {
+            let _ = sh("systemctl", &["--user", "daemon-reload"]);
+        }
+        Ok(json!({
+            "service": LABEL,
+            "state": if existed { "removed" } else { "absent" },
+            "path": path.display().to_string(),
+        }))
+    }
+
+    fn status(platform: Platform, path: &std::path::Path) -> Result<Value, String> {
+        let registered = path.exists();
+        let (active, detail) = match platform {
+            Platform::Macos => match sh("launchctl", &["print", &format!("gui/{}/{LABEL}", uid())])
+            {
+                Ok(text) => (text.contains("state = running"), text),
+                Err(text) => (false, text),
+            },
+            Platform::Linux => match sh(
+                "systemctl",
+                &["--user", "is-active", &format!("{LABEL}.service")],
+            ) {
+                Ok(text) => (text.trim() == "active", text),
+                Err(text) => (false, text),
+            },
+        };
+        let wallet_home = openagents_wallet::config::home();
+        let resident = openagents_wallet::resident::RemoteWallet::probe(&wallet_home)
+            .and_then(|remote| remote.status().ok())
+            .map(|status| json!({ "pid": status.pid, "uptime_secs": status.uptime_secs }));
+        Ok(json!({
+            "service": LABEL,
+            "state": if !registered { "absent" } else if active { "running" } else { "stopped" },
+            "path": path.display().to_string(),
+            "resident": resident,
+            "detail": detail.trim(),
+        }))
     }
 }
