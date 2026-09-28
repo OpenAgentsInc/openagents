@@ -10,8 +10,9 @@
 //!
 //! [`providers`] lists the providers in preference order, Codex (GPT-6 Luna
 //! on the operator's Codex login), then Claude (through the `claude`
-//! binary), then Vertex (Vertex AI's OpenAI-compatible endpoint with the
-//! operator's access token file) when it is configured, each with whether it has a usable login and whether the
+//! binary), then, last and always, Vertex through the OpenAgents cloud
+//! ([`crate::cloud`]), the no-setup fallback that needs no login or token
+//! on this host, each with whether it has a usable login and whether the
 //! capacity book (`capacity.json` in the task store, the book the
 //! auto-start policy reads) holds a refusal for it. The turn starts on the
 //! first connected provider with capacity. When a provider refuses for a
@@ -44,9 +45,7 @@ use std::rc::Rc;
 
 use atif::{Source, Step};
 use microcoder_loop::capacity::{self, Connection, Kind, Provider, Refusal};
-use microcoder_loop::failover::{
-    self, Admitted, ClaudeLane, Failover, Journal, Lane, Refusing, VertexLane,
-};
+use microcoder_loop::failover::{self, Admitted, ClaudeLane, Failover, Journal, Lane, Refusing};
 use microcoder_loop::models::{
     Basis, CodexGenerator, Generate, Generated, JevJudge, Judge, Judgment, NextAction, QuestionSet,
 };
@@ -69,25 +68,10 @@ pub const CODEX_MODEL: &str = microcoder_loop::MODEL;
 /// The Claude model a turn generates with: Claude Code's `opus` alias.
 pub const CLAUDE_MODEL: &str = microcoder_loop::claude::DEFAULT_ALIAS;
 
-/// The Vertex model a turn generates with unless `CODER_VERTEX_MODEL`
-/// names one.
-pub const VERTEX_MODEL: &str = microcoder_loop::vertex::DEFAULT_MODEL;
-
-/// The Vertex model Microcoder asks for, when Vertex is configured on this
-/// host: `named` (from `CODER_VERTEX_MODEL`), else [`VERTEX_MODEL`] when
-/// the Vertex token file exists. `None` leaves Vertex out of the providers.
-#[must_use]
-pub fn vertex_model(named: Option<String>, token_exists: bool) -> Option<String> {
-    named
-        .filter(|model| !model.trim().is_empty())
-        .or_else(|| token_exists.then(|| VERTEX_MODEL.to_string()))
-}
-
-/// Whether the Vertex token file exists here, without reading it.
-#[must_use]
-pub fn vertex_token_exists() -> bool {
-    microcoder_loop::vertex::token_path().is_some_and(|path| path.is_file())
-}
+/// The model the lineup names for the cloud fallback. The host can't
+/// choose it: the OpenAgents cloud worker answers on its own lane and names
+/// the model in each result.
+pub const CLOUD_MODEL: &str = crate::cloud::MODEL;
 
 /// The reasoning effort a Codex step asks for, as `microcoder` defaults.
 pub const CODEX_EFFORT: &str = "medium";
@@ -131,7 +115,7 @@ impl ProviderState {
         match self.provider {
             Provider::Codex => "the Codex login",
             Provider::Claude => "the Claude Code login",
-            Provider::Vertex => "Vertex",
+            Provider::Vertex => "the OpenAgents cloud",
             Provider::Devin => "the Devin CLI login",
             Provider::OpenCode => "OpenCode",
         }
@@ -173,19 +157,17 @@ pub fn blocked(refusal: &Refusal) -> String {
 }
 
 /// The providers a turn may use and the model each is asked for, in
-/// preference order: Codex, then Claude, then Vertex when `vertex` names
-/// its model ([`vertex_model`]). `model` names the Codex model when the
-/// operator named one.
+/// preference order: Codex, then Claude, then Vertex through the
+/// OpenAgents cloud. The cloud is always there and always last: it is the
+/// fallback when nothing on this host is configured or has capacity.
+/// `model` names the Codex model when the operator named one.
 #[must_use]
-pub fn lineup(model: Option<&str>, vertex: Option<&str>) -> Vec<(Provider, String)> {
-    [
-        Some((Provider::Codex, model.unwrap_or(CODEX_MODEL).to_string())),
-        Some((Provider::Claude, CLAUDE_MODEL.to_string())),
-        vertex.map(|model| (Provider::Vertex, model.to_string())),
+pub fn lineup(model: Option<&str>) -> Vec<(Provider, String)> {
+    vec![
+        (Provider::Codex, model.unwrap_or(CODEX_MODEL).to_string()),
+        (Provider::Claude, CLAUDE_MODEL.to_string()),
+        (Provider::Vertex, CLOUD_MODEL.to_string()),
     ]
-    .into_iter()
-    .flatten()
-    .collect()
 }
 
 /// Where each of `lineup`'s providers stands, in its order. `probe` says
@@ -307,7 +289,7 @@ impl Lane for ScriptedLane {
 enum Provided {
     Codex(Box<CodexGenerator<Refusing<codex_transport::codex::CodexTransport>>>),
     Claude(ClaudeLane),
-    Vertex(VertexLane),
+    Vertex(crate::cloud::CloudLane),
     Scripted(ScriptedLane),
 }
 
@@ -334,8 +316,13 @@ impl Lane for Provided {
 }
 
 /// The generator for one connected provider, or why it can't be built.
-/// Building one makes no model call.
-fn provided(state: &ProviderState, session: &str) -> Result<Provided, String> {
+/// Building one makes no model call. `cloud` is the door the cloud lane
+/// uses in place of the OpenAgents relay, for a test.
+fn provided(
+    state: &ProviderState,
+    session: &str,
+    cloud: Option<&std::sync::Arc<crate::generate::Door>>,
+) -> Result<Provided, String> {
     match state.provider {
         Provider::Codex => {
             let login =
@@ -351,8 +338,15 @@ fn provided(state: &ProviderState, session: &str) -> Result<Provided, String> {
         }
         Provider::Claude => microcoder_loop::claude::ClaudeGenerator::from_env(&state.model, None)
             .map(|generator| Provided::Claude(ClaudeLane::new(generator))),
-        Provider::Vertex => microcoder_loop::vertex::VertexGenerator::from_env(&state.model, None)
-            .map(|generator| Provided::Vertex(VertexLane::new(generator))),
+        Provider::Vertex => {
+            let door = match cloud {
+                Some(door) => std::sync::Arc::clone(door),
+                None => std::sync::Arc::new(crate::generate::Door::Relay(Box::new(
+                    crate::cloud::door(&super::env_value)?,
+                ))),
+            };
+            Ok(Provided::Vertex(crate::cloud::CloudLane::new(door)))
+        }
         // Devin is a whole coding agent; the loop's steps don't generate
         // through it, and the lineup never names it.
         Provider::Devin => Err("the loop does not generate through Devin".into()),
@@ -503,6 +497,9 @@ pub struct Turn {
     pub providers: Vec<ProviderState>,
     /// Scripted replies per provider in place of real calls, for a test.
     pub script: Option<Vec<(Provider, Script)>>,
+    /// The door the cloud lane talks to in place of the OpenAgents relay,
+    /// for a test.
+    pub cloud: Option<std::sync::Arc<crate::generate::Door>>,
     /// The loop's wall-clock bound, in seconds.
     pub max_seconds: u64,
     /// The loop's step bound.
@@ -554,7 +551,7 @@ pub async fn answer(turn: Turn, on: Rc<dyn Fn(Update)>) -> Delegated {
                     .unwrap_or_default(),
                 refusal: RefCell::new(None),
             })),
-            None => provided(state, &session),
+            None => provided(state, &session, turn.cloud.as_ref()),
         };
         match built {
             Ok(lane) => lanes.push((route, lane)),

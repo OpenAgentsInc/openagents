@@ -980,6 +980,9 @@ impl RelayDoor {
                                 // transport failing.
                                 let code = feedback["code"].as_str().unwrap_or("internal");
                                 let message = feedback["message"].as_str().unwrap_or(code);
+                                if let Some(wait) = feedback["retry_after_ms"].as_u64() {
+                                    meta(Meta::RetryAfter(wait));
+                                }
                                 return Err(GenerateError::Refused {
                                     code: code.to_string(),
                                     message: message.to_string(),

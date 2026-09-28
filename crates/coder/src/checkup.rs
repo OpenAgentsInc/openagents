@@ -102,8 +102,10 @@ fn report() -> (Vec<String>, bool) {
             };
             let login = match state.provider {
                 coder::task::capacity::Provider::Codex => format!(" · {}", codex_state()),
+                coder::task::capacity::Provider::Vertex => {
+                    format!(" · {}", coder::cloud::describe())
+                }
                 coder::task::capacity::Provider::Claude
-                | coder::task::capacity::Provider::Vertex
                 | coder::task::capacity::Provider::Devin
                 | coder::task::capacity::Provider::OpenCode => String::new(),
             };
@@ -111,22 +113,6 @@ fn report() -> (Vec<String>, bool) {
                 "    {:<10} {} · {standing}{login}",
                 state.provider.as_str(),
                 state.model
-            ));
-        }
-        if !target.agent.is_cli()
-            && !target
-                .providers
-                .iter()
-                .any(|state| state.provider == coder::task::capacity::Provider::Vertex)
-        {
-            lines.push(format!(
-                "    {:<10} not configured: set {} or write an access token to {}",
-                coder::task::capacity::Provider::Vertex.as_str(),
-                microcoder_loop::vertex::MODEL_VAR,
-                microcoder_loop::vertex::token_path().map_or_else(
-                    || "~/.openagents/vertex-token".to_string(),
-                    |path| path.display().to_string()
-                ),
             ));
         }
     }

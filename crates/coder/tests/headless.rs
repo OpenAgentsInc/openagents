@@ -290,6 +290,9 @@ fn malformed_decision_profiles_stop_headless_startup() {
     let dir = tempfile::tempdir().unwrap();
     let output = binary()
         .env_clear()
+        // The cloud fallback would answer a host with nothing set up; these
+        // turns check the door the environment names.
+        .env("CODER_CLOUD", "off")
         .current_dir(dir.path())
         .env("HOME", dir.path())
         .env("CODER_TRACE", "off")
@@ -363,6 +366,9 @@ fn local_profile_routes_a_headless_turn_without_sending_a_provider_key() {
     let dir = tempfile::tempdir().unwrap();
     let output = binary()
         .env_clear()
+        // The cloud fallback would answer a host with nothing set up; these
+        // turns check the door the environment names.
+        .env("CODER_CLOUD", "off")
         .current_dir(dir.path())
         .env("HOME", dir.path())
         .env("CODER_TRACE", "off")
@@ -419,6 +425,9 @@ fn a_routed_turn_records_the_functions_provenance() {
     let trace = dir.path().join("turn.atif.jsonl");
     let output = binary()
         .env_clear()
+        // The cloud fallback would answer a host with nothing set up; these
+        // turns check the door the environment names.
+        .env("CODER_CLOUD", "off")
         .current_dir(dir.path())
         .env("HOME", dir.path())
         .env("CODER_DECISION_PROFILE", "direct_local")
@@ -518,6 +527,9 @@ fn hosted_profile_forwards_its_key_and_model() {
     let dir = tempfile::tempdir().unwrap();
     let output = binary()
         .env_clear()
+        // The cloud fallback would answer a host with nothing set up; these
+        // turns check the door the environment names.
+        .env("CODER_CLOUD", "off")
         .current_dir(dir.path())
         .env("HOME", dir.path())
         .env("CODER_TRACE", "off")
@@ -574,6 +586,9 @@ fn a_door_refusing_permission_degrades_visibly() {
     let dir = tempfile::tempdir().unwrap();
     let output = binary()
         .env_clear()
+        // The cloud fallback would answer a host with nothing set up; these
+        // turns check the door the environment names.
+        .env("CODER_CLOUD", "off")
         .current_dir(dir.path())
         .env("HOME", dir.path())
         .env("CODER_DECISION_PROFILE", "direct_local")

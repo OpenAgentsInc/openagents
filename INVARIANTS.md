@@ -72,6 +72,19 @@ are in `docs/deployment/chat-worker.md`.
 | The phone shows only the chat worker's answer to its own request: an event signed by the worker's key, tagged to the request and to this device, that decrypts; a partial shows only in sequence, a gap stops the preview until the result, and nothing changes a reply after its result or refusal. | New on 2026-09-28. | `partials_stream_in_order_and_the_result_replaces_them`, `answers_from_anyone_else_or_for_another_job_are_set_aside`, `a_refusal_carries_its_code_and_wait` in `crates/openagents-mobile` |
 | Chatting needs no computer. Coder runs on a computer only after the person taps **Run Coder** in a conversation, on a computer this device may operate, as a NIP-HOST task whose prompt is the conversation so far; with no computer the tap opens Account > Computers. The app offers the computer from the conversation's controls, never from reading the message text. | New on 2026-09-28. | `a_first_chat_needs_no_computer_and_streams_its_reply`, `run_coder_starts_a_task_with_the_conversation`, `the_chat_tab_needs_no_computer` in `crates/openagents-mobile` |
 
+## Coder cloud fallback
+
+The owner decided on 2026-09-28 that Coder's Vertex provider goes through
+the OpenAgents cloud and is the no-setup fallback
+([#9919](https://github.com/OpenAgentsInc/openagents/issues/9919)). The
+path, limits, and refusals are in `docs/coder/runtime/cloud-fallback.md`.
+
+| Invariant | Status | Checked by |
+| --- | --- | --- |
+| No provider token is on a user's machine for the cloud fallback. Coder's `vertex` provider is connected from `CODER_CLOUD` alone (only `off` turns it off) and generates only as NIP-CJ conversation jobs signed by the host's own Nostr key and encrypted to the OpenAgents cloud worker, which holds the model credential. Coder reads no Vertex token file and no Google credential. | New on 2026-09-28; replaces the host Vertex token of #9891. | `the_cloud_fallback_needs_nothing_on_the_host` in `crates/microcoder-loop`; `the_default_worker_is_a_public_key_and_the_door_needs_no_token` in `crates/coder` |
+| The cloud is always the last provider in Microcoder's lineup, so a host with no provider configured still answers a turn through it, and a host with a provider that has capacity never spends the cloud's quota: a signed-in Claude Code or Codex CLI is chosen over Microcoder on the cloud, and an own door key takes the cloud off the lineup. | New on 2026-09-28. | `the_cloud_is_always_the_last_provider_and_needs_no_configuration`, `the_cloud_answers_only_when_nothing_on_the_host_can`, `a_fresh_host_completes_a_turn_through_the_cloud_fallback` in `crates/coder` |
+| The cloud worker's `rate_limited`, `busy`, and `quota_exhausted` are capacity refusals held until the worker's `retry_after_ms` (else one minute, one minute, and the next UTC midnight), so the loop fails over and the no-capacity sentence names the reset; any other refusal is the step's plain error and holds nothing. | New on 2026-09-28. | `the_cloud_worker_codes_are_capacity_refusals_with_their_waits` in `crates/microcoder-loop`; `a_quota_refusal_is_a_typed_capacity_refusal_with_its_wait`, `a_rate_limit_holds_a_minute_and_a_too_large_step_is_only_an_error`, `a_cloud_refusal_mid_turn_is_recorded_and_the_next_provider_finishes` in `crates/coder` |
+
 ## Chat history over the tailnet
 
 | Invariant | Status | Checked by |

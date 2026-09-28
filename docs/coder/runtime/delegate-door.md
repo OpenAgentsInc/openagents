@@ -50,14 +50,17 @@ The door lists Microcoder's providers in preference order:
 | --- | --- | --- |
 | Codex | `gpt-6-luna`, or `CODER_DELEGATE_MODEL` | `~/.codex/auth.json` (or `$CODEX_HOME/auth.json`) is a ChatGPT sign-in whose access token has more than ten minutes left |
 | Claude | Claude Code's `opus` alias | a `claude` binary (`CLAUDE_BIN`, `PATH`, or `~/.local/bin`) and a Claude Code sign-in |
-| Vertex | `qwen/qwen3-coder-480b-a35b-instruct-maas`, or `CODER_VERTEX_MODEL` | Vertex AI's OpenAI-compatible endpoint (`VERTEX_BASE_URL` overrides it) with an access token in `VERTEX_TOKEN_FILE` or `~/.openagents/vertex-token` |
+| Vertex, through the OpenAgents cloud | whatever the cloud worker answers on (`openagents-cloud` until it names one) | always, unless `CODER_CLOUD=off`: it needs nothing on this host |
 
-Vertex joins the list only when it is configured: `CODER_VERTEX_MODEL` is
-set, or the token file exists. The token is an OAuth access token that
-expires after about an hour, so the operator keeps the file fresh, for
-example with `gcloud auth print-access-token > ~/.openagents/vertex-token`.
-`coder doctor` lists Vertex either way, and says what configures it when
-it isn't.
+The cloud is always on the list and always last: it is the fallback when
+nothing on the host is configured or has capacity, including a fresh host
+with no provider CLI signed in. Each step is a NIP-CJ conversation job to
+the OpenAgents cloud worker, signed by the host's own Nostr key, and the
+worker holds the model credential and every quota. No token is configured
+or read on the host. When the cloud is all Microcoder has, a signed-in
+Claude Code or Codex CLI answers instead, and an own door key
+(`CODER_DOOR_KEY`) takes the cloud off the list. [Cloud
+fallback](cloud-fallback.md) has the path, the limits, and the refusals.
 
 Before each turn, the door reads the capacity book,
 `~/.openagents/tasks/capacity.json`, the same book the auto-start policy
@@ -68,8 +71,8 @@ until 2026-10-03 18:07 UTC". The turn starts on the first connected
 provider with capacity.
 
 When a provider refuses for a usage or rate limit during the turn, such as
-Codex's HTTP 429 `usage_limit_reached` or Vertex's HTTP 429
-`RESOURCE_EXHAUSTED`, the loop records the refusal in the
+Codex's HTTP 429 `usage_limit_reached` or the cloud worker's
+`quota_exhausted`, the loop records the refusal in the
 book with its reset time and generates the same step on the next connected
 provider with capacity. The turn's trace holds a `route_switch` step that
 names both providers and the refusal, and the next turn skips the refused
@@ -78,10 +81,9 @@ from the stream's `rejected` `rate_limit_event` (`resetsAt`). When a
 refusal reports no reset, a fresh usage probe reading in the task store's
 `usage.json` supplies the reset of the window it shows at its limit, and
 only without either does it hold for 30 minutes, which the sentence and
-`coder doctor` say. A Vertex refusal is a usage limit when it carries a
-`google.rpc.QuotaFailure` detail and a rate limit otherwise; its reset is
-the `google.rpc.RetryInfo` detail's `retryDelay`, else `Retry-After`, else a
-five-minute hold, since Vertex's throttling is per minute.
+`coder doctor` say. The cloud's `rate_limited` and `busy` are rate limits
+and its `quota_exhausted` is a usage limit, each until the worker's
+`retry_after_ms`; see [Cloud fallback](cloud-fallback.md#refusals).
 
 When no provider is left, the turn ends with one sentence that names each
 provider and when it resets, such as "Microcoder has no provider to answer

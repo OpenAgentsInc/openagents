@@ -50,6 +50,7 @@ pub mod agent;
 pub mod capability;
 pub mod child;
 pub mod classify;
+pub mod cloud;
 pub mod decision;
 pub mod delegate;
 pub mod delegate_door;

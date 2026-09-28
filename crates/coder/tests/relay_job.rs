@@ -209,6 +209,7 @@ async fn a_job_turn_streams_feedback_and_a_result() {
             &mut |meta| match meta {
                 Meta::Judgment(line) => judgment = line,
                 Meta::Model(name) => model = name,
+                Meta::RetryAfter(_) => {}
             },
         )
         .await

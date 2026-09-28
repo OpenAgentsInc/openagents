@@ -239,6 +239,10 @@ pub enum Meta {
     /// can, and this is how it says so: the door emits the name as the
     /// result lands and the trace puts it on that step.
     Model(String),
+    /// The wait, in milliseconds, a worker's typed refusal names before a
+    /// job would be admitted (the NIP-CJ error status's `retry_after_ms`).
+    /// A door emits it just before it returns [`GenerateError::Refused`].
+    RetryAfter(u64),
 }
 
 /// What generation can fail with.

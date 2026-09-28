@@ -351,6 +351,10 @@ pub fn capacity_dir() -> Option<PathBuf> {
 /// Microcoder, then Claude Code, then Codex CLI. `model` names
 /// Microcoder's Codex model; `book` is the capacity book's directory,
 /// and `probe` says whether a provider has a usable login.
+///
+/// The OpenAgents cloud is the fallback when nothing else is set up, so an
+/// own door key (`CODER_DOOR_KEY` or `CODER_AI_GATEWAY_KEY`) takes it off
+/// Microcoder's providers: the operator's own door answers instead.
 pub fn targets(
     env: impl Fn(&str) -> Option<String>,
     model: Option<&str>,
@@ -359,14 +363,17 @@ pub fn targets(
     now: u64,
 ) -> Vec<Target> {
     let recorded = capacity::Book::load(book);
-    let vertex = microcoder::vertex_model(
-        env(microcoder_loop::vertex::MODEL_VAR),
-        microcoder::vertex_token_exists(),
-    );
+    let own_door = OWN_DOOR_VARS.into_iter().find(|name| env(name).is_some());
+    let probe = |provider: Provider| match (provider, own_door) {
+        (Provider::Vertex, Some(name)) => Connection::Missing(format!(
+            "{name} names this host's own door, which answers in the cloud's place"
+        )),
+        _ => probe(provider),
+    };
     let mut found = vec![Target::microcoder(microcoder::providers(
-        &microcoder::lineup(model, vertex.as_deref()),
+        &microcoder::lineup(model),
         book,
-        probe,
+        &probe,
         now,
     ))];
     found.extend(
@@ -471,7 +478,19 @@ pub fn choose(
         .iter()
         .filter(|target| preferred.is_none_or(|agent| target.agent == agent))
         .collect();
-    if let Some(target) = considered.iter().find(|target| target.available()) {
+    // The cloud is the last resort: a CLI that can answer is preferred to
+    // Microcoder when the cloud is all Microcoder has.
+    let on_the_cloud = |target: &Target| {
+        target.agent == Agent::Microcoder
+            && target
+                .provider()
+                .is_some_and(|state| state.provider == Provider::Vertex)
+    };
+    let found = considered
+        .iter()
+        .find(|target| target.available() && !on_the_cloud(target))
+        .or_else(|| considered.iter().find(|target| target.available()));
+    if let Some(target) = found {
         let named = match preferred {
             Some(_) => format!(" and {AGENT_VAR} names it"),
             None => String::new(),
@@ -629,6 +648,9 @@ fn explicit_door(env: &impl Fn(&str) -> Option<String>) -> Option<String> {
     }
 }
 
+/// The variables that name this host's own Open Responses door key.
+const OWN_DOOR_VARS: [&str; 2] = ["CODER_DOOR_KEY", "CODER_AI_GATEWAY_KEY"];
+
 /// The Jev client Coder One's judge asks through, and where its key came
 /// from. `None` when this machine has no TypeSafe key.
 pub fn jev_from(env: &impl Fn(&str) -> Option<String>) -> (Option<jev::Client>, String) {
@@ -667,6 +689,9 @@ pub struct DelegateDoor {
     session: Mutex<Option<String>>,
     /// Scripted Microcoder replies per provider, for a test.
     script: Option<Vec<(Provider, microcoder::Script)>>,
+    /// The door Microcoder's cloud lane talks to in place of the
+    /// OpenAgents relay, for a test.
+    cloud: Option<std::sync::Arc<Door>>,
     /// Whether a turn that asks to work a GitHub issue runs the issue flow:
     /// the operator's permit runs commands.
     issues: bool,
@@ -762,6 +787,7 @@ impl DelegateDoor {
             jev_source,
             session: Mutex::new(None),
             script: None,
+            cloud: None,
             issues: crate::permit::Permit::operator().executes(),
             book: capacity_dir().unwrap_or_else(std::env::temp_dir),
             now: microcoder::now,
@@ -815,6 +841,14 @@ impl DelegateDoor {
                 })
                 .collect(),
         );
+        self
+    }
+
+    /// The same door, with Microcoder's cloud lane answering through
+    /// `door` in place of the OpenAgents relay. For tests.
+    #[must_use]
+    pub fn cloud_through(mut self, door: Door) -> Self {
+        self.cloud = Some(std::sync::Arc::new(door));
         self
     }
 
@@ -1013,6 +1047,7 @@ impl DelegateDoor {
             book: self.book.clone(),
             providers,
             script: self.script.clone(),
+            cloud: self.cloud.clone(),
             max_seconds: deadline().as_secs(),
             max_steps: microcoder::MAX_STEPS,
             max_usd: microcoder::MAX_USD,
@@ -1945,23 +1980,18 @@ echo "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"num_turn
         assert_eq!(done.cost_usd, Some(0.0));
     }
 
-    /// The recorded Vertex quota refusal, observed at 2000.
-    fn vertex_refusal() -> Refusal {
-        Refusal::vertex(
-            429,
-            None,
-            include_str!("../../microcoder-loop/fixtures/vertex/quota-exceeded.json"),
-            2_000,
-        )
-        .unwrap()
+    /// The OpenAgents cloud's quota refusal, observed at 2000, with the
+    /// worker's wait of 41 seconds.
+    fn cloud_refusal() -> Refusal {
+        Refusal::cloud("quota_exhausted", Some(41_000), 2_000).unwrap()
     }
 
-    /// Vertex first, then Claude, both connected.
-    fn vertex_then_claude() -> Vec<ProviderState> {
+    /// The cloud first, then Claude, both connected.
+    fn cloud_then_claude() -> Vec<ProviderState> {
         vec![
             ProviderState {
                 provider: Provider::Vertex,
-                model: microcoder::VERTEX_MODEL.to_string(),
+                model: microcoder::CLOUD_MODEL.to_string(),
                 connection: Connection::Connected,
                 refusal: None,
             },
@@ -1974,18 +2004,18 @@ echo "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"num_turn
         ]
     }
 
-    fn after_the_vertex_reset() -> u64 {
+    fn after_the_cloud_reset() -> u64 {
         2_100
     }
 
     #[tokio::test]
-    async fn a_vertex_refusal_mid_turn_is_recorded_and_the_next_provider_finishes() {
+    async fn a_cloud_refusal_mid_turn_is_recorded_and_the_next_provider_finishes() {
         let dir = tempfile::tempdir().unwrap();
         let script = vec![
-            (Provider::Vertex, vec![Err(vertex_refusal())]),
+            (Provider::Vertex, vec![Err(cloud_refusal())]),
             (Provider::Claude, vec![Ok(finish("Hello from Claude."))]),
         ];
-        let Some((door, _)) = microcoder_door(dir.path(), vertex_then_claude(), script) else {
+        let Some((door, _)) = microcoder_door(dir.path(), cloud_then_claude(), script) else {
             return;
         };
         let done = door
@@ -1994,33 +2024,33 @@ echo "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"num_turn
             .unwrap();
         assert!(done.failure.is_none(), "{:?}", done.failure);
         assert_eq!(done.text, "Hello from Claude.");
-        // The book holds Vertex's quota refusal until its retry delay ends.
+        // The book holds the cloud's quota refusal until its wait ends.
         let book = capacity::Book::load(&dir.path().join("tasks"));
         let held = book.blocking(Provider::Vertex, 2_000).unwrap();
         assert_eq!(held.kind, capacity::Kind::UsageLimit);
         assert_eq!(held.until, 2_041);
-        // The next turn skips Vertex without asking it, and says why.
+        // The next turn skips the cloud without asking it, and says why.
         let providers = microcoder::providers(
-            &microcoder::lineup(None, Some(microcoder::VERTEX_MODEL)),
+            &microcoder::lineup(None),
             &dir.path().join("tasks"),
             &|_| Connection::Connected,
             2_000,
         );
-        let vertex = providers
+        let cloud = providers
             .iter()
             .find(|state| state.provider == Provider::Vertex)
             .unwrap();
-        assert!(!vertex.usable());
+        assert!(!cloud.usable());
         assert!(
-            vertex
-                .describe()
-                .starts_with("Vertex is out of its usage limit until 1970-01-01 00:34 UTC"),
+            cloud.describe().starts_with(
+                "the OpenAgents cloud is out of its usage limit until 1970-01-01 00:34 UTC"
+            ),
             "{}",
-            vertex.describe()
+            cloud.describe()
         );
         let script = vec![(Provider::Claude, vec![Ok(finish("Again."))])];
         let door = DelegateDoor::new(
-            Target::microcoder(vertex_then_claude()),
+            Target::microcoder(cloud_then_claude()),
             None,
             dir.path().join("work"),
             None,
@@ -2034,68 +2064,150 @@ echo "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"num_turn
             .await
             .unwrap();
         assert_eq!(done.text, "Again.");
-        // After the reset, Vertex answers first again.
-        let script = vec![(Provider::Vertex, vec![Ok(finish("From Vertex."))])];
+        // After the reset, the cloud answers first again.
+        let script = vec![(Provider::Vertex, vec![Ok(finish("From the cloud."))])];
         let door = DelegateDoor::new(
-            Target::microcoder(vertex_then_claude()),
+            Target::microcoder(cloud_then_claude()),
             None,
             dir.path().join("work"),
             None,
             String::new(),
         )
         .reading_capacity_in(dir.path().join("tasks"))
-        .clocked(after_the_vertex_reset)
+        .clocked(after_the_cloud_reset)
         .scripting(script);
         let done = door
             .answer("hello", "", true, false, &mut |_| {})
             .await
             .unwrap();
-        assert_eq!(done.text, "From Vertex.");
+        assert_eq!(done.text, "From the cloud.");
     }
 
     #[test]
-    fn vertex_joins_the_providers_only_when_configured() {
+    fn the_cloud_is_always_the_last_provider_and_needs_no_configuration() {
         let dir = tempfile::tempdir().unwrap();
-        let connected = |_: Provider| Connection::Connected;
-        let names = |vertex: Option<&str>| {
-            microcoder::providers(
-                &microcoder::lineup(None, vertex),
-                dir.path(),
-                &connected,
-                2_000,
-            )
-            .into_iter()
-            .map(|state| (state.provider, state.model))
-            .collect::<Vec<_>>()
-        };
+        let lineup = microcoder::lineup(None);
         assert_eq!(
-            names(None).iter().map(|(p, _)| *p).collect::<Vec<_>>(),
-            [Provider::Codex, Provider::Claude]
+            lineup.iter().map(|(p, _)| *p).collect::<Vec<_>>(),
+            [Provider::Codex, Provider::Claude, Provider::Vertex]
         );
         assert_eq!(
-            names(Some("zai-org/glm-5-maas")).last().unwrap(),
-            &(Provider::Vertex, "zai-org/glm-5-maas".to_string())
+            lineup.last().unwrap(),
+            &(Provider::Vertex, microcoder::CLOUD_MODEL.to_string())
         );
-        assert_eq!(microcoder::vertex_model(None, false), None);
-        assert_eq!(
-            microcoder::vertex_model(None, true).as_deref(),
-            Some(microcoder::VERTEX_MODEL)
-        );
-        assert_eq!(
-            microcoder::vertex_model(Some("zai-org/glm-5-maas".into()), false).as_deref(),
-            Some("zai-org/glm-5-maas")
-        );
-        // Without a token, Vertex says why it can't be used.
+        // On a fresh host, with no login and nothing configured, the
+        // cloud is the provider a turn uses, so Microcoder is available.
+        let targets = targets(|_| None, None, dir.path(), &fresh_host, 2_000);
+        let microcoder = &targets[0];
+        assert!(microcoder.available());
+        assert_eq!(microcoder.provider().unwrap().provider, Provider::Vertex);
+        // Turned off, it says why it can't be used.
         let state = ProviderState {
             provider: Provider::Vertex,
-            model: microcoder::VERTEX_MODEL.to_string(),
-            connection: Connection::Missing("no Vertex access token".to_string()),
+            model: microcoder::CLOUD_MODEL.to_string(),
+            connection: capacity::cloud_connection(Some("off")),
             refusal: None,
         };
         assert_eq!(
             state.describe(),
-            "Vertex can't be used (no Vertex access token)"
+            "the OpenAgents cloud can't be used (CODER_CLOUD=off turns the cloud fallback off)"
         );
+    }
+
+    #[test]
+    fn the_cloud_answers_only_when_nothing_on_the_host_can() {
+        let dir = tempfile::tempdir().unwrap();
+        let chosen = |targets: &[Target]| choose(Mode::Auto, None, None, targets).unwrap();
+        // Microcoder has only the cloud: an authenticated Claude Code CLI
+        // answers instead.
+        let mut on_cloud = providers(false, false, false);
+        on_cloud.push(ProviderState {
+            provider: Provider::Vertex,
+            model: microcoder::CLOUD_MODEL.to_string(),
+            connection: Connection::Connected,
+            refusal: None,
+        });
+        let cli = all(on_cloud.clone(), true, false);
+        assert_eq!(chosen(&cli).chosen, Chosen::Delegate(cli[1].clone()));
+        // With no CLI either, the cloud answers.
+        let bare = all(on_cloud, false, false);
+        assert_eq!(chosen(&bare).chosen, Chosen::Delegate(bare[0].clone()));
+        // An own door key takes the cloud off Microcoder's providers, and
+        // the operator's door answers.
+        let keyed = targets(
+            |name| (name == "CODER_DOOR_KEY").then(|| "k".to_string()),
+            None,
+            dir.path(),
+            &fresh_host,
+            2_000,
+        );
+        assert!(!keyed[0].available());
+        assert!(
+            keyed[0]
+                .describe()
+                .contains("CODER_DOOR_KEY names this host's own door"),
+            "{}",
+            keyed[0].describe()
+        );
+        assert_eq!(chosen(&keyed).chosen, Chosen::Fallback);
+    }
+
+    /// A host with nothing configured: no Codex login, no Claude Code, and
+    /// the cloud needing nothing.
+    fn fresh_host(provider: Provider) -> Connection {
+        match provider {
+            Provider::Vertex => capacity::cloud_connection(None),
+            _ => Connection::Missing("not signed in".into()),
+        }
+    }
+
+    #[tokio::test]
+    async fn a_fresh_host_completes_a_turn_through_the_cloud_fallback() {
+        let dir = tempfile::tempdir().unwrap();
+        let workdir = dir.path().join("work");
+        std::fs::create_dir_all(&workdir).unwrap();
+        if let Err(why) = boundary_available(&workdir) {
+            eprintln!("skipped: {why}");
+            return;
+        }
+        let providers = microcoder::providers(
+            &microcoder::lineup(None),
+            &dir.path().join("tasks"),
+            &fresh_host,
+            2_000,
+        );
+        let reply = |action: &NextAction| serde_json::to_string(action).unwrap();
+        // The cloud's worker answers each step's job with the action as
+        // text: one command, then the answer.
+        let cloud = Door::Stub(StubGenerate::scripted(
+            vec![
+                reply(&running("printf hi")),
+                format!(
+                    "```json\n{}\n```",
+                    reply(&finish("Done through the cloud."))
+                ),
+            ],
+            "",
+        ));
+        let door = DelegateDoor::new(
+            Target::microcoder(providers),
+            None,
+            workdir,
+            None,
+            String::new(),
+        )
+        .reading_capacity_in(dir.path().join("tasks"))
+        .clocked(at_two_thousand)
+        .cloud_through(cloud);
+        let done = door
+            .answer("say hi", "", false, false, &mut |_| {})
+            .await
+            .unwrap();
+        assert!(done.failure.is_none(), "{:?}", done.failure);
+        assert_eq!(done.text, "Done through the cloud.");
+        assert_eq!(done.commands, 1);
+        // The host paid nothing for it.
+        assert_eq!(done.cost_usd, Some(0.0));
     }
 
     /// A Microcoder turn for the issue flow's tests, over `providers`, with
@@ -2130,6 +2242,7 @@ echo "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"num_turn
             max_usd: microcoder::ISSUE_MAX_USD,
             ask: false,
             issues: true,
+            cloud: None,
             now: at_two_thousand,
         }
     }

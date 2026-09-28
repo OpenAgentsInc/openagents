@@ -10,6 +10,7 @@ and unfinished suite acceptance, use the [migration tracker](../migration-status
 | --- | --- |
 | [delegate](delegate.md) | Delegation |
 | [delegate-door](delegate-door.md) | Shared turn delegation, Microluna and CLI executor choices, and explicit fallback policy |
+| [Cloud fallback](cloud-fallback.md) | The OpenAgents cloud as the no-setup last provider: its path, limits, and typed refusals |
 | [repository-evidence](repository-evidence.md) | Repository source references |
 | [shell-loop](shell-loop.md) | The shell loop |
 | [subprocesses](subprocesses.md) | Subprocess supervision |

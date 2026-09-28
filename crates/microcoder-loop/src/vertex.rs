@@ -1,5 +1,11 @@
 //! Generation through Vertex AI's OpenAI-compatible endpoint, for the open
-//! models Google serves as managed APIs (`--provider vertex`).
+//! models Google serves as managed APIs: the `microcoder --provider vertex`
+//! research runs of an operator who holds a Vertex token.
+//!
+//! Coder never generates through this module and never reads its token:
+//! Coder's Vertex provider is the OpenAgents cloud fallback
+//! ([`crate::capacity::Provider::Vertex`]), which holds the credential on
+//! the cloud worker. INVARIANTS.md records that line.
 //!
 //! The endpoint speaks chat completions, so the request is
 //! [`openrouter::Client::structured`]'s: the action comes back as JSON under
@@ -32,14 +38,6 @@ pub const URL_VAR: &str = "VERTEX_BASE_URL";
 
 /// The variable that names the token file.
 pub const TOKEN_VAR: &str = "VERTEX_TOKEN_FILE";
-
-/// The model Coder's delegate door asks Vertex for unless `MODEL_VAR`
-/// names another: Qwen3-Coder, the Vertex model that gave usable replies
-/// in the round 2 loop study (`docs/terminal-bench/2026-09-26-round2-loop.md`).
-pub const DEFAULT_MODEL: &str = "qwen/qwen3-coder-480b-a35b-instruct-maas";
-
-/// The variable that names the Vertex model Coder's delegate door uses.
-pub const MODEL_VAR: &str = "CODER_VERTEX_MODEL";
 
 /// The token file: `VERTEX_TOKEN_FILE`, else `~/.openagents/vertex-token`.
 #[must_use]

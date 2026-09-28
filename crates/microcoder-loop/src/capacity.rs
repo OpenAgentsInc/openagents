@@ -35,9 +35,9 @@ pub const SCHEMA: &str = "openagents.coder.provider-capacity.v1";
 /// How long a Codex or Claude refusal with no reported reset holds, in
 /// seconds.
 pub const UNKNOWN_RESET_HOLD: u64 = 30 * 60;
-/// How long a Vertex refusal with no reported reset holds, in seconds.
-/// Vertex's throttling is per minute and its shared quota frees within
-/// minutes, so a half-hour hold would pass it over for no reason.
+/// How long a cloud (Vertex) refusal with no reported reset holds, in
+/// seconds. The cloud's throttling is per minute, so a half-hour hold
+/// would pass it over for no reason.
 pub const VERTEX_UNKNOWN_RESET_HOLD: u64 = 5 * 60;
 /// The latest reset the book accepts: 31 days after the refusal. A later
 /// reported time is held to this bound.
@@ -45,6 +45,22 @@ pub const MAX_HOLD: u64 = 31 * 24 * 60 * 60;
 /// The result ending a repository run records when no admitted provider
 /// had capacity. The task owner keeps it as the run's `ending`.
 pub const NO_CAPACITY_ENDING: &str = "no_capacity";
+
+/// Where the cloud fallback ([`Provider::Vertex`]) sends a step: the
+/// OpenAgents relay, where the OpenAgents cloud worker answers NIP-CJ
+/// conversation jobs. The model credential stays on the worker.
+pub const CLOUD_ENDPOINT: &str = "wss://relay.openagents.com";
+
+/// The variable that turns the cloud fallback off on a host: `off`. Any
+/// other value, or none, leaves it on.
+pub const CLOUD_VAR: &str = "CODER_CLOUD";
+
+/// The worker's day: a caller's daily quota resets at UTC midnight.
+const DAY: u64 = 86_400;
+
+/// How long a cloud rate limit or busy worker with no reported wait holds:
+/// the worker's per-key window is one minute.
+pub const CLOUD_UNKNOWN_RETRY: u64 = 60;
 
 /// The endpoint a grant names for a Devin route: the local `devin acp`
 /// process, which reaches Devin's service with its own login. It is not a
@@ -64,8 +80,11 @@ pub enum Provider {
     Codex,
     /// The operator's Claude Code login, through the `claude` binary.
     Claude,
-    /// Vertex AI's OpenAI-compatible endpoint, with the operator's access
-    /// token file ([`crate::vertex`]).
+    /// Vertex through the OpenAgents cloud: Coder's no-setup fallback.
+    /// The host sends each step to the OpenAgents cloud worker over
+    /// [`CLOUD_ENDPOINT`], signed by the host's own Nostr key; the worker
+    /// holds the model credential and meters each caller key server-side.
+    /// Nothing on the host configures it and no Google credential is read.
     Vertex,
     /// The local Devin CLI over ACP (`devin acp`), with its own login. It
     /// is a whole coding agent, not a model a loop step generates through:
@@ -125,7 +144,7 @@ impl Provider {
         match self {
             Provider::Codex => codex_transport::codex::BASE_URL,
             Provider::Claude => "https://api.anthropic.com",
-            Provider::Vertex => crate::vertex::BASE_URL,
+            Provider::Vertex => CLOUD_ENDPOINT,
             Provider::Devin => DEVIN_ENDPOINT,
             Provider::OpenCode => OPENCODE_ENDPOINT,
         }
@@ -158,6 +177,32 @@ pub enum Kind {
     UsageLimit,
     /// The provider refused with HTTP 429 and no typed quota detail.
     RateLimit,
+}
+
+/// The OpenAgents cloud worker's capacity codes: the closed set of NIP-CJ
+/// refusal codes that mean "not now" rather than "not this request".
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CloudCode {
+    /// The caller key sent too many jobs in the last minute.
+    RateLimited,
+    /// The caller key, or every caller together, used the day's jobs.
+    QuotaExhausted,
+    /// Every one of the worker's job slots is taken.
+    Busy,
+}
+
+impl CloudCode {
+    /// The capacity code `code` names exactly, or `None` for any other
+    /// code, such as `limit_exceeded` (a request too large to take).
+    #[must_use]
+    pub fn parse(code: &str) -> Option<CloudCode> {
+        match code {
+            "rate_limited" => Some(CloudCode::RateLimited),
+            "quota_exhausted" => Some(CloudCode::QuotaExhausted),
+            "busy" => Some(CloudCode::Busy),
+            _ => None,
+        }
+    }
 }
 
 /// One provider's refusal, as the book keeps it.
@@ -360,6 +405,30 @@ impl Refusal {
             now,
             delay.map(|s| now.saturating_add(s)),
         ))
+    }
+
+    /// The refusal the OpenAgents cloud worker's typed NIP-CJ code carries
+    /// ([`CloudCode`]), for [`Provider::Vertex`]: `rate_limited` and `busy`
+    /// are rate limits, `quota_exhausted` is a usage limit. The reset is
+    /// the worker's `retry_after_ms`, else [`CLOUD_UNKNOWN_RETRY`] for a
+    /// rate limit, else the next UTC midnight, when the worker's daily
+    /// quota resets. Any other code is not a capacity refusal: the caller
+    /// reports it as the step's error.
+    #[must_use]
+    pub fn cloud(code: &str, retry_after_ms: Option<u64>, now: u64) -> Option<Refusal> {
+        let code = CloudCode::parse(code)?;
+        let told = retry_after_ms.map(|ms| now.saturating_add(ms.div_ceil(1_000).max(1)));
+        let (kind, resets_at) = match code {
+            CloudCode::RateLimited | CloudCode::Busy => (
+                Kind::RateLimit,
+                told.unwrap_or(now.saturating_add(CLOUD_UNKNOWN_RETRY)),
+            ),
+            CloudCode::QuotaExhausted => (
+                Kind::UsageLimit,
+                told.unwrap_or((now / DAY + 1).saturating_mul(DAY)),
+            ),
+        };
+        Some(Refusal::new(Provider::Vertex, kind, now, Some(resets_at)))
     }
 
     /// Whether the refusal still holds at `now`.
@@ -588,9 +657,10 @@ impl Connection {
 ///   is OpenCode's to find; `acp_client::opencode::login` names a stored or
 ///   configured one by name without reading it.
 ///
-/// - **Vertex**: the access token file (`VERTEX_TOKEN_FILE`, else
-///   `~/.openagents/vertex-token`) is present and not empty. Its content is
-///   read only to check that, never logged.
+/// - **Vertex** (through the OpenAgents cloud): always connected, since it
+///   needs nothing on this host but the host's own Nostr key, unless
+///   `CODER_CLOUD=off` turns it off. No token file or Google credential is
+///   read: the credential stays on the cloud worker.
 ///
 /// A connected provider can still refuse: the login may have been revoked.
 /// That refusal then ends the generation as any other error does.
@@ -607,16 +677,7 @@ pub fn probe(provider: Provider) -> Connection {
                 Err(error) => Connection::Missing(error.to_string()),
             }
         }
-        Provider::Vertex => match crate::vertex::token_path() {
-            None => Connection::Missing("HOME is not set".into()),
-            Some(path) => match crate::vertex::read_token(&path) {
-                Ok(_) => Connection::Connected,
-                Err(_) => Connection::Missing(format!(
-                    "no Vertex access token in {}; write one there with `gcloud auth print-access-token`",
-                    path.display()
-                )),
-            },
-        },
+        Provider::Vertex => cloud_connection(std::env::var(CLOUD_VAR).ok().as_deref()),
         Provider::OpenCode => {
             let variable = |name: &str| std::env::var_os(name);
             if acp_client::opencode::binary(&variable).is_none() {
@@ -656,6 +717,16 @@ pub fn probe(provider: Provider) -> Connection {
                 Connection::Missing("Claude Code is not signed in; run `claude` and log in".into())
             }
         }
+    }
+}
+
+/// Whether the cloud fallback is on, from `CODER_CLOUD`'s value: only the
+/// exact value `off` turns it off. It reads no file and no credential.
+#[must_use]
+pub fn cloud_connection(setting: Option<&str>) -> Connection {
+    match setting.map(str::trim) {
+        Some("off") => Connection::Missing(format!("{CLOUD_VAR}=off turns the cloud fallback off")),
+        _ => Connection::Connected,
     }
 }
 
@@ -951,5 +1022,52 @@ mod tests {
     #[test]
     fn utc_text_names_the_date_and_minute() {
         assert_eq!(utc(1_791_050_823), "2026-10-03 18:07 UTC");
+    }
+
+    #[test]
+    fn the_cloud_worker_codes_are_capacity_refusals_with_their_waits() {
+        // A rate limit takes the worker's wait, rounded up to a second.
+        let limited = Refusal::cloud("rate_limited", Some(1_500), 1_000).unwrap();
+        assert_eq!(limited.provider, Provider::Vertex);
+        assert_eq!(limited.kind, Kind::RateLimit);
+        assert_eq!(limited.until, 1_002);
+        // Without a wait it holds one minute, the worker's window.
+        let busy = Refusal::cloud("busy", None, 1_000).unwrap();
+        assert_eq!(busy.kind, Kind::RateLimit);
+        assert_eq!(busy.until, 1_000 + CLOUD_UNKNOWN_RETRY);
+        // A spent day is a usage limit until the worker says, else UTC
+        // midnight, when its day resets.
+        let spent = Refusal::cloud("quota_exhausted", Some(3_600_000), 90_000).unwrap();
+        assert_eq!(spent.kind, Kind::UsageLimit);
+        assert_eq!(spent.until, 93_600);
+        let spent = Refusal::cloud("quota_exhausted", None, 90_000).unwrap();
+        assert_eq!(spent.until, 172_800);
+        // Codes that don't mean "not now" are not capacity refusals.
+        for code in [
+            "limit_exceeded",
+            "not_admitted",
+            "internal",
+            "RATE_LIMITED",
+            "",
+        ] {
+            assert_eq!(Refusal::cloud(code, Some(1_000), 1_000), None, "{code}");
+        }
+    }
+
+    #[test]
+    fn the_cloud_fallback_needs_nothing_on_the_host() {
+        // The invariant: the cloud fallback is connected from the setting
+        // alone, reading no token file and no Google credential; only
+        // CODER_CLOUD=off turns it off.
+        assert_eq!(cloud_connection(None), Connection::Connected);
+        assert_eq!(cloud_connection(Some("on")), Connection::Connected);
+        assert!(!cloud_connection(Some("off")).is_connected());
+        assert!(!cloud_connection(Some(" off ")).is_connected());
+        assert_eq!(Provider::Vertex.endpoint(), CLOUD_ENDPOINT);
+        assert!(CLOUD_ENDPOINT.starts_with("wss://"));
+        // The probe itself reads only the setting.
+        if std::env::var_os(CLOUD_VAR).is_none() {
+            assert_eq!(probe(Provider::Vertex), Connection::Connected);
+        }
     }
 }
