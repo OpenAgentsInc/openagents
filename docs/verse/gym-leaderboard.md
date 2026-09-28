@@ -312,21 +312,14 @@ unaffected.
 In the Grid, the **RESULTS** board is the right-hand plot panel beside the
 central board (`verse::world::GYM_RESULTS_BOARD`), lettered **RESULTS** and,
 for a host with the panel, **TAP TO OPEN** from within 6 m. Coder's plaza
-Gym keeps its empty plot panel. The panel's state and loader are
+Gym keeps its empty plot panel. The panel's state is
 [`crates/verse/src/gym_results.rs`](../../crates/verse/src/gym_results.rs):
-it shows a verified cached copy at once, reads `index.json` from `main`,
-and fetches `leaderboard.v1.json` from `main` only when the index names a
-digest it doesn't have, accepting it only when the digest recomputed over
-the file's own `boards` JSON (not a typed round trip, so an added optional
-field still verifies) equals the index's. The index's `commit` is the
-commit the evidence was read at, which predates the publication files, so
-the files can't be fetched at that commit; the digest pins them instead.
-Bundles are fetched when a trace opens and checked against `TraceRef`.
-Verified copies stay in the app's cache (`gym-results/`, bundles capped at
-16 MiB, least recently used first out). The host passes the cache
-directory; `results_base` overrides the source for checks against a mirror
-or a local directory. This loader stands in for #9846's client until it
-lands.
+it starts `gym_leaderboard::client` on entering the Gym (a verified cached
+copy shows at once while the index is checked) and drops it on leaving,
+asks for a bundle only when a trace opens, and renders one screen at a
+time from the view model when the host asks by revision. The host passes
+its cache directory; `results_base` overrides the base URL for checks
+against a mirror.
 
 ### Screens
 

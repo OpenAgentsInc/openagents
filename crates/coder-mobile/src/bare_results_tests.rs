@@ -2,20 +2,59 @@
 //! beside the live board, loads the published results only while the player
 //! is inside, needs no Gym connection, opens on a tap or the accessibility
 //! request, and closes on walking out. The live board's connection and
-//! polling are unchanged. It reads a local copy of the committed
-//! publication; no network is used.
+//! polling are unchanged. It reads the committed publication from a local
+//! HTTP fixture; no outside network is used.
 use super::{PointerPhase, Request, Scene, WorldTarget};
 use crate::verse_ffi::{BareGym, VerseHandle, bare_config_with_gym};
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
+/// Serves the committed publication at `/<ref>/<path>` for any ref, as the
+/// repository's raw files do, until the test ends.
 fn published() -> String {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../bench/terminal-bench/published")
-        .canonicalize()
-        .unwrap()
-        .to_string_lossy()
-        .into_owned()
+    use std::io::{BufRead, BufReader, Write};
+    let dir =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../bench/terminal-bench/published");
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(mut stream) = stream else { continue };
+            let mut reader = BufReader::new(stream.try_clone().unwrap());
+            let mut line = String::new();
+            if reader.read_line(&mut line).is_err() {
+                continue;
+            }
+            loop {
+                let mut header = String::new();
+                if reader.read_line(&mut header).unwrap_or(0) == 0 || header.trim().is_empty() {
+                    break;
+                }
+            }
+            let path = line.split_whitespace().nth(1).unwrap_or("/");
+            let body = path
+                .trim_start_matches('/')
+                .split_once('/')
+                .map(|(_, rel)| rel)
+                .filter(|rel| !rel.contains(".."))
+                .and_then(|rel| std::fs::read(dir.join(rel)).ok());
+            let response = match body {
+                Some(body) => {
+                    let mut r = format!(
+                        "HTTP/1.1 200 OK\r\ncontent-length: {}\r\nconnection: close\r\n\r\n",
+                        body.len()
+                    )
+                    .into_bytes();
+                    r.extend(body);
+                    r
+                }
+                None => b"HTTP/1.1 404 Not Found\r\ncontent-length: 0\r\nconnection: close\r\n\r\n"
+                    .to_vec(),
+            };
+            let _ = stream.write_all(&response);
+        }
+    });
+    format!("http://127.0.0.1:{port}/{{ref}}/")
 }
 
 fn scene(results_panel: bool) -> Scene {
@@ -28,6 +67,13 @@ fn scene(results_panel: bool) -> Scene {
         BareGym {
             results_panel,
             results_base: Some(published()),
+            results_cache_directory: Some(
+                tempfile::tempdir()
+                    .unwrap()
+                    .keep()
+                    .to_string_lossy()
+                    .into_owned(),
+            ),
             ..BareGym::default()
         },
     ))

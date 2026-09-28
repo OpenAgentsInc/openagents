@@ -1,37 +1,104 @@
-//! The RESULTS panel's loader and state over a local copy of the committed
-//! publication.
+//! The RESULTS panel over `gym_leaderboard::client`, against a local HTTP
+//! fixture serving a copy of the committed publication at any ref.
+//! Verification details are the client's own tests; these check what the
+//! panel does with its events.
 
 use super::*;
-use std::time::Instant;
+use std::io::{BufRead, BufReader, Write as _};
+use std::net::TcpListener;
+use std::path::Path;
+use std::time::{Duration, Instant};
 
 fn published() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../bench/terminal-bench/published")
 }
 
-/// A copy of the publication with its index, leaderboard, and one bundle.
+/// Serves `dir`'s files at `/<ref>/<path>` for any ref, until the test
+/// ends. Returns the base URL with `{ref}`.
+fn serve(dir: &Path) -> String {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let dir = dir.to_owned();
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(mut stream) = stream else { continue };
+            let mut reader = BufReader::new(stream.try_clone().unwrap());
+            let mut line = String::new();
+            if reader.read_line(&mut line).is_err() {
+                continue;
+            }
+            loop {
+                let mut header = String::new();
+                if reader.read_line(&mut header).unwrap_or(0) == 0 || header.trim().is_empty() {
+                    break;
+                }
+            }
+            let path = line.split_whitespace().nth(1).unwrap_or("/");
+            let rel = path.trim_start_matches('/').split_once('/').map(|(_, r)| r);
+            let body = rel
+                .filter(|r| !r.contains(".."))
+                .and_then(|r| std::fs::read(dir.join(r)).ok());
+            let response = match body {
+                Some(body) => {
+                    let mut r = format!(
+                        "HTTP/1.1 200 OK\r\ncontent-length: {}\r\nconnection: close\r\n\r\n",
+                        body.len()
+                    )
+                    .into_bytes();
+                    r.extend(body);
+                    r
+                }
+                None => b"HTTP/1.1 404 Not Found\r\ncontent-length: 0\r\nconnection: close\r\n\r\n"
+                    .to_vec(),
+            };
+            let _ = stream.write_all(&response);
+        }
+    });
+    format!("http://127.0.0.1:{port}/{{ref}}/")
+}
+
+/// A base URL where nothing listens: offline.
+fn nowhere() -> String {
+    let port = TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port();
+    format!("http://127.0.0.1:{port}/{{ref}}/")
+}
+
+/// A copy of the publication.
 fn fixture() -> tempfile::TempDir {
     let dir = tempfile::tempdir().unwrap();
-    for rel in [
-        gym_leaderboard::INDEX_FILE,
-        gym_leaderboard::LEADERBOARD_FILE,
-        "traces/tb4-fable-delegate-repro-9776/coq-block-bound.p2.json",
-    ] {
-        let to = dir.path().join(rel);
-        std::fs::create_dir_all(to.parent().unwrap()).unwrap();
-        std::fs::copy(published().join(rel), to).unwrap();
-    }
+    copy(&published(), dir.path());
     dir
 }
 
-fn base(dir: &Path) -> String {
-    dir.to_str().unwrap().to_owned()
+fn copy(from: &Path, to: &Path) {
+    std::fs::create_dir_all(to).unwrap();
+    for entry in std::fs::read_dir(from).unwrap() {
+        let entry = entry.unwrap();
+        let target = to.join(entry.file_name());
+        if entry.file_type().unwrap().is_dir() {
+            copy(&entry.path(), &target);
+        } else {
+            std::fs::copy(entry.path(), target).unwrap();
+        }
+    }
+}
+
+fn results(base: String, cache: &Path) -> Results {
+    Results::new(Config {
+        base,
+        cache_directory: Some(cache.into()),
+    })
 }
 
 fn settle(results: &mut Results, done: impl Fn(&Results) -> bool) {
     let start = Instant::now();
     while !done(results) {
         assert!(
-            start.elapsed() < Duration::from_secs(10),
+            start.elapsed() < Duration::from_secs(20),
             "{:?}",
             results.view().error
         );
@@ -44,38 +111,47 @@ fn freshness(results: &Results) -> Option<Freshness> {
     results.source.as_ref().map(|s| s.freshness)
 }
 
+fn board_count() -> usize {
+    let leaderboard: Leaderboard = serde_json::from_slice(
+        &std::fs::read(published().join(gym_leaderboard::LEADERBOARD_FILE)).unwrap(),
+    )
+    .unwrap();
+    leaderboard.boards.len()
+}
+
+fn open(panel: &mut Results, board: &str, attempt: &str) {
+    panel.act(Action::Board { id: board.into() }).unwrap();
+    panel.act(Action::Attempt { id: attempt.into() }).unwrap();
+    panel.act(Action::Trace).unwrap();
+}
+
 #[test]
-fn entering_loads_and_verifies_the_latest_publication_and_leaving_cancels() {
+fn entering_loads_the_current_publication_and_leaving_cancels() {
     let dir = fixture();
-    let mut results = Results::new(Config {
-        base: base(dir.path()),
-        cache_directory: None,
-    });
-    assert!(results.view().page.is_none());
-    assert!(results.act(Action::Back).is_err(), "nothing to act on yet");
-    results.set_active(true);
-    assert!(results.view().loading);
-    settle(&mut results, |r| !r.view().loading);
-    assert_eq!(freshness(&results), Some(Freshness::Current));
-    let view = results.view();
+    let cache = tempfile::tempdir().unwrap();
+    let mut panel = results(serve(dir.path()), cache.path());
+    assert!(panel.view().page.is_none());
+    assert!(panel.act(Action::Back).is_err(), "nothing to act on yet");
+    panel.set_active(true);
+    assert!(panel.view().loading);
+    settle(&mut panel, |r| !r.view().loading);
+    assert_eq!(freshness(&panel), Some(Freshness::Current));
+    let view = panel.view();
     assert!(view.status.contains("current"), "{}", view.status);
     let Some(Page::Boards(list)) = view.page else {
         panic!("{view:?}")
     };
-    let committed: Leaderboard = serde_json::from_slice(
-        &std::fs::read(published().join(gym_leaderboard::LEADERBOARD_FILE)).unwrap(),
-    )
-    .unwrap();
-    assert_eq!(list.rows.len(), committed.boards.len());
-    // Leaving drops the worker; the loaded board stays on screen.
-    results.set_active(false);
-    assert!(results.worker.is_none());
-    assert!(results.view().page.is_some());
+    assert_eq!(list.rows.len(), board_count());
+    // Leaving drops the client; the loaded list stays on screen.
+    panel.set_active(false);
+    assert!(panel.client.is_none() && !panel.view().loading);
+    assert!(panel.view().page.is_some());
 }
 
 #[test]
-fn a_leaderboard_that_doesnt_match_its_index_is_refused() {
+fn a_leaderboard_that_doesnt_verify_is_refused() {
     let dir = fixture();
+    let cache = tempfile::tempdir().unwrap();
     let path = dir.path().join(gym_leaderboard::LEADERBOARD_FILE);
     // One tally changed, the digests left as they were.
     let mut value: serde_json::Value =
@@ -83,214 +159,100 @@ fn a_leaderboard_that_doesnt_match_its_index_is_refused() {
     let passes = value["boards"][0]["totals"]["passes"].as_u64().unwrap();
     value["boards"][0]["totals"]["passes"] = serde_json::json!(passes + 1);
     std::fs::write(&path, serde_json::to_vec(&value).unwrap()).unwrap();
-    let mut results = Results::new(Config {
-        base: base(dir.path()),
-        cache_directory: None,
-    });
-    results.set_active(true);
-    settle(&mut results, |r| !r.view().loading);
-    assert!(results.view().page.is_none());
-    assert!(
-        results
-            .view()
-            .error
-            .unwrap()
-            .starts_with("Can't verify this publication")
+    let mut panel = results(serve(dir.path()), cache.path());
+    panel.set_active(true);
+    settle(&mut panel, |r| !r.view().loading);
+    assert!(panel.view().page.is_none());
+    assert_eq!(
+        panel.view().error.as_deref(),
+        Some("Can't verify this publication")
     );
-}
-
-#[test]
-fn an_oversized_file_is_refused_while_reading() {
-    let dir = fixture();
-    let path = dir.path().join(gym_leaderboard::INDEX_FILE);
-    std::fs::write(&path, vec![b' '; INDEX_BYTES + 1]).unwrap();
-    let mut results = Results::new(Config {
-        base: base(dir.path()),
-        cache_directory: None,
-    });
-    results.set_active(true);
-    settle(&mut results, |r| !r.view().loading);
-    assert!(results.view().error.unwrap().contains("size bound"));
 }
 
 #[test]
 fn offline_shows_the_cached_copy_labeled_and_without_a_cache_asks_for_a_connection() {
     let cache = tempfile::tempdir().unwrap();
-    let missing = tempfile::tempdir().unwrap();
-    let gone = missing.path().join("nowhere");
-    // Without a cache, offline says the results need a connection once.
-    let mut results = Results::new(Config {
-        base: base(&gone),
-        cache_directory: Some(cache.path().into()),
-    });
-    results.set_active(true);
-    settle(&mut results, |r| !r.view().loading);
-    assert!(results.view().page.is_none());
+    let mut panel = results(nowhere(), cache.path());
+    panel.set_active(true);
+    settle(&mut panel, |r| !r.view().loading);
+    assert!(panel.view().page.is_none());
     assert_eq!(
-        results.view().error.as_deref(),
+        panel.view().error.as_deref(),
         Some("The published results need a connection once.")
     );
     // Online once fills the cache.
     let dir = fixture();
-    let mut online = Results::new(Config {
-        base: base(dir.path()),
-        cache_directory: Some(cache.path().into()),
-    });
+    let mut online = results(serve(dir.path()), cache.path());
     online.set_active(true);
     settle(&mut online, |r| !r.view().loading);
-    // Offline again: the cached copy shows at once, labeled offline.
-    let mut offline = Results::new(Config {
-        base: base(&gone),
-        cache_directory: Some(cache.path().into()),
-    });
+    // Offline again: the cached copy shows, labeled offline.
+    let mut offline = results(nowhere(), cache.path());
     offline.set_active(true);
     settle(&mut offline, |r| !r.view().loading);
     assert_eq!(freshness(&offline), Some(Freshness::Offline));
     assert!(offline.view().status.contains("offline"));
     assert!(offline.view().page.is_some());
-    // And online with the same cache, the cached copy is current.
-    let mut again = Results::new(Config {
-        base: base(dir.path()),
-        cache_directory: Some(cache.path().into()),
-    });
-    again.set_active(true);
-    settle(&mut again, |r| freshness(r) == Some(Freshness::Current));
-    assert!(again.source.as_ref().unwrap().commit.is_some());
 }
 
 #[test]
-fn a_new_digest_in_the_index_replaces_the_cached_publication() {
-    let cache = tempfile::tempdir().unwrap();
+fn a_trace_loads_on_demand_and_plays() {
     let dir = fixture();
-    let config = Config {
-        base: base(dir.path()),
-        cache_directory: Some(cache.path().into()),
-    };
-    let mut first = Results::new(config.clone());
-    first.set_active(true);
-    settle(&mut first, |r| !r.view().loading);
-    first
-        .act(Action::Board {
-            id: "tb21-oos-microcoder-9683".into(),
-        })
-        .unwrap();
-    let old = first.source.clone().unwrap().digest;
-    // A new publication: one board dropped, digest recomputed, index
-    // appended.
-    let path = dir.path().join(gym_leaderboard::LEADERBOARD_FILE);
-    let mut leaderboard: Leaderboard =
-        serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
-    leaderboard.boards.truncate(1);
-    leaderboard.digest = atif::digest(&serde_json::to_value(&leaderboard.boards).unwrap());
-    std::fs::write(&path, serde_json::to_vec(&leaderboard).unwrap()).unwrap();
-    let index_path = dir.path().join(gym_leaderboard::INDEX_FILE);
-    let mut index: Index = serde_json::from_slice(&std::fs::read(&index_path).unwrap()).unwrap();
-    let mut next = index.publications[0].clone();
-    next.digest.clone_from(&leaderboard.digest);
-    index.publications.push(next);
-    std::fs::write(&index_path, serde_json::to_vec(&index).unwrap()).unwrap();
-    // Re-entering shows the cached copy, then moves to the new one and
-    // back to the list, since the open board may be gone.
-    first.set_active(false);
-    first.set_active(true);
-    settle(&mut first, |r| {
-        r.source.as_ref().is_some_and(|s| s.digest != old) && !r.view().loading
-    });
-    assert_eq!(freshness(&first), Some(Freshness::Current));
-    let Some(Page::Boards(list)) = first.view().page else {
-        panic!()
-    };
-    assert_eq!(list.rows.len(), 1);
-}
-
-#[test]
-fn a_trace_loads_on_demand_verifies_and_plays() {
     let cache = tempfile::tempdir().unwrap();
-    let dir = fixture();
-    let mut results = Results::new(Config {
-        base: base(dir.path()),
-        cache_directory: Some(cache.path().into()),
-    });
-    results.set_active(true);
-    settle(&mut results, |r| !r.view().loading);
-    results
-        .act(Action::Board {
-            id: "tb4-fable-delegate-repro-9776".into(),
-        })
-        .unwrap();
-    results
-        .act(Action::Attempt {
-            id: "coq-block-bound.p2".into(),
-        })
-        .unwrap();
-    let revision = results.revision();
-    results.act(Action::Trace).unwrap();
-    assert!(results.revision() > revision);
+    let mut panel = results(serve(dir.path()), cache.path());
+    panel.set_active(true);
+    settle(&mut panel, |r| !r.view().loading);
+    let revision = panel.revision();
+    open(
+        &mut panel,
+        "tb4-fable-delegate-repro-9776",
+        "coq-block-bound.p2",
+    );
+    assert!(panel.revision() > revision);
+    assert!(panel.view().can_back);
+    assert_eq!(panel.view().status, "Loading the trace…");
     assert!(
-        results.act(Action::Step { forward: true }).is_err(),
+        panel.act(Action::Step { forward: true }).is_err(),
         "not loaded yet"
     );
-    settle(&mut results, |r| r.bundle.is_some());
-    let Some(Page::Trace(trace)) = results.view().page else {
+    settle(&mut panel, |r| r.bundle.is_some());
+    let Some(Page::Trace(trace)) = panel.view().page else {
         panic!()
     };
     assert_eq!(trace.header.task, "coq-block-bound");
-    results.act(Action::Play { playing: true }).unwrap();
-    assert!(results.playing());
-    let before = results.revision();
-    while results.playing() {
-        results.tick(1.0);
+    panel.act(Action::Play { playing: true }).unwrap();
+    let before = panel.revision();
+    while panel.playing() {
+        panel.tick(1.0);
     }
-    assert!(results.revision() > before);
-    assert!(results.open_trace().is_some());
-    // The bundle is cached by digest; a tampered bundle isn't accepted.
-    let cached = cache.path().join("gym-results");
-    assert!(std::fs::read_dir(&cached).unwrap().any(|e| {
-        e.unwrap()
-            .file_name()
-            .to_string_lossy()
-            .starts_with("bundle-")
-    }));
-    results.act(Action::Back).unwrap();
-    results.bundle = None;
-    std::fs::remove_dir_all(&cached).unwrap();
-    let path = dir
-        .path()
-        .join("traces/tb4-fable-delegate-repro-9776/coq-block-bound.p2.json");
-    let mut bytes = std::fs::read(&path).unwrap();
-    bytes[10] ^= 1;
-    std::fs::write(&path, bytes).unwrap();
-    results.act(Action::Trace).unwrap();
-    settle(&mut results, |r| !r.view().loading);
-    assert_eq!(
-        results.view().error.as_deref(),
-        Some("Can't verify this trace")
-    );
-    assert!(results.bundle.is_none());
+    assert!(panel.revision() > before);
+    assert!(panel.open_trace().is_some());
 }
 
 #[test]
-fn a_field_this_reader_doesnt_know_still_verifies() {
+fn a_bundle_that_changed_after_publication_is_refused() {
     let dir = fixture();
-    let path = dir.path().join(gym_leaderboard::LEADERBOARD_FILE);
-    let mut value: serde_json::Value =
-        serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
-    value["boards"][0]["added_later"] = serde_json::json!("an optional field");
-    let digest = atif::digest(&value["boards"]);
-    value["digest"] = serde_json::json!(digest);
-    std::fs::write(&path, serde_json::to_vec(&value).unwrap()).unwrap();
-    let index_path = dir.path().join(gym_leaderboard::INDEX_FILE);
-    let mut index: Index = serde_json::from_slice(&std::fs::read(&index_path).unwrap()).unwrap();
-    index.publications.last_mut().unwrap().digest = digest;
-    std::fs::write(&index_path, serde_json::to_vec(&index).unwrap()).unwrap();
-    let mut results = Results::new(Config {
-        base: base(dir.path()),
-        cache_directory: None,
-    });
-    results.set_active(true);
-    settle(&mut results, |r| !r.view().loading);
-    assert!(results.view().error.is_none(), "{:?}", results.view().error);
-    assert!(results.view().page.is_some());
+    let path = dir
+        .path()
+        .join("traces/tb4-fable-delegate-repro-9776/coq-block-bound.p1.json");
+    let mut bytes = std::fs::read(&path).unwrap();
+    bytes[10] ^= 1;
+    std::fs::write(&path, bytes).unwrap();
+    let cache = tempfile::tempdir().unwrap();
+    let mut panel = results(serve(dir.path()), cache.path());
+    panel.set_active(true);
+    settle(&mut panel, |r| !r.view().loading);
+    open(
+        &mut panel,
+        "tb4-fable-delegate-repro-9776",
+        "coq-block-bound.p1",
+    );
+    settle(&mut panel, |r| !r.view().loading);
+    assert_eq!(
+        panel.view().error.as_deref(),
+        Some("Can't verify this trace")
+    );
+    assert!(panel.bundle.is_none());
+    assert_eq!(panel.view().status, "The trace isn't available");
 }
 
 /// Every published bundle opens through the panel on demand, verified,
@@ -298,55 +260,33 @@ fn a_field_this_reader_doesnt_know_still_verifies() {
 #[test]
 fn every_published_trace_opens_on_demand() {
     let cache = tempfile::tempdir().unwrap();
-    let mut results = Results::new(Config {
-        base: base(&published()),
-        cache_directory: Some(cache.path().into()),
-    });
-    results.set_active(true);
-    settle(&mut results, |r| !r.view().loading);
-    let leaderboard = results.leaderboard.clone().unwrap();
+    let mut panel = results(serve(&published()), cache.path());
+    panel.set_active(true);
+    settle(&mut panel, |r| !r.view().loading);
+    let leaderboard = panel.leaderboard.clone().unwrap();
     let mut opened = 0;
     for board in &leaderboard.boards {
         for attempt in board.attempts.iter().filter(|a| a.trace.is_some()) {
-            results
-                .act(Action::Board {
-                    id: board.id.clone(),
-                })
-                .unwrap();
-            results
-                .act(Action::Attempt {
-                    id: attempt.id.clone(),
-                })
-                .unwrap();
-            results.act(Action::Trace).unwrap();
-            assert!(results.view().can_back);
-            settle(&mut results, |r| {
+            open(&mut panel, &board.id, &attempt.id);
+            settle(&mut panel, |r| {
                 r.open_trace().is_some() || r.view().error.is_some()
             });
             assert!(
-                results.view().error.is_none(),
+                panel.view().error.is_none(),
                 "{}: {:?}",
                 attempt.id,
-                results.view().error
+                panel.view().error
             );
             for tab in [Tab::Jev, Tab::Briefing, Tab::Agent, Tab::Verifier] {
-                results.act(Action::Tab { tab }).unwrap();
-                let bytes = serde_json::to_vec(&results.view()).unwrap().len();
+                panel.act(Action::Tab { tab }).unwrap();
+                let bytes = serde_json::to_vec(&panel.view()).unwrap().len();
                 assert!(bytes < view::MAX_PAGE_BYTES, "{}: {bytes}", attempt.id);
             }
             opened += 1;
-            results.act(Action::Back).unwrap();
-            results.act(Action::Back).unwrap();
-            results.act(Action::Back).unwrap();
+            for _ in 0..3 {
+                panel.act(Action::Back).unwrap();
+            }
         }
     }
     assert!(opened >= 28, "{opened}");
-}
-
-#[test]
-fn only_https_or_a_local_directory_is_an_origin() {
-    assert!(Origin::new("http://example.com/").is_err());
-    assert!(Origin::new("https://example.com/no-slash").is_err());
-    assert!(Origin::new("relative/path").is_err());
-    assert!(Origin::new(DEFAULT_BASE_URL).is_ok());
 }
