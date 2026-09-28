@@ -11,6 +11,7 @@ name = "openagents"
 path = "src/main.rs"
 
 [dependencies]
+base64 = "0.22"
 # Human-readable amounts: BIP 177 base units, or legacy BTC.
 bitcoin-amount = { path = "../bitcoin-amount" }
 coder = { path = "../coder" }
@@ -34,6 +35,8 @@ microcoder = { path = "../microcoder" }
 nostr = { path = "../nostr" }
 openagents-wallet = { path = "../wallet" }
 openagents-x402 = { path = "../x402" }
+# The playtest triage inbox: reports, drafts, and the triage log.
+playtest = { path = "../playtest" }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 secp256k1 = { version = "0.31.1", features = ["rand"] }
 serde = { version = "1", features = ["derive"] }

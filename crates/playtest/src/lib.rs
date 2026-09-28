@@ -14,11 +14,16 @@
 //! can't record a message, prompt, key, invoice, address, or amount. It
 //! leaves the device only inside a report whose preview showed it in full.
 //!
+//! **Triage** ([`triage`]) turns opened reports into GitHub issue drafts,
+//! deduplicating by exact identity only, and keeps the append-only triage
+//! log that records every acceptance with the tester's key.
+//!
 //! This crate has no network and no storage: the app and the triage tool
 //! carry the events.
 
 pub mod report;
 pub mod session;
+pub mod triage;
 
 /// The OpenAgents triage key, in hex, that reports are sealed to.
 ///

@@ -182,6 +182,7 @@ Status words follow the [glossary](../glossary.md).
 | The owner's build notes ("1.0.0 Build 13 Feedback") turned into commits by agents, followed by a build bump (for example `e84de16fd5`, `06d033d663`) | The current loop. It isn't written down anywhere except in commit history. |
 | **Changelog** in Account (`crates/openagents-mobile/src/account.rs`) | Implemented. One entry, "First release". |
 | In-app feedback action, session log, or telemetry of any kind | **None.** The app sends no analytics. |
+| Triage inbox and triage log: `openagents playtest` reads the triage key's reports, drafts `playtest` issues for a person to approve, and records every acceptance ([playtest-triage.md](playtest-triage.md)) | Implemented ([#9884](https://github.com/OpenAgentsInc/openagents/issues/9884)). It reads reports once the owner creates the triage key and a build carries it. |
 | NIP-XP quests, awards, revocations, and achievement labels; the ledger; the referee tool ([NIP-XP](../../nips/openagents/NIP-XP.md)) | Implemented. Only one rule exists, `kb-transfer`, and no award has been granted. |
 | Levels, titles, and `lv n` name tags | Implemented on desktop Verse only. The Grid's name tags show a pubkey prefix and no level. |
 | A read-only XP reader and trainer card in the app | Specified; phase 1 of epic [#9847](https://github.com/OpenAgentsInc/openagents/issues/9847), in progress. |
@@ -425,6 +426,9 @@ Today's loop, written down, then widened to many testers.
    supervised by the owner) reads new reports: TestFlight feedback, GitHub
    issues from the **Playtest report** template, the playtest email, the
    owner's notes, and, from stage 1, the triage inbox.
+   The inbox is `openagents playtest inbox`; the
+   [triage inbox guide](playtest-triage.md) covers the commands and the
+   triage log.
 2. **Deduplicate and classify.** Each report is one of: *new bug*,
    *duplicate* (linked to the first), *not reproducible yet*, *design
    feedback*, *idea*, or *declined*, with a reason.

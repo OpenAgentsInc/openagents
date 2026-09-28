@@ -993,3 +993,15 @@ cargo clippy -p openagents-cli -p openagents-wallet --all-targets -- -D warnings
 cargo test -p openagents-cli -p openagents-wallet
 cargo test -p openagents-wallet --test testnet -- --ignored   # reaches public testnet Esplora
 ```
+
+## Playtest triage
+
+`openagents playtest` is the triage inbox for playtest reports: `inbox`
+reads the NIP-17 reports sealed to the triage key and drafts an issue for
+each, `file` creates the `playtest` issue only with `--approve` (or records
+one a person filed with `--issue`), `decide`, `verify`, and `session`
+record the other outcomes, and `log --acceptances` lists the accepted
+contributions that back playtest awards. `keygen --out PATH` creates the
+triage key file (`0600`) and prints only its npub.
+[docs/game/playtest-triage.md](../game/playtest-triage.md) covers the loop,
+the files, and the triage log.

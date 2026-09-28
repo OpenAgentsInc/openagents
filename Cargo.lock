@@ -5509,6 +5509,7 @@ dependencies = [
 name = "openagents-cli"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "bitcoin-amount",
  "coder",
  "coder-access",
@@ -5531,6 +5532,7 @@ dependencies = [
  "nostr",
  "openagents-wallet",
  "openagents-x402",
+ "playtest",
  "reqwest",
  "secp256k1 0.31.1",
  "serde",

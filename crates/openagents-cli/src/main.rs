@@ -25,6 +25,7 @@ mod key;
 mod labor;
 mod mcp;
 mod out;
+mod playtest;
 mod quest;
 mod reach;
 mod relay;
@@ -80,6 +81,9 @@ Keys, relays, and money:
   kb           Search, publish, and sync knowledge entries (NIP-KB).
   relay        Query, publish to, and follow a relay.
 
+Playtesting:
+  playtest     Triage inbox: read reports, draft and file issues, keep the triage log.
+
 Discovery (NIP-CAP, NIP-PRG, NIP-EXT), read-only:
   cap          List and describe published capability heads.
   prg          List and describe published program heads.
@@ -133,6 +137,7 @@ fn main() -> ExitCode {
         "x402" => x402::run(&output, &rest),
         "kb" => kb::run(&output, &rest),
         "reach" => reach::run(&output, &rest),
+        "playtest" => playtest::run(&output, &rest),
         "relay" => relay::run(&output, &rest),
         "service" => service::run(&output, &rest),
         "ssh" => ssh::run(&output, &rest),

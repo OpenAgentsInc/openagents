@@ -300,6 +300,13 @@ uses, and marks which are implemented and which are only specified.
   grants, owner-directory reads under the NIP-REACH owner-authority rule, and,
   with the `ssh` feature, SSH host setup through `coder-ssh`. Read its README
   before changing owner-key handling.
+- `crates/playtest` — the playtest program's records: private reports
+  sealed with NIP-17 to the triage key, the opt-in session log whose types
+  hold no text, and triage (exact-identity deduplication, issue drafts, and
+  the append-only triage log). No network or storage; `openagents playtest`
+  is the triage inbox. Read `docs/game/playtesting.md` and
+  `docs/game/playtest-triage.md` before changing what a report or the log
+  may carry.
 - `crates/openagents-cli` — the `openagents` command: one `--json`-first
   program over the existing crates for pairing and computers (`coder-host`,
   `coder-computers`), durable tasks (`coder`), headless Verse presence and
