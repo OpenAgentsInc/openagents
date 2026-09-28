@@ -8,7 +8,9 @@ enum QRInvitation {
     static let maximumBytes = 640
 
     static func bounded(_ text: String) throws -> String {
-        guard text.hasPrefix("coder-pair:"), text.utf8.count <= maximumBytes else {
+        // Chat pairing and computer (host) invitations share this scanner.
+        guard text.hasPrefix("coder-pair:") || text.hasPrefix("coder-host:"),
+              text.utf8.count <= maximumBytes else {
             throw Failure.message("This QR code is not a Coder invitation. Scan the code displayed by your computer.")
         }
         return text

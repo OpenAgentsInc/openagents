@@ -11,6 +11,8 @@
 pub mod model;
 pub mod project;
 #[cfg(feature = "live")]
+pub mod screen;
+#[cfg(feature = "live")]
 pub mod session;
 
 pub use model::{Model, Phase};

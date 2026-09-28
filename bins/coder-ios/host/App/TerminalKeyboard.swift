@@ -1,6 +1,6 @@
-// The terminal page's native glue. Rust draws the terminal in the world
-// computer's HUD and owns the session, the emulator, and every byte sent;
-// this file supplies the keyboard target and lets the terminal rotate.
+// The terminal's native glue, shared by the Coder and OpenAgents hosts. Rust
+// owns the session, the emulator, and every byte sent; this file supplies
+// the keyboard target and lets the terminal rotate.
 import SwiftUI
 import UIKit
 
@@ -117,12 +117,5 @@ enum TerminalOrientation {
             scene.keyWindow?.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
             if !rotate { scene.requestGeometryUpdate(.iOS(interfaceOrientations: .portrait)) }
         }
-    }
-}
-
-extension PushAppDelegate {
-    func application(_ application: UIApplication,
-                     supportedInterfaceOrientationsFor window: UIWindow?) -> UIInterfaceOrientationMask {
-        TerminalOrientation.mask
     }
 }

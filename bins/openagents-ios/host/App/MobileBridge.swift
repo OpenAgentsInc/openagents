@@ -1,29 +1,87 @@
 // Forwards requests to the Rust app on one serial queue and publishes its
-// view. Rust owns the tailnet state; this bridge only opens URLs it names.
+// packets. Rust owns every screen, grant, and connection; this bridge only
+// opens URLs Rust names and collects values Rust asks for.
 import SwiftUI
 
-private struct Reply: Decodable {
-    let view: NativeView?
+/// A value Rust asks the host to collect. Rust validates it.
+struct ComputersInput: Decodable, Equatable {
+    let token: String
+    let label: String
+    let prompt: String
+    let scan: Bool
+    /// Mask the field and never echo, log, or keep the value.
+    let secret: Bool
+    let max_bytes: Int
+
+    private enum CodingKeys: String, CodingKey { case token, label, prompt, scan, secret, max_bytes }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        token = try values.decode(String.self, forKey: .token)
+        label = try values.decode(String.self, forKey: .label)
+        prompt = try values.decode(String.self, forKey: .prompt)
+        scan = try values.decode(Bool.self, forKey: .scan)
+        secret = try values.decodeIfPresent(Bool.self, forKey: .secret) ?? false
+        max_bytes = try values.decode(Int.self, forKey: .max_bytes)
+    }
+}
+
+/// An invitation QR code: one string of `1` (dark) and `0` per module row.
+struct ComputersQR: Decodable, Equatable {
+    let size: Int
+    let rows: [String]
+}
+
+struct AppPacket: Decodable {
+    let schema: String
+    let device: String
+    let computers: NativeView?
+    let computers_input: ComputersInput?
+    let computers_qr: ComputersQR?
+    let tailnet: NativeView?
+    let tailnet_loading: Bool
     let open_url: String?
-    let wait_for_sign_in: Bool
+    let terminal: Bool
+    let notices: [String]
+}
+
+struct TerminalPacket: Decodable {
+    let schema: String
+    let open: Bool
+    let revision: UInt64
+    let view: NativeView?
+    let paste: Bool
 }
 
 @MainActor
 final class MobileBridge: ObservableObject {
-    @Published private(set) var view: NativeView?
-    @Published private(set) var busy = false
+    @Published private(set) var packet: AppPacket?
+    @Published private(set) var terminalView: NativeView?
+    @Published private(set) var failure: String?
+    @Published private(set) var pending = 0
     private let queue = DispatchQueue(label: "com.openagents.app.rust")
     private nonisolated(unsafe) let handle: UnsafeMutableRawPointer?
-    private var pending = 0
+    private var terminalRevision: UInt64 = 0
+    private var terminalPolling = false
+
+    var busy: Bool { pending > 0 }
 
     init() {
-        let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        let directory = support.appendingPathComponent("Tailscale", isDirectory: true)
-        let configuration = (try? JSONSerialization.data(withJSONObject: ["state_dir": directory.path])) ?? Data()
-        handle = configuration.withUnsafeBytes { bytes in
-            openagents_mobile_create(bytes.bindMemory(to: UInt8.self).baseAddress, bytes.count)
+        do {
+            let secret = try DeviceKey.loadOrCreate()
+            let configuration = try JSONSerialization.data(withJSONObject: [
+                "state_dir": try DeviceKey.stateDirectory().path,
+                "secret_hex": secret.map { String(format: "%02x", $0) }.joined(),
+            ])
+            handle = configuration.withUnsafeBytes { bytes in
+                openagents_mobile_create(bytes.bindMemory(to: UInt8.self).baseAddress, bytes.count)
+            }
+            if handle == nil { failure = "OpenAgents could not start." }
+        } catch {
+            handle = nil
+            failure = error.localizedDescription
         }
-        send(["kind": "show"])
+        send(["op": "snapshot"])
     }
 
     deinit {
@@ -31,37 +89,82 @@ final class MobileBridge: ObservableObject {
         queue.async { openagents_mobile_destroy(handle) }
     }
 
-    func refresh() { send(["kind": "refresh"]) }
+    func lifecycle(_ active: Bool) { send(["op": "lifecycle", "active": active]) }
+    func refreshComputers() { send(["op": "computers_refresh"]) }
+    func refreshTailnet() { send(["op": "tailnet_refresh"]) }
+    func snapshot() { send(["op": "snapshot"]) }
 
-    func activate(_ node: String) {
-        guard let view else { return }
-        send(["kind": "activate",
-              "activation": ["instance": view.instance, "revision": view.revision, "node": node]])
+    func activate(_ surface: String, view: NativeView, node: String) {
+        send(["op": "\(surface)_activate", "instance": view.instance, "revision": view.revision, "node": node])
+    }
+
+    func submit(token: String, value: String) { send(["op": "computers_input", "token": token, "value": value]) }
+    func cancel(token: String) { send(["op": "computers_cancel", "token": token]) }
+
+    /// A terminal request: a resize, typed text, a key, or a paste.
+    func terminal(_ request: [String: Any]) {
+        call(request) { data in
+            guard let packet = try? JSONDecoder().decode(TerminalPacket.self, from: data) else { return }
+            self.receiveTerminal(packet)
+        }
+    }
+
+    /// Poll the open terminal; skipped while a poll is in flight.
+    func pollTerminal() {
+        guard !terminalPolling else { return }
+        terminalPolling = true
+        call(["op": "terminal_poll", "known": terminalRevision]) { data in
+            self.terminalPolling = false
+            guard let packet = try? JSONDecoder().decode(TerminalPacket.self, from: data) else { return }
+            self.receiveTerminal(packet)
+        }
+    }
+
+    private func receiveTerminal(_ packet: TerminalPacket) {
+        guard packet.open else {
+            terminalView = nil
+            terminalRevision = 0
+            return
+        }
+        if let view = packet.view, packet.revision > terminalRevision {
+            terminalRevision = packet.revision
+            terminalView = view
+        }
+        if packet.paste {
+            terminal(["op": "terminal_paste", "text": UIPasteboard.general.string ?? ""])
+        }
     }
 
     private func send(_ request: [String: Any]) {
-        guard let handle, let body = try? JSONSerialization.data(withJSONObject: request) else { return }
-        pending += 1
-        busy = true
-        queue.async { [weak self] in
-            let reply = body.withUnsafeBytes { bytes -> Reply? in
-                let buffer = openagents_mobile_call(handle, bytes.bindMemory(to: UInt8.self).baseAddress, bytes.count)
-                defer { openagents_mobile_buffer_free(buffer) }
-                guard let data = buffer.data, buffer.len > 0 else { return nil }
-                return try? JSONDecoder().decode(Reply.self, from: Data(bytes: data, count: buffer.len))
+        call(request) { data in
+            guard let packet = try? JSONDecoder().decode(AppPacket.self, from: data),
+                  packet.schema == "openagents.mobile.v1" else {
+                self.failure = "OpenAgents returned an unreadable screen."
+                return
             }
-            DispatchQueue.main.async { self?.receive(reply) }
+            self.packet = packet
+            if !packet.terminal { self.terminalView = nil; self.terminalRevision = 0 }
+            if let link = packet.open_url, let url = URL(string: link), url.scheme == "https" {
+                UIApplication.shared.open(url)
+                self.send(["op": "tailnet_wait_for_sign_in"])
+            }
         }
     }
 
-    private func receive(_ reply: Reply?) {
-        pending -= 1
-        busy = pending > 0
-        guard let reply else { return }
-        if let view = reply.view { self.view = view }
-        if let link = reply.open_url, let url = URL(string: link), url.scheme == "https" {
-            UIApplication.shared.open(url)
+    private func call(_ request: [String: Any], received: @escaping (Data) -> Void) {
+        guard let handle, let body = try? JSONSerialization.data(withJSONObject: request) else { return }
+        pending += 1
+        queue.async {
+            let data = body.withUnsafeBytes { bytes -> Data? in
+                let buffer = openagents_mobile_call(handle, bytes.bindMemory(to: UInt8.self).baseAddress, bytes.count)
+                defer { openagents_mobile_buffer_free(buffer) }
+                guard let pointer = buffer.data, buffer.len > 0 else { return nil }
+                return Data(bytes: pointer, count: buffer.len)
+            }
+            DispatchQueue.main.async {
+                self.pending -= 1
+                if let data { received(data) }
+            }
         }
-        if reply.wait_for_sign_in { send(["kind": "wait_for_sign_in"]) }
     }
 }

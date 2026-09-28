@@ -80,3 +80,11 @@ final class PushAppDelegate: NSObject, UIApplicationDelegate {
         Task { @MainActor in PushRegistration.shared.failed(error) }
     }
 }
+
+// Only an open terminal may rotate; see TerminalOrientation.
+extension PushAppDelegate {
+    func application(_ application: UIApplication,
+                     supportedInterfaceOrientationsFor window: UIWindow?) -> UIInterfaceOrientationMask {
+        TerminalOrientation.mask
+    }
+}

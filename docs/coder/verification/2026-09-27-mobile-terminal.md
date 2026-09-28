@@ -12,7 +12,7 @@ toolchain and Xcode's iOS 26.5 simulator runtime.
 - `crates/coder-computers/src/terminal`: the model, the Rust Native view in
   the amber palette with the accessory key row, and the live session over
   NIP-HOST `terminal.open` and NIP-TERM attach, input, resize, and close.
-- `crates/coder-mobile/src/terminal.rs`: the terminal screen behind the Host
+- `crates/coder-mobile/src/terminal.rs` (now `crates/coder-computers/src/terminal/screen.rs`): the terminal screen behind the Host
   screen's **Terminal** control (the entry point #9732/#9734 added), and the
   `terminal_poll`, `terminal_resize`, `terminal_text`, `terminal_key`, and
   `terminal_paste` requests, answered with a smaller

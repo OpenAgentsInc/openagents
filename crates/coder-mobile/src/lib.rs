@@ -3,18 +3,16 @@
 #[cfg(target_os = "android")]
 mod android;
 mod app;
-mod cache;
 mod computer_hud;
 mod ffi;
 mod push;
 mod render;
-mod terminal;
 mod verse_app;
 mod verse_ffi;
 
 pub use app::{App, Config, Packet, Reply, Request};
 pub use push::PushConfig;
-pub use terminal::TerminalPacket;
+pub use coder_computers::terminal::screen::TerminalPacket;
 
 #[cfg(test)]
 mod tests;

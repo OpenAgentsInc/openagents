@@ -8,7 +8,7 @@
 //! cache directory. `push_disable` revokes the lease and asks the gateway to
 //! forget the token.
 
-use crate::cache::Cache;
+use coder_computers::cache::Cache;
 use push_gateway::client::{Enrollment, SyncOutcome};
 use secp256k1::SecretKey;
 use serde::Deserialize;

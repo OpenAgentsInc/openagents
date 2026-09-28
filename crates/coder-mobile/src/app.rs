@@ -1,4 +1,4 @@
-use crate::cache::Cache;
+use coder_computers::cache::Cache;
 use coder_computers::live::{Live, Settings as LiveSettings, Store as LiveStore};
 use coder_computers::{
     Capabilities, Computers, InputRequest, LocalHost, Outcome, Platform, synthetic::Synthetic,
@@ -212,7 +212,7 @@ pub(crate) enum Intent {
 #[serde(untagged)]
 pub enum Reply {
     Packet(Box<Packet>),
-    Terminal(crate::terminal::TerminalPacket),
+    Terminal(coder_computers::terminal::screen::TerminalPacket),
 }
 
 #[derive(Serialize)]
@@ -240,7 +240,7 @@ pub struct Packet {
     /// existing onboarding.
     pub computers_exit: bool,
     /// The terminal screen a host's **Terminal** control opened, as its own
-    /// Rust Native view. See [`crate::terminal`].
+    /// Rust Native view. See [`coder_computers::terminal::screen`].
     #[serde(skip_serializing_if = "Option::is_none")]
     pub terminal: Option<serde_json::Value>,
     /// The terminal screen asked for the clipboard's text; the native host
@@ -303,7 +303,7 @@ pub struct App {
     computers: Option<Computers>,
     computers_exit: bool,
     /// The terminal screen a host's Terminal control opened.
-    terminal: Option<crate::terminal::Terminal>,
+    terminal: Option<coder_computers::terminal::screen::Terminal>,
     /// Reads each linked host's current link for terminal sessions.
     terminals: Option<coder_computers::live::Terminals>,
     pairing_completed: bool,
@@ -474,9 +474,9 @@ impl App {
         }
     }
 
-    fn terminal_request(&mut self, request: Request) -> crate::terminal::TerminalPacket {
+    fn terminal_request(&mut self, request: Request) -> coder_computers::terminal::screen::TerminalPacket {
         let Some(terminal) = self.terminal.as_mut() else {
-            return crate::terminal::TerminalPacket::closed();
+            return coder_computers::terminal::screen::TerminalPacket::closed();
         };
         let mut known = None;
         match request {
@@ -577,7 +577,7 @@ impl App {
                     node,
                 };
                 if let Some(terminal) = self.terminal.as_mut()
-                    && terminal.activate(&event) == Ok(crate::terminal::Outcome::Closed)
+                    && terminal.activate(&event) == Ok(coder_computers::terminal::screen::Outcome::Closed)
                 {
                     self.terminal = None;
                 }
@@ -621,7 +621,7 @@ impl App {
                 .snapshot()
                 .host(&host)
                 .map_or_else(|| "this computer".to_owned(), |record| record.label.clone());
-            match crate::terminal::Terminal::open(
+            match coder_computers::terminal::screen::Terminal::open(
                 host,
                 label,
                 self.terminals.clone(),
@@ -1180,11 +1180,11 @@ impl App {
             terminal: self
                 .terminal
                 .as_ref()
-                .and_then(crate::terminal::Terminal::view),
+                .and_then(coder_computers::terminal::screen::Terminal::view),
             terminal_paste: self
                 .terminal
                 .as_ref()
-                .is_some_and(crate::terminal::Terminal::wants_paste),
+                .is_some_and(coder_computers::terminal::screen::Terminal::wants_paste),
             push: self.push_status.clone(),
         }
     }

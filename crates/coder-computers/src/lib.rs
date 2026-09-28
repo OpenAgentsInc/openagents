@@ -14,6 +14,7 @@
 #![forbid(unsafe_code)]
 
 pub mod authority;
+pub mod cache;
 mod controller;
 pub mod intent;
 #[cfg(feature = "live")]

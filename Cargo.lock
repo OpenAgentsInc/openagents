@@ -5226,9 +5226,14 @@ dependencies = [
 name = "openagents-mobile"
 version = "0.1.0"
 dependencies = [
+ "coder-computers",
+ "coder-vt",
  "rust-native",
+ "rustls",
+ "secp256k1 0.31.1",
  "serde",
  "serde_json",
+ "tempfile",
  "tokio",
  "ts_control",
  "ts_control_serde",

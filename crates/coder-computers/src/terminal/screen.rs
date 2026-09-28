@@ -1,11 +1,11 @@
-//! The terminal screen a linked host's **Terminal** control opens (NIP-TERM).
+//! The phone terminal screen a linked host's **Terminal** control opens
+//! (NIP-TERM), shared by the Coder and OpenAgents mobile libraries.
 //!
 //! The Computers surface resolves **Terminal** on a host only after the
 //! shared authority check passes (the host is online and this device holds
-//! the `terminal` right), then [`crate::App`] calls [`Terminal::open`] with
+//! the `terminal` right), then the mobile app calls [`Terminal::open`] with
 //! the host key and label. The screen is a Rust Native view with its own
-//! instance and revisions, drawn by the world computer's HUD on its
-//! **Terminal** page; taps return through `Request::TerminalActivate`.
+//! instance and revisions; taps return as activations.
 //!
 //! Rust owns the session, the emulator, the modifier latch, and every byte
 //! sent. The native host reports the grid the HUD fits, forwards keystrokes
@@ -13,9 +13,9 @@
 //! carries the view only when it changed. The session starts once the host
 //! reports a size, so the shell opens at the size it is shown at.
 
-use coder_computers::live::Terminals;
-use coder_computers::terminal::session::Session;
-use coder_computers::terminal::{Model, Phase, TerminalIntent, view};
+use crate::live::Terminals;
+use crate::terminal::session::Session;
+use crate::terminal::{Model, Phase, TerminalIntent, view};
 use coder_vt::{Key, Modifiers};
 use rust_native::{Activation, ValidatedView};
 use serde::Serialize;
@@ -23,7 +23,7 @@ use tokio::runtime::Handle;
 
 /// What an accepted activation did.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum Outcome {
+pub enum Outcome {
     /// The screen changed or a key was sent.
     Updated,
     /// Return to the Computers surface.
@@ -46,7 +46,7 @@ pub struct TerminalPacket {
 }
 
 impl TerminalPacket {
-    pub(crate) fn closed() -> Self {
+    pub fn closed() -> Self {
         TerminalPacket {
             schema: "coder.mobile.terminal.v1",
             open: false,
@@ -58,7 +58,7 @@ impl TerminalPacket {
 }
 
 /// One terminal screen for one host.
-pub(crate) struct Terminal {
+pub struct Terminal {
     host: String,
     label: String,
     terminals: Option<Terminals>,
@@ -112,7 +112,7 @@ impl Terminal {
     /// the host's `terminal` right; the host checks it again on
     /// `terminal.open`. Without `terminals` (a build with no live service)
     /// the screen says it can't open one.
-    pub(crate) fn open(
+    pub fn open(
         host: String,
         label: String,
         terminals: Option<Terminals>,
@@ -158,7 +158,7 @@ impl Terminal {
     }
 
     /// Draw a new revision when the model changed.
-    pub(crate) fn redraw(&mut self) {
+    pub fn redraw(&mut self) {
         let instance = self.instance.clone();
         let model_revision = self.with_model(|model| model.revision);
         if self.current.is_some() && model_revision == self.drawn {
@@ -174,19 +174,19 @@ impl Terminal {
     }
 
     /// The current view, as JSON for the native host and the world HUD.
-    pub(crate) fn view(&self) -> Option<serde_json::Value> {
+    pub fn view(&self) -> Option<serde_json::Value> {
         self.current
             .as_ref()
             .and_then(|view| serde_json::to_value(view.view()).ok())
     }
 
     /// Whether the screen asked the native host for the clipboard.
-    pub(crate) fn wants_paste(&self) -> bool {
+    pub fn wants_paste(&self) -> bool {
         self.paste
     }
 
     /// Start the session at the reported size, or resize it.
-    pub(crate) fn resize(&mut self, rows: u16, cols: u16) {
+    pub fn resize(&mut self, rows: u16, cols: u16) {
         if let Some(session) = &self.session {
             session.resize(rows, cols);
             return;
@@ -214,12 +214,12 @@ impl Terminal {
         }
     }
 
-    pub(crate) fn text(&mut self, text: &str) {
+    pub fn text(&mut self, text: &str) {
         let bytes = self.with_model(|model| model.text(text));
         self.send(bytes);
     }
 
-    pub(crate) fn key(&mut self, name: &str, modifiers: Modifiers) {
+    pub fn key(&mut self, name: &str, modifiers: Modifiers) {
         let Some(key) = named_key(name) else {
             return;
         };
@@ -227,7 +227,7 @@ impl Terminal {
         self.send(bytes);
     }
 
-    pub(crate) fn paste(&mut self, text: &str) {
+    pub fn paste(&mut self, text: &str) {
         self.paste = false;
         let bytes = self.with_model(|model| model.vt.paste(text));
         if !bytes.is_empty() {
@@ -236,7 +236,7 @@ impl Terminal {
     }
 
     /// Resolve a tap against the current view.
-    pub(crate) fn activate(&mut self, event: &Activation) -> Result<Outcome, String> {
+    pub fn activate(&mut self, event: &Activation) -> Result<Outcome, String> {
         let intent = self
             .current
             .as_ref()
@@ -280,7 +280,7 @@ impl Terminal {
 
     /// The reply to a terminal request, with the view when it is newer than
     /// `known`.
-    pub(crate) fn packet(&mut self, known: Option<u64>) -> TerminalPacket {
+    pub fn packet(&mut self, known: Option<u64>) -> TerminalPacket {
         self.redraw();
         let view = match known {
             Some(known) if known >= self.revision => None,

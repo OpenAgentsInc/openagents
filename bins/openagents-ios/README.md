@@ -1,16 +1,36 @@
 # OpenAgents for iOS
 
-OpenAgents is a new iPhone app that reuses Coder's Rust Native approach under
-its own identity. Rust builds each screen as a
-[Rust Native](../../crates/rust-native/) view in the `openagents-mobile`
-crate, and a thin SwiftUI host decodes and renders it. The host shares
-Coder's renderer, [`NativeView.swift`](../coder-ios/host/App/NativeView.swift),
-instead of copying it.
+OpenAgents is an iPhone app for commanding your computers from your phone.
+It reuses Coder's Rust Native approach under its own identity: Rust builds
+each screen in the `openagents-mobile` crate, and a thin SwiftUI host
+decodes and renders it. The host shares Coder's renderer and native glue
+([`NativeView.swift`](../coder-ios/host/App/NativeView.swift), the QR
+scanner, the secret field, and the terminal keyboard) instead of copying
+them.
 
-The home screen lists the devices on your tailnet, with each device's
-name, operating system, tailnet address, and online state.
+The app has two tabs:
 
-## Tailnet devices
+- **Computers** mounts Coder's shared
+  [Computers screens](../../crates/coder-computers/README.md) over the live
+  host client. Add a computer by scanning or pasting its `coder-host:`
+  invitation or approving its 8-character code
+  ([NIP-HOST](../../nips/openagents/NIP-HOST.md)). The app then follows each
+  host's encrypted presence and routes, connects over the best one (LAN,
+  tailnet, public, then the relay), and authenticates both Nostr keys
+  ([NIP-REACH](../../nips/openagents/NIP-REACH.md)). From a host you can
+  order work, steer or stop tasks, manage access, and open a terminal
+  ([NIP-TERM](../../nips/openagents/NIP-TERM.md)). The device's Nostr key
+  stays in Keychain; grants stay in an encrypted store keyed by it.
+- **Tailnet** lists the devices on your tailnet with name, operating system,
+  tailnet address, and online state.
+
+A computer is reachable over the tailnet when its host advertises a tailnet
+route, for example
+`coder-host serve --advertise tailnet=wss://box.<tailnet>.ts.net:47101/`,
+and the phone is on the same tailnet through the Tailscale app. Tailnet
+membership grants nothing: every command still needs the host's grant.
+
+## Tailnet tab
 
 iOS does not let one app read another app's Tailscale state, and a tailnet
 has no discovery broadcast, so the phone's own Tailscale connection cannot
@@ -18,7 +38,8 @@ list its peers. Instead, the app uses Tailscale's Rust control client,
 [tailscale-rs](https://github.com/tailscale/tailscale-rs) (`ts_control`
 0.6.1), to register as its own tailnet node named `openagents-ios`, then
 reads one netmap from Tailscale's control server. It never joins the data
-plane or carries traffic.
+plane or carries traffic. This sign-in only lists devices: Computers never
+uses it, and it grants no access to any host.
 
 1. On first launch, the control server returns a sign-in URL. The app shows
    **Connect to a tailnet** and **Sign in with Tailscale**.
@@ -39,13 +60,13 @@ uses only its control-plane client.
 | Bundle identifier | `com.openagents.app` |
 | App Store Connect app | `6748620735` (**OpenAgents**) |
 | Development team | `HQWSG26L43` |
-| Marketing version and build | `1.0.0` / `2` |
+| Marketing version and build | `1.0.0` / `3` |
 | Minimum OS and device family | iOS 17 / iPhone |
 | Archive signing | Manual, Apple Distribution, `OpenAgents App Store` profile |
 
 The App Store Connect record also holds `0.x` builds from an earlier app on
 this bundle identifier. Build numbers only need to be unique within one
-version, so `1.0.0` started at build `1`. Build `1` (hello world) is on TestFlight. Raise the build number for every
+version, so `1.0.0` started at build `1`. Builds `1` (hello world) and `2` (tailnet list) are on TestFlight. Raise the build number for every
 upload; set it in `host/project.yml` or with `OPENAGENTS_IOS_BUILD_NUMBER`.
 
 The `OpenAgents App Store` profile uses the same Apple Distribution

@@ -461,7 +461,7 @@ distribution and attribution; measured transfer establishes useful reuse.
 [`Query`](../../../crates/coder-connect/src/protocol.rs) offers catalog/page
 reads; the supported sources are Codex and Claude history. Growing transcript
 files are not managed engine sessions. The encrypted
-[`cache`](../../../crates/coder-mobile/src/cache.rs) and its atomic page/cursor
+[`cache`](../../../crates/coder-computers/src/cache.rs) and its atomic page/cursor
 ordering are useful offline foundations, not missing Nostr integration.
 
 The existing [`coder-control` executable](../../../crates/coder-control/src/main.rs)

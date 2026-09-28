@@ -153,7 +153,7 @@ fn short_name(name: &str, hostname: Option<&str>) -> String {
     }
 }
 
-pub(crate) fn os_label(os: &str) -> String {
+pub fn os_label(os: &str) -> String {
     match os.to_ascii_lowercase().as_str() {
         "" => "Unknown".into(),
         "ios" => "iOS".into(),
