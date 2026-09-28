@@ -71,11 +71,24 @@ impl Dispatch for Dispatcher {
                 self.task(op, result)
             }
             Operation::OpenTerminal { cols, rows } => {
+                // No workspace at all is a configuration the host cannot
+                // serve (`unsupported`); a configured root that is not a
+                // directory is a passing condition (`unavailable`).
                 let workspace = self
                     .shared
                     .default_workspace
                     .clone()
-                    .ok_or(Code::Unavailable)?;
+                    .ok_or(Code::Unsupported)?;
+                if !self
+                    .shared
+                    .config
+                    .workspaces
+                    .values()
+                    .next()
+                    .is_some_and(|root| root.is_dir())
+                {
+                    return Err(Code::Unavailable);
+                }
                 let open = Open::new(
                     request,
                     workspace,

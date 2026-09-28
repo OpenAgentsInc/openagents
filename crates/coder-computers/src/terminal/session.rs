@@ -164,8 +164,11 @@ fn open_refusal(error: &HostError) -> Option<Phase> {
     match error {
         HostError::Access(error) => match error.code {
             Code::Transport => None,
+            Code::Unsupported => Some(Phase::Refused(
+                "The computer's host serves no workspace, so it can't open a terminal. Add one with `host serve --workspace LABEL=PATH`.".into(),
+            )),
             Code::Unavailable => Some(Phase::Refused(
-                "The computer can't open a terminal now. Its host may serve no workspace.".into(),
+                "The computer can't open a terminal now. Its host's workspace directory is missing or unusable; check the host log.".into(),
             )),
             _ => Some(Phase::Refused(describe(error))),
         },
@@ -756,6 +759,16 @@ mod tests {
             panic!("a missing right is a refusal")
         };
         assert!(text.contains("\"Open terminals\" right"), "{text}");
+        let none = HostError::Access(AccessError::new(Code::Unsupported, "none"));
+        let Some(Phase::Refused(text)) = open_refusal(&none) else {
+            panic!("no workspace is a refusal")
+        };
+        assert!(text.contains("serves no workspace"), "{text}");
+        let unusable = HostError::Access(AccessError::new(Code::Unavailable, "gone"));
+        let Some(Phase::Refused(text)) = open_refusal(&unusable) else {
+            panic!("a missing root is a refusal")
+        };
+        assert!(text.contains("workspace directory is missing"), "{text}");
         let transport = HostError::Access(AccessError::new(Code::Transport, "down"));
         assert!(open_refusal(&transport).is_none());
         assert!(open_refusal(&HostError::Closed(None)).is_none());

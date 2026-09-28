@@ -34,18 +34,38 @@ struct Fixture {
     running: coder_host::Running,
 }
 
+/// Which workspace the served host is given.
+#[derive(Clone, Copy)]
+enum Workspace {
+    /// A `checkout` label whose root exists.
+    Present,
+    /// A `checkout` label whose root does not exist on disk.
+    Missing,
+    /// No workspace at all.
+    None,
+}
+
 async fn fixture(generation: u64) -> Fixture {
+    fixture_with(generation, Workspace::Present).await
+}
+
+async fn fixture_with(generation: u64, workspace: Workspace) -> Fixture {
     let temp = tempfile::tempdir().unwrap();
     let (relay, _task, _events) = relay::start().await;
     let access = temp.path().join("access");
     let store = coder_host::access::host::Host::new(&access, POLICY);
     store.init(&pubkey(&key())).unwrap();
     let root = temp.path().join("checkout");
-    std::fs::create_dir_all(&root).unwrap();
     let mut config = Config::new(access, vec![relay.clone()], generation);
     config.policy = POLICY;
-    config.workspaces =
-        BTreeMap::from([("checkout".to_owned(), std::fs::canonicalize(&root).unwrap())]);
+    config.workspaces = match workspace {
+        Workspace::Present => {
+            std::fs::create_dir_all(&root).unwrap();
+            BTreeMap::from([("checkout".to_owned(), std::fs::canonicalize(&root).unwrap())])
+        }
+        Workspace::Missing => BTreeMap::from([("checkout".to_owned(), root)]),
+        Workspace::None => BTreeMap::new(),
+    };
     config.ready = Some(Ready {
         file: temp.path().join("run/ready-9.json"),
         version: "e".repeat(64),
@@ -102,6 +122,45 @@ async fn ready_record_is_the_one_the_host_service_reads() {
     for flag in &ready.capabilities {
         coder_service::descriptor::validate_capability(flag).unwrap();
     }
+    fixture.running.shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn terminal_open_tells_no_workspace_from_a_missing_root() {
+    // A host with no workspace cannot serve `terminal.open` at all.
+    let fixture = fixture_with(3, Workspace::None).await;
+    let operator = fixture.enroll(Rights::standard()).await;
+    let error = fixture
+        .direct(&operator)
+        .await
+        .call(Operation::OpenTerminal { cols: 80, rows: 24 })
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(&error, Error::Access(e) if e.code == Code::Unsupported),
+        "{error:?}"
+    );
+    fixture.running.shutdown().await;
+
+    // A configured root that is gone is a passing condition.
+    let fixture = fixture_with(3, Workspace::Missing).await;
+    let operator = fixture.enroll(Rights::standard()).await;
+    let direct = fixture.direct(&operator).await;
+    let error = direct
+        .call(Operation::OpenTerminal { cols: 80, rows: 24 })
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(&error, Error::Access(e) if e.code == Code::Unavailable),
+        "{error:?}"
+    );
+    // Creating the directory repairs it without a restart.
+    std::fs::create_dir_all(fixture.temp.path().join("checkout")).unwrap();
+    let outcome = direct
+        .call(Operation::OpenTerminal { cols: 80, rows: 24 })
+        .await
+        .unwrap();
+    assert!(matches!(outcome, Outcome::Dispatched { .. }), "{outcome:?}");
     fixture.running.shutdown().await;
 }
 
