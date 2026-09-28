@@ -355,6 +355,24 @@ impl UiBatch {
         }
     }
 
+    /// A straight stroke from `a` to `b`, `w` pixels wide.
+    pub fn line(&mut self, atlas: &Atlas, a: [f32; 2], b: [f32; 2], w: f32, color: [f32; 4]) {
+        let (dx, dy) = (b[0] - a[0], b[1] - a[1]);
+        let length = dx.hypot(dy);
+        if length <= f32::EPSILON {
+            return;
+        }
+        let (nx, ny) = (-dy / length * w / 2.0, dx / length * w / 2.0);
+        let v = |x: f32, y: f32| UiVertex {
+            pos: [x, y],
+            uv: atlas.solid,
+            color,
+        };
+        let (p0, p1) = (v(a[0] + nx, a[1] + ny), v(b[0] + nx, b[1] + ny));
+        let (p2, p3) = (v(b[0] - nx, b[1] - ny), v(a[0] - nx, a[1] - ny));
+        self.vertices.extend_from_slice(&[p0, p1, p2, p0, p2, p3]);
+    }
+
     /// A circle outline of radius `r`, `t` pixels thick inward.
     #[allow(clippy::too_many_arguments)]
     pub fn ring(&mut self, atlas: &Atlas, cx: f32, cy: f32, r: f32, t: f32, color: [f32; 4]) {

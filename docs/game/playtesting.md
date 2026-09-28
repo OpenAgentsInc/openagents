@@ -574,6 +574,15 @@ leveling spec's [privacy](../verse/agent-trainer-leveling.md#privacy) rule
 that boards and tags are opt-in. The Grid stays white and gray: every
 cosmetic is a shape, not a color.
 
+Status (2026-09-28, [#9886](https://github.com/OpenAgentsInc/openagents/issues/9886)):
+the Grid draws these in `crates/coder-mobile` (`verse_app.rs`,
+`playtest_marks` and `raider_glow`) from `verse::xp::playtest_titles`,
+through a second read-only reader that trusts the playtest referee alone.
+It reads nothing until `PLAYTEST_REFEREE` holds the owner's key; the
+`--xp-preview` launch argument shows a labeled fixture with every title.
+The opt-in gate (a published trainer profile) isn't built yet: name tags
+show levels and titles for every key today, and #9895 adds the gate.
+
 ### Anti-farming
 
 The leveling spec's defenses apply. In addition, for playtesting:

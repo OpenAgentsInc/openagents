@@ -306,7 +306,7 @@ fn missing_names_a_reproductions_claim_and_reproduction() {
 
 #[test]
 fn playtest_awards_count_on_their_own_card_and_never_in_the_trainer_level() {
-    let referee = fixture::signer(0x9_1a7);
+    let referee = fixture::signer(0x91a7);
     let tester = fixture::signer(0x7e_57);
     let at = 1_790_000_000;
     let events = fixture::playtest_events(&referee, &tester, at);
