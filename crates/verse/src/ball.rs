@@ -12,8 +12,8 @@
 //! Steps are fixed at [`DT`] with at most [`MAX_STEPS`] per frame, as in
 //! Lagrange 1, and the ball is drawn between its last two poses. The ball is
 //! drawn with physical materials under a studio [`Key`] light: a lacquered
-//! octant pattern, so its rotation reads, and a pool of light on the floor
-//! that catches its shadow.
+//! octant pattern, so its rotation reads. Nothing is drawn on the floor
+//! under it: the grid's lines alone ground it.
 
 use std::sync::OnceLock;
 use std::time::Duration;
@@ -63,7 +63,7 @@ pub const START: DVec3 = DVec3::new(
 const PLAYER_HEIGHT: f64 = 1.8;
 /// The fastest the player body is carried, m/s; a larger step is a teleport.
 const PLAYER_MAX_SPEED: f64 = 20.0;
-/// Radius of the floor's pool of light around the ball, m.
+/// How far around the ball its shadow region reaches, m.
 const POOL: f32 = 6.0;
 /// The largest half extent of one shadow region over the ball and the
 /// blocks, m; beyond it the shadow follows the ball alone.
@@ -373,8 +373,8 @@ impl Ball {
         player.pos.z = out.z as f32;
     }
 
-    /// Adds the ball, its pool of light on the floor, and the studio light
-    /// that shades them to `mesh`.
+    /// Adds the ball and the blocks, and the studio light that shades them,
+    /// to `mesh`. No floor is drawn under them.
     pub fn draw(&self, mesh: &mut Mesh) {
         let (pos, orientation) = self.pose();
         let transform = Mat4::from_rotation_translation(orientation, pos);
@@ -383,7 +383,6 @@ impl Ball {
                 .iter()
                 .map(|v| place(v, &transform, &Mat4::from_quat(orientation))),
         );
-        pool(&mut mesh.lit, Vec3::new(pos.x, 0.0, pos.z), POOL, -0.004);
         self.blocks
             .draw(&self.world, self.clock.alpha(), &mut mesh.lit);
         if let Some(neon) = &mut mesh.neon {
@@ -511,42 +510,6 @@ fn sphere() -> &'static [LitVertex] {
         }
         out
     })
-}
-
-/// A disc of stage floor under the ball whose response falls to nothing at
-/// its rim, so the key light pools around the ball and fades into the
-/// field, and the ball's shadow has a surface to fall on. It sits just below
-/// the grid, whose lines stay on top.
-pub(crate) fn pool(out: &mut Vec<LitVertex>, center: Vec3, radius: f32, depth: f32) {
-    const RINGS: usize = 14;
-    const SEGMENTS: usize = 64;
-    let (color, metallic, roughness) = Surface::Stage.parameters();
-    let code = Surface::Stage.code();
-    let at = |ring: usize, segment: usize| {
-        let r = radius * ring as f32 / RINGS as f32;
-        let angle = std::f32::consts::TAU * segment as f32 / SEGMENTS as f32;
-        let fade = (1.0 - (r / radius).powi(2)).max(0.0).powi(2);
-        LitVertex {
-            pos: (center + Vec3::new(r * angle.cos(), depth, r * angle.sin())).to_array(),
-            normal: [0.0, 1.0, 0.0],
-            tangent: [1.0, 0.0, 0.0],
-            local: [r * angle.cos(), 0.0, r * angle.sin()],
-            color,
-            params: [metallic, roughness, code, fade],
-        }
-    };
-    for ring in 0..RINGS {
-        for segment in 0..SEGMENTS {
-            let next = (segment + 1) % SEGMENTS;
-            let quad = [
-                at(ring, segment),
-                at(ring + 1, segment),
-                at(ring + 1, next),
-                at(ring, next),
-            ];
-            out.extend([quad[0], quad[1], quad[2], quad[0], quad[2], quad[3]]);
-        }
-    }
 }
 
 #[cfg(test)]
@@ -732,11 +695,14 @@ mod tests {
             let d = (Vec3::from(v.pos) - START.as_vec3()).length();
             assert!((d - RADIUS as f32).abs() < 1e-3);
         }
-        // The floor pool lies just under the grid and fades to nothing.
-        let pool = &mesh.lit[ball_vertices..ball_vertices + 14 * 64 * 6];
-        assert!(pool.iter().all(|v| v.pos[1] < 0.0 && v.pos[1] > -0.01));
-        assert!(pool.iter().any(|v| v.params[3] == 0.0));
-        assert!(pool.iter().all(|v| v.params[2] == Surface::Stage.code()));
+        // No floor is drawn under the ball or the blocks: no stage disc,
+        // and nothing below the ground.
+        assert!(
+            mesh.lit
+                .iter()
+                .all(|v| v.params[2] != Surface::Stage.code())
+        );
+        assert!(mesh.lit.iter().all(|v| v.pos[1] > -1e-3));
         let key = mesh.neon.and_then(|n| n.key).expect("a studio key");
         assert!(key.dir.y > 0.5 && key.illuminance > 0.0);
         // The shadow region covers the ball and the blocks beside it.

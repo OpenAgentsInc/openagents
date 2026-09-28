@@ -50,10 +50,10 @@ Lagrange 1's shading: a shadowed key light (4,200 lux, 0.035 rad source, so
 soft contact shadows), an unshadowed rim light behind, and a dim ambient sky,
 pre-exposed at EV 10 so white reads near display white beside the lines. The
 ball is white and charcoal lacquer (`Material::Lacquer`, a clear coat over
-paint) in alternating octants, so its rotation shows. A disc of stage floor
-(`Material::Stage`) under the ball catches the key as a soft pool of light
-and the ball's shadow, and fades into the field at its rim; the grid's lines
-stay on top. Coder's plaza has no key light and draws exactly as before.
+paint) in alternating octants, so its rotation shows. Nothing is drawn on
+the floor under the ball or the blocks: no pool of light and no shadow disc,
+so they stand on the grid's lines alone. Coder's plaza has no key light and
+draws exactly as before.
 
 ### The stack and the dominoes
 
@@ -76,8 +76,8 @@ ball, and the player's capsule, at the ball's fixed step:
 - Both share the ball's frame: a restored spawn lays them out beyond the
   ball in the direction it was placed, shifted inside the world's walls. A
   block that leaves the world returns to where it stood.
-- Each gets its own stage pool, and the studio key's shadow region widens
-  to cover the ball and both demos while the ball is near them. The player
+- The studio key's shadow region widens to cover the ball and both demos
+  while the ball is near them, so the ball shades the blocks. The player
   is kinematic, so walking on through fallen blocks shoves them aside.
 - Asleep, the blocks cost nothing. A tumbling stack costs about 12 µs per
   step in a release build and 0.2 ms in a debug build

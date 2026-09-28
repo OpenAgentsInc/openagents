@@ -215,13 +215,13 @@ impl Blocks {
         self.cubes.iter().chain(&self.dominoes).copied()
     }
 
-    /// Where the stack stands and how far its floor pool reaches.
+    /// Where the stack stands and how far its shadow region reaches.
     #[must_use]
     pub fn stack_pool(&self) -> (Vec3, f32) {
         pool_around(&self.homes[..self.cubes.len()], 3.0)
     }
 
-    /// Where the dominoes stand and how far their floor pool reaches.
+    /// Where the dominoes stand and how far their shadow region reaches.
     #[must_use]
     pub fn domino_pool(&self) -> (Vec3, f32) {
         pool_around(&self.homes[self.cubes.len()..], 1.6)
@@ -254,8 +254,7 @@ impl Blocks {
         }
     }
 
-    /// The blocks between their last two steps, lit and lacquered, with a
-    /// pool of light under the stack and under the dominoes.
+    /// The blocks between their last two steps, lit and lacquered.
     pub fn draw(&self, world: &World, alpha: f64, out: &mut Vec<LitVertex>) {
         for (n, id) in self.cubes.iter().enumerate() {
             let [across, deep, _] = STACK;
@@ -269,9 +268,6 @@ impl Blocks {
         }
         for id in &self.dominoes {
             draw_body(&world[*id], alpha, domino(), WHITE, out);
-        }
-        for (center, radius) in [self.stack_pool(), self.domino_pool()] {
-            crate::ball::pool(out, center, radius, -0.006);
         }
     }
 }
@@ -652,7 +648,7 @@ mod tests {
         let (domino_center, domino_r) = pool_around(&dominoes, 1.6);
         let flat = |p: Vec3| Vec3::new(p.x, 0.0, p.z);
         let ball_at = flat(ball.as_vec3());
-        // The three floor pools do not overlap.
+        // The three demos' regions do not overlap.
         assert!(stack_center.distance(ball_at) > stack_r + 6.0);
         assert!(domino_center.distance(ball_at) > domino_r + 6.0);
         assert!(stack_center.distance(domino_center) > stack_r + domino_r);

@@ -937,7 +937,7 @@ mod tests {
         let dynamic = runtime.dynamic_mesh_with_interactions(true, true);
         assert!(!dynamic.lines.is_empty());
         assert!(dynamic.lines.iter().chain(&dynamic.faces).all(gray));
-        // The ball and its pool of light are the only lit geometry, gray
+        // The ball and the blocks are the only lit geometry, gray
         // lacquer under a studio key.
         assert!(!dynamic.lit.is_empty() && dynamic.glow.is_empty());
         assert!(
