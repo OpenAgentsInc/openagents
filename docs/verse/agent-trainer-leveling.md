@@ -1,14 +1,18 @@
 # Agent trainer leveling
 
-> **Status: Specified, not implemented, written 2026-09-28.** This document
-> specifies a progression system for people who train agents. It builds on
+> **Status: Phase 1 implemented 2026-09-28; the milestone waits on the first
+> accepted reproduction.** This document specifies a progression system for
+> people who train agents. Phase 1 ([#9847](https://github.com/OpenAgentsInc/openagents/issues/9847))
+> added NIP-XP's `reproduce` rule, six published
+> [tutorial quests](tutorial-quests.md), levels over heads in the Grid, and
+> the Account trainer card. It builds on
 > what exists: [NIP-XP](../../nips/openagents/NIP-XP.md), Verse's XP reader
 > (`crates/verse/src/xp.rs`), the Terminal-Bench 4 quest board, and the Gym.
 > Everything under [Design](#design) that is not listed as implemented in the
 > [inventory](#what-exists-today) is proposed. Nothing in this document pays
 > anyone, and no payout is promised. Proposed changes to NIP-XP are listed in
-> [Proposed NIP-XP changes](#proposed-nip-xp-changes); the NIP itself is
-> unchanged.
+> [Proposed NIP-XP changes](#proposed-nip-xp-changes); of those, only the
+> `reproduce` rule is in the NIP so far.
 
 Everyone starts at level 1. You level up as an *agent trainer*: a person
 whose accepted work makes agents measurably better. You earn XP by getting
@@ -134,10 +138,10 @@ document or NIP defines it and no code does it yet.
 | Piece | Where | Status |
 | --- | --- | --- |
 | Quests (`30193`), awards (`3193`), revocations (`3194`), achievement labels (NIP-32 `1985`, `L=openagents.xp`) | [NIP-XP](../../nips/openagents/NIP-XP.md) | Implemented: `crates/nostr/src/xp*` validates the events. |
-| One acceptance rule, `kb-transfer`, with roles `author` and `runner` | NIP-XP | Implemented. No other rule exists; readers refuse unknown rules. |
+| Acceptance rules `kb-transfer` (roles `author`, `runner`) and `reproduce` (roles `claimant`, `reproducer`; run evidence marked `oa:xp:run:v1`) | NIP-XP | Implemented; `reproduce` added 2026-09-28. Readers refuse unknown rules. |
 | Uniqueness policy `first`: one award per quest version | NIP-XP | Implemented. No other policy exists. |
 | Ledger derivation under a reader's trust list (referees, optional runners) | `crates/knowledge/src/xp*`, `knowledge::xp::derive` | Implemented. |
-| Referee tool: `microcoder xp quest`, `award`, `revoke`, `ledger` | `crates/microcoder/src/xpnet.rs`, [XP guide](../coder/guides/xp.md) | Implemented. |
+| Referee tool: `microcoder xp quest`, `award`, `revoke`, `ledger`, and the trainer's `claim` and `reproduce` | `crates/microcoder/src/xpnet.rs`, [XP guide](../coder/guides/xp.md) | Implemented. |
 | Reader commands: `openagents quests`, `xp`, and `board` | `crates/openagents-cli/src/quest.rs` | Implemented, read-only. |
 | OpenAgents referee key `npub1v59z5gk…rusf6k` and 11 TB4 quests, season `tb4-s1` (2026-09-26 to 2026-12-25), 10 XP each (author 6, runner 4) | [quest board](../terminal-bench/quest-board.md), `knowledge/quests/` | Published. Every quest was open when the board was generated; no award is recorded. |
 | Evidence that can complete a `kb-transfer` quest | NIP-XP, [study guide](../coder/runtime/knowledge-studies.md) | **Blocked.** `kb publish-evidence` produces historical screening with an `inconclusive` verdict, which can't complete a quest. A separately verified prospective `pass` is required, and no producer makes one yet. |
@@ -147,12 +151,14 @@ document or NIP defines it and no code does it yet.
 
 | Piece | Where | Status |
 | --- | --- | --- |
-| Level curve: level 1 at 0 XP; level n + 1 at `ceil(100 · n^1.5)` cumulative XP | `crates/verse/src/xp.rs` (`xp_to_reach`, `level_of`) | Implemented, desktop Verse only. |
+| Level curve `trainer-curve-v1`: level 1 at 0 XP; level n + 1 at `ceil(100 · n^1.5)` cumulative XP | `crates/verse/src/xp.rs` (`CURVE`, `xp_to_reach`, `level_of`) | Implemented and named in desktop Verse, `openagents xp`, and the mobile card. |
 | HUD strip: XP, level, XP to next level, titles, trusted referees | `xp::strip` | Implemented, desktop. |
 | Quest board on the plaza, 22 m west of center, `B` to open | `xp::board_lines`, [Verse README](README.md#quests-and-xp) | Implemented, desktop. Read-only; Verse never publishes XP events. |
 | Name tags with `lv n` for players whose Verse key has XP | `crates/verse/src/app.rs` (`xp::level_tag`) | Implemented, desktop. |
 | Titles from achievement labels, shown only while the award counts and only when the award's referee signed the label | `xp::snapshot` | Implemented, desktop. |
-| Grid name tags: the first eight hex characters of each player's pubkey, including your own, for avatars within 60 m | `crates/coder-mobile/src/verse_app.rs` (`player_tags`), wrapped by `crates/openagents-mobile/src/verse.rs` | Implemented on iOS in the OpenAgents app's Verse tab. No level: neither mobile crate reads XP. |
+| Grid name tags: the first eight hex characters of each player's pubkey, then ` · lv n` when the key has XP under the OpenAgents referee | `crates/coder-mobile/src/verse_app.rs` (`player_tags`, `verse::xp::name_tag`), wrapped by `crates/openagents-mobile/src/verse.rs` | Implemented on iOS 2026-09-28; the mobile build links Verse's read-only XP reader. |
+| Account trainer card: level, XP, XP to next level, curve, titles, counted awards with links, and the trainer key (the Verse world key) with an explicit reveal | `crates/openagents-mobile/src/trainer.rs`, `bins/openagents-ios/host/App/AccountScreens.swift` | Implemented on iOS 2026-09-28. |
+| Six tutorial `reproduce` quests, 50 XP each, season `tb21-tutorial-s1` | [tutorial quests](tutorial-quests.md), `knowledge/quests/tb21.*.reproduce@1.json` | Published 2026-09-28. No award yet. |
 | Classes Commander, Artisan, and Scout; stat points per level; grants unlocked in stages | [GDD](gdd.md#progression) | Specified for *agents*, not trainers. Draft, not committed scope. |
 | Guild XP with contributor attribution that reconciles to one fixed award | [Minecraft economy](../minecraft/economy.md#xp-and-winning) | Specified. |
 | Voyager quest XP and `openagents.voyager/quest-complete` labels in the Minecraft arena | `crates/voyager/src/quest.rs`, `ensemble.rs`, `ledger.rs` | Implemented, but a separate ledger that isn't NIP-XP. |
