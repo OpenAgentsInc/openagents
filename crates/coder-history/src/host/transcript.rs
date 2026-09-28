@@ -129,9 +129,15 @@ pub(super) fn page(history: &History, request: TranscriptRequest) -> Result<Tran
     )
 }
 
+/// The most records larger than a page that one backward read passes over.
+const MAX_SKIPPED: usize = 32;
+
 /// The byte range of a backward read: whole records that end at or before
 /// `end` (the newest complete record for `u64::MAX`), within `max_bytes`.
-/// A single record larger than the page yields an empty range at its start.
+/// A record larger than the page never fits one, so the read passes over it
+/// and any such records before it, up to [`MAX_SKIPPED`], and pages the
+/// records that end where they start; when only such records remain, the
+/// range is empty at the start of the earliest one passed over.
 fn backward_window(
     file: &mut File,
     len: u64,
@@ -140,25 +146,25 @@ fn backward_window(
 ) -> Result<(u64, u64), Error> {
     let limit = end.min(len);
     // End at a record boundary: after the last newline at or before limit.
-    let end = last_newline_end(file, limit)?;
-    let window = end.saturating_sub(u64::from(max_bytes));
-    if window == 0 {
-        return Ok((0, end));
-    }
-    let bytes = read_at(file, window - 1, end - (window - 1))?;
-    // Start just after a newline at or after window - 1, so the window
-    // begins at a record boundary.
-    match bytes.iter().position(|b| *b == b'\n') {
-        Some(index) if window + (index as u64) < end => {
-            let start = window + index as u64;
-            Ok((within_chunk_limit(file, start, end)?, end))
+    let mut end = last_newline_end(file, limit)?;
+    for _ in 0..=MAX_SKIPPED {
+        let window = end.saturating_sub(u64::from(max_bytes));
+        if window == 0 {
+            return Ok((0, end));
         }
-        // One record fills the page: skip it by returning its start.
-        _ => {
-            let start = last_newline_end(file, window)?;
-            Ok((start, start))
+        let bytes = read_at(file, window - 1, end - (window - 1))?;
+        // Start just after a newline at or after window - 1, so the window
+        // begins at a record boundary.
+        match bytes.iter().position(|b| *b == b'\n') {
+            Some(index) if window + (index as u64) < end => {
+                let start = window + index as u64;
+                return Ok((within_chunk_limit(file, start, end)?, end));
+            }
+            // One record fills the page: pass over it.
+            _ => end = last_newline_end(file, window)?,
         }
     }
+    Ok((end, end))
 }
 
 /// Move `start` past whole records until `start..end` fits in one page's

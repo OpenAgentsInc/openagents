@@ -803,6 +803,58 @@ fn coder_transcripts_page_backward_over_whole_records() {
     );
 }
 
+/// A backward read passes over a run of records each larger than its page
+/// in one answer: a Coder turn's bookkeeping records do not cost a read
+/// each, and every record that fits a page is still read once.
+#[test]
+fn backward_pages_pass_over_runs_of_records_larger_than_a_page() {
+    let fixture = Fixture::new();
+    let big = |index: usize| {
+        format!(
+            r#"{{"record":"step","step":{{"at":{index},"source":"System","message":"Adapter effect intent retained before dispatch.","extensions":{{"effect":{{"arguments":"{}"}}}}}}}}"#,
+            "x".repeat(2_000)
+        )
+    };
+    let small = |index: usize| {
+        format!(
+            r#"{{"record":"step","step":{{"at":{index},"source":"Agent","message":"reply {index}"}}}}"#
+        )
+    };
+    // small, big, big, big, small, big, big, small
+    let lines = [
+        small(1),
+        big(2),
+        big(3),
+        big(4),
+        small(5),
+        big(6),
+        big(7),
+        small(8),
+    ];
+    let text: String = lines.iter().map(|line| format!("{line}\n")).collect();
+    fixture.write(&format!("{}.1.atif.jsonl", "e".repeat(64)), text);
+    let history = coder_history(&fixture);
+    let source = first(&history).source_id.unwrap();
+    let mut end = NEWEST;
+    let mut reads = 0;
+    let mut seen = Vec::new();
+    loop {
+        reads += 1;
+        let page = back(&history, &source, end, 500);
+        for chunk in &page.chunks {
+            seen.push(chunk.readable.as_ref().unwrap().text.clone());
+        }
+        match page.previous {
+            Some(previous) => end = previous,
+            None => break,
+        }
+    }
+    seen.reverse();
+    assert_eq!(seen, ["reply 1", "reply 5", "reply 8"]);
+    // One read per small record: the runs of large ones cost nothing more.
+    assert_eq!(reads, 3);
+}
+
 #[test]
 fn coder_loop_events_project_as_replies_commands_and_endings() {
     let system = |extensions: serde_json::Value| {
