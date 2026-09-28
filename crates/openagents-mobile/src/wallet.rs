@@ -26,6 +26,10 @@ pub const FAUCET: &str = "https://faucet.mutinynet.com";
 /// The file under the wallet home that keeps the address the screen shows,
 /// so it does not change on every launch. It holds no secret.
 const ADDRESS_FILE: &str = "receive-address";
+/// The file under the wallet home that keeps the last balance read, so the
+/// screen shows it at once while the wallet starts and reads the chain
+/// again. It holds no secret.
+const BALANCE_FILE: &str = "last-balance";
 
 /// The phone wallet's configuration: Mutinynet, no listening socket, no
 /// liquidity provider, and no trusted peers.
@@ -102,6 +106,41 @@ struct Shared {
     error: Option<String>,
     /// A sync finished since the node started.
     synced: bool,
+    /// The last balance read, saved across launches.
+    last: Option<LastBalance>,
+}
+
+/// A balance read by an earlier sync, shown until this launch reads again.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct LastBalance {
+    total: u64,
+    pending: u64,
+    synced_at: Option<u64>,
+}
+
+impl LastBalance {
+    fn read(home: &Path) -> Option<Self> {
+        let text = std::fs::read_to_string(home.join(BALANCE_FILE)).ok()?;
+        let mut fields = text.split_whitespace();
+        let total: u64 = fields.next()?.parse().ok()?;
+        let pending: u64 = fields.next()?.parse().ok()?;
+        let synced_at = fields.next().and_then(|value| value.parse().ok());
+        Some(Self {
+            total,
+            pending: pending.min(total),
+            synced_at,
+        })
+    }
+
+    fn write(self, home: &Path) {
+        let synced_at = self.synced_at.map(|at| at.to_string()).unwrap_or_default();
+        // A lost cache only means the next launch shows no balance until the
+        // wallet reads the chain, so a failed write is not an error.
+        let _ = std::fs::write(
+            home.join(BALANCE_FILE),
+            format!("{} {} {synced_at}\n", self.total, self.pending),
+        );
+    }
 }
 
 pub struct Wallet {
@@ -115,12 +154,6 @@ pub struct Wallet {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(tag = "state", rename_all = "snake_case")]
 pub enum Screen {
-    /// The host has not handed over the wallet key yet.
-    Closed,
-    /// The wallet is starting or running its first sync.
-    Loading {
-        message: String,
-    },
     /// The wallet could not start. `retry` restarts it.
     Failed {
         message: String,
@@ -151,15 +184,27 @@ pub struct Summary {
     pub refreshing: bool,
     /// A failed refresh; the balance shown is the last one read.
     pub error: Option<String>,
+    /// No balance has been read on this phone yet: the balance fields are
+    /// empty and the screen shows placeholders.
+    pub balance_unknown: bool,
+    /// What the wallet is doing while it starts or first reads the chain,
+    /// shown beside a progress indicator; the rest of the screen stays.
+    pub status: Option<String>,
 }
 
 impl Wallet {
     pub fn new(home: PathBuf, opener: Opener) -> Self {
+        // The saved address and last balance show before the wallet starts.
+        let shared = Shared {
+            address: saved_address(&home),
+            last: LastBalance::read(&home),
+            ..Shared::default()
+        };
         Self {
             home,
             opener,
             seed: None,
-            shared: Arc::new(Mutex::new(Shared::default())),
+            shared: Arc::new(Mutex::new(shared)),
         }
     }
 
@@ -234,7 +279,8 @@ impl Wallet {
                     }
                 }
             };
-            finish_sync(&shared, node.sync());
+            let outcome = node.sync();
+            finish_sync(&shared, &home, node.as_ref(), outcome);
         });
     }
 
@@ -256,8 +302,11 @@ impl Wallet {
                 }
             }
         };
-        let shared = self.shared.clone();
-        std::thread::spawn(move || finish_sync(&shared, node.sync()));
+        let (shared, home) = (self.shared.clone(), self.home.clone());
+        std::thread::spawn(move || {
+            let outcome = node.sync();
+            finish_sync(&shared, &home, node.as_ref(), outcome);
+        });
     }
 
     /// Refresh a wallet that has its key; the app came to the foreground.
@@ -275,38 +324,69 @@ impl Wallet {
 
     pub fn screen(&self) -> Screen {
         let shared = self.lock();
-        let Some(node) = &shared.node else {
-            return match (&self.seed, &shared.error) {
-                (_, Some(message)) if !shared.starting => Screen::Failed {
-                    message: message.clone(),
-                },
-                (None, _) => Screen::Closed,
-                (Some(_), _) => Screen::Loading {
-                    message: "Starting the wallet…".into(),
-                },
-            };
+        let status = match (&shared.node, &self.seed) {
+            (None, None) if shared.error.is_none() => Some("Opening the wallet…"),
+            (None, _) if shared.error.is_some() && !shared.starting => {
+                return Screen::Failed {
+                    message: shared.error.clone().unwrap_or_default(),
+                };
+            }
+            (None, _) => Some("Starting the wallet…"),
+            (Some(_), _) if !shared.synced && shared.refreshing => Some("Reading Mutinynet…"),
+            (Some(_), _) => None,
         };
-        if !shared.synced && shared.refreshing {
-            return Screen::Loading {
-                message: "Reading Mutinynet…".into(),
-            };
-        }
         let address = shared.address.clone().unwrap_or_default();
-        let (balance, mut error) = match node.balance() {
-            Ok(balance) => (balance, shared.error.clone()),
-            Err(error) => (
-                Balance {
-                    onchain_total_sats: 0,
-                    onchain_spendable_sats: 0,
-                    lightning_total_sats: 0,
-                    anchor_reserve_sats: 0,
-                },
-                Some(describe(&error)),
-            ),
+        let mut error = shared.error.clone();
+        // Until this launch reads the chain, show the last balance read.
+        let live = match (&shared.node, status) {
+            (Some(node), None) => match node.balance() {
+                Ok(balance) => Some(LastBalance::from_node(&balance, node.synced_at())),
+                Err(node_error) => {
+                    error = Some(describe(&node_error));
+                    None
+                }
+            },
+            _ => None,
         };
-        if !shared.synced && error.is_none() {
+        if status.is_none() && !shared.synced && error.is_none() {
             error = Some("The wallet has not read Mutinynet yet.".into());
         }
+        let shown = live.or(shared.last);
+        let (total, pending) = shown.map_or((0, 0), |last| (last.total, last.pending));
+        let uri = if address.is_empty() {
+            String::new()
+        } else {
+            format!("bitcoin:{address}")
+        };
+        Screen::Ready(Box::new(Summary {
+            network: "Mutinynet signet",
+            balance_sats: total,
+            balance: shown.map(|_| sats(total)).unwrap_or_default(),
+            balance_btc: shown
+                .map(|_| format!("{} tBTC", btc(total)))
+                .unwrap_or_default(),
+            pending_sats: pending,
+            pending: (pending > 0).then(|| format!("{} waiting for a confirmation", sats(pending))),
+            empty: shown.is_some() && total == 0,
+            // Upper case fits the QR code's compact alphanumeric mode;
+            // BIP21 schemes and bech32 addresses are case-insensitive.
+            qr: (!uri.is_empty())
+                .then(|| qr(&uri.to_ascii_uppercase()))
+                .flatten(),
+            address,
+            uri,
+            faucet: FAUCET,
+            synced_at: shown.and_then(|last| last.synced_at),
+            refreshing: shared.refreshing || shared.starting,
+            error,
+            balance_unknown: shown.is_none(),
+            status: status.map(str::to_owned),
+        }))
+    }
+}
+
+impl LastBalance {
+    fn from_node(balance: &Balance, synced_at: Option<u64>) -> Self {
         let total = balance
             .onchain_total_sats
             .saturating_add(balance.lightning_total_sats);
@@ -314,50 +394,56 @@ impl Wallet {
             .onchain_spendable_sats
             .saturating_add(balance.anchor_reserve_sats)
             .saturating_add(balance.lightning_total_sats);
-        let pending = total.saturating_sub(settled);
-        let uri = format!("bitcoin:{address}");
-        Screen::Ready(Box::new(Summary {
-            network: "Mutinynet signet",
-            balance_sats: total,
-            balance: sats(total),
-            balance_btc: format!("{} tBTC", btc(total)),
-            pending_sats: pending,
-            pending: (pending > 0).then(|| format!("{} waiting for a confirmation", sats(pending))),
-            empty: total == 0,
-            // Upper case fits the QR code's compact alphanumeric mode;
-            // BIP21 schemes and bech32 addresses are case-insensitive.
-            qr: qr(&uri.to_ascii_uppercase()),
-            address,
-            uri,
-            faucet: FAUCET,
-            synced_at: node.synced_at(),
-            refreshing: shared.refreshing,
-            error,
-        }))
+        Self {
+            total,
+            pending: total.saturating_sub(settled),
+            synced_at,
+        }
     }
 }
 
-fn finish_sync(shared: &Mutex<Shared>, outcome: Result<(), WalletError>) {
+fn finish_sync(
+    shared: &Mutex<Shared>,
+    home: &Path,
+    node: &dyn Node,
+    outcome: Result<(), WalletError>,
+) {
+    // Save what this sync read, for the next launch to show at once.
+    let read = outcome
+        .is_ok()
+        .then(|| node.balance().ok())
+        .flatten()
+        .map(|balance| LastBalance::from_node(&balance, node.synced_at()));
+    if let Some(read) = read {
+        read.write(home);
+    }
     let mut state = shared.lock().unwrap_or_else(|poison| poison.into_inner());
     state.refreshing = false;
     match outcome {
         Ok(()) => {
             state.synced = true;
             state.error = None;
+            if read.is_some() {
+                state.last = read;
+            }
         }
         Err(error) => state.error = Some(describe(&error)),
     }
 }
 
+/// The saved receive address, if a test-network one was saved.
+fn saved_address(home: &Path) -> Option<String> {
+    let saved = std::fs::read_to_string(home.join(ADDRESS_FILE)).ok()?;
+    let saved = saved.trim();
+    test_address(saved).then(|| saved.to_owned())
+}
+
 /// The address the screen shows: the saved one, or a new one saved now.
 fn receive_address(home: &Path, node: &dyn Node) -> Result<String, String> {
-    let path = home.join(ADDRESS_FILE);
-    if let Ok(saved) = std::fs::read_to_string(&path) {
-        let saved = saved.trim();
-        if test_address(saved) {
-            return Ok(saved.to_owned());
-        }
+    if let Some(saved) = saved_address(home) {
+        return Ok(saved);
     }
+    let path = home.join(ADDRESS_FILE);
     let address = node.new_address().map_err(|error| describe(&error))?;
     if !test_address(&address) {
         return Err("The wallet produced an address that is not for a test network.".into());
@@ -542,7 +628,13 @@ mod tests {
             home.path().join("wallet"),
             opener(node.clone(), seen.clone()),
         );
-        assert_eq!(wallet.screen(), Screen::Closed);
+        // Before the key arrives the screen is already the wallet's, with
+        // placeholders where nothing has been read yet.
+        let Screen::Ready(opening) = wallet.screen() else {
+            panic!("the wallet screen shows while it opens");
+        };
+        assert!(opening.balance_unknown && opening.address.is_empty() && opening.qr.is_none());
+        assert_eq!(opening.status.as_deref(), Some("Opening the wallet…"));
         wallet.open(ENTROPY);
         settle(&wallet);
         let Screen::Ready(empty) = wallet.screen() else {
@@ -575,8 +667,16 @@ mod tests {
         );
         assert_eq!(funded.address, "tb1qfake0", "the address stays put");
 
-        // A new lifetime reuses the saved address rather than a new one.
+        // A new lifetime shows the saved address and the last balance read
+        // before its wallet starts, then reuses that address.
         let mut again = Wallet::new(home.path().join("wallet"), opener(node.clone(), seen));
+        let Screen::Ready(cached) = again.screen() else {
+            panic!("the cached wallet shows at once");
+        };
+        assert_eq!(cached.balance, "123,456 sats");
+        assert_eq!(cached.address, "tb1qfake0");
+        assert!(cached.qr.is_some() && !cached.balance_unknown);
+        assert_eq!(cached.status.as_deref(), Some("Opening the wallet…"));
         again.open(ENTROPY);
         settle(&again);
         let Screen::Ready(reopened) = again.screen() else {
