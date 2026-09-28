@@ -2,7 +2,7 @@
 // Application intents stay opaque; native callbacks return identity only.
 import SwiftUI
 
-struct NativeColor: Decodable, Equatable {
+struct NativeColor: Codable, Equatable {
     let red: UInt8
     let green: UInt8
     let blue: UInt8
@@ -14,7 +14,7 @@ struct NativeColor: Decodable, Equatable {
     }
 }
 
-struct NativeStyle: Decodable, Equatable {
+struct NativeStyle: Codable, Equatable {
     let foreground: NativeColor?
     let background: NativeColor?
     let padding_top: String?

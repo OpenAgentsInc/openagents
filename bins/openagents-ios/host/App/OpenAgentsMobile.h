@@ -4,6 +4,9 @@
 #include <stddef.h>
 #include <stdint.h>
 
+// Transcript layout, exported by rust-native's `ffi` feature.
+#include "../../../../crates/rust-native/include/rust_native_layout.h"
+
 // Calls for one handle are serialized on one non-UI queue. Input is borrowed
 // only for the call. Output belongs to Rust and must be released once with
 // openagents_mobile_buffer_free; an empty buffer means the call failed.

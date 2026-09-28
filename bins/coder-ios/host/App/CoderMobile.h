@@ -4,6 +4,9 @@
 #include <stddef.h>
 #include <stdint.h>
 
+// Transcript layout, exported by rust-native's `ffi` feature.
+#include "../../../../crates/rust-native/include/rust_native_layout.h"
+
 // ABI version 1. Reader calls are serialized on one non-UI queue.
 // Input is borrowed only for the call. Output belongs to Rust and must be
 // released once with coder_mobile_buffer_free; no bytes contain a terminator.

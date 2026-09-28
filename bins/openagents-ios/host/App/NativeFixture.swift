@@ -1,6 +1,10 @@
 // A developer screen that renders Rust Native's conversation fixture, so the
 // conversation elements can be checked without a paired computer. Launch a
-// simulator or debug build with `--rust-native-fixture` to show it.
+// simulator or debug build with `--rust-native-fixture` to show it. Add
+// `--rust-native-fixture-rows N` to append N synthetic rows,
+// `--rust-native-fixture-demo` to expand a tool and stream replies,
+// `--rust-native-transcript-bench` to fling through the transcript and print
+// frame times, and `--rust-native-transcript-log` to print layout timings.
 import SwiftUI
 
 enum NativeFixture {
@@ -59,6 +63,24 @@ private struct NativeFixtureScreen: View {
             try? await Task.sleep(for: .milliseconds(400))
             view = view?.appending("Demo message \(index)")
         }
+        // Stream a reply a few words at a time; the transcript stays pinned.
+        let words = ("Streaming a reply one token at a time keeps the newest row in view. "
+                     + "Rust re-measures only this row for each token, and the rows above keep their places. ")
+            .split(separator: " ")
+        var streamed = ""
+        for index in 0..<(words.count * 3) {
+            try? await Task.sleep(for: .milliseconds(60))
+            streamed += (streamed.isEmpty ? "" : " ") + words[index % words.count]
+            view = view?.streaming(streamed)
+        }
+    }
+
+    /// The count after `--rust-native-fixture-rows`, at most 20,000.
+    private static var syntheticRows: Int {
+        let arguments = ProcessInfo.processInfo.arguments
+        guard let index = arguments.firstIndex(of: "--rust-native-fixture-rows"), index + 1 < arguments.count,
+              let count = Int(arguments[index + 1]) else { return 0 }
+        return min(max(count, 0), 20_000)
     }
 
     private func load() {
@@ -67,7 +89,8 @@ private struct NativeFixtureScreen: View {
                 failure = "The fixture isn't in the app bundle."
                 return
             }
-            view = try JSONDecoder().decode(NativeView.self, from: Data(contentsOf: url))
+            let fixture = try JSONDecoder().decode(NativeView.self, from: Data(contentsOf: url))
+            view = fixture.addingSynthetic(Self.syntheticRows)
         } catch {
             failure = "Couldn't decode the fixture: \(error)"
         }
@@ -109,6 +132,72 @@ private extension NativeView {
                              "This is a local reply from the fixture screen. " + String(repeating: "More text to fill the row. ", count: 6)),
             ] + rows.filter { $0.key == "working" }
         }
+    }
+
+    /// Replaces the streaming reply's text, adding the reply first.
+    func streaming(_ text: String) -> NativeView {
+        mapTranscript { rows in
+            rows.filter { $0.key != "working" && $0.key != "stream" }
+                + [Self.message("stream", role: "assistant", text)]
+                + rows.filter { $0.key == "working" }
+        }
+    }
+
+    /// Synthetic rows before the fixture's own, to check scrolling and layout
+    /// cost over a long transcript.
+    func addingSynthetic(_ count: Int) -> NativeView {
+        guard count > 0 else { return self }
+        var rows: [[String: Any]] = []
+        func span(_ text: String, _ flags: [String: Any] = [:]) -> [String: Any] {
+            flags.merging(["text": text]) { current, _ in current }
+        }
+        func message(_ key: String, _ role: String, _ blocks: [[String: Any]]) -> [String: Any] {
+            ["key": key, "style": [:] as [String: Any], "element": ["kind": "message", "props": [
+                "role": role, "note": NSNull(), "children": [
+                    ["key": "\(key)-md", "style": [:] as [String: Any],
+                     "element": ["kind": "markdown", "props": ["blocks": blocks]]],
+                ],
+            ]]]
+        }
+        for index in 0..<count {
+            let key = "s\(index)"
+            switch index % 5 {
+            case 0:
+                rows.append(message(key, "user", [["kind": "paragraph", "spans": [
+                    span("Question \(index): why does the "), span("scheduler", ["code": true]),
+                    span(" stall under load?"),
+                ]]]))
+            case 1:
+                rows.append(["key": key, "style": [:] as [String: Any], "element": ["kind": "tool", "props": [
+                    "name": "Bash", "detail": "rg -n stall crates/scheduler \(index)", "state": "done",
+                    "children": [["key": "\(key)-out", "style": [:] as [String: Any], "element": [
+                        "kind": "text", "props": ["value": "crates/scheduler/src/lib.rs:\(index): stall", "role": "code"],
+                    ]]],
+                ]]])
+            case 2:
+                rows.append(message(key, "assistant", [
+                    ["kind": "paragraph", "spans": [
+                        span("The queue holds a lock while it "), span("waits", ["italic": true]),
+                        span(" for the next job, so every worker blocks behind it. Row \(index) shows the same pattern: "),
+                        span("release the lock before waiting", ["bold": true]), span("."),
+                    ]],
+                    ["kind": "list", "ordered": true, "start": 1, "items": [
+                        ["blocks": [["kind": "paragraph", "spans": [span("Take the job under the lock.")]]]],
+                        ["blocks": [["kind": "paragraph", "spans": [span("Wait on the condition without it.")]]]],
+                    ]],
+                ]))
+            case 3:
+                rows.append(message(key, "assistant", [
+                    ["kind": "code", "language": "rust", "text": "let job = queue.lock().pop();\ndrop(guard);\nready.wait();\n"],
+                ]))
+            default:
+                rows.append(message(key, "assistant", [["kind": "paragraph", "spans": [
+                    span("Short reply \(index).")]]]))
+            }
+        }
+        guard let data = try? JSONSerialization.data(withJSONObject: rows),
+              let nodes = try? JSONDecoder().decode([NativeNode].self, from: data) else { return self }
+        return mapTranscript { nodes + $0 }
     }
 
     func prependingEarlier() -> NativeView {

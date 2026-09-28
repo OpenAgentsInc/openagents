@@ -17,6 +17,8 @@ targets:
         group: App/Shared
       - path: ../../coder-ios/host/App/NativeChat.swift
         group: App/Shared
+      - path: ../../coder-ios/host/App/NativeTranscriptPainter.swift
+        group: App/Shared
       # Rust Native's conversation fixture for the --rust-native-fixture screen.
       - path: ../../../crates/rust-native/fixtures/conversation.json
         group: App/Fixtures
