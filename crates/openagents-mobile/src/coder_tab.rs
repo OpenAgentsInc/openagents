@@ -771,11 +771,13 @@ impl CoderTab {
         }
         self.follow(computers, chats);
         self.attach(chats);
-        // Follow a running chat's transcript.
+        // Follow a running chat's transcript, and read a chat again whose
+        // first read failed, even after its task ended.
         if let (Some(open), Some(computers)) = (&self.open, computers)
             && let Some(conversation) = &open.conversation
-            && Self::summary(computers.snapshot(), &open.host, &open.task)
-                .is_none_or(|s| Self::running(s.phase))
+            && (conversation.failed()
+                || Self::summary(computers.snapshot(), &open.host, &open.task)
+                    .is_none_or(|s| Self::running(s.phase)))
         {
             conversation.poll();
         }

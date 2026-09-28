@@ -120,16 +120,35 @@ impl Conversation {
         self.read(previous, Read::Earlier);
     }
 
-    /// Read records added since the newest row.
+    /// Read records added since the newest row. A chat whose first read
+    /// failed, as when the computer's reply missed the deadline, reads its
+    /// newest batch again instead.
     pub fn poll(&self) {
-        {
+        let retry = {
             let mut inner = lock(&self.inner);
             if inner.loading || inner.polling {
                 return;
             }
-            inner.polling = true;
+            let retry = inner.rows.is_empty() && inner.error.is_some();
+            if retry {
+                inner.loading = true;
+            } else {
+                inner.polling = true;
+            }
+            retry
+        };
+        if retry {
+            self.read(coder_history::NEWEST, Read::First);
+        } else {
+            self.read(coder_history::NEWEST, Read::Newer);
         }
-        self.read(coder_history::NEWEST, Read::Newer);
+    }
+
+    /// The last read failed and nothing is shown yet: the chat needs another
+    /// read even when its task has ended.
+    pub fn failed(&self) -> bool {
+        let inner = lock(&self.inner);
+        inner.rows.is_empty() && inner.error.is_some() && !inner.loading
     }
 
     fn read(&self, end: u64, kind: Read) {
@@ -161,6 +180,7 @@ impl Conversation {
                     };
                 }
                 (Ok((rows, _)), Read::Newer) => {
+                    state.error = None;
                     let known = state.rows.last().map_or(0, |row| row.end);
                     state
                         .rows
