@@ -295,11 +295,11 @@ class ResultsPanel(private val context: Context, private val world: VerseSurface
         })
         val controls = context.row().apply { gravity = Gravity.CENTER_VERTICAL }
         val playing = clock.optBoolean("playing")
-        controls.addView(control("⏮", "Step back", "trace-step-back") { choose("do" to "step", "forward" to false) })
-        controls.addView(control(if (playing) "⏸" else "▶", if (playing) "Pause" else "Play", "trace-play") {
+        controls.addView(control("\u23EE\uFE0E", "Step back", "trace-step-back") { choose("do" to "step", "forward" to false) })
+        controls.addView(control(if (playing) "\u275A\u275A" else "\u25B6\uFE0E", if (playing) "Pause" else "Play", "trace-play") {
             choose("do" to "play", "playing" to !playing)
         })
-        controls.addView(control("⏭", "Step forward", "trace-step-forward") { choose("do" to "step", "forward" to true) })
+        controls.addView(control("\u23ED\uFE0E", "Step forward", "trace-step-forward") { choose("do" to "step", "forward" to true) })
         controls.addView(View(context), LinearLayout.LayoutParams(0, 1, 1f))
         controls.addView(context.label("${clock.getString("text")} · step ${step + 1} of $steps", 12f))
         body.add(controls, 2)

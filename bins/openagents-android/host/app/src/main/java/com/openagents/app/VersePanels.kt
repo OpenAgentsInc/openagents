@@ -23,8 +23,7 @@ class VersePanels(private val context: Context, private val world: VerseSurface)
     private val main = Handler(Looper.getMainLooper())
     val root = FrameLayout(context).apply { visibility = View.GONE }
     private val line = LeaderLine(context)
-    private val panel = LinearLayout(context).apply {
-        orientation = LinearLayout.VERTICAL
+    private val panel = CappedColumn(context).apply {
         setPadding(context.dp(14), context.dp(10), context.dp(14), context.dp(14))
         background = context.rounded(0xF70A0A0A.toInt(), 16f, 0x8CFFFFFF.toInt())
         isClickable = true // Touches on the panel stay off the world.
@@ -60,7 +59,7 @@ class VersePanels(private val context: Context, private val world: VerseSurface)
         header.addView(close, LinearLayout.LayoutParams(context.dp(44), context.dp(44)))
         panel.addView(header)
         panel.addView(fixed)
-        panel.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
+        panel.addView(scroll, LinearLayout.LayoutParams(-1, -2))
         root.addView(panel, FrameLayout.LayoutParams(-1, -1))
         close.setOnClickListener { world.send(json("action" to if (open == "gym") "close_gym" else "close_results")) }
         root.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> place() }
@@ -134,7 +133,11 @@ class VersePanels(private val context: Context, private val world: VerseSurface)
             val view = resultsView
             headerBack.visibility = if (view?.optBoolean("can_back") == true) View.VISIBLE else View.INVISIBLE
             if (results.scrubbing) return
-            val key = "results:${view?.toString()?.hashCode()}:${results.watching}"
+            // A new screen starts at its top; a new revision of the same
+            // screen keeps the reading position.
+            val page = view?.objectOrNull("page")
+            val screen = "results/${page?.optString("screen")}/${page?.optString("id", page.optString("attempt"))}"
+            val key = "$screen:${view?.toString()?.hashCode()}:${results.watching}"
             if (key == mounted) return
             mount(key) { results.build(view, fixed, scroll) }
         }
@@ -166,8 +169,12 @@ class VersePanels(private val context: Context, private val world: VerseSurface)
         val params = panel.layoutParams as FrameLayout.LayoutParams
         val top = insetTop + margin
         val panelHeight = maxOf(context.dp(80), height - top - context.dp(16))
-        if (params.leftMargin != left || params.topMargin != top || params.width != panelWidth || params.height != panelHeight) {
-            params.leftMargin = left; params.topMargin = top; params.width = panelWidth; params.height = panelHeight
+        if (params.leftMargin != left || params.topMargin != top || params.width != panelWidth || panel.cap != panelHeight) {
+            // The panel is as tall as its content, up to the space below
+            // the status bar, so a short one (the trace's timeline while
+            // watching the replay) leaves the world in view.
+            params.leftMargin = left; params.topMargin = top; params.width = panelWidth; params.height = -2
+            panel.cap = panelHeight
             params.gravity = Gravity.TOP or Gravity.START
             panel.layoutParams = params
         }
@@ -213,5 +220,15 @@ private class LeaderLine(context: Context) : View(context) {
         val ax = (x * width).toFloat(); val ay = (y * height).toFloat()
         val bx = ax.coerceIn(left + context.dpf(20f), maxOf(left + context.dpf(20f), right - context.dpf(20f)))
         canvas.drawLine(ax, ay, bx, top, ink)
+    }
+}
+
+/** A column no taller than `cap` pixels. */
+private class CappedColumn(context: Context) : LinearLayout(context) {
+    var cap = Int.MAX_VALUE
+    init { orientation = VERTICAL }
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        val limit = minOf(cap, MeasureSpec.getSize(heightMeasureSpec).takeIf { MeasureSpec.getMode(heightMeasureSpec) != MeasureSpec.UNSPECIFIED } ?: cap)
+        super.onMeasure(widthMeasureSpec, MeasureSpec.makeMeasureSpec(limit, MeasureSpec.AT_MOST))
     }
 }
