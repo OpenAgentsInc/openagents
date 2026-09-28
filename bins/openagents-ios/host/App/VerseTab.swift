@@ -212,7 +212,7 @@ final class VerseWorldView: UIView {
         isAccessibilityElement = true
         accessibilityLabel = "Verse world"
         accessibilityIdentifier = "verse-surface"
-        accessibilityHint = "Drag anywhere to look around and use the stick at the bottom left to move. Double-tap to jump and pinch with two fingers to zoom."
+        accessibilityHint = "Drag anywhere to look around and use the stick at the bottom center to move. Double-tap to jump and pinch with two fingers to zoom."
         accessibilityTraits = [.allowsDirectInteraction]
         world.surface = self
         displayTarget.view = self
