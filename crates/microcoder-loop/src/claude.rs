@@ -2,7 +2,8 @@
 //! claude`).
 //!
 //! Each step runs the `claude` binary once in print mode with every tool
-//! off, one turn, no settings files, and no saved session, so the call is
+//! off, one turn, no settings files, no claude.ai connectors
+//! ([`NO_CONNECTORS`]), and no saved session, so the call is
 //! one model request that answers under the `next_action` JSON schema
 //! (`--json-schema`). The binary reads the operator's OAuth login itself;
 //! Microcoder never reads the credential file.
@@ -46,6 +47,14 @@ pub const ENDPOINT: &str = "https://api.anthropic.com";
 
 /// The longest one call may take before the binary is killed.
 pub const TIMEOUT: Duration = Duration::from_secs(30 * 60);
+
+/// The variable and value that keep a signed-in Claude Code from attaching
+/// the account's claude.ai connectors to a call. Their tool lists go into
+/// the prompt even with every tool off: on 2026-09-28 one Haiku call wrote
+/// 128,267 prompt tokens to the cache with them and 4,505 without, and cost
+/// $0.2567 against $0.0092. On Opus, the first step of an issue-flow smoke
+/// cost $1.35 with them.
+pub const NO_CONNECTORS: (&str, &str) = ("ENABLE_CLAUDEAI_MCP_SERVERS", "false");
 
 /// The Claude Code model for `model`: [`DEFAULT_ALIAS`] when `model` is
 /// one of Microcoder's Codex defaults, else `model` as given (an alias such
@@ -417,6 +426,7 @@ impl ClaudeGenerator {
         let mut child = match tokio::process::Command::new(&self.binary)
             .args(&args)
             .current_dir(std::env::temp_dir())
+            .env(NO_CONNECTORS.0, NO_CONNECTORS.1)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -525,6 +535,31 @@ mod tests {
         assert_eq!(alias(crate::STRONG_MODEL), DEFAULT_ALIAS);
         assert_eq!(alias("sonnet"), "sonnet");
         assert_eq!(alias("claude-opus-5-5"), "claude-opus-5-5");
+    }
+
+    #[tokio::test]
+    async fn a_call_keeps_the_accounts_connectors_out() {
+        // A stand-in binary that answers with the variable it was given.
+        let dir = tempfile::tempdir().unwrap();
+        let binary = dir.path().join("claude");
+        std::fs::write(
+            &binary,
+            "#!/bin/sh\ncat > /dev/null\necho \"{\\\"type\\\":\\\"result\\\",\\\"is_error\\\":false,\\\"result\\\":\\\"\\\",\\\"structured_output\\\":{\\\"rationale\\\":\\\"r\\\",\\\"commands\\\":[],\\\"view\\\":[],\\\"freeze_tests\\\":false,\\\"expand\\\":[],\\\"finished\\\":true,\\\"reply\\\":\\\"$ENABLE_CLAUDEAI_MCP_SERVERS\\\"},\\\"total_cost_usd\\\":0.001}\"\n",
+        )
+        .unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&binary, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let generator = ClaudeGenerator {
+            model: "haiku".into(),
+            effort: None,
+            binary,
+            bypass_permissions: false,
+        };
+        let generated = generator.generate("SYS", "hello").await;
+        let action = generated
+            .action
+            .expect("the stand-in answers a next action");
+        assert_eq!(action.reply, NO_CONNECTORS.1);
     }
 
     #[test]
