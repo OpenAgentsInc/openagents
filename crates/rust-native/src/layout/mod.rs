@@ -23,6 +23,7 @@ pub mod display;
 pub mod ffi;
 mod measure;
 mod rows;
+pub mod source;
 pub mod testing;
 
 pub use display::{RowDisplay, Scroller};
@@ -90,6 +91,11 @@ pub struct Update {
     /// ratio. Empty means every size scales by `scale`.
     #[serde(default)]
     pub curve: Vec<[f32; 2]>,
+    /// Read the rows and the earlier control from this published source
+    /// ([`source`]) instead of `order`, `rows`, and `earlier`, which must
+    /// then be absent.
+    #[serde(default)]
+    pub source: Option<String>,
 }
 
 impl Update {
@@ -109,6 +115,7 @@ impl Update {
             expanded: vec![],
             earlier: earlier.as_ref().map(EarlierRow::from),
             curve: vec![],
+            source: None,
         })
     }
 }
@@ -216,6 +223,11 @@ pub enum LayoutError {
     /// `order` names a row the layout has never received.
     UnknownRow(String),
     Row(ViewError),
+    /// A source name is malformed, or an update names a source and also
+    /// carries rows, an order, or an earlier control.
+    Source,
+    /// An update names a source nothing published.
+    UnknownSource(String),
 }
 
 impl fmt::Display for LayoutError {
@@ -228,6 +240,8 @@ impl fmt::Display for LayoutError {
             Self::DuplicateRow(key) => write!(f, "duplicate transcript row: {key}"),
             Self::UnknownRow(key) => write!(f, "transcript row has no content: {key}"),
             Self::Row(error) => write!(f, "invalid transcript row: {error}"),
+            Self::Source => f.write_str("malformed transcript source"),
+            Self::UnknownSource(name) => write!(f, "no transcript source is published as {name}"),
         }
     }
 }
@@ -342,6 +356,8 @@ pub struct TranscriptLayout {
     cache: MeasureCache,
     /// The frame for the current state, built when first asked for.
     frame: Option<Arc<Frame>>,
+    /// The source publication the rows came from, if they came from one.
+    pulled: Option<(String, u64)>,
 }
 
 impl Default for TranscriptLayout {
@@ -362,6 +378,7 @@ impl TranscriptLayout {
             expanded: HashSet::new(),
             cache: MeasureCache::default(),
             frame: None,
+            pulled: None,
         }
     }
 
@@ -378,10 +395,32 @@ impl TranscriptLayout {
         }
         let typography = Typography::new(update.scale, &update.curve)?;
         let expanded: HashSet<String> = update.expanded.into_iter().collect();
+        if let Some(name) = update.source {
+            if update.order.is_some() || !update.rows.is_empty() || update.earlier.is_some() {
+                return Err(LayoutError::Source);
+            }
+            let snapshot =
+                source::get(&name).ok_or_else(|| LayoutError::UnknownSource(name.clone()))?;
+            return self.pull(
+                name,
+                &snapshot,
+                expanded,
+                update.width,
+                typography,
+                measurer,
+                started,
+                misses,
+            );
+        }
+        self.pulled = None;
         let has_earlier = self.rows.first().is_some_and(|row| row.key == EARLIER_KEY);
         if update.order.is_none() && update.earlier.is_some() == has_earlier {
+            if update.rows.len() > MAX_ROWS {
+                return Err(LayoutError::Limit);
+            }
+            let incoming = checked_rows(update.rows)?;
             return self.update_in_place(
-                update.rows,
+                incoming,
                 update.earlier,
                 expanded,
                 update.width,
@@ -403,7 +442,71 @@ impl TranscriptLayout {
         if order.len() > MAX_ROWS || update.rows.len() > MAX_ROWS {
             return Err(LayoutError::Limit);
         }
-        let mut incoming = checked_rows(update.rows)?;
+        let incoming = checked_rows(update.rows)?;
+        self.reorder(order, incoming, update.earlier, expanded)?;
+        Ok(self.relayout(update.width, typography, measurer, started, misses))
+    }
+
+    /// Takes a source's newest publication. Rows whose content is unchanged
+    /// keep their layout; an unchanged publication only applies the width,
+    /// the text size, and expansion.
+    #[allow(clippy::too_many_arguments)]
+    fn pull(
+        &mut self,
+        name: String,
+        snapshot: &source::Snapshot,
+        expanded: HashSet<String>,
+        width: f32,
+        typography: Typography,
+        measurer: &mut dyn Measurer,
+        started: Instant,
+        misses: u64,
+    ) -> Result<Summary, LayoutError> {
+        let current = self.pulled.as_ref().is_some_and(|(pulled, generation)| {
+            *pulled == name && *generation == snapshot.generation
+        });
+        if !current {
+            let offset = usize::from(self.rows.first().is_some_and(|row| row.key == EARLIER_KEY));
+            let same_order = snapshot.earlier.is_some() == (offset == 1)
+                && self.rows.len() - offset == snapshot.rows.len()
+                && self.rows[offset..]
+                    .iter()
+                    .zip(&snapshot.rows)
+                    .all(|(row, published)| row.key == published.node.key);
+            if same_order {
+                for (row, published) in self.rows[offset..].iter_mut().zip(&snapshot.rows) {
+                    if row.content != published.content {
+                        row.source = Source::Node(published.node.clone());
+                        row.content = published.content;
+                    }
+                }
+                if let Some(earlier) = &snapshot.earlier {
+                    self.set_earlier(earlier.clone());
+                }
+            } else {
+                let order = snapshot.keys().map(str::to_owned).collect();
+                let incoming = snapshot
+                    .rows
+                    .iter()
+                    .map(|row| (row.node.key.clone(), (row.node.clone(), row.content)))
+                    .collect();
+                self.reorder(order, incoming, snapshot.earlier.clone(), expanded.clone())?;
+            }
+            self.pulled = Some((name, snapshot.generation));
+        }
+        self.expand(expanded);
+        Ok(self.relayout(width, typography, measurer, started, misses))
+    }
+
+    /// Replaces the rows with `order`, taking content from `incoming` or,
+    /// for rows it lacks, from the previous rows.
+    fn reorder(
+        &mut self,
+        order: Vec<String>,
+        mut incoming: Incoming,
+        earlier: Option<EarlierRow>,
+        expanded: HashSet<String>,
+    ) -> Result<(), LayoutError> {
         let mut previous_earlier = None;
         let mut previous: HashMap<String, Row> = HashMap::with_capacity(self.rows.len());
         for row in self.rows.drain(..) {
@@ -414,7 +517,7 @@ impl TranscriptLayout {
             }
         }
         let mut rows = Vec::with_capacity(order.len() + 1);
-        if let Some(earlier) = update.earlier {
+        if let Some(earlier) = earlier {
             let content = hash_of(&(earlier.label.as_str(), earlier.loading));
             rows.push(match previous_earlier {
                 Some(old) if old.content == content => old,
@@ -442,7 +545,7 @@ impl TranscriptLayout {
                 },
                 (Some((node, content)), _) => Row {
                     key,
-                    source: Source::Node(Arc::new(node)),
+                    source: Source::Node(node),
                     content,
                     expanded: open,
                     height: 0.0,
@@ -467,7 +570,28 @@ impl TranscriptLayout {
         );
         self.keys = Arc::new(keys);
         self.expanded = expanded;
-        Ok(self.relayout(update.width, typography, measurer, started, misses))
+        Ok(())
+    }
+
+    /// Replaces the earlier control's content when it changed.
+    fn set_earlier(&mut self, earlier: EarlierRow) {
+        let content = hash_of(&(earlier.label.as_str(), earlier.loading));
+        if let Some(row) = self.rows.first_mut().filter(|row| row.key == EARLIER_KEY)
+            && row.content != content
+        {
+            row.source = Source::Earlier(earlier);
+            row.content = content;
+        }
+    }
+
+    /// Marks the expanded tool rows.
+    fn expand(&mut self, expanded: HashSet<String>) {
+        if expanded != self.expanded {
+            for row in &mut self.rows {
+                row.expanded = row.key != EARLIER_KEY && expanded.contains(&row.key);
+            }
+            self.expanded = expanded;
+        }
     }
 
     /// The streaming path: the order is unchanged, so changed rows are
@@ -475,7 +599,7 @@ impl TranscriptLayout {
     #[allow(clippy::too_many_arguments)]
     fn update_in_place(
         &mut self,
-        rows: Vec<Node<()>>,
+        incoming: Incoming,
         earlier: Option<EarlierRow>,
         expanded: HashSet<String>,
         width: f32,
@@ -484,10 +608,6 @@ impl TranscriptLayout {
         started: Instant,
         misses: u64,
     ) -> Result<Summary, LayoutError> {
-        if rows.len() > MAX_ROWS {
-            return Err(LayoutError::Limit);
-        }
-        let incoming = checked_rows(rows)?;
         for key in incoming.keys() {
             if !self.index.contains_key(key) {
                 return Err(LayoutError::UnknownRow(key.clone()));
@@ -496,24 +616,14 @@ impl TranscriptLayout {
         for (key, (node, content)) in incoming {
             let row = &mut self.rows[self.index[&key]];
             if row.content != content {
-                row.source = Source::Node(Arc::new(node));
+                row.source = Source::Node(node);
                 row.content = content;
             }
         }
         if let Some(earlier) = earlier {
-            let content = hash_of(&(earlier.label.as_str(), earlier.loading));
-            let row = &mut self.rows[0];
-            if row.content != content {
-                row.source = Source::Earlier(earlier);
-                row.content = content;
-            }
+            self.set_earlier(earlier);
         }
-        if expanded != self.expanded {
-            for row in &mut self.rows {
-                row.expanded = row.key != EARLIER_KEY && expanded.contains(&row.key);
-            }
-            self.expanded = expanded;
-        }
+        self.expand(expanded);
         Ok(self.relayout(width, typography, measurer, started, misses))
     }
 
@@ -640,8 +750,11 @@ impl TranscriptLayout {
     }
 }
 
+/// Rows by key, each with a hash of its content.
+type Incoming = HashMap<String, (Arc<Node<()>>, u64)>;
+
 /// Validates each row as a one-node view and hashes its content.
-fn checked_rows(rows: Vec<Node<()>>) -> Result<HashMap<String, (Node<()>, u64)>, LayoutError> {
+fn checked_rows(rows: Vec<Node<()>>) -> Result<Incoming, LayoutError> {
     let mut incoming = HashMap::with_capacity(rows.len());
     for row in rows {
         let checked = View::new("layout", 1, row)
@@ -649,7 +762,7 @@ fn checked_rows(rows: Vec<Node<()>>) -> Result<HashMap<String, (Node<()>, u64)>,
             .map_err(LayoutError::Row)?;
         let row = checked.view().root.clone();
         let content = content_hash(&row);
-        incoming.insert(row.key.clone(), (row, content));
+        incoming.insert(row.key.clone(), (Arc::new(row), content));
     }
     Ok(incoming)
 }
@@ -740,7 +853,9 @@ pub fn without_intents<I>(node: &Node<I>) -> Node<()> {
             label,
             children: c,
             earlier,
+            source,
         } => Element::Transcript {
+            source: source.clone(),
             label: label.clone(),
             children: children(c),
             earlier: earlier.as_ref().map(|e| Earlier {

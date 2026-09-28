@@ -38,6 +38,7 @@ use coder_computers::{
 };
 use coder_host::{CommandAction, QueueEdit, TaskQueue};
 use nostr::activity_summary::{ActivitySummary, Attention, Phase, SubjectKind};
+use rust_native::layout::source;
 use rust_native::style::{Color, Space, Style, TextAlign, TextWeight};
 use rust_native::{
     Activation, Axis, ComposerChoice, Element, Glyph, Icon, MessageRole, Node, TextRole,
@@ -213,6 +214,9 @@ pub struct CoderTab {
     transcripts: Transcripts,
     echoes: Vec<Echo>,
     echoed: u64,
+    /// The host's transcript layout reads a chat's rows from Rust
+    /// (`rust_native::layout::source`), so they stay out of the view.
+    pulled: bool,
 }
 
 impl CoderTab {
@@ -232,7 +236,15 @@ impl CoderTab {
             transcripts: Transcripts::open(None),
             echoes: Vec::new(),
             echoed: 0,
+            pulled: false,
         }
+    }
+
+    /// Publish each chat's rows for the host's transcript layout instead of
+    /// listing them in the view, so a long chat never outgrows one view.
+    pub fn with_pulled_transcripts(mut self, pulled: bool) -> Self {
+        self.pulled = pulled;
+        self
     }
 
     /// Keep each chat's transcript in `transcripts`, which survives a
@@ -999,16 +1011,21 @@ impl CoderTab {
         self.keep(ended);
         self.revision += 1;
         let view = loop {
-            let root = match &self.open {
+            let mut root = match &self.open {
                 Some(open) => self.chat(open, computers),
                 None if self.composing => self.new_chat(computers),
                 None => self.home(computers, chats),
             };
-            match View::new(self.instance.clone(), self.revision, root).validate() {
-                Ok(view) => break view,
+            let detached = !self.pulled || source::detach(&mut root, &self.instance).is_ok();
+            match View::new(self.instance.clone(), self.revision, root)
+                .validate()
+                .ok()
+                .filter(|_| detached)
+            {
+                Some(view) => break view,
                 // A long chat can outgrow one view: show less of each tool's
                 // output, then keep its newest half.
-                Err(_) => {
+                None => {
                     let conversation = self.open.as_ref()?.conversation.as_ref()?;
                     if !conversation.shrink() {
                         return None;
@@ -1204,6 +1221,7 @@ impl CoderTab {
                 label: "New chat".into(),
                 children: vec![],
                 earlier: None,
+                source: None,
             },
         ));
         let placeholder = match &availability {

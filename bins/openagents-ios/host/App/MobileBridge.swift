@@ -144,6 +144,8 @@ final class MobileBridge: ObservableObject {
                 "secret_hex": secret.map { String(format: "%02x", $0) }.joined(),
                 // This host draws the Computers list and its navigation.
                 "native_computers": true,
+                // Its transcript layout reads chat rows from Rust.
+                "pulled_transcripts": true,
             ]
             let configuration = try JSONSerialization.data(withJSONObject: options)
             handle = configuration.withUnsafeBytes { bytes in

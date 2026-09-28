@@ -56,8 +56,10 @@ indirect enum NativeElement: Decodable, Equatable {
     /// A label, an enabled state, and an optional glyph.
     case button(String, Bool, NativeIcon?)
     case surface(String, String)
-    /// A conversation, oldest row first, and its optional older-rows control.
-    case transcript(String, [NativeNode], NativeEarlier?)
+    /// A conversation, oldest row first, its optional older-rows control,
+    /// and, when Rust holds the rows, the transcript source that publishes
+    /// them (the rows are then empty; `rust_native::layout::source`).
+    case transcript(String, [NativeNode], NativeEarlier?, String?)
     /// A role (`user`, `assistant`, or `system`), a short note, and children.
     case message(String, String?, [NativeNode])
     case markdown([NativeMarkdownBlock])
@@ -69,7 +71,7 @@ indirect enum NativeElement: Decodable, Equatable {
     private enum Keys: String, CodingKey { case kind, props }
     private enum Props: String, CodingKey {
         case axis, children, label, value, role, enabled, resource, icon
-        case earlier, note, blocks, name, detail, state
+        case earlier, note, blocks, name, detail, state, source
         case token, placeholder, max_bytes, busy, stop, choices, draft, focus
     }
 
@@ -91,7 +93,8 @@ indirect enum NativeElement: Decodable, Equatable {
                                          try props.decode(String.self, forKey: .label))
         case "transcript": self = .transcript(try props.decode(String.self, forKey: .label),
                                                try props.decode([NativeNode].self, forKey: .children),
-                                               try props.decodeIfPresent(NativeEarlier.self, forKey: .earlier))
+                                               try props.decodeIfPresent(NativeEarlier.self, forKey: .earlier),
+                                               try props.decodeIfPresent(String.self, forKey: .source))
         case "message": self = .message(try props.decode(String.self, forKey: .role),
                                          try props.decodeIfPresent(String.self, forKey: .note),
                                          try props.decode([NativeNode].self, forKey: .children))

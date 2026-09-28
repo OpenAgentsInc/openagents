@@ -86,10 +86,18 @@ pub enum Element<I> {
     /// A conversation, oldest row first. Adapters keep the newest row in view
     /// while the reader is at the bottom, and offer a jump to the bottom when
     /// the reader scrolls up. Activating the node runs `earlier`.
+    ///
+    /// With `source`, the rows are not in the view: the application published
+    /// them to the in-process transcript source of that name
+    /// (`layout::source`), and the adapter's transcript layout reads them
+    /// there. `children` is then empty, and the view's node and byte bounds
+    /// do not count the rows.
     Transcript {
         label: String,
         children: Vec<Node<I>>,
         earlier: Option<Earlier<I>>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        source: Option<String>,
     },
     /// One message, drawn by its role. `note` is a short status, such as a
     /// time or "Not sent".
@@ -313,7 +321,17 @@ impl<I: Serialize> View<I> {
                 | Element::Message { children, .. }
                 | Element::Tool { children, .. } => {
                     match &node.element {
-                        Element::Transcript { label, earlier, .. } => {
+                        Element::Transcript {
+                            label,
+                            earlier,
+                            source,
+                            children,
+                        } => {
+                            if let Some(source) = source
+                                && (!crate::valid_id(source) || !children.is_empty())
+                            {
+                                return Err(ViewError::Identity);
+                            }
                             check_text(label)?;
                             if label.trim().is_empty() {
                                 return Err(ViewError::MissingLabel);

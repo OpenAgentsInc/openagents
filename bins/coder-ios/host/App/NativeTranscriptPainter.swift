@@ -1235,6 +1235,10 @@ final class NativeTranscriptView: UIScrollView, UIScrollViewDelegate, UIGestureR
     private var order: [String] = []
     private var nodes: [String: NativeNode] = [:]
     private var earlier: NativeEarlier?
+    /// The transcript source Rust reads rows from, when the application
+    /// keeps them in Rust; `order` and `nodes` are then empty.
+    private var source: String?
+    private var sourceRevision: UInt64 = 0
     /// Rows whose current content Rust has not received.
     private var unsent: Set<String> = []
     // What Rust has received, or will have once the queued update runs.
@@ -1334,8 +1338,31 @@ final class NativeTranscriptView: UIScrollView, UIScrollViewDelegate, UIGestureR
         }
     }
 
+    /// Takes a new revision whose rows Rust holds in the source `source`.
+    /// Nothing is encoded here: the update names the source, and Rust lays
+    /// out the rows whose content changed since its last read.
+    func apply(source: String, revision: UInt64, earlier: NativeEarlier?) {
+        if source != self.source || revision != sourceRevision || earlier != self.earlier {
+            needsSync = true
+        }
+        if self.source == nil {
+            nodes = [:]
+            order = []
+            unsent = []
+            sentOrder = []
+        }
+        self.source = source
+        sourceRevision = revision
+        self.earlier = earlier
+        sync()
+    }
+
     /// Takes a new revision's rows. Only rows whose content changed go to Rust.
     func apply(rows: [NativeNode], earlier: NativeEarlier?) {
+        if source != nil {
+            source = nil
+            sentOrder = []
+        }
         var next = [String: NativeNode](minimumCapacity: rows.count)
         for row in rows {
             if nodes[row.key] != row { unsent.insert(row.key) }
@@ -1371,13 +1398,19 @@ final class NativeTranscriptView: UIScrollView, UIScrollViewDelegate, UIGestureR
             return
         }
         let rows = unsent.compactMap { nodes[$0] }
-        let request = NativeLayoutUpdate(
-            width: Float(bounds.width), scale: Float(scale),
-            // A streamed token keeps the order; Rust then updates in place.
-            order: order == sentOrder && !sentOrder.isEmpty ? nil : order, rows: rows,
-            expanded: Array(expanded.intersection(nodes.keys)),
-            earlier: earlier.map { NativeLayoutUpdate.Earlier(label: $0.label, loading: $0.loading) },
-            curve: curve)
+        let request: NativeLayoutUpdate
+        if let source {
+            request = NativeLayoutUpdate(width: Float(bounds.width), scale: Float(scale), order: nil, rows: [],
+                                         expanded: Array(expanded), earlier: nil, curve: curve, source: source)
+        } else {
+            request = NativeLayoutUpdate(
+                width: Float(bounds.width), scale: Float(scale),
+                // A streamed token keeps the order; Rust then updates in place.
+                order: order == sentOrder && !sentOrder.isEmpty ? nil : order, rows: rows,
+                expanded: Array(expanded.intersection(nodes.keys)),
+                earlier: earlier.map { NativeLayoutUpdate.Earlier(label: $0.label, loading: $0.loading) },
+                curve: curve)
+        }
         if bounds.width != sentWidth || scale != sentScale || curve != sentCurve { epoch += 1 }
         let requestEpoch = epoch
         unsent.removeAll()
@@ -1814,8 +1847,11 @@ struct NativeLayoutUpdate: Encodable {
     let earlier: Earlier?
     /// Dynamic Type's `[nominal, scaled]` size for each text style.
     let curve: [[Float]]
+    /// A published transcript source to read rows from, instead of `order`,
+    /// `rows`, and `earlier`.
+    var source: String? = nil
 
-    private enum Keys: String, CodingKey { case width, scale, order, rows, expanded, earlier, curve }
+    private enum Keys: String, CodingKey { case width, scale, order, rows, expanded, earlier, curve, source }
 
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: Keys.self)
@@ -1826,6 +1862,7 @@ struct NativeLayoutUpdate: Encodable {
         try container.encode(expanded, forKey: .expanded)
         if let earlier { try container.encode(earlier, forKey: .earlier) } else { try container.encodeNil(forKey: .earlier) }
         try container.encode(curve, forKey: .curve)
+        if let source { try container.encode(source, forKey: .source) }
     }
 }
 
@@ -1835,6 +1872,9 @@ struct NativeTranscript: UIViewRepresentable {
     let label: String
     let rows: [NativeNode]
     let earlier: NativeEarlier?
+    /// The transcript source Rust publishes the rows to, when the view
+    /// carries none.
+    let source: String?
     let revision: UInt64
     let surface: NativeChat.Surface
     let submit: NativeChat.Submit
@@ -1850,7 +1890,11 @@ struct NativeTranscript: UIViewRepresentable {
         view.transcriptKey = key
         view.accessibilityLabel = label
         view.activate = activate
-        view.apply(rows: rows, earlier: earlier)
+        if let source {
+            view.apply(source: source, revision: revision, earlier: earlier)
+        } else {
+            view.apply(rows: rows, earlier: earlier)
+        }
     }
 }
 
@@ -1874,7 +1918,7 @@ extension NativeElement: Encodable {
     private enum EncodingKeys: String, CodingKey { case kind, props }
     private enum Props: String, CodingKey {
         case axis, children, label, value, role, enabled, resource, earlier, note, blocks, name, detail, state
-        case token, placeholder, max_bytes, busy, stop, intent, loading
+        case token, placeholder, max_bytes, busy, stop, intent, loading, source
     }
 
     func encode(to encoder: Encoder) throws {
@@ -1905,10 +1949,11 @@ extension NativeElement: Encodable {
             var p = try props("surface")
             try p.encode(resource, forKey: .resource)
             try p.encode(label, forKey: .label)
-        case let .transcript(label, children, earlier):
+        case let .transcript(label, children, earlier, source):
             var p = try props("transcript")
             try p.encode(label, forKey: .label)
             try p.encode(children, forKey: .children)
+            if let source { try p.encode(source, forKey: .source) }
             if let earlier {
                 var e = p.nestedContainer(keyedBy: Props.self, forKey: .earlier)
                 try e.encode(earlier.label, forKey: .label)

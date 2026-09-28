@@ -520,6 +520,62 @@ pub unsafe extern "C" fn rust_native_frame_release(value: *const Frame) {
     }
 }
 
+/// Publishes a transcript node's rows and earlier control, as JSON
+/// (`Node<()>` whose element is a transcript), to the source `name`, for
+/// adapters whose rows arrive as JSON rather than from the application's own
+/// Rust state. Returns 1 on success and 0 on failure.
+///
+/// # Safety
+/// `name` must point to `name_len` bytes and `bytes` to `len` bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_native_source_publish(
+    name: *const u8,
+    name_len: usize,
+    bytes: *const u8,
+    len: usize,
+) -> i32 {
+    if name.is_null() || bytes.is_null() || name_len > 96 || len == 0 || len > MAX_UPDATE_BYTES {
+        return 0;
+    }
+    catch_unwind(|| {
+        let name = unsafe { std::slice::from_raw_parts(name, name_len) };
+        let bytes = unsafe { std::slice::from_raw_parts(bytes, len) };
+        let (Ok(name), Ok(node)) = (
+            std::str::from_utf8(name),
+            serde_json::from_slice::<crate::view::Node<()>>(bytes),
+        ) else {
+            return 0;
+        };
+        let crate::view::Element::Transcript {
+            children,
+            earlier,
+            source: None,
+            ..
+        } = node.element
+        else {
+            return 0;
+        };
+        let earlier = earlier.as_ref().map(super::EarlierRow::from);
+        i32::from(super::source::publish(name, children, earlier).is_ok())
+    })
+    .unwrap_or(0)
+}
+
+/// Removes the source `name`.
+///
+/// # Safety
+/// `name` must point to `name_len` bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rust_native_source_retire(name: *const u8, name_len: usize) {
+    if name.is_null() || name_len > 96 {
+        return;
+    }
+    let name = unsafe { std::slice::from_raw_parts(name, name_len) };
+    if let Ok(name) = std::str::from_utf8(name) {
+        super::source::retire(name);
+    }
+}
+
 /// # Safety
 /// The buffer must be an unmodified, not-yet-freed result from this library.
 #[unsafe(no_mangle)]

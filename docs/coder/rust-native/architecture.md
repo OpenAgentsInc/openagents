@@ -79,7 +79,10 @@ scrolling. The adapter measures text for Rust through a platform callback
 blocks and tables sideways where Rust marks them, and owns scrolling,
 in-place text selection, gestures, native widgets, and accessibility
 elements. Rows are pulled by visible range, and a streamed token lays out one
-row. The application's view contract is unchanged. The
+row. An application that holds its rows in Rust publishes them to an
+in-process transcript source, and its view carries only the source's name,
+so a long chat never outgrows the view's bounds and the adapter never
+encodes rows. The OpenAgents app does this for its chats. The
 [view specification](../../../crates/rust-native/docs/spec.md#transcript-layout)
 records the details.
 

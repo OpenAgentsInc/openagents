@@ -440,6 +440,7 @@ mod conversation {
         let transcript = node(
             "transcript",
             Element::Transcript {
+                source: None,
                 label: "Messages".into(),
                 children: vec![user, tool, reply, system, working],
                 earlier: Some(Earlier {

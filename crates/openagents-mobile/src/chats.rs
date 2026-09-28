@@ -11,6 +11,7 @@ use coder_computers::cache::Cache;
 use coder_connect::{Client, ConnectionCode, Observation, Query, RelayPolicy};
 use coder_history::{CatalogRequest, Chat, Harness};
 use rust_native::input::InputRequest;
+use rust_native::layout::source;
 use rust_native::style::{Color, Space, Style, TextWeight};
 use rust_native::{Activation, Axis, Element, Node, TextRole, ValidatedView, View};
 use secp256k1::SecretKey;
@@ -103,6 +104,8 @@ pub struct Chats {
     input: Option<InputRequest<Purpose>>,
     tokens: u64,
     reading: Option<Conversation>,
+    /// The host's transcript layout reads a chat's rows from Rust.
+    pulled: bool,
 }
 
 fn lock(state: &Mutex<State>) -> MutexGuard<'_, State> {
@@ -147,6 +150,7 @@ impl Chats {
             input: None,
             tokens: 0,
             reading: None,
+            pulled: false,
         };
         chats.refresh();
         chats
@@ -540,22 +544,34 @@ impl Chats {
         self.runtime.clone()
     }
 
+    /// Publish a chat's rows for the host's transcript layout instead of
+    /// listing them in the view, so a long chat never outgrows one view.
+    pub fn with_pulled_transcripts(mut self, pulled: bool) -> Self {
+        self.pulled = pulled;
+        self
+    }
+
     pub fn render(&mut self) -> Option<serde_json::Value> {
         self.revision += 1;
         let view = loop {
-            let root = match &self.reading {
+            let mut root = match &self.reading {
                 Some(reading) => reader(reading),
                 None => catalog_view(&lock(&self.state)),
             };
-            match View::new(self.instance.clone(), self.revision, root).validate() {
-                Ok(view) => break view,
+            let detached = !self.pulled || source::detach(&mut root, &self.instance).is_ok();
+            match View::new(self.instance.clone(), self.revision, root)
+                .validate()
+                .ok()
+                .filter(|_| detached)
+            {
+                Some(view) => break view,
                 // A long chat can outgrow one view; keep its newest half.
-                Err(_) if self.reading.is_some() => {
+                None if self.reading.is_some() => {
                     if !self.reading.as_ref()?.shrink() {
                         return None;
                     }
                 }
-                Err(_) => return None,
+                None => return None,
             }
         };
         let value = serde_json::to_value(view.view()).ok();

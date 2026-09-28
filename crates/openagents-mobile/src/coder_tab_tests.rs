@@ -831,3 +831,33 @@ fn a_sent_message_shows_in_the_chat_at_once() {
     let chat = fixture.tap("coder-stop");
     assert_eq!(notes(&chat).len(), 1);
 }
+
+#[test]
+fn a_pulled_chat_publishes_its_rows_for_the_layout_instead_of_listing_them() {
+    let mut listed = Fixture::hosts();
+    let task = first_task(&listed.render());
+    let listed = listed.tap(&task);
+    let rows: Vec<String> =
+        node(&listed, "coder-transcript").expect("transcript")["element"]["props"]["children"]
+            .as_array()
+            .expect("rows")
+            .iter()
+            .map(|row| row["key"].as_str().expect("key").to_owned())
+            .collect();
+    assert!(!rows.is_empty());
+
+    let mut pulled = Fixture::hosts();
+    pulled.coder = CoderTab::new("coder:pulled".into()).with_pulled_transcripts(true);
+    pulled.render();
+    let view = pulled.tap(&task);
+    let props = &node(&view, "coder-transcript").expect("transcript")["element"]["props"];
+    assert_eq!(props["children"], serde_json::json!([]));
+    assert_eq!(props["source"], "coder:pulled:coder-transcript");
+    let snapshot =
+        rust_native::layout::source::get("coder:pulled:coder-transcript").expect("published");
+    assert_eq!(snapshot.keys().collect::<Vec<_>>(), rows);
+
+    // Back to the list, the chat's source is retired.
+    pulled.tap("coder-back");
+    assert!(rust_native::layout::source::get("coder:pulled:coder-transcript").is_none());
+}

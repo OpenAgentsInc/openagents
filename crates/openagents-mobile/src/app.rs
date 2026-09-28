@@ -55,6 +55,11 @@ pub struct Launch {
     /// host sets it; the Android host draws the shared screens whole.
     #[serde(default)]
     pub native_computers: bool,
+    /// The host's transcript layout reads chat rows from Rust
+    /// (`rust_native::layout::source`) instead of the view, so a chat's
+    /// length is not bounded by the view's size.
+    #[serde(default)]
+    pub pulled_transcripts: bool,
 }
 
 /// What this phone's Computers screens can do.
@@ -425,7 +430,8 @@ impl App {
             secret,
             Cache::open(&config.state_dir.join("chats"), &secret),
             format!("chats:{}", id()),
-        );
+        )
+        .with_pulled_transcripts(launch.pulled_transcripts);
         let tailnet_client = Client::open(&config.state_dir.join("tailscale")).map(Arc::new);
         // The Spark wallet replaced the Mutinynet test wallet, whose store
         // held only signet test coins; remove it. Its Keychain item goes too.
@@ -439,6 +445,7 @@ impl App {
             computers,
             chats,
             coder: CoderTab::new(format!("coder:{}", id()))
+                .with_pulled_transcripts(launch.pulled_transcripts)
                 .with_list(crate::coder_list::Store::open(
                     Cache::open(&config.state_dir.join("coder-list"), &secret).ok(),
                 ))

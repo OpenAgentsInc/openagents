@@ -4,7 +4,9 @@
 // `--rust-native-fixture-rows N` to append N synthetic rows,
 // `--rust-native-fixture-demo` to expand a tool and stream replies,
 // `--rust-native-transcript-bench` to fling through the transcript and print
-// frame times, and `--rust-native-transcript-log` to print layout timings.
+// frame times, `--rust-native-transcript-log` to print layout timings, and
+// `--rust-native-transcript-pull` to publish the rows to a Rust transcript
+// source and render the transcript from it, as the app's chats do.
 import SwiftUI
 
 enum NativeFixture {
@@ -26,13 +28,20 @@ extension View {
 
 private struct NativeFixtureScreen: View {
     @State private var view: NativeView?
+    /// What shows: `view`, or with `--rust-native-transcript-pull`, `view`
+    /// once its rows are published to a Rust transcript source.
+    @State private var shown: NativeView?
     @State private var failure: String?
+    private static let publisher = DispatchQueue(label: "com.openagents.fixture-publish")
+    /// The newest revision asked for; older queued publications skip.
+    nonisolated(unsafe) private static var newest: UInt64 = 0
+    private static let newestLock = NSLock()
 
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
-            if let view {
-                NativeRenderer(node: view.root, revision: view.revision, followTarget: nil,
+            if let view, let shown {
+                NativeRenderer(node: shown.root, revision: shown.revision, followTarget: nil,
                                followChanged: nil,
                                submit: { token, text in
                                    print("fixture submit \(token): \(text)")
@@ -49,7 +58,27 @@ private struct NativeFixtureScreen: View {
         }
         .preferredColorScheme(.dark)
         .onAppear(perform: load)
+        .onChange(of: view?.revision) { publish() }
         .task { await demo() }
+    }
+
+    /// Shows `view`. Publishing encodes every row, as the application's Rust
+    /// would on its own queue, so it runs off the main thread; a revision
+    /// that a newer one overtook is not shown.
+    private func publish() {
+        guard let view else { return }
+        guard ProcessInfo.processInfo.arguments.contains("--rust-native-transcript-pull") else {
+            shown = view
+            return
+        }
+        Self.newestLock.withLock { Self.newest = view.revision }
+        Self.publisher.async {
+            guard Self.newestLock.withLock({ Self.newest == view.revision }) else { return }
+            let pulled = view.pulled()
+            DispatchQueue.main.async {
+                if self.view?.revision == pulled.revision { self.shown = pulled }
+            }
+        }
     }
 
     /// With `--rust-native-fixture-demo`, expands the tool row and streams
@@ -112,12 +141,33 @@ private extension NativeView {
         ]))
     }
 
+    /// With `--rust-native-transcript-pull`, publishes the transcript's rows
+    /// to a Rust transcript source and returns the view with the rows
+    /// replaced by the source's name.
+    func pulled() -> NativeView {
+        guard ProcessInfo.processInfo.arguments.contains("--rust-native-transcript-pull"),
+              case let .stack(axis, children) = root.element else { return self }
+        let mapped = children.map { child -> NativeNode in
+            guard case let .transcript(label, _, earlier, nil) = child.element,
+                  let data = try? JSONEncoder().encode(child) else { return child }
+            let name = Array("fixture:\(child.key)".utf8)
+            let published = data.withUnsafeBytes { bytes in
+                rust_native_source_publish(name, name.count, bytes.bindMemory(to: UInt8.self).baseAddress, bytes.count)
+            }
+            guard published == 1 else { return child }
+            return NativeNode(key: child.key, style: child.style,
+                              element: .transcript(label, [], earlier, String(decoding: name, as: UTF8.self)))
+        }
+        return NativeView(schema: schema, instance: instance, revision: revision,
+                          root: NativeNode(key: root.key, style: root.style, element: .stack(axis, mapped)))
+    }
+
     func mapTranscript(_ change: ([NativeNode]) -> [NativeNode]) -> NativeView {
         guard case let .stack(axis, children) = root.element else { return self }
         let mapped = children.map { child -> NativeNode in
-            guard case let .transcript(label, rows, earlier) = child.element else { return child }
+            guard case let .transcript(label, rows, earlier, source) = child.element else { return child }
             return NativeNode(key: child.key, style: child.style,
-                              element: .transcript(label, change(rows), earlier))
+                              element: .transcript(label, change(rows), earlier, source))
         }
         return NativeView(schema: schema, instance: instance, revision: revision + 1,
                           root: NativeNode(key: root.key, style: root.style, element: .stack(axis, mapped)))

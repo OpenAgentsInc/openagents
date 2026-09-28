@@ -154,6 +154,7 @@ impl Draw<'_> {
                 label,
                 children,
                 earlier,
+                ..
             } => {
                 let mut lines = vec![Line::from(Span::styled(
                     format!("{pad}{}:", clean(label)),

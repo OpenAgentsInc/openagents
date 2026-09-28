@@ -129,7 +129,7 @@ enum NativePlainText {
         case let .tool(name, detail, _, children):
             return ([detail.isEmpty ? name : "\(name) \(detail)"] + children.map(of)).joined(separator: "\n")
         case let .stack(_, children), let .list(_, children), let .message(_, _, children),
-             let .transcript(_, children, _):
+             let .transcript(_, children, _, _):
             return children.map(of).filter { !$0.isEmpty }.joined(separator: "\n\n")
         case .surface, .composer: return ""
         }
@@ -272,10 +272,10 @@ enum NativeChat {
     static func render(_ node: NativeNode, revision: UInt64, surface: Surface, submit: Submit,
                        activate: @escaping (String) -> Void) -> AnyView {
         switch node.element {
-        case let .transcript(label, rows, earlier):
+        case let .transcript(label, rows, earlier, source):
             return AnyView(NativeTranscript(key: node.key, label: label, rows: rows, earlier: earlier,
-                                            revision: revision, surface: surface, submit: submit,
-                                            activate: activate))
+                                            source: source, revision: revision, surface: surface,
+                                            submit: submit, activate: activate))
         case let .message(role, note, children):
             return AnyView(NativeMessage(key: node.key, role: role, note: note, children: children,
                                          revision: revision, surface: surface, submit: submit,

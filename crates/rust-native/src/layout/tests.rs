@@ -56,6 +56,7 @@ fn update(rows: Vec<Node<()>>, width: f32) -> Update {
         expanded: vec![],
         earlier: None,
         curve: vec![],
+        source: None,
     }
 }
 
@@ -841,6 +842,44 @@ mod ffi {
     }
 
     #[test]
+    fn the_c_interface_publishes_a_source_and_lays_it_out() {
+        let mut calls = 0usize;
+        let handle = unsafe {
+            rust_native_layout_create(&mut calls as *mut usize as *mut c_void, Some(fixed))
+        };
+        let node = serde_json::to_vec(&serde_json::json!({
+            "key": "chat",
+            "style": {},
+            "element": {"kind": "transcript", "props": {
+                "label": "Messages",
+                "children": conversation(8),
+                "earlier": {"label": "Load earlier messages", "loading": false, "intent": null},
+            }},
+        }))
+        .unwrap();
+        let name = b"ffi-test:chat";
+        assert_eq!(
+            unsafe {
+                rust_native_source_publish(name.as_ptr(), name.len(), node.as_ptr(), node.len())
+            },
+            1
+        );
+        assert_eq!(
+            unsafe { rust_native_source_publish(name.as_ptr(), name.len(), b"{}".as_ptr(), 2) },
+            0
+        );
+        let request = br#"{"width": 390, "scale": 1, "source": "ffi-test:chat"}"#;
+        let summary =
+            json(unsafe { rust_native_layout_update(handle, request.as_ptr(), request.len()) });
+        assert_eq!(summary["count"], 9);
+        unsafe { rust_native_source_retire(name.as_ptr(), name.len()) };
+        let refused =
+            json(unsafe { rust_native_layout_update(handle, request.as_ptr(), request.len()) });
+        assert!(refused["error"].is_string());
+        unsafe { rust_native_layout_destroy(handle) };
+    }
+
+    #[test]
     fn frames_outlive_updates_and_answer_on_their_own() {
         let mut calls = 0usize;
         let handle = unsafe {
@@ -914,5 +953,204 @@ mod ffi {
     #[test]
     fn a_missing_measurer_is_refused() {
         assert!(unsafe { rust_native_layout_create(std::ptr::null_mut(), None) }.is_null());
+    }
+}
+
+mod sources {
+    use super::*;
+
+    fn pulled(name: &str, width: f32) -> Update {
+        Update {
+            width,
+            scale: 1.0,
+            source: Some(name.into()),
+            ..Update::default()
+        }
+    }
+
+    fn transcript(children: Vec<Node<()>>, earlier: bool) -> Node<()> {
+        node(
+            "chat",
+            Element::Transcript {
+                label: "Messages".into(),
+                children,
+                earlier: earlier.then(|| crate::view::Earlier {
+                    label: "Load earlier messages".into(),
+                    loading: false,
+                    intent: (),
+                }),
+                source: None,
+            },
+        )
+    }
+
+    fn laid_out(rows: Vec<Node<()>>, width: f32) -> TranscriptLayout {
+        let mut layout = TranscriptLayout::new();
+        layout
+            .update(update(rows, width), &mut FixedMeasurer::default())
+            .unwrap();
+        layout
+    }
+
+    #[test]
+    fn a_pulled_transcript_lays_out_like_one_sent_whole() {
+        let rows = conversation(40);
+        let mut root = transcript(rows.clone(), false);
+        assert_eq!(source::detach(&mut root, "test-whole").unwrap(), 1);
+        let Element::Transcript {
+            children, source, ..
+        } = &root.element
+        else {
+            unreachable!()
+        };
+        assert!(children.is_empty());
+        assert_eq!(source.as_deref(), Some("test-whole:chat"));
+        let mut layout = TranscriptLayout::new();
+        let summary = layout
+            .update(
+                pulled("test-whole:chat", 390.0),
+                &mut FixedMeasurer::default(),
+            )
+            .unwrap();
+        let sent = laid_out(rows, 390.0);
+        assert_eq!(summary.count, 40);
+        assert_eq!(layout.height(), sent.height());
+        for i in 0..40 {
+            assert_eq!(layout.placement(i), sent.placement(i));
+        }
+        // The detached view is small whatever the transcript holds.
+        View::new("test", 1, root).validate().unwrap();
+    }
+
+    #[test]
+    fn a_streamed_token_relays_one_row_and_an_unchanged_publication_none() {
+        let mut rows = conversation(30);
+        source::publish("test-stream:chat", rows.clone(), None).unwrap();
+        let mut layout = TranscriptLayout::new();
+        let mut measurer = FixedMeasurer::default();
+        layout
+            .update(pulled("test-stream:chat", 390.0), &mut measurer)
+            .unwrap();
+        let again = layout
+            .update(pulled("test-stream:chat", 390.0), &mut measurer)
+            .unwrap();
+        assert_eq!(again.relaid, 0);
+        source::publish("test-stream:chat", rows.clone(), None).unwrap();
+        let republished = layout
+            .update(pulled("test-stream:chat", 390.0), &mut measurer)
+            .unwrap();
+        assert_eq!(republished.relaid, 0);
+        rows[29] = message("u29", MessageRole::Assistant, "A longer streamed reply");
+        source::publish("test-stream:chat", rows.clone(), None).unwrap();
+        let streamed = layout
+            .update(pulled("test-stream:chat", 390.0), &mut measurer)
+            .unwrap();
+        assert_eq!(streamed.relaid, 1);
+        let sent = laid_out(rows, 390.0);
+        assert_eq!(layout.height(), sent.height());
+        source::retire("test-stream:chat");
+    }
+
+    #[test]
+    fn prepended_rows_and_the_earlier_control_arrive_through_the_source() {
+        let rows = conversation(20);
+        let mut root = transcript(rows[10..].to_vec(), true);
+        source::detach(&mut root, "test-prepend").unwrap();
+        let mut layout = TranscriptLayout::new();
+        let mut measurer = FixedMeasurer::default();
+        layout
+            .update(pulled("test-prepend:chat", 390.0), &mut measurer)
+            .unwrap();
+        assert_eq!(layout.find(EARLIER_KEY), Some(0));
+        assert_eq!(layout.len(), 11);
+        let mut root = transcript(rows.clone(), false);
+        source::detach(&mut root, "test-prepend").unwrap();
+        let summary = layout
+            .update(pulled("test-prepend:chat", 390.0), &mut measurer)
+            .unwrap();
+        assert_eq!(summary.count, 20);
+        assert_eq!(summary.relaid, 10);
+        assert_eq!(layout.find(EARLIER_KEY), None);
+        assert_eq!(layout.find(&rows[10].key), Some(10));
+    }
+
+    #[test]
+    fn detach_retires_sources_its_scope_no_longer_shows() {
+        let mut root = transcript(conversation(3), false);
+        source::detach(&mut root, "test-retire").unwrap();
+        assert!(source::get("test-retire:chat").is_some());
+        let mut other = node(
+            "empty",
+            Element::Stack {
+                axis: crate::view::Axis::Vertical,
+                children: vec![],
+            },
+        );
+        assert_eq!(source::detach(&mut other, "test-retire").unwrap(), 0);
+        assert!(source::get("test-retire:chat").is_none());
+        let mut layout = TranscriptLayout::new();
+        assert_eq!(
+            layout
+                .update(
+                    pulled("test-retire:chat", 390.0),
+                    &mut FixedMeasurer::default()
+                )
+                .unwrap_err(),
+            LayoutError::UnknownSource("test-retire:chat".into())
+        );
+    }
+
+    #[test]
+    fn a_source_refuses_malformed_updates_and_rows() {
+        source::publish("test-refuse:chat", conversation(2), None).unwrap();
+        let mut layout = TranscriptLayout::new();
+        let mut mixed = pulled("test-refuse:chat", 390.0);
+        mixed.order = Some(vec![]);
+        assert_eq!(
+            layout
+                .update(mixed, &mut FixedMeasurer::default())
+                .unwrap_err(),
+            LayoutError::Source
+        );
+        assert_eq!(
+            source::publish("bad name", vec![], None).unwrap_err(),
+            LayoutError::Source
+        );
+        let twice = vec![
+            message("a", MessageRole::User, "x"),
+            message("a", MessageRole::User, "y"),
+        ];
+        assert_eq!(
+            source::publish("test-refuse:chat", twice, None).unwrap_err(),
+            LayoutError::DuplicateRow("a".into())
+        );
+        // A refused publication leaves the previous one.
+        assert_eq!(source::get("test-refuse:chat").unwrap().len(), 2);
+        // A view may not name a source and list rows too.
+        let mut both = transcript(conversation(1), false);
+        if let Element::Transcript { source, .. } = &mut both.element {
+            *source = Some("test-refuse:chat".into());
+        }
+        assert!(View::new("test", 1, both).validate().is_err());
+        source::retire("test-refuse:chat");
+    }
+
+    #[test]
+    fn a_long_transcript_escapes_the_view_bounds_once_detached() {
+        let rows = conversation(3_000);
+        let whole = transcript(rows.clone(), false);
+        assert!(View::new("test", 1, whole).validate().is_err());
+        let mut root = transcript(rows, false);
+        source::detach(&mut root, "test-long").unwrap();
+        View::new("test", 1, root).validate().unwrap();
+        let mut layout = TranscriptLayout::new();
+        let summary = layout
+            .update(
+                pulled("test-long:chat", 390.0),
+                &mut FixedMeasurer::default(),
+            )
+            .unwrap();
+        assert_eq!(summary.count, 3_000);
+        source::retire("test-long:chat");
     }
 }

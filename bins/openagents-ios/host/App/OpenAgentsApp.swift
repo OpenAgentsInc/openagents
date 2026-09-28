@@ -309,7 +309,7 @@ enum CoderLaunchTaps {
         if matches { return node.key }
         let children: [NativeNode]
         switch node.element {
-        case let .stack(_, nodes), let .list(_, nodes), let .transcript(_, nodes, _): children = nodes
+        case let .stack(_, nodes), let .list(_, nodes), let .transcript(_, nodes, _, _): children = nodes
         default: children = []
         }
         for child in children { if let found = find(key, in: child) { return found } }

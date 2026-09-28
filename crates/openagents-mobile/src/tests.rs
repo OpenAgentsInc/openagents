@@ -3,12 +3,20 @@ use crate::tailnet::{Device, Tailnet, os_label};
 use crate::tailnet_view::Screen;
 use url::Url;
 
+/// An app as the phone hosts open it: its chats publish their rows for the
+/// host's transcript layout, which [`children_of`] reads.
 fn app() -> (App, tempfile::TempDir) {
     let dir = tempfile::tempdir().expect("temp dir");
-    let app = App::new(Config {
-        state_dir: dir.path().to_path_buf(),
-        secret_hex: "11".repeat(32),
-    })
+    let app = App::open(
+        Config {
+            state_dir: dir.path().to_path_buf(),
+            secret_hex: "11".repeat(32),
+        },
+        crate::app::Launch {
+            pulled_transcripts: true,
+            ..crate::app::Launch::default()
+        },
+    )
     .expect("app");
     (app, dir)
 }
@@ -34,9 +42,25 @@ fn device(name: &str, os: &str, online: Option<bool>) -> Device {
     }
 }
 
+/// A node's children, or, for a transcript whose rows the app published to a
+/// transcript source (`rust_native::layout::source`), the rows it holds, as
+/// the host's layout reads them.
+fn children_of(node: &serde_json::Value) -> Vec<serde_json::Value> {
+    let props = &node["element"]["props"];
+    if let Some(name) = props["source"].as_str() {
+        let snapshot = rust_native::layout::source::get(name)
+            .unwrap_or_else(|| panic!("no transcript source {name}"));
+        return snapshot
+            .rows()
+            .map(|row| serde_json::to_value(row).expect("row"))
+            .collect();
+    }
+    props["children"].as_array().cloned().unwrap_or_default()
+}
+
 fn values(view: &serde_json::Value) -> Vec<String> {
     let mut out = vec![];
-    let mut pending = vec![&view["root"]];
+    let mut pending = vec![view["root"].clone()];
     while let Some(node) = pending.pop() {
         let props = &node["element"]["props"];
         for field in ["value", "label"] {
@@ -52,9 +76,7 @@ fn values(view: &serde_json::Value) -> Vec<String> {
                 }
             }
         }
-        if let Some(children) = props["children"].as_array() {
-            pending.extend(children.iter().rev());
-        }
+        pending.extend(children_of(&node).into_iter().rev());
     }
     out
 }
@@ -157,15 +179,13 @@ fn live_control_server_answers() {
 }
 
 /// Nodes of `kind` in `view`, in document order.
-fn nodes_of<'a>(view: &'a serde_json::Value, kind: &str) -> Vec<&'a serde_json::Value> {
+fn nodes_of(view: &serde_json::Value, kind: &str) -> Vec<serde_json::Value> {
     let mut out = vec![];
-    let mut pending = vec![&view["root"]];
+    let mut pending = vec![view["root"].clone()];
     while let Some(node) = pending.pop() {
+        pending.extend(children_of(&node).into_iter().rev());
         if node["element"]["kind"] == kind {
             out.push(node);
-        }
-        if let Some(children) = node["element"]["props"]["children"].as_array() {
-            pending.extend(children.iter().rev());
         }
     }
     out
@@ -183,7 +203,6 @@ fn new_chat(
         if let Some(new) = nodes_of(&coder, "button")
             .into_iter()
             .find(|node| node["key"] == "coder-new")
-            .cloned()
         {
             app.call(Request::CoderActivate {
                 instance: coder["instance"].as_str().unwrap().into(),

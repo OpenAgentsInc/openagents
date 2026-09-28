@@ -462,6 +462,7 @@ impl Conversation {
                 label: "Messages".into(),
                 children,
                 earlier: None,
+                source: None,
             },
         )
     }
@@ -614,6 +615,7 @@ fn transcript<I: Clone>(
                     loading: inner.earlier,
                     intent: earlier,
                 }),
+            source: None,
         },
     )
 }

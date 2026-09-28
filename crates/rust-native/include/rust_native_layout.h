@@ -68,7 +68,10 @@ typedef int32_t (*RustNativeMeasure)(void *context,
 void *rust_native_layout_create(void *context, RustNativeMeasure measure);
 // Applies a JSON update: {"width", "scale", "order": [keys], "rows": [nodes
 // that are new or changed], "expanded": [tool keys], "earlier": {"label",
-// "loading"} or null, "curve": [[nominal, scaled] sizes, at most 16]}.
+// "loading"} or null, "curve": [[nominal, scaled] sizes, at most 16]}. With
+// "source": NAME instead of order, rows, and earlier, Rust reads the rows and
+// the earlier control from that published transcript source (a transcript
+// node whose "source" prop is NAME) and lays out only the rows that changed.
 // Returns {"count", "height", "relaid", "measured", "micros"} or {"error"}.
 RustNativeBuffer rust_native_layout_update(void *handle, const uint8_t *update, size_t length);
 // Writes at most `capacity` placements of the rows intersecting y0..y1 and
@@ -83,6 +86,14 @@ int32_t rust_native_layout_find(const void *handle, const uint8_t *key, size_t l
 RustNativeBuffer rust_native_layout_display(void *handle, uint32_t index);
 void rust_native_layout_buffer_free(RustNativeBuffer buffer);
 void rust_native_layout_destroy(void *handle);
+
+// Publishes a transcript node's rows (JSON, a node whose element is a
+// transcript without a source) as the source `name`, for adapters whose rows
+// arrive as JSON. An application that owns its rows in Rust publishes them
+// directly instead. Returns 1 on success.
+int32_t rust_native_source_publish(const uint8_t *name, size_t name_length,
+                                   const uint8_t *node, size_t length);
+void rust_native_source_retire(const uint8_t *name, size_t name_length);
 
 // The handle's current layout as an immutable frame, or null. The caller owns
 // it; it outlives later updates and the handle itself.

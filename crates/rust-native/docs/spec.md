@@ -18,7 +18,7 @@ It does not mount views or provide an application runtime.
 | `Text` | Unicode text with a body, heading, code, status, Markdown, or terminal role. A Markdown role conveys selectable document meaning; links and embedded content remain inert unless separately admitted by the application. It does not itself parse or render Markdown. A terminal role is one row, or one run of a row, of a fixed-cell character grid: adapters draw it monospaced on a single line, never wrap it, and keep every space. The application sizes the grid from the cell size its adapter reports. |
 | `Button` | A nonempty label, an enabled state, the application's typed intent, and an optional `icon`: a `glyph` from a closed set (`back`, `compose`) and `circular`. A circular icon draws only the glyph in a circle, and the label becomes its spoken name; otherwise the glyph leads the visible label. An adapter that can't draw the glyph shows the label. |
 | `Surface` | A nonempty accessibility label and an opaque local resource ID. An adapter explicitly registers the renderer; the tree cannot name a URL, library, executable, or shader to load. |
-| `Transcript` | A conversation, oldest row first, with a nonempty label and an optional `earlier` control (label, `loading`, intent). Adapters keep the newest row in view while the reader is at the bottom, stop following when the reader scrolls up, and then offer a jump to the bottom. Activating the transcript node runs `earlier` unless it is loading. |
+| `Transcript` | A conversation, oldest row first, with a nonempty label and an optional `earlier` control (label, `loading`, intent). Adapters keep the newest row in view while the reader is at the bottom, stop following when the reader scrolls up, and then offer a jump to the bottom. Activating the transcript node runs `earlier` unless it is loading. An optional `source` names a transcript source that holds the rows instead of `children`, which must then be empty (see [Transcript layout](#transcript-layout)). |
 | `Message` | One message with a `role` (`user`, `assistant`, or `system`), an optional short `note`, and children. Adapters draw a user message as a trailing bubble, an assistant message full width, and a system message as a quiet row. |
 | `Markdown` | Blocks the application parsed (`rust_native::markdown`): headings, paragraphs, lists with task states, fenced code with its language, quotes, tables with alignment, and rules; inline spans carry bold, italic, strikethrough, code, and an inert link destination. Adapters lay out the blocks; they never parse Markdown, load images, or open links unless the application admits it. For a streaming reply, `IncrementalMarkdown` reparses only the last top-level block, reports how many leading blocks stayed unchanged, and offers a display copy whose tail closes half-written emphasis, code, and links (a streaming link has an empty destination). Its canonical blocks always equal a full parse. |
 | `Tool` | A tool call: a nonempty `name`, a one-line `detail`, a `state` (`running`, `done`, or `failed`), and children the reader can expand. Expansion is adapter state. |
@@ -107,6 +107,19 @@ adapter presents them, not a separate wire contract.
   that are new or changed as intent-free `Node<()>` values, the expanded tool
   keys, and the `earlier` control's label and loading state. Each row passes
   the same checks as a one-node view. A layout holds at most 20,000 rows.
+- **Transcript sources.** An application that holds its rows in Rust can keep
+  them out of the view. `layout::source::detach` moves each transcript's rows
+  into a named source (`{scope}:{key}`) in the same process and leaves the
+  node with its label, its `earlier` control, and `source`. Each row still
+  passes the one-node view checks, but the transcript's total no longer
+  counts against the view's 512 KiB and 1,024-node bounds. The adapter's
+  update then names the source instead of carrying `order`, `rows`, and
+  `earlier`, and Rust reads the newest publication and lays out only the rows
+  whose content changed. The adapter decodes and encodes no rows. A
+  republished row that is unchanged keeps its hash without another
+  validation. A detach retires the scope's sources that its view no longer
+  shows. A process holds at most 64 sources. Adapters whose rows arrive as
+  JSON can publish a transcript node with `rust_native_source_publish`.
 - **Text sizes.** The curve lists at most 16 `[nominal, scaled]` points, such
   as Dynamic Type's size for each text style, each 0.5–4 times its nominal
   size. A size between two points interpolates, and a size outside them keeps

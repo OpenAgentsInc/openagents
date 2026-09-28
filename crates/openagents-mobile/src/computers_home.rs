@@ -346,6 +346,7 @@ mod tests {
             Launch {
                 computers_fixture: true,
                 native_computers: true,
+                ..Launch::default()
             },
         )
         .expect("app");
