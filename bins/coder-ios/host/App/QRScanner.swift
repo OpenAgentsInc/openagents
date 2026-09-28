@@ -10,9 +10,12 @@ private final class CameraWorker: NSObject, AVCaptureMetadataOutputObjectsDelega
     private var configured = false
     private var delivered = false
     private var completion: ((Result<String, Error>) -> Void)?
+    private var accept: (String) throws -> String = QRInvitation.bounded
 
-    func start(completion: @escaping (Result<String, Error>) -> Void) {
+    func start(accept: @escaping (String) throws -> String,
+               completion: @escaping (Result<String, Error>) -> Void) {
         queue.async {
+            self.accept = accept
             self.completion = completion
             self.delivered = false
             do {
@@ -59,7 +62,8 @@ private final class CameraWorker: NSObject, AVCaptureMetadataOutputObjectsDelega
         delivered = true
         let callback = completion
         completion = nil
-        let result = Result { try QRInvitation.bounded(value) }
+        let accept = self.accept
+        let result = Result { try accept(value) }
         queue.async {
             if self.session.isRunning { self.session.stopRunning() }
             callback?(result)
@@ -77,7 +81,7 @@ private final class QRScanner: ObservableObject {
     private var requesting = false
     var session: AVCaptureSession { worker.session }
 
-    func start(decoded: @escaping (String) -> Void) {
+    func start(accept: @escaping (String) throws -> String, decoded: @escaping (String) -> Void) {
         guard !running, !requesting else { return }
         generation &+= 1
         let current = generation
@@ -102,7 +106,7 @@ private final class QRScanner: ObservableObject {
                 return
             }
             self.running = true
-            self.worker.start { [weak self] result in
+            self.worker.start(accept: accept) { [weak self] result in
                 Task { @MainActor in
                     guard let self, self.generation == current else { return }
                     self.running = false
@@ -160,6 +164,9 @@ struct InlineQRScanner: View {
     @Environment(\.openURL) private var openURL
     /// What the camera should be pointed at.
     var prompt = "Point the camera at the QR invitation on your computer."
+    /// Checks a scanned code before it is delivered; the default admits only
+    /// Coder invitations. A wallet passes its own, and Rust validates the rest.
+    var accept: (String) throws -> String = QRInvitation.bounded
     let decoded: (String) -> Void
 
     var body: some View {
@@ -175,14 +182,14 @@ struct InlineQRScanner: View {
                         if let url = URL(string: UIApplication.openSettingsURLString) { openURL(url) }
                     }
                 }
-                Button("Try scanning again") { scanner.start(decoded: decoded) }
+                Button("Try scanning again") { scanner.start(accept: accept, decoded: decoded) }
             }
         }
-        .onAppear { scanner.start(decoded: decoded) }
+        .onAppear { scanner.start(accept: accept, decoded: decoded) }
         .onDisappear { scanner.stop() }
         .onChange(of: phase) { _, current in
             if current == .background { scanner.stop() }
-            if current == .active { scanner.start(decoded: decoded) }
+            if current == .active { scanner.start(accept: accept, decoded: decoded) }
         }
     }
 }

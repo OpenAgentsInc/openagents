@@ -382,7 +382,8 @@ struct WalletTab: View {
                 }
             default:
                 if scanning {
-                    InlineQRScanner(prompt: "Point the camera at a Lightning invoice, Lightning address, or Bitcoin QR code.") { scanned in
+                    InlineQRScanner(prompt: "Point the camera at a Lightning invoice, Lightning address, or Bitcoin QR code.",
+                                    accept: QRInvitation.payment) { scanned in
                         scanning = false
                         payInput = scanned
                         bridge.wallet("wallet_quote", ["input": scanned, "amount": payAmount, "comment": payComment])

@@ -16,6 +16,17 @@ enum QRInvitation {
         return text
     }
 
+    /// Any payment code a wallet can read: a Lightning invoice or address,
+    /// LNURL, Spark address, or Bitcoin address or URI. Only the size is
+    /// checked here; the wallet's Rust side decides what it can pay.
+    static func payment(_ text: String) throws -> String {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed.utf8.count <= 4096 else {
+            throw Failure.message("This QR code is not a payment code the wallet can read.")
+        }
+        return trimmed
+    }
+
     static func decode(image: CGImage) throws -> String {
         guard image.width <= 4096, image.height <= 4096 else {
             throw Failure.message("The QR image is too large.")
