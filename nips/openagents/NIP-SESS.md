@@ -491,8 +491,9 @@ also the entry's `updated_at`. The page cursor covers membership, not order:
 a chat that moves between page requests can repeat or be skipped, so readers
 merge pages by chat ID. A chat without a title is named from the first line
 of its first user message that is not injected context. A backward read
-returns the page of whole records ending at or before `end` (`u64::MAX` for
-the newest complete record) and, when earlier records remain, `previous`:
+returns the page of whole records ending at or before `end` (any offset at
+or past the source's length, such as 2^53 − 1, for the newest complete
+record) and, when earlier records remain, `previous`:
 the `end` of the page before it. Its `next` cursor continues forward from
 its last record, so a reader can open a chat at its end, page back on
 request, and poll for new records.

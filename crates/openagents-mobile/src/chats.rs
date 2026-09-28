@@ -25,7 +25,11 @@ const CATALOG_PAGES: usize = 8;
 /// Stop reading a computer's catalog once this many chats would show.
 const CATALOG_WANTED: usize = 60;
 /// Backward transcript pages read for one batch of messages.
-const TRANSCRIPT_PAGES: usize = 8;
+const TRANSCRIPT_PAGES: usize = 12;
+/// Raw bytes per backward page. A full 32 KiB page, base64-encoded with its
+/// readable projections, can exceed what one sealed observer reply holds;
+/// 16 KiB stays well inside it. A single larger record is skipped.
+const PAGE_BYTES: u32 = 16 * 1024;
 /// Messages a batch shows: the newest when a chat opens, then more each time
 /// earlier messages are asked for.
 const BATCH_MESSAGES: usize = 10;
@@ -432,7 +436,7 @@ impl Chats {
             earlier: false,
             error: None,
         });
-        self.read_back(client, computer, source, u64::MAX);
+        self.read_back(client, computer, source, coder_history::NEWEST);
     }
 
     /// Read the batch of messages before the earliest one shown.
@@ -537,7 +541,7 @@ async fn batch(
         let request = TranscriptRequest {
             source_id: source.to_owned(),
             cursor: None,
-            max_bytes: coder_history::MAX_PAGE_BYTES,
+            max_bytes: PAGE_BYTES,
             end: Some(end),
         };
         let Observation::Page(page) = observe(client, Query::Page(request)).await? else {

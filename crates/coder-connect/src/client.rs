@@ -196,9 +196,49 @@ pub(crate) fn check_observation(query: &Query, observation: &Observation) -> Res
                     "transcript page identity or progress differs",
                 );
             }
-            let mut offset = request.cursor.as_ref().map_or(0, |c| c.offset);
-            let mut record_offset = request.cursor.as_ref().map_or(0, |c| c.record_offset);
-            let mut record_index = request.cursor.as_ref().map_or(0, |c| c.record_index);
+            // A backward read starts at the first whole record it returns,
+            // or, when it returns none, where its cursor points.
+            let backward = request.end.map(|end| {
+                let first = page.chunks.first();
+                (
+                    end,
+                    first.map_or(page.next.offset, |c| c.offset),
+                    first.map_or(page.next.record_index, |c| c.index),
+                )
+            });
+            if let Some((end, start, _)) = backward
+                && (request.cursor.is_some()
+                    || page
+                        .chunks
+                        .first()
+                        .is_some_and(|c| c.offset != c.record_offset)
+                    || page.chunks.last().is_some_and(|c| !c.complete)
+                    || page.previous != (start > 0).then_some(start)
+                    || page.next.offset > end)
+            {
+                return fail(
+                    ErrorCode::Malformed,
+                    "backward transcript page is not whole records before its end",
+                );
+            }
+            if backward.is_none() && page.previous.is_some() {
+                return fail(
+                    ErrorCode::Malformed,
+                    "a forward transcript page names an earlier page",
+                );
+            }
+            let mut offset = match backward {
+                Some((_, start, _)) => start,
+                None => request.cursor.as_ref().map_or(0, |c| c.offset),
+            };
+            let mut record_offset = match backward {
+                Some((_, start, _)) => start,
+                None => request.cursor.as_ref().map_or(0, |c| c.record_offset),
+            };
+            let mut record_index = match backward {
+                Some((_, _, index)) => index,
+                None => request.cursor.as_ref().map_or(0, |c| c.record_index),
+            };
             let start = offset;
             if request
                 .cursor

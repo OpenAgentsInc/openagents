@@ -11,6 +11,10 @@ pub const MAX_RESPONSE_BYTES: usize = 112 * 1024;
 pub const MAX_PAGE_BYTES: u32 = 32 * 1024;
 pub const MAX_CHUNK_BYTES: usize = 8 * 1024;
 pub const MAX_CATALOG_PAGE: u16 = 32;
+/// The `end` of a backward read that starts at the newest record: any offset
+/// at or past the source's length works, and this one is the largest integer
+/// that canonical JSON (RFC 8785) carries exactly.
+pub const NEWEST: u64 = (1 << 53) - 1;
 pub const MAX_READABLE_RECORD_BYTES: usize = 256 * 1024;
 
 mod project;
@@ -105,7 +109,7 @@ pub struct TranscriptRequest {
     pub cursor: Option<TranscriptCursor>,
     pub max_bytes: u32,
     /// Read backward instead of from a cursor: the page of whole records
-    /// that ends at or before this offset, `u64::MAX` for the newest. It
+    /// that ends at or before this offset, [`NEWEST`] for the newest. It
     /// needs no cursor; the page's `previous` names the next one to ask for.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub end: Option<u64>,

@@ -512,7 +512,7 @@ fn backward_pages_walk_whole_records_from_the_newest() {
     let whole = fs::read(&path).unwrap();
     let complete = &whole[..whole.iter().rposition(|b| *b == b'\n').unwrap() + 1];
 
-    let mut end = u64::MAX;
+    let mut end = NEWEST;
     let mut pages = Vec::new();
     loop {
         let page = back(&history, &source, end, 300);
@@ -534,7 +534,7 @@ fn backward_pages_walk_whole_records_from_the_newest() {
     assert_eq!(joined, complete);
 
     // The newest page's forward cursor continues after its last record.
-    let newest = back(&history, &source, u64::MAX, 300);
+    let newest = back(&history, &source, NEWEST, 300);
     assert_eq!(newest.next.offset, complete.len() as u64);
     assert!(newest.has_more, "the partial record remains to read");
     let after = read(&history, &source, Some(newest.next), MAX_PAGE_BYTES);
@@ -548,7 +548,7 @@ fn backward_pages_walk_whole_records_from_the_newest() {
                 source_id: source.clone(),
                 cursor: Some(after.next),
                 max_bytes: 300,
-                end: Some(u64::MAX),
+                end: Some(NEWEST),
             })
             .is_err()
     );

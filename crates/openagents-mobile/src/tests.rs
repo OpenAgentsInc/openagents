@@ -457,9 +457,10 @@ fn live_chat_list_and_tail() {
     let reader = packet.chats.unwrap();
     let text = values(&reader);
     eprintln!(
-        "opened: {} rows, earlier: {}",
+        "opened: {} rows, earlier: {}, text: {:?}",
         text.len(),
-        key_for(&reader, "Show earlier messages").is_some()
+        key_for(&reader, "Show earlier messages").is_some(),
+        text
     );
     assert_eq!(text.last().map(String::as_str), Some("Latest"));
     if let Some(node) = key_for(&reader, "Show earlier messages") {

@@ -161,6 +161,44 @@ fn catalog_page_cursor_and_exact_request_correlation() {
 }
 
 #[test]
+fn backward_page_seals_and_verifies_from_the_newest_record() {
+    let f = Fixture::new("wss://relay.example/");
+    let client = f.client();
+    let pending = f.catalog();
+    let response = f
+        .host()
+        .handle(&pending.event, &f.code.relay, f.now)
+        .unwrap();
+    let Observation::Catalog(catalog) = client.verify_reply(&pending, &response, f.now).unwrap()
+    else {
+        panic!("catalog expected")
+    };
+    let source_id = catalog.entries[0].source_id.clone().unwrap();
+    // NEWEST survives canonical JSON; u64::MAX would not seal.
+    let pending = client
+        .prepare(
+            Query::Page(TranscriptRequest {
+                source_id,
+                cursor: None,
+                max_bytes: coder_history::MAX_PAGE_BYTES,
+                end: Some(coder_history::NEWEST),
+            }),
+            f.now,
+        )
+        .unwrap();
+    let response = f
+        .host()
+        .handle(&pending.event, &f.code.relay, f.now)
+        .unwrap();
+    let Observation::Page(page) = client.verify_reply(&pending, &response, f.now).unwrap() else {
+        panic!("page expected")
+    };
+    assert!(!page.chunks.is_empty());
+    assert!(page.chunks.iter().all(|chunk| chunk.complete));
+    assert_eq!(page.previous, None, "a short source fits in one page");
+}
+
+#[test]
 fn durable_revocation_blocks_cached_retries_and_source_revocation_ends_grant() {
     let f = Fixture::new("wss://relay.example/");
     let pending = f.catalog();
