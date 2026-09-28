@@ -9,6 +9,7 @@ current direction and navigation.
 | --- | --- | --- |
 | [Transcript-derived roadmap](2026-09-25-transcript-roadmap.md) | Connects the product's history and themes to proposed work. | [Master roadmap](../roadmap.md), [suite tracker](../coder/migration-status.md) |
 | [Earlier Gym migration survey](2026-09-26-retired-gym-migration.md) | Preserves the September 19 comparison of old and private Gym implementations. | [Gym](../gym/README.md), [Terminal-Bench](../terminal-bench/README.md) |
+| [Tassadar and Percepta history](2026-09-28-tassadar-percepta.md) | Consolidates every Tassadar/Percepta code and documentation lineage across this repository's history and `psionic`. | Retired program; live code remains in `psionic` |
 
 Dated measurements and audits remain in their original domain directories.
 They are linked evidence, not obsolete files to delete. The separate
