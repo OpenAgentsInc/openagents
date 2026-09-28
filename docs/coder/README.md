@@ -34,6 +34,9 @@ out-of-sample knowledge test, open the knowledge base to contributors, and
 bring that work into Verse as quests and XP. The
 [showcase](beat-fable-showcase.md) is its public write-up: where Microcoder
 beats Fable 5.1 low, with the Gym's labels, and how to join.
+[Cheapest verified passes, and a network that gets smarter](cheapest-verified-passes.md)
+is the essay behind both: what the evidence shows today, and what shared
+knowledge still has to prove.
 
 ## Use the current implementation
 

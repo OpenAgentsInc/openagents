@@ -70,6 +70,7 @@ files are included below.
 | [coder/README.md](coder/README.md) | Index | Coder documentation |
 | [coder/beat-fable-showcase.md](coder/beat-fable-showcase.md) | Reference | Where Microcoder beats Fable 5.1 low, and what that doesn't show yet |
 | [coder/beat-fable-together.md](coder/beat-fable-together.md) | Reference | Beating Fable together: the plan after Episode 288 |
+| [coder/cheapest-verified-passes.md](coder/cheapest-verified-passes.md) | Essay | Cheapest verified passes, and a network that gets smarter |
 | [coder/design/2026-09-21-project-roadmap-snapshot.md](coder/design/2026-09-21-project-roadmap-snapshot.md) | Design / assessment | Decision Router and Coder project snapshot |
 | [coder/design/2026-09-24-assessment.md](coder/design/2026-09-24-assessment.md) | Design / assessment | Where Coder stands: assessment, 2026-09-24 |
 | [coder/design/2026-09-25-assessment.md](coder/design/2026-09-25-assessment.md) | Design / assessment | Where Coder stands: assessment, 2026-09-25 |
