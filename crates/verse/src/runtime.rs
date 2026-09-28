@@ -177,6 +177,10 @@ impl WorldRuntime {
         if self.bare {
             atmosphere.color = crate::palette::neutral(atmosphere.color);
         }
+        if self.bare && self.is_plaza() {
+            atmosphere.fog_start = crate::render::BARE_FOG_START;
+            atmosphere.fog_end = crate::render::BARE_FOG_END;
+        }
         atmosphere
     }
 
@@ -961,6 +965,24 @@ mod tests {
         );
         let [r, g, b] = runtime.atmosphere().color;
         assert!(r == g && g == b);
+        // The bare grid fades from near the player toward the horizon, on
+        // both render paths; Coder's plaza keeps its own distances.
+        let atmosphere = runtime.atmosphere();
+        assert_eq!(
+            (atmosphere.fog_start, atmosphere.fog_end),
+            (crate::render::BARE_FOG_START, crate::render::BARE_FOG_END)
+        );
+        assert!(atmosphere.fog_end < world::HALF);
+        assert!(atmosphere.validate().is_ok());
+        assert_eq!(
+            (neon.fog_start, neon.fog_end),
+            (atmosphere.fog_start, atmosphere.fog_end)
+        );
+        let plaza = WorldRuntime::new().atmosphere();
+        assert_eq!(
+            (plaza.fog_start, plaza.fog_end),
+            (crate::render::FOG_START, crate::render::FOG_END)
+        );
         // Standing where the plaza's objects would be reaches none of them.
         runtime
             .set_spawn(world::COMPUTER + Vec3::Z * -2.0, 0.0)

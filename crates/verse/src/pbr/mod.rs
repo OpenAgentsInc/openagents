@@ -350,11 +350,14 @@ impl Neon {
         }
     }
 
-    /// The bare world's stage: the plaza's, over the neutral field.
+    /// The bare world's stage: the plaza's, over the neutral field, with the
+    /// bare world's nearer fog, so the distant grid fades toward the horizon.
     #[must_use]
     pub fn neutral(time: f32) -> Self {
         Self {
             field: crate::palette::neutral(crate::palette::field()),
+            fog_start: crate::render::BARE_FOG_START,
+            fog_end: crate::render::BARE_FOG_END,
             ..Self::plaza(time)
         }
     }

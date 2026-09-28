@@ -16,6 +16,11 @@ doors, computer, Gym, or companion. See
 [presence in the OpenAgents app](#presence-in-the-openagents-app) and
 [OpenAgents for iOS](../../bins/openagents-ios/README.md).
 
+The bare world's fog starts 6 m from the camera and is total at 110 m, well
+inside the grid's 264 m edge, so the grid dims gradually toward the horizon
+instead of drawing the distant lines as bright as the near ones. Coder's
+plaza keeps its own fog, from 60 m to 250 m.
+
 ### The ball
 
 The bare world has three physical objects: a ball, a stack of cubes, and an
