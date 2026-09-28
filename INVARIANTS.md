@@ -79,3 +79,13 @@ See [the auto-start guide](docs/coder/runtime/host-autostart.md).
 | A bare-world presence session publishes at most `EVENT_BUDGET` (54) events in any minute, frames and states together, and a frame leaves four of those slots for durable states. | New on 2026-09-28. | `a_bare_world_player_stays_within_the_event_budget_while_playing` in `crates/verse`; `bare_world_players_share_the_ball_its_rest_and_the_reset` in `crates/coder-mobile` |
 | Shared-body reports outside the world's walls, below its floor, faster than 60 m/s or 60 rad/s, of unknown bodies, or of another body set change nothing; body reports never reach the crowd of drawn players. | New on 2026-09-28. | `implausible_reports_change_nothing`, `body_reports_reach_the_inbox_and_never_the_crowd`, `a_body_snapshot_round_trips_and_is_checked`, `only_a_shared_body_carries_a_stamp` |
 | Stamps order claims; they do not authorize them. Any participant may claim any shared body, so no shared body may decide combat, trade, scores, or anything else with stakes without a separate validating authority. | Model boundary, new on 2026-09-28. | Documented in `nips/openagents/NIP-MV.md#shared-bodies` |
+
+## Published benchmark results
+
+| Invariant | Status | Checked by |
+| --- | --- | --- |
+| Every number in the Gym's published leaderboard is computed by `gym-leaderboard` from a committed evidence file whose SHA-256 the board records; a source adapter refuses to build when its recomputed verdicts or tallies disagree with what the study recorded. | New on 2026-09-28 ([#9840](https://github.com/OpenAgentsInc/openagents/issues/9840)). | `the_delegate_board_says_what_the_9776_report_says`, `the_tb21_board_says_what_the_essay_says`, `a_recorded_verdict_the_numbers_dont_support_refuses_to_build`, `tallies_that_disagree_with_the_rows_refuse_to_build` in `crates/gym-leaderboard` |
+| An attempt whose cost is unknown never counts as a beat, and a beat whose knowledge was written from the same task carries `in_sample`. | New on 2026-09-28. | `the_delegate_board_says_what_the_9776_report_says` |
+| A trace bundle reads only retained files whose digests match `retention.json`, is scrubbed of credential shapes and personal paths, and fits 256 KiB; a bundle that matched a credential rule fails `gym-leaderboard check`. The committed publication is byte-identical to regeneration from the evidence. | New on 2026-09-28. | `a_trace_that_changed_after_retention_refuses_to_bundle`, `a_planted_credential_is_redacted_and_fails_the_check`, `every_bundle_fits_its_bound_and_matched_no_credential_rule`, `the_committed_publication_matches_the_evidence` |
+
+See [the Gym leaderboard spec](docs/verse/gym-leaderboard.md).

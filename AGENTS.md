@@ -105,6 +105,13 @@ uses, and marks which are implemented and which are only specified.
   directories and executable revisions are admitted explicitly; entry starts
   observation, and launches require confirmation. Read `docs/verse/gym.md` and
   the crate README before changing its authority, source readers, or retry rules.
+- `crates/gym-leaderboard` — the Gym's published benchmark results: a typed,
+  versioned leaderboard (`openagents.gym.leaderboard.v1`) and scrubbed,
+  bounded trace bundles, generated from committed Terminal-Bench evidence
+  into `bench/terminal-bench/published/` by `gym-leaderboard build`. Each
+  adapter recomputes its study's verdicts and refuses to build on
+  disagreement. Regenerate after adding evidence; read
+  `docs/verse/gym-leaderboard.md` before changing the contract.
 - `crates/tenancy` — the tenant-to-artifact registry: a versioned,
   self-digested manifest binding a tenant identity to the door names it may
   reach, each bound to an artifact digest and its execution configuration.

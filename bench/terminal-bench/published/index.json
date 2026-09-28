@@ -1,0 +1,13 @@
+{
+  "schema": "openagents.gym.leaderboard-index.v1",
+  "publications": [
+    {
+      "digest": "50711c103afa4da8f8e06c576e245d4920ab4bd9f0dc5515db5b88ca064c1393",
+      "commit": "6a7a057bae3569e05de5ebecf4f82f04c3f4a5a3",
+      "boards": [
+        "tb4-fable-delegate-repro-9776",
+        "tb21-oos-microcoder-9683"
+      ]
+    }
+  ]
+}
