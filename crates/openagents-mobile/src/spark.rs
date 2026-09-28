@@ -52,6 +52,33 @@ pub fn sdk_config(network: Network) -> breez_sdk_spark::Config {
     config
 }
 
+/// The MoonPay page for buying `amount_sats` into `address`, built as Breez's
+/// SDK builds it (`breez_sdk_common::buy::moonpay`, tag 0.26.0: the same
+/// key, parameters, and order) but without the signature that Breez's server
+/// no longer supplies. MoonPay checks a signature only when one is sent.
+pub fn moonpay_url(address: &str, amount_sats: u64) -> Result<String, String> {
+    let address = address.trim();
+    if address.is_empty() || !address.chars().all(|c| c.is_ascii_alphanumeric()) {
+        return Err("no Bitcoin deposit address".into());
+    }
+    let btc = format!("{}.{:08}", amount_sats / 100_000_000, amount_sats % 100_000_000);
+    let mut url = url::Url::parse("https://buy.moonpay.io").map_err(|error| error.to_string())?;
+    url.query_pairs_mut().extend_pairs([
+        ("apiKey", "pk_live_Mx5g6bpD6Etd7T0bupthv7smoTNn2Vr"),
+        ("currencyCode", "btc"),
+        ("walletAddress", address),
+        ("colorCode", "#055DEB"),
+        ("theme", "light"),
+        ("quoteCurrencyAmount", btc.as_str()),
+        ("lockAmount", "true"),
+        (
+            "redirectURL",
+            "https://buy.moonpay.io/transaction_receipt?addFunds=true",
+        ),
+    ]);
+    Ok(url.into())
+}
+
 /// A prepared payment, kept here between its quote and its confirmation.
 enum Prepared {
     Send(Box<PrepareSendPaymentResponse>, Option<SendPaymentOptions>),
@@ -452,10 +479,18 @@ impl Node for SparkNode {
             },
             Provider::CashApp => BuyBitcoinRequest::CashApp { amount_sats },
         };
-        self.runtime
-            .block_on(self.sdk.buy_bitcoin(request))
-            .map(|response| response.url)
-            .map_err(|error| describe("buy", &error.to_string()))
+        match self.runtime.block_on(self.sdk.buy_bitcoin(request)) {
+            Ok(response) => Ok(response.url),
+            // The SDK has Breez's server sign the MoonPay URL, and Breez's
+            // production server answers that call `Unimplemented`
+            // (2026-09-28, #9865). MoonPay opens the same URL unsigned for
+            // this key, so build it for the same deposit address.
+            Err(_) if provider == Provider::Moonpay => self
+                .bitcoin_address()
+                .and_then(|address| moonpay_url(&address, amount_sats))
+                .map_err(|error| describe("buy", &error)),
+            Err(error) => Err(describe("buy", &error.to_string())),
+        }
     }
 
     fn deposits(&self) -> Result<Vec<DepositRow>, String> {

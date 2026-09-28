@@ -1906,6 +1906,36 @@ mod tests {
         assert!(node.payments(10).expect("payments").is_empty());
         let buy = node.buy(Provider::CashApp, 1_000).expect("cash app link");
         assert!(buy.starts_with("https://cash.app/"));
+        let moonpay = node.buy(Provider::Moonpay, 50_000).expect("moonpay link");
+        assert!(moonpay.starts_with("https://buy.moonpay.io/?apiKey="), "{moonpay}");
+        assert!(moonpay.contains("walletAddress=bc1"), "{moonpay}");
+    }
+
+    /// Breez's server stopped signing MoonPay URLs (#9865), so the phone
+    /// builds the SDK's URL unsigned: the SDK's key and parameters, the
+    /// wallet's deposit address, and the amount in BTC with the amount
+    /// locked. Anything but a plain address is refused.
+    #[test]
+    fn moonpay_opens_unsigned_for_the_deposit_address() {
+        let url = crate::spark::moonpay_url(" bc1qexampleaddress0 ", 50_000).expect("url");
+        let parsed = url::Url::parse(&url).expect("parses");
+        assert_eq!(parsed.scheme(), "https");
+        assert_eq!(parsed.host_str(), Some("buy.moonpay.io"));
+        let pairs: std::collections::HashMap<String, String> = parsed.query_pairs().into_owned().collect();
+        assert_eq!(pairs["apiKey"], "pk_live_Mx5g6bpD6Etd7T0bupthv7smoTNn2Vr");
+        assert_eq!(pairs["currencyCode"], "btc");
+        assert_eq!(pairs["walletAddress"], "bc1qexampleaddress0");
+        assert_eq!(pairs["quoteCurrencyAmount"], "0.00050000");
+        assert_eq!(pairs["lockAmount"], "true");
+        assert_eq!(pairs["colorCode"], "#055DEB");
+        assert!(!pairs.contains_key("signature"));
+        assert_eq!(
+            crate::spark::moonpay_url(&"x".repeat(0), 1).unwrap_err(),
+            "no Bitcoin deposit address"
+        );
+        assert!(crate::spark::moonpay_url("bc1q&apiKey=evil", 1).is_err());
+        let whole = crate::spark::moonpay_url("bc1q", 123_456_789).expect("url");
+        assert!(whole.contains("quoteCurrencyAmount=1.23456789"), "{whole}");
     }
 
     fn rand_entropy() -> [u8; 16] {

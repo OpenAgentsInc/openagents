@@ -140,6 +140,7 @@ struct WalletTab: View {
             .padding(.vertical, 16)
         }
         .scrollDismissesKeyboard(.interactively)
+        .dismissesKeyboard()
         .background(Color.black.ignoresSafeArea())
         .refreshable { bridge.refreshWallet() }
         .onAppear {
@@ -581,6 +582,7 @@ private struct TrustSheet: View {
 private struct WordsSheet: View {
     let words: [String]
     let done: () -> Void
+    @State private var copied = false
 
     var body: some View {
         NavigationStack {
@@ -598,6 +600,18 @@ private struct WordsSheet: View {
                         }
                     }
                     .privacySensitive()
+                    Button(copied ? "Copied" : "Copy words", systemImage: copied ? "checkmark" : "doc.on.doc") {
+                        // One line of words separated by spaces, the form a
+                        // restore takes. This device's pasteboard only, for a
+                        // minute.
+                        KeyCopy.copy(words.joined(separator: " "), secret: true)
+                        copied = true
+                        Task { try? await Task.sleep(for: .seconds(2)); copied = false }
+                    }
+                    .buttonStyle(.bordered).tint(.white)
+                    .accessibilityIdentifier("wallet-copy-words")
+                    Text("The copy stays on this phone and is cleared after a minute. Paste it somewhere offline, not into a message or a notes app that syncs.")
+                        .font(.footnote).foregroundStyle(.gray)
                 }
                 .padding(20)
             }
@@ -645,6 +659,7 @@ private struct RestoreSheet: View {
                 Spacer()
             }
             .padding(20)
+            .dismissesKeyboard()
             .background(Color.black.ignoresSafeArea())
             .navigationTitle("Restore")
             .navigationBarTitleDisplayMode(.inline)
@@ -673,4 +688,78 @@ extension WalletState {
         empty: nil, synced_at: nil, refreshing: true, error: nil, balance_unknown: true,
         status: "Opening the wallet…", warning: nil, trust: nil, receive: nil, send: nil,
         payments: nil, can_show_words: false, buy: nil, deposits: nil, claim: nil)
+}
+
+/// Dismiss the keyboard from a Done bar just above it and from a tap
+/// anywhere outside a text field. The tap does not stop the touch, so a
+/// button tapped while the keyboard is up still acts.
+private struct DismissesKeyboard: ViewModifier {
+    @State private var keyboard = false
+
+    func body(content: Content) -> some View {
+        content
+            .background(OutsideTap().frame(width: 0, height: 0))
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                if keyboard {
+                    HStack {
+                        Spacer()
+                        Button("Done") { OutsideTap.dismiss() }
+                            .fontWeight(.semibold).tint(.white)
+                            .accessibilityIdentifier("keyboard-done")
+                    }
+                    .padding(.horizontal, 20).padding(.vertical, 10)
+                    .background(Color(white: 0.1))
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
+                keyboard = true
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+                keyboard = false
+            }
+    }
+}
+
+extension View {
+    fileprivate func dismissesKeyboard() -> some View { modifier(DismissesKeyboard()) }
+}
+
+/// Watches taps on its window while it is on screen and ends editing when one
+/// lands outside a text field.
+private struct OutsideTap: UIViewRepresentable {
+    static func dismiss() {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
+
+    func makeUIView(context: Context) -> Watcher { Watcher() }
+    func updateUIView(_ view: Watcher, context: Context) {}
+
+    final class Watcher: UIView, UIGestureRecognizerDelegate {
+        private lazy var tap: UITapGestureRecognizer = {
+            let tap = UITapGestureRecognizer(target: self, action: #selector(tapped))
+            tap.cancelsTouchesInView = false
+            tap.delegate = self
+            return tap
+        }()
+
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            tap.view?.removeGestureRecognizer(tap)
+            window?.addGestureRecognizer(tap)
+        }
+
+        @objc private func tapped() { OutsideTap.dismiss() }
+
+        func gestureRecognizer(_ recognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+            var view = touch.view
+            while let current = view {
+                if current is UITextField || current is UITextView { return false }
+                view = current.superview
+            }
+            return true
+        }
+
+        func gestureRecognizer(_ recognizer: UIGestureRecognizer,
+                               shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool { true }
+    }
 }
