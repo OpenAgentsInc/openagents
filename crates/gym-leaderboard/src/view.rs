@@ -408,6 +408,9 @@ pub struct Source {
     pub freshness: Freshness,
     /// Seconds since the publication was fetched, for a cached copy.
     pub age_seconds: Option<u64>,
+    /// Who signed the publication, when the reader checked.
+    #[serde(default)]
+    pub signature: crate::signed::Signature,
 }
 
 /// Whether the publication on screen is the index's latest.
@@ -446,6 +449,9 @@ impl Source {
                 let _ = write!(text, " · offline, cached {age} ago");
             }
             (Freshness::Offline, None) => text.push_str(" · offline, cached"),
+        }
+        if let Some(signed) = self.signature.text() {
+            let _ = write!(text, " · {signed}");
         }
         text
     }

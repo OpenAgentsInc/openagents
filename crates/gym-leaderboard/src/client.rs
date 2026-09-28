@@ -22,6 +22,13 @@
 //! is read (512 KiB for a leaderboard, 256 KiB for a bundle, 1 MiB for the
 //! index), with connect and whole-request timeouts.
 //!
+//! After the leaderboard verifies, the client reads its signed results
+//! publication at `signatures/<digest>.json`, at the index's ref, and
+//! checks it against the pinned publishers ([`crate::signed`]): a missing
+//! file is "not signed", a bad one is refused with its reason, and either
+//! way the digest-verified numbers stay. The event is cached beside the
+//! leaderboard and checked again from the cache.
+//!
 //! [`Fetcher`] does the work, blocking; [`Client`] runs it on its own
 //! thread, one request at a time: a new request cancels the one in flight,
 //! and the caller polls for [`Event`]s without blocking, like the Gym
@@ -39,6 +46,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use serde::{Deserialize, Serialize};
 
 use crate::contract::{INDEX_SCHEMA, Index, Leaderboard, TraceBundle, TraceRef};
+use crate::signed::{self, MAX_SIGNATURE_BYTES, Publisher, Signature};
 use crate::verify::{self, Refusal};
 use crate::{INDEX_FILE, LEADERBOARD_FILE, MAX_BUNDLE_BYTES, MAX_LEADERBOARD_BYTES};
 
@@ -68,6 +76,9 @@ pub struct Config {
     pub connect_timeout: Duration,
     /// The whole request, headers and body.
     pub timeout: Duration,
+    /// The publishers whose signed results publication is trusted; the
+    /// build's pinned ones by default ([`signed::pinned`]).
+    pub publishers: Vec<Publisher>,
 }
 
 impl Config {
@@ -81,6 +92,7 @@ impl Config {
             cache_bytes: DEFAULT_CACHE_BYTES,
             connect_timeout: Duration::from_secs(10),
             timeout: Duration::from_secs(30),
+            publishers: signed::pinned(),
         }
     }
 
@@ -147,6 +159,9 @@ pub struct Loaded {
     pub freshness: Freshness,
     /// Unix seconds when it was last checked against the index.
     pub checked_at: u64,
+    /// Who signed it: verified, refused with a reason, not signed, or
+    /// unchecked (no signed event cached and the host unreachable).
+    pub signature: Signature,
 }
 
 impl Loaded {
@@ -229,12 +244,14 @@ impl Fetcher {
         let bytes = std::fs::read(&path).ok()?;
         let leaderboard = verify::leaderboard(&bytes, Some(&digest)).ok()?;
         touch(&path);
+        let signature = self.cached_signature(&leaderboard, &digest, state.commit.as_deref());
         Some(Loaded {
             leaderboard: Arc::new(leaderboard),
             digest,
             commit: state.commit,
             freshness: Freshness::Cached { problem: None },
             checked_at: state.checked_at,
+            signature,
         })
     }
 
@@ -291,6 +308,12 @@ impl Fetcher {
             loaded.freshness = Freshness::Current;
             loaded.checked_at = now;
             loaded.commit.clone_from(&last.commit);
+            loaded.signature = self.signature(
+                &loaded.leaderboard,
+                &loaded.digest,
+                loaded.commit.as_deref(),
+                cancel,
+            )?;
             return Ok(loaded);
         }
 
@@ -330,18 +353,80 @@ impl Fetcher {
                         checked_at: now,
                     })?;
                     self.evict()?;
+                    let signature =
+                        self.signature(&leaderboard, &last.digest, last.commit.as_deref(), cancel)?;
                     return Ok(Loaded {
                         leaderboard: Arc::new(leaderboard),
                         digest: last.digest.clone(),
                         commit: last.commit.clone(),
                         freshness: Freshness::Current,
                         checked_at: now,
+                        signature,
                     });
                 }
                 Err(refusal) => last_error = ClientError::Refused(refusal),
             }
         }
         fallback(last_error)
+    }
+
+    /// The signed results publication for a verified leaderboard, fetched
+    /// at the index's ref and checked. A missing file is
+    /// [`Signature::Unsigned`]; an unreachable host falls back to the
+    /// cached event, or [`Signature::Unchecked`] without one.
+    fn signature(
+        &self,
+        leaderboard: &Leaderboard,
+        digest: &str,
+        commit: Option<&str>,
+        cancel: &AtomicBool,
+    ) -> Result<Signature, ClientError> {
+        let file = signed::signature_path(digest);
+        let url = self.config.url(&self.config.index_ref, &file);
+        let path = self.dir("signatures")?.join(format!("{digest}.json"));
+        match self.fetch(&url, MAX_SIGNATURE_BYTES, cancel, true) {
+            Ok(Some(bytes)) => {
+                write_atomic(&path, &bytes)?;
+                Ok(self.check_signature(&bytes, leaderboard, digest, commit))
+            }
+            Ok(None) => {
+                let _ = std::fs::remove_file(&path);
+                Ok(Signature::Unsigned)
+            }
+            Err(ClientError::Cancelled) => Err(ClientError::Cancelled),
+            Err(ClientError::Refused(refusal)) => Ok(Signature::Refused {
+                reason: refusal.to_string(),
+            }),
+            Err(_) => Ok(self.cached_signature(leaderboard, digest, commit)),
+        }
+    }
+
+    fn cached_signature(
+        &self,
+        leaderboard: &Leaderboard,
+        digest: &str,
+        commit: Option<&str>,
+    ) -> Signature {
+        let path = self
+            .config
+            .cache_dir
+            .join("signatures")
+            .join(format!("{digest}.json"));
+        match std::fs::read(path) {
+            Ok(bytes) => self.check_signature(&bytes, leaderboard, digest, commit),
+            Err(_) => Signature::Unchecked,
+        }
+    }
+
+    fn check_signature(
+        &self,
+        bytes: &[u8],
+        leaderboard: &Leaderboard,
+        digest: &str,
+        commit: Option<&str>,
+    ) -> Signature {
+        let boards: Vec<String> = leaderboard.boards.iter().map(|b| b.id.clone()).collect();
+        signed::check(bytes, digest, commit, &boards, &self.config.publishers)
     }
 
     /// A trace bundle: from the cache by its SHA-256, or fetched at the
@@ -382,6 +467,18 @@ impl Fetcher {
     /// One GET with no identity, capped while reading and cancellable
     /// between chunks.
     fn get(&self, url: &str, cap: usize, cancel: &AtomicBool) -> Result<Vec<u8>, ClientError> {
+        self.fetch(url, cap, cancel, false)?
+            .ok_or_else(|| ClientError::Network("HTTP 404 Not Found".into()))
+    }
+
+    /// As [`Self::get`]; with `missing_ok`, a `404` is `Ok(None)`.
+    fn fetch(
+        &self,
+        url: &str,
+        cap: usize,
+        cancel: &AtomicBool,
+        missing_ok: bool,
+    ) -> Result<Option<Vec<u8>>, ClientError> {
         if cancel.load(Ordering::Relaxed) {
             return Err(ClientError::Cancelled);
         }
@@ -390,6 +487,9 @@ impl Fetcher {
             .get(url)
             .send()
             .map_err(|e| ClientError::Network(e.without_url().to_string()))?;
+        if missing_ok && response.status() == reqwest::StatusCode::NOT_FOUND {
+            return Ok(None);
+        }
         if !response.status().is_success() {
             return Err(ClientError::Network(format!("HTTP {}", response.status())));
         }
@@ -411,7 +511,7 @@ impl Fetcher {
                 .read(&mut chunk)
                 .map_err(|e| ClientError::Network(e.to_string()))?;
             if n == 0 {
-                return Ok(body);
+                return Ok(Some(body));
             }
             if body.len() + n > cap {
                 return Err(ClientError::Refused(Refusal::TooLarge {

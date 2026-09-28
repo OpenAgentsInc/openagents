@@ -1,7 +1,9 @@
 //! The client against a local HTTP fixture: happy path, a digest that
 //! doesn't match, an oversize body, offline with and without a cache, the
 //! index moving to a new digest, eviction, and requests that carry no
-//! credential, cookie, or identity.
+//! credential, cookie, or identity, and the signed results publication:
+//! verified, not signed, forged, or signed by a key the reader hasn't
+//! pinned.
 
 #![cfg(feature = "client")]
 
@@ -15,6 +17,7 @@ use std::time::Duration;
 
 use gym_leaderboard::client::{Client, ClientError, Config, Event, Fetcher, Freshness, Request};
 use gym_leaderboard::contract::{Leaderboard, TraceRef};
+use gym_leaderboard::signed::{Publisher, Signature};
 use gym_leaderboard::verify::Refusal;
 use serde_json::Value;
 
@@ -183,7 +186,15 @@ fn happy_path_verifies_caches_and_reads_the_cache_back() {
         .iter()
         .map(|(p, _)| p.clone())
         .collect();
-    assert_eq!(paths, vec!["/main/index.json".to_owned()]);
+    // and the signed publication, which may have landed since.
+    assert_eq!(
+        paths,
+        vec![
+            "/main/index.json".to_owned(),
+            format!("/main/signatures/{}.json", loaded.digest)
+        ]
+    );
+    assert_eq!(again.signature, Signature::Unsigned);
     // A cached bundle needs no request.
     let before = site.requests.lock().unwrap().len();
     fetcher.bundle(&trace, &go()).unwrap();
@@ -418,4 +429,140 @@ fn a_cancelled_request_stops_and_the_worker_reports_the_latest() {
     // Leaving cancels whatever is in flight; nothing blocks.
     client.cancel();
     drop(client);
+}
+
+const COMMIT: &str = "6bfc94876de82ec6a8c1a684dc650cb76131c20a";
+
+/// A throwaway signer derived from a label; no key is stored.
+fn signer(label: &str) -> nostr::domain::RelaySigner {
+    use sha2::Digest as _;
+    let hex: String = sha2::Sha256::digest(label.as_bytes())
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    nostr::domain::RelaySigner::from_secret_hex(&hex).unwrap()
+}
+
+fn board_ids(bytes: &[u8]) -> Vec<String> {
+    let lb: Leaderboard = serde_json::from_slice(bytes).unwrap();
+    lb.boards.iter().map(|b| b.id.clone()).collect()
+}
+
+fn signed_event(
+    key: &nostr::domain::RelaySigner,
+    digest: &str,
+    commit: &str,
+    boards: &[String],
+) -> Vec<u8> {
+    let parts = nostr::gym_results::publication(digest, commit, boards).unwrap();
+    serde_json::to_vec(&key.sign(1_790_000_000, parts.kind, parts.tags, parts.content)).unwrap()
+}
+
+/// A site whose index names a full commit, with `signature` (when given)
+/// published at `main`, and a fetcher that pins the "publisher" key.
+fn signed_setup(signature: Option<Vec<u8>>) -> (Site, tempfile::TempDir, Fetcher, String) {
+    let site = Site::default();
+    let bytes = leaderboard_bytes();
+    let digest = digest_of(&bytes);
+    site.put("/main/index.json", index(&[(&digest, Some(COMMIT))]));
+    site.put(&format!("/{COMMIT}/leaderboard.v1.json"), bytes);
+    if let Some(event) = signature {
+        site.put(&format!("/main/signatures/{digest}.json"), event);
+    }
+    let base = site.serve();
+    let cache = tempfile::tempdir().unwrap();
+    let mut config = Config::new(cache.path());
+    config.base_url = base;
+    config.timeout = Duration::from_secs(5);
+    config.publishers = vec![Publisher {
+        name: "OpenAgents".into(),
+        pubkey: signer("publisher").pubkey().to_owned(),
+    }];
+    let fetcher = Fetcher::new(config).unwrap();
+    (site, cache, fetcher, digest)
+}
+
+#[test]
+fn a_pinned_publishers_signature_verifies_and_names_them_from_the_cache_too() {
+    let bytes = leaderboard_bytes();
+    let event = signed_event(
+        &signer("publisher"),
+        &digest_of(&bytes),
+        COMMIT,
+        &board_ids(&bytes),
+    );
+    let (_site, cache, fetcher, digest) = signed_setup(Some(event));
+    let loaded = fetcher.refresh(&go()).unwrap();
+    let Signature::Verified {
+        publisher, npub, ..
+    } = &loaded.signature
+    else {
+        panic!("{:?}", loaded.signature)
+    };
+    assert_eq!(publisher, "OpenAgents");
+    assert!(npub.starts_with("npub1"));
+    assert!(
+        loaded
+            .signature
+            .text()
+            .unwrap()
+            .starts_with("signed by OpenAgents (npub1")
+    );
+    assert!(
+        cache
+            .path()
+            .join(format!("signatures/{digest}.json"))
+            .is_file()
+    );
+    // The cached copy checks the cached event again.
+    let cached = fetcher.cached().unwrap();
+    assert_eq!(cached.signature, loaded.signature);
+}
+
+#[test]
+fn an_unsigned_publication_loads_and_says_not_signed() {
+    let (_site, _cache, fetcher, _) = signed_setup(None);
+    let loaded = fetcher.refresh(&go()).unwrap();
+    assert_eq!(loaded.freshness, Freshness::Current);
+    assert_eq!(loaded.signature, Signature::Unsigned);
+    assert_eq!(loaded.signature.text().unwrap(), "not signed");
+}
+
+#[test]
+fn a_forged_or_unpinned_signature_is_refused_and_the_numbers_stay_digest_verified() {
+    let bytes = leaderboard_bytes();
+    let digest = digest_of(&bytes);
+    // Signed by a key the reader hasn't pinned.
+    let stranger = signed_event(&signer("stranger"), &digest, COMMIT, &board_ids(&bytes));
+    let (_site, _cache, fetcher, _) = signed_setup(Some(stranger.clone()));
+    let loaded = fetcher.refresh(&go()).unwrap();
+    assert_eq!(loaded.freshness, Freshness::Current);
+    assert_eq!(loaded.digest, digest);
+    let Signature::Refused { reason } = &loaded.signature else {
+        panic!("{:?}", loaded.signature)
+    };
+    assert!(reason.contains("isn't a pinned publisher"), "{reason}");
+    // The stranger's signature with the pinned publisher's key claimed.
+    let mut event: Value = serde_json::from_slice(&stranger).unwrap();
+    event["pubkey"] = Value::from(signer("publisher").pubkey());
+    let (_site, _cache, fetcher, _) = signed_setup(Some(serde_json::to_vec(&event).unwrap()));
+    let loaded = fetcher.refresh(&go()).unwrap();
+    let Signature::Refused { reason } = &loaded.signature else {
+        panic!("{:?}", loaded.signature)
+    };
+    assert!(reason.contains("signature"), "{reason}");
+    // The pinned publisher signing another commit.
+    let other = signed_event(
+        &signer("publisher"),
+        &digest,
+        &"1".repeat(40),
+        &board_ids(&bytes),
+    );
+    let (_site, _cache, fetcher, _) = signed_setup(Some(other));
+    let loaded = fetcher.refresh(&go()).unwrap();
+    assert!(
+        matches!(&loaded.signature, Signature::Refused { reason } if reason.contains("commit")),
+        "{:?}",
+        loaded.signature
+    );
 }

@@ -575,6 +575,7 @@ fn the_footer_names_the_digest_commit_and_freshness() {
         commit: Some("6a7a057bae35".into()),
         freshness: Freshness::Offline,
         age_seconds: Some(7200),
+        signature: crate::signed::Signature::Unchecked,
     };
     assert_eq!(
         source.footer(),
@@ -585,6 +586,22 @@ fn the_footer_names_the_digest_commit_and_freshness() {
         panic!()
     };
     assert!(list.footer.unwrap().contains("offline"));
+    let unsigned = Source {
+        signature: crate::signed::Signature::Unsigned,
+        ..source.clone()
+    };
+    assert!(unsigned.footer().ends_with(" · not signed"));
+    let refused = Source {
+        signature: crate::signed::Signature::Refused {
+            reason: "event signature".into(),
+        },
+        ..source
+    };
+    assert!(
+        refused
+            .footer()
+            .ends_with(" · signature refused: event signature")
+    );
 }
 
 /// Rule 11: every board's summary is built from its data, keeps whole

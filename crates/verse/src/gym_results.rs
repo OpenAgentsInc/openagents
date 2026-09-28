@@ -222,6 +222,7 @@ impl Results {
                     freshness,
                     age_seconds: (freshness != Freshness::Current)
                         .then(|| loaded.age_seconds(now_secs())),
+                    signature: loaded.signature.clone(),
                 });
                 self.leaderboard = Some(loaded.leaderboard);
                 if done {

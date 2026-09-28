@@ -198,7 +198,7 @@ conformance requires validation and enforcement for each advertised role.
 | [NIP-CTX](NIP-CTX.md) | Task frames, snapshots, context views, representations, and expansion. | Shared `3188`; CJ/RUN references. |
 | [NIP-POL](NIP-POL.md) | Instructions, learned preferences, approvals, disclosure, routing, and adoption authority. | Shared `3188`; CJ/RUN references. |
 | [NIP-COORD](NIP-COORD.md) | Tasks, fenced claims, shared budgets, background findings, and trial coordination. | Shared `3188`; CJ/RUN references. |
-| [NIP-EVAL](NIP-EVAL.md) | Workload evaluation, comparisons, and scoped promotion evidence. | Shared `3188`; public declaration `3189`. |
+| [NIP-EVAL](NIP-EVAL.md) | Workload evaluation, comparisons, and scoped promotion evidence. | Shared `3188`; public declaration `3189`; Gym results publication `3195`. |
 | [NIP-OPT](NIP-OPT.md) | AI signatures, implementations, studies, data partitions, candidates, materialization, trials, and results. | Shared `3188`; EXT/EVAL declarations and CJ/RUN execution. |
 | [NIP-KB](NIP-KB.md) | Shared knowledge entries: immutable versions, current-version heads, withdrawals, and evidence as EVAL publications. Trust is per reader. | `3190`, `30190`, `3191`; evidence on EVAL `3189`. |
 | [NIP-XP](NIP-XP.md) | Frozen quest versions, referee awards of verified accepted outcomes bound to KB entries and EVAL evidence, revocations, and per-reader XP ledgers. XP is never spendable; sats settle separately. | `30193`, `3193`, `3194`; achievements as NIP-32 `1985` labels. |

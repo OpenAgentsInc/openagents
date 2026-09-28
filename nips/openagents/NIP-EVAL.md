@@ -172,6 +172,70 @@ evidence, not independent certification. Users choose trusted evaluators and
 workload fit. Conflicting reports remain separate; no latest-event rule picks
 a universally best model, plugin, or policy.
 
+## Gym results publication
+
+This optional profile lets a publisher sign a released Gym leaderboard, the
+static `openagents.gym.leaderboard.v1` file the Gym and the web read, so a
+reader checks who released it as well as that its bytes match. A leaderboard
+is a presentation of committed benchmark evidence: it isn't an
+`openagents.eval-report.v1`, and this publication isn't a `3189` evaluation
+declaration. It can't establish an independent pass, promote an
+implementation, or rank anything outside the boards it names.
+
+Kind `3195` is a regular immutable record, one per released leaderboard.
+Its tags are exactly one `t: oa:gym-results:v1`, exactly one `x` equal to
+the body's `digest`, and an optional NIP-31 `alt`. The content is a closed
+object:
+
+| Field | Contract |
+| --- | --- |
+| `v` | `"openagents.gym-results-publication.v1"`. |
+| `requires` | Empty array. |
+| `schema` | `"openagents.gym.leaderboard.v1"`, the leaderboard file's schema. |
+| `digest` | The leaderboard's content digest, 64 lowercase hex: the ATIF rule (object keys sorted at every depth, then SHA-256) over its `boards`, as the leaderboard and its `openagents.gym.leaderboard-index.v1` entry record it. |
+| `commit` | The 40-hex git commit the evidence was read at, as the index entry records it. |
+| `boards` | The board IDs in the leaderboard's order: 1 to 64 unique IDs of lowercase letters, digits, `-`, and `.`, at most 128 characters each. |
+
+The index is the discovery path for HTTP readers, which don't speak to a
+relay: the publisher commits the signed event as NIP-01 JSON at
+`signatures/<digest>.json` beside `index.json` in the publication
+(`bench/terminal-bench/published/` in the OpenAgents repository), after the
+leaderboard lands. A publisher MAY also send the same event to a relay; a
+relay reader selects it with `{"kinds": [3195], "authors": [<publisher>],
+"#x": [<digest>]}`. Signing the same leaderboard again produces another
+event with the same statement; readers accept any valid one.
+
+A reader verifies, in order, and only after the leaderboard itself verified
+against the index's digest:
+
+1. The event's ID and Schnorr signature, the kind, and the tags above.
+2. The body's closed shape, `v`, `requires`, and `schema`.
+3. `digest` equals the verified leaderboard's digest, `commit` equals the
+   index entry's commit, and `boards` equals the leaderboard's board IDs in
+   order. An index entry without a commit can't be matched.
+4. The signer is a publisher the reader pinned in its own build or
+   configuration. A reader never learns which keys to trust from the host
+   that serves the files or from the event.
+
+The outcome is shown beside the numbers, never instead of the digest checks:
+
+- **No event** (the file is absent): "not signed". This isn't a failure;
+  the leaderboard is still digest-verified.
+- **Any failed check**: the signature is refused with the reason ("signed by
+  npub1…, which isn't a pinned publisher", "it signs commit 1111111, not the
+  index's 6bfc948"). The digest-verified numbers stay, labeled with the
+  refusal.
+- **All checks pass**: "signed by <publisher name> (npub1…)".
+
+The OpenAgents publisher key is pinned in `PINNED` in
+[`crates/gym-leaderboard/src/signed.rs`](../../crates/gym-leaderboard/src/signed.rs),
+the list every reader built from this repository trusts by default. The
+signature proves who released the leaderboard, not that its evidence is
+correct or independently reproduced; a relay storing the event certifies
+nothing. `crates/nostr` (`gym_results`) builds and checks the event,
+`gym-leaderboard sign` signs and writes it, and the client in
+`gym_leaderboard::client` verifies it (`docs/verse/gym-leaderboard.md`).
+
 ## Promotion and learning
 
 A promotion decision has `v: "openagents.eval-admission.v1"`, `subject`

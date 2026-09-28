@@ -23,10 +23,12 @@
 //! and checks the publication and pulls in `gym`, `knowledge`, and
 //! `regex`. Without it the crate is the contract, digest verification
 //! ([`verify`]), and the view model, small enough for a phone; `client`
-//! adds the fetch-verify-cache client ([`client`]).
+//! adds the fetch-verify-cache client ([`client`]); `publish` lets the
+//! binary send a signed results publication ([`signed`]) to a relay.
 
 pub mod contract;
 pub mod evidence;
+pub mod signed;
 pub mod summary;
 pub mod verify;
 pub mod view;
@@ -42,6 +44,8 @@ mod generator;
 pub mod microcoder;
 #[cfg(feature = "generate")]
 pub mod reference_boards;
+#[cfg(feature = "publish")]
+pub mod relay;
 #[cfg(feature = "generate")]
 pub mod scrub;
 #[cfg(feature = "generate")]

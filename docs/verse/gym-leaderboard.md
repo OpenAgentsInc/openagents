@@ -350,7 +350,8 @@ against a mirror.
    came from (rule 11). Then one row per board: title, benchmark, the
    headline, and the board's labels as chips. Ordered as `leaderboard.v1.json` lists them.
    A footer shows the publication's digest (first 8 characters), its
-   commit, and whether it's cached or current.
+   commit, whether it's cached or current, and who signed it
+   ([signed publication](#serving-caching-and-offline)).
 2. **Board.** The board's summary sentence (rule 11); the headline; the tallies as "passes / beats / attempts" with
    each split; spend (reported, then the bound, labeled); the caveats (first
    one shown, rest expandable); and the task table: task, bar (cost and
@@ -450,12 +451,37 @@ digests.
   Requests send no `Authorization`, cookie, or `User-Agent`. `Freshness`
   says current, cached (with the problem when a check failed), or offline,
   and `Loaded::age_seconds` the age.
-- **Later: signed publication.** A Nostr publication signed by the
-  OpenAgents key, carrying the leaderboard digest and commit, lets a client
-  check who published it, not only that the bytes match. NIP-EVAL's Gym
-  profile says a live board isn't an evaluation publication; a results
-  publication would need its own event shape, specified in NIP-EVAL before
-  any code.
+- **Signed publication.** A digest proves the bytes are the ones the
+  index names, not who wrote the index. A publisher signs a Nostr event of
+  kind `3195` carrying the leaderboard's digest, the commit its evidence was
+  read at, and its board IDs, specified in
+  [NIP-EVAL, Gym results publication](../../nips/openagents/NIP-EVAL.md#gym-results-publication)
+  and checked by `crates/nostr` (`gym_results`). The event is committed as
+  NIP-01 JSON at `signatures/<digest>.json` in the publication, so an HTTP
+  reader needs no relay; the same event MAY also go to a relay.
+  - **Signing.** `cargo run -p gym-leaderboard -- sign` signs the index's
+    last publication with the key in `GYM_PUBLISHER_SECRET` or
+    `~/.openagents/nostr/gym-publisher-key` (64 hex characters or an
+    `nsec`, never printed), checks the result as a reader would, and writes
+    the file; `--relay wss://relay.openagents.com` also sends it (feature
+    `publish`), answering the relay's NIP-42 challenge with the same key.
+    Commit the file after the leaderboard it signs has landed.
+  - **Pinning.** Readers trust the publishers in `PINNED` in
+    [`signed.rs`](../../crates/gym-leaderboard/src/signed.rs) (the client's
+    `Config::publishers` defaults to it), never a key the host or the event
+    supplies. The list is empty until the OpenAgents publisher key is
+    generated and its public key added; until then a signed event is refused
+    as unpinned.
+  - **Reading.** After the leaderboard verifies, the client fetches
+    `signatures/<digest>.json` at the index's ref and checks the signature,
+    kind, tags, digest, the index entry's commit, the board list, and the
+    signer. `Loaded::signature` is `Verified` (publisher name and `npub`),
+    `Unsigned` (the file is absent), `Refused` (with the reason), or
+    `Unchecked` (host unreachable, nothing cached). The signed event is
+    cached beside the leaderboard. A refused or missing signature never
+    hides digest-verified numbers; the boards list's footer says "signed by
+    OpenAgents (npub1…)", "not signed", or "signature refused: …"
+    (`view::Source::signature`).
 
 ## Scrubbing and privacy
 
@@ -547,6 +573,7 @@ Implemented now (`cargo test -p gym-leaderboard`):
 | `every_tb21_attempt_has_a_trace`, `a_tb21_pass_bundle_steps_through_the_loop_jev_and_the_verifier` | All 127 TB2.1 attempts reference a bundle whose SHA-256 and size match; one pass's model steps, Jev judgments with their probabilities, commands, tests, finish, verifier, and cost against the bar. |
 | `a_record_that_differs_from_its_manifest_refuses_to_bundle`, `a_review_holds_only_while_its_source_is_unchanged` | A Microcoder record that no longer matches its manifest refuses to bundle; a reviewed match lapses when its source changes. |
 | `generation_is_deterministic`, `the_committed_publication_matches_the_evidence` | Same bytes twice, and the committed files match. |
+| `a_pinned_publishers_signature_verifies_and_names_them_from_the_cache_too`, `an_unsigned_publication_loads_and_says_not_signed`, `a_forged_or_unpinned_signature_is_refused_and_the_numbers_stay_digest_verified` (`tests/client.rs`); `signed::tests`; `gym_results::tests` in `crates/nostr`; `relay::tests` (feature `publish`) | The signed results publication: verified and named from the network and the cache, "not signed" when absent, refused for a forged signature, an unpinned signer, another digest, commit, or board list, while the leaderboard stays digest-verified; the event's closed shape and tags; a relay publish that answers a NIP-42 challenge. |
 
 The results panel's view model is
 [`crates/gym-leaderboard/src/view.rs`](../../crates/gym-leaderboard/src/view.rs):
@@ -578,4 +605,4 @@ Epic [#9839](https://github.com/OpenAgentsInc/openagents/issues/9839).
 | #9850 | Grid trace viewer | #9849 | After the Gym port |
 | #9851 | Play a trace as a world replay (optional) | #9850 | After the Gym port |
 | #9852 | openagents.com `/gym` page (optional, other repository) | #9840 | Any time |
-| #9853 | Signed results publication (optional) | #9840, #9846 | Later |
+| #9853 | Signed results publication (optional) | #9840, #9846 | Done; the first signature waits on the publisher key |

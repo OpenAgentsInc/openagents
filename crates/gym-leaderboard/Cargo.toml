@@ -13,6 +13,9 @@ default = ["generate"]
 generate = ["dep:gym", "dep:knowledge", "dep:regex"]
 # Fetch, verify, and cache the publication off the frame loop.
 client = ["dep:reqwest"]
+# Send a signed results publication to a relay (`gym-leaderboard sign
+# --relay`). The binary's own; no reader needs it.
+publish = ["generate", "dep:tokio", "dep:tokio-tungstenite", "dep:futures-util", "dep:rustls", "dep:webpki-roots"]
 
 [dependencies]
 # Digests use ATIF's rule (object keys sorted at every depth, then SHA-256),
@@ -23,6 +26,9 @@ serde = { version = "1", features = ["derive"] }
 # so every number must parse back to the exact value the generator wrote.
 serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
 sha2 = "0.10"
+# The signed results publication (NIP-EVAL kind 3195): its event shape and
+# Schnorr signature check. Pure, no network; the phones already link it.
+nostr = { path = "../nostr" }
 
 # The Microcoder event reader and the beats-winner rule are the Gym's own,
 # not second copies.
@@ -34,6 +40,12 @@ regex = { version = "1", optional = true }
 # The client's HTTP: blocking on its own worker thread, rustls, no cookie
 # store, the same build the Verse crate ships on iOS and Android.
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"], optional = true }
+# The relay connection `publish` opens, the build the Verse crate uses.
+tokio = { version = "1", features = ["rt", "time", "net", "macros"], optional = true }
+tokio-tungstenite = { version = "0.30", features = ["rustls-tls-webpki-roots"], optional = true }
+futures-util = { version = "0.3", optional = true }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"], optional = true }
+webpki-roots = { version = "1", optional = true }
 
 [dev-dependencies]
 tempfile = "3"

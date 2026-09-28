@@ -3229,14 +3229,20 @@ name = "gym-leaderboard"
 version = "0.1.0"
 dependencies = [
  "atif",
+ "futures-util",
  "gym",
  "knowledge",
+ "nostr",
  "regex",
  "reqwest",
+ "rustls",
  "serde",
  "serde_json",
  "sha2 0.10.9",
  "tempfile",
+ "tokio",
+ "tokio-tungstenite",
+ "webpki-roots 1.0.9",
 ]
 
 [[package]]

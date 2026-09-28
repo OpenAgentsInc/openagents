@@ -23,6 +23,7 @@ pub mod execution;
 pub mod ext;
 pub mod federated_identity;
 pub mod git_sign;
+pub mod gym_results;
 pub mod kb;
 pub mod lane;
 pub mod market_contracts;
