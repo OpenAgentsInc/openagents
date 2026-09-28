@@ -30,10 +30,10 @@ const FIELD_BOUNDS: [usize; 5] = [4096, 2048, 1024, 512, 256];
 const BRIEFING_BOUND: usize = 24 * 1024;
 
 /// The task instruction's bound.
-const INSTRUCTION_BOUND: usize = 8 * 1024;
+pub const INSTRUCTION_BOUND: usize = 8 * 1024;
 
 /// The verifier output tail's bound.
-const VERIFIER_TAIL: usize = 2048;
+pub const VERIFIER_TAIL: usize = 2048;
 
 /// What a bundle is built from.
 pub struct Input<'a> {
@@ -49,8 +49,20 @@ pub struct Input<'a> {
 /// Builds the bundle, shrinking field bounds until it fits.
 pub fn build(reader: &Reader, input: &Input<'_>) -> Result<TraceBundle> {
     let files = Files::read(reader, input.episode)?;
+    fit(&input.attempt.id, |bound, keep| {
+        assemble(&files, input, bound, keep)
+    })
+}
+
+/// Calls `assemble` with shrinking per-field bounds until the bundle fits
+/// [`MAX_BUNDLE_BYTES`]; then, at the smallest bound, with fewer steps
+/// kept (the start and the end), until it does.
+pub fn fit(
+    id: &str,
+    assemble: impl Fn(usize, Option<usize>) -> Result<TraceBundle>,
+) -> Result<TraceBundle> {
     for bound in FIELD_BOUNDS {
-        let bundle = assemble(&files, input, bound, None)?;
+        let bundle = assemble(bound, None)?;
         if size(&bundle)? <= MAX_BUNDLE_BYTES {
             return Ok(bundle);
         }
@@ -59,15 +71,38 @@ pub fn build(reader: &Reader, input: &Input<'_>) -> Result<TraceBundle> {
     let smallest = FIELD_BOUNDS[FIELD_BOUNDS.len() - 1];
     let mut keep = 400;
     loop {
-        let bundle = assemble(&files, input, smallest, Some(keep))?;
+        let bundle = assemble(smallest, Some(keep))?;
         if size(&bundle)? <= MAX_BUNDLE_BYTES {
             return Ok(bundle);
         }
         if keep <= 20 {
-            return Err(fail!("{}: can't fit the bundle bound", input.attempt.id));
+            return Err(fail!("{id}: can't fit the bundle bound"));
         }
         keep /= 2;
     }
+}
+
+/// Keeps the first and last `keep / 2` steps and a marker between them;
+/// returns how many were left out.
+pub fn keep_ends(steps: &mut Vec<TraceStep>, keep: Option<usize>) -> usize {
+    let Some(keep) = keep else { return 0 };
+    if steps.len() <= keep {
+        return 0;
+    }
+    let dropped = steps.len() - keep;
+    let tail = steps.split_off(steps.len() - keep / 2);
+    steps.truncate(keep - keep / 2);
+    steps.push(TraceStep {
+        at_ms: None,
+        kind: StepKind::Host {
+            text: Text {
+                text: format!("[{dropped} steps left out to fit the bundle bound]"),
+                original_bytes: None,
+            },
+        },
+    });
+    steps.extend(tail);
+    dropped
 }
 
 fn size(bundle: &TraceBundle) -> Result<usize> {
@@ -263,6 +298,10 @@ fn assemble(
                 kind: StepKind::Decision {
                     duration_ms: opt_u64(step, "extra/duration_ms"),
                     name,
+                    question: None,
+                    answers: Vec::new(),
+                    detail: Vec::new(),
+                    cost_usd: None,
                 },
             });
             continue;
@@ -276,24 +315,7 @@ fn assemble(
             });
         }
     }
-    let mut dropped = 0;
-    if let Some(keep) = keep
-        && steps.len() > keep
-    {
-        dropped = steps.len() - keep;
-        let tail = steps.split_off(steps.len() - keep / 2);
-        steps.truncate(keep - keep / 2);
-        steps.push(TraceStep {
-            at_ms: None,
-            kind: StepKind::Host {
-                text: Text {
-                    text: format!("[{dropped} steps left out to fit the bundle bound]"),
-                    original_bytes: None,
-                },
-            },
-        });
-        steps.extend(tail);
-    }
+    let dropped = keep_ends(&mut steps, keep);
 
     let jev = files
         .jev
@@ -317,17 +339,13 @@ fn assemble(
                     .collect()
             })
             .unwrap_or_default();
-        let tail = files.stdout.as_deref().unwrap_or("");
-        let start = tail.len().saturating_sub(VERIFIER_TAIL * 4);
-        let start = (start..=tail.len())
-            .find(|i| tail.is_char_boundary(*i))
-            .unwrap_or(tail.len());
+        let tail = last_part(files.stdout.as_deref().unwrap_or(""), VERIFIER_TAIL * 4);
         VerifierDetail {
             reward: files.reward,
             passed: opt_u64(ctrf, "results/summary/passed").unwrap_or(0) as u32,
             failed: opt_u64(ctrf, "results/summary/failed").unwrap_or(0) as u32,
             tests,
-            output_tail: scrub.text_within(&tail[start..], VERIFIER_TAIL),
+            output_tail: scrub.text_within(tail, VERIFIER_TAIL),
         }
     });
 
@@ -412,6 +430,17 @@ fn jev_decision(
         candidates,
         requirements,
     })
+}
+
+/// The last `bytes` bytes of `text` (or a little less, on a character
+/// boundary): the part of a verifier's output that holds its verdict.
+#[must_use]
+pub fn last_part(text: &str, bytes: usize) -> &str {
+    let start = text.len().saturating_sub(bytes);
+    let start = (start..=text.len())
+        .find(|i| text.is_char_boundary(*i))
+        .unwrap_or(text.len());
+    &text[start..]
 }
 
 /// Milliseconds since the epoch of `YYYY-MM-DDTHH:MM:SS[.fff]Z`.

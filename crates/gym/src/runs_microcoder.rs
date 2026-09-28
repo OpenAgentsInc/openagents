@@ -382,6 +382,14 @@ pub fn events(path: &Path) -> (Vec<Value>, usize) {
     let Ok(text) = std::fs::read_to_string(path) else {
         return (Vec::new(), 0);
     };
+    parse_events(&text)
+}
+
+/// The events of an `events.jsonl` already read, skipping lines that
+/// aren't JSON, and how many were skipped. `gym-leaderboard` reads the
+/// retained records through this, after checking their digests.
+#[must_use]
+pub fn parse_events(text: &str) -> (Vec<Value>, usize) {
     let mut skipped = 0;
     let events = text
         .lines()

@@ -8,6 +8,14 @@
         "tb4-fable-delegate-repro-9776",
         "tb21-oos-microcoder-9683"
       ]
+    },
+    {
+      "digest": "3a0c15c07c288749a06406e608456721dc1bfc8b082e5466d27d0b86b071219e",
+      "commit": "8057eaaeffefacd33f8aaee64c5baf3d93a2b057",
+      "boards": [
+        "tb4-fable-delegate-repro-9776",
+        "tb21-oos-microcoder-9683"
+      ]
     }
   ]
 }

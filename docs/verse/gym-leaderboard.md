@@ -57,7 +57,7 @@ scan, which only works on the host that ran the attempt.
 | Board | Evidence | Traces | State |
 | --- | --- | --- | --- |
 | `tb4-fable-delegate-repro-9776`: Coder One's Jev-briefed Fable 5.1 low delegate on 14 TB4 tasks, two passes ([report](../terminal-bench/2026-09-27-fable-delegate-repro.md), #9776) | `experiments/2026-09-27-fable-delegate-repro/attempts.json`, `tasks.json` (frozen in e0414c3356) | 28 retained episodes, bundled | Generated |
-| `tb21-oos-microcoder-9683`: Microcoder on 65 held-out TB2.1 tasks, knowledge off ([results](../terminal-bench/2026-09-26-tb21-oos-results.md), #9683) | `studies/2026-09-26-out-of-sample/t1-report.json`, 127 run records | 127 Microcoder run records, not yet bundled | Generated, without bundles |
+| `tb21-oos-microcoder-9683`: Microcoder on 65 held-out TB2.1 tasks, knowledge off ([results](../terminal-bench/2026-09-26-tb21-oos-results.md), #9683) | `studies/2026-09-26-out-of-sample/t1-report.json`, 127 run records | 127 Microcoder run records, bundled (#9841) | Generated |
 | Fable delegate development on `fin-saccr-rwa` and three others, series 1 to 7 ([report](../terminal-bench/2026-09-27-fable-delegate.md), #9746) | `experiments/2026-09-27-fable-delegate/attempts*.json` (three row shapes) | 13 retained episodes | Next |
 | TB4 Microcoder knowledge-assisted wins ([showcase](../coder/beat-fable-showcase.md)): the "one shared fact" result | `microcoder-runs/coderos-4080`, the `beats-winner` rule in `crates/gym` | Microcoder run records | Next |
 | TB4 prospective out-of-sample study ([results](../terminal-bench/2026-09-26-out-of-sample-study-results.md)): no held-out pass yet | the study's round reports | Microcoder run records | Next; a negative board is still a board |
@@ -146,6 +146,25 @@ The steps come from the executor events in Coder One's
 `trajectory.atif.json`, which carry timestamps, not from the raw delegate
 stream, which has none and carries thinking signatures and the operator's
 rate-limit windows.
+
+A Microcoder run record (`summary.json` and `events.jsonl` under
+`microcoder-runs/<host>/`) is bundled from its events, read with `gym`'s
+own reader, on the run's own clock
+([`microcoder.rs`](../../crates/gym-leaderboard/src/microcoder.rs)): each
+model call is a `model_step` (model, milliseconds, cost, tokens) followed by
+its rationale as `say`; each command is a `command` and `command_result`;
+every Jev judgment (`judged`, `disputed`, `covered`, `conformed`) is a
+`decision` carrying each answer's probability; retrieval is a `retrieval`
+step with each kept entry's relevance; the loop's own acceptance tests are
+`tests` steps; and the finish is `ended`. The verifier's output goes
+through the tail bound, and its test names come from pytest's summary
+lines. The host directory's `MANIFEST.json` stands in for
+`retention.json`: a record file whose SHA-256 differs from the manifest's
+refuses to bundle. Microcoder's record doesn't carry the task instruction,
+so its bundle's `instruction` is empty. These step kinds and the
+`decision` step's `question`, `answers`, `detail`, and `cost_usd` are
+optional additions to `v1`; a reader that doesn't know a step kind reads
+it as `other` and skips it.
 
 ### Versioning
 
@@ -330,6 +349,14 @@ host-independent layer in
   GitHub, Slack, AWS, and Google keys, Nostr secret keys, JWTs, and bearer
   tokens) are replaced with `[redacted:<rule>]`. Any credential match fails
   `check`, so a person inspects the retained trace before it's published.
+  When the match isn't a credential, the person records what they found in
+  `bench/terminal-bench/leaderboard-reviewed-redactions.json`: the bundle,
+  the rule, the match count, and the SHA-256 of the retained file the match
+  is in. The bundle keeps the redaction; the review only lets `check` pass,
+  and it lapses when that file's digest or the match count changes. The
+  one review today is a TB2.1 run that echoed a `BEGIN RSA PRIVATE KEY`
+  header with no key material after it, while checking the task's
+  throwaway certificate.
 - **Personal data** (home directories and email addresses) is redacted and
   counted but doesn't fail `check`. The #9776 bundles have 152 redacted
   emails, all synthetic customer data in `telecom-entity-resolution`, and
@@ -381,7 +408,9 @@ Implemented now (`cargo test -p gym-leaderboard`):
 | `a_recorded_verdict_the_numbers_dont_support_refuses_to_build`, `tallies_that_disagree_with_the_rows_refuse_to_build` | A tampered verdict or tally refuses to build. |
 | `a_trace_that_changed_after_retention_refuses_to_bundle` | A retained file that no longer matches its retention digest refuses to bundle. |
 | `a_planted_credential_is_redacted_and_fails_the_check` | A planted token is redacted, counted, and fails `check`. |
-| `every_bundle_fits_its_bound_and_matched_no_credential_rule`, `a_beat_bundle_steps_through_jev_the_delegate_and_the_verifier` | Bounds, and a beat's bundle has Jev, the briefing, the delegate's steps on a forward clock, and the verifier. |
+| `every_bundle_fits_its_bound_and_matched_no_credential_rule`, `a_beat_bundle_steps_through_jev_the_delegate_and_the_verifier` | Bounds, no unreviewed credential match, and a beat's bundle has Jev, the briefing, the delegate's steps on a forward clock, and the verifier. |
+| `every_tb21_attempt_has_a_trace`, `a_tb21_pass_bundle_steps_through_the_loop_jev_and_the_verifier` | All 127 TB2.1 attempts reference a bundle whose SHA-256 and size match; one pass's model steps, Jev judgments with their probabilities, commands, tests, finish, verifier, and cost against the bar. |
+| `a_record_that_differs_from_its_manifest_refuses_to_bundle`, `a_review_holds_only_while_its_source_is_unchanged` | A Microcoder record that no longer matches its manifest refuses to bundle; a reviewed match lapses when its source changes. |
 | `generation_is_deterministic`, `the_committed_publication_matches_the_evidence` | Same bytes twice, and the committed files match. |
 
 The results panel's view model is
@@ -403,7 +432,7 @@ Epic [#9839](https://github.com/OpenAgentsInc/openagents/issues/9839).
 | Issue | Piece | Depends on | When |
 | --- | --- | --- | --- |
 | #9840 | Contract and generator (this change) | none | Done |
-| #9841 | Bundle TB2.1 Microcoder run records | #9840 | Now |
+| #9841 | Bundle TB2.1 Microcoder run records | #9840 | Done |
 | #9842 | #9746 development board | #9840 | Now |
 | #9843 | TB4 knowledge-assisted Microcoder board | #9840, #9841 | Now |
 | #9844 | TB4 out-of-sample board and reference boards | #9840 | Now |

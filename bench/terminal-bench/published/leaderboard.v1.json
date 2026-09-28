@@ -4,7 +4,7 @@
     "name": "gym-leaderboard",
     "version": "0.1.0"
   },
-  "digest": "50711c103afa4da8f8e06c576e245d4920ab4bd9f0dc5515db5b88ca064c1393",
+  "digest": "3a0c15c07c288749a06406e608456721dc1bfc8b082e5466d27d0b86b071219e",
   "boards": [
     {
       "id": "tb4-fable-delegate-repro-9776",
@@ -3573,7 +3573,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/adaptive-rejection-sampler-1790459651305.json",
+            "sha256": "c22ecdd80a6b934ff37ba219c630752f2c09f7b7d22d134c388db3bd74131e0b",
+            "bytes": 163539
+          }
         },
         {
           "id": "bn-fit-modify-1790459651308",
@@ -3602,7 +3606,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/bn-fit-modify-1790459651308.json",
+            "sha256": "061987966320c473ee75c3c498c6a08fbbc4292eb041ad8907ab0732fe8ecc27",
+            "bytes": 26590
+          }
         },
         {
           "id": "build-pmars-1790459651308",
@@ -3629,7 +3637,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/build-pmars-1790459651308.json",
+            "sha256": "4184b8aec211870a5ae26d10ad71ed888e86231324e5e54d0544eca0618f9c3e",
+            "bytes": 35021
+          }
         },
         {
           "id": "build-pmars-1790459775046",
@@ -3656,7 +3668,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/build-pmars-1790459775046.json",
+            "sha256": "a4f9af0906c41e44f394c6a391c0bac1deb1a7effbe508dda4ddbbedefca4426",
+            "bytes": 141749
+          }
         },
         {
           "id": "build-pmars-1790459775047",
@@ -3683,7 +3699,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/build-pmars-1790459775047.json",
+            "sha256": "deb468549cc5859093c14a2832d7028a50b50e20d622af722746f8fc90d2fbbd",
+            "bytes": 36239
+          }
         },
         {
           "id": "caffe-cifar-10-1790459766031",
@@ -3712,7 +3732,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/caffe-cifar-10-1790459766031.json",
+            "sha256": "83b3cefc6da163d81fc2d5d2ea7111877df9c38040884583f71aaab2101ca00a",
+            "bytes": 173226
+          }
         },
         {
           "id": "circuit-fibsqrt-1790459793619",
@@ -3741,7 +3765,11 @@
           "how_it_ended": "Luna's own tests held",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/circuit-fibsqrt-1790459793619.json",
+            "sha256": "b5ee053caada8e793d80f52f87ed50733bc395b7b90cfe29b46ad1b6151e24f9",
+            "bytes": 219982
+          }
         },
         {
           "id": "cobol-modernization-1790460460311",
@@ -3768,7 +3796,11 @@
           "how_it_ended": "Luna's own tests held",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/cobol-modernization-1790460460311.json",
+            "sha256": "0a9df369f3913e351b2a8aa7e75590c39e3fb3dd440e78f2f6bf50d8065cf151",
+            "bytes": 89379
+          }
         },
         {
           "id": "cobol-modernization-1790460675552",
@@ -3797,7 +3829,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/cobol-modernization-1790460675552.json",
+            "sha256": "fbed633e112f485abcdc6afddd3b3ca3078eef5e7aa59682b281b6f9988fada4",
+            "bytes": 10269
+          }
         },
         {
           "id": "cobol-modernization-1790460675553",
@@ -3824,7 +3860,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/cobol-modernization-1790460675553.json",
+            "sha256": "a272ff02edee18123e0cd6e2a5b26b7c5012554bf11f187b69eeb0b2f7daf215",
+            "bytes": 23645
+          }
         },
         {
           "id": "code-from-image-1790460664730",
@@ -3854,7 +3894,11 @@
           "how_it_ended": "Luna's own tests held",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/code-from-image-1790460664730.json",
+            "sha256": "baacd9f0f1381e17329db37b750caff683be26e4f846e8c60c91730eee382907",
+            "bytes": 69367
+          }
         },
         {
           "id": "compile-compcert-1790460946135",
@@ -3883,7 +3927,11 @@
           "how_it_ended": "Unaccepted",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/compile-compcert-1790460946135.json",
+            "sha256": "79ec1a4746e749c6146b05b700e863e2bed88e8e54d3dabaeed1cb24cad5a237",
+            "bytes": 101787
+          }
         },
         {
           "id": "constraints-scheduling-1790461665720",
@@ -3910,7 +3958,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/constraints-scheduling-1790461665720.json",
+            "sha256": "73b9737958e88d0a38381f1721b88c612fc00806bb673b4b6f63aad58e9b59e5",
+            "bytes": 29530
+          }
         },
         {
           "id": "constraints-scheduling-1790461816359",
@@ -3937,7 +3989,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/constraints-scheduling-1790461816359.json",
+            "sha256": "30f74ddd98398817e8bf4d7e67ccc5f0b1f5f5e78348aa4c7fbc19697dfe822f",
+            "bytes": 18182
+          }
         },
         {
           "id": "constraints-scheduling-1790461816360",
@@ -3964,7 +4020,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/constraints-scheduling-1790461816360.json",
+            "sha256": "281ee9c93d52e263a1e6fbd471990f1153408a7e1abac280fa85bc1a75072512",
+            "bytes": 37360
+          }
         },
         {
           "id": "count-dataset-tokens-1790461791313",
@@ -3993,7 +4053,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/count-dataset-tokens-1790461791313.json",
+            "sha256": "428e190a19e8ed50d56cd2bd93957aa789480ae41d3ac25e67e854253c7c01da",
+            "bytes": 20615
+          }
         },
         {
           "id": "crack-7z-hash-1790461798918",
@@ -4020,7 +4084,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/crack-7z-hash-1790461798918.json",
+            "sha256": "bc102251727142942881ead0de7fa9d628afd3cb3140f1478712016c708f29ef",
+            "bytes": 32512
+          }
         },
         {
           "id": "crack-7z-hash-1790461936452",
@@ -4047,7 +4115,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/crack-7z-hash-1790461936452.json",
+            "sha256": "a6727605a4361e31348dbdf9e5134b60e8f4c1cf58a62e524c7108c926701200",
+            "bytes": 33308
+          }
         },
         {
           "id": "crack-7z-hash-1790461936453",
@@ -4074,7 +4146,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/crack-7z-hash-1790461936453.json",
+            "sha256": "6ab008273ec38ef0f04623ab270243f79549737b8b3ae2e9e5358f6c30ef8313",
+            "bytes": 30830
+          }
         },
         {
           "id": "distribution-search-1790461893052",
@@ -4101,7 +4177,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/distribution-search-1790461893052.json",
+            "sha256": "1fdb53973aa98ee12dd3659c0a230845c3ab7261eed1691e24fb427b11ddf524",
+            "bytes": 55359
+          }
         },
         {
           "id": "distribution-search-1790462176660",
@@ -4128,7 +4208,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/distribution-search-1790462176660.json",
+            "sha256": "4ad0ba80dffa1db9bf01beb733e08d5a9a65d8440fc6227db5783398ad5490e9",
+            "bytes": 15281
+          }
         },
         {
           "id": "distribution-search-1790462176663",
@@ -4155,7 +4239,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/distribution-search-1790462176663.json",
+            "sha256": "9034bf92edc864e7ad897dde6494227cf2fa253306b08d1eeea8291d4f7aab23",
+            "bytes": 28061
+          }
         },
         {
           "id": "dna-assembly-1790461896930",
@@ -4184,7 +4272,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/dna-assembly-1790461896930.json",
+            "sha256": "8b88d702509d72c4eb13c4656926d6d43712b2178b2f9eedfd80b30613ec3b7b",
+            "bytes": 146548
+          }
         },
         {
           "id": "extract-elf-1790462059855",
@@ -4211,7 +4303,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/extract-elf-1790462059855.json",
+            "sha256": "c000e33141bc56036e0fbfc3078e760c3cde900e58c15a8a124466728819170f",
+            "bytes": 14420
+          }
         },
         {
           "id": "extract-elf-1790462176667",
@@ -4238,7 +4334,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/extract-elf-1790462176667.json",
+            "sha256": "f5038deaf0903b10a15fef58b8f623d02670c0fd09a6f949df9114b3325a22a1",
+            "bytes": 14165
+          }
         },
         {
           "id": "extract-elf-1790462176668",
@@ -4267,7 +4367,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/extract-elf-1790462176668.json",
+            "sha256": "f73d4499ebf36716efb1c5c337b795d82713e8a624e77faf80f5405f0234c2c8",
+            "bytes": 21657
+          }
         },
         {
           "id": "extract-moves-from-video-1790462127573",
@@ -4296,7 +4400,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/extract-moves-from-video-1790462127573.json",
+            "sha256": "8f33e0afe7020d9221cacb3a3f35c5344ab260a98d8acb9bf940014b747e4aab",
+            "bytes": 67008
+          }
         },
         {
           "id": "feal-differential-cryptanalysis-1790462127844",
@@ -4325,7 +4433,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/feal-differential-cryptanalysis-1790462127844.json",
+            "sha256": "9b07f772f80f88fd7614ea51c68b00be3e1e0a3260e51af3ac968a6aed610ec8",
+            "bytes": 18011
+          }
         },
         {
           "id": "feal-linear-cryptanalysis-1790462209713",
@@ -4352,7 +4464,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/feal-linear-cryptanalysis-1790462209713.json",
+            "sha256": "f1c6e963f7bfbae354e713e0a592e8b3f48282b0bb56dcbd1215019d70246b52",
+            "bytes": 90886
+          }
         },
         {
           "id": "feal-linear-cryptanalysis-1790462476918",
@@ -4379,7 +4495,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/feal-linear-cryptanalysis-1790462476918.json",
+            "sha256": "52b2826f26d6f02265a064e908cf9b2361c6aa047c3dd7b1b543ebaf569fbcb1",
+            "bytes": 41023
+          }
         },
         {
           "id": "feal-linear-cryptanalysis-1790462476919",
@@ -4406,7 +4526,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/feal-linear-cryptanalysis-1790462476919.json",
+            "sha256": "8cf8e72f2ed70e5b515a6b264f87e90ebb6290355b52a26caa5caa64a6ee8ec8",
+            "bytes": 27024
+          }
         },
         {
           "id": "financial-document-processor-1790462450637",
@@ -4435,7 +4559,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/financial-document-processor-1790462450637.json",
+            "sha256": "642edf3c90e8d62710f5a7c96c1f0bda00ae7737f077c9f191cb0923df0c7769",
+            "bytes": 83526
+          }
         },
         {
           "id": "fix-code-vulnerability-1790462473042",
@@ -4462,7 +4590,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/fix-code-vulnerability-1790462473042.json",
+            "sha256": "75298861030998f4607d8df9544c9cda5ca0e9ffe190448e506b738cf40c13a8",
+            "bytes": 80181
+          }
         },
         {
           "id": "fix-code-vulnerability-1790462657141",
@@ -4491,7 +4623,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/fix-code-vulnerability-1790462657141.json",
+            "sha256": "4cf550e06cf3b68135cc0c6c93aac5a7e9887a177eee9b68ff32e92d42c1e76f",
+            "bytes": 46922
+          }
         },
         {
           "id": "fix-code-vulnerability-1790462657142",
@@ -4518,7 +4654,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/fix-code-vulnerability-1790462657142.json",
+            "sha256": "b44f125c39da40bf39b653ff7d2c58be7f71b1955606a0f6542b99a044362b86",
+            "bytes": 29996
+          }
         },
         {
           "id": "fix-git-1790462479328",
@@ -4545,7 +4685,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/fix-git-1790462479328.json",
+            "sha256": "c3a05047c0382a74a48994981ca535d18d8312edad4b066f75460c5a0689d6c2",
+            "bytes": 19948
+          }
         },
         {
           "id": "fix-git-1790462597081",
@@ -4572,7 +4716,11 @@
           "how_it_ended": "Unaccepted",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/fix-git-1790462597081.json",
+            "sha256": "e80f4871583110aeaa13049503ee4641d8464a0ed714d1742134a25ca0e97e6c",
+            "bytes": 30777
+          }
         },
         {
           "id": "fix-git-1790462597086",
@@ -4599,7 +4747,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/fix-git-1790462597086.json",
+            "sha256": "bd11e24548aa1c83549849919575175a2ede933a45768df51728f53f4852ea42",
+            "bytes": 28689
+          }
         },
         {
           "id": "fix-ocaml-gc-1790462564311",
@@ -4626,7 +4778,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/fix-ocaml-gc-1790462564311.json",
+            "sha256": "bb3f21c6e7fa4bbd97fe908697cf1c625f7469363ff4a75aaba55f93f69c8365",
+            "bytes": 131240
+          }
         },
         {
           "id": "fix-ocaml-gc-1790463678654",
@@ -4653,7 +4809,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/fix-ocaml-gc-1790463678654.json",
+            "sha256": "72cf1ef28090a5b47d323b111e83c3f0a5b7d86bbdafdd07e1111a4e9db0483f",
+            "bytes": 217825
+          }
         },
         {
           "id": "fix-ocaml-gc-1790463678655",
@@ -4680,7 +4840,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/fix-ocaml-gc-1790463678655.json",
+            "sha256": "098b5f41eb9ed85d5fe76273c2e03e73eae71bbc763fe6d0e3bee6d3f5fabfe8",
+            "bytes": 223821
+          }
         },
         {
           "id": "git-leak-recovery-1790462614279",
@@ -4707,7 +4871,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/git-leak-recovery-1790462614279.json",
+            "sha256": "6916ba4c5de26bf44f96a09aa13726dcfad137b30f12a26e9a109aece8899ad9",
+            "bytes": 13486
+          }
         },
         {
           "id": "git-leak-recovery-1790462717244",
@@ -4736,7 +4904,11 @@
           "how_it_ended": "Unaccepted",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/git-leak-recovery-1790462717244.json",
+            "sha256": "7aa8f361039accf29545f62edd2bf5676870f79d842669e3b925621714274023",
+            "bytes": 41703
+          }
         },
         {
           "id": "git-leak-recovery-1790462717245",
@@ -4763,7 +4935,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/git-leak-recovery-1790462717245.json",
+            "sha256": "0a7f88f76f17a5ce00b970081af9070f726eca446083864b1fc3adad3648c85c",
+            "bytes": 13024
+          }
         },
         {
           "id": "git-multibranch-1790462672954",
@@ -4792,7 +4968,11 @@
           "how_it_ended": "Unaccepted",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/git-multibranch-1790462672954.json",
+            "sha256": "9b01c999eced4a54a99a8d1f529a759b919a15937444cc2b2eea7add0ca27a2b",
+            "bytes": 56533
+          }
         },
         {
           "id": "headless-terminal-1790462771138",
@@ -4819,7 +4999,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/headless-terminal-1790462771138.json",
+            "sha256": "93634704251ca2e7af1955cf2e48de7acfa7b28d969538d902cb945c6632d266",
+            "bytes": 17761
+          }
         },
         {
           "id": "headless-terminal-1790462897490",
@@ -4846,7 +5030,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/headless-terminal-1790462897490.json",
+            "sha256": "1c90916f7a847b02ce40b8fc6820446fe05dfb792a949f070fb1d9151d01718c",
+            "bytes": 28876
+          }
         },
         {
           "id": "headless-terminal-1790462897495",
@@ -4873,7 +5061,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/headless-terminal-1790462897495.json",
+            "sha256": "41ae8d624d5145df30a391b73bf37cd8a161ed01cf31e4a59fbae532a2b2ded3",
+            "bytes": 26862
+          }
         },
         {
           "id": "hf-model-inference-1790462888657",
@@ -4900,7 +5092,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/hf-model-inference-1790462888657.json",
+            "sha256": "ec8672df360b2c65553f3b3719f5326107abbf59c319a23fc52de178e0c19064",
+            "bytes": 24496
+          }
         },
         {
           "id": "hf-model-inference-1790463017669",
@@ -4927,7 +5123,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/hf-model-inference-1790463017669.json",
+            "sha256": "734f0c2c86852eb93d2d8609c171699d0a3fd3a46159e300594477ee8c67e064",
+            "bytes": 37177
+          }
         },
         {
           "id": "hf-model-inference-1790463017670",
@@ -4954,7 +5154,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/hf-model-inference-1790463017670.json",
+            "sha256": "39b59c55128e867a5d11841a9f08dbb567a5a3038a2e8d76326f3e467fdab63c",
+            "bytes": 22812
+          }
         },
         {
           "id": "install-windows-3.11-1790462996302",
@@ -4983,7 +5187,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/install-windows-3.11-1790462996302.json",
+            "sha256": "5c3d42af22b0f89ea99d467086e95c254c4186ff0b8fcee0b1634bfb21c9e201",
+            "bytes": 62866
+          }
         },
         {
           "id": "large-scale-text-editing-1790463189300",
@@ -5012,7 +5220,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/large-scale-text-editing-1790463189300.json",
+            "sha256": "4a0f0e39f23ffbbc376bd874dd8887143a89ea0aad880a6b8705750141003d66",
+            "bytes": 73617
+          }
         },
         {
           "id": "largest-eigenval-1790463310937",
@@ -5041,7 +5253,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/largest-eigenval-1790463310937.json",
+            "sha256": "30e8e1427f5b5526c88f7b34adc694ce5cbdae16c309a1f4f907fb23753dc580",
+            "bytes": 24783
+          }
         },
         {
           "id": "llm-inference-batching-scheduler-1790463418612",
@@ -5070,7 +5286,11 @@
           "how_it_ended": "Time limit",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/llm-inference-batching-scheduler-1790463418612.json",
+            "sha256": "5ab94fc68f0a6c3d11d4ce4ce9b5b4e9b39f2cc5f95206e9861878df0f750f6e",
+            "bytes": 118578
+          }
         },
         {
           "id": "log-summary-date-ranges-1790463659367",
@@ -5099,7 +5319,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/log-summary-date-ranges-1790463659367.json",
+            "sha256": "c0126e3f93b008f4ca2591f144a403f6de35237b674df8859f40560f678b503a",
+            "bytes": 14033
+          }
         },
         {
           "id": "mailman-1790463724201",
@@ -5126,7 +5350,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/mailman-1790463724201.json",
+            "sha256": "ba368eb3f657bd30ef6e4d79ecd394bdb3ce2a4ae3da28fc76938285e0db6442",
+            "bytes": 118568
+          }
         },
         {
           "id": "mailman-1790464279711",
@@ -5153,7 +5381,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/mailman-1790464279711.json",
+            "sha256": "8ac53cb71a6433b44c60098845262fb3d8d2e8e700beaed5fa402769fd16f30e",
+            "bytes": 214577
+          }
         },
         {
           "id": "mailman-1790464279713",
@@ -5182,7 +5414,11 @@
           "how_it_ended": "Luna's own tests held",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/mailman-1790464279713.json",
+            "sha256": "7e5b14a94b370874ae2256b3d795ef237262c64f822a7d3be6b1b7b77a6f426f",
+            "bytes": 190409
+          }
         },
         {
           "id": "make-mips-interpreter-1790464236072",
@@ -5211,7 +5447,11 @@
           "how_it_ended": "Time limit",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/make-mips-interpreter-1790464236072.json",
+            "sha256": "4b76d87b0772b52c958aeb3a92d5d42d317da6b011ae0a4951c8b371853631c3",
+            "bytes": 250566
+          }
         },
         {
           "id": "merge-diff-arc-agi-task-1790464251399",
@@ -5238,7 +5478,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/merge-diff-arc-agi-task-1790464251399.json",
+            "sha256": "702e0cc6d622c91c0bf90a9c2f8cc6d164d1d9499026780cf91c81ad32f8a821",
+            "bytes": 38984
+          }
         },
         {
           "id": "merge-diff-arc-agi-task-1790464459999",
@@ -5265,7 +5509,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/merge-diff-arc-agi-task-1790464459999.json",
+            "sha256": "9892bc21e5e57ece2a62d29754364aa157c0c8dc26536009219bf3a23891ab9d",
+            "bytes": 52609
+          }
         },
         {
           "id": "merge-diff-arc-agi-task-1790464460003",
@@ -5292,7 +5540,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/merge-diff-arc-agi-task-1790464460003.json",
+            "sha256": "63806d5606166c3849be501ebee7c8c3a11468f37d168c910c94f68ebebe5b6b",
+            "bytes": 48658
+          }
         },
         {
           "id": "modernize-scientific-stack-1790464402509",
@@ -5319,7 +5571,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/modernize-scientific-stack-1790464402509.json",
+            "sha256": "53801c4a219defb49d78ca27002c2974c2ba0e9185f1c00efbea91fab2fe5234",
+            "bytes": 24139
+          }
         },
         {
           "id": "modernize-scientific-stack-1790464580212",
@@ -5346,7 +5602,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/modernize-scientific-stack-1790464580212.json",
+            "sha256": "2a7a079e218d8de77b06ad69efcfd98aea68a6f604da13e426804d3f998572fa",
+            "bytes": 21780
+          }
         },
         {
           "id": "modernize-scientific-stack-1790464580214",
@@ -5373,7 +5633,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/modernize-scientific-stack-1790464580214.json",
+            "sha256": "cfc262b546fc86194024a5fcf55433fdaf38119eb8ac5223c7bddc4ce9fd9cd7",
+            "bytes": 19448
+          }
         },
         {
           "id": "mteb-leaderboard-1790464530813",
@@ -5402,7 +5666,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/mteb-leaderboard-1790464530813.json",
+            "sha256": "a8a334987cb3e7f2f4f4ffb1492df2e7a47d510adcaabf7ccebf374e683f513c",
+            "bytes": 139427
+          }
         },
         {
           "id": "multi-source-data-merger-1790464807966",
@@ -5429,7 +5697,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/multi-source-data-merger-1790464807966.json",
+            "sha256": "4f81a6b099c850eceb63d3b9d542ac0fb3fe85085014906f0be0293b8381b8e5",
+            "bytes": 29166
+          }
         },
         {
           "id": "multi-source-data-merger-1790465000960",
@@ -5456,7 +5728,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/multi-source-data-merger-1790465000960.json",
+            "sha256": "6361707905b9e1de9e12d5dc6e898427234e527f95b4c2d1441c82f4c3f389f6",
+            "bytes": 31034
+          }
         },
         {
           "id": "multi-source-data-merger-1790465000962",
@@ -5483,7 +5759,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/multi-source-data-merger-1790465000962.json",
+            "sha256": "7ed6049731a41840a77aa758d6067dfcea3756f4ba3b54bbd075dda74971f123",
+            "bytes": 23050
+          }
         },
         {
           "id": "nginx-request-logging-1790464946338",
@@ -5510,7 +5790,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/nginx-request-logging-1790464946338.json",
+            "sha256": "ca5ba5b5685709b824dcfc62f99e1b600077ec8a26470c2657c7e8a8ac88b27f",
+            "bytes": 45082
+          }
         },
         {
           "id": "nginx-request-logging-1790465181277",
@@ -5537,7 +5821,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/nginx-request-logging-1790465181277.json",
+            "sha256": "deb821fe9e633eb4c822e6b79ef58ccd2142429019a76be932499269f9c1b5a4",
+            "bytes": 41917
+          }
         },
         {
           "id": "nginx-request-logging-1790465181282",
@@ -5564,7 +5852,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/nginx-request-logging-1790465181282.json",
+            "sha256": "d16ef8c8d02ebeea5f2552e3173d58e798f95f2c472cca97996b1bcc9c0f5c97",
+            "bytes": 22657
+          }
         },
         {
           "id": "openssl-selfsigned-cert-1790465139801",
@@ -5591,7 +5883,11 @@
           "how_it_ended": "Unaccepted",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/openssl-selfsigned-cert-1790465139801.json",
+            "sha256": "082c9622b1f7db80b567d0fd715c04ebbbe81e75b7d70fb4805cfc4f311c4e0e",
+            "bytes": 23997
+          }
         },
         {
           "id": "openssl-selfsigned-cert-1790465361588",
@@ -5618,7 +5914,11 @@
           "how_it_ended": "Unaccepted",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/openssl-selfsigned-cert-1790465361588.json",
+            "sha256": "61917396321def7f5246c2dac9dfe61f76daee6f93af0e8c8d2758d53d532709",
+            "bytes": 26158
+          }
         },
         {
           "id": "openssl-selfsigned-cert-1790465361591",
@@ -5645,7 +5945,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/openssl-selfsigned-cert-1790465361591.json",
+            "sha256": "db6570de64b7cc470dc196336b94f7144deb9b0a1f27516a92626109f736e3bd",
+            "bytes": 14383
+          }
         },
         {
           "id": "overfull-hbox-1790465334432",
@@ -5674,7 +5978,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/overfull-hbox-1790465334432.json",
+            "sha256": "6d126988971c2ce9e209124f308a13d9adce4660a01f5071bcba991663f2d658",
+            "bytes": 129921
+          }
         },
         {
           "id": "password-recovery-1790465656944",
@@ -5703,7 +6011,11 @@
           "how_it_ended": "Unaccepted",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/password-recovery-1790465656944.json",
+            "sha256": "57e1338e945314677444bc5f85f83f1a386acca222c7d9298a85e3eaed13c30c",
+            "bytes": 121488
+          }
         },
         {
           "id": "path-tracing-1790465974086",
@@ -5732,7 +6044,11 @@
           "how_it_ended": "Step limit",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/path-tracing-1790465974086.json",
+            "sha256": "b7518c9adce6f79b11f2b7fe5fbcc501eddcd74b5c319a8ba694183ffd4d1e78",
+            "bytes": 107227
+          }
         },
         {
           "id": "path-tracing-reverse-1790467048910",
@@ -5761,7 +6077,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/path-tracing-reverse-1790467048910.json",
+            "sha256": "98d71c0536aad92e3cda332485d0094502ba0be6f8affaa5c13d08f445120c8a",
+            "bytes": 66577
+          }
         },
         {
           "id": "polyglot-c-py-1790467199897",
@@ -5788,7 +6108,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/polyglot-c-py-1790467199897.json",
+            "sha256": "fdcdf481f2ba1f3dc21eccd3c3ec1200c25a913f3bf7f18478824e2e9d7642a8",
+            "bytes": 37300
+          }
         },
         {
           "id": "polyglot-c-py-1790467345102",
@@ -5815,7 +6139,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/polyglot-c-py-1790467345102.json",
+            "sha256": "dc37b6ad22d54beaef0578b84514d1aaa1a50106cc587356de73cb24df9e5c3f",
+            "bytes": 166418
+          }
         },
         {
           "id": "polyglot-c-py-1790467345103",
@@ -5842,7 +6170,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/polyglot-c-py-1790467345103.json",
+            "sha256": "8149a12baf9905b46f8d48342e99f5496f65acf7cc5a937d3bf84ba639febd9a",
+            "bytes": 254783
+          }
         },
         {
           "id": "polyglot-rust-c-1790467342419",
@@ -5871,7 +6203,11 @@
           "how_it_ended": "Time limit",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/polyglot-rust-c-1790467342419.json",
+            "sha256": "2d2d34c158cf209e7efa81aa63a4183372bbc4dbfc4845f2f59dec35f233020c",
+            "bytes": 103804
+          }
         },
         {
           "id": "portfolio-optimization-1790467909921",
@@ -5900,7 +6236,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/portfolio-optimization-1790467909921.json",
+            "sha256": "65fb82f659ed656e795086ab29ba31e1206d68e9079e4ee8af71378ee7b914f6",
+            "bytes": 49142
+          }
         },
         {
           "id": "prove-plus-comm-1790468849833",
@@ -5927,7 +6267,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/prove-plus-comm-1790468849833.json",
+            "sha256": "83eeaf4c471a3ec78682d2aea86fa5aaa790ed7f23347203a37676928490a22a",
+            "bytes": 9668
+          }
         },
         {
           "id": "prove-plus-comm-1790468908164",
@@ -5954,7 +6298,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/prove-plus-comm-1790468908164.json",
+            "sha256": "9437ffc1546ad8d0a273d57710197905789150c787f52dbf5f36c967219a4820",
+            "bytes": 8323
+          }
         },
         {
           "id": "prove-plus-comm-1790468908165",
@@ -5981,7 +6329,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/prove-plus-comm-1790468908165.json",
+            "sha256": "432a82cbdefe7a0a005bdcf910d666545b1602989fdc00ae903c6cefac82890b",
+            "bytes": 9511
+          }
         },
         {
           "id": "pypi-server-1790468900079",
@@ -6008,7 +6360,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/pypi-server-1790468900079.json",
+            "sha256": "93018f1bf92a17ccdbca5c3d58f194776df499007fe9f72835d6b73f7063e283",
+            "bytes": 14519
+          }
         },
         {
           "id": "pypi-server-1790468968309",
@@ -6035,7 +6391,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/pypi-server-1790468968309.json",
+            "sha256": "837ef1e26a5c693e6811b6515dd2c3fa9df04e53f5b4635d051da9229e2b7333",
+            "bytes": 11279
+          }
         },
         {
           "id": "pypi-server-1790468968317",
@@ -6062,7 +6422,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/pypi-server-1790468968317.json",
+            "sha256": "01392299538687fd0d8700b6439967ca45b2d49f0759006ad635412f4c4d9a45",
+            "bytes": 56886
+          }
         },
         {
           "id": "pytorch-model-cli-1790468958289",
@@ -6089,7 +6453,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/pytorch-model-cli-1790468958289.json",
+            "sha256": "eb54da64d2ce7a3b98a55522963808c131622d26c7ce728769c7a4824a9ec61b",
+            "bytes": 41767
+          }
         },
         {
           "id": "pytorch-model-cli-1790469268915",
@@ -6116,7 +6484,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/pytorch-model-cli-1790469268915.json",
+            "sha256": "d333de28b5fcf451db7ec7de826ece39149b56e3afd5fca1f1a2e7cff10b2e63",
+            "bytes": 34014
+          }
         },
         {
           "id": "pytorch-model-cli-1790469268916",
@@ -6145,7 +6517,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/pytorch-model-cli-1790469268916.json",
+            "sha256": "46a4cc01eb228975ff659e2521a2d8f3fdfab4eb4d8524e4639ced6c18a51929",
+            "bytes": 75958
+          }
         },
         {
           "id": "pytorch-model-recovery-1790468962971",
@@ -6172,7 +6548,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/pytorch-model-recovery-1790468962971.json",
+            "sha256": "a01c27b7eb5417e50792daba098d2d2860c963ad78c6054417d72b1ad7a0c1f0",
+            "bytes": 23045
+          }
         },
         {
           "id": "pytorch-model-recovery-1790469268916",
@@ -6201,7 +6581,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/pytorch-model-recovery-1790469268916.json",
+            "sha256": "0b7361e94f068f33f0fe871bb42aa7ed4adc70fe99f99daa6b05a951607f81e5",
+            "bytes": 24934
+          }
         },
         {
           "id": "pytorch-model-recovery-1790469268921",
@@ -6230,7 +6614,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/pytorch-model-recovery-1790469268921.json",
+            "sha256": "5cb1b7abb78344af6a932bd776e116c7b0bf912a109b2b2bf4784289218f8a25",
+            "bytes": 247905
+          }
         },
         {
           "id": "query-optimize-1790469244903",
@@ -6259,7 +6647,11 @@
           "how_it_ended": "Unaccepted",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/query-optimize-1790469244903.json",
+            "sha256": "337fa2fd6109881dd06429b135dfdc77e2c8c497c6df1e3eb0d1431716401dc5",
+            "bytes": 27575
+          }
         },
         {
           "id": "regex-chess-1790469258713",
@@ -6288,7 +6680,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/regex-chess-1790469258713.json",
+            "sha256": "130385eb392d2d96cadbe2e3c8419a89839e25a96a6533c783620747542daaba",
+            "bytes": 53140
+          }
         },
         {
           "id": "regex-log-1790469395553",
@@ -6315,7 +6711,11 @@
           "how_it_ended": "Unaccepted",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/regex-log-1790469395553.json",
+            "sha256": "e5355624f82906b45cf6678d89ff5521dd8550fa2a4aa76500f67d64023eaedf",
+            "bytes": 22098
+          }
         },
         {
           "id": "regex-log-1790469629726",
@@ -6342,7 +6742,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/regex-log-1790469629726.json",
+            "sha256": "59da06d2a67fa89925362c9046b3c9537935b16ba5661997f6e2a6fa7cc388d1",
+            "bytes": 18296
+          }
         },
         {
           "id": "regex-log-1790469629731",
@@ -6369,7 +6773,11 @@
           "how_it_ended": "Unaccepted",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/regex-log-1790469629731.json",
+            "sha256": "bbb43b9d19c582d831954de8dee60855a4aff794e6323427f03160065baaa4da",
+            "bytes": 52379
+          }
         },
         {
           "id": "reshard-c4-data-1790469615537",
@@ -6396,7 +6804,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/reshard-c4-data-1790469615537.json",
+            "sha256": "c5215532440fa88b0ed0b49d63b9eb3467d74122e8215573f98bbe0c5a90e342",
+            "bytes": 51152
+          }
         },
         {
           "id": "reshard-c4-data-1790469930442",
@@ -6423,7 +6835,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/reshard-c4-data-1790469930442.json",
+            "sha256": "aa131a162baa8700fdd4a54778e50eb20537efb8d0fdddbefe52aae7268bd521",
+            "bytes": 47579
+          }
         },
         {
           "id": "reshard-c4-data-1790469930443",
@@ -6450,7 +6866,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/reshard-c4-data-1790469930443.json",
+            "sha256": "3db59a79972d4f21dce682101d6eee69bc41e042102ad7fae017ccabb9e630b2",
+            "bytes": 88141
+          }
         },
         {
           "id": "rstan-to-pystan-1790469885461",
@@ -6477,7 +6897,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/rstan-to-pystan-1790469885461.json",
+            "sha256": "1b721da470e4a286240e31d08bde6c97005ed79062eb5ecede412fb4db9d47b6",
+            "bytes": 41987
+          }
         },
         {
           "id": "rstan-to-pystan-1790470231365",
@@ -6504,7 +6928,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/rstan-to-pystan-1790470231365.json",
+            "sha256": "b16dda857d232813d684402ec06d7733fa524ce75f275b8507395730be50d2d5",
+            "bytes": 47671
+          }
         },
         {
           "id": "rstan-to-pystan-1790470231366",
@@ -6531,7 +6959,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/rstan-to-pystan-1790470231366.json",
+            "sha256": "bd6aa3d9e67733dab9caa9308f8ea918f0b059a93eab2997e130d0d32c51fe93",
+            "bytes": 71892
+          }
         },
         {
           "id": "sam-cell-seg-1790470186805",
@@ -6558,7 +6990,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/sam-cell-seg-1790470186805.json",
+            "sha256": "105961ed17c8e1b4e0b95dcd8b843a32ce702bc90a701c3beb86d38192af70f6",
+            "bytes": 26274
+          }
         },
         {
           "id": "sam-cell-seg-1790470411804",
@@ -6585,7 +7021,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/sam-cell-seg-1790470411804.json",
+            "sha256": "fe6aee70e5d9de45a6b5a7bc187a9e8b8adaed808ad17f3b57ed37f898329ce9",
+            "bytes": 81560
+          }
         },
         {
           "id": "sam-cell-seg-1790470411805",
@@ -6614,7 +7054,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/sam-cell-seg-1790470411805.json",
+            "sha256": "7344908a83b74c5177b9614d597248988c12ab231fd2db10383025411e48eecb",
+            "bytes": 34998
+          }
         },
         {
           "id": "schemelike-metacircular-eval-1790470391484",
@@ -6643,7 +7087,11 @@
           "how_it_ended": "Unaccepted",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/schemelike-metacircular-eval-1790470391484.json",
+            "sha256": "5727a5a5baf8afb5b428b8efdb58aad5489a499f41d04512f5d4f741c768a876",
+            "bytes": 134289
+          }
         },
         {
           "id": "sparql-university-1790470404114",
@@ -6672,7 +7120,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/sparql-university-1790470404114.json",
+            "sha256": "1da58ce5d495c88884c72e6af98d62982477052e10cf7b723dcf15786f1777a3",
+            "bytes": 37722
+          }
         },
         {
           "id": "sqlite-db-truncate-1790470547404",
@@ -6699,7 +7151,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/sqlite-db-truncate-1790470547404.json",
+            "sha256": "944988645c20eab296695941156e26b74aafcf6a70dbebd4ba6ea30328343fc0",
+            "bytes": 70790
+          }
         },
         {
           "id": "sqlite-db-truncate-1790470893658",
@@ -6726,7 +7182,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/sqlite-db-truncate-1790470893658.json",
+            "sha256": "7fe366c67d1b210cfd06a612ddecbd9f9066b6fc4ac11b7546cc3108347ca068",
+            "bytes": 17128
+          }
         },
         {
           "id": "sqlite-db-truncate-1790470893659",
@@ -6753,7 +7213,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/sqlite-db-truncate-1790470893659.json",
+            "sha256": "70a09f86d377f8f7bb321a57cc3fce83190f3cef31648f2fd77f6cf7f1760bfd",
+            "bytes": 19637
+          }
         },
         {
           "id": "sqlite-with-gcov-1790470750825",
@@ -6782,7 +7246,11 @@
           "how_it_ended": "Unaccepted",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/sqlite-with-gcov-1790470750825.json",
+            "sha256": "602e42c7c2cf7750cc19d7fe9a9d57665f64ed71d4d116ea54bff03a67243a11",
+            "bytes": 68547
+          }
         },
         {
           "id": "torch-pipeline-parallelism-1790470846620",
@@ -6811,7 +7279,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/torch-pipeline-parallelism-1790470846620.json",
+            "sha256": "e5ac1b228a6a061b277a31123829a04063c155ba041c5b2cb18ea9a7ba7db0fd",
+            "bytes": 116549
+          }
         },
         {
           "id": "torch-tensor-parallelism-1790470976326",
@@ -6840,7 +7312,11 @@
           "how_it_ended": "Unaccepted",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/torch-tensor-parallelism-1790470976326.json",
+            "sha256": "898748ed70c197ce8fe88338ae2576fce2438b349ced8e5def3b5c58c90c3577",
+            "bytes": 88534
+          }
         },
         {
           "id": "train-fasttext-1790471051961",
@@ -6869,7 +7345,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/train-fasttext-1790471051961.json",
+            "sha256": "277b2942d455fe27151a3e6e5491eb9bd6999ca3548133469f1ee97130438e4c",
+            "bytes": 72749
+          }
         },
         {
           "id": "tune-mjcf-1790471349629",
@@ -6896,7 +7376,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/tune-mjcf-1790471349629.json",
+            "sha256": "80799fbe64f7e35ff991918750242d82932a056824f370f9585ba7410f15bce2",
+            "bytes": 105398
+          }
         },
         {
           "id": "tune-mjcf-1790472518955",
@@ -6923,7 +7407,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/tune-mjcf-1790472518955.json",
+            "sha256": "22b6474505d5da7526648f22f2615854706d7e579eefcfa61cea5def4a9de540",
+            "bytes": 92870
+          }
         },
         {
           "id": "tune-mjcf-1790472518956",
@@ -6950,7 +7438,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/tune-mjcf-1790472518956.json",
+            "sha256": "94cd71df0f9514a4f291eda6289c2040ce585f749be70626ab6c8875e4c21878",
+            "bytes": 64461
+          }
         },
         {
           "id": "vulnerable-secret-1790471533583",
@@ -6977,7 +7469,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/vulnerable-secret-1790471533583.json",
+            "sha256": "95e80dd3172dc007c503ca25d3c5a4da2690b9621063cb94211f6596147648ba",
+            "bytes": 21744
+          }
         },
         {
           "id": "vulnerable-secret-1790471616351",
@@ -7006,7 +7502,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/vulnerable-secret-1790471616351.json",
+            "sha256": "252a54d87185c76108a9ca873629262f969de5b9d827699330f1d984bf0aab41",
+            "bytes": 23337
+          }
         },
         {
           "id": "vulnerable-secret-1790471616352",
@@ -7033,7 +7533,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/vulnerable-secret-1790471616352.json",
+            "sha256": "f502a7144b314221e96801128c7db4d7083f313d7d66f40aa5f064bab66f9c94",
+            "bytes": 25231
+          }
         },
         {
           "id": "write-compressor-1790471597732",
@@ -7065,7 +7569,11 @@
           "how_it_ended": "The model finished",
           "jev": null,
           "verifier": null,
-          "trace": null
+          "trace": {
+            "path": "traces/tb21-oos-microcoder-9683/write-compressor-1790471597732.json",
+            "sha256": "7ce7a8f85e2496ad7105a9387564420ca03148fb0726036a75388c77d537f2c2",
+            "bytes": 236515
+          }
         }
       ]
     }

@@ -7,7 +7,9 @@ use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 use gym_leaderboard::contract::{Board, Cost, Label, Miss, StepKind, TaskStatus, TraceBundle};
-use gym_leaderboard::{Output, PUBLISHED, bundle, check, evidence::Reader, generate, tb4_delegate};
+use gym_leaderboard::{
+    Output, PUBLISHED, bundle, check, evidence::Reader, generate, microcoder, tb4_delegate,
+};
 use serde_json::Value;
 
 fn root() -> PathBuf {
@@ -172,7 +174,7 @@ fn the_tb21_board_says_what_the_essay_says() {
 #[test]
 fn every_bundle_fits_its_bound_and_matched_no_credential_rule() {
     let credential = gym_leaderboard::scrub::credential_rules();
-    assert_eq!(output().bundles.len(), 28);
+    assert_eq!(output().bundles.len(), 28 + 127);
     for (path, bytes) in &output().bundles {
         assert!(
             bytes.len() <= bundle::MAX_BUNDLE_BYTES,
@@ -180,12 +182,187 @@ fn every_bundle_fits_its_bound_and_matched_no_credential_rule() {
             bytes.len()
         );
         let b: TraceBundle = serde_json::from_slice(bytes).unwrap();
-        for rule in b.scrub.redactions.keys() {
-            assert!(!credential.contains(&rule.as_str()), "{path}: {rule}");
+        for (rule, n) in &b.scrub.redactions {
+            if credential.contains(&rule.as_str()) {
+                // Only a match a person inspected and recorded, still
+                // reading the same source bytes.
+                assert!(
+                    output().reviews.iter().any(|r| &r.bundle == path
+                        && &r.rule == rule
+                        && r.matches == *n
+                        && b.sources
+                            .iter()
+                            .any(|s| s.path == r.source && s.sha256 == r.source_sha256)),
+                    "{path}: {rule}"
+                );
+            }
         }
         assert!(!b.sources.is_empty());
     }
     assert!(output().leaderboard_bytes.len() <= gym_leaderboard::MAX_LEADERBOARD_BYTES);
+}
+
+#[test]
+fn every_tb21_attempt_has_a_trace() {
+    let b = board(gym_leaderboard::tb21_oos::BOARD_ID);
+    assert_eq!(b.attempts.len(), 127);
+    for a in &b.attempts {
+        let t = a
+            .trace
+            .as_ref()
+            .unwrap_or_else(|| panic!("{}: no trace", a.id));
+        let (_, bytes) = output()
+            .bundles
+            .iter()
+            .find(|(p, _)| *p == t.path)
+            .unwrap_or_else(|| panic!("{}: no bundle", t.path));
+        assert_eq!(t.bytes, bytes.len() as u64);
+        assert_eq!(t.sha256, gym_leaderboard::evidence::sha256_hex(bytes));
+    }
+}
+
+#[test]
+fn a_tb21_pass_bundle_steps_through_the_loop_jev_and_the_verifier() {
+    let id = "prove-plus-comm-1790468849833";
+    let a = board(gym_leaderboard::tb21_oos::BOARD_ID)
+        .attempts
+        .iter()
+        .find(|a| a.id == id)
+        .unwrap();
+    let b = bundle_of(id);
+    assert!(a.beat && b.outcome.beat && b.outcome.passed);
+    // Its cost against the bar: Fable 5 xhigh's cost per trial.
+    let cost = b.outcome.cost.known().unwrap();
+    assert!((cost - 0.001_315_068).abs() < 1e-9, "{cost}");
+    assert!((b.outcome.bar.cost_usd.unwrap() - 0.075).abs() < 1e-9);
+    assert!(cost < b.outcome.bar.cost_usd.unwrap());
+    // The record files, as the manifest recorded them.
+    assert_eq!(b.sources.len(), 3);
+    assert!(
+        b.sources[0]
+            .path
+            .ends_with("coderos-4080-tb21/MANIFEST.json")
+    );
+    assert!(b.jev.is_none() && b.briefing.is_none());
+
+    let kinds: Vec<&StepKind> = b.steps.iter().map(|s| &s.kind).collect();
+    assert!(matches!(
+        kinds[0],
+        StepKind::DelegateStarted { agent, model } if agent == "Microcoder" && model.as_deref() == Some("gpt-6-luna")
+    ));
+    // Jev's judgments, with every answer's probability.
+    let judged: Vec<&StepKind> = kinds
+        .iter()
+        .copied()
+        .filter(|k| matches!(k, StepKind::Decision { name, .. } if name == "judged"))
+        .collect();
+    assert_eq!(judged.len(), 4);
+    let StepKind::Decision {
+        answers,
+        cost_usd,
+        question,
+        ..
+    } = judged[1]
+    else {
+        unreachable!()
+    };
+    let names: Vec<(&str, f64)> = answers.iter().map(|a| (a.name.as_str(), a.p)).collect();
+    assert_eq!(
+        names,
+        vec![("done", 0.03), ("progress", 0.85), ("repeating", 0.08)]
+    );
+    assert!(cost_usd.is_some() && question.is_some());
+    assert_eq!(
+        kinds
+            .iter()
+            .filter(|k| matches!(k, StepKind::ModelStep { .. }))
+            .count(),
+        4
+    );
+    assert_eq!(
+        kinds
+            .iter()
+            .filter(|k| matches!(k, StepKind::Command { .. }))
+            .count(),
+        3
+    );
+    assert!(
+        kinds
+            .iter()
+            .any(|k| matches!(k, StepKind::Tests { passed, total, .. } if passed == total))
+    );
+    assert!(matches!(
+        kinds.last().unwrap(),
+        StepKind::Ended { reason, steps: Some(4) } if reason == "finished"
+    ));
+    let times: Vec<u64> = b.steps.iter().filter_map(|s| s.at_ms).collect();
+    assert!(times.windows(2).all(|w| w[0] <= w[1]));
+    let v = b.verifier.as_ref().unwrap();
+    assert_eq!((v.reward, v.passed, v.failed), (Some(1.0), 4, 0));
+    assert!(v.tests.iter().all(|t| t.status == "passed"));
+}
+
+/// Copies one TB2.1 record and its manifest into a scratch root.
+fn record_fixture(run: &str) -> (tempfile::TempDir, String) {
+    let dir = tempfile::tempdir().unwrap();
+    let host = gym_leaderboard::tb21_oos::RUNS;
+    for rel in [
+        format!("{host}/MANIFEST.json"),
+        format!("{host}/{run}/summary.json"),
+        format!("{host}/{run}/events.jsonl"),
+    ] {
+        let to = dir.path().join(&rel);
+        std::fs::create_dir_all(to.parent().unwrap()).unwrap();
+        std::fs::copy(root().join(&rel), to).unwrap();
+    }
+    (dir, host.to_owned())
+}
+
+#[test]
+fn a_record_that_differs_from_its_manifest_refuses_to_bundle() {
+    let run = "prove-plus-comm-1790468849833";
+    let (dir, host) = record_fixture(run);
+    let b = board(gym_leaderboard::tb21_oos::BOARD_ID);
+    let attempt = b.attempts.iter().find(|a| a.id == run).unwrap();
+    let bar = &b.tasks.iter().find(|t| t.task == attempt.task).unwrap().bar;
+    let reader = Reader::new(dir.path());
+    let manifest = microcoder::Manifest::read(&reader, &host).unwrap();
+    let input = microcoder::Input {
+        board: &b.id,
+        attempt,
+        bar,
+        manifest: &manifest,
+        run,
+    };
+    microcoder::build(&reader, &input).expect("the retained record bundles");
+    let events = dir.path().join(format!("{host}/{run}/events.jsonl"));
+    let mut text = std::fs::read_to_string(&events).unwrap();
+    text.push_str("{\"event\": \"ran\", \"step\": 9}\n");
+    std::fs::write(&events, text).unwrap();
+    let err = microcoder::build(&reader, &input).unwrap_err();
+    assert!(err.0.contains("differs from MANIFEST.json"), "{err}");
+}
+
+#[test]
+fn a_review_holds_only_while_its_source_is_unchanged() {
+    // The committed publication's one reviewed match passes `check`.
+    assert!(check(&root().join(PUBLISHED), output()).is_empty());
+    // A review whose recorded digest no longer matches lapses: the match
+    // fails `check` again, and the review is reported as matching nothing.
+    let mut out = generate(&root()).unwrap();
+    assert!(!out.reviews.is_empty());
+    out.reviews[0].source_sha256 = "0".repeat(64);
+    let problems = check(&root().join(PUBLISHED), &out);
+    assert!(
+        problems
+            .iter()
+            .any(|p| p.contains("credential rule private-key")),
+        "{problems:#?}"
+    );
+    assert!(
+        problems.iter().any(|p| p.contains("matches no bundle")),
+        "{problems:#?}"
+    );
 }
 
 #[test]

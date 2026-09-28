@@ -10,6 +10,9 @@ publish.workspace = true
 # Digests use ATIF's rule (object keys sorted at every depth, then SHA-256),
 # so a board digest and a trace digest agree with the rest of the Gym.
 atif = { path = "../atif" }
+# The Microcoder event reader and the beats-winner rule are the Gym's own,
+# not second copies.
+gym = { path = "../gym" }
 regex = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }

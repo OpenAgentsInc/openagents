@@ -67,6 +67,53 @@ pub struct Board {
     pub spend: Spend,
     pub tasks: Vec<TaskRow>,
     pub attempts: Vec<Attempt>,
+    /// A [`BoardKind::Reference`] board's rows. Empty (and absent) on a
+    /// subject board.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub reference_rows: Vec<ReferenceRow>,
+    /// Where and when a [`BoardKind::Reference`] board's snapshot was taken.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub snapshot: Option<Snapshot>,
+}
+
+/// A public leaderboard, read once and committed: not live.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Snapshot {
+    /// `hub.harborframework.com`.
+    pub host: String,
+    /// The leaderboard's page.
+    pub url: String,
+    /// When the snapshot was fetched, as the snapshot file records it.
+    pub fetched_at: String,
+    /// How the snapshot counted, in the snapshot file's words.
+    pub method: String,
+}
+
+/// One row of a public leaderboard snapshot, as it was published.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ReferenceRow {
+    /// The leaderboard's own rank; ties share one.
+    pub rank: u32,
+    pub agent: String,
+    pub agent_version: Option<String>,
+    pub model: String,
+    pub effort: Option<String>,
+    /// The date the leaderboard gives the row.
+    pub date: Option<String>,
+    /// Passing trials, when the leaderboard publishes them.
+    pub passes: Option<u32>,
+    pub trials: Option<u32>,
+    /// The leaderboard's accuracy, in percent.
+    pub accuracy_pct: Option<f64>,
+    /// The row's total cost as published: its own basis, not list price.
+    pub cost_usd: Option<f64>,
+    /// Mean whole-trial seconds.
+    pub mean_trial_seconds: Option<f64>,
+    /// Whether the per-task trial and pass counts, summed, reconcile with
+    /// the row's totals.
+    pub per_task_consistent: Option<bool>,
+    /// Whether the per-task costs, summed, reconcile with the row's cost.
+    pub per_task_cost_consistent: Option<bool>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -78,6 +125,9 @@ pub struct Benchmark {
 }
 
 /// What a beat means on the board.
+///
+/// Kinds after the first two are optional additions to `v1`: a reader that
+/// doesn't know one reads it as [`BoardKind::Other`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum BoardKind {
@@ -87,6 +137,17 @@ pub enum BoardKind {
     /// A beat is a pass whose cost is below the reference's cost per
     /// trial on the same task. Time isn't part of the rule.
     CostBelowReferencePerTrial,
+    /// A beat is a pass whose known total cost is below the reference's
+    /// cheapest winning run on the same task. Time is shown against the
+    /// fastest win but isn't part of the rule.
+    CostBelowCheapestWin,
+    /// Not a subject's board: a dated snapshot of a public leaderboard,
+    /// one [`ReferenceRow`] per agent, model, and effort. It has no beats
+    /// and no attempts, and its rows are never merged into a subject board.
+    Reference,
+    /// A kind this reader doesn't know.
+    #[serde(other)]
+    Other,
 }
 
 /// Where the board's numbers come from.
@@ -161,6 +222,9 @@ pub enum Label {
     FewAttempts,
     /// The reference ran on another host under other conditions.
     ReferenceOtherConditions,
+    /// A label this reader doesn't know.
+    #[serde(other)]
+    Other,
 }
 
 impl Label {
@@ -178,6 +242,7 @@ impl Label {
             Self::ThinMargin => "thin margin",
             Self::FewAttempts => "few attempts",
             Self::ReferenceOtherConditions => "reference under other conditions",
+            Self::Other => "other",
         }
     }
 }
@@ -225,6 +290,14 @@ pub struct Spend {
 pub enum CostBasis {
     /// List price applied to reported tokens.
     ListPrice,
+    /// What the provider billed (OpenRouter's reported charge).
+    Billed,
+    /// Some attempts are list price and some billed; each attempt's
+    /// `cost_basis` says which.
+    Mixed,
+    /// A basis this reader doesn't know.
+    #[serde(other)]
+    Other,
 }
 
 /// One task's row.
@@ -285,6 +358,9 @@ pub enum TaskStatus {
     PassedWithoutBeat,
     /// No attempt passed.
     NeverPassed,
+    /// A status this reader doesn't know.
+    #[serde(other)]
+    Other,
 }
 
 /// One graded attempt.
@@ -319,6 +395,14 @@ pub struct Attempt {
     /// The scrubbed, bounded trace bundle for this attempt, when one was
     /// generated. The path is relative to the leaderboard file.
     pub trace: Option<TraceRef>,
+    /// This attempt's cost basis, when the board's spend is
+    /// [`CostBasis::Mixed`] or it differs from the board's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cost_basis: Option<CostBasis>,
+    /// Codes of the board's caveats a viewer must show on this row, such
+    /// as the same-task caveat on a beat.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub caveats: Vec<String>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
@@ -471,7 +555,48 @@ pub enum StepKind {
     Decision {
         name: String,
         duration_ms: Option<u64>,
+        /// The question set in words, when the record names it.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        question: Option<String>,
+        /// Each answer's probability, when the event records them.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        answers: Vec<Answer>,
+        /// What the host did with the answers, such as tests it dropped.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        detail: Vec<Text>,
+        /// The call's cost, when recorded.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cost_usd: Option<f64>,
     },
+    /// One model call in a loop agent (Microcoder): which model, how long,
+    /// what it cost, and its tokens. Its rationale follows as a `say` and
+    /// its commands as `command` steps.
+    ModelStep {
+        step: Option<u64>,
+        model: Option<String>,
+        milliseconds: Option<u64>,
+        cost_usd: Option<f64>,
+        prompt_tokens: Option<u64>,
+        completion_tokens: Option<u64>,
+    },
+    /// Knowledge retrieval for one step: the entries kept, with Jev's
+    /// relevance, and those shown in full.
+    Retrieval {
+        step: Option<u64>,
+        kept: Vec<Answer>,
+        expanded: Vec<String>,
+    },
+    /// The agent's own acceptance tests ran.
+    Tests {
+        /// Whether this run froze the tests.
+        froze: bool,
+        passed: u32,
+        total: u32,
+        /// Each failing test and the last line of its output.
+        failed: Vec<Text>,
+    },
+    /// The loop ended: why, and after how many steps.
+    Ended { reason: String, steps: Option<u64> },
     /// The delegate started.
     DelegateStarted {
         agent: String,
@@ -495,6 +620,16 @@ pub enum StepKind {
     },
     /// The delegate ended on its own.
     DelegateEnded { error: bool, result: Text },
+    /// A step kind this reader doesn't know.
+    #[serde(other)]
+    Other,
+}
+
+/// A named probability: a Jev answer, or a retrieved entry's relevance.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Answer {
+    pub name: String,
+    pub p: f64,
 }
 
 /// The verifier's result.

@@ -23,7 +23,8 @@ use crate::{median, pct, usd};
 pub const BOARD_ID: &str = "tb21-oos-microcoder-9683";
 
 const STUDY: &str = "bench/terminal-bench/studies/2026-09-26-out-of-sample";
-const RUNS: &str = "bench/terminal-bench/microcoder-runs/coderos-4080-tb21";
+/// The retained run records, one directory per run.
+pub const RUNS: &str = "bench/terminal-bench/microcoder-runs/coderos-4080-tb21";
 const REPORT: &str = "docs/terminal-bench/2026-09-26-tb21-oos-results.md";
 const PRE_REGISTRATION: &str = "docs/terminal-bench/2026-09-26-tb21-oos-study.md";
 const CONFIRMED: &str = "Confirmed out-of-sample win";
@@ -261,6 +262,8 @@ pub fn build(reader: &Reader) -> Result<Board> {
         spend,
         tasks,
         attempts,
+        reference_rows: Vec::new(),
+        snapshot: None,
     })
 }
 
@@ -328,6 +331,8 @@ fn attempt(run: &Value, task: &str, first: bool, bar: &Bar) -> Result<Attempt> {
         jev: None,
         verifier: None,
         trace: None,
+        cost_basis: None,
+        caveats: Vec::new(),
     })
 }
 

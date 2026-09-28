@@ -255,6 +255,8 @@ pub fn build(reader: &Reader) -> Result<(Board, Vec<TraceJob>)> {
         spend,
         tasks,
         attempts,
+        reference_rows: Vec::new(),
+        snapshot: None,
     };
     Ok((board, jobs))
 }
@@ -412,10 +414,12 @@ fn attempt(row: &Value, task: &str, pass: u64, bar: &Bar) -> Result<Attempt> {
                 .unwrap_or_default(),
         }),
         trace: Some(TraceRef {
-            path: format!("traces/{BOARD_ID}/{task}.{label}.json"),
+            path: crate::trace_path(BOARD_ID, &format!("{task}.{label}")),
             sha256: String::new(),
             bytes: 0,
         }),
+        cost_basis: None,
+        caveats: Vec::new(),
     })
 }
 

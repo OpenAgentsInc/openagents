@@ -1,0 +1,15 @@
+{
+ "schema": "openagents.gym.reviewed-redactions.v1",
+ "note": "Credential-shaped matches in published trace bundles that a person inspected in the retained record. The bundle still carries the redaction; a review only lets `gym-leaderboard check` pass, and it lapses when the source file's digest changes. Add one only after reading the retained file.",
+ "reviews": [
+  {
+   "bundle": "traces/tb21-oos-microcoder-9683/openssl-selfsigned-cert-1790465361588.json",
+   "rule": "private-key",
+   "matches": 1,
+   "source": "bench/terminal-bench/microcoder-runs/coderos-4080-tb21/openssl-selfsigned-cert-1790465361588/events.jsonl",
+   "source_sha256": "140cf1321cf94c8971475464a1c5ca03acb9a74ce01194382e138902aefcb5f2",
+   "reviewed": "2026-09-28",
+   "finding": "Step 6's command output ends with the agent's own printf of a '-----BEGIN RSA PRIVATE KEY-----' header followed by a 'Modulus=' line: a label it echoed while checking the task's throwaway self-signed key in the container, with no key material after it. The record holds no other private-key text."
+  }
+ ]
+}

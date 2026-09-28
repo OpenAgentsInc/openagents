@@ -3078,6 +3078,7 @@ name = "gym-leaderboard"
 version = "0.1.0"
 dependencies = [
  "atif",
+ "gym",
  "regex",
  "serde",
  "serde_json",
