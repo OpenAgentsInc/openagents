@@ -153,6 +153,9 @@ impl Worker {
         }
         command
             .env("CODER_WORKER_SECRET", hex(&[WORKER; 32]))
+            // No first-response judge: these tests make no network calls,
+            // and a Jev key in the machine's home would otherwise engage it.
+            .env("CODER_WORKER_JUDGE", "off")
             .env("CODER_RELAY", url)
             .args(arguments)
             .stdin(Stdio::null())
@@ -254,6 +257,17 @@ async fn published(socket: &mut Server) -> Event {
     }
 }
 
+/// The worker's answer to `request` past the `processing` acknowledgement
+/// every admitted turn opens with.
+async fn outcome(socket: &mut Server, request: &Event) -> Value {
+    loop {
+        let body = answer(&published(socket).await, request);
+        if body["status"] != "processing" {
+            return body;
+        }
+    }
+}
+
 async fn bounded<T>(test: impl Future<Output = T>) -> T {
     tokio::time::timeout(TEST_BOUND, test)
         .await
@@ -274,7 +288,7 @@ async fn a_request_delivered_twice_is_answered_once() {
         let job = request(&json!({"v": 2, "task": "ping"}));
         deliver(&mut socket, &job).await;
         deliver(&mut socket, &job).await;
-        let result = answer(&published(&mut socket).await, &job);
+        let result = outcome(&mut socket, &job).await;
         assert_eq!(result["type"], "result", "{result}");
         let line = worker.log_until("already delivered").await;
         assert!(
@@ -284,7 +298,7 @@ async fn a_request_delivered_twice_is_answered_once() {
 
         let next = request(&json!({"v": 2, "task": "pong"}));
         deliver(&mut socket, &next).await;
-        let result = answer(&published(&mut socket).await, &next);
+        let result = outcome(&mut socket, &next).await;
         assert_eq!(result["type"], "result", "{result}");
         let ignored = worker
             .seen()
@@ -357,13 +371,13 @@ async fn a_job_that_fails_before_running_frees_its_slot() {
             (&unversioned, "unsupported_version"),
         ] {
             deliver(&mut socket, failing).await;
-            let refused = answer(&published(&mut socket).await, failing);
+            let refused = outcome(&mut socket, failing).await;
             assert_eq!(refused["code"], code, "{refused}");
         }
 
         let job = request(&json!({"v": 2, "task": "ping"}));
         deliver(&mut socket, &job).await;
-        let result = answer(&published(&mut socket).await, &job);
+        let result = outcome(&mut socket, &job).await;
         assert_eq!(result["type"], "result", "{result}");
     })
     .await;
@@ -412,7 +426,7 @@ async fn a_dropped_or_restarted_relay_is_rejoined_and_resubscribed() {
 
         let job = request(&json!({"v": 2, "task": "ping"}));
         deliver(&mut socket, &job).await;
-        let result = answer(&published(&mut socket).await, &job);
+        let result = outcome(&mut socket, &job).await;
         assert_eq!(result["type"], "result", "{result}");
     })
     .await;

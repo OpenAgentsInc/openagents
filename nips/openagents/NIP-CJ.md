@@ -51,9 +51,30 @@ Feedback has `v: 1`, `requires`, `type`, and fields for that type:
 
 | Type | Fields |
 | --- | --- |
-| `judgment` | `verdict`: `respond`, `clarify`, `end_conversation`, or `unrouted`; `line`: bounded display string. It is an optional observation, not permission. |
+| `judgment` | `verdict`: `respond`, `clarify`, `end_conversation`, or `unrouted`; `line`: bounded display string. Optional typed additions: `set` (the question set's identity), `lane` (`chat`, `computer`, or `unknown`), `opener` (the chosen opener's ID or null), and `confidence` (the opener choice's probability). It is an optional observation, not permission. |
 | `partial` | `seq`: nonnegative integer starting at zero; `delta`: string. |
 | `status` | `status`: `queued`, `processing`, or `error`; error requires `code` and `message`, with optional nonnegative `retry_after_ms`. |
+
+A worker MAY send `status: processing` as soon as it admits a turn, before any
+model answers, so a caller hears it within one relay round trip. A request
+MAY ask for a first response: `judge: true` asks for `judgment` feedback, and
+`opener: true` asks for that and an opener. A worker that judges the turn
+beside its model call MAY then send the chosen opener as partial `seq` 0 when
+the judgment arrives before the model's first delta; the result's `text` then
+begins with that same opener, so a client that replaces partials with the
+result shows the same words. A request that asks for neither gets the model's
+text unchanged, which a caller that parses the result as structured output
+relies on. A judgment never delays generation, and one that arrives after the
+model has started adds feedback only.
+
+A request with `type: "rank"` asks for an ordering instead of a turn. It
+carries `candidates` (1 to 16 `{id, label}`, IDs 1 to 64 bytes and not
+`none`, labels at most 200 bytes), an optional `draft` string, and the
+conversation's `transcript`. The worker admits and meters it as a turn and
+answers with one result: `type: "result"`, `text` (the most likely ID),
+`ranked` (every candidate as `{id, p}`, most likely first), `model`, and
+`set`. A worker without a judge refuses it `unavailable`; malformed candidates
+refuse `malformed`.
 
 Workers increment `seq` once per emitted partial. After event-ID deduplication,
 a client renders only the next contiguous sequence number. A gap, repeat with

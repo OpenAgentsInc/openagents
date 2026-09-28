@@ -500,6 +500,24 @@ impl ResponsesDoor {
         Some(Self::new(url, model, key))
     }
 
+    /// Open (or keep open) a pooled connection to the door, so the next
+    /// turn does not pay the TCP and TLS handshake before its request.
+    ///
+    /// One unbilled `GET /v1/models`; the answer is read and dropped, and
+    /// a failure is only a cold connection, so it is not reported.
+    pub async fn warm(&self) {
+        if let Ok(response) = self
+            .http
+            .get(format!("{}/v1/models", self.url))
+            .bearer_auth(&self.key)
+            .timeout(Duration::from_secs(10))
+            .send()
+            .await
+        {
+            let _ = response.bytes().await;
+        }
+    }
+
     /// The same door running `model`, which may be named as a lane.
     #[must_use]
     pub fn serving(mut self, model: &str) -> Self {
@@ -1102,6 +1120,15 @@ impl Door {
                  would answer instead. Set {} or {}.",
                 KEY_VARS[0], KEY_VARS[1]
             )),
+        }
+    }
+
+    /// Warm the door's connection: a live door opens its pooled HTTPS
+    /// connection now (see [`ResponsesDoor::warm`]); every other door has
+    /// nothing to warm.
+    pub async fn warm(&self) {
+        if let Door::Live(door) = self {
+            door.warm().await;
         }
     }
 

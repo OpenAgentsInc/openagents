@@ -58,6 +58,7 @@ pub mod doctor;
 pub mod evidence;
 pub mod execution;
 pub mod executor_door;
+pub mod first;
 pub mod generate;
 pub mod identity;
 pub mod package;

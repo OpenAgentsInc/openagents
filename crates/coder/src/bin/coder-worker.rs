@@ -88,11 +88,14 @@
 
 use std::collections::{BTreeMap, VecDeque};
 use std::env;
+use std::future::Future;
 use std::path::PathBuf;
+use std::pin::Pin;
 use std::process::ExitCode;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use coder::first;
 use coder::generate::{
     Door, Generate, GenerateError, Lane, Message, Role, Usage, WORKER_MODEL_VAR, model_from_env,
 };
@@ -195,7 +198,10 @@ other request is refused with code not_admitted. CODER_WORKER_QUOTA
 (day=N,minute=N,total=N[,bytes=N]) answers every other caller too, under
 those per-key and total limits; CODER_WORKER_QUOTA_FILE keeps the day's
 counts across a restart. CODER_WORKER_JOBS bounds
-how many jobs run at once; the rest are refused busy. The door the worker
+how many jobs run at once; the rest are refused busy. The first-response
+judge answers a turn that asks for it (opener or judge in the request)
+through the decision profile the agent resolves (TYPESAFE_API_KEY or
+~/.openagents/jev.json); CODER_WORKER_JUDGE=off turns it off. The door the worker
 answers through comes from the environment exactly as it does for the
 agent, except for the lane: CODER_WORKER_MODEL names the model or lane
 this worker runs, and outranks CODER_MODEL.";
@@ -229,6 +235,9 @@ fn quota_from_env() -> Result<Option<Policy>, String> {
         Err(_) => Ok(None),
     }
 }
+
+/// The environment variable that turns the first-response judge off.
+const JUDGE_VAR: &str = "CODER_WORKER_JUDGE";
 
 /// The environment variable that bounds how many jobs run at once.
 const JOBS_VAR: &str = "CODER_WORKER_JOBS";
@@ -395,6 +404,16 @@ async fn serve(options: &Options) -> Result<(), String> {
     }
     let door = Arc::new(door);
     let jobs = jobs_bound(&door)?;
+    // The judge that answers first: one System One call per admitted
+    // conversation turn, run beside the model call (see `coder::first`).
+    // The same decision profile the agent resolves; none configured means
+    // no judgment, and a configuration that does not resolve stops the
+    // worker rather than quietly running without one.
+    let judge = match env::var(JUDGE_VAR).as_deref() {
+        Ok("off") => None,
+        Ok("") | Err(_) => coder::decision::from_env()?.map(Arc::new),
+        Ok(other) => return Err(format!("{JUDGE_VAR} is `off` or unset, not `{other}`")),
+    };
 
     eprintln!("worker  {}", identity.pubkey());
     eprintln!("relay   {url}");
@@ -409,6 +428,14 @@ async fn serve(options: &Options) -> Result<(), String> {
             lane.name()
         ),
         None => eprintln!("door    {} ({})", door.name(), door.model()),
+    }
+    match &judge {
+        Some(judge) => eprintln!(
+            "judge   {} ({}): first response and suggestions",
+            judge.base_url(),
+            judge.default_model()
+        ),
+        None => eprintln!("judge   none: no first response before the model's"),
     }
     eprintln!("jobs    {jobs} at once; more are refused as busy");
     if let Some(code) = &options.decline {
@@ -442,11 +469,16 @@ async fn serve(options: &Options) -> Result<(), String> {
         return Ok(());
     }
 
+    // Keep the door's and the judge's HTTPS connections open, so a turn
+    // does not start with a handshake. Both calls are unbilled reads.
+    tokio::spawn(warm(door.clone(), judge.clone()));
+
     let (outgoing, frames) = mpsc::unbounded_channel::<Value>();
     let mut worker = Worker {
         options,
         identity,
         door,
+        judge,
         running: Arc::new(Semaphore::new(jobs)),
         outgoing,
         frames,
@@ -491,6 +523,23 @@ async fn serve(options: &Options) -> Result<(), String> {
     }
 }
 
+/// How often the worker touches its door and judge to keep their pooled
+/// connections open: under the HTTP client's 90-second idle close.
+const WARM_EVERY: Duration = Duration::from_secs(45);
+
+/// Warm the door and the judge now and every [`WARM_EVERY`].
+async fn warm(door: Arc<Door>, judge: Option<Arc<jev::Client>>) {
+    loop {
+        let judging = async {
+            if let Some(judge) = &judge {
+                let _ = judge.models().list(jev::ListOptions::default()).await;
+            }
+        };
+        tokio::join!(door.warm(), judging);
+        tokio::time::sleep(WARM_EVERY).await;
+    }
+}
+
 /// Why one connection to the relay ended.
 enum Fault {
     /// The relay confirmed the subscription before the fault, so the relay
@@ -506,6 +555,8 @@ struct Worker<'a> {
     options: &'a Options,
     identity: Arc<Identity>,
     door: Arc<Door>,
+    /// The System One client for the first response, when configured.
+    judge: Option<Arc<jev::Client>>,
     running: Arc<Semaphore>,
     outgoing: mpsc::UnboundedSender<Value>,
     frames: mpsc::UnboundedReceiver<Value>,
@@ -640,6 +691,7 @@ impl Worker<'_> {
                     let job = Job {
                         identity: self.identity.clone(),
                         door: self.door.clone(),
+                        judge: self.judge.clone(),
                         decline: self.options.decline.clone(),
                         allow: self.options.allow.clone(),
                         ledger: self.ledger.clone(),
@@ -755,6 +807,8 @@ fn jobs_bound(door: &Door) -> Result<usize, String> {
 struct Job {
     identity: Arc<Identity>,
     door: Arc<Door>,
+    /// The System One client for the first response and rankings.
+    judge: Option<Arc<jev::Client>>,
     decline: Option<String>,
     allow: Option<Vec<String>>,
     /// The quota a caller off the allowlist is admitted under, when the
@@ -954,6 +1008,12 @@ impl Job {
             }
         }
 
+        // A ranking of the caller's suggestions: one System One call, no
+        // generation. Admitted and metered exactly as a turn is, above.
+        if payload["type"].as_str() == Some("rank") {
+            return self.rank(version, &payload, &publish, &refuse).await;
+        }
+
         let started = Instant::now();
         // A request that carries a `delegation` is one bounded task from a
         // fan-out on the terminal's side: the terminal holds no executor,
@@ -1000,9 +1060,41 @@ impl Job {
                     })
                 }
                 _ => {
-                    let instructions = payload["instructions"].as_str().unwrap_or_default();
+                    // The turn is admitted: say so at once, before any
+                    // model or judge has answered, so the caller hears the
+                    // worker within one relay round trip.
+                    publish(
+                        FEEDBACK_KIND,
+                        json!({
+                            "v": version,
+                            "type": "status",
+                            "status": "processing",
+                        }),
+                    )
+                    .map_err(GenerateError::Stream)?;
                     let input = transcript(&payload);
-                    self.generate(version, instructions, &input, &publish).await
+                    // The judge runs beside the model, never in front of
+                    // it, and only for a caller that asks: `opener: true`
+                    // for the judgment and an opener, `judge: true` for the
+                    // judgment alone. A caller that asks for neither, such
+                    // as Microcoder's cloud steps whose replies must be one
+                    // JSON object, gets the model's reply untouched and
+                    // spends no judgment.
+                    let opener = payload["opener"].as_bool() == Some(true);
+                    let judged = opener || payload["judge"].as_bool() == Some(true);
+                    let triage = judged.then(|| self.triage(&payload, &input)).flatten();
+                    let mut instructions = payload["instructions"]
+                        .as_str()
+                        .unwrap_or_default()
+                        .to_string();
+                    if opener && triage.is_some() {
+                        if !instructions.is_empty() {
+                            instructions.push_str("\n\n");
+                        }
+                        instructions.push_str(first::MODEL_NOTE);
+                    }
+                    self.generate(version, &instructions, &input, &publish, triage, opener)
+                        .await
                 }
             }
         };
@@ -1076,13 +1168,130 @@ impl Job {
         Ok(())
     }
 
+    /// The first-response judgment for this turn, as a future the
+    /// generation races, or `None` when no judge is configured.
+    ///
+    /// It never fails the turn: a judge that errs or runs past
+    /// [`first::BUDGET`] answers `None`, and the turn is the model's alone.
+    fn triage(&self, payload: &Value, input: &[Message]) -> Option<Judging> {
+        let judge = self.judge.clone()?;
+        let task = payload["task"]
+            .as_str()
+            .map(str::to_string)
+            .or_else(|| {
+                input
+                    .iter()
+                    .rev()
+                    .find(|message| message.role == Role::User)
+                    .map(|message| message.text.clone())
+            })
+            .unwrap_or_default();
+        let request = first::request(&task, input);
+        Some(Box::pin(async move {
+            let started = Instant::now();
+            let answered = tokio::time::timeout(first::BUDGET, judge.system_one(request)).await;
+            let milliseconds = started.elapsed().as_millis();
+            match answered {
+                Ok(Ok(response)) => {
+                    let triage = first::triage_of(&response);
+                    eprintln!(
+                        "judged in {milliseconds} ms: {} {} \"{}\"",
+                        triage.verdict(),
+                        triage.lane.word(),
+                        triage.line()
+                    );
+                    Some(triage)
+                }
+                Ok(Err(error)) => {
+                    eprintln!("judge failed in {milliseconds} ms: {error}");
+                    None
+                }
+                Err(_) => {
+                    eprintln!("judge ran past {} ms", first::BUDGET.as_millis());
+                    None
+                }
+            }
+        }))
+    }
+
+    /// Answers a `rank` job: the caller's candidates, most likely first.
+    async fn rank(
+        &self,
+        version: u64,
+        payload: &Value,
+        publish: &(dyn Fn(u16, Value) -> Result<(), String> + Sync),
+        refuse: &(dyn Fn(u64, &str, String) -> Result<(), String> + Sync),
+    ) -> Result<(), String> {
+        let Some(judge) = &self.judge else {
+            return refuse(
+                version,
+                "unavailable",
+                "this worker has no judge configured to rank suggestions".to_string(),
+            );
+        };
+        let candidates = match first::candidates_of(&payload["candidates"]) {
+            Ok(candidates) => candidates,
+            Err(why) => return refuse(version, "malformed", why),
+        };
+        let draft = payload["draft"].as_str().unwrap_or_default();
+        let input = transcript_only(payload);
+        let started = Instant::now();
+        let answered = tokio::time::timeout(
+            first::BUDGET,
+            judge.system_one(first::rank_request(draft, &input, &candidates)),
+        )
+        .await;
+        match answered {
+            Ok(Ok(response)) => {
+                let ranked = first::ranking(&response, &candidates);
+                eprintln!(
+                    "ranked {} candidate(s) in {} ms",
+                    ranked.len(),
+                    started.elapsed().as_millis()
+                );
+                publish(
+                    RESULT_KIND,
+                    json!({
+                        "v": version,
+                        "type": "result",
+                        "text": ranked.first().map_or("", |(id, _)| id.as_str()),
+                        "model": response.model,
+                        "ranked": ranked
+                            .iter()
+                            .map(|(id, p)| json!({ "id": id, "p": p }))
+                            .collect::<Vec<_>>(),
+                        "set": first::SET,
+                    }),
+                )
+            }
+            Ok(Err(error)) => refuse(version, "unavailable", format!("the judge failed: {error}")),
+            Err(_) => refuse(
+                version,
+                "unavailable",
+                format!(
+                    "the judge did not answer in {} ms",
+                    first::BUDGET.as_millis()
+                ),
+            ),
+        }
+    }
+
     /// Generates through the door, publishing partials as text collects.
+    ///
+    /// `triage` races the generation. When it answers before the model's
+    /// first words and `opener` is on, its chosen opener goes out as the
+    /// first partial and leads the result, so the caller sees a reply in
+    /// the judge's time rather than the model's. Either way its typed
+    /// judgment goes out as `judgment` feedback. A judgment that arrives
+    /// after the model has started adds the feedback only.
     async fn generate(
         &self,
         version: u64,
         instructions: &str,
         input: &[Message],
         publish: &(dyn Fn(u16, Value) -> Result<(), String> + Sync),
+        triage: Option<Judging>,
+        opener: bool,
     ) -> Result<(String, Option<Usage>), GenerateError> {
         // The `Generate` sink is synchronous and publishing wants the
         // version and a sequence, so deltas go down a channel and the
@@ -1102,17 +1311,36 @@ impl Job {
         };
         tokio::pin!(generating);
 
+        let mut judging = triage.is_some();
+        let mut triage: Judging =
+            triage.unwrap_or_else(|| Box::pin(std::future::pending::<Option<first::Triage>>()));
+        // The opener shown, which leads the result too.
+        let mut lead = String::new();
         let mut buffer = String::new();
         let mut partial_seq = 0u64;
+        let mut model_started = false;
         let mut draining = true;
         loop {
             tokio::select! {
+                judged = &mut triage, if judging => {
+                    judging = false;
+                    let Some(judged) = judged else { continue };
+                    publish(FEEDBACK_KIND, first::feedback(version, &judged))
+                        .map_err(GenerateError::Stream)?;
+                    if let (true, 0, Some((_, text))) = (opener, partial_seq, judged.opener) {
+                        lead = format!("{text}\n\n");
+                        publish(FEEDBACK_KIND, partial_payload(version, partial_seq, &lead))
+                            .map_err(GenerateError::Stream)?;
+                        partial_seq += 1;
+                    }
+                }
                 delta = incoming.recv(), if draining => match delta {
                     Some(delta) => {
                         buffer.push_str(&delta);
-                        // The first delta goes at once, so a reader sees the
-                        // answer begin; later ones collect.
-                        if buffer.len() >= PARTIAL_BYTES || partial_seq == 0 {
+                        // The model's first delta goes at once, so a reader
+                        // sees the answer begin; later ones collect.
+                        if buffer.len() >= PARTIAL_BYTES || !model_started {
+                            model_started = true;
                             // `seq` is the signed ordering the terminal
                             // checks deltas against; arrival order proves
                             // nothing. A version-1 answer makes no such
@@ -1127,10 +1355,23 @@ impl Job {
                     // coming and the branch would otherwise spin.
                     None => draining = false,
                 },
-                answered = &mut generating => return answered,
+                answered = &mut generating => {
+                    return answered.map(|(text, usage)| (format!("{lead}{text}"), usage));
+                }
             }
         }
     }
+}
+
+/// The first-response judgment, running.
+type Judging = Pin<Box<dyn Future<Output = Option<first::Triage>> + Send>>;
+
+/// The conversation a request carries, without falling back to its task:
+/// a ranking's draft is its own field.
+fn transcript_only(payload: &Value) -> Vec<Message> {
+    let mut only = payload.clone();
+    only["task"] = Value::Null;
+    transcript(&only)
 }
 
 /// The conversation the request carries, oldest first.
@@ -1262,6 +1503,7 @@ mod tests {
             let job = Job {
                 identity: Arc::new(worker),
                 door: Arc::new(door),
+                judge: None,
                 decline: decline.map(str::to_owned),
                 allow,
                 ledger,
@@ -1278,12 +1520,21 @@ mod tests {
                 1,
                 "the job's slot is free once it has answered"
             );
-            let value = frames.recv().await.unwrap();
-            let event: Event = serde_json::from_value(value[1].clone()).unwrap();
-            event.validate_crypto().unwrap();
-            assert!(event.tag_values("e").any(|id| id == request.id));
-            assert!(event.tag_values("p").any(|key| key == client.pubkey()));
-            serde_json::from_str(&nip44::decrypt(&event.content, &conversation).unwrap()).unwrap()
+            // The first answer that is not the admission's `processing`
+            // acknowledgement, which every admitted turn opens with.
+            loop {
+                let value = frames.recv().await.unwrap();
+                let event: Event = serde_json::from_value(value[1].clone()).unwrap();
+                event.validate_crypto().unwrap();
+                assert!(event.tag_values("e").any(|id| id == request.id));
+                assert!(event.tag_values("p").any(|key| key == client.pubkey()));
+                let body: Value =
+                    serde_json::from_str(&nip44::decrypt(&event.content, &conversation).unwrap())
+                        .unwrap();
+                if body["status"] != "processing" {
+                    break body;
+                }
+            }
         })
         .await
         .expect("the local worker response must finish")
@@ -1637,5 +1888,301 @@ mod tests {
             &options(Some(vec![owner.clone()]), quota),
             &"cd".repeat(32)
         ));
+    }
+
+    /// A one-request HTTP server: it reads one request, waits `delay`, and
+    /// answers `body` as `content_type`. Its base URL.
+    fn serve_once(delay: Duration, content_type: &'static str, body: String) -> String {
+        use std::io::{BufRead, BufReader, Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        std::thread::spawn(move || {
+            let Ok((stream, _)) = listener.accept() else {
+                return;
+            };
+            let mut reader = BufReader::new(stream);
+            let mut length = 0usize;
+            loop {
+                let mut line = String::new();
+                if reader.read_line(&mut line).unwrap_or(0) == 0 || line == "\r\n" {
+                    break;
+                }
+                let lower = line.to_ascii_lowercase();
+                if let Some(value) = lower.strip_prefix("content-length:") {
+                    length = value.trim().parse().unwrap_or(0);
+                }
+            }
+            let mut request = vec![0; length];
+            let _ = reader.read_exact(&mut request);
+            std::thread::sleep(delay);
+            let mut stream = reader.into_inner();
+            let _ = write!(
+                stream,
+                "HTTP/1.1 200 OK\r\ncontent-type: {content_type}\r\ncontent-length: {}\r\n\
+                 connection: close\r\n\r\n{body}",
+                body.len()
+            );
+        });
+        url
+    }
+
+    /// A model door that starts answering after `delay`, from the recorded
+    /// Gemini stream.
+    fn slow_door(delay: Duration) -> Door {
+        let stream = include_str!("../../fixtures/gateway/google-gemini-3.8-flash.sse");
+        let url = serve_once(delay, "text/event-stream", stream.to_string());
+        Door::Live(coder::generate::ResponsesDoor::new(
+            url,
+            "google/gemini-3.8-flash",
+            "test",
+        ))
+    }
+
+    /// A judge on loopback that answers `answers` after `delay`.
+    fn judge(delay: Duration, answers: Value) -> Arc<jev::Client> {
+        let body = json!({ "model": "jev-test", "answers": answers }).to_string();
+        let url = serve_once(delay, "application/json", body);
+        Arc::new(jev::Client::new(jev::Config::local(url, "jev-test")).unwrap())
+    }
+
+    /// A choice answer that is sure of `choice`.
+    fn sure(choice: &str, options: &[&str]) -> Value {
+        let probabilities: serde_json::Map<String, Value> = options
+            .iter()
+            .map(|option| ((*option).to_string(), json!(f64::from(*option == choice))))
+            .collect();
+        json!({ "type": "choice", "choice": choice, "confidence": 1.0, "probabilities": probabilities })
+    }
+
+    /// The first-response answers: respond, a computer task, `opener`.
+    fn triaged(opener: &str) -> Value {
+        let openers: Vec<&str> = first::OPENERS
+            .iter()
+            .map(|(id, _, _)| *id)
+            .chain(["none"])
+            .collect();
+        json!({
+            "action": sure("respond", &["respond", "clarify", "end_conversation", "none"]),
+            "lane": sure("computer", &["chat", "computer", "none"]),
+            "opener": sure(opener, &openers),
+        })
+    }
+
+    /// Every answer to one turn, in publication order, up to the result
+    /// or a refusal, and how long each took from the request.
+    async fn frames_through(
+        door: Door,
+        judge: Option<Arc<jev::Client>>,
+        payload: Value,
+    ) -> Vec<(Duration, Value)> {
+        let (worker, client, conversation) = identities();
+        let content = nip44::encrypt(&payload.to_string(), &conversation, [43; 32]).unwrap();
+        let request = client.signer().sign(
+            unix_now(),
+            REQUEST_KIND,
+            vec![Tag::new(vec!["p".into(), worker.pubkey().to_string()])],
+            content,
+        );
+        let (publish, mut frames) = mpsc::unbounded_channel();
+        let slots = Arc::new(Semaphore::new(1));
+        let job = Job {
+            identity: Arc::new(worker),
+            door: Arc::new(door),
+            judge,
+            decline: None,
+            allow: None,
+            ledger: None,
+            publish,
+            permit: slots.clone().try_acquire_owned().ok(),
+            waits: WAITS,
+        };
+        let started = Instant::now();
+        tokio::spawn(async move { job.answer(&request).await });
+        let mut out = Vec::new();
+        tokio::time::timeout(Duration::from_secs(10), async {
+            while let Some(value) = frames.recv().await {
+                let event: Event = serde_json::from_value(value[1].clone()).unwrap();
+                let body: Value =
+                    serde_json::from_str(&nip44::decrypt(&event.content, &conversation).unwrap())
+                        .unwrap();
+                let end = body["type"] == "result" || body["status"] == "error";
+                out.push((started.elapsed(), body));
+                if end {
+                    break;
+                }
+            }
+        })
+        .await
+        .expect("the turn ends");
+        out
+    }
+
+    /// A turn that asks for the first response, as the app's does.
+    fn turn(task: &str) -> Value {
+        json!({
+            "v": 2, "requires": [], "task": task,
+            "transcript": [{ "role": "user", "content": task }],
+            "opener": true,
+        })
+    }
+
+    /// A caller that does not ask gets no judgment and no opener, even
+    /// from a worker with a judge: Microcoder's cloud steps must read back
+    /// the model's JSON exactly as it wrote it.
+    #[tokio::test]
+    async fn a_turn_that_does_not_ask_is_the_models_alone() {
+        let mut payload = turn("{\"next\": \"answer\"}");
+        payload.as_object_mut().unwrap().remove("opener");
+        let frames = frames_through(
+            slow_door(Duration::from_millis(300)),
+            Some(judge(Duration::ZERO, triaged("look_into"))),
+            payload,
+        )
+        .await;
+        assert!(frames.iter().all(|(_, body)| body["type"] != "judgment"));
+        assert!(
+            frames
+                .iter()
+                .all(|(_, body)| body["delta"] != "I'll look into that now.\n\n")
+        );
+        let result = &frames.last().unwrap().1;
+        assert_eq!(result["type"], "result");
+        assert!(!result["text"].as_str().unwrap().starts_with("I'll look"));
+    }
+
+    /// The judge answers in its own time, before the model: the caller
+    /// hears `processing`, then the typed judgment and the chosen opener as
+    /// the first partial, then the model's words, and the result carries
+    /// the opener it showed.
+    #[tokio::test]
+    async fn the_judge_answers_first_and_the_model_follows_its_opener() {
+        let frames = frames_through(
+            slow_door(Duration::from_millis(600)),
+            Some(judge(Duration::ZERO, triaged("look_into"))),
+            turn("Why does my build fail on CI but not locally?"),
+        )
+        .await;
+        let bodies: Vec<&Value> = frames.iter().map(|(_, body)| body).collect();
+        assert_eq!(bodies[0]["status"], "processing");
+        assert_eq!(bodies[1]["type"], "judgment");
+        assert_eq!(bodies[1]["verdict"], "respond");
+        assert_eq!(bodies[1]["lane"], "computer");
+        assert_eq!(bodies[1]["opener"], "look_into");
+        assert_eq!(bodies[1]["line"], "I'll look into that now.");
+        assert_eq!(bodies[2]["type"], "partial");
+        assert_eq!(bodies[2]["seq"], 0);
+        assert_eq!(bodies[2]["delta"], "I'll look into that now.\n\n");
+        // The opener arrived well before the model's first word could.
+        assert!(
+            frames[2].0 < Duration::from_millis(500),
+            "{:?}",
+            frames[2].0
+        );
+        // Any partial of the model's continues the sequence. (A stream that
+        // lands in one read may finish before its deltas drain; the result
+        // carries the whole text either way.)
+        if let Some(model) = bodies
+            .iter()
+            .filter(|body| body["type"] == "partial")
+            .nth(1)
+        {
+            assert_eq!(model["seq"], 1);
+        }
+        let result = bodies.last().unwrap();
+        assert_eq!(result["type"], "result");
+        let text = result["text"].as_str().unwrap();
+        assert!(text.starts_with("I'll look into that now.\n\n"), "{text}");
+        assert!(text.len() > "I'll look into that now.\n\n".len());
+    }
+
+    /// A caller that asks for the judgment alone gets it, and its reply is
+    /// the model's alone.
+    #[tokio::test]
+    async fn a_caller_can_decline_the_opener_and_keep_the_judgment() {
+        let mut payload = turn("thanks!");
+        payload["opener"] = json!(false);
+        payload["judge"] = json!(true);
+        let frames = frames_through(
+            slow_door(Duration::from_millis(300)),
+            Some(judge(Duration::ZERO, triaged("welcome"))),
+            payload,
+        )
+        .await;
+        let bodies: Vec<&Value> = frames.iter().map(|(_, body)| body).collect();
+        assert!(bodies.iter().any(|body| body["type"] == "judgment"));
+        assert!(
+            bodies
+                .iter()
+                .all(|body| body["delta"] != "You're welcome!\n\n")
+        );
+        assert!(
+            !bodies.last().unwrap()["text"]
+                .as_str()
+                .unwrap()
+                .starts_with("You're welcome!")
+        );
+    }
+
+    /// The judge never stands in front of the model: a judge slower than
+    /// the model leaves the reply the model's, unprefixed, in the model's
+    /// time.
+    #[tokio::test]
+    async fn a_slow_judge_never_delays_the_model() {
+        let frames = frames_through(
+            slow_door(Duration::ZERO),
+            Some(judge(Duration::from_millis(1_500), triaged("sure"))),
+            turn("what is 2 + 2?"),
+        )
+        .await;
+        let (at, result) = frames.last().unwrap();
+        assert_eq!(result["type"], "result");
+        assert!(*at < Duration::from_millis(1_000), "{at:?}");
+        assert!(!result["text"].as_str().unwrap().starts_with("Sure."));
+        assert!(frames.iter().all(|(_, body)| body["type"] != "judgment"));
+    }
+
+    /// A `rank` job answers the caller's candidates, most likely first,
+    /// without generating; with no judge it is refused `unavailable`.
+    #[tokio::test]
+    async fn a_rank_job_orders_the_candidates() {
+        let rank = json!({
+            "v": 2, "requires": [], "type": "rank", "draft": "",
+            "transcript": [{ "role": "user", "content": "the relay drops sockets" }],
+            "candidates": [
+                { "id": "openagents", "label": "OpenAgentsInc/openagents" },
+                { "id": "psionic", "label": "OpenAgentsInc/psionic" },
+            ],
+        });
+        let answers = json!({ "next": {
+            "type": "choice", "choice": "openagents", "confidence": 0.7,
+            "probabilities": { "openagents": 0.7, "psionic": 0.2, "none": 0.1 }
+        }});
+        let frames = frames_through(
+            Door::Stub(StubGenerate::default()),
+            Some(judge(Duration::ZERO, answers)),
+            rank.clone(),
+        )
+        .await;
+        let result = &frames.last().unwrap().1;
+        assert_eq!(result["type"], "result");
+        assert_eq!(result["text"], "openagents");
+        assert_eq!(result["ranked"][0]["id"], "openagents");
+        assert_eq!(result["ranked"][1]["id"], "psionic");
+        assert_eq!(result["set"], first::SET);
+        assert!(frames.iter().all(|(_, body)| body["type"] != "partial"));
+
+        let refused = frames_through(Door::Stub(StubGenerate::default()), None, rank).await;
+        assert_eq!(refused.last().unwrap().1["code"], "unavailable");
+
+        let mut bad = turn("x");
+        bad["type"] = json!("rank");
+        bad["candidates"] = json!([{ "id": "none" }]);
+        let refused = frames_through(
+            Door::Stub(StubGenerate::default()),
+            Some(judge(Duration::ZERO, json!({}))),
+            bad,
+        )
+        .await;
+        assert_eq!(refused.last().unwrap().1["code"], "malformed");
     }
 }

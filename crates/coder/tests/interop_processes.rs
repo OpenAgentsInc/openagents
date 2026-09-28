@@ -311,6 +311,9 @@ impl Worker {
         }
         command
             .env("CODER_WORKER_SECRET", hex(&[WORKER; 32]))
+            // No first-response judge: these tests make no network calls,
+            // and a Jev key in the machine's home would otherwise engage it.
+            .env("CODER_WORKER_JUDGE", "off")
             .env("CODER_RELAY", url)
             .stdin(Stdio::null())
             .stdout(Stdio::null())
@@ -428,7 +431,12 @@ fn await_result(socket: &mut Socket, request: &Event, customer: &Identity) -> Va
         if matches!(event.kind, RESULT_KIND | FEEDBACK_KIND)
             && event.tag_values("e").any(|id| id == request.id)
         {
-            return job_answer(&event, request, customer);
+            // Every admitted turn opens with a `processing` acknowledgement;
+            // the answer is what follows it.
+            let answer = job_answer(&event, request, customer);
+            if answer["status"] != "processing" {
+                return answer;
+            }
         }
     }
 }

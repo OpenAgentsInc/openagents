@@ -29,6 +29,14 @@ phone <--27000 partials, 26900 result------- relay.openagents.com <-- chat worke
   lane the Coder terminal's chat used (`crates/coder/src/generate.rs`). The
   gateway key is in the worker's environment file on its host and nowhere
   else. No model API key ships in the app.
+- **First response.** The worker acknowledges every admitted turn with
+  `status: processing` at once. With `TYPESAFE_API_KEY` set, a turn that asks
+  with `"opener": true` also gets, before the model's first token, one Jev
+  (System One) judgment run beside the model call — the turn's route, whether it needs a computer (`lane`), and which of
+  21 openers to show — and the chosen opener as the first partial. The opener
+  reaches the phone about 0.6 s after Send, where the model's first words took
+  3.4 to 4.7 s. See `crates/coder/src/first.rs` and
+  [`docs/coder/measurements/2026-09-28-first-reply.md`](../coder/measurements/2026-09-28-first-reply.md).
 - **Streaming.** The worker sends its first delta at once and then about 160
   bytes at a time; the phone checks each answer's signer, recipient, request
   binding, and sequence, draws the reply with Rust Native's incremental
@@ -92,8 +100,9 @@ sudo systemctl enable --now coder-worker-chat
 sudo journalctl -u coder-worker-chat -n 20 --no-pager
 ```
 
-The first log line must be `worker  32c07895…` (the key the app carries) and
-the admits line must name the quota. The worker secret is kept with the
+The first log line must be `worker  32c07895…` (the key the app carries),
+the judge line must name `https://api.typesafe.ai`, and the admits line must
+name the quota. The worker secret is kept with the
 owner's secrets as `coder-chat-worker.env`; the gateway key is the owner's
 AI Gateway key.
 
