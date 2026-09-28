@@ -28,7 +28,7 @@ enum AppTab: String, CaseIterable {
 
 /// A screen that the Account tab pushes.
 enum AccountRoute: String, Hashable {
-    case trainer, computers, tailnet, identity, device, changelog
+    case trainer, computers, tailnet, identity, device, changelog, playtest, reports
 }
 
 /// Developer launch arguments that open a tab or an Account screen directly,
@@ -85,6 +85,8 @@ enum AppTabLaunch {
 struct AppTabs: View {
     @ObservedObject var bridge: MobileBridge
     @State private var tab = AppTabLaunch.tab
+    @StateObject private var place = PlaytestPlace()
+    @StateObject private var reporter = ReportCoordinator()
 
     var body: some View {
         TabView(selection: $tab) {
@@ -97,6 +99,27 @@ struct AppTabs: View {
             AccountTab(bridge: bridge)
                 .tabIcon(.account)
         }
+        // A long press on the tab bar reports the screen on view.
+        .background(TabBarLongPress { reporter.start(bridge: bridge, place: place) })
+        .sheet(item: $reporter.session) { session in
+            ReportSheet(session: session, bridge: bridge)
+        }
+        .onChange(of: tab) { _, tab in
+            place.tab = tab
+            bridge.playtestScreen(tab: place.tabName, route: place.routeName)
+        }
+        .onAppear {
+            #if targetEnvironment(simulator)
+            // `--report` opens Report a problem for the first screen.
+            if ProcessInfo.processInfo.arguments.contains("--report") {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                    reporter.start(bridge: bridge, place: place)
+                }
+            }
+            #endif
+        }
+        .environmentObject(place)
+        .environmentObject(reporter)
         // An agent's payment request shows over any tab until the owner
         // approves or denies it; Rust closes it.
         .sheet(item: Binding(get: { bridge.packet?.spend?.sheet }, set: { _ in })) { sheet in
@@ -135,6 +158,8 @@ struct ComingSoonScreen: View {
 struct AccountTab: View {
     @ObservedObject var bridge: MobileBridge
     @State private var path = AppTabLaunch.route
+    @EnvironmentObject private var place: PlaytestPlace
+    @EnvironmentObject private var reporter: ReportCoordinator
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -144,6 +169,19 @@ struct AccountTab: View {
                         Label("Trainer", systemImage: "star.circle")
                     }
                     .accessibilityIdentifier("account-trainer")
+                }
+                Section {
+                    NavigationLink(value: AccountRoute.playtest) {
+                        Label("Playtest", systemImage: "gamecontroller")
+                    }
+                    .accessibilityIdentifier("account-playtest")
+                    Button {
+                        reporter.start(bridge: bridge, place: place)
+                    } label: {
+                        Label("Report a problem", systemImage: "exclamationmark.bubble")
+                    }
+                    .foregroundStyle(.white)
+                    .accessibilityIdentifier("account-report")
                 }
                 Section {
                     NavigationLink("Computers", value: AccountRoute.computers)
@@ -170,6 +208,12 @@ struct AccountTab: View {
                     .toolbarBackground(Color.black, for: .navigationBar)
             }
         }
+        .onChange(of: path, initial: true) { _, path in
+            place.accountRoute = path.last
+            if place.tab == .account {
+                bridge.playtestScreen(tab: place.tabName, route: place.routeName)
+            }
+        }
     }
 
     @ViewBuilder private func destination(_ route: AccountRoute) -> some View {
@@ -180,6 +224,8 @@ struct AccountTab: View {
         case .identity: IdentityKeysScreen(bridge: bridge).navigationTitle("Identity keys")
         case .device: AboutDeviceScreen(bridge: bridge).navigationTitle("About this device")
         case .changelog: ChangelogScreen(bridge: bridge).navigationTitle("Changelog")
+        case .playtest: PlaytestScreen(bridge: bridge).navigationTitle("Playtest")
+        case .reports: MyReportsScreen(bridge: bridge).navigationTitle("My reports")
         }
     }
 }

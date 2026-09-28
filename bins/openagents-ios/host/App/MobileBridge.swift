@@ -164,6 +164,66 @@ struct TrainerPacket: Decodable {
     let nsec: String?
 }
 
+/// A report kind the form offers, with Rust's words for it.
+struct ReportKind: Decodable, Hashable {
+    let value: String
+    let label: String
+    let hint: String
+}
+
+/// The Report a problem form for the screen the tester is on. Rust decides
+/// whether a screenshot may be offered and holds the session log.
+struct ReportDraft: Decodable {
+    let schema: String
+    let tab: String
+    let route: String
+    let screenshot_allowed: Bool
+    let triage_ready: Bool
+    let task: String?
+    let session_on: Bool
+    let session_lines: [String]
+    let session_digest: String
+    let kinds: [ReportKind]
+    let privacy: String
+    let fallback: String
+}
+
+/// One report in My reports.
+struct ReportRow: Decodable, Hashable {
+    let id: String
+    let code: String?
+    let kind: String
+    let kind_label: String
+    let at: UInt64
+    let build: String
+    let place: String
+    let summary: String
+    let status: String
+    let status_label: String
+    let error: String?
+    let screenshot: Bool
+    let session: Bool
+}
+
+/// The playtest session's state.
+struct PlaytestSessionRow: Decodable {
+    let on: Bool
+    let started_at: UInt64?
+    let events: Int
+    let lines: [String]
+}
+
+/// My reports and the session, with this request's result.
+struct ReportsPacket: Decodable {
+    let schema: String
+    let triage_ready: Bool
+    let session: PlaytestSessionRow
+    let reports: [ReportRow]
+    let sent: ReportRow?
+    let error: String?
+    let fallback: String
+}
+
 struct TerminalPacket: Decodable {
     let schema: String
     let open: Bool
@@ -341,6 +401,56 @@ final class MobileBridge: ObservableObject {
                   packet.schema == "openagents.trainer.v1" else { return }
             received(packet)
         }
+    }
+
+    /// The Report a problem form for `tab` and `route`.
+    func reportDraft(tab: String, route: String, received: @escaping (ReportDraft) -> Void) {
+        call(["op": "report_draft", "tab": tab, "route": route]) { data in
+            guard let packet = try? JSONDecoder().decode(ReportDraft.self, from: data),
+                  packet.schema == "openagents.report-draft.v1" else { return }
+            received(packet)
+        }
+    }
+
+    /// File a report, signed by the Verse world key. Rust checks every
+    /// field, refuses a screenshot from the Wallet or a key screen, and
+    /// seals it to the triage key.
+    func sendReport(_ form: [String: Any], received: @escaping (ReportsPacket) -> Void) {
+        guard let secret = try? DeviceKey.loadOrCreateVerse() else { return }
+        let hex = secret.map { String(format: "%02x", $0) }.joined()
+        call(["op": "report_send", "world_secret_hex": hex, "form": form]) { data in
+            guard let packet = try? JSONDecoder().decode(ReportsPacket.self, from: data),
+                  packet.schema == "openagents.reports.v1" else { return }
+            received(packet)
+        }
+    }
+
+    /// My reports; reports that wait or failed are sent again.
+    func reports(received: @escaping (ReportsPacket) -> Void) {
+        let hex = (try? DeviceKey.loadOrCreateVerse())?.map { String(format: "%02x", $0) }.joined() ?? ""
+        call(["op": "reports", "world_secret_hex": hex]) { data in
+            guard let packet = try? JSONDecoder().decode(ReportsPacket.self, from: data),
+                  packet.schema == "openagents.reports.v1" else { return }
+            received(packet)
+        }
+    }
+
+    /// Turn Playtest session on (a new log) or off, or delete its log.
+    func playtestSession(on: Bool?, tab: String = "account", route: String = "playtest",
+                         received: @escaping (ReportsPacket) -> Void) {
+        let request: [String: Any] = on.map { ["op": "playtest_session", "on": $0, "tab": tab, "route": route] }
+            ?? ["op": "playtest_clear"]
+        call(request) { data in
+            guard let packet = try? JSONDecoder().decode(ReportsPacket.self, from: data),
+                  packet.schema == "openagents.reports.v1" else { return }
+            received(packet)
+        }
+    }
+
+    /// Where the tester is, for the session log; Rust records it only
+    /// while Playtest session is on.
+    func playtestScreen(tab: String, route: String) {
+        send(["op": "playtest_screen", "tab": tab, "route": route])
     }
 
     /// A terminal request: a resize, typed text, a key, or a paste.

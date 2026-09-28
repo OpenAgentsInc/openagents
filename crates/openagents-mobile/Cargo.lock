@@ -4349,6 +4349,7 @@ dependencies = [
  "ndk-sys",
  "nostr",
  "nostr-transport",
+ "playtest",
  "qrcodegen",
  "rust-native",
  "rustls",
@@ -4578,6 +4579,17 @@ dependencies = [
  "tokio_with_wasm",
  "tracing",
  "web-time",
+]
+
+[[package]]
+name = "playtest"
+version = "0.1.0"
+dependencies = [
+ "nostr",
+ "secp256k1 0.31.1",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
 ]
 
 [[package]]

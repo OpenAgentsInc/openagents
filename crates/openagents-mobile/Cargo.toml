@@ -17,6 +17,9 @@ coder-computers = { path = "../coder-computers" }
 coder-reach = { path = "../coder-reach" }
 coder-vt = { path = "../coder-vt" }
 nostr = { path = "../nostr" }
+# Report a problem and the playtest session log: the report schema and its
+# NIP-17 transport to the triage key.
+playtest = { path = "../playtest" }
 # The Wallet's npub payments: reading Nostr profiles and publishing the
 # phone's payment targets (`src/payees.rs`).
 nostr-transport = { path = "../nostr-transport" }

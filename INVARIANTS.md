@@ -127,6 +127,15 @@ payment on the phone. The formats are in
 | `openagents x402 --pay-with phone` pays only after the computer's own x402 policy admits the payment, only mainnet invoices, and only with a receipt whose preimage proves the payment; a denial fails the call with the phone's reason. | New on 2026-09-28. | `an_approved_payment_returns_the_phones_preimage_as_proof`, `a_denied_payment_fails_with_the_phones_reason` in `crates/openagents-cli` |
 | Tests never move the owner's funds: every spend test pays through a fake wallet, and the only live check creates a request and denies it. | New on 2026-09-28. | The fakes in `crates/openagents-mobile/src/spend/tests.rs`; no live test approves |
 
+## Playtest reports and the session log
+
+| Invariant | Status | Checked by |
+| --- | --- | --- |
+| A playtest report travels only as a NIP-17 gift wrap (NIP-44) addressed to the OpenAgents triage key, signed by the tester's Verse world key; no readable report text, build, or tester key is on the wire, and no other key can open it. Until a build carries the triage key (`playtest::TRIAGE_KEY`), reports wait on the phone and are sent nowhere. | New on 2026-09-28 ([#9882](https://github.com/OpenAgentsInc/openagents/issues/9882)). | `a_report_seals_to_the_triage_key_and_only_it_opens_it` in `crates/playtest`; `a_report_is_sealed_to_the_triage_key_and_listed_with_its_code`, `without_the_triage_key_a_report_waits_on_the_phone_and_sends_later` in `crates/openagents-mobile` |
+| No screenshot is taken or sent from the Wallet tab or a screen that can show a key (Identity keys, Trainer), whatever the host sends. | New on 2026-09-28 ([#9882](https://github.com/OpenAgentsInc/openagents/issues/9882)). | `no_screenshot_leaves_the_wallet_or_a_key_screen`, `wallet_and_key_screens_are_sensitive` in `crates/playtest`; `no_screenshot_is_taken_from_the_wallet_or_a_key_screen` in `crates/openagents-mobile` |
+| The playtest session log holds only closed structural values (time, tab, screen, event code): it has no field for message text, prompts, transcripts, keys, recovery words, invoices, addresses, amounts, balances, or other players' keys, and refuses unknown fields and names. | New on 2026-09-28 ([#9883](https://github.com/OpenAgentsInc/openagents/issues/9883)). | `the_session_log_holds_only_closed_structural_values` in `crates/playtest` |
+| The session log records only while the tester has turned **Playtest session** on, stays on the device, and leaves it only inside a report whose preview showed the whole log: the report attaches it only when its digest equals the previewed one. | New on 2026-09-28 ([#9883](https://github.com/OpenAgentsInc/openagents/issues/9883)). | `nothing_is_recorded_while_the_session_is_off` in `crates/playtest`; `the_session_log_records_only_while_on_and_leaves_only_as_previewed` in `crates/openagents-mobile` |
+
 ## Verse shared bodies
 
 | Invariant | Status | Checked by |

@@ -506,8 +506,13 @@ impl CoderTab {
                 .is_some_and(Conversation::loading)
     }
 
+    /// Whether the tab shows a problem notice now, for the playtest
+    /// session log (which records that one showed, never its words).
+    pub(crate) fn notice_shown(&self) -> bool {
+        self.notice.is_some()
+    }
+
     /// The host and task of the open chat.
-    #[cfg(test)]
     pub(crate) fn open_task(&self) -> Option<(String, String)> {
         self.open
             .as_ref()

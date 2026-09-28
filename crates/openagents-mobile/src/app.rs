@@ -190,6 +190,39 @@ pub enum Request {
         #[serde(default)]
         preview: bool,
     },
+    /// Report a problem: the form for the tab and screen the tester is on.
+    /// The direct reply is a draft packet, never the app packet.
+    ReportDraft {
+        tab: playtest::session::Tab,
+        route: playtest::session::Route,
+    },
+    /// File the report on the form, signed by the Verse world key (64 hex
+    /// characters from the platform's protected store). The direct reply
+    /// is the reports packet.
+    ReportSend {
+        world_secret_hex: String,
+        form: crate::playtest::Form,
+    },
+    /// My reports and the session's state. With the world key, reports
+    /// that wait or failed are sent again.
+    Reports {
+        #[serde(default)]
+        world_secret_hex: String,
+    },
+    /// Turn Playtest session on (a new log) or off.
+    PlaytestSession {
+        on: bool,
+        tab: playtest::session::Tab,
+        route: playtest::session::Route,
+    },
+    /// Delete the session log.
+    PlaytestClear,
+    /// The tester moved to a tab and screen: recorded only while Playtest
+    /// session is on.
+    PlaytestScreen {
+        tab: playtest::session::Tab,
+        route: playtest::session::Route,
+    },
     /// Start the Wallet tab's wallet with its seed from the platform's
     /// protected store: BIP39 entropy, 16 or 32 bytes as hex. Never logged
     /// or stored. `replace` follows a restore: it stops the running wallet
@@ -522,6 +555,8 @@ pub struct App {
     /// live client.
     spend_transport: Option<Arc<dyn crate::spend::Transport>>,
     trainer: crate::trainer::Trainer,
+    /// Report a problem, My reports, and the playtest session log.
+    playtest: crate::playtest::Playtest,
     /// The amount format, applied to every surface that shows bitcoin.
     amounts: crate::amounts::Amounts,
     notices: Vec<String>,
@@ -690,6 +725,9 @@ impl App {
             spend,
             spend_transport,
             trainer: crate::trainer::Trainer::default(),
+            playtest: crate::playtest::Playtest::live(
+                Cache::open(&config.state_dir.join("playtest"), &secret).ok(),
+            ),
             amounts,
             notices,
         })
@@ -725,6 +763,9 @@ impl App {
                 .unwrap_or_default(),
             };
         }
+        if let Some(bytes) = self.playtest_request(&request) {
+            return bytes;
+        }
         if matches!(
             request,
             Request::WalletWords | Request::WalletRestoreCheck { .. }
@@ -752,6 +793,68 @@ impl App {
         serde_json::to_vec(&packet).unwrap_or_default()
     }
 
+    /// The screen as Rust knows it: the Coder tab's first screen is an
+    /// open chat while one is open.
+    fn place(
+        &self,
+        tab: playtest::session::Tab,
+        route: playtest::session::Route,
+    ) -> playtest::session::Route {
+        use playtest::session::{Route, Tab};
+        if tab == Tab::Coder && route == Route::Home && self.coder.open_task().is_some() {
+            Route::Chat
+        } else {
+            route
+        }
+    }
+
+    /// Answers a Report a problem or playtest session request with its
+    /// direct reply, or hands any other request back.
+    fn playtest_request(&mut self, request: &Request) -> Option<Vec<u8>> {
+        let packet = match *request {
+            Request::ReportDraft { tab, route } => {
+                let route = self.place(tab, route);
+                let task = self.coder.open_task().map(|(_, task)| task);
+                return Some(
+                    serde_json::to_vec(&self.playtest.draft(tab, route, task)).unwrap_or_default(),
+                );
+            }
+            Request::ReportSend {
+                ref world_secret_hex,
+                ref form,
+            } => match SecretKey::from_str(world_secret_hex) {
+                Ok(world) => {
+                    let task = self.coder.open_task().map(|(_, task)| task);
+                    let platform = if cfg!(target_os = "android") {
+                        playtest::report::Platform::Android
+                    } else {
+                        playtest::report::Platform::Ios
+                    };
+                    self.playtest.send(form.clone(), &world, task, platform)
+                }
+                Err(_) => self
+                    .playtest
+                    .refuse("Your Verse world key couldn't be read."),
+            },
+            Request::Reports {
+                ref world_secret_hex,
+            } => {
+                let world = SecretKey::from_str(world_secret_hex).ok();
+                self.playtest.reports(world.as_ref())
+            }
+            Request::PlaytestSession { on, tab, route } => {
+                self.playtest.set_session(on, tab, route);
+                self.playtest.reports(None)
+            }
+            Request::PlaytestClear => {
+                self.playtest.clear_session();
+                self.playtest.reports(None)
+            }
+            _ => return None,
+        };
+        Some(serde_json::to_vec(&packet).unwrap_or_default())
+    }
+
     pub fn call(&mut self, request: Request) -> Packet {
         self.admit();
         let mut open_url = None;
@@ -761,6 +864,7 @@ impl App {
                 if let Some(computers) = self.computers.as_mut() {
                     let _ = computers.set_active(active);
                 }
+                self.playtest.lifecycle(active);
                 if !active {
                     self.trainer.pause();
                 }
@@ -906,7 +1010,17 @@ impl App {
             }
             // `respond` answers it with the account packet; the app packet
             // never carries the secret key.
-            Request::Account { .. } | Request::Trainer { .. } => {}
+            Request::Account { .. }
+            | Request::Trainer { .. }
+            | Request::ReportDraft { .. }
+            | Request::ReportSend { .. }
+            | Request::Reports { .. }
+            | Request::PlaytestSession { .. }
+            | Request::PlaytestClear => {}
+            Request::PlaytestScreen { tab, route } => {
+                let route = self.place(tab, route);
+                self.playtest.screen(tab, route);
+            }
             Request::WalletOpen {
                 entropy_hex,
                 replace,
@@ -1255,6 +1369,15 @@ impl App {
             .filter(|_| self.native_computers)
             .and_then(|c| computers_home::home(c, CAPABILITIES));
         let native = self.native_computers;
+        let wallet = self.wallet.screen();
+        self.playtest.observe(
+            !self.notices.is_empty(),
+            match &wallet {
+                crate::wallet::Screen::Failed { .. } => true,
+                crate::wallet::Screen::Ready(summary) => summary.error.is_some(),
+            },
+            self.coder.notice_shown(),
+        );
         Packet {
             schema: "openagents.mobile.v1",
             device: self.device.clone(),
@@ -1305,7 +1428,7 @@ impl App {
             open_url,
             terminal: self.terminal.is_some(),
             notices: self.notices.clone(),
-            wallet: self.wallet.screen(),
+            wallet,
             wallet_loading: self.wallet.loading(),
             wallet_open_url: self.wallet.take_open_url(),
             spend: self.spend.view(),
