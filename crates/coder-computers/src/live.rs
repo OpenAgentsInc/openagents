@@ -1007,44 +1007,49 @@ async fn catch_up(
             max: coder_reach::PROTOCOL_VERSION,
         },
     };
-    let presence = fetch_reach(&device, &relay)
-        .await
-        .ok()
-        .map(|reach| reach.presence);
-    let compatibility = presence
-        .as_ref()
-        .map(|received| Compatibility::judge(&received.presence, &client));
-    let summaries = fetch_summaries(&device, &relay).await;
-    let mut revoked = false;
-    let devices = if rights.contains(Right::AccessRead) {
-        match link.call(Operation::ListDevices {}).await {
-            Ok(Outcome::Devices { devices }) => Some(devices),
-            Err(error) => {
-                revoked = access_error(error).code == Code::Revoked;
-                None
-            }
-            Ok(_) => None,
+    // The reads are independent, so they run at once: a catch-up takes as
+    // long as its slowest read, not their sum.
+    let reach = async {
+        fetch_reach(&device, &relay)
+            .await
+            .ok()
+            .map(|reach| reach.presence)
+    };
+    let summaries = fetch_summaries(&device, &relay);
+    let devices = async {
+        if !rights.contains(Right::AccessRead) {
+            return (None, false);
         }
-    } else {
-        None
+        match link.call(Operation::ListDevices {}).await {
+            Ok(Outcome::Devices { devices }) => (Some(devices), false),
+            Err(error) => (None, access_error(error).code == Code::Revoked),
+            Ok(_) => (None, false),
+        }
     };
     // A host that predates `workspace.list` refuses it; the order form then
     // asks for a workspace name.
-    let workspaces = if rights.contains(Right::Operate) {
+    let workspaces = async {
+        if !rights.contains(Right::Operate) {
+            return None;
+        }
         match link.call(Operation::ListWorkspaces {}).await {
             Ok(Outcome::Workspaces { workspaces }) => Some(workspaces),
             _ => None,
         }
-    } else {
-        None
     };
-    let enrollments = if rights.contains(Right::AccessAdmin) {
+    let enrollments = async {
+        if !rights.contains(Right::AccessAdmin) {
+            return None;
+        }
         pending_enrollments(&relay, &shared.secret, &host, shared.settings.policy)
             .await
             .ok()
-    } else {
-        None
     };
+    let (presence, summaries, (devices, revoked), workspaces, enrollments) =
+        tokio::join!(reach, summaries, devices, workspaces, enrollments);
+    let compatibility = presence
+        .as_ref()
+        .map(|received| Compatibility::judge(&received.presence, &client));
     let now = (shared.settings.now)();
     {
         let mut state = lock(&shared.state);
