@@ -5509,6 +5509,7 @@ dependencies = [
 name = "openagents-cli"
 version = "0.1.0"
 dependencies = [
+ "bitcoin-amount",
  "coder",
  "coder-access",
  "coder-computers",

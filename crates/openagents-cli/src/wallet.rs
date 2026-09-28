@@ -66,7 +66,8 @@ const USAGE: &str = "usage: openagents wallet COMMAND [OPTIONS]
                           --expiry-blocks 13000 (about 90 days).
   channel order ORDER_ID  The LSP's current state of an order; `channel`
                           is set once the LSP has funded it.
-  send ADDRESS --sats N   Send on-chain from the wallet's balance.
+  send ADDRESS --sats N   Send N base units (₿N) on-chain from the wallet's
+                          balance.
   invoice --msat N --request-hash HEX64 [--expiry SECONDS]
                           Issue an exact-amount BOLT11 whose description
                           hash is the request hash (x402 receiver).
@@ -83,7 +84,11 @@ const USAGE: &str = "usage: openagents wallet COMMAND [OPTIONS]
 Files live in ~/.openagents/wallet (OPENAGENTS_WALLET_HOME overrides). The
 seed is printed only by `export --reveal`. Add --json before `wallet` for one JSON document.
 While a resident serves, every other command acts through it and `info`
-reports `resident`; without one, each command opens and stops the node.";
+reports `resident`; without one, each command opens and stops the node.
+Amounts: --sats and --*-sats take whole base units (one BIP 177 bitcoin,
+100,000,000 per BTC); --msat and --*-msat take millisatoshis, Lightning's
+wire unit. Text output shows base units as ₿12,345, or as 0.00012345 BTC
+with OPENAGENTS_AMOUNT_FORMAT=btc; JSON fields keep their _sats/_msat names.";
 
 const SWITCHES: &[&str] = &["announce", "reveal", "force"];
 
@@ -397,14 +402,18 @@ fn info(wallet: &Opened) -> Result<Value, Failure> {
 
 fn render_info(value: &Value) -> String {
     let balance = &value["balance"];
+    // Base units in BIP 177 form (or legacy BTC, per OPENAGENTS_AMOUNT_FORMAT).
+    // The JSON keeps its `_sats` and `_msat` field names.
+    let format = bitcoin_amount::Format::from_env();
+    let amount = |field: &str| format.show(balance[field].as_u64().unwrap_or(0));
     format!(
-        "node {}\nnetwork {}  esplora {}\nonchain {} sats ({} spendable)  lightning {} sats\nchannels {} ({} usable)  inbound {} msat  outbound {} msat\nhome {}{}{}",
+        "node {}\nnetwork {}  esplora {}\nonchain {} ({} spendable)  lightning {}\nchannels {} ({} usable)  inbound {} msat  outbound {} msat\nhome {}{}{}",
         value["node_id"].as_str().unwrap_or(""),
         value["network"].as_str().unwrap_or(""),
         value["esplora_url"].as_str().unwrap_or(""),
-        balance["onchain_total_sats"],
-        balance["onchain_spendable_sats"],
-        balance["lightning_total_sats"],
+        amount("onchain_total_sats"),
+        amount("onchain_spendable_sats"),
+        amount("lightning_total_sats"),
         value["channels"],
         value["usable_channels"],
         value["inbound_msat"],
@@ -950,5 +959,37 @@ mod service {
             "resident": resident,
             "detail": detail.trim(),
         }))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn info_shows_balances_as_bip177_amounts() {
+        if std::env::var_os(bitcoin_amount::ENV).is_some() {
+            return;
+        }
+        let text = render_info(&json!({
+            "node_id": "02ab",
+            "network": "bitcoin",
+            "esplora_url": "https://esplora.example",
+            "balance": {
+                "onchain_total_sats": 123_456,
+                "onchain_spendable_sats": 100_000,
+                "lightning_total_sats": 0,
+            },
+            "channels": 0,
+            "usable_channels": 0,
+            "inbound_msat": 0,
+            "outbound_msat": 0,
+            "home": "/tmp/w",
+        }));
+        assert!(
+            text.contains("onchain ₿123,456 (₿100,000 spendable)  lightning ₿0"),
+            "{text}"
+        );
+        assert!(!text.contains("sats"), "{text}");
     }
 }

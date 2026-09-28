@@ -115,6 +115,20 @@ impl Format {
     }
 }
 
+/// The environment variable a command-line tool reads for its format:
+/// `bip177` (the default) or `btc`. The phone keeps its own saved choice.
+pub const ENV: &str = "OPENAGENTS_AMOUNT_FORMAT";
+
+impl Format {
+    /// The format named by [`ENV`], or the BIP 177 default.
+    pub fn from_env() -> Self {
+        std::env::var(ENV)
+            .ok()
+            .and_then(|id| Format::from_id(&id))
+            .unwrap_or_default()
+    }
+}
+
 impl fmt::Display for Format {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.id())
@@ -253,7 +267,11 @@ pub fn parse(text: &str, format: Format) -> Result<Option<u64>, ParseError> {
             }
             let fraction = &fraction[..fraction.len().min(8)];
             let whole = if whole.is_empty() { 0 } else { decimal(whole)? };
-            let mut units = if fraction.is_empty() { 0 } else { decimal(fraction)? };
+            let mut units = if fraction.is_empty() {
+                0
+            } else {
+                decimal(fraction)?
+            };
             for _ in fraction.len()..8 {
                 units *= 10;
             }

@@ -76,7 +76,7 @@ Labor (NIP-MKT, NIP-LAB):
 Keys, relays, and money:
   key          Show or create Nostr identities.
   wallet       Lightning node for x402 (ldk-node): invoices, payments, channels.
-  x402         Sell a command over HTTP for exact sats, or buy one (http:1).
+  x402         Sell a command over HTTP for an exact bitcoin amount, or buy one (http:1).
   kb           Search, publish, and sync knowledge entries (NIP-KB).
   relay        Query, publish to, and follow a relay.
 

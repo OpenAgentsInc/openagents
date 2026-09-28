@@ -85,7 +85,10 @@ fn parses_bip177_integers() {
     assert_eq!(B.parse("₿0"), Err(ParseError::Zero));
     assert_eq!(B.parse("2100000000000001"), Err(ParseError::TooLarge));
     assert_eq!(B.parse("18446744073709551616"), Err(ParseError::TooLarge));
-    assert_eq!(B.parse("99999999999999999999999"), Err(ParseError::TooLarge));
+    assert_eq!(
+        B.parse("99999999999999999999999"),
+        Err(ParseError::TooLarge)
+    );
     for bad in ["1.5", "0.0001", "-5", "+5", "ten", "1e3", "12 sats", "0x10"] {
         assert_eq!(B.parse(bad), Err(ParseError::Invalid), "{bad}");
     }
