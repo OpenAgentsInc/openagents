@@ -270,8 +270,15 @@ holds capabilities for
 ([Dennis and Van Horn, 1966](https://dl.acm.org/doi/10.1145/365230.365252)).
 The object-capability model builds whole languages and systems on that
 discipline: authority is held only by reference, passed only by handing
-over a reference, and can't be forged
-([Miller, 2006](https://papers.agoric.com/papers/robust-composition/abstract/)).
+over a reference, and can't be forged. Miller's dissertation on it starts
+from a problem that is ours as much as his: when separately written
+components are composed so that they can cooperate, they can instead
+interfere destructively, so the job is to enable exactly the causality
+the intended cooperation needs while suppressing the rest
+([Miller, 2006](https://papers.agoric.com/papers/robust-composition/abstract/),
+ch. 1). Four of its ideas appear in the lexicon below: permission is not
+authority (ch. 8), an arena with terms of entry (ch. 11), the reliance
+set (ch. 5), and letting designation carry authority (chs. 3 and 22).
 Agent security now uses the word in that sense. Odersky et al. put an
 agent in a "safety harness" in which capabilities are program variables
 that regulate access to effects and resources, tracked statically by Scala
@@ -337,7 +344,9 @@ set when composed with it is rejected however well it did alone. There
 are two admissions because a candidate has to run somewhere before anyone
 knows whether it is safe: the first is a sandbox that exists to produce
 the evidence, and the second is the decision, on that evidence, to let it
-run with real authority.
+run with real authority. The sandbox is not an implementation
+convenience. It is the experimental frame in which the claim has
+meaning, and its initial authority is part of the claim's scope.
 
 ### A lexicon of test-time capabilities
 
@@ -386,6 +395,26 @@ and its safety can exist at all. **Operational admission** is the later
 decision, on that evidence, to let it run under whatever authority real
 use would give it. Keeping them apart removes an apparent circle: safety
 decides admissibility, and measuring safety requires some admission.
+Miller describes the first of these exactly. You can't take rights away
+from a component you don't control, but you can build an *arena*, a
+controlled environment with initial conditions you set and rules you
+enforce, and admit the component onto it under terms of entry: "please
+leave your cellphones at the door" ([Miller, 2006](https://papers.agoric.com/papers/robust-composition/abstract/),
+§11.3). An evaluation sandbox is an arena, and the grant it starts with
+is its terms of entry.
+
+**Grant is not authority.** A grant records the operations directly made
+available to a component. Its *effective authority* is the set of effects
+it can cause through those operations and through every other component
+it can reach. Miller's example is a Bob with no permission to write a
+file who nevertheless has the authority to write it, because he can ask
+an Alice who does and who will; authority derives from the structure of
+permissions *and* from the behavior of what sits on the permitted paths
+([Miller, 2006](https://papers.agoric.com/papers/robust-composition/abstract/),
+§8.1). So the safety question at admission is not "what was it granted?"
+but "what effects could it cause under that grant, given the components
+already present?" A claim's G names the grant; admission safety bounds
+the effective authority, which the grant alone doesn't show.
 
 Admission is also a security boundary, not only a performance decision.
 A tool that reads untrusted data (email, web pages, files someone else
@@ -547,6 +576,26 @@ same task.
 sometimes another agent. Treating it as a capability means its
 contribution is measured, not assumed.
 
+Delegation is also where authority is allocated, and there is a right way
+to do it. **Let designation carry authority.** Miller's example is two
+ways to copy a file: `cp foo.txt bar.txt` receives two *names* and so
+needs authority over the whole namespace that resolves them, while
+`cat < foo.txt > bar.txt` receives two already-resolved descriptors and
+needs authority over exactly those two files. The least authority a
+component needs depends on how it is told what to act on, and it is
+smallest when the act that designates a resource hands over the narrow
+right to that resource at the same moment, just in time, rather than
+granting a namespace just in case
+([Miller, 2006](https://papers.agoric.com/papers/robust-composition/abstract/),
+§§3.1–3.2, 22.2). For an agent: when the judgment selects the three files
+a delegate should read, the host should grant those three, not the
+repository they sit in. The same discipline runs down the chain. No
+central actor knows enough to compute least authority for every
+participant; authority attenuates at each hand-off, user to agent to
+delegate to tool to resource, with a rule that a child receives no more
+than its parent held except by an explicit new grant from a principal
+entitled to give one (§§20.1, 22.2).
+
 Delegation as a mechanism is well explored: HuggingGPT used a language
 model as a controller that plans, picks specialist models, and runs them
 ([Shen et al., 2023](https://arxiv.org/abs/2303.17580)), and AutoGen
@@ -573,6 +622,22 @@ fitted to the tests; that is the next term's job.
 **How to measure it:** an independent rerun that publishes its own result,
 citing the original, and confirms on a matching verdict or disputes
 otherwise, with both kept visible.
+
+**Every claim has a reliance set.** Miller defines a program's reliance
+set as everything whose correct behavior its own correct behavior depends
+on, and notes that whatever lies in the reliance sets of a whole group is
+a central point of failure for the group: a shared platform is one for
+everything that runs on it
+([Miller, 2006](https://papers.agoric.com/papers/robust-composition/abstract/),
+§§5.1–5.2). A claim's reliance set holds the runner, the model provider,
+the agent build, the selector, the grader, and the host. Reproduction by
+a different evaluator removes one element, the original evaluator, and
+leaves the rest. So reproduction comes in degrees: a second person on the
+same infrastructure is independent as a signing principal and not as a
+platform, and a stronger reproduction varies more of the set: another
+host, another provider, another model implementation, another grader,
+another runtime. Three reruns on one platform are not three independent
+replications, and a claim should say what its reruns shared.
 
 Two traditions meet here. Reproducible builds let anyone rebuild a binary
 from its source and check it matches bit for bit, so trust doesn't rest on
@@ -644,10 +709,27 @@ five reasons, and each is measurable:
 plugin leaderboard ranks standalone deltas; a default set is a composition,
 and only the marginal delta says whether the composition improved.
 
+The same is true of authority, and it is the deeper reason the marginal
+question can't be skipped. Because effective authority runs through
+paths between components, adding a candidate whose own grant is small
+can connect two paths that were separate and enlarge what the default
+set can cause, with no grant changed anywhere. Conversely, a narrow
+component that replaces a broad one can shrink it. Miller's argument
+that least authority practiced at every level of composition compounds
+into a multiplicative reduction of the attack surface runs the other way
+too: excess authority admitted at one level compounds as well
+([Miller, 2006](https://papers.agoric.com/papers/robust-composition/abstract/),
+§§21, 22.4). So **adoption evaluates marginal utility and marginal
+authority**, current defaults plus the candidate against current
+defaults on both, with safety kept a constraint rather than traded
+against the delta.
+
 **How to measure it:** the marginal delta, current defaults plus the
 candidate against current defaults; whether the whole default set still
-passes what it passed before; and whether the candidate keeps its
-externally validated delta in the composition.
+passes what it passed before; whether the candidate keeps its externally
+validated delta in the composition; and whether the composition's
+effective authority grew, which means tracing the paths the newcomer
+opens, not reading its grant.
 
 #### 10. Capability credit
 
@@ -894,15 +976,24 @@ give software artifacts verifiable identity, lineage, signatures, and
 independent rebuilds. Locks, digests, signed releases, and rerunnable
 evidence for capabilities are the same idea applied to agents.
 
-**Authority.** Capability-based security gives admission its other half:
-Dennis and Van Horn's unforgeable tokens of authority
-([1966](https://dl.acm.org/doi/10.1145/365230.365252)), the
-object-capability model ([Miller, 2006](https://papers.agoric.com/papers/robust-composition/abstract/)),
-and, for agents, capabilities tracked in a type system so an agent can act
-only on what it was handed
-([Odersky et al., 2026](https://dl.acm.org/doi/10.1145/3786335.3813127)).
-The [terminology note](#what-the-word-capability-means-here) says how that
-sense and this essay's relate.
+**Authority and composition.** Capability-based security gives admission
+its other half: Dennis and Van Horn's unforgeable tokens of authority
+([1966](https://dl.acm.org/doi/10.1145/365230.365252)), and, for agents,
+capabilities tracked in a type system so an agent can act only on what it
+was handed ([Odersky et al., 2026](https://dl.acm.org/doi/10.1145/3786335.3813127)).
+Miller's *Robust Composition* is the closest conceptual predecessor of
+the admission and composition half of this essay rather than prior art
+against the claim half: it asks how independently written, possibly
+hostile components can be given exactly the interactions their
+cooperation needs and no more, and answers with permission distinguished
+from authority, arenas with terms of entry, reliance sets, designation
+that carries authority, interfaces split so that each distinct authority
+is a distinct object, and least authority nested at every scale
+([Miller, 2006](https://papers.agoric.com/papers/robust-composition/abstract/)).
+The lexicon takes each of those where it bears on admission,
+delegation, reproduction, and adoption. The
+[terminology note](#what-the-word-capability-means-here) says how that
+sense of the word and this essay's relate.
 
 **What we did not find.** Surveys of skill libraries already call for
 provenance, rollback, and reporting standards
@@ -955,6 +1046,13 @@ corrections to any cell.
   current default set, not against nothing. That needs a baseline arm that
   holds the defaults, a regression check across the whole set, and a way to
   tell redundancy, interference, and routing competition apart.
+- **Marginal authority.** A candidate's grant doesn't say what the
+  composition can cause once it's admitted. How should the effective
+  authority of a default set be bounded and compared before and after a
+  candidate joins, and what record would let a reader check the bound?
+- **Independence of reruns.** Which elements of a claim's reliance set
+  must differ between reruns before they count as independent
+  replications, and how should a claim record what its reruns shared?
 - **Cost.** Every result should carry a price for both arms, not a guess.
 - **Uncertainty and power.** A handful of tests and repeats is enough to
   see a large change and too few to see a small one. What interval is
@@ -1107,7 +1205,23 @@ extension architecture keeps separate from installation and enablement.
 What's missing is the evidence that should connect them: grants bound
 what a Wasm guest can touch, but our extension evals don't yet include
 prompt-injection cases of the kind AgentDojo measures, so operational
-admission today rests on the grant's bounds alone.
+admission today rests on the grant's bounds alone, which is to say on
+permission, not on a bound of effective authority.
+
+Part I's "let designation carry authority" is built in one place and not
+in another. A Wasm guest never sees a path: the host mints an opaque
+handle per invocation for each entry it lists, scoped to that invocation,
+and a handle from another invocation is stale
+([what is built](../extensions/plugins.md#what-is-built)).
+That is the `cat` discipline. The delegate door is still `cp`: Jev
+chooses the briefing, at most 12,000 characters of selected evidence, but
+the delegate's grant is read-only or workspace-writable over the whole
+working directory, decided by whether it runs commands, and not derived
+from what the briefing selected
+([delegate door](../coder/runtime/delegate-door.md)). NIP-CTX already
+records which evidence was chosen for which recipient; the grant doesn't
+yet follow it. Part III lists the maxim we intend: let CTX's "knows
+about" shape CAP's "access to."
 
 #### Capability delta in OpenAgents
 
@@ -1191,6 +1305,16 @@ the original: a different trainer, the same test set release, the same
 tool release. It confirms on a matching verdict and disputes otherwise;
 both stay visible. In the hosted record, a second trainer checked each of
 the three results and all three confirmed.
+
+Read those checks with their reliance set. Both trainers' runs executed
+on the same hosted runner on `coderos-4080`, through the same door and
+model name, with the same Coder build, the same Jev, and the same
+graders. The second trainer is independent as a signing principal and
+not as a platform; what the checks rule out is the first trainer's
+mistake or fraud, not a fault shared by the runner, the provider, or the
+grader. A check from a local `openagents ext eval` run on another
+machine would vary the host; nothing today varies the provider or the
+grader, and no report records what its reruns shared.
 
 #### Externally validated capability claim in OpenAgents
 
@@ -1453,7 +1577,12 @@ advertises decision services such as Jev's. It matters for admission: a
 description alone never grants anything, so a capability an agent read about
 can't quietly start acting. Its "capability" is the
 [authority sense](#what-the-word-capability-means-here) of the word, a
-grant over an operation, and never a measured ability. Status: Partial.
+grant over an operation, and never a measured ability. Its effects object
+already keeps reads, writes, network, process, delegation, and spend as
+separately declared effects, which is the first half of Miller's rule to
+reify each distinct authority as a distinct object; the second half,
+granting each of those separately rather than declaring them together,
+is what a narrow authority graph needs. Status: Partial.
 [NIP-CAP](../../nips/openagents/NIP-CAP.md#description-binding-and-grant)
 
 #### NIP-KB
@@ -1631,6 +1760,21 @@ versions.
   name but not the weights behind them or Jev's version. We should record
   what the door reports about its model at run time, and treat a change
   there as voiding reproduction rather than hiding it.
+- **Record and vary the reliance set.** Every hosted check so far shared
+  the runner, host, door, Coder build, Jev, and graders with the result it
+  checked. A report should record what a rerun shared with the original,
+  and the candidate policy should eventually want at least one check that
+  varied the host and one that varied the provider or the grader.
+- **Let CTX's "knows about" shape CAP's "access to."** A delegate's grant
+  should be derived from the evidence its briefing selected, the way a
+  Wasm guest's handles are minted from what it listed, instead of a
+  read-only or writable grant over the whole working directory. Jev
+  would then be constructing the minimum authority context in the same
+  decision that constructs the minimum epistemic context.
+- **Marginal authority at adoption.** Beside the marginal delta, adoption
+  needs a before-and-after bound on what the default set can cause, traced
+  through the paths a newcomer opens between existing components, since
+  its own grant won't show them.
 - **Reach.** Four should-fire tests failed in both arms because Jev didn't
   choose the tool for that wording. Improving how capabilities are described
   to the router, so it reaches for them, is likely the cheapest gain
@@ -1726,6 +1870,11 @@ versions.
 - Miller, M. S. (2006). *Robust Composition: Towards a Unified Approach to
   Access Control and Concurrency Control.* PhD thesis, Johns Hopkins
   University. [papers.agoric.com](https://papers.agoric.com/papers/robust-composition/abstract/)
+  (cited by section: §§3.1–3.2 least authority and designation, §§5.1–5.2
+  reliance set and platform risk, §8.1 permission and authority, §11.3
+  the arena, §15.2 reify distinctions in authority, §§20.1, 21, 22.2,
+  22.4, 22.5 locality of knowledge, attack surface, subcontracting, and
+  nested least authority)
 - Model Context Protocol (2025). *Specification 2025-06-18: Tools.*
   [modelcontextprotocol.io](https://modelcontextprotocol.io/specification/2025-06-18/server/tools)
 - Muennighoff, N. et al. (2025). *s1: Simple test-time scaling.*
