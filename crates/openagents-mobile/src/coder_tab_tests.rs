@@ -1519,19 +1519,39 @@ fn a_read_only_command_runs_only_when_tapped() {
     // The wallet payment never made it past the phone's table.
     assert!(node(&chat, "coder-cli-2").is_none());
     // Nothing ran yet.
-    assert!(node(&chat, "coder-cli-0-out-0").is_none());
+    assert!(node(&chat, "coder-cli-out").is_none());
     let ran = fixture.tap("coder-cli-0-run");
-    let out = node(&ran, "coder-cli-0-out-0").expect("output")["element"]["props"]["value"]
-        .as_str()
-        .unwrap()
-        .to_owned();
+    let out = cli_output(&ran);
     assert!(out.starts_with("Studio Mac"), "{out}");
+    // The output is a row of the conversation, under the command it came
+    // from, so a long result scrolls instead of covering the composer.
+    assert_eq!(
+        node(&ran, "coder-cli-out").unwrap()["element"]["props"]["note"],
+        "openagents computer list"
+    );
+    let transcript = node(&ran, "coder-transcript").unwrap();
+    assert!(
+        transcript["element"]["props"]["children"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|row| row["key"] == "coder-cli-out")
+    );
+    assert!(node(&ran, "coder-cli-0-run").is_some(), "Run again stays");
     // With no way to reach computers, the card says so plainly.
     let ran = fixture.tap("coder-cli-1-run");
     assert_eq!(
         node(&ran, "coder-cli-1-why").unwrap()["element"]["props"]["value"],
         "This phone can't reach your computers right now."
     );
+}
+
+/// The code block a finished command left in the conversation.
+fn cli_output(view: &serde_json::Value) -> String {
+    node(view, "coder-cli-out-md").expect("output")["element"]["props"]["blocks"][0]["text"]
+        .as_str()
+        .unwrap()
+        .to_owned()
 }
 
 /// What a fake runner was asked: host and command.
@@ -1606,19 +1626,13 @@ fn a_computer_command_runs_there_after_the_tap() {
     *gate.lock().unwrap() = true;
     let mut done = fixture.render();
     for _ in 0..200 {
-        if node(&done, "coder-cli-0-out-0").is_some() {
+        if node(&done, "coder-cli-out").is_some() {
             break;
         }
         std::thread::sleep(std::time::Duration::from_millis(10));
         done = fixture.render();
     }
-    let lines: Vec<String> = (0..3)
-        .filter_map(|at| {
-            node(&done, &format!("coder-cli-0-out-{at}"))
-                .map(|n| n["element"]["props"]["value"].as_str().unwrap().to_owned())
-        })
-        .collect();
-    assert_eq!(lines, ["{", "  \"xp\": 120", "}"]);
+    assert_eq!(cli_output(&done), "{\n  \"xp\": 120\n}");
     let asked = asked.lock().unwrap();
     assert_eq!(asked.len(), 1);
     assert_eq!(asked[0].1, ["openagents", "--json", "verse", "xp"]);

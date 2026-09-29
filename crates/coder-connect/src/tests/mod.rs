@@ -824,3 +824,12 @@ async fn cancelled_exchange_discards_socket_before_the_next_observation() {
 mod bench;
 mod direct;
 mod pairing;
+
+#[test]
+fn fresh_tolerates_a_reader_clock_behind_the_issuer() {
+    let now = 1_000_000;
+    assert!(fresh(now + 2, now + 600, now).is_ok());
+    assert!(fresh(now + CLOCK_SKEW, now + 600, now).is_ok());
+    assert!(fresh(now + CLOCK_SKEW + 1, now + 600, now).is_err());
+    assert!(fresh(now - 10, now, now).is_err());
+}

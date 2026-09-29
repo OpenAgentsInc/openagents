@@ -2700,6 +2700,13 @@ impl CoderTab {
             )),
         }
         let failed = rows.last().is_some_and(|row| row.key == "talk-failed");
+        // What a proposed command printed scrolls with the conversation,
+        // so a long result never pushes the composer off the screen.
+        if let Some((talk, ran, CliOutcome::Output(lines))) = &self.cli
+            && talk == id
+        {
+            rows.push(cli_output_row(ran, lines));
+        }
         children.push(node(
             "coder-transcript",
             Element::Transcript {
@@ -2880,16 +2887,7 @@ impl CoderTab {
         ];
         match &self.cli {
             Some((talk, ran, outcome)) if talk == id && ran.as_slice() == argv => match outcome {
-                CliOutcome::Output(lines) => {
-                    children.extend(lines.iter().enumerate().map(|(at, line)| {
-                        text(
-                            &format!("{key}-out-{at}"),
-                            line,
-                            TextRole::Code,
-                            GRAY,
-                            false,
-                        )
-                    }));
+                CliOutcome::Output(_) => {
                     children.push(button(
                         &format!("{key}-run"),
                         "Run again",
@@ -3575,6 +3573,31 @@ fn node(key: &str, element: Element<Intent>) -> Node<Intent> {
         style: Style::default(),
         element,
     }
+}
+
+/// What a proposed command printed, as a code block in the conversation,
+/// under the command itself.
+fn cli_output_row(argv: &[String], lines: &[String]) -> Node<Intent> {
+    node(
+        "coder-cli-out",
+        Element::Message {
+            role: MessageRole::Assistant,
+            note: Some(Offer::command_line(argv)),
+            children: vec![Node {
+                key: "coder-cli-out-md".into(),
+                style: Style {
+                    foreground: Some(GRAY),
+                    ..Style::default()
+                },
+                element: Element::Markdown {
+                    blocks: vec![rust_native::markdown::Block::Code {
+                        language: None,
+                        text: lines.join("\n"),
+                    }],
+                },
+            }],
+        },
+    )
 }
 
 /// One message of a basic conversation, drawn from its parsed Markdown.

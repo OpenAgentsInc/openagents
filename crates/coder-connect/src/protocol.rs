@@ -351,8 +351,15 @@ pub fn window(issued: u64, expires: u64, max: u64) -> Result<()> {
     }
     Ok(())
 }
+/// How far ahead of the reader's clock an artifact's `issued_at` may sit
+/// before the reader treats it as not yet valid. Two peers rarely agree on the
+/// second; a phone a few seconds behind the computer it pairs with must still
+/// accept an invitation the computer created a moment ago. Expiry is not
+/// widened.
+pub const CLOCK_SKEW: u64 = 60;
+
 pub fn fresh(issued: u64, expires: u64, now: u64) -> Result<()> {
-    if issued > now || expires <= now {
+    if issued > now.saturating_add(CLOCK_SKEW) || expires <= now {
         return fail(ErrorCode::Expired, "observer artifact is not current");
     }
     Ok(())
