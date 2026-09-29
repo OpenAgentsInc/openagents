@@ -1,0 +1,65 @@
+{
+  "schema_version": "ATIF-v1.8",
+  "session_id": "fixture-callers-with-map",
+  "trajectory_id": "fixture-callers-with-map",
+  "agent": {
+    "name": "coder",
+    "version": "0.1.0",
+    "model_name": "fixture-model",
+    "extra": {
+      "door": "fixture-door"
+    }
+  },
+  "steps": [
+    {
+      "step_id": 1,
+      "timestamp": "2026-09-28T12:00:00Z",
+      "source": "user",
+      "message": "Which functions call `parse_case` in this repository? Answer with their names."
+    },
+    {
+      "step_id": 2,
+      "timestamp": "2026-09-28T12:00:01Z",
+      "source": "agent",
+      "message": "Mapping the repository first.",
+      "model_name": "fixture-model",
+      "tool_calls": [
+        {
+          "tool_call_id": "call-2",
+          "function_name": "program",
+          "arguments": {
+            "program": "repo-map",
+            "operation": "repo-map.map"
+          },
+          "extra": {
+            "step": "map"
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "call-2",
+            "content": "src/case.rs: parse_case (called by load, parse_all)",
+            "extra": {
+              "status": "completed",
+              "duration_ms": 40
+            }
+          }
+        ]
+      }
+    },
+    {
+      "step_id": 3,
+      "timestamp": "2026-09-28T12:00:02Z",
+      "source": "agent",
+      "message": "The callers of `parse_case` are `load` and `parse_all`.",
+      "model_name": "fixture-model"
+    }
+  ],
+  "final_metrics": {
+    "total_prompt_tokens": 0,
+    "total_completion_tokens": 0,
+    "total_steps": 3
+  }
+}

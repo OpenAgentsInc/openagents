@@ -1,0 +1,38 @@
+[package]
+name = "ext-eval"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "The extension evaluation engine: cases, graders, scoring, the ext-eval-v1 gate, and the report."
+publish.workspace = true
+
+[features]
+default = []
+# Converts `plugin::replay::Replay` into this crate's replay verdict, for a
+# runner that replays Wasm invocation receipts. Off by default, because it
+# links the Wasm engine.
+plugin = ["dep:plugin"]
+
+[dependencies]
+# Trajectories are ATIF documents; the crate reads and version-checks them.
+atif = { path = "../atif" }
+# The verdict is the Gym gate `ext-eval-v1`, recorded by its digest.
+gym = { path = "../gym" }
+indexmap = { version = "2", features = ["serde"] }
+# `decision` graders ask Jev through `POST /v1/systemone`. The engine is
+# synchronous, so it uses the SDK's blocking client.
+jev = { path = "../jev", features = ["blocking"] }
+# ArtifactRef, DefinitionRef, and EventRef validation, and `sha256:` digests.
+nostr = { path = "../nostr" }
+plugin = { path = "../plugin", optional = true }
+regex = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+toml = "0.9"
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true

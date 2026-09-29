@@ -2558,6 +2558,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "ext-eval"
+version = "0.1.0"
+dependencies = [
+ "atif",
+ "gym",
+ "indexmap",
+ "jev",
+ "nostr",
+ "plugin",
+ "regex",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.20",
+ "toml",
+]
+
+[[package]]
 name = "fallible-iterator"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

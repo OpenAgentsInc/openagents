@@ -1,0 +1,93 @@
+{
+  "description": "The better scenario with a run that timed out and a run nobody saw the end of.",
+  "runs": null,
+  "cost_usd": {
+    "subject": 0.01,
+    "baseline": 0.02
+  },
+  "seconds": {
+    "subject": 30,
+    "baseline": 45
+  },
+  "cases": {
+    "find-callers": {
+      "subject": [
+        "callers-with-map",
+        "callers-with-map",
+        "callers-with-map"
+      ],
+      "baseline": [
+        "callers-wrong",
+        "callers-wrong",
+        {
+          "outcome": "unknown"
+        }
+      ]
+    },
+    "map-only": {
+      "subject": [
+        "overview-with-map",
+        "overview-with-map",
+        "overview-with-map"
+      ]
+    },
+    "typo-fix": {
+      "subject": [
+        "typo-direct",
+        "typo-direct",
+        "typo-direct"
+      ],
+      "baseline": [
+        "typo-direct",
+        "typo-direct",
+        "typo-direct"
+      ]
+    },
+    "write-summary": {
+      "subject": [
+        {
+          "trajectory": "summary",
+          "created": [
+            "SUMMARY.md"
+          ],
+          "workspace": "summary-good"
+        },
+        {
+          "outcome": "timeout",
+          "cost_usd": null,
+          "seconds": 300
+        },
+        {
+          "trajectory": "summary",
+          "created": [
+            "SUMMARY.md"
+          ],
+          "workspace": "summary-good"
+        }
+      ],
+      "baseline": [
+        {
+          "trajectory": "summary",
+          "created": [
+            "SUMMARY.md"
+          ],
+          "workspace": "summary-good"
+        },
+        {
+          "trajectory": "summary",
+          "created": [
+            "SUMMARY.md"
+          ],
+          "workspace": "summary-good"
+        },
+        {
+          "trajectory": "summary",
+          "created": [
+            "SUMMARY.md"
+          ],
+          "workspace": "summary-good"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,93 @@
+{
+  "description": "With the tool the callers are right two times in three, without it one time in three: the change is inside the spread between repeats.",
+  "runs": null,
+  "cost_usd": {
+    "subject": 0.02,
+    "baseline": 0.02
+  },
+  "seconds": {
+    "subject": 45,
+    "baseline": 45
+  },
+  "cases": {
+    "find-callers": {
+      "subject": [
+        "callers-with-map",
+        "callers-wrong",
+        "callers-with-map"
+      ],
+      "baseline": [
+        "callers-wrong",
+        "callers-by-grep",
+        "callers-wrong"
+      ]
+    },
+    "map-only": {
+      "subject": [
+        "overview-with-map",
+        "overview-with-map",
+        "overview-with-map"
+      ]
+    },
+    "typo-fix": {
+      "subject": [
+        "typo-direct",
+        "typo-direct",
+        "typo-direct"
+      ],
+      "baseline": [
+        "typo-direct",
+        "typo-direct",
+        "typo-direct"
+      ]
+    },
+    "write-summary": {
+      "subject": [
+        {
+          "trajectory": "summary",
+          "created": [
+            "SUMMARY.md"
+          ],
+          "workspace": "summary-good"
+        },
+        {
+          "trajectory": "summary",
+          "created": [
+            "SUMMARY.md"
+          ],
+          "workspace": "summary-good"
+        },
+        {
+          "trajectory": "summary",
+          "created": [
+            "SUMMARY.md"
+          ],
+          "workspace": "summary-good"
+        }
+      ],
+      "baseline": [
+        {
+          "trajectory": "summary",
+          "created": [
+            "SUMMARY.md"
+          ],
+          "workspace": "summary-good"
+        },
+        {
+          "trajectory": "summary",
+          "created": [
+            "SUMMARY.md"
+          ],
+          "workspace": "summary-good"
+        },
+        {
+          "trajectory": "summary",
+          "created": [
+            "SUMMARY.md"
+          ],
+          "workspace": "summary-good"
+        }
+      ]
+    }
+  }
+}

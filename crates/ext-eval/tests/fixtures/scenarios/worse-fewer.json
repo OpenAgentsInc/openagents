@@ -1,0 +1,93 @@
+{
+  "description": "With the tool Coder gets the callers wrong every time; without it, right every time.",
+  "runs": null,
+  "cost_usd": {
+    "subject": 0.01,
+    "baseline": 0.02
+  },
+  "seconds": {
+    "subject": 30,
+    "baseline": 45
+  },
+  "cases": {
+    "find-callers": {
+      "subject": [
+        "callers-wrong",
+        "callers-wrong",
+        "callers-wrong"
+      ],
+      "baseline": [
+        "callers-by-grep",
+        "callers-by-grep",
+        "callers-by-grep"
+      ]
+    },
+    "map-only": {
+      "subject": [
+        "overview-with-map",
+        "overview-with-map",
+        "overview-with-map"
+      ]
+    },
+    "typo-fix": {
+      "subject": [
+        "typo-direct",
+        "typo-direct",
+        "typo-direct"
+      ],
+      "baseline": [
+        "typo-direct",
+        "typo-direct",
+        "typo-direct"
+      ]
+    },
+    "write-summary": {
+      "subject": [
+        {
+          "trajectory": "summary",
+          "created": [
+            "SUMMARY.md"
+          ],
+          "workspace": "summary-good"
+        },
+        {
+          "trajectory": "summary",
+          "created": [
+            "SUMMARY.md"
+          ],
+          "workspace": "summary-good"
+        },
+        {
+          "trajectory": "summary",
+          "created": [
+            "SUMMARY.md"
+          ],
+          "workspace": "summary-good"
+        }
+      ],
+      "baseline": [
+        {
+          "trajectory": "summary",
+          "created": [
+            "SUMMARY.md"
+          ],
+          "workspace": "summary-good"
+        },
+        {
+          "trajectory": "summary",
+          "created": [
+            "SUMMARY.md"
+          ],
+          "workspace": "summary-good"
+        },
+        {
+          "trajectory": "summary",
+          "created": [
+            "SUMMARY.md"
+          ],
+          "workspace": "summary-good"
+        }
+      ]
+    }
+  }
+}

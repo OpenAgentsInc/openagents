@@ -936,6 +936,73 @@ pub struct DeploymentRule {
     pub pending_measurement: Option<Pending>,
 }
 
+/// The rule that decides whether an extension changes what an agent does.
+///
+/// It reads the suite-level comparison `crates/ext-eval` computes: cases
+/// passed per arm, the should-not-fire cases each arm kept, and the mean
+/// score, cost, and time per attempt with the spread between repeats of
+/// the same arm. `docs/extensions/evaluation.md` (*Scoring and the
+/// verdict*) states the rule in prose.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ExtEvalRule {
+    /// Fewest scored runs of every compared case in each arm before the
+    /// spread between repeats means anything.
+    pub min_runs: Bound,
+    /// How many spreads an improvement has to clear before the gate calls
+    /// it a change rather than the agent's own variation.
+    pub spread_multiple: Bound,
+    /// The measurement that would complete this rule, when one is missing.
+    #[serde(default, deserialize_with = "pending_field")]
+    pub pending_measurement: Option<Pending>,
+}
+
+/// One measure of an extension evaluation, per arm, with the spread
+/// between repeats of the same arm.
+///
+/// Every field is optional, and absent means nobody measured it. A cost
+/// with an unknown charge in it is absent, never a partial sum.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct ArmMeasure {
+    /// The mean per attempt with the extension admitted.
+    pub subject: Option<f64>,
+    /// The mean per attempt with the extension absent.
+    pub baseline: Option<f64>,
+    /// The larger of the two arms' spreads (highest minus lowest) across
+    /// that arm's attempts.
+    pub spread: Option<f64>,
+}
+
+/// What an extension evaluation measured, as the `ext-eval` rule reads it.
+///
+/// Only compared cases count here: a case whose every grader is
+/// subject-only scores the subject arm alone and is excluded from the
+/// change.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct ExtEvalComparison {
+    /// What was judged: the suite.
+    pub group: String,
+    /// Whether a baseline arm ran at all.
+    pub baseline_present: bool,
+    /// Cases scored in both arms.
+    pub cases: usize,
+    /// The fewest scored runs any compared case has in either arm.
+    pub runs: usize,
+    /// Compared cases the subject arm passed.
+    pub subject_passed: usize,
+    /// Compared cases the baseline arm passed.
+    pub baseline_passed: usize,
+    /// Should-not-fire cases the baseline arm passed and the subject arm
+    /// did not.
+    pub should_not_fire_lost: Vec<String>,
+    /// Mean score per attempt; higher is better.
+    pub mean_score: ArmMeasure,
+    /// Cost in US dollars per attempt; lower is better.
+    pub cost_usd: ArmMeasure,
+    /// Wall seconds per attempt; lower is better.
+    pub seconds: ArmMeasure,
+}
+
 /// Which product question a gate answers.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "decides", rename_all = "snake_case")]
@@ -947,6 +1014,9 @@ pub enum Rule {
     /// Whether a door can be afforded: what it costs in time and money to
     /// run, against what the caller's workload can pay.
     Deployment(DeploymentRule),
+    /// Whether an extension changes what an agent does: a suite of cases run
+    /// with the extension admitted and without it (`crates/ext-eval`).
+    ExtEval(ExtEvalRule),
 }
 
 impl Rule {
@@ -957,6 +1027,7 @@ impl Rule {
             Self::Decision(rule) => rule.pending_measurement.as_ref(),
             Self::Probability(rule) => rule.pending_measurement.as_ref(),
             Self::Deployment(rule) => rule.pending_measurement.as_ref(),
+            Self::ExtEval(rule) => rule.pending_measurement.as_ref(),
         }
     }
 
@@ -987,6 +1058,11 @@ impl Rule {
                 gated_percentile: rule.gated_percentile,
                 latency_block_sigma_relative: rule.latency_block_sigma_relative.identity(),
                 regression_sigmas: rule.regression_sigmas.identity(),
+                pending_measurement: rule.pending_measurement.as_ref().map(Pending::identity),
+            }),
+            Self::ExtEval(rule) => RuleIdentity::ExtEval(ExtEvalRuleIdentity {
+                min_runs: rule.min_runs.identity(),
+                spread_multiple: rule.spread_multiple.identity(),
                 pending_measurement: rule.pending_measurement.as_ref().map(Pending::identity),
             }),
         }
@@ -1223,6 +1299,10 @@ impl Gate {
                 rule.regression_sigmas
                     .validate(&self.id, "regression_sigmas")?;
             }
+            Rule::ExtEval(rule) => {
+                rule.min_runs.validate(&self.id, "min_runs")?;
+                rule.spread_multiple.validate(&self.id, "spread_multiple")?;
+            }
         }
         if let Some(pending) = self.rule.pending_measurement() {
             pending.validate(&self.id)?;
@@ -1314,6 +1394,11 @@ impl Gate {
                 "a deployment profile: latency, cost, and refusals",
                 "a comparison of scores carries none of them",
             )],
+            Rule::ExtEval(_) => vec![wrong_measurement(
+                &self.id,
+                "an extension evaluation: cases passed per arm and the spread between repeats",
+                "a comparison of door scores carries none of them",
+            )],
         };
         self.outcome(comparison.group.clone(), criteria)
     }
@@ -1326,13 +1411,35 @@ impl Gate {
     pub fn judge_deployment(&self, deployment: &Deployment) -> Outcome {
         let criteria = match &self.rule {
             Rule::Deployment(rule) => judge_deployment(rule, deployment),
-            Rule::Decision(_) | Rule::Probability(_) => vec![wrong_measurement(
-                &self.id,
-                "a comparison of scores",
-                "a deployment profile carries no accuracy and no probabilities",
-            )],
+            Rule::Decision(_) | Rule::Probability(_) | Rule::ExtEval(_) => {
+                vec![wrong_measurement(
+                    &self.id,
+                    "a comparison of scores",
+                    "a deployment profile carries no accuracy and no probabilities",
+                )]
+            }
         };
         self.outcome(deployment.group.clone(), criteria)
+    }
+
+    /// Judges an extension evaluation: the subject arm against the
+    /// baseline arm over the same cases. Pure.
+    ///
+    /// A gate that judges door scores or a deployment judges nothing here,
+    /// and says so rather than passing a comparison it never read.
+    #[must_use]
+    pub fn judge_ext_eval(&self, comparison: &ExtEvalComparison) -> Outcome {
+        let criteria = match &self.rule {
+            Rule::ExtEval(rule) => judge_ext_eval(rule, comparison),
+            Rule::Decision(_) | Rule::Probability(_) | Rule::Deployment(_) => {
+                vec![wrong_measurement(
+                    &self.id,
+                    "door scores or a deployment profile",
+                    "an extension evaluation carries neither",
+                )]
+            }
+        };
+        self.outcome(comparison.group.clone(), criteria)
     }
 
     fn outcome(&self, group: String, criteria: Vec<Criterion>) -> Outcome {
@@ -1618,6 +1725,16 @@ enum RuleIdentity<'a> {
     Probability(ProbabilityRuleIdentity<'a>),
     /// The rule that decides whether a door can be afforded.
     Deployment(DeploymentRuleIdentity<'a>),
+    /// The rule that decides whether an extension changes what an agent does.
+    ExtEval(ExtEvalRuleIdentity<'a>),
+}
+
+/// An extension evaluation rule's identity.
+#[derive(Serialize)]
+struct ExtEvalRuleIdentity<'a> {
+    min_runs: BoundIdentity<'a>,
+    spread_multiple: BoundIdentity<'a>,
+    pending_measurement: Option<PendingIdentity<'a>>,
 }
 
 /// A decision rule's identity.
@@ -2168,6 +2285,159 @@ fn brier_tolerance(
 ///
 /// Unverifiable rather than failed: the door did nothing wrong, and the
 /// caller reached for the wrong rule.
+/// Judges an extension evaluation.
+///
+/// Rank 1 decides: a missing baseline, too few runs to measure a spread, or
+/// no compared case leaves everything unjudged, so `runs = 1` is
+/// inconclusive whatever else happened. Past the floor, fewer cases passed
+/// or a lost should-not-fire case fails. Rank 2 is the only way to pass: the
+/// mean score, the cost, or the time has to improve by more than the spread
+/// between repeats of the same arm.
+fn judge_ext_eval(rule: &ExtEvalRule, comparison: &ExtEvalComparison) -> Vec<Criterion> {
+    const PASSES: &str = "subject_passes_at_least_as_many_cases";
+    const KEPT: &str = "subject_keeps_every_should_not_fire_case";
+    const IMPROVES: &str = "improvement_clears_the_spread";
+    let mut criteria = Vec::new();
+    let blocked = if comparison.baseline_present {
+        criteria.push(Criterion {
+            name: "baseline_arm_ran".into(),
+            rank: 1,
+            verdict: Verdict::Passed,
+            detail: "the cases ran with the extension and without it".into(),
+        });
+        None
+    } else {
+        let reason = "no baseline arm ran, so there is nothing to compare with".to_string();
+        criteria.push(Criterion {
+            name: "baseline_arm_ran".into(),
+            rank: 1,
+            verdict: Verdict::Unverifiable,
+            detail: reason.clone(),
+        });
+        Some(reason)
+    };
+    let blocked = blocked.or_else(|| {
+        let (floor, blocked) = items_floor("runs_per_arm", 1, &rule.min_runs, comparison.runs);
+        criteria.push(floor);
+        blocked
+    });
+    let blocked = blocked.or_else(|| {
+        if comparison.cases == 0 {
+            let reason = "no case was scored in both arms".to_string();
+            criteria.push(Criterion {
+                name: "compared_cases>=1".into(),
+                rank: 1,
+                verdict: Verdict::Unverifiable,
+                detail: reason.clone(),
+            });
+            Some(reason)
+        } else {
+            criteria.push(Criterion {
+                name: "compared_cases>=1".into(),
+                rank: 1,
+                verdict: Verdict::Passed,
+                detail: format!("{} cases scored in both arms", comparison.cases),
+            });
+            None
+        }
+    });
+    if let Some(reason) = blocked {
+        criteria.push(not_judged(PASSES.into(), 1, &reason));
+        criteria.push(not_judged(KEPT.into(), 1, &reason));
+        criteria.push(not_judged(IMPROVES.into(), 2, &reason));
+        return criteria;
+    }
+
+    let (subject, baseline) = (comparison.subject_passed, comparison.baseline_passed);
+    criteria.push(Criterion {
+        name: PASSES.into(),
+        rank: 1,
+        verdict: if subject < baseline {
+            Verdict::Failed
+        } else {
+            Verdict::Passed
+        },
+        detail: format!(
+            "{subject} of {cases} with the extension, {baseline} of {cases} without",
+            cases = comparison.cases
+        ),
+    });
+    criteria.push(Criterion {
+        name: KEPT.into(),
+        rank: 1,
+        verdict: if comparison.should_not_fire_lost.is_empty() {
+            Verdict::Passed
+        } else {
+            Verdict::Failed
+        },
+        detail: if comparison.should_not_fire_lost.is_empty() {
+            "every should-not-fire case the baseline passed, the subject passed too".into()
+        } else {
+            format!(
+                "the subject lost should-not-fire cases the baseline passed: {}",
+                comparison.should_not_fire_lost.join(", ")
+            )
+        },
+    });
+    criteria.push(improvement(rule, comparison, IMPROVES));
+    criteria
+}
+
+/// Whether the mean score, the cost, or the time improved by more than the
+/// spread between repeats. A measure with an unknown side or an unknown
+/// spread does not count either way.
+fn improvement(rule: &ExtEvalRule, comparison: &ExtEvalComparison, name: &str) -> Criterion {
+    let Some(multiple) = rule.spread_multiple.value() else {
+        return Criterion {
+            name: name.into(),
+            rank: 2,
+            verdict: Verdict::Unverifiable,
+            detail: format!(
+                "no spread multiple has been set ({})",
+                rule.spread_multiple.why
+            ),
+        };
+    };
+    let measures = [
+        ("mean score", &comparison.mean_score, true),
+        ("cost", &comparison.cost_usd, false),
+        ("time", &comparison.seconds, false),
+    ];
+    let mut notes = Vec::new();
+    let mut cleared = false;
+    for (label, measure, higher_is_better) in measures {
+        let (Some(subject), Some(baseline), Some(spread)) =
+            (measure.subject, measure.baseline, measure.spread)
+        else {
+            notes.push(format!("{label} unknown"));
+            continue;
+        };
+        let gain = if higher_is_better {
+            subject - baseline
+        } else {
+            baseline - subject
+        };
+        let bound = multiple * spread;
+        if gain > bound {
+            cleared = true;
+        }
+        notes.push(format!(
+            "{label} {baseline:.4} to {subject:.4}, improvement {gain:+.4} against a spread \
+             bound of {bound:.4}"
+        ));
+    }
+    Criterion {
+        name: name.into(),
+        rank: 2,
+        verdict: if cleared {
+            Verdict::Passed
+        } else {
+            Verdict::Unverifiable
+        },
+        detail: notes.join("; "),
+    }
+}
+
 fn wrong_measurement(gate: &str, judges: &str, and: &str) -> Criterion {
     Criterion {
         name: "measurement_matches_the_rule".to_string(),
@@ -2847,6 +3117,7 @@ mod tests {
                 "decision-v1",
                 "deployment-v1",
                 "deployment-v2",
+                "ext-eval-v1",
                 "probability-v1",
                 "probability-v2"
             ]
@@ -3356,6 +3627,7 @@ mod tests {
                     &rule.latency_block_sigma_relative,
                     &rule.regression_sigmas,
                 ],
+                Rule::ExtEval(rule) => vec![&rule.min_runs, &rule.spread_multiple],
             };
             for bound in bounds {
                 assert!(

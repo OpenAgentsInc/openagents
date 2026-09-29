@@ -1,0 +1,12 @@
+v = "openagents.eval-case.v1"
+kind = "should-fire"
+tags = ["writing"]
+
+[run]
+allowed_operations = ["read", "write"]
+deadline_seconds = 120
+
+[[graders]]
+type = "file_exists"
+name = "wrote-summary"
+path = "SUMMARY.md"

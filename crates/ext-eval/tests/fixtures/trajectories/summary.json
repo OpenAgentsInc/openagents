@@ -1,0 +1,91 @@
+{
+  "schema_version": "ATIF-v1.8",
+  "session_id": "fixture-summary",
+  "trajectory_id": "fixture-summary",
+  "agent": {
+    "name": "coder",
+    "version": "0.1.0",
+    "model_name": "fixture-model",
+    "extra": {
+      "door": "fixture-door"
+    }
+  },
+  "steps": [
+    {
+      "step_id": 1,
+      "timestamp": "2026-09-28T12:00:00Z",
+      "source": "user",
+      "message": "Read README.md and write a two-line summary of it to SUMMARY.md."
+    },
+    {
+      "step_id": 2,
+      "timestamp": "2026-09-28T12:00:01Z",
+      "source": "agent",
+      "message": "Reading the README.",
+      "model_name": "fixture-model",
+      "tool_calls": [
+        {
+          "tool_call_id": "call-2",
+          "function_name": "shell",
+          "arguments": {
+            "command": "cat README.md",
+            "workdir": "/work"
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "call-2",
+            "content": "# Case parser",
+            "extra": {
+              "status": "completed",
+              "duration_ms": 40
+            }
+          }
+        ]
+      }
+    },
+    {
+      "step_id": 3,
+      "timestamp": "2026-09-28T12:00:02Z",
+      "source": "agent",
+      "message": "Writing the summary.",
+      "model_name": "fixture-model",
+      "tool_calls": [
+        {
+          "tool_call_id": "call-3",
+          "function_name": "shell",
+          "arguments": {
+            "command": "printf '## Summary' > SUMMARY.md",
+            "workdir": "/work"
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "call-3",
+            "content": "",
+            "extra": {
+              "status": "completed",
+              "duration_ms": 40
+            }
+          }
+        ]
+      }
+    },
+    {
+      "step_id": 4,
+      "timestamp": "2026-09-28T12:00:03Z",
+      "source": "agent",
+      "message": "Wrote SUMMARY.md.",
+      "model_name": "fixture-model"
+    }
+  ],
+  "final_metrics": {
+    "total_prompt_tokens": 0,
+    "total_completion_tokens": 0,
+    "total_steps": 4
+  }
+}

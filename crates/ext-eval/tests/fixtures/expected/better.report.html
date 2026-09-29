@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Extension evaluation</title>
+<style>:root{--bg:#fbfaf7;--fg:#1d1c1a;--muted:#6b675f;--line:#e2ded5;--good:#23703a;--bad:#a4282a;--mid:#8a6a12;--card:#ffffff}@media (prefers-color-scheme:dark){:root{--bg:#141311;--fg:#ece9e2;--muted:#a09a8f;--line:#34312b;--good:#6fcf8a;--bad:#f08a86;--mid:#e5c15a;--card:#1c1b18}}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}main{max-width:960px;margin:0 auto;padding:24px 16px 48px}h1{font-size:22px;margin:0 0 4px}h2{font-size:17px;margin:32px 0 8px}h3{font-size:15px;margin:0}.muted{color:var(--muted)}.good{color:var(--good)}.bad{color:var(--bad)}.mid{color:var(--mid)}.headline{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:16px;margin:16px 0}.verdict{font-size:20px;font-weight:600}table{border-collapse:collapse;width:100%;font-size:14px}th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:top}.case{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:12px 16px;margin:12px 0}details{margin:6px 0}summary{cursor:pointer}code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;overflow-wrap:anywhere}.wrap{overflow-x:auto}</style>
+</head>
+<body>
+<main>
+<h1>Extension evaluation</h1>
+<p class="muted">Evaluator <code>0b1c2d3e4f506172894a5b6c7d8e9f00112233445566778899aabbccddeeff00</code> · suite <code>sha256:91fac477ea731b6ae5a0f52f6c107d681d9e96fe59f032348e56ad27662dd074</code> · report <code>sha256:3f7e090f8f955ea049ece747120c7f610bafe1fb79f1b3f3438e7b19a8b38dde</code></p>
+<section class="headline">
+<div class="verdict good">Better</div>
+<p>Passes 4 of 4 tests with the tool, 2 of 3 without. Change in mean score: +0.33.</p>
+<p class="muted">Decided by gate <code>ext-eval-v1</code> <code>gate:361adde42a2753d3bb5bc2a901b1e089d04afe768e2a2d090535c1ab584c97dd</code>.</p>
+</section>
+<h2>Per arm</h2>
+<div class="wrap"><table>
+<tr><th></th><th>Cases passed</th><th>Mean score</th><th>Cost</th><th>Time</th></tr>
+<tr><td>With the tool</td><td>4 of 4</td><td>1.00</td><td>$0.1200</td><td>360.0 s</td></tr>
+<tr><td>Without it</td><td>2 of 3</td><td>0.67</td><td>$0.1800</td><td>405.0 s</td></tr>
+</table></div>
+<h2>Gate</h2>
+<div class="wrap"><table>
+<tr><th>Criterion</th><th>Verdict</th><th>Detail</th></tr>
+<tr><td><code>baseline_arm_ran</code></td><td class="good">passed</td><td>the cases ran with the extension and without it</td></tr>
+<tr><td><code>runs_per_arm&gt;=2</code></td><td class="good">passed</td><td>runs_per_arm is 3, at or above the floor of 2</td></tr>
+<tr><td><code>compared_cases&gt;=1</code></td><td class="good">passed</td><td>3 cases scored in both arms</td></tr>
+<tr><td><code>subject_passes_at_least_as_many_cases</code></td><td class="good">passed</td><td>3 of 3 with the extension, 2 of 3 without</td></tr>
+<tr><td><code>subject_keeps_every_should_not_fire_case</code></td><td class="good">passed</td><td>every should-not-fire case the baseline passed, the subject passed too</td></tr>
+<tr><td><code>improvement_clears_the_spread</code></td><td class="good">passed</td><td>mean score 0.6667 to 1.0000, improvement +0.3333 against a spread bound of 0.0000; cost 0.0600 to 0.0300, improvement +0.0300 against a spread bound of 0.0000; time 135.0000 to 90.0000, improvement +45.0000 against a spread bound of 0.0000</td></tr>
+</table></div>
+<h2>Tests</h2>
+<section class="case">
+<h3>find-callers <span class="muted">· should-fire</span></h3>
+<p>With the tool: <span class="good">passed</span> · 3 of 3 runs · score 1.00<br>Without it: <span class="bad">failed</span> · 0 of 3 runs · score 0.00<br>Change: +1.00</p>
+<details>
+<summary>Run 1 with the tool: <span class="good">passed</span> · score 1.00 · $0.0100 · 30.0 s</summary>
+<p class="muted">Outcome completed · <a href="runs/find-callers/subject-1/trajectory.json">trajectory</a></p>
+<div class="wrap"><table>
+<tr><th>Grader</th><th>Type</th><th>Result</th><th>Why</th></tr>
+<tr><td><code>answer</code></td><td>regex</td><td><span class="good">pass</span></td><td>1 matches in last_message; wanted at least one match</td></tr>
+<tr><td><code>judged</code></td><td>decision</td><td><span class="good">pass</span></td><td>2 of 2 answers at or above 0.7; 2 needed <span class="muted">[0.900, 0.900]</span></td></tr>
+<tr><td><code>used-map</code></td><td>operation_used</td><td><span class="good">pass</span> <span class="muted">(not scored)</span></td><td>repo-map.map ran 1 times; wanted at least 1</td></tr>
+</table></div>
+</details>
+<details>
+<summary>Run 2 with the tool: <span class="good">passed</span> · score 1.00 · $0.0100 · 30.0 s</summary>
+<p class="muted">Outcome completed · <a href="runs/find-callers/subject-2/trajectory.json">trajectory</a></p>
+<div class="wrap"><table>
+<tr><th>Grader</th><th>Type</th><th>Result</th><th>Why</th></tr>
+<tr><td><code>answer</code></td><td>regex</td><td><span class="good">pass</span></td><td>1 matches in last_message; wanted at least one match</td></tr>
+<tr><td><code>judged</code></td><td>decision</td><td><span class="good">pass</span></td><td>2 of 2 answers at or above 0.7; 2 needed <span class="muted">[0.900, 0.900]</span></td></tr>
+<tr><td><code>used-map</code></td><td>operation_used</td><td><span class="good">pass</span> <span class="muted">(not scored)</span></td><td>repo-map.map ran 1 times; wanted at least 1</td></tr>
+</table></div>
+</details>
+<details>
+<summary>Run 3 with the tool: <span class="good">passed</span> · score 1.00 · $0.0100 · 30.0 s</summary>
+<p class="muted">Outcome completed · <a href="runs/find-callers/subject-3/trajectory.json">trajectory</a></p>
+<div class="wrap"><table>
+<tr><th>Grader</th><th>Type</th><th>Result</th><th>Why</th></tr>
+<tr><td><code>answer</code></td><td>regex</td><td><span class="good">pass</span></td><td>1 matches in last_message; wanted at least one match</td></tr>
+<tr><td><code>judged</code></td><td>decision</td><td><span class="good">pass</span></td><td>2 of 2 answers at or above 0.7; 2 needed <span class="muted">[0.900, 0.900]</span></td></tr>
+<tr><td><code>used-map</code></td><td>operation_used</td><td><span class="good">pass</span> <span class="muted">(not scored)</span></td><td>repo-map.map ran 1 times; wanted at least 1</td></tr>
+</table></div>
+</details>
+<details>
+<summary>Run 1 without it: <span class="bad">failed</span> · score -0.00 · $0.0200 · 45.0 s</summary>
+<p class="muted">Outcome completed · <a href="runs/find-callers/baseline-1/trajectory.json">trajectory</a></p>
+<div class="wrap"><table>
+<tr><th>Grader</th><th>Type</th><th>Result</th><th>Why</th></tr>
+<tr><td><code>answer</code></td><td>regex</td><td><span class="bad">fail</span></td><td>0 matches in last_message; wanted at least one match</td></tr>
+<tr><td><code>judged</code></td><td>decision</td><td><span class="bad">fail</span></td><td>0 of 2 answers at or above 0.7; 2 needed <span class="muted">[0.100, 0.100]</span></td></tr>
+</table></div>
+</details>
+<details>
+<summary>Run 2 without it: <span class="bad">failed</span> · score -0.00 · $0.0200 · 45.0 s</summary>
+<p class="muted">Outcome completed · <a href="runs/find-callers/baseline-2/trajectory.json">trajectory</a></p>
+<div class="wrap"><table>
+<tr><th>Grader</th><th>Type</th><th>Result</th><th>Why</th></tr>
+<tr><td><code>answer</code></td><td>regex</td><td><span class="bad">fail</span></td><td>0 matches in last_message; wanted at least one match</td></tr>
+<tr><td><code>judged</code></td><td>decision</td><td><span class="bad">fail</span></td><td>0 of 2 answers at or above 0.7; 2 needed <span class="muted">[0.100, 0.100]</span></td></tr>
+</table></div>
+</details>
+<details>
+<summary>Run 3 without it: <span class="bad">failed</span> · score -0.00 · $0.0200 · 45.0 s</summary>
+<p class="muted">Outcome completed · <a href="runs/find-callers/baseline-3/trajectory.json">trajectory</a></p>
+<div class="wrap"><table>
+<tr><th>Grader</th><th>Type</th><th>Result</th><th>Why</th></tr>
+<tr><td><code>answer</code></td><td>regex</td><td><span class="bad">fail</span></td><td>0 matches in last_message; wanted at least one match</td></tr>
+<tr><td><code>judged</code></td><td>decision</td><td><span class="bad">fail</span></td><td>0 of 2 answers at or above 0.7; 2 needed <span class="muted">[0.100, 0.100]</span></td></tr>
+</table></div>
+</details>
+</section>
+<section class="case">
+<h3>map-only <span class="muted">· should-fire · scored with the tool only</span></h3>
+<p>With the tool: <span class="good">passed</span> · 3 of 3 runs · score 1.00<br>Without it: <span class="muted">not run</span><br>Change: unknown</p>
+<details>
+<summary>Run 1 with the tool: <span class="good">passed</span> · score 1.00 · $0.0100 · 30.0 s</summary>
+<p class="muted">Outcome completed · <a href="runs/map-only/subject-1/trajectory.json">trajectory</a></p>
+<div class="wrap"><table>
+<tr><th>Grader</th><th>Type</th><th>Result</th><th>Why</th></tr>
+<tr><td><code>used</code></td><td>operation_used</td><td><span class="good">pass</span></td><td>repo-map.map ran 1 times; wanted at least 1</td></tr>
+</table></div>
+</details>
+<details>
+<summary>Run 2 with the tool: <span class="good">passed</span> · score 1.00 · $0.0100 · 30.0 s</summary>
+<p class="muted">Outcome completed · <a href="runs/map-only/subject-2/trajectory.json">trajectory</a></p>
+<div class="wrap"><table>
+<tr><th>Grader</th><th>Type</th><th>Result</th><th>Why</th></tr>
+<tr><td><code>used</code></td><td>operation_used</td><td><span class="good">pass</span></td><td>repo-map.map ran 1 times; wanted at least 1</td></tr>
+</table></div>
+</details>
+<details>
+<summary>Run 3 with the tool: <span class="good">passed</span> · score 1.00 · $0.0100 · 30.0 s</summary>
+<p class="muted">Outcome completed · <a href="runs/map-only/subject-3/trajectory.json">trajectory</a></p>
+<div class="wrap"><table>
+<tr><th>Grader</th><th>Type</th><th>Result</th><th>Why</th></tr>
+<tr><td><code>used</code></td><td>operation_used</td><td><span class="good">pass</span></td><td>repo-map.map ran 1 times; wanted at least 1</td></tr>
+</table></div>
+</details>
+</section>
+<section class="case">
+<h3>typo-fix <span class="muted">· should-not-fire</span></h3>
+<p>With the tool: <span class="good">passed</span> · 3 of 3 runs · score 1.00<br>Without it: <span class="good">passed</span> · 3 of 3 runs · score 1.00<br>Change: +0.00</p>
+<details>
+<summary>Run 1 with the tool: <span class="good">passed</span> · score 1.00 · $0.0100 · 30.0 s</summary>
+<p class="muted">Outcome completed · <a href="runs/typo-fix/subject-1/trajectory.json">trajectory</a></p>
+<div class="wrap"><table>
+<tr><th>Grader</th><th>Type</th><th>Result</th><th>Why</th></tr>
+<tr><td><code>fixed</code></td><td>regex</td><td><span class="good">pass</span></td><td>1 matches in last_message; wanted exactly 1</td></tr>
+<tr><td><code>no-map</code></td><td>operation_used</td><td><span class="good">pass</span></td><td>repo-map.map ran 0 times; wanted exactly 0</td></tr>
+</table></div>
+</details>
+<details>
+<summary>Run 2 with the tool: <span class="good">passed</span> · score 1.00 · $0.0100 · 30.0 s</summary>
+<p class="muted">Outcome completed · <a href="runs/typo-fix/subject-2/trajectory.json">trajectory</a></p>
+<div class="wrap"><table>
+<tr><th>Grader</th><th>Type</th><th>Result</th><th>Why</th></tr>
+<tr><td><code>fixed</code></td><td>regex</td><td><span class="good">pass</span></td><td>1 matches in last_message; wanted exactly 1</td></tr>
+<tr><td><code>no-map</code></td><td>operation_used</td><td><span class="good">pass</span></td><td>repo-map.map ran 0 times; wanted exactly 0</td></tr>
+</table></div>
+</details>
+<details>
+<summary>Run 3 with the tool: <span class="good">passed</span> · score 1.00 · $0.0100 · 30.0 s</summary>
+<p class="muted">Outcome completed · <a href="runs/typo-fix/subject-3/trajectory.json">trajectory</a></p>
+<div class="wrap"><table>
+<tr><th>Grader</th><th>Type</th><th>Result</th><th>Why</th></tr>
+<tr><td><code>fixed</code></td><td>regex</td><td><span class="good">pass</span></td><td>1 matches in last_message; wanted exactly 1</td></tr>
+<tr><td><code>no-map</code></td><td>operation_used</td><td><span class="good">pass</span></td><td>repo-map.map ran 0 times; wanted exactly 0</td></tr>
+</table></div>
+</details>
+<details>
+<summary>Run 1 without it: <span class="good">passed</span> · score 1.00 · $0.0200 · 45.0 s</summary>
+<p class="muted">Outcome completed · <a href="runs/typo-fix/baseline-1/trajectory.json">trajectory</a></p>
+<div class="wrap"><table>
+<tr><th>Grader</th><th>Type</th><th>Result</th><th>Why</th></tr>
+<tr><td><code>fixed</code></td><td>regex</td><td><span class="good">pass</span></td><td>1 matches in last_message; wanted exactly 1</td></tr>
+<tr><td><code>no-map</code></td><td>operation_used</td><td><span class="good">pass</span></td><td>repo-map.map ran 0 times; wanted exactly 0</td></tr>
+</table></div>
+</details>
+<details>
+<summary>Run 2 without it: <span class="good">passed</span> · score 1.00 · $0.0200 · 45.0 s</summary>
+<p class="muted">Outcome completed · <a href="runs/typo-fix/baseline-2/trajectory.json">trajectory</a></p>
+<div class="wrap"><table>
+<tr><th>Grader</th><th>Type</th><th>Result</th><th>Why</th></tr>
+<tr><td><code>fixed</code></td><td>regex</td><td><span class="good">pass</span></td><td>1 matches in last_message; wanted exactly 1</td></tr>
+<tr><td><code>no-map</code></td><td>operation_used</td><td><span class="good">pass</span></td><td>repo-map.map ran 0 times; wanted exactly 0</td></tr>
+</table></div>
+</details>
+<details>
+<summary>Run 3 without it: <span class="good">passed</span> · score 1.00 · $0.0200 · 45.0 s</summary>
+<p class="muted">Outcome completed · <a href="runs/typo-fix/baseline-3/trajectory.json">trajectory</a></p>
+<div class="wrap"><table>
+<tr><th>Grader</th><th>Type</th><th>Result</th><th>Why</th></tr>
+<tr><td><code>fixed</code></td><td>regex</td><td><span class="good">pass</span></td><td>1 matches in last_message; wanted exactly 1</td></tr>
+<tr><td><code>no-map</code></td><td>operation_used</td><td><span class="good">pass</span></td><td>repo-map.map ran 0 times; wanted exactly 0</td></tr>
+</table></div>
+</details>
+</section>
+<section class="case">
+<h3>write-summary <span class="muted">· should-fire</span></h3>
+<p>With the tool: <span class="good">passed</span> · 3 of 3 runs · score 1.00<br>Without it: <span class="good">passed</span> · 3 of 3 runs · score 1.00<br>Change: +0.00</p>
+<details>
+<summary>Run 1 with the tool: <span class="good">passed</span> · score 1.00 · $0.0100 · 30.0 s</summary>
+<p class="muted">Outcome completed · <a href="runs/write-summary/subject-1/trajectory.json">trajectory</a></p>
+<div class="wrap"><table>
+<tr><th>Grader</th><th>Type</th><th>Result</th><th>Why</th></tr>
+<tr><td><code>wrote-summary</code></td><td>file_exists</td><td><span class="good">pass</span></td><td>created SUMMARY.md</td></tr>
+<tr><td><code>summary-mentions</code></td><td>regex</td><td><span class="good">pass</span></td><td>1 matches in file SUMMARY.md; wanted at least one match</td></tr>
+</table></div>
+<p class="muted">Created: <code>SUMMARY.md</code></p>
+</details>
+<details>
+<summary>Run 2 with the tool: <span class="good">passed</span> · score 1.00 · $0.0100 · 30.0 s</summary>
+<p class="muted">Outcome completed · <a href="runs/write-summary/subject-2/trajectory.json">trajectory</a></p>
+<div class="wrap"><table>
+<tr><th>Grader</th><th>Type</th><th>Result</th><th>Why</th></tr>
+<tr><td><code>wrote-summary</code></td><td>file_exists</td><td><span class="good">pass</span></td><td>created SUMMARY.md</td></tr>
+<tr><td><code>summary-mentions</code></td><td>regex</td><td><span class="good">pass</span></td><td>1 matches in file SUMMARY.md; wanted at least one match</td></tr>
+</table></div>
+<p class="muted">Created: <code>SUMMARY.md</code></p>
+</details>
+<details>
+<summary>Run 3 with the tool: <span class="good">passed</span> · score 1.00 · $0.0100 · 30.0 s</summary>
+<p class="muted">Outcome completed · <a href="runs/write-summary/subject-3/trajectory.json">trajectory</a></p>
+<div class="wrap"><table>
+<tr><th>Grader</th><th>Type</th><th>Result</th><th>Why</th></tr>
+<tr><td><code>wrote-summary</code></td><td>file_exists</td><td><span class="good">pass</span></td><td>created SUMMARY.md</td></tr>
+<tr><td><code>summary-mentions</code></td><td>regex</td><td><span class="good">pass</span></td><td>1 matches in file SUMMARY.md; wanted at least one match</td></tr>
+</table></div>
+<p class="muted">Created: <code>SUMMARY.md</code></p>
+</details>
+<details>
+<summary>Run 1 without it: <span class="good">passed</span> · score 1.00 · $0.0200 · 45.0 s</summary>
+<p class="muted">Outcome completed · <a href="runs/write-summary/baseline-1/trajectory.json">trajectory</a></p>
+<div class="wrap"><table>
+<tr><th>Grader</th><th>Type</th><th>Result</th><th>Why</th></tr>
+<tr><td><code>wrote-summary</code></td><td>file_exists</td><td><span class="good">pass</span></td><td>created SUMMARY.md</td></tr>
+<tr><td><code>summary-mentions</code></td><td>regex</td><td><span class="good">pass</span></td><td>1 matches in file SUMMARY.md; wanted at least one match</td></tr>
+</table></div>
+<p class="muted">Created: <code>SUMMARY.md</code></p>
+</details>
+<details>
+<summary>Run 2 without it: <span class="good">passed</span> · score 1.00 · $0.0200 · 45.0 s</summary>
+<p class="muted">Outcome completed · <a href="runs/write-summary/baseline-2/trajectory.json">trajectory</a></p>
+<div class="wrap"><table>
+<tr><th>Grader</th><th>Type</th><th>Result</th><th>Why</th></tr>
+<tr><td><code>wrote-summary</code></td><td>file_exists</td><td><span class="good">pass</span></td><td>created SUMMARY.md</td></tr>
+<tr><td><code>summary-mentions</code></td><td>regex</td><td><span class="good">pass</span></td><td>1 matches in file SUMMARY.md; wanted at least one match</td></tr>
+</table></div>
+<p class="muted">Created: <code>SUMMARY.md</code></p>
+</details>
+<details>
+<summary>Run 3 without it: <span class="good">passed</span> · score 1.00 · $0.0200 · 45.0 s</summary>
+<p class="muted">Outcome completed · <a href="runs/write-summary/baseline-3/trajectory.json">trajectory</a></p>
+<div class="wrap"><table>
+<tr><th>Grader</th><th>Type</th><th>Result</th><th>Why</th></tr>
+<tr><td><code>wrote-summary</code></td><td>file_exists</td><td><span class="good">pass</span></td><td>created SUMMARY.md</td></tr>
+<tr><td><code>summary-mentions</code></td><td>regex</td><td><span class="good">pass</span></td><td>1 matches in file SUMMARY.md; wanted at least one match</td></tr>
+</table></div>
+<p class="muted">Created: <code>SUMMARY.md</code></p>
+</details>
+</section>
+<h2>Limitations</h2>
+<ul>
+<li>A suite written by an extension&#39;s author describes intended behavior; it is not independent evidence.</li>
+<li>Trajectories stay private; the report carries their digests.</li>
+<li>Metric aggregations are named ext-eval.v1 operations, not DefinitionRefs.</li>
+<li>Scored with the extension only and excluded from the change: map-only.</li>
+</ul>
+</main>
+</body>
+</html>

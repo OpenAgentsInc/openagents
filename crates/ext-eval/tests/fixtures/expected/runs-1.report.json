@@ -1,0 +1,548 @@
+{
+  "v": "openagents.eval-report.v1",
+  "requires": [],
+  "suite": {
+    "digest": "sha256:91fac477ea731b6ae5a0f52f6c107d681d9e96fe59f032348e56ad27662dd074",
+    "size": 1783,
+    "media_type": "application/json",
+    "schema": "openagents.eval-suite.v1"
+  },
+  "partition": {
+    "digest": "sha256:9892a2158c72a44c456833807ce1e86f41eae282b3340cdbfb1b458597ef3998",
+    "size": 192,
+    "media_type": "application/json",
+    "schema": "openagents.eval-partition.v1"
+  },
+  "subject": {
+    "definition": {
+      "id": "5be6446aef0a9a6b1f2c3d4e5f6071829a4b5c6d7e8f90112233445566778899:repo-map/repo-map",
+      "artifact": {
+        "digest": "sha256:87458aa1968644d6b05eb64cccaf3f00c1de35905918aebeaee5b42551d21612",
+        "size": 16,
+        "media_type": "application/json",
+        "schema": "openagents.ext-package.v1"
+      }
+    },
+    "lock": {
+      "digest": "sha256:4d902c69d9bcc1939f59a8cf46ce1dc6b3df497682eacc780a7bbd8ac09dacf3",
+      "size": 12,
+      "media_type": "application/json",
+      "schema": "openagents.lock.v1"
+    },
+    "configuration": {
+      "digest": "sha256:ff852b3cc7abc08764e279887d4adb5b63b5fbd7c73228ec0f1ee304b85fac9e",
+      "size": 210,
+      "media_type": "application/json",
+      "schema": "openagents.ext-eval-configuration.v1"
+    }
+  },
+  "baseline": {
+    "definition": {
+      "id": "5be6446aef0a9a6b1f2c3d4e5f6071829a4b5c6d7e8f90112233445566778899:coder/coder",
+      "artifact": {
+        "digest": "sha256:c84a9e3ad144b43da73995a5a12704f707fb34e7f30816b1a95c7b3c441fdc4a",
+        "size": 5,
+        "media_type": "application/json",
+        "schema": "openagents.ext-package.v1"
+      }
+    },
+    "lock": {
+      "digest": "sha256:a114eeaf5dc588530c97f1d10bce19a5ac25d5ddaac4757790dabf5c085a3c87",
+      "size": 13,
+      "media_type": "application/json",
+      "schema": "openagents.lock.v1"
+    },
+    "configuration": {
+      "digest": "sha256:07e01b51bad03c4ffd60d9436fcf8447904a79f8b9885554ab150ba8c1ed2a68",
+      "size": 211,
+      "media_type": "application/json",
+      "schema": "openagents.ext-eval-configuration.v1"
+    }
+  },
+  "evaluator": "0b1c2d3e4f506172894a5b6c7d8e9f00112233445566778899aabbccddeeff00",
+  "started_at": 1790000000,
+  "ended_at": 1790000900,
+  "runs": {
+    "digest": "sha256:7f3cd7f382f380a5eb25dfb320990716137e777ccccf3df27b7c909903cc8f4e",
+    "size": 4395,
+    "media_type": "application/json",
+    "schema": "openagents.ext-eval-runs.v1"
+  },
+  "coverage": {
+    "subject": {
+      "planned": 4,
+      "attempted": 4,
+      "completed": 4,
+      "refused": 0,
+      "failed": 0,
+      "cancelled": 0,
+      "unknown": 0,
+      "excluded": 0
+    },
+    "baseline": {
+      "planned": 3,
+      "attempted": 3,
+      "completed": 3,
+      "refused": 0,
+      "failed": 0,
+      "cancelled": 0,
+      "unknown": 0,
+      "excluded": 1
+    }
+  },
+  "measurements": [
+    {
+      "arm": "subject",
+      "metric": "cases_passed",
+      "value": 4.0,
+      "denominator": 4,
+      "unknown_count": 0,
+      "uncertainty": null,
+      "evidence": [
+        {
+          "digest": "sha256:7f3cd7f382f380a5eb25dfb320990716137e777ccccf3df27b7c909903cc8f4e",
+          "size": 4395,
+          "media_type": "application/json",
+          "schema": "openagents.ext-eval-runs.v1"
+        }
+      ]
+    },
+    {
+      "arm": "subject",
+      "metric": "mean_score",
+      "value": 1.0,
+      "denominator": 4,
+      "unknown_count": 0,
+      "uncertainty": null,
+      "evidence": [
+        {
+          "digest": "sha256:7f3cd7f382f380a5eb25dfb320990716137e777ccccf3df27b7c909903cc8f4e",
+          "size": 4395,
+          "media_type": "application/json",
+          "schema": "openagents.ext-eval-runs.v1"
+        }
+      ]
+    },
+    {
+      "arm": "subject",
+      "metric": "cost_usd",
+      "value": 0.04,
+      "denominator": 4,
+      "unknown_count": 0,
+      "uncertainty": null,
+      "evidence": [
+        {
+          "digest": "sha256:7f3cd7f382f380a5eb25dfb320990716137e777ccccf3df27b7c909903cc8f4e",
+          "size": 4395,
+          "media_type": "application/json",
+          "schema": "openagents.ext-eval-runs.v1"
+        }
+      ]
+    },
+    {
+      "arm": "subject",
+      "metric": "seconds",
+      "value": 120.0,
+      "denominator": 4,
+      "unknown_count": 0,
+      "uncertainty": null,
+      "evidence": [
+        {
+          "digest": "sha256:7f3cd7f382f380a5eb25dfb320990716137e777ccccf3df27b7c909903cc8f4e",
+          "size": 4395,
+          "media_type": "application/json",
+          "schema": "openagents.ext-eval-runs.v1"
+        }
+      ]
+    },
+    {
+      "arm": "subject",
+      "metric": "case.find-callers.score",
+      "value": 1.0,
+      "denominator": 1,
+      "unknown_count": 0,
+      "uncertainty": null,
+      "evidence": [
+        {
+          "digest": "sha256:7f3cd7f382f380a5eb25dfb320990716137e777ccccf3df27b7c909903cc8f4e",
+          "size": 4395,
+          "media_type": "application/json",
+          "schema": "openagents.ext-eval-runs.v1"
+        }
+      ]
+    },
+    {
+      "arm": "subject",
+      "metric": "case.find-callers.runs_passed",
+      "value": 1.0,
+      "denominator": 1,
+      "unknown_count": 0,
+      "uncertainty": null,
+      "evidence": [
+        {
+          "digest": "sha256:7f3cd7f382f380a5eb25dfb320990716137e777ccccf3df27b7c909903cc8f4e",
+          "size": 4395,
+          "media_type": "application/json",
+          "schema": "openagents.ext-eval-runs.v1"
+        }
+      ]
+    },
+    {
+      "arm": "subject",
+      "metric": "case.map-only.score",
+      "value": 1.0,
+      "denominator": 1,
+      "unknown_count": 0,
+      "uncertainty": null,
+      "evidence": [
+        {
+          "digest": "sha256:7f3cd7f382f380a5eb25dfb320990716137e777ccccf3df27b7c909903cc8f4e",
+          "size": 4395,
+          "media_type": "application/json",
+          "schema": "openagents.ext-eval-runs.v1"
+        }
+      ]
+    },
+    {
+      "arm": "subject",
+      "metric": "case.map-only.runs_passed",
+      "value": 1.0,
+      "denominator": 1,
+      "unknown_count": 0,
+      "uncertainty": null,
+      "evidence": [
+        {
+          "digest": "sha256:7f3cd7f382f380a5eb25dfb320990716137e777ccccf3df27b7c909903cc8f4e",
+          "size": 4395,
+          "media_type": "application/json",
+          "schema": "openagents.ext-eval-runs.v1"
+        }
+      ]
+    },
+    {
+      "arm": "subject",
+      "metric": "case.typo-fix.score",
+      "value": 1.0,
+      "denominator": 1,
+      "unknown_count": 0,
+      "uncertainty": null,
+      "evidence": [
+        {
+          "digest": "sha256:7f3cd7f382f380a5eb25dfb320990716137e777ccccf3df27b7c909903cc8f4e",
+          "size": 4395,
+          "media_type": "application/json",
+          "schema": "openagents.ext-eval-runs.v1"
+        }
+      ]
+    },
+    {
+      "arm": "subject",
+      "metric": "case.typo-fix.runs_passed",
+      "value": 1.0,
+      "denominator": 1,
+      "unknown_count": 0,
+      "uncertainty": null,
+      "evidence": [
+        {
+          "digest": "sha256:7f3cd7f382f380a5eb25dfb320990716137e777ccccf3df27b7c909903cc8f4e",
+          "size": 4395,
+          "media_type": "application/json",
+          "schema": "openagents.ext-eval-runs.v1"
+        }
+      ]
+    },
+    {
+      "arm": "subject",
+      "metric": "case.write-summary.score",
+      "value": 1.0,
+      "denominator": 1,
+      "unknown_count": 0,
+      "uncertainty": null,
+      "evidence": [
+        {
+          "digest": "sha256:7f3cd7f382f380a5eb25dfb320990716137e777ccccf3df27b7c909903cc8f4e",
+          "size": 4395,
+          "media_type": "application/json",
+          "schema": "openagents.ext-eval-runs.v1"
+        }
+      ]
+    },
+    {
+      "arm": "subject",
+      "metric": "case.write-summary.runs_passed",
+      "value": 1.0,
+      "denominator": 1,
+      "unknown_count": 0,
+      "uncertainty": null,
+      "evidence": [
+        {
+          "digest": "sha256:7f3cd7f382f380a5eb25dfb320990716137e777ccccf3df27b7c909903cc8f4e",
+          "size": 4395,
+          "media_type": "application/json",
+          "schema": "openagents.ext-eval-runs.v1"
+        }
+      ]
+    },
+    {
+      "arm": "baseline",
+      "metric": "cases_passed",
+      "value": 2.0,
+      "denominator": 3,
+      "unknown_count": 0,
+      "uncertainty": null,
+      "evidence": [
+        {
+          "digest": "sha256:7f3cd7f382f380a5eb25dfb320990716137e777ccccf3df27b7c909903cc8f4e",
+          "size": 4395,
+          "media_type": "application/json",
+          "schema": "openagents.ext-eval-runs.v1"
+        }
+      ]
+    },
+    {
+      "arm": "baseline",
+      "metric": "mean_score",
+      "value": 0.6666666666666666,
+      "denominator": 3,
+      "unknown_count": 0,
+      "uncertainty": null,
+      "evidence": [
+        {
+          "digest": "sha256:7f3cd7f382f380a5eb25dfb320990716137e777ccccf3df27b7c909903cc8f4e",
+          "size": 4395,
+          "media_type": "application/json",
+          "schema": "openagents.ext-eval-runs.v1"
+        }
+      ]
+    },
+    {
+      "arm": "baseline",
+      "metric": "cost_usd",
+      "value": 0.06,
+      "denominator": 3,
+      "unknown_count": 0,
+      "uncertainty": null,
+      "evidence": [
+        {
+          "digest": "sha256:7f3cd7f382f380a5eb25dfb320990716137e777ccccf3df27b7c909903cc8f4e",
+          "size": 4395,
+          "media_type": "application/json",
+          "schema": "openagents.ext-eval-runs.v1"
+        }
+      ]
+    },
+    {
+      "arm": "baseline",
+      "metric": "seconds",
+      "value": 135.0,
+      "denominator": 3,
+      "unknown_count": 0,
+      "uncertainty": null,
+      "evidence": [
+        {
+          "digest": "sha256:7f3cd7f382f380a5eb25dfb320990716137e777ccccf3df27b7c909903cc8f4e",
+          "size": 4395,
+          "media_type": "application/json",
+          "schema": "openagents.ext-eval-runs.v1"
+        }
+      ]
+    },
+    {
+      "arm": "baseline",
+      "metric": "case.find-callers.score",
+      "value": 0.0,
+      "denominator": 1,
+      "unknown_count": 0,
+      "uncertainty": null,
+      "evidence": [
+        {
+          "digest": "sha256:7f3cd7f382f380a5eb25dfb320990716137e777ccccf3df27b7c909903cc8f4e",
+          "size": 4395,
+          "media_type": "application/json",
+          "schema": "openagents.ext-eval-runs.v1"
+        }
+      ]
+    },
+    {
+      "arm": "baseline",
+      "metric": "case.find-callers.runs_passed",
+      "value": 0.0,
+      "denominator": 1,
+      "unknown_count": 0,
+      "uncertainty": null,
+      "evidence": [
+        {
+          "digest": "sha256:7f3cd7f382f380a5eb25dfb320990716137e777ccccf3df27b7c909903cc8f4e",
+          "size": 4395,
+          "media_type": "application/json",
+          "schema": "openagents.ext-eval-runs.v1"
+        }
+      ]
+    },
+    {
+      "arm": "baseline",
+      "metric": "case.typo-fix.score",
+      "value": 1.0,
+      "denominator": 1,
+      "unknown_count": 0,
+      "uncertainty": null,
+      "evidence": [
+        {
+          "digest": "sha256:7f3cd7f382f380a5eb25dfb320990716137e777ccccf3df27b7c909903cc8f4e",
+          "size": 4395,
+          "media_type": "application/json",
+          "schema": "openagents.ext-eval-runs.v1"
+        }
+      ]
+    },
+    {
+      "arm": "baseline",
+      "metric": "case.typo-fix.runs_passed",
+      "value": 1.0,
+      "denominator": 1,
+      "unknown_count": 0,
+      "uncertainty": null,
+      "evidence": [
+        {
+          "digest": "sha256:7f3cd7f382f380a5eb25dfb320990716137e777ccccf3df27b7c909903cc8f4e",
+          "size": 4395,
+          "media_type": "application/json",
+          "schema": "openagents.ext-eval-runs.v1"
+        }
+      ]
+    },
+    {
+      "arm": "baseline",
+      "metric": "case.write-summary.score",
+      "value": 1.0,
+      "denominator": 1,
+      "unknown_count": 0,
+      "uncertainty": null,
+      "evidence": [
+        {
+          "digest": "sha256:7f3cd7f382f380a5eb25dfb320990716137e777ccccf3df27b7c909903cc8f4e",
+          "size": 4395,
+          "media_type": "application/json",
+          "schema": "openagents.ext-eval-runs.v1"
+        }
+      ]
+    },
+    {
+      "arm": "baseline",
+      "metric": "case.write-summary.runs_passed",
+      "value": 1.0,
+      "denominator": 1,
+      "unknown_count": 0,
+      "uncertainty": null,
+      "evidence": [
+        {
+          "digest": "sha256:7f3cd7f382f380a5eb25dfb320990716137e777ccccf3df27b7c909903cc8f4e",
+          "size": 4395,
+          "media_type": "application/json",
+          "schema": "openagents.ext-eval-runs.v1"
+        }
+      ]
+    },
+    {
+      "arm": "comparison",
+      "metric": "change",
+      "value": 0.33333333333333337,
+      "denominator": 3,
+      "unknown_count": 0,
+      "uncertainty": null,
+      "evidence": [
+        {
+          "digest": "sha256:7f3cd7f382f380a5eb25dfb320990716137e777ccccf3df27b7c909903cc8f4e",
+          "size": 4395,
+          "media_type": "application/json",
+          "schema": "openagents.ext-eval-runs.v1"
+        }
+      ]
+    },
+    {
+      "arm": "comparison",
+      "metric": "case.find-callers.change",
+      "value": 1.0,
+      "denominator": 1,
+      "unknown_count": 0,
+      "uncertainty": null,
+      "evidence": [
+        {
+          "digest": "sha256:7f3cd7f382f380a5eb25dfb320990716137e777ccccf3df27b7c909903cc8f4e",
+          "size": 4395,
+          "media_type": "application/json",
+          "schema": "openagents.ext-eval-runs.v1"
+        }
+      ]
+    },
+    {
+      "arm": "comparison",
+      "metric": "case.typo-fix.change",
+      "value": 0.0,
+      "denominator": 1,
+      "unknown_count": 0,
+      "uncertainty": null,
+      "evidence": [
+        {
+          "digest": "sha256:7f3cd7f382f380a5eb25dfb320990716137e777ccccf3df27b7c909903cc8f4e",
+          "size": 4395,
+          "media_type": "application/json",
+          "schema": "openagents.ext-eval-runs.v1"
+        }
+      ]
+    },
+    {
+      "arm": "comparison",
+      "metric": "case.write-summary.change",
+      "value": 0.0,
+      "denominator": 1,
+      "unknown_count": 0,
+      "uncertainty": null,
+      "evidence": [
+        {
+          "digest": "sha256:7f3cd7f382f380a5eb25dfb320990716137e777ccccf3df27b7c909903cc8f4e",
+          "size": 4395,
+          "media_type": "application/json",
+          "schema": "openagents.ext-eval-runs.v1"
+        }
+      ]
+    }
+  ],
+  "verdict": "inconclusive",
+  "limitations": {
+    "digest": "sha256:239cfce59b37a7674dd98bec69a9c99ee15ec6094add5bd65692ffce13938aae",
+    "size": 507,
+    "media_type": "application/json",
+    "schema": "openagents.eval-limitations.v1"
+  },
+  "meta": {
+    "ext_eval": {
+      "v": "openagents.ext-eval.v1",
+      "gate": "sha256:361adde42a2753d3bb5bc2a901b1e089d04afe768e2a2d090535c1ab584c97dd",
+      "cases": [
+        {
+          "id": "find-callers",
+          "kind": "should-fire"
+        },
+        {
+          "id": "map-only",
+          "kind": "should-fire"
+        },
+        {
+          "id": "typo-fix",
+          "kind": "should-not-fire"
+        },
+        {
+          "id": "write-summary",
+          "kind": "should-fire"
+        }
+      ],
+      "headline": {
+        "subject_passed": 4,
+        "baseline_passed": 2,
+        "total": 4
+      },
+      "requester": null
+    }
+  }
+}

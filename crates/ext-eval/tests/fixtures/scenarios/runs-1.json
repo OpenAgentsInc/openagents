@@ -1,0 +1,55 @@
+{
+  "description": "The better scenario with one run per arm: no spread can be measured, so the verdict is inconclusive.",
+  "runs": 1,
+  "cost_usd": {
+    "subject": 0.01,
+    "baseline": 0.02
+  },
+  "seconds": {
+    "subject": 30,
+    "baseline": 45
+  },
+  "cases": {
+    "find-callers": {
+      "subject": [
+        "callers-with-map"
+      ],
+      "baseline": [
+        "callers-wrong"
+      ]
+    },
+    "map-only": {
+      "subject": [
+        "overview-with-map"
+      ]
+    },
+    "typo-fix": {
+      "subject": [
+        "typo-direct"
+      ],
+      "baseline": [
+        "typo-direct"
+      ]
+    },
+    "write-summary": {
+      "subject": [
+        {
+          "trajectory": "summary",
+          "created": [
+            "SUMMARY.md"
+          ],
+          "workspace": "summary-good"
+        }
+      ],
+      "baseline": [
+        {
+          "trajectory": "summary",
+          "created": [
+            "SUMMARY.md"
+          ],
+          "workspace": "summary-good"
+        }
+      ]
+    }
+  }
+}
