@@ -63,6 +63,32 @@ who has never heard of agents, Nostr, Bitcoin, benchmarks, or evals can
 finish it with no explanation. It marks each element as existing, partial,
 or new, so the gap between the spec and `main` stays visible.
 
+This loop is live. Build 21 puts it in the app's chat:
+
+- **Test a tool from chat.** Ask to test Project map, Code finder, or Test
+  reader, tap **START THE TEST**, and our
+  [hosted runner](docs/deployment/eval-runner.md) runs its test set with and
+  without the tool. A new install reaches that button in three taps.
+- **Make your own tool by chatting.** We draft a tool and its tests with
+  you, one approved step at a time, then **TRY IT ONCE** and **RUN THE FULL
+  TEST SET**. A tool that needs new code goes to Coder on your computer.
+- **Add to the Gym.** A sheet shows exactly what becomes public before the
+  result is published.
+- **Checks and XP.** Another trainer's check reruns the same tests. When
+  it confirms your result, our referee awards XP to you, the checker, and
+  the test set's author.
+- **Gym news.** Ask what's new in the Gym, and we answer from published
+  results, checks, and our changelog.
+- **The EVALS board.** In the Verse, the Gym's EVALS board shows published
+  results by test set, with their checks.
+
+The first live results: Coder passed 2 of 6 tests without each tool, and 5
+of 6 with Project map, 4 of 6 with Code finder, and 5 of 6 with Test
+reader, each confirmed by another trainer's check
+([hosted runner record](docs/extensions/measurements/2026-09-29-hosted-runner-live.md)).
+A phone ran one of these tests end to end, from chat to +25 XP
+([simulator record](bins/openagents-ios/verification/2026-09-29-evals-in-chat/README.md)).
+
 ## Try it
 
 | Platform | Status |
@@ -84,8 +110,8 @@ tabs.
 
 | Tab | What it does |
 | --- | --- |
-| **Chat** | Chat with OpenAgents, which speaks as "we". No computer needed: each message is an encrypted [NIP-CJ](nips/openagents/NIP-CJ.md) job to our [chat worker](docs/deployment/chat-worker.md), and the reply streams back. Jev picks instant prepared answers for common questions. Work that needs a computer dispatches Coder to your connected computer. The menu opens previous chats. **Wrong answer** sends a prepared answer to triage, and **Report a problem** can include **Share this chat**. |
-| **Verse** | The Grid: a shared 3D world with other players, a ball you can push, and the Gym with its **RESULTS** board. See [Verse on mobile](docs/verse/mobile.md). |
+| **Chat** | Opens on a menu (from build 21) with your trainer level, the next step, **CHAT WITH OPENAGENTS**, and starter chips. Chat with OpenAgents speaks as "we" and runs the Gym's loop: tool, run, result, check, and credit cards, each acting only on a tap. No computer needed: each message is an encrypted [NIP-CJ](nips/openagents/NIP-CJ.md) job to our [chat worker](docs/deployment/chat-worker.md), and the reply streams back. Jev picks instant prepared answers for common questions. Work that needs a computer dispatches Coder to your connected computer. The menu opens previous chats. **Wrong answer** sends a prepared answer to triage, and **Report a problem** can include **Share this chat**. |
+| **Verse** | The Grid: a shared 3D world with other players, a ball you can push, and the Gym with its **RESULTS** and **EVALS** boards. See [Verse on mobile](docs/verse/mobile.md) and [the Gym building](docs/verse/gym.md). |
 | **Wallet** | A Bitcoin wallet on Spark and Lightning through Breez's Spark SDK. Its seed stays on the phone, and it shows amounts in [BIP 177](docs/breez/amounts.md) units (`₿12,345`). See the [wallet docs](docs/breez/README.md). |
 | **Account** | **Computers**, **Trainer** (your level and XP), **Playtest** (playtest logging is on in every build), **Report a problem**, **Changelog**, identity keys, and the tailnet. |
 
@@ -169,17 +195,22 @@ answers those at once and sends real work to Coder.
   [product KB measurement](docs/coder/measurements/2026-09-28-product-kb.md).
 - **Personalization.** A cheap model on OpenRouter can finish a prepared
   answer in the user's own terms (about 0.5 seconds at the median).
-- **Offers.** The router can offer Run Coder, Connect a computer, or a
-  screen. The phone shows them as its own controls, and they act only on a
-  tap.
+- **Gym and eval routes.** `chat-router-v2` adds six routes: Gym news,
+  test a tool, make a tool, check a result, how a test did, and credit.
+  They answer from the Gym's verified records and send typed cards the
+  phone draws. See [the v2 measurement](docs/coder/measurements/2026-09-29-chat-router-v2.md).
+- **Offers.** The router can offer Run Coder, Connect a computer, a screen,
+  start a test, or add a result to the Gym. The phone shows them as its own
+  controls, and they act only on a tap.
 - **CLI route.** Built in `coder::cli_route` (`528483364e`,
   [#9926](https://github.com/OpenAgentsInc/openagents/issues/9926)): it
   descends the `openagents` command tree generated from the command's own
-  help text and proposes a command that passes its parser. It is not yet
-  wired into the chat worker or the phone's offers.
-- **In progress.** The codebase knowledge base has its seam in
-  [`crates/coder/src/router/`](crates/coder/src/router/) and no
-  implementation on `main` yet.
+  help text and proposes a command that passes its parser. The chat worker
+  wires it; the phone offers only a fixed list of read-only commands.
+- **Codebase knowledge.** [`coder::codebase`](crates/coder/src/codebase.rs)
+  answers questions about this repository from an index of its docs and
+  doc comments, with `path:line` citations. See
+  [codebase knowledge](docs/coder/design/codebase-kb.md).
 
 The [chat worker runbook](docs/deployment/chat-worker.md) covers serving,
 limits, and configuration. The [first-reply measurement](docs/coder/measurements/2026-09-28-first-reply.md)
@@ -229,9 +260,12 @@ The Gym measures agents and keeps the evidence.
   host with guests for repository maps, code search, and test reports. See
   [plugins](docs/extensions/plugins.md) and [programs and extensions](docs/extensions/README.md).
 - **Extension evals.** [Extension evaluation](docs/extensions/evaluation.md)
-  specifies `openagents ext eval`: test sets that measure a tool with and
-  without it, results the Gym publishes and other trainers check, and XP
-  for the people whose work is checked or adopted. Specified, not built.
+  is built and live: `openagents ext eval` ([`crates/ext-eval`](crates/ext-eval/))
+  runs test sets that measure a tool with and without it, the
+  [hosted runner](docs/deployment/eval-runner.md) ([`crates/eval-runner`](crates/eval-runner/))
+  runs them for the phone, results are published to the Gym for other
+  trainers to check, and XP goes to the people whose work is checked or
+  adopted. The Gym gate `ext-eval-v2` gives the verdict.
 - **Knowledge.** [`knowledge/`](knowledge/) holds coding knowledge (methods,
   edge cases, and slips) that Microcoder retrieves. See the
   [knowledge-base guide](docs/coder/guides/knowledge-base.md).
@@ -252,6 +286,8 @@ cargo run -p gym --features tui --bin gym-terminal -- --terminal-bench
 
 - **XP.** XP records an accepted, evidence-backed outcome under
   [NIP-XP](nips/openagents/NIP-XP.md). It can't be spent or transferred.
+  Checks of extension-eval results earn XP under the `eval-check` rule,
+  and a tool adopted into Coder's defaults under `eval-adopt`.
   See [refereeing quests](docs/coder/guides/xp.md) and
   [trainer leveling](docs/verse/agent-trainer-leveling.md).
 - **Trainer card.** The app's Account > Trainer shows your level, XP, and
@@ -305,6 +341,7 @@ cargo run -p gym --features tui --bin gym-terminal -- --terminal-bench
 | [`crates/openrouter`](crates/openrouter/) | OpenRouter client for structured output, streaming, and embeddings. |
 | [`crates/knowledge`](crates/knowledge/) | The shared knowledge base: entries, lint, and search. |
 | [`crates/gym`](crates/gym/), [`crates/gym-bridge`](crates/gym-bridge/README.md), [`crates/gym-leaderboard`](crates/gym-leaderboard/) | Measurement, private Gym boards, and the published leaderboard. |
+| [`crates/ext-eval`](crates/ext-eval/), [`crates/eval-runner`](crates/eval-runner/) | Extension evals: the engine, runner, and authoring interview, and the hosted runner. |
 | [`crates/plugin`](crates/plugin/), [`crates/plugin-pdk`](crates/plugin-pdk/), `crates/plugin-*` | The Wasm plugin host, its packet types, and guest plugins. |
 | [`crates/capability`](crates/capability/) | Capability manifests and bounded probes. |
 | [`crates/atif`](crates/atif/) | Agent trajectories (ATIF v1.8). |
