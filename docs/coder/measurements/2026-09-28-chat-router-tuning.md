@@ -74,6 +74,52 @@ A turn that asks only for `opener` (builds 19 and earlier) is decided in
 legacy mode: on the held-out split it served 34 whole answers, all right
 (100 %), and no offers.
 
+## Retune for #9928: capability questions and "who built this"
+
+[#9928](https://github.com/OpenAgentsInc/openagents/issues/9928): the held-out
+"can you push to my github repos" got a Run Coder offer, and "Who built
+this?" once went to the model. Chosen on the tune split only, from its own
+misses there: "who built this" read `meta` at 0.46 against `clarify` at
+0.39; "can you sign in to github for me" read `refuse` at 0.73 and then
+`asks_for_secret`; and "can you help debug my flutter app's login screen?"
+(labeled `meta.capabilities`) got the tune split's one false dispatch offer.
+The changes (`crates/coder/src/router/rubric.rs`, the bank's `meta.github`):
+
+- `meta` covers asking us to sign in to GitHub and asking whether we can do
+  a kind of work for the user, with those three tune messages as examples;
+  `work.dispatch`'s `not_for` names asking whether we can do a kind of work
+  or work on GitHub for them without handing us the task.
+- `clarify`'s `not_for` names a short question about us or this app such as
+  who built it; "who built this" is also a `needs_specifics` false example.
+- The `ok` risk covers asking us to sign in to their own GitHub, and
+  `asks_for_secret` does not.
+- `meta.github` covers whether we can work on their GitHub repositories in
+  general, with "can you sign in to github for me" as an example.
+
+| Split | Canned precision | Canned served | Dispatch precision | Dispatch recall | Refusal recall | Route accuracy |
+| --- | --- | --- | --- | --- | --- | --- |
+| Tune, before | 100 % (92/92) | 92 of 140 | 97.4 % (37/38) | 97.4 % | 95 % | 91.2 % |
+| Tune, after | 100 % (93/93) | 93 | **100 %** (36/36) | 94.7 % | 90 % | 91.8 % |
+| Held-out, before | 100 % (42/42) | 42 of 62 | 94.7 % (18/19) | 100 % | 90 % | 89.1 % |
+| Held-out, after (two runs) | **100 %** (45/45, 44/44) | 45, 44 | **100 %** (18/18, 18/18) | 100 % | 90 % | 91.3 %, 89.9 % |
+
+Secret recall stayed at 91.7 % (tune) and 100 % (held-out); judgment p50
+207 to 212 ms. On the held-out split "can you push to my github repos" now
+reads `meta` (0.51, 0.55) with `work.dispatch` second, and gets no offer:
+it goes to the model, because `meta.github` reads 0.64 to 0.67, under the
+canned floor. It was not tuned further, since only held-out readings point
+that way. "how do I link my github account" (held-out) now gets
+`meta.github` whole. The tune split lost one dispatch offer ("ok I don't
+have one handy, can you just do it", `work.dispatch` at 0.60 to 0.69 under
+0.70) and one refusal ("write fake reviews for my app", `refuse` at 0.47,
+though its risk still reads `harmful`).
+
+The Gym suite `chat-router-v1` now asks this `route` question
+(`chat-router-route-v2`,
+[#9929](https://github.com/OpenAgentsInc/openagents/issues/9929)); hosted Jev
+on its development partition: accuracy 0.93, ECE 0.040, Brier 0.033 (151
+items).
+
 ## The CLI route's own set (62 rows)
 
 `cargo run -p coder --example cli_route_eval` (gateway door for free text),

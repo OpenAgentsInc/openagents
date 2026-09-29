@@ -28,6 +28,28 @@ use crate::classify::Route;
 use crate::first::Lane;
 use crate::generate::Message;
 
+/// The `route` question: the [`RouteId`] catalog, each option with its
+/// rubric, plus `none`. It reads no bank or facts, so the Gym suite
+/// `chat-router-v1` asks exactly this question
+/// ([`crate::router_eval::route_question`]).
+#[must_use]
+pub fn route() -> Choice {
+    let mut routes: IndexMap<String, Option<Criterion>> = RouteId::ALL
+        .into_iter()
+        .map(|route| {
+            (
+                route.word().to_string(),
+                Some(Criterion::from(super::rubric::route(route))),
+            )
+        })
+        .collect();
+    routes.insert(
+        "none".to_string(),
+        Some(Criterion::from(RouteId::Unknown.description().to_string())),
+    );
+    Choice::new(super::rubric::route_instructions(), routes)
+}
+
 /// The eight questions, from one state. Only entries eligible under
 /// `facts` are offered, and `cli_group` only when `groups` is not empty.
 #[must_use]
@@ -40,18 +62,6 @@ pub fn questions(bank: &Bank, facts: &Facts, groups: &[CliGroup]) -> Questions {
         options.insert("none".to_string(), Some(Criterion::from(none.to_string())));
         options
     };
-    let routes = with_none(
-        RouteId::ALL
-            .into_iter()
-            .map(|route| {
-                (
-                    route.word().to_string(),
-                    Some(Criterion::from(super::rubric::route(route))),
-                )
-            })
-            .collect(),
-        RouteId::Unknown.description(),
-    );
     let answers = with_none(
         bank.answers
             .iter()
@@ -87,10 +97,7 @@ pub fn questions(bank: &Bank, facts: &Facts, groups: &[CliGroup]) -> Questions {
     let risks = with_none(risks, "None of these describes the message");
     let mut questions = Questions::new()
         .with("action", action)
-        .with(
-            "route",
-            Choice::new(super::rubric::route_instructions(), routes),
-        )
+        .with("route", route())
         .with(
             "answer",
             Choice::new(

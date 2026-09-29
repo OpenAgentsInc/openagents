@@ -414,8 +414,14 @@ impl QuestionSet {
                     problem: format!("the {family} question is not an object"),
                 });
             }
+            // Instructions are text, or TypeSafe's structured instructions:
+            // a nonempty JSON object such as `{question, context, focus}`.
+            let structured = question
+                .get("instructions")
+                .and_then(Value::as_object)
+                .is_some_and(|fields| !fields.is_empty());
             for key in ["type", "instructions"] {
-                if text(key).trim().is_empty() {
+                if text(key).trim().is_empty() && !(key == "instructions" && structured) {
                     return Err(QuestionError::Invalid {
                         id: self.id.clone(),
                         problem: format!(
@@ -910,6 +916,28 @@ mod tests {
         let mut blank = a_set();
         blank["questions"]["routing"]["instructions"] = json!("   ");
         let path = written(dir.path(), "routing-v2", &blank);
+        assert!(matches!(
+            QuestionSet::load(&path),
+            Err(QuestionError::Invalid { .. })
+        ));
+    }
+
+    /// TypeSafe's structured instructions are text too; an empty object is
+    /// not.
+    #[test]
+    fn structured_instructions_are_text_and_an_empty_object_is_not() {
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        let mut structured = a_set();
+        structured["questions"]["routing"]["instructions"] =
+            json!({ "question": "Which team handles this?", "focus": "The latest message" });
+        let path = written(dir.path(), "routing-v2", &structured);
+        let set = QuestionSet::load(&path).expect("structured instructions load");
+        assert_eq!(
+            set.questions["routing"]["instructions"]["question"],
+            "Which team handles this?"
+        );
+        structured["questions"]["routing"]["instructions"] = json!({});
+        let path = written(dir.path(), "routing-v3", &structured);
         assert!(matches!(
             QuestionSet::load(&path),
             Err(QuestionError::Invalid { .. })

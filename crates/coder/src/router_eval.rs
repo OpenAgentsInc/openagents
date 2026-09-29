@@ -564,32 +564,15 @@ pub fn route_descriptions() -> Vec<(&'static str, &'static str)> {
 /// The Gym suite the set is exported as, and its question set.
 pub const SUITE: &str = "chat-router-v1";
 
-/// The question set the Gym suite names: the `route` Choice over the
-/// router's route descriptions.
-pub const SUITE_QUESTIONS: &str = "chat-router-route-v1";
+/// The question set the Gym suite names: the router's `route` Choice.
+pub const SUITE_QUESTIONS: &str = "chat-router-route-v2";
 
-/// The `route` question the Gym suite asks: which route, from
-/// [`crate::router::RouteId::description`], plus `none`.
+/// The `route` question the Gym suite asks: the production router's own
+/// ([`crate::router::judge::route`]), structured instructions and option
+/// rubrics included, so a Gym score measures the question production asks.
 #[must_use]
 pub fn route_question() -> jev::Choice {
-    let mut options: indexmap::IndexMap<String, Option<jev::Entry>> = crate::router::RouteId::ALL
-        .into_iter()
-        .map(|route| {
-            (
-                route.word().to_string(),
-                Some(jev::Entry::from(route.description())),
-            )
-        })
-        .collect();
-    options.insert(
-        "none".to_string(),
-        Some(jev::Entry::from("No listed kind of reply fits the message")),
-    );
-    jev::Choice::new(
-        "We are OpenAgents, an assistant in a chat app. Which kind of reply does the user's \
-         latest message call for?",
-        options,
-    )
+    crate::router::judge::route()
 }
 
 /// A row's Gym partition: `locked` for a held-out row, else

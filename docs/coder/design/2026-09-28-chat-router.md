@@ -1081,6 +1081,13 @@ implements it:
 suite `chat-router-v1`; the eval runner is `crates/coder/tests/router_eval.rs`
 and the numbers are in
 [the router eval measurement](../measurements/2026-09-28-chat-router-eval.md).
+The suite's question set, `crates/gym/questions/chat-router-route-v2.json`,
+is generated from the production router's structured `route` question
+(`coder::router::judge::route`), and `router_suite.rs` fails when the file
+and the router's question differ, so a Gym score measures the question the
+worker asks ([#9929](https://github.com/OpenAgentsInc/openagents/issues/9929));
+`chat-router-route-v1` is the earlier plain-text question, kept for its
+history.
 
 **The labeled set: `chat-router-v1` in the Gym.** A JSON suite beside
 `crates/gym/questions/coder-turns-v1.json`, each row a transcript and the

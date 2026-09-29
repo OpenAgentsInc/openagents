@@ -5,7 +5,7 @@
   "created": "2026-09-28",
   "digest": "819ed27c3ebd2291e5c0d2d996cd76fb33c2ac929430d44bf7674f7128c3d978",
   "tier": "scored",
-  "questions": "chat-router-route-v1",
+  "questions": "chat-router-route-v2",
   "items": [
     {
       "id": "route/meta/001",
