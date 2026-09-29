@@ -63,7 +63,7 @@ mod tests {
                 panic!("the {name} script does not parse: {complaint}")
             });
             assert!(
-                (12..=18).contains(&deck.len()),
+                (12..=20).contains(&deck.len()),
                 "the {name} deck holds {} slides",
                 deck.len()
             );

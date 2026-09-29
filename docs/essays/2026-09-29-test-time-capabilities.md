@@ -48,6 +48,7 @@ text says so.
   - [Our numbers: judgments before thinking](#our-numbers-judgments-before-thinking)
   - [Our collective: Coder, the Gym, and Verse](#our-collective-coder-the-gym-and-verse)
   - [How the protocol carries test-time capabilities](#how-the-protocol-carries-test-time-capabilities)
+  - [The NIPs, one by one](#the-nips-one-by-one)
 - [Part III: What we'll measure next](#part-iii-what-well-measure-next)
 - [References](#references)
 
@@ -764,6 +765,181 @@ evidence, so they don't appear below.
 The NIPs above each point back here in a "Test-time capabilities" line, and
 the [NIP index](../../nips/openagents/README.md#test-time-capabilities)
 lists the same mapping from the protocol side.
+
+### The NIPs, one by one
+
+A NIP (Nostr Implementation Possibility) is a written specification for how
+signed events travel between clients over Nostr relays. The tables above say
+which NIP carries which field; this section says, in plain words, what each
+one is for and why test-time capabilities need it. They're in the order a
+capability lives through them: found, admitted, run, delegated, recorded,
+measured, checked, credited, adopted, and shared. Each status is the one in
+[Which NIP is for what](#which-nip-is-for-what).
+
+#### NIP-EXT
+
+NIP-EXT (extension distribution) publishes tools, plugins, skills, and
+packages as signed, immutable releases (kind `3184`), and keeps installing,
+enabling, granting, and admitting a component as separate decisions. It is
+where a test-time capability comes from, and a test set travels the same way,
+as an `eval-suite` component. Without it, "the tool we measured" and "the tool
+you installed" could be different bytes, and no result could name exactly
+what it tested. Status: Partial. [NIP-EXT](../../nips/openagents/NIP-EXT.md)
+
+#### NIP-CAP
+
+NIP-CAP (execution capabilities) describes what an operation does, which host
+implementation satisfies it, who is granted its use, and whether it's actually
+present on this machine, as four separate things. Its `service` profile also
+advertises decision services such as Jev's. It matters for admission: a
+description alone never grants anything, so a capability an agent read about
+can't quietly start acting. Status: Partial.
+[NIP-CAP](../../nips/openagents/NIP-CAP.md#description-binding-and-grant)
+
+#### NIP-KB
+
+NIP-KB (shared knowledge entries) publishes knowledge-base entries as signed
+versions (`3190`) with heads (`30190`) and withdrawals (`3191`), and records
+evidence that an entry helps as the same with-and-without report NIP-EVAL
+uses. That makes a knowledge entry a test-time capability measured like any
+tool, and tasks an entry was written from never count as evidence for it.
+Without it, retrieved knowledge would be text of unknown origin with no test
+behind it. Status: Implemented. [NIP-KB](../../nips/openagents/NIP-KB.md#evidence-3189)
+
+#### NIP-CJ
+
+NIP-CJ (agent jobs) carries encrypted jobs: conversation turns, typed decision
+jobs, and recoverable execution jobs. It carries the judgment budget, through
+decision jobs and the router's `judgment` feedback (route, tier, and the
+probabilities behind them), and the chat's eval path, through its offers,
+cards, and test-set draft; the hosted eval runner is an execution-job worker.
+Without it, the cheap judgment that decides how much thinking a turn gets
+would be invisible, and a chat request to run tests would have no job to
+travel in. Status: Partial. [NIP-CJ](../../nips/openagents/NIP-CJ.md#typed-decision-jobs)
+
+#### NIP-PRG
+
+NIP-PRG (programs) defines typed workflows made of pinned steps. Two step
+kinds matter here: `decide` calls a pinned decision function, and `delegate`
+hands a bounded task and its context to an admitted executor. Without it, a
+workflow's judgments and hand-offs would be ad hoc calls that no one else could
+read, repeat, or bound. Status: Partial.
+[NIP-PRG](../../nips/openagents/NIP-PRG.md#step-kinds)
+
+#### NIP-CTX
+
+NIP-CTX (task state and context views) defines context requests and selection
+receipts: which evidence was chosen for which recipient, within stated limits,
+with mandatory material never silently dropped. A delegate's briefing is
+exactly such a selection. Without it, nobody could later say what the
+delegate was shown, so a delegation's result couldn't be traced to its
+inputs. Status: Designed.
+[NIP-CTX](../../nips/openagents/NIP-CTX.md#context-requests-and-selection-receipts)
+
+#### NIP-SESS
+
+NIP-SESS (engine sessions and turn control) gives clients one session contract
+over different agent engines. For delegation it records each engine's steering
+capability (whether a running turn can take a new message, and what proves it
+did) and exports session history, whose portable form can be an ATIF
+trajectory. Without it, a delegate engine's abilities would be assumed rather
+than stated. Status: Designed; its read-only observer is implemented.
+[NIP-SESS](../../nips/openagents/NIP-SESS.md#steering-capability)
+
+#### NIP-WORK
+
+NIP-WORK (tracked objectives and planning) defines work that outlives a single
+conversation, and a signed delegation (`openagents.work-delegation.v1`) that
+gives tracked work to another principal under a separate, bounded grant. It
+covers delegation when the hand-off is a piece of tracked work rather than one
+step of a turn. Without it, it would be unclear who is accountable for
+delegated work and under what authority it runs. Status: Designed.
+[NIP-WORK](../../nips/openagents/NIP-WORK.md#delegation-and-execution-links)
+
+#### NIP-RUN
+
+NIP-RUN (durable runs and evidence) is the authoritative journal of a run: its
+lock, its parent run, the attempts it dispatched, and its outcome. Its
+`created` record holds the lock a capability was admitted under, which makes
+it the authoritative side of admission and delegation. Trajectories observe;
+RUN decides. Without it, there would be no record of which exact components a
+run was allowed to use. Status: Partial.
+[NIP-RUN](../../nips/openagents/NIP-RUN.md#record-types)
+
+#### NIP-ATIF
+
+NIP-ATIF (agent trajectories) carries trajectories in the Agent Trajectory
+Interchange Format (ATIF): the step-by-step record of what an agent did,
+privately to its owner or publicly as `3198` with chunks `3199`. It carries
+the trajectory of each with-and-without eval run, and links a delegating step
+to the sub-agent's trajectory through `parent` and `children`. Without it, a
+reported delta couldn't be inspected step by step, and a delegation couldn't
+be followed into the delegate's work. Status: Designed; no component publishes
+these events yet, and traces stay local files.
+[NIP-ATIF](../../nips/openagents/NIP-ATIF.md)
+
+#### NIP-EVAL
+
+NIP-EVAL (workload evaluation evidence) is the unit of account. Its extension
+evaluation profile carries the with-and-without report (`subject` and
+`baseline` arms, `measurements`, `verdict`, and the gate that decided it), the
+should-fire and should-not-fire cases behind reach and restraint, published
+results (`3189`), checks by a different trainer, hosted runs, and adoption.
+Without it, a capability delta is an unsigned claim nobody can check, and "is
+a capability" would mean whatever its author says. Status: Partial, with the
+extension evaluation wire formats implemented.
+[NIP-EVAL](../../nips/openagents/NIP-EVAL.md#extension-evaluation-profile)
+
+#### NIP-XP
+
+NIP-XP (quests, acceptance, and experience points) publishes quests, a
+referee's signed acceptance, and the experience points (XP) it carries. Its
+`eval-check` rule credits the checker, the original evaluator, and the suite's
+author when a check confirms a result; `eval-adopt` credits the tool's author,
+the suite's author, and the evaluators of cited results when a tool is
+adopted. Without it, contributors get no credit for verified work; because
+awards are signed events, any reader can recompute the ledger. XP is never
+money. Status: Implemented as a whole; the NIP marks the two eval rules
+Partial. [NIP-XP](../../nips/openagents/NIP-XP.md#eval-check)
+
+#### NIP-POL
+
+NIP-POL (scoped instructions, admission, and routing records) makes host
+decisions inspectable. It defines route receipts and observed usage, which are
+the time-and-cost side of a judgment, and keeps adopting an evaluated
+implementation an operator's decision, with active runs keeping their lock.
+Without it, a judgment's cost has no record, and adoption could change a
+running agent underneath it. Status: Designed.
+[NIP-POL](../../nips/openagents/NIP-POL.md#optimization-authority-and-adoption)
+
+#### NIP-OPT
+
+NIP-OPT (AI contracts and optimization studies) records searches for a better
+implementation of a fixed task, such as a tuned prompt or program. Its result
+reaches an agent only through NIP-EVAL admission and a new NIP-EXT release.
+Without that rule, an optimizer could swap in an unmeasured change; with it,
+an optimized candidate faces the same test as any other capability. Status:
+Designed. [NIP-OPT](../../nips/openagents/NIP-OPT.md)
+
+#### NIP-MV
+
+NIP-MV (shared 3D worlds) is how Verse shares presence and chat. Its Gym notes
+are world-chat lines, sent on a trainer's behalf, that cite the trainer's
+published eval result. That is the last stage of the flywheel: results are
+seen where agents and people meet. Without it, results would sit on relays
+where nobody meets them. Status: Partial.
+[NIP-MV](../../nips/openagents/NIP-MV.md#gym-notes)
+
+#### The shared contracts
+
+The shared contracts define what every NIP above relies on: references and
+digests that name exact bytes, locks that pin a component and all its
+dependencies, and the private `3188` envelope. The lock is what makes
+admission exact: its digest is recorded with each run and each eval report, and
+a catalog update can't change an admitted run's lock. Without them, "the same
+tool" and "the same test set" couldn't be stated precisely enough to compare
+two runs. Status: Partial.
+[Shared contracts](../../nips/openagents/contracts.md#locks-and-resolution)
 
 ## Part III: What we'll measure next
 

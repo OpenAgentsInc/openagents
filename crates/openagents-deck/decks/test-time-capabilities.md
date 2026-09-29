@@ -246,6 +246,50 @@ notes: Credit is XP and a name, never money. eval-check credits the checker, the
 
 ---
 
+layout: compare
+id: protocol-find
+kicker: PART II · OUR IMPLEMENTATION
+title: The protocol: which NIP carries what, from finding a tool to delegating
+column: Carries
+column: Why it matters
+column: Status
+note: Status is each whole NIP's, from the implementation coverage report.
+source: docs/essays/2026-09-29-test-time-capabilities.md#the-nips-one-by-one; nips/openagents/README.md
+row: EXT | releases | a result names the exact tool version it tested | Partial
+row: CAP | grants | describing a tool never grants its use | Partial
+row: KB | knowledge | an entry is tested with and without, like a tool | Implemented
+row: CJ | judgment, jobs | the cheap judgment and the eval jobs are on the wire | Partial
+row: PRG | decide, delegate | judgments and hand-offs are pinned, bounded steps | Partial
+row: CTX | briefings | says which evidence a delegate was given | Designed
+row: SESS | delegate engines | states how each engine can be steered | Designed
+row: WORK | tracked delegation | says who answers for delegated work | Designed
+notes: EXT keeps installing, enabling, granting, and admitting separate, so the lock the with arm held is exact. CAP keeps definition, host binding, grant, and presence apart. KB never counts a task an entry was written from as its evidence.
+notes: CJ carries decision jobs and the router's judgment feedback; the hosted eval runner is an execution job. PRG's decide calls a pinned decision function, and delegate hands a bounded task to an admitted executor. The delegate door's briefing and failover run locally, with no Nostr record yet.
+
+---
+
+layout: compare
+id: protocol-prove
+kicker: PART II · OUR IMPLEMENTATION
+title: The protocol: which NIP carries what, from the run to sharing the result
+column: Carries
+column: Why it matters
+column: Status
+note: The shared contracts sit under every row: exact references, locks, the private envelope.
+source: docs/essays/2026-09-29-test-time-capabilities.md#the-nips-one-by-one; nips/openagents/README.md
+row: RUN | the run journal | records the lock a capability was admitted under | Partial
+row: ATIF | trajectories | each arm and each delegate, step by step | Designed
+row: EVAL | deltas, checks | without it, a delta is an unsigned claim | Partial
+row: XP | credit | verified work earns credit anyone can recompute | Implemented
+row: POL | cost, adoption | adoption is an operator's call; runs keep their lock | Designed
+row: OPT | optimization | an optimized candidate faces the same test | Designed
+row: MV | Verse | Gym notes cite the trainer's published result | Partial
+row: Contracts | locks | "the same tool" and "the same tests", stated exactly | Partial
+notes: RUN decides; trajectories only observe. ATIF traces stay local files today; no component publishes them yet. EVAL carries the subject and baseline arms, a verdict from a pinned gate, 3189 results, and checks by a different trainer.
+notes: XP: eval-check pays the checker, evaluator, and suite author; eval-adopt pays the tool's author too; XP is never money. POL's route receipts would carry a judgment's time and cost. OPT's result reaches an agent only through EVAL admission and a new EXT release.
+
+---
+
 layout: metrics
 id: status
 kicker: PART II · OUR IMPLEMENTATION
