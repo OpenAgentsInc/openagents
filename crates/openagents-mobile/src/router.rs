@@ -122,7 +122,7 @@ pub(crate) const READ_ONLY: &[(&str, &[&str])] = &[
 
 /// Whether `argv` (without `openagents`) is a read-only command in
 /// [`READ_ONLY`], with bounded, printable words.
-fn read_only(argv: &[String]) -> bool {
+pub(crate) fn read_only(argv: &[String]) -> bool {
     (2..=MAX_ARGV).contains(&argv.len())
         && READ_ONLY
             .iter()
@@ -478,5 +478,29 @@ mod tests {
             "answer": "smalltalk.hello@1"}),
         );
         assert!(older.canned());
+    }
+
+    /// The phone's read-only list is the owner's list the worker's CLI
+    /// route offers from (`coder::cli_route::gate::PHONE_COMMANDS`), which
+    /// this crate cannot depend on: read it from its source.
+    #[test]
+    fn the_read_only_list_matches_the_worker_phone_list() {
+        let gate = include_str!("../../coder/src/cli_route/gate.rs");
+        let start = gate
+            .find("pub const PHONE_COMMANDS")
+            .expect("the worker's phone list");
+        let body = &gate[start..start + gate[start..].find("];").expect("its end")];
+        let mut worker: Vec<String> = body
+            .lines()
+            .filter_map(|line| line.trim().strip_prefix('"')?.strip_suffix("\",").map(str::to_owned))
+            .collect();
+        worker.sort();
+        let mut phone: Vec<String> = READ_ONLY
+            .iter()
+            .flat_map(|(group, leaves)| leaves.iter().map(move |leaf| format!("{group} {leaf}")))
+            .collect();
+        phone.sort();
+        assert!(!worker.is_empty());
+        assert_eq!(phone, worker);
     }
 }

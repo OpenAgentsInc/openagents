@@ -51,9 +51,12 @@
 //! open, so nothing runs a message being edited: edit, move up, send now,
 //! or remove this device's own queued messages.
 
+use std::sync::{Arc, Mutex};
+
 use crate::basic_chats::{BasicChats, Tail, handoff};
 use crate::basic_coder::Role as TurnRole;
 use crate::chats::{Chats, Head};
+use crate::cli_run::{self, RemoteCli};
 use crate::coder_list::{List, Row, Store};
 use crate::conversation::{Conversation, Pending};
 use crate::outbox::{Attempt, Draft, Outbox};
@@ -225,6 +228,8 @@ impl Go {
 pub(crate) enum CliOutcome {
     /// The command's output, one line each.
     Output(Vec<String>),
+    /// It is running on the named computer.
+    Running(String),
     /// Why it did not run.
     Refused(String),
 }
@@ -402,6 +407,11 @@ pub struct CoderTab {
     /// The last command run from an offer: its conversation, its words, and
     /// what came of it.
     cli: Option<(String, Vec<String>, CliOutcome)>,
+    /// Runs a command on a connected computer, when the phone can reach
+    /// computers.
+    remote: Option<Arc<dyn RemoteCli>>,
+    /// Where the running command's outcome lands.
+    running: Option<Arc<Mutex<Option<CliOutcome>>>>,
     /// A wrong-answer report for a conversation's last reply.
     flag: Option<(String, Flag)>,
     /// The wrong-answer report the host is to file, taken once.
@@ -443,6 +453,8 @@ impl CoderTab {
             talk_turns: TALK_TURNS,
             app_build: None,
             cli: None,
+            remote: None,
+            running: None,
             flag: None,
             flagged: None,
             script: std::collections::VecDeque::new(),
@@ -480,8 +492,7 @@ impl CoderTab {
                         .find(|offer| matches!(offer, Offer::Cli { .. }))
                 });
                 if let Some(Offer::Cli { argv, runs_on }) = offer {
-                    let outcome = run_cli(&argv, runs_on, computers, self.selected.as_deref());
-                    self.cli = Some((id, argv, outcome));
+                    self.run_offer(id, argv, runs_on, computers);
                 }
             }
             (text, talk) => {
@@ -492,6 +503,64 @@ impl CoderTab {
                     }
                     None => self.talk = self.basic.start(text, now),
                 }
+            }
+        }
+    }
+
+    /// Run offered commands that run on a computer with `remote`.
+    pub(crate) fn with_remote_cli(mut self, remote: Option<Arc<dyn RemoteCli>>) -> Self {
+        self.remote = remote;
+        self
+    }
+
+    /// Run a command an offer proposed, after the person's Run tap: the
+    /// phone's own core answers `computer` commands; a command that runs
+    /// on the computer starts there off this thread, and its card shows
+    /// "Running on …" until [`Self::poll_cli`] reads the outcome.
+    fn run_offer(
+        &mut self,
+        id: String,
+        argv: Vec<String>,
+        runs_on: RunsOn,
+        computers: Option<&Computers>,
+    ) {
+        if self.running.is_some() {
+            return;
+        }
+        let local = runs_on == RunsOn::ThisDevice || argv.first().is_some_and(|g| g == "computer");
+        let outcome = if local {
+            run_cli(&argv, runs_on, computers, self.selected.as_deref())
+        } else {
+            match cli_run::target(&argv, computers, self.selected.as_deref()) {
+                Err(refused) => refused,
+                Ok((host, label)) => match self.remote.clone() {
+                    None => CliOutcome::Refused(
+                        "This phone can't reach your computers right now.".into(),
+                    ),
+                    Some(remote) => {
+                        self.running = Some(cli_run::spawn(
+                            remote,
+                            host,
+                            label.clone(),
+                            cli_run::command(&argv),
+                            crate::wake::ring,
+                        ));
+                        CliOutcome::Running(label)
+                    }
+                },
+            }
+        };
+        self.cli = Some((id, argv, outcome));
+    }
+
+    /// Put a finished command's outcome on its card.
+    fn poll_cli(&mut self) {
+        let Some(slot) = &self.running else { return };
+        let landed = slot.lock().unwrap_or_else(|p| p.into_inner()).take();
+        if let Some(outcome) = landed {
+            self.running = None;
+            if let Some((_, _, shown)) = self.cli.as_mut() {
+                *shown = outcome;
             }
         }
     }
@@ -836,7 +905,7 @@ impl CoderTab {
     /// ask for a new packet sooner: its task runs, its ending has not been
     /// read yet, or a message it sent does not show yet.
     pub fn live(&self, computers: Option<&Computers>) -> bool {
-        if self.basic.streaming() {
+        if self.basic.streaming() || self.running.is_some() {
             return true;
         }
         let Some(open) = &self.open else {
@@ -1040,13 +1109,7 @@ impl CoderTab {
                 else {
                     return;
                 };
-                let outcome = run_cli(
-                    &argv,
-                    runs_on,
-                    computers.as_deref(),
-                    self.selected.as_deref(),
-                );
-                self.cli = Some((id, argv, outcome));
+                self.run_offer(id, argv, runs_on, computers.as_deref());
             }
             Intent::WrongAnswer => {
                 if let Some(id) = self.talk.clone()
@@ -1604,6 +1667,7 @@ impl CoderTab {
             self.remember(computers, chats);
         }
         self.basic.settle(unix_now());
+        self.poll_cli();
         self.play(computers);
         self.follow(computers, chats);
         self.settle_echoes(computers.map_or_else(unix_now, |c| c.snapshot().now));
@@ -2337,6 +2401,9 @@ impl CoderTab {
                         Intent::RunCli { index },
                     ));
                 }
+                CliOutcome::Running(label) => {
+                    children.push(status(&format!("{key}-running"), &format!("Running on {label}…")));
+                }
                 CliOutcome::Refused(why) => children.push(status(&format!("{key}-why"), why)),
             },
             _ => children.push(icon_button(
@@ -2960,11 +3027,10 @@ fn screen_chip(screen: Screen, connecting: bool) -> (&'static str, Glyph) {
     }
 }
 
-/// Runs a read-only command an offer proposed, after the person's tap.
-/// The phone's own Rust core answers `computer list`, `show`, and
-/// `workspaces` from what it already knows. A command that runs on the
-/// computer waits for a way to run `openagents` there read-only: this is
-/// the hook for it.
+/// Runs a read-only command an offer proposed on this phone, after the
+/// person's tap. The phone's own Rust core answers `computer list`,
+/// `show`, and `workspaces` from what it already knows; a command that
+/// runs on the computer goes through [`cli_run`] instead.
 pub(crate) fn run_cli(
     argv: &[String],
     runs_on: RunsOn,
@@ -3024,11 +3090,7 @@ pub(crate) fn run_cli(
         (_, ["computer", ..], None) => {
             CliOutcome::Output(vec!["No computers on this phone yet.".into()])
         }
-        // The hook: a read-only `openagents` run on the ready computer
-        // through NIP-HOST, when the host exposes one.
-        _ => CliOutcome::Refused(
-            "Running this on your computer from the phone isn't available yet.".into(),
-        ),
+        _ => CliOutcome::Refused("This command doesn't run on the phone.".into()),
     }
 }
 

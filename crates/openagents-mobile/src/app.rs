@@ -760,6 +760,10 @@ impl App {
             Arc::new(crate::spend::Live::new(terminals, runtime.handle().clone()))
                 as Arc<dyn crate::spend::Transport>
         });
+        let remote_cli = terminals.clone().map(|terminals| {
+            Arc::new(crate::cli_run::Live::new(terminals, runtime.handle().clone()))
+                as Arc<dyn crate::cli_run::RemoteCli>
+        });
         let spend = crate::spend::Spending::new(
             device.clone(),
             Cache::open(&config.state_dir.join("spend"), &secret).ok(),
@@ -800,6 +804,7 @@ impl App {
             chats,
             coder: CoderTab::new(format!("coder:{}", id()))
                 .with_app_build(launch.app_build.clone())
+                .with_remote_cli(remote_cli)
                 .with_script(launch.chat_script.clone())
                 .with_pulled_transcripts(launch.pulled_transcripts)
                 .with_basic(basic)

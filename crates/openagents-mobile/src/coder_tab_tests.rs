@@ -1554,9 +1554,98 @@ fn a_read_only_command_runs_only_when_tapped() {
         .unwrap()
         .to_owned();
     assert!(out.starts_with("Studio Mac"), "{out}");
+    // With no way to reach computers, the card says so plainly.
     let ran = fixture.tap("coder-cli-1-run");
     assert_eq!(
         node(&ran, "coder-cli-1-why").unwrap()["element"]["props"]["value"],
-        "Running this on your computer from the phone isn't available yet."
+        "This phone can't reach your computers right now."
     );
+}
+
+/// What a fake runner was asked: host and command.
+type RemoteAsked = std::sync::Arc<std::sync::Mutex<Vec<(String, Vec<String>)>>>;
+
+/// Runs every command by answering `output` after `gate` opens, and
+/// records what it was asked to run where.
+struct Remote {
+    output: &'static str,
+    gate: std::sync::Arc<std::sync::Mutex<bool>>,
+    asked: RemoteAsked,
+}
+
+impl crate::cli_run::RemoteCli for Remote {
+    fn run(&self, host: &str, command: &[String]) -> Result<crate::cli_run::RemoteRun, String> {
+        self.asked
+            .lock()
+            .unwrap()
+            .push((host.to_owned(), command.to_vec()));
+        while !*self.gate.lock().unwrap() {
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        Ok(crate::cli_run::RemoteRun {
+            output: self.output.into(),
+            exit: 0,
+            timed_out: false,
+        })
+    }
+}
+
+/// A command that runs on the computer starts there after the tap, off
+/// the UI thread: the card shows it running, then what it printed.
+#[test]
+fn a_computer_command_runs_there_after_the_tap() {
+    let hand = Hand::default();
+    let mut fixture = Fixture::hosts().answered_by(&hand);
+    let gate = std::sync::Arc::new(std::sync::Mutex::new(false));
+    let asked: RemoteAsked = std::sync::Arc::default();
+    let remote = Remote {
+        output: "{\"xp\": 120}",
+        gate: gate.clone(),
+        asked: asked.clone(),
+    };
+    fixture.coder = std::mem::replace(&mut fixture.coder, CoderTab::new("x".into()))
+        .with_remote_cli(Some(std::sync::Arc::new(remote)));
+    fixture.say("What level am I?");
+    hand.route(&[
+        json!({"v": 2, "type": "offer", "offer": "cli", "argv": ["verse", "xp"],
+            "effect": "read_only", "runs_on": "connected_computer", "confirm": true}),
+    ]);
+    hand.say("We can check on your computer.", true);
+    let chat = fixture.render();
+    let place = node(&chat, "coder-cli-0-where").unwrap()["element"]["props"]["value"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    assert!(place.starts_with("Reads only. Runs on "), "{place}");
+    assert!(asked.lock().unwrap().is_empty(), "nothing runs before the tap");
+    let running = fixture.tap("coder-cli-0-run");
+    let label = node(&running, "coder-cli-0-running").expect("running")["element"]["props"]
+        ["value"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    assert!(label.starts_with("Running on "), "{label}");
+    assert!(fixture.coder.live(Some(&fixture.computers)));
+    // A second tap while it runs starts nothing more.
+    let _ = fixture.tap("coder-cli-0-running");
+    *gate.lock().unwrap() = true;
+    let mut done = fixture.render();
+    for _ in 0..200 {
+        if node(&done, "coder-cli-0-out-0").is_some() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        done = fixture.render();
+    }
+    let lines: Vec<String> = (0..3)
+        .filter_map(|at| {
+            node(&done, &format!("coder-cli-0-out-{at}"))
+                .map(|n| n["element"]["props"]["value"].as_str().unwrap().to_owned())
+        })
+        .collect();
+    assert_eq!(lines, ["{", "  \"xp\": 120", "}"]);
+    let asked = asked.lock().unwrap();
+    assert_eq!(asked.len(), 1);
+    assert_eq!(asked[0].1, ["openagents", "--json", "verse", "xp"]);
+    assert!(!fixture.coder.live(Some(&fixture.computers)));
 }

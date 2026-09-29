@@ -25,6 +25,7 @@ mod basic_coder;
 mod basic_link;
 mod chat_fixture;
 mod chats;
+mod cli_run;
 mod coder_list;
 mod coder_tab;
 mod computers_home;
