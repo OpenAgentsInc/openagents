@@ -390,6 +390,9 @@ pub struct CoderTab {
     open: Option<Open>,
     /// The previous chats show over the tab.
     drawer: bool,
+    /// The intro's chat was reopened, or left, since launch: FLOW-01
+    /// reopens it once per launch, and never after the person leaves it.
+    intro_reopened: bool,
     outbox: Outbox,
     /// The current composer's choices: each token this tab minted and what
     /// it sends.
@@ -460,6 +463,7 @@ impl CoderTab {
             list: Store::open(None),
             open: None,
             drawer: false,
+            intro_reopened: false,
             outbox: Outbox::open(None),
             choices: Vec::new(),
             transcripts: Transcripts::open(None),
@@ -1089,6 +1093,7 @@ impl CoderTab {
                 self.talk = None;
                 self.drawer = false;
                 self.notice = None;
+                self.intro_reopened = true;
                 // A new composer, so the field takes the cursor again.
                 self.composers += 1;
             }
@@ -2141,14 +2146,22 @@ impl CoderTab {
         };
         self.gym.settle(&phase);
         self.gym.level_up();
-        // FLOW-01: the first-run chat reopens where it was.
-        if self.gym.first_run() == crate::gym::FirstRun::Chat
+        // FLOW-01: the intro's chat reopens where it was, once per launch,
+        // and only for a person who opted into the Gym. A phone upgraded
+        // from a build whose guided first run stopped at the chat keeps
+        // that state with no opt-in, and must open on a fresh chat; and
+        // once the person leaves the intro's chat (New chat, Back), it
+        // stays left.
+        if !self.intro_reopened
+            && self.gym.opted_in()
+            && self.gym.first_run() == crate::gym::FirstRun::Chat
             && self.open.is_none()
             && self.talk.is_none()
             && !self.drawer
             && let Some(first) = self.gym.first_talk().map(str::to_owned)
             && self.basic.get(&first).is_some()
         {
+            self.intro_reopened = true;
             self.talk = Some(first);
         }
         self.play(computers);

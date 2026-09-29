@@ -36,6 +36,22 @@ pub struct Item {
 pub const CHANGELOG: &[Release] = &[
     Release {
         version: "1.0.0",
+        build: "26",
+        title: "A fresh chat on upgrade",
+        what_to_test: "Install this build over build 24 or 25 without deleting the app. It should open on a fresh chat with OpenAgents, not on the old Project map test. Tap the hamburger, then New chat, and check you get a new chat; the old test chat stays in the list. Everything from build 25 still applies.",
+        items: &[
+            Item {
+                title: "Upgrades open on a fresh chat",
+                detail: "A phone whose old guided first run stopped in its test chat opened build 25 on that chat, and New chat put it straight back. The old chat is now history in Previous chats, and the app opens on a new chat.",
+            },
+            Item {
+                title: "New chat is a new chat",
+                detail: "New chat and Back always leave the chat you were in. Nothing reopens it on the next frame.",
+            },
+        ],
+    },
+    Release {
+        version: "1.0.0",
         build: "25",
         title: "Chat first",
         what_to_test: "Delete the app and install this build: it should open on a chat with OpenAgents, with the tab bar, and no Choose Coder screen, step counter, or Gym card. Ask anything. Tap the person icon in the chat header and check Profile opens. Open the Verse, walk into the Gym, open its board, and tap Train Coder: the Chat tab should show Choose Coder, then Let's go, then Start the test. Tap Not now on that first screen and check the chat comes back with no Gym chips; Account, then Train Coder, should bring the intro back.",

@@ -1203,6 +1203,69 @@ fn the_gym_intro_starts_a_test_in_three_taps_and_resumes() {
     assert!(phone.card("result").primary.is_some());
 }
 
+/// A phone upgraded from a build whose guided first run stopped in the
+/// intro's chat (first run at `Chat`, the intro's talk saved, no Gym
+/// opt-in) opens on a fresh chat, and New chat stays a new chat: the
+/// intro's chat is history in the drawer, not the screen (build 25 on
+/// the owner's phone reopened "Test Project map on Coder" on every
+/// frame, so New chat did nothing).
+#[test]
+fn an_upgraded_phone_with_an_unfinished_intro_opens_on_a_fresh_chat() {
+    let worker = Worker::default();
+    let runner = Runner::default();
+    let mut phone = Phone::new(&worker, Some(&runner));
+    let dir = phone.dir.clone();
+    phone.tab.train_coder();
+    phone.tap("first.choose");
+    phone.tap("first.go");
+    worker.answer(
+        "We'd try Project map.",
+        &[
+            judgment("eval.run"),
+            wire("card-tool"),
+            wire("start-eval"),
+            result_fields("eval.run"),
+        ],
+    );
+    assert_eq!(phone.card("tool").step.as_deref(), Some("STEP 2 OF 3"));
+    assert_eq!(phone.tab.gym.first_run(), FirstRun::Chat);
+    assert!(phone.tab.gym.first_talk().is_some());
+    // The upgrade: the saved intro state stays, and the opt-in this build
+    // introduced is unset.
+    phone.tab.gym.saved.gym = false;
+    phone.tab.gym.save();
+    drop(phone);
+
+    let mentions_intro = |node: &serde_json::Value| {
+        ["text", "label"]
+            .iter()
+            .any(|k| node[k].as_str().is_some_and(|t| t.contains(FIRST_MESSAGE)))
+    };
+    let mut phone = Phone::in_dir(&worker, Some(&runner), dir);
+    let (coder, view) = phone.render();
+    assert_eq!(view.screen, "chat");
+    assert!(view.cards.is_empty(), "{:?}", view.cards.keys());
+    assert!(
+        find(&coder, mentions_intro).is_none(),
+        "the intro's chat is open"
+    );
+    // The intro's chat is in the drawer; New chat is a new chat.
+    phone.press("coder-menu");
+    let (drawer, _) = phone.render();
+    assert!(find(&drawer, |n| n["key"] == "coder-new").is_some());
+    let listed = find(&drawer, |n| {
+        n["key"].as_str().is_some_and(|k| k.starts_with("talk-"))
+    });
+    assert!(listed.is_some(), "the intro's chat is history");
+    phone.press("coder-new");
+    let (coder, view) = phone.render();
+    assert!(view.cards.is_empty(), "{:?}", view.cards.keys());
+    assert!(
+        find(&coder, mentions_intro).is_none(),
+        "New chat reopened the intro"
+    );
+}
+
 /// Adding the first result ends the guided path at the menu, so the added
 /// sheet's button says where it goes (#9941).
 #[test]
