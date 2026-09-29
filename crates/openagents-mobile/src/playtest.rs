@@ -34,7 +34,9 @@ use std::time::Duration;
 
 use coder_computers::cache::Cache;
 use nostr::domain::Event;
-use playtest::report::{self, Context, Kind, Platform, Randomness, Report, Screenshot};
+use playtest::report::{
+    self, Context, Kind, Platform, Randomness, Report, Screenshot, ShareReason, SharedChat,
+};
 use playtest::session::{self, Code, Log, Route, Tab};
 use secp256k1::{SecretKey, XOnlyPublicKey};
 use serde::{Deserialize, Serialize};
@@ -216,6 +218,11 @@ pub struct DraftPacket {
     pub log_lines: Vec<String>,
     /// Sent back with `report_send` so exactly this log is attached.
     pub log_digest: String,
+    /// The open chat with OpenAgents, one line per message, exactly as
+    /// **Share this chat** would send it; empty when no such chat is open.
+    pub chat_lines: Vec<String>,
+    /// Sent back with `report_send` so exactly this chat is attached.
+    pub chat_digest: String,
     pub kinds: &'static [KindChoice],
     pub privacy: &'static str,
     pub fallback: &'static str,
@@ -271,9 +278,28 @@ pub struct Form {
     pub include_log: bool,
     #[serde(default)]
     pub log_digest: String,
+    /// **Share this chat**: off unless the tester ticks it.
+    #[serde(default)]
+    pub include_chat: bool,
+    #[serde(default)]
+    pub chat_digest: String,
     #[serde(default)]
     pub screenshot: Option<Screenshot>,
 }
+
+/// The device facts a report carries, from the host.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Device {
+    pub app_version: String,
+    pub build: String,
+    pub device: String,
+    pub os_version: String,
+}
+
+/// What a wrong-answer report says happened. The chat it carries is the
+/// question, the prepared answer, and the judgment.
+pub const WRONG_ANSWER: &str = "A prepared answer in the chat didn't answer the question.";
 
 /// Publishes a sealed report and its public record.
 pub trait Relay: Send + Sync {
@@ -524,7 +550,14 @@ impl Playtest {
     }
 
     /// The form for the screen the tester is on.
-    pub fn draft(&self, tab: Tab, route: Route, task: Option<String>) -> DraftPacket {
+    pub fn draft(
+        &self,
+        tab: Tab,
+        route: Route,
+        task: Option<String>,
+        chat: Option<&SharedChat>,
+    ) -> DraftPacket {
+        let chat = chat.filter(|_| tab == Tab::Coder);
         self.record(Code::ReportOpened, Some((tab, route)));
         let inner = lock(&self.inner);
         DraftPacket {
@@ -541,6 +574,8 @@ impl Playtest {
                 vec![]
             },
             log_digest: inner.log.digest(),
+            chat_lines: chat.map(SharedChat::lines).unwrap_or_default(),
+            chat_digest: chat.map(report::chat_digest).unwrap_or_default(),
             kinds: &KINDS,
             privacy: PRIVACY,
             fallback: FALLBACK,
@@ -597,15 +632,18 @@ impl Playtest {
         }));
     }
 
-    /// Files a report from the form. `task` is the open Coder chat's task.
+    /// Files a report from the form. `task` is the open Coder chat's task;
+    /// `chat` is the open chat with OpenAgents, attached only when the
+    /// tester ticked **Share this chat** and it is the one they saw.
     pub fn send(
         &mut self,
         form: Form,
         world: &SecretKey,
         task: Option<String>,
+        chat: Option<SharedChat>,
         platform: Platform,
     ) -> ReportsPacket {
-        match self.file(form, world, task, platform) {
+        match self.file(form, world, task, chat, platform) {
             Ok(digest) => {
                 let sent = lock(&self.inner)
                     .saved
@@ -618,11 +656,53 @@ impl Playtest {
         }
     }
 
+    /// Files a wrong-answer report: the question, the prepared answer, and
+    /// the judgment the tester chose to send with **Wrong answer**. Returns
+    /// the report's row, or why it wasn't filed.
+    pub fn wrong_answer(
+        &mut self,
+        chat: SharedChat,
+        device: Device,
+        world: &SecretKey,
+        platform: Platform,
+    ) -> Result<Row, String> {
+        if chat.reason != ShareReason::WrongAnswer {
+            return Err("Only a wrong answer is sent this way.".into());
+        }
+        let form = Form {
+            app_version: device.app_version,
+            build: device.build,
+            device: device.device,
+            os_version: device.os_version,
+            tab: Tab::Coder,
+            route: Route::Chat,
+            kind: Kind::Bug,
+            happened: WRONG_ANSWER.into(),
+            expected: String::new(),
+            steps: String::new(),
+            quote: false,
+            include_task: false,
+            include_log: false,
+            log_digest: String::new(),
+            include_chat: true,
+            chat_digest: report::chat_digest(&chat),
+            screenshot: None,
+        };
+        let digest = self.file(form, world, None, Some(chat), platform)?;
+        lock(&self.inner)
+            .saved
+            .iter()
+            .find(|s| s.digest == digest)
+            .map(row)
+            .ok_or_else(|| "The report couldn't be filed.".to_string())
+    }
+
     fn file(
         &mut self,
         form: Form,
         world: &SecretKey,
         task: Option<String>,
+        chat: Option<SharedChat>,
         platform: Platform,
     ) -> Result<String, String> {
         if form.screenshot.is_some() && form.route.sensitive(form.tab) {
@@ -645,6 +725,20 @@ impl Playtest {
                 );
             }
             Some(inner.log.events.iter().copied().collect())
+        } else {
+            None
+        };
+        let chat = if form.include_chat {
+            let Some(chat) = chat.filter(|_| form.tab == Tab::Coder) else {
+                return Err("There's no chat to share on this screen.".into());
+            };
+            if report::chat_digest(&chat) != form.chat_digest {
+                return Err(
+                    "The chat changed since you looked at it. Check it again before sending."
+                        .into(),
+                );
+            }
+            Some(chat)
         } else {
             None
         };
@@ -673,6 +767,7 @@ impl Playtest {
             session,
             screenshot: form.screenshot,
             notes: vec![],
+            chat,
         }
         .fit();
         report.check()?;

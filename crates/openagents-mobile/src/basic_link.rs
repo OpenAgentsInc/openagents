@@ -352,7 +352,8 @@ impl Link {
 
 #[cfg(test)]
 mod tests {
-    use crate::basic_coder::{Door, Relay, Reply, Role, Turn, lock};
+    use crate::basic_coder::{Door, Relay, Reply, Turn, lock};
+    use crate::router::Context;
     use futures_util::{SinkExt, StreamExt};
     use nostr::domain::{Event, RelaySigner, Tag};
     use nostr::kinds::{CJ_CONVERSATION_REQUEST, CJ_CONVERSATION_RESULT};
@@ -484,14 +485,8 @@ mod tests {
         door.warm(&tokio::runtime::Handle::current());
         for text in ["first", "second"] {
             let reply = Arc::new(Mutex::new(Reply::default()));
-            door.ask(
-                vec![Turn {
-                    role: Role::User,
-                    text: text.into(),
-                }],
-                reply.clone(),
-            )
-            .await;
+            door.ask(vec![Turn::user(text)], Context::default(), reply.clone())
+                .await;
             let reply = lock(&reply).clone();
             assert!(reply.failure.is_none(), "{:?}", reply.failure);
             assert_eq!(reply.text, format!("you said: {text}"));
@@ -503,20 +498,14 @@ mod tests {
                 .lock()
                 .unwrap()
                 .iter()
-                .all(|payload| payload["opener"] == true)
+                .all(|payload| payload["opener"] == true && payload["router"] == "chat-router-v1")
         );
         // In the background the connection closes; the next message opens
         // one again.
         door.rest();
         let reply = Arc::new(Mutex::new(Reply::default()));
-        door.ask(
-            vec![Turn {
-                role: Role::User,
-                text: "third".into(),
-            }],
-            reply.clone(),
-        )
-        .await;
+        door.ask(vec![Turn::user("third")], Context::default(), reply.clone())
+            .await;
         assert_eq!(lock(&reply).text, "you said: third");
         assert_eq!(accepted.load(Ordering::SeqCst), 2);
     }

@@ -628,6 +628,15 @@ pub fn draft(opened: &Opened) -> Draft {
     if report.task.is_some() {
         attachments.push("- The Coder chat's task ID is in the private report.");
     }
+    match report.chat.as_ref().map(|chat| chat.reason) {
+        Some(crate::report::ShareReason::Shared) => attachments.push(
+            "- The tester shared the chat for evaluation; it is in the private report and isn't published.",
+        ),
+        Some(crate::report::ShareReason::WrongAnswer) => attachments.push(
+            "- The tester marked a prepared answer wrong; the question, the answer, and the judgment are in the private report and aren't published.",
+        ),
+        None => {}
+    }
     for note in &report.notes {
         attachments.push(match note {
             crate::report::Note::ScreenshotDropped => {
@@ -635,6 +644,9 @@ pub fn draft(opened: &Opened) -> Draft {
             }
             crate::report::Note::SessionTrimmed => {
                 "- The app left out the oldest session events to fit."
+            }
+            crate::report::Note::ChatTrimmed => {
+                "- The app left out the shared chat's oldest messages to fit."
             }
         });
     }

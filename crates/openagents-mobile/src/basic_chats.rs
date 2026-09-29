@@ -9,7 +9,11 @@
 //! conversation, the task it started is remembered with it.
 
 use crate::basic_coder::{self, Door, Lane, Reply, Role, Turn, lock};
+use crate::router::{Context, Meta};
 use coder_computers::cache::Cache;
+use playtest::report::{
+    ChatRole, ChatTurn, MAX_CHAT_TEXT_CHARS, MAX_CHAT_TURNS, ShareReason, SharedChat,
+};
 use rust_native::markdown::IncrementalMarkdown;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -83,6 +87,8 @@ pub(crate) struct BasicChats {
     /// A rank job may go: once each time the tab shows, since it is metered
     /// as a message.
     rank_allowed: bool,
+    /// What the next turn tells the worker about the phone.
+    context: Context,
 }
 
 /// A new chat's suggestions this few are shown as they are, unranked.
@@ -110,6 +116,7 @@ impl BasicChats {
             lanes: BTreeMap::new(),
             ranking: None,
             rank_allowed: false,
+            context: Context::default(),
         }
     }
 
@@ -164,6 +171,58 @@ impl BasicChats {
         if let Some(door) = &self.door {
             door.rest();
         }
+    }
+
+    /// What the next turn tells the worker about the phone: whether a
+    /// computer is ready, and the app's build.
+    pub(crate) fn set_context(&mut self, context: Context) {
+        self.context = context;
+    }
+
+    /// What the router said about the last reply of `id`: the streaming
+    /// reply's, while one streams, else the last answer's.
+    pub(crate) fn last_meta(&self, id: &str) -> Option<Meta> {
+        if let Some(stream) = self.streams.get(id) {
+            let meta = lock(&stream.reply).meta.clone();
+            return (!meta.is_empty()).then_some(meta);
+        }
+        self.turns
+            .get(id)?
+            .last()
+            .filter(|turn| turn.role == Role::Assistant)?
+            .meta
+            .clone()
+    }
+
+    /// The whole conversation as the tester would share it for evaluation,
+    /// newest messages kept, each within the report's bounds.
+    pub(crate) fn shared(&mut self, id: &str) -> Option<SharedChat> {
+        let turns = self.turns(id);
+        let skip = turns.len().saturating_sub(MAX_CHAT_TURNS);
+        let turns: Vec<ChatTurn> = turns[skip..].iter().map(chat_turn).collect();
+        (!turns.is_empty()).then_some(SharedChat {
+            reason: ShareReason::Shared,
+            turns,
+        })
+    }
+
+    /// The last reply of `id`, when it is a prepared answer, with the
+    /// message it answered: what **Wrong answer** sends.
+    pub(crate) fn wrong_answer(&mut self, id: &str) -> Option<SharedChat> {
+        if self.busy(id) {
+            return None;
+        }
+        let turns = self.turns(id);
+        let [.., question, answer] = turns else {
+            return None;
+        };
+        (question.role == Role::User
+            && answer.role == Role::Assistant
+            && answer.meta.as_ref().is_some_and(Meta::canned))
+        .then(|| SharedChat {
+            reason: ShareReason::WrongAnswer,
+            turns: vec![chat_turn(question), chat_turn(answer)],
+        })
     }
 
     /// Where the worker's judgment placed the last reply of `id`.
@@ -270,10 +329,7 @@ impl BasicChats {
         }
         self.turns(id);
         if let Some(turns) = self.turns.get_mut(id) {
-            turns.push(Turn {
-                role: Role::User,
-                text: text.to_owned(),
-            });
+            turns.push(Turn::user(text));
         }
         self.touch(id, now);
         self.save(id);
@@ -301,9 +357,12 @@ impl BasicChats {
         if let Some(handle) = stream.handle.take() {
             handle.abort();
         }
-        let text = lock(&stream.reply).text.clone();
+        let (text, meta) = {
+            let reply = lock(&stream.reply);
+            (reply.text.clone(), reply.meta.clone())
+        };
         if !text.trim().is_empty() {
-            self.answer(id, text, now);
+            self.answer(id, text, meta, now);
         }
     }
 
@@ -314,7 +373,7 @@ impl BasicChats {
         let turns = self.turns.get(id).cloned().unwrap_or_default();
         let handle = match (&self.door, &self.runtime) {
             (Some(door), Some(runtime)) => {
-                Some(runtime.spawn(rung(door.ask(turns, reply.clone()))))
+                Some(runtime.spawn(rung(door.ask(turns, self.context.clone(), reply.clone()))))
             }
             _ => {
                 lock(&reply).failure = Some(basic_coder::Failure::Transport(
@@ -358,7 +417,7 @@ impl BasicChats {
             self.streams.remove(&id);
             changed = true;
             match reply.failure {
-                None => self.answer(&id, reply.text, now),
+                None => self.answer(&id, reply.text, reply.meta, now),
                 Some(failure) => {
                     self.failures.insert(id, failure.describe());
                 }
@@ -367,13 +426,10 @@ impl BasicChats {
         changed
     }
 
-    fn answer(&mut self, id: &str, text: String, now: u64) {
+    fn answer(&mut self, id: &str, text: String, meta: Meta, now: u64) {
         self.turns(id);
         if let Some(turns) = self.turns.get_mut(id) {
-            turns.push(Turn {
-                role: Role::Assistant,
-                text,
-            });
+            turns.push(Turn::assistant(text, (!meta.is_empty()).then_some(meta)));
         }
         self.touch(id, now);
         self.save(id);
@@ -444,6 +500,22 @@ impl BasicChats {
     }
 }
 
+/// One message as a shared chat carries it: its words within the report's
+/// bound, and, for a reply, its prepared answer, tier, and judgment.
+fn chat_turn(turn: &Turn) -> ChatTurn {
+    let meta = turn.meta.as_ref();
+    ChatTurn {
+        role: match turn.role {
+            Role::User => ChatRole::User,
+            Role::Assistant => ChatRole::Assistant,
+        },
+        text: turn.text.chars().take(MAX_CHAT_TEXT_CHARS).collect(),
+        answer: meta.and_then(|meta| meta.answer.clone()),
+        tier: meta.and_then(|meta| meta.tier.clone()),
+        judgment: meta.and_then(|meta| meta.judgment.clone()),
+    }
+}
+
 /// The store key of a conversation's turns.
 fn item(id: &str) -> String {
     format!("basic-{id}")
@@ -510,6 +582,7 @@ mod tests {
         fn ask(
             &self,
             turns: Vec<Turn>,
+            _context: Context,
             reply: Arc<Mutex<Reply>>,
         ) -> Pin<Box<dyn Future<Output = ()> + Send>> {
             Box::pin(async move {
@@ -585,18 +658,9 @@ mod tests {
     #[test]
     fn the_handoff_keeps_the_newest_turns_within_its_bound() {
         let turns = vec![
-            Turn {
-                role: Role::User,
-                text: "x".repeat(500),
-            },
-            Turn {
-                role: Role::Assistant,
-                text: "Sure.".into(),
-            },
-            Turn {
-                role: Role::User,
-                text: "Run the tests in my repo.".into(),
-            },
+            Turn::user("x".repeat(500)),
+            Turn::assistant("Sure.", None),
+            Turn::user("Run the tests in my repo."),
         ];
         let text = handoff("Tests", &turns, 300);
         assert!(

@@ -202,6 +202,16 @@ pub enum Glyph {
     Add,
     /// The current choice among several.
     Check,
+    /// Ask a suggested question, such as a follow-up under an answer.
+    Ask,
+    /// Mark or report something, such as a wrong answer.
+    Flag,
+    /// Run a command.
+    Terminal,
+    /// A wallet.
+    Wallet,
+    /// A key, such as identity keys.
+    Key,
 }
 
 /// The control that loads older rows at a transcript's top.

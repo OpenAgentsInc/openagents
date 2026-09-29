@@ -38,6 +38,7 @@ fn wrap(happened: &str, quote: bool, tester: u8, wrapper: u8) -> Event {
             height: 1,
         }),
         notes: vec![],
+        chat: None,
     };
     report::wrap(
         &report,

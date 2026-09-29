@@ -72,6 +72,10 @@ pub struct Launch {
     pub chat_relay: Option<String>,
     #[serde(default)]
     pub chat_worker: Option<String>,
+    /// The app's version and build, as `1.0.0 (19)`: the chat router's
+    /// context names it, so the worker can answer for this build.
+    #[serde(default)]
+    pub app_build: Option<String>,
     /// Push wakes through a relay's NIP-PL executor and a push gateway, so
     /// a computer's spend request reaches a phone that is not looking.
     /// Absent, the default, leaves push off.
@@ -248,6 +252,14 @@ pub enum Request {
     ReportSend {
         world_secret_hex: String,
         form: crate::playtest::Form,
+    },
+    /// File the wrong-answer report the person confirmed in the chat
+    /// (`coder_go` was `wrong_answer`), signed by the Verse world key, with
+    /// the device facts a report carries. The chat shows what came of it;
+    /// the direct reply is the reports packet.
+    ReportWrongAnswer {
+        world_secret_hex: String,
+        device: crate::playtest::Device,
     },
     /// My reports and playtest logging's state. With the world key, reports
     /// that wait or failed are sent again.
@@ -768,6 +780,7 @@ impl App {
             computers,
             chats,
             coder: CoderTab::new(format!("coder:{}", id()))
+                .with_app_build(launch.app_build.clone())
                 .with_pulled_transcripts(launch.pulled_transcripts)
                 .with_basic(basic)
                 .with_list(crate::coder_list::Store::open(
@@ -966,8 +979,10 @@ impl App {
             Request::ReportDraft { tab, route } => {
                 let route = self.place(tab, route);
                 let task = self.coder.open_task().map(|(_, task)| task);
+                let chat = self.coder.shared_chat();
                 return Some(
-                    serde_json::to_vec(&self.playtest.draft(tab, route, task)).unwrap_or_default(),
+                    serde_json::to_vec(&self.playtest.draft(tab, route, task, chat.as_ref()))
+                        .unwrap_or_default(),
                 );
             }
             Request::ReportSend {
@@ -976,13 +991,41 @@ impl App {
             } => match SecretKey::from_str(world_secret_hex) {
                 Ok(world) => {
                     let task = self.coder.open_task().map(|(_, task)| task);
+                    let chat = self.coder.shared_chat();
                     let platform = crate::playtest::platform(std::env::consts::OS);
-                    self.playtest.send(form.clone(), &world, task, platform)
+                    self.playtest
+                        .send(form.clone(), &world, task, chat, platform)
                 }
                 Err(_) => self
                     .playtest
                     .refuse("Your Verse world key couldn't be read."),
             },
+            Request::ReportWrongAnswer {
+                ref world_secret_hex,
+                ref device,
+            } => {
+                let Some(chat) = self.coder.take_wrong_answer() else {
+                    return Some(
+                        serde_json::to_vec(&self.playtest.refuse("There's no answer to report."))
+                            .unwrap_or_default(),
+                    );
+                };
+                let filed = match SecretKey::from_str(world_secret_hex) {
+                    Ok(world) => {
+                        let platform = crate::playtest::platform(std::env::consts::OS);
+                        self.playtest
+                            .wrong_answer(chat, device.clone(), &world, platform)
+                    }
+                    Err(_) => Err("Your Verse world key couldn't be read.".to_owned()),
+                };
+                let error = filed.as_ref().err().cloned();
+                self.coder.wrong_answer_filed(filed);
+                crate::wake::ring();
+                match error {
+                    Some(error) => self.playtest.refuse(&error),
+                    None => self.playtest.reports(None),
+                }
+            }
             Request::Reports {
                 ref world_secret_hex,
             } => {
@@ -1165,6 +1208,7 @@ impl App {
             | Request::TrainerLink { .. }
             | Request::TrainerExport { .. }
             | Request::ReportDraft { .. }
+            | Request::ReportWrongAnswer { .. }
             | Request::ReportSend { .. }
             | Request::Reports { .. }
             | Request::PlaytestClear => {}

@@ -422,6 +422,13 @@ key and sent privately:
 - **Playtest log:** offered only while playtest logging is on in the
   build, attached only when the tester ticks it, and shown in full before
   sending.
+- **Share this chat:** from an open chat with OpenAgents, off by default,
+  shown in full before sending, and attached only when the tester ticks it.
+  It is evaluation data for the
+  [chat router](../coder/design/2026-09-28-chat-router.md), and it stays in
+  the private report. Under a prepared answer, **Wrong answer** sends only
+  that question, the answer's ID, and the worker's judgment, after the
+  tester reads what it sends and taps **Send**.
 - **Transport:** a NIP-17 private message to the OpenAgents triage key,
   sealed with NIP-44, signed by the tester's Verse world key (so the XP it
   can earn lands on the key whose name tag shows in the Grid). Screenshots

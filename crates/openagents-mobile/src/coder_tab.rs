@@ -57,6 +57,7 @@ use crate::chats::{Chats, Head};
 use crate::coder_list::{List, Row, Store};
 use crate::conversation::{Conversation, Pending};
 use crate::outbox::{Attempt, Draft, Outbox};
+use crate::router::{Context, Meta, Offer, RunsOn, Screen};
 use crate::transcripts::Transcripts;
 use coder_computers::{
     Action, Capabilities, Computers, Denial, HostRecord, HostStatus, OfflineCause, Platform,
@@ -167,14 +168,77 @@ pub enum Intent {
     Retry,
     /// Open the chat of the task the open conversation started.
     OpenSpawned,
+    /// Open the screen an offer under the last reply names.
+    OpenScreen {
+        screen: Screen,
+    },
+    /// Send the last reply's suggested follow-up at `index` as a message.
+    Followup {
+        index: usize,
+    },
+    /// Run the read-only command the last reply's offer at `index` proposes.
+    RunCli {
+        index: usize,
+    },
+    /// Say the last reply, a prepared answer, was wrong: shows what would
+    /// be sent, and asks.
+    WrongAnswer,
+    /// Send the wrong-answer report the chat showed.
+    SendWrongAnswer,
+    CancelWrongAnswer,
 }
 
-/// A screen of another tab the host should show, once.
+/// A screen of another tab the host should show, once, or something the
+/// host should do for the tab.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Go {
     /// Account > Computers, to connect a computer.
     Computers,
+    /// The Wallet tab.
+    Wallet,
+    /// Account > Identity keys.
+    Keys,
+    /// Account > Playtest.
+    Playtest,
+    /// Report a problem, for the chat on screen.
+    Report,
+    /// File the wrong-answer report the person confirmed: the host sends
+    /// `report_wrong_answer` with the Verse world key and device facts.
+    WrongAnswer,
+}
+
+impl Go {
+    fn of(screen: Screen) -> Self {
+        match screen {
+            Screen::Wallet => Go::Wallet,
+            Screen::Computers => Go::Computers,
+            Screen::Keys => Go::Keys,
+            Screen::Playtest => Go::Playtest,
+            Screen::Report => Go::Report,
+        }
+    }
+}
+
+/// A command the person ran from an offer, and what came of it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum CliOutcome {
+    /// The command's output, one line each.
+    Output(Vec<String>),
+    /// Why it did not run.
+    Refused(String),
+}
+
+/// Where a wrong-answer report stands.
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum Flag {
+    /// Showing what would be sent, waiting for **Send**.
+    Confirm,
+    /// The host is sending it.
+    Sending,
+    /// Filed: the line to show.
+    Filed(String),
+    Failed(String),
 }
 
 /// Another way to send the composer's text while Coder works, which a long
@@ -332,6 +396,16 @@ pub struct CoderTab {
     /// The most turns the open conversation shows; fewer when a long one
     /// outgrows one view.
     talk_turns: usize,
+    /// The app's version and build, as `1.0.0 (19)`, for the router's
+    /// context.
+    app_build: Option<String>,
+    /// The last command run from an offer: its conversation, its words, and
+    /// what came of it.
+    cli: Option<(String, Vec<String>, CliOutcome)>,
+    /// A wrong-answer report for a conversation's last reply.
+    flag: Option<(String, Flag)>,
+    /// The wrong-answer report the host is to file, taken once.
+    flagged: Option<playtest::report::SharedChat>,
 }
 
 /// The most turns an open basic conversation shows at first.
@@ -363,6 +437,53 @@ impl CoderTab {
             workspace: None,
             go: None,
             talk_turns: TALK_TURNS,
+            app_build: None,
+            cli: None,
+            flag: None,
+            flagged: None,
+        }
+    }
+
+    /// Tell the chat router this app's version and build, as `1.0.0 (19)`.
+    pub fn with_app_build(mut self, build: Option<String>) -> Self {
+        self.app_build = build;
+        self
+    }
+
+    /// The open chat with OpenAgents as **Share this chat** would send it.
+    pub(crate) fn shared_chat(&mut self) -> Option<playtest::report::SharedChat> {
+        let id = self.talk.clone()?;
+        self.basic.shared(&id)
+    }
+
+    /// The wrong-answer report the person confirmed, for the host to file.
+    pub(crate) fn take_wrong_answer(&mut self) -> Option<playtest::report::SharedChat> {
+        self.flagged.take()
+    }
+
+    /// What came of filing the wrong-answer report: its code, or why not.
+    pub(crate) fn wrong_answer_filed(&mut self, filed: Result<crate::playtest::Row, String>) {
+        let Some((_, flag)) = self.flag.as_mut() else {
+            return;
+        };
+        *flag = match filed {
+            Ok(row) => Flag::Filed(match (row.status, row.code) {
+                (crate::playtest::Status::Waiting, _) => {
+                    "Saved on this phone. A later build sends it to the OpenAgents team.".into()
+                }
+                (_, Some(code)) => format!("Sent to the OpenAgents team as {code}. Thank you."),
+                (_, None) => "Sent to the OpenAgents team. Thank you.".into(),
+            }),
+            Err(why) => Flag::Failed(why),
+        };
+    }
+
+    /// What the next basic turn tells the worker: whether a computer is
+    /// ready, and the build. No computer's name or workspace.
+    fn router_context(&self, computers: Option<&Computers>) -> Context {
+        Context {
+            computer_ready: matches!(self.availability(computers), Availability::Ready(_)),
+            app_build: self.app_build.clone(),
         }
     }
 
@@ -824,11 +945,76 @@ impl CoderTab {
                 self.target = Some(true);
             }
             Intent::Retry => {
+                self.basic
+                    .set_context(self.router_context(computers.as_deref()));
                 if let Some(id) = &self.talk {
                     self.basic.retry(id);
                 }
             }
             Intent::ConnectComputer => self.go = Some(Go::Computers),
+            Intent::OpenScreen { screen } => {
+                // Only a screen an offer under the last reply names.
+                let offered = self
+                    .talk
+                    .as_ref()
+                    .and_then(|id| self.basic.last_meta(id))
+                    .is_some_and(|meta| meta.offers.contains(&Offer::OpenScreen { screen }));
+                if offered {
+                    self.go = Some(Go::of(screen));
+                }
+            }
+            Intent::Followup { index } => {
+                let Some(id) = self.talk.clone() else { return };
+                let Some(followup) = self
+                    .basic
+                    .last_meta(&id)
+                    .and_then(|meta| meta.followups.get(index).cloned())
+                else {
+                    return;
+                };
+                self.basic
+                    .set_context(self.router_context(computers.as_deref()));
+                if self.basic.send(&id, &followup.label, unix_now()) {
+                    self.notice = None;
+                }
+            }
+            Intent::RunCli { index } => {
+                let Some(id) = self.talk.clone() else { return };
+                let Some(Offer::Cli { argv, runs_on }) = self
+                    .basic
+                    .last_meta(&id)
+                    .and_then(|meta| meta.offers.get(index).cloned())
+                else {
+                    return;
+                };
+                let outcome = run_cli(
+                    &argv,
+                    runs_on,
+                    computers.as_deref(),
+                    self.selected.as_deref(),
+                );
+                self.cli = Some((id, argv, outcome));
+            }
+            Intent::WrongAnswer => {
+                if let Some(id) = self.talk.clone()
+                    && self.basic.wrong_answer(&id).is_some()
+                {
+                    self.flag = Some((id, Flag::Confirm));
+                }
+            }
+            Intent::CancelWrongAnswer => self.flag = None,
+            Intent::SendWrongAnswer => {
+                let Some((id, Flag::Confirm)) = self.flag.clone() else {
+                    return;
+                };
+                let Some(chat) = self.basic.wrong_answer(&id) else {
+                    self.flag = None;
+                    return;
+                };
+                self.flagged = Some(chat);
+                self.flag = Some((id, Flag::Sending));
+                self.go = Some(Go::WrongAnswer);
+            }
             Intent::OpenSpawned => {
                 let spawned = self
                     .talk
@@ -1118,6 +1304,8 @@ impl CoderTab {
             return;
         }
         // A basic conversation, open or new, needs no computer.
+        self.basic
+            .set_context(self.router_context(computers.as_deref()));
         if let Some(id) = self.talk.clone() {
             if self.basic.send(&id, prompt, unix_now()) {
                 self.composers += 1;
@@ -1882,11 +2070,19 @@ impl CoderTab {
                     TurnRole::User => MessageRole::User,
                     TurnRole::Assistant => MessageRole::Assistant,
                 };
-                message(
+                let mut row = message(
                     &format!("talk-m{index}"),
                     role,
                     rust_native::markdown::parse(&turn.text),
-                )
+                );
+                // Where a reply came from, quietly: a prepared answer is
+                // reviewed text, not the model's.
+                if turn.meta.as_ref().is_some_and(Meta::canned)
+                    && let Element::Message { note, .. } = &mut row.element
+                {
+                    *note = Some(PREPARED.into());
+                }
+                row
             })
             .collect();
         match tail {
@@ -1941,9 +2137,22 @@ impl CoderTab {
                 Intent::OpenSpawned,
             ));
         }
-        // The worker's judgment placed the last message on a computer: the
-        // way there is a chip.
-        let judged = self.basic.lane(id) == Some(crate::basic_coder::Lane::Computer);
+        // What the router said about the last reply: its offers, follow-ups,
+        // and whether it was a prepared answer. Nothing here acts until a
+        // tap, and each tap's meaning is the phone's own.
+        let meta = if failed {
+            None
+        } else {
+            self.basic.last_meta(id)
+        };
+        let offers = meta
+            .as_ref()
+            .map(|meta| meta.offers.clone())
+            .unwrap_or_default();
+        // The worker's judgment placed the last message on a computer, or
+        // offered to dispatch Coder: the way there is a chip.
+        let judged = self.basic.lane(id) == Some(crate::basic_coder::Lane::Computer)
+            || offers.contains(&Offer::RunCoder);
         match &availability {
             Availability::Ready(host) => {
                 let label = format!("Run Coder on {}", host.label);
@@ -1962,16 +2171,175 @@ impl CoderTab {
             Availability::NotConfigured if judged => {
                 agents.push(pill(
                     "coder-connect",
-                    "Connect a computer to run Coder",
+                    "Connect a computer",
                     Glyph::Add,
                     Intent::ConnectComputer,
                 ));
             }
             Availability::NotConfigured => {}
         }
-        children.push(row("coder-agents", agents));
-        children.push(self.composer_with("Message OpenAgents".to_owned(), true, busy, &[], None, false));
+        // Screens the router offered, named by the phone.
+        for (index, offer) in offers.iter().enumerate() {
+            let Offer::OpenScreen { screen } = offer else {
+                continue;
+            };
+            let connecting =
+                *screen == Screen::Computers && matches!(availability, Availability::NotConfigured);
+            if connecting && judged {
+                continue;
+            }
+            let (label, glyph) = screen_chip(*screen, connecting);
+            agents.push(pill(
+                &format!("coder-screen-{index}"),
+                label,
+                glyph,
+                Intent::OpenScreen { screen: *screen },
+            ));
+        }
+        children.push(wrap("coder-agents", agents));
+        // Proposed read-only commands, each a card with the exact command
+        // and a Run button.
+        for (index, offer) in offers.iter().enumerate() {
+            if let Offer::Cli { argv, runs_on } = offer {
+                children.push(self.cli_card(id, index, argv, *runs_on, &availability));
+            }
+        }
+        if let Some(meta) = meta.as_ref().filter(|_| !busy) {
+            // Suggested next questions under a prepared answer.
+            let chips: Vec<Node<Intent>> = meta
+                .followups
+                .iter()
+                .enumerate()
+                .map(|(index, followup)| {
+                    pill(
+                        &format!("coder-followup-{index}"),
+                        &clip(&followup.label, 60),
+                        Glyph::Ask,
+                        Intent::Followup { index },
+                    )
+                })
+                .collect();
+            if !chips.is_empty() {
+                children.push(wrap("coder-followups", chips));
+            }
+            if meta.canned() {
+                children.extend(self.wrong_answer(id));
+            }
+        }
+        children.push(self.composer_with(
+            "Message OpenAgents".to_owned(),
+            true,
+            busy,
+            &[],
+            None,
+            false,
+        ));
         page(children)
+    }
+
+    /// A proposed read-only command: the command itself, where it runs,
+    /// and a Run button; once run, what came of it.
+    fn cli_card(
+        &self,
+        id: &str,
+        index: usize,
+        argv: &[String],
+        runs_on: RunsOn,
+        availability: &Availability<'_>,
+    ) -> Node<Intent> {
+        let key = format!("coder-cli-{index}");
+        let place = match (runs_on, availability) {
+            (RunsOn::ThisDevice, _) => "Reads only. Runs on this phone.".to_owned(),
+            (RunsOn::ConnectedComputer, Availability::Ready(host)) => {
+                format!("Reads only. Runs on {}.", host.label)
+            }
+            (RunsOn::ConnectedComputer, _) => "Reads only. Runs on your computer.".to_owned(),
+        };
+        let mut children = vec![
+            text(
+                &format!("{key}-command"),
+                &Offer::command_line(argv),
+                TextRole::Code,
+                WHITE,
+                false,
+            ),
+            status(&format!("{key}-where"), &place),
+        ];
+        match &self.cli {
+            Some((talk, ran, outcome)) if talk == id && ran.as_slice() == argv => match outcome {
+                CliOutcome::Output(lines) => {
+                    children.extend(lines.iter().enumerate().map(|(at, line)| {
+                        text(
+                            &format!("{key}-out-{at}"),
+                            line,
+                            TextRole::Code,
+                            GRAY,
+                            false,
+                        )
+                    }));
+                    children.push(button(
+                        &format!("{key}-run"),
+                        "Run again",
+                        Intent::RunCli { index },
+                    ));
+                }
+                CliOutcome::Refused(why) => children.push(status(&format!("{key}-why"), why)),
+            },
+            _ => children.push(icon_button(
+                &format!("{key}-run"),
+                "Run",
+                Glyph::Terminal,
+                false,
+                Intent::RunCli { index },
+            )),
+        }
+        Node {
+            key,
+            style: Style {
+                gap: Some(Space::Xs),
+                ..Style::default()
+            },
+            element: Element::Stack {
+                axis: Axis::Vertical,
+                children,
+            },
+        }
+    }
+
+    /// Under a prepared answer: **Wrong answer**, then what it would send
+    /// and a choice, then what came of it.
+    fn wrong_answer(&self, id: &str) -> Vec<Node<Intent>> {
+        let flag = self
+            .flag
+            .as_ref()
+            .filter(|(talk, _)| talk == id)
+            .map(|(_, flag)| flag);
+        match flag {
+            None => vec![row(
+                "coder-wrong-row",
+                vec![icon_button(
+                    "coder-wrong",
+                    "Wrong answer",
+                    Glyph::Flag,
+                    false,
+                    Intent::WrongAnswer,
+                )],
+            )],
+            Some(Flag::Confirm) => vec![
+                status("coder-wrong-what", WRONG_ANSWER_SENDS),
+                row(
+                    "coder-wrong-choice",
+                    vec![
+                        button("coder-wrong-send", "Send", Intent::SendWrongAnswer),
+                        button("coder-wrong-cancel", "Cancel", Intent::CancelWrongAnswer),
+                    ],
+                ),
+            ],
+            Some(Flag::Sending) => vec![status("coder-wrong-status", "Sending…")],
+            Some(Flag::Filed(line) | Flag::Failed(line)) => {
+                vec![status("coder-wrong-status", line)]
+            }
+        }
     }
 
     fn chat(&self, open: &Open, computers: Option<&Computers>) -> Node<Intent> {
@@ -2518,6 +2886,110 @@ fn ago(now: u64, then: u64) -> String {
     }
 }
 
+/// The quiet note under a reply that is a prepared answer.
+const PREPARED: &str = "Prepared answer";
+
+/// What **Wrong answer** says it sends before the person chooses.
+const WRONG_ANSWER_SENDS: &str = "We'll send your question, our answer, and how we chose it to \
+the OpenAgents team, encrypted, to improve our answers. Nothing else from this chat is sent.";
+
+/// The chip an `open_screen` offer shows: the phone's own name for the
+/// screen, never the worker's words.
+fn screen_chip(screen: Screen, connecting: bool) -> (&'static str, Glyph) {
+    match screen {
+        Screen::Wallet => ("Open Wallet", Glyph::Wallet),
+        Screen::Computers if connecting => ("Connect a computer", Glyph::Add),
+        Screen::Computers => ("Your computers", Glyph::Computer),
+        Screen::Keys => ("Identity keys", Glyph::Key),
+        Screen::Playtest => ("Playtest", Glyph::Flag),
+        Screen::Report => ("Report a problem", Glyph::Flag),
+    }
+}
+
+/// Runs a read-only command an offer proposed, after the person's tap.
+/// The phone's own Rust core answers `computer list`, `show`, and
+/// `workspaces` from what it already knows. A command that runs on the
+/// computer waits for a way to run `openagents` there read-only: this is
+/// the hook for it.
+pub(crate) fn run_cli(
+    argv: &[String],
+    runs_on: RunsOn,
+    computers: Option<&Computers>,
+    selected: Option<&str>,
+) -> CliOutcome {
+    let words: Vec<&str> = argv.iter().map(String::as_str).collect();
+    let snapshot = computers.map(Computers::snapshot);
+    match (runs_on, words.as_slice(), snapshot) {
+        (_, ["computer", "list"], Some(snapshot)) => {
+            if snapshot.hosts.is_empty() {
+                return CliOutcome::Output(vec!["No computers on this phone yet.".into()]);
+            }
+            CliOutcome::Output(
+                snapshot
+                    .hosts
+                    .iter()
+                    .map(|host| format!("{}  {}", host.label, host_state(host, snapshot.now)))
+                    .collect(),
+            )
+        }
+        (_, ["computer", "show" | "workspaces", rest @ ..], Some(snapshot)) => {
+            let named = rest.first().copied();
+            let host = match named {
+                Some(name) => snapshot
+                    .hosts
+                    .iter()
+                    .find(|host| host.label == name || host.key == name),
+                None => match availability(snapshot, selected) {
+                    Availability::Ready(host)
+                    | Availability::Connecting(host)
+                    | Availability::Offline(host) => Some(host),
+                    Availability::NotConfigured => None,
+                },
+            };
+            let Some(host) = host else {
+                return CliOutcome::Refused(match named {
+                    Some(name) => format!("No computer named {name} on this phone."),
+                    None => "No computer on this phone yet.".into(),
+                });
+            };
+            if words[1] == "show" {
+                return CliOutcome::Output(vec![
+                    host.label.clone(),
+                    format!("State: {}", host_state(host, snapshot.now)),
+                ]);
+            }
+            match &host.workspaces {
+                Some(labels) if !labels.is_empty() => CliOutcome::Output(labels.clone()),
+                Some(_) => CliOutcome::Output(vec![format!("{} lists no workspaces.", host.label)]),
+                None => CliOutcome::Refused(format!(
+                    "{} hasn't listed its workspaces yet. Try again in a moment.",
+                    host.label
+                )),
+            }
+        }
+        (_, ["computer", ..], None) => {
+            CliOutcome::Output(vec!["No computers on this phone yet.".into()])
+        }
+        // The hook: a read-only `openagents` run on the ready computer
+        // through NIP-HOST, when the host exposes one.
+        _ => CliOutcome::Refused(
+            "Running this on your computer from the phone isn't available yet.".into(),
+        ),
+    }
+}
+
+/// A computer's state in a word or two.
+fn host_state(host: &HostRecord, now: u64) -> &'static str {
+    match HostStatus::derive(host, now) {
+        HostStatus::Online { .. } => "online",
+        HostStatus::Connecting { .. } => "connecting",
+        HostStatus::Offline { .. } => "offline",
+        HostStatus::OutOfDate { .. } => "out of date",
+        HostStatus::NotEnrolled { .. } => "not linked",
+        HostStatus::Revoked => "revoked",
+    }
+}
+
 const WHITE: Color = Color::rgb(255, 255, 255);
 const GRAY: Color = Color::rgb(153, 153, 153);
 
@@ -2567,6 +3039,16 @@ fn page(children: Vec<Node<Intent>>) -> Node<Intent> {
             children,
         },
     }
+}
+
+/// A row whose children wrap onto more lines, as chips do.
+fn wrap(key: &str, children: Vec<Node<Intent>>) -> Node<Intent> {
+    let mut node = row(key, children);
+    node.style.gap = Some(Space::Sm);
+    if let Element::Stack { axis, .. } = &mut node.element {
+        *axis = Axis::Wrap;
+    }
+    node
 }
 
 fn row(key: &str, children: Vec<Node<Intent>>) -> Node<Intent> {

@@ -8,7 +8,7 @@ use coder_computers::cache::Cache;
 use coder_computers::synthetic::Synthetic;
 use coder_computers::{Capabilities, Computers, ComputersService, Platform};
 use rust_native::Activation;
-use serde_json::Value;
+use serde_json::{Value, json};
 
 /// The fixture's clock, fixed so ages are stable.
 const NOW: u64 = 1_790_000_000;
@@ -994,16 +994,20 @@ type Asked = Vec<(
 #[derive(Clone, Default)]
 struct Hand {
     replies: std::sync::Arc<std::sync::Mutex<Asked>>,
+    /// The router context each question carried.
+    contexts: std::sync::Arc<std::sync::Mutex<Vec<crate::router::Context>>>,
 }
 
 impl crate::basic_coder::Door for Hand {
     fn ask(
         &self,
         turns: Vec<crate::basic_coder::Turn>,
+        context: crate::router::Context,
         reply: std::sync::Arc<std::sync::Mutex<crate::basic_coder::Reply>>,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
         let texts = turns.into_iter().map(|turn| turn.text).collect();
         self.replies.lock().unwrap().push((texts, reply));
+        self.contexts.lock().unwrap().push(context);
         Box::pin(async {})
     }
 }
@@ -1016,6 +1020,22 @@ impl Hand {
         let mut reply = reply.lock().unwrap();
         reply.text = text.into();
         reply.done = done;
+    }
+
+    /// The router's reading of the newest question: the judgment, offers,
+    /// and result fields, as the reply would hold them from the wire.
+    fn route(&self, payloads: &[serde_json::Value]) {
+        let replies = self.replies.lock().unwrap();
+        let (_, reply) = replies.last().expect("a question");
+        let mut reply = reply.lock().unwrap();
+        for payload in payloads {
+            match payload["type"].as_str() {
+                Some("judgment") => reply.meta.judged(payload),
+                Some("offer") => reply.meta.offered(payload),
+                Some("result") => reply.meta.resulted(payload),
+                _ => {}
+            }
+        }
     }
 
     /// The worker's judgment of the newest question.
@@ -1202,10 +1222,7 @@ fn a_first_chat_needs_no_computer_and_streams_its_reply() {
     hand.say("That needs a computer.", true);
     let chat = fixture.render();
     let connect = node(&chat, "coder-connect").expect("connect a computer");
-    assert_eq!(
-        connect["element"]["props"]["label"],
-        "Connect a computer to run Coder"
-    );
+    assert_eq!(connect["element"]["props"]["label"], "Connect a computer");
     fixture.tap("coder-connect");
     assert_eq!(
         fixture.coder.take_go(),
@@ -1323,4 +1340,223 @@ fn run_coder_starts_a_task_with_the_conversation() {
     assert!(node(&chat, "coder-spawned").is_some());
     fixture.tap("coder-spawned");
     assert_eq!(fixture.coder.open_task(), Some((host, task)));
+}
+
+/// Every basic turn asks for the chat router with a context that says only
+/// whether a computer is ready and which build this is: never a computer's
+/// name or workspace.
+#[test]
+fn a_turn_asks_for_routing_with_a_bounded_context() {
+    let hand = Hand::default();
+    let mut fixture = Fixture::hosts().answered_by(&hand);
+    fixture.coder = std::mem::replace(&mut fixture.coder, CoderTab::new("x".into()))
+        .with_app_build(Some("1.0.0 (19)".into()));
+    fixture.say("Who are you?");
+    let contexts = hand.contexts.lock().unwrap().clone();
+    assert_eq!(
+        contexts,
+        [crate::router::Context {
+            computer_ready: true,
+            app_build: Some("1.0.0 (19)".into()),
+        }]
+    );
+    let wire = contexts[0].json().to_string();
+    assert!(!wire.contains("Studio Mac"), "{wire}");
+
+    let bare = Hand::default();
+    let mut none =
+        Fixture::new(NoComputers(Synthetic::fixture(Platform::Phone, now))).answered_by(&bare);
+    none.say("Who are you?");
+    assert!(!bare.contexts.lock().unwrap()[0].computer_ready);
+}
+
+/// The canned answer the router chose, as the worker sends it.
+fn canned(hand: &Hand, text: &str) {
+    hand.route(&[
+        json!({"v": 2, "type": "judgment", "verdict": "respond", "line": text,
+            "set": "chat-router-v1", "tier": "canned", "answer": "meta.model@1",
+            "answer_p": 0.93, "route": "meta", "lane": "chat"}),
+        json!({"v": 2, "type": "result", "text": text, "model": "bank:chat-answers-v1",
+            "tier": "canned", "answer": "meta.model@1", "route": "meta",
+            "bank": "chat-answers-v1@9f2c",
+            "followups": [{"id": "meta.privacy", "label": "Is this chat private?"},
+                {"id": "meta.coder", "label": "What is Coder?"}]}),
+    ]);
+    hand.say(text, true);
+}
+
+/// A prepared answer says so quietly, offers its follow-ups as chips that
+/// send their words, and can be marked wrong: the chat shows what would be
+/// sent, and only **Send** hands the question, the answer, and the
+/// judgment to the host to file.
+#[test]
+fn a_prepared_answer_offers_followups_and_a_wrong_answer_report() {
+    let hand = Hand::default();
+    let mut fixture =
+        Fixture::new(NoComputers(Synthetic::fixture(Platform::Phone, now))).answered_by(&hand);
+    fixture.say("What model are you?");
+    canned(&hand, "Our chat runs on Gemini 3.8 Flash.");
+    let chat = fixture.render();
+    assert_eq!(
+        node(&chat, "talk-m1").unwrap()["element"]["props"]["note"],
+        "Prepared answer"
+    );
+    // The user's own message carries no note.
+    assert!(node(&chat, "talk-m0").unwrap()["element"]["props"]["note"].is_null());
+    let chip = &node(&chat, "coder-followup-1").expect("follow-up")["element"]["props"];
+    assert_eq!(chip["label"], "What is Coder?");
+    assert_eq!(chip["icon"]["glyph"], "ask");
+
+    // Wrong answer asks first, and sends nothing until Send.
+    let asking = fixture.tap("coder-wrong");
+    assert!(
+        texts(&asking)
+            .iter()
+            .any(|t| t.starts_with("We'll send your question"))
+    );
+    let back = fixture.tap("coder-wrong-cancel");
+    assert!(node(&back, "coder-wrong").is_some());
+    assert_eq!(fixture.coder.take_go(), None);
+    fixture.tap("coder-wrong");
+    let sending = fixture.tap("coder-wrong-send");
+    assert!(texts(&sending).contains(&"Sending…".to_owned()));
+    assert_eq!(
+        fixture.coder.take_go(),
+        Some(crate::coder_tab::Go::WrongAnswer)
+    );
+    let flagged = fixture
+        .coder
+        .take_wrong_answer()
+        .expect("the flagged exchange");
+    assert_eq!(flagged.reason, playtest::report::ShareReason::WrongAnswer);
+    assert_eq!(flagged.turns.len(), 2);
+    assert_eq!(flagged.turns[0].text, "What model are you?");
+    assert_eq!(flagged.turns[1].answer.as_deref(), Some("meta.model@1"));
+    assert!(
+        flagged.turns[1]
+            .judgment
+            .as_deref()
+            .unwrap()
+            .contains("answer_p")
+    );
+    assert!(fixture.coder.take_wrong_answer().is_none());
+    fixture
+        .coder
+        .wrong_answer_filed(Err("No relay accepted it.".into()));
+    assert!(texts(&fixture.render()).contains(&"No relay accepted it.".to_owned()));
+
+    // A follow-up chip sends its words as the next message.
+    fixture.tap("coder-followup-0");
+    assert_eq!(
+        hand.asked()[1],
+        [
+            "What model are you?",
+            "Our chat runs on Gemini 3.8 Flash.",
+            "Is this chat private?"
+        ]
+    );
+    // The model's own reply is not a prepared answer: no note, no report.
+    hand.say("It is encrypted.", true);
+    let chat = fixture.render();
+    assert!(node(&chat, "talk-m3").unwrap()["element"]["props"]["note"].is_null());
+    assert!(node(&chat, "coder-wrong").is_none());
+    assert!(node(&chat, "coder-followup-0").is_none());
+    // Share this chat carries the whole conversation, with its judgments.
+    let shared = fixture.coder.shared_chat().expect("shared");
+    assert_eq!(shared.reason, playtest::report::ShareReason::Shared);
+    assert_eq!(shared.turns.len(), 4);
+    assert!(shared.turns[3].answer.is_none());
+}
+
+/// The router's offers become the phone's own controls: dispatching Coder
+/// is the Run Coder chip or, with no computer, Connect a computer; a
+/// screen offer opens that screen; a read-only command is a card that runs
+/// only when tapped. A screen or command outside the phone's tables never
+/// shows.
+#[test]
+fn offers_become_the_phones_own_controls() {
+    let hand = Hand::default();
+    let mut fixture =
+        Fixture::new(NoComputers(Synthetic::fixture(Platform::Phone, now))).answered_by(&hand);
+    fixture.say("Fix the flaky test in my repo");
+    hand.route(&[
+        json!({"v": 2, "type": "offer", "offer": "run_coder", "target": "connected_computer",
+            "label": "Run Coder"}),
+        json!({"v": 2, "type": "offer", "offer": "open_screen", "screen": "account.computers",
+            "label": "Connect a computer"}),
+        json!({"v": 2, "type": "offer", "offer": "open_screen", "screen": "settings.erase",
+            "label": "Erase"}),
+    ]);
+    hand.say("We'll dispatch Coder to fix the flaky test.", true);
+    let chat = fixture.render();
+    assert_eq!(
+        node(&chat, "coder-connect").expect("connect")["element"]["props"]["label"],
+        "Connect a computer"
+    );
+    // One way to connect, not two; no unknown screen.
+    assert!(
+        !keys(&chat)
+            .iter()
+            .any(|key| key.starts_with("coder-screen-")),
+        "{:?}",
+        keys(&chat)
+    );
+    fixture.tap("coder-connect");
+    assert_eq!(
+        fixture.coder.take_go(),
+        Some(crate::coder_tab::Go::Computers)
+    );
+
+    fixture.say("How do I back up my wallet?");
+    hand.route(&[
+        json!({"v": 2, "type": "offer", "offer": "open_screen", "screen": "wallet",
+        "label": "Send all funds"}),
+    ]);
+    hand.say("Your recovery words are in the Wallet tab.", true);
+    let chat = fixture.render();
+    let chip = &node(&chat, "coder-screen-0").expect("wallet chip")["element"]["props"];
+    assert_eq!(chip["label"], "Open Wallet");
+    assert_eq!(chip["icon"]["glyph"], "wallet");
+    fixture.tap("coder-screen-0");
+    assert_eq!(fixture.coder.take_go(), Some(crate::coder_tab::Go::Wallet));
+}
+
+#[test]
+fn a_read_only_command_runs_only_when_tapped() {
+    let hand = Hand::default();
+    let mut fixture = Fixture::hosts().answered_by(&hand);
+    fixture.say("Which of my computers are online?");
+    hand.route(&[
+        json!({"v": 2, "type": "offer", "offer": "cli", "argv": ["computer", "list"],
+            "effect": "read_only", "runs_on": "this_device", "confirm": true}),
+        json!({"v": 2, "type": "offer", "offer": "cli", "argv": ["verse", "xp"],
+            "effect": "read_only", "runs_on": "connected_computer", "confirm": true}),
+        json!({"v": 2, "type": "offer", "offer": "cli", "argv": ["wallet", "pay", "lnbc1"],
+            "effect": "read_only", "runs_on": "this_device", "confirm": true}),
+    ]);
+    hand.say("We can list them.", true);
+    let chat = fixture.render();
+    assert_eq!(
+        node(&chat, "coder-cli-0-command").unwrap()["element"]["props"]["value"],
+        "openagents computer list"
+    );
+    assert_eq!(
+        node(&chat, "coder-cli-0-where").unwrap()["element"]["props"]["value"],
+        "Reads only. Runs on this phone."
+    );
+    // The wallet payment never made it past the phone's table.
+    assert!(node(&chat, "coder-cli-2").is_none());
+    // Nothing ran yet.
+    assert!(node(&chat, "coder-cli-0-out-0").is_none());
+    let ran = fixture.tap("coder-cli-0-run");
+    let out = node(&ran, "coder-cli-0-out-0").expect("output")["element"]["props"]["value"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    assert!(out.starts_with("Studio Mac"), "{out}");
+    let ran = fixture.tap("coder-cli-1-run");
+    assert_eq!(
+        node(&ran, "coder-cli-1-why").unwrap()["element"]["props"]["value"],
+        "Running this on your computer from the phone isn't available yet."
+    );
 }

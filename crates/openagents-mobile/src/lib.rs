@@ -31,6 +31,7 @@ mod conversation;
 mod outbox;
 mod payees;
 mod playtest;
+mod router;
 mod spark;
 mod spend;
 mod tailnet;

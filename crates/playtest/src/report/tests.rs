@@ -41,6 +41,7 @@ fn report(tab: Tab, route: Route) -> Report {
         session: None,
         screenshot: None,
         notes: vec![],
+        chat: None,
     }
 }
 
@@ -218,4 +219,76 @@ fn the_public_record_commits_to_the_opened_report_and_holds_no_text() {
         assert!(!sealed.public.content.contains(words.as_str()));
     }
     assert!(!sealed.public.content.contains(&public(&triage).to_string()));
+}
+
+fn shared(reason: ShareReason, turns: usize) -> SharedChat {
+    SharedChat {
+        reason,
+        turns: (0..turns)
+            .map(|at| ChatTurn {
+                role: if at % 2 == 0 {
+                    ChatRole::User
+                } else {
+                    ChatRole::Assistant
+                },
+                text: format!("message {at} about the relay"),
+                answer: (at % 2 == 1).then(|| "meta.model@1".to_owned()),
+                tier: (at % 2 == 1).then(|| "canned".to_owned()),
+                judgment: (at % 2 == 1).then(|| r#"{"type":"judgment","answer_p":0.9}"#.to_owned()),
+            })
+            .collect(),
+    }
+}
+
+/// A chat travels only inside the sealed report, from the Chat tab, and
+/// never in the public record; one with a secret key in it is refused.
+#[test]
+fn a_shared_chat_rides_only_inside_the_sealed_report() {
+    let (tester, triage) = (key(3), key(4));
+    let mut filed = report(Tab::Coder, Route::Chat);
+    filed.chat = Some(shared(ShareReason::WrongAnswer, 2));
+    let sealed = wrap(&filed, &tester, &public(&triage), &random()).expect("sealed");
+    let wire = serde_json::to_string(&sealed.wrap).unwrap();
+    assert!(!wire.contains("relay") && !wire.contains("meta.model"));
+    assert!(!sealed.public.content.contains("relay"));
+    assert!(!sealed.public.content.contains("meta.model"));
+    let opened = open(&sealed.wrap, &triage).expect("opened");
+    assert_eq!(opened.report.chat, filed.chat);
+    assert_eq!(
+        filed.chat.as_ref().unwrap().lines()[1],
+        "OpenAgents (prepared answer meta.model@1): message 1 about the relay"
+    );
+
+    let mut elsewhere = filed.clone();
+    elsewhere.context.tab = Tab::Wallet;
+    elsewhere.context.route = Route::Home;
+    assert!(elsewhere.check().unwrap_err().contains("Chat tab"));
+    let mut secret = filed.clone();
+    secret.chat.as_mut().unwrap().turns[0].text = "here: nsec1qqqq".into();
+    assert!(secret.check().unwrap_err().contains("secret key"));
+    let mut empty = filed;
+    empty.chat.as_mut().unwrap().turns.clear();
+    assert!(empty.check().is_err());
+}
+
+#[test]
+fn a_long_shared_chat_keeps_its_newest_messages_to_fit() {
+    let mut filed = report(Tab::Coder, Route::Chat);
+    let mut chat = shared(ShareReason::Shared, 150);
+    for turn in &mut chat.turns {
+        turn.text = format!("{} {}", turn.text, "x".repeat(900));
+    }
+    let newest = chat.turns.last().unwrap().clone();
+    filed.chat = Some(chat);
+    let fitted = filed.fit();
+    assert!(fitted.content().len() <= MAX_CONTENT_BYTES);
+    assert_eq!(fitted.notes, [Note::ChatTrimmed]);
+    assert_eq!(fitted.chat.as_ref().unwrap().turns.last(), Some(&newest));
+    assert!(fitted.check().is_ok());
+    // The digest names exactly the previewed chat.
+    let a = shared(ShareReason::Shared, 2);
+    let mut b = a.clone();
+    assert_eq!(chat_digest(&a), chat_digest(&b));
+    b.turns[0].text.push('!');
+    assert_ne!(chat_digest(&a), chat_digest(&b));
 }

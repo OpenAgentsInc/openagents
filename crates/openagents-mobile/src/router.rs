@@ -1,0 +1,482 @@
+//! The phone's side of the chat router
+//! (`docs/coder/design/2026-09-28-chat-router.md`, On the wire).
+//!
+//! A chat turn asks the worker for routing (`router`) and says what the
+//! phone can do next (`context`): which surface it is, whether a computer
+//! is ready, and the app's build. The context carries no credential, key,
+//! host name, workspace, or amount.
+//!
+//! The worker answers with typed observations beside its text: the
+//! judgment (which prepared answer, route, and tier), and offers (`offer`
+//! feedback). An offer is never permission. The phone reads each one
+//! against its own closed tables ([`Screen`], [`READ_ONLY`]) and shows it
+//! as a control; nothing happens until the person taps it, and what the tap
+//! does is decided here, never by the offer's own words. A label the worker
+//! sends is ignored: the phone names every control itself.
+
+use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
+
+/// The routing question set a turn asks for.
+pub(crate) const ROUTER: &str = "chat-router-v1";
+/// The most offers one reply keeps.
+const MAX_OFFERS: usize = 4;
+/// The most follow-up suggestions one reply keeps.
+pub(crate) const MAX_FOLLOWUPS: usize = 3;
+/// The longest follow-up suggestion, in characters.
+const MAX_FOLLOWUP_CHARS: usize = 80;
+/// The most words one proposed command has, and the longest word.
+const MAX_ARGV: usize = 8;
+const MAX_ARG_BYTES: usize = 200;
+/// The most bytes of the worker's judgment the phone keeps, for a tester
+/// who shares the chat.
+const MAX_JUDGMENT_BYTES: usize = playtest::report::MAX_JUDGMENT_BYTES;
+
+/// What a turn tells the worker about the phone.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct Context {
+    /// A computer this device may operate is ready, so dispatching Coder
+    /// is one tap.
+    pub computer_ready: bool,
+    /// The app's version and build, as `1.0.0 (19)`.
+    pub app_build: Option<String>,
+}
+
+impl Context {
+    /// The request's `context` object: bounded, and without a key, host
+    /// name, workspace, or amount.
+    pub(crate) fn json(&self) -> Value {
+        let mut context = json!({
+            "surface": "phone",
+            "computer_ready": self.computer_ready,
+        });
+        if let Some(build) = self.app_build.as_deref().filter(|build| build_like(build)) {
+            context["app_build"] = json!(build);
+        }
+        context
+    }
+}
+
+/// `1.0.0 (19)`: digits, dots, a space, and parentheses only.
+fn build_like(text: &str) -> bool {
+    (1..=24).contains(&text.len())
+        && text
+            .chars()
+            .all(|ch| ch.is_ascii_digit() || " .()".contains(ch))
+}
+
+/// A screen an offer may open: the phone's own table, the same words as
+/// the worker's `coder::router::Screen`. An offer naming any other screen is
+/// set aside.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum Screen {
+    /// The Wallet tab.
+    Wallet,
+    /// Account > Computers.
+    Computers,
+    /// Account > Identity keys. The chat never shows a key itself.
+    Keys,
+    /// Account > Playtest.
+    Playtest,
+    /// Report a problem.
+    Report,
+}
+
+impl Screen {
+    /// The screen an offer's exact `screen` value names.
+    fn parse(word: &str) -> Option<Self> {
+        Some(match word {
+            "wallet" => Screen::Wallet,
+            "account.computers" => Screen::Computers,
+            "account.keys" => Screen::Keys,
+            "account.playtest" => Screen::Playtest,
+            "account.report_problem" => Screen::Report,
+            _ => return None,
+        })
+    }
+}
+
+/// Where a proposed command runs.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum RunsOn {
+    /// The phone's own Rust core answers it.
+    ThisDevice,
+    /// The ready computer runs it.
+    ConnectedComputer,
+}
+
+/// The `openagents` commands the phone chat may propose: read-only ones
+/// only (the owner's decision for the phone), as `(group, subcommands)`.
+/// Anything else, whatever the offer's `effect` says, is set aside.
+pub(crate) const READ_ONLY: &[(&str, &[&str])] = &[
+    ("computer", &["list", "show", "workspaces"]),
+    ("verse", &["who", "quests", "board", "xp"]),
+    ("kb", &["search"]),
+    ("cap", &["list"]),
+    ("prg", &["list"]),
+    ("ext", &["list"]),
+    ("session", &["list"]),
+];
+
+/// Whether `argv` (without `openagents`) is a read-only command in
+/// [`READ_ONLY`], with bounded, printable words.
+fn read_only(argv: &[String]) -> bool {
+    (2..=MAX_ARGV).contains(&argv.len())
+        && READ_ONLY
+            .iter()
+            .any(|(group, leaves)| argv[0] == *group && leaves.contains(&argv[1].as_str()))
+        && argv.iter().all(|word| {
+            !word.is_empty() && word.len() <= MAX_ARG_BYTES && !word.chars().any(char::is_control)
+        })
+}
+
+/// What the worker offered beside a reply, as the phone read it.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "offer", rename_all = "snake_case")]
+pub(crate) enum Offer {
+    /// Run Coder on the ready computer with the conversation, or, with
+    /// none, connect one.
+    RunCoder,
+    /// Open one of the phone's screens.
+    OpenScreen { screen: Screen },
+    /// Run a read-only `openagents` command, after a tap.
+    Cli { argv: Vec<String>, runs_on: RunsOn },
+}
+
+impl Offer {
+    /// Reads one `offer` feedback payload. Exact enum values only; an
+    /// unknown offer, screen, or command, or a command that is not
+    /// read-only, is `None`.
+    pub(crate) fn parse(payload: &Value) -> Option<Self> {
+        match payload["offer"].as_str()? {
+            "run_coder" => Some(Offer::RunCoder),
+            "open_screen" => Screen::parse(payload["screen"].as_str()?)
+                .map(|screen| Offer::OpenScreen { screen }),
+            "cli" => {
+                if payload["effect"].as_str() != Some("read_only") {
+                    return None;
+                }
+                let mut argv: Vec<String> = payload["argv"]
+                    .as_array()?
+                    .iter()
+                    .map(|word| word.as_str().map(str::to_owned))
+                    .collect::<Option<_>>()?;
+                // The command's own name is implied.
+                if argv.first().is_some_and(|word| word == "openagents") {
+                    argv.remove(0);
+                }
+                let runs_on = match payload["runs_on"].as_str() {
+                    Some("this_device") => RunsOn::ThisDevice,
+                    Some("connected_computer") => RunsOn::ConnectedComputer,
+                    _ => return None,
+                };
+                read_only(&argv).then_some(Offer::Cli { argv, runs_on })
+            }
+            _ => None,
+        }
+    }
+
+    /// The command as the person reads it.
+    pub(crate) fn command_line(argv: &[String]) -> String {
+        let words: Vec<String> = argv
+            .iter()
+            .map(|word| {
+                if word
+                    .chars()
+                    .any(|ch| ch.is_whitespace() || "'\"$`\\".contains(ch))
+                {
+                    format!("'{}'", word.replace('\'', "'\\''"))
+                } else {
+                    word.clone()
+                }
+            })
+            .collect();
+        format!("openagents {}", words.join(" "))
+    }
+}
+
+/// A suggested next question under a prepared answer: tapping it sends
+/// its words as the person's message.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct Followup {
+    /// The prepared answer it leads to, as the bank names it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub answer: Option<String>,
+    pub label: String,
+}
+
+/// Reads a `followups` array: objects with a one-line `label` of at most
+/// 80 characters and an optional bank `id` or `answer`. Anything else is
+/// set aside.
+fn followups(value: &Value) -> Vec<Followup> {
+    let mut kept: Vec<Followup> = vec![];
+    for entry in value.as_array().into_iter().flatten() {
+        let Some(label) = entry["label"].as_str().map(str::trim) else {
+            continue;
+        };
+        if label.is_empty()
+            || label.chars().count() > MAX_FOLLOWUP_CHARS
+            || label.chars().any(char::is_control)
+            || kept.iter().any(|kept| kept.label == label)
+        {
+            continue;
+        }
+        let answer = entry["answer"]
+            .as_str()
+            .or_else(|| entry["id"].as_str())
+            .filter(|id| tag_like(id))
+            .map(str::to_owned);
+        kept.push(Followup {
+            answer,
+            label: label.to_owned(),
+        });
+        if kept.len() == MAX_FOLLOWUPS {
+            break;
+        }
+    }
+    kept
+}
+
+/// A bank id, `id@version`, route, or tier word: short, lowercase ASCII.
+fn tag_like(text: &str) -> bool {
+    (1..=96).contains(&text.len())
+        && text
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b"._@-:".contains(&b))
+}
+
+/// What the router said about one reply: kept with it, shown subtly, and
+/// sent only when the person shares the chat or marks the answer wrong.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct Meta {
+    /// What the worker decided to show first (`canned`, `opener`,
+    /// `model`, or a later tier).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tier: Option<String>,
+    /// The prepared answer that is the text, as `id@version`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub answer: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub route: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bank: Option<String>,
+    /// The judgment feedback as it arrived, bounded.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub judgment: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub offers: Vec<Offer>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub followups: Vec<Followup>,
+}
+
+impl Meta {
+    /// The reply is a prepared answer from the bank, not model text.
+    pub(crate) fn canned(&self) -> bool {
+        self.tier.as_deref() == Some("canned") && self.answer.is_some()
+    }
+
+    /// Nothing to keep.
+    pub(crate) fn is_empty(&self) -> bool {
+        *self == Meta::default()
+    }
+
+    /// Takes a `judgment` feedback payload.
+    pub(crate) fn judged(&mut self, payload: &Value) {
+        let text = payload.to_string();
+        if text.len() <= MAX_JUDGMENT_BYTES {
+            self.judgment = Some(text);
+        }
+        self.take_words(payload);
+        self.take_followups(payload);
+    }
+
+    /// Takes an `offer` feedback payload.
+    pub(crate) fn offered(&mut self, payload: &Value) {
+        if let Some(offer) = Offer::parse(payload)
+            && self.offers.len() < MAX_OFFERS
+            && !self.offers.contains(&offer)
+        {
+            self.offers.push(offer);
+        }
+    }
+
+    /// Takes a result's router fields; they outrank the judgment's.
+    pub(crate) fn resulted(&mut self, payload: &Value) {
+        // A result whose model is the bank is a prepared answer, even from
+        // a worker that names no tier.
+        if payload["model"]
+            .as_str()
+            .is_some_and(|model| model.starts_with("bank:"))
+        {
+            self.tier = Some("canned".into());
+        }
+        self.take_words(payload);
+        self.take_followups(payload);
+    }
+
+    fn take_words(&mut self, payload: &Value) {
+        let word = |field: &str| {
+            payload[field]
+                .as_str()
+                .filter(|w| tag_like(w))
+                .map(str::to_owned)
+        };
+        for (slot, field) in [
+            (&mut self.tier, "tier"),
+            (&mut self.answer, "answer"),
+            (&mut self.route, "route"),
+            (&mut self.bank, "bank"),
+        ] {
+            if let Some(value) = word(field) {
+                *slot = Some(value);
+            }
+        }
+        // A judgment's `answer` is the argmax even when the reply is not
+        // that answer; only a canned tier keeps it as the text's source.
+        if self.tier.as_deref() != Some("canned") {
+            self.answer = None;
+        }
+    }
+
+    fn take_followups(&mut self, payload: &Value) {
+        let read = followups(&payload["followups"]);
+        if !read.is_empty() {
+            self.followups = read;
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_context_names_no_host_and_bounds_the_build() {
+        let context = Context {
+            computer_ready: true,
+            app_build: Some("1.0.0 (19)".into()),
+        };
+        assert_eq!(
+            context.json(),
+            json!({"surface": "phone", "computer_ready": true, "app_build": "1.0.0 (19)"})
+        );
+        let odd = Context {
+            computer_ready: false,
+            app_build: Some("Studio Mac".into()),
+        };
+        assert_eq!(
+            odd.json(),
+            json!({"surface": "phone", "computer_ready": false})
+        );
+    }
+
+    /// Offers are read against the phone's own tables: a screen it does
+    /// not know, a command that is not read-only, or an effect other than
+    /// `read_only` is set aside, and the worker's label is ignored.
+    #[test]
+    fn offers_pass_only_the_phones_own_tables() {
+        let read = |value: Value| Offer::parse(&value);
+        assert_eq!(
+            read(json!({"offer": "run_coder", "target": "connected_computer", "label": "x"})),
+            Some(Offer::RunCoder)
+        );
+        assert_eq!(
+            read(
+                json!({"offer": "open_screen", "screen": "account.computers",
+                "label": "Delete everything"})
+            ),
+            Some(Offer::OpenScreen {
+                screen: Screen::Computers
+            })
+        );
+        assert_eq!(
+            read(json!({"offer": "open_screen", "screen": "wallet"})),
+            Some(Offer::OpenScreen {
+                screen: Screen::Wallet
+            })
+        );
+        // `crates/coder/src/router.rs` names exactly these screens.
+        for word in [
+            "account.computers",
+            "account.keys",
+            "account.playtest",
+            "account.report_problem",
+            "wallet",
+        ] {
+            assert!(Screen::parse(word).is_some(), "{word}");
+        }
+        assert_eq!(
+            read(json!({"offer": "open_screen", "screen": "settings.danger"})),
+            None
+        );
+        assert_eq!(
+            read(json!({"offer": "cli", "argv": ["computer", "list"],
+                "effect": "read_only", "runs_on": "this_device", "confirm": true})),
+            Some(Offer::Cli {
+                argv: vec!["computer".into(), "list".into()],
+                runs_on: RunsOn::ThisDevice
+            })
+        );
+        // The worker calls it read-only; the phone's table does not.
+        for argv in [
+            json!(["wallet", "pay", "lnbc1"]),
+            json!(["computer", "approve", "host"]),
+            json!(["wallet", "export"]),
+            json!(["computer"]),
+            json!(["computer", "list\u{7}"]),
+        ] {
+            assert_eq!(
+                read(json!({"offer": "cli", "argv": argv, "effect": "read_only",
+                    "runs_on": "this_device"})),
+                None,
+                "{argv}"
+            );
+        }
+        assert_eq!(
+            read(
+                json!({"offer": "cli", "argv": ["computer", "list"], "effect": "publishes",
+                "runs_on": "this_device"})
+            ),
+            None
+        );
+        assert_eq!(read(json!({"offer": "pay", "amount": 5000})), None);
+        assert_eq!(
+            Offer::command_line(&["kb".into(), "search".into(), "docker cp".into()]),
+            "openagents kb search 'docker cp'"
+        );
+    }
+
+    #[test]
+    fn a_canned_result_keeps_its_answer_and_followups() {
+        let mut meta = Meta::default();
+        meta.judged(&json!({"v": 2, "type": "judgment", "verdict": "respond",
+            "tier": "model", "answer": "meta.model@1", "answer_p": 0.4}));
+        // The argmax answer is not the text of a model reply.
+        assert_eq!(meta.answer, None);
+        assert!(!meta.canned());
+        meta.resulted(
+            &json!({"v": 2, "type": "result", "text": "Our chat runs on …",
+            "model": "bank:chat-answers-v1", "tier": "canned", "answer": "meta.model@1",
+            "route": "meta", "bank": "chat-answers-v1@9f2c",
+            "followups": [{"id": "meta.privacy", "label": "Is this chat private?"},
+                {"label": ""}, {"label": "x".repeat(81)}, "meta.pricing",
+                {"id": "meta.pricing", "label": "What does it cost?"},
+                {"label": "Is this chat private?"}]}),
+        );
+        assert!(meta.canned());
+        assert_eq!(meta.answer.as_deref(), Some("meta.model@1"));
+        assert_eq!(meta.route.as_deref(), Some("meta"));
+        let labels: Vec<&str> = meta.followups.iter().map(|f| f.label.as_str()).collect();
+        assert_eq!(labels, ["Is this chat private?", "What does it cost?"]);
+        assert!(meta.judgment.as_deref().unwrap().contains("\"judgment\""));
+        // Today's worker names a bank answer by its model alone.
+        let mut older = Meta::default();
+        older.resulted(
+            &json!({"type": "result", "text": "Hi!", "model": "bank:chat-answers-v1",
+            "answer": "smalltalk.hello@1"}),
+        );
+        assert!(older.canned());
+    }
+}

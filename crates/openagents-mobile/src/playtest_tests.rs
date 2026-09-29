@@ -55,6 +55,8 @@ fn form(tab: Tab, route: Route) -> Form {
         include_task: false,
         include_log: false,
         log_digest: String::new(),
+        include_chat: false,
+        chat_digest: String::new(),
         screenshot: None,
     }
 }
@@ -80,7 +82,7 @@ fn a_report_is_sealed_to_the_triage_key_and_listed_with_its_code() {
     let (mut playtest, _dir) = setup(relay.clone(), Some(&key));
     let mut filed = form(Tab::Verse, Route::Gym);
     filed.screenshot = Some(jpeg());
-    let packet = playtest.send(filed, &world(), None, Platform::Ios);
+    let packet = playtest.send(filed, &world(), None, None, Platform::Ios);
     assert!(packet.error.is_none(), "{:?}", packet.error);
     playtest.wait();
     let sent = relay.sent.lock().unwrap().clone();
@@ -109,7 +111,13 @@ fn without_the_triage_key_a_report_waits_on_the_phone_and_sends_later() {
     {
         let store = Cache::open(dir.path(), &world()).unwrap();
         let mut playtest = Playtest::new(Some(store), relay.clone(), None, true);
-        let packet = playtest.send(form(Tab::Coder, Route::Chat), &world(), None, Platform::Ios);
+        let packet = playtest.send(
+            form(Tab::Coder, Route::Chat),
+            &world(),
+            None,
+            None,
+            Platform::Ios,
+        );
         assert!(!packet.triage_ready);
         assert_eq!(packet.sent.unwrap().status, Status::Waiting);
         playtest.wait();
@@ -136,7 +144,13 @@ fn a_failed_send_is_kept_and_sent_again_from_my_reports() {
     {
         let store = Cache::open(dir.path(), &world()).unwrap();
         let mut playtest = Playtest::new(Some(store), refusing, Some(&key), true);
-        let _ = playtest.send(form(Tab::Verse, Route::Home), &world(), None, Platform::Ios);
+        let _ = playtest.send(
+            form(Tab::Verse, Route::Home),
+            &world(),
+            None,
+            None,
+            Platform::Ios,
+        );
         playtest.wait();
         let row = &playtest.reports(None).reports[0];
         assert_eq!(row.status, Status::Failed);
@@ -161,10 +175,10 @@ fn no_screenshot_is_taken_from_the_wallet_or_a_key_screen() {
         (Tab::Account, Route::Identity),
         (Tab::Account, Route::Trainer),
     ] {
-        assert!(!playtest.draft(tab, route, None).screenshot_allowed);
+        assert!(!playtest.draft(tab, route, None, None).screenshot_allowed);
         let mut filed = form(tab, route);
         filed.screenshot = Some(jpeg());
-        let packet = playtest.send(filed, &world(), None, Platform::Ios);
+        let packet = playtest.send(filed, &world(), None, None, Platform::Ios);
         assert!(
             packet.error.unwrap().contains("never sent from the Wallet"),
             "{tab:?} {route:?}"
@@ -174,7 +188,7 @@ fn no_screenshot_is_taken_from_the_wallet_or_a_key_screen() {
     assert!(relay.sent.lock().unwrap().is_empty());
     assert!(
         playtest
-            .draft(Tab::Verse, Route::Gym, None)
+            .draft(Tab::Verse, Route::Gym, None, None)
             .screenshot_allowed
     );
 }
@@ -185,14 +199,14 @@ fn the_task_id_is_attached_only_from_coder_when_ticked() {
     let (mut playtest, _dir) = setup(playtest_relay.clone(), Some(&key));
     assert_eq!(
         playtest
-            .draft(Tab::Coder, Route::Chat, Some("task-1".into()))
+            .draft(Tab::Coder, Route::Chat, Some("task-1".into()), None)
             .task
             .as_deref(),
         Some("task-1")
     );
     assert!(
         playtest
-            .draft(Tab::Verse, Route::Home, Some("task-1".into()))
+            .draft(Tab::Verse, Route::Home, Some("task-1".into()), None)
             .task
             .is_none()
     );
@@ -201,11 +215,12 @@ fn the_task_id_is_attached_only_from_coder_when_ticked() {
         filed.clone(),
         &world(),
         Some("task-1".into()),
+        None,
         Platform::Ios,
     );
     filed.happened = "Second.".into();
     filed.include_task = true;
-    let _ = playtest.send(filed, &world(), Some("task-1".into()), Platform::Ios);
+    let _ = playtest.send(filed, &world(), Some("task-1".into()), None, Platform::Ios);
     playtest.wait();
     let triage = SecretKey::from_byte_array(TRIAGE).unwrap();
     let tasks: Vec<Option<String>> = playtest_relay
@@ -229,7 +244,7 @@ fn playtest_logging_is_on_by_default_and_the_log_leaves_only_as_previewed() {
     playtest.observe(true, true, false);
     playtest.observe(true, true, false);
     playtest.lifecycle(false);
-    let draft = playtest.draft(Tab::Verse, Route::Gym, None);
+    let draft = playtest.draft(Tab::Verse, Route::Gym, None, None);
     assert!(draft.logging);
     let codes: Vec<&str> = draft
         .log_lines
@@ -251,13 +266,13 @@ fn playtest_logging_is_on_by_default_and_the_log_leaves_only_as_previewed() {
     let mut filed = form(Tab::Verse, Route::Gym);
     filed.include_log = true;
     filed.log_digest = draft.log_digest.clone();
-    let refused = playtest.send(filed.clone(), &world(), None, Platform::Ios);
+    let refused = playtest.send(filed.clone(), &world(), None, None, Platform::Ios);
     assert!(refused.error.unwrap().contains("changed since you looked"));
     // The previewed log goes, exactly as shown.
-    let draft = playtest.draft(Tab::Verse, Route::Results, None);
+    let draft = playtest.draft(Tab::Verse, Route::Results, None, None);
     filed.log_digest = draft.log_digest.clone();
     filed.route = Route::Results;
-    let packet = playtest.send(filed, &world(), None, Platform::Ios);
+    let packet = playtest.send(filed, &world(), None, None, Platform::Ios);
     assert!(packet.error.is_none());
     assert!(packet.reports[0].log);
     playtest.wait();
@@ -316,12 +331,12 @@ fn a_build_with_playtest_logging_off_records_nothing_and_deletes_the_log() {
     assert!(!packet.log.on);
     assert_eq!(packet.log.note, "Playtest logging is off in this build.");
     assert_eq!(packet.log.events, 0);
-    let draft = playtest.draft(Tab::Coder, Route::Chat, None);
+    let draft = playtest.draft(Tab::Coder, Route::Chat, None, None);
     assert!(!draft.logging && draft.log_lines.is_empty());
     let mut filed = form(Tab::Coder, Route::Chat);
     filed.include_log = true;
     filed.log_digest = draft.log_digest;
-    let refused = playtest.send(filed, &world(), None, Platform::Ios);
+    let refused = playtest.send(filed, &world(), None, None, Platform::Ios);
     assert!(refused.error.unwrap().contains("off in this build"));
     // The earlier log is gone from the store too.
     drop(playtest);
@@ -354,7 +369,13 @@ fn reports_and_the_log_survive_a_relaunch_and_sent_bodies_are_erased() {
         let store = Cache::open(dir.path(), &world()).unwrap();
         let mut playtest = Playtest::new(Some(store), relay.clone(), Some(&key), true);
         playtest.screen(Tab::Account, Route::Home);
-        let packet = playtest.send(form(Tab::Verse, Route::Home), &world(), None, Platform::Ios);
+        let packet = playtest.send(
+            form(Tab::Verse, Route::Home),
+            &world(),
+            None,
+            None,
+            Platform::Ios,
+        );
         playtest.wait();
         digest = lock(&playtest.inner).saved[0].digest.clone();
         assert!(packet.sent.is_some());
@@ -387,6 +408,7 @@ fn a_sent_report_publishes_its_content_free_record_signed_by_the_world_key() {
         let _ = playtest.send(
             form(Tab::Verse, Route::Gym),
             &world(),
+            None,
             None,
             Platform::Android,
         );
@@ -427,7 +449,13 @@ fn a_sent_report_publishes_its_content_free_record_signed_by_the_world_key() {
 fn without_the_triage_key_no_public_record_is_published() {
     let relay = Arc::new(Fake::default());
     let (mut playtest, _dir) = setup(relay.clone(), None);
-    let _ = playtest.send(form(Tab::Verse, Route::Gym), &world(), None, Platform::Ios);
+    let _ = playtest.send(
+        form(Tab::Verse, Route::Gym),
+        &world(),
+        None,
+        None,
+        Platform::Ios,
+    );
     let _ = playtest.reports(Some(&world()));
     playtest.wait();
     assert!(relay.sent.lock().unwrap().is_empty());
@@ -445,7 +473,7 @@ fn an_android_report_names_android_and_seals_like_ios() {
     filed.device = "Google sdk_gphone64_arm64".into();
     filed.os_version = "15".into();
     filed.screenshot = Some(jpeg());
-    let packet = playtest.send(filed, &world(), None, platform("android"));
+    let packet = playtest.send(filed, &world(), None, None, platform("android"));
     assert!(packet.error.is_none(), "{:?}", packet.error);
     playtest.wait();
     let sent = relay.sent.lock().unwrap().clone();
@@ -461,11 +489,131 @@ fn an_android_report_names_android_and_seals_like_ios() {
     let mut wallet = form(Tab::Wallet, Route::Home);
     wallet.happened = "A different problem.".into();
     wallet.screenshot = Some(jpeg());
-    let refused = playtest.send(wallet, &world(), None, platform("android"));
+    let refused = playtest.send(wallet, &world(), None, None, platform("android"));
     assert!(
         refused
             .error
             .unwrap()
             .contains("never sent from the Wallet")
     );
+}
+
+fn chat(reason: ShareReason) -> SharedChat {
+    use playtest::report::{ChatRole, ChatTurn};
+    SharedChat {
+        reason,
+        turns: vec![
+            ChatTurn {
+                role: ChatRole::User,
+                text: "What model are you?".into(),
+                answer: None,
+                tier: None,
+                judgment: None,
+            },
+            ChatTurn {
+                role: ChatRole::Assistant,
+                text: "Our chat runs on Gemini 3.8 Flash.".into(),
+                answer: Some("meta.model@1".into()),
+                tier: Some("canned".into()),
+                judgment: Some(r#"{"type":"judgment","answer_p":0.93}"#.into()),
+            },
+        ],
+    }
+}
+
+/// **Share this chat** is off by default and attaches exactly the chat the
+/// tester previewed, only from the Chat tab; the public record never holds
+/// it.
+#[test]
+fn a_shared_chat_leaves_only_as_previewed() {
+    let relay = Arc::new(Fake::default());
+    let key = triage_hex();
+    let (mut playtest, _dir) = setup(relay.clone(), Some(&key));
+    let shared = chat(ShareReason::Shared);
+    let draft = playtest.draft(Tab::Coder, Route::Chat, None, Some(&shared));
+    assert_eq!(draft.chat_lines, shared.lines());
+    assert!(!draft.chat_digest.is_empty());
+    // Not on another tab.
+    let elsewhere = playtest.draft(Tab::Verse, Route::Home, None, Some(&shared));
+    assert!(elsewhere.chat_lines.is_empty() && elsewhere.chat_digest.is_empty());
+
+    // Off by default: the chat stays on the phone.
+    let untouched = form(Tab::Coder, Route::Chat);
+    let _ = playtest.send(
+        untouched,
+        &world(),
+        None,
+        Some(shared.clone()),
+        Platform::Ios,
+    );
+    // A chat that changed since the preview is refused.
+    let mut filed = form(Tab::Coder, Route::Chat);
+    filed.happened = "Shared.".into();
+    filed.include_chat = true;
+    filed.chat_digest = draft.chat_digest.clone();
+    let mut changed = shared.clone();
+    changed.turns[0].text.push('!');
+    let refused = playtest.send(filed.clone(), &world(), None, Some(changed), Platform::Ios);
+    assert!(refused.error.unwrap().contains("chat changed"));
+    let packet = playtest.send(filed, &world(), None, Some(shared.clone()), Platform::Ios);
+    assert!(packet.error.is_none(), "{:?}", packet.error);
+    playtest.wait();
+    let triage = SecretKey::from_byte_array(TRIAGE).unwrap();
+    let sent = relay.sent.lock().unwrap().clone();
+    let chats: Vec<Option<SharedChat>> = sent
+        .iter()
+        .filter(|event| event.kind == 1_059)
+        .map(|wrap| report::open(wrap, &triage).unwrap().report.chat)
+        .collect();
+    assert_eq!(chats, [None, Some(shared)]);
+    for event in sent
+        .iter()
+        .filter(|e| e.kind == nostr::kinds::XP_PLAYTEST_REPORT)
+    {
+        assert!(!event.content.contains("Gemini") && !event.content.contains("meta.model"));
+    }
+}
+
+/// **Wrong answer** files a bug from the Chat tab that carries the
+/// question, the prepared answer, and the judgment, and nothing else of the
+/// chat.
+#[test]
+fn a_wrong_answer_report_carries_the_exchange() {
+    let relay = Arc::new(Fake::default());
+    let key = triage_hex();
+    let (mut playtest, _dir) = setup(relay.clone(), Some(&key));
+    let device = Device {
+        app_version: "1.0.0".into(),
+        build: "19".into(),
+        device: "iPhone17,1".into(),
+        os_version: "26.0".into(),
+    };
+    assert!(
+        playtest
+            .wrong_answer(
+                chat(ShareReason::Shared),
+                device.clone(),
+                &world(),
+                Platform::Ios
+            )
+            .is_err()
+    );
+    let row = playtest
+        .wrong_answer(
+            chat(ShareReason::WrongAnswer),
+            device,
+            &world(),
+            Platform::Ios,
+        )
+        .expect("filed");
+    assert!(row.code.is_some());
+    assert_eq!(row.place, "coder/chat");
+    playtest.wait();
+    let triage = SecretKey::from_byte_array(TRIAGE).unwrap();
+    let opened = report::open(&relay.sent.lock().unwrap()[0], &triage).unwrap();
+    assert_eq!(opened.report.kind, Kind::Bug);
+    assert_eq!(opened.report.happened, WRONG_ANSWER);
+    assert!(!opened.report.quote);
+    assert!(opened.report.session.is_none() && opened.report.screenshot.is_none());
+    assert_eq!(opened.report.chat, Some(chat(ShareReason::WrongAnswer)));
 }

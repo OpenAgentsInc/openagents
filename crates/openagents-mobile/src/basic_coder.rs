@@ -17,6 +17,7 @@
 //! it whole.
 
 use crate::basic_link::Link;
+use crate::router::{Context, Meta, ROUTER};
 use nostr::domain::{Event, RelaySigner, Tag};
 use nostr::kinds::{CJ_CONVERSATION_FEEDBACK, CJ_CONVERSATION_REQUEST, CJ_CONVERSATION_RESULT};
 use nostr::nip44;
@@ -68,6 +69,29 @@ pub(crate) enum Role {
 pub(crate) struct Turn {
     pub role: Role,
     pub text: String,
+    /// What the router said about a reply: its tier, prepared answer,
+    /// offers, and follow-ups. Kept on the phone; never sent back to the
+    /// worker.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub meta: Option<Meta>,
+}
+
+impl Turn {
+    pub(crate) fn user(text: impl Into<String>) -> Self {
+        Self {
+            role: Role::User,
+            text: text.into(),
+            meta: None,
+        }
+    }
+
+    pub(crate) fn assistant(text: impl Into<String>, meta: Option<Meta>) -> Self {
+        Self {
+            role: Role::Assistant,
+            text: text.into(),
+            meta,
+        }
+    }
 }
 
 /// Where a turn belongs, as the worker's typed judgment (NIP-CJ
@@ -152,6 +176,9 @@ pub(crate) struct Reply {
     pub lane: Option<Lane>,
     /// A rank job's ordering: candidate IDs, most likely first.
     pub ranked: Vec<String>,
+    /// The router's typed observations: the judgment, offers, the result's
+    /// tier and prepared answer, and follow-ups.
+    pub meta: Meta,
     /// The next partial's sequence number.
     next: u64,
     /// A gap or repeat stopped the preview; wait for the result.
@@ -174,6 +201,7 @@ pub(crate) trait Door: Send + Sync {
     fn ask(
         &self,
         turns: Vec<Turn>,
+        context: Context,
         reply: Arc<Mutex<Reply>>,
     ) -> Pin<Box<dyn Future<Output = ()> + Send>>;
 
@@ -200,8 +228,10 @@ pub(crate) trait Door: Send + Sync {
 /// for the worker's first response (`opener`): a typed judgment, and, when
 /// the judge is sure, a prepared answer in the OpenAgents voice as the whole
 /// reply or a short opener as the reply's first partial while the model
-/// starts (`coder-first-response-v2` in `crates/coder/src/first.rs`).
-pub(crate) fn payload(turns: &[Turn]) -> Value {
+/// starts (`coder-first-response-v2` in `crates/coder/src/first.rs`). It also
+/// asks for the chat router (`router`), with the phone's bounded `context`,
+/// so the worker can offer the next step (docs/coder/design/2026-09-28-chat-router.md).
+pub(crate) fn payload(turns: &[Turn], context: &Context) -> Value {
     let mut kept: Vec<&Turn> = vec![];
     let mut bytes = 0;
     for turn in turns.iter().rev() {
@@ -236,6 +266,8 @@ pub(crate) fn payload(turns: &[Turn]) -> Value {
         "instructions": INSTRUCTIONS,
         "client": "openagents-mobile",
         "opener": true,
+        "router": ROUTER,
+        "context": context.json(),
     })
 }
 
@@ -334,6 +366,7 @@ impl Reading {
                 };
                 reply.text = truncate(text, MAX_REPLY_BYTES).to_owned();
                 reply.model = payload["model"].as_str().map(str::to_owned);
+                reply.meta.resulted(&payload);
                 reply.ranked = payload["ranked"]
                     .as_array()
                     .into_iter()
@@ -368,7 +401,11 @@ impl Reading {
                     Some("chat") => Some(Lane::Chat),
                     _ => None,
                 };
+                reply.meta.judged(&payload);
             }
+            // An offer is an observation, never permission: the phone reads
+            // it against its own tables and shows a control.
+            (CJ_CONVERSATION_FEEDBACK, Some("offer")) => reply.meta.offered(&payload),
             (CJ_CONVERSATION_FEEDBACK, Some("status"))
                 if payload["status"].as_str() == Some("error") =>
             {
@@ -523,9 +560,10 @@ impl Door for Relay {
     fn ask(
         &self,
         turns: Vec<Turn>,
+        context: Context,
         reply: Arc<Mutex<Reply>>,
     ) -> Pin<Box<dyn Future<Output = ()> + Send>> {
-        self.job(payload(&turns), reply)
+        self.job(payload(&turns, &context), reply)
     }
 
     fn rank(
@@ -715,20 +753,11 @@ mod tests {
     fn the_payload_keeps_the_newest_turns_within_its_bound() {
         let long = "x".repeat(MAX_TRANSCRIPT_BYTES / 2 + 10);
         let turns = vec![
-            Turn {
-                role: Role::User,
-                text: long.clone(),
-            },
-            Turn {
-                role: Role::Assistant,
-                text: long.clone(),
-            },
-            Turn {
-                role: Role::User,
-                text: "last".into(),
-            },
+            Turn::user(long.clone()),
+            Turn::assistant(long.clone(), None),
+            Turn::user("last"),
         ];
-        let body = payload(&turns);
+        let body = payload(&turns, &Context::default());
         assert_eq!(body["v"], 2);
         assert_eq!(body["task"], "last");
         assert_eq!(body["instructions"], INSTRUCTIONS);
@@ -744,10 +773,7 @@ mod tests {
     /// model, no grant. The worker's lane and limits are its own.
     #[test]
     fn a_basic_job_carries_no_credential() {
-        let body = payload(&[Turn {
-            role: Role::User,
-            text: "hi".into(),
-        }]);
+        let body = payload(&[Turn::user("hi")], &Context::default());
         let mut fields: Vec<&str> = body
             .as_object()
             .unwrap()
@@ -759,13 +785,20 @@ mod tests {
             fields,
             [
                 "client",
+                "context",
                 "instructions",
                 "opener",
                 "requires",
+                "router",
                 "task",
                 "transcript",
                 "v"
             ]
+        );
+        // The context names what the phone can do next, never a computer.
+        assert_eq!(
+            body["context"],
+            json!({"surface": "phone", "computer_ready": false})
         );
     }
 
@@ -773,12 +806,10 @@ mod tests {
     /// and a prepared answer or an opener when the judge is sure of one.
     #[test]
     fn a_basic_job_asks_for_the_first_response() {
-        let body = payload(&[Turn {
-            role: Role::User,
-            text: "hi".into(),
-        }]);
+        let body = payload(&[Turn::user("hi")], &Context::default());
         assert_eq!(body["opener"], true);
         assert!(body.get("judge").is_none());
+        assert_eq!(body["router"], "chat-router-v1");
     }
 
     #[test]
@@ -809,6 +840,49 @@ mod tests {
             "line": "", "lane": "unknown"});
         reading.take(&event(CJ_CONVERSATION_FEEDBACK, unknown), &mut other);
         assert_eq!(other.lane, None);
+    }
+
+    /// The router's offers and the result's tier arrive as typed fields
+    /// of the worker's own answers; an offer outside the phone's tables is
+    /// set aside, and one from anyone else is never read.
+    #[test]
+    fn offers_ride_as_feedback_and_the_result_names_its_answer() {
+        let (me, me_hex, worker, worker_public) = keys();
+        let request = "ab".repeat(32);
+        let reading = Reading::new(&me, &me_hex, &worker_public, &request);
+        let mut reply = Reply::default();
+        let event = |kind, body| answer(&worker, &me_hex, &request, kind, body);
+        for offer in [
+            json!({"v": 2, "type": "offer", "offer": "open_screen", "screen": "wallet",
+                "label": "Open Wallet"}),
+            json!({"v": 2, "type": "offer", "offer": "cli", "argv": ["wallet", "export"],
+                "effect": "read_only", "runs_on": "this_device"}),
+        ] {
+            reading.take(&event(CJ_CONVERSATION_FEEDBACK, offer), &mut reply);
+        }
+        let stranger = SecretKey::from_byte_array([0x23; 32]).unwrap();
+        reading.take(
+            &answer(
+                &stranger,
+                &me_hex,
+                &request,
+                CJ_CONVERSATION_FEEDBACK,
+                json!({"v": 2, "type": "offer", "offer": "run_coder"}),
+            ),
+            &mut reply,
+        );
+        assert_eq!(
+            reply.meta.offers,
+            [crate::router::Offer::OpenScreen {
+                screen: crate::router::Screen::Wallet
+            }]
+        );
+        let result = json!({"v": 2, "type": "result", "text": "Hi! We're OpenAgents.",
+            "model": "bank:chat-answers-v1", "tier": "canned",
+            "answer": "smalltalk.hello@1", "route": "smalltalk"});
+        reading.take(&event(CJ_CONVERSATION_RESULT, result), &mut reply);
+        assert!(reply.meta.canned());
+        assert_eq!(reply.meta.answer.as_deref(), Some("smalltalk.hello@1"));
     }
 
     #[test]
@@ -866,16 +940,16 @@ fn live_basic_coder_streams_a_reply() {
     let door = Relay::new(&relay, &worker, secret).unwrap();
     let reply = Arc::new(Mutex::new(Reply::default()));
     let started = std::time::Instant::now();
-    let asking = runtime.spawn(door.ask(
-        vec![Turn {
-            role: Role::User,
-            text:
+    let asking =
+        runtime.spawn(door.ask(
+            vec![Turn::user(
                 std::env::var("OPENAGENTS_TEST_CHAT_MESSAGE").unwrap_or_else(|_| {
                     "In three short sentences, what does a Nostr relay do?".into()
                 }),
-        }],
-        reply.clone(),
-    ));
+            )],
+            Context::default(),
+            reply.clone(),
+        ));
     let mut first = None;
     let mut lengths = vec![];
     while !lock(&reply).ended() {
@@ -897,12 +971,13 @@ fn live_basic_coder_streams_a_reply() {
         first = Some(started.elapsed());
     }
     eprintln!(
-        "first words {:?}, answered {:?}, {} states {:?}, model {:?}\n{}",
+        "first words {:?}, answered {:?}, {} states {:?}, model {:?}, router {:?}\n{}",
         first,
         started.elapsed(),
         lengths.len(),
         lengths,
         reply.model,
+        reply.meta,
         reply.text
     );
     assert!(reply.failure.is_none(), "{:?}", reply.failure);

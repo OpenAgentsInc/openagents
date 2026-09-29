@@ -101,6 +101,125 @@ pub enum Note {
     ScreenshotDropped,
     /// The oldest session events were left out to fit.
     SessionTrimmed,
+    /// The oldest messages of a shared chat were left out to fit.
+    ChatTrimmed,
+}
+
+/// Why a chat is in a report: evaluation data for the chat router
+/// (`docs/coder/design/2026-09-28-chat-router.md`), sent only by the
+/// tester's own choice.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ShareReason {
+    /// The tester ticked **Share this chat** on Report a problem, after
+    /// seeing the whole chat.
+    Shared,
+    /// The tester said a prepared answer was wrong: the question, that
+    /// answer, and how the worker chose it.
+    WrongAnswer,
+}
+
+/// Who wrote a shared chat message.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ChatRole {
+    User,
+    Assistant,
+}
+
+/// One message of a shared chat.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ChatTurn {
+    pub role: ChatRole,
+    pub text: String,
+    /// The prepared answer that is this message's text, as `id@version`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub answer: Option<String>,
+    /// What the worker decided to show first (`canned`, `opener`, `model`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tier: Option<String>,
+    /// The worker's typed judgment of the turn, as the NIP-CJ `judgment`
+    /// feedback carried it (JSON).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub judgment: Option<String>,
+}
+
+/// A chat the tester chose to send with a report.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SharedChat {
+    pub reason: ShareReason,
+    /// Oldest first.
+    pub turns: Vec<ChatTurn>,
+}
+
+/// Characters one shared chat message may have.
+pub const MAX_CHAT_TEXT_CHARS: usize = 4_000;
+/// Bytes one shared judgment may have.
+pub const MAX_JUDGMENT_BYTES: usize = 2_048;
+/// Messages one shared chat may have.
+pub const MAX_CHAT_TURNS: usize = 200;
+
+impl SharedChat {
+    /// The chat as the tester previews it, one line per message, exactly
+    /// what [`chat_digest`] commits to.
+    #[must_use]
+    pub fn lines(&self) -> Vec<String> {
+        self.turns
+            .iter()
+            .map(|turn| {
+                let who = match turn.role {
+                    ChatRole::User => "You",
+                    ChatRole::Assistant => "OpenAgents",
+                };
+                match &turn.answer {
+                    Some(answer) => format!("{who} (prepared answer {answer}): {}", turn.text),
+                    None => format!("{who}: {}", turn.text),
+                }
+            })
+            .collect()
+    }
+
+    /// Checks the bounds, and refuses a chat with a secret key in it.
+    ///
+    /// # Errors
+    ///
+    /// A sentence for the tester naming the first problem.
+    pub fn check(&self) -> Result<(), String> {
+        if self.turns.is_empty() {
+            return Err("There's no chat to share.".into());
+        }
+        if self.turns.len() > MAX_CHAT_TURNS {
+            return Err("The chat is too long to share.".into());
+        }
+        for turn in &self.turns {
+            if turn.text.chars().count() > MAX_CHAT_TEXT_CHARS
+                || turn.answer.as_ref().is_some_and(|a| a.len() > 96)
+                || turn.tier.as_ref().is_some_and(|t| t.len() > 16)
+                || turn
+                    .judgment
+                    .as_ref()
+                    .is_some_and(|j| j.len() > MAX_JUDGMENT_BYTES)
+            {
+                return Err("A message in the chat is too long to share.".into());
+            }
+            if turn.text.contains("nsec1") {
+                return Err(
+                    "This chat has a secret key in it, so it can't be shared. Describe the problem in words."
+                        .into(),
+                );
+            }
+        }
+        Ok(())
+    }
+}
+
+/// The lowercase hex SHA-256 of a shared chat's JSON: the preview's
+/// identity, so a report attaches exactly the chat the tester saw.
+#[must_use]
+pub fn chat_digest(chat: &SharedChat) -> String {
+    digest(&serde_json::to_string(chat).unwrap_or_default())
 }
 
 /// One report.
@@ -130,6 +249,9 @@ pub struct Report {
     pub screenshot: Option<Screenshot>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub notes: Vec<Note>,
+    /// A chat the tester chose to send, from the Chat tab only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chat: Option<SharedChat>,
 }
 
 fn version_like(value: &str) -> bool {
@@ -204,6 +326,12 @@ impl Report {
         {
             return Err("The session log is too long.".into());
         }
+        if let Some(chat) = &self.chat {
+            if c.tab != Tab::Coder {
+                return Err("A chat is shared only from the Chat tab.".into());
+            }
+            chat.check()?;
+        }
         if let Some(shot) = &self.screenshot {
             if c.route.sensitive(c.tab) {
                 return Err(
@@ -235,7 +363,8 @@ impl Report {
     }
 
     /// Makes the report fit [`MAX_CONTENT_BYTES`]: first without the
-    /// screenshot, then without the oldest session events, noting each.
+    /// screenshot, then without the oldest session events, then without a
+    /// shared chat's oldest messages (keeping its newest), noting each.
     /// The written fields are bounded, so the result always fits.
     #[must_use]
     pub fn fit(mut self) -> Self {
@@ -255,6 +384,30 @@ impl Report {
         }
         if trimmed {
             self.notes.push(Note::SessionTrimmed);
+        }
+        let mut cut = false;
+        while self.content().len() > MAX_CONTENT_BYTES {
+            match self.chat.as_mut() {
+                Some(chat) if chat.turns.len() > 1 => {
+                    chat.turns.remove(0);
+                    cut = true;
+                }
+                Some(chat) => {
+                    // One message alone: keep its start.
+                    let turn = &mut chat.turns[0];
+                    let keep = turn.text.chars().count() / 2;
+                    if keep == 0 {
+                        self.chat = None;
+                    } else {
+                        turn.text = turn.text.chars().take(keep).collect();
+                    }
+                    cut = true;
+                }
+                None => break,
+            }
+        }
+        if cut {
+            self.notes.push(Note::ChatTrimmed);
         }
         self
     }
