@@ -1958,10 +1958,12 @@ mod exit_vault_tests {
         vault.save(&saved).expect("saved");
         assert!(std::fs::read_dir(dir.path()).unwrap().count() > 3);
         assert_eq!(vault.load(), Some(saved));
-        // Nothing on disk is the plaintext.
+        // Nothing on disk is the plaintext. The ciphertext is base64, which
+        // spells a bare `leaf` by chance in a few percent of runs; a quote
+        // is outside its alphabet, so only plaintext can hold `"leaf"`.
         for entry in std::fs::read_dir(dir.path()).unwrap() {
             let bytes = std::fs::read(entry.unwrap().path()).unwrap();
-            assert!(!String::from_utf8_lossy(&bytes).contains("leaf"));
+            assert!(!String::from_utf8_lossy(&bytes).contains("\"leaf\""));
         }
         vault.clear();
         assert_eq!(vault.load(), None);
