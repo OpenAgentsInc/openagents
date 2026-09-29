@@ -1502,7 +1502,7 @@ impl CoderTab {
                             .map_or("a computer", |host| host.label.as_str());
                         format!("Coder · running on {label}")
                     }
-                    None => "Coder".to_owned(),
+                    None => "OpenAgents".to_owned(),
                 };
                 Recent {
                     last: Some(summary.updated),
@@ -1559,7 +1559,7 @@ impl CoderTab {
         let mut children = vec![header(
             "coder-header",
             vec![
-                icon_button("coder-back", "Coder", Glyph::Back, false, Intent::Back),
+                icon_button("coder-back", "OpenAgents", Glyph::Back, false, Intent::Back),
                 heading("coder-title", "Chats"),
                 new,
             ],
@@ -1637,7 +1637,7 @@ impl CoderTab {
                     true,
                     Intent::Menu,
                 ),
-                heading("coder-title", "Coder"),
+                heading("coder-title", "OpenAgents"),
                 selector,
             ],
         )];
@@ -1692,8 +1692,8 @@ impl CoderTab {
                 | Availability::Connecting(host)
                 | Availability::Offline(host),
                 true,
-            ) => format!("Message Coder on {}", host.label),
-            _ => "Message Coder".to_owned(),
+            ) => format!("Message OpenAgents on {}", host.label),
+            _ => "Message OpenAgents".to_owned(),
         };
         // The tab exists to write a message: it opens ready to type.
         children.push(self.composer_with(placeholder, ready, false, &[], None, true));
@@ -1866,7 +1866,7 @@ impl CoderTab {
         let tail = self.basic.tail(id);
         let limit = self.talk_turns;
         let turns = self.basic.turns(id);
-        let mut children = vec![chat_header(status("coder-chat-place", "Coder"))];
+        let mut children = vec![chat_header(status("coder-chat-place", "OpenAgents"))];
         if let Some(notice) = &self.notice {
             children.push(status("coder-notice", notice));
         }
@@ -1954,17 +1954,21 @@ impl CoderTab {
             Availability::Connecting(_) | Availability::Offline(_) => {
                 agents.extend(Self::unavailable(&availability));
             }
-            Availability::NotConfigured => {
-                let label = "Connect a computer to run Coder";
-                agents.push(if judged {
-                    pill("coder-connect", label, Glyph::Add, Intent::ConnectComputer)
-                } else {
-                    button("coder-connect", label, Intent::ConnectComputer)
-                });
+            // No computer: chat stays the whole screen. The way to connect
+            // one shows only when the worker's judgment says this message
+            // needs a computer.
+            Availability::NotConfigured if judged => {
+                agents.push(pill(
+                    "coder-connect",
+                    "Connect a computer to run Coder",
+                    Glyph::Add,
+                    Intent::ConnectComputer,
+                ));
             }
+            Availability::NotConfigured => {}
         }
         children.push(row("coder-agents", agents));
-        children.push(self.composer_with("Message Coder".to_owned(), true, busy, &[], None, false));
+        children.push(self.composer_with("Message OpenAgents".to_owned(), true, busy, &[], None, false));
         page(children)
     }
 
@@ -2117,7 +2121,7 @@ impl CoderTab {
         });
         let placeholder = match (editing.is_some(), mode) {
             (true, _) => "Edit your queued message".to_owned(),
-            (false, Mode::Send) => format!("Message Coder on {label}"),
+            (false, Mode::Send) => format!("Message OpenAgents on {label}"),
             (false, Mode::Queue) => "Queue a message for Coder's next turn".to_owned(),
             (false, Mode::Answer) => "Answer Coder".to_owned(),
         };

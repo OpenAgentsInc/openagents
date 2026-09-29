@@ -152,7 +152,7 @@ fn an_open_chat_has_the_menu_and_a_new_chat() {
     assert!(keys(&list).iter().any(|key| key.starts_with("task-")));
     assert_eq!(kinds(&list, "composer"), 0);
     let back = node(&list, "coder-back").expect("close");
-    assert_eq!(back["element"]["props"]["label"], "Coder");
+    assert_eq!(back["element"]["props"]["label"], "OpenAgents");
     fixture.tap("coder-back");
     assert!(fixture.coder.open_task().is_some());
     // A new chat closes it, ready to type.
@@ -352,9 +352,9 @@ fn the_tab_opens_on_a_new_chat_ready_to_type() {
     assert_eq!(composer["enabled"], true);
     // The screen exists to write: it opens with the cursor in the field.
     assert_eq!(composer["focus"], true);
-    assert_eq!(composer["placeholder"], "Message Coder on Studio Mac");
+    assert_eq!(composer["placeholder"], "Message OpenAgents on Studio Mac");
     let text = texts(&screen);
-    assert!(text.contains(&"Coder".to_owned()), "{text:?}");
+    assert!(text.contains(&"OpenAgents".to_owned()), "{text:?}");
     let target = &node(&screen, "coder-target").expect("target")["element"]["props"];
     assert_eq!(target["label"], "Studio Mac · openagents");
     assert_eq!(target["icon"]["glyph"], "computer");
@@ -395,7 +395,7 @@ fn the_tab_opens_on_a_new_chat_ready_to_type() {
     assert_eq!(target["icon"]["glyph"], "cloud");
     assert!(node(&screen, "coder-targets").is_none());
     assert!(node(&screen, "coder-repo-0").is_none());
-    assert_eq!(composer_of(&screen)["placeholder"], "Message Coder");
+    assert_eq!(composer_of(&screen)["placeholder"], "Message OpenAgents");
     assert_ne!(composer_of(&screen)["token"], token);
     assert_eq!(composer_of(&screen)["focus"], true);
     fixture.tap("coder-target");
@@ -1161,7 +1161,7 @@ fn a_first_chat_needs_no_computer_and_streams_its_reply() {
     );
     let screen = fixture.tap("coder-target");
     assert_eq!(composer_of(&screen)["enabled"], true);
-    assert_eq!(composer_of(&screen)["placeholder"], "Message Coder");
+    assert_eq!(composer_of(&screen)["placeholder"], "Message OpenAgents");
 
     let chat = fixture.say("What is a **relay**?");
     assert_eq!(hand.asked(), vec![vec!["What is a **relay**?".to_owned()]]);
@@ -1184,7 +1184,14 @@ fn a_first_chat_needs_no_computer_and_streams_its_reply() {
     assert_eq!(composer_of(&chat)["busy"], false);
     assert!(node(&chat, "talk-m1").is_some());
 
-    // No computer: the chat offers to connect one for Coder.
+    // No computer and no judgment that it needs one: nothing but the chat.
+    assert!(node(&chat, "coder-connect").is_none());
+    // The worker judged the message needs a computer: the chat offers to
+    // connect one for Coder.
+    fixture.say("Run the tests in my repo");
+    hand.judge(crate::basic_coder::Lane::Computer);
+    hand.say("That needs a computer.", true);
+    let chat = fixture.render();
     let connect = node(&chat, "coder-connect").expect("connect a computer");
     assert_eq!(
         connect["element"]["props"]["label"],
@@ -1199,7 +1206,7 @@ fn a_first_chat_needs_no_computer_and_streams_its_reply() {
 
     // A follow-up carries the conversation.
     fixture.say("And a worker?");
-    assert_eq!(hand.asked()[1].len(), 3);
+    assert_eq!(hand.asked()[2].len(), 5);
 
     let list = fixture.list();
     let row = keys(&list)
@@ -1211,7 +1218,7 @@ fn a_first_chat_needs_no_computer_and_streams_its_reply() {
         .unwrap()
         .to_owned();
     assert!(
-        label.starts_with("What is a **relay**?\nCoder · "),
+        label.starts_with("What is a **relay**?\nOpenAgents · "),
         "{label}"
     );
 }

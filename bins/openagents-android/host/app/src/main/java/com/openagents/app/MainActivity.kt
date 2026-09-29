@@ -32,7 +32,7 @@ import org.json.JSONObject
  * The four tabs, shown as icons; each keeps a spoken name for TalkBack.
  */
 enum class AppTab(val title: String, val icon: Int) {
-    CODER("Coder", R.drawable.ic_tab_coder),
+    CODER("Chat", R.drawable.ic_tab_chat),
     VERSE("Verse", R.drawable.ic_tab_verse),
     WALLET("Wallet", R.drawable.ic_tab_wallet),
     ACCOUNT("Account", R.drawable.ic_tab_account),

@@ -1,4 +1,4 @@
-// The app's four tabs: Coder, Verse, Wallet, and Account. The tab bar shows
+// The app's four tabs: Chat, Verse, Wallet, and Account. The tab bar shows
 // icons only; each tab keeps a spoken name for VoiceOver.
 import SwiftUI
 import UIKit
@@ -8,7 +8,7 @@ enum AppTab: String, CaseIterable {
 
     var title: String {
         switch self {
-        case .coder: "Coder"
+        case .coder: "Chat"
         case .verse: "Verse"
         case .wallet: "Wallet"
         case .account: "Account"
@@ -17,7 +17,7 @@ enum AppTab: String, CaseIterable {
 
     var symbol: String {
         switch self {
-        case .coder: "chevron.left.forwardslash.chevron.right"
+        case .coder: "bubble.left.and.bubble.right"
         case .verse: "globe"
         // `wallet.bifold` arrived in iOS 18.
         case .wallet: UIImage(systemName: "wallet.bifold") == nil ? "creditcard" : "wallet.bifold"

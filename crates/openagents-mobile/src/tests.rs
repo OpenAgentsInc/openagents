@@ -440,7 +440,7 @@ fn the_coder_tab_needs_no_computer() {
     let packet = app.call(Request::Snapshot);
     let coder = packet.coder.expect("coder view");
     let text = values(&coder);
-    assert!(text.contains(&"Coder".to_string()), "{text:?}");
+    assert!(text.contains(&"OpenAgents".to_string()), "{text:?}");
     assert!(text.contains(&"Cloud".to_string()), "{text:?}");
     assert!(key_for(&coder, "Connect a computer").is_some(), "{text:?}");
     let composer = &nodes_of(&coder, "composer")[0]["element"]["props"];
