@@ -378,25 +378,30 @@ fn live_computer_coder_speed() {
             tap(&mut app, &coder, "coder-new");
             continue;
         }
-        // A new chat targets a ready computer; before it is ready it starts
-        // with the basic Coder, and this one runs on the computer.
-        let start = nodes_of(&coder, "button").into_iter().find(|node| {
-            node["key"] == "coder-where"
-                && node["element"]["props"]["label"]
-                    .as_str()
-                    .is_some_and(|label| label.starts_with("Start on"))
-        });
-        if start.is_some() {
-            tap(&mut app, &coder, "coder-where");
-            continue;
-        }
-        let ready = nodes_of(&coder, "text").iter().any(|node| {
-            node["element"]["props"]["value"]
-                .as_str()
-                .is_some_and(|t| t.starts_with("On ") && t.contains(" · "))
-        });
-        if ready && !nodes_of(&coder, "composer").is_empty() {
+        // LOCAL MEASUREMENT PATCH: the new chat's target selector.
+        let label = nodes_of(&coder, "button")
+            .into_iter()
+            .find(|node| node["key"] == "coder-target")
+            .and_then(|node| node["element"]["props"]["label"].as_str().map(str::to_owned))
+            .unwrap_or_default();
+        if label.contains(" · ") && !nodes_of(&coder, "composer").is_empty() {
             break coder;
+        }
+        if started.elapsed() > Duration::from_secs(40) {
+            let texts: Vec<String> = nodes_of(&coder, "text").iter().filter_map(|n| n["element"]["props"]["value"].as_str().map(str::to_owned)).collect();
+            let buttons: Vec<String> = nodes_of(&coder, "button").iter().map(|n| format!("{}={}", n["key"], n["element"]["props"]["label"])).collect();
+            let account = app.call(Request::ComputersRefresh);
+            panic!("DIAG label {label} texts {texts:?} buttons {buttons:?} computers {}", serde_json::to_string(&account.computers).unwrap_or_default().chars().take(1500).collect::<String>());
+        }
+        if label == "Cloud" {
+            let picking = tap(&mut app, &coder, "coder-target");
+            let _ = picking;
+            let coder2 = app.call(Request::ComputersRefresh).coder.expect("Coder");
+            if has_key(&coder2, "coder-target-0") {
+                tap(&mut app, &coder2, "coder-target-0");
+            } else if has_key(&coder2, "coder-target-cloud") {
+                tap(&mut app, &coder2, "coder-target-cloud");
+            }
         }
         assert!(
             started.elapsed() < Duration::from_secs(120),
