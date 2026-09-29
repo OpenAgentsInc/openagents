@@ -45,6 +45,7 @@ text says so.
 - [Part I: The concept](#part-i-the-concept)
   - [What test-time compute is](#what-test-time-compute-is)
   - [Why it matters](#why-it-matters)
+  - [Assistance and automation set different bars](#assistance-and-automation-set-different-bars)
   - [The thesis: capability is something you can acquire at test time](#the-thesis-capability-is-something-you-can-acquire-at-test-time)
   - [What the word capability means here](#what-the-word-capability-means-here)
   - [The lifecycle in one figure](#the-lifecycle-in-one-figure)
@@ -132,6 +133,46 @@ wisely, per question. Two lessons from that work shape everything below.
 Both lessons generalize past tokens, to the *system* around a model: what
 it's allowed to use, who decides what to use, and how anyone knows it
 helped.
+
+### Assistance and automation set different bars
+
+Who consumes a model's output changes what "good" means. In
+*assistance*, a human reads the output and can inspect, repair, or reject
+it, so a plausible answer with a visible mistake still has value. In
+*automation*, another piece of software consumes the output and acts on
+it, repeatedly, often with nobody watching, so the output has to be
+something a machine can depend on without reinterpreting it. Almeida,
+who co-authored InstructGPT and GPT-4, argues that this divide explains
+why the same models look superhuman on chat, writing, and coding
+assistance and fail at customer service that takes actions or a
+drive-through that takes orders: the second kind of work needs decisions
+a machine can act on, not text a person can enjoy
+([Almeida, 2026a](https://www.youtube.com/watch?v=o-y1HJ6buGQ);
+[2026b](https://www.youtube.com/watch?v=cJ0EOzey--o)). His stronger
+causal claim, that optimizing for human preference in RLHF produced the
+assistance bias and that hallucination and mode collapse follow from it,
+is his argument, not a premise of this essay; the framework below
+survives even if models trained other ways close the gap.
+
+What the divide implies for a test-time capability is a second bar. A
+capability meant for assistance needs a positive delta. A capability meant
+for automation needs, in addition, a machine-readable contract for its
+output, bounded authority, calibrated decisions, and behavior that
+repeats. A capability claim tells you that something helps. Automation
+asks whether software can safely depend on it, and the second question is
+not answered by the first.
+
+Two corollaries. First, *test-time capability is about runtime ability,
+not development throughput.* An agent that writes conventional code
+faster makes software cheaper to produce; it establishes no new runtime
+capability until the artifact it produces changes what a running system
+can measurably do ([Almeida, 2026c](https://www.youtube.com/watch?v=Ut3LOjKNJaE)).
+Second, *a capability useful once is not necessarily a capability other
+software can build on.* Prose output has a human as its natural consumer,
+which is why so much software that embeds a model ends up handing the
+result to a person or to another model. Components meant to be composed
+need to be typed, bounded, measured, and composable, and the rest of this
+essay treats those as requirements rather than niceties.
 
 ### The thesis: capability is something you can acquire at test time
 
@@ -251,14 +292,28 @@ three configurations tested (−8.1 and −11.3 points on two of them), while
 curated skills on the same configurations added 18.2 to 24.8 points
 ([Li et al., 2026](https://arxiv.org/abs/2602.12670)).
 
-The last row is the one that makes the others usable. An agent with fifty
-tools and no good way to decide which to use is worse than an agent with
-none. A typed judgment answers a typed question (yes or no, a choice among
-options, an ordered score) with probabilities, and ordinary code decides
-what those probabilities cause; the judge writes no text and grants no
-authority. The idea borrows the fast, automatic "System 1" of Kahneman's
-*Thinking, Fast and Slow* (2011); the slow, effortful work is left to the
-generator.
+The last row is different in kind from the other four. Tools *act*,
+knowledge *informs*, delegates *work*; a typed judgment turns fuzzy
+evidence into a typed decision that deterministic software can compose
+around. It answers a typed question (yes or no, a choice among options,
+an ordered score) with probabilities, and ordinary code decides what those
+probabilities cause; the judge writes no text and grants no authority.
+That makes it a **machine-consumable intelligence primitive**: natural
+language and program state go in, a typed decision with a confidence
+comes out, and a state machine takes it from there. Almeida describes
+a model built for exactly this, trained for calibrated decision-making
+rather than for human preference or for pure correctness, and argues the
+difference reaches all the way to the shape of the API
+([Almeida, 2026b](https://www.youtube.com/watch?v=cJ0EOzey--o);
+[2026c](https://www.youtube.com/watch?v=Ut3LOjKNJaE)). Choosing which of
+the other four sources to use is one application of the primitive, and
+the one the lexicon develops first, because an agent with fifty tools and
+no good way to decide which to use is worse than an agent with none. But
+the primitive is not only a router, and the same object can sit inside
+any program that has to decide something on evidence. Kahneman's fast,
+automatic "System 1" (*Thinking, Fast and Slow*, 2011) is a loose
+analogy for the speed; the defining property is the typed, calibrated
+output, not the speed.
 
 ### What the word capability means here
 
@@ -561,10 +616,22 @@ reports cost reductions of over two times in some cases without hurting
 quality ([Ong et al., 2025](https://arxiv.org/abs/2406.18665)). The
 proposal here is not query routing as such. It is treating one cheap,
 typed judgment as a general allocation mechanism over *every* capability
-source: models, tools, knowledge, and delegation.
+source: models, tools, knowledge, and delegation, and routing as one use
+of the [primitive](#the-thesis-capability-is-something-you-can-acquire-at-test-time)
+rather than the whole of it.
 
-**How to measure it:** the judgment's latency and cost, and the precision of
-whatever it serves without calling the large model.
+The judgment's probabilities are the interface, so **calibration** is a
+property of the capability, not metadata. Accuracy asks whether the judge
+chose correctly. Calibration asks whether, when the judge says 0.97,
+downstream code should behave as if this were a 97 % event. Every
+threshold in a judgment budget, serve cheaply or escalate, call a tool or
+not, delegate or not, is a bet on the second question. A judge that is
+accurate and miscalibrated moves every threshold to the wrong place.
+
+**How to measure it:** the judgment's latency and cost; the precision of
+whatever it serves without calling the large model; and its calibration
+on held-out data, with a proper scoring rule such as the Brier score or
+log loss and a calibration curve reported beside task accuracy.
 
 #### 6. Test-time delegation
 
@@ -724,12 +791,45 @@ authority**, current defaults plus the candidate against current
 defaults on both, with safety kept a constraint rather than traded
 against the delta.
 
+Adoption is also where a mean delta stops being enough, because the
+adopted set is what other software will build on. Two components can
+each add ten points on average while being very different things to
+depend on: one succeeds nine times in ten on every input, the other
+succeeds every time on nine input shapes in ten and fails badly on the
+tenth. So **reliability is adoption evidence**, not a separate term:
+consistency across repeats (pass^k), robustness to changes that don't
+change the task (a different identifier in an otherwise identical
+input should not change the answer), calibration, tail and worst-case
+failures, whether the component abstains or escalates when it should,
+and reliability when composed. Almeida's test for the last of these is
+that a developer can eventually program against a component without
+first trying example queries by hand
+([Almeida, 2026c](https://www.youtube.com/watch?v=Ut3LOjKNJaE)).
+
+Composition is where nines stop being marketing. A decision that is
+right 99 % of the time gives about a 90 % chance that ten independent
+decisions all come out right, and about 37 % for a hundred. Real
+failures aren't independent, and a workflow can be designed to check and
+recover, but the arithmetic is why a component's *composition depth*,
+how many decisions deep it stays useful, is a property worth measuring
+before it becomes a default.
+
+**Stakes set the bar.** A component that suggests a document and one that
+publishes it, spends money, deletes files, or deploys code can carry the
+same delta and deserve very different evidence. Utility establishes the
+claim and safety decides admissibility; stakes decide how much evidence
+adoption needs. The required reliability rises with the severity of a
+wrong decision's effect, the effective authority the component holds,
+and how hard the effect is to reverse. The principle matters more than
+any formula for it.
+
 **How to measure it:** the marginal delta, current defaults plus the
 candidate against current defaults; whether the whole default set still
 passes what it passed before; whether the candidate keeps its externally
-validated delta in the composition; and whether the composition's
-effective authority grew, which means tracing the paths the newcomer
-opens, not reading its grant.
+validated delta in the composition; the reliability evidence above,
+scaled to the stakes; and whether the composition's effective authority
+grew, which means tracing the paths the newcomer opens, not reading its
+grant.
 
 #### 10. Capability credit
 
@@ -880,6 +980,22 @@ What a network would add:
 This is a hypothesis. Whether adding participants makes an agent
 measurably better has to be shown, measured the way the lexicon says.
 
+One consequence deserves its own paragraph. **The evaluation system is
+the objective function of the network.** Almeida's refrain across his
+talks is that you get what you optimize for, and that choosing the right
+task matters more than the data or the compute spent on it
+([Almeida, 2026a](https://www.youtube.com/watch?v=o-y1HJ6buGQ)). Once
+adoption and credit depend on evaluations, the same is true one level up.
+Authors will build what gets adopted, evaluators will write the suites
+that decide it, and the defaults will inherit whatever those rules
+reward. That is an outer-loop optimization process running around fixed
+model weights, and evals do more than measure it: they steer it. So
+independent suites, held-out tasks, negative cases, marginal
+re-evaluation, and credit for disputes are not only hygiene for
+individual claims. They are what keeps the flywheel pointed at
+capability rather than at the tests, which is Goodhart's problem at the
+scale of a network.
+
 ### Related work and prior art
 
 Every mechanism in the lexicon has prior art. This section groups it by
@@ -927,6 +1043,21 @@ and RouteLLM ([Ong et al., 2025](https://arxiv.org/abs/2406.18665)) spend
 a strong model only where a cheap one won't do. The
 [judgment budget](#5-judgment-budget) generalizes the decision from
 *which model* to *which capability*.
+
+**Automation and typed judgment.** Almeida's three 2026 talks
+([2026a](https://www.youtube.com/watch?v=o-y1HJ6buGQ),
+[2026b](https://www.youtube.com/watch?v=cJ0EOzey--o),
+[2026c](https://www.youtube.com/watch?v=Ut3LOjKNJaE)) supply the
+assistance-versus-automation framing, the argument that a model can be
+trained for calibrated decision-making as a third target beside human
+preference and verifiable correctness, and the picture of a typed
+probabilistic decision as a primitive inside ordinary programs, with
+reliability meaning "similar intelligence every time" rather than
+determinism. The lexicon's typed judgment source, its calibration
+requirement, and its treatment of reliability as adoption evidence come
+from there. What the lexicon adds is the claim discipline around the
+primitive: a judge is a candidate capability like any other, with a delta,
+a reproduction, a reliance set, and a place in every other claim's scope.
 
 **Orchestration and delegation.** LLMCompiler plans function calls as a
 graph and runs independent ones in parallel, reporting up to 3.7 times
@@ -1035,6 +1166,13 @@ corrections to any cell.
 - **Incentives for disagreement.** If reruns earn credit whichever way
   they come out, what stops low-effort disputes, and what counts as a
   rerun that followed the protocol?
+- **Composition depth.** How many decisions deep does a judgment stay
+  useful, how should a workflow's end-to-end reliability be reported
+  beside its components' single-call numbers, and which recovery designs
+  break the multiplication?
+- **Evidence scaled to stakes.** How should the evidence adoption demands
+  grow with the severity, authority, and irreversibility of what a
+  component can do?
 - **Reach.** How should capabilities be described to the judgment that
   picks them, so the agent reaches for them when it should? This may be the
   cheapest gain available.
@@ -1171,7 +1309,7 @@ separately, as the sections below say.
 | Skills | A `SKILL.md` guide the agent reads before a task | [Plugins and skills](../glossary.md#plugins-and-skills) |
 | Knowledge | Cited entries (methods, edge cases, slips) retrieved and filtered by Jev | [Knowledge base](../coder/design/knowledge-base.md) |
 | Delegation | Another agent, briefed with evidence Jev chose | [The delegate door](../coder/runtime/delegate-door.md) |
-| Typed judgment | A System One answer that picks which of the above to use, and when | [The chat router](../coder/design/2026-09-28-chat-router.md) |
+| Typed judgment | A typed decision with probabilities that code acts on; in chat, it picks which of the above to use, and when | [The chat router](../coder/design/2026-09-28-chat-router.md) |
 
 Concretely: an extension (tool, plugin, skill, or package) admitted to a
 Coder turn, measured by an [extension eval](../extensions/evaluation.md);
@@ -1179,9 +1317,15 @@ a knowledge entry retrieved into a Microcoder step, whose evidence is the
 same report; a delegate briefed by Coder One, measured today on
 Terminal-Bench attempts rather than by a paired eval; and Jev's judgment,
 measured on the router's held-out set.
-[Jev](../glossary.md#decision-models-and-runtimes) is TypeSafe's System
-One model: it answers typed questions with probabilities, and code decides
-what those probabilities cause. It writes no text and grants no authority.
+[Jev](../glossary.md#decision-models-and-runtimes) is TypeSafe's
+decision model: it answers typed questions with probabilities, and code
+decides what those probabilities cause. It writes no text and grants no
+authority. Part I's typed judgment source is Almeida's primitive, taken
+from his talks ([transcripts](../research/typesafe/)), and Jev is our
+instance of it. It is also a candidate capability under the same rules
+as everything else: its claim is measured on the router's held-out set
+and nowhere else yet, its version is unpinned in every report, and it
+sits in every other claim's reliance set.
 
 #### Capability admission in OpenAgents
 
@@ -1279,6 +1423,14 @@ reply, so the judgment can only save time. Judgment latency is 170 ms
 median, 235 ms p95 on the held-out set, and the precision of what it serves
 is 100 % canned precision, 36 of 36, on 138 held-out messages
 ([router evaluation](../coder/measurements/2026-09-28-chat-router-eval.md)).
+
+Calibration, which Part I makes part of the capability, is measured for
+one question on one partition: the `route` question alone scores an
+expected calibration error of 0.046 and a Brier score of 0.083 on 151
+development items, and the serving thresholds were fit on the tune split.
+No calibration figure exists yet for the other router questions, for the
+held-out split, or for the decision graders the evals rely on, so every
+threshold in the tier table is a bet whose odds we've checked once.
 
 #### Test-time delegation in OpenAgents
 
@@ -1394,6 +1546,18 @@ Both echo AnyTool's finding that ToolBench's protocol inflated pass rates
 metric, not the agent, produced the verdict. Our v1 gate credited speed as
 if it were correctness; our grader missed a phrasing. Versioned gates and
 test sets are how we keep such fixes from rewriting history.
+
+A third lesson is one we haven't yet paid for. Our graders are of two
+sorts: mechanical ones (`regex`, `operation_used`, `operation_order`,
+`file_exists`, `receipt`) and two that ask a model, `decision` (a typed
+Jev question over the run, the default) and `judge` (the chat model door
+asked for PASS or FAIL, for prose criteria a typed question can't hold).
+By Part I's assistance argument, the `judge` grader is the instrument
+most likely to call a plausible answer correct, because the model behind
+it was trained to please a reader. The mechanical and `decision` graders
+are the ones the argument endorses. We haven't measured the two against
+each other; until we do, a suite that leans on `judge` graders should be
+read with that in mind.
 
 Reruns by others rest on publication: a published suite is a NIP-EXT
 release, a published result carries its trainer's signed request, and a
@@ -1798,7 +1962,23 @@ versions.
   evaluations repeated on one extension, should be taken. Our suites need
   to grow as the deltas we care about shrink.
 - **Grader quality.** Graders are code and make mistakes, as the "not found"
-  case showed. We want graders checked the way results are.
+  case showed. We want graders checked the way results are, and the
+  `judge` grader measured against `decision` and mechanical graders on the
+  same runs before any suite that leans on it feeds an adoption.
+- **Calibration of the judge.** One question, one partition, one number
+  so far. We need expected calibration error and a Brier score for every
+  router question and for the decision graders, on the held-out split,
+  reported beside precision, and the serving thresholds re-fit when they
+  move.
+- **Composition depth.** Every tier decision and every grader call is a
+  judgment that other code depends on. We haven't measured how many
+  decisions deep a run stays right, or how an eval's end-to-end verdict
+  degrades with the number of judgments inside it.
+- **Evidence scaled to stakes.** The candidate policy asks the same of a
+  tool that reads files and a tool that would publish or spend. Before a
+  component with real authority is adopted, the policy should ask more of
+  it, in proportion to what a wrong decision could do and how hard it is
+  to undo.
 - **Process-level deltas.** Every eval run already saves an ATIF
   trajectory per test. We haven't yet reported deltas from them (steps,
   wasted tool calls, when the tool was first chosen) alongside pass counts.
@@ -1820,6 +2000,17 @@ versions.
 
 - Akyürek, E. et al. (2024). *The Surprising Effectiveness of Test-Time
   Training for Abstract Reasoning.* [arXiv:2411.07279](https://arxiv.org/abs/2411.07279)
+- Almeida, D. (2026a). *AI too good to be true, too bad to be useful.*
+  Talk, AI Council 2026, San Francisco, recorded May 12–14, published
+  June 19. [youtube.com](https://www.youtube.com/watch?v=o-y1HJ6buGQ);
+  [transcript](../research/typesafe/2026-06-19-ai-council-diogo-almeida-transcript.md)
+- Almeida, D. (2026b). *What's next after RLHF.* Talk, AI Engineer,
+  published July 31. [youtube.com](https://www.youtube.com/watch?v=cJ0EOzey--o);
+  [transcript](../research/typesafe/2026-07-31-ai-engineer-diogo-almeida-transcript.md)
+- Almeida, D., Horowitz, B., and Casado, M. (2026c). *How Jev Turns AI
+  Into Software That Gets Things Done.* The a16z Show, published
+  September 28. [youtube.com](https://www.youtube.com/watch?v=Ut3LOjKNJaE);
+  [transcript](../research/typesafe/2026-09-28-a16z-jev-transcript.md)
 - Brown, B. et al. (2024). *Large Language Monkeys: Scaling Inference
   Compute with Repeated Sampling.* [arXiv:2407.21787](https://arxiv.org/abs/2407.21787)
 - Cai, T., Wang, X., Ma, T., Chen, X., and Zhou, D. (2024). *Large
