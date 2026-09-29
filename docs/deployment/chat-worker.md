@@ -63,10 +63,9 @@ phone <--27000 partials, 26900 result------- relay.openagents.com <-- chat worke
   - With `openrouter`, `OPENROUTER_API_KEY` is required in the chat
     environment file (`/etc/coder-worker/coder-worker-chat.env`), beside the
     gateway key: the owner's OpenRouter key, which the worker never logs.
-    The OpenRouter account must have credits: on 2026-09-28 it answered HTTP
-    402, and every personalized stem would then close with its generic
-    ending. `seam_from_env()` refuses to start without a key rather than
-    run without it.
+    The OpenRouter account must have credits; without them every
+    personalized stem closes with its generic ending. `seam_from_env()`
+    refuses to start without a key rather than run without it.
   - With it on, each personalized turn sends the route, the stem, and the
     user's latest message (redacted of secret shapes, at most 600
     characters) to that provider, so the privacy answer and the Basic chat
@@ -85,6 +84,22 @@ phone <--27000 partials, 26900 result------- relay.openagents.com <-- chat worke
   product turn's latest message also reaches that embeddings provider,
   which the seam names in `recipients()`. See
   [the measurement](../coder/measurements/2026-09-28-product-kb.md).
+  `OPENAGENTS_PRODUCT_KB_EMBEDDINGS=gateway` embeds through the Vercel AI
+  Gateway with the door key the worker already has; the deployed worker
+  uses it.
+- **Codebase knowledge.** `codebase.kb` turns answer from an index of this
+  repository at a pinned commit (`coder::codebase`,
+  [codebase-kb.md](../coder/design/codebase-kb.md)), read from
+  `CODER_CODEBASE_KB`. Build it on a development Mac with
+  `scripts/build-codebase-kb.sh <COMMIT> <OUT>` (the door key embeds it
+  through the gateway; a refresh re-embeds only changed chunks) and copy it
+  beside the release. The worker keeps the embedder's connection warm.
+- **CLI route.** With a judge, the worker holds `coder::cli_route`'s
+  `CommandRoute` as its CLI seam, filling free text through its own door;
+  `CODER_WORKER_CLI=off` turns it off. On the phone it proposes only the
+  owner's read-only list, which the phone runs itself (`computer list`,
+  `show`, `workspaces`) or on the connected computer as `openagents --json`
+  through NIP-HOST `terminal.open`, after a tap.
 - **Streaming.** The worker sends its first delta at once and then about 160
   bytes at a time; the phone checks each answer's signer, recipient, request
   binding, and sequence, draws the reply with Rust Native's incremental
@@ -217,3 +232,24 @@ no model call); its default Nostr question showed "Here's how that works."
 at 0.57 to 0.96 s and finished at 5.2 to 6.3 s; "Connect to my GitHub" was
 left to the model (first words 3.2 s) with `lane: computer`. To check a
 particular message, set `OPENAGENTS_TEST_CHAT_MESSAGE`.
+
+Release `b8dc0057fb` (2026-09-28) put the chat router live with every seam:
+the structured `chat-router-v1` questions and bank `chat-answers-v1@df722f59fb54`,
+T1 personalization (`CODER_PERSONALIZE=openrouter` and `OPENROUTER_API_KEY`
+added to the root-only environment file), product knowledge
+(`knowledge/openagents/` copied to `/opt/coder-worker/releases/b8dc0057fb/knowledge/openagents`,
+`OPENAGENTS_PRODUCT_KNOWLEDGE=/opt/coder-worker/chat/knowledge/openagents`,
+`OPENAGENTS_PRODUCT_KB_EMBEDDINGS=gateway`), codebase knowledge (an index at
+`75cecb8dba` copied to `/opt/coder-worker/releases/b8dc0057fb/codebase-kb.gz`,
+`CODER_CODEBASE_KB=/opt/coder-worker/chat/codebase-kb.gz`), and the CLI
+route. Copy the corpus with `COPYFILE_DISABLE=1` or delete `._*` files on the
+VM: a macOS tar's AppleDouble files make the corpus refuse to load. The
+previous environment file is kept as `coder-worker-chat.env.bak-9ca003acbe`,
+and `9ca003acbe` stays in `releases/` for rollback (restore that file, move
+the symlink back, restart). `coder-worker.service` and
+`/opt/coder-worker/current` were not touched. The log names
+`product kb openagents-product@841bda9956e9 (52 entries), embeddings through
+the Vercel AI Gateway (OpenAI embeddings)` and `seams Seams { personalize:
+true, product: true, codebase: true, cli_groups: 29 }`. Live timings and
+tiers, including a build-19 request (`OPENAGENTS_TEST_CHAT_LEGACY=1`), are in
+[the tuning measurement](../coder/measurements/2026-09-28-chat-router-tuning.md#live-on-the-deployed-worker).

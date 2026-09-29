@@ -936,7 +936,8 @@ mod tests {
 /// `OPENAGENTS_TEST_CHAT_RELAY` and `OPENAGENTS_TEST_CHAT_WORKER` point it
 /// at another relay and worker. `OPENAGENTS_TEST_CHAT_LEGACY=1` sends what
 /// builds 19 and earlier send, `opener` without `router` or `context`, to
-/// check that old phones still get a reply.
+/// check that old phones still get a reply; `OPENAGENTS_TEST_CHAT_COMPUTER_READY=1`
+/// says a computer is ready, as a phone with one connected does.
 #[cfg(test)]
 #[test]
 #[ignore = "network: needs the chat worker on the relay"]
@@ -953,6 +954,10 @@ fn live_basic_coder_streams_a_reply() {
         std::env::var("OPENAGENTS_TEST_CHAT_MESSAGE")
             .unwrap_or_else(|_| "In three short sentences, what does a Nostr relay do?".into()),
     )];
+    let context = Context {
+        computer_ready: std::env::var("OPENAGENTS_TEST_CHAT_COMPUTER_READY").as_deref() == Ok("1"),
+        ..Context::default()
+    };
     let asking = if std::env::var("OPENAGENTS_TEST_CHAT_LEGACY").as_deref() == Ok("1") {
         let mut body = payload(&turns, &Context::default());
         if let Some(fields) = body.as_object_mut() {
@@ -961,7 +966,7 @@ fn live_basic_coder_streams_a_reply() {
         }
         runtime.spawn(door.job(body, reply.clone()))
     } else {
-        runtime.spawn(door.ask(turns, Context::default(), reply.clone()))
+        runtime.spawn(door.ask(turns, context, reply.clone()))
     };
     let mut first = None;
     let mut lengths = vec![];

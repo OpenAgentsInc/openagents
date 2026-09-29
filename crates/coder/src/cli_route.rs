@@ -29,9 +29,9 @@
 //! `terminal.open` and NIP-TERM, the path `openagents computer exec HOST
 //! -- …` takes, which needs the grant's `terminal` right; and a child
 //! process on the desktop or in the terminal, as `openagents mcp serve`
-//! runs each tool call. The phone's tap handler for a `cli` offer is not
-//! written yet (`crates/openagents-mobile` is outside this change), so on
-//! the phone a proposal is shown but not yet runnable.
+//! runs each tool call. The phone runs a tapped offer through the first two
+//! (`crates/openagents-mobile/src/cli_run.rs`); the chat worker wires
+//! [`CommandRoute`] as its CLI seam.
 
 pub mod descend;
 pub mod eval;

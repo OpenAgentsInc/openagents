@@ -1,10 +1,12 @@
 # The chat router: how OpenAgents answers a message, with Jev choosing the route
 
-Status: phases 0 to 2 implemented on 2026-09-28 (the core in
+Status: implemented and deployed on 2026-09-28 (the core in
 [#9922](https://github.com/OpenAgentsInc/openagents/issues/9922), T1
-personalization, and the phone's offers); knowledge, CLI, and codebase
-routes plug in through the seams below. It extends the
-first response that shipped in `95c7eda2e3` (`crates/coder/src/first.rs`,
+personalization, the product and codebase knowledge routes, the CLI route,
+and the phone's offers), with every question asked as structured entries
+and the policy tuned on the labeled set's tune split
+([Structured questions and tuning](#structured-questions-and-tuning-2026-09-28)).
+It extends the first response that shipped in `95c7eda2e3` (`crates/coder/src/first.rs`,
 [the first-reply measurement](../measurements/2026-09-28-first-reply.md)) and
 the product change in `820bc02ce4` (the first tab is **Chat**, the assistant
 speaks as OpenAgents in the plural, and Coder is what gets dispatched).
@@ -32,6 +34,7 @@ the owner can answer.
 - [Architecture](#architecture)
 - [The typed route schema](#the-typed-route-schema)
 - [The code: `coder::router` and its seams](#the-code-coderrouter-and-its-seams)
+- [Structured questions and tuning](#structured-questions-and-tuning-2026-09-28)
 - [Confidence, thresholds, and fallbacks](#confidence-thresholds-and-fallbacks)
 - [The answer bank](#the-answer-bank)
 - [Personalization with a cheap model](#personalization-with-a-cheap-model)
@@ -52,9 +55,10 @@ This table was the starting point when the router was proposed; it is
 updated to what `main` holds on 2026-09-28. The router itself is
 implemented ([Implemented core](#implemented-core-2026-09-28)): the
 `chat-router-v1` judgment, the answer bank, T1 personalization, the product
-knowledge base, and the phone's offers. The CLI route is built
-(`coder::cli_route`, `528483364e`) but not yet wired into the worker or the
-phone's offers; codebase knowledge is in progress.
+and codebase knowledge bases, the CLI route (`coder::cli_route`, wired into
+the worker as its CLI seam), and the phone's offers, which run a proposed
+read-only command on the phone or, through `openagents --json` over
+NIP-HOST `terminal.open`, on the connected computer.
 
 | Piece | Where | What it does |
 | --- | --- | --- |
@@ -307,7 +311,8 @@ core as `crates/coder/src/router/`:
 | `router/policy.rs` | `decide`: the policy table below, as code, with its thresholds as constants |
 | `router/bank.rs` | The bank file's parser, its digest, `Facts`, and the lint |
 | `router/wire.rs` | The judgment feedback, the result fields, and the `router` log record |
-| `answers/chat-answers-v1.toml` | The bank: 39 entries and 6 openers |
+| `router/rubric.rs` | The structured wording of the questions: instructions, rubrics, and examples from the tune split |
+| `answers/chat-answers-v1.toml` | The bank: 41 entries and 6 openers |
 
 `coder::first` keeps only what the router and the suggestion ranking share.
 Where the code settles something this design left open:
@@ -340,6 +345,51 @@ and "Can you work on my Rails app?" (read as `work.dispatch` and offered to
 Coder, where `meta` was expected). "How does Coder pick a provider?" chose
 `codebase.kb` at only 0.22, below the grounded threshold, so the model
 answered it with an opener.
+
+## Structured questions and tuning (2026-09-28)
+
+TypeSafe's System One models read JSON structure in a question's
+instructions and in every option's criterion
+([Advanced: structure](https://docs.typesafe.ai/primitives/advanced.md)).
+Every `chat-router-v1` question now uses it
+(`crates/coder/src/router/rubric.rs`):
+
+- **Structured instructions**, `{question, context, focus}`: for `route`,
+  "Which kind of reply does the user's latest message call for?", who is
+  asking (OpenAgents, which answers in chat and dispatches Coder), and the
+  focus "Classify the primary request of the latest message, not every
+  topic it mentions."
+- **Choice rubrics for boundary clarification**: each `route`, `lane`, and
+  `risk` option is `{what, not_for, examples}`. `meta` says it covers
+  asking us to connect or link GitHub and whether we can help with a kind
+  of work; `work.dispatch` says it is not those, nor questions about how
+  the OpenAgents code works, nor checking computers or XP (`cli`); `cli`
+  gives "which of my computers are online" as an example.
+- **Bank rubrics**: an entry may add `not_for` and `examples`, and the
+  `answer` question then reads `{what: when, not_for, examples}`
+  (`meta.github`: not a specific task in a repository).
+- **Structured Noul criteria** for `needs_specifics`: `{true: {what,
+  examples}, false: {what, examples}}`.
+- **Walking a taxonomy** for the CLI route: the `cli_group` option and each
+  level of the descent read the group's or child's subtree (its commands
+  nested as the tree nests them, trimmed to one line per child past 16
+  commands), and the descent keeps a beam of two paths scored by the
+  geometric mean of their edges, as in TypeSafe's hierarchical
+  classification cookbook. A sure `cli` route (p ≥ 0.90) descends an unsure
+  group (p ≥ 0.25) beside the next likely groups (p ≥ 0.15, at most two).
+
+Every example is a message from the labeled set's tune split; a test
+(`no_example_is_a_held_out_message`) fails if one is a held-out message.
+The policy changed in two places: the lane alone no longer offers Coder on
+a route with its own answer (`LANE_ROUTES`: only `work.dispatch`,
+`general`, `clarify`, and `none`), and a close call between `work.dispatch`
+and such a route is not a dispatch.
+
+Measured on the held-out split, one change at a time
+([the tuning measurement](../measurements/2026-09-28-chat-router-tuning.md)):
+canned precision stayed at 100 % while canned answers served rose from 36
+to 44 of 62, dispatch precision rose from 75 % to 94.7 to 100 %, and
+"Connect to my GitHub" is answered with `meta.github`.
 
 ## Confidence, thresholds, and fallbacks
 
