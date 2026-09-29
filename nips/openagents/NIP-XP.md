@@ -29,6 +29,8 @@ completion settles through the agent-labor and payment contracts
 migration package M18), after acceptance and separately from it. Paying a
 purse never creates XP, and XP never unlocks a purse.
 
+Test-time capabilities: the [`eval-check`](#eval-check) and [`eval-adopt`](#eval-adopt) rules carry [capability credit](../../docs/essays/2026-09-29-test-time-capabilities.md#9-capability-credit) ([mapping](../../docs/essays/2026-09-29-test-time-capabilities.md#how-the-protocol-carries-test-time-capabilities)).
+
 ## Kinds
 
 These are OpenAgents draft assignments, not upstream registrations.

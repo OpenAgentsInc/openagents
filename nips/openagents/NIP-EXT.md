@@ -14,6 +14,8 @@ evaluations plus host-owned bindings and policy. It is not a new component kind
 or permission mechanism. Coding packages add repository-specific behavior;
 document, research, or business packages use the same distribution contract.
 
+Test-time capabilities: a release here is the component a [test-time capability](../../docs/essays/2026-09-29-test-time-capabilities.md#1-test-time-capability-ttcap) comes from, and installation, enablement, grants, and admission are the separate decisions behind [capability admission](../../docs/essays/2026-09-29-test-time-capabilities.md#2-capability-admission); an `eval-suite` component publishes its tests ([mapping](../../docs/essays/2026-09-29-test-time-capabilities.md#how-the-protocol-carries-test-time-capabilities)).
+
 ## Kinds
 
 These are OpenAgents draft assignments, not upstream registrations.

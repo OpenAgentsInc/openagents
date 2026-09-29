@@ -12,6 +12,8 @@ account, or RUN controller. One engine process can serve several sessions;
 one session can acquire several successive engine attachments. Reaching an
 engine through ACP, Codex app-server, or a CLI does not imply equal features.
 
+Test-time capabilities: the steering rows for delegate engines and the ATIF `portable` history carry part of [test-time delegation](../../docs/essays/2026-09-29-test-time-capabilities.md#6-test-time-delegation) ([mapping](../../docs/essays/2026-09-29-test-time-capabilities.md#how-the-protocol-carries-test-time-capabilities)).
+
 ## Relationships and transport
 
 | Contract | Boundary |

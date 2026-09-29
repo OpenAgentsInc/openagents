@@ -188,6 +188,31 @@ source attribution, and disclosure constraints. Evaluate complete task quality
 and total cost before adopting either. The optimizer cannot modify the grader,
 read protected confirmation labels, or give itself new permissions.
 
+## Test-time capabilities
+
+A *test-time capability* is an ability an agent gains while it runs, without
+a weight update, because a component was admitted to the run, and whose
+effect a with-and-without test shows. The
+[essay that proposes the term](../../docs/essays/2026-09-29-test-time-capabilities.md)
+has the full [mapping of terms and lifecycle stages to kinds and fields](../../docs/essays/2026-09-29-test-time-capabilities.md#how-the-protocol-carries-test-time-capabilities).
+In short, which NIP is for what:
+
+| Stage | NIP | For |
+| --- | --- | --- |
+| Discover | [EXT](NIP-EXT.md), [CAP](NIP-CAP.md), [KB](NIP-KB.md) | Component releases and listings, execution interfaces and presence, knowledge entries. |
+| Admit | [EXT](NIP-EXT.md), [CAP](NIP-CAP.md), [RUN](NIP-RUN.md), [contracts](contracts.md) | Locks, grants, and admission as separate decisions; the run's recorded lock. |
+| Run and judge | [CJ](NIP-CJ.md), [CAP](NIP-CAP.md), [PRG](NIP-PRG.md) | Decision jobs and the router's `judgment` feedback; decision services; `decide` steps. |
+| Delegate | [PRG](NIP-PRG.md), [SESS](NIP-SESS.md), [WORK](NIP-WORK.md), [CTX](NIP-CTX.md) | `delegate` steps, delegate engines' steering rows, work delegations, briefing evidence. |
+| Trajectory | [ATIF](NIP-ATIF.md) | Each run's trajectory and its links to delegated sub-agents. |
+| Measure, publish, check | [EVAL](NIP-EVAL.md) | With-and-without reports, the gate's verdict, `3189` results, and confirming or disputing checks. |
+| Credit | [XP](NIP-XP.md) | The `eval-check` and `eval-adopt` rules. |
+| Adopt | [EVAL](NIP-EVAL.md), [POL](NIP-POL.md), [EXT](NIP-EXT.md) | `openagents.eval-admission.v1` and a `coder-defaults` release; operator authority. |
+| Share | [MV](NIP-MV.md), [CJ](NIP-CJ.md) | Gym notes in Verse; chat cards and offers. |
+
+Two gaps are stated rather than filled: the time and cost of a judgment and
+the delegate door's own failover have no wire record yet, and the flywheel's
+measure is derived by a reader, not carried by a field.
+
 ## Specification reference
 
 All contracts in this set are v1 drafts. They define protocol behavior;

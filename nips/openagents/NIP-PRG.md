@@ -15,6 +15,8 @@ query documents, assess evidence, and produce a report without a repository;
 a business workflow can invoke an admitted record operation. Code edits and
 test runs are examples, not required step semantics.
 
+Test-time capabilities: the `decide` and `delegate` [step kinds](#step-kinds) are where a workflow uses a typed judgment or a [test-time delegation](../../docs/essays/2026-09-29-test-time-capabilities.md#6-test-time-delegation) ([mapping](../../docs/essays/2026-09-29-test-time-capabilities.md#how-the-protocol-carries-test-time-capabilities)).
+
 ## Discovery and immutable execution
 
 Kind `30182` is an addressable program discovery head, with one `d`

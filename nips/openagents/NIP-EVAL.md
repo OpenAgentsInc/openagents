@@ -18,6 +18,8 @@ harmful error directions, human escalation, and irreversible outcomes must be
 defined for the actual workload. A coding benchmark cannot admit an agent for
 another domain merely because both use the same model or NIP schemas.
 
+Test-time capabilities: the [extension evaluation profile](#extension-evaluation-profile) carries the [capability delta](../../docs/essays/2026-09-29-test-time-capabilities.md#3-capability-delta) (subject and baseline arms), [reach and restraint](../../docs/essays/2026-09-29-test-time-capabilities.md#4-reach-and-restraint) (`should-fire` and `should-not-fire` cases), [verified capabilities](../../docs/essays/2026-09-29-test-time-capabilities.md#7-verified-capability) (checks), and [capability adoption](../../docs/essays/2026-09-29-test-time-capabilities.md#8-capability-adoption) ([mapping](../../docs/essays/2026-09-29-test-time-capabilities.md#how-the-protocol-carries-test-time-capabilities)).
+
 ## Suite identity and intended claim
 
 A suite has `v: "openagents.eval-suite.v1"`, `id` (qualified component ID),

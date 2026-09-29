@@ -38,6 +38,7 @@ something is a plan or a hypothesis, the text says so.
 - [Evals are the unit of account](#evals-are-the-unit-of-account)
 - [The economics: cheap judgments before expensive thinking](#the-economics-cheap-judgments-before-expensive-thinking)
 - [The collective: how capabilities compound](#the-collective-how-capabilities-compound)
+- [How the protocol carries test-time capabilities](#how-the-protocol-carries-test-time-capabilities)
 - [Open problems and what we measure next](#open-problems-and-what-we-measure-next)
 - [References](#references)
 
@@ -453,6 +454,86 @@ This section describes a design and a hypothesis. The parts are built and
 the first runs, checks, and awards are live. Whether adding participants
 makes Coder measurably better is the claim we still have to earn, measured
 the way the lexicon says.
+
+## How the protocol carries test-time capabilities
+
+The lexicon is ours; the wire formats that carry it are the
+[OpenAgents NIPs](../../nips/openagents/README.md). This section says which
+NIP is for what, and which kinds and fields carry each term and each stage
+of a capability's life. It cites only what the NIP files define. Where a
+term has no carrier yet, the table says so rather than naming one.
+
+Status is each whole contract's, as the
+[implementation coverage report](../protocol/2026-09-26-nip-implementation-coverage.md)
+records it and the [glossary's protocol table](../glossary.md#nostr-and-shared-protocols)
+labels it; the shared contracts, which the glossary doesn't label, are
+Partial by the report's own account. A profile inside a NIP can be further
+along than the NIP as a whole; the notes say where.
+
+### Which NIP is for what
+
+| NIP | Status | What it's for in this lifecycle | Kinds it owns |
+| --- | --- | --- | --- |
+| [NIP-EXT](../../nips/openagents/NIP-EXT.md) | Partial | The components a capability comes from: signed immutable releases of tools, plugins, skills, and `eval-suite` test sets, with installation, enablement, grants, and admission kept separate. | `3184`, `3185`, `3186`, `30184`, `30185` |
+| [NIP-CAP](../../nips/openagents/NIP-CAP.md) | Partial | Describes an execution interface, its host binding, the grant to use it, and its observed presence; a `service` profile advertises decision services such as Jev's. | `30180`, `30181` |
+| [NIP-KB](../../nips/openagents/NIP-KB.md) | Implemented | Knowledge as a capability: signed entry versions and heads, with evidence that an entry helps as a with-and-without `3189` report. | `3190`, `30190`, `3191` |
+| [NIP-PRG](../../nips/openagents/NIP-PRG.md) | Partial | Typed workflows whose `decide` and `delegate` steps call a pinned decision function or hand a bounded task to an admitted executor. | `30182`, `30183` |
+| [NIP-CJ](../../nips/openagents/NIP-CJ.md) | Partial | The jobs: conversation turns with the router's `judgment` feedback, typed decision jobs, execution jobs (the hosted eval runner), and the chat's eval `offer`s, `card`s, and test-set `draft`. | `25900`/`26900`/`27000`, `25910`/`26910`/`27010`, `25920`/`26920`/`27020` |
+| [NIP-CTX](../../nips/openagents/NIP-CTX.md) | Designed | Context requests and selection receipts: which evidence was chosen for a recipient, which is what a delegate's briefing is. | None; shared `3188` |
+| [NIP-POL](../../nips/openagents/NIP-POL.md) | Designed | Route receipts and observed usage (the cost side of a judgment), and the authority under which an evaluated implementation is adopted. | None; shared `3188` |
+| [NIP-SESS](../../nips/openagents/NIP-SESS.md) | Designed (read-only observer implemented) | Engine sessions: each delegate engine's steering capability row, and session history exports whose portable form can be an ATIF trajectory. | None; shared `3188` |
+| [NIP-RUN](../../nips/openagents/NIP-RUN.md) | Partial | The authoritative journal of a run: its lock, parent run, dispatched attempts, and outcome. Trajectories observe; RUN decides. | `3187`, `30186` |
+| [NIP-ATIF](../../nips/openagents/NIP-ATIF.md) | Designed | Carries the trajectory of each run, and links a delegating step to the sub-agent's trajectory. | `3198`, `3199` |
+| [NIP-EVAL](../../nips/openagents/NIP-EVAL.md) | Partial (extension evaluation wire formats implemented) | The unit of account: with-and-without reports, the gate's verdict, `3189` publications, checks, hosted runs, and adoption. | `3189`, `3195` |
+| [NIP-XP](../../nips/openagents/NIP-XP.md) | Implemented | Credit: the `eval-check` and `eval-adopt` rules, awards, revocations, and per-reader ledgers. | `30193`, `3193`, `3194`, `3196`, `3197`, `13193`, `13195`, `30194` |
+| [NIP-OPT](../../nips/openagents/NIP-OPT.md) | Designed | Searching for a better implementation; its result is promoted only through EVAL admission and a new EXT release. | None; shared `3188` |
+| [NIP-WORK](../../nips/openagents/NIP-WORK.md) | Designed | A signed delegation of tracked work to another principal. | None; shared `3188` |
+| [NIP-MV](../../nips/openagents/NIP-MV.md) | Partial | Verse: Gym notes, the world-chat lines that cite a trainer's published eval result. | `23300`–`23302`, `33300`, `33301` |
+| [Shared contracts](../../nips/openagents/contracts.md) | Partial | The locks, references, and private `3188` envelope every row above relies on. | `3188` |
+
+Block [NIP-AO](../../nips/block/NIP-AO.md), [NIP-AM](../../nips/block/NIP-AM.md),
+and [NIP-AE](../../nips/block/NIP-AE.md) (telemetry, turn metrics, memory)
+are not capability records; NIP-ATIF's
+[Block mapping](../../nips/openagents/NIP-ATIF.md#relationship-to-block-nips)
+says how a host turns them into trajectory steps. HOST, REACH, TERM, CTRL,
+ENV, WS, AUTO, LIVE, COORD, MKT, LAB, X402, and SOV carry the computers,
+access, control, and payment a run needs, not the capability or its
+evidence, so they don't appear below.
+
+### The lifecycle, stage by stage
+
+| Stage | Carrier | Kinds and fields |
+| --- | --- | --- |
+| Discover | [EXT](../../nips/openagents/NIP-EXT.md#listings-updates-and-installation), [CAP](../../nips/openagents/NIP-CAP.md#discovery-and-probes), [KB](../../nips/openagents/NIP-KB.md#heads-30190), [CJ](../../nips/openagents/NIP-CJ.md#conversation-jobs) | EXT listing `30184` and release `3184`; the operation descriptor's `summary`, `input`, `output`, `effects`, and `evaluation` support shortlisting. CAP `30180` heads with presence `present`/`absent`/`unavailable`/`unprobed`/`unknown`. KB heads `30190`. In chat, the CJ `card` of type `tool` and `news`. |
+| Admit | [EXT](../../nips/openagents/NIP-EXT.md#listings-updates-and-installation), [CAP](../../nips/openagents/NIP-CAP.md#description-binding-and-grant), [contracts](../../nips/openagents/contracts.md#locks-and-resolution), [RUN](../../nips/openagents/NIP-RUN.md#record-types) | Installation commits one lock; enablement, grants, and invocation admission are separate. CAP separates definition, host binding, grant, and presence. RUN's `created` record holds the lock and grant references. An eval report's `subject.lock` is the lock the with arm held. |
+| Run and judge | [CJ](../../nips/openagents/NIP-CJ.md#typed-decision-jobs), [CAP](../../nips/openagents/NIP-CAP.md#decision-services), [PRG](../../nips/openagents/NIP-PRG.md#step-kinds) | Decision jobs `25910`/`26910` (`openagents.systemone.v1`, question types `noul`, `choice`, `score`); conversation `25900` with `router`, answered by `judgment` feedback carrying `route`, `route_p`, `answer_p`, `needs_specifics`, `risk`, `lane`, and `tier`. CAP's `service` profile lists the lanes and doors. PRG's `decide` step. |
+| Delegate | [PRG](../../nips/openagents/NIP-PRG.md#step-kinds), [SESS](../../nips/openagents/NIP-SESS.md#steering-capability), [ATIF](../../nips/openagents/NIP-ATIF.md#delegated-sub-agents), [WORK](../../nips/openagents/NIP-WORK.md#delegation-and-execution-links), [CTX](../../nips/openagents/NIP-CTX.md#context-requests-and-selection-receipts) | PRG `delegate` step. SESS steering rows for the delegate engines (OpenCode `run` as Coder One's delegate executor, Devin and OpenCode ACP routes). ATIF `subagent_trajectory_ref` and the manifest's `parent` and `children`. WORK `openagents.work-delegation.v1`. CTX `openagents.context-selection.v1` for the briefing's evidence. |
+| Trajectory | [ATIF](../../nips/openagents/NIP-ATIF.md#manifest), [EVAL](../../nips/openagents/NIP-EVAL.md#reports) | Manifest `openagents.atif-manifest.v1` (`trajectory_id`, `steps_digest`, `task`, `run`, `coverage`, `derivation`), private on `3188` or public as `3198` with chunks `3199`. Each eval run's `artifacts` include its ATIF log ArtifactRef (schema `ATIF-v1.8`). |
+| Measure (with and without) | [EVAL](../../nips/openagents/NIP-EVAL.md#reports) | `openagents.eval-report.v1`: `subject` and `baseline` arms, `runs`, `coverage`, `measurements` (`cases_passed`, `mean_score`, `cost_usd`, `seconds`, and `change` on the `comparison` arm), `verdict`, and `acceptance` (the gate's digest, repeated in `meta.ext_eval.gate`). KB's [evidence](../../nips/openagents/NIP-KB.md#evidence-3189) uses the same report for knowledge entries. |
+| Publish | [EVAL](../../nips/openagents/NIP-EVAL.md#publication), [EXT](../../nips/openagents/NIP-EXT.md#component-types-and-operation-descriptors), [CJ](../../nips/openagents/NIP-CJ.md#conversation-jobs) | The suite as an EXT `3184` release with one `eval-suite` component. The result as a `3189` with `t: oa:ext-eval:v1`, `e` markers `suite`, `subject`, `request`, and `meta.ext_eval_report`. CJ `publish_eval` offer and the hosted runner's `publish` action. Released leaderboards as `3195`. |
+| Check and verify | [EVAL](../../nips/openagents/NIP-EVAL.md#checks) | A `3189` with the `check` marker, the same suite and subject, the same subject-arm lock, and a different trainer; it confirms on an equal verdict and disputes otherwise. Hosted reruns set `check` in the `run` action. |
+| Credit | [XP](../../nips/openagents/NIP-XP.md#eval-check) | `eval-check` pays `checker`, `evaluator`, `suite-author`; [`eval-adopt`](../../nips/openagents/NIP-XP.md#eval-adopt) pays `extension-author`, `suite-author`, `evaluator`. Quests `30193`, awards `3193`, revocations `3194`; the CJ `card` of type `credit` shows the reader's ledger. |
+| Adopt | [EVAL](../../nips/openagents/NIP-EVAL.md#adoption), [POL](../../nips/openagents/NIP-POL.md#optimization-authority-and-adoption), [EXT](../../nips/openagents/NIP-EXT.md#release-and-package-manifest) | An `openagents.eval-admission.v1` decision citing the reports and checks, then a `coder-defaults` `3184` release whose `dependencies` include the tool's release and whose `provenance.receipts` cite the admission. POL keeps activation an operator decision; active runs keep their lock. |
+| Share (Verse) | [MV](../../nips/openagents/NIP-MV.md#gym-notes), [CJ](../../nips/openagents/NIP-CJ.md#conversation-jobs), [EVAL](../../nips/openagents/NIP-EVAL.md#gym-results-publication), [XP](../../nips/openagents/NIP-XP.md#trainer-cards-30194) | Gym notes: kind `9` world chat with `L`/`l` `openagents.gym` and an `e … source` citing the trainer's `3189`. CJ `open_screen` `verse.gym`. Gym leaderboards `3195`. Trainer cards `30194`. |
+
+### The terms and their carriers
+
+| Term | Canonical carrier | What carries it, and what doesn't yet |
+| --- | --- | --- |
+| Test-time capability | [EXT](../../nips/openagents/NIP-EXT.md) + [EVAL](../../nips/openagents/NIP-EVAL.md#extension-evaluation-profile) | A component release (`3184`) plus a report that measured it with and without. The five sources map to EXT components (`plugin`, `capability`, `skill`), KB entries (`3190`), delegation (PRG `delegate`), and typed judgment (CJ decision jobs). A component with no report is a candidate. |
+| Capability admission | [EXT](../../nips/openagents/NIP-EXT.md#listings-updates-and-installation), [CAP](../../nips/openagents/NIP-CAP.md#description-binding-and-grant) | Lock, grant, and admission as separate decisions; a report's `subject.lock`. No public event records one Coder turn's admission; RUN's `created` record is the private place for it. NIP-EVAL's `openagents.eval-admission.v1` is adoption, not this. |
+| Capability delta | [EVAL](../../nips/openagents/NIP-EVAL.md#reports) | `subject` and `baseline` arms, `measurements` with `change` on the `comparison` arm, `verdict`, and the gate digest in `acceptance`. The gate's rules (`ext-eval-v2`) are a Gym file the report pins, not wire text. |
+| Reach and restraint | [EVAL](../../nips/openagents/NIP-EVAL.md#suites) | Each case's `kind`, `should-fire` or `should-not-fire`, repeated in `meta.ext_eval.cases`, with per-case outcomes in `runs`. No field aggregates a reach or restraint rate; a reader computes it. |
+| Judgment budget | [CJ](../../nips/openagents/NIP-CJ.md#conversation-jobs), [POL](../../nips/openagents/NIP-POL.md#routing-and-observed-cost) | CJ `judgment` feedback carries the decision (`tier`, `route_p`, `answer_p`, `needs_specifics`) and a result names a bank answer with `model: "bank:<bank id>"`. Its time and cost have no wire field today; POL's `openagents.route-usage.v1` (`latency_ms`, `cost_microunits`) is Designed. |
+| Test-time delegation | [PRG](../../nips/openagents/NIP-PRG.md#step-kinds), [SESS](../../nips/openagents/NIP-SESS.md#steering-capability), [ATIF](../../nips/openagents/NIP-ATIF.md#delegated-sub-agents) | PRG `delegate`, SESS delegate-engine rows, ATIF `parent`/`children`. The delegate door's provider failover and Jev's briefing run locally and have no Nostr record yet. |
+| Verified capability | [EVAL](../../nips/openagents/NIP-EVAL.md#checks) | A confirming `check`, decided by `eval_ext::confirms` from the two signed events. The candidate threshold (three distinct trainers) is [operator policy](../extensions/evaluation.md#checks-adoption-and-credit), not a NIP field. |
+| Capability adoption | [EVAL](../../nips/openagents/NIP-EVAL.md#adoption) | `openagents.eval-admission.v1` plus the `coder-defaults` `3184` release. No adoption has been published. |
+| Capability credit | [XP](../../nips/openagents/NIP-XP.md#eval-check) | `eval-check` and `eval-adopt` awards (`3193`); XP is never money. |
+| Capability flywheel | Composition of the rows above | No single carrier. Its measure, incremental out-of-sample verified passes per adopted contribution, has no wire field; a reader would derive it from `3189` results, checks, and `coder-defaults` releases. |
+
+The NIPs above each point back here in a "Test-time capabilities" line, and
+the [NIP index](../../nips/openagents/README.md#test-time-capabilities)
+lists the same mapping from the protocol side.
 
 ## Open problems and what we measure next
 

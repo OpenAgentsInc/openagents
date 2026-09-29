@@ -29,6 +29,8 @@ recovery, EVAL decides whether a result passed, and POL decides what may be
 disclosed. A signature on a trajectory proves who published it, not that
 the recording is complete, honest, or correct.
 
+Test-time capabilities: this NIP carries the trajectory of each with-and-without eval run and of each [test-time delegation](../../docs/essays/2026-09-29-test-time-capabilities.md#6-test-time-delegation) through `parent` and `children` ([mapping](../../docs/essays/2026-09-29-test-time-capabilities.md#how-the-protocol-carries-test-time-capabilities)).
+
 ## Status
 
 Designed. No component publishes or reads these events yet. Traces remain

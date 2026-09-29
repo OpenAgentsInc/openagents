@@ -17,6 +17,8 @@ shipping executable behavior in a pose event. That profile is **Designed**;
 the current Verse client uses a curated local zone catalog and does not yet
 discover or admit signed scene definitions.
 
+Test-time capabilities: [Gym notes](#gym-notes) share a trainer's published eval result in Verse, the last stage of the [capability flywheel](../../docs/essays/2026-09-29-test-time-capabilities.md#10-the-capability-flywheel) ([mapping](../../docs/essays/2026-09-29-test-time-capabilities.md#how-the-protocol-carries-test-time-capabilities)).
+
 ## Terms
 
 | Term | Meaning |

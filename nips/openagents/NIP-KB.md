@@ -14,6 +14,8 @@ An entry is reference text. It never runs, never grants anything, and never
 overrides an instruction. A signature proves who wrote an entry, not that
 the entry is right.
 
+Test-time capabilities: an entry is a knowledge-sourced [test-time capability](../../docs/essays/2026-09-29-test-time-capabilities.md#1-test-time-capability-ttcap), and its [evidence](#evidence-3189) is a with-and-without report ([mapping](../../docs/essays/2026-09-29-test-time-capabilities.md#how-the-protocol-carries-test-time-capabilities)).
+
 ## Kinds
 
 These are OpenAgents draft assignments, not upstream registrations.

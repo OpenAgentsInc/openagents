@@ -11,6 +11,8 @@ define confirmation and reconciliation evidence. Receipt of an API response,
 acceptance of a proposal, verification, and the actual external effect remain
 distinct facts, including when the effect is irreversible.
 
+Test-time capabilities: a run's `created` record holds the lock a capability was admitted under and its parent run, which is the authoritative side of [admission](../../docs/essays/2026-09-29-test-time-capabilities.md#2-capability-admission) and [delegation](../../docs/essays/2026-09-29-test-time-capabilities.md#6-test-time-delegation) ([mapping](../../docs/essays/2026-09-29-test-time-capabilities.md#how-the-protocol-carries-test-time-capabilities)).
+
 ## Kinds and privacy
 
 | Kind | Class | Record |

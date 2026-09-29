@@ -7,6 +7,8 @@ execution jobs. Tasks are domain-independent: document, research, coding,
 and business operations use the same transport with domain schemas and
 host admission. A relay transports requests; it grants no execution authority.
 
+Test-time capabilities: decision jobs and the conversation `judgment` feedback carry the router's side of the [judgment budget](../../docs/essays/2026-09-29-test-time-capabilities.md#5-judgment-budget); the `start_eval` and `publish_eval` offers, cards, and test-set draft carry the chat path, and execution jobs carry hosted eval runs ([mapping](../../docs/essays/2026-09-29-test-time-capabilities.md#how-the-protocol-carries-test-time-capabilities)).
+
 ## Families and transport
 
 | Family | Request/control | Result/control answer | Feedback | Payload version |
