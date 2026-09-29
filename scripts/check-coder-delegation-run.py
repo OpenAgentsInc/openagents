@@ -38,6 +38,11 @@ PROGRAM_CALL = 'program'
 # delegate Isolation. The delegate Status an accepted call reports.
 SOURCES = frozenset({'System', 'User', 'Agent'})
 OUTCOMES = frozenset({'Completed', 'Failed', 'Cancelled'})
+
+# The ATIF versions a session record may declare, as crates/atif reads
+# them: it writes ATIF-v1.8, and logs recorded before 2026-09-28 declare
+# ATIF-v1.7. Every 1.x revision is additive, so each still reads.
+ATIF_VERSIONS = frozenset(f'ATIF-v1.{minor}' for minor in range(9))
 ISOLATIONS = frozenset({'directory', 'worktree'})
 ANSWERED = 'answered'
 
@@ -180,7 +185,7 @@ def read_log(path):
         if kind == 'session':
             if session is not None:
                 faults.append(f'line {number}: a second session record')
-            elif record.get('schema_version') != 'ATIF-v1.7':
+            elif record.get('schema_version') not in ATIF_VERSIONS:
                 faults.append(f'line {number}: unsupported ATIF schema')
             elif not valid_session(record.get('session')):
                 faults.append(f'line {number}: the session does not read')

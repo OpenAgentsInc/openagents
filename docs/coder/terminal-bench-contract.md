@@ -102,8 +102,12 @@ evaluation/
   prefix with no end record. The manifest lists the log as
   `invocation_log` and gives its digest only once the log has closed.
 - `trajectory.atif.json` — one ATIF `Trajectory` document
-  (`ATIF-v1.7`), valid against Harbor's Pydantic models, derived from the
-  episode log. Custom observation metadata lives under `extra`; nothing
+  (`ATIF-v1.8`), valid against Harbor's Pydantic models, derived from the
+  episode log. The pinned Harbor 0.22.0 lists versions only through
+  `ATIF-v1.7`, so the adapter validates through `tbench.atif.harbor_validate`,
+  which checks the unchanged shape under the newest label the pinned models
+  know and keeps the document's own `ATIF-v1.8`. Bundles recorded before
+  2026-09-28 declare `ATIF-v1.7` and read as recorded. Custom observation metadata lives under `extra`; nothing
   undeclared. Each invocation event is a system step whose `extra`
   holds it under `invocation`; other steps name the invocation that made
   them under `invocation_id`.

@@ -75,3 +75,23 @@ def test_episode_env_forwards_names(tmp_path, monkeypatch):
     env = agent._episode_env()
     assert env["OPENAGENTS_API_KEY"] == "oak_secret"
     assert env["OPENAGENTS_DOOR_URL"] == "http://localhost:9000"
+
+
+def test_a_v1_8_trajectory_reaches_harbor_with_its_own_label(tmp_path):
+    import json
+    import shutil
+    from pathlib import Path
+
+    from harbor.models.agent.context import AgentContext
+
+    path, digest = _binary(tmp_path)
+    logs = tmp_path / "logs"
+    agent = CoderV05(logs_dir=logs, artifact_path=path, artifact_sha256=digest)
+    episode = logs / "episode"
+    episode.mkdir(parents=True)
+    fixture = Path(__file__).parent / "fixtures" / "trajectory.atif.json"
+    shutil.copy(fixture, episode / "trajectory.atif.json")
+    agent.populate_context_post_run(AgentContext())
+    written = json.loads((logs / "trajectory.json").read_text())
+    assert written["schema_version"] == "ATIF-v1.8"
+    assert len(written["steps"]) == 6

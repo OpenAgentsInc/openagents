@@ -2,9 +2,9 @@
   "v": "openagents.atif-chunk.v1",
   "requires": [],
   "trajectory_id": "fix-readme.1.child-1",
-  "artifact": "sha256:8a882c21f8b66026f7620b4592d09df7977a3e0d0168b30deecd05bccea55c74",
+  "artifact": "sha256:ce57ac1800af706b6947e3ac66a84444d2381c0b5ee355ffad9d2ce84efa1a9d",
   "index": 0,
   "count": 1,
-  "digest": "sha256:8a882c21f8b66026f7620b4592d09df7977a3e0d0168b30deecd05bccea55c74",
-  "text": "{\"record\":\"session\",\"schema_version\":\"ATIF-v1.7\",\"at\":1790553601300,\"session\":{\"id\":\"fix-readme.1.child-1\",\"model\":\"example/model-2\",\"door\":\"example\",\"repository\":\"\",\"directive\":\"\",\"state\":\"\",\"seconds\":0,\"version\":\"0.1.0\"}}\n{\"record\":\"step\",\"step\":{\"at\":1790553601400,\"source\":\"User\",\"message\":\"Correct the spelling of 'recieve' in README.md.\"}}\n{\"record\":\"step\",\"step\":{\"at\":1790553609600,\"source\":\"Agent\",\"message\":\"Replaced 'recieve' with 'receive' on line 12.\",\"tokens\":[640,22]}}\n{\"record\":\"end\",\"at\":1790553609700,\"state\":\"ended\"}\n"
+  "digest": "sha256:ce57ac1800af706b6947e3ac66a84444d2381c0b5ee355ffad9d2ce84efa1a9d",
+  "text": "{\"record\":\"session\",\"schema_version\":\"ATIF-v1.8\",\"at\":1790553601300,\"session\":{\"id\":\"fix-readme.1.child-1\",\"model\":\"example/model-2\",\"door\":\"example\",\"repository\":\"\",\"directive\":\"\",\"state\":\"\",\"seconds\":0,\"version\":\"0.1.0\"}}\n{\"record\":\"step\",\"step\":{\"at\":1790553601400,\"source\":\"User\",\"message\":\"Correct the spelling of 'recieve' in README.md.\"}}\n{\"record\":\"step\",\"step\":{\"at\":1790553609600,\"source\":\"Agent\",\"message\":\"Replaced 'recieve' with 'receive' on line 12.\",\"tokens\":[640,22]}}\n{\"record\":\"end\",\"at\":1790553609700,\"state\":\"ended\"}\n"
 }

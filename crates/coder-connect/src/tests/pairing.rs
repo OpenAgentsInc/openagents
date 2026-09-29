@@ -460,7 +460,7 @@ fn coder_task_source_pairs_and_pages_backward_through_the_observer() {
     std::fs::write(
         tasks.join(format!("{task}.1.atif.jsonl")),
         concat!(
-            r#"{"record":"session","schema_version":"ATIF-v1.7","at":1,"session":{"id":"synthetic-1"}}"#,
+            r#"{"record":"session","schema_version":"ATIF-v1.8","at":1,"session":{"id":"synthetic-1"}}"#,
             "\n",
             r#"{"record":"step","step":{"at":2,"source":"User","message":"Synthetic Coder task"}}"#,
             "\n",

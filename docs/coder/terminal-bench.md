@@ -321,6 +321,11 @@ Bulk logs, provider payloads, and task workspaces stay under
 `bench/terminal-bench/traces/`, which retains the ATIF `trajectory.json`
 from each completed trial (plus partial native logs for trials that ended
 before emitting one), scanned for credential material before check-in.
+Those retained trajectories, and every other recorded bundle and sample
+under `bench/terminal-bench/`, were written before 2026-09-28 and declare
+`ATIF-v1.7`. They are evidence with recorded digests, so they are never
+relabeled; the Gym, Coder One, and `tbench` read every 1.x version, and new
+recordings declare `ATIF-v1.8`.
 [Terminal-Bench trace analysis](measurements/2026-09-22-terminal-bench-trace-analysis.md)
 reads those trajectories step by step and maps what each agent does to the
 operations the v0.5 design should adopt or make impossible.

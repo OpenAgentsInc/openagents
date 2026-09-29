@@ -199,10 +199,21 @@ let recording = atif::log::read(path)?;
 println!("{}", serde_json::to_string_pretty(&recording.document())?);
 ```
 
-The document reports `schema_version: ATIF-v1.7`, the session and its
+The document reports `schema_version: ATIF-v1.8`, the session and its
 door, the numbered steps, and `final_metrics` — token totals, tool and
 decision call counts, reads and searches, the largest tool result, wall
 seconds, and the repeated-work table.
+
+A log's `session` record declares the version it was written at. Logs
+written before 2026-09-28 declare `ATIF-v1.7`, and they read exactly as
+before: every ATIF 1.x revision is additive, and the only thing v1.8 added
+is audio content parts, which a log never holds. Such a log renders a
+v1.8 document with the same `steps`, and so the same `steps_digest`;
+`Recording::schema_version` keeps what the log declared. A version outside
+`ATIF-v1.0` through `ATIF-v1.8` is a fault (`unsupported_version`), and
+`atif::log::read_whole` refuses it. `atif::content` holds the version rules
+and the v1.8 content-part model and validator (`ContentPart`,
+`ImageSource`, `AudioSource`, `atif::validate`, `atif::upgrade`).
 
 ## What this is not
 

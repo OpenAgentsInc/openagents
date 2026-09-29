@@ -45,10 +45,21 @@
 //! # The records
 //!
 //! ```text
-//! {"record":"session","schema_version":"ATIF-v1.7","at":…,"session":{…}}
+//! {"record":"session","schema_version":"ATIF-v1.8","at":…,"session":{…}}
 //! {"record":"step","step":{…}}
 //! {"record":"end","at":…,"state":"ended"}
 //! ```
+//!
+//! # Versions
+//!
+//! A log is written at [`document::SCHEMA_VERSION`]. It is read at any
+//! version [`crate::content::supported`] accepts: logs recorded before
+//! 2026-09-28 say `ATIF-v1.7`, and they read as they always did. The record
+//! lines carry no version-specific fields, and every 1.x revision is
+//! additive, so the document a log renders to is always current — that is
+//! the upgrade on read. [`Recording::schema_version`] keeps what the log
+//! itself declared. A session record declaring a version this crate does
+//! not read is an [`FaultKind::UnsupportedVersion`] fault.
 //!
 //! The `session` record comes first and is never rewritten, so it holds only
 //! what is true when the session opens. How the session ended and how long
@@ -239,6 +250,10 @@ pub struct Recording {
     pub faults: Vec<Fault>,
     /// Where the log was read from.
     pub path: PathBuf,
+    /// The ATIF version the log's session record declared, which may be
+    /// older than the version its document renders at. Empty when the
+    /// record declared none.
+    pub schema_version: String,
 }
 
 impl Recording {
@@ -321,6 +336,9 @@ pub enum FaultKind {
     AfterEnd,
     /// A record before the `session` record.
     BeforeSession,
+    /// A `session` record declaring an ATIF version this crate does not
+    /// read.
+    UnsupportedVersion,
 }
 
 impl FaultKind {
@@ -338,6 +356,7 @@ impl FaultKind {
             Self::RepeatedEnd => "repeated_end",
             Self::AfterEnd => "after_end",
             Self::BeforeSession => "before_session",
+            Self::UnsupportedVersion => "unsupported_version",
         }
     }
 }
@@ -355,6 +374,7 @@ impl fmt::Display for FaultKind {
             Self::RepeatedEnd => "the log has a second end record",
             Self::AfterEnd => "a record comes after the end record",
             Self::BeforeSession => "a record comes before the session record",
+            Self::UnsupportedVersion => "the session record declares an unsupported ATIF version",
         })
     }
 }
@@ -381,6 +401,7 @@ pub fn read_bytes(path: &Path, bytes: &[u8]) -> io::Result<Recording> {
     let mut steps: Vec<Step> = Vec::new();
     let mut closed: Option<(u64, String)> = None;
     let mut faults: Vec<Fault> = Vec::new();
+    let mut declared_version = String::new();
 
     let mut lines: Vec<&[u8]> = bytes.split(|byte| *byte == b'\n').collect();
     // A file that ends in a newline splits into one empty piece past the
@@ -435,12 +456,20 @@ pub fn read_bytes(path: &Path, bytes: &[u8]) -> io::Result<Recording> {
         match kind {
             Some("session") if opened.is_some() => fault(FaultKind::RepeatedSession),
             Some("session") => {
+                let declared = record.get("schema_version").and_then(Value::as_str);
+                if declared.is_some_and(|version| !crate::content::supported(version)) {
+                    fault(FaultKind::UnsupportedVersion);
+                    continue;
+                }
                 match record
                     .get("session")
                     .cloned()
                     .and_then(|value| serde_json::from_value::<Session>(value).ok())
                 {
-                    Some(session) => opened = Some((at, session)),
+                    Some(session) => {
+                        declared_version = declared.unwrap_or_default().to_string();
+                        opened = Some((at, session));
+                    }
                     None => fault(FaultKind::BadSession),
                 }
             }
@@ -491,6 +520,7 @@ pub fn read_bytes(path: &Path, bytes: &[u8]) -> io::Result<Recording> {
         unreadable_lines: faults.len(),
         faults,
         path: path.to_path_buf(),
+        schema_version: declared_version,
     })
 }
 
@@ -791,6 +821,68 @@ mod tests {
         let document = recording.document();
         assert_eq!(document["extra"]["faults"][0]["fault"], "not_utf8");
         assert_eq!(document["extra"]["faults"][0]["line"], 3);
+    }
+
+    fn a_log_declaring(version: Option<&str>) -> String {
+        let mut header = json!({"record":"session","at":1_000,"session":a_session()});
+        if let Some(version) = version {
+            header["schema_version"] = json!(version);
+        }
+        let step = json!({"record":"step","step":Step::said(Source::User, "hello")});
+        let end = json!({"record":"end","at":2_000,"state":ENDED});
+        format!("{header}\n{step}\n{end}\n")
+    }
+
+    /// A log recorded before v1.8 reads whole and renders at the current
+    /// version, and the recording keeps what the log declared.
+    #[test]
+    fn a_v1_7_log_reads_whole_and_renders_as_current() {
+        let path = Path::new("old.atif.jsonl");
+        let old = read_bytes(path, a_log_declaring(Some("ATIF-v1.7")).as_bytes()).unwrap();
+        assert!(old.whole());
+        assert_eq!(old.schema_version, "ATIF-v1.7");
+        assert_eq!(old.document()["schema_version"], "ATIF-v1.8");
+
+        let new = read_bytes(path, a_log_declaring(Some("ATIF-v1.8")).as_bytes()).unwrap();
+        assert!(new.whole());
+        assert_eq!(new.schema_version, document::SCHEMA_VERSION);
+        assert_eq!(
+            document::digest(&old.document()["steps"]),
+            document::digest(&new.document()["steps"]),
+            "the version label is not part of the steps"
+        );
+    }
+
+    #[test]
+    fn a_log_of_an_unsupported_version_is_a_fault() {
+        let path = Path::new("future.atif.jsonl");
+        let error = read_bytes(path, a_log_declaring(Some("ATIF-v2.0")).as_bytes()).unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+
+        let mut bytes = a_log_declaring(Some("ATIF-v2.0"));
+        bytes.push_str(&a_log_declaring(Some("ATIF-v1.8")));
+        let recording = read_bytes(path, bytes.as_bytes()).unwrap();
+        assert_eq!(recording.faults[0].kind, FaultKind::UnsupportedVersion);
+        assert!(!recording.whole());
+
+        // A header that declares nothing still reads, as it always has.
+        let bare = read_bytes(path, a_log_declaring(None).as_bytes()).unwrap();
+        assert!(bare.whole());
+        assert_eq!(bare.schema_version, "");
+    }
+
+    /// A log this crate writes declares the version it writes.
+    #[test]
+    fn a_new_log_declares_the_current_version() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut log = Log::create(dir.path(), &a_session()).unwrap();
+        log.finish(ENDED).unwrap();
+        let text = std::fs::read_to_string(log.path()).unwrap();
+        assert!(
+            text.starts_with(r#"{"record":"session","schema_version":"ATIF-v1.8","#),
+            "{text}"
+        );
+        assert_eq!(read(log.path()).unwrap().schema_version, "ATIF-v1.8");
     }
 
     /// One header, then steps, then at most one end. Whatever breaks that

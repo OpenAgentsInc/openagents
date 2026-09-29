@@ -291,7 +291,7 @@ fn a_trajectory_reads_as_the_task_then_each_step() {
     let dir = scratch("trace");
     let path = dir.join("trace.json");
     let doc = json!({
-        "schema_version": "ATIF-v1.7",
+        "schema_version": "ATIF-v1.8",
         "agent": {"model_name": "strong-model"},
         "steps": [
             {"source": "user", "message": "Fit the rules to the pairs."},

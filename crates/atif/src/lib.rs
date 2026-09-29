@@ -7,9 +7,11 @@
 //! file a running session appends to, in [`log`].
 //!
 //! The format is ATIF as the Harbor trajectory RFC defines it, reimplemented
-//! here from the reference implementation in `~/work/coder`. It is a schema,
-//! not service code: nothing in this crate opens a socket, and nothing in it
-//! knows where a trace goes afterwards.
+//! here from the reference implementation in `~/work/coder`. It writes
+//! `ATIF-v1.8` and reads every earlier 1.x version; [`content`] holds the
+//! version rules and the multimodal content parts v1.8 extended with audio.
+//! It is a schema, not service code: nothing in this crate opens a socket,
+//! and nothing in it knows where a trace goes afterwards.
 //!
 //! # Why this format
 //!
@@ -55,9 +57,13 @@
 //! # Ok::<(), std::io::Error>(())
 //! ```
 
+pub mod content;
 pub mod document;
 pub mod log;
 
+pub use content::{
+    AudioSource, ContentPart, ImageSource, SUPPORTED_SCHEMA_VERSIONS, supported, upgrade, validate,
+};
 pub use document::{
     AGENT_NAME, Attempt, Call, DECISION_CALL_SCHEMA, Decision, EXPORTER, Outcome, SCHEMA_VERSION,
     Session, Source, Step, Usage, digest, document, intent, iso, now_ms, stamp,

@@ -113,7 +113,9 @@ uses, and marks which are implemented and which are only specified.
 
 ## Crates
 
-- `crates/atif` — the Agent Trajectory Interchange Format (`ATIF-v1.7`):
+- `crates/atif` — the Agent Trajectory Interchange Format (`ATIF-v1.8`; it
+  reads every earlier 1.x version, and traces recorded before 2026-09-28
+  are `ATIF-v1.7`):
   a session as ordered steps, the append-only log a running session
   writes them to, and the document a reader renders from it. A decision
   call is a first-class `Call`, so a Jev, Kev, or Lev question and a

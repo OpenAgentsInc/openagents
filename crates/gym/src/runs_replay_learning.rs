@@ -391,7 +391,7 @@ pub(crate) mod tests {
 
     pub fn public(dir: &Path, id: &str) -> Source {
         let bytes = serde_json::to_vec(&json!({
-            "schema_version":"ATIF-v1.7", "session_id":id,
+            "schema_version":"ATIF-v1.8", "session_id":id,
             "agent":{"name":"Claude Code","version":"test","model_name":"Fable 5.1"},
             "steps":[
                 {"step_id":1,"timestamp":"2026-09-02T00:00:00Z","source":"user","message":"Repair the parser and run its tests."},

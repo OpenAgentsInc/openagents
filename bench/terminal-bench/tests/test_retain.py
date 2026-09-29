@@ -26,7 +26,7 @@ def _job(tmp_path, *, stream_text='{"type":"turn"}\n', drop_stream=False):
     job = tmp_path / "jobs" / "extended--coder-one-x--task"
     trial = job / "task__abc"
     episode = trial / "agent" / "episode"
-    atif = json.dumps({"schema_version": "ATIF-v1.7", "steps": [{}, {}]})
+    atif = json.dumps({"schema_version": "ATIF-v1.8", "steps": [{}, {}]})
     atif_sha = _write(episode / "trajectory.atif.json", atif)
     _write(trial / "agent" / "trajectory.json", atif)
     stream_sha = _write(episode / "artifacts" / "delegate-1.stream.jsonl", stream_text)

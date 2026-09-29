@@ -50,8 +50,8 @@ from harbor.agents.installed.base import (
 )
 from harbor.environments.base import BaseEnvironment
 from harbor.models.agent.context import AgentContext
-from harbor.models.trajectories import Trajectory
 
+from tbench.atif import harbor_validate
 from tbench.live import DEFAULT_INTERVAL_SEC, LOG_NAME, LiveTail
 from tbench.usage_limit import USAGE_LIMIT_EXIT_CODE, UsageLimitError
 
@@ -403,13 +403,11 @@ class CoderV05(BaseInstalledAgent):
         if trajectory_doc is None:
             return
         try:
-            trajectory = Trajectory.model_validate(trajectory_doc)
+            trajectory = harbor_validate(trajectory_doc)
         except ValueError:
             return
         trajectory_path = self.logs_dir / "trajectory.json"
-        trajectory_path.write_text(
-            json.dumps(trajectory.to_json_dict(), indent=2, ensure_ascii=False)
-        )
+        trajectory_path.write_text(json.dumps(trajectory, indent=2, ensure_ascii=False))
 
     @staticmethod
     def _read_json(path: Path) -> dict[str, Any] | None:

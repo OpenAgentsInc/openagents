@@ -12,7 +12,12 @@ segment it continues.
 
 ATIF itself is not defined here. Its upstream specification is the Harbor
 project's [RFC 0001](https://github.com/harbor-framework/harbor/blob/7464ab541773ea1d4618336f043970042f33a1b5/rfcs/0001-trajectory-format.md)
-(`ATIF-v1.8` at that revision). `crates/atif` writes `ATIF-v1.7`, which
+(`ATIF-v1.8` at that revision). `ATIF-v1.8` is canonical here:
+`crates/atif` writes it, and every manifest a producer builds for new bytes
+declares it. Readers also accept `ATIF-v1.0` through `ATIF-v1.7`, because
+every 1.x revision is additive; logs recorded before 2026-09-28 declare
+`ATIF-v1.7` and are carried and verified as they were recorded, never
+relabeled. `crates/atif` writes what
 [Coder traces](../../docs/coder/runtime/traces.md) describe: an append-only
 `.atif.jsonl` log, one JSON record per line, from which the ATIF document is
 rendered on read. Coder task attempts write the same log as
@@ -89,8 +94,8 @@ to; a reader without an ATIF renderer checks the bytes and reports
 `steps_digest` as unverified rather than accepting it.
 
 A trajectory is named by its ATIF `trajectory_id`, unique per document, and
-belongs to the run its `session_id` names. Following ATIF-v1.7, `session_id`
-is run-scoped and never resolves a reference by itself. A step is addressed
+belongs to the run its `session_id` names. As ATIF has defined it since
+v1.7, `session_id` is run-scoped and never resolves a reference by itself. A step is addressed
 as `(trajectory_id, step_id)`, where `step_id` is the document's one-based
 ordinal. A reference that must pin content adds `steps_digest` or the step
 digest; an ID alone is a name, not a pin.
@@ -106,7 +111,7 @@ Every carried trajectory has one manifest,
 | `requires` | Empty array. |
 | `trajectory_id` | The document's `trajectory_id`, 1–256 bytes. |
 | `session_id` | The document's `session_id`, or `null`. |
-| `schema_version` | The ATIF version the bytes declare, such as `"ATIF-v1.7"`. A reader refuses a version it does not support as `unsupported_version`. |
+| `schema_version` | The ATIF version the bytes declare: `"ATIF-v1.8"` for new recordings, or the older 1.x version a historical recording declares. A reader supports `ATIF-v1.0` through `ATIF-v1.8` and refuses any other version as `unsupported_version`. |
 | `form` | `"log"` or `"document"`. |
 | `artifact` | ArtifactRef of the whole bytes: `digest`, `size`, `media_type` (`application/jsonl` for a log, `application/json` for a document), `schema` equal to `schema_version`, and optional `sources` URL hints. |
 | `steps_digest` | As above. |
@@ -120,6 +125,10 @@ Every carried trajectory has one manifest,
 | `parent` | `{trajectory_id, step_id}` of the step that delegated to this trajectory, or `null`. |
 | `children` | Ordered `{trajectory_id, step_id, steps_digest, artifact, event?}` entries, one per delegated trajectory carried separately. `artifact` is the child's `artifact.digest`; `event` is the child's manifest event ID when known. |
 | `previous` | `{trajectory_id, steps_digest}` of the segment this one continues (ATIF `continued_trajectory_ref`), or `null`. |
+
+Media that ATIF content parts reference by `path` (images since v1.6,
+audio since v1.8) is not part of the artifact bytes, and this NIP does not
+carry it: the manifest pins the trajectory, not the files it names.
 
 Unknown keys are refused. The body fits the shared 1,048,576-byte ceiling
 and, when carried inline in one event, the smallest relay and NIP-44 bound on
@@ -252,7 +261,8 @@ the task's authoritative state reads RUN and HOST, not the trajectory.
 
 ### Delegated sub-agents
 
-A delegation has two representations in ATIF-v1.7, and both stay valid:
+A delegation has two representations in ATIF (since v1.7, unchanged in
+v1.8), and both stay valid:
 
 - **Embedded.** The child is an element of the parent document's
   `subagent_trajectories`, resolved by `trajectory_id`. It travels inside

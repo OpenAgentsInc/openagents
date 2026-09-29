@@ -56,3 +56,26 @@ fn a_steps_digest_survives_a_second_render() {
     let two = recording.document();
     assert_eq!(atif::digest(&one["steps"]), atif::digest(&two["steps"]));
 }
+
+/// The fixture is written at the current version. The same log as it was
+/// recorded before v1.8 still reads whole and renders the same steps, so a
+/// `steps_digest` pinned over a v1.7 recording stays valid.
+#[test]
+fn the_fixture_as_recorded_at_v1_7_renders_the_same_steps() {
+    let path = fixtures().join("parent.atif.jsonl");
+    let current = std::fs::read_to_string(&path).expect("fixture log");
+    assert!(current.contains(&format!("\"schema_version\":\"{}\"", atif::SCHEMA_VERSION)));
+    let recorded = current.replace("\"ATIF-v1.8\"", "\"ATIF-v1.7\"");
+    let old = atif::log::read_bytes(&path, recorded.as_bytes()).expect("a v1.7 log");
+    assert!(old.whole());
+    assert_eq!(old.schema_version, "ATIF-v1.7");
+    let new = atif::log::read_whole(&path).expect("a whole log");
+    assert_eq!(
+        atif::digest(&old.document()["steps"]),
+        atif::digest(&new.document()["steps"])
+    );
+    assert_eq!(
+        manifest("parent.manifest.json")["schema_version"],
+        "ATIF-v1.8"
+    );
+}

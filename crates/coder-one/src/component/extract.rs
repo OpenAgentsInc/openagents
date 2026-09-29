@@ -144,10 +144,15 @@ pub fn extract(trajectory: &Path, source: &Value, out: &Path) -> Result<Extracte
         .map_err(|error| format!("cannot read {}: {error}", trajectory.display()))?;
     let document: Value = serde_json::from_slice(&bytes)
         .map_err(|error| format!("{} is not JSON: {error}", trajectory.display()))?;
-    if document.get("schema_version").and_then(Value::as_str) != Some("ATIF-v1.7") {
+    if !document
+        .get("schema_version")
+        .and_then(Value::as_str)
+        .is_some_and(atif::supported)
+    {
         return Err(format!(
-            "{} is not an ATIF-v1.7 trajectory",
-            trajectory.display()
+            "{} is not an ATIF trajectory of a supported version (ATIF-v1.0 through {})",
+            trajectory.display(),
+            atif::SCHEMA_VERSION
         ));
     }
     let calls = calls(&document);
@@ -577,6 +582,30 @@ mod tests {
         }
         assert!(started.elapsed() < std::time::Duration::from_secs(60));
         let _ = std::fs::remove_dir_all(out);
+    }
+
+    /// Retained traces are v1.7; new ones are v1.8. Both read, and a
+    /// version this crate does not know is refused before anything is
+    /// written.
+    #[test]
+    fn every_supported_version_extracts_and_an_unknown_one_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        for (version, reads) in [
+            ("ATIF-v1.7", true),
+            (atif::SCHEMA_VERSION, true),
+            ("ATIF-v2.0", false),
+        ] {
+            let trajectory = dir.path().join(format!("{version}.json"));
+            std::fs::write(
+                &trajectory,
+                json!({"schema_version": version, "steps": []}).to_string(),
+            )
+            .unwrap();
+            let out = dir.path().join(format!("{version}.out"));
+            let result = extract(&trajectory, &json!("synthetic"), &out);
+            assert_eq!(result.is_ok(), reads, "{version}: {result:?}");
+            assert_eq!(out.exists(), reads, "{version}");
+        }
     }
 
     #[test]

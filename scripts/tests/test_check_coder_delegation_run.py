@@ -89,9 +89,9 @@ def delegate_call(number, output='5', outcome='Completed', status='answered',
     }
 
 
-def write_trace(path, calls):
+def write_trace(path, calls, schema_version='ATIF-v1.8'):
     records = [
-        {'record': 'session', 'schema_version': 'ATIF-v1.7', 'at': 1,
+        {'record': 'session', 'schema_version': schema_version, 'at': 1,
          'session': {'id': 's-1', 'model': 'stub', 'door': 'stub',
                      'repository': '/repo', 'version': '0.1.0'}},
         {'record': 'step',
@@ -163,6 +163,20 @@ class CheckerTests(unittest.TestCase):
                  delegate_call(1, boundary='relay')]
         self.good(calls)
         self.assertEqual(self.run_check().returncode, 0)
+
+    def test_accepts_a_trace_recorded_at_v1_7(self):
+        calls = [program_call()] + [delegate_call(n) for n in range(EXPECTED)]
+        write_trace(self.trace, calls, schema_version='ATIF-v1.7')
+        write_result(self.result, self.trace)
+        self.assertEqual(self.run_check().returncode, 0)
+
+    def test_refuses_an_unsupported_atif_version(self):
+        calls = [program_call()] + [delegate_call(n) for n in range(EXPECTED)]
+        write_trace(self.trace, calls, schema_version='ATIF-v2.0')
+        write_result(self.result, self.trace)
+        process = self.run_check()
+        self.assertEqual(process.returncode, 1)
+        self.assertIn('unsupported ATIF schema', process.stderr)
 
     def test_refuses_malformed_result(self):
         self.good()

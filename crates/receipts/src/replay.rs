@@ -1164,7 +1164,7 @@ mod tests {
     /// A trace file: session record, the given lines, end record.
     fn trace_file(lines: &[String]) -> String {
         let mut text = String::from(
-            "{\"record\":\"session\",\"schema_version\":\"ATIF-v1.7\",\"at\":0,\
+            "{\"record\":\"session\",\"schema_version\":\"ATIF-v1.8\",\"at\":0,\
              \"session\":{\"id\":\"ses-1\",\"model\":\"kev-0.6b\",\"door\":\"d\",\
              \"repository\":\"/r\",\"version\":\"0\"}}\n",
         );

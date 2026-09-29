@@ -3,13 +3,13 @@
   "requires": [],
   "trajectory_id": "fix-readme.1.child-1",
   "session_id": "fix-readme.1.child-1",
-  "schema_version": "ATIF-v1.7",
+  "schema_version": "ATIF-v1.8",
   "form": "log",
   "artifact": {
-    "digest": "sha256:8a882c21f8b66026f7620b4592d09df7977a3e0d0168b30deecd05bccea55c74",
+    "digest": "sha256:ce57ac1800af706b6947e3ac66a84444d2381c0b5ee355ffad9d2ce84efa1a9d",
     "size": 537,
     "media_type": "application/jsonl",
-    "schema": "ATIF-v1.7"
+    "schema": "ATIF-v1.8"
   },
   "steps_digest": "7bb260e1ed230e3694e9d8093bb76dc5b9ea94e09fd0634ae053a382ebe2bc23",
   "step_count": 2,
@@ -19,7 +19,7 @@
   "chunks": [
     {
       "index": 0,
-      "digest": "sha256:8a882c21f8b66026f7620b4592d09df7977a3e0d0168b30deecd05bccea55c74",
+      "digest": "sha256:ce57ac1800af706b6947e3ac66a84444d2381c0b5ee355ffad9d2ce84efa1a9d",
       "size": 537
     }
   ],

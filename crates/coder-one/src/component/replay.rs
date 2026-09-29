@@ -391,7 +391,7 @@ pub(crate) mod tests {
         };
         write(
             "tb4--coder-one-tunable-v4--task/task__A/agent/live/episode.atif.jsonl",
-            "{\"schema_version\":\"ATIF-v1.7\"}\n",
+            "{\"schema_version\":\"ATIF-v1.8\"}\n",
         );
         write("tb4--coder-one-tunable-v4--task/result.json", "{}");
         write(
@@ -405,7 +405,7 @@ pub(crate) mod tests {
         );
         write(
             "panel--coder-one-tunable--t/t__B.episode/trajectory.atif.json",
-            r#"{"schema_version":"ATIF-v1.7","steps":[]}"#,
+            r#"{"schema_version":"ATIF-v1.8","steps":[]}"#,
         );
         write(
             "extended--coder-one-tunable-luna-pack--t/t__C.episode/manifest.json",

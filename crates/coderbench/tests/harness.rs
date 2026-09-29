@@ -117,7 +117,7 @@ fn empty_handed(directory: &Path) -> PathBuf {
     std::fs::write(
         &path,
         concat!(
-            r#"{"record":"session","schema_version":"ATIF-v1.7","at":1789869697018,"#,
+            r#"{"record":"session","schema_version":"ATIF-v1.8","at":1789869697018,"#,
             r#""session":{"id":"s","model":"stub","door":"stub","repository":"/tmp","#,
             r#""directive":"Delegate six instances of Devin.","version":"coder/0.1.0"}}"#,
             "\n",

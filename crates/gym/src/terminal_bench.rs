@@ -1333,7 +1333,10 @@ fn attach_trajectory(attempt: &mut Attempt, path: &Path) {
             .push("Retained trajectory is unreadable; identity and counts are unknown.".to_owned());
         return;
     };
-    if string(&value, "/schema_version").as_deref() != Some("ATIF-v1.7") {
+    if !string(&value, "/schema_version")
+        .as_deref()
+        .is_some_and(atif::supported)
+    {
         attempt
             .notes
             .push("Retained trajectory has an unsupported ATIF version.".to_owned());
@@ -1653,6 +1656,40 @@ mod tests {
 
     fn bench_root() -> PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../../bench/terminal-bench")
+    }
+
+    /// Retained Harbor trajectories are v1.7; Harbor and `crates/atif` now
+    /// write v1.8. Both attach; an unknown version is noted and skipped.
+    #[test]
+    fn a_trajectory_of_any_supported_version_attaches() {
+        let dir = tempfile::tempdir().unwrap();
+        for (version, attaches) in [
+            ("ATIF-v1.7", true),
+            (atif::SCHEMA_VERSION, true),
+            ("ATIF-v2.0", false),
+        ] {
+            let path = dir.path().join(format!("{version}.json"));
+            std::fs::write(
+                &path,
+                serde_json::json!({"schema_version": version, "agent": {"name": "a", "model_name": "m"},
+                       "steps": []})
+                .to_string(),
+            )
+            .unwrap();
+            let mut attempt = test_attempt();
+            attempt.agent = None;
+            attempt.notes.clear();
+            attach_trajectory(&mut attempt, &path);
+            assert_eq!(attempt.agent.is_some(), attaches, "{version}");
+            assert_eq!(
+                attempt
+                    .notes
+                    .iter()
+                    .any(|note| note.contains("unsupported ATIF version")),
+                !attaches,
+                "{version}"
+            );
+        }
     }
 
     #[test]

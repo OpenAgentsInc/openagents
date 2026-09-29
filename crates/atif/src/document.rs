@@ -10,8 +10,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
 
-/// The version of the format this crate writes.
-pub const SCHEMA_VERSION: &str = "ATIF-v1.7";
+pub use crate::content::SCHEMA_VERSION;
 
 /// The agent name a consumer groups these trajectories under.
 pub const AGENT_NAME: &str = "openagents-coder";

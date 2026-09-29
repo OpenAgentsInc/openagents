@@ -22,7 +22,7 @@ case "${1:-}" in
 EOF
         cat > "$outdir/trajectory.atif.json" <<'EOF'
 {
-  "schema_version": "ATIF-v1.7",
+  "schema_version": "ATIF-v1.8",
   "session_id": "slow-probe-session",
   "agent": { "name": "coder-v05-slow-probe", "version": "0.0.0-contract-probe" },
   "steps": [

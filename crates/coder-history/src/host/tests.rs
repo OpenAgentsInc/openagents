@@ -603,7 +603,7 @@ fn catalog_lists_newest_first_with_times_and_first_prompts() {
 /// A synthetic Coder task transcript in the log's spelling (`crates/atif`).
 fn atif_lines() -> String {
     [
-        r#"{"record":"session","schema_version":"ATIF-v1.7","at":1790570162020,"session":{"id":"TASK-1","model":"synthetic","door":"synthetic","repository":"/synthetic","directive":"","state":"","seconds":0,"version":"0.1.0"}}"#,
+        r#"{"record":"session","schema_version":"ATIF-v1.8","at":1790570162020,"session":{"id":"TASK-1","model":"synthetic","door":"synthetic","repository":"/synthetic","directive":"","state":"","seconds":0,"version":"0.1.0"}}"#,
         r#"{"record":"step","step":{"at":1790570162024,"source":"User","message":"Summarize the README\nwith detail"}}"#,
         r#"{"record":"step","step":{"at":1790570162027,"source":"System","message":"Repository adapter admitted by the local operator.","extensions":{"admission":{}}}}"#,
         r#"{"record":"step","step":{"at":1790570162100,"source":"Agent","message":"","call":{"id":"call-1","name":"shell","arguments":{"command":"head -1 README.md"},"output":"Heading: Synthetic","outcome":"Completed","milliseconds":4}}}"#,

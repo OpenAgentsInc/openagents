@@ -8,6 +8,11 @@ exporter, not written by hand:
 Regenerate it whenever ``crates/atif`` changes the document shape; this
 test then proves the shape still satisfies Harbor's Pydantic models, which
 forbid undeclared fields on every model.
+
+The export declares ``ATIF-v1.8``. The pinned Harbor lists versions through
+``ATIF-v1.7``, so the check goes through ``tbench.atif.harbor_validate``,
+which validates the unchanged shape under the newest label the pinned
+models know and keeps the document's own label.
 """
 
 import json
@@ -15,6 +20,8 @@ from pathlib import Path
 
 import pytest
 from harbor.models.trajectories import Trajectory
+
+from tbench.atif import SUPPORTED, WRITTEN, harbor_validate, harbor_versions
 
 FIXTURE = Path(__file__).parent / "fixtures" / "trajectory.atif.json"
 
@@ -25,10 +32,32 @@ def document():
 
 
 def test_exported_document_validates(document):
-    trajectory = Trajectory.model_validate(document)
+    assert document["schema_version"] == WRITTEN == "ATIF-v1.8"
+    dumped = harbor_validate(document)
+    assert dumped["schema_version"] == "ATIF-v1.8"
+    assert dumped["agent"]["name"] == "openagents-coder"
+    assert len(dumped["steps"]) == 6
+
+
+def test_a_v1_7_recording_still_validates_as_recorded(document):
+    recorded = dict(document, schema_version="ATIF-v1.7")
+    trajectory = Trajectory.model_validate(recorded)
     assert trajectory.schema_version == "ATIF-v1.7"
-    assert trajectory.agent.name == "openagents-coder"
-    assert len(trajectory.steps) == 6
+    assert harbor_validate(recorded)["schema_version"] == "ATIF-v1.7"
+
+
+def test_versions_harbor_does_not_know_are_refused(document):
+    assert set(harbor_versions()) <= SUPPORTED
+    with pytest.raises(ValueError):
+        harbor_validate(dict(document, schema_version="ATIF-v2.0"))
+
+
+def test_embedded_subagents_keep_their_own_labels(document):
+    child = dict(document, schema_version="ATIF-v1.7", trajectory_id="child")
+    parent = dict(document, subagent_trajectories=[child])
+    dumped = harbor_validate(parent)
+    assert dumped["schema_version"] == "ATIF-v1.8"
+    assert dumped["subagent_trajectories"][0]["schema_version"] == "ATIF-v1.7"
 
 
 def test_observation_metadata_lives_under_extra(document):
