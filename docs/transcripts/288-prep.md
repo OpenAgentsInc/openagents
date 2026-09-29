@@ -1,6 +1,6 @@
-# Episode 288: Coder Gym
+# Episode 288 preparation: Coder Gym (unreleased session)
 
-This is an incomplete recording. Christopher sketches an “Coder Gym” for reviewing Terminal-Bench runs, surfacing useful findings, and learning from agent behavior.
+This session was recorded as episode 288 and will not be released under that number; the owner reassigned 288 to **Test-Time Capabilities** ([draft script](288-draft.md)) on 2026-09-29. It is retained as preparatory material: an incomplete recording in which Christopher sketches a “Coder Gym” for reviewing Terminal-Bench runs, surfacing useful findings, and learning from agent behavior.
 
 Recording status: Incomplete
 Media source: `288a.mp4`, `288b.mp4`, `288c.mp4`, `288d.mp4`, `288e.mp4`, `288f.mp4`, `288g2.mp4`, `288h.mp4`, `288i.mp4`, `288j.mp4`
@@ -442,7 +442,7 @@ Machine-generated transcript. Verify wording against the recording before using 
 
 ### Clip I
 
-**[01:58:19]** Okay, read `docs/transcripts/288.md` and, for someone who heard all that but nothing else, summarize what you just did. I'm losing patience and trust in the agents to do it. We're going to have to get it.
+**[01:58:19]** Okay, read `docs/transcripts/288-prep.md` and, for someone who heard all that but nothing else, summarize what you just did. I'm losing patience and trust in the agents to do it. We're going to have to get it.
 
 **[01:59:07]** The one good result was MicroLuna on the embedding-drift-monitor task, matching Fable's pass rate at about 54 times lower cost. But it was a task we'd tuned on. Part of that tuning was a list of phrases that decided which code comments Jev read, and that list came from the task itself, which comes close to cheating. The fix was Principle 8: tune on patterns, not wording. Each thing a winning run does becomes a reusable component. Code finds where a component applies; Jev chooses among components; the output is evidence or a check that actually runs, never extra instructions. A component is built only if the pattern appears in at least three winning tasks, and it only counts on tasks it wasn't learned from.
 

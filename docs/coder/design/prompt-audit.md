@@ -1,7 +1,7 @@
 # Prompt audit against the determinism thesis
 
 Status: audit, 2026-09-24. Issue #9591, from
-[episode 288](../../transcripts/288.md). This note lists every system
+[episode 288](../../transcripts/288-prep.md). This note lists every system
 prompt and fixed instruction that Coder One and Microluna send to a model,
 gives each line's purpose and a verdict, and records what changed, the
 mini-task check, and whether Fable 5.1's public trajectories record a

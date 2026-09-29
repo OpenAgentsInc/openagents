@@ -1,7 +1,7 @@
 # OpenAgents video archive: index, history, and themes
 
 This guide covers the committed transcript archive as of 2026-09-26:
-**288 numbered episode files covering every number from 001 through 288**.
+**287 numbered episode files covering every number from 001 through 287**, plus the unreleased [288 preparation session](288-prep.md) and the [288 draft script](288-draft.md).
 The archive follows OpenAgents from document chat and its first coding agent
 to agent markets, operator workrooms, the Coder product suite, and measured
 System One coding-agent experiments.
@@ -24,8 +24,10 @@ feature survived every reset or exists in today's repository.
 ## Archive coverage and source limits
 
 The episode titles and video links for 001–287 follow the owner’s definitive
-catalog supplied on 2026-09-26. Episode 288 retains its current working title
-and incomplete status. The local files include transcripts, prepared remarks,
+catalog supplied on 2026-09-26. The session recorded as 288 was not released
+under that number: it is retained as [288-prep](288-prep.md), and 288 is now
+the **Test-Time Capabilities** episode, whose [draft script](288-draft.md) is
+unrecorded. The local files include transcripts, prepared remarks,
 and scripts, even when the catalog provides a published-video link. Most files
 identify a source URL or local media filename; some specify edits, offsets,
 transcription models, and coverage. A local `.mp4` name is provenance, not a
@@ -45,7 +47,8 @@ the recording or publication date.
 | [284](284.md) | The retained source is `284draft1.mp4`; the owner’s catalog supplies the published title and link. Keep the local source designation rather than silently treating it as a different edit. |
 | [285](285.md) | **Bendcoder**, a 02:10:55.02 prototype session. It tests an approach and language, not comparative benchmark superiority. |
 | [287](287.md) | A 02:35:36.90 build-and-measurement session. Results discussed during iteration must retain their configuration, task set, and measurement limits. |
-| [288](288.md) | Explicitly incomplete; currently 02:08:28.40 across clips a–f, g2, h, i, and j. Its header lists coverage gaps and concatenation offsets. |
+| [288-prep](288-prep.md) | The unreleased session first recorded as 288: explicitly incomplete, 02:08:28.40 across clips a–f, g2, h, i, and j. Its header lists coverage gaps and concatenation offsets. Retained as preparatory material. |
+| [288-draft](288-draft.md) | Draft script for **Test-Time Capabilities**, the episode that now carries number 288: a walk through the deck, the protocol, and the app rollout. A draft script is not a recording, and its numbers cite their records. |
 
 The summaries use *plans*, *proposes*, *announces*, *demonstrates*, and
 *reports* deliberately. An announcement can establish historical intent;
@@ -78,7 +81,7 @@ to solve. These are changes in emphasis, not clean replacement boundaries.
 | [248](248.md)–[259](259.md) | Desktop, inspectable subagents, ProductSpec, AssuranceSpec, Observer, FastFollow, release candidates, and incident analysis. | Turns user complaints and product promises into explicit intent, verification obligations, and retained evidence. |
 | [260](260.md)–[274](274.md) | Sarah/Omega, Bitcoin-security work, Immortal, Nostr markets, BEAM continuity, and Agent Forge. | Explores resilient ownership of both infrastructure and product operation. Scripts, demos, security hypotheses, and announcements coexist. |
 | [275](275.md)–[284](284.md) | Coder terminal/cloud, provider-neutral delegation, Linux, mobile sync, the right to develop AI, and game-like operator design. | Pulls earlier capabilities toward one product suite while keeping advanced work visible and controllable. |
-| [285](285.md)–[288](288.md) | Bendcoder, TypeSafe/System One design, Coder One, Jev probes, Terminal-Bench, Microluna, Gym, reusable pattern components, and Fire Loop. | Shifts attention from wrapping strong agents to removing unnecessary model work and proving which improvements generalize. |
+| [285](285.md)–[288](288-prep.md) | Bendcoder, TypeSafe/System One design, Coder One, Jev probes, Terminal-Bench, Microluna, Gym, reusable pattern components, and Fire Loop. | Shifts attention from wrapping strong agents to removing unnecessary model work and proving which improvements generalize. |
 
 ## What changes across the history
 
@@ -97,7 +100,7 @@ can the system finish a task another person can inspect and use?
 That continuity matters more than the repeated naming changes. Early episodes
 often demonstrate one stage with manual help. Later episodes try to make
 delegation, task state, and verification survive unattended work. [287](287.md)
-reduces the experiment to a small controlled loop; [288](288.md) exposes why
+reduces the experiment to a small controlled loop; [288](288-prep.md) exposes why
 a worker's own green checks are insufficient. The history is a progression
 in what counts as completion, not an uninterrupted march of autonomous wins.
 
@@ -113,7 +116,7 @@ behavior into orchestration and learning from real work.
 
 [269](269.md), [284](284.md), and [286](286.md) sharpen this into a claim
 about compounding knowledge: repeatedly generating the same solution is waste
-when an exact, inspectable component could be reused. [288](288.md) adds the
+when an exact, inspectable component could be reused. [288](288-prep.md) adds the
 harder condition: a component should capture a general pattern and prove
 usefulness outside the tasks it was learned from. A registry alone creates
 availability; trustworthy selection, compatibility, evidence, and incentives
@@ -131,7 +134,7 @@ related question: what should persist between actions?
 makes explicit state, query-aware context, conditional instructions, progressive
 tool loading, and background reads part of one design. It does not say cache
 reuse is always bad; it asks when the benefit of rebuilding context exceeds
-the cost. [287](287.md) and [288](288.md) turn that design into measurements
+the cost. [287](287.md) and [288](288-prep.md) turn that design into measurements
 of briefings and short executor sessions. The enduring problem is preserving
 the right evidence and constraints while avoiding repeated irrelevant work.
 
@@ -147,7 +150,7 @@ Product promises in [234](234.md), the accepted-outcome argument in
 [237](237.md), UX contracts in [246](246.md), and Assurance in [252](252.md)
 raise the standard from visible activity to evidence of the claimed result.
 [264–265](264.md) apply the same distinction to security findings.
-Gym in [288](288.md) brings it back to agent development: retain complete
+Gym in [288](288-prep.md) brings it back to agent development: retain complete
 transcripts, inspect failures, identify misleading checks, and compare actual
 attempts. A signed statement, a test result, a commercial acceptance, and a
 payment each establish different things.
@@ -263,7 +266,7 @@ cannot be assumed present after a rebuild.
 The recurring corrective is using the product for its own development:
 AutoDev in [112](112.md), OpenAgents modifying itself in [192](192.md),
 Khala Code in [246](246.md), Desktop in [254](254.md), and Coder/Gym in
-[275](275.md) and [288](288.md). This supplies concrete failures and a
+[275](275.md) and [288](288-prep.md). This supplies concrete failures and a
 fast feedback loop. It also creates a bias toward the founder's workload,
 which makes external users and held-out tasks necessary tests of generality.
 
@@ -274,7 +277,7 @@ Jev and generation. The session exposes missing context, tool failures, and
 false completion; the host explicitly leaves Bend’s contribution versus Jev’s
 unresolved. [286](286.md) supplies the broader design argument;
 [287](287.md) builds and compares
-configurations; [288](288.md) turns the benchmark viewer into a tool for
+configurations; [288](288-prep.md) turns the benchmark viewer into a tool for
 finding out why they succeed or fail. The later episode distinguishes cheap
 typed judgments, deterministic checks, and generative work, then examines the
 limits of the resulting Microluna experiments.
@@ -317,17 +320,17 @@ episode. The complete index below covers every retained numbered file.
 | Agent architecture | Plans/actions and modular brains become explicit state, typed judgments, and bounded generation. | [005](005.md), [036](036.md), [040](040.md), [157](157.md), [202](202.md), [242](242.md), [285](285.md), [286](286.md), [287](287.md) |
 | Coding agents and repository work | Faerie, AutoDev, repo maps, issue solving, Probe, and Coder One. | [020](020.md), [030](030.md), [103](103.md), [117](117.md), [123](123.md), [156](156.md), [161](161.md), [218](218.md), [287](287.md) |
 | Retrieval and context | Documents, embeddings, code/knowledge graphs, relevant files, and dynamic context. | [010](010.md), [013](013.md), [019](019.md), [023](023.md), [107](107.md), [122](122.md), [155](155.md), [160](160.md), [286](286.md) |
-| Memory and reusable knowledge | Reflections and explicit state develop toward reusable components with evidence of applicability. | [113](113.md), [155](155.md), [202](202.md), [270](270.md), [286](286.md), [288](288.md) |
+| Memory and reusable knowledge | Reflections and explicit state develop toward reusable components with evidence of applicability. | [113](113.md), [155](155.md), [202](202.md), [270](270.md), [286](286.md), [288](288-prep.md) |
 | Plugins, skills, and programs | WASM, registries, host functions, MCP, optimizable programs, and the agentic package-registry idea. | [048](048.md), [053](053.md), [058](058.md), [066](066.md), [075](075.md), [102](102.md), [165](165.md), [245](245.md), [286](286.md) |
-| Inspection and trace navigation | Node graphs and HUDs become child transcripts, effective-model reporting, replay, and ranked findings. | [033](033.md), [038](038.md), [061](061.md), [111](111.md), [162](162.md), [249](249.md), [250](250.md), [288](288.md) |
-| Verification and truthful claims | Tests, benchmark design, product promises, exact evidence, and independent checks. | [006](006.md), [029](029.md), [120](120.md), [234](234.md), [246](246.md), [252](252.md), [265](265.md), [288](288.md) |
+| Inspection and trace navigation | Node graphs and HUDs become child transcripts, effective-model reporting, replay, and ranked findings. | [033](033.md), [038](038.md), [061](061.md), [111](111.md), [162](162.md), [249](249.md), [250](250.md), [288](288-prep.md) |
+| Verification and truthful claims | Tests, benchmark design, product promises, exact evidence, and independent checks. | [006](006.md), [029](029.md), [120](120.md), [234](234.md), [246](246.md), [252](252.md), [265](265.md), [288](288-prep.md) |
 | ProductSpec, Assurance, and FastFollow | Separate intended behavior, proof obligations, execution, and learning from other products. | [248](248.md), [251](251.md), [252](252.md), [255](255.md), [258](258.md), [259](259.md) |
-| System One and Jev | Cost-aware context, typed judgments, evidence-first briefing, and short executor sessions. | [285](285.md), [286](286.md), [287](287.md), [288](288.md) |
-| Iteration speed and Fire Loop | Inspect runs while they happen, explain unproductive paths, and measure whether early stopping reduces experimental waste. | [033](033.md), [246](246.md), [254](254.md), [287](287.md), [288](288.md) |
-| Benchmarks and generalization | SWE-bench study becomes Terminal-Bench experimentation, failure inspection, and recognition of task fitting. | [120](120.md), [121](121.md), [186](186.md), [217](217.md), [287](287.md), [288](288.md) |
+| System One and Jev | Cost-aware context, typed judgments, evidence-first briefing, and short executor sessions. | [285](285.md), [286](286.md), [287](287.md), [288](288-prep.md) |
+| Iteration speed and Fire Loop | Inspect runs while they happen, explain unproductive paths, and measure whether early stopping reduces experimental waste. | [033](033.md), [246](246.md), [254](254.md), [287](287.md), [288](288-prep.md) |
+| Benchmarks and generalization | SWE-bench study becomes Terminal-Bench experimentation, failure inspection, and recognition of task fitting. | [120](120.md), [121](121.md), [186](186.md), [217](217.md), [287](287.md), [288](288-prep.md) |
 | Delegation and model choice | Parallel agents, own-capacity routing, readiness, bounded tasks, and cross-provider comparison. | [179](179.md), [191](191.md), [241](241.md), [243](243.md), [244](244.md), [250](250.md), [278](278.md), [287](287.md) |
 | Bitcoin and payments | Balances, L402, withdrawals, pricing, revenue share, wallets, and payment for accepted work. | [037](037.md), [062](062.md), [064](064.md), [097](097.md), [098](098.md), [169](169.md), [207](207.md), [223](223.md), [235](235.md) |
-| Group-forming networks | The Reed’s-law argument, collaborator discovery, shared work, and the conditions for useful collective learning. | [200](200.md), [230](230.md), [237](237.md), [249](249.md), [284](284.md), [286](286.md), [288](288.md) |
+| Group-forming networks | The Reed’s-law argument, collaborator discovery, shared work, and the conditions for useful collective learning. | [200](200.md), [230](230.md), [237](237.md), [249](249.md), [284](284.md), [286](286.md), [288](288-prep.md) |
 | Disclosure and data rights | Public uploads, opt-in trace sharing, private tiers, source ownership, and limits on reuse. | [046](046.md), [137](137.md), [147](147.md), [215](215.md), [245](245.md), [269](269.md), [285](285.md) |
 | Agent labor and contributor incentives | Paid coding, bounties, free-entry economics, verification, and the coding-agent pool. | [103](103.md), [213](213.md), [225](225.md), [228](228.md), [230](230.md), [237](237.md), [247](247.md), [284](284.md) |
 | Markets and demand | Agent/plugin stores expand into compute, data, labor, referrals, sales, and fulfillment. | [085](085.md), [092](092.md), [141](141.md), [147](147.md), [213](213.md), [215](215.md), [239](239.md), [247](247.md), [267](267.md) |
@@ -353,16 +356,16 @@ the intervening implementation work.
 | Question | Read in this order |
 | --- | --- |
 | What is the enduring OpenAgents thesis? | [001](001.md) → [005](005.md) → [125](125.md) → [141](141.md) → [230](230.md) → [237](237.md) → [269](269.md) → [286](286.md) |
-| How did the coding loop develop? | [020](020.md) → [025](025.md) → [030](030.md) → [103](103.md) → [117](117.md) → [161](161.md) → [218](218.md) → [287](287.md) → [288](288.md) |
-| Why build reusable programs and knowledge? | [048](048.md) → [053](053.md) → [066](066.md) → [102](102.md) → [165](165.md) → [242](242.md) → [245](245.md) → [286](286.md) → [288](288.md) |
-| Why do traces and independent checks matter? | [033](033.md) → [120](120.md) → [234](234.md) → [246](246.md) → [250](250.md) → [252](252.md) → [265](265.md) → [288](288.md) |
+| How did the coding loop develop? | [020](020.md) → [025](025.md) → [030](030.md) → [103](103.md) → [117](117.md) → [161](161.md) → [218](218.md) → [287](287.md) → [288](288-prep.md) |
+| Why build reusable programs and knowledge? | [048](048.md) → [053](053.md) → [066](066.md) → [102](102.md) → [165](165.md) → [242](242.md) → [245](245.md) → [286](286.md) → [288](288-prep.md) |
+| Why do traces and independent checks matter? | [033](033.md) → [120](120.md) → [234](234.md) → [246](246.md) → [250](250.md) → [252](252.md) → [265](265.md) → [288](288-prep.md) |
 | How do agent markets connect to the product? | [037](037.md) → [098](098.md) → [141](141.md) → [213](213.md) → [214](214.md) → [215](215.md) → [237](237.md) → [247](247.md) → [267](267.md) |
 | What does the archive teach about demand? | [100](100.md) → [103](103.md) → [138](138.md) → [174](174.md) → [213](213.md) → [226](226.md) → [239](239.md) → [247](247.md) |
 | Where do compute and training fit? | [145](145.md) → [174](174.md) → [201](201.md) → [203](203.md) → [216](216.md) → [224](224.md) → [232](232.md) → [236](236.md) → [238](238.md) |
 | How did the operator interface become Coder? | [111](111.md) → [170](170.md) → [189](189.md) → [196](196.md) → [249](249.md) → [251](251.md) → [262](262.md) → [275](275.md) → [281](281.md) |
 | What does the game-like direction mean? | [116](116.md) → [176](176.md) → [189](189.md) → [240](240.md) → [249](249.md) → [283](283.md) → [284](284.md) |
 | How did mobile and voice develop? | [139](139.md) → [145](145.md) → [151](151.md) → [152](152.md) → [187](187.md) → [191](191.md) → [193](193.md) → [270](270.md) → [281](281.md) |
-| What changed in the latest algorithm work? | [285](285.md) → [286](286.md) → [287](287.md) → [288](288.md), then the [current results](../terminal-bench/README.md) and [Coder design index](../coder/design/README.md) |
+| What changed in the latest algorithm work? | [285](285.md) → [286](286.md) → [287](287.md) → [288](288-prep.md), then the [current results](../terminal-bench/README.md) and [Coder design index](../coder/design/README.md) |
 
 ## Complete episode index
 
@@ -769,7 +772,8 @@ documents, production runbooks, and external commentary are excluded.
 | [`285` Bendcoder](285.md) | [Watch](https://x.com/OpenAgentsInc/status/2101190444344328280) | Prototypes Bendcoder with Jev classification, targeted generation, Bend, and C; debugs context, tool, and verification failures while exploring self-improvement and future Coder integration. |
 | [`286` System One in Coding Agents](286.md) | [Watch](https://x.com/OpenAgentsInc/status/2102110125083492458) | Examines cache economics, dynamic context, conditional instructions, progressive tools, explicit state, background work, and open protocols for reusable agent components. |
 | [`287` Building a System One Coding Agent](287.md) | [Watch](https://x.com/OpenAgentsInc/status/2102773483109335209) | Builds Coder One and measures Jev probes, briefings, delegates, and tunable components on Terminal-Bench; distinguishes observed trials from a hypothetical best-choice router. |
-| [`288` Coder Gym](288.md) | In progress | Incomplete Gym session: trace inspection, ranked findings, Microluna, failed acceptance loops, corrected performance claims, design-time fitting, reusable pattern components, independent checks, and the first Fire Loop experiment. |
+| [`288-prep` Coder Gym (unreleased)](288-prep.md) | Not released | Incomplete Gym session recorded as 288 and reassigned: trace inspection, ranked findings, Microluna, failed acceptance loops, corrected performance claims, design-time fitting, reusable pattern components, independent checks, and the first Fire Loop experiment. |
+| [`288` Test-Time Capabilities](288-draft.md) | Draft script | Introduces test-time capabilities, walks the deck slide by slide, explains which NIP carries what and why the records are signed events, and announces the OpenAgents app rollout with the Gym in chat. |
 
 ## Archive corrections and scope
 
@@ -833,8 +837,9 @@ context, not current installation or purchasing guidance.
   after-the-fact portfolio into a confirmed general policy.
 - Verify exact quotations and ambiguous names/numbers against the media.
   Prefer short attributed summaries when the machine transcript is corrupted.
-- Keep episode 086's excerpt boundary and episode 288's incomplete status until
-  the source record actually changes. Do not restore removed clip 288g as a
+- Keep episode 086's excerpt boundary and the 288 preparation session's
+  incomplete status until the source record actually changes. Do not restore
+  removed clip 288g as a
   current success claim.
 - Check links after updates, including references to documents removed by
   repository resets.

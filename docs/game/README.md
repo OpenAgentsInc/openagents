@@ -286,7 +286,7 @@ experiment" and recommends harvesting its GLTF skinning and animation code.
     an inference mesh.
   - "I just have this intuition that game dynamics are going to help
     organize that."
-- **[288](../transcripts/288.md), "Coder Gym":** he levels a warlock in WoW
+- **[288](../transcripts/288-prep.md), "Coder Gym":** he levels a warlock in WoW
   in a corner of Coder OS while Coder One runs. "That's why I built this
   operating system, among other reasons."
 
@@ -459,4 +459,4 @@ Repository: `https://github.com/OpenAgentsInc/ruinsofatlantis`, local clone at
 | [237](../transcripts/237.md), [240](../transcripts/240.md), [241](../transcripts/241.md), [243](../transcripts/243.md) | three-effect, the Verse, Khala in 3D |
 | [246](../transcripts/246.md), [249](../transcripts/249.md), [255](../transcripts/255.md) | Multiply gamers, RTS-feel Desktop, WoW noob/endgame |
 | [Historical 253 notes](https://github.com/OpenAgentsInc/openagents/blob/7503ccc6c7a115dac8eb80840b9e10834a888f32/docs/transcripts/253-notes.md) | Designing for Multiplayer: quests, tavern |
-| [279](../transcripts/279.md), [283](../transcripts/283.md), [284](../transcripts/284.md), [288](../transcripts/288.md) | Vanguard raids, Coder plays WoW, coding agents as an MMORPG, WoW beside Coder OS |
+| [279](../transcripts/279.md), [283](../transcripts/283.md), [284](../transcripts/284.md), [288](../transcripts/288-prep.md) | Vanguard raids, Coder plays WoW, coding agents as an MMORPG, WoW beside Coder OS |
