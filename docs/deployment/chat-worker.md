@@ -113,7 +113,14 @@ phone <--27000 partials, 26900 result------- relay.openagents.com <-- chat worke
   each read, or `gym records off:` and why. A `gym.news` reply's
   citations are taken out before the phone sees them, and each grounded
   reply logs `router gym reply:` with its citation counts and the
-  post-check's banned words and raw-id count (#9944). A request may name
+  post-check's banned words and raw-id count (#9944), and when the
+  records, the model's first words, and the end arrived. A grounded news
+  reply opens with the bank's `gym.news.lead` line, sent with the news
+  card as soon as the records are judged, and runs on Gemini 2.5 Flash
+  with its reasoning off through the same gateway and key (#9950);
+  `CODER_GYM_NEWS_MODEL` names another model, and `off` keeps news on the
+  chat model. The log says `gym news google/gemini-2.5-flash with its
+  reasoning off`. A request may name
   `chat-router-v1` (build 20) or `chat-router-v2`; both are routed with
   v2. The authoring interview (`eval.author`, `coder::eval_author`) runs
   on the worker's door and judge; without them it answers with the
@@ -385,6 +392,20 @@ runs, 2 arms, `hosted`, the starter catalog's `repo-map` reference); "What's
 new in the Gym?" answered from five records in 7.6 s (first words 6.9 s)
 with no citation id and no banned word, and the worker logged `router gym
 reply: 3 cited, 0 invented, banned [], 0 raw ids`.
+
+Release `dbad257c51` (2026-09-29) makes Gym news answer at once (#9950),
+on top of `d0a053650d` and `69587cc286` (phone only). It was built as
+above, installed as `/opt/coder-worker/releases/dbad257c51` with the
+current `knowledge/openagents/` (copied with `COPYFILE_DISABLE=1`, `._*`
+removed; unchanged from `d0a053650d`) and `codebase-kb.gz` from
+`d0a053650d`, checked with `--check` under the chat environment, and put
+live by moving the `chat` symlink and restarting `coder-worker-chat`; the
+environment file and unit did not change, and `d0a053650d` stays in
+`releases/` for rollback. Over ten fresh-key runs of "What's new in the
+Gym?", the first words went from a median 8.1 s (p90 11.0 s) to 1.15 s
+(p90 1.46 s) and the whole reply from 9.0 s to 2.5 s, every reply with no
+invented citation, banned word, or raw id
+([the measurement](../coder/measurements/2026-09-29-gym-news-latency.md)).
 
 Release `5882b3910e` (2026-09-29) adds the liveness probes, the overlapping
 renewal, and the systemd watchdog

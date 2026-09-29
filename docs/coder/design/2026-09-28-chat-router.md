@@ -1179,7 +1179,7 @@ or banned words, #9944).
 
 | Route | Status | Held-out precision | Live check |
 | --- | --- | --- | --- |
-| `gym.news` | Live | 100 % | "What's new in the Gym?" answered from five records in 7.6 s, with no id or banned word (#9944) |
+| `gym.news` | Live | 100 % | "What's new in the Gym?": first words at a median 1.15 s and the whole reply at 2.5 s over ten fresh-key runs on `dbad257c51` (#9950), with no id or banned word (#9944) |
 | `eval.run` | Live | 100 %; the right tool on 6 of 6 offers (#9943) | "Test Project map on Coder" answered in 0.60 s with the tool card and `start_eval` for the starter test set; a phone ran it to a result (#9939) |
 | `eval.author` | Live | 100 % (7 of 7 after #9945) | 11 of 11 make-a-tool requests went the right way: skills to a draft, tools that need new code to a Coder offer (#9945) |
 | `eval.check` | Live | 100 % | The check card and **RUN THE CHECK**; see the known miss below |
