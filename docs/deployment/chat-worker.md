@@ -277,3 +277,21 @@ symlink and restarting `coder-worker-chat`; `coder-worker.service` and
 `/opt/coder-worker/current` were not touched, and `b8dc0057fb` stays in
 `releases/` for rollback. The live check is in
 [the tuning measurement](../coder/measurements/2026-09-28-chat-router-tuning.md#retune-for-9928-capability-questions-and-who-built-this).
+
+Release `17c7484f9f` (2026-09-29) puts `chat-router-v2` live
+([#9936](https://github.com/OpenAgentsInc/openagents/issues/9936)): the Gym
+and eval routes, the Gym's records, cards, and eval offers, and the
+authoring interview (#9937), with bank `chat-answers-v1@97cf64318f8f` (53
+answers). It was built as above, installed as
+`/opt/coder-worker/releases/17c7484f9f` with the current
+`knowledge/openagents/` (60 entries; copied with `COPYFILE_DISABLE=1`) and
+`codebase-kb.gz` from `50eb35b8b7`, checked with `--check` under the chat
+environment, and put live by moving the `chat` symlink and restarting
+`coder-worker-chat`; the environment file did not change,
+`coder-worker.service` and `/opt/coder-worker/current` were not touched,
+and `50eb35b8b7` stays in `releases/` for rollback. The log names
+`gym records: 3 tools, 3 builds, 6 notes`, `seams Seams { …, gym_tools: 3,
+author: true }`, and `gym records: 0 verified results, 0 refused` after the
+first relay read (nothing is published yet). The live check is in
+[the chat-router-v2 measurement](../coder/measurements/2026-09-29-chat-router-v2.md#live-on-the-deployed-worker).
+

@@ -141,3 +141,23 @@ records (`router::gym`), the cards' numbers against their records
 parser (`router::wire`), the Gym corpus's admission of signed
 publications (`gym_kb`), and each tier end to end through the worker with
 a loopback judge and door (`coder-worker`).
+
+## Live, on the deployed worker
+
+Release `17c7484f9f` on `oa-coder-worker-1`, from a development Mac through
+`relay.openagents.com`, a fresh key per message, sending what build 20
+sends (`"router": "chat-router-v1"`), so cards and eval offers ride as
+feedback the old phone ignores (`live_basic_coder_streams_a_reply`):
+
+| Message | First words | Done | Route (p) | Tier | What it showed |
+| --- | --- | --- | --- | --- | --- |
+| "What's new in the Gym?" | 5.41 s | 5.75 s | `gym.news` (1.00) | gym, grounded | The model from the Gym's records, citing `[gym:note:gym-news]` |
+| "Test Project map on Coder" | 0.56 s | 0.58 s | `eval.run` (0.99), tool Project map | gym | `eval.run.no_tests` ("Project map doesn't have a published test set yet…") and the tool card |
+| "Is there a result I can check?" | 6.45 s | 7.01 s | `eval.check` (0.46) | model | Under the floor: the model, told it has no records, said so |
+| "How do I earn XP from tests?" | 0.57 s | 0.59 s | `eval.credit` (0.97) | canned | `eval.credit.how` |
+| "Help me make a tool that writes changelog entries" | 0.80 s | 0.80 s | `eval.author` (1.00) | author | The interview's first step (#9937), handing a tool with new code to Coder with a Run Coder offer |
+| "Who are you?" | 0.57 s | 0.59 s | `meta` (1.00) | canned | `meta.who`, unchanged |
+
+The news reply's first words wait for the restarted model (the records,
+then the model's first token), as a grounded product answer does.
+
