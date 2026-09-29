@@ -36,7 +36,7 @@ This is a term we're proposing, and there's an essay behind it in the repository
 
 ---
 
-## Slide 2: Test-time compute
+## Slide 2: Test-time compute and test-time capabilities
 
 Everyone in AI knows this one by now. Test-time compute means spending more computation when the model answers, not when it's trained. Think longer, that's chain of thought and o1 and R1. Control the budget, that's the s1 paper forcing the model to keep checking. Sample many times and pick, that's Large Language Monkeys: on SWE-bench Lite one model went from about 16 percent with one sample to 56 percent with 250. Spend it where it helps, that's the compute-optimal work. Adapt the weights briefly on the test input.
 

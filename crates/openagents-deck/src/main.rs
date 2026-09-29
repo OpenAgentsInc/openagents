@@ -180,9 +180,15 @@ fn capture(
     ));
     let (w, h) = painter.extent(canvas.cells, canvas.rows);
     let (x, y) = ((width as f32 - w) / 2.0, (height as f32 - h) / 2.0);
-    let mut write = |name: String, grid: &openagents_deck::Grid| -> Result<(), String> {
+    let mut write = |name: String,
+                     grid: &openagents_deck::Grid,
+                     slide: Option<&openagents_deck::slide::Slide>|
+     -> Result<(), String> {
         let mut frame = Frame::new(width, height, FIELD);
         painter.paint(&mut frame, grid, x, y);
+        if let Some(slide) = slide {
+            openagents_deck::title::paint(&mut frame, &painter, slide, grid, x, y);
+        }
         let path = directory.join(name);
         std::fs::write(&path, frame.png()?)
             .map_err(|error| format!("cannot write {}: {error}", path.display()))
@@ -190,9 +196,13 @@ fn capture(
     for index in 0..deck.len() {
         let slide = deck.slide(index).expect("the slide");
         let grid = slide_grid(deck, index, canvas);
-        write(format!("{:02}-{}.png", index + 1, slide.id), &grid)?;
+        write(
+            format!("{:02}-{}.png", index + 1, slide.id),
+            &grid,
+            Some(slide),
+        )?;
     }
-    write("overview.png".to_string(), &overview(deck, 0, canvas))?;
+    write("overview.png".to_string(), &overview(deck, 0, canvas), None)?;
     Ok(deck.len() + 1)
 }
 

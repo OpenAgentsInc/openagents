@@ -22,6 +22,7 @@ pub fn body(slide: &Slide, canvas: Canvas) -> Grid {
     let width = canvas.body_cells();
     match slide.layout() {
         Layout::Banner => banner_body(slide, width),
+        Layout::Title => title_body(slide, width),
         Layout::Statement => statement(slide, width),
         Layout::Points => titled(slide, Prose::default().layout(&slide.body, width), width),
         Layout::Metrics => titled(slide, metrics(&slide.metrics, width), width),
@@ -58,6 +59,55 @@ fn centered_lines(grid: &mut Grid, left: usize, row: usize, width: usize, laid: 
             }
         }
     }
+}
+
+/// The largest whole multiple of the body's type size at which `title`
+/// fits in `width` cells on one line, from [`TITLE_SCALES`]; 1 when even
+/// the smallest doesn't fit, so the title still draws.
+pub fn title_scale(title: &str, width: usize) -> usize {
+    let length = title.chars().count().max(1);
+    TITLE_SCALES
+        .iter()
+        .copied()
+        .find(|scale| length * scale <= width)
+        .unwrap_or(1)
+}
+
+/// The scales a title tries, largest first.
+pub const TITLE_SCALES: [usize; 3] = [4, 3, 2];
+
+/// The title in ordinary type, centered, in a block of rows as tall as
+/// the scale the painter will draw it at, with the kicker over it and the
+/// lead under it. The grid holds the title at body size on the block's
+/// middle row, which is what the text export shows; the painter erases
+/// that row and sets the title at [`title_scale`] times the body size
+/// over the whole block ([`crate::title::paint`]).
+fn title_body(slide: &Slide, width: usize) -> Grid {
+    let title = slide.title.clone().unwrap_or_default();
+    let scale = title_scale(&title, width);
+    let lead = slide.lead.clone().unwrap_or_default();
+    let kicker = slide.kicker.clone().unwrap_or_default();
+    let top = if kicker.is_empty() { 0 } else { 2 };
+    let height = top + scale + if lead.is_empty() { 0 } else { 2 };
+    let mut grid = Grid::new(width, height);
+    if !kicker.is_empty() {
+        centered_line(&mut grid, 0, &kicker, Style::at(Intensity::Half));
+    }
+    centered_line(
+        &mut grid,
+        top + scale / 2,
+        &title,
+        Style::at(Intensity::Full),
+    );
+    if !lead.is_empty() {
+        centered_line(
+            &mut grid,
+            top + scale + 1,
+            &lead,
+            Style::at(Intensity::ThreeQuarters),
+        );
+    }
+    grid
 }
 
 /// The wordmark in the block face over one line, both centered.

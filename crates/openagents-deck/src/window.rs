@@ -221,6 +221,11 @@ impl Show {
         let x = ((width as f32 - w) / 2.0).round();
         let y = ((height as f32 - h) / 2.0).round();
         painter.paint(&mut frame, &grid, x, y);
+        if !self.overview
+            && let Some(slide) = self.deck.slide(self.index)
+        {
+            openagents_deck::title::paint(&mut frame, painter, slide, &grid, x, y);
+        }
         if let Some(notes) = notes {
             let top = y + (canvas.rows + 1) as f32 * painter.cell_height();
             let rule_y = top - painter.cell_height() * 0.5;

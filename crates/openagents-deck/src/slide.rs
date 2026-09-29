@@ -14,6 +14,9 @@ use crate::script;
 pub enum Layout {
     /// The wordmark in the block face, over one line.
     Banner,
+    /// The title in ordinary type set several times larger than the body,
+    /// centered, with a lead under it: the opening slide.
+    Title,
     /// One sentence, centered, alone on the canvas.
     Statement,
     /// A title and up to five items, each a lead phrase and its
@@ -36,6 +39,7 @@ impl Layout {
     pub fn named(name: &str) -> Option<Layout> {
         match name {
             "banner" => Some(Layout::Banner),
+            "title" => Some(Layout::Title),
             "statement" => Some(Layout::Statement),
             "points" => Some(Layout::Points),
             "metrics" => Some(Layout::Metrics),
@@ -51,6 +55,7 @@ impl Layout {
     pub fn name(&self) -> &'static str {
         match self {
             Layout::Banner => "banner",
+            Layout::Title => "title",
             Layout::Statement => "statement",
             Layout::Points => "points",
             Layout::Metrics => "metrics",

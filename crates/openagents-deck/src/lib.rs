@@ -32,6 +32,7 @@ pub mod prose;
 pub mod script;
 pub mod slide;
 pub mod snapshot;
+pub mod title;
 
 pub use canvas::Canvas;
 pub use frame::{notes_grid, overview, overview_press, slide_grid};
@@ -138,7 +139,7 @@ mod tests {
                 let titled = slide.title.is_some()
                     && !matches!(
                         slide.layout(),
-                        Layout::Banner | Layout::Quote | Layout::Statement
+                        Layout::Banner | Layout::Title | Layout::Quote | Layout::Statement
                     );
                 if !titled {
                     continue;

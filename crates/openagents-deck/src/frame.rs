@@ -28,7 +28,7 @@ pub fn slide_grid(deck: &Deck, index: usize, canvas: Canvas) -> Grid {
     // A banner centers its wordmark and its lead, so its note centers too,
     // laid out at its own length; every other layout keeps the note on the
     // body's left edge at the body's width.
-    let (left, measure) = if slide.layout == Some(Layout::Banner) {
+    let (left, measure) = if matches!(slide.layout, Some(Layout::Banner | Layout::Title)) {
         let length = note.chars().count().min(width);
         (PAD_COLS + (width - length) / 2, length.max(1))
     } else {

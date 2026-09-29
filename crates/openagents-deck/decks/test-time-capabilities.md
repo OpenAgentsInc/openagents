@@ -1,4 +1,4 @@
-layout: banner
+layout: title
 id: title
 title: Test-Time Capabilities
 source: docs/essays/2026-09-29-test-time-capabilities.md
@@ -7,21 +7,25 @@ notes: Every number in the deck comes from a dated record in the repository; the
 
 ---
 
-layout: points
-id: test-time-compute
+layout: compare
+id: compute-vs-capabilities
 kicker: PART I · THE IDEA
-title: Test-time compute: spend more when the model answers
-source: docs/essays/2026-09-29-test-time-capabilities.md#what-test-time-compute-is
+title: Test-time compute and test-time capabilities
+source: docs/essays/2026-09-29-test-time-capabilities.md#what-test-time-compute-is; docs/essays/2026-09-29-test-time-capabilities.md#the-thesis-capability-is-something-you-can-acquire-at-test-time
 
-- **Think longer.** Chain of thought; o1 and DeepSeek-R1 learned long reasoning with reinforcement learning.
-- **Control the budget.** s1's budget forcing raised AIME24 from 50 % to 57 %.
-- **Sample many times and pick.** On SWE-bench Lite, one model went from 15.9 % with one sample to 56 %
-  with 250.
-- **Spend it where it helps.** Compute-optimal allocation beat best-of-N more than fourfold in efficiency.
-- **Adapt the weights briefly.** Test-time training on ARC improved accuracy up to sixfold.
+column: Test-time compute
+column: Test-time capabilities
 
-notes: Wei 2022, OpenAI 2024, DeepSeek-AI 2025, Muennighoff 2025, Brown 2024 (Large Language Monkeys), Snell 2024, Akyürek 2024.
-notes: The point is not any one paper. A fixed set of weights answers better when the system around it spends more, and more wisely, per question.
+row: What changes | How much the model computes | What the running agent can do
+row: The weights | Fixed | Fixed
+row: Where the gain comes from | Longer reasoning, more samples | A component admitted to the run
+row: Who supplies it | The lab, at serving time | Anyone, and it can be shared
+row: What proves it | A verifier picking the best sample | A claim others can rerun
+row: What is left after | Nothing is kept | The capability, for every agent
+
+notes: Test-time compute: think longer (chain of thought, o1, DeepSeek-R1), control the budget (s1: AIME24 from 50 to 57 percent), sample many and pick (SWE-bench Lite: 15.9 to 56 percent with 250 samples), allocate per question (compute-optimal beat best-of-N fourfold), adapt the weights briefly (test-time training on ARC). Wei 2022, OpenAI 2024, DeepSeek-AI 2025, Muennighoff 2025, Brown 2024, Snell 2024, Akyürek 2024.
+notes: Both leave the weights alone. Compute spends more per answer and keeps nothing. A capability is admitted to the run, proven by a claim someone else can rerun, and stays: adopted once, every agent that shares the defaults has it.
+notes: Two lessons carry over from the compute literature: a verifier is what makes extra effort pay, and the allocation is itself a judgment that should cost far less than the work it allocates.
 
 ---
 
