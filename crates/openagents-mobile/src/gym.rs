@@ -360,6 +360,21 @@ pub(crate) struct MadeRow {
     pub standing: String,
     pub xp: u64,
     pub check: bool,
+    /// The test set's NIP-EXT release it ran on.
+    pub suite: String,
+}
+
+impl Standing {
+    /// Whether the ledger already pays these keys as checker on the test
+    /// set `suite` for a check other than `except`. NIP-XP pays a key once
+    /// per role per test set version
+    /// (`eval-check:<season>:<suite release>:checker:<pubkey>`), so another
+    /// check of that test set earns its checker no XP (#9948).
+    pub(crate) fn checked_suite(&self, suite: &str, except: Option<&str>) -> bool {
+        self.results
+            .iter()
+            .any(|r| r.check && r.xp > 0 && r.suite == suite && Some(r.id.as_str()) != except)
+    }
 }
 
 /// A sheet over the chat or the menu.
@@ -1378,6 +1393,13 @@ impl Gym {
                     let trainer = "A trainer".to_owned();
                     let claim = Claim::of(&line.headline, line.verdict);
                     let mine = line.publication.pubkey == self.standing.public_hex;
+                    // The referee pays a checker once per test set version:
+                    // no XP to promise when the ledger already paid this
+                    // trainer for checking this one (#9948).
+                    let credited = starts
+                        .first()
+                        .and_then(suite_of)
+                        .is_some_and(|suite| self.standing.checked_suite(&suite, None));
                     let start = starts.first().map(|body| {
                         used_start = true;
                         Action::Start {
@@ -1402,6 +1424,7 @@ impl Gym {
                         start,
                         self.standing.checker_xp,
                         mine,
+                        credited,
                     )
                 }
                 Card::Result {
@@ -1839,9 +1862,25 @@ impl Gym {
         }
     }
 
+    /// Whether this run is a check of a test set whose checker award the
+    /// trainer already holds, from another check.
+    fn check_credited(&self, run: &Run) -> bool {
+        if run.check().is_none() {
+            return false;
+        }
+        let own = match &run.publish {
+            PublishState::Published { event } => event.as_deref(),
+            _ => None,
+        };
+        suite_of(&run.offer).is_some_and(|suite| self.standing.checked_suite(&suite, own))
+    }
+
     /// When XP comes for a result, in one line, with a number only when a
     /// trusted quest record states it.
     fn xp_line(&self, run: &Run) -> String {
+        if self.check_credited(run) {
+            return CHECKED_ALREADY.into();
+        }
         match (
             &run.purpose,
             self.standing.checker_xp,
@@ -2115,6 +2154,7 @@ impl Gym {
     /// `SCR-20` Add to the Gym: exactly what becomes public.
     fn publish_sheet(&mut self, run: &str, close: Option<Button>) -> Option<SheetView> {
         let run = self.run(run)?.clone();
+        let credited = self.check_credited(&run);
         let mut public = vec![];
         let tests = if run.cases == 1 {
             "the test you ran, and how it's checked".to_owned()
@@ -2165,7 +2205,9 @@ impl Gym {
                 lines: vec![
                     line("Coder's full work on each test stays private.", Tone::Quiet),
                     line(
-                        if run.check().is_some() {
+                        if credited {
+                            "If your check confirms the result, the trainer who added it earns XP. You already earned XP for checking this test set."
+                        } else if run.check().is_some() {
                             "If your check confirms the result, you and the trainer who added it earn XP."
                         } else {
                             "Other trainers can run these tests to check the result. You earn XP when they confirm it."
@@ -2182,7 +2224,9 @@ impl Gym {
                 sections.push(Section {
                     heading: None,
                     lines: vec![line(
-                        if run.check().is_some() {
+                        if credited {
+                            "Added to the Gym. You already earned XP for checking this test set."
+                        } else if run.check().is_some() {
                             "Added to the Gym. If your check confirms the result, XP comes once our referee signs it."
                         } else {
                             "Added to the Gym. You'll earn XP when another trainer checks it."
@@ -2409,6 +2453,9 @@ impl Gym {
             .runs
             .iter()
             .rev()
+            // Full runs only: a try can't be added to the Gym, and a check
+            // shows under What you made as "Your check" (#9949).
+            .filter(|run| !run.pilot() && run.check().is_none())
             .filter_map(|run| {
                 let outcome = run.outcome.as_ref()?;
                 Some(Item {
@@ -2426,7 +2473,7 @@ impl Gym {
             .collect();
         // Runs this phone keeps; after a reinstall only the ledger has them,
         // and "No results yet" over a result it shows would contradict it.
-        if !(results.is_empty() && !standing.results.is_empty()) {
+        if !(results.is_empty() && standing.results.iter().any(|r| !r.check)) {
             sections.push(Section {
                 heading: Some("YOUR RESULTS".into()),
                 lines: if results.is_empty() {
@@ -2574,6 +2621,22 @@ fn mark(passed: Option<bool>) -> &'static str {
 }
 
 /// The size an offer body names.
+/// What a check whose checker award the trainer already holds says
+/// instead of an XP promise.
+const CHECKED_ALREADY: &str =
+    "You already earned XP for checking this test set. This check earns no more.";
+
+/// The published test set a `start_eval` offer runs, as its release ID.
+fn suite_of(body: &Value) -> Option<String> {
+    match (Offer::StartEval { body: body.clone() })
+        .start_eval()?
+        .suite
+    {
+        SuiteSource::Published(suite) => Some(suite.id),
+        SuiteSource::Draft => None,
+    }
+}
+
 fn size_of(body: &Value) -> Option<cj::Size> {
     Offer::StartEval { body: body.clone() }
         .start_eval()

@@ -601,6 +601,7 @@ impl Trainer {
                 .unwrap_or_default(),
             xp: r.xp,
             check,
+            suite: r.suite.clone(),
         };
         crate::gym::Standing {
             name,

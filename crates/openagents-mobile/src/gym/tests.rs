@@ -1229,6 +1229,7 @@ fn credit_comes_from_the_phones_own_ledger() {
             standing: "awarded".into(),
             xp: 25,
             check: false,
+            suite: String::new(),
         },
         MadeRow {
             id: "b".into(),
@@ -1237,6 +1238,7 @@ fn credit_comes_from_the_phones_own_ledger() {
             standing: "waiting".into(),
             xp: 0,
             check: false,
+            suite: String::new(),
         },
     ];
     gym.standing.adoptions = vec![("Changelog helper".into(), 200)];
@@ -1498,4 +1500,157 @@ fn the_fixture_report_parses() {
     let outcome = Outcome::from_report(crate::gym_fixture::REPORT.as_bytes()).unwrap();
     assert_eq!((outcome.claim.without, outcome.claim.with), (Some(5), 7));
     assert_eq!(outcome.claim.total, 8);
+}
+
+/// The referee pays a checker once per test set version, so a check of a
+/// test set whose checker award the trainer already holds promises no XP,
+/// on the check card or on its result (#9948).
+#[test]
+fn a_second_check_of_a_test_set_promises_no_xp() {
+    let worker = Worker::default();
+    let runner = Runner::default();
+    let mut phone = Phone::new(&worker, Some(&runner)).returning();
+    phone.tap("menu.chat");
+    asked(
+        &mut phone,
+        &worker,
+        "Find me a result to check",
+        "Here's one.",
+        &[
+            judgment("eval.check"),
+            wire("card-check"),
+            wire("start-eval"),
+            result_fields("eval.check"),
+        ],
+    );
+    phone.tab.gym.standing.read = true;
+    phone.tab.gym.standing.checker_xp = Some(50);
+    assert_eq!(phone.card("check").badge.as_deref(), Some("+50 XP"));
+    // A checker award on another test set doesn't use this one's.
+    let award = |suite: &str| MadeRow {
+        id: "e1".repeat(32),
+        verdict: "pass".into(),
+        confirmed_by: 0,
+        standing: "awarded".into(),
+        xp: 50,
+        check: true,
+        suite: suite.to_owned(),
+    };
+    phone.tab.gym.standing.results = vec![award(&"15".repeat(32))];
+    assert_eq!(phone.card("check").badge.as_deref(), Some("+50 XP"));
+    // The fixture's offer runs test set 1414…: already paid for.
+    phone.tab.gym.standing.results = vec![award(&"14".repeat(32))];
+    let check = phone.card("check");
+    assert_eq!(check.badge, None);
+    assert!(check.lines.iter().any(|l| l.text == CHECKED_ALREADY));
+    assert_eq!(check.primary.as_ref().unwrap().label, "RUN THE CHECK");
+    assert_plain(&phone.gym());
+    // Its result says so too, rather than "+50 XP once…".
+    let start = check.primary.unwrap().id;
+    phone.tap(&start);
+    lock(&runner.live(0)).outcome = Some(Ok(Outcome::from_report(report().as_bytes()).unwrap()));
+    let result = phone.card("result");
+    assert!(result.lines.iter().any(|l| l.text == CHECKED_ALREADY));
+    assert!(!result.lines.iter().any(|l| l.text.contains("XP once")));
+    // Without that award, the result promises the quest's share.
+    phone.tab.gym.standing.results.clear();
+    let result = phone.card("result");
+    assert!(
+        result
+            .lines
+            .iter()
+            .any(|l| l.text == "+50 XP once our referee confirms your check.")
+    );
+    // A check's own award doesn't count against it.
+    let run = phone.tab.gym.saved.runs[0].clone();
+    phone.tab.gym.saved.runs[0].publish = PublishState::Published {
+        event: Some("e1".repeat(32)),
+    };
+    phone.tab.gym.standing.results = vec![award(&"14".repeat(32))];
+    assert!(!phone.tab.gym.check_credited(&phone.tab.gym.saved.runs[0]));
+    assert!(phone.tab.gym.check_credited(&run));
+}
+
+/// Profile's Your results lists full runs only: not a draft's try, which
+/// can't be added to the Gym, and not a check, which shows under What you
+/// made (#9949).
+#[test]
+fn your_results_lists_full_runs_only() {
+    let mut gym = Gym::empty();
+    gym.standing = Standing {
+        name: "Trainer DJF".into(),
+        read: true,
+        ..Standing::default()
+    };
+    let outcome = Outcome::from_report(report().as_bytes()).unwrap();
+    let run = |id: &str, tool: &str, purpose: Purpose| Run {
+        id: id.into(),
+        talk: "t".into(),
+        turn: 0,
+        tool: tool.into(),
+        purpose,
+        offer: Value::Null,
+        draft: None,
+        cases: 8,
+        runs: 3,
+        arms: 2,
+        place: None,
+        state: RunState::Done,
+        started_at: 0,
+        outcome: Some(outcome.clone()),
+        publish: PublishState::None,
+        first: false,
+    };
+    let claim = outcome.claim;
+    gym.saved.runs = vec![
+        run("try", "Changelog helper", Purpose::Try),
+        run("full", "Changelog helper", Purpose::Test),
+        run(
+            "check",
+            "Project map",
+            Purpose::Check {
+                publication: Value::Null,
+                trainer: "A trainer".into(),
+                claim,
+            },
+        ),
+    ];
+    // A draft's one-run try, however it started.
+    let mut pilot = run("pilot", "Code finder", Purpose::Test);
+    pilot.runs = 1;
+    pilot.draft = Some(json!({}));
+    gym.saved.runs.push(pilot);
+    gym.sheet = Some(Sheet::Profile);
+    let sheet = gym.sheet_view(None).unwrap();
+    let results = sheet
+        .sections
+        .iter()
+        .find(|s| s.heading.as_deref() == Some("YOUR RESULTS"))
+        .unwrap();
+    let tools: Vec<&str> = results.items.iter().map(|i| i.text.as_str()).collect();
+    assert_eq!(tools, ["Changelog helper"]);
+
+    // With only a try and a check on the phone and only a check in the
+    // ledger, there are no results yet, and the section says so.
+    gym.saved.runs.remove(1);
+    gym.standing.results = vec![MadeRow {
+        id: "c".into(),
+        verdict: "pass".into(),
+        confirmed_by: 0,
+        standing: "awarded".into(),
+        xp: 50,
+        check: true,
+        suite: "14".repeat(32),
+    }];
+    let sheet = gym.sheet_view(None).unwrap();
+    let results = sheet
+        .sections
+        .iter()
+        .find(|s| s.heading.as_deref() == Some("YOUR RESULTS"))
+        .unwrap();
+    assert!(results.items.is_empty());
+    assert_eq!(
+        results.lines[0].text,
+        "No results yet. Your first test takes a few minutes."
+    );
 }

@@ -827,7 +827,8 @@ pub(crate) fn news_card(
 }
 
 /// `CARD-06` Check card. `xp` is the checker's share when the quest
-/// record says it.
+/// record says it; `credited` when the ledger already paid this trainer
+/// for checking the test set, so the check promises no XP (#9948).
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn check_card(
     actions: &mut Actions,
@@ -839,6 +840,7 @@ pub(crate) fn check_card(
     start: Option<Action>,
     xp: Option<u64>,
     mine: bool,
+    credited: bool,
 ) -> CardView {
     let tool_name = humane(tool);
     let mut lines = vec![Line {
@@ -875,6 +877,13 @@ pub(crate) fn check_card(
             text: "Run the same tests to check it. A check doesn't use a daily run.".into(),
             tone: Tone::Quiet,
         });
+        if credited {
+            lines.push(Line {
+                text: "You already earned XP for checking this test set. This check earns no more."
+                    .into(),
+                tone: Tone::Quiet,
+            });
+        }
         start.map(|action| actions.button(format!("{id}.start"), "RUN THE CHECK", None, action))
     };
     CardView {
@@ -883,7 +892,9 @@ pub(crate) fn check_card(
         step: None,
         icon: Some("check"),
         title: "CHECK A RESULT".into(),
-        badge: xp.map(|xp| format!("+{xp} XP")),
+        badge: xp
+            .filter(|_| !credited && !mine)
+            .map(|xp| format!("+{xp} XP")),
         compare: None,
         lines,
         items: vec![],
