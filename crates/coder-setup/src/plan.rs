@@ -25,6 +25,8 @@ pub struct TlsFiles {
 
 /// Build the settings to record. Relays and workspaces given now replace or
 /// add to what an earlier run recorded, so a re-run without them keeps them.
+/// Tailnet admission, which only `coder host serve --tailnet-admission`
+/// turns on, is kept as recorded: a re-run never turns it off.
 #[must_use]
 pub fn settings(
     previous: &ServeSettings,
@@ -44,6 +46,7 @@ pub fn settings(
     let mut all = previous.workspaces.clone();
     all.extend(workspaces.iter().map(|(k, v)| (k.clone(), v.clone())));
     let mut settings = ServeSettings::new(relays, all);
+    settings.tailnet_admission = previous.tailnet_admission.clone();
     settings.listen_websocket = Some(SocketAddr::from((node.ip, port)));
     settings.allow_nonloopback = true;
     let tls = tls.zip(node.dns_name.as_deref());
@@ -118,6 +121,10 @@ mod tests {
             BTreeMap::from([("old".into(), PathBuf::from("/w/old"))]),
         );
         previous.listen_websocket = Some("100.9.9.9:1".parse().unwrap());
+        previous.tailnet_admission = Some(coder_host::settings::TailnetSetting {
+            rights: "standard".into(),
+            no_chats: false,
+        });
         let files = TlsFiles {
             cert: "/c".into(),
             key: "/k".into(),
@@ -135,6 +142,8 @@ mod tests {
         assert!(settings.workspaces.contains_key("old"));
         assert_eq!(settings.websocket_tls, None);
         assert_eq!(settings.advertise[0].address, "ws://100.101.102.103:9000/");
+        // A re-run keeps tailnet admission as recorded.
+        assert_eq!(settings.tailnet_admission, previous.tailnet_admission);
         // Workspaces given now add to the recorded ones.
         let more = BTreeMap::from([("new".into(), PathBuf::from("/w/new"))]);
         let settings = super::settings(&previous, &[], &more, &node(None), 9000, None);
