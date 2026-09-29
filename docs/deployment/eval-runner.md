@@ -219,3 +219,28 @@ still `active`, means the runner isn't receiving requests. On
    relay socket's `lastrcv` says how long it has heard nothing) and the
    journal, then `systemctl --user restart openagents-eval-runner` and
    open an issue with both.
+
+## Release records
+
+**`c815433291` (2026-09-29): relay liveness.** Before it, the runner
+(`0b39640d66`, up since 07:43 UTC) had no probe. The relay was
+redeployed at 09:07 UTC (revision `00034-pit`); the runner's connection
+from 08:43:57 UTC stayed on the old instance, and it still received
+requests, because the relay fans events out across instances through
+Postgres: `live_the_runner_answers_the_phone` got `not_admitted` in 0.68 s
+at 09:27 UTC. That connection ended at the relay's one-hour request
+timeout, 09:43:58 UTC (`relay: IO error: peer closed connection without
+sending TLS close_notify; reconnecting in 2 s`), the runner subscribed
+again at 09:44:01, and the live test answered in 1.85 s at 09:44:05.
+Nothing was lost that time only because the old instance kept serving
+until the timeout.
+
+`c815433291` was installed with `install.sh c815433291` at 09:45:21 UTC.
+Its log names `liveness a probe every 30 s; the subscription is renewed
+every 2700 s`, then `subscribed; requests arrive live from here` at
+09:45:23. The live test answered in 1.02 s at 09:45:35 (journal: `refused
+496fbf00597e … not_admitted`). `systemctl --user show` gave
+`WatchdogUSec=2min`, `WatchdogTimestamp` 09:47:53 UTC (the fifth answered
+probe), and `NRestarts=0`. The rebuild changed the agent's digest to
+`sha256:fbf73c42…`, so results from before it can't be checked on the
+hosted runner (see "A redeploy starts a new line of results").
