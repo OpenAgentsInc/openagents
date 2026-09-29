@@ -7,6 +7,7 @@
 
 mod helper;
 mod mac;
+mod menubar;
 mod shell;
 mod worker;
 

@@ -29,6 +29,7 @@
 //! - [`fake`]: an in-process host for tests and `--fake-host`.
 //! - [`keychain`] and [`migrate`]: the host's keys, and adopting an
 //!   old-style setup.
+//! - `update`: the signed-manifest updater (the `app` feature).
 
 pub mod codes;
 pub mod control;
@@ -40,6 +41,8 @@ pub mod migrate;
 pub mod model;
 pub mod qr;
 pub mod screens;
+#[cfg(feature = "app")]
+pub mod update;
 pub mod words;
 
 #[cfg(test)]

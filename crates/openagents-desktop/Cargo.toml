@@ -20,6 +20,10 @@ app = [
     "dep:objc2-foundation",
     "dep:objc2-service-management",
     "dep:core-foundation",
+    "dep:objc2-app-kit",
+    "dep:reqwest",
+    "dep:ring",
+    "dep:semver",
 ]
 # The keychain store and the adoption of an old-style setup. The window
 # process never calls it; the host and the `migrate` helper process do.
@@ -36,11 +40,17 @@ serde_json = "1"
 coder-service = { path = "../coder-service", optional = true }
 keyring = { version = "4.2.0", optional = true }
 rust-native-desktop = { path = "../rust-native-desktop", optional = true }
+# The updater (`update`): HTTPS, Ed25519 and SHA-256, and version order.
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"], optional = true }
+ring = { version = "0.17", optional = true }
+semver = { version = "1", optional = true }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 core-foundation = { version = "0.9.4", optional = true }
 objc2 = { version = "0.6.4", optional = true }
 objc2-foundation = { version = "0.3.2", optional = true, default-features = false, features = ["std", "NSString", "NSError"] }
+# The menu-bar item (`menubar`).
+objc2-app-kit = { version = "0.3.2", optional = true, default-features = false, features = ["std", "objc2-core-foundation", "NSApplication", "NSButton", "NSCell", "NSControl", "NSImage", "NSMenu", "NSMenuItem", "NSResponder", "NSStatusBar", "NSStatusBarButton", "NSStatusItem", "NSView", "NSWindow"] }
 objc2-service-management = { version = "0.3.2", optional = true, default-features = false, features = ["std", "SMAppService", "objc2", "objc2-foundation"] }
 
 [dev-dependencies]

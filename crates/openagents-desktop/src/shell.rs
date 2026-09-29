@@ -109,6 +109,7 @@ impl App for DesktopApp {
     }
 
     fn start(&mut self, waker: Waker) {
+        crate::menubar::start(waker.clone());
         if let Runner::Pending(context) = &mut self.runner
             && let Some(context) = context.take()
         {
@@ -124,6 +125,9 @@ impl App for DesktopApp {
         if self.live {
             self.model.set_locked(mac::screen_locked());
         }
+        crate::menubar::sync(&self.model)
+            .into_iter()
+            .for_each(|intent| self.activate(intent, now));
         let requests = self.model.tick(now);
         self.send(requests, now);
         self.present();
