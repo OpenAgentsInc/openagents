@@ -197,8 +197,9 @@ pub(crate) trait Door: Send + Sync {
 
 /// The job's payload: the newest turns within [`MAX_TRANSCRIPT_BYTES`], the
 /// last user message as the task, and the basic Coder's instructions. It asks
-/// for the worker's first response (`opener`): a typed judgment, and a short
-/// opener as the reply's first partial while the model starts.
+/// for the worker's typed judgment (`judge`) but not its canned opener: the
+/// opener set speaks as "I" and can pick filler like "Sure." for a question,
+/// so it stays off until the chat router's answer bank replaces it.
 pub(crate) fn payload(turns: &[Turn]) -> Value {
     let mut kept: Vec<&Turn> = vec![];
     let mut bytes = 0;
@@ -233,7 +234,7 @@ pub(crate) fn payload(turns: &[Turn]) -> Value {
             .collect::<Vec<_>>(),
         "instructions": INSTRUCTIONS,
         "client": "openagents-mobile",
-        "opener": true,
+        "judge": true,
     })
 }
 
@@ -758,7 +759,7 @@ mod tests {
             [
                 "client",
                 "instructions",
-                "opener",
+                "judge",
                 "requires",
                 "task",
                 "transcript",
@@ -767,15 +768,15 @@ mod tests {
         );
     }
 
-    /// The job asks for the worker's first response: the typed judgment
-    /// and an opener as the reply's first partial.
+    /// The job asks for the worker's typed judgment, not its canned opener.
     #[test]
     fn a_basic_job_asks_for_the_first_response() {
         let body = payload(&[Turn {
             role: Role::User,
             text: "hi".into(),
         }]);
-        assert_eq!(body["opener"], true);
+        assert_eq!(body["judge"], true);
+        assert!(body.get("opener").is_none());
     }
 
     #[test]
