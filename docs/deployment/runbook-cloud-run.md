@@ -37,6 +37,7 @@ History:
 | 2026-09-26 | `openagents-nostr-relay-00025-jes` | `c1bac69fdd` | Applied migrations 9 (`nip29_groups`) and 10 (`private_protocol_search`); adds NIP-67 and NIP-77 to NIP-11 |
 | 2026-09-26 | `openagents-nostr-relay-00027-toh` | `965fa00671` | No migrations. NIP-11 `max_limit`/`default_limit` now advertise the real per-`REQ` cap (127 with defaults). Deploy and traffic shift ran as `chris@`; verified by a full `kb sync` (104 entries) on `relay.openagents.com` |
 | 2026-09-27 | `openagents-nostr-relay-00029-nar` | `24fc83269a` | Applied migration 11 (`push_executor`, new tables only; NIP-PL delivery stays off without `NOSTR_RELAY_PUSH_SECRET`). NIP-CAP heads with `requires: ["oa-x402-v1"]` are now accepted. Build ran as the automation account; deploy and traffic shift ran as `chris@` after a `--no-launch-browser` login. Verified by `openagents x402 advertise --binding mcp:1` publishing to `next` and `openagents cap describe` reading it from `relay.openagents.com` |
+| 2026-09-29 | `openagents-nostr-relay-00031-mel` | `358975bdbd` | No migrations. Pipelined admission statements, in-memory fan-out after commit, `TCP_NODELAY` (`f20742ebf7`). Build ran as the automation account; its deploy was again refused `actAs` although it holds `roles/iam.serviceAccountUser` on the runtime account, so deploy and traffic shift ran as `chris@`. Verified by the step 3 checks and `chat-load-bench` against `relay.openagents.com`: median request `OK` 78 to 71 ms, request to reply 221 to 178 ms, chat open done 424 to 331 ms |
 
 
 ## Accounts
@@ -48,7 +49,9 @@ On 2026-09-26 it was still refused
 `iam.serviceaccounts.actAs` on the runtime service account for
 `gcloud run deploy` and `update-traffic`, even with a resource-level
 `roles/iam.serviceAccountUser` binding, so those two steps ran as the owner's
-`chris@openagents.com` login.
+`chris@openagents.com` login. The same refusal recurred on 2026-09-29. The account
+cannot read the project IAM policy, so it cannot grant itself more; plan on
+`chris@` for these two steps until an owner fixes the binding.
 
 ## 1. Check migrations before you build
 
@@ -97,7 +100,10 @@ gcloud run deploy openagents-nostr-relay \
 ```
 
 The tagged URL is `https://next---openagents-nostr-relay-ezxz4mgdsq-uc.a.run.app`.
-Check it:
+NIP-42 `AUTH` is bound to the service's `NOSTR_RELAY_URL`
+(`wss://relay.openagents.com`), so an authenticated exchange such as
+`chat-load-bench` cannot pass on the tagged URL; run it against
+`relay.openagents.com` after step 4. Check it:
 
 ```sh
 N=next---openagents-nostr-relay-ezxz4mgdsq-uc.a.run.app
