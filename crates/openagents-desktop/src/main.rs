@@ -4,13 +4,23 @@
 //! login agent that runs `coder host serve`, unless this Mac already runs
 //! Coder from an earlier setup, in which case it asks whether to use that
 //! setup. The window talks to the host only over the local control socket.
+//!
+//! On Linux and Windows the same window runs; [`platform`] holds what
+//! differs (the systemd user unit or the `Run` entry, the lock check, the
+//! clipboard). On Windows `--start-host`, the `Run` entry's command, starts
+//! the host with no console window and exits.
 
+// A GUI program on Windows: no console window behind the app.
+#![cfg_attr(windows, windows_subsystem = "windows")]
+
+#[cfg(not(any(target_os = "linux", windows)))]
 mod mac;
 mod menubar;
+mod platform;
 mod shell;
 mod worker;
 
-use openagents_desktop::control::{HostControl, SocketControl, socket_path};
+use openagents_desktop::control::{HostControl, SocketControl};
 use openagents_desktop::fake::FakeHost;
 use openagents_desktop::migrate;
 use openagents_desktop::model::{Agent, Intent, Model, Screen};
@@ -72,11 +82,20 @@ fn parse(args: impl Iterator<Item = String>) -> Result<Options, String> {
 }
 
 fn home() -> PathBuf {
-    std::env::var_os("HOME").map_or_else(|| PathBuf::from("/"), PathBuf::from)
+    std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map_or_else(|| PathBuf::from("/"), PathBuf::from)
 }
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    #[cfg(windows)]
+    if platform::wants_start_host(&args) {
+        return match platform::start_host() {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(_) => ExitCode::FAILURE,
+        };
+    }
     let options = match parse(args.into_iter()) {
         Ok(options) => options,
         Err(complaint) => {
@@ -115,10 +134,10 @@ fn main() -> ExitCode {
             context,
         )
     } else {
-        let coder = mac::coder_path();
+        let coder = platform::coder_path();
         // Once this app's own agent is on, the setup is already this app's
         // (adopted, or made by it), so there is nothing to ask about.
-        let old = if mac::agent_enabled() {
+        let old = if platform::agent_enabled() {
             None
         } else {
             migrate::old_setup(coder.as_deref(), &home())
@@ -128,9 +147,9 @@ fn main() -> ExitCode {
         let agent = if old.is_some() || options.no_login_agent {
             Agent::NotRegistered
         } else {
-            mac::register_agent()
+            platform::register_agent()
         };
-        let control: Box<dyn HostControl> = match socket_path() {
+        let control: Box<dyn HostControl> = match platform::control_path() {
             Some(path) => Box::new(SocketControl::new(path)),
             None => Box::new(SocketControl::new(PathBuf::from("/nonexistent"))),
         };

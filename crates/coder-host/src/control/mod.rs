@@ -30,6 +30,7 @@ use crate::settings::ServeSettings;
 use crate::{Error, Result};
 
 pub mod socket;
+pub mod windows;
 
 pub use socket::{Bound, own_uid};
 

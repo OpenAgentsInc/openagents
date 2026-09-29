@@ -112,32 +112,42 @@ impl SocketControl {
     /// Sends `op` and returns the host's reply; a `refused` reply is an
     /// error.
     pub fn call(&mut self, op: Op) -> ControlResult<Reply> {
-        #[cfg(unix)]
-        {
-            let id = self.next;
-            self.next += 1;
-            let request = Request::new(id, op);
-            let mut stream = std::os::unix::net::UnixStream::connect(&self.path)
-                .map_err(|_| ControlError::Unreachable)?;
-            stream
-                .set_read_timeout(Some(TIMEOUT))
-                .and_then(|()| stream.set_write_timeout(Some(TIMEOUT)))
-                .map_err(|_| ControlError::Unreachable)?;
-            write_message(&mut stream, &request)?;
-            let response: Response = read_message(&mut stream)?;
-            if response.v != VERSION || response.id != id {
-                return Err(ControlError::Malformed);
-            }
-            match response.result {
-                Reply::Refused { code, message } => Err(ControlError::Refused { code, message }),
-                reply => Ok(reply),
-            }
+        let id = self.next;
+        self.next += 1;
+        let request = Request::new(id, op);
+        let mut stream = self.connect()?;
+        write_message(&mut stream, &request)?;
+        let response: Response = read_message(&mut stream)?;
+        if response.v != VERSION || response.id != id {
+            return Err(ControlError::Malformed);
         }
-        #[cfg(not(unix))]
-        {
-            let _ = op;
-            Err(ControlError::Unreachable)
+        match response.result {
+            Reply::Refused { code, message } => Err(ControlError::Refused { code, message }),
+            reply => Ok(reply),
         }
+    }
+
+    /// One connection to the host's Unix socket.
+    #[cfg(unix)]
+    fn connect(&self) -> ControlResult<std::os::unix::net::UnixStream> {
+        let stream = std::os::unix::net::UnixStream::connect(&self.path)
+            .map_err(|_| ControlError::Unreachable)?;
+        stream
+            .set_read_timeout(Some(TIMEOUT))
+            .and_then(|()| stream.set_write_timeout(Some(TIMEOUT)))
+            .map_err(|_| ControlError::Unreachable)?;
+        Ok(stream)
+    }
+
+    /// One connection to the host's named pipe (`\\.\pipe\openagents-control-<SID>`),
+    /// opened as a file. The pipe's DACL lets only this user open it.
+    #[cfg(windows)]
+    fn connect(&self) -> ControlResult<std::fs::File> {
+        std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&self.path)
+            .map_err(|_| ControlError::Unreachable)
     }
 }
 

@@ -5,7 +5,7 @@
 //! a wake of the event loop. `run` is the same handling, inline, for the
 //! capture mode and tests.
 
-use crate::mac;
+use crate::platform;
 use openagents_desktop::codes::Action;
 use openagents_desktop::control::{ControlError, HostControl};
 use openagents_desktop::fake::FakeHost;
@@ -101,18 +101,18 @@ impl Context {
                         message: "Couldn't change that setting. Try again.".into(),
                     })
             }
-            Request::Copy { code } => mac::copy(&code).then_some(Outcome::Copied),
+            Request::Copy { code } => platform::copy(&code).then_some(Outcome::Copied),
             Request::ClearClipboard { code } => {
-                mac::clear_if(&code);
+                platform::clear_if(&code);
                 None
             }
-            Request::ChooseFolder => Some(Outcome::Folder(mac::choose_folder())),
+            Request::ChooseFolder => Some(Outcome::Folder(platform::choose_folder())),
             Request::Coder => Some(Outcome::Coder {
-                agents: mac::signed_in(&self.home),
+                agents: platform::signed_in(&self.home),
                 tasks: self.tasks(),
             }),
             Request::OpenLoginItems => {
-                mac::open_login_items();
+                platform::open_login_items();
                 None
             }
             Request::Adopt => Some(Outcome::Adopted(self.adopt())),
@@ -138,11 +138,15 @@ impl Context {
                 "Couldn't move your setup. Coder keeps running as it was. Try again later.".into(),
             );
         };
-        openagents_desktop::migrate::adopt(coder, &self.home, &mut || match mac::register_agent() {
-            Agent::Enabled | Agent::NeedsApproval => Ok(()),
-            Agent::NotRegistered => Err("this is not the OpenAgents app bundle".into()),
-            Agent::Failed(message) => Err(message),
-        })
+        openagents_desktop::migrate::adopt(
+            coder,
+            &self.home,
+            &mut || match platform::register_agent() {
+                Agent::Enabled | Agent::NeedsApproval => Ok(()),
+                Agent::NotRegistered => Err("this is not the OpenAgents app bundle".into()),
+                Agent::Failed(message) => Err(message),
+            },
+        )
     }
 
     fn refresh(&mut self) -> Option<Refreshed> {

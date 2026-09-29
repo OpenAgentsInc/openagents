@@ -4,8 +4,8 @@
 //! as before, and the iroh key in a `0600` file under
 //! `~/.openagents/connect` ([`FileKeySource`]). A host the desktop app runs
 //! keeps the owner, host, and iroh keys in the login keychain
-//! ([`Keychain`], macOS), read only by the host process: never a file, an
-//! argument, or a log line.
+//! ([`Keychain`] on macOS, [`SecretService`] on Linux), read only by the
+//! host process: never a file, an argument, or a log line.
 
 use std::sync::Arc;
 
@@ -197,7 +197,7 @@ impl KeySource for Keychain {
     }
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 fn account(name: KeyName) -> openagents_connect::Result<&'static str> {
     keychain_account(name).ok_or_else(|| {
         openagents_connect::Error::new(
@@ -205,6 +205,62 @@ fn account(name: KeyName) -> openagents_connect::Result<&'static str> {
             "the host keeps no device key",
         )
     })
+}
+
+/// The Linux keychain: the freedesktop Secret Service on the session bus
+/// (GNOME Keyring, KWallet, KeePassXC), under [`KEYCHAIN_SERVICE`] and the
+/// same accounts and hex values as the macOS keychain. The Secret Service
+/// keeps items encrypted with the login keyring's password and unlocks it at
+/// login. With no Secret Service on the bus every call refuses as
+/// `unavailable`; the host never falls back to a file for these keys.
+#[cfg(target_os = "linux")]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct SecretService;
+
+#[cfg(target_os = "linux")]
+impl SecretService {
+    fn entry(name: KeyName) -> openagents_connect::Result<keyring::Entry> {
+        keyring::Entry::new(KEYCHAIN_SERVICE, account(name)?).map_err(|_| {
+            openagents_connect::Error::new(
+                openagents_connect::Code::Unavailable,
+                "no Secret Service keyring answers on the session bus",
+            )
+        })
+    }
+}
+
+#[cfg(target_os = "linux")]
+impl KeySource for SecretService {
+    fn load(&self, name: KeyName) -> openagents_connect::Result<Option<Secret>> {
+        use openagents_connect::{Code, Error};
+        match Self::entry(name)?.get_password() {
+            Ok(text) => parse_hex(text.trim_end())
+                .map(|bytes| Some(Secret::from_bytes(bytes)))
+                .ok_or_else(|| Error::new(Code::Malformed, "keychain item is not a key")),
+            Err(keyring::Error::NoEntry) => Ok(None),
+            Err(_) => Err(Error::new(Code::Unavailable, "read the keychain")),
+        }
+    }
+
+    fn store(&self, name: KeyName, secret: &Secret) -> openagents_connect::Result<()> {
+        let text: String = secret.expose().iter().map(|b| format!("{b:02x}")).collect();
+        Self::entry(name)?.set_password(&text).map_err(|_| {
+            openagents_connect::Error::new(
+                openagents_connect::Code::Unavailable,
+                "write the keychain",
+            )
+        })
+    }
+
+    fn delete(&self, name: KeyName) -> openagents_connect::Result<()> {
+        match Self::entry(name)?.delete_credential() {
+            Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+            Err(_) => Err(openagents_connect::Error::new(
+                openagents_connect::Code::Unavailable,
+                "write the keychain",
+            )),
+        }
+    }
 }
 
 /// A key source seen as the keychain that adopting an older host writes
@@ -286,5 +342,38 @@ mod tests {
         assert_eq!(host.load().unwrap(), Some(key));
         let first = owner(source.as_ref()).unwrap();
         assert_eq!(owner(source.as_ref()).unwrap(), first);
+    }
+
+    /// The real Secret Service: every key the host keeps round-trips as the
+    /// same hex item the macOS keychain holds. Run inside `dbus-run-session`
+    /// with an unlocked `gnome-keyring-daemon --components=secrets`:
+    /// `cargo test -p coder-host --lib -- --ignored secret_service`.
+    #[cfg(target_os = "linux")]
+    #[test]
+    #[ignore = "needs a Secret Service on the session bus; writes real keyring items"]
+    fn the_secret_service_keeps_the_host_keys_as_hex() {
+        let source = SecretService;
+        for name in [KeyName::Owner, KeyName::Host, KeyName::HostIroh] {
+            assert_eq!(source.load(name).unwrap(), None, "{} exists", name.as_str());
+        }
+        let host = HostKey(Arc::new(source));
+        use coder_access::host::KeySource as _;
+        let key = SecretKey::new(&mut secp256k1::rand::rng());
+        host.store(&key).unwrap();
+        assert_eq!(host.load().unwrap(), Some(key));
+        let entry = keyring::Entry::new(KEYCHAIN_SERVICE, "host-key").unwrap();
+        assert_eq!(entry.get_password().unwrap(), hex_of(&key.secret_bytes()));
+        let first = owner(&source).unwrap();
+        assert_eq!(owner(&source).unwrap(), first);
+        for name in [KeyName::Owner, KeyName::Host, KeyName::HostIroh] {
+            source.delete(name).unwrap();
+            assert_eq!(source.load(name).unwrap(), None);
+        }
+        assert!(source.load(KeyName::Device).is_err());
+    }
+
+    #[cfg(target_os = "linux")]
+    fn hex_of(bytes: &[u8]) -> String {
+        bytes.iter().map(|b| format!("{b:02x}")).collect()
     }
 }

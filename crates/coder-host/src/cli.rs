@@ -837,10 +837,17 @@ fn keychain_keys() -> Result<crate::serve::keys::Keys> {
     )))
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "linux")]
+fn keychain_keys() -> Result<crate::serve::keys::Keys> {
+    Ok(crate::serve::keys::Keys(Arc::new(
+        crate::serve::keys::SecretService,
+    )))
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
 fn keychain_keys() -> Result<crate::serve::keys::Keys> {
     Err(Error::Config(
-        "--keychain is macOS only here; pass --keys DIR".into(),
+        "--keychain is macOS and Linux only here; pass --keys DIR".into(),
     ))
 }
 

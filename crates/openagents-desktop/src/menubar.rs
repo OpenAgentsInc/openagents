@@ -15,6 +15,9 @@
 //! item does (bringing the window forward, quitting, unregistering the
 //! agent, installing an update) happens here.
 
+// The menu bar is macOS only; elsewhere its model is exercised by tests.
+#![cfg_attr(not(target_os = "macos"), allow(dead_code))]
+
 use openagents_desktop::model::{Intent, Model, Screen};
 
 /// What a menu item asks the app to do.

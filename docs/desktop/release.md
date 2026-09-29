@@ -174,3 +174,30 @@ Before the desktop app landed, the pipeline was run with stand-ins:
   (`x86_64 arm64`) `OpenAgents`, `coder`, and `microcoder` from Cargo,
   assembled, signed, notarized, stapled, and accepted by `spctl`; the
   x86_64 slice of `coder` ran under Rosetta.
+
+## Linux and Windows
+
+The same app builds for Linux and Windows
+([#9977](https://github.com/OpenAgentsInc/openagents/issues/9977));
+`crates/openagents-desktop/src/platform/` holds what differs.
+
+- **Linux.** `scripts/desktop/package-linux.sh` (on Linux) builds the window,
+  `coder`, and `microcoder` and writes an AppImage, a `.deb`, a `.tar.gz`, and
+  `SHA256SUMS`. On NixOS, run it inside
+  `nix shell nixpkgs#patchelf nixpkgs#dpkg nixpkgs#squashfsTools`; it resets
+  the Nix loader to the standard one and prints the newest glibc the build
+  needs. The AppImage needs `appimagetool` on `PATH`, or
+  `--appimage-runtime FILE` with an AppImage type-2 runtime. On first launch
+  the app writes the systemd user unit `com.openagents.desktop.host.service`
+  (`coder host serve --keychain --iroh --control`), and the host keeps its
+  keys in the Secret Service. A computer with no Secret Service running (no
+  GNOME Keyring, KWallet, or KeePassXC) cannot use `--keychain`; the host says
+  so and stores nothing in a file.
+- **Windows.** `scripts/desktop/package-windows.ps1` (on Windows) writes a
+  per-user MSI (WiX v4 or later) and a `.zip`, signed with
+  `-CertificateThumbprint` through `signtool`; `-RequireSigning` for a
+  release. The host starts at sign-in from the `Run` entry `OpenAgents`
+  (`OpenAgents.exe --start-host`, which starts `coder.exe` with no console),
+  and the control channel is a named pipe only this user can open. `coder`
+  does not build for Windows yet (`supervise` is Unix-only), so today only
+  `-SkipCoder` packages succeed: the window, with the host shown offline.

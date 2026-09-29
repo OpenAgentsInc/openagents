@@ -39,6 +39,11 @@ reqwest = { version = "0.12", default-features = false, features = ["blocking", 
 ring = { version = "0.17", optional = true }
 semver = { version = "1", optional = true }
 
+# Linux needs nothing more. Windows: the Run key, the user's SID for the
+# control pipe, and the lock check (`src/platform/windows.rs`).
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_Security_Authorization", "Win32_System_Registry", "Win32_System_StationsAndDesktops", "Win32_System_Threading"] }
+
 [target.'cfg(target_os = "macos")'.dependencies]
 core-foundation = { version = "0.9.4", optional = true }
 objc2 = { version = "0.6.4", optional = true }

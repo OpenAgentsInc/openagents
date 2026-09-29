@@ -22,6 +22,7 @@ host = [
     "dep:coder-service",
     "dep:tokio-rustls",
     "dep:security-framework",
+    "dep:keyring",
 ]
 
 [dependencies]
@@ -60,6 +61,17 @@ tokio-rustls = { version = "0.26", default-features = false, optional = true }
 # verifier already brings in, so the graph gains nothing new.
 [target.'cfg(target_os = "macos")'.dependencies]
 security-framework = { version = "3.7", optional = true }
+
+# The Linux keychain key source: the freedesktop Secret Service (GNOME
+# Keyring, KWallet, KeePassXC) over D-Bus, through `keyring`'s pure-Rust
+# zbus store; reviewed in docs/coder/design/2026-09-29-auto-pairing.md.
+[target.'cfg(target_os = "linux")'.dependencies]
+keyring = { version = "=4.2.0", optional = true }
+
+# The Windows control pipe (`control/windows.rs`): its DACL and the peer's
+# token user.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_Security_Authorization", "Win32_System_Pipes", "Win32_System_Threading"] }
 
 [dev-dependencies]
 # The ready record test decodes with the host service's own reader.

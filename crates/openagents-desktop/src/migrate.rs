@@ -142,7 +142,8 @@ pub fn adopt(
     }
 }
 
-#[cfg(test)]
+// The tests stand in for `coder` with shell scripts.
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
     use std::os::unix::fs::PermissionsExt;
@@ -153,6 +154,14 @@ mod tests {
     /// prints `adopt` and, as the real one writes the keychain, appends
     /// `adopted` to `keychain.txt` beside it. Every call is logged to
     /// `calls.txt`. Nothing here touches a real keychain, home, or agent.
+    /// Tests that write a fake `coder` and run it take turns: on Linux a
+    /// script another test's fork still holds open for writing fails to
+    /// exec with "text file busy".
+    fn serial() -> std::sync::MutexGuard<'static, ()> {
+        static SERIAL: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        SERIAL.lock().unwrap_or_else(|poison| poison.into_inner())
+    }
+
     fn fake_coder(dir: &Path, keychain: bool, detect: &str, adopt: &str) -> PathBuf {
         let path = dir.join("coder");
         let help = if keychain {
@@ -215,6 +224,7 @@ esac
 
     #[test]
     fn detect_runs_coder_under_the_given_home_and_changes_nothing() {
+        let _serial = serial();
         let bin = tempfile::tempdir().unwrap();
         let home = tempfile::tempdir().unwrap();
         let coder = fake_coder(bin.path(), true, FOUND, ADOPTED);
@@ -232,6 +242,7 @@ esac
 
     #[test]
     fn a_problem_or_nothing_found_is_reported_as_such() {
+        let _serial = serial();
         let bin = tempfile::tempdir().unwrap();
         let home = tempfile::tempdir().unwrap();
         let problem =
@@ -252,6 +263,7 @@ esac
     /// and an earlier setup is still seen, without the offer.
     #[test]
     fn an_older_coder_is_never_asked_and_the_setup_is_still_seen() {
+        let _serial = serial();
         let bin = tempfile::tempdir().unwrap();
         let home = tempfile::tempdir().unwrap();
         let coder = fake_coder(bin.path(), false, FOUND, ADOPTED);
@@ -284,6 +296,7 @@ esac
 
     #[test]
     fn adoption_detects_first_then_adopts_as_coder_then_registers() {
+        let _serial = serial();
         let bin = tempfile::tempdir().unwrap();
         let home = tempfile::tempdir().unwrap();
         let coder = fake_coder(bin.path(), true, FOUND, ADOPTED);
@@ -308,6 +321,7 @@ esac
 
     #[test]
     fn a_refused_detection_or_adoption_never_registers() {
+        let _serial = serial();
         let home = tempfile::tempdir().unwrap();
         let problem = r#"{"kind":"found","phones":6,"problems":["in the way"]}"#;
         let failed = r#"{"kind":"failed","message":"the old agent did not stop"}"#;
@@ -333,6 +347,7 @@ esac
 
     #[test]
     fn a_failed_registration_after_adoption_says_the_setup_moved() {
+        let _serial = serial();
         let bin = tempfile::tempdir().unwrap();
         let home = tempfile::tempdir().unwrap();
         let coder = fake_coder(bin.path(), true, FOUND, ADOPTED);

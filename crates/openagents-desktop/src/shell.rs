@@ -1,7 +1,7 @@
 //! The window: the model, presented as Rust Native views through
 //! `rust-native-desktop`, with the code painted on its drawing surface.
 
-use crate::mac;
+use crate::platform;
 use crate::worker::{Context, Worker};
 use openagents_desktop::model::{Intent, Model, Outcome, Request};
 use openagents_desktop::qr::{self, Modules, QUIET_ZONE};
@@ -123,7 +123,7 @@ impl App for DesktopApp {
             self.apply(outcomes, now);
         }
         if self.live {
-            self.model.set_locked(mac::screen_locked());
+            self.model.set_locked(platform::screen_locked());
         }
         crate::menubar::sync(&self.model)
             .into_iter()
