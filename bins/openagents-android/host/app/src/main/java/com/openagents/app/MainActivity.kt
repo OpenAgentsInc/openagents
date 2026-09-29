@@ -10,8 +10,12 @@ import android.graphics.drawable.BitmapDrawable
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.graphics.Rect
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
+import android.view.inputmethod.InputMethodManager
+import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.ImageButton
 import android.widget.ImageView
@@ -45,6 +49,24 @@ enum class AccountRoute(val title: String) {
 }
 
 class MainActivity : ComponentActivity() {
+    /** A tap anywhere outside the focused text field, on any screen, puts the
+     *  keyboard away. The tap still reaches what it hit, so a tab tapped with
+     *  the keyboard up still switches. */
+    override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        if (event.action == MotionEvent.ACTION_DOWN) {
+            val focus = currentFocus
+            if (focus is EditText) {
+                val bounds = Rect()
+                focus.getGlobalVisibleRect(bounds)
+                if (!bounds.contains(event.rawX.toInt(), event.rawY.toInt())) {
+                    getSystemService(InputMethodManager::class.java)?.hideSoftInputFromWindow(focus.windowToken, 0)
+                    focus.clearFocus()
+                }
+            }
+        }
+        return super.dispatchTouchEvent(event)
+    }
+
     private lateinit var bridge: MobileBridge
     private lateinit var scanner: QRScanner
     private lateinit var world: VerseSurface

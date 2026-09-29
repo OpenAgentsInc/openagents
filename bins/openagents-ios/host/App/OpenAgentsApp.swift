@@ -12,6 +12,7 @@ struct OpenAgentsApp: App {
     var body: some Scene {
         WindowGroup {
             HomeScreen(bridge: bridge)
+                .dismissesKeyboardOnOutsideTap()
                 .onChange(of: scenePhase, initial: true) { _, phase in
                     if phase != .inactive { bridge.lifecycle(phase == .active) }
                 }
