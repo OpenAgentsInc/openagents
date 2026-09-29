@@ -1,0 +1,87 @@
+width 108 height 28
+
+
+
+
+
+    PART I · THE IDEA
+    Test-time compute: spend more when the model answers
+    ────────────────────────────────────────────────────────────────────────────────────────────────────
+
+    • Think longer. Chain of thought; o1 and DeepSeek-R1 learned long reasoning with reinforcement
+      learning.
+
+    • Control the budget. s1's budget forcing raised AIME24 from 50 % to 57 %.
+
+    • Sample many times and pick. On SWE-bench Lite, one model went from 15.9 % with one sample to 56 %
+      with 250.
+
+    • Spend it where it helps. Compute-optimal allocation beat best-of-N more than fourfold in
+      efficiency.
+
+    • Adapt the weights briefly. Test-time training on ARC improved accuracy up to sixfold.
+
+
+
+
+
+
+─────────────────────────────────────────────────────────────────────────────────────────────────── 2 / 18 ─
+--
+
+
+
+
+
+    22222222222222222
+    4444444444444444444444444444444444444444444444444444
+    1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111
+
+    2 33333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333
+      333333333
+
+    2 333333333333333333333333333333333333333333333333333333333333333333333333
+
+    2 3333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333
+      333333333
+
+    2 3333333333333333333333333333333333333333333333333333333333333333333333333333333333333333
+      33333333333
+
+    2 3333333333333333333333333333333333333333333333333333333333333333333333333333333333333
+
+
+
+
+
+
+222222222222111111111111111111111111111111111111111111111111111111111111111111111111111111111111111222222221
+--
+
+
+
+
+
+
+    bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+
+
+      bbbbbbbbbbbbb
+
+
+      bbbbbbbbbbbbbbbbbbb
+
+      bbbbbbbbbbbbbbbbbbbbbbbbbbb
+
+
+      bbbbbbbbbbbbbbbbbbbbbbbb
+
+
+      bbbbbbbbbbbbbbbbbbbbbbbbbb
+
+
+
+
+
+
+

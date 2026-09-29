@@ -19,6 +19,7 @@ the [document catalog](catalog.md) to find a specific reference.
 | Plan the Wallet and agent payments | [Breez and Spark](breez/README.md), [Bitcoin](bitcoin/README.md) |
 | Understand the coding and network thesis | [Coder design index](coder/design/README.md), [networked Coder](coder/design/networked-coder-plan.md) |
 | Understand test-time compute and the capabilities agents gain at run time | [Test-time capabilities essay](essays/2026-09-29-test-time-capabilities.md) |
+| Present a talk from the desktop | [OpenAgents deck](../crates/openagents-deck/README.md), [test-time capabilities slides](decks/test-time-capabilities/) |
 | Observe and control a task over Nostr | [Scoped control host and client](coder/runtime/nostr-task-control.md) |
 | Reuse knowledge and components | [Knowledge](coder/guides/knowledge-base.md), [extensions](extensions/README.md), [programs](programs.md) |
 | Build agent labor | [Market infrastructure](agents/market-infrastructure.md), [free labor host](coder/runtime/free-labor.md) |

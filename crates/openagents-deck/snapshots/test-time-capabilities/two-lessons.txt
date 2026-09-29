@@ -1,0 +1,87 @@
+width 108 height 28
+
+
+
+
+
+
+
+
+
+    PART I · THE IDEA
+    Two lessons that carry past tokens
+    ────────────────────────────────────────────────────────────────────────────────────────────────────
+
+    1. A verifier is what makes extra compute pay. Sampling helps only as far as something can tell a
+       right answer from a wrong one. Where the checker is weak, extra samples stop helping.
+
+    2. Compute should be allocated per question. Easy prompts do not need a long chain of thought. The
+       allocation is itself a judgment, and it should cost far less than the work it allocates.
+
+
+
+
+
+
+
+
+
+─────────────────────────────────────────────────────────────────────────────────────────────────── 3 / 18 ─
+--
+
+
+
+
+
+
+
+
+
+    22222222222222222
+    4444444444444444444444444444444444
+    1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111
+
+    22 3333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333
+       3333333333333333333333333333333333333333333333333333333333333333333333333333333333333
+
+    22 33333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333
+       3333333333333333333333333333333333333333333333333333333333333333333333333333333333333333
+
+
+
+
+
+
+
+
+
+222222222222222222111111111111111111111111111111111111111111111111111111111111111111111111111111111222222221
+--
+
+
+
+
+
+
+
+
+
+
+    bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+
+
+       bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+
+
+       bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+
+
+
+
+
+
+
+
+
+
+

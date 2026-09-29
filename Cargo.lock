@@ -5737,6 +5737,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "openagents-deck"
+version = "0.1.0"
+dependencies = [
+ "coder-ui",
+ "png",
+ "pollster",
+ "swash",
+ "wgpu",
+ "winit",
+]
+
+[[package]]
 name = "openagents-wallet"
 version = "0.1.0"
 dependencies = [

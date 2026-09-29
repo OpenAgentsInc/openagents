@@ -1,0 +1,87 @@
+width 108 height 28
+
+
+
+
+
+    PART II · OUR IMPLEMENTATION
+    Five ways Coder acquires a capability at test time
+    ────────────────────────────────────────────────────────────────────────────────────────────────────
+
+    • Tools and plugins. Wasm guests with typed operations and bounded host access.
+
+    • Skills. A SKILL.md guide the agent reads before a task.
+
+    • Knowledge. Cited entries, retrieved and filtered by Jev.
+
+    • Delegation. Microcoder through the first provider with capacity, with failover; Claude Code or
+      Codex briefed with the evidence Jev chose.
+
+    • Typed judgment. Jev picks which of the others to use, and when.
+
+    One declared Terminal-Bench 4.0 attempt passed fin-saccr-rwa for $0.94 in 149.5 s, under Fable 5.1
+    low's best. It was in-sample and tuned; 2 of 13 attempts beat the bar.
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────── 12 / 18 ─
+--
+
+
+
+
+
+    2222222222222222222222222222
+    44444444444444444444444444444444444444444444444444
+    1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111
+
+    2 33333333333333333333333333333333333333333333333333333333333333333333333333333
+
+    2 3333333333333333333333333333333333333333333333333333333
+
+    2 33333333333333333333333333333333333333333333333333333333
+
+    2 3333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333
+      333333333333333333333333333333333333333333
+
+    2 333333333333333333333333333333333333333333333333333333333333333
+
+    22222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222
+    2222222222222222222222222222222222222222222222222222222222222222222222
+
+
+
+
+
+222222222222222222222222222222222222222222222222222222222222222222222222111111111111111111111111112222222221
+--
+
+
+
+
+
+
+    bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+
+
+      bbbbbbbbbbbbbbbbbb
+
+      bbbbbbb
+
+      bbbbbbbbbb
+
+      bbbbbbbbbbb
+
+
+      bbbbbbbbbbbbbbb
+
+
+
+
+
+
+
+
+

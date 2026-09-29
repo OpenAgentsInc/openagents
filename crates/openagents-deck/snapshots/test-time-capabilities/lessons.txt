@@ -1,0 +1,87 @@
+width 108 height 28
+
+
+
+
+
+
+
+    PART II · OUR IMPLEMENTATION
+    What the first runs taught us
+    ────────────────────────────────────────────────────────────────────────────────────────────────────
+
+    • Restraint held. Tests that should not use the tool passed as often with it, with one exception.
+
+    • Reach did not. Four tests failed in both arms: Jev did not pick the tool for that wording.
+
+    • The first gate was wrong. Under v1, faster but no more correct read Better. v2 replaced the rule
+      the same day; the old result keeps its old digest.
+
+    • Graders are software. One looked for "not found" and missed another phrasing; we released a new
+      test set version.
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────── 14 / 18 ─
+--
+
+
+
+
+
+
+
+    2222222222222222222222222222
+    44444444444444444444444444444
+    1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111
+
+    2 33333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333
+
+    2 333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333
+
+    2 333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333
+      33333333333333333333333333333333333333333333333333
+
+    2 33333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333
+      33333333333333333
+
+
+
+
+
+
+
+222222222222222222222222222222222222222222222222222222222222222222222222222222222222111111111111112222222221
+--
+
+
+
+
+
+
+
+
+    bbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+
+
+      bbbbbbbbbbbbbbb
+
+      bbbbbbbbbbbbbb
+
+      bbbbbbbbbbbbbbbbbbbbbbbbb
+
+
+      bbbbbbbbbbbbbbbbbbbbb
+
+
+
+
+
+
+
+
+
