@@ -13,8 +13,9 @@ The Android build, with the same tabs and the same Rust library, is in
 
 The app has four tabs, shown as icons:
 
-- **Coder** (the code icon) opens on a new chat, ready to type: the
-  composer has the cursor, a selector beside the **Coder** title says
+- **Chat** (the message icon) opens on a new chat with OpenAgents, ready
+  to type: the composer (**Message OpenAgents**) has the cursor, a selector
+  beside the **OpenAgents** title says
   where the message goes, and suggested actions sit above the field as
   chips. With a computer this phone may operate ready, a new chat starts
   Coder there: a NIP-HOST `task.create` in the workspace the selector
