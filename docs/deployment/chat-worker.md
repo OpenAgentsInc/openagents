@@ -340,3 +340,20 @@ author: true }`, and `gym records: 0 verified results, 0 refused` after the
 first relay read (nothing is published yet). The live check is in
 [the chat-router-v2 measurement](../coder/measurements/2026-09-29-chat-router-v2.md#live-on-the-deployed-worker).
 
+
+Release `ebaa2af04a` (2026-09-29) carries the #9945 fix (a tool made in
+chat is a skill unless Jev is sure it needs new code, and the router sends
+"write tests for Project map" to the interview) on top of `5882b3910e`
+(the #9946 subscription probe). It was built as above, installed as
+`/opt/coder-worker/releases/ebaa2af04a` with `knowledge/` and
+`codebase-kb.gz` copied from `5882b3910e`, checked with `--check` under the
+chat environment, and put live by moving the `chat` symlink and restarting
+`coder-worker-chat`; the environment file and unit did not change, and
+`5882b3910e` stays in `releases/` for rollback. With
+`live_basic_coder_streams_a_reply` and `OPENAGENTS_TEST_CHAT_MESSAGE`, "Help
+me make a tool that writes changelog entries", "… tells Coder how we write
+commit messages", and "… writes docstrings for new functions" each reached
+the step-1 draft ("Is that the tool? Tap Looks good…") in 3.4 to 5.3 s;
+"Help me write tests for Project map" routed to `eval.author` and described
+Project map at step 1; "make a tool that sends me a Telegram message when
+Coder finishes a task" got the Run Coder offer in 0.8 s.
