@@ -1,9 +1,9 @@
 # OpenAgents phone app: wireframe specification
 
-Written 2026-09-28. Status: design, revision 3. This page specifies every
+Written 2026-09-28. Status: revision 3; its v1 cut shipped in build 21 ([what shipped](#build-21-what-shipped)). This page specifies every
 screen of the OpenAgents phone app as a text wireframe, with the user flow,
 for one closed loop. Each element is marked **EXISTS**, **PARTIAL**, or
-**NEW** against the code on `main` today, so the gap is visible. We start
+**NEW** against the code on `main` (checked 2026-09-29, build 21), so the gap is visible. We start
 with the most basic elements and add to this wireframe later.
 
 Revision 3 (2026-09-28, the same night) refocuses the loop from benchmark
@@ -32,6 +32,7 @@ Revision 2 made **Chat** a first-class part of the loop and the main menu
 
 ## Contents
 
+- [Build 21: what shipped](#build-21-what-shipped)
 - [Revision 3: what changed](#revision-3-what-changed)
 - [Revision 2: what changed](#revision-2-what-changed)
 - [Spec ID index](#spec-id-index)
@@ -51,6 +52,33 @@ Revision 2 made **Chat** a first-class part of the loop and the main menu
 - [Later: the Gym in the Verse](#later-the-gym-in-the-verse)
 - [Appendix: what we cut and why](#appendix-what-we-cut-and-why)
 - [Sources](#sources)
+
+## Build 21: what shipped
+
+Build 21 ("Test tools in chat") implements revision 3's v1 cut in the real
+app, [#9939](https://github.com/OpenAgentsInc/openagents/issues/9939)
+(`59b6908044` to `caf14e1a3b`); OpenAgents Mockup draws all of revision 3
+([#9940](https://github.com/OpenAgentsInc/openagents/issues/9940),
+`b4c6e5f6ab`). The code is `crates/openagents-mobile/src/first_run.rs`
+(the menu and first run), `eval_cards.rs` and `gym.rs` (cards and sheets),
+and `hosted.rs` (the hosted runner client). A real test ran end to end from
+the phone on 2026-09-29: "Test Project map on Coder", one tap, 2 of 6 → 5 of
+6 **Better**, **Add to the Gym**, a second trainer's check, and +25 XP on
+the menu and Profile ([simulator record](../../bins/openagents-ios/verification/2026-09-29-evals-in-chat/README.md)).
+
+| ID | Build 21 |
+| --- | --- |
+| `SCR-01` | Shipped: player card, **GYM OPEN** pill, next-step line, **CHAT WITH OPENAGENTS**, starter chips, **PROFILE**, **THE GYM IN THE VERSE**, footer. Not built: the updates bell (`E02`), the season card (`E09`), and the "testing now" count (`E05`). The tab bar stays, with the menu as the Chat tab's first screen. |
+| `SCR-02`, `CIN-01`, `SCR-15.E12` | Shipped: three taps to a test (`CHOOSE CODER`, `LET'S GO`, `START THE TEST`), resuming at the furthest step. `CIN-01` is only its end card; the shots before it (`S01` to `S07`) are not built. |
+| `CARD-01` to `CARD-07` | Shipped, with the gaps marked PARTIAL or NEW in each card's table. |
+| `SCR-05`, `SCR-06`, `SCR-11`, `SCR-20`, `SCR-21` | Shipped; `SCR-11` is the minimal Profile. |
+| `FLOW-01` | Shipped, and passes `CHK-06` live. |
+| `FLOW-04` | Shipped: live on the hosted runner. |
+| `FLOW-07` | Shipped: the live chat worker drafts a skill-shaped tool to a test set ([#9945](https://github.com/OpenAgentsInc/openagents/issues/9945)); a tool that needs new code goes to Coder. |
+| `FLOW-08` | Shipped: **RUN THE CHECK** on `CARD-06`; the live checks so far ran through the hosted runner from a second trainer key. |
+| `FLOW-09` | Shipped: news from the Gym's records and our changelog, without ids or banned words ([#9944](https://github.com/OpenAgentsInc/openagents/issues/9944)). Tapping a news item opens nothing yet. |
+| `FLOW-10` | Shipped for `eval-check`: the referee's award reached the menu and Profile live. `eval-adopt` works in tests; no adoption has been made. |
+| `CHK-01` to `CHK-13` | Re-checked against build 21 in the [simulator record](../../bins/openagents-ios/verification/2026-09-29-evals-in-chat/README.md#idiot-proof-re-checked-against-this-build). |
 
 ## Revision 3: what changed
 
@@ -97,8 +125,8 @@ ID changes (IDs are never renumbered or reused):
 | `SCR-04` Training | Retired, with all its elements. Replaced by `CARD-03` Run card. |
 | `SCR-05` Result | Kept as the result's detail view, opened from `CARD-04`; its numbers are tests; `SCR-05.E07` now opens `SCR-20`. |
 | `SCR-07.E07`, `SCR-09.E05`, `SCR-10.E05`, `SCR-11.E09` | Kept; each now opens chat with the matching request instead of `SCR-03`. |
-| `SCR-11.E10` | New: **What you made** (your tools, test sets, checks, and XP). |
-| `SCR-15.E12` | New: the first-run chat. |
+| `SCR-11.E10` | EXISTS (`xp_ledger::eval::made`) |
+| `SCR-15.E12` | EXISTS |
 | `SCR-17.E11`, `SCR-17.E12` | `E11` now names the eval offers; `E12` (result line) is retired in favor of `CARD-04`. |
 | `SCR-20`, `SCR-21` | New sheets. |
 | `CARD-01` … `CARD-07` | New. |
@@ -278,19 +306,19 @@ never the model's words.
 | ID | The player asks | Chat answers with | Loop | Status |
 | --- | --- | --- | --- | --- |
 | `CHAT-1` | "Who are you?", "What model is this?", "What does it cost?", "What can you do?" (kicking the tires) | A prepared answer at once (under a second), marked "Prepared answer", with follow-up chips to the next likely question. | `LOOP-1` | EXISTS (`meta.*` and `smalltalk.*` in `chat-answers-v1`) |
-| `CHAT-2` | "Which tool should I try?", "What should I do next?" | One recommendation in a sentence ("Try Project map. 18 trainers tested it; most saw Coder pass more tests.") and `CARD-01` for that tool with **Start the test**. | `LOOP-2` | NEW (needs the `eval.run` route and published results) |
-| `CHAT-3` | "What does Project map do?", "What's a tool?", "What's a test?" | A plain answer from our notes, and `CARD-01` when a tool is named. | `LOOP-2` | PARTIAL (`product.kb` answers from 52 sourced notes; notes for each tool, tests, and the card are NEW) |
-| `CHAT-4` | "Test Project map on Coder" | "We'll run 8 tests with Project map and without it. It takes about 5 minutes." and `CARD-01` with **Start the test**; the run starts only on that tap. | `LOOP-3` | NEW (needs the hosted runner) |
-| `CHAT-5` | "How did my test do?", "Did Coder get better?" | `CARD-04` from the player's own result ("5 of 8 → 7 of 8 tests with Project map. Better.") with **See details** and **Add to the Gym**. | `LOOP-4` | NEW |
-| `CHAT-6` | "How do I earn XP?", "What level am I?" | A prepared or product answer; "Level 2, 93 XP to level 3" from the player's card, and `CARD-07` when they have credit. | `LOOP-6` | PARTIAL (`openagents.earn-xp` and `openagents.playtest-xp` notes exist; the player's own level in chat is NEW) |
+| `CHAT-2` | "Which tool should I try?", "What should I do next?" | One recommendation in a sentence ("Try Project map. 18 trainers tested it; most saw Coder pass more tests.") and `CARD-01` for that tool with **Start the test**. | `LOOP-2` | EXISTS (`eval.run`, with `CARD-01` and **START THE TEST** for the starter test sets) |
+| `CHAT-3` | "What does Project map do?", "What's a tool?", "What's a test?" | A plain answer from our notes, and `CARD-01` when a tool is named. | `LOOP-2` | PARTIAL (`product.kb` answers from 60 sourced notes, including one for each tool and for tests; `CARD-01` comes with `CHAT-4`, not with a note's answer) |
+| `CHAT-4` | "Test Project map on Coder" | "We'll run 8 tests with Project map and without it. It takes about 5 minutes." and `CARD-01` with **Start the test**; the run starts only on that tap. | `LOOP-3` | EXISTS (the hosted runner; run live on 2026-09-29) |
+| `CHAT-5` | "How did my test do?", "Did Coder get better?" | `CARD-04` from the player's own result ("5 of 8 → 7 of 8 tests with Project map. Better.") with **See details** and **Add to the Gym**. | `LOOP-4` | EXISTS (`eval.result`; the phone draws its own latest result) |
+| `CHAT-6` | "How do I earn XP?", "What level am I?" | A prepared or product answer; "Level 2, 93 XP to level 3" from the player's card, and `CARD-07` when they have credit. | `LOOP-6` | EXISTS (`eval.credit` and the XP notes; `CARD-07` from the phone's ledger) |
 | `CHAT-7` | "Fix the failing test in my repo", "Look through this project" | "We'll dispatch Coder to …" and **Run Coder on** the computer, or **Connect a computer** when none is added. Coder's reply streams into its own chat (`SCR-19`). | Beyond the loop (your own code) | EXISTS (`work.dispatch`; `SCR-17.E05`) |
 | `CHAT-8` | "Where's my wallet?", "How do I report a bug?", "Which computers are online?" | A short answer and a screen chip (**Open Wallet**, **Your computers**, **Identity keys**, **Playtest**, **Report a problem**) or a read-only command card. | Support | EXISTS on the phone; the worker's command proposals are PARTIAL |
-| `CHAT-9` | "What's new in the Gym?", "What are people working on?", "What's the latest?" | A grounded answer from the Gym's records (new results, test sets, checks waiting, tools Coder adopted) and our changelog, as `CARD-05`, every item with its source; at most one offer. | `LOOP-1` | NEW (the `gym.news` route and its knowledge source) |
-| `CHAT-10` | "Help me make a tool that …", "Write tests for my tool" | The interview, one question per turn: what the tool is for, what a good run looks like, then a draft as `CARD-02` with **Looks good** and **Change it**. | `LOOP-2` | NEW (the `eval.author` route) |
-| `CHAT-11` | "Try it once", "Run my tests" | `CARD-03` for a one-run pilot, then `CARD-04`; the full run needs its own tap. | `LOOP-3`, `LOOP-4` | NEW |
-| `CHAT-12` | "Add it to the Gym" | **Add to the Gym**, which opens `SCR-20` to confirm what becomes public. | `LOOP-5` | NEW |
-| `CHAT-13` | "Is there a result I can check?" | `CARD-06` with **Run the check**. | `LOOP-5`, `LOOP-6` | NEW |
-| `CHAT-14` | "What have I earned?", "Did anyone check my tests?" | `CARD-07`: XP pending and confirmed, who checked what, and whether Coder adopted the tool. | `LOOP-6` | NEW |
+| `CHAT-9` | "What's new in the Gym?", "What are people working on?", "What's the latest?" | A grounded answer from the Gym's records (new results, test sets, checks waiting, tools Coder adopted) and our changelog, as `CARD-05`, every item with its source; at most one offer. | `LOOP-1` | EXISTS (`gym.news` from the Gym's records) |
+| `CHAT-10` | "Help me make a tool that …", "Write tests for my tool" | The interview, one question per turn: what the tool is for, what a good run looks like, then a draft as `CARD-02` with **Looks good** and **Change it**. | `LOOP-2` | EXISTS (`eval.author` and the authoring interview) |
+| `CHAT-11` | "Try it once", "Run my tests" | `CARD-03` for a one-run pilot, then `CARD-04`; the full run needs its own tap. | `LOOP-3`, `LOOP-4` | EXISTS |
+| `CHAT-12` | "Add it to the Gym" | **Add to the Gym**, which opens `SCR-20` to confirm what becomes public. | `LOOP-5` | EXISTS |
+| `CHAT-13` | "Find me a result to check" (the **Check a result** chip), "Is there a result I can check?" | `CARD-06` with **Run the check**. | `LOOP-5`, `LOOP-6` | EXISTS (`eval.check` with `CARD-06`) |
+| `CHAT-14` | "What have I earned?", "Did anyone check my tests?" | `CARD-07`: XP pending and confirmed, who checked what, and whether Coder adopted the tool. | `LOOP-6` | EXISTS (`CARD-07` from the phone's ledger) |
 
 Rules chat keeps in the loop:
 
@@ -467,19 +495,19 @@ States:
 | ID | Element | What it does | Loop | Status |
 | --- | --- | --- | --- | --- |
 | `SCR-01.E01` | Logo and **OPENAGENTS** wordmark | Identity; no action. | — | PARTIAL (the Chat tab header says "OpenAgents") |
-| `SCR-01.E02` | Updates bell with a count | Opens `SCR-12`. The count is unread updates, such as "Your result was confirmed." | `LOOP-6` | NEW |
+| `SCR-01.E02` | Updates bell with a count | Opens `SCR-12`. The count is unread updates, such as "Your result was confirmed." | `LOOP-6` | NEW (not built in build 21) |
 | `SCR-01.E03` | ~~**ENTER THE GYM**~~ | Retired in revision 3. `E12` is the primary. | — | Retired |
-| `SCR-01.E04` | Player card: avatar, trainer name, level, XP bar | Shows progress at a glance. Tapping opens `SCR-11`. | `LOOP-6` | PARTIAL (level and XP exist in Account > Trainer; the name and the card on this screen are NEW) |
-| `SCR-01.E05` | Hero image with Gym status pill | Shows the Gym is open and how many people are testing now. | `LOOP-6` (network) | PARTIAL (the Grid and its presence exist; a "testing now" count is NEW) |
+| `SCR-01.E04` | Player card: avatar, trainer name, level, XP bar | Shows progress at a glance. Tapping opens `SCR-11`. | `LOOP-6` | EXISTS (name, level, and XP bar from the phone's XP ledger; a gray bar until it is read) |
+| `SCR-01.E05` | Hero image with Gym status pill | Shows the Gym is open and how many people are testing now. | `LOOP-6` (network) | PARTIAL (the **GYM OPEN** pill; the "testing now" count is not built, because no record says it) |
 | `SCR-01.E06` | **CODER** row | Opens `SCR-07` with Coder's starter test result. | `LOOP-4` | NEW (later) |
 | `SCR-01.E07` | **RANKINGS** row | Opens `SCR-10`. | `LOOP-6` | NEW (later) |
-| `SCR-01.E08` | **PROFILE** row | Opens `SCR-11`. | `LOOP-6` | PARTIAL (Account tab exists) |
-| `SCR-01.E09` | Season card | States the season and its end date. Tapping opens `SCR-10` (or `SCR-11` in v1). | `LOOP-6` | PARTIAL (the season exists in the playtesting program; no card) |
-| `SCR-01.E10` | Footer: Gym status, version | Status and build for reports. | — | PARTIAL (version exists in About this device) |
-| `SCR-01.E11` | Next-step line | One line that says what to do next, from the player's state (a check waiting, a result confirmed, runs left). | All | NEW |
-| `SCR-01.E12` | **CHAT WITH OPENAGENTS** | The primary. Opens `SCR-15`, a new chat ready to type. Subtitle: "Test a tool, see what's new, earn XP". With a pending card (a check waiting, credit to see, a run in progress), it opens that chat with the card on top. | `CHAT-1` to `CHAT-14` | PARTIAL (the chat is the first tab today and opens ready to type; the row, the hub, and the pending card are NEW) |
-| `SCR-01.E13` | Starter chips: **Test a tool**, **What's new**, **Check a result** | Each opens a new chat and sends that message, so the answer and its card are the first thing the player sees. Outlined, never filled. | `CHAT-2`, `CHAT-9`, `CHAT-13` | NEW |
-| `SCR-01.E14` | **THE GYM IN THE VERSE** row | Opens the Verse at the Gym building to review results on its boards. Later: the social Gym ([later](#later-the-gym-in-the-verse)). | `LOOP-6` | PARTIAL (the Gym building, its RESULTS board, and its EVALS board with agents comparing notes exist in the Verse tab, [#9942](https://github.com/OpenAgentsInc/openagents/issues/9942); a chat offer's **See the board** opens it; the main menu row waits on the hub) |
+| `SCR-01.E08` | **PROFILE** row | Opens `SCR-11`. | `LOOP-6` | EXISTS (opens a minimal `SCR-11`) |
+| `SCR-01.E09` | Season card | States the season and its end date. Tapping opens `SCR-10` (or `SCR-11` in v1). | `LOOP-6` | NEW (not built in build 21) |
+| `SCR-01.E10` | Footer: Gym status, version | Status and build for reports. | — | EXISTS ("Gym open · v1.0.0 (21) · Playtest") |
+| `SCR-01.E11` | Next-step line | One line that says what to do next, from the player's state (a check waiting, a result confirmed, runs left). | All | EXISTS (a run in progress, a result not yet added, your work checked, or the first step; no runs-left line) |
+| `SCR-01.E12` | **CHAT WITH OPENAGENTS** | The primary. Opens `SCR-15`, a new chat ready to type. Subtitle: "Test a tool, see what's new, earn XP". With a pending card (a check waiting, credit to see, a run in progress), it opens that chat with the card on top. | `CHAT-1` to `CHAT-14` | EXISTS (with a result not yet added, it reopens that chat) |
+| `SCR-01.E13` | Starter chips: **Test a tool**, **What's new**, **Check a result** | Each opens a new chat and sends that message, so the answer and its card are the first thing the player sees. Outlined, never filled. | `CHAT-2`, `CHAT-9`, `CHAT-13` | EXISTS |
+| `SCR-01.E14` | **THE GYM IN THE VERSE** row | Opens the Verse at the Gym building to review results on its boards. Later: the social Gym ([later](#later-the-gym-in-the-verse)). | `LOOP-6` | EXISTS (opens the Verse's Gym and its EVALS board, [#9942](https://github.com/OpenAgentsInc/openagents/issues/9942); the social Gym is later) |
 
 Transitions: in from app open (returning player), `SCR-06`, and every
 **Back to menu**. Out to `SCR-15` (or `SCR-17` with a card), `SCR-07`,
@@ -529,12 +557,12 @@ States:
 
 | ID | Element | What it does | Loop | Status |
 | --- | --- | --- | --- | --- |
-| `SCR-02.E01` | Step indicator | Shows step 1 of 3. | `LOOP-1` | NEW |
-| `SCR-02.E02` | Title and two plain lines | Explains an agent in one sentence. | `LOOP-1` | NEW |
-| `SCR-02.E03` | Coder card, preselected | The default and only agent in v1. Shows how many of our starter tests Coder passes today, so the player sees what a tool could improve. | `LOOP-1`, `LOOP-4` | NEW (Coder exists; the card and the starter test result are NEW) |
-| `SCR-02.E04` | **CHOOSE CODER** | Creates the player's identity silently (a world key, no prompt) and plays `CIN-01`. Tap 1 of 3 to the first run. | `LOOP-1` | PARTIAL (the device and world keys are created silently today) |
-| `SCR-02.E05` | Next-step line | "Next: choose Coder to begin." | `LOOP-1` | NEW |
-| `SCR-02.E06` | **Ask OpenAgents a question first** | Gray link for the player who wants to kick the tires. Opens `SCR-15` with first-time suggestion chips ("Who are you?", "What is Coder?", "What's the Gym?"); its **< Back** returns here. | `CHAT-1` | NEW (the chat exists; the link and the guided step are NEW) |
+| `SCR-02.E01` | Step indicator | Shows step 1 of 3. | `LOOP-1` | EXISTS |
+| `SCR-02.E02` | Title and two plain lines | Explains an agent in one sentence. | `LOOP-1` | EXISTS |
+| `SCR-02.E03` | Coder card, preselected | The default and only agent in v1. Shows how many of our starter tests Coder passes today, so the player sees what a tool could improve. | `LOOP-1`, `LOOP-4` | PARTIAL (the Coder card, preselected; Coder's starter test result is not shown) |
+| `SCR-02.E04` | **CHOOSE CODER** | Creates the player's identity silently (a world key, no prompt) and plays `CIN-01`. Tap 1 of 3 to the first run. | `LOOP-1` | EXISTS |
+| `SCR-02.E05` | Next-step line | "Next: choose Coder to begin." | `LOOP-1` | EXISTS |
+| `SCR-02.E06` | **Ask OpenAgents a question first** | Gray link for the player who wants to kick the tires. Opens `SCR-15` with first-time suggestion chips ("Who are you?", "What is Coder?", "What's the Gym?"); its **< Back** returns here. | `CHAT-1` | EXISTS |
 
 Transitions: in from the first app open only. Out to `CIN-01`, or to
 `SCR-15` and back. There is no back button; there is nothing before this
@@ -626,19 +654,19 @@ States:
 
 | ID | Element | What it does | Loop | Status |
 | --- | --- | --- | --- | --- |
-| `SCR-05.E01` | Title and **< Chat** | Back to the chat; the result is kept on the phone. | — | NEW |
-| `SCR-05.E02` | Verdict headline | **Better**, **No clear change**, or **Worse**, from the Gym's rule against the spread between repeats. | `LOOP-4` | NEW (the `ext-eval-v2` gate) |
-| `SCR-05.E03` | Tests passed without and with the tool | Whole numbers with whole denominators. | `LOOP-4` | NEW |
-| `SCR-05.E04` | XP line and level bar | Says when XP comes: when another trainer checks it. | `LOOP-6` | NEW (the `eval-check` rule) |
-| `SCR-05.E05` | Why it matters | One sentence on the network effect. | `LOOP-5` | NEW |
-| `SCR-05.E06` | Next-step line | One line. | `LOOP-5` | NEW |
-| `SCR-05.E07` | **ADD TO THE GYM** | Opens `SCR-20` to confirm. | `LOOP-5` | NEW |
+| `SCR-05.E01` | Title and **< Chat** | Back to the chat; the result is kept on the phone. | — | EXISTS (**BACK TO CHAT**) |
+| `SCR-05.E02` | Verdict headline | **Better**, **No clear change**, or **Worse**, from the Gym's rule against the spread between repeats. | `LOOP-4` | EXISTS (the report's own `ext-eval-v2` verdict) |
+| `SCR-05.E03` | Tests passed without and with the tool | Whole numbers with whole denominators. | `LOOP-4` | EXISTS |
+| `SCR-05.E04` | XP line and level bar | Says when XP comes: when another trainer checks it. | `LOOP-6` | PARTIAL (the XP line; no level bar) |
+| `SCR-05.E05` | Why it matters | One sentence on the network effect. | `LOOP-5` | EXISTS |
+| `SCR-05.E06` | Next-step line | One line. | `LOOP-5` | EXISTS |
+| `SCR-05.E07` | **ADD TO THE GYM** | Opens `SCR-20` to confirm. | `LOOP-5` | EXISTS |
 | `SCR-05.E08` | ~~Public notice~~ | Retired in revision 3: `SCR-20` says what becomes public before the tap. | — | Retired |
-| `SCR-05.E09` | **Share outside the app** | Opens the system share sheet with an image card and a link. | `LOOP-5` (following) | PARTIAL (Export card exists for the trainer card) |
-| `SCR-05.E10` | **Test another tool** | Back to chat with "Which tool should I try?" sent. | `LOOP-2` | NEW |
-| `SCR-05.E11` | **Ask about this result** | Back to chat with "Why did Coder do better with Project map?" sent, the result as context. | `CHAT-5` | NEW |
-| `SCR-05.E12` | Test list | Each test with a mark per arm (without, with), and a note on tests where the tool should stay out of the way. | `LOOP-4` | NEW |
-| `SCR-05.E13` | **See the whole test set** | Opens `SCR-21`. | `LOOP-2` | NEW |
+| `SCR-05.E09` | **Share outside the app** | Opens the system share sheet with an image card and a link. | `LOOP-5` (following) | EXISTS (share text with the numbers) |
+| `SCR-05.E10` | **Test another tool** | Back to chat with "Which tool should I try?" sent. | `LOOP-2` | EXISTS |
+| `SCR-05.E11` | **Ask about this result** | Back to chat with "Why did Coder do better with Project map?" sent, the result as context. | `CHAT-5` | EXISTS |
+| `SCR-05.E12` | Test list | Each test with a mark per arm (without, with), and a note on tests where the tool should stay out of the way. | `LOOP-4` | EXISTS |
+| `SCR-05.E13` | **See the whole test set** | Opens `SCR-21`. | `LOOP-2` | EXISTS |
 
 Transitions: in from `CARD-04.E04`. Out to `SCR-20`, the chat, or the share
 sheet.
@@ -671,11 +699,11 @@ state: it reads local numbers.
 
 | ID | Element | What it does | Loop | Status |
 | --- | --- | --- | --- | --- |
-| `SCR-06.E01` | Level number | The new level. | `LOOP-5` | PARTIAL (levels exist in Account > Trainer) |
-| `SCR-06.E02` | Full XP bar | Progress made visible. | `LOOP-5` | PARTIAL |
-| `SCR-06.E03` | New title or reward | Names the loot. | `LOOP-5` | PARTIAL (playtest titles exist) |
-| `SCR-06.E04` | Next-step line | Gives the reason to return. | `LOOP-6` | NEW |
-| `SCR-06.E05` | **NICE** | Closes, back to the chat (or `SCR-01` at the end of the first run). | `LOOP-6` | NEW |
+| `SCR-06.E01` | Level number | The new level. | `LOOP-5` | EXISTS |
+| `SCR-06.E02` | Full XP bar | Progress made visible. | `LOOP-5` | EXISTS |
+| `SCR-06.E03` | New title or reward | Names the loot. | `LOOP-5` | EXISTS |
+| `SCR-06.E04` | Next-step line | Gives the reason to return. | `LOOP-6` | EXISTS |
+| `SCR-06.E05` | **NICE** | Closes, back to the chat (or `SCR-01` at the end of the first run). | `LOOP-6` | EXISTS |
 
 Transitions: in from `SCR-20` or a chat card. Out to the chat or `SCR-01`.
 
@@ -862,15 +890,15 @@ yet. Your first test takes about 5 minutes." Offline shows cached numbers marked
 
 | ID | Element | What it does | Loop | Status |
 | --- | --- | --- | --- | --- |
-| `SCR-11.E01` | Avatar and trainer name | Identity without a key. | `LOOP-5` | PARTIAL (the key exists; the name is NEW) |
-| `SCR-11.E02` | Level and XP | Progress. | `LOOP-5` | EXISTS (Account > Trainer) |
+| `SCR-11.E01` | Avatar and trainer name | Identity without a key. | `LOOP-5` | EXISTS |
+| `SCR-11.E02` | Level and XP | Progress. | `LOOP-5` | EXISTS (Profile and Account > Trainer) |
 | `SCR-11.E03` | Titles | Loot earned. | `LOOP-5` | EXISTS (Trainer and Playtest cards) |
-| `SCR-11.E04` | Your results | Each tool you tested: tests passed without and with it, and the verdict. Tapping one opens its `SCR-05`. | `LOOP-4` | NEW |
-| `SCR-11.E05` | **Show my level to others** | A plain switch for the trainer profile. Confirms "Show your level to everyone?" once. | `LOOP-5` | EXISTS (Show my level / Hide my level) |
-| `SCR-11.E06` | **Report a problem** | Opens `SCR-13`. | Playtest | EXISTS |
+| `SCR-11.E04` | Your results | Each tool you tested: tests passed without and with it, and the verdict. Tapping one opens its `SCR-05`. | `LOOP-4` | EXISTS |
+| `SCR-11.E05` | **Show my level to others** | A plain switch for the trainer profile. Confirms "Show your level to everyone?" once. | `LOOP-5` | EXISTS (Account > Trainer; not on the minimal Profile) |
+| `SCR-11.E06` | **Report a problem** | Opens `SCR-13`. | Playtest | EXISTS (Account; not on the minimal Profile) |
 | `SCR-11.E07` | **Advanced** | Later: the player's key, linking keys, and export, in technical words, behind one screen; also **Your computers** and the **Wallet**, the screens a chat offer can open (`CHAT-8`). | — | EXISTS (Identity keys, Link a key, Export card, Computers, Wallet; today as Account rows and the Wallet tab) |
-| `SCR-11.E08` | Next-step line | One line. | — | NEW |
-| `SCR-11.E09` | **CHAT WITH OPENAGENTS** | Opens chat. Before revision 3, it opened `SCR-03`. | `LOOP-1` | NEW |
+| `SCR-11.E08` | Next-step line | One line. | — | EXISTS |
+| `SCR-11.E09` | **CHAT WITH OPENAGENTS** | Opens chat. Before revision 3, it opened `SCR-03`. | `LOOP-1` | EXISTS |
 | `SCR-11.E10` | **What you made** | Your tools and test sets, with the checks and adoptions that earned XP; the same as `CARD-07`. | `LOOP-6` | NEW |
 
 IDIOT PROOF check: **pass.** Technical items sit behind **Advanced**, off the
@@ -1070,13 +1098,13 @@ States:
 | `SCR-15.E02` | Title **OpenAgents** | Says who you're talking to. | `CHAT-1` | EXISTS |
 | `SCR-15.E03` | Target selector | Where the first message goes: **Cloud** (the default, always) or a computer and workspace the player picked. | `CHAT-7` | EXISTS |
 | `SCR-15.E04` | Target choices | Each computer this phone may use, **Cloud**, and **Connect a computer**, with a check on the current one. | `CHAT-7` | EXISTS |
-| `SCR-15.E05` | Welcome lines | Two plain lines that say what chat is for, shown only while the chat is empty. The empty screen's "Next:" answer (`CHK-03`). | `CHAT-1` | NEW (the empty chat is blank today) |
-| `SCR-15.E06` | Suggestion chips | Recent chats, workspaces, and **Connect a computer** today; the worker may rank them once each time the tab shows. First-time question chips from the bank, and **Test a tool**, **What's new**, and **Check a result** chips, are NEW. | `CHAT-1`, `CHAT-2`, `CHAT-9`, `CHAT-13` | PARTIAL |
+| `SCR-15.E05` | Welcome lines | Two plain lines that say what chat is for, shown only while the chat is empty. The empty screen's "Next:" answer (`CHK-03`). | `CHAT-1` | EXISTS (one line) |
+| `SCR-15.E06` | Suggestion chips | Recent chats, workspaces, and **Connect a computer** today; the worker may rank them once each time the tab shows. First-time question chips on a first chat, and **Test a tool**, **What's new**, and **Check a result** chips. | `CHAT-1`, `CHAT-2`, `CHAT-9`, `CHAT-13` | EXISTS |
 | `SCR-15.E07` | Composer **Message OpenAgents** | Focused on open; grows to six lines. A tap outside any text field puts the keyboard away. | All chat | EXISTS |
 | `SCR-15.E08` | Send | Sends a NIP-CJ job to the chat worker (or a Coder task to the chosen computer) and opens `SCR-17`. | All chat | EXISTS |
-| `SCR-15.E09` | Wait and limit lines | Plain lines for a busy or used-up chat. Today they say "Coder has answered all the messages it can today…"; they should speak as "we" (rule 3 of [Chat in the loop](#chat-in-the-loop)). | — | PARTIAL (copy speaks as Coder) |
-| `SCR-15.E10` | Welcome for first-timers from `SCR-02.E06` | A **< Back** that returns to step 1 of 3, and the first-time chips. | `CHAT-1` | NEW |
-| `SCR-15.E11` | **< Menu** | Back to `SCR-01`. Hidden in the first-run chat. | — | NEW (Chat is a tab today) |
+| `SCR-15.E09` | Wait and limit lines | Plain lines for a busy or used-up chat, spoken as "we" (rule 3 of [Chat in the loop](#chat-in-the-loop)): "We've answered all the messages we can for you today…" | — | EXISTS |
+| `SCR-15.E10` | Welcome for first-timers from `SCR-02.E06` | A **< Back** that returns to step 1 of 3, and the first-time chips. | `CHAT-1` | EXISTS |
+| `SCR-15.E11` | **< Menu** | Back to `SCR-01`. Hidden in the first-run chat. | — | EXISTS |
 | `SCR-15.E12` | First-run chat | Step 2 of 3 of `FLOW-01`, opened by `CIN-01`'s **LET'S GO**: a step indicator, our greeting ("Hi, we're OpenAgents. Let's see if a tool makes Coder better."), and `CARD-01` for Project map, whose **START THE TEST** is tap 3. The composer works; answers appear under the card. | `CHAT-4`, `LOOP-3` | NEW |
 
 Transitions: in from `SCR-01.E12`, `SCR-01.E13`, `SCR-02.E06`, `CIN-01`
@@ -1178,7 +1206,7 @@ States:
 | `SCR-17.E08` | Follow-up chips | The next likely questions under a prepared answer; a tap sends it. | `CHAT-1` | EXISTS |
 | `SCR-17.E09` | **Wrong answer** | Under a prepared answer only. Opens `SCR-18`. | `CHAT-1` | EXISTS |
 | `SCR-17.E10` | Composer **Message OpenAgents** | The next message in the same chat. | All chat | EXISTS |
-| `SCR-17.E11` | Loop cards and offers: `CARD-01` to `CARD-07`, **Start the test**, **Try it once**, **Run the check**, **Add to the Gym**, **See details** | The `CHAT-2` to `CHAT-14` taps, each a card's button or an offer; nothing runs or publishes without the tap. | `CHAT-2` to `CHAT-14` | NEW (needs the Gym and eval routes, the NIP-CJ `card` feedback, and the hosted runner) |
+| `SCR-17.E11` | Loop cards and offers: `CARD-01` to `CARD-07`, **Start the test**, **Try it once**, **Run the check**, **Add to the Gym**, **See details** | The `CHAT-2` to `CHAT-14` taps, each a card's button or an offer; nothing runs or publishes without the tap. | `CHAT-2` to `CHAT-14` | EXISTS |
 | `SCR-17.E12` | ~~Result line~~ | Retired in revision 3; `CARD-04` shows the player's result. | — | Retired |
 | `SCR-17.E13` | **Try again** | After a failed reply; resends the same message. | — | EXISTS |
 
@@ -1297,14 +1325,14 @@ A tool, what it does, its latest result, and the one button that tests it.
 
 | ID | Element | What it does | Status |
 | --- | --- | --- | --- |
-| `CARD-01.E01` | Icon and name | The tool. | NEW |
-| `CARD-01.E02` | One plain line | What it does. | NEW |
-| `CARD-01.E03` | What will run | "8 tests, with and without the tool." | NEW |
-| `CARD-01.E04` | Time, cost, and runs left | "About 5 minutes. Free. 3 runs left today." We pay for hosted runs. | NEW |
-| `CARD-01.E05` | **START THE TEST** | Sends a signed request to the hosted runner for this tool and its test set; the card becomes `CARD-03`. On the first run it's step 2 of 3's tap. | NEW (the hosted runner) |
-| `CARD-01.E06` | **See the tests** | Opens `SCR-21` read-only. | NEW |
-| `CARD-01.E07` | Other tools, as chips | Each sends "Test Code finder on Coder". | NEW |
-| `CARD-01.E08` | Latest result | The newest verified result and how many trainers checked it, or "Not tested yet. Be the first." | NEW |
+| `CARD-01.E01` | Icon and name | The tool. | EXISTS |
+| `CARD-01.E02` | One plain line | What it does. | EXISTS |
+| `CARD-01.E03` | What will run | "8 tests, with and without the tool." | EXISTS |
+| `CARD-01.E04` | Time, cost, and runs left | "About 5 minutes. Free. 3 runs left today." We pay for hosted runs. | PARTIAL ("Free. We run it on our computers."; no time or runs-left count, which no record says) |
+| `CARD-01.E05` | **START THE TEST** | Sends a signed request to the hosted runner for this tool and its test set; the card becomes `CARD-03`. On the first run it's step 2 of 3's tap. | EXISTS (the hosted runner) |
+| `CARD-01.E06` | **See the tests** | Opens `SCR-21` read-only. | NEW (not on the tool card in build 21) |
+| `CARD-01.E07` | Other tools, as chips | Each sends "Test Code finder on Coder". | EXISTS |
+| `CARD-01.E08` | Latest result | The newest verified result and how many trainers checked it, or "Not tested yet. Be the first." | PARTIAL (the newest result, or "Not tested yet. Be the first."; how many trainers checked it isn't shown) |
 | `CARD-01.E09` | **More about it** | Opens `SCR-09` (later; hidden in v1). | NEW (later) |
 
 States: no runs left today (E05 reads **START TOMORROW AT 9:00**, gray, and
@@ -1337,13 +1365,13 @@ they answer; nothing runs until they tap.
 
 | ID | Element | What it does | Status |
 | --- | --- | --- | --- |
-| `CARD-02.E01` | Title and **DRAFT** | Says it's not public and hasn't run. | NEW |
-| `CARD-02.E02` | The tool | An existing tool, or the one being made ("yours"). | NEW |
-| `CARD-02.E03` | Tests, numbered | Names only; tests where the tool should stay out of the way are marked. | NEW |
-| `CARD-02.E04` | **See every test** | Opens `SCR-21` with the draft. | NEW |
-| `CARD-02.E05` | **LOOKS GOOD** | Approves this interview step; the next step (checks, then **Try it once**) follows in chat. At the last step it reads **TRY IT ONCE** and sends a one-run request. | NEW |
-| `CARD-02.E06` | How tests are checked | One plain line per kind of check. | NEW |
-| `CARD-02.E07` | **Change it** | Puts the cursor in the composer with "Change: ". | NEW |
+| `CARD-02.E01` | Title and **DRAFT** | Says it's not public and hasn't run. | EXISTS |
+| `CARD-02.E02` | The tool | An existing tool, or the one being made ("yours"). | EXISTS |
+| `CARD-02.E03` | Tests, numbered | Names only; tests where the tool should stay out of the way are marked. | EXISTS |
+| `CARD-02.E04` | **See every test** | Opens `SCR-21` with the draft. | EXISTS |
+| `CARD-02.E05` | **LOOKS GOOD** | Approves this interview step; the next step (checks, then **Try it once**) follows in chat. At the last step it reads **TRY IT ONCE** and sends a one-run request. | EXISTS |
+| `CARD-02.E06` | How tests are checked | One plain line per kind of check. | EXISTS |
+| `CARD-02.E07` | **Change it** | Puts the cursor in the composer with "Change: ". | EXISTS |
 
 ### CARD-03 Run card
 
@@ -1363,11 +1391,11 @@ A run in progress. It replaces the card that started it.
 
 | ID | Element | What it does | Status |
 | --- | --- | --- | --- |
-| `CARD-03.E01` | Title | The tool; step dots on the first run. | NEW |
-| `CARD-03.E02` | Two rows of blocks | Progress for each side, without numbers to read. | NEW |
-| `CARD-03.E03` | Counter and time left | "Working" when time is unknown, never a guess. | NEW |
-| `CARD-03.E04` | Reassurance | Safe to leave. | NEW |
-| `CARD-03.E05` | **Stop** | Cancels; confirms "Stop the test? It won't use a run." | NEW |
+| `CARD-03.E01` | Title | The tool; step dots on the first run. | EXISTS |
+| `CARD-03.E02` | Two rows of blocks | Progress for each side, without numbers to read. | PARTIAL (one row of blocks: the runner counts runs across both sides) |
+| `CARD-03.E03` | Counter and time left | "Working" when time is unknown, never a guess. | PARTIAL ("35 of 36 runs done" or "Working"; no time left) |
+| `CARD-03.E04` | Reassurance | Safe to leave. | EXISTS |
+| `CARD-03.E05` | **Stop** | Cancels; confirms "Stop the test? It won't use a run." | EXISTS |
 
 States: slow ("Taking longer than usual. We'll keep going."); failed on our
 side (`PAT-01`: "Something went wrong on our side. This didn't use a run."
@@ -1394,12 +1422,12 @@ The payoff, in the chat.
 
 | ID | Element | What it does | Status |
 | --- | --- | --- | --- |
-| `CARD-04.E01` | Verdict | **CODER GOT BETTER**, **NO CLEAR CHANGE**, **CODER DID WORSE WITH THIS TOOL**, or **FIRST TRY** for a one-run try. | NEW |
-| `CARD-04.E02` | Tests passed without and with | The biggest text on the card. | NEW |
-| `CARD-04.E03` | XP line | When XP comes, in one line. | NEW |
-| `CARD-04.E04` | **See details** | Opens `SCR-05`. | NEW |
-| `CARD-04.E05` | **ADD TO THE GYM** | Opens `SCR-20`. For a one-run try it reads **RUN THE FULL TEST SET** and sends that request instead. | NEW |
-| `CARD-04.E06` | **See the tests** | Opens `SCR-21`. | NEW |
+| `CARD-04.E01` | Verdict | **CODER GOT BETTER**, **NO CLEAR CHANGE**, **CODER DID WORSE WITH THIS TOOL**, or **FIRST TRY** for a one-run try. | EXISTS |
+| `CARD-04.E02` | Tests passed without and with | The biggest text on the card. | EXISTS |
+| `CARD-04.E03` | XP line | When XP comes, in one line. | EXISTS |
+| `CARD-04.E04` | **See details** | Opens `SCR-05`. | EXISTS |
+| `CARD-04.E05` | **ADD TO THE GYM** | Opens `SCR-20`. For a one-run try it reads **RUN THE FULL TEST SET** and sends that request instead. | EXISTS |
+| `CARD-04.E06` | **See the tests** | Opens `SCR-21`. | EXISTS |
 
 ### CARD-05 Gym news card
 
@@ -1425,9 +1453,9 @@ What's new and what's in progress (`CHAT-9`), from the Gym's records.
 
 | ID | Element | What it does | Status |
 | --- | --- | --- | --- |
-| `CARD-05.E01` | Up to 5 items | Each from one record: a result, a test set, a check, an adoption, or a changelog entry. Tapping an item opens its card (`CARD-01`, `CARD-04`, or `CARD-06`). | NEW |
-| `CARD-05.E02` | One offer | The single most useful next step, or none. | NEW |
-| `CARD-05.E03` | Source line | Where the items came from. | NEW |
+| `CARD-05.E01` | Up to 5 items | Each from one record: a result, a test set, a check, an adoption, or a changelog entry. Tapping an item opens its card (`CARD-01`, `CARD-04`, or `CARD-06`). | PARTIAL (the items, each from a record; tapping an item opens nothing yet) |
+| `CARD-05.E02` | One offer | The single most useful next step, or none. | EXISTS |
+| `CARD-05.E03` | Source line | Where the items came from. | EXISTS |
 
 Empty: "Nothing new since you last asked." and a **Test a tool** chip.
 
@@ -1451,10 +1479,10 @@ Another trainer's result, waiting for someone to run the same tests
 
 | ID | Element | What it does | Status |
 | --- | --- | --- | --- |
-| `CARD-06.E01` | Title and XP | The XP the checker earns if it holds up. | NEW |
-| `CARD-06.E02` | The claim | Whose result, which tool, the numbers. Never your own. | NEW |
-| `CARD-06.E03` | Time and cost | A check never uses a daily run. | NEW |
-| `CARD-06.E04` | **RUN THE CHECK** | Sends the check request; the card becomes `CARD-03`, then `CARD-04` with **YOU CONFIRMED IT** or **IT DIDN'T HOLD UP**. | NEW |
+| `CARD-06.E01` | Title and XP | The XP the checker earns if it holds up. | EXISTS |
+| `CARD-06.E02` | The claim | Whose result, which tool, the numbers. Never your own. | EXISTS |
+| `CARD-06.E03` | Time and cost | A check never uses a daily run. | PARTIAL (says a check doesn't use a daily run; no time) |
+| `CARD-06.E04` | **RUN THE CHECK** | Sends the check request; the card becomes `CARD-03`, then `CARD-04` with **YOU CONFIRMED IT** or **IT DIDN'T HOLD UP**. | EXISTS |
 
 ### CARD-07 Credit card
 
@@ -1480,11 +1508,11 @@ What your work has earned (`CHAT-14`), from the XP ledger.
 
 | ID | Element | What it does | Status |
 | --- | --- | --- | --- |
-| `CARD-07.E01` | Title | — | NEW |
-| `CARD-07.E02` | Your tools and test sets | Each with the checks and adoptions that earned XP, and what's still pending. | NEW (the `eval-check` and `eval-adopt` rules) |
-| `CARD-07.E03` | Level line | From the player's ledger. | PARTIAL (the ledger exists) |
-| `CARD-07.E04` | **SHARE WHAT YOU MADE** | The system share sheet with an image card and a link. | NEW |
-| `CARD-07.E05` | Honesty line | XP is not money. | NEW |
+| `CARD-07.E01` | Title | — | EXISTS |
+| `CARD-07.E02` | Your tools and test sets | Each with the checks and adoptions that earned XP, and what's still pending. | EXISTS (`eval-check` and `eval-adopt` awards, from the phone's ledger) |
+| `CARD-07.E03` | Level line | From the player's ledger. | EXISTS |
+| `CARD-07.E04` | **SHARE WHAT YOU MADE** | The system share sheet with an image card and a link. | EXISTS |
+| `CARD-07.E05` | Honesty line | XP is not money. | EXISTS |
 
 Empty: "Nothing yet. When another trainer checks a result you added, you
 earn XP here." and a **Test a tool** chip.
@@ -1517,11 +1545,11 @@ A sheet that confirms what becomes public, opened from `CARD-04.E05` and
 
 | ID | Element | What it does | Status |
 | --- | --- | --- | --- |
-| `SCR-20.E01` | What becomes public | The tests, the result, and the trainer name. | NEW |
-| `SCR-20.E02` | What stays private | Coder's full work (the trajectories). | NEW |
-| `SCR-20.E03` | What happens next | Checks and XP, in one sentence. | NEW |
-| `SCR-20.E04` | **ADD TO THE GYM** | Publishes the test set and the signed result; the chat shows "Added to the Gym" and, if a level was crossed, `SCR-06`. | NEW |
-| `SCR-20.E05` | **Not now** | Closes; the result stays on the phone. | NEW |
+| `SCR-20.E01` | What becomes public | The tests, the result, and the trainer name. | EXISTS |
+| `SCR-20.E02` | What stays private | Coder's full work (the trajectories). | EXISTS |
+| `SCR-20.E03` | What happens next | Checks and XP, in one sentence. | EXISTS |
+| `SCR-20.E04` | **ADD TO THE GYM** | Publishes the test set and the signed result; the chat shows "Added to the Gym" and, if a level was crossed, `SCR-06`. | EXISTS |
+| `SCR-20.E05` | **Not now** | Closes; the result stays on the phone. | EXISTS |
 
 States: adding failed (`PAT-01`: "We couldn't add your result. It's saved
 on this phone." and **TRY AGAIN**).
@@ -1557,11 +1585,11 @@ editable in words for a draft.
 
 | ID | Element | What it does | Status |
 | --- | --- | --- | --- |
-| `SCR-21.E01` | Title | The tool and the count. | NEW |
-| `SCR-21.E02` | Each test's task | In the words Coder gets. | NEW |
-| `SCR-21.E03` | How it's checked | Each grader in one plain line. | NEW |
-| `SCR-21.E04` | Author and checks | Who made it and how often it was checked. | NEW |
-| `SCR-21.E05` | **DONE** / **LOOKS GOOD** | Closes; on a draft, approves it (the same as `CARD-02.E05`). | NEW |
+| `SCR-21.E01` | Title | The tool and the count. | EXISTS |
+| `SCR-21.E02` | Each test's task | In the words Coder gets. | EXISTS |
+| `SCR-21.E03` | How it's checked | Each grader in one plain line. | EXISTS |
+| `SCR-21.E04` | Author and checks | Who made it and how often it was checked. | PARTIAL (where the test set comes from; no check count) |
+| `SCR-21.E05` | **DONE** / **LOOKS GOOD** | Closes; on a draft, approves it (the same as `CARD-02.E05`). | EXISTS |
 
 IDIOT PROOF check: **pass.** A read-only list with one action.
 
@@ -1644,7 +1672,7 @@ narrate a reward the app can't give.
 | The player's agent as a companion figure | PARTIAL | `crates/verse/src/agent.rs` (a floating spade on desktop; the Grid has no companion); the Coder figure is NEW |
 | The Lagrange 1 station in the sky | PARTIAL | `crates/verse-lagrange`; the portal is hidden on the phone |
 | Scripted camera path (keyframes, easing, crane, dolly) | NEW | Nothing in `crates/verse`. `three-effect` has no camera-path primitive, and the phone renderer is Rust, not `three-effect`. |
-| Subtitle band, end card, skip control | NEW | Native overlay over the Verse view |
+| Subtitle band, end card, skip control | PARTIAL | The end card with **LET'S GO** exists (`crates/openagents-mobile/src/first_run.rs`); the subtitle band and skip control are NEW |
 | Voice-over audio | NEW | No audio pipeline in the Verse today |
 | The "lounge" | NEW | `lounge` exists only as a desktop chat room; there is no lounge place. `S03` uses the plaza instead. |
 | The stream of lights and the big emblem (`S05`) | NEW | Effect in the Verse renderer |
@@ -1859,7 +1887,8 @@ with catalog tools turned on; a tool with new code is made with Coder on a
 connected computer ("We'll need your computer to build that. Run Coder on
 Studio Mac?", `CHAT-7`), then tested the same way. The draft stays on the
 phone. At least one test must be one where the tool should stay out of the
-way; chat adds it if the player doesn't. Status: NEW.
+way; chat adds it if the player doesn't. Status: EXISTS (build 21;
+`coder::eval_author` on the chat worker).
 
 ### FLOW-08 Check another trainer's result
 
@@ -1876,7 +1905,8 @@ way; chat adds it if the player doesn't. Status: NEW.
 ```
 
 A check never uses a daily run, and a player never gets their own result
-to check. Status: NEW.
+to check. Status: EXISTS (build 21; the live checks so far ran through
+the hosted runner).
 
 ### FLOW-09 What's new in the Gym
 
@@ -1890,7 +1920,8 @@ to check. Status: NEW.
 
 Every item comes from a verified record: a published result, a test set,
 a check, an adoption, or our changelog. With no records, chat says
-"Nothing new since you last asked." Status: NEW (`gym.news`).
+"Nothing new since you last asked." Status: EXISTS (build 21, `gym.news`;
+tapping an item opens nothing yet).
 
 ### FLOW-10 Credit: when your work is used
 
@@ -1905,7 +1936,8 @@ a check, an adoption, or our changelog. With no records, chat says
 
 "Used" means exactly two things: another trainer checked your result or
 test set and got the same answer, or Coder adopted your tool. XP can't be
-spent; nothing pays money. Status: NEW (`eval-check`, `eval-adopt`).
+spent; nothing pays money. Status: EXISTS for `eval-check` (live on
+2026-09-29); `eval-adopt` is tested, and no adoption has been made.
 
 ## NAV-01 Navigation map
 
@@ -2004,20 +2036,21 @@ Results for every screen and card. "n/a" means the check doesn't apply.
 
 ### What today's app still fails
 
-Checked against `main` and TestFlight build 20 on 2026-09-28.
+Checked against `main` and TestFlight build 20 on 2026-09-28. Build 21
+fixes the rows marked *Fixed in build 21*.
 
 | Check | Where | What fails today |
 | --- | --- | --- |
-| `CHK-05`, `CHK-06` | Verse > the Gym board (`VerseGym.swift`) | Starting a Gym run needs a Gym host: the player copies their public key to a host, creates a connection grant there, and pastes a `gym-connect:` code. No hosted runner exists, and no eval runner exists at all. |
+| `CHK-05`, `CHK-06` | Verse > the Gym board (`VerseGym.swift`) | Starting a Gym run needs a Gym host: the player copies their public key to a host, creates a connection grant there, and pastes a `gym-connect:` code. *Fixed in build 21* for tests: they run from chat on the hosted runner. The board's own runs still need a host. |
 | `CHK-05` | Tutorial quests (`docs/verse/tutorial-quests.md`) | Earning XP by reproducing a result needs a desktop with Docker and the command line. |
 | `CHK-02` | Verse > the Gym's RESULTS board (`VerseResults.swift`, `VerseTrace.swift`) | Readable with no setup, but in expert words: Terminal-Bench, traces, verifiers, Jev. |
 | `CHK-02` | Account > Trainer | The level card is there, but the same screen shows npub, nsec, relay, and `microcoder xp` commands. |
 | `CHK-02` | Account > Identity keys, Tailnet | npub, nsec, and hex keys, and a Tailnet screen, one tap from the Account list. |
 | `CHK-02` | Wallet tab | The ₿ balance is on the tab's first screen. |
-| `CHK-01`, `CHK-03`, `CHK-10` | The whole app | Four equal tabs, no main menu, no guided first run, and no "Next:" line on any screen. |
-| `CHK-03` | Chat, `SCR-15` | An empty new chat has no line that says what to do; the suggestion chips are recent chats and workspaces, not first-time questions. |
-| `CHK-11`, `CHK-13` | Chat | The router has no Gym or eval routes, no cards, and no Gym screen to open: asking "What's new in the Gym?" gets a general answer, not records. |
-| Voice | Chat, `SCR-15.E09`, `SCR-17` | Wait and limit lines say "Coder has answered all the messages it can today"; the waiting label says "Coder is thinking". Both should speak as OpenAgents. |
+| `CHK-01`, `CHK-03`, `CHK-10` | The whole app | Four equal tabs, no main menu, no guided first run, and no "Next:" line on any screen. *Fixed in build 21*: the menu, the first run, and next-step lines. |
+| `CHK-03` | Chat, `SCR-15` | An empty new chat has no line that says what to do; the suggestion chips are recent chats and workspaces, not first-time questions. *Fixed in build 21.* |
+| `CHK-11`, `CHK-13` | Chat | The router has no Gym or eval routes, no cards, and no Gym screen to open: asking "What's new in the Gym?" gets a general answer, not records. *Fixed in build 21* (`chat-router-v2`). |
+| Voice | Chat, `SCR-15.E09`, `SCR-17` | Wait and limit lines say "Coder has answered all the messages it can today"; the waiting label says "Coder is thinking". Both should speak as OpenAgents. *Fixed on `main`*: the lines now speak as "we". |
 
 This spec fixes the rest by putting the loop in chat, running tests on our
 computers, and moving every technical term behind **Advanced**.
