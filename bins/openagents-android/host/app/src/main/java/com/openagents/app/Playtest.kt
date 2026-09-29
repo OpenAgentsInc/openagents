@@ -1,6 +1,6 @@
 // Report a problem, My reports, and Account > Playtest. Rust fills in and
 // checks every report, decides whether a screenshot may be offered, seals
-// the report to the triage key, and keeps the session log; these views only
+// the report to the triage key, and keeps the playtest log; these views only
 // collect what the tester writes and chooses, and show the exact screenshot
 // and log before anything is sent. They follow the iOS `Playtest.swift`.
 package com.openagents.app
@@ -72,17 +72,13 @@ internal class Playtest(private val activity: MainActivity, private val bridge: 
     private val main = Handler(Looper.getMainLooper())
     private fun dialog() = AlertDialog.Builder(activity, android.R.style.Theme_DeviceDefault_Dialog_Alert)
 
-    /** My reports and the session, the latest Rust answer. */
+    /** My reports and the playtest log, the latest Rust answer. */
     var reports: JSONObject? = null; private set
     /** The trainer packet, whose `playtest` object is the playtest card. */
     private var card: JSONObject? = null
     private var logOpen = false
 
     fun loadReports(refresh: () -> Unit) = bridge.reports { reports = it; refresh() }
-
-    /** Turns Playtest session on (a new log) or off, noting where the tester is. */
-    fun setSession(on: Boolean, tab: String, route: String, refresh: () -> Unit) =
-        bridge.playtestSession(on, tab, route) { reports = it; refresh() }
 
     fun loadCard(refresh: () -> Unit) = bridge.trainer(preview = activity.xpPreview) { next ->
         if (next.toString() != card?.toString()) { card = next; refresh() }
@@ -136,7 +132,7 @@ internal class Playtest(private val activity: MainActivity, private val bridge: 
         private var quote = false
         private var includeTask = false
         private var includeShot = false
-        private var includeLog = draft.optBoolean("session_on")
+        private var includeLog = draft.optBoolean("logging")
         private var cropTop = 0.0
         private var cropBottom = 0.0
         private var sending = false
@@ -237,13 +233,13 @@ internal class Playtest(private val activity: MainActivity, private val bridge: 
                 body.card(task) { add(toggle("Attach this chat's task ID", includeTask, "report-task") { includeTask = it }) }
             }
             screenshotSection(body)
-            if (draft.optBoolean("session_on")) {
-                val lines = draft.optJSONArray("session_lines").strings()
+            if (draft.optBoolean("logging")) {
+                val lines = draft.optJSONArray("log_lines").strings()
                 body.card("Tab, screen, event, and time only: exactly these lines.") {
-                    add(toggle("Attach the session log (${lines.size} events)", includeLog, "report-session") { includeLog = it })
+                    add(toggle("Attach the playtest log (${lines.size} events)", includeLog, "report-log") { includeLog = it })
                     addView(activity.divider(), LinearLayout.LayoutParams(-1, 1))
                     add(activity.label(lines.joinToString("\n").ifEmpty { "No events yet." }, 12f, Palette.SECONDARY, mono = true,
-                        key = "report-session-lines").apply { setPadding(0, activity.dp(8), 0, activity.dp(8)) })
+                        key = "report-log-lines").apply { setPadding(0, activity.dp(8), 0, activity.dp(8)) })
                 }
             }
             body.card(draft.optString("privacy")) {
@@ -307,8 +303,8 @@ internal class Playtest(private val activity: MainActivity, private val bridge: 
                 "device" to ReportDevice.model, "os_version" to ReportDevice.os,
                 "tab" to draft.optString("tab"), "route" to draft.optString("route"), "kind" to kind,
                 "happened" to happened.text.toString(), "expected" to expected.text.toString(), "steps" to steps.text.toString(),
-                "quote" to quote, "include_task" to includeTask, "include_session" to (includeLog && draft.optBoolean("session_on")),
-                "session_digest" to draft.optString("session_digest"))
+                "quote" to quote, "include_task" to includeTask, "include_log" to (includeLog && draft.optBoolean("logging")),
+                "log_digest" to draft.optString("log_digest"))
             if (draft.optBoolean("screenshot_allowed")) shot()?.let(ReportImage::jpeg)?.let { (bytes, w, h) ->
                 form.put("screenshot", json("jpeg_base64" to Base64.encodeToString(bytes, Base64.NO_WRAP), "width" to w, "height" to h))
             }
@@ -320,7 +316,7 @@ internal class Playtest(private val activity: MainActivity, private val bridge: 
                 if (row != null) { receipt(row); return@sendReport }
                 error = packet.textOrNull("error") ?: "The report couldn't be filed."
                 // The log moved on: show the current one before sending.
-                if (error?.contains("session log changed") == true) {
+                if (error?.contains("log changed") == true) {
                     bridge.reportDraft(draft.optString("tab"), draft.optString("route")) { draft = it; form() }
                 } else form()
             }
@@ -368,7 +364,7 @@ internal class Playtest(private val activity: MainActivity, private val bridge: 
                     add(top)
                     add(activity.label(row.optString("summary"), 14f).apply { maxLines = 2 }, 2)
                     add(activity.label("${row.optString("kind_label")} · ${row.optString("place")} · ${row.optString("build")}" +
-                        (if (row.optBoolean("screenshot")) " · screenshot" else "") + (if (row.optBoolean("session")) " · session log" else "") +
+                        (if (row.optBoolean("screenshot")) " · screenshot" else "") + (if (row.optBoolean("log")) " · playtest log" else "") +
                         (if (row.optBoolean("published")) " · public record" else ""),
                         12f, Palette.SECONDARY), 2)
                     row.textOrNull("error")?.let { add(activity.label(it, 12f, Palette.FAILURE), 2) }
@@ -385,48 +381,41 @@ internal class Playtest(private val activity: MainActivity, private val bridge: 
 
     // Account > Playtest
 
-    /** The playtest card, the opt-in session log, and the way to report. */
+    /** The playtest card, playtest logging (set by the build, no switch), and the way to report. */
     fun screen(refresh: () -> Unit, report: () -> Unit, openReports: () -> Unit): View {
         val body = activity.column().apply { setPadding(activity.dp(16), 0, activity.dp(16), activity.dp(24)) }
         playtestCard(body)
-        val session = reports?.objectOrNull("session")
-        body.add(activity.column().apply {
-            background = activity.rounded(Palette.SURFACE, 12f)
-            setPadding(activity.dp(16), activity.dp(4), activity.dp(16), activity.dp(4))
-            add(activity.row().apply {
-                gravity = Gravity.CENTER_VERTICAL; minimumHeight = activity.dp(52)
-                addView(activity.label("Playtest session", 16f), LinearLayout.LayoutParams(0, -2, 1f))
-                addView(Switch(activity).apply {
-                    isChecked = session?.optBoolean("on") == true; isEnabled = reports != null
-                    tag = "playtest-session"; contentDescription = "Playtest session"
-                    setOnCheckedChangeListener { _, value -> setSession(value, "account", "playtest", refresh) }
-                })
-            })
-        }, 20)
-        body.add(activity.label("While on, this phone notes which tab and screen you're on, error codes, and when. Never messages, prompts, keys, " +
-            "recovery words, invoices, addresses, or amounts. The log stays on this phone and goes only in a report you preview.",
-            13f, Palette.SECONDARY).apply { setPadding(activity.dp(16), 0, activity.dp(16), 0) }, 6)
-        val events = session?.optInt("events") ?: 0
-        if (events > 0) {
-            body.add(activity.label("SESSION LOG", 13f, Palette.SECONDARY).apply { setPadding(activity.dp(16), 0, 0, 0) }, 20)
+        val log = reports?.objectOrNull("log")
+        val events = log?.optInt("events") ?: 0
+        if (log != null) {
+            body.add(activity.label("PLAYTEST LOGGING", 13f, Palette.SECONDARY).apply { setPadding(activity.dp(16), 0, 0, 0) }, 20)
             body.add(activity.column().apply {
                 background = activity.rounded(Palette.SURFACE, 12f)
                 setPadding(activity.dp(16), activity.dp(4), activity.dp(16), activity.dp(4))
-                add(activity.label((if (events == 1) "1 event" else "$events events") + if (logOpen) "  ▾" else "  ›", 16f, key = "playtest-log-toggle").apply {
-                    setPadding(0, activity.dp(12), 0, activity.dp(12)); setOnClickListener { logOpen = !logOpen; refresh() }
-                })
-                if (logOpen) add(activity.label(session?.optJSONArray("lines").strings().joinToString("\n"), 12f, Palette.SECONDARY,
-                    mono = true, key = "playtest-log-lines").apply { setPadding(0, 0, 0, activity.dp(8)) })
-                addView(activity.divider(), LinearLayout.LayoutParams(-1, 1))
-                add(activity.label("Delete the log", 16f, Palette.FAILURE, key = "playtest-log-delete").apply {
+                add(activity.label(log.optString("note"), 16f, key = "playtest-logging").apply {
                     setPadding(0, activity.dp(12), 0, activity.dp(12))
-                    setOnClickListener {
-                        dialog().setTitle("Delete the session log?")
-                            .setPositiveButton("Delete") { _, _ -> bridge.playtestSession(null) { reports = it; refresh() } }
-                            .setNegativeButton("Cancel", null).show()
-                    }
                 })
+                if (events > 0) {
+                    addView(activity.divider(), LinearLayout.LayoutParams(-1, 1))
+                    add(activity.label((if (events == 1) "1 event" else "$events events") + if (logOpen) "  ▾" else "  ›", 16f, key = "playtest-log-toggle").apply {
+                        setPadding(0, activity.dp(12), 0, activity.dp(12)); setOnClickListener { logOpen = !logOpen; refresh() }
+                    })
+                    if (logOpen) add(activity.label(log.optJSONArray("lines").strings().joinToString("\n"), 12f, Palette.SECONDARY,
+                        mono = true, key = "playtest-log-lines").apply { setPadding(0, 0, 0, activity.dp(8)) })
+                    addView(activity.divider(), LinearLayout.LayoutParams(-1, 1))
+                    add(activity.label("Delete the log", 16f, Palette.FAILURE, key = "playtest-log-delete").apply {
+                        setPadding(0, activity.dp(12), 0, activity.dp(12))
+                        setOnClickListener {
+                            dialog().setTitle("Delete the playtest log?")
+                                .setPositiveButton("Delete") { _, _ -> bridge.playtestClear { reports = it; refresh() } }
+                                .setNegativeButton("Cancel", null).show()
+                        }
+                    })
+                }
             }, 6)
+            if (log.optBoolean("on")) body.add(activity.label("This phone notes which tab and screen you're on, error codes, and when. Never messages, prompts, keys, " +
+                "recovery words, invoices, addresses, or amounts. The log stays on this phone and goes only in a report you preview.",
+                13f, Palette.SECONDARY).apply { setPadding(activity.dp(16), 0, activity.dp(16), 0) }, 6)
         }
         body.add(activity.column().apply {
             background = activity.rounded(Palette.SURFACE, 12f)

@@ -1,6 +1,8 @@
-//! The opt-in playtest session log.
+//! The playtest log (called the session log before playtest logging was on
+//! by default).
 //!
-//! While the tester has turned **Playtest session** on, the app appends one
+//! While **playtest logging** is on (every build unless a release build
+//! turned it off; the app has no switch), the app appends one
 //! [`Event`] per structural change: the tab, the screen, an event code, and
 //! the time. Every field is a closed enumeration or a number, so the log
 //! can't hold message text, prompts, transcripts, keys, recovery words,

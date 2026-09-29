@@ -1,6 +1,6 @@
 // Report a problem, My reports, and Account > Playtest. Rust fills in and
 // checks every report, decides whether a screenshot may be offered, seals
-// the report to the triage key, and keeps the session log; these views only
+// the report to the triage key, and keeps the playtest log; these views only
 // collect what the tester writes and chooses, and show the exact screenshot
 // and log before anything is sent.
 import SwiftUI
@@ -172,11 +172,11 @@ struct ReportSheet: View {
                 }
             }
             screenshotSection
-            if draft.session_on {
+            if draft.logging {
                 Section {
-                    Toggle("Attach the session log (\(draft.session_lines.count) events)", isOn: $includeLog)
+                    Toggle("Attach the playtest log (\(draft.log_lines.count) events)", isOn: $includeLog)
                     DisclosureGroup("Show the whole log") {
-                        ForEach(Array(draft.session_lines.enumerated()), id: \.offset) { _, line in
+                        ForEach(Array(draft.log_lines.enumerated()), id: \.offset) { _, line in
                             Text(line).font(.caption.monospaced())
                         }
                     }
@@ -219,7 +219,7 @@ struct ReportSheet: View {
                     .accessibilityIdentifier("report-send")
             }
         }
-        .onAppear { includeLog = draft.session_on }
+        .onAppear { includeLog = draft.logging }
     }
 
     @ViewBuilder private var screenshotSection: some View {
@@ -279,8 +279,8 @@ struct ReportSheet: View {
             "device": ReportDevice.model, "os_version": ReportDevice.os,
             "tab": draft.tab, "route": draft.route, "kind": kind,
             "happened": happened, "expected": expected, "steps": steps, "quote": quote,
-            "include_task": includeTask, "include_session": includeLog && draft.session_on,
-            "session_digest": draft.session_digest,
+            "include_task": includeTask, "include_log": includeLog && draft.logging,
+            "log_digest": draft.log_digest,
         ]
         if draft.screenshot_allowed, let shot, let jpeg = ReportImage.jpeg(shot) {
             form["screenshot"] = ["jpeg_base64": jpeg.data.base64EncodedString(),
@@ -295,7 +295,7 @@ struct ReportSheet: View {
             } else {
                 error = packet.error ?? "The report couldn't be filed."
                 // The log moved on: show the current one before sending.
-                if error?.contains("session log changed") == true {
+                if error?.contains("log changed") == true {
                     bridge.reportDraft(tab: draft.tab, route: draft.route) { session.draft = $0 }
                 }
             }
@@ -328,7 +328,7 @@ struct MyReportsScreen: View {
                             .foregroundStyle(row.status == "sent" ? .secondary : Color.yellow)
                     }
                     Text(row.summary).font(.subheadline).lineLimit(2)
-                    Text("\(row.kind_label) · \(row.place) · \(row.build)\(row.screenshot ? " · screenshot" : "")\(row.session ? " · session log" : "")\(row.published == true ? " · public record" : "")")
+                    Text("\(row.kind_label) · \(row.place) · \(row.build)\(row.screenshot ? " · screenshot" : "")\(row.log ? " · playtest log" : "")\(row.published == true ? " · public record" : "")")
                         .font(.caption).foregroundStyle(.secondary)
                     if let error = row.error {
                         Text(error).font(.caption).foregroundStyle(.red)
@@ -359,8 +359,8 @@ struct MyReportsScreen: View {
     }
 }
 
-/// Account > Playtest: the opt-in session log, reports, and how testing
-/// works.
+/// Account > Playtest: playtest logging, reports, and how testing works.
+/// Playtest logging has no switch here; the build sets it.
 struct PlaytestScreen: View {
     @ObservedObject var bridge: MobileBridge
     @EnvironmentObject private var reporter: ReportCoordinator
@@ -368,32 +368,27 @@ struct PlaytestScreen: View {
     @State private var packet: ReportsPacket?
     @State private var confirmClear = false
 
-    private var on: Binding<Bool> {
-        Binding(get: { packet?.session.on ?? false }, set: { value in
-            bridge.playtestSession(on: value) { packet = $0 }
-        })
-    }
-
     var body: some View {
         List {
             PlaytestCardSection(bridge: bridge, reports: packet)
-            Section {
-                Toggle("Playtest session", isOn: on)
-                    .disabled(packet == nil)
-                    .accessibilityIdentifier("playtest-session")
-            } footer: {
-                Text("While on, this phone notes which tab and screen you're on, error codes, and when. Never messages, prompts, keys, recovery words, invoices, addresses, or amounts. The log stays on this phone and goes only in a report you preview.")
-            }
-            if let session = packet?.session, session.events > 0 {
+            if let log = packet?.log {
                 Section {
-                    DisclosureGroup(session.events == 1 ? "1 event" : "\(session.events) events") {
-                        ForEach(Array(session.lines.enumerated()), id: \.offset) { _, line in
-                            Text(line).font(.caption.monospaced())
+                    Text(log.note)
+                        .accessibilityIdentifier("playtest-logging")
+                    if log.events > 0 {
+                        DisclosureGroup(log.events == 1 ? "1 event" : "\(log.events) events") {
+                            ForEach(Array(log.lines.enumerated()), id: \.offset) { _, line in
+                                Text(line).font(.caption.monospaced())
+                            }
                         }
+                        Button("Delete the log", role: .destructive) { confirmClear = true }
                     }
-                    Button("Delete the log", role: .destructive) { confirmClear = true }
                 } header: {
-                    Text("Session log")
+                    Text("Playtest logging")
+                } footer: {
+                    if log.on {
+                        Text("This phone notes which tab and screen you're on, error codes, and when. Never messages, prompts, keys, recovery words, invoices, addresses, or amounts. The log stays on this phone and goes only in a report you preview.")
+                    }
                 }
             }
             Section {
@@ -411,18 +406,10 @@ struct PlaytestScreen: View {
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
         .background(Color.black.ignoresSafeArea())
-        .confirmationDialog("Delete the session log?", isPresented: $confirmClear) {
-            Button("Delete", role: .destructive) { bridge.playtestSession(on: nil) { packet = $0 } }
+        .confirmationDialog("Delete the playtest log?", isPresented: $confirmClear) {
+            Button("Delete", role: .destructive) { bridge.playtestClear { packet = $0 } }
         }
-        .onAppear {
-            bridge.reports { packet = $0 }
-            #if targetEnvironment(simulator)
-            // `--playtest-session on` turns the session on for a simulator check.
-            if ProcessInfo.processInfo.arguments.contains("--playtest-session") {
-                bridge.playtestSession(on: true) { packet = $0 }
-            }
-            #endif
-        }
+        .onAppear { bridge.reports { packet = $0 } }
     }
 }
 

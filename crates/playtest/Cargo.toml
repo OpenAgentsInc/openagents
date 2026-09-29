@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
-description = "The OpenAgents playtest program's records: private reports, the opt-in session log, and their NIP-17 transport to the triage key."
+description = "The OpenAgents playtest program's records: private reports, the playtest log, and their NIP-17 transport to the triage key."
 
 [dependencies]
 nostr = { path = "../nostr" }

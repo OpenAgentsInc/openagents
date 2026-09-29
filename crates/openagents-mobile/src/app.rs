@@ -249,22 +249,16 @@ pub enum Request {
         world_secret_hex: String,
         form: crate::playtest::Form,
     },
-    /// My reports and the session's state. With the world key, reports
+    /// My reports and playtest logging's state. With the world key, reports
     /// that wait or failed are sent again.
     Reports {
         #[serde(default)]
         world_secret_hex: String,
     },
-    /// Turn Playtest session on (a new log) or off.
-    PlaytestSession {
-        on: bool,
-        tab: playtest::session::Tab,
-        route: playtest::session::Route,
-    },
-    /// Delete the session log.
+    /// Delete the playtest log.
     PlaytestClear,
-    /// The tester moved to a tab and screen: recorded only while Playtest
-    /// session is on.
+    /// The tester moved to a tab and screen: recorded only in a build with
+    /// playtest logging on.
     PlaytestScreen {
         tab: playtest::session::Tab,
         route: playtest::session::Route,
@@ -628,7 +622,7 @@ pub struct App {
     /// live client.
     spend_transport: Option<Arc<dyn crate::spend::Transport>>,
     trainer: crate::trainer::Trainer,
-    /// Report a problem, My reports, and the playtest session log.
+    /// Report a problem, My reports, and the playtest log.
     playtest: crate::playtest::Playtest,
     /// The amount format, applied to every surface that shows bitcoin.
     amounts: crate::amounts::Amounts,
@@ -965,7 +959,7 @@ impl App {
         }
     }
 
-    /// Answers a Report a problem or playtest session request with its
+    /// Answers a Report a problem or playtest log request with its
     /// direct reply, or hands any other request back.
     fn playtest_request(&mut self, request: &Request) -> Option<Vec<u8>> {
         let packet = match *request {
@@ -995,12 +989,8 @@ impl App {
                 let world = SecretKey::from_str(world_secret_hex).ok();
                 self.playtest.reports(world.as_ref())
             }
-            Request::PlaytestSession { on, tab, route } => {
-                self.playtest.set_session(on, tab, route);
-                self.playtest.reports(None)
-            }
             Request::PlaytestClear => {
-                self.playtest.clear_session();
+                self.playtest.clear_log();
                 self.playtest.reports(None)
             }
             _ => return None,
@@ -1177,7 +1167,6 @@ impl App {
             | Request::ReportDraft { .. }
             | Request::ReportSend { .. }
             | Request::Reports { .. }
-            | Request::PlaytestSession { .. }
             | Request::PlaytestClear => {}
             Request::PlaytestScreen { tab, route } => {
                 // The Coder tab shows: open its computers' connections now,

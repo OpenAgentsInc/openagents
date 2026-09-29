@@ -221,13 +221,11 @@ class MobileBridge(private val context: Context, private val computersFixture: B
         call(json("op" to "reports", "world_secret_hex" to secret)) { reply(it, "openagents.reports.v1")?.let(received) }
     }
 
-    /** Turns Playtest session on (a new log) or off; `null` deletes the log. */
-    fun playtestSession(on: Boolean?, tab: String = "account", route: String = "playtest", received: (JSONObject) -> Unit) =
-        call(on?.let { json("op" to "playtest_session", "on" to it, "tab" to tab, "route" to route) } ?: json("op" to "playtest_clear")) {
-            reply(it, "openagents.reports.v1")?.let(received)
-        }
+    /** Deletes the playtest log; logging goes on recording. */
+    fun playtestClear(received: (JSONObject) -> Unit) =
+        call(json("op" to "playtest_clear")) { reply(it, "openagents.reports.v1")?.let(received) }
 
-    /** Where the tester is; Rust records it only while Playtest session is on. */
+    /** Where the tester is; Rust records it unless this build turned playtest logging off. */
     fun playtestScreen(tab: String, route: String) = send(json("op" to "playtest_screen", "tab" to tab, "route" to route))
 
     private fun reply(text: String?, schema: String): JSONObject? =

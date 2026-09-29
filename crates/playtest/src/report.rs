@@ -121,8 +121,9 @@ pub struct Report {
     /// The Coder chat's task ID, only when the tester ticked it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub task: Option<String>,
-    /// The session log the tester previewed, only while a session is on
-    /// and the tester chose to attach it.
+    /// The playtest log the tester previewed, only while playtest logging
+    /// is on and the tester chose to attach it. The field keeps its
+    /// original `session` name on the wire.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub session: Option<Vec<session::Event>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

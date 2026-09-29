@@ -8,6 +8,9 @@
 #
 # OPENAGENTS_IOS_DEVICE names the simulator (default: booted).
 # OPENAGENTS_IOS_BUILD_NUMBER overrides the checked-in build number.
+# OPENAGENTS_PLAYTEST_LOGGING=on|off: playtest logging is on in every build,
+# TestFlight archives included, unless this is off (release mode). The Rust
+# library reads it when it compiles; see docs/game/playtesting.md.
 # upload reads ASC_API_KEY_ID, ASC_API_ISSUER_ID, and ASC_API_PRIVATE_KEY_PATH.
 # Push wakes are off by default. OPENAGENTS_IOS_PUSH=development|production
 # signs with the push entitlement, and OPENAGENTS_PUSH_RELAY_URL,
@@ -32,6 +35,8 @@ export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$root/../target}"
 output="${OPENAGENTS_IOS_OUTPUT:-$CARGO_TARGET_DIR/openagents-ios}"
 device="${OPENAGENTS_IOS_DEVICE:-booted}"
 export IPHONEOS_DEPLOYMENT_TARGET=17.0
+export OPENAGENTS_PLAYTEST_LOGGING="${OPENAGENTS_PLAYTEST_LOGGING:-on}"
+case "$OPENAGENTS_PLAYTEST_LOGGING" in on|off) ;; *) echo 'OPENAGENTS_PLAYTEST_LOGGING must be on or off.' >&2; exit 64 ;; esac
 command="${1:-sim}"
 archive="$output/OpenAgents.xcarchive"
 

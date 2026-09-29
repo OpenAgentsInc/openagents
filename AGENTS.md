@@ -323,7 +323,8 @@ uses, and marks which are implemented and which are only specified.
   with the `ssh` feature, SSH host setup through `coder-ssh`. Read its README
   before changing owner-key handling.
 - `crates/playtest` — the playtest program's records: private reports
-  sealed with NIP-17 to the triage key, the opt-in session log whose types
+  sealed with NIP-17 to the triage key, the playtest log (on by default,
+  off with the release-mode build switch) whose types
   hold no text, and triage (exact-identity deduplication, issue drafts, and
   the append-only triage log). No network or storage; `openagents playtest`
   is the triage inbox. Read `docs/game/playtesting.md` and

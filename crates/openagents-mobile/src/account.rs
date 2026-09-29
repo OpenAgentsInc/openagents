@@ -64,6 +64,10 @@ pub const CHANGELOG: &[Release] = &[
                 title: "Automatic payments",
                 detail: "A standing spend grant lets the phone pay trusted payees small amounts without a tap, within the grant's limits.",
             },
+            Item {
+                title: "Playtest logging",
+                detail: "On for everyone during the playtest, with no switch: the phone notes which tab and screen you're on, kept on this phone and attached only to a report you preview.",
+            },
         ],
     },
     Release {

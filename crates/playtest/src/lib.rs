@@ -8,9 +8,10 @@
 //! ([`report::wrap`]). The triage inbox opens it with the triage key
 //! ([`report::open`]).
 //!
-//! The **session log** ([`session`]) is the opt-in, on-device list of
-//! structural events (tab, screen, event code, time) the app keeps while the
-//! tester has turned **Playtest session** on. Its types hold no text, so it
+//! The **playtest log** ([`session`]) is the on-device list of structural
+//! events (tab, screen, event code, time) the app keeps while **playtest
+//! logging** is on: for everyone, unless the build turned it off for a
+//! release. Its types hold no text, so it
 //! can't record a message, prompt, key, invoice, address, or amount. It
 //! leaves the device only inside a report whose preview showed it in full.
 //!

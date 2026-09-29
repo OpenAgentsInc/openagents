@@ -53,8 +53,8 @@ fn form(tab: Tab, route: Route) -> Form {
         steps: "Spawn, look around.".into(),
         quote: true,
         include_task: false,
-        include_session: false,
-        session_digest: String::new(),
+        include_log: false,
+        log_digest: String::new(),
         screenshot: None,
     }
 }
@@ -70,7 +70,7 @@ fn jpeg() -> Screenshot {
 fn setup(relay: Arc<Fake>, triage: Option<&str>) -> (Playtest, tempfile::TempDir) {
     let dir = tempfile::tempdir().unwrap();
     let store = Cache::open(dir.path(), &world()).unwrap();
-    (Playtest::new(Some(store), relay, triage), dir)
+    (Playtest::new(Some(store), relay, triage, true), dir)
 }
 
 #[test]
@@ -108,7 +108,7 @@ fn without_the_triage_key_a_report_waits_on_the_phone_and_sends_later() {
     let dir = tempfile::tempdir().unwrap();
     {
         let store = Cache::open(dir.path(), &world()).unwrap();
-        let mut playtest = Playtest::new(Some(store), relay.clone(), None);
+        let mut playtest = Playtest::new(Some(store), relay.clone(), None, true);
         let packet = playtest.send(form(Tab::Coder, Route::Chat), &world(), None, Platform::Ios);
         assert!(!packet.triage_ready);
         assert_eq!(packet.sent.unwrap().status, Status::Waiting);
@@ -118,7 +118,7 @@ fn without_the_triage_key_a_report_waits_on_the_phone_and_sends_later() {
     // A later build carries the key: My reports sends what waited.
     let store = Cache::open(dir.path(), &world()).unwrap();
     let key = triage_hex();
-    let mut playtest = Playtest::new(Some(store), relay.clone(), Some(&key));
+    let mut playtest = Playtest::new(Some(store), relay.clone(), Some(&key), true);
     let _ = playtest.reports(Some(&world()));
     playtest.wait();
     assert_eq!(relay.sent.lock().unwrap().len(), 2);
@@ -135,7 +135,7 @@ fn a_failed_send_is_kept_and_sent_again_from_my_reports() {
     let dir = tempfile::tempdir().unwrap();
     {
         let store = Cache::open(dir.path(), &world()).unwrap();
-        let mut playtest = Playtest::new(Some(store), refusing, Some(&key));
+        let mut playtest = Playtest::new(Some(store), refusing, Some(&key), true);
         let _ = playtest.send(form(Tab::Verse, Route::Home), &world(), None, Platform::Ios);
         playtest.wait();
         let row = &playtest.reports(None).reports[0];
@@ -144,7 +144,7 @@ fn a_failed_send_is_kept_and_sent_again_from_my_reports() {
     }
     let relay = Arc::new(Fake::default());
     let store = Cache::open(dir.path(), &world()).unwrap();
-    let mut playtest = Playtest::new(Some(store), relay.clone(), Some(&key));
+    let mut playtest = Playtest::new(Some(store), relay.clone(), Some(&key), true);
     let _ = playtest.reports(Some(&world()));
     playtest.wait();
     assert_eq!(relay.sent.lock().unwrap().len(), 2);
@@ -220,40 +220,25 @@ fn the_task_id_is_attached_only_from_coder_when_ticked() {
 }
 
 #[test]
-fn the_session_log_records_only_while_on_and_leaves_only_as_previewed() {
+fn playtest_logging_is_on_by_default_and_the_log_leaves_only_as_previewed() {
     let relay = Arc::new(Fake::default());
     let key = triage_hex();
     let (mut playtest, _dir) = setup(relay.clone(), Some(&key));
-    // Off: nothing is recorded, and nothing can be attached.
-    playtest.screen(Tab::Verse, Route::Gym);
-    playtest.observe(true, true, false);
-    let draft = playtest.draft(Tab::Verse, Route::Gym, None);
-    assert!(!draft.session_on && draft.session_lines.is_empty());
-    let mut filed = form(Tab::Verse, Route::Gym);
-    filed.include_session = true;
-    filed.session_digest = draft.session_digest;
-    assert!(
-        playtest
-            .send(filed, &world(), None, Platform::Ios)
-            .error
-            .is_some()
-    );
-    // On: structural events only.
-    playtest.set_session(true, Tab::Verse, Route::Home);
+    // A fresh install records with no switch to turn: structural events only.
     playtest.screen(Tab::Verse, Route::Gym);
     playtest.observe(true, true, false);
     playtest.observe(true, true, false);
     playtest.lifecycle(false);
     let draft = playtest.draft(Tab::Verse, Route::Gym, None);
+    assert!(draft.logging);
     let codes: Vec<&str> = draft
-        .session_lines
+        .log_lines
         .iter()
         .map(|l| l.rsplit(' ').next().unwrap())
         .collect();
     assert_eq!(
         codes,
         [
-            "started",
             "screen",
             "notice",
             "wallet-error",
@@ -264,42 +249,111 @@ fn the_session_log_records_only_while_on_and_leaves_only_as_previewed() {
     // A log that changed after the preview isn't attached.
     playtest.screen(Tab::Verse, Route::Results);
     let mut filed = form(Tab::Verse, Route::Gym);
-    filed.include_session = true;
-    filed.session_digest = draft.session_digest.clone();
+    filed.include_log = true;
+    filed.log_digest = draft.log_digest.clone();
     let refused = playtest.send(filed.clone(), &world(), None, Platform::Ios);
     assert!(refused.error.unwrap().contains("changed since you looked"));
     // The previewed log goes, exactly as shown.
     let draft = playtest.draft(Tab::Verse, Route::Results, None);
-    filed.session_digest = draft.session_digest.clone();
+    filed.log_digest = draft.log_digest.clone();
     filed.route = Route::Results;
     let packet = playtest.send(filed, &world(), None, Platform::Ios);
     assert!(packet.error.is_none());
+    assert!(packet.reports[0].log);
     playtest.wait();
     let triage = SecretKey::from_byte_array(TRIAGE).unwrap();
     let sent = relay.sent.lock().unwrap();
     let opened = report::open(&sent[0], &triage).unwrap();
     let attached = opened.report.session.unwrap();
-    assert_eq!(session::digest(&attached), draft.session_digest);
-    assert_eq!(attached.len(), draft.session_lines.len());
-    // Turning it off stops recording; clearing deletes the events.
-    playtest.set_session(false, Tab::Verse, Route::Home);
-    let before = playtest.reports(None).session.events;
+    assert_eq!(session::digest(&attached), draft.log_digest);
+    assert_eq!(attached.len(), draft.log_lines.len());
+    drop(sent);
+    // Deleting the log empties it, and logging goes on recording.
+    playtest.clear_log();
+    let packet = playtest.reports(None);
+    assert!(packet.log.on);
+    assert_eq!(packet.log.note, "Playtest logging is on in this build.");
+    assert_eq!(packet.log.events, 0);
     playtest.screen(Tab::Coder, Route::Chat);
-    assert_eq!(playtest.reports(None).session.events, before);
-    playtest.clear_session();
-    assert_eq!(playtest.reports(None).session.events, 0);
+    assert_eq!(playtest.reports(None).log.events, 1);
 }
 
 #[test]
-fn reports_and_the_session_survive_a_relaunch_and_sent_bodies_are_erased() {
+fn an_install_that_had_the_session_off_logs_after_the_update() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Cache::open(dir.path(), &world()).unwrap();
+    // An earlier build's store: Playtest session turned off.
+    store.write("playtest-session", &Log::default()).unwrap();
+    let playtest = Playtest::new(Some(store), Arc::new(Fake::default()), None, true);
+    playtest.screen(Tab::Verse, Route::Gym);
+    let packet = playtest.packet(None, None);
+    assert!(packet.log.on && packet.log.started_at.is_some());
+    assert_eq!(packet.log.lines.len(), 1);
+    // It stays on across a relaunch.
+    drop(playtest);
+    let store = Cache::open(dir.path(), &world()).unwrap();
+    let stored: Log = store.read("playtest-session").unwrap().unwrap();
+    assert!(stored.on);
+}
+
+#[test]
+fn a_build_with_playtest_logging_off_records_nothing_and_deletes_the_log() {
+    let dir = tempfile::tempdir().unwrap();
+    {
+        let store = Cache::open(dir.path(), &world()).unwrap();
+        let playtest = Playtest::new(Some(store), Arc::new(Fake::default()), None, true);
+        playtest.screen(Tab::Verse, Route::Gym);
+        assert_eq!(playtest.packet(None, None).log.events, 1);
+    }
+    // The same phone updated to a release build made with
+    // OPENAGENTS_PLAYTEST_LOGGING=off.
+    let store = Cache::open(dir.path(), &world()).unwrap();
+    let mut playtest = Playtest::new(Some(store), Arc::new(Fake::default()), None, false);
+    playtest.screen(Tab::Coder, Route::Chat);
+    playtest.observe(true, true, true);
+    playtest.lifecycle(false);
+    let packet = playtest.reports(None);
+    assert!(!packet.log.on);
+    assert_eq!(packet.log.note, "Playtest logging is off in this build.");
+    assert_eq!(packet.log.events, 0);
+    let draft = playtest.draft(Tab::Coder, Route::Chat, None);
+    assert!(!draft.logging && draft.log_lines.is_empty());
+    let mut filed = form(Tab::Coder, Route::Chat);
+    filed.include_log = true;
+    filed.log_digest = draft.log_digest;
+    let refused = playtest.send(filed, &world(), None, Platform::Ios);
+    assert!(refused.error.unwrap().contains("off in this build"));
+    // The earlier log is gone from the store too.
+    drop(playtest);
+    let store = Cache::open(dir.path(), &world()).unwrap();
+    let stored: Log = store.read("playtest-session").unwrap().unwrap();
+    assert!(!stored.on && stored.events.is_empty());
+}
+
+#[test]
+fn the_build_switch_turns_playtest_logging_off_only_when_set_to_off() {
+    assert!(logging_setting(None));
+    assert!(logging_setting(Some("on")));
+    assert!(logging_setting(Some("")));
+    assert!(!logging_setting(Some("off")));
+    // The live constructor uses this build's setting.
+    assert_eq!(
+        LOGGING,
+        logging_setting(option_env!("OPENAGENTS_PLAYTEST_LOGGING"))
+    );
+    assert_eq!(Playtest::live(None).packet(None, None).log.on, LOGGING);
+}
+
+#[test]
+fn reports_and_the_log_survive_a_relaunch_and_sent_bodies_are_erased() {
     let relay = Arc::new(Fake::default());
     let key = triage_hex();
     let dir = tempfile::tempdir().unwrap();
     let digest;
     {
         let store = Cache::open(dir.path(), &world()).unwrap();
-        let mut playtest = Playtest::new(Some(store), relay.clone(), Some(&key));
-        playtest.set_session(true, Tab::Account, Route::Home);
+        let mut playtest = Playtest::new(Some(store), relay.clone(), Some(&key), true);
+        playtest.screen(Tab::Account, Route::Home);
         let packet = playtest.send(form(Tab::Verse, Route::Home), &world(), None, Platform::Ios);
         playtest.wait();
         digest = lock(&playtest.inner).saved[0].digest.clone();
@@ -313,9 +367,10 @@ fn reports_and_the_session_survive_a_relaunch_and_sent_bodies_are_erased() {
             .flatten()
             .is_none()
     );
-    let mut playtest = Playtest::new(Some(store), relay, Some(&key));
+    let mut playtest = Playtest::new(Some(store), relay, Some(&key), true);
     let packet = playtest.reports(None);
-    assert!(packet.session.on);
+    assert!(packet.log.on);
+    assert!(packet.log.events >= 1);
     assert_eq!(packet.reports[0].status, Status::Sent);
 }
 
@@ -328,7 +383,7 @@ fn a_sent_report_publishes_its_content_free_record_signed_by_the_world_key() {
     let triage = SecretKey::from_byte_array(TRIAGE).unwrap();
     {
         let store = Cache::open(dir.path(), &world()).unwrap();
-        let mut playtest = Playtest::new(Some(store), relay.clone(), Some(&key));
+        let mut playtest = Playtest::new(Some(store), relay.clone(), Some(&key), true);
         let _ = playtest.send(
             form(Tab::Verse, Route::Gym),
             &world(),
@@ -345,7 +400,7 @@ fn a_sent_report_publishes_its_content_free_record_signed_by_the_world_key() {
     *relay.refuse_public.lock().unwrap() = false;
     // My reports publishes it on the next open, after a relaunch.
     let store = Cache::open(dir.path(), &world()).unwrap();
-    let mut playtest = Playtest::new(Some(store), relay.clone(), Some(&key));
+    let mut playtest = Playtest::new(Some(store), relay.clone(), Some(&key), true);
     let _ = playtest.reports(Some(&world()));
     playtest.wait();
     assert!(playtest.reports(None).reports[0].published);

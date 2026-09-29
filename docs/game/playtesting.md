@@ -181,7 +181,7 @@ Status words follow the [glossary](../glossary.md).
 | TestFlight's own feedback: a tester takes a screenshot or uses **Send Beta Feedback** in the TestFlight app, and it reaches App Store Connect with the build number, device, and OS. Crash reports reach it too. | Exists, from Apple. `openagents playtest testflight` reads it into the triage inbox as drafts and log entries, without the tester's Apple identity ([#9905](https://github.com/OpenAgentsInc/openagents/issues/9905), [triage](playtest-triage.md#testflight-feedback)). |
 | The owner's build notes ("1.0.0 Build 13 Feedback") turned into commits by agents, followed by a build bump (for example `e84de16fd5`, `06d033d663`) | The current loop. It isn't written down anywhere except in commit history. |
 | **Changelog** in Account (`crates/openagents-mobile/src/account.rs`) | Implemented. One entry per TestFlight build with a **What to test** line, from build 16 (`a4aa3013de`); a test ties the newest entry to the build number in `project.yml`. |
-| **Report a problem**, **My reports**, and the opt-in **Playtest session** log in Account, and a long press on the tab bar (`crates/playtest`, `crates/openagents-mobile/src/playtest.rs`; iOS and Android) | Implemented in build 16 (`74f2f90be0`) on iOS, and on Android with the Account playtest card ([#9903](https://github.com/OpenAgentsInc/openagents/issues/9903)); Android reports name the `android` platform. Reports are sealed to the triage key, which the owner hasn't created yet, so until a build carries it reports wait on the phone. No telemetry: the app sends nothing but a report the tester files. |
+| **Report a problem**, **My reports**, and **Playtest logging** (on for everyone; the old opt-in **Playtest session** switch is gone) in Account, and a long press on the tab bar (`crates/playtest`, `crates/openagents-mobile/src/playtest.rs`; iOS and Android) | Implemented in build 16 (`74f2f90be0`) on iOS, and on Android with the Account playtest card ([#9903](https://github.com/OpenAgentsInc/openagents/issues/9903)); Android reports name the `android` platform. Reports are sealed to the triage key, which the owner hasn't created yet, so until a build carries it reports wait on the phone. No telemetry: the app sends nothing but a report the tester files. |
 | Triage inbox and triage log: `openagents playtest` reads the triage key's reports, drafts `playtest` issues for a person to approve, and records every acceptance ([playtest-triage.md](playtest-triage.md)) | Implemented ([#9884](https://github.com/OpenAgentsInc/openagents/issues/9884)). It reads reports once the owner creates the triage key and a build carries it. |
 | NIP-XP quests, awards, revocations, and achievement labels; the ledger; the referee tool ([NIP-XP](../../nips/openagents/NIP-XP.md)) | Implemented, with three rules: `kb-transfer`, `reproduce`, and `playtest` ([#9885](https://github.com/OpenAgentsInc/openagents/issues/9885)). The `playtest` rule, its report (`3197`) and session record (`3196`), and `microcoder xp playtest-keygen`/`playtest-session` exist; the playtest referee key doesn't yet (an owner step), so no playtest award counts. |
 | Levels, titles, and `lv n` name tags | Implemented on desktop Verse only. The Grid's name tags show a pubkey prefix and no level. |
@@ -242,7 +242,7 @@ Positions:
   take a day, and the public link has a tester cap that the owner sets (up
   to Apple's 10,000). Not every internal build goes to the public link.
 - **Android is behind iOS.** Android testers get Coder, Verse, Wallet, and
-  Account, with **Report a problem**, **My reports**, **Playtest session**,
+  Account, with **Report a problem**, **My reports**, playtest logging,
   and the playtest card
   ([#9903](https://github.com/OpenAgentsInc/openagents/issues/9903)), but the
   build has run on the emulator only
@@ -286,11 +286,15 @@ Privacy positions for the program:
 - **No background telemetry.** We don't add an analytics SDK, a crash SDK
   beyond Apple's, or a remote logging endpoint. Measurement comes from
   sessions, reports, and questionnaires.
-- **An opt-in, local session log** is the one exception we propose (see
+- **Playtest logging, a local log,** is the one exception (see
   [task 2](#implementation-tasks)): the app records a short list of
-  structural events (which tab, which screen, which error code, and when)
-  only while the tester has turned on **Playtest session**, keeps it on the
-  device, and sends it only attached to a report the tester previews. It
+  structural events (which tab, which screen, which error code, and when),
+  keeps it on the device, and sends it only attached to a report the
+  tester previews and chooses to attach it to. It was first built as an
+  opt-in **Playtest session** switch; the owner made it on for everyone
+  for the playtest, so the app has no switch, and the Playtest screen says
+  in one line whether it is on in this build (see
+  [Playtest logging in a release](#playtest-logging-in-a-release)). It
   never records message text, prompts, transcripts, keys, recovery words,
   invoices, addresses, amounts, balances, or other players' keys. The change
   that builds it adds these rules to [`INVARIANTS.md`](../../INVARIANTS.md)
@@ -415,8 +419,9 @@ key and sent privately:
 - **Screenshot:** off by default. When on, the app shows the exact image
   before sending, and lets the tester crop it. Never offered on the Wallet
   tab or on **Identity keys**.
-- **Session log:** attached only when **Playtest session** is on, and shown
-  in full before sending.
+- **Playtest log:** offered only while playtest logging is on in the
+  build, attached only when the tester ticks it, and shown in full before
+  sending.
 - **Transport:** a NIP-17 private message to the OpenAgents triage key,
   sealed with NIP-44, signed by the tester's Verse world key (so the XP it
   can earn lands on the key whose name tag shows in the Grid). Screenshots
@@ -424,6 +429,34 @@ key and sent privately:
 - **Receipt:** the report's event ID shows as a short code the tester can
   quote. **My reports** in Account lists what was sent and, later, what was
   accepted.
+
+### Playtest logging in a release
+
+Playtest logging is on for every tester in every build, including
+TestFlight archives and Android release and bundle builds, and on for
+installs that had the old **Playtest session** switch off. The app has no
+switch; **Account > Playtest** shows one line, "Playtest logging is on in
+this build." The log's rules don't change: closed structural values only,
+kept on the phone in the app's encrypted store (at most 200 events, oldest
+dropped first), deletable with **Delete the log**, and sent only inside a
+report whose preview showed it and whose tester ticked it.
+
+One build-time switch turns it off, for a future release:
+`OPENAGENTS_PLAYTEST_LOGGING=off` (default `on`; any other value is
+refused by the build scripts). Set it on the build command:
+
+```sh
+OPENAGENTS_PLAYTEST_LOGGING=off OPENAGENTS_IOS_PUSH=production bins/openagents-ios/build.sh archive
+OPENAGENTS_PLAYTEST_LOGGING=off bins/openagents-android/build.sh bundle   # or release
+```
+
+The Rust library reads it when it compiles
+(`crates/openagents-mobile/src/playtest.rs`, `LOGGING`), so Cargo rebuilds
+it when the value changes. A build made with it off records nothing, offers
+no log in **Report a problem**, deletes any log a playtest build left on
+the phone, and shows "Playtest logging is off in this build." The test
+`a_build_with_playtest_logging_off_records_nothing_and_deletes_the_log`
+checks it.
 
 ### Stage 2: public, re-checkable reports for XP
 
@@ -689,7 +722,7 @@ Published with the link so testers don't spend reports on them:
   show in sats and BTC; the BIP 177 display is
   [#9881](https://github.com/OpenAgentsInc/openagents/issues/9881).
 - **Android:** the APK (1.0.0, version code 16, the iPhone build number) has the Wallet since
-  `e56d173480`, but not **Report a problem** or **Playtest session**, which
+  `e56d173480`, but not **Report a problem** or the playtest log, which
   its Changelog lists for build 16
   ([#9838](https://github.com/OpenAgentsInc/openagents/issues/9838)); it has
   run on the emulator only, not yet on physical devices for Vulkan, QR
@@ -953,7 +986,7 @@ Tracked in epic [#9888](https://github.com/OpenAgentsInc/openagents/issues/9888)
    reports** in Account. Rust in `crates/openagents-mobile`, thin SwiftUI
    in `bins/openagents-ios/host`; thin Kotlin in `bins/openagents-android/host`
    ([#9903](https://github.com/OpenAgentsInc/openagents/issues/9903)).
-2. **Opt-in local playtest session log** ([#9883](https://github.com/OpenAgentsInc/openagents/issues/9883)), with new `INVARIANTS.md` rows and
+2. **Local playtest log** (built opt-in, now on by default) ([#9883](https://github.com/OpenAgentsInc/openagents/issues/9883)), with new `INVARIANTS.md` rows and
    tests for what it never records and that it leaves the device only in a
    previewed report.
 3. **Triage inbox tool.** ([#9884](https://github.com/OpenAgentsInc/openagents/issues/9884)) A command that reads the triage key's reports,

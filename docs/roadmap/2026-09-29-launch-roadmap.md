@@ -112,7 +112,8 @@ address of your own yet. Android has the Wallet too (`e56d173480`, `e1aeec7413`)
 - **Changelog**: what changed in each build.
 - **Links** and **About this device** (version and build).
 - **Trainer** card and **Playtest** card, **Report a problem**, **My reports**,
-  and the opt-in **Playtest session** log.
+  and **Playtest logging** (on for everyone; a build switch turns it off
+  for a release).
 
 ### Android at launch
 
@@ -178,7 +179,7 @@ the device benchmarks. The Android streaming fade is
 
 Done. **Report a problem** in Account and from a long press on the tab bar,
 build-stamped and sealed privately to the triage key; **My reports**; the
-opt-in session log; the public content-free report record (NIP-XP kind 3197);
+playtest log (on by default); the public content-free report record (NIP-XP kind 3197);
 the triage inbox with TestFlight feedback; and a "What to test" line per
 build (#9882–#9884, #9887, #9903–#9906). Owner step tonight: create the
 triage key so reports leave the phone.

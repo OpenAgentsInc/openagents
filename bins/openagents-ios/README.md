@@ -202,13 +202,15 @@ Every build gets an entry: when you raise `CURRENT_PROJECT_VERSION` in
 `host/project.yml`, add the entry for that build first; the test
 `every_build_has_a_changelog_entry_with_what_to_test` fails until you do.
 
-**Playtest** (Account) holds the playtest card, the opt-in **Playtest
-session** log, **Report a problem**, and **My reports**; a long press on the
-tab bar also opens **Report a problem** for the screen on view
+**Playtest** (Account) holds the playtest card, **Playtest logging** (one
+line saying whether it is on in this build, the log, and **Delete the
+log**), **Report a problem**, and **My reports**; a long press on the tab
+bar also opens **Report a problem** for the screen on view
 (`crates/openagents-mobile/src/playtest.rs`, `host/App/Playtest.swift`,
-[playtesting](../../docs/game/playtesting.md)). `--report` opens the report
-form at launch, and `--playtest-session` turns the session on, in simulator
-builds.
+[playtesting](../../docs/game/playtesting.md)). Playtest logging has no
+switch in the app: it is on in every build, TestFlight archives included,
+unless `build.sh` runs with `OPENAGENTS_PLAYTEST_LOGGING=off` (release
+mode). `--report` opens the report form at launch in simulator builds.
 
 In simulator builds, `--tab account --account-route
 computers|tailnet|identity|device|changelog|playtest|reports` opens a screen directly, and

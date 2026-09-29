@@ -112,12 +112,13 @@ The app has four tabs, shown as white icons on black:
   and hex key, where the key comes from, and the app version),
   **Changelog**, **Playtest** (the playtest card: playtest XP beside the
   trainer level, sessions, accepted reports, fixes verified, and titles
-  from the playtest referee; the opt-in **Playtest session** log with its
-  lines and **Delete the log**; and **My reports**), **Report a problem**,
+  from the playtest referee; **Playtest logging**, on in every build unless
+  it was built with `OPENAGENTS_PLAYTEST_LOGGING=off`, with one line saying
+  so, the log's lines, and **Delete the log**; and **My reports**), **Report a problem**,
   and links to the source code and to OpenAgents on X. A long press on the
   tab bar opens **Report a problem** for the screen on view. Rust fills in
   and checks the report (platform `android`), seals it to the triage key
-  under the Verse world key, and keeps the session log; the host only
+  under the Verse world key, and keeps the playtest log; the host only
   collects the text, the kind, and the choices. A screenshot is off by
   default, shown cropped exactly as it would be sent, and never offered on
   the Wallet tab or a key screen (Rust refuses one there anyway); see
@@ -299,9 +300,9 @@ adb shell am start -n com.openagents.app/.MainActivity --es tab verse
 adb shell am start -n com.openagents.app/.MainActivity --es account_route tailnet
 # Levels from the labeled tutorial fixture, offline (trainer card and Grid tags).
 adb shell am start -n com.openagents.app/.MainActivity --es account_route trainer --ez xp_preview true
-# Report a problem for the first screen, and Account > Playtest with the session on.
+# Report a problem for the first screen, and Account > Playtest (logging is on unless the build turned it off).
 adb shell am start -n com.openagents.app/.MainActivity --es tab verse --ez report true
-adb shell am start -n com.openagents.app/.MainActivity --es account_route playtest --ez playtest_session true
+adb shell am start -n com.openagents.app/.MainActivity --es account_route playtest
 # Coder's offline Computers fixture: sample computers, no host or relay.
 adb shell am start -n com.openagents.app/.MainActivity --es account_route computers --ez computers_fixture true
 adb shell am start -n com.openagents.app/.MainActivity --ez rust_native_fixture true
@@ -504,7 +505,7 @@ checked: the emulator isn't on a tailnet.
   send choices are built from the iOS design but haven't been exercised
   on an emulator: neither the fixture wallet nor Coder's offline fixture
   produces a payment request or a writable running chat.
-- **Report a problem**, **Playtest session**, and **My reports** (iOS,
+- **Report a problem**, playtest logging, and **My reports** (iOS,
   `74f2f90be0`) aren't on Android yet, although the shared Changelog's
   `1.0.0 (16)` entry lists them. Android testers report through the GitHub
   **Playtest report** template or the playtest email.

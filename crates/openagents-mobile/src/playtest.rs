@@ -1,4 +1,4 @@
-//! Report a problem, My reports, and the opt-in playtest session log
+//! Report a problem, My reports, and playtest logging
 //! (`docs/game/playtesting.md`, Feedback capture in the app).
 //!
 //! A report fills in the build, the device, the tab and screen, and the
@@ -17,14 +17,17 @@
 //! accepted report can earn XP. It is kept on the phone until a relay
 //! accepts it and sent again from My reports.
 //!
-//! The session log records only while **Playtest session** is on, holds
-//! only closed structural values ([`playtest::session`]), stays on the
-//! phone, and is attached to a report only when the tester chose to and
-//! the log is exactly the one the preview showed them (its digest).
+//! **Playtest logging** is on for everyone in a build unless the build
+//! turned it off ([`LOGGING`], set by `OPENAGENTS_PLAYTEST_LOGGING=off`
+//! for a release). There is no switch in the app. The log holds only
+//! closed structural values ([`playtest::session`]), stays on the phone,
+//! and is attached to a report only when the tester chose to and the log
+//! is exactly the one the preview showed them (its digest). A build with
+//! logging off records nothing and deletes any log a playtest build left.
 //!
 //! Both live in the app's encrypted store: an index of reports, each
 //! report's body under its own item while it waits or failed (a sent
-//! report's body is erased), and the session log.
+//! report's body is erased), and the playtest log.
 
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
@@ -36,6 +39,29 @@ use playtest::session::{self, Code, Log, Route, Tab};
 use secp256k1::{SecretKey, XOnlyPublicKey};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+
+/// Whether this build keeps the playtest log: on unless the build was made
+/// with `OPENAGENTS_PLAYTEST_LOGGING=off` (release mode). The build scripts
+/// pass the variable to Cargo; see `docs/game/playtesting.md`.
+pub const LOGGING: bool = logging_setting(option_env!("OPENAGENTS_PLAYTEST_LOGGING"));
+
+/// Reads the build's `OPENAGENTS_PLAYTEST_LOGGING`: exactly `off` turns
+/// playtest logging off; unset or anything else leaves it on.
+#[must_use]
+pub const fn logging_setting(value: Option<&str>) -> bool {
+    let Some(value) = value else { return true };
+    let bytes = value.as_bytes();
+    !(bytes.len() == 3 && bytes[0] == b'o' && bytes[1] == b'f' && bytes[2] == b'f')
+}
+
+/// The one line the Playtest screen shows about playtest logging.
+fn logging_note(on: bool) -> &'static str {
+    if on {
+        "Playtest logging is on in this build."
+    } else {
+        "Playtest logging is off in this build."
+    }
+}
 
 /// The platform a report names for the OS the app runs on
 /// (`std::env::consts::OS`): `android` on Android, `ios` otherwise.
@@ -92,7 +118,9 @@ struct Saved {
     sent_at: Option<u64>,
     error: Option<String>,
     screenshot: bool,
-    session: bool,
+    /// The playtest log was attached. Stored as `session` by earlier builds.
+    #[serde(alias = "session")]
+    log: bool,
     /// The signed public record, kept until a relay accepts it.
     #[serde(default)]
     public: Option<Event>,
@@ -117,7 +145,8 @@ pub struct Row {
     pub status_label: &'static str,
     pub error: Option<String>,
     pub screenshot: bool,
-    pub session: bool,
+    /// The playtest log was attached.
+    pub log: bool,
     /// The public, content-free record of this report is on the relay.
     pub published: bool,
 }
@@ -181,32 +210,35 @@ pub struct DraftPacket {
     pub triage_ready: bool,
     /// The open Coder chat's task ID, attached only if the tester ticks it.
     pub task: Option<String>,
-    pub session_on: bool,
-    /// The whole session log, one line per event, as it would be attached.
-    pub session_lines: Vec<String>,
+    /// This build keeps the playtest log.
+    pub logging: bool,
+    /// The whole playtest log, one line per event, as it would be attached.
+    pub log_lines: Vec<String>,
     /// Sent back with `report_send` so exactly this log is attached.
-    pub session_digest: String,
+    pub log_digest: String,
     pub kinds: &'static [KindChoice],
     pub privacy: &'static str,
     pub fallback: &'static str,
 }
 
-/// The session's state for the Account screens.
+/// Playtest logging's state for the Account screens.
 #[derive(Serialize)]
-pub struct SessionRow {
+pub struct LogRow {
+    /// This build keeps the playtest log ([`LOGGING`]).
     pub on: bool,
+    /// The line the Playtest screen shows about it.
+    pub note: &'static str,
     pub started_at: Option<u64>,
     pub events: usize,
     pub lines: Vec<String>,
 }
 
-/// The direct reply to `reports`, `report_send`, `playtest_session`, and
-/// `playtest_clear`.
+/// The direct reply to `reports`, `report_send`, and `playtest_clear`.
 #[derive(Serialize)]
 pub struct ReportsPacket {
     pub schema: &'static str,
     pub triage_ready: bool,
-    pub session: SessionRow,
+    pub log: LogRow,
     pub reports: Vec<Row>,
     /// The report this request filed.
     pub sent: Option<Row>,
@@ -236,9 +268,9 @@ pub struct Form {
     #[serde(default)]
     pub include_task: bool,
     #[serde(default)]
-    pub include_session: bool,
+    pub include_log: bool,
     #[serde(default)]
-    pub session_digest: String,
+    pub log_digest: String,
     #[serde(default)]
     pub screenshot: Option<Screenshot>,
 }
@@ -295,7 +327,7 @@ struct Inner {
     flags: (bool, bool, bool),
 }
 
-/// Reports and the session log for one app lifetime.
+/// Reports and the playtest log for one app lifetime.
 pub struct Playtest {
     inner: Arc<Mutex<Inner>>,
     store: Option<Arc<Cache>>,
@@ -340,6 +372,7 @@ fn body_key(digest: &str) -> String {
 fn save(store: Option<&Cache>, inner: &Inner) {
     if let Some(store) = store {
         let _ = store.write("playtest-reports", &inner.saved);
+        // The item keeps the name earlier builds gave it.
         let _ = store.write("playtest-session", &inner.log);
     }
 }
@@ -362,23 +395,38 @@ fn row(saved: &Saved) -> Row {
         status_label: saved.status.label(),
         error: saved.error.clone(),
         screenshot: saved.screenshot,
-        session: saved.session,
+        log: saved.log,
         published: saved.published,
     }
 }
 
 impl Playtest {
-    /// Opens the reports and session log from `store`, which may be
-    /// missing (then nothing survives a relaunch).
-    pub fn new(store: Option<Cache>, relay: Arc<dyn Relay>, triage: Option<&str>) -> Self {
+    /// Opens the reports and playtest log from `store`, which may be
+    /// missing (then nothing survives a relaunch). With `logging` the log
+    /// records, even where an earlier build had the session turned off;
+    /// without it the log is deleted and nothing is recorded.
+    pub fn new(
+        store: Option<Cache>,
+        relay: Arc<dyn Relay>,
+        triage: Option<&str>,
+        logging: bool,
+    ) -> Self {
         let saved = store
             .as_ref()
             .and_then(|s| s.read("playtest-reports").ok().flatten())
             .unwrap_or_default();
-        let log = store
+        let stored: Log = store
             .as_ref()
             .and_then(|s| s.read("playtest-session").ok().flatten())
             .unwrap_or_default();
+        let mut log = stored.clone();
+        if logging {
+            log.on = true;
+            log.started_at.get_or_insert_with(now);
+        } else {
+            log = Log::default();
+        }
+        let changed = log != stored;
         let mut inner = Inner {
             saved,
             log,
@@ -390,6 +438,9 @@ impl Playtest {
                 saved.status = Status::Failed;
             }
         }
+        if changed {
+            save(store.as_ref(), &inner);
+        }
         Self {
             inner: Arc::new(Mutex::new(inner)),
             store: store.map(Arc::new),
@@ -399,9 +450,10 @@ impl Playtest {
         }
     }
 
-    /// The live store and relay, with the triage key this build carries.
+    /// The live store and relay, with the triage key and playtest logging
+    /// this build carries.
     pub fn live(store: Option<Cache>) -> Self {
-        Self::new(store, Arc::new(LiveRelay), playtest::TRIAGE_KEY)
+        Self::new(store, Arc::new(LiveRelay), playtest::TRIAGE_KEY, LOGGING)
     }
 
     fn persist(&self, inner: &Inner) {
@@ -461,19 +513,13 @@ impl Playtest {
         }
     }
 
-    /// Turn Playtest session on (a new log) or off.
-    pub fn set_session(&self, on: bool, tab: Tab, route: Route) {
-        let mut inner = lock(&self.inner);
-        inner.log.set(on, now(), tab, route);
-        // A new session records the problems already showing, too.
-        inner.flags = (false, false, false);
-        self.persist(&inner);
-    }
-
-    /// Delete the session log.
-    pub fn clear_session(&self) {
+    /// Delete the playtest log. Logging goes on recording from now.
+    pub fn clear_log(&self) {
         let mut inner = lock(&self.inner);
         inner.log.clear();
+        if inner.log.on {
+            inner.log.started_at = Some(now());
+        }
         self.persist(&inner);
     }
 
@@ -488,13 +534,13 @@ impl Playtest {
             screenshot_allowed: !route.sensitive(tab),
             triage_ready: self.triage.is_some(),
             task: task.filter(|_| tab == Tab::Coder),
-            session_on: inner.log.on,
-            session_lines: if inner.log.on {
+            logging: inner.log.on,
+            log_lines: if inner.log.on {
                 inner.log.lines()
             } else {
                 vec![]
             },
-            session_digest: inner.log.digest(),
+            log_digest: inner.log.digest(),
             kinds: &KINDS,
             privacy: PRIVACY,
             fallback: FALLBACK,
@@ -585,14 +631,16 @@ impl Playtest {
                     .into(),
             );
         }
-        let session = if form.include_session {
+        let session = if form.include_log {
             let inner = lock(&self.inner);
             if !inner.log.on {
-                return Err("Playtest session is off, so there's no log to attach.".into());
-            }
-            if inner.log.digest() != form.session_digest {
                 return Err(
-                    "The session log changed since you looked at it. Check it again before sending."
+                    "Playtest logging is off in this build, so there's no log to attach.".into(),
+                );
+            }
+            if inner.log.digest() != form.log_digest {
+                return Err(
+                    "The playtest log changed since you looked at it. Check it again before sending."
                         .into(),
                 );
             }
@@ -650,7 +698,7 @@ impl Playtest {
                     sent_at: None,
                     error: None,
                     screenshot: report.screenshot.is_some(),
-                    session: report.session.is_some(),
+                    log: report.session.is_some(),
                     public: None,
                     published: false,
                 },
@@ -774,8 +822,9 @@ impl Playtest {
         ReportsPacket {
             schema: "openagents.reports.v1",
             triage_ready: self.triage.is_some(),
-            session: SessionRow {
+            log: LogRow {
                 on: inner.log.on,
+                note: logging_note(inner.log.on),
                 started_at: inner.log.started_at,
                 events: inner.log.events.len(),
                 lines: inner.log.lines(),

@@ -217,7 +217,7 @@ struct ReportKind: Decodable, Hashable {
 }
 
 /// The Report a problem form for the screen the tester is on. Rust decides
-/// whether a screenshot may be offered and holds the session log.
+/// whether a screenshot may be offered and holds the playtest log.
 struct ReportDraft: Decodable {
     let schema: String
     let tab: String
@@ -225,9 +225,9 @@ struct ReportDraft: Decodable {
     let screenshot_allowed: Bool
     let triage_ready: Bool
     let task: String?
-    let session_on: Bool
-    let session_lines: [String]
-    let session_digest: String
+    let logging: Bool
+    let log_lines: [String]
+    let log_digest: String
     let kinds: [ReportKind]
     let privacy: String
     let fallback: String
@@ -247,24 +247,26 @@ struct ReportRow: Decodable, Hashable {
     let status_label: String
     let error: String?
     let screenshot: Bool
-    let session: Bool
+    let log: Bool
     /// The public, content-free record of the report is on the relay.
     let published: Bool?
 }
 
-/// The playtest session's state.
-struct PlaytestSessionRow: Decodable {
+/// Playtest logging's state: on unless this build turned it off.
+struct PlaytestLogRow: Decodable {
     let on: Bool
+    /// The line the Playtest screen shows about it.
+    let note: String
     let started_at: UInt64?
     let events: Int
     let lines: [String]
 }
 
-/// My reports and the session, with this request's result.
+/// My reports and the playtest log, with this request's result.
 struct ReportsPacket: Decodable {
     let schema: String
     let triage_ready: Bool
-    let session: PlaytestSessionRow
+    let log: PlaytestLogRow
     let reports: [ReportRow]
     let sent: ReportRow?
     let error: String?
@@ -575,20 +577,17 @@ final class MobileBridge: ObservableObject {
         }
     }
 
-    /// Turn Playtest session on (a new log) or off, or delete its log.
-    func playtestSession(on: Bool?, tab: String = "account", route: String = "playtest",
-                         received: @escaping (ReportsPacket) -> Void) {
-        let request: [String: Any] = on.map { ["op": "playtest_session", "on": $0, "tab": tab, "route": route] }
-            ?? ["op": "playtest_clear"]
-        call(request) { data in
+    /// Delete the playtest log; logging goes on recording.
+    func playtestClear(received: @escaping (ReportsPacket) -> Void) {
+        call(["op": "playtest_clear"]) { data in
             guard let packet = try? JSONDecoder().decode(ReportsPacket.self, from: data),
                   packet.schema == "openagents.reports.v1" else { return }
             received(packet)
         }
     }
 
-    /// Where the tester is, for the session log; Rust records it only
-    /// while Playtest session is on.
+    /// Where the tester is, for the playtest log; Rust records it unless
+    /// this build turned playtest logging off.
     func playtestScreen(tab: String, route: String) {
         send(["op": "playtest_screen", "tab": tab, "route": route])
     }

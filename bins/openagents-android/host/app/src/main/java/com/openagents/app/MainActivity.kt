@@ -218,18 +218,14 @@ class MainActivity : ComponentActivity() {
         tabBar.setOnLongClickListener { report(); true }
         // Debug builds only: `--ez report true` opens Report a problem for the first screen.
         if (BuildConfig.DEBUG && intent.getBooleanExtra("report", false)) main.postDelayed({ report() }, 1500)
-        // Debug builds only: `--ez playtest_session true` turns the session on.
-        if (BuildConfig.DEBUG && intent.getBooleanExtra("playtest_session", false)) {
-            playtest.setSession(true, playtestTab, playtestRoute) { redrawAccountScreen() }
-        }
     }
 
     // Playtest
 
-    /** The tab as Rust's session log names it. */
+    /** The tab as Rust's playtest log names it. */
     private val playtestTab get() = tab.name.lowercase()
 
-    /** The screen as Rust's session log names it; an unnamed screen is its tab's `home`. */
+    /** The screen as Rust's playtest log names it; an unnamed screen is its tab's `home`. */
     private val playtestRoute get() = when (tab) {
         AppTab.CODER -> if (bridge.packet?.optBoolean("terminal") == true) "terminal" else "home"
         AppTab.VERSE -> panels.openPanel.ifEmpty { "home" }
