@@ -157,3 +157,19 @@ After the production deploy on `oa-coder-worker-1` (release `358975bdbd`,
 opener) at 0.50 to 0.59 s and the finished reply at 4.9 to 5.3 s. `chat-load-bench --basic-coder 5`, which does
 not ask for an opener, measured Send to first words at a median 4.2 s (the
 model's first token) and Send to done at a median 4.4 s.
+
+Release `9ca003acbe` (2026-09-28) replaced the first response with
+`coder-first-response-v2`: prepared answers in the plural OpenAgents voice,
+no filler openers, and confidence floors. It was built with `cargo zigbuild`
+as above, installed as `/opt/coder-worker/releases/9ca003acbe`, checked with
+`--check` under the chat environment, and put live by moving the `chat`
+symlink and restarting `coder-worker-chat`; `coder-worker.service` and
+`/opt/coder-worker/current` were not touched. `358975bdbd` stays in
+`releases/` for rollback (move the symlink back and restart). With the app
+asking `"opener": true` again, `live_basic_coder_streams_a_reply` answered
+"Who are you?" with the whole `meta.who` answer in 0.52 s, "hi" in 0.46 s,
+and "What model are you?" in 0.62 s (result `model: bank:chat-answers-v1`,
+no model call); its default Nostr question showed "Here's how that works."
+at 0.57 to 0.96 s and finished at 5.2 to 6.3 s; "Connect to my GitHub" was
+left to the model (first words 3.2 s) with `lane: computer`. To check a
+particular message, set `OPENAGENTS_TEST_CHAT_MESSAGE`.

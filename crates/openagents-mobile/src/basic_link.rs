@@ -503,7 +503,7 @@ mod tests {
                 .lock()
                 .unwrap()
                 .iter()
-                .all(|payload| payload["judge"] == true)
+                .all(|payload| payload["opener"] == true)
         );
         // In the background the connection closes; the next message opens
         // one again.

@@ -197,9 +197,10 @@ pub(crate) trait Door: Send + Sync {
 
 /// The job's payload: the newest turns within [`MAX_TRANSCRIPT_BYTES`], the
 /// last user message as the task, and the basic Coder's instructions. It asks
-/// for the worker's typed judgment (`judge`) but not its canned opener: the
-/// opener set speaks as "I" and can pick filler like "Sure." for a question,
-/// so it stays off until the chat router's answer bank replaces it.
+/// for the worker's first response (`opener`): a typed judgment, and, when
+/// the judge is sure, a prepared answer in the OpenAgents voice as the whole
+/// reply or a short opener as the reply's first partial while the model
+/// starts (`coder-first-response-v2` in `crates/coder/src/first.rs`).
 pub(crate) fn payload(turns: &[Turn]) -> Value {
     let mut kept: Vec<&Turn> = vec![];
     let mut bytes = 0;
@@ -234,7 +235,7 @@ pub(crate) fn payload(turns: &[Turn]) -> Value {
             .collect::<Vec<_>>(),
         "instructions": INSTRUCTIONS,
         "client": "openagents-mobile",
-        "judge": true,
+        "opener": true,
     })
 }
 
@@ -759,7 +760,7 @@ mod tests {
             [
                 "client",
                 "instructions",
-                "judge",
+                "opener",
                 "requires",
                 "task",
                 "transcript",
@@ -768,15 +769,16 @@ mod tests {
         );
     }
 
-    /// The job asks for the worker's typed judgment, not its canned opener.
+    /// The job asks for the worker's first response: the typed judgment,
+    /// and a prepared answer or an opener when the judge is sure of one.
     #[test]
     fn a_basic_job_asks_for_the_first_response() {
         let body = payload(&[Turn {
             role: Role::User,
             text: "hi".into(),
         }]);
-        assert_eq!(body["judge"], true);
-        assert!(body.get("opener").is_none());
+        assert_eq!(body["opener"], true);
+        assert!(body.get("judge").is_none());
     }
 
     #[test]
@@ -867,7 +869,10 @@ fn live_basic_coder_streams_a_reply() {
     let asking = runtime.spawn(door.ask(
         vec![Turn {
             role: Role::User,
-            text: "In three short sentences, what does a Nostr relay do?".into(),
+            text:
+                std::env::var("OPENAGENTS_TEST_CHAT_MESSAGE").unwrap_or_else(|_| {
+                    "In three short sentences, what does a Nostr relay do?".into()
+                }),
         }],
         reply.clone(),
     ));
@@ -886,6 +891,11 @@ fn live_basic_coder_streams_a_reply() {
     }
     runtime.block_on(asking).unwrap();
     let reply = lock(&reply).clone();
+    // A prepared answer is the whole reply in one step, so its words can
+    // arrive with the end, between two looks.
+    if first.is_none() && !reply.text.is_empty() {
+        first = Some(started.elapsed());
+    }
     eprintln!(
         "first words {:?}, answered {:?}, {} states {:?}, model {:?}\n{}",
         first,
