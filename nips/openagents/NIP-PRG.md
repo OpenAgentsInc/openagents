@@ -15,7 +15,7 @@ query documents, assess evidence, and produce a report without a repository;
 a business workflow can invoke an admitted record operation. Code edits and
 test runs are examples, not required step semantics.
 
-Test-time capabilities: the `decide` and `delegate` [step kinds](#step-kinds) are where a workflow uses a typed judgment or a [test-time delegation](../../docs/essays/2026-09-29-test-time-capabilities.md#6-test-time-delegation) ([mapping](../../docs/essays/2026-09-29-test-time-capabilities.md#how-the-protocol-carries-test-time-capabilities)).
+Test-time capabilities: the `decide` and `delegate` [step kinds](#step-kinds) are where a workflow uses a typed judgment ([judgment budget](../../docs/essays/2026-09-29-test-time-capabilities.md#5-judgment-budget)) or a [test-time delegation](../../docs/essays/2026-09-29-test-time-capabilities.md#6-test-time-delegation); a `delegate` step's executor holds no more authority than the step's own admitted bounds ([mapping](../../docs/essays/2026-09-29-test-time-capabilities.md#how-the-protocol-carries-test-time-capabilities)).
 
 ## Discovery and immutable execution
 
@@ -99,7 +99,7 @@ turning a missing value into an input. Record the resolved condition.
 | `query` | Read an admitted snapshot through a registered source; return bounded attributable evidence. No hidden writes or task execution. |
 | `check` | Run a registered deterministic checker or protected verification plan under host authority. |
 | `decide` | Invoke a pinned decision-function component with question-set and consuming-policy identity. |
-| `delegate` | Give a bounded task/context to an admitted executor and receive attributable artifacts. |
+| `delegate` | Give a bounded task/context to an admitted executor and receive attributable artifacts. The executor's effects, scopes, recipients, and bounds are a subset of the step's (attenuation); its briefing is a CTX selection, and its grant SHOULD be derived from that selection's sources rather than from a namespace containing them. |
 | `program` | Run a pinned child with typed dataflow and narrowed bounds. |
 | `module` | Invoke a pinned plugin through the packet ABI/profile below. |
 | `invoke` | Invoke a registered native or approved adapter operation with typed arguments and declared effects. |

@@ -476,6 +476,7 @@ pub(crate) fn build(parts: &Parts<'_>, artifacts: &mut Artifacts) -> Value {
         "baseline_passed": parts.scores.baseline.as_ref().map(|b| b.cases_passed),
         "total": parts.suite.cases.len(),
     });
+    let reliance = reliance(parts);
     json!({
         "v": REPORT_SCHEMA,
         "requires": [],
@@ -504,8 +505,39 @@ pub(crate) fn build(parts: &Parts<'_>, artifacts: &mut Artifacts) -> Value {
                 })).collect::<Vec<_>>(),
                 "headline": headline,
                 "requester": parts.identity.requester,
+                "reliance": reliance,
+                "identity": "content",
             }
         },
+    })
+}
+
+/// What the run relied on beyond the extension it measured, as
+/// `meta.ext_eval.reliance` (NIP-EVAL): the hosted runner for a hosted
+/// run, the machine as a digest of its name (never the name), the pinned
+/// chat door, the decision door the selector used, and this crate as the
+/// agent harness and grader implementation. A reader compares it with a
+/// rerun's to see what the two shared. The model behind the door and its
+/// version are what the door reports, which this runner doesn't read yet,
+/// so `model` is unknown rather than guessed.
+fn reliance(parts: &Parts<'_>) -> Value {
+    let engine = format!("ext-eval@{}", env!("CARGO_PKG_VERSION"));
+    let host = std::env::var("HOSTNAME")
+        .ok()
+        .filter(|name| !name.is_empty())
+        .map(|name| nostr::contracts::digest_bytes(name.as_bytes()));
+    json!({
+        "runner": parts
+            .identity
+            .requester
+            .as_ref()
+            .map(|_| parts.identity.evaluator.clone()),
+        "host": host,
+        "door": parts.identity.subject.door,
+        "model": Value::Null,
+        "agent": engine,
+        "selector": parts.doors.decision,
+        "graders": engine,
     })
 }
 

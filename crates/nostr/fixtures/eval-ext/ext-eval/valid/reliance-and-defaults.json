@@ -1,0 +1,36 @@
+{
+  "v": "openagents.ext-eval.v1",
+  "gate": "sha256:c974e17b8e7321ce8c12983de3d0ed4a289821f579bbe0925b0181a4bc8e8d80",
+  "cases": [
+    {
+      "id": "map-repo",
+      "kind": "should-fire"
+    },
+    {
+      "id": "say-hello",
+      "kind": "should-not-fire"
+    }
+  ],
+  "headline": {
+    "subject_passed": 2,
+    "baseline_passed": 1,
+    "total": 2
+  },
+  "requester": null,
+  "reliance": {
+    "runner": null,
+    "host": "sha256:0f3b6e2a1c9d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8091a2b3c4d5e6f708192a3b",
+    "door": "chat.openagents.com",
+    "model": "claude-fable-5-1",
+    "agent": "coder@0.9.0",
+    "selector": "jev@openagents.systemone.v1",
+    "graders": "ext-eval@0.9.0"
+  },
+  "identity": "content",
+  "distribution": "9b2d6c1e7f3a4b5c8d9e0f1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e:project-map/map",
+  "defaults": {
+    "id": "7d8c9b0a1f2e3d4c5b6a79880f1e2d3c4b5a69788f9e0d1c2b3a4958677f8e9d",
+    "pubkey": "6e5d4c3b2a19087f6e5d4c3b2a19087f6e5d4c3b2a19087f6e5d4c3b2a19087f",
+    "kind": 3184
+  }
+}

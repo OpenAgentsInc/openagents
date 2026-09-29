@@ -1,8 +1,9 @@
 //! `eval-check` tests, mirroring the `reproduce` ones: the checker isn't
 //! the evaluator or the suite author, the check comes after the result and
-//! inside the season, a disputed check earns nothing, each role is paid
-//! once per suite version, and a key holding two roles collapses to the
-//! larger. Keys are throwaway and derived from labels.
+//! inside the season, a disputed check earns the same credit as a
+//! confirming one while an inconclusive one earns nothing, each role is
+//! paid once per suite version, and a key holding two roles collapses to
+//! the larger. Keys are throwaway and derived from labels.
 
 use serde_json::{Value, json};
 
@@ -220,16 +221,31 @@ fn a_check_comes_after_the_result_and_inside_the_season() {
 }
 
 #[test]
-fn a_disputed_or_inconclusive_check_earns_nothing() {
+fn a_disputed_check_earns_credit_and_an_inconclusive_one_earns_nothing() {
     let w = world();
     let quest = parsed(&w.quest);
+    // Credit is for verification work, not agreement: Bob's dispute pays
+    // the same three roles as his confirmation would, and confirms nothing.
     let mut fails = Spec::by("bob");
     fails.verdict = "fail";
     let dispute = published("bob", &fails, Some(&w.result.id), AT + 10);
+    let completion = check_eval_check(&quest, &w.result, &dispute, &[]).unwrap();
+    let roles: Vec<&str> = completion.payees.iter().map(|p| p.role).collect();
+    assert_eq!(roles, ["checker", "evaluator", "suite-author"]);
+    let (checker, _, linkage) = credited_check(&completion.result, &completion.check, &[]).unwrap();
+    assert_eq!(checker, pubkey("bob"));
+    assert_eq!(linkage, Linkage::Dispute);
     assert_eq!(
-        code(check_eval_check(&quest, &w.result, &dispute, &[])),
+        code(confirmed_check(&completion.result, &completion.check, &[])),
         RefusalCode::NotAdmitted
     );
+    assert_eq!(
+        eval_check_awards(&w.quest, &w.result, &dispute, &[], AT + 100)
+            .unwrap()
+            .len(),
+        3
+    );
+    // An inconclusive result or check has no verdict to verify.
     let mut unsure = Spec::by("alice");
     unsure.verdict = "inconclusive";
     let result = published("alice", &unsure, None, AT);
@@ -237,6 +253,13 @@ fn a_disputed_or_inconclusive_check_earns_nothing() {
     let check = published("bob", &unsure, Some(&result.id), AT + 10);
     assert_eq!(
         code(check_eval_check(&quest, &result, &check, &[])),
+        RefusalCode::NotAdmitted
+    );
+    let mut unsure_check = Spec::by("bob");
+    unsure_check.verdict = "inconclusive";
+    let check = published("bob", &unsure_check, Some(&w.result.id), AT + 10);
+    assert_eq!(
+        code(check_eval_check(&quest, &w.result, &check, &[])),
         RefusalCode::NotAdmitted
     );
     // Another subject lock isn't a check of the result.

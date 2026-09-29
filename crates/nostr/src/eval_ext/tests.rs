@@ -133,6 +133,16 @@ pub(crate) struct Spec {
     pub lock: &'static str,
     pub requester: Option<Value>,
     pub baseline: bool,
+    /// A second suite: its release pointer and a salt that changes the
+    /// suite's bytes, so its digest differs from the default suite's.
+    pub suite: Option<(Value, &'static str)>,
+    /// The task distribution the suite claims (`meta.ext_eval.distribution`).
+    pub distribution: Option<&'static str>,
+    /// The reliance set the run recorded.
+    pub reliance: Option<Value>,
+    /// The subject's release pointer, when a test needs a real release
+    /// event behind it.
+    pub subject: Option<Value>,
 }
 
 impl Spec {
@@ -143,13 +153,34 @@ impl Spec {
             lock: "lock-a",
             requester: None,
             baseline: true,
+            suite: None,
+            distribution: None,
+            reliance: None,
+            subject: None,
         }
     }
 }
 
+/// A second suite's release, by `author`, as a report names it.
+pub(crate) fn second_suite_release(author: &str) -> Value {
+    json!({"id": id(&format!("{author}-suite-release")), "pubkey": pubkey(author), "kind": 3184})
+}
+
+/// The suite's bytes with the workload artifact salted, so a second suite
+/// has another digest.
+pub(crate) fn salted_suite_bytes(salt: &str) -> Vec<u8> {
+    let mut value: Value = serde_json::from_slice(&suite_bytes()).unwrap();
+    value["workload"] = art(salt.as_bytes(), "application/json", None);
+    jcs(&value).unwrap()
+}
+
 pub(crate) fn report_value(spec: &Spec) -> Value {
-    let mut suite = art(&suite_bytes(), "application/json", Some(SUITE_SCHEMA));
-    suite["event"] = suite_release();
+    let (suite_bytes, release) = match &spec.suite {
+        Some((release, salt)) => (salted_suite_bytes(salt), release.clone()),
+        None => (suite_bytes(), suite_release()),
+    };
+    let mut suite = art(&suite_bytes, "application/json", Some(SUITE_SCHEMA));
+    suite["event"] = release;
     let arm = |definition: Value, lock: &str| {
         json!({
             "definition": definition,
@@ -161,12 +192,16 @@ pub(crate) fn report_value(spec: &Spec) -> Value {
         "id": format!("{}:coder-defaults/coder", pubkey("operator")),
         "artifact": art(b"coder", "application/json", None),
     });
-    json!({
+    let mut subject = subject_definition();
+    if let Some(release) = &spec.subject {
+        subject["event"] = release.clone();
+    }
+    let value = json!({
         "v": kb::REPORT_SCHEMA,
         "requires": [],
         "suite": suite,
         "partition": art(b"partition", "application/json", None),
-        "subject": arm(subject_definition(), spec.lock),
+        "subject": arm(subject, spec.lock),
         "baseline": if spec.baseline { arm(baseline_def, "lock-base") } else { Value::Null },
         "evaluator": spec.evaluator,
         "started_at": AT - 600,
@@ -186,7 +221,15 @@ pub(crate) fn report_value(spec: &Spec) -> Value {
             "headline": {"subject_passed": 2, "baseline_passed": if spec.baseline { json!(1) } else { Value::Null }, "total": 2},
             "requester": spec.requester,
         }},
-    })
+    });
+    let mut value = value;
+    if let Some(distribution) = spec.distribution {
+        value["meta"]["ext_eval"]["distribution"] = json!(distribution);
+    }
+    if let Some(reliance) = &spec.reliance {
+        value["meta"]["ext_eval"]["reliance"] = reliance.clone();
+    }
+    value
 }
 
 pub(crate) fn report(spec: &Spec) -> String {
@@ -195,11 +238,38 @@ pub(crate) fn report(spec: &Spec) -> String {
 
 /// A signed result publication for `spec`, signed by `label` at `at`.
 pub(crate) fn published(label: &str, spec: &Spec, checks: Option<&str>, at: u64) -> Event {
+    published_citing(label, spec, checks.map(Cites::Check), at)
+}
+
+/// [`published`] citing another publication as a check, a validation, or
+/// a transfer.
+pub(crate) fn published_citing(
+    label: &str,
+    spec: &Spec,
+    cites: Option<Cites<'_>>,
+    at: u64,
+) -> Event {
     sign_at(
         &signer(label),
         at,
-        publication(&report(spec), checks).expect("a valid publication"),
+        publication_citing(&report(spec), cites).expect("a valid publication"),
     )
+}
+
+/// A signed NIP-EXT release event by `author` at `at`, with the ID a
+/// report's pointer names computed from the event itself, so tests build
+/// the pointer from this rather than the reverse.
+pub(crate) fn release_event(author: &str, at: u64) -> Event {
+    signer(author).sign(
+        at,
+        crate::kinds::EXT_RELEASE,
+        vec![tag(&["t", "oa:ext:release:v1"])],
+        json!({"v": 1, "requires": [], "type": "release", "package": format!("{}:pkg", pubkey(author)), "version": "1", "manifest": art(b"manifest", "application/json", None)}).to_string(),
+    )
+}
+
+pub(crate) fn pointer_of(event: &Event) -> Value {
+    json!({"id": event.id, "pubkey": event.pubkey, "kind": event.kind})
 }
 
 /// A signed NIP-CJ execution request from `trainer` to `runner`.
@@ -709,4 +779,212 @@ fn a_hosted_result_carries_its_request_inline() {
         code(parse_publication(&smuggled)),
         RefusalCode::IdentityMismatch
     );
+}
+
+#[test]
+fn a_profile_carries_its_reliance_set_identity_distribution_and_defaults() {
+    let mut value = report_value(&Spec::by("alice"))["meta"]["ext_eval"].clone();
+    value["reliance"] = json!({
+        "runner": null, "host": "sha256:host", "door": "chat.example", "model": "fable@5.1",
+        "agent": "coder@0.9", "selector": "jev@2026-09", "graders": "ext-eval@0.9",
+    });
+    value["identity"] = json!("content");
+    value["distribution"] = json!(format!("{}:project-map/map", pubkey("ext-author")));
+    value["defaults"] =
+        json!({"id": id("defaults-release"), "pubkey": pubkey("operator"), "kind": 3184});
+    let profile = parse_profile(&value).unwrap();
+    assert_eq!(profile.identity, Some(IdentityStrength::Content));
+    assert_eq!(profile.defaults.as_ref().map(|d| d.kind), Some(3184));
+    let reliance = profile.reliance.clone().unwrap();
+    assert_eq!(reliance.host.as_deref(), Some("sha256:host"));
+    assert_eq!(profile_value(&profile), value);
+    // What a rerun shared: the same host and door, another model, an
+    // unknown runner on both sides is neither shared nor varied.
+    let rerun = Reliance {
+        host: Some("sha256:host".into()),
+        door: Some("chat.example".into()),
+        model: Some("fable@5.2".into()),
+        ..Reliance::default()
+    };
+    assert_eq!(reliance.shared(&rerun), ["host", "door"]);
+    assert_eq!(reliance.varied(&rerun), ["model"]);
+    // Without the optional records the profile still parses and writes
+    // the same bytes it did before they existed.
+    let plain = report_value(&Spec::by("alice"))["meta"]["ext_eval"].clone();
+    let parsed = parse_profile(&plain).unwrap();
+    assert!(parsed.reliance.is_none() && parsed.identity.is_none());
+    assert_eq!(profile_value(&parsed), plain);
+    // Refusals: an unknown reliance key, an unknown identity word, an
+    // empty distribution, and defaults that aren't a release.
+    let mut bad = value.clone();
+    bad["reliance"]["weather"] = json!("rainy");
+    assert_eq!(code(parse_profile(&bad)), RefusalCode::UnsupportedFeature);
+    let mut bad = value.clone();
+    bad["identity"] = json!("vibes");
+    assert_eq!(code(parse_profile(&bad)), RefusalCode::UnsupportedFeature);
+    let mut bad = value.clone();
+    bad["distribution"] = json!("");
+    assert_eq!(code(parse_profile(&bad)), RefusalCode::Malformed);
+    let mut bad = value.clone();
+    bad["defaults"]["kind"] = json!(3189);
+    assert!(parse_profile(&bad).is_err());
+}
+
+#[test]
+fn a_report_may_name_a_decision_service_as_its_subject() {
+    let mut spec = Spec::by("alice");
+    spec.subject = Some(json!({"id": id("jev-head"), "pubkey": pubkey("typesafe"), "kind": 30180}));
+    let parsed = parse_report(report(&spec).as_bytes()).unwrap();
+    assert_eq!(
+        parsed.subject.definition.event.as_ref().map(|e| e.kind),
+        Some(30180)
+    );
+    let event = published("alice", &spec, None, AT);
+    let publication = parse_publication(&event).unwrap();
+    assert_eq!(
+        publication.subject_release.as_ref().map(|s| s.kind),
+        Some(30180)
+    );
+    spec.subject = Some(json!({"id": id("run"), "pubkey": pubkey("x"), "kind": 3187}));
+    assert_eq!(
+        code(parse_report(report(&spec).as_bytes())),
+        RefusalCode::IdentityMismatch
+    );
+}
+
+#[test]
+fn a_second_suite_validates_transfers_or_isnt_independent() {
+    let subject_event = release_event("ext-author", AT - 1_000);
+    let mut spec = Spec::by("alice");
+    spec.subject = Some(pointer_of(&subject_event));
+    let original = published("alice", &spec, None, AT);
+    let o = parse_publication(&original).unwrap();
+    assert_eq!(
+        o.distribution(),
+        format!("{}:project-map/map", pubkey("ext-author"))
+    );
+
+    // Carol runs a suite the validator wrote after the tool was released.
+    let suite_event = release_event("validator", AT - 500);
+    let mut second = Spec::by("carol");
+    second.subject = Some(pointer_of(&subject_event));
+    second.suite = Some((pointer_of(&suite_event), "validation-suite"));
+    let event = published_citing(
+        "carol",
+        &second,
+        Some(Cites::Validates(&original.id)),
+        AT + 10,
+    );
+    let s = parse_publication(&event).unwrap();
+    assert_eq!(s.validates.as_deref(), Some(original.id.as_str()));
+    assert!(s.checks.is_none() && s.transfer.is_none());
+    let link = validation(&o, &s, &suite_event, &subject_event).unwrap();
+    assert_eq!(link, Validation::Validates(Independence::Independent));
+    assert!(link.externally_validates());
+
+    // The tool's author wrote the second suite: provenance, not independence.
+    let own_suite = release_event("ext-author", AT - 500);
+    let mut own = second.clone();
+    own.suite = Some((pointer_of(&own_suite), "own-suite"));
+    let event = published_citing("carol", &own, Some(Cites::Validates(&original.id)), AT + 10);
+    let s = parse_publication(&event).unwrap();
+    assert_eq!(
+        validation(&o, &s, &own_suite, &subject_event).unwrap(),
+        Validation::Validates(Independence::SameSigner)
+    );
+
+    // The suite existed before the tool was locked: the author could have
+    // tuned against it.
+    let early_suite = release_event("validator", AT - 2_000);
+    let mut early = second.clone();
+    early.suite = Some((pointer_of(&early_suite), "early-suite"));
+    let event = published_citing(
+        "carol",
+        &early,
+        Some(Cites::Validates(&original.id)),
+        AT + 10,
+    );
+    let s = parse_publication(&event).unwrap();
+    assert_eq!(
+        validation(&o, &s, &early_suite, &subject_event).unwrap(),
+        Validation::Validates(Independence::SuiteNotAfterSubject)
+    );
+
+    // Another distribution reads as a transfer, whatever the marker claims.
+    let mut elsewhere = second.clone();
+    elsewhere.distribution = Some("spreadsheets");
+    let event = published_citing(
+        "carol",
+        &elsewhere,
+        Some(Cites::Validates(&original.id)),
+        AT + 10,
+    );
+    let s = parse_publication(&event).unwrap();
+    let link = validation(&o, &s, &suite_event, &subject_event).unwrap();
+    assert_eq!(link, Validation::Transfer(Independence::Independent));
+    assert!(!link.externally_validates());
+    let event = published_citing(
+        "carol",
+        &second,
+        Some(Cites::Transfer(&original.id)),
+        AT + 10,
+    );
+    let s = parse_publication(&event).unwrap();
+    assert_eq!(s.transfer.as_deref(), Some(original.id.as_str()));
+    assert_eq!(
+        validation(&o, &s, &suite_event, &subject_event).unwrap(),
+        Validation::Transfer(Independence::Independent)
+    );
+
+    // The same suite rerun is a check, not a validation; another subject
+    // lock is neither.
+    let mut same = Spec::by("carol");
+    same.subject = Some(pointer_of(&subject_event));
+    let event = published_citing(
+        "carol",
+        &same,
+        Some(Cites::Validates(&original.id)),
+        AT + 10,
+    );
+    let s = parse_publication(&event).unwrap();
+    assert_eq!(
+        validation(&o, &s, &suite_event, &subject_event).unwrap(),
+        Validation::NotAValidation
+    );
+    let mut locked = second.clone();
+    locked.lock = "lock-b";
+    let event = published_citing(
+        "carol",
+        &locked,
+        Some(Cites::Validates(&original.id)),
+        AT + 10,
+    );
+    let s = parse_publication(&event).unwrap();
+    assert_eq!(
+        validation(&o, &s, &suite_event, &subject_event).unwrap(),
+        Validation::NotAValidation
+    );
+
+    // The releases handed in must be the ones the publications name.
+    let event = published_citing(
+        "carol",
+        &second,
+        Some(Cites::Validates(&original.id)),
+        AT + 10,
+    );
+    let s = parse_publication(&event).unwrap();
+    assert_eq!(
+        code(validation(&o, &s, &early_suite, &subject_event)),
+        RefusalCode::IdentityMismatch
+    );
+    assert_eq!(
+        code(validation(&o, &s, &suite_event, &suite_event)),
+        RefusalCode::IdentityMismatch
+    );
+
+    // A publication cites at most one of check, validates, and transfer.
+    let both = resign("carol", &event, |tags, _| {
+        tags.push(tag(&["e", &id("some-result"), "", "check"]));
+    });
+    assert_eq!(code(parse_publication(&both)), RefusalCode::Malformed);
 }

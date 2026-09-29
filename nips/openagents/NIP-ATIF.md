@@ -124,6 +124,7 @@ Every carried trajectory has one manifest,
 | `chunks` | Ordered `{index, digest, size, event?}` entries, one per chunk; empty when the bytes travel only by `artifact.sources`. `event` is the 64-hex ID of the chunk's event when the publisher knows it. |
 | `task` | `{task_id, attempt}` for a Coder task attempt (the `<task>.<attempt>.atif.jsonl` name), or `null`. |
 | `run` | The 64-hex RUN run ID this trajectory observed, or `null`. |
+| `selector` | `{set, bank}` (each `name@digest` or `null`): the question set and prepared-answer bank the agent's router chose with during this trajectory, or `null`. It is what makes a reach failure ("the selector didn't choose the tool for that wording") distinguishable from a tool failure in the record. |
 | `parent` | `{trajectory_id, step_id}` of the step that delegated to this trajectory, or `null`. |
 | `children` | Ordered `{trajectory_id, step_id, steps_digest, artifact, event?}` entries, one per delegated trajectory carried separately. `artifact` is the child's `artifact.digest`; `event` is the child's manifest event ID when known. |
 | `previous` | `{trajectory_id, steps_digest}` of the segment this one continues (ATIF `continued_trajectory_ref`), or `null`. |

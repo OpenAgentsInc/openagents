@@ -3,9 +3,10 @@
 //! awards a reader re-checks, what a trainer made, and the queue of tools
 //! that are candidates for adoption into Coder's defaults.
 //!
-//! "Used" means exactly two things: another trainer's check confirmed a
-//! result, or Coder adopted the tool into its defaults. Credit is XP and a
-//! name. Nothing here spends, transfers, or converts XP, and nothing pays.
+//! "Used" means exactly two things: another trainer reran a result to
+//! protocol (a check, confirming or disputing), or Coder adopted the tool
+//! into its defaults. Credit is XP and a name. Nothing here spends,
+//! transfers, or converts XP, and nothing pays.
 //!
 //! An `eval-check` award names the result and the check, which are signed
 //! `3189` publications a reader holds. An `eval-adopt` award also names a
@@ -33,6 +34,13 @@ pub type Documents = BTreeMap<String, Vec<u8>>;
 /// How many distinct trainers' confirming checks make a **Better** result
 /// a candidate for adoption.
 pub const CONFIRMING_CHECKS: usize = 3;
+
+/// How many externally validating results (a **Better** result on a second
+/// suite by another author, released after the tool's release, on the
+/// same task distribution) a candidate needs beside its confirming
+/// checks. Reproduction on the author's own suite proves reproducibility;
+/// this proves the delta wasn't fitted to that suite.
+pub const VALIDATIONS: usize = 1;
 
 /// The slug of Coder's defaults package.
 pub const DEFAULTS_SLUG: &str = "coder-defaults";
@@ -224,8 +232,10 @@ your own tests earns nothing"
     Ok(())
 }
 
-/// One result that makes its tool a candidate: **Better**, and confirmed by
-/// checks from at least [`CONFIRMING_CHECKS`] distinct trainers.
+/// One result that makes its tool a candidate: **Better**, confirmed by
+/// checks from at least [`CONFIRMING_CHECKS`] distinct trainers, and
+/// externally validated by at least [`VALIDATIONS`] results on an
+/// independent second suite.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct CandidateResult {
     /// The result's `3189` event ID.
@@ -238,6 +248,59 @@ pub struct CandidateResult {
     pub confirmed_by: Vec<String>,
     /// The confirming checks' event IDs.
     pub checks: Vec<String>,
+    /// The externally validating results' event IDs, which an admission
+    /// cites in `validation`.
+    pub validations: Vec<String>,
+}
+
+/// Which results are externally validated: each result's validating
+/// publications, by result ID. A validation counts when it names the
+/// result with the `validates` marker, is **Better**, ran a different suite
+/// on the same task distribution, and both releases are among `events` and
+/// show it independent: the suite's release signed by someone other than
+/// the tool's release signer, and created after it
+/// ([`eval_ext::validation`]). A validation whose releases a reader doesn't
+/// hold doesn't count; independence isn't assumed.
+#[must_use]
+pub fn validations(
+    events: &[Event],
+    publications: &BTreeMap<String, (Event, Publication)>,
+) -> BTreeMap<String, Vec<String>> {
+    let releases: BTreeMap<&str, &Event> = events
+        .iter()
+        .filter(|e| eval_ext::SUBJECT_KINDS.contains(&e.kind))
+        .map(|e| (e.id.as_str(), e))
+        .collect();
+    let mut out: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for (id, (_, second)) in publications {
+        let Some(original_id) = second.validates.as_deref() else {
+            continue;
+        };
+        let Some((_, original)) = publications.get(original_id) else {
+            continue;
+        };
+        let Some(suite) = releases.get(second.suite_release.id.as_str()) else {
+            continue;
+        };
+        let Some(subject) = original
+            .subject_release
+            .as_ref()
+            .and_then(|s| releases.get(s.id.as_str()))
+        else {
+            continue;
+        };
+        if second.verdict() != Verdict::Pass {
+            continue;
+        }
+        if eval_ext::validation(original, second, suite, subject)
+            .is_ok_and(eval_ext::Validation::externally_validates)
+        {
+            out.entry(original_id.to_owned())
+                .or_default()
+                .push(id.clone());
+        }
+    }
+    out
 }
 
 /// A tool release that is a candidate for adoption into Coder's defaults.
@@ -292,6 +355,7 @@ pub fn candidates(
     let publications = publications(events);
     let requests = requests(events);
     let confirmed = confirmations(&publications, &requests);
+    let validated = validations(events, &publications);
     let mut by_subject: BTreeMap<String, Candidate> = BTreeMap::new();
     for (id, (_, result)) in &publications {
         if result.checks.is_some() || result.verdict() != Verdict::Pass {
@@ -318,6 +382,10 @@ pub fn candidates(
         if confirmed_by.len() < CONFIRMING_CHECKS {
             continue;
         }
+        let validations = validated.get(id).cloned().unwrap_or_default();
+        if validations.len() < VALIDATIONS {
+            continue;
+        }
         by_subject
             .entry(subject.id.clone())
             .or_insert_with(|| Candidate {
@@ -333,6 +401,7 @@ pub fn candidates(
                 report: result.report_ref.digest.clone(),
                 confirmed_by: confirmed_by.into_iter().collect(),
                 checks,
+                validations,
             });
     }
     by_subject.into_values().collect()
@@ -379,8 +448,9 @@ pub enum Standing {
     Pending,
     /// A result nobody has checked yet.
     Waiting,
-    /// A check that disputes its result, or a result only disputed.
-    /// Both stay visible; neither earns anything.
+    /// A result whose only checks dispute it. It stays visible; the
+    /// disputing checks themselves are pending or awarded, since a rerun
+    /// to protocol earns credit whichever way it came out.
     Disputed,
     /// It earns nothing: a self-check, another suite or subject, an
     /// inconclusive verdict, or the same role on a test set already paid
@@ -515,13 +585,14 @@ pub fn made(events: &[Event], ledger: &Ledger, keys: &[String]) -> Made {
             .and_then(|r| publications.get(r))
         {
             row.xp = credited(id, "checker");
-            let confirms = xp::eval_check::confirmed_check(&original.1, publication, &requests);
+            // A rerun to protocol earns credit whether it confirms or
+            // disputes; only a check that isn't one earns nothing.
+            let credited_check =
+                xp::eval_check::credited_check(&original.1, publication, &requests);
             row.standing = if row.xp > 0 {
                 Standing::Awarded
-            } else if confirms.is_ok() {
+            } else if credited_check.is_ok() {
                 Standing::Pending
-            } else if eval_ext::linkage(&original.1, publication) == eval_ext::Linkage::Dispute {
-                Standing::Disputed
             } else {
                 Standing::NoCredit
             };

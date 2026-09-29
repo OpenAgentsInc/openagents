@@ -9,7 +9,8 @@
 use std::collections::BTreeSet;
 
 use nostr::domain::RelaySigner;
-use xp_ledger::eval::fixture::{Run, published, release, signer};
+use nostr::eval_ext::Cites;
+use xp_ledger::eval::fixture::{Run, published, published_citing, release, signer};
 
 use super::*;
 use crate::kbnet::tests::{Store, relay, scratch};
@@ -120,6 +121,20 @@ impl Setup {
         let check = published(by, &self.run(), Some(&self.result.id), at);
         put(&self.store, std::slice::from_ref(&check));
         check
+    }
+
+    /// `by`'s Better result on a second suite the validator released after
+    /// the tool, externally validating the result.
+    fn validate(&self, by: &RelaySigner, at: u64) -> Event {
+        let suite = release(&signer("validator"), "project-map-more-tests", at - 500);
+        let validation = published_citing(
+            by,
+            &Run::better(&suite, &self.subject),
+            Some(Cites::Validates(&self.result.id)),
+            at,
+        );
+        put(&self.store, &[suite, validation.clone()]);
+        validation
     }
 
     fn options(&self, more: &[&str]) -> XpOptions {
@@ -256,6 +271,12 @@ async fn an_operator_adopts_a_candidate_and_the_referee_credits_the_adoption() {
     assert!(tally.candidates.is_empty(), "two checks aren't enough");
     s.check(&signer("dave"), now() - 30);
     let tally = s.pass().await;
+    assert!(
+        tally.candidates.is_empty(),
+        "three checks on the author's suite prove reproducibility, not external validity"
+    );
+    s.validate(&signer("carol"), now() - 20);
+    let tally = s.pass().await;
     assert_eq!(tally.candidates.len(), 1);
     assert_eq!(tally.candidates[0].subject, s.subject.id);
     let queue: Value =
@@ -280,7 +301,8 @@ async fn an_operator_adopts_a_candidate_and_the_referee_credits_the_adoption() {
             .unwrap(),
         1
     );
-    assert_eq!(count(&s.store, nostr::ext::RELEASE_KIND), 2);
+    // The suite, the tool, and the validator's second suite.
+    assert_eq!(count(&s.store, nostr::ext::RELEASE_KIND), 3);
 
     let adopt = s.options(&[
         "--subject",
@@ -289,7 +311,7 @@ async fn an_operator_adopts_a_candidate_and_the_referee_credits_the_adoption() {
         &package_dir.display().to_string(),
     ]);
     assert_eq!(adopt_command(&adopt, &key).await.unwrap(), 0);
-    assert_eq!(count(&s.store, nostr::ext::RELEASE_KIND), 3);
+    assert_eq!(count(&s.store, nostr::ext::RELEASE_KIND), 4);
     assert_eq!(count(&s.store, nostr::ext::LOCATOR_KIND), 2);
     assert_eq!(
         std::fs::read_dir(package_dir.join("documents"))

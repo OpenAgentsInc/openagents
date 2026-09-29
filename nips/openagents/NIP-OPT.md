@@ -11,6 +11,8 @@ and assess them alongside hand-authored baselines and other optimizers. It
 does not standardize an optimization algorithm, require Python in a host,
 or claim that compilation improves a workload.
 
+Test-time capabilities: a study's `confirmation` phase (unseen cases, evaluator-only) is the shape of an [externally validated capability claim](../../docs/essays/2026-09-29-test-time-capabilities.md#8-externally-validated-capability-claim), and a selected candidate reaches an agent only through EVAL admission and an EXT release, which is [capability adoption](../../docs/essays/2026-09-29-test-time-capabilities.md#9-capability-adoption) under the same rules as any other candidate ([mapping](../../docs/essays/2026-09-29-test-time-capabilities.md#how-the-protocol-carries-test-time-capabilities)).
+
 ## Transport, identity, and authority
 
 No new event kind is allocated. Private definitions, studies, candidates,

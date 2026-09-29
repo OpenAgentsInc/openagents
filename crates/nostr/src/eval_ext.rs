@@ -55,9 +55,13 @@ pub const PROFILE_MARKER: &str = "oa:ext-eval:v1";
 pub const COMPONENT_KIND: &str = "eval-suite";
 /// The component name of the Gym gate that decides the verdict.
 pub const GATE: &str = "ext-eval-v2";
-/// Every Gym gate a suite may name: `ext-eval-v2`, the current one, and
-/// `ext-eval-v1`, which results judged before 2026-09-29 name.
-pub const GATES: &[&str] = &["ext-eval-v1", "ext-eval-v2"];
+/// Every Gym gate a suite may name: `ext-eval-v2`, the current
+/// correctness-primary gate; `ext-eval-v1`, which results judged before
+/// 2026-09-29 name; and `ext-eval-cost-v1`, the cost-primary gate whose
+/// claim is "the same correctness at a lower cost".
+pub const GATES: &[&str] = &["ext-eval-v1", "ext-eval-v2", "ext-eval-cost-v1"];
+/// The most bytes one reliance-set entry or a distribution ID may have.
+pub const MAX_IDENTITY_BYTES: usize = 256;
 /// The most bytes a report inline in a publication may have.
 pub const MAX_REPORT_BYTES: usize = 64 * 1024;
 /// The most bytes a hosted result's signed request, inline in the
@@ -87,12 +91,34 @@ pub const HOSTED_ARMS: u64 = 2;
 pub const MAX_MEASUREMENTS: usize = 1_024;
 
 /// The `e` tag markers a result publication uses: the suite's release, the
-/// subject's release, the publication a check checks, and a hosted run's
-/// request.
-pub const E_MARKERS: &[&str] = &["suite", "subject", "check", "request"];
+/// subject's release, the publication a check checks, the publication an
+/// externally validating result validates (a second suite on the same
+/// task distribution) or a transfer result transfers (a different
+/// distribution), and a hosted run's request. A publication carries at
+/// most one of `check`, `validates`, and `transfer`.
+pub const E_MARKERS: &[&str] = &[
+    "suite",
+    "subject",
+    "check",
+    "validates",
+    "transfer",
+    "request",
+];
+
+/// The keys of a report's reliance set, in the order the record lists them.
+pub const RELIANCE_KEYS: &[&str] = &[
+    "runner", "host", "door", "model", "agent", "selector", "graders",
+];
 
 /// Case directory names discovery skips, so a case can't be named one.
 const RESERVED: &[&str] = &[".git", ".openagents", "node_modules", "results"];
+
+/// The event kinds a report's published subject may be: a NIP-EXT release
+/// (an extension, plugin, skill, or package) or a NIP-CAP discovery head (a
+/// decision service). A delegate is a CAP operation DefinitionRef with the
+/// engine's artifact in the subject arm's lock, and has no event. Credit
+/// rules that pin a subject release stay on NIP-EXT releases.
+pub const SUBJECT_KINDS: &[u16] = &[crate::kinds::EXT_RELEASE, crate::kinds::CAP_DISCOVERY];
 
 /// Whether the extension ought to be used on a case.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -634,6 +660,148 @@ pub struct Headline {
     pub total: u64,
 }
 
+/// What a run relied on beyond the artifact it measured: the **reliance
+/// set** a reader compares between a result and its reruns. Each entry is
+/// an identity the runner could name (a pubkey, a digest, a `name@version`,
+/// a hashed hostname) or `None` when it couldn't. Two runs that share an
+/// entry are independent as signing principals and not as that platform.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Reliance {
+    /// The hosted runner's key, or `None` for a local run.
+    pub runner: Option<String>,
+    /// The machine, as a digest of its name, never the name itself.
+    pub host: Option<String>,
+    /// The chat door the runs were pinned to.
+    pub door: Option<String>,
+    /// The model name the door served, with any version it reports.
+    pub model: Option<String>,
+    /// The agent build that ran the cases.
+    pub agent: Option<String>,
+    /// The decision service the agent's selector used.
+    pub selector: Option<String>,
+    /// The grader implementation that scored the runs.
+    pub graders: Option<String>,
+}
+
+impl Reliance {
+    fn entry(&self, key: &str) -> Option<&str> {
+        match key {
+            "runner" => self.runner.as_deref(),
+            "host" => self.host.as_deref(),
+            "door" => self.door.as_deref(),
+            "model" => self.model.as_deref(),
+            "agent" => self.agent.as_deref(),
+            "selector" => self.selector.as_deref(),
+            "graders" => self.graders.as_deref(),
+            _ => None,
+        }
+    }
+
+    /// The entries two runs both named and named the same: what a rerun
+    /// shared with the original. An entry either run left unknown is not
+    /// shared and not independent; it is unknown.
+    #[must_use]
+    pub fn shared(&self, other: &Reliance) -> Vec<&'static str> {
+        RELIANCE_KEYS
+            .iter()
+            .copied()
+            .filter(
+                |key| matches!((self.entry(key), other.entry(key)), (Some(a), Some(b)) if a == b),
+            )
+            .collect()
+    }
+
+    /// The entries two runs both named and named differently: what a
+    /// rerun varied.
+    #[must_use]
+    pub fn varied(&self, other: &Reliance) -> Vec<&'static str> {
+        RELIANCE_KEYS
+            .iter()
+            .copied()
+            .filter(
+                |key| matches!((self.entry(key), other.entry(key)), (Some(a), Some(b)) if a != b),
+            )
+            .collect()
+    }
+
+    /// The closed wire object.
+    #[must_use]
+    pub fn to_value(&self) -> Value {
+        let mut object = serde_json::Map::new();
+        for key in RELIANCE_KEYS {
+            object.insert((*key).to_string(), json!(self.entry(key)));
+        }
+        Value::Object(object)
+    }
+
+    fn parse(value: &Value) -> Result<Self, ContractError> {
+        let object = value
+            .as_object()
+            .ok_or_else(|| malformed("meta.ext_eval.reliance"))?;
+        reject(object, RELIANCE_KEYS)?;
+        let entry = |key: &str| -> Result<Option<String>, ContractError> {
+            match object.get(key) {
+                None | Some(Value::Null) => Ok(None),
+                Some(Value::String(s)) if !s.is_empty() && s.len() <= MAX_IDENTITY_BYTES => {
+                    Ok(Some(s.clone()))
+                }
+                Some(_) => Err(malformed(format!("meta.ext_eval.reliance.{key}"))),
+            }
+        };
+        Ok(Reliance {
+            runner: entry("runner")?,
+            host: entry("host")?,
+            door: entry("door")?,
+            model: entry("model")?,
+            agent: entry("agent")?,
+            selector: entry("selector")?,
+            graders: entry("graders")?,
+        })
+    }
+}
+
+/// The strongest identity a report's subject has. Reproducibility cannot be
+/// stronger than identity: a claim about exact bytes can be rerun on those
+/// bytes, a claim about a version only on what a provider still calls that
+/// version, and a claim about an endpoint only on whatever answers there
+/// now.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IdentityStrength {
+    /// Exact bytes, named by digest: an extension release and its lock.
+    Content,
+    /// A version or build a provider declares and a reader can name.
+    Version,
+    /// Only a provider, model name, or endpoint is known.
+    Endpoint,
+    /// Not enough to rerun strongly.
+    Unresolved,
+}
+
+impl IdentityStrength {
+    /// The wire word.
+    #[must_use]
+    pub fn word(self) -> &'static str {
+        match self {
+            Self::Content => "content",
+            Self::Version => "version",
+            Self::Endpoint => "endpoint",
+            Self::Unresolved => "unresolved",
+        }
+    }
+
+    /// The strength a wire word names.
+    #[must_use]
+    pub fn parse(word: &str) -> Option<Self> {
+        match word {
+            "content" => Some(Self::Content),
+            "version" => Some(Self::Version),
+            "endpoint" => Some(Self::Endpoint),
+            "unresolved" => Some(Self::Unresolved),
+            _ => None,
+        }
+    }
+}
+
 /// A verified `meta.ext_eval` (`openagents.ext-eval.v1`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Profile {
@@ -644,12 +812,30 @@ pub struct Profile {
     pub headline: Headline,
     /// The signed NIP-CJ execution request a hosted runner served.
     pub requester: Option<EventPointer>,
+    /// What the run relied on, when the runner recorded it.
+    pub reliance: Option<Reliance>,
+    /// The strongest identity the subject has, when the runner recorded it.
+    /// A subject named by an extension release and lock is `content`.
+    pub identity: Option<IdentityStrength>,
+    /// The task distribution the suite claims to sample, when the suite
+    /// declares one; otherwise the claim's distribution is the subject's
+    /// definition ID, "the tasks this component claims to help with". A
+    /// second suite that names the same distribution validates a claim; one
+    /// that names another transfers it.
+    pub distribution: Option<String>,
+    /// For a marginal report, the defaults release whose lock the baseline
+    /// arm held, so the baseline was "current defaults" rather than
+    /// "nothing admitted".
+    pub defaults: Option<EventPointer>,
 }
 
-/// The `meta.ext_eval` object for `profile`.
+/// The `meta.ext_eval` object for `profile`. The optional records
+/// (`reliance`, `identity`, `distribution`, `defaults`) are written only
+/// when the profile carries them, so a report written before they existed
+/// keeps its bytes.
 #[must_use]
 pub fn profile_value(profile: &Profile) -> Value {
-    json!({
+    let mut value = json!({
         "v": PROFILE_SCHEMA,
         "gate": profile.gate,
         "cases": profile.cases.iter().map(|(id, kind)| json!({"id": id, "kind": kind.word()})).collect::<Vec<_>>(),
@@ -659,7 +845,20 @@ pub fn profile_value(profile: &Profile) -> Value {
             "total": profile.headline.total,
         },
         "requester": profile.requester.as_ref().map(EventPointer::to_value),
-    })
+    });
+    if let Some(reliance) = &profile.reliance {
+        value["reliance"] = reliance.to_value();
+    }
+    if let Some(identity) = profile.identity {
+        value["identity"] = json!(identity.word());
+    }
+    if let Some(distribution) = &profile.distribution {
+        value["distribution"] = json!(distribution);
+    }
+    if let Some(defaults) = &profile.defaults {
+        value["defaults"] = defaults.to_value();
+    }
+    value
 }
 
 fn digest_text(value: &str) -> bool {
@@ -675,7 +874,20 @@ pub fn parse_profile(value: &Value) -> Result<Profile, ContractError> {
     let object = value
         .as_object()
         .ok_or_else(|| malformed("meta.ext_eval"))?;
-    reject(object, &["v", "gate", "cases", "headline", "requester"])?;
+    reject(
+        object,
+        &[
+            "v",
+            "gate",
+            "cases",
+            "headline",
+            "requester",
+            "reliance",
+            "identity",
+            "distribution",
+            "defaults",
+        ],
+    )?;
     if object.get("v").and_then(Value::as_str) != Some(PROFILE_SCHEMA) {
         return Err(ContractError::new(
             RefusalCode::UnsupportedVersion,
@@ -740,6 +952,28 @@ pub fn parse_profile(value: &Value) -> Result<Profile, ContractError> {
             "requester",
         )?),
     };
+    let reliance = match object.get("reliance") {
+        None | Some(Value::Null) => None,
+        Some(value) => Some(Reliance::parse(value)?),
+    };
+    let identity = match object.get("identity") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(word)) => Some(
+            IdentityStrength::parse(word).ok_or_else(|| unsupported("meta.ext_eval.identity"))?,
+        ),
+        Some(_) => return Err(malformed("meta.ext_eval.identity")),
+    };
+    let distribution = match object.get("distribution") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(id)) if !id.is_empty() && id.len() <= MAX_IDENTITY_BYTES => {
+            Some(id.clone())
+        }
+        Some(_) => return Err(malformed("meta.ext_eval.distribution")),
+    };
+    let defaults = match object.get("defaults") {
+        None | Some(Value::Null) => None,
+        Some(value) => Some(event_pointer(value, crate::kinds::EXT_RELEASE, "defaults")?),
+    };
     Ok(Profile {
         gate,
         cases,
@@ -749,6 +983,10 @@ pub fn parse_profile(value: &Value) -> Result<Profile, ContractError> {
             total,
         },
         requester,
+        reliance,
+        identity,
+        distribution,
+        defaults,
     })
 }
 
@@ -924,9 +1162,11 @@ pub fn parse_report(bytes: &[u8]) -> Result<Report, ContractError> {
     parse_artifact(require(object, "limitations")?)?;
     let subject = arm(require(object, "subject")?, "subject")?;
     if let Some(event) = &subject.definition.event
-        && event.kind != crate::kinds::EXT_RELEASE
+        && !SUBJECT_KINDS.contains(&event.kind)
     {
-        return Err(mismatch("subject.definition.event: a NIP-EXT release"));
+        return Err(mismatch(
+            "subject.definition.event: a NIP-EXT release or a NIP-CAP decision-service head",
+        ));
     }
     let baseline = match require(object, "baseline")? {
         Value::Null => None,
@@ -1017,6 +1257,12 @@ pub struct Publication {
     pub subject_release: Option<EventPointer>,
     /// The publication this one checks, when it's a check.
     pub checks: Option<String>,
+    /// The publication this one externally validates, when it ran a second
+    /// suite on the same task distribution.
+    pub validates: Option<String>,
+    /// The publication this one transfers, when it ran a second suite on
+    /// another task distribution.
+    pub transfer: Option<String>,
     /// A hosted result's signed NIP-CJ request, carried inline in
     /// `meta.ext_eval_request` and already checked with
     /// [`check_request`]. `None` when the result isn't hosted or doesn't
@@ -1047,6 +1293,49 @@ impl Publication {
     pub fn verdict(&self) -> Verdict {
         self.report.verdict
     }
+
+    /// The task distribution the claim is about: the one the suite
+    /// declared, else the subject's definition ID.
+    #[must_use]
+    pub fn distribution(&self) -> &str {
+        self.report
+            .profile
+            .distribution
+            .as_deref()
+            .unwrap_or(self.report.subject.definition.id.as_str())
+    }
+
+    /// The reliance set the run recorded, or an empty one.
+    #[must_use]
+    pub fn reliance(&self) -> Reliance {
+        self.report.profile.reliance.clone().unwrap_or_default()
+    }
+}
+
+/// What a result publication cites: the publication it checks (the same
+/// suite, rerun), validates (a second suite on the same distribution), or
+/// transfers (a second suite on another distribution).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Cites<'a> {
+    Check(&'a str),
+    Validates(&'a str),
+    Transfer(&'a str),
+}
+
+impl<'a> Cites<'a> {
+    fn marker(self) -> &'static str {
+        match self {
+            Self::Check(_) => "check",
+            Self::Validates(_) => "validates",
+            Self::Transfer(_) => "transfer",
+        }
+    }
+
+    fn id(self) -> &'a str {
+        match self {
+            Self::Check(id) | Self::Validates(id) | Self::Transfer(id) => id,
+        }
+    }
 }
 
 fn pointer_from(event: &crate::contracts::EventRef) -> EventPointer {
@@ -1069,7 +1358,20 @@ fn pointer_from(event: &crate::contracts::EventRef) -> EventPointer {
 /// When the report isn't valid under the profile, its suite has no
 /// release, or `checks` isn't an event ID.
 pub fn publication(report: &str, checks: Option<&str>) -> Result<Unsigned, ContractError> {
-    publication_with(report, checks, None)
+    publication_with(report, checks.map(Cites::Check), None)
+}
+
+/// [`publication`] for a result that cites another as a check, an
+/// external validation, or a transfer.
+///
+/// # Errors
+///
+/// As [`publication`].
+pub fn publication_citing(
+    report: &str,
+    cites: Option<Cites<'_>>,
+) -> Result<Unsigned, ContractError> {
+    publication_with(report, cites, None)
 }
 
 /// [`publication`] for a hosted run: the trainer's signed NIP-CJ
@@ -1087,12 +1389,26 @@ pub fn hosted_publication(
     checks: Option<&str>,
     request: &Event,
 ) -> Result<Unsigned, ContractError> {
-    publication_with(report, checks, Some(request))
+    publication_with(report, checks.map(Cites::Check), Some(request))
+}
+
+/// [`hosted_publication`] for a hosted result that cites another as a
+/// check, an external validation, or a transfer.
+///
+/// # Errors
+///
+/// As [`hosted_publication`].
+pub fn hosted_publication_citing(
+    report: &str,
+    cites: Option<Cites<'_>>,
+    request: &Event,
+) -> Result<Unsigned, ContractError> {
+    publication_with(report, cites, Some(request))
 }
 
 fn publication_with(
     report: &str,
-    checks: Option<&str>,
+    cites: Option<Cites<'_>>,
     request: Option<&Event>,
 ) -> Result<Unsigned, ContractError> {
     let parsed = parse_report(report.as_bytes())?;
@@ -1102,8 +1418,8 @@ fn publication_with(
     let suite = parsed.suite.event.as_ref().ok_or_else(|| {
         malformed("report.suite.event: publish the suite's release before its results")
     })?;
-    if checks.is_some_and(|id| !is_hex(id)) {
-        return Err(malformed("checks"));
+    if cites.is_some_and(|c| !is_hex(c.id())) {
+        return Err(malformed("cites"));
     }
     let value = parse_strict(report.as_bytes())?;
     let subject = value["subject"]["definition"].clone();
@@ -1133,8 +1449,8 @@ fn publication_with(
     if let Some(release) = &parsed.subject.definition.event {
         tags.push(tag(&["e", &release.id, "", "subject"]));
     }
-    if let Some(id) = checks {
-        tags.push(tag(&["e", id, "", "check"]));
+    if let Some(cites) = cites {
+        tags.push(tag(&["e", cites.id(), "", cites.marker()]));
     }
     if let Some(requester) = &parsed.profile.requester {
         tags.push(tag(&["e", &requester.id, "", "request"]));
@@ -1269,8 +1585,21 @@ pub fn parse_publication(event: &Event) -> Result<Publication, ContractError> {
         return Err(mismatch("the subject e tag follows the subject's release"));
     }
     let checks = one("check")?.map(str::to_string);
-    if checks.as_deref() == Some(event.id.as_str()) {
-        return Err(malformed("a publication can't check itself"));
+    let validates = one("validates")?.map(str::to_string);
+    let transfer = one("transfer")?.map(str::to_string);
+    let links = [&checks, &validates, &transfer]
+        .iter()
+        .filter(|l| l.is_some())
+        .count();
+    if links > 1 {
+        return Err(malformed(
+            "a publication cites at most one of check, validates, and transfer",
+        ));
+    }
+    for link in [&checks, &validates, &transfer] {
+        if link.as_deref() == Some(event.id.as_str()) {
+            return Err(malformed("a publication can't cite itself"));
+        }
     }
     let request = one("request")?;
     let people: Vec<&str> = event.tag_values("p").collect();
@@ -1297,6 +1626,8 @@ pub fn parse_publication(event: &Event) -> Result<Publication, ContractError> {
         suite_release,
         subject_release,
         checks,
+        validates,
+        transfer,
         request: inline_request,
     })
 }
@@ -1385,6 +1716,115 @@ pub fn linkage(original: &Publication, check: &Publication) -> Linkage {
     }
 }
 
+/// Whether a second suite is independent of the artifact it tests. A
+/// different signer is provenance, not independence; independence needs
+/// chronology too: the artifact's release was locked before the suite's
+/// release appeared, so its author could not have tuned it against the
+/// suite.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Independence {
+    /// Another signer wrote the suite, and it appeared after the subject's
+    /// release.
+    Independent,
+    /// The suite's release and the subject's release have one signer.
+    SameSigner,
+    /// The suite's release is not newer than the subject's, so the
+    /// subject could have been tuned against it.
+    SuiteNotAfterSubject,
+}
+
+/// How a publication that ran a second suite relates to the original it
+/// cites.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Validation {
+    /// A second suite on the same task distribution, with how independent
+    /// it is: an externally validating result when `Independent`.
+    Validates(Independence),
+    /// A second suite on another task distribution: a new claim, not a
+    /// stronger version of the old one. A result that claimed `validates`
+    /// but named another distribution reads as a transfer.
+    Transfer(Independence),
+    /// Not a validation of this original: it doesn't cite it with the
+    /// `validates` or `transfer` marker, it ran the same suite, or it
+    /// tested another subject or subject lock.
+    NotAValidation,
+}
+
+impl Validation {
+    /// Whether this is an externally validating result the essay's
+    /// candidate policy may count: same distribution and independent.
+    #[must_use]
+    pub fn externally_validates(self) -> bool {
+        matches!(self, Self::Validates(Independence::Independent))
+    }
+}
+
+/// How `second` relates to `original` as a validation, from the two
+/// publications and the two NIP-EXT releases they name: `suite_release`
+/// is the second suite's release (the one `second` cites with the `suite`
+/// marker) and `subject_release` the subject's. A validation has the same
+/// subject DefinitionRef and subject-arm lock as the original, a different
+/// suite, and names the original with `validates` or `transfer`; whether
+/// its distribution matches decides which, and the releases' signers and
+/// creation times decide independence. Whether a validating result
+/// changes a candidate's standing is the host's policy.
+///
+/// # Errors
+///
+/// [`RefusalCode::IdentityMismatch`] when a release isn't the one a
+/// publication names, or the original's subject isn't published.
+pub fn validation(
+    original: &Publication,
+    second: &Publication,
+    suite_release: &Event,
+    subject_release: &Event,
+) -> Result<Validation, ContractError> {
+    let claimed_validates = second.validates.as_deref() == Some(original.id.as_str());
+    let claimed_transfer = second.transfer.as_deref() == Some(original.id.as_str());
+    if !claimed_validates && !claimed_transfer {
+        return Ok(Validation::NotAValidation);
+    }
+    let same_subject = |a: &DefinitionRef, b: &DefinitionRef| {
+        a.id == b.id && a.artifact.digest == b.artifact.digest && a.artifact.size == b.artifact.size
+    };
+    if !same_subject(
+        &second.report.subject.definition,
+        &original.report.subject.definition,
+    ) || second.report.subject.lock.digest != original.report.subject.lock.digest
+        || second.report.suite.digest == original.report.suite.digest
+    {
+        return Ok(Validation::NotAValidation);
+    }
+    if suite_release.kind != crate::kinds::EXT_RELEASE
+        || suite_release.id != second.suite_release.id
+        || suite_release.pubkey != second.suite_release.pubkey
+    {
+        return Err(mismatch("suite_release: not the second suite's release"));
+    }
+    let subject = original
+        .subject_release
+        .as_ref()
+        .ok_or_else(|| mismatch("the original's subject isn't published"))?;
+    if !SUBJECT_KINDS.contains(&subject_release.kind)
+        || subject_release.id != subject.id
+        || subject_release.pubkey != subject.pubkey
+    {
+        return Err(mismatch("subject_release: not the subject's release"));
+    }
+    let independence = if suite_release.pubkey == subject_release.pubkey {
+        Independence::SameSigner
+    } else if suite_release.created_at <= subject_release.created_at {
+        Independence::SuiteNotAfterSubject
+    } else {
+        Independence::Independent
+    };
+    if claimed_validates && second.distribution() == original.distribution() {
+        Ok(Validation::Validates(independence))
+    } else {
+        Ok(Validation::Transfer(independence))
+    }
+}
+
 /// Checks the signed NIP-CJ execution request a hosted result names: the
 /// exact event, its signature, and its worker (`p`) as the result's
 /// signer, the hosted runner. The request's encrypted body is the
@@ -1431,6 +1871,20 @@ pub fn verified_trainer<'a>(
     Ok(result.trainer())
 }
 
+/// The stakes an adoption decision states: what a wrong decision by the
+/// component could do, and how hard it is to undo. Evidence adoption
+/// demands rises with them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Stakes {
+    /// `low`, `moderate`, or `severe`.
+    pub severity: String,
+    /// `none`, `read`, `write`, `act`, or `spend`: the widest effect the
+    /// component holds under its operational grant.
+    pub authority: String,
+    /// `reversible`, `costly`, or `irreversible`.
+    pub reversibility: String,
+}
+
 /// A verified adoption decision (`openagents.eval-admission.v1`) as the
 /// profile reads it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1439,17 +1893,59 @@ pub struct Admission {
     pub subject: DefinitionRef,
     /// The cited reports' digests.
     pub reports: Vec<String>,
+    /// The cited externally validating reports' digests: results on a
+    /// second, independent suite. An `admit` cites at least one.
+    pub validation: Vec<String>,
+    /// The marginal report's digest (current defaults plus the candidate
+    /// against current defaults), or `None` while the defaults are empty.
+    pub marginal: Option<String>,
+    /// The regression report's digest (the whole default set with the
+    /// candidate), or `None`.
+    pub regression: Option<String>,
+    /// The reliability evidence's digest (repeats, robustness, calibration,
+    /// tails, abstention, composition depth), or `None`.
+    pub reliability: Option<String>,
+    /// The effective authority of the default set before and after, as two
+    /// effects-object digests, or `None`.
+    pub authority: Option<(String, String)>,
+    /// The stakes the decision was taken under, or `None`.
+    pub stakes: Option<Stakes>,
     /// `admit`, `reject`, or `inconclusive`.
     pub decision: String,
     pub issuer: String,
     pub expires_at: u64,
 }
 
+fn artifact_digests(
+    object: &serde_json::Map<String, Value>,
+    key: &str,
+) -> Result<Vec<String>, ContractError> {
+    let items = require(object, key)?
+        .as_array()
+        .ok_or_else(|| malformed(key))?;
+    items
+        .iter()
+        .map(|item| parse_artifact(item).map(|a| a.digest))
+        .collect()
+}
+
+fn optional_digest(
+    object: &serde_json::Map<String, Value>,
+    key: &str,
+) -> Result<Option<String>, ContractError> {
+    match object.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(value) => Ok(Some(parse_artifact(value)?.digest)),
+    }
+}
+
 /// Checks an admission document's bytes.
 ///
 /// # Errors
 ///
-/// A typed refusal naming the first check that failed.
+/// A typed refusal naming the first check that failed, and
+/// [`RefusalCode::NotAdmitted`] for an `admit` that cites no externally
+/// validating result.
 pub fn parse_admission(bytes: &[u8]) -> Result<Admission, ContractError> {
     let value = parse_strict(bytes)?;
     let object = value.as_object().ok_or_else(|| malformed("admission"))?;
@@ -1460,6 +1956,12 @@ pub fn parse_admission(bytes: &[u8]) -> Result<Admission, ContractError> {
             "requires",
             "subject",
             "reports",
+            "validation",
+            "marginal",
+            "regression",
+            "reliability",
+            "authority",
+            "stakes",
             "policy",
             "scope",
             "decision",
@@ -1473,18 +1975,63 @@ pub fn parse_admission(bytes: &[u8]) -> Result<Admission, ContractError> {
     }
     requires_empty(object)?;
     let subject = parse_definition(require(object, "subject")?)?;
-    let items = require(object, "reports")?
-        .as_array()
-        .ok_or_else(|| malformed("reports"))?;
-    let mut reports = Vec::new();
-    for item in items {
-        reports.push(parse_artifact(item)?.digest);
-    }
+    let reports = artifact_digests(object, "reports")?;
+    let validation = match object.get("validation") {
+        None | Some(Value::Null) => Vec::new(),
+        Some(_) => artifact_digests(object, "validation")?,
+    };
+    let marginal = optional_digest(object, "marginal")?;
+    let regression = optional_digest(object, "regression")?;
+    let reliability = optional_digest(object, "reliability")?;
+    let authority = match object.get("authority") {
+        None | Some(Value::Null) => None,
+        Some(value) => {
+            let pair = value.as_object().ok_or_else(|| malformed("authority"))?;
+            reject(pair, &["before", "after"])?;
+            Some((
+                parse_artifact(require(pair, "before")?)?.digest,
+                parse_artifact(require(pair, "after")?)?.digest,
+            ))
+        }
+    };
+    let stakes = match object.get("stakes") {
+        None | Some(Value::Null) => None,
+        Some(value) => {
+            let stakes = value.as_object().ok_or_else(|| malformed("stakes"))?;
+            reject(stakes, &["severity", "authority", "reversibility"])?;
+            let severity = text(stakes, "severity")?;
+            let authority = text(stakes, "authority")?;
+            let reversibility = text(stakes, "reversibility")?;
+            if !matches!(severity.as_str(), "low" | "moderate" | "severe")
+                || !matches!(
+                    authority.as_str(),
+                    "none" | "read" | "write" | "act" | "spend"
+                )
+                || !matches!(
+                    reversibility.as_str(),
+                    "reversible" | "costly" | "irreversible"
+                )
+            {
+                return Err(unsupported("stakes"));
+            }
+            Some(Stakes {
+                severity,
+                authority,
+                reversibility,
+            })
+        }
+    };
     parse_definition(require(object, "policy")?)?;
     parse_artifact(require(object, "scope")?)?;
     let decision = text(object, "decision")?;
     if !matches!(decision.as_str(), "admit" | "reject" | "inconclusive") {
         return Err(unsupported("decision"));
+    }
+    if decision == "admit" && validation.is_empty() {
+        return Err(ContractError::new(
+            RefusalCode::NotAdmitted,
+            "an admit cites at least one externally validating result in validation",
+        ));
     }
     let issuer = text(object, "issuer")?;
     if !is_hex(&issuer) {
@@ -1496,6 +2043,12 @@ pub fn parse_admission(bytes: &[u8]) -> Result<Admission, ContractError> {
     Ok(Admission {
         subject,
         reports,
+        validation,
+        marginal,
+        regression,
+        reliability,
+        authority,
+        stakes,
         decision,
         issuer,
         expires_at,

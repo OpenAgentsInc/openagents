@@ -4,15 +4,20 @@
 //! A **check** is a published extension evaluation result
 //! ([`crate::eval_ext`]) that reruns another trainer's published result on
 //! the same suite, subject, and subject lock, and cites it with the `check`
-//! marker. A check that confirms the result credits three people: the
-//! **checker**, the **evaluator** of the result, and the **suite author**.
+//! marker. A check that followed the protocol credits three people whether
+//! it confirms or disputes the result: the **checker**, the **evaluator**
+//! of the result, and the **suite author**. Credit is for verification
+//! work, not for agreement; a dispute carries at least as much information
+//! as a fourth confirmation. Adoption (`eval-adopt`) still needs a
+//! confirming check.
 //!
 //! Uniqueness is rule-derived and per role: each award credits exactly one
 //! role, and its key is `eval-check:<season>:<suite release>:<role>:<pubkey>`,
 //! so a season pays each key at most once in each role per suite version,
-//! however many checks confirm the result. When one key holds two roles in
-//! a completion, it is paid once, in the larger role (the earlier role on a
-//! tie). A disputed check earns nothing.
+//! however many checks it gets. When one key holds two roles in a
+//! completion, it is paid once, in the larger role (the earlier role on a
+//! tie). An inconclusive check, or a check of an inconclusive result, earns
+//! nothing: neither is a verdict to verify.
 
 use std::collections::BTreeSet;
 
@@ -208,23 +213,25 @@ fn context(what: &str, error: ContractError) -> ContractError {
     ContractError::new(error.code, format!("{what}: {}", error.detail))
 }
 
-/// Whether `check` confirms `result` for credit: it cites the result with
-/// the `check` marker, its trainer is neither the result's trainer nor the
-/// suite author, it is a check by [`linkage`], it confirms, neither verdict
-/// is `inconclusive`, and it was published after the result. Hosted
-/// results' requests must be among `requests` and verify.
+/// Whether `check` is a rerun of `result` that earns credit: it cites the
+/// result with the `check` marker, its trainer is neither the result's
+/// trainer nor the suite author, it is a check by [`linkage`] (confirming
+/// or disputing), neither verdict is `inconclusive`, and it was published
+/// after the result. Hosted results' requests must be among `requests` and
+/// verify.
 ///
-/// Returns the checker's and the result's trainers.
+/// Returns the checker's and the result's trainers, and whether the check
+/// confirms.
 ///
 /// # Errors
 ///
 /// [`RefusalCode::NotAdmitted`] when the check earns nothing; other codes
 /// when an event isn't the one it must be.
-pub fn confirmed_check(
+pub fn credited_check(
     result: &Publication,
     check: &Publication,
     requests: &[Event],
-) -> Result<(String, String), ContractError> {
+) -> Result<(String, String, Linkage), ContractError> {
     let refuse = |why: &str| {
         Err(ContractError::new(
             RefusalCode::NotAdmitted,
@@ -248,22 +255,46 @@ pub fn confirmed_check(
             "the checker wrote the suite: checking results on your own tests earns nothing",
         );
     }
-    match linkage(result, check) {
-        Linkage::Confirm => {}
-        Linkage::Dispute => {
-            return refuse("the check disputes the result: a disputed check earns nothing");
-        }
+    let linkage = match linkage(result, check) {
+        linkage @ (Linkage::Confirm | Linkage::Dispute) => linkage,
         Linkage::NotACheck => {
             return refuse("not a check of this result: another suite, subject, or subject lock");
         }
-    }
+    };
     if result.verdict() == Verdict::Inconclusive {
-        return refuse("an inconclusive result can't be confirmed");
+        return refuse("an inconclusive result has no verdict to verify");
+    }
+    if check.verdict() == Verdict::Inconclusive {
+        return refuse("an inconclusive check verifies nothing");
     }
     if check.created_at <= result.created_at {
         return refuse("the check isn't newer than the result it checks");
     }
-    Ok((checker.to_string(), evaluator.to_string()))
+    Ok((checker.to_string(), evaluator.to_string(), linkage))
+}
+
+/// [`credited_check`] narrowed to a check that **confirms** the result:
+/// what adoption counts and what the candidate policy's "confirmed by
+/// three trainers" reads. A dispute earns credit but confirms nothing.
+///
+/// Returns the checker's and the result's trainers.
+///
+/// # Errors
+///
+/// As [`credited_check`], and [`RefusalCode::NotAdmitted`] for a dispute.
+pub fn confirmed_check(
+    result: &Publication,
+    check: &Publication,
+    requests: &[Event],
+) -> Result<(String, String), ContractError> {
+    let (checker, evaluator, linkage) = credited_check(result, check, requests)?;
+    if linkage == Linkage::Dispute {
+        return Err(ContractError::new(
+            RefusalCode::NotAdmitted,
+            "the check disputes the result: it earns credit but confirms nothing",
+        ));
+    }
+    Ok((checker, evaluator))
 }
 
 /// The `eval-check` rule. A check completes the quest when all hold:
@@ -275,7 +306,8 @@ pub fn confirmed_check(
 /// 3. The checker is neither the evaluator nor the suite author; a hosted
 ///    result's requester stands in for its evaluator, and its request is
 ///    among `requests` and verifies.
-/// 4. The verdicts are equal and neither is `inconclusive`.
+/// 4. Neither verdict is `inconclusive`. The check may confirm or dispute
+///    the result: credit is for the rerun, not for agreement.
 /// 5. The check was published after the result, and both inside the
 ///    season.
 ///
@@ -308,7 +340,7 @@ pub fn check_eval_check(
             )));
         }
     }
-    let (checker, evaluator) = confirmed_check(&parsed_result, &parsed_check, requests)?;
+    let (checker, evaluator, _) = credited_check(&parsed_result, &parsed_check, requests)?;
     let season = &quest.season;
     for (what, event) in [("result", result), ("check", check)] {
         if event.created_at < season.opens_at || event.created_at > season.closes_at {

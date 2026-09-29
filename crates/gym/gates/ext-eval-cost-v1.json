@@ -1,0 +1,52 @@
+{
+  "$comment": [
+    "Answers one question: does admitting this extension make the agent do its suite at a lower cost, without doing it worse? crates/ext-eval runs a suite of cases with the extension admitted (the subject arm) and with it absent (the baseline arm), scores both, and hands this rule the suite-level comparison. docs/extensions/evaluation.md, Scoring and the verdict, states the rule in prose.",
+    "Its primary outcome is the cost per attempt, lower is better, and it holds correctness non-inferior: it keeps (Better) only when the subject arm passes at least as many compared cases as the baseline, passes every should-not-fire case the baseline passes, lowers the cost per attempt by more than the spread between repeats of the same arm, and is not materially worse on the mean score (it may fall by at most the spread bound) or the time per attempt (max_increase beyond the spread). It rejects (Worse) when the subject arm passes fewer cases or loses a should-not-fire case. Everything else is inconclusive (No clear change).",
+    "This is the claim the essay on test-time capabilities calls 'the same correctness at a fifth of the cost': a capability claim whose predeclared primary outcome is cost and whose non-inferiority bounds hold correctness and time. ext-eval-v2 is the correctness-primary rule; a suite names one or the other in its acceptance, and a result reads under the gate it names. A cheaper run that is also wrong is never Better under either.",
+    "The spread is measured on the run being judged, never carried over from another, as in ext-eval-v2. A run of one attempt has no spread, so runs = 1 leaves every criterion unjudged and the verdict is inconclusive whatever the costs say.",
+    "An unknown cost is unknown, never zero and never a saving: a run whose cost isn't priced (Coder's gateway lanes today) cannot read Better under this rule."
+  ],
+  "schema": "openagents.gym.gate.v2",
+  "id": "ext-eval-cost-v1",
+  "question": "Does admitting this extension make the agent do its suite at a lower cost per attempt than running without it, while passing no fewer cases and being not materially worse on score or time?",
+  "rule": {
+    "decides": "ext_eval",
+    "min_runs": {
+      "value": 2,
+      "basis": "derived",
+      "evidence": [
+        {
+          "kind": "code",
+          "id": "ext_eval::score::spread"
+        }
+      ],
+      "why": "The spread between repeats is the highest minus the lowest of an arm's attempts, and one attempt has no spread. Two is the fewest runs per case from which the rule can tell a change from the agent's own variation; the case format's default is three."
+    },
+    "spread_multiple": {
+      "value": 1.0,
+      "basis": "convention",
+      "evidence": [],
+      "why": "A cost saving has to be larger than the spread between repeats of the same arm, which is one spread, before it reads as a change rather than the agent's own variation; the same convention ext-eval-v2 applies to the score."
+    },
+    "max_increase": {
+      "value": 0.5,
+      "basis": "convention",
+      "evidence": [],
+      "why": "How much more time per attempt the subject arm may take, relative to the baseline arm and beyond the spread between repeats, and still count as not materially worse. Half again is the stated product rule; it is not a measurement of any suite, so it is labelled a convention."
+    },
+    "primary": {
+      "metric": "cost_usd",
+      "direction": "lower"
+    },
+    "non_inferiority": [
+      "cases_passed",
+      "mean_score",
+      "seconds"
+    ],
+    "pending_measurement": {
+      "quantity": "the spread of a suite's cost per attempt across whole evaluations repeated on the same extension",
+      "issue": null,
+      "why": "Until whole evaluations are repeated and their cost spread recorded, the rule reads the spread between attempts inside the run it judges, which a run of three can understate. The direction of that error is towards Better, which is why an inconclusive result stays the default and adoption needs confirming checks by other trainers and an externally validating result."
+    }
+  }
+}

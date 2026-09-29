@@ -18,7 +18,7 @@ harmful error directions, human escalation, and irreversible outcomes must be
 defined for the actual workload. A coding benchmark cannot admit an agent for
 another domain merely because both use the same model or NIP schemas.
 
-Test-time capabilities: the [extension evaluation profile](#extension-evaluation-profile) carries the [capability delta](../../docs/essays/2026-09-29-test-time-capabilities.md#3-capability-delta) (subject and baseline arms), [reach and restraint](../../docs/essays/2026-09-29-test-time-capabilities.md#4-reach-and-restraint) (`should-fire` and `should-not-fire` cases), [verified capabilities](../../docs/essays/2026-09-29-test-time-capabilities.md#7-verified-capability) (checks), and [capability adoption](../../docs/essays/2026-09-29-test-time-capabilities.md#8-capability-adoption) ([mapping](../../docs/essays/2026-09-29-test-time-capabilities.md#how-the-protocol-carries-test-time-capabilities)).
+Test-time capabilities: the [extension evaluation profile](#extension-evaluation-profile) carries the [capability claim](../../docs/essays/2026-09-29-test-time-capabilities.md#1-test-time-capability-ttcap) and its [delta](../../docs/essays/2026-09-29-test-time-capabilities.md#3-capability-delta) (subject and baseline arms, the claim's scope in `meta.ext_eval`), [reach and restraint](../../docs/essays/2026-09-29-test-time-capabilities.md#4-reach-and-restraint) (`should-fire` and `should-not-fire` cases), [reproduced capability claims](../../docs/essays/2026-09-29-test-time-capabilities.md#7-reproduced-capability-claim) (checks, with the reliance set a rerun shared), [externally validated capability claims](../../docs/essays/2026-09-29-test-time-capabilities.md#8-externally-validated-capability-claim) (`validates` results on an independent second suite), and [capability adoption](../../docs/essays/2026-09-29-test-time-capabilities.md#9-capability-adoption) (the admission's `validation`, `marginal`, `regression`, `reliability`, `authority`, and `stakes`) ([mapping](../../docs/essays/2026-09-29-test-time-capabilities.md#how-the-protocol-carries-test-time-capabilities)).
 
 ## Suite identity and intended claim
 
@@ -29,7 +29,16 @@ partition, labels, and metrics are ArtifactRefs. Purpose is
 `decision`, `context`, `routing`, `operation`, or `agent`. Case and partition
 artifacts list stable case IDs and exact input/snapshot/expected-evidence
 references. Workload describes collection method, task families, sampling,
-known exclusions, and whether cases are synthetic or observed. Labels name
+known exclusions, and whether cases are synthetic or observed.
+
+The workload is the **task distribution** a suite claims to sample (the D
+of a capability claim); the cases and partition are the **sampled suite**
+(the S). They are different objects: a reproduction holds S fixed and
+changes who runs it, an external validation holds D and changes S, and a
+transfer changes D. A workload MAY name its distribution with a stable
+`distribution` ID, so a second suite can say whether it samples the same
+population; a suite that names none claims the subject's own definition
+ID, "the tasks this component claims to help with". Labels name
 their source, rubric, annotator/procedure, and uncertainty. Environment pins
 the runner, toolchain, execution policy, and relevant hardware/configuration.
 
@@ -73,7 +82,12 @@ Report repeated attempts and selected-best policies explicitly. Each measurement
 names a suite metric. Value is a finite number or null; denominator and
 unknown count are nonnegative integers; uncertainty is a pinned method/result
 ArtifactRef or null; evidence contains receipt/artifact references. Missing
-observations cannot be counted as zero cost or successful cases.
+observations cannot be counted as zero cost or successful cases. A
+`comparison` measurement is an estimated treatment effect: its uncertainty,
+when given, names an interval and the method that produced it, with the
+task as the unit and repeated attempts nested inside it (a paired bootstrap
+over per-case differences is a floor, a hierarchical interval the goal).
+A verdict is an engineering gate over the estimate, not the estimate.
 
 Runs establish matched-case comparisons through exact case/input identities.
 If baseline and candidate differ in sources, budgets, recipients, hardware,
@@ -88,7 +102,7 @@ and adverse outcomes, with explicitly unknown values when unmeasured:
 
 | Claim | Required observations |
 | --- | --- |
-| Better semantic decisions | Label coverage, unavailable/refused answers, harmful error directions, per-family results, and abstention outcomes. Calibration claims need a pinned calibration metric and labeled partition. |
+| Better semantic decisions | Label coverage, unavailable/refused answers, harmful error directions, per-family results, and abstention outcomes. Calibration claims name `ece` (expected calibration error) and `brier` on a labeled partition, and, for a decision that serves through thresholds, the operating points: precision and coverage above each serving threshold, the abstention or escalation rate, and the risk–coverage curve they lie on. |
 | Better context | Candidate retrieval recall and selected-evidence recall separately; missing mandatory constraints; stale inputs; expansion rate; decision overhead; resulting task outcomes. |
 | Better compression or representation | Source completeness, summary sufficiency failures, expansion/recovery, and downstream correctness alongside bytes/tokens. |
 | Better tool discovery | Eligible catalog and shortlist size, omitted needed operations, false activations, argument failures, schema/manual bytes, and full-task outcomes. |
@@ -249,8 +263,13 @@ check linkage), `cj_conversation` (the draft, cards, and offers), and
 [`eval-case.v1`](schemas/eval-case.v1.json) and
 [`ext-eval.v1`](schemas/ext-eval.v1.json); the fixtures are
 `crates/nostr/fixtures/eval-ext/`. The runner, the hosted runner, the
-referee, and the clients that use these records are not built yet (epic
-[#9931](https://github.com/OpenAgentsInc/openagents/issues/9931)). This
+referee, and the chat clients were built the same day (epic
+[#9931](https://github.com/OpenAgentsInc/openagents/issues/9931),
+[hosted runs](#hosted-runs)); the profile's claim-scope records (the
+reliance set, identity strength, distribution, defaults), the `validates`
+and `transfer` markers, the admission's validation and marginal fields,
+and the cost-primary gate landed under
+[#9956](https://github.com/OpenAgentsInc/openagents/issues/9956). This
 profile carries the results of `openagents ext eval`
 ([extension evaluation](../../docs/extensions/evaluation.md)): a suite of
 cases run against an agent with one extension admitted (the `subject`
@@ -279,8 +298,16 @@ lexicographic order of `id`, each a closed object:
 Every case file's ArtifactRef (`prompt`, `config`, each grader) carries
 schema `openagents.eval-case.v1`, and every file, fixtures included, is at
 most 1 MiB. `acceptance` is the DefinitionRef of the Gym gate that decides
-the verdict: its component is `ext-eval-v2`, or `ext-eval-v1` for a
-suite published before 2026-09-29. `labels` names the
+the verdict. Every gate declares the claim's **primary outcome** and the
+measures it holds **non-inferior** (`rule.primary` and
+`rule.non_inferiority` in the gate file, inside its digest): `ext-eval-v2`
+is correctness-primary (`cases_passed`, higher; cost and time may not get
+materially worse, and improving them alone is never Better);
+`ext-eval-cost-v1` is cost-primary (`cost_usd`, lower; cases passed, mean
+score, and time held non-inferior), the claim "the same correctness at a
+lower cost"; `ext-eval-v1` names neither and reads as `ext-eval-v2` did,
+for suites published before 2026-09-29. A cheaper run that is also wrong
+is never Better under any of them. `labels` names the
 suite author as the label source; a suite written by the extension's
 publisher says so, and a reader weighs it as the publisher's own claim.
 
@@ -297,11 +324,21 @@ published keep their meaning.
 
 The report is `openagents.eval-report.v1` with these profile rules:
 
-- `subject.definition` is the extension's DefinitionRef, with `event`
-  set to its NIP-EXT release EventRef when published. `subject.lock` is
-  the run lock the subject arm held. `baseline` has the same shape with no
-  extension components in its lock; a report without a baseline can't
-  claim a change and has verdict `inconclusive`.
+- `subject.definition` is the subject's DefinitionRef, with `event`
+  set to its release when published. The subject is one of four kinds: an
+  extension (a NIP-EXT `3184` release: tool, plugin, skill, or package), a
+  knowledge entry (NIP-KB's own profile, on a `3190`), a decision service
+  (a NIP-CAP `30180` head, with `configuration` pinning the question set
+  as `name@digest`), or a delegate (a NIP-CAP operation DefinitionRef with
+  the engine's artifact in `subject.lock`, and no event). Credit rules that
+  pin a subject release stay on NIP-EXT releases. `subject.lock` is the
+  run lock the subject arm held. `baseline` has the same shape with no
+  component of the subject's release in its lock. A **standalone**
+  report's baseline holds nothing admitted; a **marginal** report's
+  baseline holds the current defaults (the `coder-defaults` release named
+  in `meta.ext_eval.defaults`), so its delta is the candidate's marginal
+  effect on the composition, which is what adoption decides on. A report
+  without a baseline can't claim a change and has verdict `inconclusive`.
 - `runs` entries carry `{arm, case, attempt, outcome, receipts,
   artifacts}` where `artifacts` includes the run's ATIF log ArtifactRef
   (schema `ATIF-v1.8`, [NIP-ATIF](NIP-ATIF.md)) and the grader answers.
@@ -312,11 +349,32 @@ The report is `openagents.eval-report.v1` with these profile rules:
   and repeated in `meta.ext_eval.gate`.
 - `meta.ext_eval` is `{v: "openagents.ext-eval.v1", gate, cases:
   [{id, kind}], headline: {subject_passed, baseline_passed, total},
-  requester}`, closed. `gate` is the gate's `sha256:` digest; `cases`
+  requester, reliance?, identity?, distribution?, defaults?}`, closed.
+  `gate` is the gate's `sha256:` digest; `cases`
   repeats each case's ID and kind; `total` is the case count and neither
   arm passes more; `baseline_passed` is null exactly when `baseline` is.
   `requester` is null, or the `{id, pubkey, kind: 25920}` of the signed
-  NIP-CJ execution request a hosted runner served.
+  NIP-CJ execution request a hosted runner served. The four optional
+  records are the rest of the claim's scope, and a report written before
+  they existed keeps its bytes:
+  - `reliance` is the run's **reliance set**, a closed object `{runner,
+    host, door, model, agent, selector, graders}` whose entries are the
+    identities the runner could name (a pubkey, a `name@version`, a
+    digest of the hostname, never the hostname) or null. A reader compares
+    a check's with the original's: what both named alike the rerun
+    **shared** (independent as a signing principal, not as that
+    platform), what both named differently it **varied**, and what either
+    left null is unknown, not independent.
+  - `identity` is the strongest identity the subject has: `content`
+    (exact bytes under a lock: every extension), `version` (a build or
+    weights digest a provider declares), `endpoint` (only a provider,
+    model name, or endpoint is known), or `unresolved`. Reproducibility
+    cannot be stronger than identity.
+  - `distribution` is the task distribution the suite's workload claims
+    (its `distribution` ID), or null for the subject's definition ID.
+  - `defaults` is the `{id, pubkey, kind: 3184}` of the defaults release
+    whose lock the baseline arm held, for a marginal report; null for a
+    standalone one.
 - The report is closed to NIP-EVAL's fields plus `meta`. `suite` is an
   ArtifactRef with schema `openagents.eval-suite.v1`, and with `event`,
   the suite's NIP-EXT release (kind `3184`), when published.
@@ -335,8 +393,11 @@ A result is a `3189` publication as above, with these additions:
   each with a marker in the fourth position (`["e", <id>, <relay or "">,
   <marker>]`): exactly one `suite` (the report's `suite.event`, required
   to publish), one `subject` exactly when the subject is published (its
-  `subject.definition.event`), at most one `check` naming the publication
-  this one checks, and one `request` exactly when the result is hosted. A
+  `subject.definition.event`), at most one of `check` (the publication
+  this one reruns on the same suite), `validates` (the publication this
+  one tests on a second suite of the same distribution), and `transfer`
+  (a second suite of another distribution), and one `request` exactly
+  when the result is hosted. A
   hosted result also carries exactly one `p` tag, the requesting trainer;
   any other result carries none. An `e` tag with another marker, or none,
   refuses.
@@ -371,6 +432,29 @@ otherwise; readers show both counts beside the original. A check with a
 different lock for the subject arm is not a check of that result; readers
 show it as a separate result. `eval_ext::confirms` decides this from the
 two signed events alone.
+
+### Validations
+
+A **validation** is a publication whose report has the same subject
+DefinitionRef and the same subject-arm lock as the publication it cites
+with the `validates` or `transfer` marker, and a *different* suite. It
+answers what a check can't: whether the delta was fitted to the author's
+own tests. Two things make it count, and a reader checks both from the
+two publications and the two NIP-EXT releases they name
+(`eval_ext::validation`): its **distribution** and its **independence**.
+A `validates` result whose distribution (its own `meta.ext_eval.distribution`
+or the subject's definition ID) equals the original's reads as a
+validation; one that names another distribution, or a `transfer` result,
+reads as a **transfer**, a new claim rather than a stronger version of the
+old one. Independence has two halves: the second suite's release is signed
+by someone other than the subject's release signer (**provenance**), and it
+was created after the subject's release (**chronology**), so the author
+could not have tuned the artifact against it. A same-signer or
+earlier-suite result stays visible and validates nothing. A validation
+that came out other than **Better** validates nothing either. Readers show
+a result's validations beside its checks. Whether one validation makes a
+tool a candidate is the host's policy; Coder's asks for one beside three
+confirming checks.
 
 ### Hosted runs
 
@@ -413,7 +497,20 @@ count against the trainer's runs.
 
 Adopting an extension into a host's defaults is an
 `openagents.eval-admission.v1` decision (above) whose `reports` cite the
-extension's published reports and their confirming checks. For Coder's
+extension's published reports and their confirming checks, and whose
+`validation` cites at least one externally validating result: an `admit`
+with an empty `validation` is refused. The decision may also cite, and a
+host's policy may require, `marginal` (the report whose baseline held the
+current defaults, once the defaults hold anything), `regression` (the
+whole default set with the candidate, on what it passed before),
+`reliability` (repeat consistency, robustness to changes that don't change
+the task, calibration, tail failures, abstention, and composition depth),
+`authority` (`{before, after}`: the default set's effective authority as
+two effects objects), and `stakes` (`{severity: low | moderate | severe,
+authority: none | read | write | act | spend, reversibility: reversible |
+costly | irreversible}`), with the evidence adoption demands rising with
+the stakes. Utility establishes the claim; safety and stakes decide
+admissibility; neither is traded against the other. For Coder's
 defaults, the admitted change is then published as a NIP-EXT release of
 the `coder-defaults` package that depends on the extension's release, and
 whose manifest `provenance.receipts` cites the admission's ArtifactRef
@@ -428,7 +525,11 @@ stays with its issuer. NIP-XP's `eval-adopt` rule reads the release.
 A promotion decision has `v: "openagents.eval-admission.v1"`, `subject`
 (DefinitionRef), `reports` (ArtifactRefs), `policy` (DefinitionRef), `scope`
 (ArtifactRef describing workload/model/recipient limits), `decision`
-(`admit`, `reject`, or `inconclusive`), `issuer` (pubkey), and `expires_at`.
+(`admit`, `reject`, or `inconclusive`), `issuer` (pubkey), and `expires_at`,
+and optionally `validation` (ArtifactRefs), `marginal`, `regression`, and
+`reliability` (ArtifactRefs or null), `authority` (`{before, after}` or
+null), and `stakes` (see [Adoption](#adoption)). An `admit` cites at least
+one validation.
 It is private by default and requires an independently trusted host/operator
 issuer. Admission applies only to the exact scoped subject and does not grant
 execution. Report publication never mutates an active lock, deployment, question

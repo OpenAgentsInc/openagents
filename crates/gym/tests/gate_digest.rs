@@ -21,10 +21,11 @@ const PROBABILITY_V1_LEGACY: &str =
     "gate:368cefd18f308119008db3099c8415af380c9d096d4cbcb6997196bfc6d82013";
 
 /// The gates committed to `crates/gym/gates/`.
-const SHIPPED: [&str; 7] = [
+const SHIPPED: [&str; 8] = [
     "decision-v1",
     "deployment-v1",
     "deployment-v2",
+    "ext-eval-cost-v1",
     "ext-eval-v1",
     "ext-eval-v2",
     "probability-v1",

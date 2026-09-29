@@ -173,6 +173,28 @@ pub fn published(by: &RelaySigner, run: &Run<'_>, checks: Option<&str>, at: u64)
     by.sign(at, parts.kind, parts.tags, parts.content)
 }
 
+/// [`published`] citing another publication as a check, an external
+/// validation, or a transfer.
+///
+/// # Panics
+///
+/// When the fixture isn't a valid publication, which a test would catch.
+#[must_use]
+pub fn published_citing(
+    by: &RelaySigner,
+    run: &Run<'_>,
+    cites: Option<eval_ext::Cites<'_>>,
+    at: u64,
+) -> Event {
+    let report = report(by.pubkey(), run);
+    let parts = match run.request {
+        Some(request) => eval_ext::hosted_publication_citing(&report, cites, request),
+        None => eval_ext::publication_citing(&report, cites),
+    }
+    .expect("a valid result");
+    by.sign(at, parts.kind, parts.tags, parts.content)
+}
+
 /// [`published`] for a hosted run without its request inline: a reader
 /// then needs the request from elsewhere.
 ///

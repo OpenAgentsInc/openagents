@@ -157,8 +157,11 @@ survives even if models trained other ways close the gap.
 What the divide implies for a test-time capability is a second bar. A
 capability meant for assistance needs a positive delta. A capability meant
 for automation needs, in addition, a machine-readable contract for its
-output, bounded authority, calibrated decisions, and behavior that
-repeats. A capability claim tells you that something helps. Automation
+output, bounded authority where it can act, calibrated uncertainty where
+it makes probabilistic decisions, and repeatably reliable behavior. A
+deterministic repository-mapping tool has no probabilities to calibrate
+and a typed judgment has nothing to write; each meets the parts of the
+bar that apply to it. A capability claim tells you that something helps. Automation
 asks whether software can safely depend on it, and the second question is
 not answered by the first.
 
@@ -207,12 +210,13 @@ retrieved knowledge, stored skills, memories, routing, and other agents
 can improve fixed-weight models at inference time. We propose treating
 these mechanisms uniformly as versioned *candidate* capabilities, and
 treating what each does for an agent as an empirical **capability claim**:
-a versioned, reproducible statement of the marginal effect of admitting
-that exact artifact into a particular agent system, not a property the
-artifact declares about itself. A claim is established by a controlled
-with-and-without evaluation, reproduced by someone other than its author,
-shown to hold on tasks its author didn't write, and only then eligible for
-adoption into a shared default agent. The chain is:
+a versioned empirical statement of the marginal effect of admitting that
+exact artifact into a particular agent system, not a property the
+artifact declares about itself. A controlled with-and-without evaluation
+establishes a capability claim. Independent rerunning may make it a
+reproduced claim; a new independent suite may make it externally
+validated; only then is it eligible for adoption into a shared default
+agent. The chain is:
 
 **artifact → admission → controlled delta → reproduction → external
 validation → adoption → credit.**
@@ -235,23 +239,39 @@ A **test-time capability** is an ability an agent gains, or loses, at
 inference time, without a weight update, because something was admitted
 into the run. The unit of account is not the component but the
 **capability claim** about it: *admitting artifact A to locked baseline
-agent B, under environment E and grant G, on task distribution D, judged
-by evaluation rule R, changed the outcomes R names by Δ, with a stated
-uncertainty.* The six letters are the experiment; the delta, its cost and
-latency, and its interval are the result. Every part of that scope is
-part of the claim. The same tool can add twenty points to one agent,
-nothing to a second, and three points to the first agent on another
-domain, and none of those results contradicts another, because each
-belongs to its baseline and its tasks. So the vocabulary has five objects,
-not one. Artifacts exist; claims are evidence; adoption is policy.
+agent B, under environment E and grant G, on task distribution D as
+sampled by suite S, judged by evaluation rule R, changed the outcomes R
+names by Δ, with a stated uncertainty.* The seven letters are the
+experiment; the delta, its cost and latency, and its interval are the
+result. D and S are different objects and the difference does work. D is
+the population of tasks the suite claims to represent, which its author
+has to state; S is the six tests actually written. A reproduction holds S
+fixed and changes who runs it. An external validation holds D and changes
+S. A transfer changes D to some D′, and is a new claim rather than a
+stronger version of the old one. Every part of that scope is part of the
+claim. The same tool can add twenty points to one agent, nothing to a
+second, and three points to the first agent on another domain, and none
+of those results contradicts another, because each belongs to its
+baseline and its distribution. So the vocabulary has five objects, not
+one. Artifacts exist; claims are evidence; adoption is policy.
 
 | Object | What it is |
 | --- | --- |
-| Candidate capability | An exact, versioned artifact that might help |
-| Capability claim | A measured delta with its whole scope, A, B, D, E, G, R, and its uncertainty |
-| Reproduced capability claim | The same claim rerun by someone other than its author, with a compatible result |
-| Externally validated capability claim | The improvement persisting on new tasks from the same distribution, written independently of the author |
+| Candidate capability | An identified artifact, service binding, or delegate implementation that might help, recorded at the strongest identity available: content-addressed (exact bytes), version-addressed (a build or weights version the provider declares), endpoint-addressed (only a provider, model name, or endpoint is known), or unresolved |
+| Capability claim | A measured delta with its whole scope, A, B, D, S, E, G, R, and its uncertainty |
+| Reproduced capability claim | The same claim rerun by someone other than its author, S held fixed, with a compatible result |
+| Externally validated capability claim | The improvement persisting on a new S from the same D, written independently of the author and revealed after the artifact was locked |
 | Adopted capability | A policy decision, taken on claims, to make the artifact part of a shared default |
+
+A remote model or service is a candidate whose bytes nobody but its
+provider holds, and that is an edge of the ontology rather than an
+implementation gap. The claim records the strongest identity it has, and
+**reproducibility cannot be stronger than identity**: a claim about
+exact bytes can be rerun on those bytes, a claim about a version only on
+what the provider still calls that version, and a claim about an endpoint
+only on whatever answers there now. Measurements against an
+endpoint-addressed candidate are valid measurements and weaker
+reproducibility claims, until the provider exposes something to pin.
 
 Having a component installed, described, or demonstrated makes no claim.
 And the effect is symmetric: admitting something can destroy capability as
@@ -631,7 +651,15 @@ accurate and miscalibrated moves every threshold to the wrong place.
 **How to measure it:** the judgment's latency and cost; the precision of
 whatever it serves without calling the large model; and its calibration
 on held-out data, with a proper scoring rule such as the Brier score or
-log loss and a calibration curve reported beside task accuracy.
+log loss and a calibration curve reported beside task accuracy. A router
+doesn't act on average calibration, though; it acts at thresholds, and a
+judge with a good global Brier score can still be badly calibrated in the
+narrow band where "never wrong fast" lives. So the measurement that
+matters is the **operating point**: the precision and the coverage above
+each serving threshold, the abstention or escalation rate, and the
+risk–coverage curve they lie on, which says how much traffic the judge
+can carry at a tolerated error rate; and how those move across task
+distributions.
 
 #### 6. Test-time delegation
 
@@ -862,9 +890,13 @@ tasks that reveal the next missing capability.
 **Why it matters:** it is the mechanism by which a network of contributors
 could improve an agent faster than one team can.
 
-**How to measure it:** not participant counts, but *incremental externally
-validated passes per adopted contribution*, with cost, latency, and
-harmful regressions reported alongside.
+**How to measure it:** not participant counts, and not raw passes either,
+since passes become an optimization target the moment adoption and
+credit depend on them and a hundred easy variations of one task would
+inflate them. The measure is *marginal externally validated utility on a
+declared task distribution per adopted contribution*, with regressions,
+cost, latency, and authority reported beside it. Raw new passes are
+reported too; they are not the target.
 
 ### Evals as the unit of account
 
@@ -959,8 +991,9 @@ capability can come from anyone, be tested by anyone, and, once adopted,
 reach every agent that uses the same defaults without a training run. The
 unit that compounds is not a longer prompt or a count of packages. It is a
 **capability claim with independent evidence**: an exact component
-version, a with-and-without result, confirming reruns by people who didn't
-write it, and a delta that survives tests they wrote.
+version, a with-and-without result, independent reruns by people who
+didn't write it, including disputes, and a delta that survives tests they
+wrote.
 
 What a network would add:
 
@@ -973,9 +1006,10 @@ What a network would add:
   reward model.
 - **Inheritance.** Adoption turns one confirmed result into a default for
   everyone, and inspectable run traces let anyone see what happened.
-- **Credit that tracks use.** Recognition for confirmations and adoptions,
-  the two events that show someone else's work was used, keeps the
-  incentive on components that help rather than components that exist.
+- **Credit that tracks use.** Recognition for valid verification attempts
+  and adoptions, the two events that show someone else's work was used,
+  keeps the incentive on components that help rather than components
+  that exist, and on verifying rather than agreeing.
 
 This is a hypothesis. Whether adding participants makes an agent
 measurably better has to be shown, measured the way the lexicon says.
@@ -994,7 +1028,12 @@ independent suites, held-out tasks, negative cases, marginal
 re-evaluation, and credit for disputes are not only hygiene for
 individual claims. They are what keeps the flywheel pointed at
 capability rather than at the tests, which is Goodhart's problem at the
-scale of a network.
+scale of a network. And it turns the essay's question around. The
+question is no longer only what a test-time capability means. It is
+whether a decentralized network can construct a trustworthy empirical
+record of which runtime components software can actually depend on. The
+lexicon is the record's vocabulary; the open questions below are what it
+would take to trust it.
 
 ### Related work and prior art
 
@@ -1144,7 +1183,7 @@ different things, and Part II says which is which.
 | ACES ([Kevin et al., 2026](https://arxiv.org/abs/2608.20614)) | current repository state, not a pinned version | yes: paired live trials | not described | not described | thresholds left to each team; no shared default described | not described | skills |
 | ToolBench and AnyTool ([Qin et al., 2024](https://arxiv.org/abs/2307.16789); [Du et al., 2024](https://arxiv.org/abs/2402.04253)) | not described | no: methods compared over one API pool | no per-component claim to reproduce | not described | not described | not described | tools |
 | in-toto, SLSA, Sigstore, reproducible builds | yes: digests, attestations, signatures | no | yes: independent rebuilds | no | no | no | software artifacts, not agent components |
-| This proposal | built: locks, digests, signed releases | built | built: checks by a different trainer | proposed, not built | built, none made | built for confirming checks and adoptions; disputes unpaid today, which Part III proposes to change | tools, plugins, skills, and knowledge entries through one report; delegation and judgment measured separately today |
+| This proposal | built: locks, digests, signed releases, identity strength recorded | built | built: checks by a different trainer, with the reliance set they shared recorded | built: a `validates` marker read for signer and chronology independence; none published yet | built, none made; validation required first | built for checks, confirming or disputing, and for adoptions | tools, plugins, skills, and knowledge entries through one report; a decision service may be a report's subject; delegation measured separately today |
 
 ACES, the closest, runs paired trials on the current repository state and
 leaves thresholds to teams; it describes no pinned versions, no third-party
@@ -1163,9 +1202,14 @@ corrections to any cell.
   it, such as the weights behind a hosted endpoint, can't be pinned by
   digest. What should a claim record about them, and when does a silent
   change upstream void a reproduction?
-- **Incentives for disagreement.** If reruns earn credit whichever way
-  they come out, what stops low-effort disputes, and what counts as a
-  rerun that followed the protocol?
+- **Evaluator incentives and independence.** Distinct signing keys are
+  not independent evaluators. Once verification earns credit, a network
+  has to detect or limit author–evaluator collusion, Sybil reproduction,
+  cartels that confirm one another, trivial external suites written to
+  farm validations, leaked hidden tests, deliberately weak baselines,
+  dispute farming, and one contribution split across identities. What
+  counts as a rerun that followed the protocol, and what evidence of
+  independence should a claim carry beyond a second key?
 - **Composition depth.** How many decisions deep does a judgment stay
   useful, how should a workflow's end-to-end reliability be reported
   beside its components' single-call numbers, and which recovery designs
@@ -1210,9 +1254,10 @@ corrections to any cell.
   interact with more thinking? Can a tool let a cheaper model with less
   reasoning match a stronger one, and when does extra reasoning still pay on
   top of a tool?
-- **Network evidence.** Does the flywheel turn? Its measure, incremental
-  externally validated passes per adopted contribution, should be reported
-  even when it's zero.
+- **Network evidence.** Does the flywheel turn? Its measure, marginal
+  externally validated utility on a declared distribution per adopted
+  contribution, should be reported even when it's zero, and raw passes
+  beside it, never instead of it.
 
 ## Part II: Our implementation
 
@@ -1234,8 +1279,8 @@ Status is the mechanism's, as the
 | [Judgment budget](#5-judgment-budget) | Jev and the [chat router](../coder/design/2026-09-28-chat-router.md), tiers T0 to T4 | [NIP-CJ](../../nips/openagents/NIP-CJ.md#conversation-jobs) `25900`, `25910`/`26910` | Implemented |
 | [Test-time delegation](#6-test-time-delegation) | Coder's [delegate door](../coder/runtime/delegate-door.md); delegate sessions | [NIP-PRG](../../nips/openagents/NIP-PRG.md#step-kinds), [NIP-SESS](../../nips/openagents/NIP-SESS.md#steering-capability), [NIP-ATIF](../../nips/openagents/NIP-ATIF.md#delegated-sub-agents) `3198`/`3199` | Implemented |
 | [Reproduced capability claim](#7-reproduced-capability-claim) | [Eval checks](../extensions/evaluation.md#checks-adoption-and-credit) | [NIP-EVAL checks](../../nips/openagents/NIP-EVAL.md#checks) `3189` | Implemented |
-| [Externally validated capability claim](#8-externally-validated-capability-claim) | Nothing yet; a second suite by another author would be an ordinary report on the same subject | [NIP-EVAL reports](../../nips/openagents/NIP-EVAL.md#reports) `3189`, with no independence marker | Defined |
-| [Capability adoption](#9-capability-adoption) | [`openagents:coder-defaults`](../../packages/coder-defaults/) releases; no marginal baseline arm yet | [NIP-EVAL adoption](../../nips/openagents/NIP-EVAL.md#adoption), [NIP-EXT](../../nips/openagents/NIP-EXT.md) `3184` | Partial |
+| [Externally validated capability claim](#8-externally-validated-capability-claim) | A `validates` result on a second suite, read for independence by `eval_ext::validation`; required by the [candidate policy](../../packages/coder-defaults/policy.md); none published yet | [NIP-EVAL validations](../../nips/openagents/NIP-EVAL.md#validations) `3189` with the `validates` or `transfer` marker | Partial |
+| [Capability adoption](#9-capability-adoption) | [`openagents:coder-defaults`](../../packages/coder-defaults/) releases; the admission cites validations, and may cite a marginal report, regression, reliability, authority, and stakes; no marginal baseline arm in the runner yet | [NIP-EVAL adoption](../../nips/openagents/NIP-EVAL.md#adoption), [NIP-EXT](../../nips/openagents/NIP-EXT.md) `3184` | Partial |
 | [Capability credit](#10-capability-credit) | XP referee, `crates/xp-ledger` | [NIP-XP](../../nips/openagents/NIP-XP.md#eval-check) `3193`, `3194` | Implemented |
 | [Capability flywheel](#11-the-capability-flywheel) | Chat, Gym, and Verse; [how the network compounds](../coder/design/networked-coder-plan.md#how-the-network-compounds) | No single carrier | Defined |
 
@@ -1252,10 +1297,11 @@ rather than left to the reader:
 | Scope | In the report |
 | --- | --- |
 | A, the artifact | The `subject` arm's lock: the exact extension release and its dependencies |
-| B, the baseline agent | The `baseline` arm's lock (Coder with no extension admitted) plus the run config: the door URL and model name the harness pinned in the child, and Coder's own bounds. Not pinned: the weights behind the door, and the version of Jev behind the decision door. A hosted model changing underneath us would void a reproduction while every digest still matched, and today the report would not show it. |
-| D, the tasks | The suite release the report cites, case by case |
+| B, the baseline agent | The `baseline` arm's lock (Coder with no extension admitted, or the current defaults for a marginal report, named in `meta.ext_eval.defaults`) plus the run config: the door URL and model name the harness pinned in the child, and Coder's own bounds. `meta.ext_eval.reliance` records what the run relied on (runner, host digest, door, model, agent build, selector, graders) and `identity` the subject's identity strength (`content` for every extension). Not pinned: the weights behind the door, which the door doesn't report yet, so `model` is null rather than guessed, and the version of Jev behind the decision door. A hosted model changing underneath us would still void a reproduction while every digest matched. |
+| D, the distribution | The task population the suite claims: `meta.ext_eval.distribution` when the suite's workload names one, else the tool's definition ID, "the tasks this tool claims to help with". A second suite that names the same D validates; one that names another transfers |
+| S, the suite | The suite release the report cites, case by case |
 | E and G, environment and grant | The run config and the grant it ran under (in the hosted runs, no shell) |
-| R, the rule | The gate digest in `acceptance`; `ext-eval-v2` fixes tests passed as the primary outcome with cost and time held not materially worse |
+| R, the rule | The gate digest in `acceptance`, and the gate file's declared primary outcome: `ext-eval-v2` is tests passed with cost and time held not materially worse; `ext-eval-cost-v1` is cost with cases, score, and time held non-inferior |
 | The result | `change` on the `comparison` arm for `cases_passed` and `mean_score`, with `cost_usd` and `seconds` per arm (unknown where a lane isn't priced); no interval yet |
 
 A claim decides three concrete things in OpenAgents. Installing a tool,
@@ -1271,18 +1317,20 @@ describing it, or demoing it decides none of them.
 2. **A different trainer's check reproduces it, and XP is paid.** An
    [eval check](../extensions/evaluation.md#checks-adoption-and-credit)
    reruns the published suite and publishes its own
-   [NIP-EVAL check](../../nips/openagents/NIP-EVAL.md#checks). Today only
-   a confirming check earns
+   [NIP-EVAL check](../../nips/openagents/NIP-EVAL.md#checks). A check
+   that reran the suite to protocol earns
    [NIP-XP `eval-check`](../../nips/openagents/NIP-XP.md#eval-check)
-   credit; Part I's rule says a disputing check that followed the protocol
-   should earn the same, and Part III lists that change.
-3. **It can be adopted into every Coder's defaults.** Today's
+   credit whether it confirms or disputes; credit is for the rerun, and
+   only a confirming check counts toward a candidate.
+3. **It can be adopted into every Coder's defaults.** The
    [operator policy](../extensions/evaluation.md#checks-adoption-and-credit)
-   makes a tool an adoption candidate when its result is **Better** and at
-   least three distinct trainers' checks confirmed it. That is reproduction,
-   on the author's own suite. Part I puts external validation before
-   adoption, and our policy doesn't require it yet; Part III lists that as
-   the change to make before the first adoption. Adoption
+   makes a tool an adoption candidate when its result is **Better**, at
+   least three distinct trainers' checks confirmed it, and at least one
+   **Better** result on a second suite externally validates it: a suite
+   released by someone other than the tool's author, after the tool's
+   release, on the same distribution, naming the result with the
+   `validates` marker. An admission that admits cites that validation or
+   doesn't parse. No tool has such a validation yet. Adoption
    itself is an operator's
    [NIP-EVAL adoption](../../nips/openagents/NIP-EVAL.md#adoption) decision
    and a new [`coder-defaults`](../../packages/coder-defaults/) release, and
@@ -1392,9 +1440,15 @@ so: the spread of three repeats is "itself a noisy estimate," the error
 runs toward **Better**, and what would replace it, the spread of whole
 evaluations repeated on the same extension, is recorded as a pending
 measurement that nothing has taken yet. That is why an inconclusive result
-is the default and adoption needs three confirming checks. The reports
-carry per-case outcomes for both arms, so a reader can compute a paired
-interval from them; we don't publish one yet.
+is the default and adoption needs three confirming checks and a
+validation. Every gate now declares its primary outcome in its file:
+`ext-eval-v2` is correctness-primary, and
+[`ext-eval-cost-v1`](../../crates/gym/gates/ext-eval-cost-v1.json) is
+cost-primary with cases, score, and time held non-inferior, the shape of
+"the same correctness at a lower cost"; a suite names one in its
+acceptance, and the runner can load either. The reports carry per-case
+outcomes for both arms, so a reader can compute a paired interval from
+them; we don't publish one yet.
 
 #### Reach and restraint in OpenAgents
 
@@ -1466,21 +1520,31 @@ not as a platform; what the checks rule out is the first trainer's
 mistake or fraud, not a fault shared by the runner, the provider, or the
 grader. A check from a local `openagents ext eval` run on another
 machine would vary the host; nothing today varies the provider or the
-grader, and no report records what its reruns shared.
+grader. Every report the runner writes now records its reliance set in
+`meta.ext_eval.reliance`, so a reader can compute what a rerun shared and
+what it varied; the hosted record predates the field, so for those three
+results the sentence above is the record.
 
 #### Externally validated capability claim in OpenAgents
 
-Not built. Nothing in the hosted record is externally validated: the
-runner releases each catalog tool and is the author of each starter
-suite, so the tool and its tests share a signer, and the checks reran
-those same tests. NIP-EVAL accepts a report on any suite for the same
-subject, and both the tool's release and the suite's release are signed
-events with creation times, so a reader could already check both the
-provenance (a different signer) and the chronology Part I asks for (the
-tool's release locked before the suite's release appeared). But a
-different signer is not independence, no field marks a report externally
-validated, nothing computes the chronology, hidden suites don't exist,
-and the candidate policy doesn't ask for any of it.
+The wire is built and no validation has been published. A result on a
+second suite for the same tool cites the original with the `validates`
+marker (or `transfer`, for another distribution), and a reader decides
+from the two publications and the two releases whether it counts:
+same subject and lock, a different suite, the same claimed distribution,
+the suite's release signed by someone other than the tool's author, and
+created after the tool's release
+([NIP-EVAL validations](../../nips/openagents/NIP-EVAL.md#validations)).
+The candidate queue counts one only when it holds both releases, so
+independence is checked, never assumed, and the
+[candidate policy](../../packages/coder-defaults/policy.md) requires at
+least one beside the three confirming checks; an admission that admits
+without one doesn't parse. What's still true of the record: the runner
+releases each catalog tool and is the author of each starter suite, so
+the tool and its tests share a signer, the checks reran those same tests,
+and nothing in the hosted record is externally validated. Hidden suites
+don't exist. The first validation needs a second suite that someone
+else writes.
 
 #### Capability adoption in OpenAgents
 
@@ -1504,14 +1568,13 @@ such arm yet.
 
 Two [NIP-XP](../../nips/openagents/NIP-XP.md#eval-check) rules.
 `eval-check` credits the checker, the original evaluator, and the suite's
-author when a check confirms a result. `eval-adopt` credits the tool's
+author when a check reruns a result to protocol, whether it confirms or
+disputes it; a dispute is paid like a confirmation, stays visible as a
+dispute, and counts toward no candidate. `eval-adopt` credits the tool's
 author, the suite's author, and the evaluators of cited results when Coder
 adopts the tool. A run, a publish, a view, or a download earns nothing.
-Nor, today, does a dispute: a check that reran the suite to protocol and
-got a different verdict earns nothing, which is the confirmation
-incentive Part I's credit rule rejects. The first nine awards were all
-for confirmations, so no dispute has yet gone unpaid; the rule should
-change before one does, and Part III lists it.
+The first nine awards were all for confirmations; no dispute has been
+published yet.
 Credit is XP and your name. It is never money, and no payout exists. The XP
 referee on `coderos-4080` signed the first nine awards from the hosted
 checks, and any reader can recompute them with `crates/xp-ledger`.
@@ -1552,12 +1615,13 @@ sorts: mechanical ones (`regex`, `operation_used`, `operation_order`,
 `file_exists`, `receipt`) and two that ask a model, `decision` (a typed
 Jev question over the run, the default) and `judge` (the chat model door
 asked for PASS or FAIL, for prose criteria a typed question can't hold).
-By Part I's assistance argument, the `judge` grader is the instrument
-most likely to call a plausible answer correct, because the model behind
-it was trained to please a reader. The mechanical and `decision` graders
-are the ones the argument endorses. We haven't measured the two against
-each other; until we do, a suite that leans on `judge` graders should be
-read with that in mind.
+Part I's assistance argument gives a reason to hypothesize that a typed
+decision grader is a better instrument for machine-consumed criteria than
+a prose judge, since the model behind the judge was trained to please a
+reader. We have not established that, and the essay doesn't rest on the
+causal claim behind it. Until the two are measured against ground truth
+and against each other, neither grader gets epistemic privilege here,
+including our own favorite primitive.
 
 Reruns by others rest on publication: a published suite is a NIP-EXT
 release, a published result carries its trainer's signed request, and a
@@ -1659,7 +1723,7 @@ along than the NIP as a whole; the notes say where.
 | [NIP-SESS](../../nips/openagents/NIP-SESS.md) | Designed (read-only observer implemented) | Engine sessions: each delegate engine's steering capability row, and session history exports whose portable form can be an ATIF trajectory. | None; shared `3188` |
 | [NIP-RUN](../../nips/openagents/NIP-RUN.md) | Partial | The authoritative journal of a run: its lock, parent run, dispatched attempts, and outcome. Trajectories observe; RUN decides. | `3187`, `30186` |
 | [NIP-ATIF](../../nips/openagents/NIP-ATIF.md) | Designed | Carries the trajectory of each run, and links a delegating step to the sub-agent's trajectory. | `3198`, `3199` |
-| [NIP-EVAL](../../nips/openagents/NIP-EVAL.md) | Partial (extension evaluation wire formats implemented) | The unit of account: with-and-without reports, the gate's verdict, `3189` publications, checks, hosted runs, and adoption. | `3189`, `3195` |
+| [NIP-EVAL](../../nips/openagents/NIP-EVAL.md) | Partial (extension evaluation wire formats implemented) | The unit of account: with-and-without reports carrying the claim's scope (reliance set, identity, distribution, defaults), the gate's verdict under a declared primary outcome, `3189` publications, checks, validations, hosted runs, and adoption. | `3189`, `3195` |
 | [NIP-XP](../../nips/openagents/NIP-XP.md) | Implemented | Credit: the `eval-check` and `eval-adopt` rules, awards, revocations, and per-reader ledgers. | `30193`, `3193`, `3194`, `3196`, `3197`, `13193`, `13195`, `30194` |
 | [NIP-OPT](../../nips/openagents/NIP-OPT.md) | Designed | Searching for a better implementation; its result is promoted only through EVAL admission and a new EXT release. | None; shared `3188` |
 | [NIP-WORK](../../nips/openagents/NIP-WORK.md) | Designed | A signed delegation of tracked work to another principal. | None; shared `3188` |
@@ -1687,9 +1751,9 @@ evidence, so they don't appear below.
 | Measure (with and without) | [EVAL](../../nips/openagents/NIP-EVAL.md#reports) | `openagents.eval-report.v1`: `subject` and `baseline` arms, `runs`, `coverage`, `measurements` (`cases_passed`, `mean_score`, `cost_usd`, `seconds`, and `change` on the `comparison` arm), `verdict`, and `acceptance` (the gate's digest, repeated in `meta.ext_eval.gate`). KB's [evidence](../../nips/openagents/NIP-KB.md#evidence-3189) uses the same report for knowledge entries. |
 | Publish | [EVAL](../../nips/openagents/NIP-EVAL.md#publication), [EXT](../../nips/openagents/NIP-EXT.md#component-types-and-operation-descriptors), [CJ](../../nips/openagents/NIP-CJ.md#conversation-jobs) | The suite as an EXT `3184` release with one `eval-suite` component. The result as a `3189` with `t: oa:ext-eval:v1`, `e` markers `suite`, `subject`, `request`, and `meta.ext_eval_report`. CJ `publish_eval` offer and the hosted runner's `publish` action. Released leaderboards as `3195`. |
 | Check and reproduce | [EVAL](../../nips/openagents/NIP-EVAL.md#checks) | A `3189` with the `check` marker, the same suite and subject, the same subject-arm lock, and a different trainer; it confirms on an equal verdict and disputes otherwise. Hosted reruns set `check` in the `run` action. |
-| Validate externally | None yet | A report on a second suite for the same subject is an ordinary `3189`; no marker says its suite was written independently of the subject or revealed after the subject was locked, and no reader requires one. |
-| Credit | [XP](../../nips/openagents/NIP-XP.md#eval-check) | `eval-check` pays `checker`, `evaluator`, `suite-author`; [`eval-adopt`](../../nips/openagents/NIP-XP.md#eval-adopt) pays `extension-author`, `suite-author`, `evaluator`. Quests `30193`, awards `3193`, revocations `3194`; the CJ `card` of type `credit` shows the reader's ledger. |
-| Adopt | [EVAL](../../nips/openagents/NIP-EVAL.md#adoption), [POL](../../nips/openagents/NIP-POL.md#optimization-authority-and-adoption), [EXT](../../nips/openagents/NIP-EXT.md#release-and-package-manifest) | An `openagents.eval-admission.v1` decision citing the reports and checks, then a `coder-defaults` `3184` release whose `dependencies` include the tool's release and whose `provenance.receipts` cite the admission. POL keeps activation an operator decision; active runs keep their lock. |
+| Validate externally | [EVAL](../../nips/openagents/NIP-EVAL.md#validations) | A `3189` with the `validates` marker (same distribution) or `transfer` (another), the same subject and subject-arm lock, a different suite; a reader checks independence from the suite's and subject's releases (another signer, created later) with `eval_ext::validation`. The candidate policy requires one; none has been published. |
+| Credit | [XP](../../nips/openagents/NIP-XP.md#eval-check) | `eval-check` pays `checker`, `evaluator`, `suite-author` for a rerun to protocol, confirming or disputing; [`eval-adopt`](../../nips/openagents/NIP-XP.md#eval-adopt) pays `extension-author`, `suite-author`, `evaluator` and needs a confirming check and a validation. Quests `30193`, awards `3193`, revocations `3194`; the CJ `card` of type `credit` shows the reader's ledger. |
+| Adopt | [EVAL](../../nips/openagents/NIP-EVAL.md#adoption), [POL](../../nips/openagents/NIP-POL.md#optimization-authority-and-adoption), [EXT](../../nips/openagents/NIP-EXT.md#release-and-package-manifest) | An `openagents.eval-admission.v1` decision citing the reports, at least one validation, and optionally `marginal`, `regression`, `reliability`, `authority {before, after}`, and `stakes`; then a `coder-defaults` `3184` release whose `dependencies` include the tool's release and whose `provenance.receipts` cite the admission. POL keeps activation an operator decision; active runs keep their lock. |
 | Share (Verse) | [MV](../../nips/openagents/NIP-MV.md#gym-notes), [CJ](../../nips/openagents/NIP-CJ.md#conversation-jobs), [EVAL](../../nips/openagents/NIP-EVAL.md#gym-results-publication), [XP](../../nips/openagents/NIP-XP.md#trainer-cards-30194) | Gym notes: kind `9` world chat with `L`/`l` `openagents.gym` and an `e … source` citing the trainer's `3189`. CJ `open_screen` `verse.gym`. Gym leaderboards `3195`. Trainer cards `30194`. |
 
 #### The terms and their carriers
@@ -1703,10 +1767,10 @@ evidence, so they don't appear below.
 | Judgment budget | [CJ](../../nips/openagents/NIP-CJ.md#conversation-jobs), [POL](../../nips/openagents/NIP-POL.md#routing-and-observed-cost) | CJ `judgment` feedback carries the decision (`tier`, `route_p`, `answer_p`, `needs_specifics`) and a result names a bank answer with `model: "bank:<bank id>"`. Its time and cost have no wire field today; POL's `openagents.route-usage.v1` (`latency_ms`, `cost_microunits`) is Designed. |
 | Test-time delegation | [PRG](../../nips/openagents/NIP-PRG.md#step-kinds), [SESS](../../nips/openagents/NIP-SESS.md#steering-capability), [ATIF](../../nips/openagents/NIP-ATIF.md#delegated-sub-agents) | PRG `delegate`, SESS delegate-engine rows, ATIF `parent`/`children`. The delegate door's provider failover and Jev's briefing run locally and have no Nostr record yet. |
 | Reproduced capability claim | [EVAL](../../nips/openagents/NIP-EVAL.md#checks) | A confirming `check`, decided by `eval_ext::confirms` from the two signed events. The candidate threshold (three distinct trainers) is [operator policy](../extensions/evaluation.md#checks-adoption-and-credit), not a NIP field. |
-| Externally validated capability claim | None yet | A second suite by another author is an ordinary `3189` on the same subject. No field marks it independent; a reader could derive signer and chronology from the two releases, and nothing does. |
-| Capability adoption | [EVAL](../../nips/openagents/NIP-EVAL.md#adoption) | `openagents.eval-admission.v1` plus the `coder-defaults` `3184` release. No adoption has been published, and no report format carries a marginal arm (current defaults with and without the candidate). |
-| Capability credit | [XP](../../nips/openagents/NIP-XP.md#eval-check) | `eval-check` and `eval-adopt` awards (`3193`); XP is never money. `eval-check` pays confirming checks only; paying disputes needs a new quest rule, not a new kind. |
-| Capability flywheel | Composition of the rows above | No single carrier. Its measure, incremental externally validated passes per adopted contribution, has no wire field; a reader would derive it from `3189` results, checks, and `coder-defaults` releases. |
+| Externally validated capability claim | [EVAL](../../nips/openagents/NIP-EVAL.md#validations) | A `3189` with the `validates` marker on a second suite; `eval_ext::validation` reads distribution from `meta.ext_eval.distribution` and independence from the two releases' signers and creation times. None published. |
+| Capability adoption | [EVAL](../../nips/openagents/NIP-EVAL.md#adoption) | `openagents.eval-admission.v1` (with `validation`, `marginal`, `regression`, `reliability`, `authority`, `stakes`) plus the `coder-defaults` `3184` release. No adoption has been published; a marginal report names its defaults release in `meta.ext_eval.defaults`, and the runner has no such arm yet. |
+| Capability credit | [XP](../../nips/openagents/NIP-XP.md#eval-check) | `eval-check` and `eval-adopt` awards (`3193`); XP is never money. `eval-check` pays a rerun to protocol whichever way it came out. |
+| Capability flywheel | Composition of the rows above | No single carrier. Its measure, marginal externally validated utility on a declared distribution per adopted contribution, has no wire field; a reader derives it from `validates` results, `meta.ext_eval.distribution`, and `coder-defaults` releases. |
 
 The NIPs above each point back here in a "Test-time capabilities" line, and
 the [NIP index](../../nips/openagents/README.md#test-time-capabilities)
@@ -1902,33 +1966,35 @@ These are our open problems, for the OpenAgents implementation in Part II.
 Part I's [open questions](#open-questions-for-the-field) are the general
 versions.
 
-- **External validation before the first adoption.** No tool has been
-  adopted into `coder-defaults`, and none should be on its author's suite
-  alone. Before the first, we need a second suite for the same tool
-  written by someone who didn't write it and released after the tool's
-  release was locked, a **Better** on that suite, and a change to the
-  candidate policy that requires one. Today the policy asks for three
-  confirming checks on the same suite, which is reproduction only. Both
-  releases carry signers and creation times, so the chronology check is a
-  reader-side rule away.
-- **Pay disputes.** `eval-check` pays only a confirming check. It should
-  pay any check that reran the published suite to protocol, whichever
-  verdict it got, at the same rate, so the network rewards verification
-  rather than agreement. That is a new quest rule under NIP-XP and a
-  referee change, not a new event kind.
-- **A primary outcome per claim.** `ext-eval-v2` fixes tests passed as
-  the primary outcome. The router's cheap tiers are claims of a different
-  shape, the same correctness at a fraction of the cost, and need a gate
-  that names cost as primary with correctness held non-inferior.
+- **The first validation.** No tool has been adopted into
+  `coder-defaults`, and none can be until a **Better** result on a second
+  suite validates it: the policy, the admission, and the referee's queue
+  all require one now. What's missing is the suite. Someone other than the
+  runner has to write tests for the Project map, Code finder, or Test
+  reader tool, release them after the tool's release, and run them; the
+  runner cannot validate its own catalog. Hidden or challenge suites,
+  which would make chronology unnecessary, don't exist yet.
+- **State the distribution.** The runner's workload artifact names no
+  `distribution`, so every claim's D defaults to the tool's definition ID,
+  "the tasks this tool claims to help with". A suite author should say
+  what population six tests stand for, and the runner should write it.
+- **A cost-primary run.** `ext-eval-cost-v1` exists and the runner can
+  load it, but no suite names it in its acceptance and the CLI has no way
+  to choose it. The router's cheap tiers are claims of that shape, the
+  same correctness at a fraction of the cost, and should be the first
+  suite to use it.
 - **Pin what can be pinned in B.** The report records the door and model
-  name but not the weights behind them or Jev's version. We should record
-  what the door reports about its model at run time, and treat a change
-  there as voiding reproduction rather than hiding it.
-- **Record and vary the reliance set.** Every hosted check so far shared
-  the runner, host, door, Coder build, Jev, and graders with the result it
-  checked. A report should record what a rerun shared with the original,
-  and the candidate policy should eventually want at least one check that
-  varied the host and one that varied the provider or the grader.
+  name but not the weights behind them or Jev's version, so
+  `reliance.model` is null. We should record what the door reports about
+  its model at run time, and NIP-CJ's `service {door, version}` and
+  NIP-CAP's door `version` are where it goes; a change there voids a
+  reproduction rather than hiding it.
+- **Vary the reliance set.** Every hosted check so far shared the runner,
+  host, door, Coder build, Jev, and graders with the result it checked.
+  Reports now record the set; the candidate policy should eventually want
+  at least one check that varied the host and one that varied the
+  provider or the grader, and the hosted runner's checks are the weakest
+  independence the record allows.
 - **Let CTX's "knows about" shape CAP's "access to."** A delegate's grant
   should be derived from the evidence its briefing selected, the way a
   Wasm guest's handles are minted from what it listed, instead of a
@@ -1992,9 +2058,10 @@ versions.
   test-time capabilities interact with more thinking: whether a tool lets a
   cheaper model with less reasoning match a stronger one, and when extra
   reasoning still pays on top of a tool.
-- **Network evidence.** The flywheel's test is incremental externally
-  validated passes per adopted contribution. We will report it, including
-  when it's zero.
+- **Network evidence.** The flywheel's test is marginal externally
+  validated utility on a declared distribution per adopted contribution,
+  with raw passes reported beside it and never instead of it. We will
+  report it, including when it's zero, which it is.
 
 ## References
 

@@ -542,7 +542,17 @@
         "baseline_passed": 3,
         "total": 4
       },
-      "requester": null
+      "requester": null,
+      "reliance": {
+        "runner": null,
+        "host": null,
+        "door": "fixture-door",
+        "model": null,
+        "agent": "ext-eval@0.1.0",
+        "selector": "fake-decision",
+        "graders": "ext-eval@0.1.0"
+      },
+      "identity": "content"
     }
   }
 }

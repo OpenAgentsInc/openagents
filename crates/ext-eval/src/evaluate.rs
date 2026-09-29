@@ -202,9 +202,24 @@ pub fn notes(scores: &Scores) -> Vec<String> {
 ///
 /// Returns [`EvalError::GateLoad`] when the gate does not load.
 pub fn load_gate() -> Result<(Gate, Vec<u8>), EvalError> {
-    let path = gym::gate::gates_dir().join(format!("{GATE_ID}.json"));
+    load_gate_named(GATE_ID)
+}
+
+/// A committed extension evaluation gate by ID and its file's exact
+/// bytes: `ext-eval-v2` (correctness primary), `ext-eval-cost-v1` (cost
+/// primary, correctness held non-inferior), or `ext-eval-v1`.
+///
+/// # Errors
+///
+/// Returns [`EvalError::GateLoad`] when the gate does not load, and
+/// [`EvalError::Gate`] when it isn't an extension evaluation gate.
+pub fn load_gate_named(id: &str) -> Result<(Gate, Vec<u8>), EvalError> {
+    let path = gym::gate::gates_dir().join(format!("{id}.json"));
     let bytes = std::fs::read(&path).map_err(|error| EvalError::GateLoad(error.to_string()))?;
     let gate = Gate::load(&path).map_err(|error| EvalError::GateLoad(error.to_string()))?;
+    if !matches!(gate.rule, Rule::ExtEval(_)) {
+        return Err(EvalError::Gate(gate.id.clone()));
+    }
     Ok((gate, bytes))
 }
 

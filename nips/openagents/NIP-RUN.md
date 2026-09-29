@@ -11,7 +11,7 @@ define confirmation and reconciliation evidence. Receipt of an API response,
 acceptance of a proposal, verification, and the actual external effect remain
 distinct facts, including when the effect is irreversible.
 
-Test-time capabilities: a run's `created` record holds the lock a capability was admitted under and its parent run, which is the authoritative side of [admission](../../docs/essays/2026-09-29-test-time-capabilities.md#2-capability-admission) and [delegation](../../docs/essays/2026-09-29-test-time-capabilities.md#6-test-time-delegation) ([mapping](../../docs/essays/2026-09-29-test-time-capabilities.md#how-the-protocol-carries-test-time-capabilities)).
+Test-time capabilities: a run's `created` record holds the lock, the grant, and the locked baseline agent a capability was admitted under, and its parent run; its `admitted` record says whether the admission was an evaluation arena or operational use. That is the authoritative side of [admission](../../docs/essays/2026-09-29-test-time-capabilities.md#2-capability-admission) and [delegation](../../docs/essays/2026-09-29-test-time-capabilities.md#6-test-time-delegation), and the B, E, and G of a [capability claim](../../docs/essays/2026-09-29-test-time-capabilities.md#1-test-time-capability-ttcap) ([mapping](../../docs/essays/2026-09-29-test-time-capabilities.md#how-the-protocol-carries-test-time-capabilities)).
 
 ## Kinds and privacy
 
@@ -65,8 +65,8 @@ winner by relay arrival or `created_at`.
 
 | Type | Required data |
 | --- | --- |
-| `created` | Owner pubkey, admitted request identity, task/base identity, program/operation DefinitionRef, lock and context ArtifactRefs, policy/grant references, parent run reference or null, and recipient set. |
-| `admitted` | Effective enforcement plan, shared reservation identities, deadlines, retention policy, and admitted input digest. |
+| `created` | Owner pubkey, admitted request identity, task/base identity, program/operation DefinitionRef, lock and context ArtifactRefs, `grant` (the ArtifactRef of the `openagents.grant.v1` the run holds, NIP-CAP), `baseline` (the locked baseline agent: `{lock, recipients, instructions, selector, sampling, runtime, unpinned}`, where `unpinned` lists the parts the host could not pin, such as the weights behind a hosted endpoint), parent run reference or null, and recipient set. |
+| `admitted` | Effective enforcement plan (including its `reach`), `admission` (`evaluation` for a run inside an evaluation arena, `operational` for real use), shared reservation identities, deadlines, retention policy, and admitted input digest. |
 | `dispatched` | Exact binding/component, attempt identity, input/context digests, effect identity, and fencing generation. |
 | `observed` | Bounded evidence descriptor or ArtifactRef, source versions, capture completeness, and provenance. |
 | `resolved` | Common outcome, dispatched boolean, output/artifact references, receipt references, known/unknown usage, verification, and integration. |

@@ -7,6 +7,8 @@ Task state is domain-independent. Repository, document, dataset, conversation,
 and external-resource observations use the
 same task/context lifecycle with admitted source adapters.
 
+Test-time capabilities: a context selection receipt is a delegate's briefing in [test-time delegation](../../docs/essays/2026-09-29-test-time-capabilities.md#6-test-time-delegation), the evidence the delegate knows about, and the record a delegate's grant should be derived from, so that what it may access follows what it was shown ([mapping](../../docs/essays/2026-09-29-test-time-capabilities.md#how-the-protocol-carries-test-time-capabilities)).
+
 ## Transport and authority
 
 Artifacts can remain local, travel inside admitted CJ execution inputs/results,
@@ -141,6 +143,11 @@ produce an explicit redacted derivative with partial coverage instead.
 
 A decision failure is `unknown`, not irrelevance. Expansion may collect more
 evidence within the existing authority/budget or request new admission.
+A selection receipt MAY be the `basis` of a NIP-CAP grant: a grant so
+derived has `reads` equal to the sources of the selected anchors and no
+more, which is the least authority the recipient needs to act on what it
+was shown. Selecting evidence for a recipient and granting it access to
+the sources of that evidence are then one decision, not two.
 Changing the query, source snapshot, required instructions, recipient, model
 format, or selection policy requires revalidation. Old state may be useful
 history but cannot silently become a current observation.

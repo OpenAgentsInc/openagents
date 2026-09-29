@@ -9,6 +9,7 @@
   "candidate": {
     "verdict": "pass",
     "confirming_checks": 3,
+    "validations": 1,
     "decision": "operator"
   },
   "documents": "packages/coder-defaults/documents/<sha256 hex>.json holds each published manifest and admission, named by the digest its release or manifest pins"

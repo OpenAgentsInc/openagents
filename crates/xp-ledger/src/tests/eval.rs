@@ -6,8 +6,22 @@
 
 use super::*;
 use crate::adopt;
-use crate::eval::fixture::{Run, published, release};
+use crate::eval::fixture::{Run, published, published_citing, release};
 use crate::eval::{self, Standing};
+use nostr::eval_ext::Cites;
+
+/// The validator's suite, released after the tool, and Carol's Better
+/// result on it that externally validates `w.result`.
+fn validation_of(w: &World) -> (Event, Event) {
+    let suite = release(&signer("validator"), "project-map-more-tests", AT - 4_000);
+    let validation = published_citing(
+        &signer("carol"),
+        &Run::better(&suite, &w.subject),
+        Some(Cites::Validates(&w.result.id)),
+        AT + 30,
+    );
+    (suite, validation)
+}
 
 const SEASON_OPENS: u64 = AT - 10_000;
 const SEASON_CLOSES: u64 = AT + 100_000;
@@ -264,16 +278,15 @@ fn an_untrusted_referee_is_ignored() {
 }
 
 #[test]
-fn a_disputed_or_self_check_earns_nothing_and_the_dispute_stays_visible() {
+fn a_dispute_earns_credit_a_self_check_earns_nothing_and_the_dispute_stays_visible() {
     let w = World::new();
     let mut worse = w.run();
     worse.verdict = "fail";
     let dispute = published(&signer("bob"), &worse, Some(&w.result.id), AT + 10);
-    let refused = xp::eval_check_awards(&w.quest, &w.result, &dispute, &[], AT + 100);
-    assert_eq!(
-        refused.unwrap_err().code,
-        nostr::contracts::RefusalCode::NotAdmitted
-    );
+    // Credit is for the rerun, not for agreement: Bob's dispute pays the
+    // same three roles his confirmation would.
+    let paid = xp::eval_check_awards(&w.quest, &w.result, &dispute, &[], AT + 100).unwrap();
+    assert_eq!(paid.len(), 3);
     let own = published(&signer("alice"), &w.run(), Some(&w.result.id), AT + 10);
     assert!(xp::eval_check_awards(&w.quest, &w.result, &own, &[], AT + 100).is_err());
     let by_author = published(
@@ -310,9 +323,19 @@ fn a_disputed_or_self_check_earns_nothing_and_the_dispute_stays_visible() {
     let made = eval::made(&events, &ledger, &[pk("alice")]);
     assert_eq!(made.results[0].disputed_by, 1);
     assert_eq!(made.results[0].standing, Standing::Pending);
+    // Bob's dispute stands beside his confirmation, both pending credit.
     let made = eval::made(&events, &ledger, &[pk("bob")]);
-    let standings: BTreeSet<Standing> = made.checks.iter().map(|c| c.standing).collect();
-    assert!(standings.contains(&Standing::Disputed));
+    assert_eq!(made.checks.len(), 2);
+    assert!(made.checks.iter().all(|c| c.standing == Standing::Pending));
+    // A result whose only check disputes it is Disputed, and visible.
+    let only = [
+        vec![w.suite.clone(), w.subject.clone(), w.result.clone()],
+        vec![dispute],
+    ]
+    .concat();
+    let ledger = derive(&only, &w.trust());
+    let made = eval::made(&only, &ledger, &[pk("alice")]);
+    assert_eq!(made.results[0].standing, Standing::Disputed);
 }
 
 #[test]
@@ -369,13 +392,65 @@ fn checks_by(w: &World, labels: &[&str]) -> Vec<Event> {
 }
 
 #[test]
-fn a_better_result_is_a_candidate_after_three_distinct_trainers_confirm() {
+fn a_better_result_is_a_candidate_after_three_distinct_trainers_confirm_and_one_validates() {
     let w = World::new();
-    let two = [vec![w.result.clone()], checks_by(&w, &["bob", "carol"])].concat();
+    let (suite2, validation) = validation_of(&w);
+    let releases = vec![w.suite.clone(), w.subject.clone(), suite2.clone()];
+    let two = [
+        releases.clone(),
+        vec![w.result.clone(), validation.clone()],
+        checks_by(&w, &["bob", "carol"]),
+    ]
+    .concat();
     assert!(eval::candidates(&two, &Trainers::default(), &BTreeSet::new()).is_empty());
 
-    let three = [
+    // Three confirmations on the author's own suite prove reproducibility
+    // and nothing more: without an external validation, no candidate.
+    let three_unvalidated = [
+        releases.clone(),
         vec![w.result.clone()],
+        checks_by(&w, &["bob", "carol", "dave"]),
+    ]
+    .concat();
+    assert!(
+        eval::candidates(&three_unvalidated, &Trainers::default(), &BTreeSet::new()).is_empty()
+    );
+    // A second suite by the tool's own author is provenance, not
+    // independence; one released before the tool could have been tuned
+    // against; neither counts.
+    for (author, at) in [("ext-author", AT - 4_000), ("validator", AT - 6_000)] {
+        let suite = release(&signer(author), "project-map-more-tests", at);
+        let dependent = published_citing(
+            &signer("carol"),
+            &Run::better(&suite, &w.subject),
+            Some(Cites::Validates(&w.result.id)),
+            AT + 30,
+        );
+        let events = [
+            vec![
+                w.suite.clone(),
+                w.subject.clone(),
+                suite,
+                w.result.clone(),
+                dependent,
+            ],
+            checks_by(&w, &["bob", "carol", "dave"]),
+        ]
+        .concat();
+        assert!(eval::candidates(&events, &Trainers::default(), &BTreeSet::new()).is_empty());
+    }
+    // Without the releases a reader can't see independence, so it doesn't
+    // assume it.
+    let blind = [
+        vec![w.result.clone(), validation.clone()],
+        checks_by(&w, &["bob", "carol", "dave"]),
+    ]
+    .concat();
+    assert!(eval::candidates(&blind, &Trainers::default(), &BTreeSet::new()).is_empty());
+
+    let three = [
+        releases,
+        vec![w.result.clone(), validation],
         checks_by(&w, &["bob", "carol", "dave"]),
     ]
     .concat();
@@ -383,6 +458,7 @@ fn a_better_result_is_a_candidate_after_three_distinct_trainers_confirm() {
     assert_eq!(queue.len(), 1);
     assert_eq!(queue[0].subject, w.subject.id);
     assert_eq!(queue[0].results[0].confirmed_by.len(), 3);
+    assert_eq!(queue[0].results[0].validations.len(), 1);
     // Once adopted, it leaves the queue.
     let adopted = BTreeSet::from([w.subject.id.clone()]);
     assert!(eval::candidates(&three, &Trainers::default(), &adopted).is_empty());
@@ -410,7 +486,7 @@ fn a_better_result_is_a_candidate_after_three_distinct_trainers_confirm() {
         .iter()
         .map(|l| published(&signer(l), &worse, Some(&result.id), AT + 10))
         .collect();
-    let events = [vec![result], confirms].concat();
+    let events = [vec![w.suite.clone(), w.subject.clone(), result], confirms].concat();
     assert!(eval::candidates(&events, &Trainers::default(), &BTreeSet::new()).is_empty());
 }
 
@@ -425,9 +501,13 @@ struct Adopted {
 
 fn adopted() -> Adopted {
     let w = World::new();
-    let checks = checks_by(&w, &["bob", "carol", "dave"]);
+    let (suite2, validation) = validation_of(&w);
+    let mut checks = checks_by(&w, &["bob", "carol", "dave"]);
+    checks.push(validation.clone());
+    checks.push(suite2);
     let operator = signer("operator");
-    let admission = adopt::admission(operator.pubkey(), &[&w.result], AT + 50_000).unwrap();
+    let admission =
+        adopt::admission(operator.pubkey(), &[&w.result], &[&validation], AT + 50_000).unwrap();
     let manifest = adopt::manifest(
         &adopt::package_of(operator.pubkey()),
         "1",

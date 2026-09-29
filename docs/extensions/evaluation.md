@@ -504,7 +504,13 @@ the extension-evaluation profile in `meta.ext_eval`:
 - `verdict`: `pass` (Better), `fail` (Worse), or `inconclusive`, with the
   gate's digest.
 - `meta.ext_eval`: `{kind: "should-fire" | "should-not-fire"}` per case,
-  the headline counts, and the requester for hosted runs.
+  the headline counts, the requester for hosted runs, and the rest of the
+  claim's scope: `reliance` (what the run relied on: the runner for a
+  hosted run, a digest of the host name, the pinned door, the decision
+  door, and this crate as agent harness and graders; the model behind the
+  door is unknown until the door reports it), `identity: "content"` (an
+  extension is exact bytes under a lock), and, when given, `distribution`
+  and `defaults`.
 
 `report.html` is a self-contained view: the headline, each case with both
 arms, each grader's answer, and links to the trajectories.
@@ -552,24 +558,39 @@ release by a trainer who is not the evaluator. It publishes its own `3189`
 that cites the original with an `e` tag. It confirms the original when its
 verdict matches; it disputes it otherwise. Both outcomes stay visible.
 
+**A validation** is a result on a *second* suite for the same tool,
+naming the original with the `validates` marker. It answers what a check
+can't: whether the delta was fitted to the author's own tests. It counts
+when it is **Better**, the second suite's release is signed by someone
+other than the tool's author and was created after the tool's release
+(so the tool couldn't have been tuned against it), and both suites claim
+the same task distribution; a second suite on another distribution is a
+`transfer`, a new claim. A reader that doesn't hold both releases assumes
+no independence.
+
 **Adoption** makes a tool part of Coder for everyone: an OpenAgents
 operator issues an `openagents.eval-admission.v1` decision (NIP-EVAL)
-citing the reports, then publishes a new release of the
-`openagents:coder-defaults` package that depends on the extension's
-release. A tool is a candidate for adoption when its result is **Better**
-and at least three checks by distinct trainers confirmed it. Adoption is
-an operator decision, never automatic.
+citing the reports and at least one validation, then publishes a new
+release of the `openagents:coder-defaults` package that depends on the
+extension's release. A tool is a candidate for adoption when its result
+is **Better**, at least three checks by distinct trainers confirmed it,
+and at least one result externally validates it. Adoption is an operator
+decision, never automatic. Once `coder-defaults` holds anything, a
+candidate's report should also be marginal: its baseline arm the current
+defaults rather than nothing admitted, named in `meta.ext_eval.defaults`;
+the runner has no such arm yet.
 
 **Credit is XP and your name, not money.** Under the two NIP-XP rules this
 revision adds (see [NIP-XP](../../nips/openagents/NIP-XP.md#eval-check)):
 
 | Rule | When it's accepted | Who earns | Size (quest-defined) |
 | --- | --- | --- | --- |
-| `eval-check` | A check confirms a published result: a different trainer, the same suite and subject, a matching verdict, published after the original, inside the season. | The checker; the original evaluator; the suite's author. Each at most once per suite version per season. | 50, 25, 25 in the first quests |
-| `eval-adopt` | A `coder-defaults` release depends on the extension, citing an admission that cites the extension's reports. | The extension's author; the author of the suite whose results were cited; each evaluator of a cited, confirmed result. Once per extension release. | 200, 100, 50 in the first quests |
+| `eval-check` | A check reruns a published result to protocol: a different trainer, the same suite and subject, neither verdict inconclusive, published after the original, inside the season. It pays whether the check confirms or disputes; credit is for the rerun, not for agreement, and a dispute confirms nothing. | The checker; the original evaluator; the suite's author. Each at most once per suite version per season. | 50, 25, 25 in the first quests |
+| `eval-adopt` | A `coder-defaults` release depends on the extension, citing an admission that cites the extension's reports, a confirming check, and at least one externally validating result. | The extension's author; the author of the suite whose results were cited; each evaluator of a cited, confirmed result. Once per extension release. | 200, 100, 50 in the first quests |
 
 "Used" means exactly these two events: someone else reran your test set
-and got your result, or your tool was adopted into Coder's defaults. A
+to protocol (and got your result, or didn't), or your tool was adopted
+into Coder's defaults. A
 run, a publish, a view, or a download earns nothing. The OpenAgents referee
 signs awards after checking each rule against the signed events; a reader
 recomputes them. XP can't be spent, transferred, or converted. Nothing
@@ -756,11 +777,11 @@ adds profiles and rules, and no new kinds.
 | --- | --- | --- |
 | A suite's cases and graders | [NIP-EVAL](../../nips/openagents/NIP-EVAL.md#extension-evaluation-profile) | `openagents.eval-suite.v1` with the case format above as listed files. |
 | A published suite | [NIP-EXT](../../nips/openagents/NIP-EXT.md#component-types-and-operation-descriptors) | A `3184` release whose manifest holds an `eval-suite` component. Revoked with `3185`. |
-| A result or a check | NIP-EVAL | A `3189` publication with markers `oa:eval:v1` and `oa:ext-eval:v1`, `e` tags for the suite release, the subject release, and the checked publication. |
+| A result, a check, or a validation | NIP-EVAL | A `3189` publication with markers `oa:eval:v1` and `oa:ext-eval:v1`, `e` tags for the suite release, the subject release, and at most one of the publication it checks (`check`), validates on a second suite of the same distribution (`validates`), or transfers to another (`transfer`). |
 | A run's trajectory | [NIP-ATIF](../../nips/openagents/NIP-ATIF.md) | ATIF v1.8 bytes referenced by digest from the report; public `3198` publication later. |
 | A hosted run | [NIP-CJ](../../nips/openagents/NIP-CJ.md#execution-jobs) | An execution job (`25920`) whose target is the `ext-eval` program, signed by the trainer's device; results `26920`, progress `27020`. |
 | Chat cards and offers | [NIP-CJ](../../nips/openagents/NIP-CJ.md#conversation-jobs) | Conversation feedback `card`, offers `start_eval`, `publish_eval`, and `open_screen` for the Gym sheets, and the request's bounded `draft`. |
-| Adoption | NIP-EVAL, NIP-EXT | An `openagents.eval-admission.v1` decision and a `coder-defaults` release depending on the extension. |
+| Adoption | NIP-EVAL, NIP-EXT | An `openagents.eval-admission.v1` decision citing the reports, at least one validation, and optionally a marginal report, a regression report, reliability evidence, the default set's authority before and after, and the stakes; then a `coder-defaults` release depending on the extension. |
 | Credit | [NIP-XP](../../nips/openagents/NIP-XP.md#eval-check) | `eval-check` and `eval-adopt` quests and awards; the ledger in `crates/xp-ledger`. |
 
 ## Later

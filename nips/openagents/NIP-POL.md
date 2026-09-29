@@ -10,6 +10,8 @@ All artifacts include `v`, `requires`, and optional inert `meta`. They travel
 locally, in admitted CJ/RUN references, or in the private `3188` envelope.
 No public grant catalog or universal executable policy language is defined.
 
+Test-time capabilities: route receipts and `openagents.route-usage.v1` are the time-and-cost side of the [judgment budget](../../docs/essays/2026-09-29-test-time-capabilities.md#5-judgment-budget); [Optimization authority and adoption](#optimization-authority-and-adoption) keeps [capability adoption](../../docs/essays/2026-09-29-test-time-capabilities.md#9-capability-adoption) an operator decision with active runs keeping their lock; and a route's `purpose` says whether a run was an evaluation arena or operational use ([mapping](../../docs/essays/2026-09-29-test-time-capabilities.md#how-the-protocol-carries-test-time-capabilities)).
+
 ## Recipients and disclosure
 
 A recipient artifact has `v: "openagents.recipient.v1"`, `host` (pubkey),
@@ -238,7 +240,9 @@ reconciliation; it does not prove an effect stopped.
 A route receipt has `v: "openagents.route.v1"`, `task_frame`, `context_request`,
 `policy` (ArtifactRefs), `purpose`, `candidates`, `selected`, and `decisions`.
 Purpose is `decision`,
-`generation`, `review`, or `execution`. Selected is a candidate slug or null
+`generation`, `review`, `execution`, or `evaluation` (a route taken inside
+an evaluation arena under an evaluation grant, never operational use).
+Selected is a candidate slug or null
 for abstention. Decisions are the exact semantic decision receipts, possibly
 empty for deterministic or explicit selection.
 
@@ -274,7 +278,10 @@ receipts. Mixed estimates and observations require separate artifacts. Failed
 routes and escalation attempts remain in totals. Accounting and trajectory receipts may supply observations through pinned
 artifact schemas.
 RUN links later usage artifacts back to the immutable route receipt; the route
-does not contain a circular reference to its future actual usage.
+does not contain a circular reference to its future actual usage. A route
+with `purpose: decision` MUST produce its own usage artifact, linked from
+the decision result's `receipt`, so a judgment's latency and cost have a
+record beside the decision it made.
 
 ## Optimization authority and adoption
 

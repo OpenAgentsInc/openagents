@@ -29,7 +29,7 @@ completion settles through the agent-labor and payment contracts
 migration package M18), after acceptance and separately from it. Paying a
 purse never creates XP, and XP never unlocks a purse.
 
-Test-time capabilities: the [`eval-check`](#eval-check) and [`eval-adopt`](#eval-adopt) rules carry [capability credit](../../docs/essays/2026-09-29-test-time-capabilities.md#9-capability-credit) ([mapping](../../docs/essays/2026-09-29-test-time-capabilities.md#how-the-protocol-carries-test-time-capabilities)).
+Test-time capabilities: the [`eval-check`](#eval-check) and [`eval-adopt`](#eval-adopt) rules carry [capability credit](../../docs/essays/2026-09-29-test-time-capabilities.md#10-capability-credit): credit for verification work, not for agreement, so a protocol-following dispute pays as a confirmation does, and adoption needs a confirming check and an [externally validating result](../../docs/essays/2026-09-29-test-time-capabilities.md#8-externally-validated-capability-claim) ([mapping](../../docs/essays/2026-09-29-test-time-capabilities.md#how-the-protocol-carries-test-time-capabilities)).
 
 ## Kinds
 
@@ -396,7 +396,12 @@ pure functions over signed events (2026-09-29); the ledger
 ([#9938](https://github.com/OpenAgentsInc/openagents/issues/9938)). It
 credits the people behind an extension evaluation result
 ([NIP-EVAL's extension evaluation profile](NIP-EVAL.md#extension-evaluation-profile))
-when another trainer's check confirms it.
+when another trainer reruns it to protocol, whether the rerun confirms
+or disputes it. Credit is for verification work, not for agreement: a
+competent dispute carries at least as much information as a fourth
+confirmation, and a rule that paid only agreement would build a quiet
+preference for it into the network. Adoption still needs a confirming
+check.
 
 ```json
 "acceptance": {
@@ -408,8 +413,8 @@ when another trainer's check confirms it.
 "award": {"checker": 50, "evaluator": 25, "suite-author": 25}
 ```
 
-Roles: the **checker** signed the confirming check; the **evaluator**
-signed the result it checked; the **suite author** is the root key of the
+Roles: the **checker** signed the check, confirming or disputing; the
+**evaluator** signed the result it checked; the **suite author** is the root key of the
 suite's release. A completion names one result publication and one check
 publication. It is accepted when all of these hold:
 
@@ -424,8 +429,8 @@ publication. It is accepted when all of these hold:
    evaluator in this test, and that request's signature verifies. The
    result carries the request in `meta.ext_eval_request`, because relays
    keep no `25920`.
-4. The check's verdict equals the result's verdict, and neither is
-   `inconclusive`.
+4. Neither verdict is `inconclusive`. The check may confirm or dispute
+   the result; an inconclusive verdict is nothing to verify.
 5. The check was published after the result and both inside the season.
 
 `max_awards` is 1 to 10,000, and `completions` is `first` (the rule
@@ -436,13 +441,14 @@ role: its `evidence` is the result, then the check, and its one awardee's
 key is `eval-check:<season>:<suite release id>:<role>:<pubkey>`. A
 season therefore pays each checker at most once per suite version, and
 pays the evaluator and the suite author at most once each per suite
-version, however many checks confirm the result, up to `max_awards` live
+version, however many checks the result gets, up to `max_awards` live
 awards on the quest version in all. A key that holds two roles in one
 completion (only the evaluator and the suite author can coincide, since
 the checker is neither) is paid once, in the role the quest pays more,
 and in the earlier role (`checker`, `evaluator`, `suite-author`) on a tie;
-a role the quest pays 0 gets no award. A disputed check earns nothing and
-is shown beside the result.
+a role the quest pays 0 gets no award. A disputing check is paid like a
+confirming one and is shown beside the result as a dispute; it confirms
+nothing, so it counts toward no candidate.
 
 ### `eval-adopt`
 
@@ -478,8 +484,15 @@ confirmed result for the subject. In full:
 3. The admission decides `admit`, its `subject.event` is the quest's
    subject release, and its `expires_at` is not before the release.
 4. At least one result it cites by report digest, on the subject's
-   release, has a check that meets `eval-check`'s conditions 2 to 4 and
-   was published after it.
+   release, has a **confirming** check that meets `eval-check`'s
+   conditions 2 to 4 and was published after it.
+5. At least one result it cites in `validation`, on the subject's
+   release, is **Better**, names a cited result with the `validates`
+   marker, and ran a suite whose release is signed by someone other than
+   the subject's author. The chronology half of independence needs the
+   two releases; the operator's adopt command checks it before writing
+   the admission, and a reader with the releases uses NIP-EVAL's
+   validation rule.
 
 Each award credits one role, with `evidence` the release, then a
 confirmed result and its check (the evaluator's own, or the suite
@@ -889,14 +902,17 @@ record or with another tester's or the tester's own, a report on another
 script, a key the rule doesn't derive, one issue paid by two quests, and a
 quest version over its `max_awards`. For `eval-check`: a self-check, a
 check by the suite's author, a check before the result or outside the
-season, a disputed or inconclusive check, a check on another subject
+season, a disputed check paid like a confirming one, an inconclusive
+check or result, a check on another subject
 lock, suite, or subject, a hosted result without its signed request, one
 award per role per suite version across several checks, role collapse
 to the larger role and the earlier on a tie, a forged awardee, and two
 awardees on one award. For `eval-adopt`: an admission that doesn't
 admit, a release that doesn't depend on the extension, cites another
 admission, is signed by someone other than the package's root, or came
-after the admission expired, no confirmed cited result, and an author who
+after the admission expired, no confirmed cited result, an admission with
+no validation, a validation on a suite by the tool's own author, a
+validation that came out Worse, and an author who
 also evaluated. For `per-awardee`: a missing or
 out-of-range `max_awards`, `max_awards` on a `first` quest, a claimant
 share, a rule without a keyed role, a key that names the quest version or

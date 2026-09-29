@@ -400,6 +400,9 @@ async fn read(relay: &mut Relay, package: &str, dir: Option<&Path>) -> Result<Se
     let requests = credit::requests(&events);
     let trainers = Trainers::read(&events);
     events.extend(defaults.iter().cloned());
+    // The candidate queue reads suite and tool releases from the events
+    // to check a validation's independence (signer and chronology).
+    events.extend(releases.values().cloned());
     Ok(Seen {
         publications,
         events,
@@ -906,13 +909,19 @@ referee host",
         println!("{} candidates for Coder's defaults", queue.len());
         for c in &queue {
             println!(
-                "- tool release {} ({}): {} Better result(s), confirmed by {} trainers",
+                "- tool release {} ({}): {} Better result(s), confirmed by {} trainers, \
+externally validated by {} result(s)",
                 c.subject,
                 c.definition,
                 c.results.len(),
                 c.results
                     .iter()
                     .map(|r| r.confirmed_by.len())
+                    .max()
+                    .unwrap_or(0),
+                c.results
+                    .iter()
+                    .map(|r| r.validations.len())
                     .max()
                     .unwrap_or(0)
             );
@@ -929,9 +938,11 @@ referee host",
     let Some(candidate) = queue.iter().find(|c| c.subject == subject) else {
         println!(
             "tool release {} isn't a candidate: it needs a Better result that checks by at least \
-{} distinct trainers confirmed",
+{} distinct trainers confirmed, and at least {} Better result on a second suite by another \
+author, released after the tool, that names it with the validates marker",
             short(subject),
-            credit::CONFIRMING_CHECKS
+            credit::CONFIRMING_CHECKS,
+            credit::VALIDATIONS
         );
         return Ok(1);
     };
@@ -940,9 +951,20 @@ referee host",
         .iter()
         .filter_map(|r| seen.publications.get(&r.result).map(|(e, _)| e))
         .collect();
+    let validations: Vec<&Event> = candidate
+        .results
+        .iter()
+        .flat_map(|r| r.validations.iter())
+        .filter_map(|id| seen.publications.get(id).map(|(e, _)| e))
+        .collect();
     let at = now();
     let days = o.expires_days.unwrap_or(365);
-    let admission = adopt::admission(identity.pubkey(), &results, at + days * 86_400)?;
+    let admission = adopt::admission(
+        identity.pubkey(),
+        &results,
+        &validations,
+        at + days * 86_400,
+    )?;
     let previous = credit::defaults_releases(&seen.defaults, &package, &seen.documents);
     let (mut dependencies, mut receipts) = previous.last().map_or_else(
         || (Vec::new(), Vec::new()),

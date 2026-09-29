@@ -98,6 +98,15 @@ impl AdoptCompletion {
 /// 4. At least one result the admission cites (by report digest), on the
 ///    subject release, is confirmed by a check under the `eval-check`
 ///    conditions.
+/// 5. At least one result the admission cites in `validation` (by report
+///    digest) is a **Better** result on the subject release that names a
+///    cited result with the `validates` marker and ran a suite whose
+///    release is signed by someone other than the subject's author. The
+///    chronology half of independence (the suite released after the
+///    subject was locked) needs the release events, which this rule isn't
+///    handed; the operator's adopt command checks it before writing the
+///    admission, and a reader with the releases uses
+///    [`crate::eval_ext::validation`].
 ///
 /// # Errors
 ///
@@ -193,6 +202,27 @@ pub fn check_eval_adopt(
     if confirmed.is_empty() {
         return refuse(
             "the admission cites no result on the extension that a check confirmed".into(),
+        );
+    }
+    let cited_ids: BTreeSet<&str> = confirmed.iter().map(|c| c.result.id.as_str()).collect();
+    let validated = adoption
+        .results
+        .iter()
+        .filter_map(|e| parse_publication(e).ok())
+        .any(|p| {
+            admission.validation.contains(&p.report_ref.digest)
+                && p.subject_release.as_ref() == Some(&accepted.subject)
+                && p.validates
+                    .as_deref()
+                    .is_some_and(|id| cited_ids.contains(id))
+                && p.suite_release.pubkey != accepted.subject.pubkey
+                && p.verdict() == crate::eval_ext::Verdict::Pass
+        });
+    if !validated {
+        return refuse(
+            "the admission cites no externally validating result: a Better result on a second \
+             suite by another author, naming a confirmed result with the validates marker"
+                .into(),
         );
     }
     let mut candidates = vec![Payee {

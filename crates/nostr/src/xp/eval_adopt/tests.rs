@@ -7,9 +7,10 @@ use serde_json::{Value, json};
 
 use super::*;
 use crate::contracts::digest_bytes;
+use crate::eval_ext::Cites;
 use crate::eval_ext::tests::{
-    AT, Spec, art, code, id, pubkey, published, schema_check, sign_at, signer, subject_definition,
-    subject_release,
+    AT, Spec, art, code, id, pubkey, published, published_citing, schema_check,
+    second_suite_release, sign_at, signer, subject_definition, subject_release,
 };
 use crate::xp::eval_check::tests::season;
 use crate::xp::{self, bind_quest, parse_award};
@@ -36,13 +37,35 @@ fn standard() -> Value {
     json!({"extension-author": 200, "suite-author": 100, "evaluator": 50})
 }
 
-fn admission(result: &Event, decision: &str, expires_at: u64) -> Vec<u8> {
+/// Carol's result on a second suite the validator wrote, externally
+/// validating `result`.
+fn validation_of(result: &Event) -> Event {
+    let mut spec = Spec::by("carol");
+    spec.suite = Some((second_suite_release("validator"), "validation-suite"));
+    published_citing("carol", &spec, Some(Cites::Validates(&result.id)), AT + 20)
+}
+
+fn admission(
+    result: &Event,
+    validation: Option<&Event>,
+    decision: &str,
+    expires_at: u64,
+) -> Vec<u8> {
     let report: Value = serde_json::from_str(&result.content).unwrap();
+    let validation: Vec<Value> = validation
+        .map(|v| {
+            let content: Value = serde_json::from_str(&v.content).unwrap();
+            content["report"].clone()
+        })
+        .into_iter()
+        .collect();
     json!({
         "v": crate::eval_ext::ADMISSION_SCHEMA,
         "requires": [],
         "subject": subject_definition(),
         "reports": [report["report"]],
+        "validation": validation,
+        "stakes": {"severity": "low", "authority": "read", "reversibility": "reversible"},
         "policy": {
             "id": format!("{}:coder-defaults/policy", pubkey("operator")),
             "artifact": art(b"policy", "application/json", None),
@@ -116,14 +139,15 @@ impl World {
 fn world_with(evaluator: &str, decision: &str, depends: bool) -> World {
     let result = published(evaluator, &Spec::by(evaluator), None, AT);
     let check = published("bob", &Spec::by("bob"), Some(&result.id), AT + 10);
-    let admission = admission(&result, decision, AT + 5_000);
+    let validation = validation_of(&result);
+    let admission = admission(&result, Some(&validation), decision, AT + 5_000);
     let manifest = manifest(&admission, depends);
     World {
         quest: quest_event(standard()),
         release: release("operator", &manifest, AT + 100),
         manifest,
         admission,
-        results: vec![result],
+        results: vec![result, validation],
         checks: vec![check],
     }
 }
@@ -203,7 +227,7 @@ fn the_release_depends_on_the_extension_and_cites_the_admission() {
         RefusalCode::NotAdmitted
     );
     let mut w = world();
-    w.admission = admission(&w.results[0], "admit", AT + 6_000);
+    w.admission = admission(&w.results[0], Some(&w.results[1]), "admit", AT + 6_000);
     assert_eq!(
         code(check_eval_adopt(&quest, &w.adoption())),
         RefusalCode::IdentityMismatch
@@ -248,6 +272,67 @@ fn an_adoption_needs_a_confirmed_result() {
         code(check_eval_adopt(&quest, &w.adoption())),
         RefusalCode::NotAdmitted
     );
+}
+
+#[test]
+fn an_adoption_needs_an_externally_validated_result() {
+    // An admit that cites no validation doesn't parse as an admission.
+    let w = world();
+    let quest = parse_quest(&w.quest).unwrap();
+    let bare = admission(&w.results[0], None, "admit", AT + 5_000);
+    assert_eq!(
+        code(crate::eval_ext::parse_admission(&bare)),
+        RefusalCode::NotAdmitted
+    );
+    let mut without = world();
+    without.admission = bare.clone();
+    without.manifest = manifest(&bare, true);
+    without.release = release("operator", &without.manifest, AT + 100);
+    assert_eq!(
+        code(check_eval_adopt(&quest, &without.adoption())),
+        RefusalCode::NotAdmitted
+    );
+    // A second suite by the tool's own author is provenance, not
+    // independence.
+    let mut own = Spec::by("carol");
+    own.suite = Some((second_suite_release("ext-author"), "own-suite"));
+    let own = published_citing(
+        "carol",
+        &own,
+        Some(Cites::Validates(&w.results[0].id)),
+        AT + 20,
+    );
+    let mut w = world();
+    w.admission = admission(&w.results[0], Some(&own), "admit", AT + 5_000);
+    w.manifest = manifest(&w.admission, true);
+    w.release = release("operator", &w.manifest, AT + 100);
+    w.results = vec![w.results[0].clone(), own];
+    assert_eq!(
+        code(check_eval_adopt(&quest, &w.adoption())),
+        RefusalCode::NotAdmitted
+    );
+    // A validation that came out Worse validates nothing.
+    let mut worse = Spec::by("carol");
+    worse.suite = Some((second_suite_release("validator"), "validation-suite"));
+    worse.verdict = "fail";
+    let worse = published_citing(
+        "carol",
+        &worse,
+        Some(Cites::Validates(&w.results[0].id)),
+        AT + 20,
+    );
+    let mut w = world();
+    w.admission = admission(&w.results[0], Some(&worse), "admit", AT + 5_000);
+    w.manifest = manifest(&w.admission, true);
+    w.release = release("operator", &w.manifest, AT + 100);
+    w.results = vec![w.results[0].clone(), worse];
+    assert_eq!(
+        code(check_eval_adopt(&quest, &w.adoption())),
+        RefusalCode::NotAdmitted
+    );
+    // A reject needs no validation.
+    let reject = admission(&world().results[0], None, "reject", AT + 5_000);
+    assert!(crate::eval_ext::parse_admission(&reject).is_ok());
 }
 
 #[test]

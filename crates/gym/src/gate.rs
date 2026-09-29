@@ -960,9 +960,52 @@ pub struct ExtEvalRule {
     /// time only as a ceiling on how much worse they may get.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_increase: Option<Bound>,
+    /// The **primary outcome** the rule's claim is about, and the
+    /// direction that counts as better. Absent in `ext-eval-v1` and
+    /// `ext-eval-v2`, which read as `cases_passed`, higher; present from
+    /// `ext-eval-cost-v1`, whose claim is "the same correctness at a lower
+    /// cost". Inside the digest: a rule that changes what it is about is
+    /// another rule.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub primary: Option<Primary>,
+    /// The measures the rule holds **non-inferior** beside the primary
+    /// outcome: they may not get materially worse (past `max_increase`
+    /// beyond the spread), and improving them alone is never Better.
+    /// Absent reads as `cost_usd` and `seconds` for a correctness-primary
+    /// rule. Inside the digest.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub non_inferiority: Vec<String>,
     /// The measurement that would complete this rule, when one is missing.
     #[serde(default, deserialize_with = "pending_field")]
     pub pending_measurement: Option<Pending>,
+}
+
+impl ExtEvalRule {
+    /// Whether the rule's primary outcome is the cost per attempt.
+    #[must_use]
+    pub fn cost_primary(&self) -> bool {
+        self.primary
+            .as_ref()
+            .is_some_and(|p| p.metric == "cost_usd" && p.direction == Direction::Lower)
+    }
+}
+
+/// The metric an extension evaluation rule's verdict is about.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Primary {
+    /// A measurement name: `cases_passed` or `cost_usd`.
+    pub metric: String,
+    /// Which way is better.
+    pub direction: Direction,
+}
+
+/// Which way a measure is better.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Direction {
+    Higher,
+    Lower,
 }
 
 /// One measure of an extension evaluation, per arm, with the spread
@@ -1072,6 +1115,8 @@ impl Rule {
                 min_runs: rule.min_runs.identity(),
                 spread_multiple: rule.spread_multiple.identity(),
                 max_increase: rule.max_increase.as_ref().map(Bound::identity),
+                primary: rule.primary.as_ref(),
+                non_inferiority: &rule.non_inferiority,
                 pending_measurement: rule.pending_measurement.as_ref().map(Pending::identity),
             }),
         }
@@ -1750,6 +1795,12 @@ struct ExtEvalRuleIdentity<'a> {
     /// exactly as it did before the field existed.
     #[serde(skip_serializing_if = "Option::is_none")]
     max_increase: Option<BoundIdentity<'a>>,
+    /// Written only when the rule declares one, so `ext-eval-v1` and
+    /// `ext-eval-v2` keep the digests their records name.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    primary: Option<&'a Primary>,
+    #[serde(skip_serializing_if = "<[String]>::is_empty")]
+    non_inferiority: &'a [String],
     pending_measurement: Option<PendingIdentity<'a>>,
 }
 
@@ -2360,7 +2411,11 @@ fn judge_ext_eval(rule: &ExtEvalRule, comparison: &ExtEvalComparison) -> Vec<Cri
     if let Some(reason) = blocked {
         criteria.push(not_judged(PASSES.into(), 1, &reason));
         criteria.push(not_judged(KEPT.into(), 1, &reason));
-        if rule.max_increase.is_some() {
+        if rule.cost_primary() {
+            for name in COST_BETTER {
+                criteria.push(not_judged(name.into(), 2, &reason));
+            }
+        } else if rule.max_increase.is_some() {
             for name in V2_BETTER {
                 criteria.push(not_judged(name.into(), 2, &reason));
             }
@@ -2401,9 +2456,10 @@ fn judge_ext_eval(rule: &ExtEvalRule, comparison: &ExtEvalComparison) -> Vec<Cri
             )
         },
     });
-    match &rule.max_increase {
-        None => criteria.push(improvement(rule, comparison, IMPROVES)),
-        Some(bound) => criteria.extend(more_passed_and_better(rule, bound, comparison)),
+    match (&rule.max_increase, rule.cost_primary()) {
+        (Some(bound), true) => criteria.extend(cheaper_and_no_worse(rule, bound, comparison)),
+        (Some(bound), false) => criteria.extend(more_passed_and_better(rule, bound, comparison)),
+        (None, _) => criteria.push(improvement(rule, comparison, IMPROVES)),
     }
     criteria
 }
@@ -2414,6 +2470,117 @@ const V2_BETTER: [&str; 3] = [
     "score_gain_clears_the_spread",
     "cost_and_time_not_materially_worse",
 ];
+
+/// The criteria a cost-primary rule (`ext-eval-cost-v1`) adds: the claim
+/// is "the same correctness at a lower cost".
+const COST_BETTER: [&str; 3] = [
+    "cost_reduction_clears_the_spread",
+    "score_not_materially_worse",
+    "time_not_materially_worse",
+];
+
+/// The cost-primary path to **Better**, every criterion rank 2: the cost
+/// per attempt falls by more than the spread, while the mean score and the
+/// time per attempt are not materially worse (past `max_increase` beyond
+/// the spread). Passing more cases is not required; passing fewer, or
+/// losing a should-not-fire case, already failed at rank 1. A cheaper run
+/// that is also wrong is never Better: correctness is held non-inferior,
+/// and the primary outcome only ever reads on top of it.
+fn cheaper_and_no_worse(
+    rule: &ExtEvalRule,
+    max_increase: &Bound,
+    comparison: &ExtEvalComparison,
+) -> Vec<Criterion> {
+    let (Some(multiple), Some(relative)) = (rule.spread_multiple.value(), max_increase.value())
+    else {
+        return COST_BETTER
+            .iter()
+            .map(|name| Criterion {
+                name: (*name).into(),
+                rank: 2,
+                verdict: Verdict::Unverifiable,
+                detail: "the spread multiple or the increase ceiling has no value".into(),
+            })
+            .collect();
+    };
+    let cost = &comparison.cost_usd;
+    let mut criteria = vec![match (cost.subject, cost.baseline, cost.spread) {
+        (Some(with), Some(without), Some(spread)) => {
+            let saving = without - with;
+            let bound = multiple * spread;
+            Criterion {
+                name: COST_BETTER[0].into(),
+                rank: 2,
+                verdict: if saving > bound {
+                    Verdict::Passed
+                } else {
+                    Verdict::Unverifiable
+                },
+                detail: format!(
+                    "cost {without:.4} to {with:.4} per attempt, saving {saving:+.4} against a \
+                     spread bound of {bound:.4}"
+                ),
+            }
+        }
+        _ => Criterion {
+            name: COST_BETTER[0].into(),
+            rank: 2,
+            verdict: Verdict::Unverifiable,
+            detail: "the cost or its spread is unknown, and an unknown cost is never a saving"
+                .into(),
+        },
+    }];
+    // The score may not fall by more than the spread: non-inferior, not
+    // improved.
+    let score = &comparison.mean_score;
+    criteria.push(match (score.subject, score.baseline, score.spread) {
+        (Some(with), Some(without), Some(spread)) => {
+            let floor = without - multiple * spread;
+            Criterion {
+                name: COST_BETTER[1].into(),
+                rank: 2,
+                verdict: if with >= floor {
+                    Verdict::Passed
+                } else {
+                    Verdict::Unverifiable
+                },
+                detail: format!(
+                    "mean score {without:.4} to {with:.4}, floor {floor:.4} (the baseline less \
+                     the spread bound)"
+                ),
+            }
+        }
+        _ => Criterion {
+            name: COST_BETTER[1].into(),
+            rank: 2,
+            verdict: Verdict::Unverifiable,
+            detail: "the mean score or its spread is unknown".into(),
+        },
+    });
+    let time = &comparison.seconds;
+    criteria.push(match (time.subject, time.baseline) {
+        (Some(with), Some(without)) => {
+            let ceiling = without * (1.0 + relative) + multiple * time.spread.unwrap_or(0.0);
+            Criterion {
+                name: COST_BETTER[2].into(),
+                rank: 2,
+                verdict: if with > ceiling {
+                    Verdict::Unverifiable
+                } else {
+                    Verdict::Passed
+                },
+                detail: format!("time {without:.4} to {with:.4} per attempt, ceiling {ceiling:.4}"),
+            }
+        }
+        _ => Criterion {
+            name: COST_BETTER[2].into(),
+            rank: 2,
+            verdict: Verdict::Unverifiable,
+            detail: "time unknown".into(),
+        },
+    });
+    criteria
+}
 
 /// The `ext-eval-v2` path to **Better**, every criterion rank 2: the
 /// subject arm passes more compared cases, its mean score gain clears the
@@ -3364,6 +3531,7 @@ mod tests {
                 "decision-v1",
                 "deployment-v1",
                 "deployment-v2",
+                "ext-eval-cost-v1",
                 "ext-eval-v1",
                 "ext-eval-v2",
                 "probability-v1",

@@ -84,24 +84,37 @@ fn artifact(bytes: &[u8], media_type: &str, schema: Option<&str>) -> Value {
 pub fn admission(
     root: &str,
     results: &[&nostr::domain::Event],
+    validations: &[&nostr::domain::Event],
     expires_at: u64,
 ) -> Result<Vec<u8>, String> {
     let mut reports = Vec::new();
+    let mut validation = Vec::new();
     let mut subject: Option<Value> = None;
-    for result in results {
+    let mut cite = |result: &nostr::domain::Event, into: &mut Vec<Value>| -> Result<(), String> {
         let (report, definition) = crate::eval::cited(result)?;
         if subject.as_ref().is_some_and(|s| *s != definition) {
             return Err("the cited results tested different subjects".into());
         }
         subject = Some(definition);
-        reports.push(report);
+        into.push(report);
+        Ok(())
+    };
+    for result in results {
+        cite(result, &mut reports)?;
+    }
+    for result in validations {
+        cite(result, &mut validation)?;
     }
     let subject = subject.ok_or("an admission cites at least one result")?;
+    if validation.is_empty() {
+        return Err("an admission cites at least one externally validating result".into());
+    }
     let value = json!({
         "v": ADMISSION_SCHEMA,
         "requires": [],
         "subject": subject,
         "reports": reports,
+        "validation": validation,
         "policy": {
             "id": format!("{root}:{DEFAULTS_SLUG}/policy"),
             "artifact": artifact(POLICY.as_bytes(), "text/markdown", None),

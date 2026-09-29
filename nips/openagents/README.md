@@ -211,14 +211,19 @@ In short, which NIP is for what:
 | Run and judge | [CJ](NIP-CJ.md), [CAP](NIP-CAP.md), [PRG](NIP-PRG.md) | Decision jobs and the router's `judgment` feedback; decision services; `decide` steps. |
 | Delegate | [PRG](NIP-PRG.md), [SESS](NIP-SESS.md), [WORK](NIP-WORK.md), [CTX](NIP-CTX.md) | `delegate` steps, delegate engines' steering rows, work delegations, briefing evidence. |
 | Trajectory | [ATIF](NIP-ATIF.md) | Each run's trajectory and its links to delegated sub-agents. |
-| Measure, publish, check | [EVAL](NIP-EVAL.md) | With-and-without reports, the gate's verdict, `3189` results, and confirming or disputing checks. |
-| Credit | [XP](NIP-XP.md) | The `eval-check` and `eval-adopt` rules. |
-| Adopt | [EVAL](NIP-EVAL.md), [POL](NIP-POL.md), [EXT](NIP-EXT.md) | `openagents.eval-admission.v1` and a `coder-defaults` release; operator authority. |
+| Measure and publish | [EVAL](NIP-EVAL.md) | With-and-without reports with the claim's scope in `meta.ext_eval` (reliance set, identity strength, distribution, defaults), the gate's verdict under a declared primary outcome, and `3189` results. |
+| Reproduce | [EVAL](NIP-EVAL.md) | Checks by another trainer on the same suite, confirming or disputing, with the reliance set they shared readable. |
+| Validate externally | [EVAL](NIP-EVAL.md), [OPT](NIP-OPT.md) | `validates` results on a second suite of the same distribution, independent by signer and chronology; `transfer` results on another distribution; OPT's confirmation phase. |
+| Credit | [XP](NIP-XP.md) | The `eval-check` (paid for the rerun, confirming or disputing) and `eval-adopt` rules. |
+| Adopt | [EVAL](NIP-EVAL.md), [POL](NIP-POL.md), [EXT](NIP-EXT.md) | `openagents.eval-admission.v1` citing validations, a marginal report, regression, reliability, authority, and stakes; a `coder-defaults` release; operator authority. |
 | Share | [MV](NIP-MV.md), [CJ](NIP-CJ.md) | Gym notes in Verse; chat cards and offers. |
 
-Two gaps are stated rather than filled: the time and cost of a judgment and
-the delegate door's own failover have no wire record yet, and the flywheel's
-measure is derived by a reader, not carried by a field.
+Three gaps are stated rather than filled: the delegate door's own failover
+has no wire record; a judgment's time and cost have a designed record
+(POL route usage, CJ `judged_ms` and `latency_ms`) that nothing writes yet;
+and the flywheel's measure, marginal externally validated utility on a
+declared distribution per adopted contribution, is derived by a reader from
+`validates` results and `coder-defaults` releases, not carried by a field.
 
 ## Specification reference
 

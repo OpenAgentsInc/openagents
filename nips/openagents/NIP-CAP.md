@@ -7,6 +7,8 @@ This NIP defines portable execution descriptions and operator preferences.
 components, and the [shared contracts](contracts.md) define identity,
 references, schemas, effects, limits, and refusal behavior.
 
+Test-time capabilities: definition, host binding, grant, and presence are the four separate decisions of [capability admission](../../docs/essays/2026-09-29-test-time-capabilities.md#2-capability-admission); a [grant](#grants) is the G of a capability claim, in the authority sense of the word, never a measured ability; and the `service` profile advertises the decision services behind a [judgment budget](../../docs/essays/2026-09-29-test-time-capabilities.md#5-judgment-budget), with the version and calibration a claim about them needs ([mapping](../../docs/essays/2026-09-29-test-time-capabilities.md#how-the-protocol-carries-test-time-capabilities)).
+
 Capabilities describe general agent operations. Coding executors and workspace
 probes are one specialization. Other bindings can read documents, query datasets,
 or act on scoped service resources. The host must implement the domain's
@@ -26,6 +28,31 @@ A definition is portable even when its implementation is machine-specific.
 Public definitions MUST NOT contain local credentials or private inventories.
 A program requests an interface; a host resolves and records an eligible
 binding. Operation descriptors support discovery without replacing admission.
+
+### Grants
+
+A grant is a record, `openagents.grant.v1`, not a table row: `issuer` (the
+principal entitled to give it), `principal` (who may use the binding),
+`binding` (ArtifactRef), `effects` (an effects object, the shared
+contracts' vocabulary), `bounds`, `scope`, `recipients`, `purpose`,
+`basis`, and `expires_at`. Its `effects` are a subset of the definition's
+declared effects; the host enforces the intersection, and each declared
+effect (`reads`, `writes`, `network`, `process`, `delegates`, `spend`) is
+granted separately rather than all together, so a distinct authority is a
+distinct object a caller may hold without the others. `purpose` is
+`evaluation` or `operational`: an **evaluation** grant is the arena an
+evaluation runs in, fixed by the evaluator with just enough authority to
+measure the candidate, and it authorizes no training, export, deployment,
+or use outside the run it names; an **operational** grant is the
+authority real use gives a component, decided on the evidence the
+evaluation produced. `basis` is null or the NIP-CTX selection receipt the
+grant was derived from: when a selection designates the evidence a
+recipient may see, the grant that lets it read exactly those sources
+follows from the same act (let designation carry authority), instead of a
+namespace that contains them. A grant is not the effective authority it
+confers: what a component can cause runs through every binding it can
+reach, and admission bounds that closure (contracts, "Effects,
+requirements, and enforcement"), not the grant alone.
 
 ## Kinds and addressing
 
@@ -219,7 +246,11 @@ is exactly `interface` — the request schema version, such as
       {
         "name": "shared-kev",
         "model": "kev-0.6b",
-        "artifact_signature": "sha256:…"
+        "artifact_signature": "sha256:…",
+        "version": "kev-0.6b+2026-09-12",
+        "sets": [
+          {"name": "chat-router-v2", "digest": "sha256:…", "calibration": null}
+        ]
       }
     ],
     "limits": {
@@ -244,7 +275,15 @@ is exactly `interface` — the request schema version, such as
 - `doors` lists only doors an unauthenticated caller may name — the
   shared lane. Tenant bindings, quotas, workspaces, and credentials
   never appear in a public manifest; `models` is the discovery
-  reference a credential resolves its own doors through.
+  reference a credential resolves its own doors through. A door MAY
+  carry `version`, the build or weights version the provider declares
+  (its `artifact_signature` pins the bytes when they are known), and
+  `sets`, the question sets it is served with as `{name, digest,
+  calibration}`, where `calibration` is null or the ArtifactRef of a
+  NIP-EVAL report whose measurements include `ece` and `brier` for that
+  set on a named partition. The version and the set are what a capability
+  claim's baseline pins about its selector and what a rerun's reliance
+  set names; a door with no version has `endpoint` identity.
 - `limits` states the lane-level ceilings the service enforces;
   unsigned integers. A caller that exceeds them earns the service's
   own refusal.

@@ -9,6 +9,8 @@ MUST validate the complete required contract before any effect. Signatures
 establish authorship; hashes establish identity; neither grants permission or
 proves execution, safety, calibration, or continued availability.
 
+Test-time capabilities: the lock is what makes [capability admission](../../docs/essays/2026-09-29-test-time-capabilities.md#2-capability-admission) exact, its digest recorded in every run and every report as the claim's subject; the effects object is the vocabulary a grant, an [effective authority](#effects-requirements-and-enforcement) bound, and a [reproduced claim](../../docs/essays/2026-09-29-test-time-capabilities.md#7-reproduced-capability-claim)'s reliance set are stated in ([mapping](../../docs/essays/2026-09-29-test-time-capabilities.md#how-the-protocol-carries-test-time-capabilities)).
+
 ## Domain scope
 
 These are general agent contracts. Coding is one specialization, not a
@@ -196,6 +198,27 @@ the parent's full allowance. Effective limits and scopes narrow under
 composition, including operator-imposed stricter limits, and MUST be recorded.
 Cancellation or an unknown outcome does not automatically release an
 unsettled reservation. Reconcile before reuse or retain it as unknown.
+
+**Attenuation.** A child's admitted effects, scopes, recipients, and
+bounds MUST be a subset of its parent's. Any widening requires a new grant
+from a principal entitled to give it, recorded in the child's RUN `created`
+record with an `issuer` other than the parent run; a delegation, a
+`delegate` step, or a work delegation cannot manufacture authority its
+issuer does not hold. No central actor computes least authority for every
+participant: authority attenuates at each hand-off, user to agent to
+delegate to binding to resource.
+
+**Effective authority.** A grant records the operations directly made
+available to a principal. Its effective authority is the closure of
+effects it can cause through those operations and through every binding
+it can reach: bindings whose `delegates` is true, adapter operations it
+may invoke, and children it may admit. The enforcement plan records that
+closure as `reach`, a list of binding ArtifactRefs, and admission bounds
+the closure, not the direct grant; an execution receipt's "effective
+authority" is this closure as enforced. Adding a component whose own
+grant is small can connect two previously separate paths and enlarge what
+a composition can cause with no grant changed anywhere, which is why
+adoption compares `reach` before and after.
 
 ## Evidence and context
 

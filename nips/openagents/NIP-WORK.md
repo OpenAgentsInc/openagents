@@ -11,6 +11,8 @@ owner. Coding issues are one use. Research, operations, document preparation,
 and other domains use the same records with their own admitted input and
 acceptance schemas.
 
+Test-time capabilities: `openagents.work-delegation.v1` is [test-time delegation](../../docs/essays/2026-09-29-test-time-capabilities.md#6-test-time-delegation) when the hand-off is tracked work rather than one step of a turn: another principal, under a separate, bounded grant that is never wider than the issuer's ([mapping](../../docs/essays/2026-09-29-test-time-capabilities.md#how-the-protocol-carries-test-time-capabilities)).
+
 ## Scope and composition
 
 A native Issue view and its Work item MUST share one identity and revision
@@ -251,7 +253,11 @@ prior WorkRevisionRef for that work; delegate is a pubkey; frame is an exact
 CTX task-frame ArtifactRef; grant is the independently admitted POL/host grant
 ArtifactRef; until is its bounded Unix-second expiry. The frame must equal the
 item's pinned frame when the delegation is admitted. The grant must identify
-the delegate and compatible task, scope, recipients, effects, and bounds.
+the delegate and compatible task, scope, recipients, effects, and bounds,
+and its effects, scopes, recipients, and bounds are a subset of the
+issuer's own (the shared contracts' attenuation rule); a delegation
+widens authority only through a new grant from a principal entitled to
+give it, never by the issuer's assertion.
 A commercial delegation's `order` is the exact MKT OrderRef; otherwise null.
 It must name the LAB worker when LAB applies.
 
