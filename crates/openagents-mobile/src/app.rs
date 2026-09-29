@@ -38,8 +38,9 @@ pub struct Config {
 /// swaps the live client for Coder's offline Computers fixture, for
 /// simulator checks: `SIMCTL_CHILD_OPENAGENTS_COMPUTERS_FIXTURE=1 xcrun simctl
 /// launch ...`. The fixture contacts no host or relay. Release builds ignore it.
+#[cfg(debug_assertions)]
 fn fixture_requested() -> bool {
-    cfg!(debug_assertions) && std::env::var_os("OPENAGENTS_COMPUTERS_FIXTURE").is_some()
+    std::env::var_os("OPENAGENTS_COMPUTERS_FIXTURE").is_some()
 }
 
 /// Launch options beside [`Config`] in the host's configuration.
@@ -105,11 +106,14 @@ pub struct Launch {
 /// a debug build, the relay and worker the launch names.
 fn basic_door(launch: &Launch, secret: SecretKey) -> Option<Arc<dyn crate::basic_coder::Door>> {
     let debug = cfg!(debug_assertions);
-    if launch.chat_fixture && debug {
-        return Some(Arc::new(crate::chat_fixture::ChatFixture));
-    }
-    if launch.gym_fixture && debug {
-        return Some(Arc::new(crate::gym_fixture::GymFixture));
+    #[cfg(debug_assertions)]
+    {
+        if launch.chat_fixture {
+            return Some(Arc::new(crate::chat_fixture::ChatFixture));
+        }
+        if launch.gym_fixture {
+            return Some(Arc::new(crate::gym_fixture::GymFixture));
+        }
     }
     let relay = launch
         .chat_relay
@@ -130,9 +134,12 @@ fn basic_door(launch: &Launch, secret: SecretKey) -> Option<Arc<dyn crate::basic
 /// (`crate::gym::Hosted`): the deployed runner, or, in a debug build with
 /// `gym_fixture`, the offline recorded one.
 fn hosted_runner(launch: &Launch, _secret: SecretKey) -> Option<Arc<dyn crate::gym::Hosted>> {
-    if launch.gym_fixture && cfg!(debug_assertions) {
+    #[cfg(debug_assertions)]
+    if launch.gym_fixture {
         return Some(Arc::new(crate::gym_fixture::FixtureRunner));
     }
+    #[cfg(not(debug_assertions))]
+    let _ = launch;
     Some(Arc::new(crate::hosted::HostedRelay::new(None, None)))
 }
 
@@ -723,12 +730,20 @@ impl App {
         let mut terminals = None;
         // A phone never runs a host; it reaches hosts through the live
         // client, which keeps its grants in their own encrypted store.
-        let service: Box<dyn coder_computers::ComputersService + Send> =
-            if launch.computers_fixture || fixture_requested() {
+        // Debug builds only: a release build has no Computers fixture.
+        #[cfg(debug_assertions)]
+        let fixture: Option<Box<dyn coder_computers::ComputersService + Send>> =
+            (launch.computers_fixture || fixture_requested()).then(|| {
                 Box::new(coder_computers::synthetic::Synthetic::fixture(
                     Platform::Phone,
                     now,
-                ))
+                )) as Box<dyn coder_computers::ComputersService + Send>
+            });
+        #[cfg(not(debug_assertions))]
+        let fixture: Option<Box<dyn coder_computers::ComputersService + Send>> = None;
+        let service: Box<dyn coder_computers::ComputersService + Send> =
+            if let Some(fixture) = fixture {
+                fixture
             } else {
                 match Cache::open(&config.state_dir.join("computers"), &secret).and_then(|cache| {
                     let mut settings = Settings::new(Platform::Phone);
@@ -897,21 +912,40 @@ impl App {
             wallet: {
                 // The fixture keeps its own folders, so it never touches the
                 // real wallet's caches or exit backup.
-                let fixture = launch.wallet_fixture && cfg!(debug_assertions);
-                let (home, exit, opener) = if fixture {
+                // Debug builds only: a release build has no wallet fixture.
+                #[cfg(debug_assertions)]
+                let (home, exit, opener, directory): (
+                    _,
+                    _,
+                    _,
+                    Arc<dyn crate::payees::Directory>,
+                ) = if launch.wallet_fixture {
                     (
                         "spark-fixture",
                         "spark-fixture-exit",
                         crate::wallet_fixture::opener(),
+                        Arc::new(crate::wallet_fixture::Directory),
                     )
                 } else {
-                    ("spark", "spark-exit", crate::wallet::spark_opener())
+                    (
+                        "spark",
+                        "spark-exit",
+                        crate::wallet::spark_opener(),
+                        Arc::new(crate::payees::NostrDirectory::new(secret)),
+                    )
                 };
-                let directory: Arc<dyn crate::payees::Directory> = if fixture {
-                    Arc::new(crate::wallet_fixture::Directory)
-                } else {
-                    Arc::new(crate::payees::NostrDirectory::new(secret))
-                };
+                #[cfg(not(debug_assertions))]
+                let (home, exit, opener, directory): (
+                    _,
+                    _,
+                    _,
+                    Arc<dyn crate::payees::Directory>,
+                ) = (
+                    "spark",
+                    "spark-exit",
+                    crate::wallet::spark_opener(),
+                    Arc::new(crate::payees::NostrDirectory::new(secret)),
+                );
                 let mut wallet = crate::wallet::Wallet::new(config.state_dir.join(home), opener)
                     .with_directory(directory, device_npub.clone());
                 wallet.set_format(amounts.format());

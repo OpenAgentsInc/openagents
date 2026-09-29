@@ -23,6 +23,9 @@ mod app;
 mod basic_chats;
 mod basic_coder;
 mod basic_link;
+// Debug builds only: offline fixtures for simulator and emulator screenshots.
+// A release build does not compile them.
+#[cfg(any(debug_assertions, test))]
 mod chat_fixture;
 mod chats;
 mod cli_run;
@@ -33,6 +36,9 @@ mod conversation;
 mod eval_cards;
 mod first_run;
 mod gym;
+// Debug builds only: offline fixtures for simulator and emulator screenshots.
+// A release build does not compile them.
+#[cfg(any(debug_assertions, test))]
 mod gym_fixture;
 mod hosted;
 mod outbox;
@@ -48,6 +54,9 @@ mod transcripts;
 mod verse;
 mod wake;
 mod wallet;
+// Debug builds only: offline fixtures for simulator and emulator screenshots.
+// A release build does not compile them.
+#[cfg(any(debug_assertions, test))]
 mod wallet_fixture;
 
 pub use app::{App, Config, Launch, Packet, Request};

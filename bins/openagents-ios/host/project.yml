@@ -19,10 +19,6 @@ targets:
         group: App/Shared
       - path: ../../coder-ios/host/App/NativeTranscriptPainter.swift
         group: App/Shared
-      # Rust Native's conversation fixture for the --rust-native-fixture screen.
-      - path: ../../../crates/rust-native/fixtures/conversation.json
-        group: App/Fixtures
-        buildPhase: resources
       - path: ../../coder-ios/host/App/QRScanner.swift
         group: App/Shared
       - path: ../../coder-ios/host/App/QRDecoder.swift
@@ -39,6 +35,23 @@ targets:
       # The Gym board's packet types, which Coder's Gym panel also reads.
       - path: ../../coder-ios/host/App/GymBoard.swift
         group: App/Shared
+    # Rust Native's conversation fixture for the --rust-native-fixture
+    # screen, copied only into builds that compile that screen: debug,
+    # simulator, and bench builds. A release build for a device has neither.
+    postCompileScripts:
+      - name: Copy the fixture into debug, simulator, and bench builds
+        basedOnDependencyAnalysis: false
+        inputFiles:
+          - $(SRCROOT)/../../../crates/rust-native/fixtures/conversation.json
+        outputFiles:
+          - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/conversation.json
+        script: |
+          destination="$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/conversation.json"
+          rm -f "$destination"
+          case " $SWIFT_ACTIVE_COMPILATION_CONDITIONS $PLATFORM_NAME " in
+            *" DEBUG "*|*" RUST_NATIVE_BENCH "*|*" iphonesimulator "*)
+              cp "$SCRIPT_INPUT_FILE_0" "$destination" ;;
+          esac
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.openagents.app
@@ -49,7 +62,7 @@ targets:
         CODE_SIGN_STYLE: Manual
         "CODE_SIGN_IDENTITY[sdk=iphoneos*]": "Apple Distribution"
         "PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]": "OpenAgents App Store"
-        CURRENT_PROJECT_VERSION: 22
+        CURRENT_PROJECT_VERSION: 23
         MARKETING_VERSION: 1.0.0
         GENERATE_INFOPLIST_FILE: false
         INFOPLIST_FILE: App/Info.plist

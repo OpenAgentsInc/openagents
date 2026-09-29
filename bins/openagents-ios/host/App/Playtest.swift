@@ -383,10 +383,18 @@ struct PlaytestScreen: View {
     @EnvironmentObject private var place: PlaytestPlace
     @State private var packet: ReportsPacket?
     @State private var confirmClear = false
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var card: TrainerPacket?
+    private let refresh = Timer.publish(every: 3, on: .main, in: .common).autoconnect()
 
     var body: some View {
         List {
-            PlaytestCardSection(bridge: bridge, reports: packet)
+            // The playtest card shows only once the playtest referee's awards
+            // are read: while its key is unpublished there are no real
+            // numbers to show, so there is no card.
+            if let card, PlaytestCardSection.shown(card) {
+                PlaytestCardSection(card: card, reports: packet)
+            }
             if let log = packet?.log {
                 Section {
                     Text(log.note)
@@ -426,18 +434,29 @@ struct PlaytestScreen: View {
             Button("Delete", role: .destructive) { bridge.playtestClear { packet = $0 } }
         }
         .onAppear { bridge.reports { packet = $0 } }
+        .onAppear { bridge.trainer { card = $0 } }
+        .onReceive(refresh) { _ in
+            guard scenePhase == .active,
+                  card?.playtest.state != "preview",
+                  card?.playtest.state != "unpublished" else { return }
+            bridge.trainer { card = $0 }
+        }
     }
 }
 
 /// The playtest card at the top of Account > Playtest: sessions, accepted
 /// reports, fixes verified, playtest XP beside (never inside) the trainer
-/// level, and titles. Rust reads them from the playtest referee.
+/// level, and titles. Rust reads them from the playtest referee; the card
+/// shows only once they are read.
 struct PlaytestCardSection: View {
-    @ObservedObject var bridge: MobileBridge
+    let card: TrainerPacket?
     let reports: ReportsPacket?
-    @Environment(\.scenePhase) private var scenePhase
-    @State private var card: TrainerPacket?
-    private let refresh = Timer.publish(every: 3, on: .main, in: .common).autoconnect()
+
+    /// Whether the card has real numbers to show: the referee's awards are
+    /// read, or (debug builds only) the labeled preview.
+    static func shown(_ card: TrainerPacket) -> Bool {
+        card.playtest.state == "ready" || card.playtest.state == "preview"
+    }
 
     var body: some View {
         Section {
@@ -486,19 +505,12 @@ struct PlaytestCardSection: View {
         } footer: {
             Text(card?.playtest.note ?? "")
         }
-        .onAppear { bridge.trainer { card = $0 } }
-        .onReceive(refresh) { _ in
-            guard scenePhase == .active, card?.playtest.state != "preview" else { return }
-            bridge.trainer { card = $0 }
-        }
     }
 
     private var status: String {
         let filed = reports?.reports.count ?? 0
         let phone = "\(filed) report\(filed == 1 ? "" : "s") filed from this phone."
         switch card?.playtest.state {
-        case "unpublished":
-            return "\(phone) The playtest referee's key isn't published yet; accepted contributions are recorded in the triage log and signed later."
         case "connecting", "reading":
             return "\(phone) Reading playtest awards…"
         default:

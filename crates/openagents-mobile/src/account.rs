@@ -36,6 +36,26 @@ pub struct Item {
 pub const CHANGELOG: &[Release] = &[
     Release {
         version: "1.0.0",
+        build: "23",
+        title: "Ready for launch",
+        what_to_test: "Open Account, then Playtest, and check there is no card of zeros: the playtest card shows only once playtest awards are counted. From the menu, test a tool and check it runs on our computers; if a test set is too big for them, the card says how big it can be. Look through Chat, Wallet, Account, and the Verse and tell us if anything shows a number or a name that isn't yours or the Gym's.",
+        items: &[
+            Item {
+                title: "No sample screens",
+                detail: "The offline sample chats, Gym results, wallet, computers, and conversation we used for screenshots are gone from this build. Every screen shows your own records or the Gym's.",
+            },
+            Item {
+                title: "No empty playtest card",
+                detail: "Account, then Playtest, no longer shows a card of zeros before playtest awards are counted. The card comes back when they are.",
+            },
+            Item {
+                title: "Plain reasons when we can't run your tests",
+                detail: "A card no longer says our test computers aren't open. It says the real reason: a test set bigger than our computers run, with the limit, or a draft this phone no longer has.",
+            },
+        ],
+    },
+    Release {
+        version: "1.0.0",
         build: "22",
         title: "Clearer credit",
         what_to_test: "From the menu, tap Check a result and run the check; when your XP arrives, tap Check a result again and check the card no longer promises XP for the same test set. Open Profile and check Your results lists only your full runs, and the XP bar fills as you earn. Tap What's new and check the first words show in about a second.",

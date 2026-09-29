@@ -457,6 +457,10 @@ internal class Playtest(private val activity: MainActivity, private val bridge: 
     private fun playtestCard(body: LinearLayout) {
         val trainer = card
         val playtest = trainer?.objectOrNull("playtest")
+        // The card shows only once the playtest referee's awards are read:
+        // while its key is unpublished there are no real numbers to show.
+        val state = playtest?.optString("state")
+        if (state != "ready" && state != "preview") return
         body.add(activity.label("PLAYTEST CARD", 13f, Palette.SECONDARY).apply { setPadding(activity.dp(16), 0, 0, 0) }, 8)
         body.add(activity.column().apply {
             background = activity.rounded(Palette.SURFACE, 12f)
@@ -496,7 +500,6 @@ internal class Playtest(private val activity: MainActivity, private val bridge: 
         val filed = reports?.optJSONArray("reports")?.length() ?: 0
         val phone = "$filed report${if (filed == 1) "" else "s"} filed from this phone."
         return when (playtest?.optString("state")) {
-            "unpublished" -> "$phone The playtest referee's key isn't published yet; accepted contributions are recorded in the triage log and signed later."
             "connecting", "reading" -> "$phone Reading playtest awards…"
             else -> phone
         }

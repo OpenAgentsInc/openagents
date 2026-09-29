@@ -140,10 +140,10 @@ pub unsafe extern "C" fn openagents_verse_create(
         }
         let gym = BareGym {
             code: config.gym_code,
-            preview: config.gym_preview,
+            preview: config.gym_preview && cfg!(debug_assertions),
             panel: true,
             results_panel: true,
-            results_base: config.results_base,
+            results_base: config.results_base.filter(|_| cfg!(debug_assertions)),
             results_cache_directory: config.results_cache_directory,
             xp_preview: config.xp_preview && cfg!(debug_assertions),
             evals_panel: true,

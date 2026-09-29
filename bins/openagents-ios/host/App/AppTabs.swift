@@ -155,21 +155,6 @@ private extension View {
     }
 }
 
-/// A placeholder for a tab that is not built yet.
-struct ComingSoonScreen: View {
-    let title: String
-
-    var body: some View {
-        ZStack {
-            Color.black.ignoresSafeArea()
-            VStack(spacing: 8) {
-                Text(title).font(.largeTitle.bold()).foregroundStyle(.white)
-                Text("Coming soon.").foregroundStyle(.gray)
-            }
-        }
-    }
-}
-
 /// Settings and the screens that used to be tabs.
 struct AccountTab: View {
     @ObservedObject var bridge: MobileBridge

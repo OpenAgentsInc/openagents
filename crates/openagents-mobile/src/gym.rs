@@ -969,9 +969,16 @@ impl Gym {
             publish: PublishState::None,
             first,
         };
-        let hosted_fits = eval_ext::check_hosted_size(start.size.cases, runs, start.size.arms)
-            .is_ok()
-            && (start.suite != SuiteSource::Draft || draft.is_some());
+        let fits_size =
+            eval_ext::check_hosted_size(start.size.cases, runs, start.size.arms).is_ok();
+        let hosted_fits = fits_size && (start.suite != SuiteSource::Draft || draft.is_some());
+        // Why our computers won't take it, in plain words: its size, a
+        // draft this phone no longer has, or no runner in this build.
+        let limit = format!(
+            "at most {} tests and {} runs",
+            eval_ext::HOSTED_MAX_CASES,
+            eval_ext::HOSTED_MAX_RUNS
+        );
         let effect = match (&self.hosted, hosted_fits) {
             (Some(hosted), true) => match (self.world, &self.runtime) {
                 (Some(world), Some(runtime)) => {
@@ -1011,7 +1018,12 @@ impl Gym {
                 // ends, which would skip the confirmation.
                 (_, _, Purpose::Check { .. }) => {
                     run.state = RunState::Refused {
-                        why: "Checks run on our computers, which aren't open for tests yet.".into(),
+                        why: if fits_size {
+                            "Our computers can't take this check right now. Try again in a moment."
+                                .into()
+                        } else {
+                            format!("This check is more than our computers run: {limit}.")
+                        },
                         connect: false,
                     };
                     Effect::None
@@ -1022,14 +1034,28 @@ impl Gym {
                 },
                 (SuiteSource::Draft, _, _) => {
                     run.state = RunState::Refused {
-                        why: "Tests you make in chat run on our computers, which aren't open for tests yet. We'll keep your draft here.".into(),
+                        why: if !fits_size {
+                            format!(
+                                "These tests are more than our computers run: {limit}. We'll keep your draft here."
+                            )
+                        } else if draft.is_none() {
+                            "This phone no longer has these tests' draft. Ask in the chat and we'll make them again.".into()
+                        } else {
+                            "Our computers can't take these tests right now. We'll keep your draft here.".into()
+                        },
                         connect: false,
                     };
                     Effect::None
                 }
                 (SuiteSource::Published(_), None, _) => {
                     run.state = RunState::Refused {
-                        why: "Our test computers aren't open yet. Connect a computer and we'll run the tests there with Coder.".into(),
+                        why: if fits_size {
+                            "Our computers can't take these tests right now. Connect a computer and we'll run them there with Coder.".into()
+                        } else {
+                            format!(
+                                "These tests are more than our computers run: {limit}. Connect a computer and we'll run them there with Coder."
+                            )
+                        },
                         connect: true,
                     };
                     Effect::None

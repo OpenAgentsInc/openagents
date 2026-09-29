@@ -189,8 +189,12 @@ row, and a composer with send and stop. The shared iOS renderer
 (`bins/coder-ios/host/App/NativeChat.swift`) reimplements the design of the
 t3code iOS chat (pingdotgg/t3code, MIT) in UIKit and SwiftUI. What is left
 for later is in [docs/chat-later.md](docs/chat-later.md). Launch a simulator
-build with `--rust-native-fixture` to see the sample conversation from
-`crates/rust-native/fixtures/conversation.json`.
+or debug build with `--rust-native-fixture` to see the sample conversation
+from `crates/rust-native/fixtures/conversation.json`. A release build for a
+device compiles none of the fixture screens and bundles no fixture: the
+file is copied only into debug, simulator, and bench builds, and the Rust
+library compiles its chat, Gym, wallet, and Computers fixtures only in
+debug builds.
 
 ## Account
 
@@ -318,13 +322,13 @@ uses only its control-plane client.
 | Bundle identifier | `com.openagents.app` |
 | App Store Connect app | `6748620735` (**OpenAgents**) |
 | Development team | `HQWSG26L43` |
-| Marketing version and build | `1.0.0` / `22` |
+| Marketing version and build | `1.0.0` / `23` |
 | Minimum OS and device family | iOS 17 / iPhone |
 | Archive signing | Manual, Apple Distribution, `OpenAgents App Store` profile |
 
 The App Store Connect record also holds `0.x` builds from an earlier app on
 this bundle identifier. Build numbers only need to be unique within one
-version, so `1.0.0` started at build `1`. Builds `1` to `22` are on TestFlight. Raise the build number for every
+version, so `1.0.0` started at build `1`. Builds `1` to `23` are on TestFlight. Raise the build number for every
 upload; set it in `host/project.yml` or with `OPENAGENTS_IOS_BUILD_NUMBER`.
 
 The `OpenAgents App Store` profile uses the same Apple Distribution

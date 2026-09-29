@@ -196,10 +196,10 @@ impl SurfaceConfig {
         }
         Ok(coder_mobile::BareGym {
             code: self.gym_code.clone(),
-            preview: self.gym_preview,
+            preview: self.gym_preview && cfg!(debug_assertions),
             panel: true,
             results_panel: true,
-            results_base: self.results_base.clone(),
+            results_base: self.results_base.clone().filter(|_| cfg!(debug_assertions)),
             results_cache_directory: self.results_cache_directory.clone(),
             xp_preview: self.xp_preview && cfg!(debug_assertions),
             // The host draws the EVALS panel natively (`VersePanels`).

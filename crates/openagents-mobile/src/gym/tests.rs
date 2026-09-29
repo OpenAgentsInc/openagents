@@ -890,7 +890,7 @@ fn without_a_runner_the_card_says_why_it_cant_run() {
     let card = phone.card("run");
     assert_eq!(
         card.lines[0].text,
-        "Our test computers aren't open yet. Connect a computer and we'll run the tests there with Coder."
+        "Our computers can't take these tests right now. Connect a computer and we'll run them there with Coder."
     );
     assert_eq!(card.chips[0].label, "Connect a computer");
     assert_eq!(card.primary.as_ref().unwrap().label, "TRY AGAIN");
@@ -1445,9 +1445,13 @@ fn no_label_uses_a_banned_word() {
         }
     }
     for why in [
-        "Checks run on our computers, which aren't open for tests yet.",
-        "Tests you make in chat run on our computers, which aren't open for tests yet. We'll keep your draft here.",
-        "Our test computers aren't open yet. Connect a computer and we'll run the tests there with Coder.",
+        "Our computers can't take this check right now. Try again in a moment.",
+        "This check is more than our computers run: at most 8 tests and 3 runs.",
+        "These tests are more than our computers run: at most 8 tests and 3 runs. We'll keep your draft here.",
+        "This phone no longer has these tests' draft. Ask in the chat and we'll make them again.",
+        "Our computers can't take these tests right now. We'll keep your draft here.",
+        "Our computers can't take these tests right now. Connect a computer and we'll run them there with Coder.",
+        "These tests are more than our computers run: at most 8 tests and 3 runs. Connect a computer and we'll run them there with Coder.",
     ] {
         assert_eq!(jargon(why), None, "{why}");
     }

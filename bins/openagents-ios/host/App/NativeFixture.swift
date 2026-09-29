@@ -9,13 +9,12 @@
 // source and render the transcript from it, as the app's chats do.
 import SwiftUI
 
+// A release build for a device compiles none of it: `nativeFixture()` is
+// the screen itself, and the fixture file is not in the app bundle.
+#if DEBUG || targetEnvironment(simulator) || RUST_NATIVE_BENCH
 enum NativeFixture {
     static var requested: Bool {
-        #if DEBUG || targetEnvironment(simulator) || RUST_NATIVE_BENCH
-        return ProcessInfo.processInfo.arguments.contains("--rust-native-fixture")
-        #else
-        return false
-        #endif
+        ProcessInfo.processInfo.arguments.contains("--rust-native-fixture")
     }
 }
 
@@ -266,3 +265,9 @@ private extension NativeView {
         }
     }
 }
+#else
+extension View {
+    /// A release build has no fixture screen.
+    func nativeFixture() -> some View { self }
+}
+#endif
