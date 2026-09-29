@@ -33,21 +33,15 @@ The app has four tabs, shown as icons:
   `--gym-first-run choose|end_card|chat|done` starts the first run at a
   step and `--gym-script "tap:ID|send:TEXT|sleep:N"` walks a flow, for
   simulator checks. The chat itself opens on a new chat with OpenAgents, ready
-  to type: the composer (**Message OpenAgents**) has the cursor, a selector
-  beside the **OpenAgents** title says
-  where the message goes, and suggested actions sit above the field as
-  chips. Every new chat goes to OpenAgents (**Cloud**), even while a
-  computer is ready. Tapping the selector offers each computer, **Cloud**,
-  and **Connect a computer**, with a check on the current one. Picking a
-  computer (or tapping one of its workspaces) makes the new chat start
-  Coder there: a NIP-HOST `task.create` in the workspace the selector
-  names (**Studio Mac · openagents**), the same operation as Order work;
-  with the host's auto-start policy on, the host runs Coder's engine right
-  away. The chips continue the newest chats (a clock glyph), pick another
-  of the chosen computer's workspaces (a folder glyph; the one this phone
-  used last comes first), and, with no computer added, **Connect a
-  computer**, which opens Account > Computers. The chat worker's `rank` job may order
-  the chips once each time the tab shows; the phone's own order stands
+  to type: the composer (**Message OpenAgents**) has the cursor under a
+  header with the previous-chats button and the **OpenAgents** title.
+  Every chat goes to OpenAgents, even while a computer is ready; nothing on
+  the screen picks where (build 29 removed the **Cloud** selector). Above
+  the field sit only questions to send: the first-time questions before
+  any chat, and the Gym's starters after the opt-in. Previous chats stay
+  behind the menu button, and Coder on a computer comes only from an offer
+  under a reply. The chat worker's `rank` job may order the questions once
+  each time the tab shows; the phone's own order stands
   when it does not answer. Chat with OpenAgents needs no computer: each message
   is a NIP-CJ conversation job signed by the device key and sent, NIP-44
   encrypted, through `relay.openagents.com` to the OpenAgents chat worker,
@@ -57,19 +51,22 @@ The app has four tabs, shown as icons:
   and while the tab shows the phone keeps one signed-in relay connection
   with its subscription placed, so a message only publishes its request;
   the connection closes in the background. The app holds no model key; the
-  worker meters each caller key (see `INVARIANTS.md`). From a
-  conversation, **Run Coder on** a computer starts Coder on it with the
-  conversation so far; when the worker's judgment places the message on a
-  computer, it shows as a chip. Each job also asks for the chat router (`router`) with a bounded
+  worker meters each caller key (see `INVARIANTS.md`). Until a reply's
+  result arrives, a spinner and **Working…** sit under it, before its first
+  words and under an opener or any part that shows first. When the worker's
+  judgment places a message on a computer, or the router offers to run
+  Coder, **Run Coder on** a computer shows as a chip under that reply once
+  it is complete, and starts Coder there with the conversation so far; with
+  no computer the chip is **Connect a computer**. No Run Coder or Open Coder
+  button stands above the field; a task a conversation started is in the
+  previous chats. Each job also asks for the chat router (`router`) with a bounded
   `context` (the surface, whether a computer is ready, and the build; no
   computer's name). The router's offers show as the phone's own controls,
   acting only on a tap: Run Coder or **Connect a computer**, a screen
   (Wallet, Account > Computers, Identity keys, Playtest, Report a problem),
   or a read-only `openagents` command as a card with a **Run** button. A
-  prepared answer carries a quiet "Prepared answer" note, follow-up chips,
-  and **Wrong answer**, which sends that question and answer to the triage
-  team after the tester confirms; Report a problem offers **Share this chat**,
-  off by default.
+  prepared answer carries follow-up chips; Report a problem offers **Share
+  this chat**, off by default.
   The menu button at the top left opens the previous chats, newest first:
   basic conversations and Coder's tasks on your computers, painted from
   what the phone kept while the computers are read again. Only Coder's
@@ -195,6 +192,12 @@ device compiles none of the fixture screens and bundles no fixture: the
 file is copied only into debug, simulator, and bench builds, and the Rust
 library compiles its chat, Gym, wallet, and Computers fixtures only in
 debug builds.
+`UITests/TranscriptScrollUITests.swift` opens that fixture with 200 extra
+rows and drags the transcript, so a chat that cannot scroll fails a test.
+Run it on a simulator with `xcodebuild test -project
+bins/openagents-ios/host/OpenAgents.xcodeproj -scheme OpenAgents
+-destination id=UDID OPENAGENTS_RUST_LIBRARY_DIR=<target>/aarch64-apple-ios-sim/debug`
+after `build.sh sim` has built the Rust library and generated the project.
 
 ## Account
 
@@ -322,13 +325,13 @@ uses only its control-plane client.
 | Bundle identifier | `com.openagents.app` |
 | App Store Connect app | `6748620735` (**OpenAgents**) |
 | Development team | `HQWSG26L43` |
-| Marketing version and build | `1.0.0` / `23` |
+| Marketing version and build | `1.0.0` / `29` |
 | Minimum OS and device family | iOS 17 / iPhone |
 | Archive signing | Manual, Apple Distribution, `OpenAgents App Store` profile |
 
 The App Store Connect record also holds `0.x` builds from an earlier app on
 this bundle identifier. Build numbers only need to be unique within one
-version, so `1.0.0` started at build `1`. Builds `1` to `23` are on TestFlight. Raise the build number for every
+version, so `1.0.0` started at build `1`. Builds `1` to `29` are on TestFlight. Raise the build number for every
 upload; set it in `host/project.yml` or with `OPENAGENTS_IOS_BUILD_NUMBER`.
 
 The `OpenAgents App Store` profile uses the same Apple Distribution

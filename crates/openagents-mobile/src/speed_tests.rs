@@ -345,8 +345,10 @@ fn live_basic_coder_speed() {
     eprintln!("{}", summary("Send to reply done", &mut done));
 }
 
-/// Send from New chat to Coder on a real computer, as the owner does, and
-/// time the task's start, its first reply, and its end. Needs a host with
+/// Send from New chat to Coder on a real computer, and time the task's
+/// start, its first reply, and its end. It picks the computer in the new
+/// chat's target selector, which build 29 removed (#9962): until it goes
+/// through Run Coder instead, it waits out its deadline. Needs a host with
 /// tailnet admission and auto-start; set `OPENAGENTS_TEST_ADMISSION` to its
 /// tailnet address. The task is archived whatever the outcome.
 #[test]

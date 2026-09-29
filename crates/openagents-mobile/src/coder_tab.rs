@@ -2,14 +2,11 @@
 //! computers.
 //!
 //! The tab opens on a new chat, ready to type: a composer with the cursor
-//! in it, what the message will start (the basic Coder, or Coder on a
-//! connected computer and in which of its workspaces), and a few suggested
-//! actions above the field, each from what the phone knows: the computer's
-//! other workspaces, the newest chats to continue, and connecting a computer
-//! when none is added. When a computer this device may operate is ready,
-//! the composer targets it; **Chat here instead** and **Start on …**
-//! switch between it and the basic Coder, from the screen's controls and
-//! never from the message text.
+//! in it, and, above the field, only starter questions for a first chat
+//! (and the Gym's starters once the person opted in). Every new chat goes
+//! to OpenAgents; there is no target to pick. Coder runs on a computer only
+//! from a router offer under the reply that warrants it (**Run Coder**, or
+//! **Connect a computer** with none), never from a control above the field.
 //!
 //! Previous chats sit behind the menu button at the top left, newest message
 //! first: basic conversations and every Coder task on the computers, painted
@@ -81,17 +78,11 @@ const MAX_PROMPT_BYTES: usize = 16 * 1024;
 const SHOWN_TASKS: usize = 50;
 /// The most basic conversations the list shows.
 const SHOWN_TALKS: usize = 50;
-/// The newest chats a new chat offers to continue.
-const SUGGESTED_CHATS: usize = 2;
-/// The most other workspaces a new chat on a computer offers.
-const SUGGESTED_WORKSPACES: usize = 3;
-
 /// One chat in the previous chats: its last message time and summary time,
-/// for ordering, its title, and its row.
+/// for ordering, and its row.
 struct Recent {
     last: Option<u64>,
     updated: u64,
-    title: String,
     row: Node<Intent>,
 }
 
@@ -116,13 +107,6 @@ fn clip(text: &str, limit: usize) -> String {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Intent {
-    /// Open or close the new chat's target selector.
-    Pick,
-    /// Start the next chat on this computer, or, with none, with the basic
-    /// Coder in the cloud.
-    Target {
-        host: Option<String>,
-    },
     Open {
         host: String,
         task: String,
@@ -134,10 +118,6 @@ pub enum Intent {
     NewChat,
     /// Show the previous chats.
     Menu,
-    /// Start the next chat in this workspace of the chosen computer.
-    Workspace {
-        label: String,
-    },
     /// Open the chat's queue on the computer, taking its edit lease.
     EditQueue,
     /// Close the queue and give the lease up.
@@ -169,8 +149,6 @@ pub enum Intent {
     ConnectComputer,
     /// Ask the basic Coder again for the last message's reply.
     Retry,
-    /// Open the chat of the task the open conversation started.
-    OpenSpawned,
     /// Open the screen an offer under the last reply names.
     OpenScreen {
         screen: Screen,
@@ -358,7 +336,6 @@ pub struct CoderTab {
     instance: String,
     revision: u64,
     current: Option<ValidatedView<Intent>>,
-    selected: Option<String>,
     notice: Option<String>,
     composers: u64,
     /// The chats list as last seen, with the first line and send time of
@@ -385,16 +362,8 @@ pub struct CoderTab {
     basic: BasicChats,
     /// The open basic conversation.
     talk: Option<String>,
-    /// Whether a new chat starts on a computer, as the person chose it; with
-    /// no choice, on a computer when one is ready.
-    target: Option<bool>,
-    /// The new chat's target selector is open.
-    picking: bool,
     /// The tab shows: the app opens on it.
     shown: bool,
-    /// The workspace the person chose for a new chat on the chosen
-    /// computer.
-    workspace: Option<String>,
     /// A screen of another tab to show, taken by the next packet.
     go: Option<Go>,
     /// The most turns the open conversation shows; fewer when a long one
@@ -429,7 +398,6 @@ impl CoderTab {
             instance,
             revision: 0,
             current: None,
-            selected: None,
             notice: None,
             composers: 1,
             list: Store::open(None),
@@ -444,10 +412,7 @@ impl CoderTab {
             pulled: false,
             basic: BasicChats::empty(),
             talk: None,
-            target: None,
-            picking: false,
             shown: true,
-            workspace: None,
             go: None,
             talk_turns: TALK_TURNS,
             app_build: None,
@@ -530,9 +495,9 @@ impl CoderTab {
         }
         let local = runs_on == RunsOn::ThisDevice || argv.first().is_some_and(|g| g == "computer");
         let outcome = if local {
-            run_cli(&argv, runs_on, computers, self.selected.as_deref())
+            run_cli(&argv, runs_on, computers, None)
         } else {
-            match cli_run::target(&argv, computers, self.selected.as_deref()) {
+            match cli_run::target(&argv, computers, None) {
                 Err(refused) => refused,
                 Ok((host, label)) => match self.remote.clone() {
                     None => CliOutcome::Refused(
@@ -925,32 +890,10 @@ impl CoderTab {
             .map(|open| (open.host.clone(), open.task.clone()))
     }
 
-    /// The computers this device may order work on, in snapshot order.
-    fn hosts(computers: &Computers) -> Vec<&HostRecord> {
-        computers
-            .snapshot()
-            .hosts
-            .iter()
-            .filter(|host| computers.can_operate(&host.key))
-            .collect()
-    }
-
-    fn chosen<'a>(&self, computers: &'a Computers) -> Option<&'a HostRecord> {
-        let hosts = Self::hosts(computers);
-        self.selected
-            .as_ref()
-            .and_then(|key| hosts.iter().find(|host| &host.key == key).copied())
-            .or_else(|| hosts.first().copied())
-    }
-
-    /// The workspace a new chat on `host` uses: the one the person chose
-    /// when the computer lists it, else the one this device used there last,
-    /// else `openagents`, else the computer's first.
+    /// The workspace Coder runs in on `host`: the one this device used
+    /// there last, else `openagents`, else the computer's first.
     fn workspace(&self, host: &HostRecord) -> Option<String> {
         let listed = host.workspaces.as_ref()?;
-        if let Some(chosen) = self.workspace.as_ref().filter(|w| listed.contains(w)) {
-            return Some(chosen.clone());
-        }
         listed
             .iter()
             .filter_map(|label| Some((self.used(&host.key, label)?, label)))
@@ -964,16 +907,6 @@ impl CoderTab {
     /// When this device last started a chat in `workspace` on `host`.
     fn used(&self, host: &str, workspace: &str) -> Option<u64> {
         self.list.list.used.get(&used_key(host, workspace)).copied()
-    }
-
-    /// Whether a new chat starts on a computer: only as the person chose.
-    /// By default every chat goes to OpenAgents, which dispatches Coder.
-    fn on_computer(&self, computers: Option<&Computers>) -> bool {
-        match self.availability(computers) {
-            Availability::NotConfigured => false,
-            Availability::Ready(_) => self.target.unwrap_or(false),
-            Availability::Connecting(_) | Availability::Offline(_) => self.target.unwrap_or(false),
-        }
     }
 
     /// The newest summary of `task` on `host`.
@@ -1003,25 +936,7 @@ impl CoderTab {
         else {
             return;
         };
-        // Any other action closes the target selector.
-        if intent != Intent::Pick {
-            self.picking = false;
-        }
         match intent {
-            Intent::Pick => {
-                self.notice = None;
-                self.picking = !self.picking;
-            }
-            Intent::Target { host } => {
-                self.notice = None;
-                self.picking = false;
-                self.target = Some(host.is_some());
-                if host.is_some() {
-                    self.selected = host;
-                }
-                // A new composer, so the field's focus follows the switch.
-                self.composers += 1;
-            }
             Intent::Open { host, task } => {
                 self.drawer = false;
                 self.talk = None;
@@ -1051,12 +966,6 @@ impl CoderTab {
                 self.notice = None;
                 self.talk_turns = TALK_TURNS;
                 self.talk = Some(id);
-            }
-            // Picking a workspace is choosing to run Coder there.
-            Intent::Workspace { label } => {
-                self.notice = None;
-                self.workspace = Some(label);
-                self.target = Some(true);
             }
             Intent::Retry => {
                 let context = self.router_context(computers.as_deref());
@@ -1136,17 +1045,6 @@ impl CoderTab {
             }
             Intent::Hub => self.hub(),
             Intent::Starter { text } => self.start_talk(&text, computers.as_deref()),
-            Intent::OpenSpawned => {
-                let spawned = self
-                    .talk
-                    .as_ref()
-                    .and_then(|id| self.basic.get(id))
-                    .and_then(|summary| summary.coder.clone());
-                if let Some(spawned) = spawned {
-                    self.talk = None;
-                    self.open(spawned.host, spawned.task, chats);
-                }
-            }
             Intent::RunCoder => {
                 let Some(computers) = computers else {
                     self.go = Some(Go::Computers);
@@ -1783,14 +1681,15 @@ impl CoderTab {
         }
     }
 
-    /// Accept a composer's message: a new chat on the chosen computer, or a
-    /// command for the open chat, whose action the chat's state chose.
+    /// Accept a composer's message: a new chat with OpenAgents, a message in
+    /// the open one, or a command for the open Coder chat, whose action the
+    /// chat's state chose.
     pub fn submit(
         &mut self,
         token: &str,
         value: &str,
         computers: Option<&mut Computers>,
-        chats: &mut Chats,
+        _chats: &mut Chats,
     ) {
         let Some(view) = self.current.as_ref() else {
             return;
@@ -1814,7 +1713,8 @@ impl CoderTab {
             }
             return;
         }
-        if self.open.is_none() && !self.on_computer(computers.as_deref()) {
+        // A new chat always goes to OpenAgents.
+        let Some(open) = &self.open else {
             if let Some(id) = self.basic.start(prompt, unix_now()) {
                 self.composers += 1;
                 self.notice = None;
@@ -1822,90 +1722,43 @@ impl CoderTab {
                 self.talk = Some(id);
             }
             return;
-        }
+        };
         let Some(computers) = computers else { return };
-        if let Some(open) = &self.open {
-            // The composer edits a queued message.
-            if let Some(command) = open.editing.clone() {
-                self.composers += 1;
-                if let Some(open) = self.open.as_mut() {
-                    open.editing = None;
-                }
-                let edit = QueueEdit::Edit {
-                    command,
-                    text: prompt.to_owned(),
-                };
-                self.edit_queue(edit, computers);
-                return;
+        // The composer edits a queued message.
+        if let Some(command) = open.editing.clone() {
+            self.composers += 1;
+            if let Some(open) = self.open.as_mut() {
+                open.editing = None;
             }
-            let summary = Self::summary(computers.snapshot(), &open.host, &open.task);
-            let (phase, attention) = (
-                summary.map(|summary| summary.phase),
-                summary.map(|summary| summary.attention),
-            );
-            // The send control's token sends as the chat's state says; a
-            // choice's token, one this tab minted, sends its own way.
-            let chosen = self
-                .choices
-                .iter()
-                .find(|(minted, _)| minted == token)
-                .map(|(_, choice)| *choice);
-            let (action, emulate) = match chosen {
-                Some(choice) => choice.command(),
-                None => match Mode::of(phase, attention) {
-                    Mode::Send => (CommandAction::Send, false),
-                    Mode::Queue => (CommandAction::Queue, false),
-                    Mode::Answer => (CommandAction::Answer, false),
-                },
+            let edit = QueueEdit::Edit {
+                command,
+                text: prompt.to_owned(),
             };
-            if self.command(action, prompt, emulate, computers) {
-                self.composers += 1;
-            }
+            self.edit_queue(edit, computers);
             return;
         }
-        // A new chat on the chosen computer.
-        let host = match self.chosen(computers) {
-            Some(record) => record.key.clone(),
-            None => return,
+        let summary = Self::summary(computers.snapshot(), &open.host, &open.task);
+        let (phase, attention) = (
+            summary.map(|summary| summary.phase),
+            summary.map(|summary| summary.attention),
+        );
+        // The send control's token sends as the chat's state says; a
+        // choice's token, one this tab minted, sends its own way.
+        let chosen = self
+            .choices
+            .iter()
+            .find(|(minted, _)| minted == token)
+            .map(|(_, choice)| *choice);
+        let (action, emulate) = match chosen {
+            Some(choice) => choice.command(),
+            None => match Mode::of(phase, attention) {
+                Mode::Send => (CommandAction::Send, false),
+                Mode::Queue => (CommandAction::Queue, false),
+                Mode::Answer => (CommandAction::Answer, false),
+            },
         };
-        if computers
-            .snapshot()
-            .host(&host)
-            .and_then(|record| self.workspace(record))
-            .is_none()
-            && let Err(refusal) = computers.refresh_workspaces(&host)
-        {
-            self.notice = Some(refusal.reason());
-            return;
-        }
-        let Some(record) = computers.snapshot().host(&host) else {
-            return;
-        };
-        let label = record.label.clone();
-        let Some(workspace) = self.workspace(record) else {
-            self.notice = Some(format!("{label} lists no workspace for Coder yet."));
-            return;
-        };
-        self.composers += 1;
-        match computers.start_task(&host, &workspace, prompt) {
-            Ok(task) => {
-                let title: String = prompt
-                    .lines()
-                    .next()
-                    .unwrap_or(prompt)
-                    .chars()
-                    .take(80)
-                    .collect();
-                let now = computers.snapshot().now;
-                self.list.list.titles.insert(task.clone(), title);
-                self.list.list.sent.insert(task.clone(), now);
-                self.list.list.used.insert(used_key(&host, &workspace), now);
-                self.list.save();
-                self.notice = None;
-                self.open(host, task.clone(), chats);
-                self.echo(&task, prompt, None, false, now);
-            }
-            Err(refusal) => self.notice = Some(refusal.reason()),
+        if self.command(action, prompt, emulate, computers) {
+            self.composers += 1;
         }
     }
 
@@ -2087,11 +1940,9 @@ impl CoderTab {
             .as_ref()
             .is_some_and(|open| open.seen.is_some() && open.settled == open.seen);
         self.keep(ended);
-        if self.open.is_none() && self.talk.is_none() && !self.drawer && !self.picking {
-            let availability = self.availability(computers);
-            let on_computer = self.on_computer(computers);
+        if self.open.is_none() && self.talk.is_none() && !self.drawer {
             let candidates = self
-                .candidates(computers, chats, &availability, on_computer)
+                .candidates()
                 .into_iter()
                 .filter_map(|(id, chip)| match chip.element {
                     Element::Button { label, .. } => Some((id, label)),
@@ -2109,7 +1960,7 @@ impl CoderTab {
                     let id = id.clone();
                     self.talk_view(&id, computers)
                 }
-                (None, None) => self.landing(computers, chats),
+                (None, None) => self.landing(),
             };
             let detached = !self.pulled || source::detach(&mut root, &self.instance).is_ok();
             match View::new(self.instance.clone(), self.revision, root)
@@ -2224,7 +2075,7 @@ impl CoderTab {
     /// Whether a new chat can start now on the chosen computer.
     fn availability<'a>(&self, computers: Option<&'a Computers>) -> Availability<'a> {
         computers.map_or(Availability::NotConfigured, |computers| {
-            availability(computers.snapshot(), self.selected.as_deref())
+            availability(computers.snapshot(), None)
         })
     }
 
@@ -2250,7 +2101,6 @@ impl CoderTab {
                 Recent {
                     last: Some(summary.updated),
                     updated: summary.updated,
-                    title: summary.title.clone(),
                     row: button(
                         &format!("talk-{}", &summary.id[..16.min(summary.id.len())]),
                         &format!("{}\n{place} · {}", summary.title, ago(now, summary.updated)),
@@ -2274,12 +2124,7 @@ impl CoderTab {
                     &saved,
                 )
                 .into_iter()
-                .map(|(last, updated, title, row)| Recent {
-                    last,
-                    updated,
-                    title,
-                    row,
-                }),
+                .map(|(last, updated, _, row)| Recent { last, updated, row }),
             );
         }
         rows.sort_by_key(|recent| std::cmp::Reverse((recent.last, recent.updated)));
@@ -2347,27 +2192,13 @@ impl CoderTab {
         }
     }
 
-    /// A new chat, where the tab opens: a composer ready to type, the
-    /// target its first message starts (the basic Coder in the cloud, or a
-    /// task on the chosen computer in the chosen workspace) as a selector in
-    /// the header, and suggested actions as chips above the composer.
-    fn landing(&self, computers: Option<&Computers>, chats: &Chats) -> Node<Intent> {
-        let availability = self.availability(computers);
-        let on_computer = self.on_computer(computers);
-        // The target selector: where the first message goes.
-        let (target, glyph) = match (&availability, on_computer) {
-            (Availability::Ready(host), true) => (
-                match self.workspace(host) {
-                    Some(workspace) => format!("{} · {workspace}", host.label),
-                    None => host.label.clone(),
-                },
-                Glyph::Computer,
-            ),
-            (Availability::Connecting(host) | Availability::Offline(host), true) => {
-                (host.label.clone(), Glyph::Computer)
-            }
-            _ => ("Cloud".to_owned(), Glyph::Cloud),
-        };
+    /// A new chat, where the tab opens: the header with the previous chats
+    /// behind the menu button, and a composer ready to type. Every new chat
+    /// goes to OpenAgents; nothing on screen picks where. Above the field
+    /// sit only starter questions (see [`CoderTab::candidates`]); previous
+    /// chats stay behind the menu, and Coder on a computer comes only from
+    /// an offer under a reply.
+    fn landing(&self) -> Node<Intent> {
         let mut top = vec![];
         top.extend(self.back_button());
         top.extend([
@@ -2381,23 +2212,6 @@ impl CoderTab {
             heading("coder-title", "OpenAgents"),
         ]);
         let mut children = vec![header("coder-header", top)];
-        // Where the first message goes, as a pill under the header, only
-        // once a computer is enrolled: with none, every chat is the cloud.
-        let enrolled = computers.is_some_and(|c| !Self::hosts(c).is_empty());
-        if enrolled {
-            let selector = pill("coder-target", &clip(&target, 30), glyph, Intent::Pick);
-            children.push(row("coder-target-row", vec![selector]));
-        }
-        if self.picking && enrolled {
-            children.push(self.targets(computers, on_computer));
-        }
-        let ready = if on_computer {
-            let ready = matches!(availability, Availability::Ready(_));
-            children.extend(Self::unavailable(&availability));
-            ready
-        } else {
-            true
-        };
         if let Some(notice) = &self.notice {
             children.push(status("coder-notice", notice));
         }
@@ -2411,12 +2225,7 @@ impl CoderTab {
                 source: None,
             },
         ));
-        // The selector's choices replace the suggestions while it is open.
-        let chips = if self.picking {
-            vec![]
-        } else {
-            self.suggestions(computers, chats, &availability, on_computer)
-        };
+        let chips = self.suggestions();
         if !chips.is_empty() {
             // Inset as the composer's field is, so the chips line up with it.
             children.push(Node {
@@ -2433,219 +2242,75 @@ impl CoderTab {
                 },
             });
         }
-        let placeholder = match (&availability, on_computer) {
-            (
-                Availability::Ready(host)
-                | Availability::Connecting(host)
-                | Availability::Offline(host),
-                true,
-            ) => format!("Message OpenAgents on {}", host.label),
-            _ => "Message OpenAgents".to_owned(),
-        };
         // The tab exists to write a message: it opens ready to type.
-        children.push(self.composer_with(placeholder, ready, false, &[], None, true));
+        children.push(self.composer_with(
+            "Message OpenAgents".to_owned(),
+            true,
+            false,
+            &[],
+            None,
+            true,
+        ));
         page(children)
     }
 
-    /// The target selector's choices: each computer this device may operate,
-    /// the basic Coder in the cloud, and connecting a computer. The current
-    /// one carries a check.
-    fn targets(&self, computers: Option<&Computers>, on_computer: bool) -> Node<Intent> {
-        let chosen = computers
-            .filter(|_| on_computer)
-            .and_then(|computers| self.chosen(computers))
-            .map(|host| host.key.clone());
-        let mut options: Vec<Node<Intent>> = computers
-            .map(Self::hosts)
-            .unwrap_or_default()
-            .into_iter()
-            .enumerate()
-            .map(|(index, host)| {
-                let current = chosen.as_deref() == Some(host.key.as_str());
-                pill(
-                    &format!("coder-target-{index}"),
-                    &clip(&host.label, 40),
-                    if current {
-                        Glyph::Check
-                    } else {
-                        Glyph::Computer
-                    },
-                    Intent::Target {
-                        host: Some(host.key.clone()),
-                    },
-                )
-            })
-            .collect();
-        options.push(pill(
-            "coder-target-cloud",
-            "Cloud",
-            if on_computer {
-                Glyph::Cloud
-            } else {
-                Glyph::Check
-            },
-            Intent::Target { host: None },
-        ));
-        options.push(pill(
-            "coder-connect",
-            "Connect a computer",
-            Glyph::Add,
-            Intent::ConnectComputer,
-        ));
-        Node {
-            key: "coder-targets".into(),
-            style: Style {
-                gap: Some(Space::Sm),
-                ..Style::default()
-            },
-            element: Element::Stack {
-                axis: Axis::Wrap,
-                children: options,
-            },
-        }
-    }
-
-    /// Suggested actions above the composer, each from what the phone
-    /// knows: the newest chats to continue, the chosen computer's other
-    /// workspaces, and connecting a computer when none is added. The worker's
-    /// ranking orders them when it answered for this set.
-    fn suggestions(
-        &self,
-        computers: Option<&Computers>,
-        chats: &Chats,
-        availability: &Availability<'_>,
-        on_computer: bool,
-    ) -> Vec<Node<Intent>> {
-        let mut chips = self.candidates(computers, chats, availability, on_computer);
+    /// Suggested questions above the composer. The worker's ranking orders
+    /// them when it answered for this set.
+    fn suggestions(&self) -> Vec<Node<Intent>> {
+        let mut chips = self.candidates();
         self.basic.rank_order(&mut chips);
         chips.into_iter().map(|(_, chip)| chip).collect()
     }
 
     /// The suggestions in the phone's order, each with the ID a rank job
-    /// knows it by.
-    fn candidates(
-        &self,
-        computers: Option<&Computers>,
-        chats: &Chats,
-        availability: &Availability<'_>,
-        on_computer: bool,
-    ) -> Vec<(String, Node<Intent>)> {
-        let mut chips: Vec<(String, Node<Intent>)> = self
-            .recent(computers, chats)
-            .into_iter()
-            .take(SUGGESTED_CHATS)
-            .enumerate()
-            .filter_map(|(index, recent)| {
-                let Element::Button { intent, .. } = recent.row.element else {
-                    return None;
-                };
-                let id = match &intent {
-                    Intent::OpenTalk { id } => format!("talk:{}", &id[..16.min(id.len())]),
-                    Intent::Open { task, .. } => format!("task:{}", &task[..16.min(task.len())]),
-                    _ => format!("chat:{index}"),
-                };
-                Some((
-                    id,
-                    pill(
-                        &format!("coder-continue-{index}"),
-                        &clip(&recent.title, 32),
-                        Glyph::History,
-                        intent,
-                    ),
-                ))
-            })
-            .collect();
-        if let (Availability::Ready(host), true) = (availability, on_computer) {
-            let current = self.workspace(host);
-            chips.extend(
-                self.other_workspaces(host, current.as_deref())
-                    .into_iter()
-                    .take(SUGGESTED_WORKSPACES)
-                    .enumerate()
-                    .map(|(index, label)| {
-                        (
-                            format!("workspace:{}", clip(&label, 40)),
-                            pill(
-                                &format!("coder-repo-{index}"),
-                                &clip(&label, 32),
-                                Glyph::Folder,
-                                Intent::Workspace { label },
-                            ),
-                        )
-                    }),
-            );
-        }
-        if !on_computer {
-            // A first chat ever: first-time questions, each answered at once.
-            if self.basic.list().is_empty() {
-                for (n, question) in crate::first_run::FIRST_QUESTIONS.iter().enumerate() {
-                    chips.push((
-                        format!("first:{n}"),
-                        pill(
-                            &format!("coder-first-{n}"),
-                            question,
-                            Glyph::Ask,
-                            Intent::Starter {
-                                text: (*question).to_owned(),
-                            },
-                        ),
-                    ));
-                }
-            }
-            // The Gym's starters, once the person opted into the Gym: each
-            // opens a chat with its question sent. Before that the chat
-            // volunteers nothing of the Gym.
-            for (id, label, message) in crate::first_run::STARTERS
-                .iter()
-                .filter(|_| self.gym.opted_in())
-            {
+    /// knows it by: the first-time questions before any chat, and the
+    /// Gym's starters once the person opted in. Each is a question to send,
+    /// never a previous chat (those are behind the menu) and never a way to
+    /// run Coder on a computer (that is an offer under a reply).
+    fn candidates(&self) -> Vec<(String, Node<Intent>)> {
+        let mut chips: Vec<(String, Node<Intent>)> = vec![];
+        // A first chat ever: first-time questions, each answered at once.
+        if self.basic.list().is_empty() {
+            for (n, question) in crate::first_run::FIRST_QUESTIONS.iter().enumerate() {
                 chips.push((
-                    format!("starter:{id}"),
+                    format!("first:{n}"),
                     pill(
-                        &format!("coder-starter-{id}"),
-                        label,
+                        &format!("coder-first-{n}"),
+                        question,
                         Glyph::Ask,
                         Intent::Starter {
-                            text: (*message).to_owned(),
+                            text: (*question).to_owned(),
                         },
                     ),
                 ));
             }
         }
-        if matches!(availability, Availability::NotConfigured) {
+        // The Gym's starters, once the person opted into the Gym: each
+        // opens a chat with its question sent. Before that the chat
+        // volunteers nothing of the Gym.
+        for (id, label, message) in crate::first_run::STARTERS
+            .iter()
+            .filter(|_| self.gym.opted_in())
+        {
             chips.push((
-                "connect".into(),
+                format!("starter:{id}"),
                 pill(
-                    "coder-connect",
-                    "Connect a computer",
-                    Glyph::Add,
-                    Intent::ConnectComputer,
+                    &format!("coder-starter-{id}"),
+                    label,
+                    Glyph::Ask,
+                    Intent::Starter {
+                        text: (*message).to_owned(),
+                    },
                 ),
             ));
         }
         chips
     }
 
-    /// The workspaces of `host` other than `current`, the ones this device
-    /// used most recently first, then in the computer's order.
-    fn other_workspaces(&self, host: &HostRecord, current: Option<&str>) -> Vec<String> {
-        let mut listed: Vec<(usize, &String)> = host
-            .workspaces
-            .iter()
-            .flatten()
-            .filter(|label| Some(label.as_str()) != current)
-            .enumerate()
-            .collect();
-        listed
-            .sort_by_key(|(index, label)| (std::cmp::Reverse(self.used(&host.key, label)), *index));
-        listed.into_iter().map(|(_, label)| label.clone()).collect()
-    }
-
     /// An open basic conversation: its turns, the reply as it streams, and
     /// a way to run Coder on a computer with it.
     fn talk_view(&mut self, id: &str, computers: Option<&Computers>) -> Node<Intent> {
         let availability = self.availability(computers);
-        let summary = self.basic.get(id).cloned();
         let busy = self.basic.busy(id);
         let tail = self.basic.tail(id);
         let limit = self.talk_turns;
@@ -2679,17 +2344,18 @@ impl CoderTab {
             .collect();
         match tail {
             Tail::None => {}
-            Tail::Thinking => rows.push(node(
-                "talk-working",
-                Element::Working {
-                    label: "Thinking".into(),
-                },
-            )),
-            Tail::Streaming(blocks) => rows.push(message(
-                &format!("talk-m{}", turns.len()),
-                MessageRole::Assistant,
-                blocks,
-            )),
+            // Until the reply's result arrives, a spinner under the reply
+            // says we are still at work: before its first words, and after
+            // any part of it, such as the opener, that shows first.
+            Tail::Thinking => rows.push(working()),
+            Tail::Streaming(blocks) => {
+                rows.push(message(
+                    &format!("talk-m{}", turns.len()),
+                    MessageRole::Assistant,
+                    blocks,
+                ));
+                rows.push(working());
+            }
             Tail::Failed(why) => rows.push(node(
                 "talk-failed",
                 Element::Message {
@@ -2731,24 +2397,12 @@ impl CoderTab {
         if let Some(notice) = self.gym.notice.clone() {
             children.push(status("gym-notice", &notice));
         }
-        // Coder on a computer: the task this conversation started, and a way
-        // to start one, or to connect a computer first.
-        let spawned = summary.as_ref().and_then(|summary| summary.coder.clone());
-        let mut agents = vec![];
-        if let Some(spawned) = &spawned {
-            let label = computers
-                .and_then(|c| c.snapshot().host(&spawned.host))
-                .map_or("your computer", |host| host.label.as_str());
-            agents.push(button(
-                "coder-spawned",
-                &format!("Open Coder on {label}"),
-                Intent::OpenSpawned,
-            ));
-        }
-        // What the router said about the last reply: its offers, follow-ups,
-        // and whether it was a prepared answer. Nothing here acts until a
-        // tap, and each tap's meaning is the phone's own.
-        let meta = if failed {
+        // What the router said about the last reply: its offers and
+        // follow-ups. Nothing here acts until a tap, and each tap's meaning
+        // is the phone's own. None of it shows while the reply streams, and
+        // nothing about Coder on a computer shows unless the reply offered
+        // it: no standing Run Coder or Open Coder buttons above the field.
+        let meta = if failed || busy {
             None
         } else {
             self.basic.last_meta(id)
@@ -2758,24 +2412,20 @@ impl CoderTab {
             .map(|meta| meta.offers.clone())
             .unwrap_or_default();
         // The worker's judgment placed the last message on a computer, or
-        // offered to dispatch Coder: the way there is a chip.
-        let judged = self.basic.lane(id) == Some(crate::basic_coder::Lane::Computer)
-            || offers.contains(&Offer::RunCoder);
+        // offered to dispatch Coder: the way there is a chip under it.
+        let judged = !failed
+            && !busy
+            && (self.basic.lane(id) == Some(crate::basic_coder::Lane::Computer)
+                || offers.contains(&Offer::RunCoder));
+        let mut agents = vec![];
         match &availability {
-            Availability::Ready(host) => {
+            Availability::Ready(host) if judged => {
                 let label = format!("Run Coder on {}", host.label);
-                agents.push(if judged {
-                    pill("coder-run", &label, Glyph::Computer, Intent::RunCoder)
-                } else {
-                    button("coder-run", &label, Intent::RunCoder)
-                });
+                agents.push(pill("coder-run", &label, Glyph::Computer, Intent::RunCoder));
             }
-            Availability::Connecting(_) | Availability::Offline(_) => {
+            Availability::Connecting(_) | Availability::Offline(_) if judged => {
                 agents.extend(Self::unavailable(&availability));
             }
-            // No computer: chat stays the whole screen. The way to connect
-            // one shows only when the worker's judgment says this message
-            // needs a computer.
             Availability::NotConfigured if judged => {
                 agents.push(pill(
                     "coder-connect",
@@ -2784,7 +2434,7 @@ impl CoderTab {
                     Intent::ConnectComputer,
                 ));
             }
-            Availability::NotConfigured => {}
+            _ => {}
         }
         // Screens the router offered, named by the phone.
         for (index, offer) in offers.iter().enumerate() {
@@ -2810,7 +2460,9 @@ impl CoderTab {
                 Intent::OpenScreen { screen: *screen },
             ));
         }
-        children.push(wrap("coder-agents", agents));
+        if !agents.is_empty() {
+            children.push(wrap("coder-agents", agents));
+        }
         // Proposed read-only commands, each a card with the exact command
         // and a Run button.
         for (index, offer) in offers.iter().enumerate() {
@@ -2818,7 +2470,7 @@ impl CoderTab {
                 children.push(self.cli_card(id, index, argv, *runs_on, &availability));
             }
         }
-        if let Some(meta) = meta.as_ref().filter(|_| !busy) {
+        if let Some(meta) = meta.as_ref() {
             // Suggested next questions under a prepared answer.
             let chips: Vec<Node<Intent>> = meta
                 .followups
@@ -3600,6 +3252,16 @@ fn message(
     )
 }
 
+/// The row under a reply that is still coming: a spinner and what it means.
+fn working() -> Node<Intent> {
+    node(
+        "talk-working",
+        Element::Working {
+            label: "Working…".into(),
+        },
+    )
+}
+
 fn page(children: Vec<Node<Intent>>) -> Node<Intent> {
     Node {
         key: "coder".into(),
@@ -3724,7 +3386,7 @@ fn icon_button(
 }
 
 /// A chip: `glyph` and the visible label in a filled capsule, as a
-/// suggested action or the target selector.
+/// suggested question or an offer under a reply.
 fn pill(key: &str, label: &str, glyph: Glyph, intent: Intent) -> Node<Intent> {
     let mut node = button(key, label, intent);
     if let Element::Button { icon, .. } = &mut node.element {

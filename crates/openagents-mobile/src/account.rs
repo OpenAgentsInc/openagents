@@ -36,6 +36,30 @@ pub struct Item {
 pub const CHANGELOG: &[Release] = &[
     Release {
         version: "1.0.0",
+        build: "29",
+        title: "A simpler chat",
+        what_to_test: "Open the Chat tab: there should be no Cloud button at the top and no old chats or Run Coder buttons above the box. Ask \"describe your plugin system\": a spinner and Working… should stay under the reply until it is all there. Then open a long chat from ☰ and scroll it from top to bottom.",
+        items: &[
+            Item {
+                title: "No Cloud button",
+                detail: "Every chat goes to OpenAgents, so the Cloud button at the top is gone. When a question needs one of your computers, a Run Coder button shows under our reply.",
+            },
+            Item {
+                title: "Nothing extra above the box",
+                detail: "Your previous chats and the Run Coder and Open Coder buttons no longer sit above the message box. Previous chats are behind ☰.",
+            },
+            Item {
+                title: "Previous chats scroll",
+                detail: "A chat opened from ☰, or any long chat, scrolls again.",
+            },
+            Item {
+                title: "A working indicator",
+                detail: "While we answer, a spinner and Working… show under the reply until it is complete, so a first line is never mistaken for the whole answer.",
+            },
+        ],
+    },
+    Release {
+        version: "1.0.0",
         build: "28",
         title: "Run Coder without the wall of text",
         what_to_test: "With a computer connected, chat a few turns, then tap Run Coder on it. The task's chat should show one line, \"Continued from the OpenAgents app: \" and the chat's title, not the whole conversation pasted back, and it should scroll as Coder works.",

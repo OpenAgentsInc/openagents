@@ -338,11 +338,10 @@ fn kinds(view: &Value, kind: &str) -> usize {
         .count()
 }
 
-/// The tab opens on a new chat, ready to type: with a ready computer it
-/// targets that computer in its workspace, named by the target selector in
-/// the header, which switches to the basic Coder in the cloud and back, and
-/// suggested actions sit above the field as chips. The previous chats are
-/// behind the menu button.
+/// The tab opens on a new chat, ready to type, and nothing on it picks where
+/// the chat goes: no Cloud or computer selector, even with a computer ready
+/// and chats on it. Above the field sit no previous chats and no way to run
+/// Coder or connect a computer; the previous chats are behind the menu.
 #[test]
 fn the_tab_opens_on_a_new_chat_ready_to_type() {
     let mut fixture = Fixture::hosts();
@@ -356,57 +355,28 @@ fn the_tab_opens_on_a_new_chat_ready_to_type() {
     assert_eq!(composer["placeholder"], "Message OpenAgents");
     let text = texts(&screen);
     assert!(text.contains(&"OpenAgents".to_owned()), "{text:?}");
-    let target = &node(&screen, "coder-target").expect("target")["element"]["props"];
-    assert_eq!(target["label"], "Cloud");
-    assert_eq!(target["icon"]["glyph"], "cloud");
-    assert_eq!(target["icon"]["pill"], true);
+    for key in keys(&screen) {
+        assert!(
+            !key.starts_with("coder-target")
+                && !key.starts_with("coder-continue")
+                && !key.starts_with("coder-repo")
+                && !key.starts_with("coder-run")
+                && !key.starts_with("coder-connect"),
+            "{key} on the new chat: {:?}",
+            keys(&screen)
+        );
+    }
+    assert!(!text.contains(&"Cloud".to_owned()), "{text:?}");
+    let glyphs = serde_json::to_string(&screen).unwrap();
+    assert!(!glyphs.contains("\"history\""), "{glyphs}");
     assert!(node(&screen, "coder-chats").is_none());
     assert!(!keys(&screen).iter().any(|key| key.starts_with("task-")));
     let menu = node(&screen, "coder-menu").expect("menu");
     assert_eq!(menu["element"]["props"]["icon"]["glyph"], "menu");
-    // Suggested actions: the newest chats to continue. Workspaces show once
-    // the person points the chat at a computer.
-    let suggestions = node(&screen, "coder-suggestions").expect("suggestions");
-    assert_eq!(suggestions["element"]["props"]["axis"], "wrap");
-    let continued = &node(&screen, "coder-continue-0").expect("continue")["element"]["props"];
-    assert_eq!(continued["icon"]["glyph"], "history");
-    assert_eq!(continued["icon"]["pill"], true);
-    assert!(node(&screen, "coder-repo-0").is_none());
-    // The selector offers the computers, the cloud, and connecting one; the
-    // choices replace the suggestions.
-    let token = composer["token"].clone();
-    let picking = fixture.tap("coder-target");
-    assert_eq!(
-        node(&picking, "coder-target-cloud").unwrap()["element"]["props"]["label"],
-        "Cloud"
-    );
-    assert!(node(&picking, "coder-connect").is_some());
-    assert!(node(&picking, "coder-suggestions").is_none());
-    // The computer instead; the switch puts the cursor in a new field.
-    let screen = fixture.tap("coder-target-0");
-    let target = &node(&screen, "coder-target").unwrap()["element"]["props"];
-    assert_eq!(target["label"], "Studio Mac · openagents");
-    assert_eq!(target["icon"]["glyph"], "computer");
-    assert!(node(&screen, "coder-targets").is_none());
-    assert_eq!(
-        composer_of(&screen)["placeholder"],
-        "Message OpenAgents on Studio Mac"
-    );
-    assert_ne!(composer_of(&screen)["token"], token);
-    assert_eq!(composer_of(&screen)["focus"], true);
-    let repo = &node(&screen, "coder-repo-0").expect("another workspace")["element"]["props"];
-    assert_eq!(repo["label"], "scratch");
-    assert_eq!(repo["icon"]["glyph"], "folder");
-    // And back to the cloud.
-    fixture.tap("coder-target");
-    let screen = fixture.tap("coder-target-cloud");
-    assert_eq!(
-        node(&screen, "coder-target").unwrap()["element"]["props"]["label"],
-        "Cloud"
-    );
     // The previous chats: a list with a New chat button and no field.
     let list = fixture.tap("coder-menu");
     assert_eq!(kinds(&list, "composer"), 0, "{:?}", keys(&list));
+    assert!(keys(&list).iter().any(|key| key.starts_with("task-")));
     let new = node(&list, "coder-new").expect("New chat button");
     let props = &new["element"]["props"];
     assert_eq!(props["label"], "New chat");
@@ -416,49 +386,17 @@ fn the_tab_opens_on_a_new_chat_ready_to_type() {
     assert_eq!(kinds(&screen, "composer"), 1);
 }
 
-/// A suggested workspace is where the next chat on the computer starts, and
-/// a new chat afterwards starts in the workspace this device used last.
+/// A message typed on a new chat goes to OpenAgents even with a computer
+/// ready: it starts a conversation, not a task on the computer.
 #[test]
-fn a_chosen_workspace_starts_the_chat_and_is_remembered() {
-    let mut fixture = Fixture::hosts();
-    fixture.tap("coder-target");
-    fixture.tap("coder-target-0");
-    let screen = fixture.tap("coder-repo-0");
+fn a_new_chat_goes_to_openagents_with_a_computer_ready() {
+    let hand = Hand::default();
+    let mut fixture = Fixture::hosts().answered_by(&hand);
+    fixture.say("Tidy the scratch notes");
+    assert!(fixture.coder.open_task().is_none());
     assert_eq!(
-        node(&screen, "coder-target").unwrap()["element"]["props"]["label"],
-        "Studio Mac · scratch"
-    );
-    assert_eq!(
-        node(&screen, "coder-repo-0").unwrap()["element"]["props"]["label"],
-        "openagents"
-    );
-    let token = composer_of(&screen)["token"].as_str().unwrap().to_owned();
-    fixture.coder.submit(
-        &token,
-        "Tidy the scratch notes",
-        Some(&mut fixture.computers),
-        &mut fixture.chats,
-    );
-    assert!(fixture.coder.open_task().is_some());
-    // A later new chat, even after a relaunch, goes to OpenAgents; pointing
-    // it at the computer again starts where this one did.
-    fixture.coder = CoderTab::new("coder:again".into()).with_list(Store::open(
-        Cache::open(
-            &fixture._dir.path().join("coder-list"),
-            &secp256k1::SecretKey::from_byte_array([0x11; 32]).unwrap(),
-        )
-        .ok(),
-    ));
-    let screen = fixture.render();
-    assert_eq!(
-        node(&screen, "coder-target").unwrap()["element"]["props"]["label"],
-        "Cloud"
-    );
-    fixture.tap("coder-target");
-    let screen = fixture.tap("coder-target-0");
-    assert_eq!(
-        node(&screen, "coder-target").unwrap()["element"]["props"]["label"],
-        "Studio Mac · scratch"
+        hand.asked(),
+        vec![vec!["Tidy the scratch notes".to_owned()]]
     );
 }
 
@@ -1166,27 +1104,27 @@ fn a_first_chat_needs_no_computer_and_streams_its_reply() {
     let list = fixture.list();
     assert!(texts(&list).contains(&"Chats".to_owned()));
     assert!(texts(&list).contains(&"No chats yet.".to_owned()));
-    // The tab opens on a new chat with the basic Coder, and offers to
-    // connect a computer beside it.
+    // The tab opens on a new chat with OpenAgents: no selector, no welcome
+    // line, and no way to connect a computer above the field (that comes
+    // only as an offer under a reply that needs one).
     let screen = fixture.tap("coder-back");
-    // With no computer enrolled there is no target to pick: no selector,
-    // and no welcome line; the chat is the cloud.
     assert!(node(&screen, "coder-target").is_none());
     assert!(node(&screen, "coder-welcome").is_none());
     assert!(node(&screen, "coder-profile").is_none());
     assert!(node(&screen, "coder-continue-0").is_none());
-    let connect = &node(&screen, "coder-connect").unwrap()["element"]["props"];
-    assert_eq!(connect["label"], "Connect a computer");
-    assert_eq!(connect["icon"]["glyph"], "add");
+    assert!(node(&screen, "coder-connect").is_none());
+    // A first chat's starter questions are the only suggestions.
+    assert!(node(&screen, "coder-first-0").is_some());
     assert_eq!(composer_of(&screen)["enabled"], true);
     assert_eq!(composer_of(&screen)["placeholder"], "Message OpenAgents");
 
     let chat = fixture.say("What is a **relay**?");
     assert_eq!(hand.asked(), vec![vec!["What is a **relay**?".to_owned()]]);
+    // Before the first words: the working row, a spinner.
     assert!(node(&chat, "talk-working").is_some(), "{:?}", keys(&chat));
     assert_eq!(
         node(&chat, "talk-working").unwrap()["element"]["props"]["label"],
-        "Thinking"
+        "Working…"
     );
     assert_eq!(composer_of(&chat)["busy"], true);
     assert!(fixture.coder.streaming());
@@ -1198,13 +1136,23 @@ fn a_first_chat_needs_no_computer_and_streams_its_reply() {
     let streamed = node(&chat, "talk-m1-md").expect("streaming reply");
     let blocks = serde_json::to_string(&streamed["element"]["props"]["blocks"]).unwrap();
     assert!(blocks.contains("\"bold\":true"), "{blocks}");
-    assert!(node(&chat, "talk-working").is_none());
+    // The first part of a reply is not all of it: the working row stays
+    // under it until the result.
+    let rows = &node(&chat, "coder-transcript").unwrap()["element"]["props"]["children"];
+    let order: Vec<&str> = rows
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|row| row["key"].as_str().unwrap())
+        .collect();
+    assert_eq!(order, ["talk-m0", "talk-m1", "talk-working"]);
 
     hand.say("A relay **stores** and forwards events.", true);
     let chat = fixture.render();
     assert!(!fixture.coder.streaming());
     assert_eq!(composer_of(&chat)["busy"], false);
     assert!(node(&chat, "talk-m1").is_some());
+    assert!(node(&chat, "talk-working").is_none());
 
     // No computer and no judgment that it needs one: nothing but the chat.
     assert!(node(&chat, "coder-connect").is_none());
@@ -1281,21 +1229,26 @@ fn a_failed_reply_offers_to_try_again() {
 fn run_coder_starts_a_task_with_the_conversation() {
     let hand = Hand::default();
     let mut fixture = Fixture::hosts().answered_by(&hand);
-    // The new chat targets the ready computer; the cloud instead.
-    fixture.tap("coder-target");
-    fixture.tap("coder-target-cloud");
-    fixture.say("Run the tests in my repo");
-    hand.say("That needs a computer: tap Run Coder below.", false);
+    // A computer is ready, but a reply that does not need it shows no way
+    // to run Coder: no standing button above the field.
+    fixture.say("What is a relay?");
+    hand.say("A relay stores and forwards events.", true);
     let chat = fixture.render();
-    let run = node(&chat, "coder-run").expect("run coder");
-    assert_eq!(run["element"]["props"]["label"], "Run Coder on Studio Mac");
-    assert!(run["element"]["props"]["icon"].is_null());
-    // The worker's judgment placed the message on a computer: Run Coder
-    // becomes a chip.
+    assert!(node(&chat, "coder-run").is_none(), "{:?}", keys(&chat));
+    assert!(node(&chat, "coder-agents").is_none(), "{:?}", keys(&chat));
+    // Nor while a reply that will need it still streams.
+    fixture.tap("coder-new");
+    fixture.say("Run the tests in my repo");
+    hand.say("That needs a computer.", false);
+    let chat = fixture.render();
+    assert!(node(&chat, "coder-run").is_none(), "{:?}", keys(&chat));
+    // The worker's judgment placed the message on a computer: Run Coder is
+    // a chip under that reply.
     hand.judge(crate::basic_coder::Lane::Computer);
-    hand.say("That needs a computer: tap Run Coder below.", true);
+    hand.say("That needs a computer.", true);
     let chat = fixture.render();
     let run = &node(&chat, "coder-run").expect("run coder")["element"]["props"];
+    assert_eq!(run["label"], "Run Coder on Studio Mac");
     assert_eq!(run["icon"]["glyph"], "computer");
     assert_eq!(run["icon"]["pill"], true);
     let opened = fixture.tap("coder-run");
@@ -1330,13 +1283,20 @@ fn run_coder_starts_a_task_with_the_conversation() {
             .any(|label| label.starts_with("Run the tests in my repo\nQueued · Studio Mac")),
         "{labels:?}"
     );
+    // Back in the conversation, no Open Coder button stands above the
+    // field; the task is in the previous chats.
     let talk = keys(&list)
         .into_iter()
         .find(|key| key.starts_with("talk-"))
         .unwrap();
     let chat = fixture.tap(&talk);
-    assert!(node(&chat, "coder-spawned").is_some());
-    fixture.tap("coder-spawned");
+    assert!(node(&chat, "coder-spawned").is_none(), "{:?}", keys(&chat));
+    let list = fixture.list();
+    let row = keys(&list)
+        .into_iter()
+        .find(|key| key.starts_with("task-"))
+        .expect("the task in the list");
+    fixture.tap(&row);
     assert_eq!(fixture.coder.open_task(), Some((host, task)));
 }
 

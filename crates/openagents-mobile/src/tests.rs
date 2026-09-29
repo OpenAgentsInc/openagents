@@ -447,9 +447,10 @@ fn live_tailnet_admission_adds_the_computer_and_its_chats() {
     }
 }
 
-/// With no computer, the Coder tab opens on a new chat with the basic
-/// Coder, ready to type, and offers connecting a computer beside it rather
-/// than asking for one first.
+/// With no computer, the Coder tab opens on a new chat with OpenAgents,
+/// ready to type, and never asks for a computer first: no target pill, and
+/// no Connect a computer above the field (that is an offer under a reply
+/// that needs one).
 #[test]
 fn the_coder_tab_needs_no_computer() {
     let (mut app, _dir) = app();
@@ -457,9 +458,8 @@ fn the_coder_tab_needs_no_computer() {
     let coder = packet.coder.expect("coder view");
     let text = values(&coder);
     assert!(text.contains(&"OpenAgents".to_string()), "{text:?}");
-    // No computer enrolled: no target pill, and no line under the header.
     assert!(!text.contains(&"Cloud".to_string()), "{text:?}");
-    assert!(key_for(&coder, "Connect a computer").is_some(), "{text:?}");
+    assert!(key_for(&coder, "Connect a computer").is_none(), "{text:?}");
     let composer = &nodes_of(&coder, "composer")[0]["element"]["props"];
     assert_eq!(composer["enabled"], true);
     assert_eq!(composer["focus"], true);

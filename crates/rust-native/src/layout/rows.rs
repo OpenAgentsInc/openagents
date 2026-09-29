@@ -940,18 +940,25 @@ impl Ctx<'_> {
         header + 4.0 + content + 20.0
     }
 
+    /// A working row: a spinning activity indicator, then its label.
     fn working(&mut self, label: &str, x: f32, y: f32) -> f32 {
         let style = self.style(15.0, Weight::Regular, SECONDARY);
         let (h, _) = self.para(
             &Para::plain(label, style),
-            x + 36.0,
+            x + 26.0,
             y + 4.0,
             Wrap::Clip(None),
             0.0,
             AlignX::Start,
         );
         let h = h.max(self.line_height(15.0));
-        self.widget(x, y + 4.0 + (h - 6.0) / 2.0, 26.0, 6.0, WidgetKind::Working);
+        self.widget(
+            x,
+            y + 4.0 + (h - 18.0) / 2.0,
+            18.0,
+            18.0,
+            WidgetKind::Spinner,
+        );
         h + 8.0
     }
 }

@@ -88,6 +88,24 @@ pub(super) fn conversation(count: usize) -> Vec<Node<()>> {
         .collect()
 }
 
+/// A working row, as under a reply that is still coming, draws a spinner
+/// before its label.
+#[test]
+fn a_working_row_draws_a_spinner() {
+    let mut layout = TranscriptLayout::new();
+    let mut measurer = FixedMeasurer::default();
+    layout
+        .update(update(conversation(4), 390.0), &mut measurer)
+        .unwrap();
+    let display = layout.display(3).unwrap().clone();
+    assert_eq!(display.key, "w3");
+    assert_eq!(display.widgets.len(), 1);
+    let spinner = &display.widgets[0];
+    assert!(matches!(spinner.kind, WidgetKind::Spinner));
+    let label = display.runs.first().expect("the label");
+    assert!(spinner.x + spinner.w < label.x, "{spinner:?} {label:?}");
+}
+
 #[test]
 fn heights_offsets_and_ranges_are_exact() {
     let mut layout = TranscriptLayout::new();

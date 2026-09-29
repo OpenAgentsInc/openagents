@@ -1298,6 +1298,11 @@ final class NativeTranscriptView: UIScrollView, UIScrollViewDelegate, UIGestureR
     private var models: [String: (version: UInt64, model: NativeRowModel)] = [:]
     private weak var selectedRow: NativeRowView?
     private var expansion: AnyCancellable?
+    /// Ends a selection on a tap. It is the only recognizer the delegate
+    /// methods below decide for: a scroll view is also its own pan
+    /// recognizer's delegate, so answering for every recognizer would keep
+    /// touches from the pan and leave the transcript unscrollable.
+    private let selectionTap = UITapGestureRecognizer()
     private let bottomButton = UIButton(type: .system)
     private var buttonShown = false
     private let fallback = UILabel()
@@ -1340,10 +1345,10 @@ final class NativeTranscriptView: UIScrollView, UIScrollViewDelegate, UIGestureR
             addSubview(fallback)
         }
         // A tap anywhere ends a selection.
-        let tap = UITapGestureRecognizer(target: self, action: #selector(tapped))
-        tap.cancelsTouchesInView = false
-        tap.delegate = self
-        addGestureRecognizer(tap)
+        selectionTap.addTarget(self, action: #selector(tapped))
+        selectionTap.cancelsTouchesInView = false
+        selectionTap.delegate = self
+        addGestureRecognizer(selectionTap)
         // Text size changes scale every row; appearance changes only repaint.
         registerForTraitChanges([UITraitPreferredContentSizeCategory.self]) { (self: Self, _) in
             self.setNeedsLayout()
@@ -1603,12 +1608,16 @@ final class NativeTranscriptView: UIScrollView, UIScrollViewDelegate, UIGestureR
     }
 
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+        // The scroll view's own pan always gets its touches.
+        guard gestureRecognizer === selectionTap else { return true }
         // Only a selection needs the tap; its handles keep their drags.
-        selectedRow?.hasSelection == true && !(touch.view is NativeSelectionHandle)
+        return selectedRow?.hasSelection == true && !(touch.view is NativeSelectionHandle)
     }
 
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
-                           shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool { true }
+                           shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
+        gestureRecognizer === selectionTap
+    }
 
     #if DEBUG || targetEnvironment(simulator) || RUST_NATIVE_BENCH
     /// The first visible row's key and its distance from the top of the

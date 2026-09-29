@@ -179,7 +179,8 @@ pub enum WidgetKind {
     Status { state: crate::ToolState },
     /// A task-list checkbox.
     Checkbox { checked: bool },
-    /// The animated working indicator.
+    /// The animated working dots. The layout draws a working row with a
+    /// [`WidgetKind::Spinner`]; hosts still paint this kind.
     Working,
     /// A small activity spinner.
     Spinner,
