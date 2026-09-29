@@ -1,0 +1,5 @@
+vertical stack
+  heading "This Mac already runs Coder."
+  body "Phones connected to it keep working. Your projects stay as they are."
+  status "This version of OpenAgents can't take it over yet, so Coder keeps running as it is."
+  button "OK" -> not_now

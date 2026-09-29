@@ -104,7 +104,7 @@ pub enum Request {
     /// Whether Codex and Claude Code are signed in, and the recent tasks.
     Coder,
     OpenLoginItems,
-    /// Run the adoption helper.
+    /// Run `coder host adopt`.
     Adopt,
     /// Answer the nearby request `id` (`DSK-04`).
     NearbyDecide {
@@ -180,8 +180,9 @@ pub enum Agent {
 /// What an old-style setup keeps, as the adoption question says it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct OldSetup {
-    /// Phones that can reach this Mac now.
-    pub phones: usize,
+    /// Phones that can reach this Mac now; `None` when this app's Coder
+    /// can't count them (it doesn't read the keychain, or gave no answer).
+    pub phones: Option<usize>,
     /// Whether this app's Coder can take it over yet.
     pub ready: bool,
 }

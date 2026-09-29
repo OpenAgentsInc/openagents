@@ -9,7 +9,7 @@ use crate::mac;
 use openagents_desktop::codes::Action;
 use openagents_desktop::control::{ControlError, HostControl};
 use openagents_desktop::fake::FakeHost;
-use openagents_desktop::model::{Outcome, Refreshed, Request, Task};
+use openagents_desktop::model::{Agent, Outcome, Refreshed, Request, Task};
 use rust_native_desktop::Waker;
 use std::path::PathBuf;
 use std::process::Command;
@@ -115,7 +115,7 @@ impl Context {
                 mac::open_login_items();
                 None
             }
-            Request::Adopt => Some(Outcome::Adopted(crate::helper::adopt_in_helper())),
+            Request::Adopt => Some(Outcome::Adopted(self.adopt())),
             Request::NearbyDecide {
                 id,
                 connect,
@@ -128,6 +128,21 @@ impl Context {
                     message: "That phone stopped asking. Ask again from the phone.".into(),
                 }),
         }
+    }
+
+    /// Adopts the old-style setup with `coder host adopt`, run as a child,
+    /// then registers this app's login agent.
+    fn adopt(&self) -> Result<(), String> {
+        let Some(coder) = &self.coder else {
+            return Err(
+                "Couldn't move your setup. Coder keeps running as it was. Try again later.".into(),
+            );
+        };
+        openagents_desktop::migrate::adopt(coder, &self.home, &mut || match mac::register_agent() {
+            Agent::Enabled | Agent::NeedsApproval => Ok(()),
+            Agent::NotRegistered => Err("this is not the OpenAgents app bundle".into()),
+            Agent::Failed(message) => Err(message),
+        })
     }
 
     fn refresh(&mut self) -> Option<Refreshed> {

@@ -13,10 +13,12 @@
 //!   `rust-native-desktop` and talks to the host only over the local
 //!   control socket ([`control`]). It asks for codes, lists and removes
 //!   phones, and sets the project and auto-start policy.
-//! - The host, `coder host serve`, runs as a login agent the app registers
-//!   with `SMAppService`, and reads its keys from the keychain
-//!   ([`keychain`], behind the `keychain` feature). The window never calls
-//!   it; the adoption helper ([`migrate`]) runs in its own process.
+//! - The host, `coder host serve --keychain --iroh --control`, runs as a
+//!   login agent the app registers with `SMAppService`, and reads its keys
+//!   from the keychain itself. Adopting an old-style setup runs the same
+//!   `coder` as a child, `coder host adopt` ([`migrate`]), so the keychain
+//!   items are written and read by one program and the window never
+//!   touches a key.
 //!
 //! The modules, in the order a reader meets them:
 //!
@@ -27,16 +29,12 @@
 //! - [`words`]: the words no screen may show.
 //! - [`qr`]: the code's QR modules.
 //! - [`fake`]: an in-process host for tests and `--fake-host`.
-//! - [`keychain`] and [`migrate`]: the host's keys, and adopting an
-//!   old-style setup.
+//! - [`migrate`]: adopting an old-style setup through `coder host adopt`.
 //! - `update`: the signed-manifest updater (the `app` feature).
 
 pub mod codes;
 pub mod control;
 pub mod fake;
-#[cfg(feature = "keychain")]
-pub mod keychain;
-#[cfg(feature = "keychain")]
 pub mod migrate;
 pub mod model;
 pub mod qr;

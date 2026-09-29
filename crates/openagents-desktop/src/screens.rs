@@ -357,9 +357,10 @@ fn home(model: &Model, now: u64) -> Node<Intent> {
     let mut phones = vec![bold("phones-title", "Phones")];
     let list = model.phones();
     if model.host.is_none() {
-        let line = match &model.old {
-            Some(old) if old.phones == 1 => "1 phone can reach this Mac.".to_string(),
-            Some(old) => format!("{} phones can reach this Mac.", old.phones),
+        let line = match model.old.as_ref().map(|old| old.phones) {
+            Some(Some(1)) => "1 phone can reach this Mac.".to_string(),
+            Some(Some(n)) => format!("{n} phones can reach this Mac."),
+            Some(None) => "Coder runs here from an earlier setup.".to_string(),
             None => "Waiting for Coder on this Mac…".to_string(),
         };
         phones.push(text("no-phones", line, TextRole::Status));
@@ -506,9 +507,10 @@ fn adopt(model: &Model) -> Node<Intent> {
         return home(model, 0);
     };
     let phones = match old.phones {
-        0 => "No phones are connected to it yet.".to_string(),
-        1 => "1 phone can reach it now, and it keeps working.".to_string(),
-        n => format!("{n} phones can reach it now, and they keep working."),
+        None => "Phones connected to it keep working.".to_string(),
+        Some(0) => "No phones are connected to it yet.".to_string(),
+        Some(1) => "1 phone can reach it now, and it keeps working.".to_string(),
+        Some(n) => format!("{n} phones can reach it now, and they keep working."),
     };
     let mut children = if old.ready {
         vec![

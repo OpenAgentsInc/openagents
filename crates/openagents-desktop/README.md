@@ -17,10 +17,12 @@ The screens are Rust Native views ([`src/screens.rs`](src/screens.rs)),
 drawn by [`rust-native-desktop`](../rust-native-desktop/). The window process
 holds no secret key: it talks to the host only over the local control socket
 ([`src/control.rs`](src/control.rs), `openagents-connect`'s protocol). The
-host, `coder host serve`, runs as the login agent the app registers with
-`SMAppService`, and reads its keys from the keychain through
-[`src/keychain.rs`](src/keychain.rs). Adopting an old-style setup runs in a
-separate helper process ([`src/migrate.rs`](src/migrate.rs)).
+host, `coder host serve --keychain --iroh --control`, runs as the login agent
+the app registers with `SMAppService`, and reads its keys from the keychain
+itself. Adopting an old-style setup runs the bundled `coder` as a child
+process, `coder host adopt detect` and then `coder host adopt`
+([`src/migrate.rs`](src/migrate.rs)), so the keychain items are written by
+the same program that reads them and macOS never asks to allow it.
 
 When a code shows, rotates, and is cancelled is [`src/codes.rs`](src/codes.rs);
 `INVARIANTS.md` (Linking devices) states the rules.
@@ -53,7 +55,9 @@ hoc. `SKIP_CODER=1` leaves the Coder binaries out. The signed, notarized
 On a Mac that already runs Coder from an earlier setup
 (`~/.openagents/coder-access/`), the app does not register its own agent; it
 asks whether to use that setup, and offers **Use it** only once the bundled
-`coder` reads its keys from the keychain.
+`coder` reads its keys from the keychain (`coder host help` names it). With
+an older `coder` it still sees the setup, from the access store alone, and
+leaves it running.
 
 ## Test it
 

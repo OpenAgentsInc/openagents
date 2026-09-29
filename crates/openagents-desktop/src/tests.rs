@@ -204,7 +204,7 @@ fn states() -> Vec<(&'static str, Model)> {
     let (mut earlier, _) = model(Screen::Home);
     earlier.agent = Agent::NotRegistered;
     earlier.old = Some(OldSetup {
-        phones: 6,
+        phones: Some(6),
         ready: false,
     });
     states.push(("dsk-03-earlier-setup", earlier));
@@ -227,7 +227,10 @@ fn states() -> Vec<(&'static str, Model)> {
     let _ = unnamed.activate(Intent::NearbyTerminal, now);
     states.push(("dsk-04-nearby-terminal-unnamed", unnamed));
 
-    let old = |ready| OldSetup { phones: 6, ready };
+    let old = |ready| OldSetup {
+        phones: Some(6),
+        ready,
+    };
     let now = Instant::now();
     states.push((
         "adopt-ready",
@@ -236,6 +239,14 @@ fn states() -> Vec<(&'static str, Model)> {
     states.push((
         "adopt-not-yet",
         Model::new(now, Screen::Adopt, Agent::NotRegistered, Some(old(false))),
+    ));
+    let uncounted = OldSetup {
+        phones: None,
+        ready: false,
+    };
+    states.push((
+        "adopt-uncounted",
+        Model::new(now, Screen::Adopt, Agent::NotRegistered, Some(uncounted)),
     ));
     states
 }
@@ -320,9 +331,9 @@ fn the_terminal_checkbox_is_off_by_default() {
     assert!(outline.contains("checkbox [ ] \"Let this phone open a terminal on this Mac\""));
 }
 
-/// The window process holds no secret: its sources never name the
-/// keychain store or the adoption call, which run only in the host and in
-/// the `migrate` helper process.
+/// The window process holds no secret: its sources never name a keychain
+/// store or the in-process adoption call. The host reads the keychain, and
+/// adoption runs in `coder host adopt`, a child process.
 #[test]
 fn the_window_sources_never_reach_the_keychain() {
     let window = [
@@ -330,6 +341,7 @@ fn the_window_sources_never_reach_the_keychain() {
         ("shell.rs", include_str!("shell.rs")),
         ("worker.rs", include_str!("worker.rs")),
         ("mac.rs", include_str!("mac.rs")),
+        ("migrate.rs", include_str!("migrate.rs")),
     ];
     for (file, source) in window {
         for needle in [
@@ -338,6 +350,8 @@ fn the_window_sources_never_reach_the_keychain() {
             "OsKeychain",
             "adopt_here",
             "keyring",
+            "coder_service",
+            "SecretKey",
         ] {
             assert!(!source.contains(needle), "{file} names {needle}");
         }

@@ -14,7 +14,6 @@ description = "OpenAgents for Mac: pair a phone by QR code, manage phones, and w
 default = ["app"]
 # The window and its macOS glue.
 app = [
-    "keychain",
     "dep:rust-native-desktop",
     "dep:objc2",
     "dep:objc2-foundation",
@@ -25,20 +24,15 @@ app = [
     "dep:ring",
     "dep:semver",
 ]
-# The keychain store and the adoption of an old-style setup. The window
-# process never calls it; the host and the `migrate` helper process do.
-keychain = ["dep:keyring", "dep:coder-service"]
 
 [dependencies]
 base64 = "0.22"
-# The control protocol's messages, and the host's key names and key source.
+# The control protocol's messages.
 openagents-connect = { path = "../openagents-connect" }
 qrcodegen = "1.8.0"
 rust-native = { path = "../rust-native" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-coder-service = { path = "../coder-service", optional = true }
-keyring = { version = "4.2.0", optional = true }
 rust-native-desktop = { path = "../rust-native-desktop", optional = true }
 # The updater (`update`): HTTPS, Ed25519 and SHA-256, and version order.
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"], optional = true }

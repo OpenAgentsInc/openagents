@@ -85,6 +85,27 @@ pub fn register_agent() -> Agent {
     Agent::NotRegistered
 }
 
+/// Whether this app's login agent is already registered and enabled,
+/// without registering it.
+#[cfg(target_os = "macos")]
+pub fn agent_enabled() -> bool {
+    use objc2_foundation::NSString;
+    use objc2_service_management::{SMAppService, SMAppServiceStatus};
+    if bundle_contents().is_none() {
+        return false;
+    }
+    // SAFETY: a plain ServiceManagement status query on a name we own.
+    unsafe {
+        SMAppService::agentServiceWithPlistName(&NSString::from_str(AGENT_PLIST)).status()
+            == SMAppServiceStatus::Enabled
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn agent_enabled() -> bool {
+    false
+}
+
 /// Opens System Settings at Login Items, where the person allows the agent.
 pub fn open_login_items() {
     #[cfg(target_os = "macos")]

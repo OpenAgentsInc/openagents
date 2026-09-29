@@ -5,7 +5,6 @@
 //! Coder from an earlier setup, in which case it asks whether to use that
 //! setup. The window talks to the host only over the local control socket.
 
-mod helper;
 mod mac;
 mod menubar;
 mod shell;
@@ -13,8 +12,8 @@ mod worker;
 
 use openagents_desktop::control::{HostControl, SocketControl, socket_path};
 use openagents_desktop::fake::FakeHost;
-use openagents_desktop::migrate::{Report, host_reads_keychain};
-use openagents_desktop::model::{Agent, Intent, Model, OldSetup, Screen};
+use openagents_desktop::migrate;
+use openagents_desktop::model::{Agent, Intent, Model, Screen};
 use rust_native_desktop::App;
 use shell::DesktopApp;
 use std::path::PathBuf;
@@ -78,9 +77,6 @@ fn home() -> PathBuf {
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    if args.first().map(String::as_str) == Some("migrate") {
-        return ExitCode::from(helper::main(&args[1..]) as u8);
-    }
     let options = match parse(args.into_iter()) {
         Ok(options) => options,
         Err(complaint) => {
@@ -119,13 +115,13 @@ fn main() -> ExitCode {
             context,
         )
     } else {
-        let old = match helper::detect_in_helper() {
-            Report::Found { phones, problems } => Some(OldSetup {
-                phones,
-                ready: problems.is_empty()
-                    && mac::coder_path().is_some_and(|coder| host_reads_keychain(&coder)),
-            }),
-            Report::None | Report::Adopted { .. } | Report::Failed { .. } => None,
+        let coder = mac::coder_path();
+        // Once this app's own agent is on, the setup is already this app's
+        // (adopted, or made by it), so there is nothing to ask about.
+        let old = if mac::agent_enabled() {
+            None
+        } else {
+            migrate::old_setup(coder.as_deref(), &home())
         };
         // An earlier setup still runs its own Coder; registering ours
         // beside it would start a second one on the same state.
@@ -141,7 +137,7 @@ fn main() -> ExitCode {
         let screen = Model::first_screen(&old);
         (
             Model::new(now, screen, agent, old),
-            Context::new(control, None, None, mac::coder_path(), home()),
+            Context::new(control, None, None, coder, home()),
         )
     };
     match rust_native_desktop::window::run(
