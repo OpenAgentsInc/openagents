@@ -48,17 +48,25 @@ the owner can answer.
 
 ## What exists today
 
+This table was the starting point when the router was proposed; it is
+updated to what `main` holds on 2026-09-28. The router itself is
+implemented ([Implemented core](#implemented-core-2026-09-28)): the
+`chat-router-v1` judgment, the answer bank, T1 personalization, the product
+knowledge base, and the phone's offers. The CLI route is built
+(`coder::cli_route`, `528483364e`) but not yet wired into the worker or the
+phone's offers; codebase knowledge is in progress.
+
 | Piece | Where | What it does |
 | --- | --- | --- |
 | Chat wire | [NIP-CJ](../../../nips/openagents/NIP-CJ.md) | Phone sends a kind `25900` job, NIP-44 encrypted to the chat worker; the worker answers with `27000` feedback (`status`, `judgment`, `partial`) and one `26900` result. All ephemeral; the relay sees ciphertext. |
 | Chat worker | `crates/coder/src/bin/coder-worker.rs`, `crates/coder/src/relay/quota.rs` | Open under a quota (6 jobs a minute and 40 a day per key; a global day total), admits, then calls the model. Its log lines carry configuration and errors; this review found none that print message text. |
 | Model door | `crates/coder/src/generate.rs` | Vercel AI Gateway, lane `gemini` = `google/gemini-3.8-flash` (also `glm` = `zai/glm-5.3-flash`). 3.0 to 4.3 s to first token. |
-| First response | `crates/coder/src/first.rs` | One Jev request beside the model call, three questions over the same state: `action` (Classify's `coder-turns-v2` wording: respond, clarify, end), `lane` (chat or computer), `opener` (21 short openers or `none`). The argmax opener goes out as partial `seq` 0, about 0.6 s after Send; Jev itself answers in 150 to 190 ms. Opt-in (`"opener": true`) so Microcoder's cloud steps keep JSON-only replies. |
+| First response | `crates/coder/src/first.rs`, `crates/coder/src/router/` | Before the router: one Jev request beside the model call (`action`, `lane`, `opener`), the argmax opener as partial `seq` 0 about 0.6 s after Send. Now a turn that asks for `router` gets the `chat-router-v1` judgment instead (route, prepared answer, risk, lane, opener), and `first.rs` keeps only what the router and the suggestion ranking share. Opt-in, so Microcoder's cloud steps keep JSON-only replies. |
 | Rank | `crates/coder/src/first.rs` | A `rank` job orders up to 16 candidate repos or actions by one Choice. Metered as a turn. |
-| Phone | `crates/openagents-mobile/src/basic_coder.rs` | Sends the `INSTRUCTIONS` ("We are OpenAgents … tap Run Coder"), the bounded transcript, `client`, and `opener: true`. No credential, model, or grant. |
+| Phone | `crates/openagents-mobile/src/basic_coder.rs`, `router.rs`, `coder_tab.rs` | Sends the instructions (speaking as OpenAgents, in the plural), the bounded transcript, `client`, `opener: true`, and the `router` request with a bounded `context` (surface, whether a computer is ready, build). No credential, model, grant, or computer name. Shows the router's offers as its own controls: Run Coder or Connect a computer, screen chips, read-only command cards, follow-up chips, a "Prepared answer" note, and **Wrong answer**. Every new chat goes to OpenAgents; Coder runs on a computer only when the person picks one. Ships in TestFlight build 20 (build 19 sends only `opener`). |
 | Jev client | `crates/jev` | `SystemOneRequest` with `Noul` (probability of yes), `Choice` (up to 255 options, with `confidence` and full `probabilities`), `Score` (2 to 10 ordered levels). Questions in one request are answered independently and in parallel. |
 | Decision profile | `crates/coder/src/decision.rs`, `crates/coder/src/profiles.rs` | Resolves the one `jev::Client` every call site uses (hosted `jev-latest`, or local Kev/Lev). |
-| Knowledge base | `crates/knowledge`, `knowledge/`, [the KB design](knowledge-base.md), [NIP-KB](../../../nips/openagents/NIP-KB.md) | 211 entries of coding knowledge (methods, edge cases, slips). Retrieval is embeddings (`text-embedding-3-small` via OpenAI or OpenRouter, or Vertex) plus BM25, then a Jev Noul relevance filter. No product entries yet. |
+| Knowledge base | `crates/knowledge`, `knowledge/`, [the KB design](knowledge-base.md), [NIP-KB](../../../nips/openagents/NIP-KB.md) | 211 entries of coding knowledge (methods, edge cases, slips). Retrieval is embeddings (`text-embedding-3-small` via OpenAI or OpenRouter, or Vertex) plus BM25, then a Jev Noul relevance filter. Product entries now live in `knowledge/openagents/` (52 admitted) and are served by `coder::product_kb`; see [Product knowledge base](#product-knowledge-base). |
 | Code search | `crates/plugin-code-search` | Literal and `*` pattern search over a granted snapshot, ranked by distinct patterns matched. |
 | `openagents` command | `crates/openagents-cli`, [its guide](../../cli/README.md) | About 30 groups; each group's syntax is a `USAGE` string. `openagents mcp serve` already parses the top-level help table into tools (`mcp::groups`). |
 | OpenRouter client | `crates/openrouter` | Chat completions with a JSON-schema response, usage and cost, embeddings, and a streamed reply (`Client::stream`, added for personalization). |
@@ -313,7 +321,7 @@ Where the code settles something this design left open:
   is also `refuse` at p ≥ 0.80: two independent readings agreeing. Alone,
   it turns off prepared answers, stems, and offers, and a possible secret
   gets `warn.secret_shared` as the lead line above the model.
-- A turn that sends only `opener` (the phones before build 19) is decided in
+- A turn that sends only `opener` (the phones before build 20) is decided in
   legacy mode: T0 for entries with no offer, else an opener, else nothing.
 - `CODER_WORKER_ROUTER` is `live` (default), `shadow` (log the routed tier
   and serve the legacy one; the judgment's `shadow` field names the routed

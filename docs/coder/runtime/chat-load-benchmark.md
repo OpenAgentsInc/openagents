@@ -1,10 +1,18 @@
 # Chat load benchmark
 
 This page is the baseline for how fast the OpenAgents phone apps get a person
-into a Coder chat and back an answer, phase by phase, and a ranked list of
-where the time goes. It covers Coder chats only: the phone no longer lists
-Claude Code, Codex, OpenCode, or Devin chats
+into a chat and back an answer, phase by phase, and a ranked list of
+where the time goes. It covers the chats the phone lists: chats with
+OpenAgents and Coder chats on your computers. The phone no longer lists
+Claude Code, Codex, OpenCode, or Devin chats; a session Coder delegated to
+OpenCode or Devin shows inside its Coder chat
 ([#9920](https://github.com/OpenAgentsInc/openagents/issues/9920)).
+
+Names since the baseline: the "Coder tab" below is now the **Chat** tab,
+which opens on a new chat with OpenAgents, and the "basic Coder" is that
+chat (the OpenAgents chat worker over NIP-CJ). Every new chat goes to
+OpenAgents; Coder runs on a computer only when the person picks one
+(`25f8cb58c9`). The measurements keep their original names.
 
 It measures three things:
 
@@ -203,7 +211,11 @@ prompt was "Reply with only the word ready."
 Each item names the code responsible and an estimate of what fixing it would
 save. The estimates come from the measurements above, not from prototypes.
 
-1. **The basic Coder has no worker.** Send never shows words; the phone shows
+1. **Fixed: the chat worker is deployed** (`coder-worker-chat` on
+   `oa-coder-worker-1`, `3c251d4396`). A fresh-key "hello" shows its first
+   line in about 0.5 to 0.6 s and finishes in about 5 s from this Mac; see
+   [the first-reply measurement](../measurements/2026-09-28-first-reply.md).
+   As first measured: **The basic Coder has no worker.** Send never shows words; the phone shows
    a failure after the 30-second `CONTACT` wait
    (`crates/openagents-mobile/src/basic_coder.rs:49`). The chat worker's unit
    is not installed on `oa-coder-worker-1`. Installing it is an owner step
@@ -264,7 +276,10 @@ save. The estimates come from the measurements above, not from prototypes.
    while a basic reply streams (`OpenAgentsApp.swift:296`). A callback from
    Rust when the packet changes would save 0.5 s on average (up to 3 s) after
    each read, and 125 ms on average before the first streamed words.
-6. **The basic Coder opens a new relay connection for every message.**
+6. **Fixed: the phone keeps one signed-in relay connection with its reply
+   subscription while the Chat tab shows** (`basic_coder.rs`, `Link`), so a
+   message only publishes its request. As first measured:
+   **The basic Coder opens a new relay connection for every message.**
    `Relay::run` connects, authenticates, and subscribes for each turn
    (`crates/openagents-mobile/src/basic_coder.rs:371`): 265 to 325 ms before
    the request leaves the phone. A kept connection with a standing reply
@@ -395,8 +410,11 @@ arrives instead of up to 1 s later.
   round trip per page.
 - The machine was busy, so disk-bound phases (`fsync`, first launch) varied
   by more than 10 times between runs.
-- The basic Coder's worker and model latency were not measured, because no
-  chat worker was running.
+- The basic Coder's worker and model latency were not measured here,
+  because no chat worker was running at the time. The worker now runs; its
+  first-response and router latencies are in
+  [the first-reply measurement](../measurements/2026-09-28-first-reply.md)
+  and the [chat router design](../design/2026-09-28-chat-router.md).
 - The computer-backed path is six runs of a one-word reply on one host with
   auto-start and one engine lane, against the host build already running
   there; a longer reply widens the gap in bottleneck 2.

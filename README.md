@@ -160,9 +160,14 @@ answers those at once and sends real work to Coder.
 - **Offers.** The router can offer Run Coder, Connect a computer, or a
   screen. The phone shows them as its own controls, and they act only on a
   tap.
-- **Planned.** The `openagents` CLI route and the codebase knowledge base
-  have defined seams in [`crates/coder/src/router/`](crates/coder/src/router/)
-  and no implementation yet.
+- **CLI route.** Built in `coder::cli_route` (`528483364e`,
+  [#9926](https://github.com/OpenAgentsInc/openagents/issues/9926)): it
+  descends the `openagents` command tree generated from the command's own
+  help text and proposes a command that passes its parser. It is not yet
+  wired into the chat worker or the phone's offers.
+- **In progress.** The codebase knowledge base has its seam in
+  [`crates/coder/src/router/`](crates/coder/src/router/) and no
+  implementation on `main` yet.
 
 The [chat worker runbook](docs/deployment/chat-worker.md) covers serving,
 limits, and configuration. The [first-reply measurement](docs/coder/measurements/2026-09-28-first-reply.md)

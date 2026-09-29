@@ -17,7 +17,7 @@ Status words follow the [glossary](../glossary.md): **Done** means landed on
 | | |
 | --- | --- |
 | Date | Tuesday 2026-09-29 |
-| iOS | OpenAgents (`com.openagents.app`) 1.0.0 build 16 (`e7989aa4e1`) from a **public TestFlight link** |
+| iOS | OpenAgents (`com.openagents.app`) 1.0.0 from a **public TestFlight link**. When this page was written the launch build was 16 (`e7989aa4e1`); builds 1 to 19 are now on TestFlight (18 `e1d499def7`: Chat with OpenAgents; 19 `99e3094bff`: new chats go to OpenAgents), and build 20 brings the chat router's prepared answers and offers |
 | Android | The signed OpenAgents APK 1.0.0 (16) from [`bins/openagents-android`](../../bins/openagents-android/README.md), from a draft GitHub release the owner publishes ([below](#android-at-launch)) |
 | Who | Anyone. The program is open; joining earns nothing by itself, and XP and titles come only from accepted contributions |
 | Feedback | In-app **Report a problem** (Account, or a long press on the tab bar), TestFlight feedback, the **Playtest report** GitHub issue template (label `playtest`), or the playtest email. In-app reports stay on the phone until the owner creates the triage key |
@@ -25,11 +25,27 @@ Status words follow the [glossary](../glossary.md): **Done** means landed on
 
 ## MVP: what ships to playtesters
 
+### Chat with OpenAgents (builds 17 to 20)
+
+- **Chat needs no computer.** The first tab is **Chat** (the message icon);
+  it opens on a new chat, ready to type (**Message OpenAgents**). Every new
+  chat goes to the OpenAgents chat worker over NIP-CJ, which speaks as
+  "we" and streams its reply (`734c5a47c4`, `820bc02ce4`, `25f8cb58c9`).
+- **Instant answers**: common questions get a reviewed prepared answer at
+  once; product questions are answered from sourced notes
+  ([chat router](../coder/design/2026-09-28-chat-router.md), `81cee946af`,
+  `dc8f9e2001`).
+- **Coder when it's needed**: a message that needs a computer gets **Run
+  Coder on** your computer or **Connect a computer**; the router's other
+  offers open a screen (build 20, `8968ce8f8c`, `6c12b9e0e1`).
+
 ### Coder: chats on your computers
 
 - **Chats on your computers over the tailnet.** Sign in on the **Tailnet**
   screen; a computer running `coder host serve --tailnet-admission standard`
-  adds itself and its Claude, Codex, and Coder chats, with no QR code.
+  adds itself and its Coder chats, with no QR code. The phone lists only
+  OpenAgents and Coder chats; a session Coder delegated to OpenCode or Devin
+  shows inside its Coder chat (`951da41b10`).
 - **New chat**: a NIP-HOST `task.create` in the computer's workspace; the
   chat follows the task's ATIF transcript through the read-only history
   observer.
@@ -48,8 +64,9 @@ Status words follow the [glossary](../glossary.md): **Done** means landed on
   the chat list loads in well under a second and chats reopen instantly from
   the phone's cache ([M1](#m1-fast-chat-loading-over-the-tailnet)).
 
-Honest limits: you need your own Mac or Linux computer on the same tailnet.
-Replies update per step as the engine records them, not token by token. No attachments,
+Honest limits: Coder on your computers needs your own Mac or Linux computer
+on the same tailnet (chat with OpenAgents needs none). Coder's reply streams
+in paragraph by paragraph as it's written (`358975bdbd`). No attachments,
 dictation, model picker, or push notifications
 ([what comes later](../../bins/openagents-ios/docs/chat-later.md)).
 
@@ -70,8 +87,9 @@ dictation, model picker, or push notifications
   [#9853](https://github.com/OpenAgentsInc/openagents/issues/9853), closed).
 - **Trainer levels and tutorial quests**: six live tutorial quests reward
   reproducing a published pass ([tutorial quests](../verse/tutorial-quests.md)).
-- **Lagrange 1 portal**: the **LAGRANGE 1** arch into the station and
-  **THE GRID** arch back ([Lagrange 1](../verse/lagrange-1.md)).
+- **Lagrange 1 portal**: hidden in the OpenAgents app for now
+  (`13997c305b`); the station itself is unchanged
+  ([Lagrange 1](../verse/lagrange-1.md)).
 
 Honest limits: no chat in the Grid, and shared state can
 lag between players. The Gym results aren't shown as "signed by OpenAgents"
@@ -139,6 +157,8 @@ an owner step.
 | Trainer leveling phase 1 | `9bb3738bd8`, `b860b3e88a`, `ce3c76257e` |
 | Android parity and release APK | `e56d173480`, `e1aeec7413`, `738d1b5248`, `762fb8d36d` |
 | iOS build 16 | `e7989aa4e1` |
+| Chat with OpenAgents, iOS builds 17 to 19 | `734c5a47c4`, `820bc02ce4`, `e1d499def7`, `25f8cb58c9`, `99e3094bff` |
+| Chat router (build 20) | `81cee946af`, `dc8f9e2001`, `8968ce8f8c`, `6c12b9e0e1` |
 
 ## Milestones after launch
 

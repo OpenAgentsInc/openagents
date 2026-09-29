@@ -17,14 +17,15 @@ The app has four tabs, shown as white icons on black:
   to type: the composer (**Message OpenAgents**) has the cursor, a selector
   beside the **OpenAgents** title says
   where the message goes, and suggested actions sit above the field as
-  chips. With a computer this phone may operate ready, a new chat starts
-  Coder there as a NIP-HOST `task.create` in the workspace the selector
-  names; tapping the selector offers each computer, **Cloud** (the basic
-  Coder), and **Connect a computer**. The chips continue the newest chats
-  and pick another of the computer's workspaces (the one this phone used
-  last comes first), and with no computer added they offer **Connect a
-  computer**, which opens Account > Computers. The basic Coder needs no
-  computer: each message is a NIP-CJ conversation job signed by the device
+  chips. Every new chat goes to OpenAgents (**Cloud**), even while a
+  computer is ready; tapping the selector offers each computer, **Cloud**,
+  and **Connect a computer**, and picking a computer (or tapping one of its
+  workspaces) makes the new chat start Coder there as a NIP-HOST
+  `task.create` in the workspace the selector names. The chips continue the
+  newest chats and pick another of the chosen computer's workspaces (the
+  one this phone used last comes first), and with no computer added they
+  offer **Connect a computer**, which opens Account > Computers. Chat with
+  OpenAgents needs no computer: each message is a NIP-CJ conversation job signed by the device
   key and sent, NIP-44 encrypted, through `relay.openagents.com` to the
   OpenAgents chat worker, over one signed-in connection kept while the tab
   shows, and the reply streams back, opener first, as partials drawn with
@@ -51,7 +52,7 @@ The app has four tabs, shown as white icons on black:
   An open chat's header has the menu button, its phase and computer, and a
   round **New chat** button; a waiting question makes the composer answer
   it, and an approval request adds **Approve** and **Deny**. This is the
-  iPhone app's Coder tab; Rust decides everything it shows.
+  iPhone app's Chat tab; Rust decides everything it shows.
 - **Verse** (globe) mounts Verse's bare world (`coder_mobile::VerseHandle` in
   bare mode) in a `SurfaceView` and forwards touches, pinch, and rotation
   samples as Coder's `coder.verse.v1` requests. Rust draws the movement
@@ -135,7 +136,7 @@ The app has four tabs, shown as white icons on black:
   default, shown cropped exactly as it would be sent, and never offered on
   the Wallet tab or a key screen (Rust refuses one there anyway); see
   [Playtesting](../../docs/game/playtesting.md). The
-  Coder tab reads your computers' Coder chats, as on iOS.
+  Chat tab reads your computers' Coder chats, as on iOS.
 
 Tailnet admission works as on iOS: after you sign in on the Tailnet screen,
 the app asks each device on the tailnet for an invitation, and a computer
@@ -214,11 +215,11 @@ the iOS design in [`NativeChat.swift`](../coder-ios/host/App/NativeChat.swift):
 
 Rust says when the app packet changes, as it does for the iPhone app: a
 thread of the host's own waits in `waitChange` and asks for the packet with
-`changed` as soon as a transcript page, a streamed basic Coder reply, a chat
+`changed` as soon as a transcript page, a streamed OpenAgents chat reply, a chat
 list, or a computer's task summary arrives, one request at a time. While the
-Coder tab shows a live chat (`coderShown`), Rust also answers every second.
+Chat tab shows a live chat (`coderShown`), Rust also answers every second.
 As a fallback, the host asks for the Computers surface every 3 seconds while
-the Coder tab or the Computers screen shows (not while a value is being
+the Chat tab or the Computers screen shows (not while a value is being
 entered), and a snapshot every second while the Tailnet screen is loading. The terminal opens full screen when Rust reports one; it sizes the
 grid from the monospace cell, polls every 120 ms, and forwards typed text,
 Backspace, Enter, and hardware keys with their modifiers.
@@ -305,7 +306,7 @@ with 16 KiB pages.
 
 Debug builds accept launch extras that open a tab or an Account screen, and
 one that shows Rust Native's sample conversation
-(`crates/rust-native/fixtures/conversation.json`) on the Coder tab:
+(`crates/rust-native/fixtures/conversation.json`) on the Chat tab:
 
 ```sh
 adb shell am start -n com.openagents.app/.MainActivity --es tab verse

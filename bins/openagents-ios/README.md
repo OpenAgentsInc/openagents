@@ -17,18 +17,19 @@ The app has four tabs, shown as icons:
   to type: the composer (**Message OpenAgents**) has the cursor, a selector
   beside the **OpenAgents** title says
   where the message goes, and suggested actions sit above the field as
-  chips. With a computer this phone may operate ready, a new chat starts
+  chips. Every new chat goes to OpenAgents (**Cloud**), even while a
+  computer is ready. Tapping the selector offers each computer, **Cloud**,
+  and **Connect a computer**, with a check on the current one. Picking a
+  computer (or tapping one of its workspaces) makes the new chat start
   Coder there: a NIP-HOST `task.create` in the workspace the selector
   names (**Studio Mac · openagents**), the same operation as Order work;
   with the host's auto-start policy on, the host runs Coder's engine right
-  away. Tapping the selector offers each computer, **Cloud** (the basic
-  Coder), and **Connect a computer**, with a check on the current one. The
-  chips continue the newest chats (a clock glyph), pick another of the
-  computer's workspaces (a folder glyph; the one this phone used last
-  comes first), and, with no computer added, **Connect a computer**,
-  which opens Account > Computers. The chat worker's `rank` job may order
+  away. The chips continue the newest chats (a clock glyph), pick another
+  of the chosen computer's workspaces (a folder glyph; the one this phone
+  used last comes first), and, with no computer added, **Connect a
+  computer**, which opens Account > Computers. The chat worker's `rank` job may order
   the chips once each time the tab shows; the phone's own order stands
-  when it does not answer. The basic Coder needs no computer: each message
+  when it does not answer. Chat with OpenAgents needs no computer: each message
   is a NIP-CJ conversation job signed by the device key and sent, NIP-44
   encrypted, through `relay.openagents.com` to the OpenAgents chat worker,
   and the reply streams back as partials drawn with incremental Markdown.

@@ -36,12 +36,12 @@ phone <--27000 partials, 26900 result------- relay.openagents.com <-- chat worke
   route, prepared answer, whether the reply needs the user's specifics,
   lane, opener, risk, and a command group when a command tree is wired.
   Code decides what is shown. A turn that sends `"router":
-  "chat-router-v1"` (build 19 of the app) gets every tier: a whole answer
+  "chat-router-v1"` (build 20 of the app) gets every tier: a whole answer
   from the reviewed bank (`crates/coder/answers/chat-answers-v1.toml`) with
   followup chips, a refusal, a "We'll dispatch Coder to …" stem with a Run
   Coder or Connect a computer offer, a wallet or account answer with its
   screen offered, or the model led by an opener. A turn that sends only
-  `"opener": true` (builds before 19) gets a whole answer with no offer, an
+  `"opener": true` (builds 19 and earlier) gets a whole answer with no offer, an
   opener, or nothing, as before. Every judged turn logs one `router` line
   of ids, probabilities, tiers, and the judge's time, never message text.
   `CODER_WORKER_ROUTER=shadow` logs what the router would serve but serves

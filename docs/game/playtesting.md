@@ -14,7 +14,8 @@
 > Implementation is tracked in [Implementation tasks](#implementation-tasks)
 > and epic [#9888](https://github.com/OpenAgentsInc/openagents/issues/9888).
 
-The OpenAgents app went from build 1 to build 15 on TestFlight in two days.
+The OpenAgents app went from build 1 to build 15 on TestFlight in two days,
+and builds 16 to 19 followed; build 20 brings the chat router.
 Each build so far was tested by the same person who asked for it: the owner
 installs it, writes notes such as "1.0.0 Build 13 Feedback", and agents turn
 the notes into commits and the next build. That loop is fast and it works,
@@ -175,7 +176,7 @@ Status words follow the [glossary](../glossary.md).
 
 | Piece | Status |
 | --- | --- |
-| The OpenAgents app on iOS (`com.openagents.app`) with four tabs: Coder, Verse (the Grid), Wallet, and Account ([README](../../bins/openagents-ios/README.md)) | Implemented. Version 1.0.0 builds 1 to 14 went to TestFlight on 2026-09-28; build 15 (`be94321643`) carries that day's fixes and follows build 14 to testers. |
+| The OpenAgents app on iOS (`com.openagents.app`) with four tabs: Chat, Verse (the Grid), Wallet, and Account ([README](../../bins/openagents-ios/README.md)) | Implemented. Version 1.0.0 builds 1 to 19 are on TestFlight: 16 added Report a problem, 17 chat with no computer, 18 Chat with OpenAgents (`e1d499def7`), and 19 sends every new chat to OpenAgents (`99e3094bff`). Build 20 brings the chat router's prepared answers and offers. |
 | OpenAgents for Android ([`bins/openagents-android`](../../bins/openagents-android/README.md)), the same Rust library | Partial ([#9838](https://github.com/OpenAgentsInc/openagents/issues/9838)). Coder, Verse (with the Gym and RESULTS panels, `82663b935d`), Wallet (`e56d173480`, `e1aeec7413`; [#9861](https://github.com/OpenAgentsInc/openagents/issues/9861) closed), and Account work. Verified on the emulator only; a live tailnet chat, QR scanning, the terminal, and motion look haven't been checked on a device. Distributed as a signed release APK (1.0.0, version code 16, the iPhone build number) from a GitHub release that testers install by hand. |
 | Public distribution | Planned for 2026-09-29: a public TestFlight link for iOS and a public APK download for Android (owner steps in the workspace's `NEEDS_OWNER.md`). |
 | TestFlight's own feedback: a tester takes a screenshot or uses **Send Beta Feedback** in the TestFlight app, and it reaches App Store Connect with the build number, device, and OS. Crash reports reach it too. | Exists, from Apple. `openagents playtest testflight` reads it into the triage inbox as drafts and log entries, without the tester's Apple identity ([#9905](https://github.com/OpenAgentsInc/openagents/issues/9905), [triage](playtest-triage.md#testflight-feedback)). |
@@ -663,14 +664,15 @@ Coder and Verse launch to playtesters on Tuesday 2026-09-29. Season 1
 
 ### What testers get
 
-- **iOS:** the OpenAgents app (`com.openagents.app`), version 1.0.0 build 14
-  or later, from the **public TestFlight link**. Build 15 (`be94321643`),
-  with the fixes from 2026-09-28, follows as soon as it clears processing
-  and Beta App Review; testers update from TestFlight.
+- **iOS:** the OpenAgents app (`com.openagents.app`), version 1.0.0, from
+  the **public TestFlight link**. Builds 1 to 19 are on TestFlight; build 19
+  sends every new chat to OpenAgents, and build 20 brings the chat router's
+  prepared answers and offers. Testers update from TestFlight.
 - **Android:** the signed OpenAgents APK from
   [`bins/openagents-android`](../../bins/openagents-android/README.md),
-  linked publicly next to the TestFlight link. Android has Coder, Verse (the
-  Grid, the Gym and RESULTS panels, Lagrange 1), Wallet, and Account, and
+  linked publicly next to the TestFlight link. Android has Chat, Verse (the
+  Grid and the Gym and RESULTS panels; the Lagrange 1 portal is hidden),
+  Wallet, and Account, and
   the build has run on the emulator but not yet on a range of devices
   ([#9838](https://github.com/OpenAgentsInc/openagents/issues/9838)).
 - **The brief** from [Onboarding, consent, and privacy](#onboarding-consent-and-privacy),
@@ -705,29 +707,28 @@ unmoderated task list is the four items above.
 
 Published with the link so testers don't spend reports on them:
 
-- **No in-app report on builds 14 and 15.** Use TestFlight feedback, the
-  GitHub template, or email ([Stage 0](#stage-0-what-works-today-launch-day)).
-  Build 16 adds **Report a problem**; it sends once a build carries the
-  triage key.
-- **Chat loading over the tailnet can be slow** on long chats; faster reads
-  are in progress (host side landed in `4ef967aa40`; the Rust-laid-out
-  transcript is [#9833](https://github.com/OpenAgentsInc/openagents/issues/9833)).
-  A chat shows at most its newest 240 rows; replies arrive by polling every
-  few seconds, not token streaming.
-- **Coder needs your own computer** on the same tailnet, running the Coder
-  host; there's no hosted computer. No photo attachments, voice dictation,
+- **In-app reports wait on the phone.** Builds 14 and 15 have no in-app
+  report; use TestFlight feedback, the GitHub template, or email
+  ([Stage 0](#stage-0-what-works-today-launch-day)). Build 16 and later have
+  **Report a problem**; it sends once a build carries the triage key.
+- **Chat with OpenAgents needs no computer**; its reply streams in, and
+  common questions get a prepared answer at once (build 20 adds the
+  router's offers and **Wrong answer**). The chat's daily limit is 40
+  messages per user.
+- **Coder on your own code needs your own computer** on the same tailnet,
+  running the Coder host; there's no hosted computer. Coder's reply streams
+  in paragraph by paragraph, and chats open in one or two reads
+  (`358975bdbd`, `fe6cf24aa2`). No photo attachments, voice dictation,
   model picker, or push notifications yet
   ([what comes later](../../bins/openagents-ios/docs/chat-later.md)).
 - **The Grid has no chat** and no name-tag levels; presence shows a pubkey
   prefix. Shared ball and block state can lag between players.
 - **Wallet:** real mainnet bitcoin; use amounts you can lose. Receiving to a
-  Lightning address, paying other users by npub, and unclaimed on-chain
-  deposits aren't built yet
-  ([#9859](https://github.com/OpenAgentsInc/openagents/issues/9859),
-  [#9860](https://github.com/OpenAgentsInc/openagents/issues/9860),
-  [#9862](https://github.com/OpenAgentsInc/openagents/issues/9862)). Amounts
-  show in sats and BTC; the BIP 177 display is
-  [#9881](https://github.com/OpenAgentsInc/openagents/issues/9881).
+  Lightning address of your own isn't built yet
+  ([#9859](https://github.com/OpenAgentsInc/openagents/issues/9859)); paying
+  other users by npub and unclaimed deposits landed (`f0466f1b15`,
+  `d43b304e87`). Amounts show in BIP 177 form (`₿12,345`), with legacy BTC
+  as a choice (`dfe066f267`).
 - **Android:** the APK (1.0.0, version code 16, the iPhone build number) has the Wallet since
   `e56d173480`, but not **Report a problem** or the playtest log, which
   its Changelog lists for build 16
@@ -742,8 +743,9 @@ Published with the link so testers don't spend reports on them:
 
 ### Launch-day steps
 
-1. Owner: turn on the public link for the external group with build 14,
-   submit build 15, and publish the APK (workspace `NEEDS_OWNER.md`).
+1. Owner: turn on the public link for the external group with the newest
+   build (build 19 now; build 20 brings the chat router), and publish the
+   APK (workspace `NEEDS_OWNER.md`).
 2. Post the TestFlight link, the APK link, the brief, and the known issues
    publicly (Nostr and X).
 3. Open the triage log; read TestFlight feedback, new `playtest` issues, and
@@ -762,8 +764,9 @@ Each week has a goal, the book's circle it leans on, and an exit check.
 - Day-0 checklist above. Daily triage of all three channels.
 - Three to five moderated sessions with informal confidants (session 1 and
   session 2); the owner's own fresh-mind notebook.
-- Ship build 15 to the public link, then a build with the week's P0 and P1
-  fixes, each with a Changelog line saying what to test.
+- Ship each new build to the public link (build 20, with the chat router,
+  next), then a build with the week's P0 and P1 fixes, each with a
+  Changelog line saying what to test.
 - Draft the paper prototype for week 3.
 - **Exit:** no open P0; every P1 has a fix in a build or a stated reason;
   at least ten outside testers have installed a build.
