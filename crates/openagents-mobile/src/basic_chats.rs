@@ -191,7 +191,7 @@ impl BasicChats {
         };
         self.rank_allowed = false;
         let reply = Arc::new(Mutex::new(Reply::default()));
-        runtime.spawn(door.rank(candidates, reply.clone()));
+        runtime.spawn(rung(door.rank(candidates, reply.clone())));
         self.ranking = Some((set, reply));
     }
 
@@ -313,7 +313,9 @@ impl BasicChats {
         let reply = Arc::new(Mutex::new(Reply::default()));
         let turns = self.turns.get(id).cloned().unwrap_or_default();
         let handle = match (&self.door, &self.runtime) {
-            (Some(door), Some(runtime)) => Some(runtime.spawn(door.ask(turns, reply.clone()))),
+            (Some(door), Some(runtime)) => {
+                Some(runtime.spawn(rung(door.ask(turns, reply.clone()))))
+            }
             _ => {
                 lock(&reply).failure = Some(basic_coder::Failure::Transport(
                     "no chat service in this build".into(),
@@ -487,6 +489,12 @@ pub(crate) fn handoff(title: &str, turns: &[Turn], limit: usize) -> String {
     }
     parts.reverse();
     format!("{head}{}", parts.concat()).trim_end().to_owned()
+}
+
+/// `job`, then a ring (`wake`), so its answer shows at once.
+async fn rung(job: impl std::future::Future<Output = ()>) {
+    job.await;
+    crate::wake::ring();
 }
 
 #[cfg(test)]

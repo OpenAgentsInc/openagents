@@ -28,6 +28,9 @@ class MobileBridge(private val context: Context, private val computersFixture: B
     private var disposed = false
     private var terminalRevision = 0L
     private var terminalPolling = false
+    /** A packet asked for after Rust said it changed is on its way, and whether Rust changed again since. */
+    private var changeInFlight = false
+    private var changedAgain = false
 
     /** The latest app packet (`openagents.mobile.v1`). */
     var packet: JSONObject? = null; private set
@@ -64,7 +67,40 @@ class MobileBridge(private val context: Context, private val computersFixture: B
             }
         }
         send(json("op" to "snapshot"))
+        watchChanges()
     }
+
+    /**
+     * Rust says when its packet changes (a transcript page, a streamed reply,
+     * a computer's task summary): a thread of its own waits on it and asks for
+     * the packet at once, instead of on a timer.
+     */
+    private fun watchChanges() {
+        Thread({
+            var seen = 0L
+            while (!disposed) {
+                val now = try { OpenAgentsNative.waitChange(seen, 30_000) } catch (problem: Throwable) { break }
+                if (now == seen) continue
+                seen = now
+                main.post { rustChanged() }
+            }
+        }, "openagents-changes").apply { isDaemon = true }.start()
+    }
+
+    /** Asks for the changed packet one at a time; a change while one is on its way asks again when it arrives. */
+    private fun rustChanged() {
+        if (disposed) return
+        if (changeInFlight) { changedAgain = true; return }
+        changeInFlight = true
+        changedAgain = false
+        send(json("op" to "changed")) {
+            changeInFlight = false
+            if (changedAgain) rustChanged()
+        }
+    }
+
+    /** The Coder tab shows or hides; while it shows a live chat, Rust asks for a packet every second. */
+    fun coderShown(shown: Boolean) = OpenAgentsNative.coderShown(shown)
 
     fun lifecycle(active: Boolean) = send(json("op" to "lifecycle", "active" to active))
 
@@ -272,8 +308,9 @@ class MobileBridge(private val context: Context, private val computersFixture: B
         }
     }
 
-    private fun send(request: JSONObject) {
+    private fun send(request: JSONObject, done: (() -> Unit)? = null) {
         call(request) { text ->
+            done?.invoke()
             if (text == null) return@call
             val next = try { packet(text, "openagents.mobile.v1") } catch (problem: Exception) {
                 failure = problem.message ?: "OpenAgents returned an unreadable screen."

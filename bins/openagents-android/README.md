@@ -199,10 +199,14 @@ the iOS design in [`NativeChat.swift`](../coder-ios/host/App/NativeChat.swift):
   the cursor once per token. While Coder works it becomes a
   stop control that activates the composer node.
 
-The host polls as the iPhone app does: the Computers surface every 3 seconds
-while the Coder tab or the Computers screen shows (not while a value is being
-entered), and a snapshot every second while the Tailnet screen is
-loading. The terminal opens full screen when Rust reports one; it sizes the
+Rust says when the app packet changes, as it does for the iPhone app: a
+thread of the host's own waits in `waitChange` and asks for the packet with
+`changed` as soon as a transcript page, a streamed basic Coder reply, a chat
+list, or a computer's task summary arrives, one request at a time. While the
+Coder tab shows a live chat (`coderShown`), Rust also answers every second.
+As a fallback, the host asks for the Computers surface every 3 seconds while
+the Coder tab or the Computers screen shows (not while a value is being
+entered), and a snapshot every second while the Tailnet screen is loading. The terminal opens full screen when Rust reports one; it sizes the
 grid from the monospace cell, polls every 120 ms, and forwards typed text,
 Backspace, Enter, and hardware keys with their modifiers.
 
@@ -239,6 +243,7 @@ ABI, exported to `com.openagents.app.OpenAgentsNative`:
 | `create(config)`, `call(handle, request)`, `destroy(handle)` | `openagents_mobile_create`, `_call`, `_destroy` | One background worker |
 | `verseCreate(surface, config)`, `verseCall`, `verseDestroy` | `openagents_verse_create`, `_call`, `_destroy` | Main thread |
 | `verseAttach(handle, surface, config)`, `verseDetach(handle)` | None; Android can lose its window while keeping the world | Main thread |
+| `waitChange(seen, timeoutMs)`, `coderShown(shown)` | `openagents_mobile_wait`, `openagents_mobile_coder_shown` | `waitChange` on a thread of its own; neither takes a handle |
 
 Handles are counters, never pointers, and are refused on the wrong thread.
 Each entry point bounds its input as the C ABI does (16 KiB configuration,

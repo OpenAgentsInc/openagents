@@ -453,10 +453,14 @@ impl Chats {
                 return;
             };
             computer.head_running = false;
+            // A failed read rings nothing: the Coder tab asks again on its
+            // next packet, and a ring would make that at once, in a loop.
             if let Ok(Observation::Catalog(page)) = result {
                 merge(&mut computer.chats, &page.entries);
                 computer.heads_done = computer.heads_done.max(round);
                 state.changed.insert(observer);
+                drop(state);
+                crate::wake::ring();
             }
         });
         Some(round)
@@ -547,6 +551,8 @@ fn watch(
             ) {
                 merge(&mut computer.chats, &page.entries);
                 state.changed.insert(observer.clone());
+                drop(state);
+                crate::wake::ring();
             }
         }
     });
@@ -587,6 +593,7 @@ where
         merge(&mut computer.chats, &chats[merged..]);
         merged = chats.len();
         state.changed.insert(observer.to_owned());
+        crate::wake::ring();
         true
     })
     .await;
@@ -599,6 +606,8 @@ where
         prune(&mut computer.chats, &fresh, complete);
         computer.ready = true;
         state.changed.insert(observer.to_owned());
+        drop(state);
+        crate::wake::ring();
     }
 }
 

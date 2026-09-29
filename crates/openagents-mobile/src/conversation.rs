@@ -1,11 +1,14 @@
 //! One chat read from a computer's history observer, drawn as a Rust Native
 //! transcript: messages by role with Markdown, tool rows, and a working row.
 //!
-//! The chat opens at its newest records, read backward from the end, and
-//! shows each page as it arrives; "Load earlier" reads the batch before the
-//! oldest row. [`Conversation::poll`] reads backward from the end again
-//! until it reaches the newest record it has read, so a running chat grows
-//! without splitting a record.
+//! The chat opens at its newest records, read backward from the end: the
+//! first page with a row to show ends the opening read, and when it shows
+//! less than a screen, the rows before it are read in the background as
+//! "Load earlier" reads them. A Coder task's transcript is mostly host
+//! records that show no row, so the opening read counts rows, not records.
+//! [`Conversation::poll`] reads backward from the end again until it
+//! reaches the newest record it has read, so a running chat grows without
+//! splitting a record.
 //!
 //! A chat can start from a copy the phone kept ([`Cached`]), shown at once
 //! while the computer is read again. A Coder task's next turn is a newer
@@ -30,25 +33,28 @@ use tokio::runtime::Handle;
 use base64::Engine;
 
 const OBSERVE_LIMIT: Duration = Duration::from_secs(20);
-/// Raw bytes per backward page through a relay. A full 32 KiB page,
-/// base64-encoded with its readable projections, can exceed what one sealed
-/// relay reply holds. A direct connection's pages are ten times as large, so
-/// a chat's newest screen comes in one read.
-const PAGE_BYTES: u32 = 16 * 1024;
-
-fn page_bytes(route: Route) -> u32 {
+/// Raw bytes per backward page: the route's most (`Limits`), 32 KiB
+/// through a relay and 160 KiB direct. A Coder host's relay page seals
+/// well inside one relay frame (at most about 77 KB on the chat load
+/// benchmark's transcripts, against the relay's 128 KiB); a page that fails
+/// is asked for again at [`SMALL_PAGE_BYTES`].
+fn page_bytes(route: Route, small: bool) -> u32 {
     match route {
-        Route::Relay => PAGE_BYTES,
-        Route::Direct => route.limits().page_bytes,
+        Route::Relay if small => SMALL_PAGE_BYTES,
+        _ => route.limits().page_bytes,
     }
 }
+/// A relay page after a full-size one failed.
+const SMALL_PAGE_BYTES: u32 = 16 * 1024;
 /// Backward pages read for one batch.
 const BATCH_PAGES: usize = 12;
+/// Raw record bytes one batch reads at most.
+const BATCH_BYTES: u64 = 256 * 1024;
 /// Backward pages one poll, or one read of a new turn, reads to reach what
 /// it has.
 const NEWER_PAGES: usize = 48;
-/// Conversational messages a batch looks for.
-const BATCH_MESSAGES: usize = 10;
+/// Rows a batch looks for, about a screen: messages and tool rows alike.
+const BATCH_ROWS: usize = 12;
 /// Rows kept for one chat; older rows are not read past this.
 const MAX_ROWS: usize = 240;
 /// Sources one chat follows before it starts again from its newest.
@@ -329,21 +335,7 @@ impl Conversation {
 
     /// Read the batch before the oldest row.
     pub fn earlier(&self) {
-        let (segment, source, previous) = {
-            let mut inner = lock(&self.inner);
-            if inner.loading || inner.earlier || inner.rows.len() >= MAX_ROWS {
-                return;
-            }
-            let Some((segment, previous)) = inner.previous else {
-                return;
-            };
-            let Some(source) = inner.sources.get(usize::from(segment)).cloned() else {
-                return;
-            };
-            inner.earlier = true;
-            (segment, source, previous)
-        };
-        self.read(Read::Earlier, segment, source, previous);
+        earlier(&self.client, &self.runtime, &self.inner);
     }
 
     /// Read records added since the newest one read, or, while the newest
@@ -450,15 +442,6 @@ impl Conversation {
             .count()
     }
 
-    fn read(&self, kind: Read, segment: u8, source: String, end: u64) {
-        read(
-            &self.client,
-            &self.runtime,
-            &self.inner,
-            (kind, segment, source, end),
-        );
-    }
-
     /// The chat as a transcript node. `earlier` is the intent that loads
     /// older rows; `pending` are messages this device sent that do not show
     /// yet; `working` adds a working row, such as "Coder is working".
@@ -537,21 +520,79 @@ fn read(
                         && !rows.is_empty()
                     {
                         state.show(segment, rows, previous);
+                        drop(state);
+                        crate::wake::ring();
                     }
                 };
-                batch(&client, &source, segment, end, &show).await
+                let until = if segment == 0 {
+                    Until::Shown
+                } else {
+                    Until::Carried
+                };
+                batch(&client, &source, segment, end, until, &show).await
             }
-            Read::Earlier => batch(&client, &source, segment, end, &|_, _| {}).await,
+            Read::Earlier => {
+                let until = if segment == 0 {
+                    Until::Screen
+                } else {
+                    Until::Carried
+                };
+                batch(&client, &source, segment, end, until, &|_, _| {}).await
+            }
         };
-        let again = {
+        let (again, fill, changed) = {
             let mut state = lock(&inner);
+            let (version, error) = (state.version, state.error.clone());
+            let failed = result.is_err();
             finish(&mut state, kind, segment, generation, ticket, result);
-            std::mem::take(&mut state.again)
+            // Ring only for what a screen shows: new rows, a new error, or
+            // an earlier batch's end. A poll that found nothing new, or a
+            // read that failed as the last one did, would otherwise start
+            // the next read at once, in a loop.
+            let changed =
+                state.version != version || state.error != error || matches!(kind, Read::Earlier);
+            let fill = matches!(kind, Read::Head)
+                && segment == 0
+                && !failed
+                && state.generation == generation
+                && state.rows.len() < BATCH_ROWS;
+            (std::mem::take(&mut state.again), fill, changed)
         };
+        if fill {
+            earlier(&client, &Handle::current(), &inner);
+        }
+        if changed {
+            crate::wake::ring();
+        }
         if again {
             poll(&client, &Handle::current(), &inner, false);
         }
     });
+}
+
+/// Start a read of the batch before the oldest row, unless a read of the
+/// newest records or an earlier batch runs or the chat holds its most rows.
+fn earlier(client: &Arc<Client>, runtime: &Handle, inner: &Arc<Mutex<Inner>>) {
+    let (segment, source, previous) = {
+        let mut state = lock(inner);
+        if state.loading || state.earlier || state.rows.len() >= MAX_ROWS {
+            return;
+        }
+        let Some((segment, previous)) = state.previous else {
+            return;
+        };
+        let Some(source) = state.sources.get(usize::from(segment)).cloned() else {
+            return;
+        };
+        state.earlier = true;
+        (segment, source, previous)
+    };
+    read(
+        client,
+        runtime,
+        inner,
+        (Read::Earlier, segment, source, previous),
+    );
 }
 
 /// Start a read of the newest source (see [`Conversation::poll`]). A nudge
@@ -775,16 +816,30 @@ struct Found {
     through: u64,
 }
 
+/// One backward page ending at `end`; after a failure, once more as a
+/// smaller relay page.
 async fn back(
     client: &Client,
     source: &str,
     end: u64,
 ) -> Result<coder_history::TranscriptPage, String> {
+    match back_within(client, source, end, false).await {
+        Ok(page) => Ok(page),
+        Err(_) => back_within(client, source, end, true).await,
+    }
+}
+
+async fn back_within(
+    client: &Client,
+    source: &str,
+    end: u64,
+    small: bool,
+) -> Result<coder_history::TranscriptPage, String> {
     let read = client.observe_with(|route| {
         Query::Page(TranscriptRequest {
             source_id: source.to_owned(),
             cursor: None,
-            max_bytes: page_bytes(route),
+            max_bytes: page_bytes(route, small),
             end: Some(end),
         })
     });
@@ -811,15 +866,52 @@ fn page_through(page: &coder_history::TranscriptPage) -> u64 {
 /// Sees a read's rows and where earlier records end after each page.
 type Show = dyn Fn(&[Row], Option<u64>) + Send + Sync;
 
-/// Rows ending at `end`, oldest first, and where earlier records end. The
-/// first segment's batch looks for a batch of messages; a later segment's,
-/// a turn after the first, reads back to the messages it carries. `show`
-/// sees the rows found after each page.
+/// Where a backward batch stops.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Until {
+    /// A page with a row to show: a chat's first read.
+    Shown,
+    /// [`BATCH_ROWS`] rows, or [`BATCH_BYTES`] read: the batch before the
+    /// oldest row.
+    Screen,
+    /// The messages a later turn's source carries from the turns before.
+    Carried,
+}
+
+impl Until {
+    fn pages(self) -> usize {
+        match self {
+            Self::Shown | Self::Screen => BATCH_PAGES,
+            Self::Carried => NEWER_PAGES,
+        }
+    }
+
+    fn reached(self, rows: &[Row], bytes: u64) -> bool {
+        match self {
+            Self::Shown => !rows.is_empty() || bytes >= BATCH_BYTES,
+            Self::Screen => rows.len() >= BATCH_ROWS || bytes >= BATCH_BYTES,
+            Self::Carried => rows.iter().any(|row| row.carried),
+        }
+    }
+}
+
+/// Raw record bytes a page carries.
+fn page_size(page: &coder_history::TranscriptPage) -> u64 {
+    page.chunks
+        .iter()
+        .map(|chunk| chunk.end_offset.saturating_sub(chunk.offset))
+        .sum()
+}
+
+/// Rows ending at `end`, oldest first, and where earlier records end,
+/// read backward a page at a time `until` it has enough. `show` sees the
+/// rows found after each page.
 async fn batch(
     client: &Client,
     source: &str,
     segment: u8,
     mut end: u64,
+    until: Until,
     show: &Show,
 ) -> Result<Found, String> {
     let mut found = Found {
@@ -827,13 +919,10 @@ async fn batch(
         previous: None,
         through: 0,
     };
-    let pages = if segment == 0 {
-        BATCH_PAGES
-    } else {
-        NEWER_PAGES
-    };
-    for _ in 0..pages {
+    let mut bytes = 0;
+    for _ in 0..until.pages() {
         let page = back(client, source, end).await?;
+        bytes += page_size(&page);
         let mut page_rows = rows(&page.chunks);
         for row in &mut page_rows {
             row.segment = segment;
@@ -843,16 +932,7 @@ async fn batch(
         found.previous = page.previous;
         found.through = found.through.max(page_through(&page));
         show(&found.rows, found.previous);
-        let enough = if segment == 0 {
-            found
-                .rows
-                .iter()
-                .filter(|row| matches!(row.entry, Entry::Message { .. }))
-                .count()
-                >= BATCH_MESSAGES
-        } else {
-            found.rows.iter().any(|row| row.carried)
-        };
+        let enough = until.reached(&found.rows, bytes);
         match page.previous {
             Some(earlier) if !enough => end = earlier,
             _ => break,
@@ -1308,6 +1388,44 @@ mod tests {
                 _ => "other".into(),
             })
             .collect()
+    }
+
+    /// A Coder transcript is mostly records with no row: the opening read
+    /// ends at the first page with a row, and the background read before it
+    /// at a screen of rows, messages and tools alike, or its byte bound.
+    #[test]
+    fn the_opening_read_ends_at_a_row_and_the_fill_at_a_screen() {
+        let tool = |offset| {
+            Row::new(
+                offset,
+                offset + 10,
+                0,
+                Entry::Tool {
+                    name: "shell".into(),
+                    detail: "ls".into(),
+                    body: String::new(),
+                },
+            )
+        };
+        assert!(!Until::Shown.reached(&[], 40_000));
+        assert!(Until::Shown.reached(&[tool(0)], 100));
+        assert!(Until::Shown.reached(&[], BATCH_BYTES));
+        let some: Vec<Row> = (0..BATCH_ROWS as u64 - 1).map(tool).collect();
+        assert!(!Until::Screen.reached(&some, 100));
+        let screen: Vec<Row> = (0..BATCH_ROWS as u64).map(tool).collect();
+        assert!(Until::Screen.reached(&screen, 100));
+        assert!(Until::Screen.reached(&some, BATCH_BYTES));
+        // A relay page asks for the relay's most, and a smaller one after a
+        // failure; a direct page is always the direct most.
+        assert_eq!(
+            page_bytes(Route::Relay, false),
+            coder_history::MAX_PAGE_BYTES
+        );
+        assert_eq!(page_bytes(Route::Relay, true), SMALL_PAGE_BYTES);
+        assert_eq!(
+            page_bytes(Route::Direct, true),
+            coder_history::Limits::DIRECT.page_bytes
+        );
     }
 
     #[test]

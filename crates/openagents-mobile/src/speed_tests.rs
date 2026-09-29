@@ -1,8 +1,10 @@
 //! How fast the Coder tab gets to work: launch to a ready composer, a sent
 //! message to its first visible words and to its end, and a kept Coder chat
 //! list. These time the app's Rust side through `App::call`, as the iOS and
-//! Android hosts drive it; the hosts' own polling adds its interval on top
-//! (see `docs/coder/runtime/chat-load-benchmark.md`).
+//! Android hosts drive it. The hosts ask for a packet when Rust rings
+//! (`wake`); `coder_tab_to_composer_timings` times that wake and the
+//! `changed` packet it asks for (see
+//! `docs/coder/runtime/chat-load-benchmark.md`).
 //!
 //! `coder_tab_to_composer_timings` needs no network and runs with the other
 //! tests. The live ones print their timings:
@@ -250,6 +252,28 @@ fn coder_tab_to_composer_timings() {
         "snapshot packet in a running app (warm)",
         &mut snapshots,
     ));
+    // A change in Rust to the host's `changed` packet: the host's thread
+    // waits in `wake::wait`, as `openagents_mobile_wait` does.
+    let (mut wakes, mut changed) = (vec![], vec![]);
+    for _ in 0..40 {
+        let seen = crate::wake::count();
+        let waiter = std::thread::spawn(move || {
+            crate::wake::wait(seen, Duration::from_secs(5));
+            Instant::now()
+        });
+        std::thread::sleep(Duration::from_millis(2));
+        let rung = Instant::now();
+        crate::wake::ring();
+        let woke = waiter.join().expect("waiter");
+        wakes.push(woke.duration_since(rung));
+        app.call(Request::Changed);
+        changed.push(rung.elapsed());
+    }
+    rows.push(summary(
+        "Rust change to the host's waiting thread",
+        &mut wakes,
+    ));
+    rows.push(summary("Rust change to its `changed` packet", &mut changed));
     eprintln!("| Phase | n | median ms | p95 ms | max ms |\n| --- | ---: | ---: | ---: | ---: |");
     for row in rows {
         eprintln!("{row}");
@@ -257,8 +281,8 @@ fn coder_tab_to_composer_timings() {
 }
 
 /// Send from New chat to the basic Coder and time the first visible words
-/// and the end, polling the app every 5 ms (the iOS host polls every 250
-/// ms while a reply streams).
+/// and the end, polling the app every 5 ms (the hosts ask for a packet
+/// when Rust rings with each partial).
 #[test]
 #[ignore = "network: sends three messages to the OpenAgents chat worker"]
 fn live_basic_coder_speed() {

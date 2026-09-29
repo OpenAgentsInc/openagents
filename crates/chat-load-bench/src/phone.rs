@@ -8,9 +8,12 @@
 //! - [`catalog`] is `catalog_pages` and `catalog_page` in
 //!   `crates/openagents-mobile/src/chats.rs` (`CATALOG_PAGES`,
 //!   `CATALOG_WANTED`, `head_limit`, `shown`).
-//! - [`open`] is `batch` and `back` in
-//!   `crates/openagents-mobile/src/conversation.rs` (`PAGE_BYTES`,
-//!   `page_bytes`, `BATCH_PAGES`, `BATCH_MESSAGES`), and [`rows`] is its
+//! - [`open`] is `read`, `batch`, and `back` in
+//!   `crates/openagents-mobile/src/conversation.rs` (`page_bytes`,
+//!   `BATCH_PAGES`, `BATCH_ROWS`, `BATCH_BYTES`, `Until`): the opening read
+//!   (`Until::Shown`), then the background read of the rows before it
+//!   (`Until::Screen`) when it shows less than `BATCH_ROWS`. It leaves out
+//!   the retry at `SMALL_PAGE_BYTES` after a failed page. [`rows`] is its
 //!   `rows` and `entries`, reduced to what the layout needs.
 
 use coder_connect::protocol::Route;
@@ -28,12 +31,12 @@ pub const OBSERVE_LIMIT: Duration = Duration::from_secs(20);
 pub const CATALOG_PAGES: usize = 8;
 /// `CATALOG_WANTED` in `chats.rs`.
 pub const CATALOG_WANTED: usize = 60;
-/// `PAGE_BYTES` in `conversation.rs`: raw bytes per backward relay page.
-pub const PAGE_BYTES: u32 = 16 * 1024;
 /// `BATCH_PAGES` in `conversation.rs`.
 pub const BATCH_PAGES: usize = 12;
-/// `BATCH_MESSAGES` in `conversation.rs`.
-pub const BATCH_MESSAGES: usize = 10;
+/// `BATCH_ROWS` in `conversation.rs`.
+pub const BATCH_ROWS: usize = 12;
+/// `BATCH_BYTES` in `conversation.rs`.
+pub const BATCH_BYTES: u64 = 256 * 1024;
 const MESSAGE_BYTES: usize = 6_000;
 const TOOL_BYTES: usize = 1_500;
 
@@ -111,12 +114,10 @@ pub async fn catalog(client: &Client) -> Result<CatalogLoad, String> {
     })
 }
 
-/// `page_bytes` in `conversation.rs`.
+/// `page_bytes` in `conversation.rs`, before any failed page: the route's
+/// most, 32 KiB through a relay and 160 KiB direct.
 pub fn page_bytes(route: Route) -> u32 {
-    match route {
-        Route::Relay => PAGE_BYTES,
-        Route::Direct => route.limits().page_bytes,
-    }
+    route.limits().page_bytes
 }
 
 /// One transcript row, as the phone draws it.
@@ -130,28 +131,39 @@ pub enum Row {
 #[derive(Debug)]
 pub struct Opened {
     pub rows: Vec<Row>,
+    /// Pages the opening read took.
     pub pages: usize,
     /// When the first page's rows could show.
     pub first_page: Duration,
-    /// When the batch ended.
+    /// When the opening read ended: its rows show and the chat is no
+    /// longer loading.
     pub total: Duration,
+    /// Pages the background read of earlier rows took; 0 when the opening
+    /// read showed a screen.
+    pub fill_pages: usize,
+    /// When the background read ended, or the opening read when none ran.
+    pub filled: Duration,
     /// Raw source bytes the pages carried.
     pub bytes: u64,
 }
 
-/// `batch` in `conversation.rs` for a chat's first segment: backward pages
-/// from the newest record until `BATCH_MESSAGES` messages, at most
-/// `BATCH_PAGES`.
-///
-/// # Errors
-/// When a page fails.
-pub async fn open(client: &Client, source: &str) -> Result<Opened, String> {
-    let started = Instant::now();
-    let mut first_page = None;
+/// `Until` in `conversation.rs`.
+#[derive(Clone, Copy)]
+enum Until {
+    Shown,
+    Screen,
+}
+
+/// `batch` in `conversation.rs` for a chat's first segment.
+async fn batch(
+    client: &Client,
+    source: &str,
+    mut end: u64,
+    until: Until,
+    mut page_done: impl FnMut(),
+) -> Result<(Vec<Row>, Option<u64>, usize, u64), String> {
     let mut found: Vec<Row> = vec![];
-    let mut end = coder_history::NEWEST;
-    let mut pages = 0;
-    let mut bytes = 0;
+    let (mut pages, mut bytes, mut previous) = (0, 0, None);
     for _ in 0..BATCH_PAGES {
         let make = |route: Route| {
             Query::Page(TranscriptRequest {
@@ -176,22 +188,53 @@ pub async fn open(client: &Client, source: &str) -> Result<Opened, String> {
         let mut page_rows = rows(&page.chunks);
         page_rows.append(&mut found);
         found = page_rows;
-        first_page.get_or_insert_with(|| started.elapsed());
-        let enough = found
-            .iter()
-            .filter(|row| matches!(row, Row::Message { .. }))
-            .count()
-            >= BATCH_MESSAGES;
+        previous = page.previous;
+        page_done();
+        let enough = match until {
+            Until::Shown => !found.is_empty() || bytes >= BATCH_BYTES,
+            Until::Screen => found.len() >= BATCH_ROWS || bytes >= BATCH_BYTES,
+        };
         match page.previous {
             Some(earlier) if !enough => end = earlier,
             _ => break,
         }
     }
+    Ok((found, previous, pages, bytes))
+}
+
+/// `read` in `conversation.rs` for a chat's first read: backward pages from
+/// the newest record until one shows a row, then, when fewer than
+/// `BATCH_ROWS` show, the rows before them until `BATCH_ROWS`.
+///
+/// # Errors
+/// When a page fails.
+pub async fn open(client: &Client, source: &str) -> Result<Opened, String> {
+    let started = Instant::now();
+    let mut first_page = None;
+    let (mut rows, previous, pages, mut bytes) =
+        batch(client, source, coder_history::NEWEST, Until::Shown, || {
+            first_page.get_or_insert_with(|| started.elapsed());
+        })
+        .await?;
+    let total = started.elapsed();
+    let mut fill_pages = 0;
+    if rows.len() < BATCH_ROWS
+        && let Some(previous) = previous
+    {
+        let (mut earlier, _, more, more_bytes) =
+            batch(client, source, previous, Until::Screen, || {}).await?;
+        earlier.append(&mut rows);
+        rows = earlier;
+        fill_pages = more;
+        bytes += more_bytes;
+    }
     Ok(Opened {
-        rows: found,
+        rows,
         pages,
         first_page: first_page.unwrap_or_default(),
-        total: started.elapsed(),
+        total,
+        fill_pages,
+        filled: started.elapsed(),
         bytes,
     })
 }
@@ -244,7 +287,15 @@ pub fn rows(chunks: &[RecordChunk]) -> Vec<Row> {
             || text.is_empty()
             || matches!(
                 kind,
-                "reasoning" | "session" | "session_meta" | "turn_context" | "token_count"
+                "reasoning"
+                    | "session"
+                    | "session_meta"
+                    | "turn_context"
+                    | "token_count"
+                    | "task_started"
+                    | "task_complete"
+                    | "summary"
+                    | "compacted"
             )
         {
             continue;
@@ -269,6 +320,7 @@ pub fn rows(chunks: &[RecordChunk]) -> Vec<Row> {
             Some("user") if text.starts_with('<') => continue,
             Some("user") => MessageRole::User,
             Some("assistant") => MessageRole::Assistant,
+            Some("system") => MessageRole::System,
             _ => continue,
         };
         out.push(Row::Message {

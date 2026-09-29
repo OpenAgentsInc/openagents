@@ -478,9 +478,14 @@ impl Relay {
                     let Ok(event) = serde_json::from_value::<Event>(frame[2].clone()) else {
                         continue;
                     };
-                    let mut reply = lock(&reply);
-                    reading.take(&event, &mut reply);
-                    if reply.ended() {
+                    let ended = {
+                        let mut reply = lock(&reply);
+                        reading.take(&event, &mut reply);
+                        reply.ended()
+                    };
+                    // Each partial shows at once.
+                    crate::wake::ring();
+                    if ended {
                         return Ok(());
                     }
                 }

@@ -58,7 +58,13 @@ The app has four tabs, shown as icons:
   `task.command` (see [what comes later](docs/chat-later.md#built-since-build-6)).
   When the app comes to the foreground or the tab shows, Rust opens each
   computer's history connections, so the first read or send waits for no
-  connection.
+  connection. An earlier chat opens at its newest page that has a row to
+  show and fills the rows before it in the background. The screen changes
+  as soon as Rust has something new: a thread of the host's own waits in
+  `openagents_mobile_wait` and asks for the packet (`changed`) when a
+  transcript page, a streamed reply, a chat list, or a task's status
+  arrives, and while the tab shows a live chat Rust also answers every
+  second. A 3-second refresh remains as a fallback.
 - **Verse** (globe) is Verse's bare world: the plaza's ground grid in white
   and gray on a dark field, with your character in the center, the other
   players in the same world, and one large ball ahead of you. Walk into the

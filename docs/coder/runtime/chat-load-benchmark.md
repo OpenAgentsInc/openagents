@@ -150,7 +150,8 @@ With the local worker on its stub door, every leg together takes 0.9 ms. On
 production, the first words would arrive after about 350 ms of transport
 before the request reaches the worker, one relay hop back (about 100 ms), the
 worker's first answer (since `95c7eda2e3`, a Jev opener as partial `seq` 0),
-and up to 250 ms until the iOS host's next poll.
+and, before the change push below, up to 250 ms until the iOS host's next
+poll.
 
 ### Coder on a computer, from the host's own records
 
@@ -224,7 +225,8 @@ save. The estimates come from the measurements above, not from prototypes.
    30 ms network round trip, about 2.5 ms per Cloud SQL statement, which
    predicts an exchange near 100 to 150 ms once deployed. Not yet measured
    on production.
-4. **Opening a Coder chat reads until it finds 10 messages.** A Coder task's
+4. **Fixed; see [Opening a chat and the change push](#opening-a-chat-and-the-change-push).**
+   **Opening a Coder chat reads until it finds 10 messages.** A Coder task's
    transcript is about 88% `System` adapter records that show no row (on this
    Mac, 969 of 1,118 records), so the first batch rarely finds
    `BATCH_MESSAGES` (10) and reads backward pages up to `BATCH_PAGES` (12),
@@ -235,7 +237,8 @@ save. The estimates come from the measurements above, not from prototypes.
    host-side page that skips records with no row would make most opens one or
    two reads: about 0.25 to 0.45 s instead of 0.8 to 1.35 s. Direct reads
    already take 1 or 2 pages.
-5. **The iOS host asks for results on a timer.** Rust has a read's result
+5. **Fixed; see [Opening a chat and the change push](#opening-a-chat-and-the-change-push).**
+   **The iOS host asks for results on a timer.** Rust has a read's result
    before the host asks for it: the Coder tab polls every 1 s while a chat is
    live and every 3 s otherwise
    (`bins/openagents-ios/host/App/OpenAgentsApp.swift:288`), and every 250 ms
@@ -254,12 +257,15 @@ save. The estimates come from the measurements above, not from prototypes.
    (`crates/coder-connect/src/transport.rs:188`). The app warms clients on
    foreground and when the Coder tab shows; a read that races that warm-up
    pays the difference.
-8. **A first launch creates its stores one `fsync` at a time.** On a new
-   install `App::open` took 8 to 12 ms on a quiet disk and 133 to 390 ms
-   while other processes loaded it, mostly creating encrypted stores, each
-   first write syncing the file and the directory
-   (`crates/coder-computers/src/cache.rs:117`, `120`). Creating stores on
-   first use would make it steady near the warm 1.3 ms. It happens once per
+8. **A first launch syncs one write to disk.** On a new install
+   `App::open` took 8 to 12 ms on a quiet disk and 133 to 390 ms while other
+   processes loaded it. Opening the encrypted stores writes nothing; the
+   cost is one write, the Computers record that marks first run done
+   (`Computers::finish_first_run`), which syncs the file and then its
+   directory (`crates/coder-computers/src/cache.rs`, `write`), each a full
+   flush (`F_FULLFSYNC`) on Apple systems. There is nothing to batch, and
+   dropping either sync would risk a record that a crash leaves renamed
+   before its bytes are on disk, so it is unchanged. It happens once per
    install.
 
 Phone CPU is not a bottleneck: sealing, opening, the list view, the packet,
@@ -294,8 +300,8 @@ direct list from 11 ms to 2.5 ms, and on production an exchange from 274 to
 
 | Wait | Value | Where |
 | --- | --- | --- |
-| Coder tab poll while live, and otherwise | 1 s, 3 s | `bins/openagents-ios/host/App/OpenAgentsApp.swift:288` |
-| Poll while a basic reply streams | 250 ms | `bins/openagents-ios/host/App/OpenAgentsApp.swift:296` |
+| Coder tab: Rust asks for a packet while its chat is live | 1 s | `crates/openagents-mobile/src/wake.rs` (`TICK`) |
+| Coder tab fallback refresh | 3 s | `bins/openagents-ios/host/App/OpenAgentsApp.swift` (`CoderTab`), `MainActivity.kt` (`tick`) |
 | Open chat's newest-chats read while its task runs | every 3 s, or 30 s with a direct connection | `crates/openagents-mobile/src/coder_tab.rs` (`HEAD_EVERY`, `HEAD_NUDGED_EVERY`) |
 | Keep an open chat's transcript on the phone | at most every 5 s | `crates/openagents-mobile/src/coder_tab.rs` (`KEEP_EVERY`) |
 | One relay read, then a failed read | 8 s | `crates/coder-connect/src/client.rs:28` |
@@ -306,6 +312,60 @@ direct list from 11 ms to 2.5 ms, and on production an exchange from 274 to
 
 No sleep sits on the load path itself; each wait above is a poll interval or
 a deadline.
+
+## Opening a chat and the change push
+
+Measured on 2026-09-28 on the same Mac, before at `ed07491924` and after
+at this change, with `--source coder`: the production rows are 2 runs of 5
+chats each through `relay.openagents.com` (new temporary host key); the
+loopback rows are 5 runs of 5 chats.
+
+| Wait | Path | Before | After |
+| --- | --- | ---: | ---: |
+| Open an earlier Coder chat, done (rows show, loading ends) | relay, production | 1,142 ms, 5 pages (p95 2,545 ms, 10 pages) | 432 ms, 2 pages (p95 494 ms) |
+| Open an earlier Coder chat, first page arrives | relay, production | 187 ms | 219 ms |
+| Earlier rows filled in the background, up to 12 rows | relay, production | | 903 ms after the tap (p95 1,330 ms) |
+| Open an earlier Coder chat, done | relay, loopback | 17.9 ms, 5 pages | 5.3 ms, 2 pages |
+| Open an earlier Coder chat, done | direct, loopback | 7.8 ms, 2 pages | 5.2 ms, 1 page |
+| A change in Rust to the host's waiting thread | phone | up to 1 s (3 s idle); 250 ms while a reply streams | under 0.1 ms |
+| A change in Rust to its packet | phone | | 0.3 ms (p95 0.5 ms) |
+| Launch to a ready composer, new install | phone | 10.6 ms | 10.2 ms |
+
+What changed:
+
+- **The opening read ends at the first page with a row.** Coder
+  transcripts are mostly host records that show no row, and their largest
+  records (40 KB effect intents) are larger than a page, so a page often
+  holds nothing to show. The opening read (`Until::Shown` in
+  `crates/openagents-mobile/src/conversation.rs`) now stops at the first
+  page with any row, and the chat stops loading there. When that shows
+  fewer than 12 rows (`BATCH_ROWS`), the rows before them are read in the
+  background, as **Load earlier** reads them, until 12 rows, 256 KiB of
+  records (`BATCH_BYTES`), or 12 pages. Messages and tool rows count alike.
+- **Relay pages are 32 KiB**, the relay route's bound
+  (`Limits::RELAY.page_bytes`), instead of 16 KiB. On this Mac's Coder
+  transcripts the largest sealed 32 KiB page is about 77 KB, inside the
+  relay's 128 KiB frame (`NOSTR_RELAY_MAX_FRAME_BYTES`); a page that fails is
+  asked for once more at 16 KiB.
+- **Rust pushes changes.** Background work that changes a screen rings
+  `crates/openagents-mobile/src/wake.rs`: each transcript page shown and
+  read finished (a read that found nothing new, or failed as the last one
+  did, does not ring, so it cannot start the next read at once), each
+  streamed basic Coder partial, each chat list read, and each Computers
+  activity summary, catch-up, or connection change (`Live::on_change` in
+  `crates/coder-computers`). Each host keeps a thread in
+  `openagents_mobile_wait` (Android: `OpenAgentsNative.waitChange`) and
+  asks for the packet with `{"op":"changed"}`, one request at a time; the
+  packet reloads the Computers state first when it changed. While the Coder
+  tab shows a live chat (`openagents_mobile_coder_shown`), the wait also
+  returns every second, which keeps the running chat's transcript reads on
+  their old one-second cadence. The hosts' 1-second and 250-millisecond
+  polls are gone; a 3-second refresh remains as a fallback.
+
+The Swift and Kotlin decode and draw after the packet are not in these
+numbers. A basic Coder reply's partials now reach the screen as they
+arrive instead of up to 250 ms later, and a task's status as its summary
+arrives instead of up to 1 s later.
 
 ## Limitations
 

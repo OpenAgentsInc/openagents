@@ -291,6 +291,10 @@ final class MobileBridge: ObservableObject {
     private nonisolated(unsafe) let handle: UnsafeMutableRawPointer?
     private var terminalRevision: UInt64 = 0
     private var terminalPolling = false
+    /// A packet asked for after Rust said it changed is on its way, and
+    /// whether Rust changed again since it was asked for.
+    private var changeInFlight = false
+    private var changedAgain = false
 
     var busy: Bool { pending > 0 }
 
@@ -319,7 +323,44 @@ final class MobileBridge: ObservableObject {
             failure = error.localizedDescription
         }
         send(["op": "snapshot"])
+        if handle != nil { watchChanges() }
     }
+
+    /// Rust says when its packet changes (a transcript page, a streamed
+    /// reply, a computer's task summary): a thread of its own waits on it
+    /// and asks for the packet at once, instead of on a timer.
+    private func watchChanges() {
+        let thread = Thread { [weak self] in
+            var seen: UInt64 = 0
+            while true {
+                let now = openagents_mobile_wait(seen, 30_000)
+                guard self != nil else { return }
+                if now == seen { continue }
+                seen = now
+                DispatchQueue.main.async { self?.rustChanged() }
+            }
+        }
+        thread.name = "com.openagents.app.changes"
+        thread.qualityOfService = .userInitiated
+        thread.start()
+    }
+
+    /// Ask for the changed packet, one at a time: a change while one is on
+    /// its way asks again once it arrives, so the last change always shows.
+    private func rustChanged() {
+        if changeInFlight { changedAgain = true; return }
+        changeInFlight = true
+        changedAgain = false
+        send(["op": "changed"]) { [weak self] in
+            guard let self else { return }
+            self.changeInFlight = false
+            if self.changedAgain { self.rustChanged() }
+        }
+    }
+
+    /// The Coder tab shows or hides: while it shows a live chat, Rust asks
+    /// for a packet every second.
+    func coderShown(_ shown: Bool) { openagents_mobile_coder_shown(shown) }
 
     deinit {
         let handle = handle
@@ -586,8 +627,8 @@ final class MobileBridge: ObservableObject {
         }
     }
 
-    private func send(_ request: [String: Any]) {
-        call(request) { data in
+    private func send(_ request: [String: Any], done: (() -> Void)? = nil) {
+        call(request, finished: done) { data in
             guard let packet = try? JSONDecoder().decode(AppPacket.self, from: data),
                   packet.schema == "openagents.mobile.v1" else {
                 self.failure = "OpenAgents returned an unreadable screen."
@@ -606,8 +647,12 @@ final class MobileBridge: ObservableObject {
         }
     }
 
-    private func call(_ request: [String: Any], received: @escaping (Data) -> Void) {
-        guard let handle, let body = try? JSONSerialization.data(withJSONObject: request) else { return }
+    private func call(_ request: [String: Any], finished: (() -> Void)? = nil,
+                      received: @escaping (Data) -> Void) {
+        guard let handle, let body = try? JSONSerialization.data(withJSONObject: request) else {
+            finished?()
+            return
+        }
         pending += 1
         queue.async {
             let data = body.withUnsafeBytes { bytes -> Data? in
@@ -619,6 +664,7 @@ final class MobileBridge: ObservableObject {
             DispatchQueue.main.async {
                 self.pending -= 1
                 if let data { received(data) }
+                finished?()
             }
         }
     }

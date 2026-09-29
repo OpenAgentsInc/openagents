@@ -25,10 +25,10 @@ async fn the_fixture_benchmark_runs_every_phase() {
         "relay link: connect + NIP-42 AUTH + standing subscription",
         "request EVENT to its reply (relay in, host answers, relay out)",
         "list: load done (new client, link opened by the first read)",
-        "chat open: batch done (10 messages or 12 pages)",
+        "chat open: done (a page with rows; loading ends)",
         "direct connect: TCP + hello/welcome",
         "list: load done (new client)",
-        "chat open: batch done",
+        "chat open: done",
         "layout: first layout of an opened chat",
         "list: load done after Client::warm",
     ] {

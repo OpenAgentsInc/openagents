@@ -38,6 +38,7 @@ mod tailnet_view;
 mod trainer;
 mod transcripts;
 mod verse;
+mod wake;
 mod wallet;
 mod wallet_fixture;
 
@@ -133,6 +134,28 @@ pub unsafe extern "C" fn openagents_mobile_destroy(handle: *mut App) {
     if !handle.is_null() {
         unsafe { drop(Box::from_raw(handle)) }
     }
+}
+
+/// Block the calling thread until the app packet changes: returns the
+/// change count once it differs from `seen`, or `seen` after `timeout_ms`
+/// (at most 60 seconds). Call it from a thread of its own, never the
+/// handle's queue; it needs no handle. See `wake`.
+#[unsafe(no_mangle)]
+pub extern "C" fn openagents_mobile_wait(seen: u64, timeout_ms: u32) -> u64 {
+    catch_unwind(|| {
+        wake::wait(
+            seen,
+            std::time::Duration::from_millis(u64::from(timeout_ms)),
+        )
+    })
+    .unwrap_or(seen)
+}
+
+/// Say whether the Coder tab shows: while it does and its chat is live,
+/// `openagents_mobile_wait` returns once a second with nothing rung.
+#[unsafe(no_mangle)]
+pub extern "C" fn openagents_mobile_coder_shown(shown: bool) {
+    wake::set_shown(shown);
 }
 
 #[cfg(test)]

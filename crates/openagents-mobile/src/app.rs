@@ -109,6 +109,9 @@ const CAPABILITIES: Capabilities = Capabilities {
 pub enum Request {
     /// The current packet, without other work.
     Snapshot,
+    /// The current packet after Rust said it changed (`wake`): reloads the
+    /// Computers state first when that changed.
+    Changed,
     /// The app moved to the foreground or the background.
     Lifecycle {
         active: bool,
@@ -677,6 +680,9 @@ impl App {
                 }) {
                     Ok(live) => {
                         terminals = Some(live.terminals());
+                        // A summary, a catch-up, or a connection change
+                        // shows at once instead of on the host's timer.
+                        live.on_change(Arc::new(crate::wake::computers));
                         Box::new(live)
                     }
                     Err(reason) => {
@@ -1009,7 +1015,20 @@ impl App {
         let mut open_url = None;
         match request {
             Request::Snapshot => {}
+            Request::Changed => {
+                if crate::wake::take_computers()
+                    && let Some(computers) = self.computers.as_mut()
+                {
+                    // A value the person is typing stays until it is done.
+                    if computers.input().is_none() {
+                        let _ = computers.refresh();
+                    } else {
+                        crate::wake::keep_computers();
+                    }
+                }
+            }
             Request::Lifecycle { active } => {
+                crate::wake::set_active(active);
                 if let Some(computers) = self.computers.as_mut() {
                     let _ = computers.set_active(active);
                 }
@@ -1554,6 +1573,8 @@ impl App {
             },
             self.coder.notice_shown(),
         );
+        let coder_live = self.coder.live(self.computers.as_ref()) || self.spend.live();
+        crate::wake::set_live(coder_live);
         Packet {
             schema: "openagents.mobile.v1",
             device: self.device.clone(),
@@ -1592,7 +1613,7 @@ impl App {
                 }),
             coder,
             // A payment request on the sheet keeps packets coming too.
-            coder_live: self.coder.live(self.computers.as_ref()) || self.spend.live(),
+            coder_live,
             chat_streaming: self.coder.streaming(),
             coder_go: self.coder.take_go(),
             tailnet,

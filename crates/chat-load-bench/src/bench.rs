@@ -783,12 +783,17 @@ async fn relay_run(
                 continue;
             }
         };
-        let name = format!("chat #{index}: relay open, batch done");
+        let name = format!("chat #{index}: relay open, done");
         phases.add(TRANSCRIPT, &name, opened.total);
         phases.note(
             TRANSCRIPT,
             &name,
-            format!("{} pages, {} KB read", opened.pages, opened.bytes / 1024),
+            format!(
+                "{} pages, then {} in the background, {} KB read",
+                opened.pages,
+                opened.fill_pages,
+                opened.bytes / 1024
+            ),
         );
         phases.add(
             RELAY,
@@ -797,10 +802,15 @@ async fn relay_run(
         );
         phases.add(
             RELAY,
-            "chat open: batch done (10 messages or 12 pages)",
+            "chat open: done (a page with rows; loading ends)",
             opened.total,
         );
-        let pages = phases.at(RELAY, "chat open: pages per batch");
+        phases.add(
+            RELAY,
+            "chat open: earlier rows filled in the background (12 rows)",
+            opened.filled,
+        );
+        let pages = phases.at(RELAY, "chat open: pages until done");
         pages
             .samples
             .push(Duration::from_millis(opened.pages as u64));
@@ -898,20 +908,30 @@ async fn direct_run(
                 continue;
             }
         };
-        let name = format!("chat #{index}: direct open, batch done");
+        let name = format!("chat #{index}: direct open, done");
         phases.add(TRANSCRIPT, &name, opened.total);
         phases.note(
             TRANSCRIPT,
             &name,
-            format!("{} pages, {} KB read", opened.pages, opened.bytes / 1024),
+            format!(
+                "{} pages, then {} in the background, {} KB read",
+                opened.pages,
+                opened.fill_pages,
+                opened.bytes / 1024
+            ),
         );
         phases.add(
             DIRECT,
             "chat open: first page's rows show",
             opened.first_page,
         );
-        phases.add(DIRECT, "chat open: batch done", opened.total);
-        let pages = phases.at(DIRECT, "chat open: pages per batch");
+        phases.add(DIRECT, "chat open: done", opened.total);
+        phases.add(
+            DIRECT,
+            "chat open: earlier rows filled in the background",
+            opened.filled,
+        );
+        let pages = phases.at(DIRECT, "chat open: pages until done");
         pages
             .samples
             .push(Duration::from_millis(opened.pages as u64));
@@ -1011,7 +1031,7 @@ fn transcript_cost(
                     TranscriptRequest {
                         source_id: source.clone(),
                         cursor: None,
-                        max_bytes: phone::PAGE_BYTES,
+                        max_bytes: phone::page_bytes(Route::Relay),
                         end: Some(coder_history::NEWEST),
                     },
                     Limits::RELAY,
@@ -1023,7 +1043,7 @@ fn transcript_cost(
                         TranscriptRequest {
                             source_id: source.clone(),
                             cursor: None,
-                            max_bytes: phone::PAGE_BYTES,
+                            max_bytes: phone::page_bytes(Route::Relay),
                             end: Some(earlier),
                         },
                         Limits::RELAY,

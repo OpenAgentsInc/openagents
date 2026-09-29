@@ -276,6 +276,7 @@ class MainActivity : ComponentActivity() {
         }
         world.setShown(value == AppTab.VERSE)
         if (value == AppTab.WALLET) wallet.appeared() else wallet.disappeared()
+        bridge.coderShown(value == AppTab.CODER)
         if (value == AppTab.CODER && !bridge.busy) bridge.refreshComputers()
         screenChanged()
         render()
@@ -638,9 +639,9 @@ class MainActivity : ComponentActivity() {
             val packet = bridge.packet
             val computersPolling = tab == AppTab.CODER ||
                 (tab == AppTab.ACCOUNT && route == AccountRoute.COMPUTERS && packet?.objectOrNull("computers_input") == null)
-            // An open Coder chat that changes on its own polls every second.
-            val live = tab == AppTab.CODER && packet?.optBoolean("coder_live", false) == true
-            if ((live || ticks % 3 == 0) && computersPolling && !bridge.busy) bridge.refreshComputers()
+            // Rust says when a Coder chat changes and asks every second while
+            // one runs (MobileBridge.watchChanges); this is only a fallback.
+            if (ticks % 3 == 0 && computersPolling && !bridge.busy) bridge.refreshComputers()
             val loading = tab == AppTab.ACCOUNT && (
                 (route == AccountRoute.TAILNET && packet?.optBoolean("tailnet_loading") == true))
             if (loading && bridge.pending < 2) bridge.snapshot()
@@ -665,21 +666,8 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // A basic Coder reply streams in: read it four times a second.
-    private val streaming = object : Runnable {
-        override fun run() {
-            if (!resumed) return
-            if (tab == AppTab.CODER && bridge.packet?.optBoolean("chat_streaming") == true && !bridge.busy) {
-                bridge.snapshot()
-            }
-            main.postDelayed(this, 250)
-        }
-    }
-
     override fun onResume() {
         super.onResume()
-        main.removeCallbacks(streaming)
-        main.postDelayed(streaming, 250)
         resumed = true
         bridge.lifecycle(true)
         world.setResumed(true)

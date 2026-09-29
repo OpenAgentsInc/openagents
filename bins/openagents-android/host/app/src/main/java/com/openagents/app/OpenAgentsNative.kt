@@ -13,6 +13,14 @@ object OpenAgentsNative {
     @JvmStatic external fun create(config: String): Long
     @JvmStatic external fun call(handle: Long, request: String): String
     @JvmStatic external fun destroy(handle: Long)
+    /**
+     * Blocks until the app packet changes: Rust's change count once it
+     * differs from [seen], or [seen] after [timeoutMs]. Call it on a thread
+     * of its own, never the app worker; it takes no handle.
+     */
+    @JvmStatic external fun waitChange(seen: Long, timeoutMs: Int): Long
+    /** Whether the Coder tab shows; while it shows a live chat, [waitChange] returns every second. */
+    @JvmStatic external fun coderShown(shown: Boolean)
     @JvmStatic external fun verseCreate(surface: Surface, config: String): Long
     @JvmStatic external fun verseAttach(handle: Long, surface: Surface, config: String)
     @JvmStatic external fun verseDetach(handle: Long)

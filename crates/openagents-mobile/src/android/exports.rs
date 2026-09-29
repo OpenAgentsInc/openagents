@@ -169,6 +169,33 @@ pub extern "system" fn Java_com_openagents_app_OpenAgentsNative_destroy<'local>(
         .resolve::<ThrowRuntimeExAndDefault>()
 }
 
+/// Blocks the calling thread until the app packet changes; see
+/// `crate::wake::wait`. Call it from a thread of its own, never the app
+/// worker; it needs no handle.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_openagents_app_OpenAgentsNative_waitChange<'local>(
+    _unowned: EnvUnowned<'local>,
+    _class: JClass<'local>,
+    seen: i64,
+    timeout_ms: i32,
+) -> i64 {
+    let seen = seen.cast_unsigned();
+    let limit = std::time::Duration::from_millis(u64::try_from(timeout_ms).unwrap_or(0));
+    std::panic::catch_unwind(|| crate::wake::wait(seen, limit))
+        .unwrap_or(seen)
+        .cast_signed()
+}
+
+/// Whether the Coder tab shows; see `crate::wake::set_shown`.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_openagents_app_OpenAgentsNative_coderShown<'local>(
+    _unowned: EnvUnowned<'local>,
+    _class: JClass<'local>,
+    shown: bool,
+) {
+    crate::wake::set_shown(shown);
+}
+
 /// One acquired `ANativeWindow` reference.
 struct NativeWindow(NonNull<ndk_sys::ANativeWindow>);
 impl NativeWindow {

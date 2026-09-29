@@ -2,6 +2,7 @@
 #define OPENAGENTS_MOBILE_H
 
 #include <stddef.h>
+#include <stdbool.h>
 #include <stdint.h>
 
 // Transcript layout, exported by rust-native's `ffi` feature.
@@ -19,6 +20,15 @@ void *openagents_mobile_create(const uint8_t *configuration, size_t length);
 OpenAgentsMobileBuffer openagents_mobile_call(void *handle, const uint8_t *request, size_t length);
 void openagents_mobile_buffer_free(OpenAgentsMobileBuffer buffer);
 void openagents_mobile_destroy(void *handle);
+
+// Blocks the calling thread until the app packet changes: returns Rust's
+// change count once it differs from `seen`, or `seen` after `timeout_ms` (at
+// most 60 seconds). Call it from a thread of its own, never the handle's
+// queue; it takes no handle. Then ask for a packet with {"op":"changed"}.
+uint64_t openagents_mobile_wait(uint64_t seen, uint32_t timeout_ms);
+// Whether the Coder tab shows. While it does and its chat is live,
+// openagents_mobile_wait also returns once a second.
+void openagents_mobile_coder_shown(bool shown);
 
 // The Verse tab's world. Create, call, and destroy it on the main thread while
 // its CAMetalLayer stays alive. Results are released with

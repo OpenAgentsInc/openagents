@@ -446,7 +446,12 @@ struct Shared {
     registry: Mutex<Registry<SystemClock, Connector>>,
     state: Mutex<State>,
     store: Mutex<Box<dyn Store>>,
+    /// Called after background work changes what a snapshot shows.
+    changed: Mutex<Option<Changed>>,
 }
+
+/// A caller's hook for background changes; see [`Live::on_change`].
+pub type Changed = Arc<dyn Fn() + Send + Sync>;
 
 /// The live Computers service.
 pub struct Live {
@@ -501,6 +506,7 @@ impl Live {
                 tunnels: BTreeMap::new(),
             }),
             store: Mutex::new(store),
+            changed: Mutex::new(None),
         });
         let hosts: Vec<SavedHost> = lock(&shared.state).saved.hosts.clone();
         for host in hosts {
@@ -512,6 +518,15 @@ impl Live {
             runtime,
             pump,
         })
+    }
+
+    /// Call `changed` whenever background work changes what a snapshot
+    /// shows: a host's activity summary arrives, a catch-up ends, or a
+    /// connection's state moves. It runs on the runtime's threads and must
+    /// not block; a platform host uses it to redraw at once instead of on a
+    /// timer.
+    pub fn on_change(&self, changed: Changed) {
+        *lock(&self.shared.changed) = Some(changed);
     }
 
     /// This device's public key.
@@ -734,6 +749,15 @@ impl Shared {
         };
         if status.is_some_and(|s| s.phase == Phase::Blocked(BlockReason::Revoked)) {
             self.revoked(key.as_str(), None);
+        }
+        self.changed();
+    }
+
+    /// Tell the caller's hook that a snapshot would show something new.
+    fn changed(&self) {
+        let hook = lock(&self.changed).clone();
+        if let Some(hook) = hook {
+            hook();
         }
     }
 
@@ -1007,6 +1031,7 @@ async fn watch(shared: Arc<Shared>, host: String, device: Arc<Device>) {
         if let Some(live) = lock(&shared.state).hosts.get_mut(&host) {
             keep_newest(&mut live.activity, summary);
         }
+        shared.changed();
     };
     let ended = watch_summaries(&device, &relay, WATCH_FOR, &mut seen).await;
     // A watch that failed at once waits before the next, so an unreachable
