@@ -41,6 +41,7 @@ SwiftUI, Android, terminal, and web integration under
 | [2026-09-25-assessment](2026-09-25-assessment.md) | Where Coder stands, one day on: every failure mode, what happened to the acceptance contract, and the shape a Jev-plus-Luna Coder needs to be faster, cheaper, and better |
 | [2026-09-25-morning-assessment](2026-09-25-morning-assessment.md) | Morning of 2026-09-25: v18's 0 of 18 on the pinned family, the overnight check results, oracle headroom as the next measurement, and the open issues |
 | [2026-09-28-chat-router](2026-09-28-chat-router.md) | The chat router: Jev picks each message's route, prebuilt answers shown at once, cheap-model personalization, dispatch and CLI offers, and product and codebase knowledge routes (proposal) |
+| [2026-09-29-auto-pairing](2026-09-29-auto-pairing.md) | Automatic pairing without Tailscale: iroh endpoints by public key, same-network discovery, one-command host setup, the `oa-pair:` QR for anywhere, what T3 Code does, and a seven-step plan (proposal) |
 | [pattern-components](pattern-components.md) | Patterns as components: where the v8 to v13 wording came from, what Fable's pass did step by step, and how recurring patterns become selectable components instead of fitted wording |
 | [coder-as-decision-router-consumer](coder-as-decision-router-consumer.md) | Coder as a Decision Router consumer |
 | [coder-terminal-v05-algorithm-and-goldens](coder-terminal-v05-algorithm-and-goldens.md) | Proposed v0.5 algorithm, Terminal-Bench panel, golden evidence, and NIP mapping |
