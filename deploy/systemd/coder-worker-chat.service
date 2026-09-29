@@ -16,6 +16,11 @@ ExecStartPre=/usr/bin/test -x /opt/coder-worker/current/coder-worker
 ExecStart=/opt/coder-worker/current/coder-worker
 Restart=on-failure
 RestartSec=2
+# The backstop behind the worker's own relay liveness probes (#9946): every
+# answered probe (one each 30 seconds) sends WATCHDOG=1, and a worker that
+# has not proven its relay subscription for two minutes is restarted.
+WatchdogSec=120
+NotifyAccess=main
 TimeoutStopSec=15
 KillSignal=SIGTERM
 LimitNOFILE=65536

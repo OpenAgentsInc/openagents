@@ -15,7 +15,11 @@
 //! reason a relay that drops the socket or restarts does not end the
 //! worker: it reconnects with backoff, from one second up to a minute,
 //! and subscribes again, so the outage costs the jobs published while it
-//! lasted and nothing after.
+//! lasted and nothing after. A relay that goes silent without closing the
+//! socket is a fault too: the worker probes its subscription every 30
+//! seconds and reconnects when a probe goes unanswered, and it renews the
+//! subscription on an overlapping connection before the relay's front end
+//! would end it (#9946).
 //!
 //! ```sh
 //! export CODER_WORKER_SECRET=<64 hex or nsec>
@@ -134,6 +138,80 @@ const RECONNECT_FLOOR: Duration = Duration::from_secs(1);
 /// The longest wait between reconnect attempts.
 const RECONNECT_CEILING: Duration = Duration::from_secs(60);
 
+/// How often the worker proves its relay connection still carries its
+/// subscription, and how long each proof may take.
+///
+/// A socket can stay open on the worker's side after the relay behind it
+/// is gone. `relay.openagents.com` is a Cloud Run service behind Google's
+/// front end, and when the relay instance restarts, the front end can keep
+/// the worker's TCP connection established while nothing reaches it: the
+/// worker reads silence and every job published meanwhile is lost (#9946).
+/// Silence cannot tell an idle relay from a dead one, so the worker asks:
+/// every probe interval it sends a `REQ` that matches nothing new and
+/// expects the relay's `EOSE` or `CLOSED` for it before the next probe. A
+/// probe still unanswered then ends the connection as a fault, and the
+/// worker reconnects and subscribes again.
+const PROBE_EVERY: Duration = Duration::from_secs(30);
+
+/// How long one connection's subscription is kept before the worker opens
+/// its successor.
+///
+/// Cloud Run ends every request, a WebSocket included, at its request
+/// timeout (an hour for the relay). The worker replaces the connection
+/// before that, and the new subscription is live before the old one is
+/// closed, so no job falls into the gap between them.
+const RENEW_EVERY: Duration = Duration::from_secs(45 * 60);
+
+/// How long a replaced connection is still read after its successor
+/// subscribed, for a job the relay delivered on it in the meantime.
+const DRAIN: Duration = Duration::from_secs(5);
+
+/// The bound on opening a successor connection, authentication and the
+/// subscription's `EOSE` included.
+const RENEW_WITHIN: Duration = Duration::from_secs(30);
+
+/// Overrides [`PROBE_EVERY`], in milliseconds.
+const PROBE_VAR: &str = "CODER_WORKER_PROBE_MS";
+
+/// Overrides [`RENEW_EVERY`], in milliseconds.
+const RENEW_VAR: &str = "CODER_WORKER_RENEW_MS";
+
+/// The subscription that carries the worker's jobs.
+const JOBS_SUBSCRIPTION: &str = "jobs";
+
+/// The prefix of a liveness probe's subscription ID.
+const PROBE_PREFIX: &str = "alive-";
+
+/// How the worker keeps its relay connection honest.
+#[derive(Clone, Copy, Debug)]
+struct Liveness {
+    /// How often a probe goes out, and how long each may take.
+    probe: Duration,
+    /// How long a subscription is kept before it is renewed.
+    renew: Duration,
+}
+
+impl Liveness {
+    fn from_env() -> Result<Self, String> {
+        Ok(Self {
+            probe: millis_from_env(PROBE_VAR)?.unwrap_or(PROBE_EVERY),
+            renew: millis_from_env(RENEW_VAR)?.unwrap_or(RENEW_EVERY),
+        })
+    }
+}
+
+fn millis_from_env(name: &str) -> Result<Option<Duration>, String> {
+    match env::var(name) {
+        Ok(text) => match text.trim().parse::<u64>() {
+            Ok(millis) if millis > 0 => Ok(Some(Duration::from_millis(millis))),
+            _ => Err(format!(
+                "{name} is a positive number of milliseconds, not `{text}`"
+            )),
+        },
+        Err(_) => Ok(None),
+    }
+}
+
 /// How long past a delegation's stated minutes the worker keeps waiting.
 ///
 /// The executor ends the run at the bound and reports that with a code;
@@ -215,7 +293,11 @@ first response alone would, and =off ignores the router. CODER_PERSONALIZE
 the rest of a router stem. The door the worker
 answers through comes from the environment exactly as it does for the
 agent, except for the lane: CODER_WORKER_MODEL names the model or lane
-this worker runs, and outranks CODER_MODEL.";
+this worker runs, and outranks CODER_MODEL. The worker proves its relay
+subscription live with a probe every 30 seconds and renews it on an
+overlapping connection every 45 minutes; CODER_WORKER_PROBE_MS and
+CODER_WORKER_RENEW_MS change those periods. Under a systemd unit with
+WatchdogSec, every answered probe pets the watchdog.";
 
 /// What the command line asked for.
 struct Options {
@@ -586,6 +668,12 @@ async fn serve(options: &Options) -> Result<(), String> {
         }
         None => None,
     };
+    let liveness = Liveness::from_env()?;
+    eprintln!(
+        "liveness a probe every {} s; the subscription is renewed every {} s",
+        liveness.probe.as_secs_f64(),
+        liveness.renew.as_secs_f64()
+    );
     if options.check {
         deployable(options.allow.as_deref(), options.quota.as_ref(), &url)?;
         eprintln!("the configuration is safe to deploy");
@@ -605,6 +693,8 @@ async fn serve(options: &Options) -> Result<(), String> {
     let (outgoing, frames) = mpsc::unbounded_channel::<Value>();
     let mut worker = Worker {
         options,
+        url: url.clone(),
+        liveness,
         identity,
         door,
         judge,
@@ -620,15 +710,7 @@ async fn serve(options: &Options) -> Result<(), String> {
     let mut backoff = RECONNECT_FLOOR;
     loop {
         let session = async {
-            let mut socket = connect(&url, &worker.identity)
-                .await
-                .map_err(|error| error.to_string())?;
-            send(
-                &mut socket,
-                json!(["REQ", "jobs", { "kinds": [REQUEST_KIND, nostr::execution::REQUEST_KIND], "#p": [worker.identity.pubkey()] }]),
-            )
-            .await
-            .map_err(|error| error.to_string())?;
+            let socket = subscribe(&url, &worker.identity).await?;
             eprintln!("waiting for jobs");
             Ok::<Socket, String>(socket)
         };
@@ -687,6 +769,9 @@ enum Fault {
 /// The worker's state across relay connections.
 struct Worker<'a> {
     options: &'a Options,
+    /// The relay, for a successor connection.
+    url: String,
+    liveness: Liveness,
     identity: Arc<Identity>,
     door: Arc<Door>,
     /// The System One client for the first response, when configured.
@@ -706,6 +791,13 @@ struct Worker<'a> {
 
 impl Worker<'_> {
     /// Serves one connection until it fails or `--once` is satisfied.
+    ///
+    /// Besides jobs, the loop proves the connection live every
+    /// [`Liveness::probe`] and renews it every [`Liveness::renew`]: a
+    /// successor connection subscribes first, then the old one is closed
+    /// and read for [`DRAIN`] longer, so the two subscriptions overlap and
+    /// a job is never published to neither. A job delivered on both is
+    /// answered once.
     async fn session(&mut self, mut socket: Socket) -> Result<(), Fault> {
         let mut subscribed = false;
         let fault = |subscribed: bool, why: String| {
@@ -715,6 +807,17 @@ impl Worker<'_> {
                 Fault::Early(why)
             }
         };
+        let probe_every = self.liveness.probe;
+        let mut probes =
+            tokio::time::interval_at(tokio::time::Instant::now() + probe_every, probe_every);
+        probes.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        let mut probe_count: u64 = 0;
+        // The probe the relay has not answered yet.
+        let mut outstanding: Option<String> = None;
+        let mut renew_at = tokio::time::Instant::now() + self.liveness.renew;
+        let mut renewing: Option<Renewal> = None;
+        // The replaced connection and when reading it stops.
+        let mut draining: Option<(Socket, tokio::time::Instant)> = None;
         loop {
             tokio::select! {
                 frame = self.frames.recv() => {
@@ -741,6 +844,67 @@ impl Worker<'_> {
                         return Ok(());
                     }
                 }
+                _ = probes.tick() => {
+                    if outstanding.is_some() {
+                        return Err(fault(subscribed, format!(
+                            "the relay stopped answering: a liveness probe had no reply in {} s",
+                            probe_every.as_secs_f64()
+                        )));
+                    }
+                    probe_count += 1;
+                    let id = format!("{PROBE_PREFIX}{probe_count}");
+                    send(&mut socket, probe_request(&id, self.identity.pubkey()))
+                        .await
+                        .map_err(|error| fault(subscribed, error.to_string()))?;
+                    outstanding = Some(id);
+                }
+                () = tokio::time::sleep_until(renew_at), if subscribed && renewing.is_none() => {
+                    renewing = Some(Box::pin(successor(self.url.clone(), self.identity.clone())));
+                }
+                made = poll_some(&mut renewing) => {
+                    renewing = None;
+                    match made {
+                        Ok(Successor { socket: next, early }) => {
+                            let mut old = std::mem::replace(&mut socket, next);
+                            // The old subscription stops after the new one
+                            // is live; whatever it delivered meanwhile is
+                            // still read for a moment.
+                            let _ = send(&mut old, json!(["CLOSE", JOBS_SUBSCRIPTION])).await;
+                            draining = Some((old, tokio::time::Instant::now() + DRAIN));
+                            outstanding = None;
+                            probes.reset();
+                            renew_at = tokio::time::Instant::now() + self.liveness.renew;
+                            eprintln!("renewed the jobs subscription on a new connection");
+                            notify_watchdog();
+                            for value in early {
+                                self.admit(&value);
+                            }
+                        }
+                        Err(why) => {
+                            // The current connection still proves itself
+                            // with probes; try again after the next one.
+                            eprintln!("relay: renewing the subscription failed: {why}; keeping the current connection");
+                            renew_at = tokio::time::Instant::now() + probe_every;
+                        }
+                    }
+                }
+                frame = next_draining(&mut draining) => {
+                    match frame {
+                        Some(Ok(tungstenite::Message::Text(text))) => {
+                            let Ok(value) = serde_json::from_str::<Value>(&text) else { continue };
+                            if value[1].as_str() != Some(JOBS_SUBSCRIPTION) {
+                                continue;
+                            }
+                            match value[0].as_str() {
+                                Some("EVENT") => self.admit(&value),
+                                Some("CLOSED") => draining = None,
+                                _ => {}
+                            }
+                        }
+                        Some(Ok(_)) => {}
+                        Some(Err(_)) | None => draining = None,
+                    }
+                }
                 frame = socket.next() => {
                     let Some(frame) = frame else {
                         return Err(fault(subscribed, "the relay closed the socket".to_string()));
@@ -752,7 +916,27 @@ impl Worker<'_> {
                     let Ok(value) = serde_json::from_str::<Value>(&text) else {
                         continue;
                     };
-                    if value[1].as_str() != Some("jobs") {
+                    // The answer to a liveness probe: the relay is there
+                    // and serving this connection.
+                    if outstanding.as_deref().is_some_and(|id| value[1].as_str() == Some(id)) {
+                        match value[0].as_str() {
+                            Some("EOSE") => {
+                                let id = outstanding.take().unwrap_or_default();
+                                send(&mut socket, json!(["CLOSE", id]))
+                                    .await
+                                    .map_err(|error| fault(subscribed, error.to_string()))?;
+                                notify_watchdog();
+                            }
+                            // A refused probe still came from the relay.
+                            Some("CLOSED") => {
+                                outstanding = None;
+                                notify_watchdog();
+                            }
+                            _ => {}
+                        }
+                        continue;
+                    }
+                    if value[1].as_str() != Some(JOBS_SUBSCRIPTION) {
                         continue;
                     }
                     // The relay buffers live events until the history query
@@ -764,7 +948,7 @@ impl Worker<'_> {
                         Some("EOSE") => {
                             eprintln!("subscribed; jobs arrive live from here");
                             subscribed = true;
-                            continue;
+                            notify_watchdog();
                         }
                         Some("CLOSED") => {
                             return Err(fault(subscribed, format!(
@@ -772,74 +956,212 @@ impl Worker<'_> {
                                 value[2].as_str().unwrap_or_default()
                             )));
                         }
-                        Some("EVENT") => {}
-                        _ => continue,
+                        Some("EVENT") => self.admit(&value),
+                        _ => {}
                     }
-                    // What the relay delivered is checked before it is
-                    // trusted for anything, its label included. Something
-                    // that is not a signed request to this worker is set
-                    // aside with one line saying why; there is no one to
-                    // answer, because nothing proved who sent it.
-                    let request = match serde_json::from_value::<Event>(value[2].clone()) {
-                        Ok(request) => request,
-                        Err(error) => {
-                            eprintln!("ignored an event that does not parse: {error}");
-                            continue;
-                        }
-                    };
-                    if request.kind == nostr::execution::REQUEST_KIND {
-                        // A metered caller gets conversation jobs only:
-                        // execution is for the operator's own keys.
-                        if !execution_admitted(self.options, &request.pubkey) {
-                            eprintln!(
-                                "ignored execution {}: not from an allowlisted key",
-                                &request.id[..request.id.len().min(16)]
-                            );
-                            continue;
-                        }
-                        // Execution admission is the shared store. A closed
-                        // socket does not cancel the claim, and a later
-                        // relay OK is not acceptance: `Store::answer` is.
-                        if let Err(why) = answer_execution(&self.identity, &request, &self.outgoing) {
-                            eprintln!(
-                                "ignored execution {}: {why}",
-                                &request.id[..request.id.len().min(16)]
-                            );
-                        }
-                        continue;
-                    }
-                    if let Err(why) = addressed(&request, self.identity.pubkey()) {
-                        eprintln!("ignored {}: {why}", &request.id[..request.id.len().min(16)]);
-                        continue;
-                    }
-                    if self.seen.contains(&request.id) {
-                        eprintln!("ignored {}: already delivered", &request.id[..16]);
-                        continue;
-                    }
-                    if self.seen.len() == SEEN_REQUESTS {
-                        self.seen.pop_front();
-                    }
-                    self.seen.push_back(request.id.clone());
-                    // Admission is decided here, before anything is spawned:
-                    // a job over the bound is refused `busy` at once rather
-                    // than queued behind work the terminal cannot see.
-                    let permit = self.running.clone().try_acquire_owned().ok();
-                    let job = Job {
-                        identity: self.identity.clone(),
-                        door: self.door.clone(),
-                        judge: self.judge.clone(),
-                        decline: self.options.decline.clone(),
-                        allow: self.options.allow.clone(),
-                        ledger: self.ledger.clone(),
-                        publish: self.outgoing.clone(),
-                        permit,
-                        waits: WAITS,
-                        routing: self.routing.clone(),
-                    };
-                    self.tasks.spawn(async move { job.answer(&request).await });
                 }
             }
         }
+    }
+
+    /// Checks one `EVENT` frame on the jobs subscription and starts its
+    /// job, from whichever connection delivered it.
+    fn admit(&mut self, value: &Value) {
+        // What the relay delivered is checked before it is
+        // trusted for anything, its label included. Something
+        // that is not a signed request to this worker is set
+        // aside with one line saying why; there is no one to
+        // answer, because nothing proved who sent it.
+        let request = match serde_json::from_value::<Event>(value[2].clone()) {
+            Ok(request) => request,
+            Err(error) => {
+                eprintln!("ignored an event that does not parse: {error}");
+                return;
+            }
+        };
+        if request.kind == nostr::execution::REQUEST_KIND {
+            // A metered caller gets conversation jobs only:
+            // execution is for the operator's own keys.
+            if !execution_admitted(self.options, &request.pubkey) {
+                eprintln!(
+                    "ignored execution {}: not from an allowlisted key",
+                    &request.id[..request.id.len().min(16)]
+                );
+                return;
+            }
+            // Execution admission is the shared store. A closed
+            // socket does not cancel the claim, and a later
+            // relay OK is not acceptance: `Store::answer` is.
+            if let Err(why) = answer_execution(&self.identity, &request, &self.outgoing) {
+                eprintln!(
+                    "ignored execution {}: {why}",
+                    &request.id[..request.id.len().min(16)]
+                );
+            }
+            return;
+        }
+        if let Err(why) = addressed(&request, self.identity.pubkey()) {
+            eprintln!("ignored {}: {why}", &request.id[..request.id.len().min(16)]);
+            return;
+        }
+        if self.seen.contains(&request.id) {
+            eprintln!("ignored {}: already delivered", &request.id[..16]);
+            return;
+        }
+        if self.seen.len() == SEEN_REQUESTS {
+            self.seen.pop_front();
+        }
+        self.seen.push_back(request.id.clone());
+        // Admission is decided here, before anything is spawned:
+        // a job over the bound is refused `busy` at once rather
+        // than queued behind work the terminal cannot see.
+        let permit = self.running.clone().try_acquire_owned().ok();
+        let job = Job {
+            identity: self.identity.clone(),
+            door: self.door.clone(),
+            judge: self.judge.clone(),
+            decline: self.options.decline.clone(),
+            allow: self.options.allow.clone(),
+            ledger: self.ledger.clone(),
+            publish: self.outgoing.clone(),
+            permit,
+            waits: WAITS,
+            routing: self.routing.clone(),
+        };
+        self.tasks.spawn(async move { job.answer(&request).await });
+    }
+}
+
+/// The worker's jobs subscription request.
+fn jobs_request(worker: &str) -> Value {
+    json!(["REQ", JOBS_SUBSCRIPTION, {
+        "kinds": [REQUEST_KIND, nostr::execution::REQUEST_KIND],
+        "#p": [worker],
+    }])
+}
+
+/// A liveness probe: a `REQ` the relay answers with `EOSE` at once, since
+/// it asks for no stored events (the jobs kinds are ephemeral, and the
+/// limit is zero). Its events, if any arrived before the `CLOSE`, are set
+/// aside by subscription ID; jobs are taken only from the jobs
+/// subscription.
+fn probe_request(id: &str, worker: &str) -> Value {
+    json!(["REQ", id, { "kinds": [REQUEST_KIND], "#p": [worker], "limit": 0 }])
+}
+
+/// Connects, authenticates, and sends the jobs subscription.
+async fn subscribe(url: &str, identity: &Identity) -> Result<Socket, String> {
+    let mut socket = connect(url, identity)
+        .await
+        .map_err(|error| error.to_string())?;
+    send(&mut socket, jobs_request(identity.pubkey()))
+        .await
+        .map_err(|error| error.to_string())?;
+    Ok(socket)
+}
+
+/// A successor connection being opened.
+type Renewal = Pin<Box<dyn Future<Output = Result<Successor, String>> + Send>>;
+
+/// A renewed connection whose subscription the relay confirmed, with any
+/// jobs frames it delivered before its `EOSE`.
+struct Successor {
+    socket: Socket,
+    early: Vec<Value>,
+}
+
+/// Opens the connection that replaces the current one, and returns it once
+/// its jobs subscription is live.
+async fn successor(url: String, identity: Arc<Identity>) -> Result<Successor, String> {
+    let opening = async {
+        let mut socket = subscribe(&url, &identity).await?;
+        let mut early = Vec::new();
+        loop {
+            let frame = socket
+                .next()
+                .await
+                .ok_or_else(|| "the relay closed the socket".to_string())?
+                .map_err(|error| format!("socket: {error}"))?;
+            let tungstenite::Message::Text(text) = frame else {
+                continue;
+            };
+            let Ok(value) = serde_json::from_str::<Value>(&text) else {
+                continue;
+            };
+            if value[1].as_str() != Some(JOBS_SUBSCRIPTION) {
+                continue;
+            }
+            match value[0].as_str() {
+                Some("EOSE") => return Ok(Successor { socket, early }),
+                Some("CLOSED") => {
+                    return Err(format!(
+                        "the relay closed the jobs subscription: {}",
+                        value[2].as_str().unwrap_or_default()
+                    ));
+                }
+                Some("EVENT") => early.push(value),
+                _ => {}
+            }
+        }
+    };
+    tokio::time::timeout(RENEW_WITHIN, opening)
+        .await
+        .map_err(|_| format!("no subscription in {} s", RENEW_WITHIN.as_secs()))?
+}
+
+/// Awaits the pending future in `slot`, or never when there is none.
+async fn poll_some<T>(slot: &mut Option<Pin<Box<dyn Future<Output = T> + Send>>>) -> T {
+    match slot {
+        Some(future) => future.as_mut().await,
+        None => std::future::pending().await,
+    }
+}
+
+/// The next frame of the connection being drained, or `None` once it
+/// ends or its [`DRAIN`] is over; never when there is none.
+async fn next_draining(
+    draining: &mut Option<(Socket, tokio::time::Instant)>,
+) -> Option<Result<tungstenite::Message, tungstenite::Error>> {
+    match draining {
+        Some((socket, end)) => tokio::time::timeout_at(*end, socket.next())
+            .await
+            .ok()
+            .flatten(),
+        None => std::future::pending().await,
+    }
+}
+
+/// Tells systemd's watchdog the worker has just proven its relay
+/// subscription live.
+///
+/// Under a unit with `WatchdogSec=`, systemd restarts a worker that stops
+/// saying so, a backstop behind the probes for a worker that is stuck
+/// somewhere they cannot see. Without `NOTIFY_SOCKET` (any other way the
+/// binary runs) this does nothing.
+fn notify_watchdog() {
+    #[cfg(unix)]
+    {
+        use std::os::unix::net::UnixDatagram;
+        let Some(path) = env::var_os("NOTIFY_SOCKET") else {
+            return;
+        };
+        let Ok(socket) = UnixDatagram::unbound() else {
+            return;
+        };
+        let bytes = path.as_encoded_bytes();
+        if let Some(name) = bytes.strip_prefix(b"@") {
+            #[cfg(target_os = "linux")]
+            {
+                use std::os::linux::net::SocketAddrExt;
+                if let Ok(address) = std::os::unix::net::SocketAddr::from_abstract_name(name) {
+                    let _ = socket.send_to_addr(b"WATCHDOG=1", &address);
+                }
+            }
+            #[cfg(not(target_os = "linux"))]
+            let _ = name;
+            return;
+        }
+        let _ = socket.send_to(b"WATCHDOG=1", &path);
     }
 }
 

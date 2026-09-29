@@ -120,6 +120,25 @@ phone <--27000 partials, 26900 result------- relay.openagents.com <-- chat worke
   binding, and sequence, draws the reply with Rust Native's incremental
   Markdown, and replaces the preview with the result.
 
+- **Liveness.** The worker never trusts a quiet socket
+  ([#9946](https://github.com/OpenAgentsInc/openagents/issues/9946)).
+  `relay.openagents.com` is a Cloud Run domain mapping, so the worker's
+  WebSocket ends at Google's front end, and when the relay instance behind
+  it restarts, the front end can keep the worker's TCP connection
+  established while nothing reaches it. On 2026-09-29 the worker read
+  silence that way for 40 minutes, and every phone request went
+  unanswered. Now the worker sends a probe every 30 seconds (a `REQ` with
+  `limit` 0 on the jobs filter, which the relay answers with `EOSE` at
+  once) and treats a probe still unanswered at the next one as a dropped
+  connection: it logs `relay: the relay stopped answering: …;
+  reconnecting in 1 s` and subscribes again. Every 45 minutes, before the
+  relay's one-hour request timeout, it opens a second connection,
+  subscribes there, and only then closes the first (`renewed the jobs
+  subscription on a new connection`), so no job falls into the gap.
+  `CODER_WORKER_PROBE_MS` and `CODER_WORKER_RENEW_MS` change the two
+  periods. Each answered probe also sends systemd `WATCHDOG=1`; the unit's
+  `WatchdogSec=120` restarts a worker that stops proving its subscription.
+
 The alternatives were a new HTTPS endpoint with its own device
 authentication, or the decision-API gateway (`crates/gateway`). Both need a
 new credential flow for the phone. The relay door already authenticates by
@@ -208,6 +227,11 @@ sudo journalctl -u coder-worker-chat -n 20 --no-pager
 To upgrade, install the new release beside the old one, move the `chat`
 symlink, and `sudo systemctl restart coder-worker-chat`.
 
+The unit in `deploy/systemd/coder-worker-chat.service` carries
+`WatchdogSec=120` and `NotifyAccess=main`; a worker built before #9946
+sends no watchdog notifications, so install the unit only with a release
+that does, or systemd restarts it every two minutes.
+
 The first log line must be `worker  32c07895…` (the key the app carries),
 the judge line must name `https://api.typesafe.ai`, and the admits line must
 name the quota. The worker secret is kept with the
@@ -221,6 +245,27 @@ as a new install does:
 cargo test --manifest-path crates/openagents-mobile/Cargo.toml \
   live_basic_coder_streams_a_reply -- --ignored --nocapture
 ```
+
+### When the phone gets no answer
+
+"We couldn't reply this time" for every message, with the worker's unit
+still `active`, means the worker is not receiving jobs. Check in this
+order on `oa-coder-worker-1`:
+
+1. `sudo journalctl -u coder-worker-chat --since -15min --no-pager`. A
+   healthy worker logs nothing between jobs except `gym records` every 10
+   minutes and `renewed the jobs subscription` every 45 minutes. `relay:
+   … reconnecting` lines mean the relay is failing and the worker is
+   rejoining it; check the relay (`openagents-nostr-relay` on Cloud Run,
+   [runbook-cloud-run.md](runbook-cloud-run.md)).
+2. `systemctl show coder-worker-chat -p WatchdogTimestamp -p NRestarts`.
+   A `WatchdogTimestamp` that is not recent, or restarts climbing, means
+   the worker cannot prove its subscription.
+3. Run `live_basic_coder_streams_a_reply` (above) from a checkout. If it
+   fails while the journal shows no fault, save `sudo ss -tnpi` for the
+   worker's PID (the relay socket's `lastrcv` says how long it has heard
+   nothing) and the journal, then `sudo systemctl restart
+   coder-worker-chat` and open an issue with both.
 
 On 2026-09-28 that test answered through the production relay in 5.7 s,
 with the first words at 5.1 s, from a worker with this configuration running

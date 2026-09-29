@@ -123,7 +123,31 @@ async fn send(socket: &mut Server, value: Value) {
         .unwrap();
 }
 
+/// The worker's next frame, with its liveness probes answered as a live
+/// relay answers them: `EOSE` for the probe's `REQ`, and nothing for its
+/// `CLOSE`.
 async fn read(socket: &mut Server) -> Option<Value> {
+    loop {
+        let value = read_raw(socket).await?;
+        if is_probe(&value) {
+            if value[0] == "REQ" {
+                send(socket, json!(["EOSE", value[1]])).await;
+            }
+            continue;
+        }
+        return Some(value);
+    }
+}
+
+/// Whether `value` is one of the worker's liveness probes (`REQ` or
+/// `CLOSE` on an `alive-` subscription).
+fn is_probe(value: &Value) -> bool {
+    (value[0] == "REQ" || value[0] == "CLOSE")
+        && value[1].as_str().is_some_and(|id| id.starts_with("alive-"))
+}
+
+/// The worker's next frame, exactly as sent.
+async fn read_raw(socket: &mut Server) -> Option<Value> {
     loop {
         match socket.next().await? {
             Ok(tungstenite::Message::Text(text)) => {
@@ -428,6 +452,154 @@ async fn a_dropped_or_restarted_relay_is_rejoined_and_resubscribed() {
         deliver(&mut socket, &job).await;
         let result = outcome(&mut socket, &job).await;
         assert_eq!(result["type"], "result", "{result}");
+    })
+    .await;
+}
+
+/// A relay that stops answering without closing the socket is noticed.
+///
+/// This is #9946: the production relay sits behind a front end that kept
+/// the worker's TCP connection open after the relay instance behind it was
+/// gone, and the worker read silence for forty minutes. Here the relay
+/// takes the subscription and then answers nothing while the socket stays
+/// open. The worker's liveness probe goes unanswered, the worker names the
+/// fault, connects again, subscribes again, and answers the next job.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_relay_that_goes_silent_is_noticed_and_rejoined() {
+    bounded(async {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("ws://{}", listener.local_addr().unwrap());
+        let worker = Worker::start(&url, &[], &[("CODER_WORKER_PROBE_MS", "300")]);
+
+        let (mut silent, filter) = subscribe(&listener).await;
+        assert_jobs_filter(&filter);
+        worker.log_until("subscribed").await;
+        // The socket stays open and the relay reads what the worker sends,
+        // as a front end does, but nothing comes back: not the probe's
+        // answer, not a close.
+        let probe = read_raw(&mut silent).await.expect("the worker probes");
+        assert!(is_probe(&probe) && probe[0] == "REQ", "{probe}");
+        assert_eq!(probe[2]["limit"], 0, "{probe}");
+
+        let line = worker.log_until("reconnecting").await;
+        assert!(line.contains("stopped answering"), "{line}");
+
+        let (mut socket, filter) = subscribe(&listener).await;
+        assert_jobs_filter(&filter);
+        let job = request(&json!({"v": 2, "task": "ping"}));
+        deliver(&mut socket, &job).await;
+        let result = outcome(&mut socket, &job).await;
+        assert_eq!(result["type"], "result", "{result}");
+        drop(silent);
+    })
+    .await;
+}
+
+/// A relay that answers every probe keeps its connection: probes alone
+/// never end a healthy session.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_relay_that_answers_its_probes_keeps_the_connection() {
+    bounded(async {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("ws://{}", listener.local_addr().unwrap());
+        let worker = Worker::start(&url, &[], &[("CODER_WORKER_PROBE_MS", "200")]);
+        let (mut socket, _) = subscribe(&listener).await;
+        worker.log_until("subscribed").await;
+
+        // Ten probe intervals, each answered by `read`.
+        let answering = async { while read(&mut socket).await.is_some() {} };
+        let _ = tokio::time::timeout(Duration::from_secs(2), answering).await;
+        let seen = worker.seen().await;
+        assert!(
+            !seen.iter().any(|line| line.contains("reconnecting")),
+            "{seen:?}"
+        );
+        let job = request(&json!({"v": 2, "task": "ping"}));
+        deliver(&mut socket, &job).await;
+        let result = outcome(&mut socket, &job).await;
+        assert_eq!(result["type"], "result", "{result}");
+    })
+    .await;
+}
+
+/// The subscription is renewed before the relay's front end would end it,
+/// and the two overlap: the successor is subscribed before the old one is
+/// closed, a job the relay delivers on the old connection in that moment
+/// is still answered, and a job delivered on both is answered once.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_subscription_is_renewed_on_an_overlapping_connection() {
+    bounded(async {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("ws://{}", listener.local_addr().unwrap());
+        let worker = Worker::start(&url, &[], &[("CODER_WORKER_RENEW_MS", "400")]);
+        let (mut old, _) = subscribe(&listener).await;
+        worker.log_until("subscribed").await;
+
+        // The successor connects while the first connection is still open.
+        let (mut new, filter) = subscribe(&listener).await;
+        assert_jobs_filter(&filter);
+        worker.log_until("renewed the jobs subscription").await;
+
+        // The old subscription is closed only now, and a job the relay put
+        // on it before the close still reaches the worker; its answer goes
+        // out on the successor.
+        let late = request(&json!({"v": 2, "task": "late"}));
+        deliver(&mut old, &late).await;
+        loop {
+            let frame = read(&mut old)
+                .await
+                .expect("the old connection is closed only after");
+            if frame[0] == "CLOSE" {
+                assert_eq!(frame[1], "jobs");
+                break;
+            }
+        }
+        let result = outcome(&mut new, &late).await;
+        assert_eq!(result["type"], "result", "{result}");
+
+        // One job on both subscriptions is answered once.
+        let both = request(&json!({"v": 2, "task": "both"}));
+        deliver(&mut old, &both).await;
+        deliver(&mut new, &both).await;
+        let result = outcome(&mut new, &both).await;
+        assert_eq!(result["type"], "result", "{result}");
+        worker.log_until("already delivered").await;
+
+        // The renewed connection carries the next job as the first did.
+        let next = request(&json!({"v": 2, "task": "ping again"}));
+        deliver(&mut new, &next).await;
+        let result = outcome(&mut new, &next).await;
+        assert_eq!(result["type"], "result", "{result}");
+    })
+    .await;
+}
+
+/// Under systemd's watchdog, each answered probe tells systemd the worker
+/// is live, so a worker stuck anywhere the probes cannot see is restarted.
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_answered_probe_pets_the_systemd_watchdog() {
+    bounded(async {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("notify");
+        let notify = tokio::net::UnixDatagram::bind(&path).unwrap();
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("ws://{}", listener.local_addr().unwrap());
+        let _worker = Worker::start(
+            &url,
+            &[],
+            &[
+                ("CODER_WORKER_PROBE_MS", "200"),
+                ("NOTIFY_SOCKET", path.to_str().unwrap()),
+            ],
+        );
+        let (mut socket, _) = subscribe(&listener).await;
+        tokio::spawn(async move { while read(&mut socket).await.is_some() {} });
+        let mut buffer = [0u8; 64];
+        for _ in 0..2 {
+            let length = notify.recv(&mut buffer).await.unwrap();
+            assert_eq!(&buffer[..length], b"WATCHDOG=1");
+        }
     })
     .await;
 }
