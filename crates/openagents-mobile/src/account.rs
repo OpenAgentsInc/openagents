@@ -38,7 +38,7 @@ pub const CHANGELOG: &[Release] = &[
         version: "1.0.0",
         build: "21",
         title: "Test tools in chat",
-        what_to_test: "On a fresh install, tap Choose Coder, then Let's go, then Start the test, and check the test starts in three taps. From the menu, tap What's new and Check a result. In a chat, say \"Help me make a tool that writes changelog entries\" and answer each step with Looks good or a change. Open Profile to see what you made.",
+        what_to_test: "On a fresh install, tap Choose Coder, then Let's go, then Start the test, and check the test starts in three taps; when the result comes, tap Add to the Gym. From the menu, tap What's new and Check a result, and run a check. In a chat, say \"Help me make a tool that writes changelog entries\" and answer each step with Looks good or a change. Open Profile to see what you made and the XP it earned, and tap The Gym in the Verse to see the board.",
         items: &[
             Item {
                 title: "A menu with chat first",
@@ -49,20 +49,28 @@ pub const CHANGELOG: &[Release] = &[
                 detail: "A new install walks you through choosing Coder and testing Project map in chat. If you leave, the app reopens where you were.",
             },
             Item {
-                title: "Tests in chat",
-                detail: "Ask which tool to try and chat shows the tool with Start the test. The card shows the test while it runs and the result when it's done: how many tests Coder passed without the tool and with it.",
+                title: "Test a tool from chat",
+                detail: "Ask which tool to try and chat shows the tool with Start the test. We run the tests on our computers, with the tool and without it, and the card shows the result: how many tests Coder passed each way.",
             },
             Item {
-                title: "Make a tool and its tests",
+                title: "Make your own tool by chatting",
                 detail: "Chat drafts a tool and its tests with you, one step at a time. Tap Looks good to go on or Change it to say what to change, try it once, then run the full test set. The draft stays on your phone.",
             },
             Item {
                 title: "Add to the Gym",
-                detail: "Add to the Gym shows exactly what becomes public before anything does. Check another trainer's result from chat, too.",
+                detail: "Add to the Gym shows exactly what becomes public before anything does. Your result then waits for other trainers to check it.",
             },
             Item {
-                title: "Your credit",
-                detail: "Ask what you've earned, or open Profile, to see the XP other trainers' checks and Coder's adoptions earned you. XP can't be spent.",
+                title: "Check others' results and earn XP",
+                detail: "Check a result runs another trainer's tests again. When a check confirms a result, both trainers earn XP, and Coder can adopt a tool that holds up. Ask what you've earned, or open Profile. XP can't be spent.",
+            },
+            Item {
+                title: "Gym news",
+                detail: "Ask what's new in the Gym for the latest results, checks, and builds, each with where it came from.",
+            },
+            Item {
+                title: "The Gym board in the Verse",
+                detail: "The Gym in the Verse shows published results by test set and tool, with how many trainers confirmed each. See the board under a result opens it.",
             },
         ],
     },
