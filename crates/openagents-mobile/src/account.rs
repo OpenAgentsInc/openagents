@@ -37,12 +37,42 @@ pub const CHANGELOG: &[Release] = &[
     Release {
         version: "1.0.0",
         build: "20",
-        title: "A simpler Wallet",
-        what_to_test: "Open the Wallet tab: check it shows just the balance, Receive, Send, and recent activity. Tap Receive and check a QR code appears at once; tap Send, paste a request or address, and check the confirm screen reads plainly. Open Advanced at the bottom and check everything else is there.",
-        items: &[Item {
-            title: "A simpler Wallet",
-            detail: "The Wallet shows your balance, two big buttons (Receive and Send), and your last five payments. Receive shows a QR code right away; Send takes one pasted or scanned code and figures out what it is. A card asks you to back up your recovery words until you do. Everything else (other ways to receive, buying, deposits, people, agent payments, the amount unit, recovery) is under Advanced.",
-        }],
+        title: "Smarter chat and a simpler Wallet",
+        what_to_test: "In a new chat, ask \"Who are you?\", \"Connect to my GitHub\", \"What's the Grid?\", and \"Fix the failing test in my repo\", and tap the offer under a reply (Run Coder, Connect a computer, or a link to a screen). Open the Wallet tab and try Receive and Send. On a prepared reply, tap Wrong answer.",
+        items: &[
+            Item {
+                title: "Instant answers",
+                detail: "Common questions get a prepared answer at once, marked \"Prepared answer\". OpenAgents also answers questions about the app, and about our code with citations to the files it read.",
+            },
+            Item {
+                title: "Work goes to Coder",
+                detail: "Ask for work on your code and the reply says \"We'll dispatch Coder to…\" with a Run Coder button, or Connect a computer if none is connected yet.",
+            },
+            Item {
+                title: "Links to the right screen",
+                detail: "Replies about your wallet, computers, and the rest of the app carry a button that opens that screen.",
+            },
+            Item {
+                title: "Commands on your computer",
+                detail: "Some replies offer a read-only command card that runs on your connected computer (one with terminal access) and shows its output in the chat.",
+            },
+            Item {
+                title: "Follow-ups and feedback",
+                detail: "Chips under a reply suggest what to ask next. Wrong answer on a reply reports it, and Report a problem can share this chat.",
+            },
+            Item {
+                title: "One voice",
+                detail: "Chat speaks as \"we\" everywhere, including the lines about waiting and daily limits.",
+            },
+            Item {
+                title: "A simpler Wallet",
+                detail: "The Wallet shows your balance, two big buttons (Receive and Send), and your last five payments. Receive shows a QR code right away; Send takes one pasted or scanned code and figures out what it is. A card asks you to back up your recovery words until you do. Everything else (other ways to receive, buying, deposits, people, agent payments, the amount unit, recovery) is under Advanced.",
+            },
+            Item {
+                title: "Keyboard",
+                detail: "Tap outside a text field on any screen to put the keyboard away.",
+            },
+        ],
     },
     Release {
         version: "1.0.0",

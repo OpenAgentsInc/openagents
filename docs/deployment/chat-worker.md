@@ -1,7 +1,8 @@
-# The chat worker: the OpenAgents app's basic Coder
+# The chat worker: OpenAgents chat in the OpenAgents app
 
-A new OpenAgents app user can chat with Coder before connecting a computer.
-That chat, the *basic Coder*, is served by one `coder-worker` running in
+A new OpenAgents app user can chat with OpenAgents before connecting a
+computer; work for a computer is dispatched to Coder there. That chat,
+*OpenAgents chat*, is served by one `coder-worker` running in
 quota mode on the gateway door's Gemini Flash lane. This page is the serving
 decision, its limits, and the runbook.
 
@@ -109,7 +110,7 @@ The alternatives were a new HTTPS endpoint with its own device
 authentication, or the decision-API gateway (`crates/gateway`). Both need a
 new credential flow for the phone. The relay door already authenticates by
 the device key, already streams, and already has a deployed worker and
-runbook, so the basic chat reuses it.
+runbook, so OpenAgents chat reuses it.
 
 ## Limits
 

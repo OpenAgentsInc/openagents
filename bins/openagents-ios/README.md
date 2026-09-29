@@ -299,13 +299,13 @@ uses only its control-plane client.
 | Bundle identifier | `com.openagents.app` |
 | App Store Connect app | `6748620735` (**OpenAgents**) |
 | Development team | `HQWSG26L43` |
-| Marketing version and build | `1.0.0` / `19` |
+| Marketing version and build | `1.0.0` / `20` |
 | Minimum OS and device family | iOS 17 / iPhone |
 | Archive signing | Manual, Apple Distribution, `OpenAgents App Store` profile |
 
 The App Store Connect record also holds `0.x` builds from an earlier app on
 this bundle identifier. Build numbers only need to be unique within one
-version, so `1.0.0` started at build `1`. Builds `1` to `19` are on TestFlight. Raise the build number for every
+version, so `1.0.0` started at build `1`. Builds `1` to `20` are on TestFlight. Raise the build number for every
 upload; set it in `host/project.yml` or with `OPENAGENTS_IOS_BUILD_NUMBER`.
 
 The `OpenAgents App Store` profile uses the same Apple Distribution
