@@ -385,3 +385,27 @@ runs, 2 arms, `hosted`, the starter catalog's `repo-map` reference); "What's
 new in the Gym?" answered from five records in 7.6 s (first words 6.9 s)
 with no citation id and no banned word, and the worker logged `router gym
 reply: 3 cited, 0 invented, banned [], 0 raw ids`.
+
+Release `5882b3910e` (2026-09-29) adds the liveness probes, the overlapping
+renewal, and the systemd watchdog
+([#9946](https://github.com/OpenAgentsInc/openagents/issues/9946)). Before
+it, at 07:34 UTC, the worker was deaf a second time that morning: the
+relay's instance had restarted at 07:13 after losing its Postgres
+notification listener, the relay's request log ended the worker's
+WebSocket then, and `ss` on the VM still showed the worker's socket to the
+front end `ESTABLISHED` with nothing received for 36 minutes. A restart
+fixed it, as before. The release was built as above, installed with
+`knowledge/` and `codebase-kb.gz` copied from `17c7484f9f`, checked with
+`--check`, and put live with the updated unit (`WatchdogSec=120`,
+`NotifyAccess=main`); `coder-worker.service` and `/opt/coder-worker/current`
+were not touched. The log names `liveness a probe every 30 s; the
+subscription is renewed every 2700 s`, and `systemctl show -p
+WatchdogTimestamp` advances every 30 seconds. `live_basic_coder_streams_a_reply`
+passed 11 times out of 11 over the next 31 minutes (one every 3 minutes),
+with first words at 0.57 to 0.67 s, across two later releases
+(`ebaa2af04a`, `0546032e17`) that another change deployed on top of it
+during the run.
+The first production renewal ran on schedule at 08:42:09, 45 minutes after
+the `0546032e17` start (`renewed the jobs subscription on a new
+connection`, no `relay:` fault, `NRestarts=0`), and the live test answered
+through the renewed connection in 0.65 s.
