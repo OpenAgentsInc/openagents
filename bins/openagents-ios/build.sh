@@ -96,6 +96,7 @@ elif [[ "$command" == sim ]]; then
   xcrun simctl install "$device" "$app"
   xcrun simctl launch "$device" com.openagents.app
 else
+  mkdir -p "$output"
   git -C "$root" rev-parse HEAD > "$output/archive-source.commit"
   git -C "$root" status --porcelain=v1 > "$output/archive-source.status"
   xcodebuild "${args[@]}" -archivePath "$archive" archive

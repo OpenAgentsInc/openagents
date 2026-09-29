@@ -36,6 +36,54 @@ pub struct Item {
 pub const CHANGELOG: &[Release] = &[
     Release {
         version: "1.0.0",
+        build: "18",
+        title: "Chat with OpenAgents",
+        what_to_test: "Tap the Chat tab and start typing right away; ask who you're talking to or what model it is, and check the answer is instant. Pick your computer in the selector, send a task, and watch Coder's reply stream in. Open the menu at the top left and check that earlier chats open quickly, and that an OpenCode or Devin session a Coder task started shows inside its chat.",
+        items: &[
+            Item {
+                title: "Ready to type",
+                detail: "The Chat tab (the message icon) opens on a new chat with the cursor in the composer.",
+            },
+            Item {
+                title: "OpenAgents and Coder",
+                detail: "You chat with OpenAgents, which speaks as \"we\"; work for your computer is dispatched to Coder there.",
+            },
+            Item {
+                title: "Where it goes",
+                detail: "A selector beside the title picks one of your computers or Cloud, and suggestion chips above the composer continue recent chats or pick a workspace.",
+            },
+            Item {
+                title: "Previous chats",
+                detail: "Earlier chats are behind the menu button at the top left. Only OpenAgents and Coder chats are listed; the Claude Code, Codex, OpenCode, and Devin lists are gone.",
+            },
+            Item {
+                title: "Instant answers",
+                detail: "Common questions, like who you are talking to or which model answers, get a prepared answer right away.",
+            },
+            Item {
+                title: "Faster chats",
+                detail: "Chat lists and transcripts load and open much faster: the phone keeps what it last saw and gets updates pushed instead of polling, and Coder on a computer streams its reply.",
+            },
+            Item {
+                title: "Delegated sessions",
+                detail: "An OpenCode or Devin session a Coder task delegated to shows inside that Coder chat.",
+            },
+            Item {
+                title: "Wallet notice removed",
+                detail: "The wallet no longer shows the \"whole numbers\" notice.",
+            },
+            Item {
+                title: "Lagrange 1 portal hidden",
+                detail: "The Grid's portal to Lagrange 1 is hidden for now.",
+            },
+            Item {
+                title: "Playtest logging",
+                detail: "On for everyone during the playtest, with no switch: the phone notes which tab and screen you're on, kept on this phone and attached only to a report you preview. The Playtest session toggle is gone.",
+            },
+        ],
+    },
+    Release {
+        version: "1.0.0",
         build: "17",
         title: "Chat",
         what_to_test: "Open the Chat tab without a computer connected, start a new chat, and watch the basic Coder's reply stream in; then tap Run Coder to hand the conversation to a computer. Check that Devin and OpenCode sessions from your computer show up in the chat list. In Account, Trainer, turn Show my level on and off, and export your trainer card.",
@@ -63,10 +111,6 @@ pub const CHANGELOG: &[Release] = &[
             Item {
                 title: "Automatic payments",
                 detail: "A standing spend grant lets the phone pay trusted payees small amounts without a tap, within the grant's limits.",
-            },
-            Item {
-                title: "Playtest logging",
-                detail: "On for everyone during the playtest, with no switch: the phone notes which tab and screen you're on, kept on this phone and attached only to a report you preview.",
             },
         ],
     },
