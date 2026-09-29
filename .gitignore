@@ -1,4 +1,5 @@
 /target
+/crates/openagents-mobile/target/
 /target-mc/
 /target-voyager/
 /target-coder-one/
