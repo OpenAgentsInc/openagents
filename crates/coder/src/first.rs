@@ -172,37 +172,47 @@ pub const ANSWERS: &[Canned] = &[
     },
     Canned {
         id: "meta.capabilities",
-        version: 1,
+        version: 2,
         route: "meta",
         when: "The user asks in general what we can do, how we can help, or whether we can \
                write code, without naming a project, file, error, or task of their own",
         text: "In this chat we can answer questions, explain code and concepts, and help you \
                plan and write. We can't run code, read files, or reach your computer from \
-               here: for that, tap Run Coder and we dispatch Coder, our coding agent, to a \
-               computer you've connected, with this conversation as its task.",
+               here: work on code and repositories goes to Coder, our coding agent, which we \
+               dispatch to a computer you connect, with this conversation as its task.",
         sources: &["crates/openagents-mobile/src/basic_coder.rs"],
     },
     Canned {
         id: "meta.limits_chat",
-        version: 1,
+        version: 2,
         route: "meta",
         when: "The user asks whether we can see their files or screen, run code, browse, or \
                reach their computer or repository from this chat, without asking for a \
                specific task to be done",
-        text: "In this chat we can't run code, read files, or reach your computer. For that, \
-               tap Run Coder and we dispatch Coder, our coding agent, to a computer you've \
-               connected.",
+        text: "In this chat we can't run code, read files, or reach your computer or accounts. \
+               That work goes to Coder, our coding agent, which we dispatch to a computer you \
+               connect.",
         sources: &["crates/openagents-mobile/src/basic_coder.rs"],
     },
     Canned {
         id: "meta.coder",
+        version: 2,
+        route: "meta",
+        when: "The user asks what Coder is or how Coder works, in general",
+        text: "Coder is our coding agent. When a task needs a computer, we dispatch Coder to a \
+               computer you connect, with this conversation as its task, and it works there \
+               with that computer's own git and GitHub login.",
+        sources: &["crates/openagents-mobile/src/basic_coder.rs", "README.md"],
+    },
+    Canned {
+        id: "meta.github",
         version: 1,
         route: "meta",
-        when: "The user asks what Coder is, or what Run Coder does",
-        text: "Coder is our coding agent. When a task needs a computer, tap Run Coder and we \
-               dispatch Coder to a computer you've connected, with this conversation as its \
-               task.",
-        sources: &["crates/openagents-mobile/src/basic_coder.rs", "README.md"],
+        when: "The user asks us to connect to, sign in to, or link their GitHub account, or \
+               asks how we work with GitHub, without asking for a specific change",
+        text: "We work with GitHub through a computer you connect: Coder, our coding agent, \
+               runs there and uses that computer's own git and GitHub login.",
+        sources: &["crates/openagents-mobile/src/basic_coder.rs"],
     },
     Canned {
         id: "meta.open_source",
@@ -405,14 +415,17 @@ pub fn questions(facts: &Facts) -> Questions {
                         "chat".to_string(),
                         Some(Entry::from(
                             "Answer in the chat: a question, explanation, advice, or a short \
-                             snippet that needs no repository, files, or commands",
+                             snippet that needs none of the user's repositories, files, \
+                             commands, or accounts",
                         )),
                     ),
                     (
                         "computer".to_string(),
                         Some(Entry::from(
-                            "Needs a computer: reading or changing a repository or files, \
-                             running commands or tests, or opening a pull request",
+                            "Needs a computer: connecting to or using the user's GitHub or \
+                             other accounts, looking at, cloning, or changing a repository or \
+                             files, running code, commands, or tests, or opening a pull \
+                             request",
                         )),
                     ),
                     (
@@ -948,6 +961,11 @@ mod tests {
             let text = canned.render(&gateway()).unwrap();
             assert!(singular_words(&text).is_empty(), "{}: {text}", canned.id);
             assert!(text.len() <= 600, "{} is too long", canned.id);
+            // The app shows the right action itself, and may not show a
+            // button a line names, so no line names one.
+            for control in ["Run Coder", "tap ", "button", "Tap "] {
+                assert!(!text.contains(control), "{} names `{control}`", canned.id);
+            }
             assert!(!canned.when.is_empty());
         }
         for (id, text, _) in OPENERS {
@@ -1058,10 +1076,15 @@ mod tests {
             "Can you work on my Rails app?",
             "summarize this: Rust ownership means each value has one owner, and when the owner goes out of scope the value is dropped.",
             "who made you",
+            "Connect to my GitHub",
+            "Look at my repo",
+            "Open a PR for this",
         ];
         let facts = gateway();
-        println!("| Message | Tier | Shown first | answer (p) | specifics | opener (p) | ms |");
-        println!("| --- | --- | --- | --- | --- | --- | --- |");
+        println!(
+            "| Message | Lane | Tier | Shown first | answer (p) | specifics | opener (p) | ms |"
+        );
+        println!("| --- | --- | --- | --- | --- | --- | --- | --- |");
         for message in messages {
             let transcript = [Message {
                 role: crate::generate::Role::User,
@@ -1087,7 +1110,8 @@ mod tests {
                 .map(|a| format!("{} ({:.2})", a.choice, a.confidence))
                 .unwrap_or_default();
             println!(
-                "| {message} | {} | {shown} | {answer} | {:.2} | {opener} | {ms} |",
+                "| {message} | {} | {} | {shown} | {answer} | {:.2} | {opener} | {ms} |",
+                triage.lane.word(),
                 tier.word(),
                 triage.needs_specifics
             );

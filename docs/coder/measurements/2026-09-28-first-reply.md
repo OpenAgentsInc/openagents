@@ -120,7 +120,8 @@ set is now `coder-first-response-v2` (`crates/coder/src/first.rs`):
   rules of [the chat router design](../design/2026-09-28-chat-router.md)):
   `meta.who`, `meta.model` (its model and host slots come from the worker's
   door, and it is not offered when the worker cannot name them),
-  `meta.capabilities`, `meta.limits_chat`, `meta.coder`, `meta.open_source`,
+  `meta.capabilities`, `meta.limits_chat`, `meta.coder`, `meta.github`,
+  `meta.open_source`,
   and `smalltalk.hello`, `.how_are_you`, `.test`, `.thanks`, `.bye`. There
   is no pricing or privacy answer until a tested invariant backs one.
 - A Noul, `needs_specifics`, asks whether a good reply must refer to what the
@@ -134,48 +135,61 @@ set is now `coder-first-response-v2` (`crates/coder/src/first.rs`):
   draft.", "Here's the short version.", "Sorry about that." "Sure.", "On it.",
   "Hi!", "Good question.", and the "I'll …" and "Let me …" lines are gone.
 
-The live judge (`jev-latest`) on 32 first messages, from
+The live judge (`jev-latest`) on 35 first messages, from
 `cargo test -p coder --lib first::tests::live_first_response_eval -- --ignored --nocapture`
 with `TYPESAFE_API_KEY` set, 2026-09-28:
 
-| Message | Tier | Shown first | answer (p) | specifics | opener (p) | ms |
-| --- | --- | --- | --- | --- | --- | --- |
-| Who are you? | canned | meta.who (whole reply) | meta.who (0.99) | 0.06 | none (0.99) | 267 |
-| what are you | canned | meta.who (whole reply) | meta.who (0.99) | 0.06 | none (0.96) | 165 |
-| What model are you? | canned | meta.model (whole reply) | meta.model (0.93) | 0.06 | none (0.99) | 170 |
-| Are you ChatGPT? | canned | meta.model (whole reply) | meta.model (0.99) | 0.08 | none (0.99) | 178 |
-| which LLM is this | canned | meta.model (whole reply) | meta.model (0.95) | 0.12 | none (0.91) | 183 |
-| What can you do? | canned | meta.capabilities (whole reply) | meta.capabilities (0.99) | 0.07 | none (0.93) | 225 |
-| Can you code? | canned | meta.capabilities (whole reply) | meta.capabilities (0.99) | 0.07 | none (0.95) | 174 |
-| can you see my files? | canned | meta.limits_chat (whole reply) | meta.limits_chat (0.98) | 0.14 | none (0.79) | 157 |
-| What is Coder? | canned | meta.coder (whole reply) | meta.coder (0.98) | 0.11 | explain (0.78) | 154 |
-| Are you open source? | canned | meta.open_source (whole reply) | meta.open_source (0.97) | 0.09 | none (0.95) | 149 |
-| hi | canned | smalltalk.hello (whole reply) | smalltalk.hello (0.99) | 0.06 | none (1.00) | 146 |
-| Hello! | canned | smalltalk.hello (whole reply) | smalltalk.hello (1.00) | 0.06 | none (1.00) | 210 |
-| hey how are you | canned | smalltalk.how_are_you (whole reply) | smalltalk.how_are_you (1.00) | 0.06 | none (1.00) | 167 |
-| test | canned | smalltalk.test (whole reply) | smalltalk.test (0.99) | 0.09 | none (1.00) | 185 |
-| thanks! | canned | smalltalk.thanks (whole reply) | smalltalk.thanks (0.99) | 0.07 | none (1.00) | 249 |
-| Thank you, that helped | canned | smalltalk.thanks (whole reply) | smalltalk.thanks (0.99) | 0.10 | none (1.00) | 189 |
-| bye | canned | smalltalk.bye (whole reply) | smalltalk.bye (1.00) | 0.06 | none (1.00) | 150 |
-| Fix my repo | model | nothing | none (0.96) | 0.73 | none (0.94) | 137 |
-| Fix the failing test in crates/coder and open a PR | model | nothing | none (0.99) | 0.96 | none (0.80) | 149 |
-| Explain how Nostr relays work | opener | "Here's how that works." | none (1.00) | 0.08 | explain (1.00) | 170 |
-| What's a closure in Rust? | opener | "Here's how that works." | none (0.99) | 0.06 | explain (0.96) | 190 |
-| Should I use Postgres or SQLite for a small app? | opener | "Here's how the options compare." | none (1.00) | 0.18 | compare (0.99) | 142 |
-| Write a commit message for a change that adds retries to the relay client | opener | "Here's a draft." | none (0.99) | 0.82 | draft (0.99) | 155 |
-| Plan a migration from REST to gRPC for our API | opener | "Here's a plan." | none (1.00) | 0.32 | plan (0.99) | 178 |
-| How much does this cost? | model | nothing | none (1.00) | 0.46 | none (0.99) | 184 |
-| Is this free? | model | nothing | none (0.99) | 0.22 | none (0.96) | 187 |
-| Do you store my chats? | model | nothing | none (0.97) | 0.10 | explain (0.48) | 141 |
-| That answer was wrong | opener | "Sorry about that." | none (1.00) | 0.53 | sorry (0.98) | 185 |
-| Why does my build fail on CI but not locally? | model | nothing | none (1.00) | 0.31 | none (0.74) | 168 |
-| Can you work on my Rails app? | model | nothing | meta.limits_chat (0.32) | 0.31 | none (0.94) | 123 |
-| summarize this: Rust ownership means each value has one owner, and when the owner goes out of scope the value is dropped. | opener | "Here's the short version." | none (1.00) | 0.29 | summary (0.98) | 153 |
-| who made you | canned | meta.who (whole reply) | meta.who (0.94) | 0.07 | none (0.97) | 193 |
+| Message | Lane | Tier | Shown first | answer (p) | specifics | opener (p) | ms |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Who are you? | chat | canned | meta.who (whole reply) | meta.who (0.99) | 0.06 | none (0.99) | 261 |
+| what are you | chat | canned | meta.who (whole reply) | meta.who (0.98) | 0.06 | none (0.97) | 143 |
+| What model are you? | chat | canned | meta.model (whole reply) | meta.model (0.87) | 0.06 | none (0.99) | 153 |
+| Are you ChatGPT? | chat | canned | meta.model (whole reply) | meta.model (0.98) | 0.09 | none (0.99) | 183 |
+| which LLM is this | chat | canned | meta.model (whole reply) | meta.model (0.94) | 0.13 | none (0.92) | 175 |
+| What can you do? | chat | canned | meta.capabilities (whole reply) | meta.capabilities (0.99) | 0.06 | none (0.92) | 187 |
+| Can you code? | chat | canned | meta.capabilities (whole reply) | meta.capabilities (0.99) | 0.07 | none (0.94) | 150 |
+| can you see my files? | chat | canned | meta.limits_chat (whole reply) | meta.limits_chat (0.97) | 0.14 | none (0.75) | 189 |
+| What is Coder? | chat | canned | meta.coder (whole reply) | meta.coder (0.96) | 0.11 | explain (0.79) | 175 |
+| Are you open source? | chat | canned | meta.open_source (whole reply) | meta.open_source (0.97) | 0.09 | none (0.95) | 165 |
+| hi | chat | canned | smalltalk.hello (whole reply) | smalltalk.hello (1.00) | 0.06 | none (1.00) | 146 |
+| Hello! | chat | canned | smalltalk.hello (whole reply) | smalltalk.hello (1.00) | 0.05 | none (1.00) | 146 |
+| hey how are you | chat | canned | smalltalk.how_are_you (whole reply) | smalltalk.how_are_you (1.00) | 0.06 | none (1.00) | 155 |
+| test | chat | canned | smalltalk.test (whole reply) | smalltalk.test (0.99) | 0.09 | none (1.00) | 152 |
+| thanks! | chat | canned | smalltalk.thanks (whole reply) | smalltalk.thanks (0.99) | 0.07 | none (1.00) | 141 |
+| Thank you, that helped | chat | canned | smalltalk.thanks (whole reply) | smalltalk.thanks (0.99) | 0.09 | none (1.00) | 162 |
+| bye | chat | canned | smalltalk.bye (whole reply) | smalltalk.bye (1.00) | 0.05 | none (1.00) | 155 |
+| Fix my repo | computer | model | nothing | none (0.96) | 0.72 | none (0.93) | 146 |
+| Fix the failing test in crates/coder and open a PR | computer | model | nothing | none (0.98) | 0.96 | none (0.81) | 140 |
+| Explain how Nostr relays work | chat | opener | "Here's how that works." | none (1.00) | 0.09 | explain (1.00) | 181 |
+| What's a closure in Rust? | chat | opener | "Here's how that works." | none (0.98) | 0.05 | explain (0.94) | 222 |
+| Should I use Postgres or SQLite for a small app? | chat | opener | "Here's how the options compare." | none (1.00) | 0.18 | compare (0.99) | 172 |
+| Write a commit message for a change that adds retries to the relay client | chat | opener | "Here's a draft." | none (0.99) | 0.81 | draft (0.99) | 209 |
+| Plan a migration from REST to gRPC for our API | chat | opener | "Here's a plan." | none (1.00) | 0.32 | plan (1.00) | 164 |
+| How much does this cost? | chat | model | nothing | none (1.00) | 0.53 | none (0.99) | 220 |
+| Is this free? | chat | model | nothing | none (1.00) | 0.24 | none (0.97) | 263 |
+| Do you store my chats? | chat | model | nothing | none (0.97) | 0.10 | explain (0.51) | 172 |
+| That answer was wrong | chat | opener | "Sorry about that." | none (1.00) | 0.53 | sorry (0.98) | 137 |
+| Why does my build fail on CI but not locally? | chat | model | nothing | none (0.99) | 0.28 | none (0.73) | 152 |
+| Can you work on my Rails app? | chat | model | nothing | meta.limits_chat (0.37) | 0.32 | none (0.93) | 165 |
+| summarize this: Rust ownership means each value has one owner, and when the owner goes out of scope the value is dropped. | chat | opener | "Here's the short version." | none (0.99) | 0.30 | summary (0.98) | 167 |
+| who made you | chat | canned | meta.who (whole reply) | meta.who (0.90) | 0.07 | none (0.97) | 141 |
+| Connect to my GitHub | computer | model | nothing | meta.github (0.96) | 0.37 | none (0.80) | 175 |
+| Look at my repo | computer | model | nothing | meta.limits_chat (0.56) | 0.75 | none (0.98) | 167 |
+| Open a PR for this | computer | model | nothing | none (0.93) | 0.76 | none (0.89) | 167 |
 
 Every identity, model, capability, and small-talk message got the right
-prepared answer at 0.93 or more; every request for work, pricing, privacy, or
-a specific project got no prepared answer, so the model answers them.
+prepared answer at 0.87 or more; every request for work, pricing, privacy, or
+a specific project got no prepared answer, so the model answers them. The
+requests to connect GitHub, look at a repository, or open a pull request
+are judged `lane: computer`, which is what raises the app's Coder action;
+the lane's options now name GitHub and other accounts, cloning, and running
+code explicitly. "Connect to my GitHub" picks `meta.github` at 0.96 but
+`needs_specifics` is 0.37, over the 0.30 ceiling, so the model answers it
+(under the app's instructions, which say GitHub work goes through Coder on a
+connected computer). A rewording of `needs_specifics` tried to admit it
+raised specifics on pricing, planning, and CI questions too and was not
+kept. No canned line names a button or screen: the app shows the right
+action itself.
 
 ### What is left on the phone's side
 
