@@ -342,6 +342,12 @@ files are included below.
 | [game/README.md](game/README.md) | Index | Games, MMORPGs, and 3D worlds in OpenAgents |
 | [game/playtesting.md](game/playtesting.md) | Design / plan | Playtesting program: open launch 2026-09-29, sessions, feedback, triage, and playtest XP |
 
+## growth
+
+| Document | Role | Topic |
+| --- | --- | --- |
+| [growth/2026-09-28-indie-studio-viral-roadmap.md](growth/2026-09-28-indie-studio-viral-roadmap.md) | Design / plan | Growth roadmap: the ship, show, invite, playtest, celebrate loop, cadences, the 7-day push, and 30/60/90-day targets |
+
 ## gym
 
 | Document | Role | Topic |
