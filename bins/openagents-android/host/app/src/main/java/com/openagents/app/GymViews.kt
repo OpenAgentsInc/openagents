@@ -248,15 +248,17 @@ internal class GymViews(private val context: Context, private val tap: (String) 
         return root
     }
 
-    private fun xpBar(value: Int, max: Int): View = FrameLayout(context).apply {
+    /**
+     * The fill's share of the bar as a layout weight, so the first layout
+     * pass draws it. (Sizing it after layout left it empty: the menu is
+     * rebuilt before a posted resize lands.)
+     */
+    private fun xpBar(value: Int, max: Int): View = context.row().apply {
         background = context.rounded(Palette.RAISED, 4f, Palette.BORDER)
-        val fill = View(context).apply { background = context.rounded(Palette.PRIMARY, 4f) }
-        addView(fill, FrameLayout.LayoutParams(0, -1))
-        addOnLayoutChangeListener { v, l, _, r, _, _, _, _, _ ->
-            val width = ((r - l) * (value.toFloat() / maxOf(max, 1)).coerceIn(0.03f, 1f)).toInt()
-            if (fill.layoutParams.width != width) v.post { fill.layoutParams = FrameLayout.LayoutParams(width, -1) }
-        }
-        minimumHeight = context.dp(8)
+        val share = (value.toFloat() / maxOf(max, 1)).coerceIn(0.03f, 1f)
+        addView(View(context).apply { background = context.rounded(Palette.PRIMARY, 4f) },
+            LinearLayout.LayoutParams(0, context.dp(8), share))
+        if (share < 1f) addView(View(context), LinearLayout.LayoutParams(0, context.dp(8), 1f - share))
     }
 
     /** Opens the system share sheet with Rust's text. */
