@@ -19,7 +19,8 @@
 //! 2. **Close call.** When the second route is within [`CLOSE_MARGIN`] of
 //!    the first, the router does less: a clarify at [`CLARIFY_WINS`], else
 //!    the model (with a Run Coder offer only when `work.dispatch` is one
-//!    of the two and the lane says computer).
+//!    of the two, the other is in [`LANE_ROUTES`], and the lane says
+//!    computer).
 //! 3. **T0 canned final.** `route` at [`ROUTE_CONFIDENCE`], `answer` at
 //!    [`ANSWER_CONFIDENCE`] on an entry of that route with text,
 //!    `needs_specifics` below [`SPECIFICS_CEILING`]. Dispatch and CLI
@@ -32,12 +33,16 @@
 //!    screen; otherwise a `dispatch.*` stem (the one `answer` chose, else
 //!    `dispatch.stem`) and a Run Coder offer.
 //! 7. **T4 CLI.** `route` = `cli` at [`CLI_ROUTE`] and `cli_group` at
-//!    [`CLI_GROUP`]: the CLI seam proposes, and the gate decides.
+//!    [`CLI_GROUP`]; or `cli` at [`CLI_ROUTE_SURE`] and a group at
+//!    [`CLI_GROUP_BEAM`], with the next likely groups descended beside it;
+//!    or `cli` at [`GROUNDED_ROUTE`] and a group at [`CLI_GROUP_SURE`]:
+//!    the CLI seam proposes, and the gate decides.
 //! 8. **T2 grounded.** `route` = `product.kb` or `codebase.kb` at
 //!    [`GROUNDED_ROUTE`].
 //! 9. **T4 dispatch by lane.** `lane` = computer at [`DISPATCH_LANE`],
 //!    after the CLI and knowledge routes, which read such a message more
-//!    precisely.
+//!    precisely, and only on a route in [`LANE_ROUTES`]: an offer loses to
+//!    a route with its own answer.
 //! 10. **Clarify.** `route` = `clarify` at [`CLARIFY_ROUTE`]: the
 //!     `clarify.generic` stem when personalization is available, else the
 //!     model told to ask one question.
@@ -70,6 +75,22 @@ pub const DISPATCH_LANE: f64 = 0.75;
 pub const CLI_ROUTE: f64 = 0.75;
 /// The least `cli_group` probability for a CLI proposal.
 pub const CLI_GROUP: f64 = 0.60;
+/// A `cli` route this sure proposes from a less sure group, with the other
+/// likely groups descended beside it.
+pub const CLI_ROUTE_SURE: f64 = 0.90;
+/// The least `cli_group` probability for a beam from a sure route.
+pub const CLI_GROUP_BEAM: f64 = 0.25;
+/// A group this sure proposes from a `cli` route at [`GROUNDED_ROUTE`].
+pub const CLI_GROUP_SURE: f64 = 0.75;
+/// The routes whose messages a `lane` reading alone may offer to Coder:
+/// work, and routes with no answer of their own. Every other route has its
+/// own answer, which an offer loses to.
+pub const LANE_ROUTES: [RouteId; 4] = [
+    RouteId::WorkDispatch,
+    RouteId::General,
+    RouteId::Clarify,
+    RouteId::Unknown,
+];
 /// The least risk probability at which the router warns.
 pub const RISK_WARN: f64 = 0.60;
 /// The least risk probability at which the router refuses.
@@ -145,8 +166,14 @@ pub enum Tier {
         lead: Option<Lead>,
         note: Option<&'static str>,
     },
-    /// T4 CLI: ask the CLI seam for a command in `group`; falls back to T3.
-    Cli { group: String, lead: Option<Lead> },
+    /// T4 CLI: ask the CLI seam for a command in `group` (and in `also`,
+    /// the other likely groups, when the seam keeps a beam); falls back to
+    /// T3.
+    Cli {
+        group: String,
+        also: Vec<String>,
+        lead: Option<Lead>,
+    },
     /// T0: a bank refusal; never model text.
     Refuse { answer: Entry, text: String },
 }
@@ -345,8 +372,16 @@ pub fn decide(routing: &Routing, bank: &Bank, facts: &Facts, situation: &Situati
         if routing.clarify_p >= CLARIFY_WINS {
             return clarify(bank, facts, situation);
         }
-        let dispatch_pair =
-            routing.route == RouteId::WorkDispatch || second == RouteId::WorkDispatch;
+        // An offer loses to an answer: work and a route with its own answer
+        // this close is not a dispatch.
+        let other = if routing.route == RouteId::WorkDispatch {
+            second
+        } else {
+            routing.route
+        };
+        let dispatch_pair = (routing.route == RouteId::WorkDispatch
+            || second == RouteId::WorkDispatch)
+            && LANE_ROUTES.contains(&other);
         if dispatch_pair
             && routing.lane == Lane::Computer
             && routing.lane_p >= DISPATCH_LANE
@@ -389,14 +424,26 @@ pub fn decide(routing: &Routing, bank: &Bank, facts: &Facts, situation: &Situati
         return tier;
     }
 
-    // 7. T4 CLI.
+    // 7. T4 CLI: the route is sure enough, and so is a group, or the
+    // route is sure and the seam descends the likely groups as a beam.
     if routing.route == RouteId::Cli
-        && routing.route_p >= CLI_ROUTE
-        && let Some((group, p)) = &routing.cli_group
-        && *p >= CLI_GROUP
+        && let Some((group, group_p)) = &routing.cli_group
+        && ((routing.route_p >= CLI_ROUTE && *group_p >= CLI_GROUP)
+            || (routing.route_p >= CLI_ROUTE_SURE && *group_p >= CLI_GROUP_BEAM)
+            || (routing.route_p >= GROUNDED_ROUTE && *group_p >= CLI_GROUP_SURE))
     {
+        let also = if *group_p >= CLI_GROUP_SURE {
+            Vec::new()
+        } else {
+            routing
+                .cli_alternatives
+                .iter()
+                .map(|(group, _)| group.clone())
+                .collect()
+        };
         return Tier::Cli {
             group: group.clone(),
+            also,
             lead: opener_lead(routing),
         };
     }
@@ -418,8 +465,10 @@ pub fn decide(routing: &Routing, bank: &Bank, facts: &Facts, situation: &Situati
 
     // 9. T4 dispatch, by lane: work the route did not name, when the lane is sure it
     // needs a computer. It comes after the CLI and knowledge routes, which
-    // read a computer question more precisely.
-    if routing.lane == Lane::Computer
+    // read a computer question more precisely, and only when the route is
+    // not one with its own answer: an offer loses to an answer.
+    if LANE_ROUTES.contains(&routing.route)
+        && routing.lane == Lane::Computer
         && routing.lane_p >= DISPATCH_LANE
         && let Some(tier) = dispatch(routing, bank, facts, situation)
     {
@@ -492,6 +541,7 @@ mod tests {
             lane_p: 0.9,
             opener: None,
             cli_group: None,
+            cli_alternatives: Vec::new(),
             risk: Risk::Ok,
             risk_p: 0.95,
         }
@@ -723,13 +773,45 @@ mod tests {
             "no group, no proposal"
         );
         cli.cli_group = Some(("computer".into(), 0.7));
+        cli.cli_alternatives = vec![("reach".into(), 0.2)];
         assert_eq!(
             router(&cli),
             Tier::Cli {
                 group: "computer".into(),
+                also: vec!["reach".into()],
                 lead: None
             }
         );
+        // A sure route descends an unsure group beside the next likely
+        // ones ("which of my computers are online": `computer` or `reach`).
+        cli.route_p = 1.0;
+        cli.cli_group = Some(("computer".into(), 0.38));
+        cli.cli_alternatives = vec![("reach".into(), 0.33)];
+        assert_eq!(
+            router(&cli),
+            Tier::Cli {
+                group: "computer".into(),
+                also: vec!["reach".into()],
+                lead: None
+            }
+        );
+        // A sure group from a less sure route proposes it alone.
+        cli.route_p = 0.65;
+        cli.cli_group = Some(("task".into(), 0.95));
+        assert_eq!(
+            router(&cli),
+            Tier::Cli {
+                group: "task".into(),
+                also: Vec::new(),
+                lead: None
+            }
+        );
+        // Neither sure: no proposal, and the lane alone does not dispatch a
+        // `cli` message.
+        cli.cli_group = Some(("task".into(), 0.5));
+        cli.lane = Lane::Computer;
+        cli.lane_p = 0.9;
+        assert!(matches!(router(&cli), Tier::Model { .. }));
 
         let clarify = routed(RouteId::Clarify, 0.7, "none", 0.0, 0.5);
         assert_eq!(

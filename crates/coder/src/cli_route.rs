@@ -374,6 +374,23 @@ impl CommandRoute {
         Ok(descend::pick(&response, descend::GROUP_QUESTION))
     }
 
+    /// The level-0 answer's options, most likely first, `none` included.
+    ///
+    /// # Errors
+    ///
+    /// A Jev failure.
+    pub async fn group_ranked(&self, ask: &CliAsk) -> Result<Vec<(String, f64)>, SeamError> {
+        let state = state(ask);
+        let response = self
+            .ask(
+                &state,
+                jev::Questions::new()
+                    .with(descend::GROUP_QUESTION, descend::group_question(self.tree)),
+            )
+            .await?;
+        Ok(descend::ranked(&response, descend::GROUP_QUESTION))
+    }
+
     /// Descend from `ask.group`, fill the chosen command, and check it.
     ///
     /// # Errors
@@ -382,50 +399,17 @@ impl CommandRoute {
     /// alone.
     pub async fn outcome(&self, ask: &CliAsk) -> Result<Outcome, SeamError> {
         let state = state(ask);
-        let mut trail = vec![Step {
-            at: Vec::new(),
-            choice: ask.group.clone(),
-            p: None,
-        }];
-        let Some(group) = self.tree.group(&ask.group) else {
-            return Ok(Outcome::NoCommand { trail });
-        };
-        let mut node = group;
-        let mut path = vec![group.name.clone()];
-        while !node.children.is_empty() {
-            let response = self
-                .ask(&state, descend::level_questions(&path, node))
-                .await?;
-            let Some((choice, p)) = descend::pick(&response, descend::LEVEL_QUESTION) else {
-                return Ok(Outcome::NoCommand { trail });
-            };
-            trail.push(Step {
-                at: path.clone(),
-                choice: choice.clone(),
-                p: Some(p),
-            });
-            if choice == "none" || p < descend::LEVEL_CONFIDENCE {
-                return Ok(Outcome::NoCommand { trail });
+        let (group, leaf, trail) = match self.descend(&state, ask).await? {
+            Descent::Found { group, leaf, trail } => (group, leaf, trail),
+            Descent::NotOffered { leaf, trail } => {
+                return Ok(Outcome::NotOffered {
+                    path: leaf.path.clone(),
+                    effect: leaf.effect,
+                    trail,
+                });
             }
-            if choice == descend::SELF {
-                break;
-            }
-            let Some(child) = node.child(&choice) else {
-                return Ok(Outcome::NoCommand { trail });
-            };
-            node = child;
-            path.push(choice);
-        }
-        let Some(leaf) = node.leaf.as_ref() else {
-            return Ok(Outcome::NoCommand { trail });
+            Descent::Nothing { trail } => return Ok(Outcome::NoCommand { trail }),
         };
-        if !gate::offered(leaf, ask.surface) {
-            return Ok(Outcome::NotOffered {
-                path: leaf.path.clone(),
-                effect: leaf.effect,
-                trail,
-            });
-        }
         let form = &leaf.forms[0];
         let mut values = self.select(&state, leaf, form).await?;
         if params::needs_model(form) {
@@ -481,6 +465,144 @@ impl CommandRoute {
         })
     }
 
+    /// Descend from `ask.group`, and from each group in `ask.also`, with a
+    /// beam of at most [`descend::BEAM`] open paths: each level asks one
+    /// question per open path in one request, keeps the argmax and a
+    /// second choice at [`descend::BEAM_FLOOR`] or above, and scores a
+    /// path by the geometric mean of its edges. The best path that reaches
+    /// a command, scores at least [`descend::LEVEL_CONFIDENCE`], and has no
+    /// edge under the floor is the answer; among those, one the surface may
+    /// be offered wins over one it may not.
+    async fn descend(&self, state: &Value, ask: &CliAsk) -> Result<Descent<'_>, SeamError> {
+        let mut groups = vec![ask.group.as_str()];
+        for other in &ask.also {
+            if !groups.contains(&other.as_str()) {
+                groups.push(other.as_str());
+            }
+        }
+        let mut open: Vec<Path<'_>> = groups
+            .iter()
+            .filter_map(|name| self.tree.group(name))
+            .map(|group| Path {
+                group,
+                node: group,
+                words: vec![group.name.clone()],
+                trail: vec![Step {
+                    at: Vec::new(),
+                    choice: group.name.clone(),
+                    p: None,
+                }],
+                log_p: 0.0,
+                edges: 0,
+                weakest: 1.0,
+            })
+            .collect();
+        let mut trail = open.first().map_or_else(
+            || {
+                vec![Step {
+                    at: Vec::new(),
+                    choice: ask.group.clone(),
+                    p: None,
+                }]
+            },
+            |path| path.trail.clone(),
+        );
+        let mut done: Vec<Path<'_>> = Vec::new();
+        while !open.is_empty() {
+            let (ready, asking): (Vec<Path<'_>>, Vec<Path<'_>>) =
+                open.into_iter().partition(|path| path.node.children.is_empty());
+            done.extend(ready);
+            if asking.is_empty() {
+                break;
+            }
+            let mut questions = jev::Questions::new();
+            for (k, path) in asking.iter().enumerate() {
+                questions = questions.with(
+                    descend::beam_question(k),
+                    descend::level_question(&path.words, path.node),
+                );
+            }
+            let response = self.ask(state, questions).await?;
+            let mut next = Vec::new();
+            for (k, path) in asking.iter().enumerate() {
+                let ranked = descend::ranked(&response, &descend::beam_question(k));
+                if k == 0
+                    && let Some((choice, p)) = ranked.first()
+                {
+                    // The record of the most likely path, however it ends.
+                    trail = path.trail.clone();
+                    trail.push(Step {
+                        at: path.words.clone(),
+                        choice: choice.clone(),
+                        p: Some(*p),
+                    });
+                }
+                for (rank, (choice, p)) in ranked.into_iter().take(descend::BEAM).enumerate() {
+                    if choice == "none" || (rank > 0 && p < descend::BEAM_FLOOR) {
+                        continue;
+                    }
+                    let mut step = path.clone();
+                    step.trail.push(Step {
+                        at: path.words.clone(),
+                        choice: choice.clone(),
+                        p: Some(p),
+                    });
+                    step.log_p += p.max(f64::MIN_POSITIVE).ln();
+                    step.edges += 1;
+                    step.weakest = step.weakest.min(p);
+                    if choice == descend::SELF {
+                        done.push(step);
+                        continue;
+                    }
+                    let Some(child) = path.node.child(&choice) else {
+                        continue;
+                    };
+                    step.node = child;
+                    step.words.push(choice);
+                    if child.children.is_empty() {
+                        done.push(step);
+                    } else {
+                        next.push(step);
+                    }
+                }
+            }
+            next.sort_by(|a, b| b.score().total_cmp(&a.score()));
+            next.truncate(descend::BEAM);
+            open = next;
+        }
+        let mut found: Vec<Path<'_>> = done
+            .into_iter()
+            .filter(|path| {
+                path.node.leaf.is_some()
+                    && path.score() >= descend::LEVEL_CONFIDENCE
+                    && path.weakest >= descend::BEAM_FLOOR
+            })
+            .collect();
+        found.sort_by(|a, b| b.score().total_cmp(&a.score()));
+        let offered = found.iter().position(|path| {
+            path.node
+                .leaf
+                .as_ref()
+                .is_some_and(|leaf| gate::offered(leaf, ask.surface))
+        });
+        match (offered, found.first()) {
+            (Some(at), _) => {
+                let path = found.swap_remove(at);
+                let leaf = path.node.leaf.as_ref().expect("a found path ends at a command");
+                Ok(Descent::Found {
+                    group: path.group,
+                    leaf,
+                    trail: path.trail,
+                })
+            }
+            (None, Some(path)) => Ok(Descent::NotOffered {
+                leaf: path.node.leaf.as_ref().expect("a found path ends at a command"),
+                trail: path.trail.clone(),
+            }),
+            (None, None) => Ok(Descent::Nothing { trail }),
+        }
+    }
+
     async fn select(
         &self,
         state: &Value,
@@ -508,6 +630,45 @@ impl CommandRoute {
         }
         Ok(values)
     }
+}
+
+/// One path of the descent's beam.
+#[derive(Clone)]
+struct Path<'t> {
+    group: &'t tree::Node,
+    node: &'t tree::Node,
+    words: Vec<String>,
+    trail: Vec<Step>,
+    log_p: f64,
+    edges: usize,
+    weakest: f64,
+}
+
+impl Path<'_> {
+    /// The geometric mean of the path's edge probabilities; 1 for a group
+    /// that is itself the only command, which no level question asks.
+    fn score(&self) -> f64 {
+        if self.edges == 0 {
+            return 1.0;
+        }
+        (self.log_p / self.edges as f64).exp()
+    }
+}
+
+/// Where the descent ended.
+enum Descent<'t> {
+    Found {
+        group: &'t tree::Node,
+        leaf: &'t Leaf,
+        trail: Vec<Step>,
+    },
+    NotOffered {
+        leaf: &'t Leaf,
+        trail: Vec<Step>,
+    },
+    Nothing {
+        trail: Vec<Step>,
+    },
 }
 
 /// The state every question of the descent reads: the same bounded
@@ -539,14 +700,15 @@ impl CliRoute for CommandRoute {
             .map(|group| CliGroup {
                 id: group.name.clone(),
                 summary: descend::group_summary(group),
+                tree: Some(descend::group_tree(group)),
             })
             .collect()
     }
 
+    /// The model that fills free text. Jev is not listed: the router
+    /// names TypeSafe for every routed turn already.
     fn recipients(&self) -> Vec<String> {
-        let mut recipients = vec!["TypeSafe (Jev)".to_string()];
-        recipients.extend(self.fill.recipients());
-        recipients
+        self.fill.recipients()
     }
 
     fn propose<'a>(&'a self, ask: &'a CliAsk) -> BoxFuture<'a, Result<CliAnswer, SeamError>> {

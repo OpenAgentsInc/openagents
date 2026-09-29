@@ -31,7 +31,8 @@ bank = "chat-answers-v1"
 id = "meta.who"
 version = 1
 routes = ["meta"]
-when = "The user asks who or what we are, who made or built us, what this assistant or app is, or asks us to introduce ourselves; not which AI model powers the chat, and not a detailed question about what we can do"
+when = "The user asks who or what we are, what this assistant or app is, or asks us to introduce ourselves; not who built us, which AI model powers the chat, or a detailed question about what we can do"
+examples = ["who r u", "introduce yourself pls", "who am i talking to right now"]
 text = "We are OpenAgents. In this chat we answer questions, explain things, and help you plan and write. When something needs a computer, like reading or changing a repository or running commands, we dispatch Coder, our coding agent, to a computer you've connected."
 chip = "Who are you?"
 sources = ["crates/openagents-mobile/src/basic_coder.rs", "docs/deployment/chat-worker.md"]
@@ -93,6 +94,7 @@ id = "meta.coder"
 version = 2
 routes = ["meta"]
 when = "The user asks what Coder is or how Coder works, in general"
+examples = ["how does coder work", "what actually happens when you dispatch coder"]
 text = "Coder is our coding agent. When a task needs a computer, we dispatch Coder to a computer you connect, with this conversation as its task, and it works there with that computer's own git and GitHub login."
 chip = "What is Coder?"
 sources = ["crates/openagents-mobile/src/basic_coder.rs", "README.md"]
@@ -102,7 +104,9 @@ followups = ["account.computers", "meta.github", "meta.pricing"]
 id = "meta.github"
 version = 1
 routes = ["meta"]
-when = "The user asks us to connect to, sign in to, or link their GitHub account, or asks how we work with GitHub, without asking for a specific change"
+when = "The user asks us to connect to, sign in to, or link their GitHub account, or asks how or whether we work with GitHub, without asking for a specific change in a repository"
+not_for = "A specific task in a repository, such as fixing an issue, pushing a change, or opening a pull request"
+examples = ["connect github", "do you work with github?", "Conecta mi GitHub"]
 text = "We work with GitHub through a computer you connect: Coder, our coding agent, runs there and uses that computer's own git and GitHub login."
 chip = "How do you work with GitHub?"
 sources = ["crates/openagents-mobile/src/basic_coder.rs"]
@@ -113,6 +117,7 @@ id = "meta.open_source"
 version = 1
 routes = ["meta"]
 when = "The user asks whether we are open source or where our code is"
+examples = ["are you open source", "where's your source code"]
 text = "The OpenAgents app and the worker that answers this chat are open source, at github.com/OpenAgentsInc/openagents."
 chip = "Are you open source?"
 sources = ["README.md", "LICENSE"]
@@ -144,12 +149,37 @@ followups = ["meta.pricing"]
 id = "meta.privacy"
 version = 1
 routes = ["meta"]
-when = "The user asks what happens to their messages, who can read them, whether we store or log their chats, or whether their data is private"
+when = "The user asks what happens to their messages, who can read or see them, or whether their data is private; not whether we keep, delete, or train on their chats"
+examples = ["who can see what I type here"]
 text = "Your messages are encrypted between your device and our chat worker, so the relay in between sees only ciphertext. To answer, we send your messages to {recipients}. Our worker doesn't store your message text."
 facts = { recipients = "worker.recipients" }
 chip = "What happens to my messages?"
 sources = ["nips/openagents/NIP-CJ.md", "INVARIANTS.md", "crates/coder/src/bin/coder-worker.rs"]
 followups = ["meta.memory", "meta.open_source"]
+
+[[answer]]
+id = "meta.data_retention"
+version = 1
+routes = ["meta"]
+when = "The user asks whether we store, keep, or log their chats, how long we keep their messages, whether they can delete their history from our servers, or whether we train on their conversations; not who can read their messages"
+examples = ["do you store my chats", "do you train on my conversations", "can I delete my chat history from your servers"]
+text = "We don't keep your chats: our chat worker doesn't store your message text, so there's nothing on our servers to delete or train on. Your conversations are saved on your device. To answer, we send your messages to {recipients}."
+facts = { recipients = "worker.recipients" }
+chip = "Do you keep my chats?"
+sources = ["crates/coder/src/bin/coder-worker.rs", "crates/openagents-mobile/src/basic_chats.rs", "INVARIANTS.md"]
+followups = ["meta.privacy", "meta.memory"]
+
+[[answer]]
+id = "meta.team"
+version = 1
+routes = ["meta"]
+when = "The user asks who built or made us, which company or team is behind OpenAgents, or who founded it; not what we are, and not which AI model powers the chat"
+examples = ["who built this", "which company is behind openagents"]
+text = "We're built by the OpenAgents team, in the open: all of our code is at github.com/OpenAgentsInc/openagents under the Apache 2.0 license. Our chat replies are written by {chat_model}."
+facts = { chat_model = "worker.lane.display" }
+chip = "Who built OpenAgents?"
+sources = ["README.md", "LICENSE", "crates/coder/src/generate.rs"]
+followups = ["meta.open_source", "meta.model"]
 
 [[answer]]
 id = "meta.memory"
@@ -166,6 +196,7 @@ id = "meta.languages"
 version = 1
 routes = ["meta"]
 when = "The user asks whether we speak or understand a language other than English, or can chat in their language"
+examples = ["what languages do you support", "Parlez-vous français ?"]
 text = "Yes. Write to us in your language and we'll answer in it. Our prepared replies, like this one, are in English for now."
 chip = "Can we chat in another language?"
 sources = ["crates/coder/src/generate.rs", "crates/coder/answers/chat-answers-v1.toml"]
@@ -311,6 +342,7 @@ id = "wallet.units"
 version = 1
 routes = ["wallet"]
 when = "The user asks what the ₿ sign or our bitcoin amounts mean, or why an amount looks so large"
+examples = ["what's ₿", "why does the wallet say ₿10,000"]
 text = "We write amounts in bitcoin's smallest unit with the ₿ sign, following BIP 177, so ₿10,000 is 0.0001 BTC. You can show amounts in BTC instead from your wallet."
 chip = "What does ₿ mean?"
 offer = { screen = "wallet", label = "Open Wallet" }
@@ -347,6 +379,8 @@ id = "account.computers"
 version = 1
 routes = ["account"]
 when = "The user asks how to connect, add, remove, or manage a computer for Coder"
+not_for = "Which computers are online right now, or listing them"
+examples = ["how do I remove a computer", "where do I see my connected computers"]
 text = "You connect and manage computers from your account. Once one is connected, we can dispatch Coder to it with a conversation as its task."
 chip = "How do I connect a computer?"
 offer = { screen = "account.computers", label = "Connect a computer" }
@@ -380,6 +414,7 @@ id = "account.report_problem"
 version = 1
 routes = ["account"]
 when = "The user reports that the app crashed or misbehaved, or asks how to report a problem or bug"
+examples = ["how do I report a bug", "something's broken, who do I tell"]
 text = "Sorry about that. You can send us a report from your account, and you'll see everything it includes before it's sent."
 chip = "How do I report a problem?"
 offer = { screen = "account.report_problem", label = "Report a problem" }

@@ -241,8 +241,11 @@ impl CodebaseKb for NoKb {
 pub struct CliGroup {
     /// The group's name as typed (`computer`, `verse`, `kb`).
     pub id: String,
-    /// Its one-line summary from the help table, which Jev reads.
+    /// Its one-line summary from the help table.
     pub summary: String,
+    /// The group's commands as a structured subtree (`{summary, commands:
+    /// {name: …}}`), which Jev reads in place of `summary` when present.
+    pub tree: Option<serde_json::Value>,
 }
 
 /// What a CLI proposal may see.
@@ -250,6 +253,9 @@ pub struct CliGroup {
 pub struct CliAsk {
     /// The group the router's `cli_group` question chose.
     pub group: String,
+    /// Other groups the question found likely, most likely first: a route
+    /// that keeps a beam descends these too and proposes the best path.
+    pub also: Vec<String>,
     /// The user's latest message, redacted and cut to [`MESSAGE_CHARS`].
     pub message: String,
     /// The bounded transcript, for free-text parameters.
@@ -400,6 +406,7 @@ mod tests {
             Err(SeamError::Unavailable)
         );
         let cli = CliAsk {
+            also: Vec::new(),
             group: "computer".into(),
             message: "list my computers".into(),
             transcript: Vec::new(),

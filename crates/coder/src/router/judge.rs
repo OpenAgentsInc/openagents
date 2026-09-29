@@ -46,7 +46,7 @@ pub fn questions(bank: &Bank, facts: &Facts, groups: &[CliGroup]) -> Questions {
             .map(|route| {
                 (
                     route.word().to_string(),
-                    Some(Criterion::from(route.description())),
+                    Some(Criterion::from(super::rubric::route(route))),
                 )
             })
             .collect(),
@@ -56,7 +56,7 @@ pub fn questions(bank: &Bank, facts: &Facts, groups: &[CliGroup]) -> Questions {
         bank.answers
             .iter()
             .filter(|entry| entry.eligible(facts))
-            .map(|entry| (entry.id.clone(), Some(Criterion::from(entry.when.clone()))))
+            .map(|entry| (entry.id.clone(), Some(Criterion::from(entry.criterion()))))
             .collect(),
         "No prepared answer fully answers the message as asked",
     );
@@ -75,44 +75,21 @@ pub fn questions(bank: &Bank, facts: &Facts, groups: &[CliGroup]) -> Questions {
             .collect(),
         "No listed line is a true and useful first line for this message",
     );
-    let risks: IndexMap<String, Option<Criterion>> = [
-        (
-            Risk::Ok,
-            "Nothing to refuse or warn about: an ordinary question or request",
-        ),
-        (
-            Risk::SecretShared,
-            "The user's message itself contains what looks like a private key, password, API \
-             token, or wallet recovery words",
-        ),
-        (
-            Risk::AsksForSecret,
-            "The user asks for someone else's keys, passwords, or recovery words, or asks us to \
-             get into an account that is not theirs",
-        ),
-        (
-            Risk::Harmful,
-            "The user asks for help hurting people, stealing, or something clearly harmful or \
-             illegal",
-        ),
-        (
-            Risk::MoneyMovement,
-            "The user asks us to send, pay, or move money or bitcoin",
-        ),
-    ]
-    .into_iter()
-    .map(|(risk, text)| (risk.word().to_string(), Some(Criterion::from(text))))
-    .collect();
+    let risks: IndexMap<String, Option<Criterion>> = Risk::ALL
+        .into_iter()
+        .map(|risk| {
+            (
+                risk.word().to_string(),
+                Some(Criterion::from(super::rubric::risk(risk))),
+            )
+        })
+        .collect();
     let risks = with_none(risks, "None of these describes the message");
     let mut questions = Questions::new()
         .with("action", action)
         .with(
             "route",
-            Choice::new(
-                "We are OpenAgents, an assistant in a chat app. Which kind of reply does the \
-                 user's latest message call for?",
-                routes,
-            ),
+            Choice::new(super::rubric::route_instructions(), routes),
         )
         .with(
             "answer",
@@ -125,45 +102,25 @@ pub fn questions(bank: &Bank, facts: &Facts, groups: &[CliGroup]) -> Questions {
         .with(
             "needs_specifics",
             Noul::with_criteria(
-                "Would a good reply to the user's latest message need to refer to specific \
-                 things the user named, such as a file, repository, error, product, feature, \
-                 or goal of their own, beyond a fixed prepared answer?",
+                super::rubric::specifics_instructions(),
                 NoulCriteria::new()
-                    .when_true("Yes: the reply has to address the particulars the user gave")
-                    .when_false(
-                        "No: the message is a general question or small talk that one fixed \
-                         answer serves",
-                    ),
+                    .when_true(super::rubric::specifics(true))
+                    .when_false(super::rubric::specifics(false)),
             ),
         )
         .with(
             "lane",
             Choice::new(
-                "Can the user's latest message be answered in a chat reply, or does it need \
-                 work on a computer?",
-                IndexMap::from([
-                    (
-                        "chat".to_string(),
-                        Some(Criterion::from(
-                            "Answer in the chat: a question, explanation, advice, or a short \
-                             snippet that needs none of the user's repositories, files, \
-                             commands, or accounts",
-                        )),
-                    ),
-                    (
-                        "computer".to_string(),
-                        Some(Criterion::from(
-                            "Needs a computer: connecting to or using the user's GitHub or \
-                             other accounts, looking at, cloning, or changing a repository or \
-                             files, running code, commands, or tests, or opening a pull \
-                             request",
-                        )),
-                    ),
-                    (
-                        "none".to_string(),
-                        Some(Criterion::from("Neither fits the message")),
-                    ),
-                ]),
+                super::rubric::lane_instructions(),
+                ["chat", "computer", "none"]
+                    .into_iter()
+                    .map(|word| {
+                        (
+                            word.to_string(),
+                            Some(Criterion::from(super::rubric::lane(word))),
+                        )
+                    })
+                    .collect(),
             ),
         )
         .with(
@@ -181,7 +138,12 @@ pub fn questions(bank: &Bank, facts: &Facts, groups: &[CliGroup]) -> Questions {
                 .map(|group| {
                     (
                         group.id.clone(),
-                        Some(Criterion::from(group.summary.clone())),
+                        Some(Criterion::from(
+                            group
+                                .tree
+                                .clone()
+                                .unwrap_or_else(|| group.summary.clone().into()),
+                        )),
                     )
                 })
                 .collect(),
@@ -198,13 +160,16 @@ pub fn questions(bank: &Bank, facts: &Facts, groups: &[CliGroup]) -> Questions {
     }
     questions.with(
         "risk",
-        Choice::new(
-            "Does the user's latest message ask for something we must not do, or contain \
-             something we should warn about?",
-            risks,
-        ),
+        Choice::new(super::rubric::risk_instructions(), risks),
     )
 }
+
+/// The least probability at which a command group other than the argmax
+/// is descended too.
+pub const CLI_BEAM_FLOOR: f64 = 0.15;
+
+/// The most command groups beside the argmax the CLI route descends.
+pub const CLI_BEAM: usize = 2;
 
 /// The state the judgment reads: the same bounded shape Classify reads.
 #[must_use]
@@ -250,6 +215,11 @@ pub struct Routing {
     pub opener: Option<(Opener, f64)>,
     /// The argmax command group, or `None` for `none` or not asked.
     pub cli_group: Option<(String, f64)>,
+    /// The next most likely command groups (not `none`) at
+    /// [`CLI_BEAM_FLOOR`] or above, most likely first, at most
+    /// [`CLI_BEAM`] of them: the CLI route descends these too when the
+    /// argmax is not sure.
+    pub cli_alternatives: Vec<(String, f64)>,
     pub risk: Risk,
     pub risk_p: f64,
 }
@@ -313,9 +283,23 @@ pub fn reading(response: &jev::SystemOneResponse, bank: &Bank, facts: &Facts) ->
         bank.opener(&opener.choice)
             .map(|found| (found.clone(), finite(opener.confidence)))
     });
-    let cli_group = choice(response, "cli_group")
+    let cli_answer = choice(response, "cli_group");
+    let cli_group = cli_answer
         .filter(|group| group.choice != "none")
         .map(|group| (group.choice.clone(), finite(group.confidence)));
+    let mut cli_alternatives: Vec<(String, f64)> = cli_answer
+        .map(|answer| {
+            answer
+                .probabilities
+                .iter()
+                .filter(|(group, _)| *group != &answer.choice && group.as_str() != "none")
+                .map(|(group, p)| (group.clone(), finite(*p)))
+                .filter(|(_, p)| *p >= CLI_BEAM_FLOOR)
+                .collect()
+        })
+        .unwrap_or_default();
+    cli_alternatives.sort_by(|a, b| b.1.total_cmp(&a.1).then(a.0.cmp(&b.0)));
+    cli_alternatives.truncate(CLI_BEAM);
     let risk_answer = choice(response, "risk");
     Routing {
         action: crate::classify::route(&judgment),
@@ -329,6 +313,7 @@ pub fn reading(response: &jev::SystemOneResponse, bank: &Bank, facts: &Facts) ->
         lane_p: lane_answer.map_or(0.0, |lane| finite(lane.confidence)),
         opener,
         cli_group,
+        cli_alternatives,
         risk: risk_answer.map_or(Risk::Unknown, |risk| Risk::parse(&risk.choice)),
         risk_p: risk_answer.map_or(0.0, |risk| finite(risk.confidence)),
     }
@@ -392,6 +377,7 @@ mod tests {
         let groups = [CliGroup {
             id: "computer".into(),
             summary: "List, check, and manage your computers".into(),
+            tree: None,
         }];
         let with_cli = super::questions(bank, &facts(), &groups);
         with_cli.validate().expect("a valid set");
@@ -554,18 +540,22 @@ mod tests {
             CliGroup {
                 id: "computer".into(),
                 summary: "List, check, and manage your computers".into(),
+                tree: None,
             },
             CliGroup {
                 id: "verse".into(),
                 summary: "The Verse: who is here, quests, the board, and XP".into(),
+                tree: None,
             },
             CliGroup {
                 id: "kb".into(),
                 summary: "Search and read the knowledge base".into(),
+                tree: None,
             },
             CliGroup {
                 id: "wallet".into(),
                 summary: "The bitcoin wallet: balance, receive, pay".into(),
+                tree: None,
             },
         ];
         let context = Context {

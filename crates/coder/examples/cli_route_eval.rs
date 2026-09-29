@@ -60,6 +60,7 @@ async fn main() -> Result<(), String> {
             &desk
         };
         let mut ask = CliAsk {
+            also: Vec::new(),
             group: String::new(),
             message: row.message.clone(),
             transcript: Vec::new(),
@@ -67,13 +68,23 @@ async fn main() -> Result<(), String> {
         };
         let started = Instant::now();
         let result: Result<(Option<(String, f64)>, Outcome), String> = async {
-            let group = route.group_reading(&ask).await.map_err(|e| e.to_string())?;
+            let ranked = route.group_ranked(&ask).await.map_err(|e| e.to_string())?;
+            let group = ranked.first().cloned();
             let taken = group
                 .as_ref()
                 .filter(|(name, p)| name != "none" && *p >= descend::GROUP_CONFIDENCE);
             let outcome = match taken {
                 Some((name, _)) => {
                     ask.group.clone_from(name);
+                    // The router's beam: the next likely groups, as
+                    // `Routing::cli_alternatives` reads them.
+                    ask.also = ranked
+                        .iter()
+                        .skip(1)
+                        .filter(|(g, p)| g != "none" && *p >= coder::router::judge::CLI_BEAM_FLOOR)
+                        .take(coder::router::judge::CLI_BEAM)
+                        .map(|(g, _)| g.clone())
+                        .collect();
                     route.outcome(&ask).await.map_err(|e| e.to_string())?
                 }
                 None => Outcome::NoCommand { trail: Vec::new() },

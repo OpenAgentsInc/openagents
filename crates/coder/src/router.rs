@@ -33,6 +33,7 @@ pub mod bank;
 pub mod judge;
 pub mod personalize;
 pub mod policy;
+pub mod rubric;
 pub mod seams;
 pub mod wire;
 

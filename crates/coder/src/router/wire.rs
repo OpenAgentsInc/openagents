@@ -287,6 +287,7 @@ mod tests {
             lane_p: 0.97,
             opener: None,
             cli_group: None,
+            cli_alternatives: Vec::new(),
             risk: Risk::Ok,
             risk_p: 0.99,
         }

@@ -89,6 +89,12 @@ pub struct Entry {
     pub routes: Vec<String>,
     /// The messages it answers, written for Jev.
     pub when: String,
+    /// What a neighboring entry answers instead, for Jev: the rubric's
+    /// boundary.
+    pub not_for: Option<String>,
+    /// Messages it answers, from the labeled set's tune split only, for Jev.
+    #[serde(default)]
+    pub examples: Vec<String>,
     /// The whole answer, with `{slot}`s.
     pub text: Option<String>,
     /// A sentence start that a continuation or `generic_end` completes.
@@ -117,6 +123,18 @@ impl Entry {
     #[must_use]
     pub fn tag(&self) -> String {
         format!("{}@{}", self.id, self.version)
+    }
+
+    /// What the `answer` question reads for this entry: its `when` text
+    /// alone, or a rubric `{what, not_for, examples}` when the entry draws
+    /// a boundary or gives examples.
+    #[must_use]
+    pub fn criterion(&self) -> serde_json::Value {
+        if self.not_for.is_none() && self.examples.is_empty() {
+            return serde_json::Value::from(self.when.clone());
+        }
+        let examples: Vec<&str> = self.examples.iter().map(String::as_str).collect();
+        super::rubric::option(&self.when, self.not_for.as_deref(), &examples)
     }
 
     /// Whether the entry answers `route`.

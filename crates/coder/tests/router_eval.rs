@@ -71,14 +71,22 @@ fn publish(report: &Report) {
 }
 
 /// Asks the `chat-router-v1` set for every row of the split and decides
-/// each tier in `mode`, as the worker does for a turn with no computer
-/// state and the default seams (so no CLI group is asked).
+/// each tier in `mode`, as the deployed worker does for a turn with no
+/// computer state: the CLI route is wired, so its command groups are asked
+/// as `cli_group` (`ROUTER_EVAL_CLI=off` leaves them out, as before the
+/// worker wired it).
 async fn run_router(name: &str, mode: router::Mode) {
     let judge = coder::decision::from_env()
         .expect("a decision profile")
         .expect("TYPESAFE_API_KEY or another profile");
     let bank = router::Bank::builtin();
-    let seams = router::Seams::default();
+    let mut seams = router::Seams::default();
+    if std::env::var("ROUTER_EVAL_CLI").as_deref() != Ok("off") {
+        seams.cli = std::sync::Arc::new(coder::cli_route::CommandRoute::new(
+            judge.clone(),
+            std::sync::Arc::new(coder::cli_route::NoFill),
+        ));
+    }
     let facts = router::worker_facts(
         "google/gemini-3.8-flash",
         Some(DEFAULT_DOOR_URL),
@@ -95,6 +103,7 @@ async fn run_router(name: &str, mode: router::Mode) {
     let split = split();
     let rows = set.rows(&split);
     let mut readings = Vec::new();
+    let mut traces = Vec::new();
     for row in &rows {
         let started = Instant::now();
         let asked = judge
@@ -111,6 +120,7 @@ async fn run_router(name: &str, mode: router::Mode) {
             Ok(response) => {
                 let routing = router::reading(&response, bank, &facts);
                 let tier = router::decide(&routing, bank, &facts, &situation);
+                traces.push(trace(row, &routing, &tier));
                 routed_reading(&row.id, &routing, &tier, ms)
             }
             Err(error) => Reading {
@@ -122,6 +132,42 @@ async fn run_router(name: &str, mode: router::Mode) {
         });
     }
     publish(&Report::of(name, &split, &rows, &readings));
+    write_traces(name, &split, &traces);
+}
+
+/// One row's reading in full, for tuning on the tune split: ids and
+/// probabilities, and the row's own labels.
+fn trace(row: &Row, routing: &router::Routing, tier: &router::Tier) -> serde_json::Value {
+    serde_json::json!({
+        "id": row.id,
+        "message": row.latest(),
+        "label": { "route": row.route, "answer": row.answer, "also": row.also,
+                   "tier": row.tier, "cli_group": row.cli_group },
+        "route": routing.route.word(),
+        "route_p": routing.route_p,
+        "runner_up": routing.runner_up.map(|(r, p)| (r.word(), p)),
+        "answer": routing.answer.as_ref().map(|(e, p)| (e.id.clone(), *p)),
+        "needs_specifics": routing.needs_specifics,
+        "lane": format!("{:?}", routing.lane),
+        "lane_p": routing.lane_p,
+        "cli_group": routing.cli_group,
+        "risk": routing.risk.word(),
+        "risk_p": routing.risk_p,
+        "tier": tier.word(),
+        "served": tier.answer().map(|e| e.id.clone()),
+    })
+}
+
+fn write_traces(name: &str, split: &str, traces: &[serde_json::Value]) {
+    let dir = std::env::var_os("ROUTER_EVAL_OUT").map_or_else(
+        || PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/router-eval"),
+        PathBuf::from,
+    );
+    let _ = std::fs::create_dir_all(&dir);
+    let _ = std::fs::write(
+        dir.join(format!("{name}-{split}-rows.json")),
+        serde_json::to_string_pretty(traces).unwrap_or_default(),
+    );
 }
 
 #[tokio::test]

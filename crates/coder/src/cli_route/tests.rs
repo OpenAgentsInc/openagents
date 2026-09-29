@@ -127,6 +127,7 @@ fn canned(text: &str) -> Arc<Canned> {
 
 fn ask(group: &str, message: &str, surface: Surface) -> CliAsk {
     CliAsk {
+        also: Vec::new(),
         group: group.into(),
         message: message.into(),
         transcript: Vec::new(),
@@ -391,7 +392,7 @@ async fn the_seam_lists_every_group_and_its_recipients() {
     let groups = route.groups();
     assert_eq!(groups.len(), tree::bundled().groups.len());
     assert!(groups.iter().any(|g| g.id == "x402"));
-    assert_eq!(route.recipients(), ["TypeSafe (Jev)", "test model"]);
+    assert_eq!(route.recipients(), ["test model"]);
     let answer = route
         .propose(&ask("verse", "who is around", Surface::Phone))
         .await
