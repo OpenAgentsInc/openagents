@@ -161,8 +161,13 @@ class NativeRenderer(
                 val value = props.getString("resource")
                 val drawn = surfaces?.invoke(value)
                     ?: context.text("This device can't display ${props.getString("label")}.", 14f, Palette.SECONDARY)
-                frame.removeAllViews()
-                frame.addView(drawn, FrameLayout.LayoutParams(-1, -2))
+                // The same view again (its content unchanged) stays mounted,
+                // so a card keeps its scroll and a drag in progress.
+                if (frame.childCount != 1 || frame.getChildAt(0) !== drawn) {
+                    (drawn.parent as? android.view.ViewGroup)?.removeView(drawn)
+                    frame.removeAllViews()
+                    frame.addView(drawn, FrameLayout.LayoutParams(-1, -2))
+                }
             }
             "transcript" -> mounted.transcript!!.update(props)
             "composer" -> mounted.composer!!.update(props)

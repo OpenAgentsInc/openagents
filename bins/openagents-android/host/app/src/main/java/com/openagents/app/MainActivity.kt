@@ -137,6 +137,9 @@ class MainActivity : ComponentActivity() {
         cameraPermission.launch(Manifest.permission.CAMERA)
     }
 
+    /** Each Gym card's view by ID, with the content it was built from. */
+    private val cardViews = HashMap<String, Pair<String, View>>()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         WindowCompat.setDecorFitsSystemWindows(window, false)
@@ -150,7 +153,14 @@ class MainActivity : ComponentActivity() {
         coderRenderer = NativeRenderer(this, { view, node -> bridge.activate("coder", view, node) },
             { token, value -> bridge.submit("coder", token, value) }, surfaces = { resource ->
                 resource.removePrefix("gym-card:").takeIf { it != resource }?.let { id ->
-                    bridge.packet?.objectOrNull("gym")?.objectOrNull("cards")?.objectOrNull(id)?.let { gym.cappedCard(it) }
+                    bridge.packet?.objectOrNull("gym")?.objectOrNull("cards")?.objectOrNull(id)?.let { card ->
+                        // Rebuild a card only when its content changes: the
+                        // packet refreshes every second while a chat shows,
+                        // and a new view each time reset its scroll mid-drag.
+                        val encoded = card.toString()
+                        cardViews[id]?.takeIf { it.first == encoded }?.second
+                            ?: gym.cappedCard(card).also { cardViews[id] = encoded to it }
+                    }
                 }
             })
         computersRenderer = NativeRenderer(this, { view, node -> bridge.activate("computers", view, node) }, scrolling = true)

@@ -17,6 +17,8 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -40,7 +42,7 @@ internal class GymViews(private val context: Context, private val tap: (String) 
         }
 
     private fun primary(button: JSONObject, busy: Boolean = false): TextView =
-        title(if (busy) "${button.getString("label")} …" else button.getString("label"), 18f, Palette.BACKGROUND).apply {
+        title(button.getString("label").let { if (busy && !it.endsWith("…")) "$it …" else it }, 18f, Palette.BACKGROUND).apply {
             gravity = Gravity.CENTER
             minHeight = context.dp(56)
             val enabled = button.optBoolean("enabled", true)
@@ -147,7 +149,23 @@ internal class GymViews(private val context: Context, private val tap: (String) 
             val cap = resources.displayMetrics.heightPixels / 2
             super.onMeasure(widthMeasureSpec, MeasureSpec.makeMeasureSpec(cap, MeasureSpec.AT_MOST))
         }
-    }.apply { addView(card(value)) }
+
+        // A card taller than its cap scrolls itself: keep the transcript
+        // from taking the drag, or a draft's button stays out of reach.
+        private fun claim() {
+            if (canScrollVertically(1) || canScrollVertically(-1)) parent?.requestDisallowInterceptTouchEvent(true)
+        }
+
+        override fun onInterceptTouchEvent(event: android.view.MotionEvent): Boolean {
+            if (event.actionMasked == android.view.MotionEvent.ACTION_DOWN) claim()
+            return super.onInterceptTouchEvent(event)
+        }
+
+        override fun onTouchEvent(event: android.view.MotionEvent): Boolean {
+            claim()
+            return super.onTouchEvent(event)
+        }
+    }.apply { addView(card(value)); isNestedScrollingEnabled = true }
 
     // Sheets
 
@@ -220,6 +238,13 @@ internal class GymViews(private val context: Context, private val tap: (String) 
             }, 4)
         }
         root.addView(foot)
+        // The dialog draws edge to edge: keep its buttons above the
+        // navigation bar, as the tabs do.
+        ViewCompat.setOnApplyWindowInsetsListener(root) { view, insets ->
+            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            view.setPadding(bars.left, 0, bars.right, bars.bottom)
+            insets
+        }
         return root
     }
 
