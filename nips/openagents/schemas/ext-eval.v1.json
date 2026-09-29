@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "openagents.ext-eval.v1",
+  "title": "NIP-EVAL extension evaluation profile record (a report's meta.ext_eval)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "v",
+    "gate",
+    "cases",
+    "headline",
+    "requester"
+  ],
+  "properties": {
+    "v": {
+      "const": "openagents.ext-eval.v1"
+    },
+    "gate": {
+      "type": "string",
+      "minLength": 71,
+      "maxLength": 71
+    },
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 256,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "kind"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "kind": {
+            "enum": [
+              "should-fire",
+              "should-not-fire"
+            ]
+          }
+        }
+      }
+    },
+    "headline": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "subject_passed",
+        "baseline_passed",
+        "total"
+      ],
+      "properties": {
+        "subject_passed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "baseline_passed": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "total": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "requester": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "id",
+            "pubkey",
+            "kind"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 64,
+              "maxLength": 64
+            },
+            "pubkey": {
+              "type": "string",
+              "minLength": 64,
+              "maxLength": 64
+            },
+            "kind": {
+              "const": 25920
+            }
+          }
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "v": "openagents.eval-draft.v1",
+  "tool": {
+    "name": "Tidy imports",
+    "summary": "Keeps Rust imports grouped and sorted.",
+    "catalog": null,
+    "skill": "Group std, external, then crate imports.",
+    "uses": [
+      "c5d77c5216669e9a39902f875d11224a4576a3b5f8f09c72e8c8771f839cc971:project-map/map"
+    ]
+  },
+  "cases": []
+}

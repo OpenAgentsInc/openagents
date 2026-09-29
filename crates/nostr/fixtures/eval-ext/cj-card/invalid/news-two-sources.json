@@ -1,0 +1,24 @@
+{
+  "v": 2,
+  "requires": [],
+  "type": "card",
+  "card": "news",
+  "items": [
+    {
+      "title": "Project map checked",
+      "line": "Two trainers confirmed its result.",
+      "event": {
+        "id": "f6a214f7a5fcda0c2cee9660b7fc29f5649e3c68aad48e20e950137c98913a68",
+        "pubkey": "2bd806c97f0e00af1a1fc3328fa763a9269723c8db8fac4f93af71db186d6e90",
+        "kind": 3189
+      },
+      "path": "docs/changelog.md"
+    },
+    {
+      "title": "Build 21",
+      "line": "Chat is the main menu's first row.",
+      "event": null,
+      "path": "docs/changelog.md"
+    }
+  ]
+}

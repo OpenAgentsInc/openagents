@@ -1,0 +1,24 @@
+{
+  "v": "openagents.ext-eval.v1",
+  "gate": "sha256:c974e17b8e7321ce8c12983de3d0ed4a289821f579bbe0925b0181a4bc8e8d80",
+  "cases": [
+    {
+      "id": "map-repo",
+      "kind": "should-fire"
+    },
+    {
+      "id": "say-hello",
+      "kind": "should-not-fire"
+    }
+  ],
+  "headline": {
+    "subject_passed": 2,
+    "baseline_passed": 1,
+    "total": 2
+  },
+  "requester": {
+    "id": "1f58b9145b24d108d7ac38887338b3ea3229833b9c1e418250343f907bfd1047",
+    "pubkey": "4c26d9074c27d89ede59270c0ac14b71e071b15239519f75474b2f3ba63481f5",
+    "kind": 25900
+  }
+}

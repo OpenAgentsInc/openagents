@@ -42,6 +42,7 @@ const COMPONENT_KINDS: &[&str] = &[
     "ai-implementation",
     "guidance",
     "schema",
+    "eval-suite",
 ];
 
 /// Who asked. Both surfaces use [`authorize`].
@@ -1091,7 +1092,7 @@ fn parse_component(value: &Value, seen: &mut BTreeSet<String>) -> Result<String,
         Some(descriptor) => {
             parse_artifact(descriptor)?;
         }
-        None if kind == "guidance" || kind == "schema" => {}
+        None if kind == "guidance" || kind == "schema" || kind == "eval-suite" => {}
         None => {
             return Err(malformed("descriptor"));
         }

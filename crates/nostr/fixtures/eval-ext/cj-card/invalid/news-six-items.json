@@ -1,0 +1,44 @@
+{
+  "v": 2,
+  "requires": [],
+  "type": "card",
+  "card": "news",
+  "items": [
+    {
+      "title": "Build 21",
+      "line": "Chat is the main menu's first row.",
+      "event": null,
+      "path": "docs/changelog.md"
+    },
+    {
+      "title": "Build 21",
+      "line": "Chat is the main menu's first row.",
+      "event": null,
+      "path": "docs/changelog.md"
+    },
+    {
+      "title": "Build 21",
+      "line": "Chat is the main menu's first row.",
+      "event": null,
+      "path": "docs/changelog.md"
+    },
+    {
+      "title": "Build 21",
+      "line": "Chat is the main menu's first row.",
+      "event": null,
+      "path": "docs/changelog.md"
+    },
+    {
+      "title": "Build 21",
+      "line": "Chat is the main menu's first row.",
+      "event": null,
+      "path": "docs/changelog.md"
+    },
+    {
+      "title": "Build 21",
+      "line": "Chat is the main menu's first row.",
+      "event": null,
+      "path": "docs/changelog.md"
+    }
+  ]
+}

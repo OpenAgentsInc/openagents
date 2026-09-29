@@ -1,0 +1,35 @@
+{
+  "v": "openagents.eval-draft.v1",
+  "tool": {
+    "name": "Project map",
+    "summary": "",
+    "catalog": {
+      "id": "c5d77c5216669e9a39902f875d11224a4576a3b5f8f09c72e8c8771f839cc971:project-map/map",
+      "artifact": {
+        "digest": "sha256:43a3896020a9f531142a6f3ec9d2362ad9b6b1342c61df81d23faef3f4893e1c",
+        "size": 19,
+        "media_type": "application/json"
+      },
+      "event": {
+        "id": "42aa0b5aca7e10ba3bdf498fe5b6063f5a4703e76168dc9ad7d51c48347725c3",
+        "pubkey": "c5d77c5216669e9a39902f875d11224a4576a3b5f8f09c72e8c8771f839cc971",
+        "kind": 3184
+      }
+    },
+    "skill": null,
+    "uses": []
+  },
+  "cases": [
+    {
+      "id": "sort-imports",
+      "kind": "should-fire",
+      "prompt": "+++\nv = \"openagents.eval-case.v1\"\n+++\n\nClean up main.rs.\n",
+      "graders": [
+        {
+          "name": "criteria",
+          "text": "+++\ntype = \"decision\"\n+++\n\nSorted.\n"
+        }
+      ]
+    }
+  ]
+}

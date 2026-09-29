@@ -51,21 +51,33 @@ worker serves, such as `chat-router-v1`) and `context`, a bounded object of
 `surface` (`phone`, `desktop`, or `terminal`), `computer_ready` (boolean),
 and `app_build` (at most 64 bytes). Context carries no credential, key, host
 name, or amount; a worker ignores fields it does not know and never lets
-context widen what it does. A request MAY also carry `draft` (designed,
-added 2026-09-28 for the
-[extension evaluation profile](NIP-EVAL.md#extension-evaluation-profile)):
-the caller's current test-set draft as a closed object `{v:
-"openagents.eval-draft.v1", tool, cases}` of at most 64 KiB, which the
-caller keeps and resends each turn. A draft is data the worker may revise
-and return in a `card`; it is never an instruction and grants nothing.
+context widen what it does. A request MAY also carry `draft` (added
+2026-09-28 for the
+[extension evaluation profile](NIP-EVAL.md#extension-evaluation-profile);
+the draft, cards, and offers below are implemented in `crates/nostr`
+`cj_conversation`, 2026-09-29, with schemas
+[`eval-draft.v1`](schemas/eval-draft.v1.json) and
+[`cj-card.v1`](schemas/cj-card.v1.json); no worker or client sends them
+yet): the caller's current test-set draft as a closed object `{v:
+"openagents.eval-draft.v1", tool, cases}` of at most 64 KiB of canonical
+JSON, which the caller keeps and resends each turn. `tool` is `{name,
+summary, catalog, skill, uses}`: a catalog tool names its DefinitionRef in
+`catalog` with `skill` null and no `uses`; a tool made in chat has
+`catalog` null, its plain-language guidance in `skill` (at most 16 KiB),
+and in `uses` at most 8 qualified IDs of catalog tools it turns on.
+`cases` holds at most 16 tests `{id, kind, prompt, graders}` with unique
+case IDs, where `prompt` is the whole `prompt.md` and `graders` is 1 to 16
+`{name, text}` in name order, each a whole `graders/<name>.md`: the exact
+bytes a runner writes out. A draft is data the worker may revise and
+return in a `card`; it is never an instruction and grants nothing.
 
 Feedback has `v: 1`, `requires`, `type`, and fields for that type:
 
 | Type | Fields |
 | --- | --- |
 | `judgment` | `verdict`: `respond`, `clarify`, `end_conversation`, or `unrouted`; `line`: bounded display string. Optional typed additions: `set` (the question set's identity), `lane` (`chat`, `computer`, or `unknown`), `opener` (the ID of the opener shown, or null), `confidence` (the opener choice's probability), `bank` (the prepared-answer bank's identity), `answer` (the argmax prepared answer as `id@version`, or null), `answer_p` (its probability), `needs_specifics` (the probability that a reply needs particulars the user named), and `tier` (what the worker decided to show first: `canned`, `opener`, or `model`, and for a routed turn also `stem`, `grounded`, `offer`, `cli`, or `refuse`). A routed turn adds `route` and `route_p` (the argmax route and its probability), `lane_p`, `risk` and `risk_p`, `cli_group` (or null), and, when the worker only shadows the router, `shadow` (the tier it would have shown). It is an optional observation, not permission. |
-| `offer` | `offer`: `run_coder` (with `target: "connected_computer"` and `label`), `open_screen` (with `screen`, such as `account.computers` or `wallet`, and `label`), or `cli` (with `argv`, `effect`, `runs_on`, and `confirm: true`). Designed, added 2026-09-28: `start_eval` (with `suite`, a published suite EventRef or `draft`, `subject`, `size` `{cases, runs, arms}`, `where`: `hosted` or `connected_computer`, and `label`), and `publish_eval` (with `report`, the ArtifactRef of a result the caller holds, and `label`); `open_screen` adds `gym.result`, `gym.publish`, and `gym.test_set`. An action the client MAY render for the user to tap; it is an observation, never permission, and the worker takes no action for it. Tapping `start_eval` makes the client send its own signed execution request; tapping `publish_eval` opens a confirmation first. |
-| `card` | Designed, added 2026-09-28. `card`: a closed, typed display record the client renders with its own controls, never as model text: `tool` (a tool, its plain description, and its latest verified result), `draft` (the returned `openagents.eval-draft.v1`), `run` (a run's progress by request EventRef), `result` (headline counts per arm, the verdict, and the report ArtifactRef), `news` (at most 5 items, each with a source EventRef or repository path), `check` (a result waiting for a check), or `credit` (awards from the reader's ledger). Every number in a card comes from a record the worker verified; a card cites it. |
+| `offer` | `offer`: `run_coder` (with `target: "connected_computer"` and `label`), `open_screen` (with `screen`, such as `account.computers` or `wallet`, and `label`), or `cli` (with `argv`, `effect`, `runs_on`, and `confirm: true`). Added 2026-09-28: `start_eval` (with `suite`, a published suite's `{id, pubkey, kind: 3184}` or the string `draft`, `subject`, the tool's DefinitionRef or `draft`, `size` `{cases, runs, arms}`, `where`: `hosted` or `connected_computer`, and `label`), and `publish_eval` (with `report`, the ArtifactRef of a result the caller holds, schema `openagents.eval-report.v1`, and `label`); `open_screen` adds `gym.result`, `gym.publish`, and `gym.test_set`. A hosted `start_eval` stays within the hosted runner's 8 cases, 3 runs, and 2 arms. Offers are closed: an offer, screen, effect, or field a client doesn't know refuses, and a label is at most 80 characters. An action the client MAY render for the user to tap; it is an observation, never permission, and the worker takes no action for it. Tapping `start_eval` makes the client send its own signed execution request; tapping `publish_eval` opens a confirmation first. |
+| `card` | Added 2026-09-28. `card`: a closed, typed display record the client renders with its own controls, never as model text: `tool` (`name`, `summary`, `definition` or null, and `latest`, its latest verified result `{publication, headline, verdict}` or null), `draft` (`draft`, the returned `openagents.eval-draft.v1`), `run` (`request`, the execution request's `{id, pubkey, kind: 25920}`, `where`, and `completed` of `planned` runs), `result` (`headline` `{subject_passed, baseline_passed, total}`, `verdict`, `report` ArtifactRef, and `publication` or null), `news` (`items`: 1 to 5 `{title, line, event, path}`, each citing exactly one source event or repository path), `check` (a result waiting for a check: `tool`, `publication`, `headline`, `verdict`, `confirms`, and `disputes`), or `credit` (`total` and up to 50 `awards` `{status, role, xp, title, award}` from the reader's ledger, a `confirmed` one citing its `3193` and a `pending` one none; `total` is the confirmed XP). Every number in a card comes from a record the worker verified; a card cites it. A card type or field the client doesn't know refuses; `schemas/cj-card.v1.json` has every card. |
 | `partial` | `seq`: nonnegative integer starting at zero; `delta`: string. |
 | `status` | `status`: `queued`, `processing`, or `error`; error requires `code` and `message`, with optional nonnegative `retry_after_ms`. |
 

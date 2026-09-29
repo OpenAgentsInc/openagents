@@ -1,0 +1,23 @@
+{
+  "v": 2,
+  "requires": [],
+  "type": "card",
+  "card": "credit",
+  "total": 50,
+  "awards": [
+    {
+      "status": "confirmed",
+      "role": "checker",
+      "xp": 50,
+      "title": "Check Project map",
+      "award": null
+    },
+    {
+      "status": "pending",
+      "role": "evaluator",
+      "xp": 25,
+      "title": "Check Project map",
+      "award": null
+    }
+  ]
+}

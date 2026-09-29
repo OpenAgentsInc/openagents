@@ -85,11 +85,15 @@ bindings and pinned schemas. Guidance is an inert text artifact; schema assets
 follow the shared SchemaRef dialect. An `eval-suite` definition is a
 NIP-EVAL `openagents.eval-suite.v1` in its
 [extension evaluation profile](NIP-EVAL.md#extension-evaluation-profile)
-(added 2026-09-28, designed): its case files are the package's listed
-files, it is inert data, and installing it grants nothing; a host runs it
-only through an evaluation runner. A package may hold only an
-`eval-suite`, which is how a person other than an extension's publisher
-publishes tests for it. Unknown definition kinds refuse.
+(added 2026-09-28; implemented 2026-09-29 in `crates/nostr`, where `ext`
+accepts the kind and `eval_ext::check_suite_package` checks a suite's
+package): its case files are the package's listed files, it is inert
+data, and installing it grants nothing; a host runs it only through an
+evaluation runner. Like `guidance` and `schema`, it needs no operation
+descriptor. A package that publishes a suite holds exactly one
+`eval-suite` component, and may hold only that, which is how a person
+other than an extension's publisher publishes tests for it. Unknown
+definition kinds refuse.
 
 An operation descriptor contains `v: "openagents.operation.v1"`, `requires`,
 `id`, `kind`, `definition` (ArtifactRef), `summary`, `input`, `output`,

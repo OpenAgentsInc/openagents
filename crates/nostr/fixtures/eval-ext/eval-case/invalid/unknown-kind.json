@@ -1,0 +1,58 @@
+{
+  "v": "openagents.eval-case.v1",
+  "requires": [],
+  "cases": [
+    {
+      "id": "map-repo",
+      "kind": "maybe-fire",
+      "runs": 3,
+      "prompt": {
+        "digest": "sha256:cf07194ee232eb531e15f690000d19846dea69cf05504782658afcfacb9228a2",
+        "size": 6,
+        "media_type": "text/markdown",
+        "schema": "openagents.eval-case.v1"
+      },
+      "config": null,
+      "graders": [
+        {
+          "name": "criteria",
+          "artifact": {
+            "digest": "sha256:262d517bffd06484e2341b4a379c7f4fa4be9284a9a82631c03420953d60bd67",
+            "size": 8,
+            "media_type": "text/markdown",
+            "schema": "openagents.eval-case.v1"
+          }
+        }
+      ],
+      "fixtures": [
+        {
+          "path": "src/main.rs",
+          "artifact": {
+            "digest": "sha256:0d6e4079e36703ebd37c00722f5891d28b0e2811dc114b129215123adcce3605",
+            "size": 4,
+            "media_type": "text/plain"
+          }
+        }
+      ]
+    },
+    {
+      "id": "say-hello",
+      "kind": "should-not-fire",
+      "runs": 1,
+      "prompt": {
+        "digest": "sha256:008f0747f4e27c8462baa991a538025bcc2dd143e78422f1afbdfcd9e757a20f",
+        "size": 5,
+        "media_type": "text/markdown",
+        "schema": "openagents.eval-case.v1"
+      },
+      "config": {
+        "digest": "sha256:b79606fb3afea5bd1609ed40b622142f1c98125abcfe89a76a661b0e8e343910",
+        "size": 6,
+        "media_type": "application/toml",
+        "schema": "openagents.eval-case.v1"
+      },
+      "graders": [],
+      "fixtures": []
+    }
+  ]
+}

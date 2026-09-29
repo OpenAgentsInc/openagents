@@ -1,0 +1,14 @@
+{
+  "v": 2,
+  "requires": [],
+  "type": "card",
+  "card": "run",
+  "request": {
+    "id": "1f58b9145b24d108d7ac38887338b3ea3229833b9c1e418250343f907bfd1047",
+    "pubkey": "4c26d9074c27d89ede59270c0ac14b71e071b15239519f75474b2f3ba63481f5",
+    "kind": 25920
+  },
+  "where": "moon",
+  "completed": 12,
+  "planned": 48
+}

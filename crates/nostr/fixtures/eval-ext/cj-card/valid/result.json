@@ -1,0 +1,19 @@
+{
+  "v": 2,
+  "requires": [],
+  "type": "card",
+  "card": "result",
+  "headline": {
+    "subject_passed": 7,
+    "baseline_passed": 5,
+    "total": 8
+  },
+  "verdict": "pass",
+  "report": {
+    "digest": "sha256:845e91831319e89c4d656bdb80c278ac09a7230d61e5dfd2e1b1fbb436ac8917",
+    "size": 6,
+    "media_type": "application/json",
+    "schema": "openagents.eval-report.v1"
+  },
+  "publication": null
+}

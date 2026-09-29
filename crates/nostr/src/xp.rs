@@ -11,7 +11,9 @@
 //! and it checks the two acceptance rules: `kb-transfer` against the NIP-KB
 //! entry and NIP-EVAL evidence an award names, and `reproduce` against the
 //! run evidence of a published attempt and its reproduction
-//! ([`reproduce`]). Reading an entry's document to find the tasks it was
+//! ([`reproduce`]), and the `eval-check` and `eval-adopt` rules against
+//! extension evaluation publications ([`eval_check`], [`eval_adopt`]).
+//! Reading an entry's document to find the tasks it was
 //! written from, and deciding which referees to trust, belong to the
 //! reader.
 
@@ -38,7 +40,7 @@ pub const LABEL_KIND: u16 = 1_985;
 pub const LABEL_NAMESPACE: &str = "openagents.xp";
 
 /// The acceptance rules this version implements.
-pub const RULES: &[&str] = &[KB_TRANSFER, REPRODUCE, PLAYTEST];
+pub const RULES: &[&str] = &[KB_TRANSFER, REPRODUCE, PLAYTEST, EVAL_CHECK, EVAL_ADOPT];
 /// The rule a knowledge entry that helped out of sample completes.
 pub const KB_TRANSFER: &str = "kb-transfer";
 /// The rule an independent reproduction of a published attempt completes.
@@ -46,6 +48,12 @@ pub const REPRODUCE: &str = "reproduce";
 /// The rule an accepted playtest contribution completes
 /// ([`playtest`]).
 pub const PLAYTEST: &str = "playtest";
+/// The rule a confirming check of a published extension evaluation
+/// completes ([`eval_check`]).
+pub const EVAL_CHECK: &str = "eval-check";
+/// The rule an adoption of an extension into a host's defaults completes
+/// ([`eval_adopt`]).
+pub const EVAL_ADOPT: &str = "eval-adopt";
 /// The uniqueness policies this version implements. Under `first`, the
 /// first accepted completion per uniqueness key earns the award: the key is
 /// the quest version's coordinate, except under `playtest`, whose rule
@@ -67,6 +75,10 @@ pub const REPRODUCE_ROLES: &[&str] = &["claimant", "reproducer"];
 /// The awardee roles of `playtest`, in the order an award lists them. For
 /// a moderated or group session, the triager is the session's moderator.
 pub const PLAYTEST_ROLES: &[&str] = &["tester", "triager"];
+/// The awardee roles of `eval-check`. Each award credits one of them.
+pub const EVAL_CHECK_ROLES: &[&str] = &["checker", "evaluator", "suite-author"];
+/// The awardee roles of `eval-adopt`. Each award credits one of them.
+pub const EVAL_ADOPT_ROLES: &[&str] = &["extension-author", "suite-author", "evaluator"];
 
 /// The role whose key a `per-awardee` quest pays once, under `rule`: the
 /// reproducer under `reproduce`. Only rules with a keyed role take the
@@ -88,6 +100,8 @@ pub fn roles(rule: &str) -> &'static [&'static str] {
         KB_TRANSFER => ROLES,
         REPRODUCE => REPRODUCE_ROLES,
         PLAYTEST => PLAYTEST_ROLES,
+        EVAL_CHECK => EVAL_CHECK_ROLES,
+        EVAL_ADOPT => EVAL_ADOPT_ROLES,
         _ => &[],
     }
 }
@@ -146,6 +160,8 @@ pub struct Acceptance {
     pub claim: Option<Pointer>,
     /// `playtest`: which contribution counts, and on which builds.
     pub playtest: Option<playtest::PlaytestAcceptance>,
+    /// `eval-check` and `eval-adopt`: the releases the quest pins.
+    pub eval: Option<eval_check::EvalAcceptance>,
 }
 
 /// The run a quest is measured against, for display and provenance.
@@ -192,12 +208,19 @@ impl Quest {
     /// `max_awards` under `per-awardee`, or the `playtest` acceptance's.
     #[must_use]
     pub fn award_limit(&self) -> Option<u64> {
-        self.max_awards.or_else(|| {
-            self.acceptance
-                .playtest
-                .as_ref()
-                .map(|accepted| accepted.max_awards)
-        })
+        self.max_awards
+            .or_else(|| {
+                self.acceptance
+                    .playtest
+                    .as_ref()
+                    .map(|accepted| accepted.max_awards)
+            })
+            .or_else(|| {
+                self.acceptance
+                    .eval
+                    .as_ref()
+                    .and_then(|accepted| accepted.max_awards)
+            })
     }
 
     /// Whether each distinct awardee earns the award once.
@@ -485,6 +508,20 @@ fn acceptance(value: &Value) -> Result<Acceptance, ContractError> {
             recipe: None,
             claim: None,
             playtest: Some(parsed),
+            eval: None,
+        });
+    }
+    if rule == EVAL_CHECK || rule == EVAL_ADOPT {
+        let parsed = eval_check::acceptance(object, &rule)?;
+        return Ok(Acceptance {
+            task: parsed.subject.id.clone(),
+            rule,
+            min_pass_rate: 1.0,
+            max_usd_per_run: None,
+            recipe: None,
+            claim: None,
+            playtest: None,
+            eval: Some(parsed),
         });
     }
     if rule == REPRODUCE {
@@ -517,6 +554,7 @@ fn acceptance(value: &Value) -> Result<Acceptance, ContractError> {
             recipe: Some(recipe),
             claim: Some(claim),
             playtest: None,
+            eval: None,
         });
     }
     let min_pass_rate = require(object, "min_pass_rate")?
@@ -540,6 +578,7 @@ fn acceptance(value: &Value) -> Result<Acceptance, ContractError> {
         recipe: None,
         claim: None,
         playtest: None,
+        eval: None,
     })
 }
 
@@ -670,6 +709,14 @@ pub fn award(
 /// A typed refusal naming the first check that failed.
 pub fn parse_award(event: &Event) -> Result<Award, ContractError> {
     let object = open(event, AWARD_KIND, "award")?;
+    // An eval rule's key names its rule; its roles overlap, so they can't.
+    if let Some(rule) = object
+        .get("key")
+        .and_then(Value::as_str)
+        .and_then(eval_check::rule_of_key)
+    {
+        return eval_check::parse_award(event, &object, rule);
+    }
     let first_role = require(&object, "awardees")?
         .as_array()
         .and_then(|a| a.first())
@@ -919,6 +966,8 @@ pub fn bind_quest(award: &Award, quest: &Event) -> Result<Quest, ContractError> 
     in_season(&parsed, award.accepted_at)?;
     if award.rule == PLAYTEST {
         playtest::bind_fields(award, &parsed)?;
+    } else if award.rule == EVAL_CHECK || award.rule == EVAL_ADOPT {
+        eval_check::bind_fields(award, &parsed)?;
     } else {
         let keyed = keyed_role(&parsed.acceptance.rule)
             .and_then(|role| award.role(role))
@@ -1141,7 +1190,11 @@ pub fn parse_revocation(event: &Event) -> Result<Revocation, ContractError> {
     let key = text(&object, "key")?;
     let prefix = format!("{QUEST_KIND}:{}:", event.pubkey);
     let a = one_tag(event, "a")?;
-    if key.starts_with(playtest::KEY_PREFIX) {
+    if eval_check::rule_of_key(&key).is_some() {
+        // An eval key is rule-derived; the `a` tag names the quest.
+        eval_check::check_key_shape(&key)?;
+        valid_address(a.strip_prefix(&prefix).ok_or_else(|| mismatch("a tag"))?)?;
+    } else if key.starts_with(playtest::KEY_PREFIX) {
         // A playtest key is rule-derived; the `a` tag names the quest.
         playtest::check_key_shape(&key)?;
         valid_address(a.strip_prefix(&prefix).ok_or_else(|| mismatch("a tag"))?)?;
@@ -1354,6 +1407,14 @@ pub use card::{CARD_ADDRESS, CARD_KIND, CardAward, TrainerCard, card, parse_card
 pub mod trainer;
 pub use trainer::{
     KeyLink, LINK_KIND, PROFILE_KIND, TrainerProfile, link, parse_link, parse_profile, profile,
+};
+pub mod eval_adopt;
+pub mod eval_check;
+pub use eval_adopt::{
+    AdoptCompletion, Adoption, bind_eval_adopt, check_eval_adopt, eval_adopt_awards,
+};
+pub use eval_check::{
+    CheckCompletion, EvalAcceptance, Payee, bind_eval_check, check_eval_check, eval_check_awards,
 };
 pub mod reproduce;
 pub use reproduce::{

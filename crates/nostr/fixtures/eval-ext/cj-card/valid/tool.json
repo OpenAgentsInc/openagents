@@ -1,0 +1,34 @@
+{
+  "v": 2,
+  "requires": [],
+  "type": "card",
+  "card": "tool",
+  "name": "Project map",
+  "summary": "Maps a repository before Coder edits it.",
+  "definition": {
+    "id": "c5d77c5216669e9a39902f875d11224a4576a3b5f8f09c72e8c8771f839cc971:project-map/map",
+    "artifact": {
+      "digest": "sha256:43a3896020a9f531142a6f3ec9d2362ad9b6b1342c61df81d23faef3f4893e1c",
+      "size": 19,
+      "media_type": "application/json"
+    },
+    "event": {
+      "id": "42aa0b5aca7e10ba3bdf498fe5b6063f5a4703e76168dc9ad7d51c48347725c3",
+      "pubkey": "c5d77c5216669e9a39902f875d11224a4576a3b5f8f09c72e8c8771f839cc971",
+      "kind": 3184
+    }
+  },
+  "latest": {
+    "publication": {
+      "id": "f6a214f7a5fcda0c2cee9660b7fc29f5649e3c68aad48e20e950137c98913a68",
+      "pubkey": "2bd806c97f0e00af1a1fc3328fa763a9269723c8db8fac4f93af71db186d6e90",
+      "kind": 3189
+    },
+    "headline": {
+      "subject_passed": 7,
+      "baseline_passed": 5,
+      "total": 8
+    },
+    "verdict": "pass"
+  }
+}

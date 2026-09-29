@@ -1,0 +1,20 @@
+{
+  "v": "openagents.ext-eval.v1",
+  "gate": "sha256:c974e17b8e7321ce8c12983de3d0ed4a289821f579bbe0925b0181a4bc8e8d80",
+  "cases": [
+    {
+      "id": "map-repo",
+      "kind": "sometimes"
+    },
+    {
+      "id": "say-hello",
+      "kind": "should-not-fire"
+    }
+  ],
+  "headline": {
+    "subject_passed": 2,
+    "baseline_passed": 1,
+    "total": 2
+  },
+  "requester": null
+}

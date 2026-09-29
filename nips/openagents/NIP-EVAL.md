@@ -238,7 +238,17 @@ nothing. `crates/nostr` (`gym_results`) builds and checks the event,
 
 ## Extension evaluation profile
 
-`draft` — added 2026-09-28. **Designed**; no implementation yet. This
+`draft` — added 2026-09-28. **Partial**: the wire formats are
+implemented (2026-09-29, [#9932](https://github.com/OpenAgentsInc/openagents/issues/9932)).
+`crates/nostr` builds and checks every record here: `eval_ext` (the case
+manifest, the suite and its package, the report, the publication, and
+check linkage), `cj_conversation` (the draft, cards, and offers), and
+`xp::eval_check` and `xp::eval_adopt` (credit). The schemas are
+[`eval-case.v1`](schemas/eval-case.v1.json) and
+[`ext-eval.v1`](schemas/ext-eval.v1.json); the fixtures are
+`crates/nostr/fixtures/eval-ext/`. The runner, the hosted runner, the
+referee, and the clients that use these records are not built yet (epic
+[#9931](https://github.com/OpenAgentsInc/openagents/issues/9931)). This
 profile carries the results of `openagents ext eval`
 ([extension evaluation](../../docs/extensions/evaluation.md)): a suite of
 cases run against an agent with one extension admitted (the `subject`
@@ -249,19 +259,32 @@ suites and subjects, NIP-XP for credit, and NIP-CJ for hosted runs.
 ### Suites
 
 An extension suite is an `openagents.eval-suite.v1` with `purpose:
-"operation"`. Its `cases` artifact lists, in lexicographic order, one
-entry per case: `{id, kind, runs, prompt, graders, fixtures}`, where
-`kind` is `should-fire` or `should-not-fire`, `prompt` and each grader are
-ArtifactRefs to the exact case files (`prompt.md`, `graders/<name>.md`,
-optional `case.toml`) with schema `openagents.eval-case.v1`, and
-`fixtures` is an ArtifactRef list. `acceptance` is the DefinitionRef of
-the Gym gate that decides the verdict (`ext-eval-v1`). `labels` names the
+"operation"`. Its `cases` artifact (schema `openagents.eval-case.v1`) is
+the **case manifest**, a closed object `{v: "openagents.eval-case.v1",
+requires: [], cases}` whose `cases` lists 1 to 256 entries in
+lexicographic order of `id`, each a closed object:
+
+| Field | Contract |
+| --- | --- |
+| `id` | The case directory's name: ASCII letters, digits, `-`, `_`, and `.`, not starting with `.`, at most 128 bytes, and not `results`, `node_modules`, `.git`, or `.openagents`. Unique. |
+| `kind` | `should-fire` or `should-not-fire`. |
+| `runs` | Runs per arm, 1 to 10. |
+| `prompt` | ArtifactRef to `prompt.md`. |
+| `config` | ArtifactRef to `case.toml`, or null. |
+| `graders` | `{name, artifact}` for each `graders/<name>.md`, in name order, at most 64. A case with no grader files has a `config`. |
+| `fixtures` | `{path, artifact}` for each file under `fixtures/`, in path order, at most 256; a path is relative, of plain components, at most 512 bytes. |
+
+Every case file's ArtifactRef (`prompt`, `config`, each grader) carries
+schema `openagents.eval-case.v1`, and every file, fixtures included, is at
+most 1 MiB. `acceptance` is the DefinitionRef of the Gym gate that decides
+the verdict: its component is `ext-eval-v1`. `labels` names the
 suite author as the label source; a suite written by the extension's
 publisher says so, and a reader weighs it as the publisher's own claim.
 
 A public suite travels as a NIP-EXT release: a package whose manifest has
-one component of kind `eval-suite`, whose definition is the suite
-artifact, and whose files are the case files. The release signer (the
+exactly one component of kind `eval-suite`, whose definition is the suite
+artifact (schema `openagents.eval-suite.v1`), and whose listed files
+include the case manifest and every case file by digest and size. The release signer (the
 package root) is the suite author. A suite shipped inside the extension's
 own package is an `eval-suite` component of that package. Revoking the
 release withdraws the suite from new checks and quests; reports already
@@ -286,20 +309,38 @@ The report is `openagents.eval-report.v1` with these profile rules:
   and repeated in `meta.ext_eval.gate`.
 - `meta.ext_eval` is `{v: "openagents.ext-eval.v1", gate, cases:
   [{id, kind}], headline: {subject_passed, baseline_passed, total},
-  requester}`. `requester` is null, or the EventRef of the signed NIP-CJ
-  execution request a hosted runner served.
+  requester}`, closed. `gate` is the gate's `sha256:` digest; `cases`
+  repeats each case's ID and kind; `total` is the case count and neither
+  arm passes more; `baseline_passed` is null exactly when `baseline` is.
+  `requester` is null, or the `{id, pubkey, kind: 25920}` of the signed
+  NIP-CJ execution request a hosted runner served.
+- The report is closed to NIP-EVAL's fields plus `meta`. `suite` is an
+  ArtifactRef with schema `openagents.eval-suite.v1`, and with `event`,
+  the suite's NIP-EXT release (kind `3184`), when published.
+  `subject.definition.event`, when present, is the extension's release.
+  Each arm's coverage sums (the five outcome counts equal `attempted`),
+  `coverage.baseline` is null exactly when `baseline` is, and no
+  measurement names the `baseline` or `comparison` arm of a report
+  without one.
 
 ### Publication
 
 A result is a `3189` publication as above, with these additions:
 
-- Tags: `t: oa:eval:v1` and `t: oa:ext-eval:v1`; `x` equal to the report
-  digest; one `e` tag for the suite's release, one for the subject's
-  release (when published), and, for a check, one for the publication it
-  checks, with the marker `check`. A hosted result also carries one `p`
-  tag for the requesting trainer and an `e` tag for the request.
-- `meta.ext_eval_report`: the report's exact bytes, at most 64 KiB, which
-  a reader checks against `report.digest` before reading.
+- Tags: exactly the markers `t: oa:eval:v1` and `t: oa:ext-eval:v1`
+  among `oa:` `t` tags; one `x` equal to the report digest; and `e` tags,
+  each with a marker in the fourth position (`["e", <id>, <relay or "">,
+  <marker>]`): exactly one `suite` (the report's `suite.event`, required
+  to publish), one `subject` exactly when the subject is published (its
+  `subject.definition.event`), at most one `check` naming the publication
+  this one checks, and one `request` exactly when the result is hosted. A
+  hosted result also carries exactly one `p` tag, the requesting trainer;
+  any other result carries none. An `e` tag with another marker, or none,
+  refuses.
+- `meta` holds only `ext_eval_report`: the report's exact bytes, at most
+  64 KiB, which a reader checks against `report.digest` before reading.
+  The body's `subject` is the report's `subject.definition`, and the
+  report ArtifactRef's schema is `openagents.eval-report.v1`.
 - The signer is the evaluator, as for every `3189`. A hosted runner signs
   its own results; the trainer who asked is named by `requester`, and a
   reader verifies that request's signature before crediting them.
@@ -312,11 +353,14 @@ against each other.
 
 A check is a publication whose report has the same suite ArtifactRef and
 the same subject DefinitionRef as the publication it cites with the
-`check` marker, and a different evaluator. A check **confirms** when its
-verdict equals the original's and **disputes** otherwise; readers show
-both counts beside the original. A check with a different lock for the
-subject arm is not a check of that result; readers show it as a separate
-result.
+`check` marker, and a different **trainer**. A result's trainer is the
+requester of a hosted run, otherwise its evaluator, so two hosted runs by
+one runner are a check when different trainers asked for them. A check
+**confirms** when its verdict equals the original's and **disputes**
+otherwise; readers show both counts beside the original. A check with a
+different lock for the subject arm is not a check of that result; readers
+show it as a separate result. `eval_ext::confirms` decides this from the
+two signed events alone.
 
 ### Hosted runs
 
@@ -326,8 +370,11 @@ runs, baseline: true}` with ArtifactRefs (or a chat draft artifact of at
 most 64 KiB), and `requirements` names the read-only and sandbox-write
 effects only. The worker admits only subjects its operator lists (the
 catalog and `coder-defaults`) and suites within its published bounds, and
-refuses others as `not_admitted`. Its result's body carries the report
-ArtifactRef; the report stays private (the `3188` envelope to the
+refuses others as `not_admitted`. A hosted request runs at most 8 cases,
+3 runs per arm, and 2 arms. A reader credits the requester only after
+checking the request event the report names: its ID and signer, kind
+`25920`, its signature, and its one `p` tag naming the runner that signed
+the result. Its result's body carries the report ArtifactRef; the report stays private (the `3188` envelope to the
 requester) until the requester sends a publish control naming it.
 
 ### Adoption
@@ -337,8 +384,11 @@ Adopting an extension into a host's defaults is an
 extension's published reports and their confirming checks. For Coder's
 defaults, the admitted change is then published as a NIP-EXT release of
 the `coder-defaults` package that depends on the extension's release, and
-whose manifest `provenance` cites the admission's ArtifactRef. The
-release is the public, checkable record of adoption; the admission itself
+whose manifest `provenance.receipts` cites the admission's ArtifactRef
+(schema `openagents.eval-admission.v1`), and whose `dependencies` include
+the extension's release ID. The admission's `subject` carries the
+extension's release as its `event`. The release is the public, checkable
+record of adoption; the admission itself
 stays with its issuer. NIP-XP's `eval-adopt` rule reads the release.
 
 ## Promotion and learning
@@ -364,6 +414,16 @@ Fixtures cover duplicate/overlapping partitions, mismatched subject/model,
 missing or counted-twice attempts, cherry-picked exclusions, unknown costs,
 invalid denominators, unavailable receipts, forged evaluators, disclosure
 through locators, redaction identity changes, and unauthorized promotion.
+Extension evaluation fixtures (`crates/nostr/src/eval_ext/tests.rs` and
+`crates/nostr/fixtures/eval-ext/`) cover a wrong or missing profile marker,
+a report digest mismatch, `meta.ext_eval_report` over 64 KiB, a missing or
+wrong suite `e` tag, an unmarked `e` tag, a signer who isn't the
+evaluator, a hosted result without its `p` tag or with a request sent to
+another worker, a report without a baseline claiming a change, coverage
+that doesn't sum, an out-of-order, duplicate, reserved, or oversize case,
+a suite of another purpose or gate, a suite package with two suites or an
+unlisted case file, a check with another subject lock (not a check), a
+self-check, and a hosted check by the same trainer.
 Advertise `nip-eval-v1` only for the tested publication/client validation role.
 A relay cannot certify task quality, statistical validity, or calibration by
 storing a signed result.

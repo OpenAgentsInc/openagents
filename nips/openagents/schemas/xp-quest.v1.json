@@ -82,6 +82,12 @@
         },
         {
           "$ref": "#/$defs/playtest"
+        },
+        {
+          "$ref": "#/$defs/eval-check"
+        },
+        {
+          "$ref": "#/$defs/eval-adopt"
         }
       ]
     },
@@ -153,6 +159,12 @@
         },
         {
           "$ref": "#/$defs/playtest-award"
+        },
+        {
+          "$ref": "#/$defs/eval-check-award"
+        },
+        {
+          "$ref": "#/$defs/eval-adopt-award"
         }
       ]
     },
@@ -374,6 +386,169 @@
           "maximum": 1000
         },
         "triager": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000
+        }
+      }
+    },
+    "eval-check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rule",
+        "suite",
+        "subject",
+        "max_awards"
+      ],
+      "properties": {
+        "rule": {
+          "const": "eval-check"
+        },
+        "suite": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "id",
+            "pubkey",
+            "kind"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 64,
+              "maxLength": 64
+            },
+            "pubkey": {
+              "type": "string",
+              "minLength": 64,
+              "maxLength": 64
+            },
+            "kind": {
+              "const": 3184
+            }
+          }
+        },
+        "subject": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "id",
+            "pubkey",
+            "kind"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 64,
+              "maxLength": 64
+            },
+            "pubkey": {
+              "type": "string",
+              "minLength": 64,
+              "maxLength": 64
+            },
+            "kind": {
+              "const": 3184
+            }
+          }
+        },
+        "max_awards": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000
+        }
+      }
+    },
+    "eval-adopt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rule",
+        "defaults",
+        "subject"
+      ],
+      "properties": {
+        "rule": {
+          "const": "eval-adopt"
+        },
+        "defaults": {
+          "type": "string",
+          "minLength": 66,
+          "maxLength": 130
+        },
+        "subject": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "id",
+            "pubkey",
+            "kind"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 64,
+              "maxLength": 64
+            },
+            "pubkey": {
+              "type": "string",
+              "minLength": 64,
+              "maxLength": 64
+            },
+            "kind": {
+              "const": 3184
+            }
+          }
+        }
+      }
+    },
+    "eval-check-award": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "checker",
+        "evaluator",
+        "suite-author"
+      ],
+      "properties": {
+        "checker": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000
+        },
+        "evaluator": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000
+        },
+        "suite-author": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000
+        }
+      }
+    },
+    "eval-adopt-award": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "extension-author",
+        "suite-author",
+        "evaluator"
+      ],
+      "properties": {
+        "extension-author": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000
+        },
+        "suite-author": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000
+        },
+        "evaluator": {
           "type": "integer",
           "minimum": 0,
           "maximum": 1000

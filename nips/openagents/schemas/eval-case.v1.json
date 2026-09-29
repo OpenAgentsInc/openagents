@@ -1,0 +1,227 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "openagents.eval-case.v1",
+  "title": "NIP-EVAL extension evaluation case manifest (a suite's cases artifact)",
+  "description": "One entry per case, in lexicographic order of id, naming the exact bytes of each case file. The case files' ArtifactRefs carry this same schema name.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "v",
+    "requires",
+    "cases"
+  ],
+  "properties": {
+    "v": {
+      "const": "openagents.eval-case.v1"
+    },
+    "requires": {
+      "type": "array",
+      "maxItems": 0
+    },
+    "meta": {
+      "type": "object"
+    },
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 256,
+      "items": {
+        "$ref": "#/$defs/case"
+      }
+    }
+  },
+  "$defs": {
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "digest",
+        "size",
+        "media_type"
+      ],
+      "properties": {
+        "digest": {
+          "type": "string",
+          "minLength": 71,
+          "maxLength": 71
+        },
+        "size": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "media_type": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 255
+        },
+        "schema": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255
+        },
+        "event": {
+          "$ref": "#/$defs/event"
+        },
+        "sources": {
+          "type": "array"
+        }
+      }
+    },
+    "event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "pubkey",
+        "kind"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "pubkey": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "kind": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 65535
+        },
+        "coordinate": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 400
+        }
+      }
+    },
+    "case_artifact": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/artifact"
+        },
+        {
+          "type": "object",
+          "required": [
+            "schema"
+          ],
+          "properties": {
+            "schema": {
+              "const": "openagents.eval-case.v1"
+            },
+            "size": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1048576
+            }
+          }
+        }
+      ]
+    },
+    "case": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "runs",
+        "prompt",
+        "config",
+        "graders",
+        "fixtures"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "kind": {
+          "enum": [
+            "should-fire",
+            "should-not-fire"
+          ]
+        },
+        "runs": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10
+        },
+        "prompt": {
+          "$ref": "#/$defs/case_artifact"
+        },
+        "config": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/case_artifact"
+            }
+          ]
+        },
+        "graders": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "artifact"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64
+              },
+              "artifact": {
+                "$ref": "#/$defs/case_artifact"
+              }
+            }
+          }
+        },
+        "fixtures": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "path",
+              "artifact"
+            ],
+            "properties": {
+              "path": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              "artifact": {
+                "allOf": [
+                  {
+                    "$ref": "#/$defs/artifact"
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "size": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 1048576
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -3,8 +3,8 @@
 `draft` `optional` — v1, 2026-09-26; the `reproduce` rule added
 2026-09-28; the `playtest` rule added 2026-09-28; the `per-awardee`
 uniqueness policy, trainer profiles, key links, and trainer cards added
-2026-09-28; the designed `eval-check` and `eval-adopt` rules added
-2026-09-28. The
+2026-09-28; the `eval-check` and `eval-adopt` rules added 2026-09-28
+and implemented in `crates/nostr` 2026-09-29. The
 [shared contracts](contracts.md) are normative.
 
 This NIP publishes quests, a referee's acceptance of a completed quest, and
@@ -85,11 +85,11 @@ the hex fields, and the coordinates itself.
   trusted runners, and derives XP from them. A reader's runner list also
   lists the reproducers it trusts.
 
-- Under the designed `eval-check` and `eval-adopt` rules, a **checker**
-  reran a published extension evaluation result and confirmed it, an
-  **evaluator** signed the result, a **suite author** published the
-  suite, and an **extension author** published the extension a host
-  adopted.
+- Under the `eval-check` and `eval-adopt` rules, a **checker** reran a
+  published extension evaluation result and confirmed it, an
+  **evaluator** is the trainer behind the result (its signer, or the
+  requester of a hosted run), a **suite author** published the suite, and
+  an **extension author** published the extension a host adopted.
 
 - A **tester** played a build and signed a playtest report.
 - A **triager** accepted the tester's contribution on a public issue; for a
@@ -386,8 +386,11 @@ the leveling spec proposes (issue #9894) may later subsume it.
 
 ### `eval-check`
 
-`draft` — added 2026-09-28. **Designed**; no reader or referee implements
-it yet, so a reader today refuses its quests as an unknown rule. It
+`draft` — added 2026-09-28. **Partial**: `crates/nostr`
+(`xp::eval_check`) implements the rule, its quests, and its awards as
+pure functions over signed events (2026-09-29); the ledger
+(`crates/xp-ledger`) and the referee job that signs awards are not built
+yet ([#9938](https://github.com/OpenAgentsInc/openagents/issues/9938)). It
 credits the people behind an extension evaluation result
 ([NIP-EVAL's extension evaluation profile](NIP-EVAL.md#extension-evaluation-profile))
 when another trainer's check confirms it.
@@ -395,8 +398,8 @@ when another trainer's check confirms it.
 ```json
 "acceptance": {
   "rule": "eval-check",
-  "suite": "<EventRef of the suite's NIP-EXT release>",
-  "subject": "<EventRef of the extension's NIP-EXT release>",
+  "suite": {"id": "<suite release id>", "pubkey": "<suite author>", "kind": 3184},
+  "subject": {"id": "<extension release id>", "pubkey": "<extension author>", "kind": 3184},
   "max_awards": 500
 },
 "award": {"checker": 50, "evaluator": 25, "suite-author": 25}
@@ -420,23 +423,33 @@ publication. It is accepted when all of these hold:
    `inconclusive`.
 5. The check was published after the result and both inside the season.
 
-Uniqueness is rule-derived: a quest version pays each checker at most once
-per suite version, and pays the evaluator and the suite author at most
-once each per suite version, however many checks confirm the result, up
-to `max_awards` awards in all. A role whose key is the same as another
-role's in one completion is paid once, in the larger role. A disputed
-check earns nothing and is shown beside the result.
+`max_awards` is 1 to 10,000, and `completions` is `first` (the rule
+derives its keys, so `per-awardee` refuses).
+
+Uniqueness is rule-derived and per role. Each award credits exactly one
+role: its `evidence` is the result, then the check, and its one awardee's
+key is `eval-check:<season>:<suite release id>:<role>:<pubkey>`. A
+season therefore pays each checker at most once per suite version, and
+pays the evaluator and the suite author at most once each per suite
+version, however many checks confirm the result, up to `max_awards` live
+awards on the quest version in all. A key that holds two roles in one
+completion (only the evaluator and the suite author can coincide, since
+the checker is neither) is paid once, in the role the quest pays more,
+and in the earlier role (`checker`, `evaluator`, `suite-author`) on a tie;
+a role the quest pays 0 gets no award. A disputed check earns nothing and
+is shown beside the result.
 
 ### `eval-adopt`
 
-`draft` — added 2026-09-28. **Designed**, like `eval-check`. It credits
-the people whose work an agent host adopted into its defaults.
+`draft` — added 2026-09-28. **Partial**, like `eval-check`
+(`xp::eval_adopt`). It credits the people whose work an agent host
+adopted into its defaults.
 
 ```json
 "acceptance": {
   "rule": "eval-adopt",
   "defaults": "<root pubkey>:coder-defaults",
-  "subject": "<EventRef of the extension's NIP-EXT release>"
+  "subject": {"id": "<extension release id>", "pubkey": "<extension author>", "kind": 3184}
 },
 "award": {"extension-author": 200, "suite-author": 100, "evaluator": 50}
 ```
@@ -449,9 +462,26 @@ the `defaults` package. It is accepted when that release is signed by
 the package's root, depends on the quest's `subject`, cites in its
 manifest `provenance` an `openagents.eval-admission.v1` ArtifactRef whose
 `decision` is `admit`, and the admission's `reports` include at least one
-confirmed result for the subject. Each role is paid once per subject
-release; an evaluator who is also an author is paid once, in the larger
-role.
+confirmed result for the subject. In full:
+
+1. The release is a valid NIP-EXT `3184` of the `defaults` package,
+   signed by its root, inside the season, and the manifest bytes a reader
+   holds match its `manifest` ArtifactRef.
+2. The manifest's `dependencies` include the subject's release ID, and its
+   `provenance.receipts` include an ArtifactRef with schema
+   `openagents.eval-admission.v1` that the admission's bytes match.
+3. The admission decides `admit`, its `subject.event` is the quest's
+   subject release, and its `expires_at` is not before the release.
+4. At least one result it cites by report digest, on the subject's
+   release, has a check that meets `eval-check`'s conditions 2 to 4 and
+   was published after it.
+
+Each award credits one role, with `evidence` the release, then a
+confirmed result and its check (the evaluator's own, or the suite
+author's suite's), and the key
+`eval-adopt:<subject release id>:<role>:<pubkey>`. Each role is paid once
+per subject release; a key holding two roles (an evaluator who is also an
+author) is paid once, in the larger role, as under `eval-check`.
 
 Rules are closed: a reader refuses a quest whose rule it doesn't implement.
 A future rule, such as a coding quest with an integrator, needs its own
@@ -505,7 +535,14 @@ A `reproduce` award has no `entry` or `entry_version`. Its `evidence`
 lists the claim, then the reproduction, and its `awardees` list the
 claimant, then the reproducer, each the signer of the event its role
 names. A role whose XP is 0 is still listed. The first awardee's role
-tells a reader which shape to expect; `schemas/xp-award.v1.json` has both.
+tells a reader which shape to expect; `schemas/xp-award.v1.json` has every
+shape.
+
+An `eval-check` or `eval-adopt` award has no `entry` or `entry_version`
+and exactly one awardee with XP above 0; its key's prefix (`eval-check:`
+or `eval-adopt:`) names the rule, since the two rules share role names,
+and its key ends with that awardee's role and public key. Its `e` tags are
+the quest and each evidence event, and its one `p` tag is the awardee.
 
 Tags:
 
@@ -803,11 +840,12 @@ A reader accepts a `3193` only when all of these hold:
 3. The signer is the quest's referee, `key` is the one the quest's
    uniqueness policy gives (the quest coordinate under `first`; the
    coordinate and the reproducer under `per-awardee`; the rule's key under
-   `playtest`), and the `a`, `e`, and `p` tags agree with the body.
+   `playtest`, `eval-check`, and `eval-adopt`), and the `a`, `e`, and `p` tags agree with the body.
 4. The awardees are the author, then the runner, under `kb-transfer`, the
    claimant, then the reproducer, under `reproduce`, or the tester, then
    the triager, under `playtest`; each signed the event its role names,
-   and the two differ.
+   and the two differ. Under `eval-check` and `eval-adopt` there is one
+   awardee, whom the rule pays in that role over the events named.
 5. The exact quest event it names is available and valid, the award falls
    inside the season, and each role's XP equals the quest's table.
 6. The exact events it names are available and valid, the entry version
@@ -844,7 +882,17 @@ doesn't take, a report outside the season, an unpaid severity, a missing
 issue or severity, the tester as triager or referee, a session without its
 record or with another tester's or the tester's own, a report on another
 script, a key the rule doesn't derive, one issue paid by two quests, and a
-quest version over its `max_awards`. For `per-awardee`: a missing or
+quest version over its `max_awards`. For `eval-check`: a self-check, a
+check by the suite's author, a check before the result or outside the
+season, a disputed or inconclusive check, a check on another subject
+lock, suite, or subject, a hosted result without its signed request, one
+award per role per suite version across several checks, role collapse
+to the larger role and the earlier on a tie, a forged awardee, and two
+awardees on one award. For `eval-adopt`: an admission that doesn't
+admit, a release that doesn't depend on the extension, cites another
+admission, is signed by someone other than the package's root, or came
+after the admission expired, no confirmed cited result, and an author who
+also evaluated. For `per-awardee`: a missing or
 out-of-range `max_awards`, `max_awards` on a `first` quest, a claimant
 share, a rule without a keyed role, a key that names the quest version or
 another key instead of the reproducer, a `first` award keyed to a
@@ -852,6 +900,8 @@ reproducer, one reproducer paid twice, a quest version over its
 `max_awards`, and a revocation of a keyed award.
 `crates/nostr/src/xp/tests.rs`, `crates/nostr/src/xp/reproduce/tests.rs`,
 `crates/nostr/src/xp/playtest/tests.rs`,
+`crates/nostr/src/xp/eval_check/tests.rs`,
+`crates/nostr/src/xp/eval_adopt/tests.rs`,
 `crates/xp-ledger/src/tests.rs`, and
 `crates/microcoder/src/xpnet/tests.rs` hold them.
 
