@@ -45,6 +45,20 @@ struct ConnectScreen: Decodable, Equatable {
     let computer: String?
     let done: String?
     let max_bytes: Int
+    /// Computers on this Wi-Fi, above the camera, while it scans.
+    let nearby: Nearby?
+    /// The six-digit code to compare with the computer's.
+    let code: String?
+
+    struct Nearby: Decodable, Equatable {
+        struct Row: Decodable, Equatable, Hashable {
+            let id: String
+            let label: String
+        }
+        let title: String
+        let computers: [Row]
+        let empty: String?
+    }
 }
 
 /// The native Computers list, while Coder's shared Computers screens are on
@@ -560,6 +574,7 @@ final class MobileBridge: ObservableObject {
     func connectOpen() { send(["op": "connect_open"]) }
     func connectCode(_ value: String) { send(["op": "connect_code", "value": value]) }
     func connectClose() { send(["op": "connect_close"]) }
+    func connectNearby(_ id: String) { send(["op": "connect_nearby", "id": id]) }
 
     /// Answer or close an input request, or send from a composer.
     func submit(_ surface: String, token: String, value: String) {

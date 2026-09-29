@@ -37,6 +37,7 @@ mod conversation;
 mod eval_cards;
 mod first_run;
 mod gym;
+mod nearby;
 // Debug builds only: offline fixtures for simulator and emulator screenshots.
 // A release build does not compile them.
 #[cfg(any(debug_assertions, test))]

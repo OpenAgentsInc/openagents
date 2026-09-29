@@ -65,6 +65,12 @@ pub struct View {
     pub done: Option<&'static str>,
     /// The longest code the host hands over.
     pub max_bytes: usize,
+    /// **Nearby**: computers on this Wi-Fi, above the camera, while it
+    /// scans ([`crate::nearby`]).
+    pub nearby: Option<crate::nearby::View>,
+    /// The six-digit code to compare with the computer's, while a nearby
+    /// pairing waits for the click there.
+    pub code: Option<String>,
 }
 
 type Slot = Arc<Mutex<Option<Result<Paired, PairFailure>>>>;
@@ -85,6 +91,9 @@ pub struct Connect {
     runtime: Option<Handle>,
     /// A computer paired here, for the app to reload and prefer.
     landed: Option<Paired>,
+    nearby: crate::nearby::Nearby,
+    /// Whether the app is in front; the phone listens only then.
+    active: bool,
 }
 
 impl std::fmt::Debug for Connect {
@@ -103,10 +112,74 @@ impl Connect {
         Self {
             phase: Phase::Closed,
             notice: None,
+            nearby: crate::nearby::Nearby::new(None, runtime.clone()),
             pair,
             runtime,
             landed: None,
+            active: true,
         }
+    }
+
+    /// Also list computers on this Wi-Fi through `finder`.
+    #[must_use]
+    pub fn with_nearby(mut self, finder: Option<Arc<dyn crate::nearby::Finder>>) -> Self {
+        self.nearby = crate::nearby::Nearby::new(finder, self.runtime.clone());
+        self
+    }
+
+    /// The app came to the front or left it.
+    pub fn set_active(&mut self, active: bool) {
+        self.active = active;
+        self.listen();
+    }
+
+    /// Whether the phone listens for nearby computers now.
+    #[must_use]
+    pub fn listening(&self) -> bool {
+        self.nearby.listening()
+    }
+
+    /// The nearby list, for tests that add computers to it.
+    #[cfg(test)]
+    pub(crate) fn nearby_list(&self) -> crate::nearby::List {
+        self.nearby.list()
+    }
+
+    /// Listen exactly while the scanner shows and the app is in front.
+    fn listen(&mut self) {
+        if self.active && matches!(self.phase, Phase::Scan) {
+            self.nearby.start();
+        } else {
+            self.nearby.stop();
+        }
+    }
+
+    /// A tap on a computer in **Nearby**.
+    pub fn nearby(&mut self, id: &str) {
+        if !matches!(self.phase, Phase::Scan) {
+            return;
+        }
+        let Some(runtime) = self.runtime.clone() else {
+            return;
+        };
+        let Some(task) = self.nearby.choose(id) else {
+            self.notice = Some("That computer isn't on this Wi-Fi anymore.".into());
+            return;
+        };
+        self.start(runtime, task);
+    }
+
+    fn start(&mut self, runtime: Handle, task: Pairing) {
+        let slot: Slot = Arc::default();
+        let filled = slot.clone();
+        runtime.spawn(async move {
+            let outcome = task.await;
+            *lock(&filled) = Some(outcome);
+            crate::wake::computers();
+        });
+        self.notice = None;
+        self.phase = Phase::Connecting { slot };
+        self.listen();
     }
 
     /// Show `SCR-22`. A pairing already in flight keeps its screen.
@@ -115,6 +188,7 @@ impl Connect {
             self.phase = Phase::Scan;
             self.notice = None;
         }
+        self.listen();
     }
 
     /// Close the screens. A pairing in flight still finishes, and a computer
@@ -122,6 +196,7 @@ impl Connect {
     pub fn close(&mut self) {
         self.phase = Phase::Closed;
         self.notice = None;
+        self.listen();
     }
 
     /// A scanned or pasted code.
@@ -140,16 +215,8 @@ impl Connect {
             self.notice = Some("Computers are unavailable on this phone right now.".into());
             return;
         };
-        let slot: Slot = Arc::default();
         let task = pair.pair(scanned.text().to_owned());
-        let filled = slot.clone();
-        runtime.spawn(async move {
-            let outcome = task.await;
-            *lock(&filled) = Some(outcome);
-            crate::wake::computers();
-        });
-        self.notice = None;
-        self.phase = Phase::Connecting { slot };
+        self.start(runtime, task);
     }
 
     /// Move a finished pairing on: `SCR-23` when it landed, back to the
@@ -158,6 +225,9 @@ impl Connect {
     pub fn poll(&mut self) -> Option<Paired> {
         if let Phase::Connecting { slot } = &self.phase {
             let outcome = lock(slot).take();
+            if outcome.is_some() {
+                self.nearby.finished();
+            }
             match outcome {
                 None => {}
                 Some(Ok(paired)) => {
@@ -171,6 +241,7 @@ impl Connect {
                         None => failure.message,
                     });
                     self.phase = Phase::Scan;
+                    self.listen();
                 }
             }
         }
@@ -197,21 +268,31 @@ impl Connect {
             computer: None,
             done: None,
             max_bytes: MAX_CODE_BYTES,
+            nearby: self.nearby.view(),
+            code: None,
         };
         match &self.phase {
             Phase::Closed => None,
             Phase::Scan => Some(scanning(self.notice.clone())),
-            Phase::Connecting { .. } => Some(View {
-                stage: Stage::Connecting,
-                title: "Connect a computer",
-                prompt: None,
-                paste: None,
-                get_app: None,
-                notice: Some("Connecting to your computer…".into()),
-                computer: None,
-                done: None,
-                max_bytes: MAX_CODE_BYTES,
-            }),
+            Phase::Connecting { .. } => {
+                let (notice, code) = self
+                    .nearby
+                    .progress()
+                    .unwrap_or_else(|| ("Connecting to your computer…".into(), None));
+                Some(View {
+                    stage: Stage::Connecting,
+                    title: "Connect a computer",
+                    prompt: None,
+                    paste: None,
+                    get_app: None,
+                    notice: Some(notice),
+                    computer: None,
+                    done: None,
+                    max_bytes: MAX_CODE_BYTES,
+                    nearby: None,
+                    code,
+                })
+            }
             Phase::Connected { paired } => Some(View {
                 stage: Stage::Connected,
                 title: "Connected",
@@ -222,6 +303,8 @@ impl Connect {
                 computer: Some(paired.label.clone()),
                 done: Some("Done"),
                 max_bytes: MAX_CODE_BYTES,
+                nearby: None,
+                code: None,
             }),
         }
     }

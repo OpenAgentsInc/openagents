@@ -189,6 +189,10 @@ pub enum Request {
     },
     /// Close `SCR-22` or `SCR-23` (**Done**).
     ConnectClose,
+    /// A tap on a computer in **Nearby** on `SCR-22`.
+    ConnectNearby {
+        id: String,
+    },
     /// Open a computer from the native Computers list.
     ComputersOpen {
         host: String,
@@ -627,6 +631,9 @@ pub struct Packet {
     /// **Connect a computer** (`SCR-22`) or **Connected** (`SCR-23`), while
     /// it shows. The host draws the camera and the paste field.
     pub connect: Option<crate::connect::View>,
+    /// The phone listens for computers on its Wi-Fi: the Android host
+    /// holds its multicast lock exactly while this is set.
+    pub nearby_listening: bool,
     pub tailnet: Option<serde_json::Value>,
     /// The Tailnet surface is reading in the background.
     pub tailnet_loading: bool,
@@ -990,8 +997,13 @@ impl App {
             notices,
             world: None,
             connect: crate::connect::Connect::new(
-                pairing.map(|pairing| Arc::new(LivePair(pairing)) as Arc<dyn crate::connect::Pair>),
+                pairing
+                    .clone()
+                    .map(|pairing| Arc::new(LivePair(pairing)) as Arc<dyn crate::connect::Pair>),
                 Some(handle),
+            )
+            .with_nearby(
+                pairing.map(|pairing| Arc::new(pairing) as Arc<dyn crate::nearby::Finder>),
             ),
         })
     }
@@ -1200,6 +1212,7 @@ impl App {
             }
             Request::Lifecycle { active } => {
                 crate::wake::set_active(active);
+                self.connect.set_active(active);
                 if let Some(computers) = self.computers.as_mut() {
                     let _ = computers.set_active(active);
                 }
@@ -1247,6 +1260,7 @@ impl App {
             Request::ConnectOpen => self.connect.open(),
             Request::ConnectCode { value } => self.connect.code(&value),
             Request::ConnectClose => self.connect.close(),
+            Request::ConnectNearby { id } => self.connect.nearby(&id),
             Request::ComputersRefresh => {
                 if let Some(computers) = self.computers.as_mut() {
                     let _ = computers.refresh();
@@ -1825,6 +1839,7 @@ impl App {
             },
             // After `coder_go`, which may have opened it.
             connect: self.connect.view(),
+            nearby_listening: self.connect.listening(),
             tailnet,
             tailnet_loading: {
                 let state = self.lock_tailnet();

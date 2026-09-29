@@ -74,7 +74,15 @@ class ConnectScreen(
         when (stage) {
             "connected" -> connected(body, screen)
             "connecting" -> {
-                body.add(ProgressBar(activity).apply { contentDescription = "Connecting" }, 24, -2)
+                val code = screen.textOrNull("code")
+                if (code != null) {
+                    body.add(activity.text(code, 44f).apply {
+                        typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
+                        gravity = Gravity.CENTER; tag = "connect-code"
+                    }, 24)
+                } else {
+                    body.add(ProgressBar(activity).apply { contentDescription = "Connecting" }, 24, -2)
+                }
                 screen.textOrNull("notice")?.let { body.add(activity.text(it, 17f).apply { tag = "connect-connecting" }, 12) }
             }
             else -> scan(body, screen)
@@ -84,6 +92,7 @@ class ConnectScreen(
 
     private fun scan(body: LinearLayout, screen: JSONObject) {
         val maxBytes = screen.optInt("max_bytes", 1024)
+        if (!pasting) screen.optJSONObject("nearby")?.let { nearby(body, it) }
         if (!pasting) {
             val camera = activity.column()
             body.add(camera, 12)
@@ -118,6 +127,26 @@ class ConnectScreen(
             }
         }
         screen.textOrNull("get_app")?.let { body.add(activity.text(it, 13f, Palette.SECONDARY), 16) }
+    }
+
+    /**
+     * Computers on this Wi-Fi. Anyone can name a computer anything, so a tap
+     * only starts a pairing the computer approves after the codes match.
+     */
+    private fun nearby(body: LinearLayout, nearby: JSONObject) {
+        body.add(activity.text(nearby.optString("title"), 17f).apply { setTypeface(typeface, Typeface.BOLD) }, 12)
+        val computers = nearby.optJSONArray("computers")
+        for (index in 0 until (computers?.length() ?: 0)) {
+            val row = computers!!.getJSONObject(index)
+            val id = row.getString("id")
+            body.add(activity.text(row.getString("label"), 17f).apply {
+                background = activity.rounded(Palette.RAISED, 10f)
+                setPadding(activity.dp(12), activity.dp(12), activity.dp(12), activity.dp(12))
+                tag = "connect-nearby-${row.getString("label")}"
+                setOnClickListener { bridge.connectNearby(id) }
+            }, 8)
+        }
+        nearby.textOrNull("empty")?.let { body.add(activity.text(it, 13f, Palette.SECONDARY), 8) }
     }
 
     private fun connected(body: LinearLayout, screen: JSONObject) {

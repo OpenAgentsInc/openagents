@@ -30,6 +30,7 @@ use crate::{Error, Result, unix_time};
 mod connector;
 pub mod iroh;
 mod link;
+pub mod nearby;
 mod order;
 mod websocket;
 

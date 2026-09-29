@@ -69,6 +69,8 @@ ts_control_serde = "=0.6.1"
 ts_keys = { version = "=0.6.1", features = ["serde"] }
 tokio = { version = "1", features = ["rt-multi-thread", "time", "io-util", "sync", "macros"] }
 url = "2"
+# Nearby on Connect a computer: the mDNS listing's event stream.
+futures-util = "0.3"
 
 # The Android host's JNI surface (`src/android.rs`).
 [target.'cfg(target_os = "android")'.dependencies]
@@ -80,6 +82,8 @@ libc = "0.2"
 ndk-sys = "0.6"
 
 [dev-dependencies]
+# Nearby computers' iroh keys in tests.
+openagents-connect = { path = "../openagents-connect" }
 # Signed BOLT11 invoices for the agent-spending tests.
 nostr = { path = "../nostr", features = ["test-invoice"] }
 tempfile = "3"

@@ -667,6 +667,7 @@ impl Terminals {
 }
 
 mod directory;
+mod nearby;
 #[cfg(feature = "ssh")]
 mod ssh;
 

@@ -151,3 +151,64 @@ async fn dont_connect_grants_nothing() {
     );
     host.running.shutdown().await;
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn the_phone_keeps_only_the_nearby_computers_approval() {
+    use coder_host::client::iroh::Dialer;
+    use coder_host::client::nearby::{self as phone_nearby, NearbyFailure};
+
+    let host = host().await;
+    let phone = Phone::new().await;
+    let dialer = Dialer::loopback([9; 32]);
+    let computer = listed(&host);
+    let clicker = async {
+        let prompt = prompt(&host).await;
+        call(
+            &host.socket,
+            Op::NearbyDecide {
+                id: prompt.id,
+                connect: true,
+                terminal: true,
+            },
+        )
+        .await
+        .unwrap();
+    };
+    let (enrolled, ()) = tokio::join!(
+        phone_nearby::pair(
+            &dialer,
+            &computer,
+            "Kai's iPhone",
+            &phone.secret,
+            POLICY,
+            |_| {}
+        ),
+        clicker
+    );
+    let enrolled = enrolled.unwrap();
+    assert_eq!(enrolled.access.grant.host, host.running.host_key());
+    assert_eq!(
+        enrolled.access.grant.rights.to_list(),
+        "observe,operate,terminal"
+    );
+    assert_eq!(enrolled.label, "Studio Mac");
+    assert_eq!(
+        enrolled.route.endpoint,
+        nearby::hex(host.addr().id.as_bytes())
+    );
+
+    // The same envelope named as another computer's, or opened by another
+    // phone, is refused.
+    let event = serde_json::to_value(&enrolled.access.authorization).unwrap();
+    let other = support::key();
+    assert_eq!(
+        phone_nearby::accept(&pubkey(&other), now(), event.clone(), &phone.secret, POLICY)
+            .unwrap_err(),
+        NearbyFailure::Mismatch
+    );
+    assert_eq!(
+        phone_nearby::accept(host.running.host_key(), now(), event, &other, POLICY).unwrap_err(),
+        NearbyFailure::Mismatch
+    );
+    host.running.shutdown().await;
+}

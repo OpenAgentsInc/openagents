@@ -300,6 +300,7 @@ class MobileBridge(private val context: Context, private val computersFixture: B
     fun connectOpen() = send(json("op" to "connect_open"))
     fun connectCode(value: String) = send(json("op" to "connect_code", "value" to value))
     fun connectClose() = send(json("op" to "connect_close"))
+    fun connectNearby(id: String) = send(json("op" to "connect_nearby", "id" to id))
     fun refreshComputers() = send(json("op" to "computers_refresh"))
     fun snapshot() = send(json("op" to "snapshot"))
 

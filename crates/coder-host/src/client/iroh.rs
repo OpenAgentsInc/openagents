@@ -391,7 +391,7 @@ pub async fn open_link(
 /// The connect-code rights: `observe` and `operate`, and `terminal` when
 /// the computer allowed it before showing the code; never `review` or an
 /// access right.
-fn connect_rights(rights: &Rights) -> bool {
+pub(crate) fn connect_rights(rights: &Rights) -> bool {
     let plain = Rights::new([Right::Observe, Right::Operate]).ok();
     let terminal = Rights::new([Right::Observe, Right::Operate, Right::Terminal]).ok();
     Some(rights) == plain.as_ref() || Some(rights) == terminal.as_ref()

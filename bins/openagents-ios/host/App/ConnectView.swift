@@ -54,6 +54,9 @@ struct ConnectView: View {
 
     private var scanning: some View {
         VStack(alignment: .leading, spacing: 12) {
+            if let nearby = screen.nearby, !pasting {
+                nearbyList(nearby)
+            }
             if !pasting {
                 InlineQRScanner(prompt: screen.prompt ?? "",
                                 accept: ConnectCode.accept(maximumBytes: screen.max_bytes)) { code in
@@ -100,9 +103,41 @@ struct ConnectView: View {
         }
     }
 
+    /// Computers on this Wi-Fi. Anyone can name a computer anything, so a
+    /// tap only starts a pairing the computer must approve after the codes
+    /// match.
+    private func nearbyList(_ nearby: ConnectScreen.Nearby) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(nearby.title).font(.headline)
+            ForEach(nearby.computers, id: \.self) { row in
+                Button {
+                    bridge.connectNearby(row.id)
+                } label: {
+                    Label(row.label, systemImage: "desktopcomputer")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(12)
+                        .background(Color(white: 0.12), in: RoundedRectangle(cornerRadius: 10))
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("connect-nearby-\(row.label)")
+            }
+            if let empty = nearby.empty {
+                Text(empty).font(.footnote).foregroundStyle(.secondary)
+            }
+        }
+        .accessibilityIdentifier("connect-nearby")
+    }
+
     private var connecting: some View {
         VStack(alignment: .leading, spacing: 12) {
-            ProgressView()
+            if let code = screen.code {
+                Text(code)
+                    .font(.system(size: 44, weight: .bold, design: .monospaced))
+                    .frame(maxWidth: .infinity)
+                    .accessibilityIdentifier("connect-code")
+            } else {
+                ProgressView()
+            }
             if let notice = screen.notice { Text(notice).font(.headline) }
         }
         .accessibilityIdentifier("connect-connecting")
