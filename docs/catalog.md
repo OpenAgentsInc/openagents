@@ -327,7 +327,7 @@ files are included below.
 
 | Document | Role | Topic |
 | --- | --- | --- |
-| [essays/2026-09-29-test-time-capabilities.md](essays/2026-09-29-test-time-capabilities.md) | Design / assessment | Test-time compute, and the capabilities we can add at test time |
+| [essays/2026-09-29-test-time-capabilities.md](essays/2026-09-29-test-time-capabilities.md) | Design / assessment | Test-Time Capabilities |
 
 ## extensions
 

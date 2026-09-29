@@ -847,7 +847,7 @@ claim that adding participants necessarily increases quality or revenue.
 
 ## Test-time capabilities
 
-[Test-time compute, and the capabilities we can add at test time](essays/2026-09-29-test-time-capabilities.md)
+[Test-Time Capabilities](essays/2026-09-29-test-time-capabilities.md)
 proposes these terms. Each definition is the general, vendor-neutral
 concept from the essay's [Part I](essays/2026-09-29-test-time-capabilities.md#part-i-the-concept); the "In
 OpenAgents" clause is our implementation from

@@ -1,4 +1,4 @@
-# Test-time compute, and the capabilities we can add at test time
+# Test-Time Capabilities
 
 Essay, 2026-09-29. It states a thesis and proposes vocabulary. It has three
 parts. [Part I](#part-i-the-concept) states the concept in general terms,
@@ -25,6 +25,12 @@ text says so.
 - **Cheap judgments should come before expensive thinking,** and results
   others have reproduced can be shared, so that capabilities compound across
   a network of people and agents. Both are stated as hypotheses to measure.
+- **Most of the mechanisms are prior art; the chain is the proposal.**
+  Tools, retrieval, stored skills, memories, routing, and other agents are
+  all known to help fixed-weight models. What's proposed here is one
+  accountable path for all of them: artifact, admission, controlled delta,
+  reproduction, adoption, credit. [Related work](#related-work-and-prior-art)
+  says what came before.
 - **We built an implementation** in OpenAgents, with first measurements and
   no adoption yet; Part II has it, term by term. The words are also in the
   [glossary](../glossary.md#test-time-capabilities).
@@ -39,6 +45,7 @@ text says so.
   - [Evals as the unit of account](#evals-as-the-unit-of-account)
   - [Cheap judgments before expensive thinking](#cheap-judgments-before-expensive-thinking)
   - [How capabilities compound across a network](#how-capabilities-compound-across-a-network)
+  - [Related work and prior art](#related-work-and-prior-art)
   - [Open questions for the field](#open-questions-for-the-field)
 - [Part II: Our implementation](#part-ii-our-implementation)
   - [Where each term lives in OpenAgents](#where-each-term-lives-in-openagents)
@@ -131,14 +138,44 @@ file here?" no matter how long it thinks. Give it a tool that maps the
 repository, and it can. The weights didn't change; the agent's capability
 did. The same is true of a written guide it reads before a task, a
 knowledge entry about a recurring mistake, or a stronger agent it hands a
-well-prepared briefing to. Tool use as a learned behavior is well studied
+well-prepared briefing to. None of these mechanisms is new. Interleaving
+reasoning with actions against external tools is the bridge from
+test-time *reasoning* to test-time *acting*
+([Yao et al., 2023](https://arxiv.org/abs/2210.03629)); tool use as a
+learned behavior is well studied
 ([Schick et al., 2023](https://arxiv.org/abs/2302.04761)), as are skill
 libraries an agent grows as it works
-([Wang et al., 2023](https://arxiv.org/abs/2305.16291)) and retrieval that
+([Wang et al., 2023](https://arxiv.org/abs/2305.16291)), retrieval that
 brings documents into generation
-([Lewis et al., 2020](https://arxiv.org/abs/2005.11401)). What this essay
-adds is a discipline for treating each of these as a measured, shareable
-unit.
+([Lewis et al., 2020](https://arxiv.org/abs/2005.11401)), memories of
+past attempts ([Shinn et al., 2023](https://arxiv.org/abs/2303.11366)),
+learned routing between models
+([Ong et al., 2025](https://arxiv.org/abs/2406.18665)), and conversations
+among agents ([Wu et al., 2023](https://arxiv.org/abs/2308.08155)).
+[Related work](#related-work-and-prior-art) surveys them.
+
+What this essay proposes is narrower. Prior work shows that tools,
+retrieved knowledge, stored skills, memories, routing, and other agents
+can improve fixed-weight models at inference time. We propose treating
+these mechanisms uniformly as versioned *candidate* capabilities whose
+contribution is established by a controlled with-and-without evaluation,
+independently reproduced, and only then eligible for adoption into a
+shared default agent. The chain is:
+
+**artifact → admission → controlled delta → reproduction → adoption →
+credit.**
+
+Pieces of it exist: paired with-and-without evaluation of agent skills
+([Li et al., 2026](https://arxiv.org/abs/2602.12670);
+[Kevin et al., 2026](https://arxiv.org/abs/2608.20614)), and signed,
+verifiable provenance for software artifacts
+([SLSA](https://slsa.dev/spec/v1.0/provenance);
+[Torres-Arias et al., 2019](https://www.usenix.org/conference/usenixsecurity19/presentation/torres-arias)).
+As far as our search went, we found no prior work that puts the whole
+chain together: exact artifact identity, a per-component controlled delta,
+reproduction by someone other than the author, adoption into a shared
+default, and credit tied to those events. That is a claim about our
+search, not about the literature's limits.
 
 A **test-time capability** is an ability an agent gains at inference time,
 without a weight update, by admitting something into the run. Something is
@@ -154,6 +191,25 @@ five general sources:
 | Knowledge | Cited entries (methods, edge cases, known mistakes) retrieved and filtered for the task |
 | Delegation | Another agent, briefed with selected evidence |
 | Typed judgment | A fast, cheap decision that picks which of the above to use, and when |
+
+Two boundary cases follow from the definition, rather than needing new
+rows. First, **a capability need not be a single component.** An
+orchestration policy over capabilities, such as planning a graph of
+function calls and running independent ones in parallel
+([Kim et al., 2024](https://arxiv.org/abs/2312.04511)), is itself a
+candidate, measured the same way. Second, **knowledge the agent produced
+itself is still a candidate.** Reflexion keeps an agent's own verbal
+reflections on failed attempts in memory for its next try
+([Shinn et al., 2023](https://arxiv.org/abs/2303.11366)); ExpeL extracts
+insights from an agent's past trajectories and recalls them at inference,
+with no weight update ([Zhao et al., 2024](https://arxiv.org/abs/2308.10144)).
+Within one episode, a reflection is just the agent's reasoning. Once it is
+stored, versioned, and admitted to a later run, it is a knowledge
+component like any other, and the same test applies: it's a capability
+only if the with-and-without comparison shows it. Self-authorship earns no
+exemption. In SkillsBench's first release, skills the agent wrote for
+itself gave no benefit on average, while curated ones did
+([Li et al., 2026](https://arxiv.org/abs/2602.12670v1)).
 
 The last row is the one that makes the others usable. An agent with fifty
 tools and no good way to decide which to use is worse than an agent with
@@ -195,6 +251,30 @@ measured. Discovering, installing, enabling, granting access to, and
 admitting a component are separate decisions; installing one should grant
 nothing.
 
+Admission is also a security boundary, not only a performance decision.
+A tool that reads untrusted data (email, web pages, files someone else
+wrote) is a path for prompt injection, in which data a tool returns hijacks
+the agent into a task nobody asked for. AgentDojo measures exactly this,
+with 97 realistic tasks and 629 security test cases for agents that call
+tools over untrusted data
+([Debenedetti et al., 2024](https://arxiv.org/abs/2406.13352)). So a
+candidate should be evaluated for utility *and* for the authority it
+exercises, and a component's own description of itself is not evidence:
+the Model Context Protocol tells clients to treat tool annotations as
+untrusted unless they come from trusted servers
+([MCP specification, 2025](https://modelcontextprotocol.io/specification/2025-06-18/server/tools)).
+
+The idea of naming exact bytes has a long lineage in software supply
+chains. in-toto lets an end user verify each step that produced a piece of
+software ([Torres-Arias et al., 2019](https://www.usenix.org/conference/usenixsecurity19/presentation/torres-arias));
+SLSA provenance is "verifiable information about software artifacts
+describing where, when and how something was produced," written as an
+in-toto attestation ([SLSA, v1.0](https://slsa.dev/spec/v1.0/provenance));
+Sigstore makes signing those artifacts cheap
+([Newman et al., 2022](https://dl.acm.org/doi/10.1145/3548606.3560596)).
+Capability admission applies reproducible artifact provenance to agent
+capabilities.
+
 **How to measure it:** record a digest of the locked component set in every
 result, so a result names exactly what it measured.
 
@@ -213,6 +293,25 @@ let a written rule decide the verdict, for example "better only if more
 tests pass and the gain clears the spread between repeats, with cost and
 time within a stated bound."
 
+Repeats matter because agents are inconsistent. τ-bench grades an agent by
+the database state it leaves behind, not its text, and its pass^k metric
+asks whether the agent succeeds on *all* of k trials; even strong
+function-calling agents scored pass^8 below 25 % in its retail domain
+([Yao et al., 2025](https://arxiv.org/abs/2406.12045)). Final pass rates
+can also hide where a capability helps: AgentBoard's progress rate
+measures incremental advancement through a multi-turn task
+([Ma et al., 2024](https://arxiv.org/abs/2401.13178)), which suggests
+process-level deltas (fewer wasted actions, earlier recovery, the right
+tool sooner) alongside final ones. Paired evaluation of a single component
+type already exists for agent skills: SkillsBench runs matched no-skills
+and curated-skills conditions and reports curated skills raising the
+average pass rate from 33.9 % to 50.5 %, with gains ranging from 4.1 to
+25.7 points by configuration ([Li et al., 2026](https://arxiv.org/abs/2602.12670));
+ACES measures "skill lift" from paired live trials of 145 skills from
+enterprise repositories and public catalogs ([Kevin et al., 2026](https://arxiv.org/abs/2608.20614)). The
+spread across configurations is the point: a delta belongs to its
+baseline.
+
 #### 4. Reach and restraint
 
 **Definition:** *reach* is how often the agent actually uses a capability
@@ -222,6 +321,20 @@ capability alone when a test says it shouldn't.
 **Why it matters:** an installed capability the agent never invokes
 changes no outcome, so it measures as no capability at all. One it invokes
 everywhere can make unrelated work worse.
+
+Selection becomes its own problem as the set of capabilities grows.
+ToolLLM trained a retriever to pick among 16,464 real APIs
+([Qin et al., 2024](https://arxiv.org/abs/2307.16789)); AnyTool used a
+hierarchical retriever, a solver, and self-reflection that re-selects when
+a first attempt fails ([Du et al., 2024](https://arxiv.org/abs/2402.04253));
+Gorilla paired a model with retrieval over API documentation so it can
+follow API changes at test time and hallucinate fewer calls
+([Patil et al., 2024](https://arxiv.org/abs/2305.15334)). Their shared
+lesson is that *having* a capability available and *successfully
+selecting and calling it* are different things. Reach can fail inside a
+capability too: on SkillsBench, agent runs satisfied only 38.66 % to
+45.51 % of the behavioral constraints extracted from the skills they were
+given ([Tan et al., 2026](https://arxiv.org/abs/2606.20659)).
 
 **How to measure it:** mark each test should-use or should-not-use, and
 report outcomes per test in both arms.
@@ -236,6 +349,17 @@ than the work it can avoid.
 compute, applied one level up: before allocating thinking, decide whether
 the turn needs a large model at all, and which capability should handle it.
 
+Model routing and cascades are the close prior art. FrugalGPT learns which
+combination of models to query for each input, and reports matching the
+best single model with up to 98 % lower cost
+([Chen et al., 2024](https://arxiv.org/abs/2305.05176)); RouteLLM learns
+from preference data when a request needs the stronger of two models, and
+reports cost reductions of over two times in some cases without hurting
+quality ([Ong et al., 2025](https://arxiv.org/abs/2406.18665)). The
+proposal here is not query routing as such. It is treating one cheap,
+typed judgment as a general allocation mechanism over *every* capability
+source: models, tools, knowledge, and delegation.
+
 **How to measure it:** the judgment's latency and cost, and the precision of
 whatever it serves without calling the large model.
 
@@ -248,6 +372,14 @@ same task.
 **Why it matters:** the strongest capability available for a task is
 sometimes another agent. Treating it as a capability means its
 contribution is measured, not assumed.
+
+Delegation as a mechanism is well explored: HuggingGPT used a language
+model as a controller that plans, picks specialist models, and runs them
+([Shen et al., 2023](https://arxiv.org/abs/2303.17580)), and AutoGen
+builds applications from agents that converse to finish a task
+([Wu et al., 2023](https://arxiv.org/abs/2308.08155)). The added
+requirement here is that a delegate's contribution gets the same
+with-and-without accounting as a tool's.
 
 **How to measure it:** the same outcome, cost, and time as any attempt,
 compared with the attempt made without delegating.
@@ -265,6 +397,16 @@ decides which claims deserve to spread.
 **How to measure it:** an independent rerun that publishes its own result,
 citing the original, and confirms on a matching verdict or disputes
 otherwise, with both kept visible.
+
+Two traditions meet here. Reproducible builds let anyone rebuild a binary
+from its source and check it matches bit for bit, so trust doesn't rest on
+one builder ([Lamb and Zacchiroli, 2022](https://arxiv.org/abs/2104.06020)).
+And the evaluator is itself something to evaluate: Agent-as-a-Judge uses
+an agentic evaluator that inspects intermediate steps, not only the final
+output, and checks that judge against human judgments
+([Zhuge et al., 2025](https://arxiv.org/abs/2410.10934)). A verified
+capability needs both: a rerun by someone else, and a grader that has
+itself been checked.
 
 #### 8. Capability adoption
 
@@ -329,7 +471,16 @@ is checked as a whole; evals are how to decide what goes into it.
 
 Evals also have failure modes. A grader is a piece of software and can be
 wrong, which can flip a verdict by chance. It deserves the same scrutiny,
-and the same versioning, as the component under test.
+and the same versioning, as the component under test. The tool-use
+literature has a clean example. ToolBench's original pass rate counted
+queries judged "non-solvable" as passes, so when the tool retriever
+returned irrelevant candidates, unsolved queries were labeled non-solvable
+and the rate went *up*: with randomly chosen APIs it reached 99.0 %.
+AnyTool's authors found this, computed the rate over solved and unsolved
+queries only, and kept only queries the tool pool could solve
+([Du et al., 2024](https://arxiv.org/abs/2402.04253)). A metric that
+rewards failing to reach the right tool is the worst case for a
+capability eval.
 
 ### Cheap judgments before expensive thinking
 
@@ -355,7 +506,10 @@ hypothesis to test.
 3. **Capability can substitute for compute.** A tool that answers directly
    can beat a model that must search for the answer, on both time and
    correctness. Time and cost belong in the report as notes, never as the
-   verdict, because a faster wrong answer isn't a capability.
+   verdict, because a faster wrong answer isn't a capability. LATM is an
+   early instance: a strong model writes a reusable tool once, and a
+   lighter model uses it, matching the strong model in both roles at lower
+   cost ([Cai et al., 2024](https://arxiv.org/abs/2305.17126)).
 
 ### How capabilities compound across a network
 
@@ -386,6 +540,112 @@ What a network would add:
 This is a hypothesis. Whether adding participants makes an agent
 measurably better has to be shown, measured the way the lexicon says.
 
+### Related work and prior art
+
+Every mechanism in the lexicon has prior art. This section groups it by
+theme and says, for each, what the lexicon takes from it and what it adds.
+
+**Acting and tools.** ReAct interleaves reasoning traces with actions
+against external sources, and reports absolute success-rate gains of 34 and
+10 points over imitation and reinforcement learning baselines on two
+interactive benchmarks, prompted with one or two examples
+([Yao et al., 2023](https://arxiv.org/abs/2210.03629)). Toolformer teaches
+a model to decide when to call an API
+([Schick et al., 2023](https://arxiv.org/abs/2302.04761)). Agents can make
+their own tools: LATM has a strong model write reusable tools for a lighter
+one ([Cai et al., 2024](https://arxiv.org/abs/2305.17126)), and CRAFT
+builds toolsets from solutions, with a validation step for correctness
+before a snippet enters the set
+([Yuan et al., 2024](https://arxiv.org/abs/2309.17428)). SWE-agent shows
+that the interface an agent is given changes what it can do: a custom
+agent-computer interface for editing, navigating, and testing a repository
+([Yang et al., 2024](https://arxiv.org/abs/2405.15793)). The lexicon takes
+these as the things being admitted; what it adds is the with-and-without
+test each must pass.
+
+**Memory and experience.** Reflexion stores verbal reflections on task
+feedback in memory for later attempts, and reports 91 % pass@1 on
+HumanEval ([Shinn et al., 2023](https://arxiv.org/abs/2303.11366)). ExpeL
+gathers experience on training tasks, extracts natural-language insights,
+and recalls them at inference without parametric updates
+([Zhao et al., 2024](https://arxiv.org/abs/2308.10144)). Voyager grows a
+library of executable skills ([Wang et al., 2023](https://arxiv.org/abs/2305.16291)).
+These show the mechanism behind a knowledge capability predates this
+vocabulary. What the lexicon adds is provenance, versioning, an
+independent with-and-without result, and an adoption step; see the
+[boundary case](#the-thesis-capability-is-something-you-can-acquire-at-test-time)
+on self-produced knowledge.
+
+**Selection at scale.** ToolLLM ([Qin et al., 2024](https://arxiv.org/abs/2307.16789)),
+AnyTool ([Du et al., 2024](https://arxiv.org/abs/2402.04253)), and Gorilla
+([Patil et al., 2024](https://arxiv.org/abs/2305.15334)) treat choosing
+among thousands of APIs, and calling them correctly, as a problem of its
+own. That is [reach and restraint](#4-reach-and-restraint) at scale.
+
+**Routing and cascades.** FrugalGPT ([Chen et al., 2024](https://arxiv.org/abs/2305.05176))
+and RouteLLM ([Ong et al., 2025](https://arxiv.org/abs/2406.18665)) spend
+a strong model only where a cheap one won't do. The
+[judgment budget](#5-judgment-budget) generalizes the decision from
+*which model* to *which capability*.
+
+**Orchestration and delegation.** LLMCompiler plans function calls as a
+graph and runs independent ones in parallel, reporting up to 3.7 times
+lower latency, 6.7 times lower cost, and about 9 % higher accuracy than
+ReAct ([Kim et al., 2024](https://arxiv.org/abs/2312.04511)). HuggingGPT
+([Shen et al., 2023](https://arxiv.org/abs/2303.17580)) and AutoGen
+([Wu et al., 2023](https://arxiv.org/abs/2308.08155)) coordinate models
+and agents. A capability can be an orchestration policy over other
+capabilities, measured as one unit.
+
+**Evaluation reliability and process metrics.** τ-bench checks the final
+database state and introduces pass^k for consistency across trials
+([Yao et al., 2025](https://arxiv.org/abs/2406.12045)). AgentBoard adds a
+progress rate beyond final success ([Ma et al., 2024](https://arxiv.org/abs/2401.13178)).
+AnyTool found an evaluation protocol that inflated pass rates and revised
+it ([Du et al., 2024](https://arxiv.org/abs/2402.04253)). For skills
+specifically, SkillsBench ([Li et al., 2026](https://arxiv.org/abs/2602.12670))
+and ACES ([Kevin et al., 2026](https://arxiv.org/abs/2608.20614)) already
+run paired with-and-without trials, and skill coverage measures whether a
+run followed the skill it was given
+([Tan et al., 2026](https://arxiv.org/abs/2606.20659)). These are the
+closest prior art to the [capability delta](#3-capability-delta). They
+evaluate one component type; the lexicon applies the same test to every
+source and attaches it to identity, reproduction, and adoption.
+
+**Evaluators.** Agent-as-a-Judge evaluates agents with agents that inspect
+the intermediate process, on 55 development tasks with 365 hierarchical
+requirements ([Zhuge et al., 2025](https://arxiv.org/abs/2410.10934)). It
+is the direction for "evaluate the evaluator."
+
+**Security of admission.** AgentDojo shows that tools over untrusted data
+are a prompt-injection surface ([Debenedetti et al., 2024](https://arxiv.org/abs/2406.13352)).
+A survey of agent skills reports a campaign in which nearly 1,200
+malicious skills entered a major agent marketplace
+([Jiang et al., 2026](https://arxiv.org/abs/2602.20867)), and MalSkillBench
+finds that its strongest skill-specific detector, at 98.4 % recall on
+code injection, collapses on prompt-injection and agent-control attacks
+([Guo et al., 2026](https://arxiv.org/abs/2606.07131)). Admission has to
+weigh authority and safety, not utility alone, and a static scan is not
+enough.
+
+**Provenance.** in-toto ([Torres-Arias et al., 2019](https://www.usenix.org/conference/usenixsecurity19/presentation/torres-arias)),
+SLSA provenance ([SLSA, v1.0](https://slsa.dev/spec/v1.0/provenance)),
+Sigstore ([Newman et al., 2022](https://dl.acm.org/doi/10.1145/3548606.3560596)),
+and reproducible builds ([Lamb and Zacchiroli, 2022](https://arxiv.org/abs/2104.06020))
+give software artifacts verifiable identity, lineage, signatures, and
+independent rebuilds. Locks, digests, signed releases, and rerunnable
+evidence for capabilities are the same idea applied to agents.
+
+**What we did not find.** Surveys of skill libraries already call for
+provenance, rollback, and reporting standards
+([Li, 2026](https://arxiv.org/abs/2607.10113)). Within our search we found
+no work that joins the whole chain, artifact → admission → controlled
+delta → reproduction → adoption → credit, across tools, skills, knowledge,
+delegation, and judgment. ACES, the closest, runs paired trials on the
+current repository state and leaves thresholds to teams; it describes no
+pinned versions, no third-party reproduction, and no credit. We'd welcome
+pointers to work we missed.
+
 ### Open questions for the field
 
 - **Durability of adoption.** Does an adopted capability keep its delta on
@@ -405,6 +665,12 @@ measurably better has to be shown, measured the way the lexicon says.
   deltas people care about shrink.
 - **Grader quality.** Graders are code and make mistakes. How should they
   be checked the way results are?
+- **Process-level deltas.** Final pass rates hide where a capability
+  helps. Which trajectory measures (wasted actions, recovery, the step at
+  which the right tool is chosen) are stable enough to report as deltas?
+- **Safety of admission.** How should a candidate's delta be paired with a
+  measure of the authority it exercises and its exposure to injected
+  instructions, so a helpful but unsafe component isn't adopted?
 - **Compute and capability together.** How do test-time capabilities
   interact with more thinking? Can a tool let a cheaper model with less
   reasoning match a stronger one, and when does extra reasoning still pay on
@@ -501,7 +767,15 @@ Discovery, installation, enablement, grants, and admission are separate
 decisions in our [extension architecture](../extensions/architecture.md).
 An eval run holds the exact extension and Coder's question sets in its run
 locks, and every report records the lock digest. Installing a package
-grants nothing.
+grants nothing. The package design records exact resolved digests and
+source provenance in an installation lock
+([packages](../extensions/packages.md#identity-dependencies-and-locks)),
+which is SLSA-style provenance applied to agent components; the plugin
+build receipt today holds only three fields, and full
+[build provenance](../extensions/plugins.md#authoring-and-build-provenance)
+isn't built yet. Part I's point that admission is a security boundary also
+applies: grants bound what a Wasm guest can touch, but our extension evals
+don't yet include prompt-injection cases of the kind AgentDojo measures.
 
 #### Capability delta in OpenAgents
 
@@ -531,7 +805,11 @@ often as without it, except one run of Code finder's `explain-idempotent`.
 Reach did not always hold: `where-tests`, `known-bugs`, `workarounds`, and
 `ci-failures` failed in both arms because Jev didn't choose the tool's
 program for that wording, so for those tests the tool changed nothing.
-Those tests are now the work list for each tool.
+Those tests are now the work list for each tool. This is the failure the
+tool-selection literature (ToolLLM, AnyTool, Gorilla) is about: the tool
+was available and the right answer depended on it, but it wasn't selected.
+Scoring both arms per test is what made the failure visible, rather than
+averaging it into a smaller delta.
 
 #### Judgment budget in OpenAgents
 
@@ -617,6 +895,12 @@ Two lessons from running our evals:
   missed "the server cannot find the requested resource", turning one run's
   result to **Worse** by chance. We fixed the pattern and released a new
   test set version; the old one stays readable.
+
+Both echo AnyTool's finding that ToolBench's protocol inflated pass rates
+([Du et al., 2024](https://arxiv.org/abs/2402.04253)): in each case the
+metric, not the agent, produced the verdict. Our v1 gate credited speed as
+if it were correctness; our grader missed a phrasing. Versioned gates and
+test sets are how we keep such fixes from rewriting history.
 
 Reruns by others rest on publication: a published suite is a NIP-EXT
 release, a published result carries its trainer's signed request, and a
@@ -967,6 +1251,14 @@ versions.
   the deltas we care about shrink.
 - **Grader quality.** Graders are code and make mistakes, as the "not found"
   case showed. We want graders checked the way results are.
+- **Process-level deltas.** Every eval run already saves an ATIF
+  trajectory per test. We haven't yet reported deltas from them (steps,
+  wasted tool calls, when the tool was first chosen) alongside pass counts.
+- **Admission safety.** Our suites measure utility. We need cases that
+  measure a candidate's exposure to injected instructions and the authority
+  it exercises, so a helpful but unsafe tool can't reach adoption.
+- **Reliability across repeats.** Three runs per arm show spread; they don't
+  yet report whether a tool passes *every* repeat, the pass^k view.
 - **Compute and capability together.** We haven't yet measured how
   test-time capabilities interact with more thinking: whether a tool lets a
   cheaper model with less reasoning match a stronger one, and when extra
@@ -981,27 +1273,100 @@ versions.
   Training for Abstract Reasoning.* [arXiv:2411.07279](https://arxiv.org/abs/2411.07279)
 - Brown, B. et al. (2024). *Large Language Monkeys: Scaling Inference
   Compute with Repeated Sampling.* [arXiv:2407.21787](https://arxiv.org/abs/2407.21787)
+- Cai, T., Wang, X., Ma, T., Chen, X., and Zhou, D. (2024). *Large
+  Language Models as Tool Makers.* ICLR 2024. [arXiv:2305.17126](https://arxiv.org/abs/2305.17126)
+- Chen, L., Zaharia, M., and Zou, J. (2024). *FrugalGPT: How to Use Large
+  Language Models While Reducing Cost and Improving Performance.* TMLR.
+  [arXiv:2305.05176](https://arxiv.org/abs/2305.05176)
 - Cobbe, K. et al. (2021). *Training Verifiers to Solve Math Word Problems.*
   [arXiv:2110.14168](https://arxiv.org/abs/2110.14168)
+- Debenedetti, E., Zhang, J., Balunović, M., Beurer-Kellner, L., Fischer,
+  M., and Tramèr, F. (2024). *AgentDojo: A Dynamic Environment to Evaluate
+  Prompt Injection Attacks and Defenses for LLM Agents.* NeurIPS 2024
+  Datasets and Benchmarks. [arXiv:2406.13352](https://arxiv.org/abs/2406.13352)
 - DeepSeek-AI (2025). *DeepSeek-R1: Incentivizing Reasoning Capability in
   LLMs via Reinforcement Learning.* [arXiv:2501.12948](https://arxiv.org/abs/2501.12948)
+- Du, Y., Wei, F., and Zhang, H. (2024). *AnyTool: Self-Reflective,
+  Hierarchical Agents for Large-Scale API Calls.* ICML 2024, PMLR 235.
+  [arXiv:2402.04253](https://arxiv.org/abs/2402.04253)
+- Guo, W. et al. (2026). *MalSkillBench: A Runtime-Verified Benchmark of
+  Malicious Agent Skills.* [arXiv:2606.07131](https://arxiv.org/abs/2606.07131)
+- Jiang, Y. et al. (2026). *SoK: Agentic Skills: Beyond Tool Use in LLM
+  Agents.* [arXiv:2602.20867](https://arxiv.org/abs/2602.20867)
 - Kahneman, D. (2011). *Thinking, Fast and Slow.* Farrar, Straus and Giroux.
+- Kevin, C. et al. (2026). *Evaluating Skills, Not Just Agents: Agentic
+  Continuous Evaluation of Skills.* [arXiv:2608.20614](https://arxiv.org/abs/2608.20614)
+- Kim, S., Moon, S., Tabrizi, R., Lee, N., Mahoney, M. W., Keutzer, K.,
+  and Gholami, A. (2024). *An LLM Compiler for Parallel Function Calling.*
+  ICML 2024. [arXiv:2312.04511](https://arxiv.org/abs/2312.04511)
+- Lamb, C. and Zacchiroli, S. (2022). *Reproducible Builds: Increasing the
+  Integrity of Software Supply Chains.* IEEE Software.
+  [arXiv:2104.06020](https://arxiv.org/abs/2104.06020)
 - Lewis, P. et al. (2020). *Retrieval-Augmented Generation for
   Knowledge-Intensive NLP Tasks.* [arXiv:2005.11401](https://arxiv.org/abs/2005.11401)
+- Li, X. et al. (2026). *SkillsBench: Benchmarking How Well Agent Skills
+  Work Across Diverse Tasks.* [arXiv:2602.12670](https://arxiv.org/abs/2602.12670)
+  (figures from the June 2026 revision; the self-generated-skills result is
+  from [v1](https://arxiv.org/abs/2602.12670v1))
+- Li, Y. (2026). *Dynamic Agent Skills: A Lifecycle Survey and Taxonomy of
+  Evolving Skill Libraries.* [arXiv:2607.10113](https://arxiv.org/abs/2607.10113)
+- Ma, C. et al. (2024). *AgentBoard: An Analytical Evaluation Board of
+  Multi-turn LLM Agents.* NeurIPS 2024. [arXiv:2401.13178](https://arxiv.org/abs/2401.13178)
+- Model Context Protocol (2025). *Specification 2025-06-18: Tools.*
+  [modelcontextprotocol.io](https://modelcontextprotocol.io/specification/2025-06-18/server/tools)
 - Muennighoff, N. et al. (2025). *s1: Simple test-time scaling.*
   [arXiv:2501.19393](https://arxiv.org/abs/2501.19393)
+- Newman, Z., Meyers, J. S., and Torres-Arias, S. (2022). *Sigstore:
+  Software Signing for Everybody.* ACM CCS 2022.
+  [doi:10.1145/3548606.3560596](https://dl.acm.org/doi/10.1145/3548606.3560596)
+- Ong, I. et al. (2025). *RouteLLM: Learning to Route LLMs with Preference
+  Data.* ICLR 2025. [arXiv:2406.18665](https://arxiv.org/abs/2406.18665)
 - OpenAI (2024). *Learning to reason with LLMs.*
   [openai.com](https://openai.com/index/learning-to-reason-with-llms/)
+- Patil, S. G., Zhang, T., Wang, X., and Gonzalez, J. E. (2024). *Gorilla:
+  Large Language Model Connected with Massive APIs.* NeurIPS 2024.
+  [arXiv:2305.15334](https://arxiv.org/abs/2305.15334)
+- Qin, Y. et al. (2024). *ToolLLM: Facilitating Large Language Models to
+  Master 16000+ Real-world APIs.* ICLR 2024. [arXiv:2307.16789](https://arxiv.org/abs/2307.16789)
 - Schick, T. et al. (2023). *Toolformer: Language Models Can Teach
   Themselves to Use Tools.* [arXiv:2302.04761](https://arxiv.org/abs/2302.04761)
+- Shen, Y. et al. (2023). *HuggingGPT: Solving AI Tasks with ChatGPT and
+  its Friends in Hugging Face.* NeurIPS 2023. [arXiv:2303.17580](https://arxiv.org/abs/2303.17580)
+- Shinn, N., Cassano, F., Berman, E., Gopinath, A., Narasimhan, K., and
+  Yao, S. (2023). *Reflexion: Language Agents with Verbal Reinforcement
+  Learning.* NeurIPS 2023. [arXiv:2303.11366](https://arxiv.org/abs/2303.11366)
+- SLSA (2023). *SLSA v1.0: Provenance.* [slsa.dev](https://slsa.dev/spec/v1.0/provenance)
 - Snell, C., Lee, J., Xu, K., and Kumar, A. (2024). *Scaling LLM Test-Time
   Compute Optimally can be More Effective than Scaling Model Parameters.*
   [arXiv:2408.03314](https://arxiv.org/abs/2408.03314)
 - Sun, Y. et al. (2020). *Test-Time Training with Self-Supervision for
   Generalization under Distribution Shifts.* [arXiv:1909.13231](https://arxiv.org/abs/1909.13231)
+- Tan, B., Huang, X., and Sun, Y. (2026). *Skill Coverage: A Test Adequacy
+  Metric for Agent Skills.* [arXiv:2606.20659](https://arxiv.org/abs/2606.20659)
+- Torres-Arias, S., Afzali, H., Kuppusamy, T. K., Curtmola, R., and
+  Cappos, J. (2019). *in-toto: Providing farm-to-table guarantees for bits
+  and bytes.* USENIX Security 2019.
+  [usenix.org](https://www.usenix.org/conference/usenixsecurity19/presentation/torres-arias)
 - Wang, G. et al. (2023). *Voyager: An Open-Ended Embodied Agent with Large
   Language Models.* [arXiv:2305.16291](https://arxiv.org/abs/2305.16291)
 - Wang, X. et al. (2022). *Self-Consistency Improves Chain of Thought
   Reasoning in Language Models.* [arXiv:2203.11171](https://arxiv.org/abs/2203.11171)
 - Wei, J. et al. (2022). *Chain-of-Thought Prompting Elicits Reasoning in
   Large Language Models.* [arXiv:2201.11903](https://arxiv.org/abs/2201.11903)
+- Wu, Q. et al. (2023). *AutoGen: Enabling Next-Gen LLM Applications via
+  Multi-Agent Conversation.* [arXiv:2308.08155](https://arxiv.org/abs/2308.08155)
+- Yang, J. et al. (2024). *SWE-agent: Agent-Computer Interfaces Enable
+  Automated Software Engineering.* NeurIPS 2024. [arXiv:2405.15793](https://arxiv.org/abs/2405.15793)
+- Yao, S. et al. (2023). *ReAct: Synergizing Reasoning and Acting in
+  Language Models.* ICLR 2023. [arXiv:2210.03629](https://arxiv.org/abs/2210.03629)
+- Yao, S., Shinn, N., Razavi, P., and Narasimhan, K. (2025). *τ-bench: A
+  Benchmark for Tool-Agent-User Interaction in Real-World Domains.* ICLR
+  2025. [arXiv:2406.12045](https://arxiv.org/abs/2406.12045)
+- Yuan, L., Chen, Y., Wang, X., Fung, Y. R., Peng, H., and Ji, H. (2024).
+  *CRAFT: Customizing LLMs by Creating and Retrieving from Specialized
+  Toolsets.* ICLR 2024. [arXiv:2309.17428](https://arxiv.org/abs/2309.17428)
+- Zhao, A., Huang, D., Xu, Q., Lin, M., Liu, Y.-J., and Huang, G. (2024).
+  *ExpeL: LLM Agents Are Experiential Learners.* AAAI 2024.
+  [arXiv:2308.10144](https://arxiv.org/abs/2308.10144)
+- Zhuge, M. et al. (2025). *Agent-as-a-Judge: Evaluate Agents with
+  Agents.* ICML 2025. [arXiv:2410.10934](https://arxiv.org/abs/2410.10934)
