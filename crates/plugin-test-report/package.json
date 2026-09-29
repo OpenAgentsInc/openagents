@@ -4,7 +4,7 @@
   "name": "Test reader",
   "summary": "Reads the test reports in a project for Coder: which tests failed, where, and why.",
   "version": "0.1.0",
-  "publisher": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "publisher": "a7cff3ee1ff0209f971b9f24673db310ab858899c9d9a99b640e6cb29b1753f0",
   "provenance": "OpenAgents catalog: the test-report evidence guest (crates/plugin-test-report)",
   "program": {
     "name": "test-reader",

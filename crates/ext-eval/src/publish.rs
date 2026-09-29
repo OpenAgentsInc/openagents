@@ -340,6 +340,91 @@ pub fn suite_release(results: &Results) -> Result<SuiteRelease, PublishError> {
     })
 }
 
+/// An extension directory's NIP-EXT release, so a result can name its
+/// subject by release (`subject.definition.event`) and credit can find
+/// it: a package `<publisher>:<slug>` holding its program as a `program`
+/// component (described by the package record) and every skill as a
+/// `guidance` component, listing `package.json`, the program, and the
+/// skills. The version label is the record's version and the first 12 hex
+/// digits of the record's digest, so different bytes never share a label.
+/// The signer must be `publisher`.
+///
+/// # Errors
+///
+/// Returns [`PublishError::Contract`] when the manifest doesn't check.
+pub fn extension_release(
+    publisher: &str,
+    subject: &crate::arms::Subject,
+    version: &str,
+    record: &[u8],
+) -> Result<SuiteRelease, PublishError> {
+    let record_ref = ArtifactRef::of(record, JSON, Some(crate::arms::PACKAGE_SCHEMA));
+    let mut files = vec![Listed {
+        path: "package.json".into(),
+        bytes: record.to_vec(),
+        media_type: JSON.into(),
+    }];
+    let mut components = Vec::new();
+    for program in &subject.programs {
+        let path = format!("programs/{}.json", program.slug);
+        components.push(json!({
+            "slug": program.slug,
+            "kind": "program",
+            "definition": ArtifactRef::of(&program.bytes, JSON, None).value(),
+            "descriptor": record_ref.value(),
+        }));
+        files.push(Listed {
+            path,
+            bytes: program.bytes.clone(),
+            media_type: JSON.into(),
+        });
+    }
+    for skill in &subject.skills {
+        components.push(json!({
+            "slug": skill.name,
+            "kind": "guidance",
+            "definition": ArtifactRef::of(&skill.bytes, MARKDOWN, None).value(),
+        }));
+        files.push(Listed {
+            path: format!("skills/{}.md", skill.name),
+            bytes: skill.bytes.clone(),
+            media_type: MARKDOWN.into(),
+        });
+    }
+    let listed: Vec<Value> = files
+        .iter()
+        .map(|file| {
+            json!({
+                "path": file.path,
+                "digest": nostr::contracts::digest_bytes(&file.bytes),
+                "size": file.bytes.len(),
+                "media_type": file.media_type,
+            })
+        })
+        .collect();
+    let digest = nostr::contracts::digest_bytes(record);
+    let version = format!("{version}-{}", &digest.trim_start_matches("sha256:")[..12]);
+    let package = format!("{publisher}:{}", subject.slug);
+    let manifest = json!({
+        "v": MANIFEST_SCHEMA,
+        "requires": [],
+        "package": package,
+        "version": version,
+        "license": LICENSE,
+        "provenance": {"source": "local", "receipts": [], "unknowns": []},
+        "components": components,
+        "files": listed,
+        "dependencies": [],
+    });
+    nostr::ext::parse_manifest(&manifest).map_err(contract)?;
+    Ok(SuiteRelease {
+        package,
+        version,
+        manifest: json_bytes(&manifest),
+        files,
+    })
+}
+
 /// The report with its suite ArtifactRef naming `release` (a `{id, pubkey,
 /// kind}` EventRef), as exact bytes, checked under the profile.
 ///

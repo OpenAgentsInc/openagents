@@ -57,6 +57,12 @@ phone <--26920 result, 3188 report----- relay.openagents.com <--
   hosted result from a terminal, pass
   `--blossom https://storage.googleapis.com/openagentsgemini-eval-blobs`
   to `openagents ext eval check`.
+- **Catalog tools by release.** The runner's key publishes each catalog
+  tool as a NIP-EXT release (the package records name it as publisher),
+  once, when it starts, and a hosted result names its subject by that
+  release. The referee opens an `eval-check` quest version per test set
+  release and tool release, so a result whose tool has no release earns
+  nothing.
 - **Starter test sets.** The runner's key also released the three starter
   test sets (`<runner>:project-map-tests`, `code-finder-tests`, and
   `test-reader-tests`), so `knowledge/quests/ext-eval.*.json` list it as
@@ -128,6 +134,13 @@ suite only when it reproduces that digest, so changing
 `crates/gym/gates/ext-eval-v2.json` or a starter case means releasing new
 starter suites (`eval-runner release crates/plugin-repo-map …`) and new
 quest versions.
+
+**A redeploy starts a new line of results.** A result's subject lock
+pins the Coder binary both arms ran, and a check counts only when its
+lock equals the original's. A redeploy that rebuilds `coder` with other
+bytes means earlier hosted results can no longer be checked on the
+hosted runner; checks of new results work as before. Deploy only when
+there's a reason to.
 
 ## Releasing the starter test sets
 

@@ -6,6 +6,9 @@
 //! ```text
 //! trainer run SUITE_RELEASE_ID EXTENSION_DIR [--runs N] [--check RESULT_ID]
 //! trainer publish REPORT_JSON     (the report ArtifactRef a run printed)
+//! trainer open SEALED_ID          (read a run's sealed report: each test's
+//!                                  runs passed per arm)
+//! trainer verify RESULT_ID...      (read published results as a reader does)
 //! ```
 //!
 //! `TRAINER_KEY_FILE` holds the trainer's key (64 hex; made when missing),
@@ -46,6 +49,65 @@ async fn main() {
             .and_then(|at| args.get(at + 1))
             .cloned()
     };
+    if args.first().map(String::as_str) == Some("verify") {
+        let identity = Arc::new(key());
+        use eval_runner::wire::Wire as _;
+        let found = eval_runner::wire::Relay::new(&relay, identity)
+            .query(json!({"ids": &args[1..], "kinds": [3189]}))
+            .await
+            .unwrap();
+        let parsed: Vec<_> = found
+            .iter()
+            .map(|event| nostr::eval_ext::parse_publication(event).unwrap())
+            .collect();
+        for publication in &parsed {
+            println!(
+                "{} verdict {} trainer {} (verified from the inline request: {}) evaluator {} checks {:?}",
+                publication.id,
+                publication.verdict().word(),
+                publication.trainer(),
+                nostr::eval_ext::verified_trainer(publication, &[]).is_ok(),
+                publication.evaluator,
+                publication.checks,
+            );
+        }
+        for check in &parsed {
+            for original in &parsed {
+                if check.checks.as_deref() == Some(original.id.as_str()) {
+                    println!(
+                        "{} {:?} {}",
+                        check.id,
+                        nostr::eval_ext::linkage(original, check),
+                        original.id
+                    );
+                }
+            }
+        }
+        return;
+    }
+    if args.first().map(String::as_str) == Some("open") {
+        let id = args.get(1).expect("SEALED_ID");
+        let identity = Arc::new(key());
+        use eval_runner::wire::Wire as _;
+        let found = eval_runner::wire::Relay::new(&relay, identity)
+            .query(json!({"ids": [id], "kinds": [3188]}))
+            .await
+            .unwrap();
+        let opened = nostr::private_artifact::open(&found[0], me.secret()).unwrap();
+        let report: Value = serde_json::from_slice(opened.inline_bytes().unwrap()).unwrap();
+        println!("verdict {}", report["verdict"]);
+        println!("headline {}", report["meta"]["ext_eval"]["headline"]);
+        for m in report["measurements"].as_array().unwrap() {
+            let metric = m["metric"].as_str().unwrap_or_default();
+            if metric.ends_with(".runs_passed") || !metric.starts_with("case.") {
+                println!(
+                    "{} {} {} / {}",
+                    m["arm"], metric, m["value"], m["denominator"]
+                );
+            }
+        }
+        return;
+    }
     let input = match args.first().map(String::as_str) {
         Some("run") => {
             let release = args.get(1).expect("SUITE_RELEASE_ID");

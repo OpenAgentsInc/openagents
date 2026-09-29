@@ -37,6 +37,8 @@ pub struct Tool {
     pub root: PathBuf,
     /// The package record.
     pub package: Package,
+    /// The package record's exact bytes, which its DefinitionRef digests.
+    pub record: Vec<u8>,
     /// The resolved package lock.
     pub lock: coder::package::Lock,
     /// The subject the runner admits for it.
@@ -120,6 +122,7 @@ pub fn resolve(root: &Path) -> Result<Tool, String> {
         name: package.name.clone(),
         root: root.to_path_buf(),
         package,
+        record: bytes,
         lock,
         subject,
         definition,
@@ -318,7 +321,7 @@ mod tests {
             assert!(
                 tool.definition
                     .id
-                    .starts_with(&format!("{}:", ext_eval::author::catalog::STARTER_KEY))
+                    .starts_with(&format!("{}:", nostr::eval_ext::hosted::RUNNER))
             );
         }
     }

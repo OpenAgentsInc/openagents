@@ -4,7 +4,7 @@
   "name": "Project map",
   "summary": "Shows Coder how the project is laid out before it starts: its files, languages, largest files, build files, and tests.",
   "version": "0.1.0",
-  "publisher": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "publisher": "a7cff3ee1ff0209f971b9f24673db310ab858899c9d9a99b640e6cb29b1753f0",
   "provenance": "OpenAgents catalog: the repo-map evidence guest (crates/plugin-repo-map)",
   "program": {
     "name": "project-map",

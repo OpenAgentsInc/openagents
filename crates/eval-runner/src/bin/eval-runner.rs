@@ -138,6 +138,12 @@ async fn release(dirs: &[String]) -> Result<ExitCode, String> {
         return Err("release needs at least one extension directory".into());
     }
     let runner = runner()?;
+    for (name, release) in runner.release_tools().await? {
+        println!(
+            "{name} (tool) {}",
+            release["id"].as_str().unwrap_or_default()
+        );
+    }
     for dir in dirs {
         let root = std::path::Path::new(dir);
         let tool = eval_runner::catalog::resolve(root)?;
@@ -175,6 +181,17 @@ async fn serve() -> Result<ExitCode, String> {
             .join(", ")
     );
     eprintln!("agent   {}", runner.agent().digest);
+    match runner.release_tools().await {
+        Ok(released) => {
+            for (name, release) in released {
+                eprintln!(
+                    "tool    {name} released as {}",
+                    release["id"].as_str().unwrap_or_default()
+                );
+            }
+        }
+        Err(why) => eprintln!("tools   not released: {why}"),
+    }
     let mut backoff = RECONNECT.0;
     loop {
         match eval_runner::runner::listen(&config.relay, &identity, &runner).await {

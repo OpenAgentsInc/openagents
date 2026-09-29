@@ -69,6 +69,9 @@ pub struct Runner {
     store: Store,
     state: Mutex<State>,
     suites: tokio::sync::Semaphore,
+    /// Each catalog tool's NIP-EXT release, by its definition ID, once
+    /// known.
+    tool_releases: tokio::sync::Mutex<BTreeMap<String, Value>>,
 }
 
 /// What an admitted run will run.
@@ -168,6 +171,7 @@ impl Runner {
                 seen: VecDeque::with_capacity(SEEN),
             }),
             suites: tokio::sync::Semaphore::new(jobs),
+            tool_releases: tokio::sync::Mutex::new(BTreeMap::new()),
         }))
     }
 
@@ -477,7 +481,7 @@ impl Runner {
     }
 
     async fn plan(&self, requester: &str, run: RunInput) -> Result<Plan, Refusal> {
-        let subject = match &run.subject {
+        let mut subject = match &run.subject {
             SubjectSource::Definition(definition) => self
                 .catalog
                 .find(definition)
@@ -495,6 +499,18 @@ impl Runner {
                 self.catalog.draft_subject(&draft.tool, requester)?
             }
         };
+        // A catalog tool is named by its release, so credit can find it.
+        if let Some(tool) = self
+            .catalog
+            .tools
+            .iter()
+            .find(|tool| tool.subject.definition == subject.definition)
+        {
+            match self.tool_release(tool).await {
+                Ok(event) => subject.definition["event"] = event,
+                Err(why) => log(&format!("{} has no release: {why}", tool.name)),
+            }
+        }
         let staging = tempfile::Builder::new()
             .prefix("eval-runner-suite-")
             .tempdir_in(&self.config.temp_root)
@@ -1127,6 +1143,52 @@ impl Runner {
             }
         };
         Ok(json!({"id": event.id, "pubkey": event.pubkey, "kind": event.kind}))
+    }
+
+    /// The NIP-EXT release of a catalog tool the runner publishes: the one
+    /// on the relay with the same content, or a new one. A tool whose
+    /// package names another publisher isn't the runner's to release.
+    ///
+    /// # Errors
+    ///
+    /// Why the release can't be found or sent.
+    pub async fn tool_release(&self, tool: &catalog::Tool) -> Result<Value, String> {
+        let mut known = self.tool_releases.lock().await;
+        if let Some(event) = known.get(&tool.definition.id) {
+            return Ok(event.clone());
+        }
+        if tool.package.publisher != self.pubkey() {
+            return Err(format!(
+                "its package names the publisher {}, not this runner",
+                tool.package.publisher
+            ));
+        }
+        let release = ext_eval::publish::extension_release(
+            self.pubkey(),
+            &tool.subject,
+            &tool.package.version,
+            &tool.record,
+        )
+        .map_err(|error| error.to_string())?;
+        let event = self.release_files(&release).await?;
+        known.insert(tool.definition.id.clone(), event.clone());
+        Ok(event)
+    }
+
+    /// Releases every catalog tool this runner publishes, once, and
+    /// returns each tool's name and release.
+    ///
+    /// # Errors
+    ///
+    /// The first release that can't be sent.
+    pub async fn release_tools(&self) -> Result<Vec<(String, Value)>, String> {
+        let mut out = Vec::new();
+        for tool in &self.catalog.tools {
+            if tool.package.publisher == self.pubkey() {
+                out.push((tool.name.clone(), self.tool_release(tool).await?));
+            }
+        }
+        Ok(out)
     }
 
     /// Releases the suite of a catalog extension directory as the runner

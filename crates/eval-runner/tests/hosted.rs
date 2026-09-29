@@ -100,6 +100,21 @@ async fn listen(url: &str, phone: &Phone) -> Arc<Mutex<Vec<Event>>> {
     seen
 }
 
+fn copy(from: &Path, to: &Path) {
+    std::fs::create_dir_all(to).unwrap();
+    for entry in std::fs::read_dir(from).unwrap().flatten() {
+        let path = entry.path();
+        let target = to.join(entry.file_name());
+        if path.is_dir() {
+            if entry.file_name() != "results" {
+                copy(&path, &target);
+            }
+        } else {
+            std::fs::copy(&path, &target).unwrap();
+        }
+    }
+}
+
 async fn until<T>(within: Duration, mut find: impl FnMut() -> Option<T>) -> Option<T> {
     let started = std::time::Instant::now();
     while started.elapsed() < within {
@@ -160,6 +175,15 @@ async fn a_hosted_run_over_a_local_relay_credits_its_trainer() {
         },
     );
     config.relay = local.url.clone();
+    // The catalog tool, published by the runner: a copy of the fixture
+    // whose package names the runner as its publisher.
+    let tool_dir = work.path().join("tool");
+    copy(Path::new(FIXTURE), &tool_dir);
+    let record = tool_dir.join("package.json");
+    let mut package: Value = serde_json::from_slice(&std::fs::read(&record).unwrap()).unwrap();
+    package["publisher"] = json!(identity().pubkey());
+    std::fs::write(&record, serde_json::to_vec_pretty(&package).unwrap()).unwrap();
+    config.catalog = vec![tool_dir.clone()];
     let wire: Arc<dyn Wire> = Arc::new(Relay::new(&local.url, Arc::new(identity())));
     let blobs = Arc::new(eval_runner::wire::Blossom::new(None, &local.url).unwrap());
     let runner = Runner::new(config, identity(), wire.clone(), blobs).unwrap();
@@ -206,6 +230,12 @@ async fn a_hosted_run_over_a_local_relay_credits_its_trainer() {
         ask(&local.url, &dana, &dana_seen, &runner_key, &input(None)).await;
     assert_eq!(result["outcome"], "completed", "{result:#}");
     let output = hosted::parse_run_output(&result["output"]).unwrap();
+    let tool_releases = runner.release_tools().await.unwrap();
+    assert_eq!(
+        tool_releases.len(),
+        1,
+        "the runner released its catalog tool"
+    );
     let progress = dana
         .answers(&runner_key, &request, &body, &dana_seen.lock().unwrap())
         .into_iter()
@@ -256,6 +286,22 @@ async fn a_hosted_run_over_a_local_relay_credits_its_trainer() {
     assert_eq!(
         eval_ext::verified_trainer(&publication, &[]).unwrap(),
         dana.pubkey()
+    );
+    // The subject is named by its release, which is on the relay.
+    let subject_release = publication
+        .subject_release
+        .clone()
+        .expect("the tool's release");
+    assert_eq!(
+        subject_release.id,
+        tool_releases[0].1["id"].as_str().unwrap()
+    );
+    assert_eq!(
+        wire.query(json!({"ids": [subject_release.id]}))
+            .await
+            .unwrap()
+            .len(),
+        1
     );
 
     // Erin checks Dana's result through the same runner.
