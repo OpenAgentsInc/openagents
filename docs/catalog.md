@@ -10,7 +10,7 @@ Start with the [documentation index](README.md), [master roadmap](roadmap.md), [
 [glossary](glossary.md), or [maintenance rules](documentation.md). The separate
 [transcript index](transcripts/README.md) owns the video archive.
 
-This catalog lists 506 documents plus itself as of September 28, 2026.
+This catalog lists 507 documents plus itself as of September 28, 2026.
 It retains historical and evidence paths rather than copying their content.
 
 Crate-owned documentation sits outside this inventory and its count. The
@@ -491,6 +491,12 @@ files are included below.
 | [optimization/experiments.md](optimization/experiments.md) | Design / assessment | Experiments, Gym, and promotion |
 | [optimization/proposed-issues.md](optimization/proposed-issues.md) | Design / assessment | Proposed issues for full integration |
 | [optimization/sources.md](optimization/sources.md) | Design / assessment | Conceptual references |
+
+## product
+
+| Document | Role | Topic |
+| --- | --- | --- |
+| [product/2026-09-28-app-wireframe.md](product/2026-09-28-app-wireframe.md) | Design / plan | OpenAgents phone app: wireframe specification |
 
 ## protocol
 

@@ -14,6 +14,7 @@ the [document catalog](catalog.md) to find a specific reference.
 | Build shared terminal, native, and web interfaces | [Rust Native](../crates/rust-native/README.md), [styling](coder/rust-native/styling-design.md), [adoption plan](coder/rust-native/adoption.md) |
 | Follow suite delivery and ownership | [Migration tracker](coder/migration-status.md), [master roadmap](roadmap.md) |
 | See what ships to playtesters and what comes next | [Launch roadmap, 2026-09-29](roadmap/2026-09-29-launch-roadmap.md), [playtesting program](game/playtesting.md) |
+| Design the phone app's screens and user flow | [App wireframe specification](product/2026-09-28-app-wireframe.md) |
 | Plan the Wallet and agent payments | [Breez and Spark](breez/README.md), [Bitcoin](bitcoin/README.md) |
 | Understand the coding and network thesis | [Coder design index](coder/design/README.md), [networked Coder](coder/design/networked-coder-plan.md) |
 | Observe and control a task over Nostr | [Scoped control host and client](coder/runtime/nostr-task-control.md) |
