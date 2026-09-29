@@ -46,6 +46,37 @@ pub const FULL_RUNS: u64 = nostr::eval_ext::DEFAULT_RUNS;
 /// The prefix of an item's citation id.
 pub const CITE_PREFIX: &str = "gym:";
 
+/// The model a grounded `gym.news` reply runs on, through the chat door's
+/// own gateway and key (#9950). The chat model thinks before it speaks and
+/// took 6 to 12 s to its first words on a news prompt; this one, with its
+/// reasoning off ([`news_options`]), took 0.6 to 0.9 s and cited only the
+/// items it was given
+/// (`docs/coder/measurements/2026-09-29-gym-news-latency.md`).
+/// `CODER_GYM_NEWS_MODEL` names another; `off` keeps the chat model.
+pub const NEWS_MODEL: &str = "google/gemini-2.5-flash";
+
+/// [`NEWS_MODEL`] named for a person, in the privacy answer.
+pub const NEWS_MODEL_NAME: &str = "Gemini 2.5 Flash";
+
+/// The longest grounded news reply, in output tokens: five items in a
+/// phone's few paragraphs.
+pub const NEWS_MAX_TOKENS: u64 = 800;
+
+/// The request fields of the news lane: no reasoning before the reply,
+/// and the reply bounded to [`NEWS_MAX_TOKENS`].
+#[must_use]
+pub fn news_options() -> serde_json::Map<String, serde_json::Value> {
+    let mut options = serde_json::Map::new();
+    options.insert("reasoning".into(), serde_json::json!({ "effort": "none" }));
+    options.insert("max_output_tokens".into(), NEWS_MAX_TOKENS.into());
+    options
+}
+
+/// The line a grounded `gym.news` reply opens with, shown with the news
+/// card as soon as the records are judged, before the model's first words
+/// (#9950): the bank's `gym.news.lead`.
+pub const NEWS_LEAD: &str = "gym.news.lead";
+
 /// The first 8 hex digits of an event's id, for a citation id.
 #[must_use]
 pub fn short(event: &EventPointer) -> &str {
@@ -681,10 +712,19 @@ pub fn reply(
 /// in the plural voice and the phone's plain words, citing each item used
 /// by its id. The citations are for [`check_reply`]; [`Tidy`] takes them
 /// out before the phone sees the reply, whose news card already names
-/// each item's source.
+/// each item's source. `lead`, when given, is the line the phone already
+/// shows above the reply ([`NEWS_LEAD`]), which the reply must not repeat.
 #[must_use]
-pub fn instructions(items: &[Item]) -> String {
-    let mut out = String::from(
+pub fn instructions(items: &[Item], lead: Option<&str>) -> String {
+    let mut out = String::new();
+    if let Some(lead) = lead {
+        out.push_str(&format!(
+            "The user already sees the line \"{}\" above your reply and a card listing the \
+records below, so do not repeat that line or greet; go straight to the news.\n",
+            lead.trim()
+        ));
+    }
+    out.push_str(
         "We are OpenAgents, answering in the OpenAgents app's chat about what's new in the Gym, \
 where people test tools on Coder. Always speak as \"we\", never \"I\". Answer the user's latest \
 message using only the Gym records below, which we verified. After each sentence that uses a \
@@ -1060,6 +1100,9 @@ impl Tidy {
                     self.space.drain(..at);
                 } else if matches!(c, '.' | ',' | ';' | ':' | '!' | '?') {
                     self.space.clear();
+                } else if self.space.len() > 1 {
+                    // "chat [gym:…] and" reads "chat and", not "chat  and".
+                    self.space = " ".to_string();
                 }
             }
             out.push_str(&self.space);
@@ -1485,7 +1528,7 @@ mod tests {
         let items = records().items();
         let ids: Vec<String> = items.iter().map(Item::id).collect();
         assert!(ids.contains(&"gym:build:build-20".to_string()), "{ids:?}");
-        let prompt = instructions(&items);
+        let prompt = instructions(&items, None);
         for id in &ids {
             assert!(prompt.contains(&format!("id=\"{id}\"")), "{id}");
         }
@@ -1543,6 +1586,13 @@ mod tests {
                 "Two items:\n- Better [gym:result:0a0a0a0a]\n- Build 20 [gym:build:build-20]\n"
                     .into(),
                 "Two items:\n- Better\n- Build 20\n",
+            ),
+            (
+                format!(
+                    "You can test a tool from chat [{}] and make your own.",
+                    ids[0]
+                ),
+                "You can test a tool from chat and make your own.",
             ),
         ];
         for (reply, want) in &replies {

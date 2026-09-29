@@ -1329,6 +1329,17 @@ drops it; `gym::Grounding::skipping` takes them out).
 - **Citations on the phone.** A `gym.news` reply's `[gym:…]` citations are
   taken out as it streams (`router::gym::Tidy`, #9944); the news card
   already says where its items come from.
+- **News first words** (#9950). The chat model thinks before it speaks:
+  on a grounded news prompt it took 6 to 12 s to its first words, and
+  "What's new in the Gym?" showed Thinking for 7 to 12 s. The worker now
+  sends the bank's `gym.news.lead` line ("Here's what's new in the Gym.")
+  with the news card as soon as Jev has kept the items (about 0.5 s after
+  the route judgment), drops the model call started with the turn (a Gym
+  reply never shows it), and runs the grounded reply on the news lane,
+  `router::gym::NEWS_MODEL` (Gemini 2.5 Flash, reasoning off, through the
+  same gateway and key), whose first words came 0.6 to 0.9 s after its
+  request with the same citation checks. See
+  [the measurement](../measurements/2026-09-29-gym-news-latency.md).
 - **The `credit` card from the worker.** Awards are NIP-XP records of the
   trainer's world key, which a chat request does not carry; the phone
   draws `CARD-07` from its own ledger (`xp_ledger::eval`, #9938) on an

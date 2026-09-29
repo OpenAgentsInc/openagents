@@ -894,6 +894,20 @@ pub fn worker_facts(
     quota: Option<(u32, u32)>,
     seams: &Seams,
 ) -> Facts {
+    worker_facts_with_news(model, url, quota, seams, None)
+}
+
+/// [`worker_facts`] for a worker whose grounded `gym.news` replies run on
+/// `news`, a model named for a person, through the same door
+/// ([`gym::NEWS_MODEL`]): the door's recipient names both models.
+#[must_use]
+pub fn worker_facts_with_news(
+    model: &str,
+    url: Option<&str>,
+    quota: Option<(u32, u32)>,
+    seams: &Seams,
+    news: Option<&str>,
+) -> Facts {
     let door = crate::first::Facts::of(model, url);
     let mut facts = Facts::default();
     if let Some(model) = &door.chat_model {
@@ -903,7 +917,10 @@ pub fn worker_facts(
         facts = facts.set("worker.door.display", host.clone());
     }
     if let (Some(model), Some(host)) = (&door.chat_model, &door.chat_model_host) {
-        let mut recipients = vec![format!("{host} for {model}")];
+        let mut recipients = vec![match news {
+            Some(news) => format!("{host} for {model} (and {news}, for Gym news)"),
+            None => format!("{host} for {model}"),
+        }];
         recipients.extend(seams.recipients());
         recipients.push("TypeSafe for Jev, which chooses how we reply".to_string());
         facts = facts.set("worker.recipients", series(&recipients));

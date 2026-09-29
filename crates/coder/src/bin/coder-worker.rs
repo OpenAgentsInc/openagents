@@ -102,6 +102,7 @@ use std::time::{Duration, Instant};
 use coder::first;
 use coder::generate::{
     Door, Generate, GenerateError, Lane, Message, Role, Usage, WORKER_MODEL_VAR, model_from_env,
+    model_named,
 };
 use coder::relay::liveness::{
     self, DRAIN, Liveness, PROBE_PREFIX, Renewal, Successor, next_draining, notify_watchdog,
@@ -570,11 +571,13 @@ async fn serve(options: &Options) -> Result<(), String> {
             .clone()
             .map(|j| j as Arc<dyn coder::product_kb::Judge>),
     );
-    let routing = Arc::new(RouterConfig::new(
+    let news = gym_news_model_from_env();
+    let routing = Arc::new(RouterConfig::with_news(
         router_from_env()?,
         seams,
         &door,
         options.quota.as_ref(),
+        news.as_deref(),
     ));
     eprintln!(
         "router  {} ({:?}), bank {} with {} answers; seams {:?}",
@@ -584,6 +587,10 @@ async fn serve(options: &Options) -> Result<(), String> {
         bank.answers.len(),
         routing.seams
     );
+    match &routing.news {
+        Some(news) => eprintln!("gym news {} with its reasoning off", news.model()),
+        None => eprintln!("gym news on the chat door"),
+    }
     eprintln!("jobs    {jobs} at once; more are refused as busy");
     if let Some(code) = &options.decline {
         eprintln!("declining every job with {code}");
@@ -1130,29 +1137,75 @@ struct RouterConfig {
     seams: Seams,
     /// The bank's slot values, from this worker's configuration.
     facts: router::Facts,
+    /// The door a grounded `gym.news` reply runs on: the chat door's
+    /// gateway and key with [`router::gym::NEWS_MODEL`] and its reasoning
+    /// off (#9950), or `None` for the chat door itself.
+    news: Option<Arc<Door>>,
 }
 
 impl RouterConfig {
+    #[cfg(test)]
     fn new(setting: RouterSetting, seams: Seams, door: &Door, quota: Option<&Policy>) -> Self {
+        Self::with_news(setting, seams, door, quota, Some(router::gym::NEWS_MODEL))
+    }
+
+    /// The configuration with grounded `gym.news` replies on `news` (a
+    /// model id), when the door is a live gateway door and the Gym's
+    /// records are here; `None` keeps them on the chat door.
+    fn with_news(
+        setting: RouterSetting,
+        seams: Seams,
+        door: &Door,
+        quota: Option<&Policy>,
+        news: Option<&str>,
+    ) -> Self {
+        let quota = quota.map(|quota| (quota.per_key_minute, quota.per_key_day));
+        let news = match (door, news) {
+            (Door::Live(live), Some(model)) if seams.gym.available() && model != live.model => {
+                Some(Door::Live(
+                    live.clone()
+                        .serving(model)
+                        .with_options(router::gym::news_options()),
+                ))
+            }
+            _ => None,
+        };
         let facts = match door {
-            Door::Live(live) => router::worker_facts(
+            Door::Live(live) => router::worker_facts_with_news(
                 &live.model,
                 Some(&live.url),
-                quota.map(|quota| (quota.per_key_minute, quota.per_key_day)),
+                quota,
                 &seams,
+                news.as_ref().map(|news| {
+                    if news.model() == router::gym::NEWS_MODEL {
+                        router::gym::NEWS_MODEL_NAME
+                    } else {
+                        news.model()
+                    }
+                }),
             ),
-            door => router::worker_facts(
-                door.model(),
-                None,
-                quota.map(|quota| (quota.per_key_minute, quota.per_key_day)),
-                &seams,
-            ),
+            door => router::worker_facts(door.model(), None, quota, &seams),
         };
         Self {
             setting,
             seams,
             facts,
+            news: news.map(Arc::new),
         }
+    }
+}
+
+/// The environment variable naming the model grounded `gym.news` replies
+/// run on: a model id or lane name, or `off` for the chat door's model.
+/// Unset is [`router::gym::NEWS_MODEL`].
+const GYM_NEWS_MODEL_VAR: &str = "CODER_GYM_NEWS_MODEL";
+
+/// The news lane's model from [`GYM_NEWS_MODEL_VAR`].
+fn gym_news_model_from_env() -> Option<String> {
+    match env::var(GYM_NEWS_MODEL_VAR).as_deref().map(str::trim) {
+        Ok("off") => None,
+        Ok(model) if !model.is_empty() => Some(model_named(model).to_string()),
+        _ => Some(router::gym::NEWS_MODEL.to_string()),
     }
 }
 
@@ -1810,6 +1863,11 @@ impl Job {
         // A grounded Gym reply's citations are for us: they are taken out
         // as the reply streams, with the items the model was given.
         let mut tidy: Option<(router::gym::Tidy, Vec<router::gym::Item>)> = None;
+        // When the turn began, the Gym seam answered, and the model's first
+        // words went out: durations for the `router gym reply` line.
+        let begun = Instant::now();
+        let mut seam_ms: Option<u128> = None;
+        let mut words_ms: Option<u128> = None;
         let send = |seq: u64, text: &str| {
             publish(FEEDBACK_KIND, partial_payload(version, seq, text))
                 .map_err(GenerateError::Stream)
@@ -1897,6 +1955,12 @@ impl Job {
                             pending = Some((routing, tier.clone()));
                         }
                         Tier::Gym { route, .. } => {
+                            // Every Gym reply is the bank's or a model
+                            // restarted with the records (or told there are
+                            // none): the call started with the turn is never
+                            // shown, so it is dropped (#9950).
+                            generating = Box::pin(std::future::pending());
+                            draining = false;
                             let lookup = GymLookup {
                                 route: *route,
                                 message: router::redact(&turn.message),
@@ -2018,6 +2082,7 @@ impl Job {
                         // The model has spoken meanwhile: its reply stands.
                         _ if partial_seq != 0 => {}
                         (SeamOutcome::Gym(found), Tier::Gym { route, tool, lead: shown }) => {
+                            seam_ms = Some(begun.elapsed().as_millis());
                             let reply = match &found {
                                 // A check skips what the phone names as its
                                 // trainer's own or already checked.
@@ -2053,16 +2118,31 @@ impl Job {
                                     return Ok((text, None, Some(record)));
                                 }
                                 router::gym::Reply::Grounded { items, card: shown_card } => {
+                                    // The first words go with the card, from
+                                    // the bank, before the model's (#9950).
+                                    let opening = bank
+                                        .entry(router::gym::NEWS_LEAD)
+                                        .and_then(|entry| entry.render(facts));
+                                    if let Some(text) = &opening {
+                                        lead = format!("{text}\n\n");
+                                        send(partial_seq, &lead)?;
+                                        partial_seq += 1;
+                                    }
                                     card(&shown_card)?;
+                                    let door = self.routing.news.clone().unwrap_or_else(|| self.door.clone());
                                     (generating, incoming) = start_model(
-                                        self.door.clone(),
-                                        format!("{instructions}\n\n{}", router::gym::instructions(&items)),
+                                        door.clone(),
+                                        format!(
+                                            "{instructions}\n\n{}",
+                                            router::gym::instructions(&items, opening.as_deref())
+                                        ),
                                         input.to_vec(),
                                     );
                                     draining = true;
                                     buffer.clear();
                                     if let Some(record) = &mut served {
                                         record.citations = items.iter().map(Into::into).collect();
+                                        record.model = Some(door.model().to_string());
                                     }
                                     tidy = Some((router::gym::Tidy::default(), items));
                                 }
@@ -2079,7 +2159,9 @@ impl Job {
                                     }
                                 }
                             }
-                            if let Some(shown) = shown {
+                            if let Some(shown) = shown
+                                && lead.is_empty()
+                            {
                                 lead = format!("{}\n\n", shown.text);
                                 send(partial_seq, &lead)?;
                                 partial_seq += 1;
@@ -2240,6 +2322,9 @@ impl Job {
                         // The model's first delta goes at once, so a reader
                         // sees the answer begin; later ones collect.
                         if buffer.len() >= PARTIAL_BYTES || !model_started {
+                            if !model_started {
+                                words_ms = Some(begun.elapsed().as_millis());
+                            }
                             model_started = true;
                             // `seq` is the signed ordering the terminal
                             // checks deltas against; arrival order proves
@@ -2261,13 +2346,18 @@ impl Job {
                                 let cited = router::gym::check_reply(&text, items);
                                 let shown = router::gym::tidy(&text);
                                 let check = router::gym::post_check(&shown);
-                                // Ids and words only, never the reply.
+                                // Ids, words, and durations only, never the
+                                // reply.
                                 eprintln!(
-                                    "router gym reply: {} cited, {} invented, banned {:?}, {} raw ids",
+                                    "router gym reply: {} cited, {} invented, banned {:?}, {} raw ids; \
+                                     records at {} ms, model's first words at {} ms, done at {} ms",
                                     cited.known.len(),
                                     cited.invented.len(),
                                     check.banned,
-                                    check.raw.len()
+                                    check.raw.len(),
+                                    seam_ms.unwrap_or_default(),
+                                    words_ms.unwrap_or_default(),
+                                    begun.elapsed().as_millis()
                                 );
                                 shown
                             }
@@ -3070,7 +3160,40 @@ mod tests {
         url
     }
 
-    fn answer_once(stream: std::net::TcpStream, delay: Duration, content_type: &str, body: &str) {
+    /// [`serve_times`], keeping each request's JSON body.
+    fn serve_recorded(
+        times: usize,
+        delay: Duration,
+        content_type: &'static str,
+        body: String,
+    ) -> (String, Arc<std::sync::Mutex<Vec<Value>>>) {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let keep = seen.clone();
+        std::thread::spawn(move || {
+            for _ in 0..times {
+                let Ok((stream, _)) = listener.accept() else {
+                    return;
+                };
+                let (body, keep) = (body.clone(), keep.clone());
+                std::thread::spawn(move || {
+                    let request = answer_once(stream, delay, content_type, &body);
+                    if let Ok(value) = serde_json::from_slice::<Value>(&request) {
+                        keep.lock().unwrap().push(value);
+                    }
+                });
+            }
+        });
+        (url, seen)
+    }
+
+    fn answer_once(
+        stream: std::net::TcpStream,
+        delay: Duration,
+        content_type: &str,
+        body: &str,
+    ) -> Vec<u8> {
         use std::io::{BufRead, BufReader, Read, Write};
         let mut reader = BufReader::new(stream);
         let mut length = 0usize;
@@ -3094,6 +3217,7 @@ mod tests {
              connection: close\r\n\r\n{body}",
             body.len()
         );
+        request
     }
 
     /// A model door that starts answering after `delay`, from the recorded
@@ -4056,8 +4180,11 @@ mod tests {
         );
     }
 
-    /// `gym.news`: the news card from the kept items goes out, and the
-    /// model is restarted told to answer from them; the result cites them.
+    /// `gym.news`: the bank's lead line and the news card from the kept
+    /// items go out before the model's first words (#9950); the model is
+    /// restarted on the news lane (its reasoning off) told to answer from
+    /// the items under that line; the result cites them and names the news
+    /// model.
     #[tokio::test]
     async fn news_is_grounded_in_the_gyms_records() {
         let mut grounding = gym_records();
@@ -4068,7 +4195,7 @@ mod tests {
             .map(|item| (item, 0.9))
             .collect();
         let stream = include_str!("../../fixtures/gateway/google-gemini-3.8-flash.sse");
-        let url = serve_times(
+        let (url, seen) = serve_recorded(
             2,
             Duration::from_millis(200),
             "text/event-stream",
@@ -4086,15 +4213,79 @@ mod tests {
             RouterSetting::Live,
         )
         .await;
+        let lead = Bank::builtin()
+            .entry(router::gym::NEWS_LEAD)
+            .and_then(|entry| entry.render(&router::Facts::default()))
+            .expect("the bank has the news lead");
+        let partials = of_type(&frames, "partial");
+        assert_eq!(partials[0]["delta"], format!("{lead}\n\n"));
         let cards = of_type(&frames, "card");
         assert_eq!(cards[0]["card"], "news");
         assert_eq!(cards[0]["items"].as_array().unwrap().len(), 3);
         nostr::cj_conversation::parse_card(cards[0]).expect("a card NIP-CJ reads");
+        // The lead and the card go out before any of the model's words.
+        let position = |wanted: &Value| frames.iter().position(|(_, body)| body == wanted);
+        assert!(position(partials[0]) < position(cards[0]));
+        if let Some(words) = partials.get(1) {
+            assert!(position(cards[0]) < position(words));
+        }
         let result = &frames.last().unwrap().1;
         assert_eq!(result["tier"], "gym");
         assert_eq!(result["route"], "gym.news");
         assert_eq!(result["citations"].as_array().unwrap().len(), 3);
-        assert_eq!(result["model"], GEMINI);
+        assert_eq!(result["model"], router::gym::NEWS_MODEL);
+        let text = result["text"].as_str().unwrap();
+        assert!(
+            text.starts_with(&lead) && text.len() > lead.len() + 2,
+            "{text}"
+        );
+        // The reply is the news lane's call, with its reasoning off, told
+        // the lead is already shown.
+        let seen = seen.lock().unwrap();
+        let news: Vec<&Value> = seen
+            .iter()
+            .filter(|body| body["model"] == router::gym::NEWS_MODEL)
+            .collect();
+        assert_eq!(news.len(), 1, "{seen:?}");
+        assert_eq!(news[0]["reasoning"]["effort"], "none");
+        assert_eq!(news[0]["max_output_tokens"], router::gym::NEWS_MAX_TOKENS);
+        assert!(news[0]["instructions"].as_str().unwrap().contains(&lead));
+    }
+
+    /// `CODER_GYM_NEWS_MODEL=off` keeps Gym news on the chat door; the
+    /// privacy answer names the news model only when it is used.
+    #[test]
+    fn the_news_lane_is_named_where_it_is_used() {
+        let seams = || Seams {
+            gym: Arc::new(Gym(gym_records())),
+            ..Seams::default()
+        };
+        let door = Door::Live(coder::generate::ResponsesDoor::new(
+            coder::generate::DEFAULT_DOOR_URL,
+            GEMINI,
+            "test",
+        ));
+        let on = RouterConfig::new(RouterSetting::Live, seams(), &door, None);
+        assert_eq!(
+            on.news.as_ref().map(|news| news.model()),
+            Some(router::gym::NEWS_MODEL)
+        );
+        let recipients = |config: &RouterConfig| {
+            Bank::builtin()
+                .entry("meta.privacy")
+                .and_then(|entry| entry.render(&config.facts))
+                .unwrap()
+        };
+        assert!(
+            recipients(&on).contains(router::gym::NEWS_MODEL_NAME),
+            "{}",
+            recipients(&on)
+        );
+        let off = RouterConfig::with_news(RouterSetting::Live, seams(), &door, None, None);
+        assert!(off.news.is_none());
+        assert!(!recipients(&off).contains(router::gym::NEWS_MODEL_NAME));
+        let no_gym = RouterConfig::new(RouterSetting::Live, Seams::default(), &door, None);
+        assert!(no_gym.news.is_none());
     }
 
     /// With no Gym records configured, an `eval.check` turn says no result

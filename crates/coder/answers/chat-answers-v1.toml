@@ -565,6 +565,15 @@ text = "We don't have anything new in the Gym's records about that yet. Once tra
 sources = ["docs/extensions/evaluation.md", "crates/coder/src/gym_kb.rs"]
 followups = ["gym.what_test"]
 
+[[answer]]
+id = "gym.news.lead"
+version = 1
+routes = ["gym.news"]
+records = true
+when = "Picked from the Gym's records: the line a grounded news reply opens with, above the news card, when records relevant to what the user asked are found"
+text = "Here's what's new in the Gym."
+sources = ["crates/coder/src/router/gym.rs", "crates/coder/src/gym_kb.rs"]
+
 # ---------------------------------------------------------------------------
 # refuse, warn, and clarify
 # ---------------------------------------------------------------------------
