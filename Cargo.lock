@@ -2563,16 +2563,23 @@ name = "ext-eval"
 version = "0.1.0"
 dependencies = [
  "atif",
+ "axum",
+ "base64 0.22.1",
+ "coder-boundary",
+ "futures-util",
  "gym",
  "indexmap",
  "jev",
+ "libc",
  "nostr",
  "plugin",
  "regex",
+ "reqwest",
  "serde",
  "serde_json",
  "tempfile",
  "thiserror 2.0.20",
+ "tokio",
  "toml",
 ]
 
@@ -5694,6 +5701,7 @@ dependencies = [
  "libc",
  "microcoder",
  "nostr",
+ "nostr-relay",
  "openagents-wallet",
  "openagents-x402",
  "playtest",

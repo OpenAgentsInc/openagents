@@ -25,7 +25,8 @@ coder-reach = { path = "../coder-reach" }
 coder-service = { path = "../coder-service" }
 coder-ssh = { path = "../coder-ssh" }
 discovery = { path = "../discovery" }
-# `ext eval init`: the authoring interview's machine and case files.
+# `openagents ext eval`: the runner, the sandbox, the publish and check
+# builders, and the authoring interview (`ext eval init`).
 ext-eval = { path = "../ext-eval" }
 glam = "0.30.10"
 gym = { path = "../gym" }
@@ -46,12 +47,15 @@ secp256k1 = { version = "0.31.1", features = ["rand"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.11.0"
+tempfile = "3"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "time"] }
 verse = { path = "../verse", default-features = false, features = ["xp-host"] }
 verse-lagrange = { path = "../verse-lagrange" }
 
 [dev-dependencies]
 nostr = { path = "../nostr", features = ["test-invoice"] }
+# `tests/ext_eval.rs` publishes to and checks against a local relay.
+nostr-relay = { path = "../nostr-relay" }
 tempfile = "3"
 
 [lints]

@@ -21,7 +21,7 @@ coder-terminal = { path = "../coder-terminal" }
 jev = { path = "../jev" }
 # The authoring interview's machine (`ext_eval::author`), which
 # `eval_author` drives from chat and from `openagents ext eval init`.
-ext-eval = { path = "../ext-eval" }
+ext-eval = { path = "../ext-eval", default-features = false }
 knowledge = { path = "../knowledge" }
 # T1 personalization's OpenRouter lane (`coder::router::personalize`),
 # and the codebase route's OpenRouter composer.

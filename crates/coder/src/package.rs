@@ -180,6 +180,12 @@ pub struct Package {
     /// passing silently.
     #[serde(default)]
     pub compatibility: BTreeMap<String, String>,
+    /// Where the package's extension eval suite lives, relative to the
+    /// package root: one or more plain directory names. Unset, the suite
+    /// is `evals/` (`docs/extensions/evaluation.md`, *Where the suite
+    /// lives*). Resolution neither reads nor pins it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub eval_dir: Option<String>,
 }
 
 impl Package {
@@ -243,6 +249,7 @@ impl Package {
             ("version", self.version.as_str()),
             ("publisher", self.publisher.as_str()),
             ("provenance", self.provenance.as_str()),
+            ("eval_dir", self.eval_dir.as_deref().unwrap_or_default()),
         ] {
             if leaks_host(value) {
                 return Err(format!(
@@ -988,6 +995,7 @@ mod tests {
             capabilities: Vec::new(),
             requires: Vec::new(),
             compatibility: BTreeMap::new(),
+            eval_dir: None,
         }
     }
 

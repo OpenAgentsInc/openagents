@@ -17,6 +17,7 @@ mod catalog;
 mod computer;
 mod discover;
 mod eval;
+mod ext_eval;
 mod ext_eval_init;
 mod gym;
 mod hosts;
@@ -91,7 +92,7 @@ Playtesting:
 Discovery (NIP-CAP, NIP-PRG, NIP-EXT), read-only:
   cap          List and describe published capability heads.
   prg          List and describe published program heads.
-  ext          List published extension records.
+  ext          List extension records, and run and check extension evals.
   discover     Show the well-known agent card and agent-skills index.
 
   mcp          Serve every group as an MCP tool over stdio (mcp serve).

@@ -59,14 +59,34 @@ pub(crate) const EXT_USAGE: &str = "usage: openagents ext COMMAND [OPTIONS]
   list [--type TYPE] [--author PUBKEY] [--package ID] [--limit N]
         List published extension records. TYPE is listing (default),
         release, revocation, migration, or checkpoint.
+  eval run TARGET [--runs N] [--case GLOB]... [--tag TAG]... [--baseline on|off]
+      [--concurrency N] [--grant read|write|exec|network]... [--trust]
+      [--door NAME] [--eval-dir DIR] [--output-dir DIR] [--keep-temp] [--coder PATH]
+      [--questions DIR]
+        Run an extension's eval suite with the extension and without it.
+  eval init [TARGET] [--bare] [--out DIR] [--eval-dir DIR]
+        Write a test set with the authoring interview for the extension at
+        TARGET, or with --bare a blank case named TARGET from the template.
+  eval publish REPORT [--blossom URL]
+        Add an eval result to the Gym: its suite release and a 3189 result.
+  eval check EVENT [TARGET] [--runs N] [--concurrency N] [--trust] [--coder PATH]
+      [--questions DIR] [--blossom URL]
+        Rerun a published eval result and publish a confirm or a dispute.
 Options for every command:
   --relay URL         Relay to read (default wss://relay.openagents.com).
   --timeout SECONDS   How long to wait for the relay (default 8).
   --as PROFILE        Verse profile key that answers a NIP-42 challenge.
-Listing a record installs nothing; a listing is discovery, not a pin.";
+Listing a record installs nothing; a listing is discovery, not a pin.
+Run `openagents ext eval --help` for the eval commands in full.";
 
 #[cfg(test)]
-pub(crate) const EXT_EFFECTS: &[Declared] = &[Declared::computer("list", Effect::ReadOnly)];
+pub(crate) const EXT_EFFECTS: &[Declared] = &[
+    Declared::computer("list", Effect::ReadOnly),
+    crate::ext_eval::EFFECTS[0],
+    crate::ext_eval::EFFECTS[1],
+    crate::ext_eval::EFFECTS[2],
+    crate::ext_eval::EFFECTS[3],
+];
 
 const DEFAULT_LIMIT: u64 = 100;
 
@@ -121,6 +141,9 @@ pub fn prg(output: &Output, words: &[String]) -> u8 {
 }
 
 pub fn ext(output: &Output, words: &[String]) -> u8 {
+    if words.first().is_some_and(|word| word == "eval") {
+        return crate::ext_eval::run(output, &words[1..]);
+    }
     run(Group::Ext, output, words)
 }
 
@@ -133,12 +156,6 @@ fn run(group: Group, output: &Output, words: &[String]) -> u8 {
     if command == "--help" || command == "-h" || command == "help" {
         println!("{usage}");
         return 0;
-    }
-    // `ext eval init`: the authoring interview (#9937). #9934's
-    // `ext_eval.rs` owns the rest of `ext eval`.
-    if matches!(group, Group::Ext) && command == "eval" && rest.first().is_some_and(|w| w == "init")
-    {
-        return crate::ext_eval_init::run(output, &rest[1..]);
     }
     let args = match Args::parse(rest, &[]) {
         Ok(args) => args,

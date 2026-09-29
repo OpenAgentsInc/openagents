@@ -2449,7 +2449,12 @@ impl Runtime {
                     "not_admitted",
                     "invoke names a host operation and this host has not admitted one",
                 )),
-                Kind::Module => self.run_module(step, &name, remaining).await,
+                Kind::Module => {
+                    let started = Instant::now();
+                    let outcome = self.run_module(step, &name, remaining).await;
+                    self.record_module(step, &name, &outcome, started, ctx.trace.as_deref_mut());
+                    outcome
+                }
             };
             // The deadline reaches inside the step, not only to its
             // boundary: an expiry while the step dispatched ends it.
@@ -4404,6 +4409,47 @@ impl Runtime {
         if let Some(trace) = trace {
             trace.check(message, call);
         }
+    }
+
+    /// Writes one `module` step's guest call to the trace: the step name as
+    /// the call, the guest's operation and read scope as its arguments, and
+    /// what the guest returned (or the refusal) as its output, so a reader
+    /// of the trajectory sees which guest ran and what it answered.
+    fn record_module(
+        &self,
+        step: &Step,
+        name: &str,
+        outcome: &Result<String, Refused>,
+        started: Instant,
+        trace: Option<&mut Recorder>,
+    ) {
+        let module = step.module.as_ref();
+        let arguments = json!({
+            "operation": module.and_then(|m| m.get("operation")).cloned().unwrap_or(Value::Null),
+            "profile": module.and_then(|m| m.get("profile")).cloned().unwrap_or(Value::Null),
+            "read": module.and_then(|m| m.get("read")).cloned().unwrap_or(Value::Null),
+        });
+        let (output, recorded) = match outcome {
+            Ok(output) => (output.clone(), Outcome::Completed),
+            Err(refused) => (
+                json!({"refused": refused.code, "reason": refused.reason}).to_string(),
+                Outcome::Failed,
+            ),
+        };
+        self.record(
+            trace,
+            &format!("Ran the {name} guest."),
+            Call {
+                id: String::new(),
+                name: name.to_string(),
+                arguments,
+                output,
+                outcome: recorded,
+                milliseconds: u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
+                purpose: Some("Run the step's Wasm guest on the granted snapshot.".to_string()),
+                extra: self.step_extra(step),
+            },
+        );
     }
 
     /// What every recorded step of a run carries: which program, which
@@ -7669,6 +7715,46 @@ mod tests {
         let output: Value = serde_json::from_str(&run.steps[0].output).unwrap();
         assert_eq!(output["value"]["topic"], json!("notes"));
         assert_eq!(output["verification"], json!("not_run"));
+    }
+
+    /// A module step's guest call lands in the trace under the step's
+    /// name, with the guest's operation and what it returned, so an
+    /// extension eval's `operation_used` and `receipt` graders can see it.
+    #[tokio::test]
+    async fn a_module_step_records_its_guest_call() {
+        let module = json!({
+            "profile": "pure",
+            "operation": "echo",
+            "input": {"topic": "notes"},
+            "bytes_base64": plugin::encode_base64(&fixture("pure.wasm"))
+        });
+        let runtime = empty_runtime();
+        let inputs = Inputs::read("echo the notes", "stub-local");
+        let logs = tempfile::tempdir().unwrap();
+        let mut recorder =
+            Recorder::open(logs.path(), "fixture", "fixture", "fixture-repo").unwrap();
+        let trace = recorder.path().to_path_buf();
+        let run = runtime
+            .run(
+                &module_program(module, json!({})),
+                &inputs,
+                &Grant::all(),
+                Some(&mut recorder),
+            )
+            .await;
+        assert!(run.finished(), "{:?}", run.stopped);
+        drop(recorder);
+        let document = atif::log::read(&trace).unwrap().document();
+        let call = document["steps"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|step| step.pointer("/extra/call"))
+            .find(|call| call["function_name"] == "guest")
+            .expect("the guest call is recorded");
+        assert_eq!(call["arguments"]["operation"], "echo");
+        let output: Value = serde_json::from_str(call["content"].as_str().unwrap()).unwrap();
+        assert_eq!(output["value"]["topic"], json!("notes"));
     }
 
     fn fixture(name: &str) -> Vec<u8> {

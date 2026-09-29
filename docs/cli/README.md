@@ -968,6 +968,66 @@ head it found is invalid. `discover` prints the agent card and agent-skills
 index this checkout serves for an origin; `--fetch` also reads both from the
 origin over HTTP and exits 1 when either differs or fails to load.
 
+## Extension evals (`ext eval`)
+
+```sh
+cd my-extension                                  # holds package.json
+openagents ext eval init                         # the authoring interview
+openagents ext eval init smoke --bare            # a blank evals/smoke/
+openagents ext eval run . --trust                # every case, both arms
+openagents ext eval run . --runs 1 --case smoke  # a cheap pilot
+openagents ext eval run . --grant write          # cases that write files
+openagents --json ext eval run . out.json        # the report, not the table
+openagents ext eval publish evals/results/TIMESTAMP/report.json
+openagents ext eval check EVENT_ID               # rerun someone's result here
+```
+
+`ext eval run` measures whether an extension changes what Coder does
+([the specification](../extensions/evaluation.md)). Each case runs as one
+`coder -p` turn per arm per attempt: the **subject** arm admits the
+extension's program (and the Wasm guests it carries) through
+`CODER_PROGRAMS` and its `skills/*.md` as guidance appended to Coder's
+instructions; the **baseline** arm admits nothing. Every run gets a new
+`oa-eval-XXXXXX` directory and runs inside `coder-boundary`
+(`sandbox-exec` on macOS, `bwrap` on Linux); on any other host every run
+refuses as `unconfined_host`. The child sees no variable of your shell: it
+gets a door URL and a token for a loopback proxy that holds the real key,
+so the key never reaches the child, its trajectory, or the results.
+
+An extension directory holds its package record in `package.json` (the
+`coder::package::Package` record, with an optional `eval_dir`), the
+programs it names under `programs/`, and its skills under `skills/`. An
+installed identity `PUBKEY:SLUG@VERSION` resolves under
+`~/.openagents/extensions/PUBKEY/SLUG/VERSION/`. A directory you haven't
+trusted asks once; `--trust` answers yes, and without a terminal it
+refuses. `--grant write|exec|network` admits what a case asks for beyond
+`read`.
+
+The pinned door comes from this shell: `CODER_DOOR_URL`, `CODER_DOOR_KEY`
+(or `CODER_AI_GATEWAY_KEY`), and `CODER_MODEL`; `--door gemini|glm` picks a
+lane on the same door. `TYPESAFE_API_KEY` is the decision door that
+`decision` graders use and that the child classifies its turns through.
+`--coder PATH` names the agent binary and `--questions DIR` its question
+sets; both arms get the same ones, pinned in the report's run locks.
+
+Results go to `<eval dir>/results/TIMESTAMP/`: `report.json`,
+`report.html`, `artifacts/`, `runs/CASE/ARM-N/` (the ATIF trajectory, the
+created files, and the child's output, with tokens redacted), `suite/`
+(the case files, byte for byte), and `run.json`. Exit codes: 0 Better or
+a clean single-arm run, 1 Worse, inconclusive, or a load failure, 2
+partial, 64 invalid usage, and 130 or 143 on `SIGINT` or `SIGTERM`, which
+stop every live child.
+
+`publish` uploads the suite's files to the relay's Blossom server
+(`--blossom URL` to name another), publishes the suite once as a NIP-EXT
+`3184` release signed by its author, and publishes the result once as a
+NIP-EVAL `3189` with the report inline, signed by the evaluator; a second
+`publish` reuses both. `check EVENT [TARGET]` fetches that result and its
+suite, verifies every byte, refuses unless TARGET is the same extension
+(its package record and run lock), reruns the suite, and publishes a
+`3189` citing the original. It prints `confirm` or `dispute` and exits 0
+only on a confirm.
+
 ## MCP server and shell completions
 
 ```sh

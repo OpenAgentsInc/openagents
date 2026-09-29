@@ -77,6 +77,79 @@ pub const RETRIES_MAX: usize = 2;
 /// the work; `devin-relay` sends it to the worker `CODER_WORKER` names.
 pub const DELEGATE_VAR: &str = "CODER_DELEGATE";
 
+/// The variable naming a file of guidance appended to this session's
+/// instructions: an extension's skills, or an eval case's appended
+/// instructions (`docs/extensions/evaluation.md`, *The run sandbox*).
+pub const GUIDANCE_VAR: &str = "CODER_GUIDANCE";
+
+/// The variable stating the guidance file's `sha256:` digest. When it is
+/// set, bytes that don't produce it refuse the session rather than run
+/// with guidance nobody pinned.
+pub const GUIDANCE_DIGEST_VAR: &str = "CODER_GUIDANCE_DIGEST";
+
+/// Appended guidance: its text and the digest of its bytes.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Guidance {
+    pub text: String,
+    pub digest: String,
+}
+
+impl Guidance {
+    /// The guidance [`GUIDANCE_VAR`] names, checked against
+    /// [`GUIDANCE_DIGEST_VAR`]. `None` when neither is set.
+    ///
+    /// # Errors
+    ///
+    /// Returns a sentence when the file can't be read, isn't UTF-8, or
+    /// doesn't match the stated digest, or when a digest is stated with no
+    /// file.
+    pub fn from_env() -> Result<Option<Self>, String> {
+        Self::read(
+            env::var_os(GUIDANCE_VAR).as_deref(),
+            env::var(GUIDANCE_DIGEST_VAR).ok().as_deref(),
+        )
+    }
+
+    /// The guidance at `path`, checked against `stated`: what
+    /// [`Guidance::from_env`] reads, as explicit values.
+    ///
+    /// # Errors
+    ///
+    /// As [`Guidance::from_env`].
+    pub fn read(
+        path: Option<&std::ffi::OsStr>,
+        stated: Option<&str>,
+    ) -> Result<Option<Self>, String> {
+        let path = path.filter(|value| !value.is_empty());
+        let stated = stated.filter(|value| !value.is_empty());
+        let Some(path) = path else {
+            return match stated {
+                Some(_) => Err(format!(
+                    "{GUIDANCE_DIGEST_VAR} is set and {GUIDANCE_VAR} names no file"
+                )),
+                None => Ok(None),
+            };
+        };
+        let bytes = std::fs::read(path).map_err(|error| {
+            format!(
+                "{GUIDANCE_VAR} names {}, which can't be read: {error}",
+                Path::new(path).display()
+            )
+        })?;
+        let digest = nostr::contracts::digest_bytes(&bytes);
+        if let Some(stated) = stated
+            && stated != digest
+        {
+            return Err(format!(
+                "the guidance file's digest is {digest}, and {GUIDANCE_DIGEST_VAR} states {stated}"
+            ));
+        }
+        let text = String::from_utf8(bytes)
+            .map_err(|_| format!("{GUIDANCE_VAR} names a file that is not UTF-8"))?;
+        Ok(Some(Self { text, digest }))
+    }
+}
+
 /// The message the model reads after it answered a finished loop with
 /// another plan: the one repair a turn allows before the host answers for
 /// it.
@@ -220,6 +293,9 @@ pub struct Agent {
     /// Why this session answers through the door it does, as the session
     /// header and the trace say it.
     door_reason: String,
+    /// Guidance appended to every generation's instructions, when the
+    /// environment names some.
+    guidance: Option<Guidance>,
 }
 
 impl Agent {
@@ -281,6 +357,24 @@ impl Agent {
         if let Some(trace) = &mut trace {
             trace.door(generate.name(), generate.model(), &door_reason);
         }
+        let guidance = Guidance::from_env()?;
+        if let (Some(trace), Some(guidance)) = (&mut trace, &guidance) {
+            // The guidance rides in the instructions the trace records; this
+            // step names it by digest so a reader can tell which bytes ran.
+            let step = atif::Step::said(
+                atif::Source::System,
+                &format!("guidance: {} appended", guidance.digest),
+            )
+            .noting("kind", serde_json::json!("guidance"))
+            .noting(
+                "guidance",
+                serde_json::json!({
+                    "digest": guidance.digest,
+                    "bytes": guidance.text.len(),
+                }),
+            );
+            trace.external(vec![step], "");
+        }
         let decision_profile = crate::decision::profile_from_env()?;
         let classify = decision_profile
             .as_ref()
@@ -300,6 +394,7 @@ impl Agent {
             survey: None,
             program_grant: None,
             door_reason,
+            guidance,
         })
     }
 
@@ -319,7 +414,16 @@ impl Agent {
             survey: None,
             program_grant: None,
             door_reason: String::new(),
+            guidance: None,
         }
+    }
+
+    /// The same agent appending `guidance` to its instructions, for tests
+    /// and for a caller that read the guidance itself.
+    #[must_use]
+    pub fn with_guidance(mut self, guidance: Option<Guidance>) -> Self {
+        self.guidance = guidance;
+        self
     }
 
     /// The repo the shell sits in, for the prompt's context block.
@@ -1135,6 +1239,10 @@ impl Agent {
             instructions.push_str(RETRY_SUFFIX);
         }
         instructions.push_str("\n\n");
+        if let Some(guidance) = &self.guidance {
+            instructions.push_str(guidance.text.trim_end());
+            instructions.push_str("\n\n");
+        }
         let mut context = self.about.context();
         let mut evidence = None;
         if let Some(repo) = &self.repo {
@@ -1533,6 +1641,50 @@ mod tests {
             last.contains(FINAL_SUFFIX) && !last.contains(RETRY_SUFFIX),
             "{last}"
         );
+    }
+
+    /// Guidance whose bytes don't produce the stated digest refuses the
+    /// session, and a digest with no file is a mistake, not an absence.
+    #[test]
+    fn guidance_must_match_its_stated_digest() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("guidance.md");
+        std::fs::write(&path, "Map first.\n").unwrap();
+        let digest = nostr::contracts::digest_bytes(b"Map first.\n");
+        let read = Guidance::read(Some(path.as_os_str()), Some(&digest))
+            .unwrap()
+            .unwrap();
+        assert_eq!(read.text, "Map first.\n");
+        assert_eq!(read.digest, digest);
+        let wrong = Guidance::read(Some(path.as_os_str()), Some("sha256:00")).unwrap_err();
+        assert!(wrong.contains("states sha256:00"), "{wrong}");
+        assert!(Guidance::read(None, Some(&digest)).is_err());
+        assert_eq!(Guidance::read(None, None).unwrap(), None);
+    }
+
+    /// Appended guidance lands in every generation's instructions after
+    /// the base text and before the context blocks, and only when set.
+    #[test]
+    fn guidance_is_appended_to_the_instructions() {
+        let plain = saying("hi".to_string()).instructions(false, false, false).0;
+        assert!(!plain.contains("Map the repository first."), "{plain}");
+        let guided = saying("hi".to_string())
+            .with_guidance(Some(Guidance {
+                text: "## Extension skills\n\nMap the repository first.\n".to_string(),
+                digest: "sha256:0".to_string(),
+            }))
+            .instructions(false, false, false)
+            .0;
+        let at = guided.find("Map the repository first.").expect("appended");
+        assert!(at > guided.find(INSTRUCTIONS).expect("base text"));
+        let clarifying = saying("hi".to_string())
+            .with_guidance(Some(Guidance {
+                text: "Map the repository first.".to_string(),
+                digest: "sha256:0".to_string(),
+            }))
+            .instructions(true, false, false)
+            .0;
+        assert!(clarifying.contains("Map the repository first."));
     }
 
     /// A plan the host cannot read on a permitted turn is refused before

@@ -33,6 +33,18 @@
 //! trait ([`DecisionDoor`], [`JudgeDoor`], [`Replayer`]) with a fake in
 //! [`door::fake`], so tests make no network call. Nothing here routes on
 //! keywords.
+//!
+//! # The runner
+//!
+//! With the default `runner` feature, the crate also runs suites:
+//! [`run::run_suite`] makes every planned run as one confined `coder -p`
+//! turn ([`sandbox`], [`child`], [`proxy`], [`arms`]), grades them with the
+//! live doors ([`live`], [`replay`], and [`JevDoor`]), and writes the
+//! results directory. [`publish`] builds the suite release and the `3189`
+//! result, [`blob`] moves suite bytes over Blossom, [`check`] reruns a
+//! published result, and [`trust`] and [`signal`] hold the operator's
+//! trust and stop requests. `docs/extensions/evaluation.md`, *The run
+//! sandbox*, is the specification.
 
 pub mod artifact;
 pub mod author;
@@ -48,6 +60,31 @@ pub mod record;
 pub mod report;
 pub mod score;
 pub mod trajectory;
+
+#[cfg(feature = "runner")]
+pub mod arms;
+#[cfg(feature = "runner")]
+pub mod blob;
+#[cfg(feature = "runner")]
+pub mod check;
+#[cfg(feature = "runner")]
+pub mod child;
+#[cfg(feature = "runner")]
+pub mod live;
+#[cfg(feature = "runner")]
+pub mod proxy;
+#[cfg(feature = "runner")]
+pub mod publish;
+#[cfg(feature = "runner")]
+pub mod replay;
+#[cfg(feature = "runner")]
+pub mod run;
+#[cfg(feature = "runner")]
+pub mod sandbox;
+#[cfg(feature = "runner")]
+pub mod signal;
+#[cfg(feature = "runner")]
+pub mod trust;
 
 pub use artifact::ArtifactRef;
 pub use case::{Case, CaseError, CaseFiles, Grant, Kind, LoadOptions, RunConfig, RunFailure};

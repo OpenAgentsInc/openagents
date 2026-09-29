@@ -7,13 +7,40 @@ description = "The extension evaluation engine: cases, graders, scoring, the ext
 publish.workspace = true
 
 [features]
-default = []
+# `runner` is the half that spawns: the run sandbox, the child, the door
+# proxy, the live judge door, the receipt replayer, and the publish and
+# check builders. A crate that only reads suites and reports (the
+# authoring interview) turns it off with `default-features = false`.
+default = ["runner"]
+runner = [
+    "plugin",
+    "dep:axum",
+    "dep:base64",
+    "dep:coder-boundary",
+    "dep:futures-util",
+    "dep:libc",
+    "dep:reqwest",
+    "dep:tempfile",
+    "dep:tokio",
+]
 # Converts `plugin::replay::Replay` into this crate's replay verdict, for a
-# runner that replays Wasm invocation receipts. Off by default, because it
-# links the Wasm engine.
+# runner that replays Wasm invocation receipts. It links the Wasm engine;
+# `runner` turns it on.
 plugin = ["dep:plugin"]
 
 [dependencies]
+# The door proxy: the child reaches its pinned door only through a
+# loopback listener that swaps a per-run token for the real key.
+axum = { version = "0.8", optional = true }
+base64 = { version = "0.22", optional = true }
+# The run sandbox: `sandbox-exec` on macOS, `bwrap` on Linux, refusal
+# elsewhere.
+coder-boundary = { path = "../coder-boundary", optional = true }
+futures-util = { version = "0.3", optional = true }
+libc = { version = "0.2", optional = true }
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls", "stream"], optional = true }
+tempfile = { version = "3", optional = true }
+tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "sync", "time"], optional = true }
 # Trajectories are ATIF documents; the crate reads and version-checks them.
 atif = { path = "../atif" }
 # The verdict is the Gym gate `ext-eval-v1`, recorded by its digest.
@@ -33,6 +60,21 @@ toml = "0.9"
 
 [dev-dependencies]
 tempfile = "3"
+
+[[test]]
+name = "runner"
+required-features = ["runner"]
+
+[[test]]
+name = "confinement"
+required-features = ["runner"]
+
+[[example]]
+# A stand-in for `coder -p` the runner tests spawn: it reads the pinned
+# door from its environment, asks it once through the proxy, and writes
+# an ATIF log.
+name = "fake_agent"
+required-features = ["runner"]
 
 [lints]
 workspace = true

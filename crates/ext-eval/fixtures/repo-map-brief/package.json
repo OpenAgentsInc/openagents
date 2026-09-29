@@ -1,0 +1,13 @@
+{
+  "v": 1,
+  "slug": "repo-map-brief",
+  "name": "Repository map brief",
+  "summary": "A program over the repo_map guest, and a skill for describing a repository.",
+  "version": "0.1.0",
+  "publisher": "openagents",
+  "provenance": "local file",
+  "program": {
+    "name": "repo-map-brief",
+    "digest": "06033f76725222e68de11893e38973741cb6c19745fc0ba1ce66c9e658dbaa6f"
+  }
+}

@@ -1,7 +1,7 @@
 # Extension evaluation
 
-Status: target specification, revision 2 (2026-09-28). Nothing on this
-page is built yet. It builds on parts that exist: the Wasm host core and
+Status: target specification, revision 2 (2026-09-28). Parts are built,
+as the *Built* notes in their sections say. It builds on parts that exist: the Wasm host core and
 its invocation receipts (`crates/plugin`), the three evidence guests, the
 local package resolver and locks (`crates/coder/src/package.rs`), the
 program runtime (`crates/coder/src/runtime.rs`), the headless `coder -p`
@@ -367,6 +367,21 @@ tmp/             a private temp directory, mode 0700
 
 `SIGINT` (exit 130) and `SIGTERM` (exit 143) stop every live child after a
 short grace period; a second signal exits at once.
+
+Built ([#9934](https://github.com/OpenAgentsInc/openagents/issues/9934)):
+the runner is `ext_eval::run` (with `sandbox`, `child`, `proxy`, `arms`,
+`live`, `replay`, `publish`, `check`, and `blob` beside it) and the command
+is `openagents ext eval` ([the CLI reference](../cli/README.md#extension-evals-ext-eval)).
+Where v1 goes beyond or narrows this section: the child's door is a
+per-run loopback proxy with a random token, so the door key never enters
+the child at all; the child's environment is built from nothing rather
+than stripped; on Linux the network stays open (with the proxy still
+holding the key), because `bwrap`'s network namespace would hide the
+loopback proxy; an extension directory holds its package record in
+`package.json` and its skills under `skills/`; both arms get the agent's
+question sets under `~/.openagents/questions/`; and Coder's runtime records
+each `module` step's guest call in the trajectory, which the `receipt`
+grader replays. See [the live run](measurements/2026-09-29-ext-eval-runner-live.md).
 
 ## Where runs execute
 
