@@ -1,360 +1,645 @@
-# Automatic pairing without Tailscale
+# Connect a computer by scanning a QR code
 
-Status: proposal, 2026-09-29. Nothing in this document is implemented yet;
-the plan at the end names the issues to open.
+Status: design, 2026-09-29. Nothing here is implemented yet. It replaces the
+first draft of this file (`13935bde84`), which made a command on the
+computer the primary path. The [Plan](#plan) lists the issues that build it.
 
-## Why
+## The decision
 
-Pairing a phone with a computer today takes the steps in
-[Link your devices](../guides/link-devices.md): install and sign in to
-Tailscale on every device, turn on HTTPS certificates in the Tailscale admin
-console, create an owner key, run `scripts/link-device.sh` on each computer,
-mint an invitation with `coder link invite`, and scan or paste it on the phone
-within five minutes. The 2026-09-29 Android validation
-([PR #9964](https://github.com/OpenAgentsInc/openagents/pull/9964)) found
-that even that last step breaks when the phone's clock is a few seconds
-behind the computer's.
+The owner's direction (2026-09-29), binding on this design: pairing is done
+primarily by a companion desktop app, so a person simply scans a QR code
+shown by the desktop app with the mobile app. It must be idiot proof: no
+Tailscale, and no "run this command" steps.
 
-The model underneath is right and stays: the host is the only issuer of
-access, a device holds a host-signed grant with typed rights
-([NIP-HOST](../../../nips/openagents/NIP-HOST.md)), and a route or network
-membership never grants anything
-([NIP-REACH](../../../nips/openagents/NIP-REACH.md)). What has to go is the
-ceremony around it. The goal:
+So the primary path is:
 
-1. On a computer: install one Rust program (`openagents`, or the desktop app
-   that embeds it) and run one command. No Tailscale, no certificates, no
-   owner-key step, no script.
-2. On the phone: open the app, and the computer either shows up on its own
-   (same network) or after one scan or one six-digit code (anywhere).
-3. Everything after that — terminals, `computer exec`, `task.create` — uses
-   the same grants and rights as today.
+1. The person downloads **OpenAgents** for Mac (a signed, notarized `.dmg`),
+   drags it to Applications, and opens it.
+2. The window shows one large QR code and one sentence: **Scan with the
+   OpenAgents app on your phone.**
+3. On the phone they tap **Connect a computer** (a chip in chat, or Account >
+   Computers) and point the camera at the screen.
+4. Both screens say the computer is connected. A **Run Coder** offer in chat
+   can now send work to that Mac.
 
-This document reviews what [iroh](https://docs.rs/iroh/latest/iroh/) and
-[T3 Code](https://github.com/pingdotgg/t3code) do, and turns that into a
-plan for this repository.
+No terminal, no Tailscale, no key to create or copy, no command. The
+`openagents connect` command stays, for people with a headless box or who
+want to script it; it is never the path the app or the docs lead with.
 
-## What we have
+Secondary, after the QR path ships: a phone on the same Wi-Fi sees the
+computer by itself, and the computer asks "Kai's iPhone wants to connect"
+with a six-digit code shown on both screens. The owner reports that the
+OpenAgents iOS app already holds Apple's multicast entitlement
+(`com.apple.developer.networking.multicast`), which that path needs.
 
-| Piece | Today | Problem |
+What does not change: the host is the only issuer of access; a device holds a
+host-signed grant with typed rights ([NIP-HOST](../../../nips/openagents/NIP-HOST.md));
+a route, a network, or a scan never grants anything by itself
+([NIP-REACH](../../../nips/openagents/NIP-REACH.md)); terminals are
+[NIP-TERM](../../../nips/openagents/NIP-TERM.md) sessions under the
+`terminal` right.
+
+## Today
+
+What a person does now, from [Link your devices](../guides/link-devices.md):
+sign in to Tailscale on every device, turn on HTTPS certificates in the
+Tailscale admin console, check out this repository and the pinned Rust
+toolchain, run `coder link owner init`, run `scripts/link-device.sh` on each
+computer, run `coder link invite`, and scan within five minutes. Each of
+those is a place a normal person stops.
+
+| Piece | Today, with source | Kept or changed |
 | --- | --- | --- |
-| Transport | Tailscale WebSocket on port 47101 (`wss` with `tailscale cert`, or plain `ws`); `wss://relay.openagents.com/` as fallback for enrollment and control messages. | Every device needs Tailscale signed in to the same tailnet; certificates need an admin-console toggle; the relay fallback is a store-and-forward path, not a stream. |
-| Identity | Owner key (one file), host key, device key. | Right split, but the owner key is a manual step the person has to understand before anything works. |
-| Enrollment | `invite.create` → QR or `coder-host:` string → `enroll.redeem` over the relay within five minutes. | Manual on both ends; one invitation per computer; clock-sensitive. |
-| Same-network shortcut | [Tailnet admission](../../../nips/openagents/NIP-HOST.md#tailnet-admission): the host hands an invitation to a caller whose Tailscale identity is the machine owner. | Depends on Tailscale identity. |
-| Rights | `observe`, `operate`, `terminal`, `review`, `access_read`; grant epochs; per-message recheck; revocation. | Keep as is. |
-| Terminals and exec | [NIP-TERM](../../../nips/openagents/NIP-TERM.md) over the direct channel. | Keep as is; only the channel underneath changes. |
+| Transport | A NIP-REACH direct channel over TCP or WebSocket, recorded as a `tailnet` hint on port 47101 (`crates/coder-host/src/settings.rs`); private `3188` artifacts over `wss://relay.openagents.com/` for everything else, including terminals ([NIP-TERM, Transport](../../../nips/openagents/NIP-TERM.md#transport)). | The direct channel gains an iroh transport. The relay transports stay as the fallback. |
+| Channel security | The NIP-REACH handshake proves the host and device Nostr keys and encrypts every frame, "over any ordered byte stream" ([NIP-REACH, Implementation status](../../../nips/openagents/NIP-REACH.md#implementation-status)). | Kept unchanged, carried inside an iroh stream. |
+| Identity | Owner key in `~/.openagents/coder-owner/owner.key`; host key and grants in `~/.openagents/coder-access/`; the phone's device key in Keychain `com.openagents.app.device` ([INVARIANTS, Device identity key](../../../INVARIANTS.md#device-identity-key)). | The desktop app keeps the owner and host secrets in the OS keychain. |
+| Enrollment | A `coder-host:` invitation (host key, invitation ID, 32-byte capability, 300-second life, relay URL) redeemed as `enroll.redeem` over the relay ([NIP-HOST, Host invitations](../../../nips/openagents/NIP-HOST.md#host-invitations)). | Same redemption, also carried over iroh; a new QR payload adds the computer's iroh address. |
+| Clock | `issued_at` may sit up to 60 s ahead of the reader (`CLOCK_SKEW`, `crates/coder-connect/src/protocol.rs:359`, used for host access by `crates/coder-access/src/protocol.rs:843`); the channel hello allows 120 s (`MAX_CLOCK_SKEW`, `crates/coder-reach/src/channel.rs:42`). | Kept. |
+| Same-network shortcut | [Tailnet admission](../../../nips/openagents/NIP-HOST.md#tailnet-admission): an invitation for a caller whose Tailscale user owns the host, port 47109 (`crates/coder-host/src/tailnet.rs:41`). | Deprecated; replaced by nearby pairing with a confirmation code. |
+| Local operator | CLI commands (`coder host revoke`, `coder host autostart on`) open the host's on-disk store directly (`crates/coder-host/src/cli.rs`). No host process exposes a local socket today. | A local control socket, same-user only, used by the desktop app and `openagents connect`. |
+| Phone scanner | `bins/coder-ios/host/App/QRScanner.swift` (compiled into the OpenAgents iOS host, `bins/openagents-ios/host/project.yml`) and `bins/openagents-android/host/app/src/main/java/com/openagents/app/QRScanner.kt`. Camera permission is already declared on both. | Reused. |
+| Chat tie-in | **Connect a computer** is the chat chip shown when a message needs a computer and none is ready; it opens Account > Computers ([wireframe](../../product/2026-09-28-app-wireframe.md) `SCR-17.E05`, `SCR-17.E06`, `SCR-14.E05`). | The chip opens the scanner directly. |
 
-## iroh
+One consequence matters for ordering the work: pairing, **Run Coder**, and
+terminals already work over the Nostr relay with no Tailscale. What Tailscale
+buys today is the fast direct channel and the ceremony around the owner key.
+So the first milestone needs the ceremony gone and a direct path that is not
+Tailscale; it does not need every packet off the relay.
 
-iroh (`iroh` 1.1 on crates.io) is a Rust library that gives a process an
-`Endpoint` with a stable Ed25519 `SecretKey`; the public key is the
-`EndpointId`. `Endpoint::connect(addr, alpn)` returns a QUIC connection
-whose remote `EndpointId` is authenticated during the TLS handshake. The
-application decides whether that peer is authorized. Connections start
-through the peer's home relay and migrate to a direct path when hole
-punching succeeds; when it does not, they stay on the relay. Relay traffic is
-QUIC-encrypted end to end, so a relay cannot read payloads. ALPN strings
-separate application protocols on one endpoint, and each connection carries
-ordinary QUIC bidirectional and unidirectional streams.
+## iroh, verified
 
-`AddressLookup` resolves an `EndpointId` to addresses. The `iroh` crate
-ships an in-memory lookup and DNS/PKARR publishing; mDNS (local network) and
-Mainline DHT lookups are separate crates. With a lookup configured a caller
-needs only the `EndpointId`.
+Checked on 2026-09-29 against crates.io, the published crate sources, and
+[docs.rs/iroh/1.3.0](https://docs.rs/iroh/1.3.0/iroh/).
 
-What this buys us:
+- **Versions.** `iroh` 1.3.0 (2026-09-28), 1.2.0 (2026-09-09), 1.1.0
+  (2026-08-25); license `MIT OR Apache-2.0`; MSRV 1.91
+  ([crates.io API](https://crates.io/api/v1/crates/iroh)). `iroh-relay`,
+  `iroh-base`, and `iroh-dns-server` are also 1.3.0. QUIC is `noq` 1.3
+  (iroh's fork; `iroh-quinn` stopped at 0.16.1).
+- **API (1.x).** `Endpoint::builder(preset)` then `.secret_key(SecretKey)`,
+  `.alpns(Vec<Vec<u8>>)`, `.relay_mode(RelayMode)`,
+  `.address_lookup(..)`, `.bind().await`;
+  `Endpoint::connect(impl Into<EndpointAddr>, alpn: &[u8]) -> Result<Connection, ConnectError>`;
+  `Connection::remote_id() -> EndpointId`; `Router::builder(endpoint).accept(alpn, handler).spawn()`
+  with a `ProtocolHandler`. `EndpointId` is `iroh_base::PublicKey`
+  (Ed25519); `EndpointAddr { id, addrs: BTreeSet<TransportAddr> }` carries IP
+  and relay addresses. `NodeId` and `NodeAddr` no longer exist.
+  `RelayMode` is `Disabled | Default | Staging | Custom(RelayMap)`. Presets in
+  `iroh::endpoint::presets`: `Empty`, `Minimal` (crypto provider only), `N0`
+  (n0's DNS/PKARR lookup and n0's relays), `N0DisableRelay`
+  (`src/endpoint.rs:960`, `src/endpoint/presets.rs`).
+- **Address lookup.** The `AddressLookup` trait resolves an `EndpointId`.
+  `iroh` ships `MemoryLookup`, `DnsAddressLookup`, and PKARR publishing
+  (`src/address_lookup/`). mDNS is the separate crate
+  [`iroh-mdns-address-lookup`](https://crates.io/crates/iroh-mdns-address-lookup)
+  0.6.0 (`MdnsAddressLookup`, built on `swarm-discovery` 0.6, which opens its
+  own UDP multicast socket on 224.0.0.251:5353; default service name
+  `irohv1`, changeable with `MdnsAddressLookupBuilder::service_name`). The
+  DHT is `iroh-mainline-address-lookup`. There is no lookup by a prefix of an
+  `EndpointId`: resolution is by the full key.
+- **Tickets.** `iroh-tickets` 1.0.0 has `EndpointTicket` (`endpoint` prefix,
+  base32). We do not use it: our QR payload also carries the host's Nostr key
+  and a one-time capability.
+- **Relays and hole punching.** An endpoint keeps a connection to its home
+  relay; connections start through the relay and move to a direct path when
+  hole punching succeeds, else stay relayed. Relayed traffic is QUIC,
+  encrypted end to end; the relay routes by `EndpointId` and learns who talks
+  to whom. Relays also offer QUIC Address Discovery (QAD) on UDP 7842, off by
+  default in `iroh-relay` (`enable_quic_addr_discovery`), needing TLS.
+- **Default relays.** The `N0` preset uses n0's four public relays
+  (`*.relay.n0.iroh.link`, `src/defaults.rs`), which n0 describes as
+  rate-limited and meant for development
+  ([iroh FAQ](https://docs.iroh.computer/about/faq)). We use `Minimal` plus
+  `RelayMode::Custom` with our relay only, and no n0 DNS.
+- **Relay server.** `iroh-relay` built with `--features server`, TOML config
+  (`enable_relay`, `http_bind_addr`, `tls` with `cert_mode` `Manual`,
+  `LetsEncrypt`, or `Reloading`, `enable_quic_addr_discovery`, `limits`,
+  `access` = everyone, allow/deny lists, shared token, or HTTP callout,
+  `enable_metrics`); ports TCP 443 (relay over HTTPS, WebSocket upgrade),
+  TCP 80, UDP 7842 (QAD), metrics 9090; `GET /healthz`
+  ([self-hosting](https://docs.iroh.computer/iroh-services/relays/self-hosted)).
+  Clients hold long-lived upgraded connections.
+- **Platforms.** iroh's CI builds and tests Linux, macOS, Windows, FreeBSD,
+  and Android targets (`aarch64-linux-android`, `armv7`, `x86_64`, emulator
+  tests) and wasm32. iOS is not in iroh's own CI; n0 ships iOS through
+  [iroh-ffi](https://github.com/n0-computer/iroh-ffi) (an xcframework that
+  links `SystemConfiguration` and `CoreWLAN`). On Android the app must call
+  `iroh::dns::install_android_jni_context` before binding
+  (`src/endpoint.rs:885`). We checked here: a scratch crate with `iroh` 1.2.0
+  and `iroh-mdns-address-lookup` 0.5.0 passes `cargo check` for
+  `aarch64-apple-darwin` and `aarch64-apple-ios` with Rust 1.97.1; the
+  Android check needs the NDK `clang` that `ring` already needs for
+  `crates/openagents-mobile`, and was not run.
 
-- **No Tailscale.** A phone and a computer behind two NATs connect by public
-  key, with hole punching and encrypted relay fallback, and nothing to sign
-  in to.
-- **Authenticated streams.** The direct channel in NIP-REACH exists to prove
-  both keys over a WebSocket and then carry frames. A QUIC connection whose
-  remote is a known `EndpointId` already proves the peer; NIP-REACH frames
-  become QUIC streams.
-- **Same-network discovery.** mDNS lookup lets a phone see computers on the
-  same Wi-Fi with no rendezvous at all.
-- **Rust on every side.** `iroh` builds for Linux, macOS, Android, and iOS,
-  so the same `openagents-connect` code runs in `openagents`, the desktop
-  app, `crates/openagents-mobile`, and a host.
+How this design uses it, and what stays ours:
 
-What it does not do, and where our contracts stay in charge:
+- iroh is **transport**. It finds a path (same network, hole-punched, or our
+  relay) and proves the peer holds the `EndpointId` it dialed.
+- Authority stays in our protocols. On the `openagents/reach/1` ALPN the
+  existing NIP-REACH handshake runs unchanged inside one QUIC bidirectional
+  stream, proving the host and device **Nostr** keys and binding the grant,
+  epoch, and generation. The grant check is where access is decided, exactly
+  as over TCP today. An `EndpointId` never authorizes anything.
+- So there is no separate "key binding" artifact (the first draft had one).
+  The phone learns the host's `EndpointId` from the QR, which also names the
+  host's Nostr key, and later from host-signed NIP-REACH hints. A fake
+  endpoint cannot pass the NIP-REACH host proof, and a stolen Nostr key
+  alone cannot answer at the `EndpointId`.
+- The channel is encrypted twice (QUIC TLS and NIP-REACH's NIP-44 frames).
+  That costs a little CPU and saves a protocol rewrite; terminals move at
+  most 8 KiB per frame.
 
-- iroh authenticates a key; it does not say who the key belongs to. A
-  connection from an unknown `EndpointId` gets exactly one thing from a
-  host: the enrollment protocol. Every other ALPN is refused until that key
-  holds a grant.
-- iroh's default relays are run by n0. Payloads are encrypted, but the relay
-  learns which endpoints talk. Run our own relay (`iroh-relay` is a binary in
-  the same project) beside `relay.openagents.com`, and let the endpoint
-  configuration name it. Direct addresses work with no relay at all.
-- iroh's `EndpointId` is Ed25519; Nostr keys are secp256k1. The host and
-  device keys of NIP-HOST stay Nostr keys, because grants, relay events, and
-  every existing artifact are signed with them. Each endpoint binds its
-  `EndpointId` to its Nostr key once, in a signed statement that the other
-  side stores with the grant (see [Identity](#identity)).
+## T3 Code, verified
 
-## T3 Code
+Checked against [`pingdotgg/t3code`](https://github.com/pingdotgg/t3code) at
+`ff1db030b1`:
 
-T3 Code (`pingdotgg/t3code`) is a TypeScript agent-control surface with a
-local server and iOS, Android, web, and Electron clients; the shape of its
-pairing is worth copying, the implementation is not (this repository is
-Rust).
+- `t3 pair` finds the running server and prints a QR code, a URL, and a
+  one-time token (`apps/server/src/cli/pair.ts`); `t3 serve` prints the same
+  on start (`apps/server/src/startupAccess.ts:122-148`).
+- Tokens are single-use, 12 characters, and live 5 minutes by default
+  (`apps/server/src/auth/PairingGrantStore.ts:239,258,512-548`).
+- A default pairing grants `orchestration:read`, `orchestration:operate`,
+  `terminal:operate`, `review:write`, `relay:read`; `access:read`,
+  `access:write`, and `relay:write` are administrative
+  (`packages/contracts/src/auth.ts:81-115`).
+- The pairing URL is the server's own origin with the token in the
+  fragment, `…/pair#token=CODE`; a hosted `app.t3.codes/pair?host=…#token=`
+  form exists for HTTPS endpoints. The client strips the fragment from
+  history (`apps/web/src/environments/primary/auth.ts:150-166`).
+- The bearer token buys a 5-minute WebSocket ticket; the socket never sees
+  the long-lived token (`packages/client-runtime/src/authorization/remote.ts`).
+- Their Electron desktop app shows the pairing QR in its Connections
+  settings, but binds only loopback by default; a phone needs
+  "network-accessible" mode (binding `0.0.0.0`), Tailscale, or their relay
+  first (`apps/desktop/src/settings/DesktopAppSettings.ts:81`).
 
-- **One command pairs.** `npx t3 pair` finds the running local server, mints
-  a one-time pairing token, and prints a URL and a QR code. `npx t3 serve`
-  on a headless box prints the same three things at start.
-- **The server is the boundary.** Clients never run provider processes,
-  terminals, or git; they hold a token and call a typed RPC over WebSocket.
-  This matches NIP-HOST's host-as-only-issuer.
-- **Scopes, not roles.** Ordinary pairing grants `orchestration:read`,
-  `orchestration:operate`, `terminal:operate`, `review:write`; the
-  administrative `access:*` and `relay:*` scopes need a separate step. This
-  is our rights list under another name, and confirms that a default
-  pairing should not hand out `access_read`.
-- **Token in the URL fragment.** Their hosted pairing URL is
-  `https://app.t3.codes/pair?host=HOST#token=CODE`; the fragment never
-  reaches the hosted origin, the client exchanges it with the backend
-  directly, then strips it from history.
-- **Short-lived tickets for streams.** A bearer token authorizes an HTTP
-  call that returns a short-lived WebSocket ticket; the socket never sees
-  the long-lived token.
-- **Tailscale is one endpoint provider among several.** LAN HTTP, custom
-  HTTPS, SSH port forward, a future tunnel, and Tailscale Serve are all ways
-  to reach the same server; none is required. Their SSH flow probes the
-  host, starts or reuses a server, and forwards a port.
-
-Where we can do better than T3: their pairing still needs the client to
-reach the server's HTTP endpoint, so off-LAN pairing needs Tailscale, a
-tunnel, or SSH. With iroh, the QR code carries an `EndpointId`, and
-reachability is the library's problem.
+What we take: one visible code, single-use and short-lived; the server as the
+boundary; a standard scope set that excludes administration. What we do
+better: our QR carries an iroh address, so a phone on mobile data reaches a
+Mac behind NAT with no mode switch, no Tailscale, and no port forward.
 
 ## Design
 
-### Components
+### The desktop app
 
-- **`openagents connect`** (in `crates/openagents-cli`, library code in a
-  new `crates/openagents-connect`): the iroh endpoint, the enrollment ALPN,
-  the channel ALPN, key binding, and the pairing UI (QR, code, discovery).
-  `coder host serve` and the desktop app embed it; `crates/openagents-mobile`
-  uses the same crate through the existing Rust core, so the Kotlin and
-  Swift hosts change only to render a QR scanner they already have.
-- **Host side:** the existing NIP-HOST host gains an iroh listener beside
-  the WebSocket listener. It keeps its host Nostr key and adds an iroh
-  `SecretKey` in the same key store.
-- **Device side:** the phone and `openagents` on another computer keep their
-  device Nostr key and add an iroh `SecretKey`.
+**Name.** **OpenAgents** (`OpenAgents.app`, bundle ID
+`com.openagents.desktop`). It is the same name as the phone app, so the
+sentence "Scan with the OpenAgents app on your phone" names exactly one
+thing. "OpenAgents Connect" was considered and rejected: a second product
+name for one step.
 
-### Identity
+**Technology.** Rust, in a new crate `crates/openagents-desktop`:
 
-Every endpoint holds two keys and a *binding*:
+- The window is the pattern `crates/openagents-deck` already uses: a frame
+  painted in software and copied into a `winit` 0.30 window's `wgpu` 29
+  surface, with glyphs from `rust-native`'s bundled font. It adds no window
+  dependency the workspace does not already have.
+- The QR code is drawn with `qrcodegen` 1.8, already in the workspace lock.
+- The menu-bar icon uses `objc2-app-kit`'s `NSStatusItem` (0.2.2 is already
+  in the lock through `winit`). `tray-icon` 0.25.1 was checked and fails
+  `deny.toml` on Linux (`gtk` 0.18's unsound and unmaintained advisories,
+  RUSTSEC-2024-0429 and RUSTSEC-2024-0370, and `option-ext`'s MPL-2.0).
+- The login item uses `SMAppService` through `objc2-service-management`
+  0.3.2; the keychain uses `keyring` 4.2.0 (macOS Keychain, Windows
+  Credential Manager, Secret Service on Linux). Both pass `deny.toml`.
+- No web view, no Electron, no Tauri: product code here is Rust
+  ([AGENTS.md](../../../AGENTS.md)).
 
-```text
-openagents.key-binding.v1 = {
-  v: 1, requires: [],
-  nostr:  <64-hex x-only pubkey>,
-  iroh:   <64-hex Ed25519 EndpointId>,
-  issued_at: <unix seconds>,
-  sig_nostr: <schnorr over the canonical body>,
-  sig_iroh:  <ed25519 over the same body>
-}
-```
+**Processes.** Installing the app is running a host:
 
-Both signatures are required, so neither key can claim the other. A host
-stores the device's binding next to its grant; a device stores the host's
-binding next to the host record. A channel is admitted when the QUIC
-remote `EndpointId` equals the `iroh` field of a binding whose `nostr` key
-holds a current grant. Rotating either key means enrolling again.
+- `OpenAgents.app/Contents/MacOS/OpenAgents` is the window and menu-bar
+  process. It holds no secret key.
+- `OpenAgents.app/Contents/MacOS/coder` is the existing Coder binary. It runs
+  `coder host serve` as a launchd agent that the app registers on first
+  launch with `SMAppService.agent(plistName:)`, from
+  `Contents/Library/LaunchAgents/com.openagents.desktop.host.plist`. It
+  starts at login, keeps running when the window closes, and is listed in
+  System Settings > General > Login Items. Registering through
+  `SMAppService` also makes macOS attribute the agent's local-network use to
+  the app ([TN3179](https://developer.apple.com/documentation/technotes/tn3179-understanding-local-network-privacy)).
+- `microcoder` and the other binaries a task needs ship in the same
+  `Contents/MacOS`.
+- The window talks to the host only through the local control socket below.
 
-### Automatic pairing on the same network
+**Keys.** On first run the host creates its host Nostr key, its iroh
+`SecretKey`, and an owner Nostr key, and stores them in the login keychain
+(service `com.openagents.desktop`; on Linux Secret Service, on Windows
+Credential Manager). Only the host process reads them. The host establishes
+that owner key as its owner, so there is no owner step. Each computer's
+desktop app has its own owner unless the person imports one
+(`openagents connect owner import`, for someone who wants several computers
+in one owner directory). Losing the computer loses nothing a phone cannot
+redo: remove the computer on the phone and scan again.
 
-1. The host publishes itself over mDNS (iroh's local lookup) under a service
-   name that carries only its `EndpointId` and a display label. No rights,
-   no owner data.
-2. The phone lists nearby hosts in **Computers** as soon as the tab opens.
-   Tapping one opens an iroh connection with the `openagents/enroll/1` ALPN
-   and sends an enrollment request: the device binding, a label, and the
-   rights it asks for (default `observe,operate,terminal`).
-3. The host shows the request on its own screen — a notification from the
-   desktop app, or a line from `openagents connect approve` in a terminal —
-   with the device label, a six-character fingerprint of the device key, and
-   the rights. The same fingerprint shows on the phone. The person compares
-   and approves on the computer. A host with no interactive surface keeps
-   the request for two minutes and lets `openagents connect approve CODE`
-   admit it.
-4. The host signs an ordinary NIP-HOST grant and returns it, plus its own
-   binding, on the same connection. The phone stores both. From here the
-   channel ALPN `openagents/reach/1` carries NIP-REACH frames, NIP-TERM, and
-   everything else, exactly as the WebSocket channel does now.
+**Screens** (IDs for the [wireframe](../../product/2026-09-28-app-wireframe.md)):
 
-The approval on the computer is the trust step; discovery only shortens
-finding the peer. There is no automatic approval of an unknown key. The one
-exception is the loopback case below.
+| ID | Screen | What it shows |
+| --- | --- | --- |
+| `DSK-01` | Connect a phone (first run, and from **Connect another phone**) | The QR code, large and centered, and under it **Scan with the OpenAgents app on your phone.** A checkbox **Let this phone open a terminal on this Mac** (off). A small **Can't scan? Copy a code instead**, which copies the same text once. The code changes quietly every minute. |
+| `DSK-02` | Connected | **Kai's iPhone is connected.** Then one setup row: **Pick a project for Coder** with **Choose folder…** (a Git checkout), and whether Coder can run here: **Coder uses Codex or Claude Code on this Mac** with a check for each that is signed in. A switch **Let my phone start Coder here** (on once a project is picked). |
+| `DSK-03` | Home | Status (**Online. Your phone can reach this Mac.** or **Offline.**), **Phones** (name, last seen, terminal allowed, **Remove**), **Coder** (running and recent tasks with their titles), **Connect another phone**. |
+| `DSK-04` | A phone nearby wants to connect (after the milestone) | **Kai's iPhone wants to connect. Check that your phone shows 482 913.** **Connect** / **Don't connect**, and the terminal checkbox. |
+| `DSK-05` | Menu bar | The status line, **Open OpenAgents**, **Connect a phone…**, **Pause Coder** (no new tasks start), and **Quit OpenAgents** (closes the window; Coder keeps running) beside **Stop Coder on this Mac** (unregisters the agent). |
 
-### Pairing one computer with itself and with another computer
+Words follow the wireframe's [Words on screen](../../product/2026-09-28-app-wireframe.md#words-on-screen):
+no key, host, relay, grant, workspace, tailnet, Tailscale, npub, or nsec on
+these screens. "Project" names a workspace; "phone" names a device.
 
-- `openagents connect` on the same machine as its host connects over the
-  Unix socket the host already exposes, and the host admits it as the owner
-  session without a grant — the person is already logged in to that
-  machine. This replaces `coder link owner init` for the common case: the
-  first host a person runs *is* the owner, and its owner key is created and
-  kept by the host's key store. `openagents connect owner export` prints
-  the public key for hosts on other machines.
-- `openagents connect --ssh user@box` reuses T3's shape: probe, install or
-  update the `openagents` binary, start the host, and run the enrollment
-  over the SSH channel's standard streams as `coder link peer --ssh` does
-  now. The remote host takes the local owner's public key in the same
-  exchange, so the owner key still never leaves the first machine.
+### The QR code
 
-### Pairing from anywhere
+The payload is the text `openagents-connect:` followed by unpadded base64url
+of these bytes: version `1`; host Nostr x-only key (32); host `EndpointId`
+(32); invitation ID (32); capability (32, independently random); issue time
+and expiry (8 each, big-endian seconds); iroh relay URL length (1) and UTF-8
+bytes (0–128; empty means none); count of direct addresses (1, at most 8),
+each a family byte (4 or 6), the address (4 or 16), and a port (2); label
+length (1) and UTF-8 bytes (0–48, the computer's name for display, never an
+identity). It is at most about 560 characters, well inside a QR code a phone
+reads from a laptop screen. The invitation ID, capability, times, and rights
+record are exactly NIP-HOST's host invitation; only the carriage is new, and
+the Nostr relay is not in the payload because the grant names it.
 
-When the phone is not on the computer's network, the computer shows a QR
-code and a code word:
+**One-time, short, and only on an unlocked screen.**
 
-```sh
-openagents connect invite --rights observe,operate,terminal
-```
+- The code exists only inside the desktop app's window, only while that
+  window is visible and the screen is unlocked. Hiding the window, locking
+  the screen, or ten idle minutes cancels every outstanding code
+  (NIP-HOST's existing `invite.cancel`).
+- The app shows a new code every 60 seconds and cancels the one it replaced
+  60 seconds later, so a scan in flight still lands, and no code is
+  redeemable more than two minutes after it left the screen. The NIP-HOST
+  life of 300 seconds is unchanged; the app only ever shortens it. A
+  successful pairing cancels all outstanding codes.
+- Redemption is single-use, as NIP-HOST already requires (first valid
+  redemption binds the device; any other device gets `forbidden`).
+- The copied text form carries the same secret; it is copied only on a tap,
+  and the clipboard entry is marked to expire after 60 seconds where the OS
+  allows.
 
-The QR carries `oa-pair:` followed by the host `EndpointId`, an optional
-relay URL, and a 128-bit one-time secret. The phone connects by
-`EndpointId` (relay or direct, iroh decides) and proves the secret in the
-enrollment request; the host treats a valid secret as pre-approval, so no
-second confirmation is needed on the computer. The secret is single-use and
-lives ten minutes. The same string prints as a paste-able line, and the
-desktop app shows it in a window. A person who has neither camera nor
-clipboard types the host's short code (first eight characters of the
-`EndpointId`) into the phone; the phone then finds the host through the
-relay's lookup and the host asks for on-screen approval as in the
-same-network flow.
+**What the scan authenticates.** The QR is read off the computer's own
+screen, so it is the trusted channel. It gives the phone both of the
+computer's public keys and a secret only the computer knows:
 
-### Rights and approval
+1. The phone dials the `EndpointId`; iroh's TLS proves the far end holds
+   that key.
+2. The phone sends `enroll.redeem` (invitation ID and capability, signed by
+   its device key) on the `openagents/enroll/1` ALPN.
+3. The host answers with the grant, signed by the host Nostr key from the
+   QR. The phone accepts it only if both keys match the QR.
 
-Unchanged from NIP-HOST: `observe`, `operate`, `terminal`, `review`,
-`access_read`; grants carry an epoch, the host rechecks on every message,
-and revocation closes channels at once. Two rules from this design:
+A fake computer on the path would need the host's iroh secret, its Nostr
+secret, and the capability. A person photographing the screen gets at most
+one redemption race inside two minutes, and the real phone then sees
+`forbidden` and says so.
 
-- Default pairing grants `observe,operate,terminal`. `review` and
-  `access_read` need `--rights` on the inviting or approving side.
-- A grant that admits `terminal` is displayed on the computer at approval
-  time as "Open terminals on this computer" in the same words the phone
-  uses, so the person approving sees what the phone will be able to do.
+**Rights.** A QR pairing grants `observe` and `operate`. The checkbox on
+`DSK-01` adds `terminal`, and it is part of the invitation the code carries,
+so the choice is made on the computer before the scan. `review`,
+`access_read`, and `access_admin` never come from the desktop QR. Reasons:
+T3 grants `terminal:operate` by default, but a terminal on a phone is full
+shell access to the Mac, and a person pairing to "send work to Coder" does
+not expect that. The read-only command cards in chat run through
+`terminal.open` (`crates/openagents-mobile/src/cli_run.rs`), so they appear
+only for a phone that was allowed a terminal; the phone says why otherwise,
+as it does today. Changing rights later means **Remove** and scan again with
+the checkbox set; an in-place rights change is an [open question](#open-questions).
+
+**No typed short code.** The first draft let a person type the first eight
+characters of the `EndpointId`. That is not an iroh feature (lookup is by the
+full key) and it is enumerable, so it is dropped. The fallback for a phone
+that cannot scan is the copied text. A typed-words rendezvous through a relay
+is not specified; nobody has asked for it. NIP-HOST's reverse enrollment with
+its 40-bit, five-attempt code stays for headless hosts reached over SSH.
+
+### Nearby pairing (after the milestone)
+
+1. The host publishes itself with `iroh-mdns-address-lookup` under service
+   name `openagents` (so `_openagents._udp`). The record carries only the
+   `EndpointId` and addresses.
+2. **Connect a computer** on the phone lists **Nearby** computers above the
+   scanner. Tapping one dials it on `openagents/enroll/1` and sends an
+   enrollment request: the device's Nostr key, a label, and a commitment
+   `SHA-256(nonce_d)`.
+3. The host replies with its Nostr key and `nonce_h`; the phone reveals
+   `nonce_d`. Both compute a six-digit code from SHA-256 of
+   `openagents.connect-sas.v1`, a zero byte, and both `EndpointId`s, both
+   Nostr keys, and both nonces. The commitment keeps either side from
+   choosing its nonce after seeing the other's, so a device in the middle,
+   which holds its own keys on each side, gets one one-in-a-million guess per
+   attempt.
+4. `DSK-04` shows the phone's label, the code, and the terminal checkbox;
+   the phone shows the same code. The person compares and clicks
+   **Connect**. Nothing is approved without that click. The host keeps one
+   nearby request pending at a time and at most five per ten minutes.
+5. The host signs an ordinary grant with origin `approval`, as in NIP-HOST's
+   approval path, and returns it on the same connection.
+
+Platform permissions:
+
+- **iOS.** Any traffic to a local-network address, unicast included
+  (an outgoing TCP connection, a UDP unicast, any multicast), triggers the
+  Local Network prompt on iOS 14 and later
+  ([TN3179](https://developer.apple.com/documentation/technotes/tn3179-understanding-local-network-privacy)).
+  So the **QR path** needs `NSLocalNetworkUsageDescription` in
+  `bins/openagents-ios/host/App/Info.plist` too, because the phone dials the
+  Mac's LAN address from the code. Suggested text: "Find and connect to your
+  computers on this Wi-Fi." Nearby pairing uses raw multicast sockets
+  (`swarm-discovery`), which needs the multicast entitlement in the app's
+  entitlements file (today it holds only `aps-environment`) and a
+  regenerated provisioning profile. List `_openagents._udp` in
+  `NSBonjourServices` as well. The prompt appears once; a denial means the
+  QR path falls back to the relay and the phone says "Allow Local Network
+  for OpenAgents in Settings to connect faster on Wi-Fi."
+- **macOS.** Local network privacy applies from macOS 15. The desktop app's
+  `Info.plist` carries `NSLocalNetworkUsageDescription`; the multicast
+  entitlement is not required on macOS (TN3179).
+- **Android.** `INTERNET` and `CAMERA` are already declared
+  (`bins/openagents-android/host/app/src/main/AndroidManifest.xml`). Receiving
+  multicast needs `CHANGE_WIFI_MULTICAST_STATE` and a held
+  `WifiManager.MulticastLock` while the nearby list is open. Local network
+  access becomes a runtime permission, `ACCESS_LOCAL_NETWORK` in the
+  `NEARBY_DEVICES` group, for apps targeting Android 17 (API 37); on Android
+  16 it is opt-in and uses `NEARBY_WIFI_DEVICES`
+  ([Android docs](https://developer.android.com/privacy-and-security/local-network-permission)).
+  The app targets SDK 35 today, so nothing is required yet; the permission
+  goes in with the target bump.
+
+### The local owner surface
+
+The desktop app is the owner's surface on that computer. The host process
+serves a **local control socket** at
+`~/Library/Application Support/OpenAgents/control.sock` (on Linux
+`$XDG_RUNTIME_DIR/openagents/control.sock`), in a directory of mode `0700`,
+the socket `0600`. On every accepted connection the host reads the peer's
+user ID (`getpeereid` on macOS, `SO_PEERCRED` on Linux) and refuses any peer
+whose user ID differs from its own. Windows uses a named pipe with a
+security descriptor for the current user only.
+
+A caller that passes is the local operator, which NIP-HOST already treats as
+the owner acting "with an operator command on that machine". Over the socket
+it can create and cancel invitations, list and revoke devices, set the
+auto-start policy and projects, and read status. The window and
+`openagents connect` both use it, so there is one code path for the owner's
+local actions. The existing direct-store CLI commands keep working for
+CLI-only installs until the migration step retires them.
+
+### Connecting after pairing
+
+The phone stores the host's `EndpointId`, relay URL, and last direct
+addresses beside its NIP-HOST access record. The host adds an `iroh` hint to
+its signed NIP-REACH hints (transport `iroh`, address the `EndpointId`, with
+the relay URL and current direct addresses), so the phone learns new
+addresses without pairing again. The endpoint uses `presets::Minimal`,
+`RelayMode::Custom` with our relay, and `MemoryLookup` fed from those two
+sources; no n0 DNS, no n0 relays, no DHT.
+
+Order of routes: iroh (iroh itself prefers a direct path and falls back to
+our relay), then the existing Nostr relay transports. **Run Coder**
+(`task.create`) and terminals therefore work even when iroh cannot connect;
+they are only slower.
+
+### The relay
+
+`iroh-relay` does not fit Cloud Run: Cloud Run accepts only HTTP(S) and gRPC
+inbound ([container contract](https://cloud.google.com/run/docs/container-contract)),
+so UDP 7842 is unreachable, and it terminates TLS itself. It runs on a small
+GCE VM in `openagentsgemini` (an `e2-small` in `us-central1` is enough to
+start), with a static IP and the name `iroh.openagents.com`, a systemd unit,
+`cert_mode = "LetsEncrypt"`, QAD on, metrics bound to localhost, firewall
+TCP 80 and 443 and UDP 7842. Access starts as `everyone` with the server's
+rate limits; it relays only encrypted QUIC and holds no account data. n0's
+relays are never configured. `relay.openagents.com` stays where it is, the
+Nostr relay on Cloud Run.
 
 ### Time
 
-Invitations and requests keep `issued_at` and `expires_at`. Readers admit an
-`issued_at` up to 60 s in the future (`coder_connect::protocol::CLOCK_SKEW`,
-from PR #9964) and hold `expires_at` strictly. The host, not the device,
-decides expiry, so a slow phone clock cannot extend a grant. The enrollment
-reply includes the host's `now`, and the phone shows a warning when its own
-clock is more than 60 s away from it, so the next failure of this kind names
-itself instead of reading as "expired".
+Unchanged: readers accept an `issued_at` up to 60 s ahead and hold
+`expires_at` strictly; the host decides expiry. The enrollment reply carries
+the host's current time, and the phone shows **Your phone's clock is off by
+N minutes** when the difference is over 60 s, so a clock problem names itself
+instead of reading as "expired".
 
-### Reachability and fallback
+### Revocation and recovery
 
-Order of preference for a channel, all decided by iroh from one
-`EndpointId`:
+- **Remove** on `DSK-03` is `device.revoke`: the epoch advances and open
+  channels close before the next message.
+- Removing the computer on the phone deletes its access record there; the
+  computer still lists the phone until someone removes it.
+- A reinstalled desktop app on the same Mac finds its keys in the keychain,
+  so paired phones reconnect. Deleting the keychain items makes a new host;
+  phones show it offline and the person scans again.
 
-1. Direct address on the same network (mDNS or a remembered address).
-2. Hole-punched direct path across NATs.
-3. Encrypted relay path through our `iroh-relay`, with n0's public relays
-   off by default and available as an operator opt-in.
-4. Tailscale, for people who already run it: a tailnet address is one more
-   direct address a host publishes. Nothing else changes, and Tailnet
-   admission stays as a documented option that hands out the same
-   invitation.
+### Upgrading a computer set up the old way
 
-`wss://relay.openagents.com/` remains the Nostr relay for everything that is
-an event today (directory, presence, `enroll.redeem` for the legacy flow,
-NIP-CJ). It stops being the fallback for the channel once the iroh listener
-ships.
+On first launch, the app looks for an existing Coder host
+(`~/.openagents/coder-access/` and the launchd agent that
+`coder-service service install` wrote). If it finds one, it asks **Use this
+Mac's existing Coder setup?** and on yes: moves the host key (and the owner
+key, when `~/.openagents/coder-owner/owner.key` belongs to this host's owner)
+into the keychain, verifies them by reading back, deletes the files,
+uninstalls the old agent, and registers its own agent on the same
+`~/.openagents` state. Grants, projects, the auto-start policy, and tasks
+stay, and phones already paired keep working because the host key is the
+same.
 
-### Recovery and revocation
+### Names: one surface
 
-- `openagents connect devices` and `openagents connect revoke DEVICE` are
-  the existing `device.list` and `device.revoke` over the new channel.
-- Losing a phone: revoke it from any computer; the grant epoch moves and
-  its channels close.
-- Losing the owner computer: the owner key is the same file it is today
-  (`~/.openagents/coder-owner/owner.key`), and the `wallet backup` shape
-  from [PR #9826](https://github.com/OpenAgentsInc/openagents/pull/9826)
-  extends to it. A host established with one owner still refuses another.
-- Reinstalling a host: it keeps its iroh and Nostr keys in the same store,
-  so paired phones reconnect without pairing again.
+| Name | Fate |
+| --- | --- |
+| **OpenAgents** desktop app, and **Connect a computer** on the phone | The one path the app and the docs show. |
+| `openagents connect` (`invite`, `devices`, `remove`, `status`, `owner import`) | The power-user and headless path; talks to the same local socket. |
+| `coder link *`, `scripts/link-device.sh` | Deprecated when the migration step lands: they print the replacement and still work for one release, then go. |
+| `coder pair` and `./pair` (the chat-history observer's pairing) | Deprecated the same way; a QR-paired phone reads chats through its NIP-HOST grant's `observe`. |
+| Tailnet admission (`--tailnet-admission`, port 47109) and the phone's Tailscale device list (`crates/openagents-mobile/src/tailnet.rs`) | Deprecated; removed one release after nearby pairing ships. |
+| Phone: **Add a computer > Scan invitation / Paste invitation**, **Enter owner key** | Replaced by **Connect a computer** (scanner, nearby list, **Paste a code**). The owner directory moves under Advanced. |
 
-### Compatibility
+### Chat on the phone
 
-The WebSocket channel and `coder-host:` invitations keep working until every
-shipped client speaks the iroh channel. A host advertises both in its
-NIP-REACH hints; a client prefers iroh when it has the host's binding. No
-change to grants, rights, or `NIP-TERM` frames is needed, so a device
-enrolled the old way gets the new channel the next time it connects and
-receives the host's binding in the presence answer.
+- **Connect a computer** (the chip under a reply, `SCR-17.E05` and
+  `SCR-17.E06`, and the row in Account > Computers) opens a new screen
+  `SCR-22` **Connect a computer**: the camera with the line **Point at the
+  code on your computer**, **Nearby** above it once nearby pairing ships,
+  and **Paste a code** below. No computer to connect? A line: **Get
+  OpenAgents for Mac at openagents.com/desktop.**
+- After a scan, `SCR-23` **Connected**: the computer's name, a check, and
+  **Done**, which returns to the chat the chip came from. The reply's chip
+  now reads **Run Coder on Studio Mac** and dispatches through the existing
+  Run Coder path (`task.create`) to that computer.
+- The `SCR-11.E07` Advanced row keeps Computers for listing and removing
+  computers.
+
+## Dependency review
+
+A scratch crate at the repository's `deny.toml` (cargo-deny 0.20.2, Rust
+1.97.1) with `iroh = "=1.2.0"` and `iroh-mdns-address-lookup = "=0.5.0"`:
+
+- With iroh's default features: 374 packages; **advisories ok, bans ok,
+  sources ok, licenses failed** on five crates: `attohttpc` 0.30.1
+  (MPL-2.0, through `portmapper` → `igd-next`), `spez` 0.1.2 (BSD-2-Clause,
+  a proc macro under `n0-error`), and `ws_stream_wasm` 0.7.5,
+  `async_io_stream` 0.3.3, `pharos` 0.5.3 (Unlicense, wasm32-only, under
+  `iroh-relay`; they appear because `deny.toml` inspects every target).
+- With `default-features = false, features = ["tls-ring",
+  "fast-apple-datapath"]` (no `portmapper`, no metrics): 367 packages;
+  `attohttpc` is gone and the other four remain. The resolved graph adds 105
+  crate names the workspace lock does not have (among them `noq*`,
+  `netwatch`, `hickory-proto`, `swarm-discovery`, `ed25519-dalek` 3,
+  `curve25519-dalek` 5, `rustls-platform-verifier`). TLS is `rustls` with
+  `ring`, as `crates/openagents-mobile` already uses; no `aws-lc-rs`.
+
+So step 1 disables iroh's default features (losing UPnP/NAT-PMP port
+mapping, which hole punching and the relay make up for), and adds two
+per-crate license exceptions to `deny.toml` with reasons in
+`docs/dependencies.md`: `BSD-2-Clause` for `spez`, and `Unlicense` for the
+three wasm-only crates. Pin with `=`: `iroh` and `iroh-relay` at the newest
+1.x release at least seven days old when the step lands (1.3.0 qualifies
+from 2026-10-05). `crates/openagents-mobile` is its own Cargo workspace and
+lockfile, so the phone's copy is reviewed there too.
+
+The desktop crates (`keyring` 4.2.0, `objc2-service-management` 0.3.2,
+`objc2-app-kit` with `NSStatusItem`) pass licenses, sources, and advisories
+in a second scratch crate; `tray-icon` does not (above).
+
+## Invariant changes
+
+Each lands in `INVARIANTS.md` in the same PR as the code it describes.
+
+| Row | Change | Step |
+| --- | --- | --- |
+| Linking devices: "Tailscale, SSH, and a relay only introduce devices" | Add an iroh connection, a QR scan, and nearby discovery to the list of things that only introduce. Also: an `EndpointId` never admits; the NIP-REACH handshake and the grant do. | 4 |
+| New, Linking devices | The desktop app shows a code only in its visible window on an unlocked screen, replaces it every 60 s, cancels a replaced code 60 s later and all codes when hidden, locked, idle ten minutes, or after a pairing; one redemption per code. | 5 |
+| New, Linking devices | A QR pairing grants `observe,operate`, plus `terminal` only when the checkbox was set before the code was shown; never `review` or an access right. | 5 |
+| New, Linking devices | The local control socket is `0600` in a `0700` directory, and the host serves a peer only when its user ID equals the host's. It is the only local path that changes access or auto-start once the desktop app manages the host. | 4 |
+| Linking devices: "The owner secret key stays in one private file" | Under the desktop app, the owner, host, and iroh secret keys live in the OS keychain, read only by the host process, never in a file, argument, or log line; CLI-only installs keep the file. | 4, 5 |
+| "Only the host's owner, with a command on the host, turns auto-start on or widens it" | Reinterpreted: a request over the local control socket (the desktop app's switch or `openagents connect`) is a command on the host; a device still cannot. | 4 |
+| New, Linking devices | Nearby pairing admits a device only after the person clicks **Connect** on the computer while both screens show the same six-digit code; one pending request, five per ten minutes. | 10 |
+| Device identity key | The phone's iroh secret key is kept in the same this-device-only store as its device key. | 6 |
+| Tailnet admission rows | Marked deprecated, then removed with the listener. | 13 |
 
 ## Plan
 
-Each step is one PR and one issue. Steps 1 through 3 give same-network
-pairing with no Tailscale; 4 and 5 give pairing from anywhere; 6 and 7
-remove the remaining ceremony.
+Issues are filed from this list; the epic tracks them. Waves are ordered so
+the milestone (step 9) comes first; steps 10–14 follow it. Within a wave,
+steps own disjoint files; the shared `Cargo.toml` members list and
+`Cargo.lock` are the only common files, resolved by rebasing.
 
-1. **`crates/openagents-connect`: endpoint, binding, ALPNs.** Add `iroh`
-   1.1 (pin a version at least seven days old), the key store, the
-   `key-binding.v1` artifact with tests, the `openagents/enroll/1` and
-   `openagents/reach/1` ALPNs, and NIP-REACH frames over QUIC streams with a
-   loopback test. No relay configured; direct addresses only.
-2. **Host listener and mDNS.** `coder host serve` binds the endpoint,
-   publishes over local lookup, answers enrollment with on-terminal approval
-   (`openagents connect approve`), and admits the channel by binding.
-   `openagents connect` on the same machine goes over the Unix socket as the
-   owner.
-3. **Phone: nearby computers and approval fingerprint.** `openagents-mobile`
-   lists mDNS hosts in **Computers**, sends the enrollment request, shows
-   the fingerprint, stores binding and grant, and uses the iroh channel for
-   NIP-TERM. Validate on the Android emulator against a host on the same
-   box, with the fixed CLI-output card.
-4. **Relay.** Deploy `iroh-relay` beside `relay.openagents.com`, configure
-   it in the endpoint preset, and test a phone on mobile data pairing with a
-   host behind NAT. Record the deploy in `docs/deployment/`.
-5. **`openagents connect invite` and the `oa-pair:` QR.** One-time secret
-   as pre-approval, short-code entry, ten-minute expiry, clock warning.
-   Retire `coder link invite` to an alias.
-6. **Owner without a step, and `--ssh`.** The first host creates and keeps
-   the owner key; `openagents connect --ssh` installs and enrolls a second
-   computer in one command. Retire `scripts/link-device.sh` to a wrapper.
-7. **Desktop app surface.** The Rust desktop app shows approval requests,
-   the invite QR, and the device list through the same `openagents-connect`
-   API. Update [Link your devices](../guides/link-devices.md) to the new
-   flow and move the Tailscale text to an "If you already use Tailscale"
-   section.
+**Wave 1** (no dependencies)
 
-Write the protocol parts (binding, ALPNs, enrollment over a stream, the
-`oa-pair:` string) into NIP-HOST and NIP-REACH as a new section in step 1
-and 5 respectively, so the NIPs stay the source of truth.
+1. **`crates/openagents-connect`: endpoint, ALPNs, QR payload, control
+   protocol.** iroh pinned as above with default features off; the
+   `openagents/enroll/1` and `openagents/reach/1` ALPNs; NIP-REACH channel
+   over a QUIC bidirectional stream (the `coder-reach` channel over the
+   stream's reader and writer); the `openagents-connect:` payload with
+   fixtures; the local control protocol types; a key-source trait with a file
+   implementation. `deny.toml` exceptions and `docs/dependencies.md`. Tests:
+   two endpoints on loopback with relays disabled complete the handshake and
+   exchange frames; payload round-trip and every malformed case.
+2. **NIP updates.** NIP-HOST: the `openagents-connect:` carriage of a host
+   invitation, redemption on the enroll ALPN (every check but the relay
+   binding), the local control socket as the operator, and approval with a
+   confirmation code. NIP-REACH: the `iroh` hint transport and the channel
+   over an iroh stream.
+3. **Relay.** `deploy/iroh-relay/` (config, systemd unit, firewall and
+   VM commands) and `docs/deployment/iroh-relay.md`; the VM running at
+   `iroh.openagents.com` with QAD on. Test: two endpoints on different
+   networks with direct paths blocked exchange data through it.
+
+**Wave 2** (after 1)
+
+4. **Host listener and local control socket.** `coder host serve` binds the
+   iroh endpoint with its key from the key source, serves both ALPNs through
+   the existing redemption and direct-channel dispatch (NIP-TERM included),
+   publishes the `iroh` hint, and serves the control socket with the peer
+   user check. `openagents connect invite|devices|remove|status|owner
+   import` in `crates/openagents-cli`. Tests: a device redeems over iroh and
+   opens a terminal; a peer with another user ID is refused; revocation
+   closes an iroh channel.
+5. **Desktop app shell.** `crates/openagents-desktop`: `DSK-01` to `DSK-03`,
+   the rotating code, the terminal checkbox, keychain key source, agent
+   registration with `SMAppService`, project picker and auto-start switch
+   over the control socket, a bundle layout script. Tests: the code screen's
+   rotation and cancellation against a fake socket; snapshot tests of each
+   screen's cells.
+6. **Phone: scanner and pairing.** The chip and Computers open `SCR-22`;
+   parse the payload; an iroh endpoint in `crates/openagents-mobile` with its
+   key beside the device key; redeem over iroh with relay fallback; `SCR-23`;
+   route the channel over iroh; `NSLocalNetworkUsageDescription`; the
+   Android JNI context. Tests: a phone model pairs with a test host over
+   loopback iroh; a mismatched host key in the reply is refused.
+
+**Wave 3** (after 4, 5, 6)
+
+7. **Signed, notarized macOS package.** `scripts/desktop/package-macos.sh`:
+   build universal binaries, assemble the bundle, sign with the Developer ID
+   and hardened runtime, notarize with `notarytool`, staple, and produce the
+   `.dmg`; `docs/desktop/release.md`. Manual, no GitHub automation. The
+   Developer ID certificate is an owner step.
+8. **Adopt an existing host.** The first-launch migration above, so the
+   owner's own Mac and `coderos-4080` move over without re-pairing their
+   phones.
+9. **Milestone: TestFlight build.** A person with a Mac and an iPhone, no
+   Tailscale, installs the app from the `.dmg`, scans, and sends a Coder task
+   from chat in under two minutes with no terminal.
+
+**Wave 4** (after the milestone)
+
+10. **Nearby pairing with a confirmation code**, including the iOS multicast
+    entitlement and Android permissions.
+11. **Auto-update and menu bar.** A Rust updater that checks a signed
+    manifest, downloads the new notarized build, verifies its signature and
+    code signature, swaps the bundle, and restarts the agent; `DSK-05`.
+12. **Linux and Windows desktop builds.**
+13. **Deprecate and remove the old path.** Aliases and notices for the names
+    above, the rewritten [Link your devices](../guides/link-devices.md) with
+    Tailscale moved to an "If you already use Tailscale" note, then removal.
+14. **`openagents connect --ssh`** for a headless box: install, start the
+    host, and redeem over the SSH channel.
 
 ## Acceptance
 
-- A fresh macOS or Linux computer with `openagents` installed and a phone on
-  the same Wi-Fi pair in under a minute with one command on the computer and
-  one tap plus one approval, with Tailscale not installed on either.
-- The same phone on mobile data pairs with a NATed computer from one QR
-  scan, with no Tailscale, and opens a terminal that runs `openagents --json
-  verse who` on the computer.
-- A phone whose clock is 30 s behind the computer pairs; a phone offered an
-  invitation eleven minutes old is refused with `expired`.
-- A device without `terminal` in its grant is refused a terminal by the
-  host, not by the phone.
-- Revoking a device on the computer closes its open channel within one
-  round trip.
-- A device enrolled with a `coder-host:` invitation before this work
-  connects over the iroh channel after the host and app update, with no
-  new pairing.
+The milestone (step 9) is accepted when, on a real Mac with Tailscale not
+installed and an iPhone on the TestFlight build:
+
+- The app installs from the `.dmg` with no warning from Gatekeeper and shows
+  the QR code on first launch.
+- The phone scans it from **Connect a computer**, and the computer shows as
+  connected on both screens, with the phone on the same Wi-Fi and again with
+  the phone on mobile data.
+- From a chat, **Run Coder** sends a task that runs on that Mac and streams
+  its reply into the chat.
+- With **Let this phone open a terminal** set, the phone opens a terminal on
+  the Mac and runs a read-only command card; without it, the phone says the
+  computer has not allowed a terminal and the host refuses the request.
+- **Remove** on the Mac cuts the phone off: its next request is refused and
+  an open terminal closes.
+- Start to first task in under two minutes, with no terminal on the Mac.
+
+Beyond the milestone: a phone with its clock 30 s behind pairs, and a code
+older than its window is refused with `expired`; a phone paired the old way
+reconnects over iroh after the host upgrades, with no new pairing; nearby
+pairing needs the click on the computer and refuses a wrong code.
 
 ## Open questions
 
-- Whether to also bind a Tailscale address as a direct address by default
-  when `tailscale` is present, or only when asked.
-- Whether the iroh relay should run in the same Cloud Run service as the
-  Nostr relay or as its own service; iroh's relay is a long-lived QUIC/HTTPS
-  server and Cloud Run's request model may not fit.
-- iOS background behavior: iroh keeps a UDP socket, and iOS suspends it. The
-  phone reconnects on foreground today with the WebSocket channel; confirm
-  the same holds with QUIC before step 3 closes.
+Each has the default this plan assumes.
+
+- **Which model runs a repository task on a fresh Mac?** Repository runs do
+  not use the OpenAgents cloud route (`docs/coder/runtime/host-autostart.md`),
+  so the milestone Mac needs Codex or Claude Code signed in, which today
+  means a terminal. Default: the milestone Mac has one signed in, and `DSK-02`
+  says so plainly; the owner decides separately whether a repository run may
+  use the cloud route inside the filesystem boundary.
+- **Rights change without re-pairing.** Default: **Remove** and scan again.
+  A local "allow terminal" that issues a replacement grant needs a NIP-HOST
+  origin for it; decide after the milestone.
+- **A web page for a QR scanned by the camera app.** Default: the in-app
+  scanner only. A later `https://openagents.com/connect#…` form with the
+  payload in the fragment would open the app from the system camera.
+- **Idle and background behavior on iOS.** iOS suspends the app's UDP
+  socket in the background. Default: reconnect on foreground, as the
+  WebSocket channel does; confirm with QUIC in step 6.
+- **Relay access control.** Default: `everyone` with rate limits; move to a
+  callout that admits only endpoints with a current grant if abuse appears.
+- **One owner for several computers.** Default: one owner per desktop app,
+  with `openagents connect owner import` for people who want one directory.
