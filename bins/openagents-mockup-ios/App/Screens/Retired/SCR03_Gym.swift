@@ -1,6 +1,7 @@
 import SwiftUI
 
-// SCR-03 The Gym: pick a tool. First run step 2 of 3; later the Gym's front door.
+// SCR-03 The Gym: pick a tool. RETIRED in revision 3 (now CARD-01 in chat).
+// Kept as revision 2 drew it, reachable only from the Screen index.
 
 enum SCR03State: String, Hashable, CaseIterable {
     case firstRun, returning, checkWaiting, noRunsLeft, loading, offline
@@ -10,13 +11,14 @@ struct SCR03Gym: View {
     @Environment(MockApp.self) private var app
     let state: SCR03State
     @State private var checkSelected = true
+    @State private var selectedToolID = MockData.defaultTool.id
 
     private var isFirstRun: Bool { state == .firstRun }
     private var showsCheck: Bool { state == .checkWaiting && checkSelected }
 
     var body: some View {
         if state == .offline {
-            PAT01States(state: .offlineGym)
+            PAT01States(state: .offline)
         } else {
             ScreenScaffold {
                 // E01, E02
@@ -26,7 +28,7 @@ struct SCR03Gym: View {
                 // E03
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Give Coder a new tool.").font(Theme.Fonts.title)
-                    Text("We'll test it on \(MockData.practiceTasks) practice tasks and show you if Coder got better.")
+                    Text("We'll test it on \(Rev2.practiceTasks) practice tasks and show you if Coder got better.")
                         .font(Theme.Fonts.body).foregroundStyle(Theme.Colors.textSecondary)
                 }
 
@@ -39,10 +41,10 @@ struct SCR03Gym: View {
                 // E04, E05
                 ForEach(MockData.tools) { tool in
                     ToolCard(tool: tool,
-                             selected: !showsCheck && app.selectedToolID == tool.id,
+                             selected: !showsCheck && selectedToolID == tool.id,
                              loadingCounts: state == .loading) {
                         checkSelected = false
-                        app.selectedToolID = tool.id
+                        selectedToolID = tool.id
                     }
                 }
 
@@ -63,7 +65,7 @@ struct SCR03Gym: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                     NextLine(text: showsCheck ? "tap Start the check." : "tap Start training.")
                     PrimaryButton(title: showsCheck ? "Start the check" : "Start training") {
-                        if showsCheck { app.go(.training(.check)) } else { app.startRun() }
+                        if showsCheck { app.go(.retiredTraining(.check)) } else { app.go(.retiredTraining(isFirstRun ? .firstRun : .running)) }
                     }
                     Text("\(app.runsLeft) runs left today")
                         .font(Theme.Fonts.caption).foregroundStyle(Theme.Colors.textTertiary)

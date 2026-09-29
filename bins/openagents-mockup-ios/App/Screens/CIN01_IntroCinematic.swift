@@ -67,6 +67,8 @@ struct CIN01IntroCinematic: View {
             guard !started else { return }
             started = true
             index = startAt
+            // FLOW-01 rule 1: a relaunch from here reopens at the end card.
+            if app.firstRunStep == .chooseAgent { app.firstRunStep = .cinematic }
             while index < MockData.shots.count - 1 {
                 try? await Task.sleep(for: .seconds(MockData.shots[index].seconds * MockData.cinematicTimeScale))
                 if Task.isCancelled || index >= MockData.shots.count - 1 { break }
@@ -79,7 +81,11 @@ struct CIN01IntroCinematic: View {
         VStack(spacing: Theme.Space.s) {
             Text("STEP 2 OF 3").condensedTitle(Theme.Fonts.sectionLabel, tracking: Theme.Tracking.sectionLabel)
                 .foregroundStyle(Theme.Colors.textSecondary)
-            PrimaryButton(title: "Go to the gym") { app.go(.gym(.firstRun)) }
+            // LET'S GO opens the first-run chat, SCR-15.E12 (tap 2 of 3).
+            PrimaryButton(title: "Let's go") {
+                if app.firstRunStep != .done { app.firstRunStep = .chat }
+                app.go(.conversation(.firstRun))
+            }
         }
         .padding(Theme.Space.page)
     }

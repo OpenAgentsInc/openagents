@@ -11,27 +11,40 @@ struct Chip: View {
         Button(action: action) {
             HStack(spacing: 6) {
                 if let icon { Image(systemName: icon).font(.system(size: 14, weight: .semibold)) }
-                Text(text).font(.system(size: 15, weight: .medium)).lineLimit(1)
+                // Long chips (an interview answer) wrap to a second line.
+                Text(text).font(.system(size: 15, weight: .medium)).lineLimit(2)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             .foregroundStyle(filled ? Theme.Colors.primaryLabel : Theme.Colors.textPrimary)
             .padding(.horizontal, 14)
+            .padding(.vertical, 6)
             .frame(minHeight: Theme.Size.chipHeight)
-            .background(Capsule().fill(filled ? Theme.Colors.primaryFill : Theme.Colors.surfaceRaised))
-            .overlay(Capsule().stroke(filled ? .clear : Theme.Colors.stroke, lineWidth: 1))
+            .background(RoundedRectangle(cornerRadius: Theme.Radius.chip)
+                .fill(filled ? Theme.Colors.primaryFill : Theme.Colors.surfaceRaised))
+            .overlay(RoundedRectangle(cornerRadius: Theme.Radius.chip)
+                .stroke(filled ? .clear : Theme.Colors.stroke, lineWidth: 1))
         }
         .buttonStyle(PressStyle())
     }
 }
 
-/// Wraps chips onto as many lines as they need.
+/// Wraps chips onto as many lines as they need. A chip wider than the
+/// line is offered the line's width (so its text wraps inside it).
 struct FlowLayout: Layout {
     var spacing: CGFloat = 8
+
+    private func size(of view: LayoutSubview, maxWidth: CGFloat) -> CGSize {
+        let natural = view.sizeThatFits(.unspecified)
+        guard natural.width > maxWidth else { return natural }
+        return view.sizeThatFits(ProposedViewSize(width: maxWidth, height: nil))
+    }
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         let maxWidth = proposal.width ?? .infinity
         var x: CGFloat = 0, y: CGFloat = 0, rowHeight: CGFloat = 0, widest: CGFloat = 0
         for view in subviews {
-            let size = view.sizeThatFits(.unspecified)
+            let size = size(of: view, maxWidth: maxWidth)
             if x > 0 && x + size.width > maxWidth {
                 y += rowHeight + spacing
                 x = 0
@@ -47,7 +60,7 @@ struct FlowLayout: Layout {
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
         var x = bounds.minX, y = bounds.minY, rowHeight: CGFloat = 0
         for view in subviews {
-            let size = view.sizeThatFits(.unspecified)
+            let size = size(of: view, maxWidth: bounds.width)
             if x > bounds.minX && x + size.width > bounds.maxX {
                 y += rowHeight + spacing
                 x = bounds.minX

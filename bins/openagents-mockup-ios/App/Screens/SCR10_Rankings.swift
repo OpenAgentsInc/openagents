@@ -26,7 +26,7 @@ struct SCR10Rankings: View {
                 .pickerStyle(.segmented)
 
                 if state == .empty && !season {
-                    Text("The week just started. Train first to top the list.")
+                    Text("The week just started. Test a tool first to top the list.")
                         .font(Theme.Fonts.body).foregroundStyle(Theme.Colors.textSecondary)
                         .padding(.vertical, Theme.Space.xl)
                 } else {
@@ -45,7 +45,7 @@ struct SCR10Rankings: View {
                 // E03 (pinned)
                 VStack(alignment: .leading, spacing: 2) {
                     rankRow(place: MockData.yourRank, name: "YOU · \(MockData.player.name)", level: app.level,
-                            xp: app.xp + MockData.xpPerRun, you: true)
+                            xp: MockData.yourWeekXP, you: true)
                     Text("\(MockData.xpToPassNext) XP to pass #\(MockData.yourRank - 1)")
                         .font(Theme.Fonts.caption).foregroundStyle(Theme.Colors.textSecondary)
                         .padding(.leading, 44)
@@ -54,8 +54,9 @@ struct SCR10Rankings: View {
                 .padding(.vertical, Theme.Space.xs)
                 .background(RoundedRectangle(cornerRadius: Theme.Radius.card).fill(Theme.Colors.surfaceRaised))
                 // E04, E05
-                NextLine(text: "one more run could pass #\(MockData.yourRank - 1).")
-                PrimaryButton(title: "Climb: enter the gym") { app.go(.gym(.returning)) }
+                NextLine(text: "one check could pass #\(MockData.yourRank - 1).")
+                // E05: chat with "Is there a result I can check?" sent.
+                PrimaryButton(title: "Climb: chat with OpenAgents") { app.go(.conversation(.answer("anyChecks"))) }
             }
             .onAppear { season = state == .season }
         }

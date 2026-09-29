@@ -1,7 +1,7 @@
 import SwiftUI
 
-// SCR-04 Training. First run step 3 of 3. A fake run lights one block per
-// task over MockData.fakeTrainingSeconds.
+// SCR-04 Training. RETIRED in revision 3 (now CARD-03 in chat). Kept as
+// revision 2 drew it, reachable only from the Screen index.
 
 enum SCR04State: String, Hashable, CaseIterable {
     case firstRun, running, check, done, slow, failed, offline
@@ -14,13 +14,13 @@ struct SCR04Training: View {
     @State private var solved = 0
     @State private var started = false
 
-    private var total: Int { MockData.practiceTasks }
+    private var total: Int { Rev2.practiceTasks }
     private var finished: Bool { tasksDone >= total }
     private var minutesLeft: Int { max(1, Int((Double(total - tasksDone) / Double(total) * 5).rounded(.up))) }
 
     var body: some View {
         if state == .failed {
-            PAT01States(state: .trainingFailed)
+            PAT01States(state: .runFailed)
         } else {
             ScreenScaffold {
                 // E01
@@ -30,8 +30,8 @@ struct SCR04Training: View {
             } content: {
                 // E02
                 Text(state == .check
-                     ? "Coder is rerunning \(MockData.checkTrainer)'s result with \(MockData.checkTool)."
-                     : "Coder is practicing with \(app.selectedTool.name).")
+                     ? "Coder is rerunning Trainer 2PX's result with Code finder."
+                     : "Coder is practicing with Project map.")
                     .font(Theme.Fonts.title)
                     .fixedSize(horizontal: false, vertical: true)
 
@@ -60,7 +60,7 @@ struct SCR04Training: View {
                     Text(finished ? "All \(total) practice tasks done" : "Practice task \(min(tasksDone + 1, total)) of \(total)")
                         .font(Theme.Fonts.bodyBold)
                     Text("Solved so far: \(solved)").font(Theme.Fonts.body)
-                    Text("Coder's score before: \(MockData.coderScoreBefore) of \(total)")
+                    Text("Coder's score before: \(Rev2.scoreBefore) of \(total)")
                         .font(Theme.Fonts.body).foregroundStyle(Theme.Colors.textSecondary)
                     if !finished {
                         Text(state == .slow ? "Working" : "About \(minutesLeft) minutes left")
@@ -78,9 +78,9 @@ struct SCR04Training: View {
                 PrimaryButton(title: "See the result",
                               detail: finished ? nil : "Ready in about \(minutesLeft) minutes",
                               enabled: finished) {
-                    app.go(.result(state == .check ? .checkConfirmed : .better))
+                    app.go(.result(state == .check ? .confirmed : .better, nil))
                 }
-                SecondaryLink(title: "Ask OpenAgents while you wait") { app.go(.newChat(.fromTraining)) }
+                SecondaryLink(title: "Ask OpenAgents while you wait") { app.go(.newChat(.returning)) }
             }
             .task { await run() }
         }
@@ -117,14 +117,14 @@ struct SCR04Training: View {
         started = true
         switch state {
         case .done:
-            tasksDone = total; solved = MockData.coderScoreAfter; app.trainingFinished = true; return
+            tasksDone = total; solved = Rev2.scoreAfter; return
         case .slow:
             tasksDone = 7; solved = 5; return
         default: break
         }
         tasksDone = state == .offline ? 4 : 0
         solved = state == .offline ? 3 : 0
-        let step = MockData.fakeTrainingSeconds / Double(total)
+        let step = MockData.fakeRunSeconds / Double(total)
         while tasksDone < total {
             try? await Task.sleep(for: .seconds(step))
             if Task.isCancelled { return }
@@ -132,7 +132,6 @@ struct SCR04Training: View {
             // Solve 8 of 10, missing tasks 3 and 7.
             if tasksDone != 3 && tasksDone != 7 { solved += 1 }
         }
-        app.trainingFinished = true
         UINotificationFeedbackGenerator().notificationOccurred(.success)
     }
 }

@@ -50,76 +50,6 @@ struct AnnouncementCard: View {
     }
 }
 
-/// SCR-03.E04/E05: a selectable tool card with a radio mark.
-struct ToolCard: View {
-    let tool: MockData.Tool
-    let selected: Bool
-    var loadingCounts = false
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            HStack(alignment: .top, spacing: Theme.Space.s) {
-                Image(systemName: selected ? "largecircle.fill.circle" : "circle")
-                    .font(.system(size: 22))
-                    .foregroundStyle(selected ? Theme.Colors.textPrimary : Theme.Colors.textTertiary)
-                Image(systemName: tool.icon)
-                    .font(.system(size: 20, weight: .semibold))
-                    .frame(width: 26)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(tool.name).condensedTitle(Theme.Fonts.rowTitle)
-                    Text(tool.line).font(Theme.Fonts.body).foregroundStyle(Theme.Colors.textSecondary)
-                        .multilineTextAlignment(.leading)
-                        .fixedSize(horizontal: false, vertical: true)
-                    if selected {
-                        if loadingCounts {
-                            LoadingBar(width: 120, height: 12).padding(.top, 2)
-                        } else {
-                            Text("Tried by \(tool.triedBy) trainers")
-                                .font(Theme.Fonts.caption).foregroundStyle(Theme.Colors.textTertiary)
-                        }
-                    }
-                }
-                Spacer(minLength: 0)
-            }
-            .foregroundStyle(Theme.Colors.textPrimary)
-            .padding(Theme.Space.m)
-            .background(RoundedRectangle(cornerRadius: Theme.Radius.card)
-                .fill(selected ? Theme.Colors.surfaceRaised : Theme.Colors.surface))
-            .overlay(
-                RoundedRectangle(cornerRadius: Theme.Radius.card)
-                    .stroke(selected ? Theme.Colors.strokeStrong : Theme.Colors.stroke,
-                            lineWidth: selected ? Theme.Stroke.selected : Theme.Stroke.hairline)
-            )
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(PressStyle())
-    }
-}
-
-/// SCR-03.E11: the check-a-result card.
-struct CheckCard: View {
-    var body: some View {
-        Card(highlighted: true) {
-            HStack(alignment: .top, spacing: Theme.Space.s) {
-                Image(systemName: "largecircle.fill.circle").font(.system(size: 22))
-                Image(systemName: "checkmark.seal").font(.system(size: 20, weight: .semibold)).frame(width: 26)
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack {
-                        Text("Check a result").condensedTitle()
-                        Spacer()
-                        Text("+\(MockData.xpPerRun) XP").font(Theme.Fonts.bodyBold)
-                    }
-                    Text("\(MockData.checkTrainer) says \(MockData.checkTool) made Coder better. Run it again to confirm.")
-                        .font(Theme.Fonts.body).foregroundStyle(Theme.Colors.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-            .foregroundStyle(Theme.Colors.textPrimary)
-        }
-    }
-}
-
 /// A read-only command card in chat (SCR-17.E07).
 struct CommandCardView: View {
     let card: MockData.CommandCard
@@ -150,9 +80,6 @@ struct CommandCardView: View {
     ScrollView {
         VStack(spacing: 12) {
             AnnouncementCard(title: MockData.season, line: MockData.seasonLine)
-            ToolCard(tool: MockData.tools[0], selected: true) {}
-            ToolCard(tool: MockData.tools[1], selected: false) {}
-            CheckCard()
             CommandCardView(card: MockData.answer("can").command!)
         }
         .padding()

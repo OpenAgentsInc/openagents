@@ -37,7 +37,7 @@ enum Theme {
         /// The one primary button: fill and label.
         static let primaryFill = Color.white
         static let primaryLabel = Color.black
-        /// The primary button while it is disabled (e.g. SEE THE RESULT before done).
+        /// The primary button while it is disabled (e.g. START TOMORROW AT 9:00).
         static let primaryDisabledFill = Color(white: 0.20)
         static let primaryDisabledLabel = Color(white: 0.55)
 
@@ -51,10 +51,17 @@ enum Theme {
         static let statusLive = Color.white
         static let statusOffline = Color(white: 0.40)
 
-        /// Verdict headline tint on SCR-05 (monochrome by default).
+        /// Verdict headline tint on SCR-05 and CARD-04 (monochrome by default).
         static let verdictBetter = Color.white
         static let verdictNoChange = Color(white: 0.80)
         static let verdictWorse = Color(white: 0.64)
+
+        /// Test marks on SCR-05 and SCR-21: passed (✓) and not passed (✗).
+        static let markPass = Color.white
+        static let markFail = Color(white: 0.40)
+
+        /// Chat cards (CARD-01 … CARD-07) inside a reply.
+        static let chatCard = Color(white: 0.07)
 
         /// Your chat bubble.
         static let userBubble = Color(white: 0.16)
@@ -70,26 +77,31 @@ enum Theme {
     // UIAppFonts in project.yml, and change these to Font.custom(...).
 
     enum Fonts {
-        /// Row titles: ENTER THE GYM, CHAT WITH OPENAGENTS.
+        /// Row titles: CHAT WITH OPENAGENTS, PROFILE.
         static let rowTitle = Font.system(size: 22, weight: .heavy).width(.condensed)
-        /// Screen titles in the top bar: THE GYM, TRAINING.
+        /// Screen titles in the top bar: YOUR RESULT, PROFILE.
         static let screenTitle = Font.system(size: 19, weight: .heavy).width(.condensed)
         /// Big headlines: CODER GOT BETTER, LEVEL UP.
         static let headline = Font.system(size: 34, weight: .black).width(.condensed)
-        /// The huge numbers: 6 of 10 --> 8 of 10, the level number.
+        /// The huge numbers: 5 of 8 --> 7 of 8, the level number.
         static let hugeNumber = Font.system(size: 44, weight: .black).width(.condensed)
         static let levelNumber = Font.system(size: 120, weight: .black).width(.condensed)
+        /// Chat cards: the card's title (PROJECT MAP), its verdict
+        /// (CODER GOT BETTER), and its big numbers (5 of 8 → 7 of 8).
+        static let cardTitle = Font.system(size: 20, weight: .heavy).width(.condensed)
+        static let cardHeadline = Font.system(size: 26, weight: .black).width(.condensed)
+        static let cardNumber = Font.system(size: 30, weight: .black).width(.condensed)
         /// Primary button label.
         static let button = Font.system(size: 20, weight: .heavy).width(.condensed)
-        /// Section labels: RECOMMENDED, YOUR RUNS.
+        /// Section labels: TESTS, YOUR RESULTS.
         static let sectionLabel = Font.system(size: 14, weight: .bold).width(.condensed)
-        /// Screen intro lines ("Give Coder a new tool.").
+        /// Screen intro lines ("Choose your agent").
         static let title = Font.system(size: 26, weight: .bold)
         /// Body text and subtitles (spec: at least 17 pt).
         static let body = Font.system(size: 17)
         static let bodyBold = Font.system(size: 17, weight: .semibold)
         static let subtitle = Font.system(size: 17)
-        /// Menu row subtitles. 16 keeps "Ask us anything. No setup needed."
+        /// Menu row subtitles. 16 keeps "Test a tool, see what's new, earn XP"
         /// on one line; the spec asks for at least 17 pt, so this is a
         /// deliberate designer call to revisit.
         static let rowSubtitle = Font.system(size: 16)
@@ -138,6 +150,10 @@ enum Theme {
         static let topBarHeight: CGFloat = 52
         static let stepDot: CGFloat = 9
         static let progressBlock: CGFloat = 24
+        /// CARD-03.E02: one block per test, two rows (with / without).
+        static let runBlock: CGFloat = 16
+        /// SCR-20 opens at this fraction of the screen (drag up for all of it).
+        static let addToGymSheet: CGFloat = 0.72
     }
 
     enum Radius {

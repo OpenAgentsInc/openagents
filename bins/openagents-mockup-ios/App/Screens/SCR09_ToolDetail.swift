@@ -20,13 +20,14 @@ struct SCR09ToolDetail: View {
             Card {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Across all trainers:").font(Theme.Fonts.body).foregroundStyle(Theme.Colors.textSecondary)
+                    let o = MockData.outcome(MockData.outcomeKey(forTool: tool.id))
                     HStack(spacing: Theme.Space.s) {
-                        Text("\(tool.pooledBefore) of 10")
+                        Text("\(o.withoutCount) of \(o.total)")
                         Image(systemName: "arrow.right")
-                        Text("\(tool.pooledAfter) of 10")
+                        Text("\(o.withCount) of \(o.total)")
                     }
                     .font(Theme.Fonts.hugeNumber)
-                    Text("\(tool.triedBy) trainers · \(tool.runs) runs · \(tool.status == "Helps" ? "confirmed" : "being tested")")
+                    Text("tests · \(tool.testedBy) trainers · \(tool.runs) runs · \(tool.checks) checks")
                         .font(Theme.Fonts.body).foregroundStyle(Theme.Colors.textSecondary)
                 }
             }
@@ -35,12 +36,10 @@ struct SCR09ToolDetail: View {
                 .font(Theme.Fonts.body).foregroundStyle(Theme.Colors.textSecondary)
         } bottom: {
             // E04, E05, E06
-            NextLine(text: "train Coder with this tool.")
-            PrimaryButton(title: "Train with this tool") {
-                app.selectedToolID = tool.id
-                app.go(.gym(.returning))
-            }
-            SecondaryLink(title: "Ask about this tool") { app.go(.conversation(.aboutTool)) }
+            NextLine(text: "test this tool on Coder.")
+            // E05: chat with CARD-01 for this tool.
+            PrimaryButton(title: "Test this tool") { app.go(.conversation(.card(.tool(tool.id, .ready)))) }
+            SecondaryLink(title: "Ask about this tool") { app.go(.conversation(.answer("tool"))) }
         }
     }
 }

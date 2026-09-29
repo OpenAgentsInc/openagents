@@ -32,6 +32,26 @@ struct PrimaryButton: View {
     }
 }
 
+/// The primary look on a share link (CARD-07 SHARE WHAT YOU MADE).
+struct PrimaryShareLink: View {
+    let title: String
+    let item: String
+
+    var body: some View {
+        ShareLink(item: item) {
+            HStack(spacing: 10) {
+                Image(systemName: "square.and.arrow.up").font(.system(size: 18, weight: .bold))
+                Text(title).condensedTitle(Theme.Fonts.button)
+            }
+            .foregroundStyle(Theme.Colors.primaryLabel)
+            .frame(maxWidth: .infinity, minHeight: Theme.Size.buttonHeight)
+            .background(RoundedRectangle(cornerRadius: Theme.Radius.button).fill(Theme.Colors.primaryFill))
+            .themeShadow(Theme.Shadows.primary)
+        }
+        .buttonStyle(PressStyle())
+    }
+}
+
 /// An outlined, full-width secondary button.
 struct OutlinedButton: View {
     let title: String
@@ -89,8 +109,9 @@ struct PressStyle: ButtonStyle {
 
 #Preview("Buttons") {
     VStack(spacing: 16) {
-        PrimaryButton(title: "Enter the gym") {}
-        PrimaryButton(title: "See the result", detail: "Ready in about 3 minutes", enabled: false) {}
+        PrimaryButton(title: "Start the test") {}
+        PrimaryButton(title: "Start tomorrow at 9:00", enabled: false) {}
+        PrimaryShareLink(title: "Share what you made", item: "Shared")
         OutlinedButton(title: "Share outside the app", icon: "square.and.arrow.up") {}
         SecondaryLink(title: "Ask OpenAgents a question first") {}
     }

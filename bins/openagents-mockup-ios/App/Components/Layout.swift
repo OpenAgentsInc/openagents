@@ -70,7 +70,7 @@ struct NextLine: View {
     let text: String
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
             Text("Next:").font(Theme.Fonts.bodyBold).foregroundStyle(Theme.Colors.textPrimary)
             Text(text).font(Theme.Fonts.body).foregroundStyle(Theme.Colors.textSecondary)
         }
@@ -139,7 +139,7 @@ struct StubScreen: View {
                 Image(systemName: "square.dashed").font(.system(size: 54, weight: .light))
                     .foregroundStyle(Theme.Colors.textTertiary)
                 Text(name).font(Theme.Fonts.title)
-                Text("This screen exists in the real app but isn't part of the wireframe spec, so the mockup leaves it blank.")
+                Text("This screen exists in the real app but isn't part of the wireframe spec, so it's blank here.")
                     .font(Theme.Fonts.body).foregroundStyle(Theme.Colors.textSecondary)
                     .multilineTextAlignment(.center)
             }
@@ -153,13 +153,13 @@ struct StubScreen: View {
 
 #Preview("Layout") {
     ScreenScaffold {
-        TopBar(back: BackControl(label: "Menu") {}, title: "THE GYM", step: 2)
+        TopBar(back: BackControl(label: "Chat") {}, title: "Your result")
     } content: {
-        Text("Give Coder a new tool.").font(Theme.Fonts.title)
-        SectionLabel(text: "Recommended")
-        NextLine(text: "tap Start training.")
+        Text("Coder got better").font(Theme.Fonts.title)
+        SectionLabel(text: "Tests")
+        NextLine(text: "add your result to the Gym.")
     } bottom: {
-        PrimaryButton(title: "Start training") {}
+        PrimaryButton(title: "Add to the Gym") {}
     }
     .environment(MockApp())
 }

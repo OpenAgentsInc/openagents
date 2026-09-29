@@ -12,7 +12,7 @@ struct SCR08AllTools: View {
 
     var body: some View {
         ScreenScaffold {
-            TopBar(back: BackControl(label: "Gym") { app.back() }, title: "All tools")
+            TopBar(back: BackControl(label: "Coder") { app.back() }, title: "All tools")
         } content: {
             // E01
             Text("Pick a tool to see what it does.").font(Theme.Fonts.body)

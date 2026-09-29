@@ -33,11 +33,8 @@ struct SCR12Updates: View {
                             HStack {
                                 Spacer()
                                 Chip(icon: "chevron.right", text: u.button, filled: i == 0) {
-                                    switch i {
-                                    case 0: app.go(.result(.added))
-                                    case 1: app.go(.coder(.normal))
-                                    default: app.go(.gym(.checkWaiting))
-                                    }
+                                    // Each update opens the chat card it's about.
+                                    app.go(.conversation(.answer(u.opens)))
                                 }
                             }
                         }
@@ -46,7 +43,7 @@ struct SCR12Updates: View {
             }
         } bottom: {
             if state == .empty {
-                PrimaryButton(title: "Enter the gym") { app.go(.gym(.returning)) }
+                PrimaryButton(title: "Chat with OpenAgents") { app.go(.newChat(.returning)) }
             }
         }
     }

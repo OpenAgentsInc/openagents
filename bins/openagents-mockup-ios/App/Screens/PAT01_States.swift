@@ -2,9 +2,10 @@ import SwiftUI
 
 // PAT-01 Offline, error, and empty states. Every failure uses this: plain
 // words, a reassurance only when true, one primary action, never a dead end.
+// PAT01States replaces a whole screen; PAT01Inline replaces a card's body.
 
 enum PAT01State: String, Hashable, CaseIterable {
-    case offlineGym, trainingFailed, addingFailed, ourError, offlineMenu, offlineFirstRun
+    case offline, runFailed, addingFailed, ourError, offlineMenu, offlineFirstRun
 }
 
 struct PAT01States: View {
@@ -13,12 +14,12 @@ struct PAT01States: View {
 
     private var content: (icon: String, what: String, means: String, reassure: String?, primary: String, code: String) {
         switch state {
-        case .offlineGym, .offlineFirstRun:
-            ("wifi.slash", "You're offline.", "Training needs the internet.", "Nothing is lost.", "Try again", "NET-01")
+        case .offline, .offlineFirstRun:
+            ("wifi.slash", "You're offline.", "Tests need the internet.", "Nothing is lost.", "Try again", "NET-01")
         case .offlineMenu:
             ("wifi.slash", "You're offline.", "We can't load this right now.", "Nothing is lost.", "Try again", "NET-01")
-        case .trainingFailed:
-            ("exclamationmark.triangle", "Something went wrong on our side.", "This run didn't count against today's runs.", nil, "Try again", "RUN-03")
+        case .runFailed:
+            ("exclamationmark.triangle", "Something went wrong on our side.", "This didn't use a run.", nil, "Try again", "RUN-03")
         case .addingFailed:
             ("exclamationmark.triangle", "We couldn't add your result.", "It's saved on this phone.", "Nothing is lost.", "Try again", "PUB-02")
         case .ourError:
@@ -62,18 +63,56 @@ struct PAT01States: View {
     private func retry() {
         app.back()
         switch state {
-        case .offlineGym, .offlineFirstRun: app.go(.gym(.returning))
-        case .trainingFailed: app.go(.training(.running))
-        case .addingFailed: app.go(.result(.added))
+        case .offline: app.go(.conversation(.answer("testATool")))
+        case .offlineFirstRun: app.go(.conversation(.firstRun))
+        case .runFailed: app.go(.conversation(.card(.run(.tool("project-map"), .running, Date()))))
+        case .addingFailed: app.go(.result(.added, nil))
         case .ourError, .offlineMenu: break
         }
     }
 }
 
-#Preview("PAT-01 Offline") {
-    NavigationStack { PAT01States(state: .offlineGym) }.environment(MockApp())
+/// PAT-01 inside a chat card (CARD-01 offline, CARD-03 failed): the same
+/// four lines and one button, drawn where the card was.
+struct PAT01Inline: View {
+    let icon: String
+    let what: String
+    let means: String
+    let reassure: String?
+    let code: String
+    var primary = "Try again"
+    var onRetry: () -> Void = {}
+
+    var body: some View {
+        ChatCardFrame {
+            HStack(alignment: .top, spacing: Theme.Space.s) {
+                Image(systemName: icon).font(.system(size: 22, weight: .regular)).frame(width: 28)
+                VStack(alignment: .leading, spacing: 4) {
+                    // E01, E02, E03
+                    Text(what).font(Theme.Fonts.bodyBold)
+                    CardNote(text: means)
+                    if let reassure { CardNote(text: reassure) }
+                }
+            }
+            // E04
+            PrimaryButton(title: primary) { onRetry() }
+            // E06
+            Text("Code: \(code) (for reports)")
+                .font(Theme.Fonts.captionMono).foregroundStyle(Theme.Colors.textTertiary)
+        }
+    }
 }
 
-#Preview("PAT-01 Our error") {
-    NavigationStack { PAT01States(state: .trainingFailed) }.environment(MockApp())
+#Preview("PAT-01 Offline") {
+    NavigationStack { PAT01States(state: .offline) }.environment(MockApp())
+}
+
+#Preview("PAT-01 Run failed") {
+    NavigationStack { PAT01States(state: .runFailed) }.environment(MockApp())
+}
+
+#Preview("PAT-01 Inline") {
+    PAT01Inline(icon: "wifi.slash", what: "You're offline.", means: "Tests need the internet.",
+                reassure: "Nothing is lost.", code: "NET-01")
+        .padding().frame(maxHeight: .infinity).background(Theme.Colors.background)
 }

@@ -1,10 +1,12 @@
 import SwiftUI
 
 // SCR-15 Chat: new chat, ready to type. The composer is the primary.
+// The first-run chat (SCR-15.E12) is SCR17Conversation(state: .firstRun):
+// it's a conversation from its first second, with CARD-01 ready.
 
 enum SCR15State: String, Hashable, CaseIterable {
     case firstTime, returning, selectorOpen, computerChosen, computerConnecting, computerOffline
-    case phoneOffline, dailyLimit, fromFirstRun, fromTraining
+    case phoneOffline, dailyLimit, fromFirstRun
 }
 
 /// The chat header shared by SCR-15, SCR-16, SCR-17, and SCR-19.
@@ -55,7 +57,7 @@ struct SCR15NewChat: View {
     var body: some View {
         VStack(spacing: 0) {
             // E11, E01, E02, E03
-            ChatHeader(back: BackControl(label: state == .fromFirstRun ? "Back" : "") { app.back() },
+            ChatHeader(back: BackControl(label: state == .fromFirstRun ? "Back" : "Menu") { app.back() },
                        onMenu: { app.go(.previousChats(.normal)) },
                        title: "OpenAgents") {
                 Button { withAnimation { selectorOpen.toggle() } } label: {
@@ -72,9 +74,6 @@ struct SCR15NewChat: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: Theme.Space.s) {
-                    if state == .fromTraining && app.trainingFinished {
-                        Chip(icon: "sparkles", text: "Your result is ready", filled: true) { app.go(.result(.better)) }
-                    }
                     // E05
                     VStack(alignment: .leading, spacing: 8) {
                         PowerSymbol().frame(width: 34).themeShadow(Theme.Shadows.emblem)
@@ -93,10 +92,14 @@ struct SCR15NewChat: View {
 
             VStack(alignment: .leading, spacing: Theme.Space.s) {
                 statusLine
-                // E06 / E04
-                FlowLayout {
-                    if selectorOpen { targets } else { chips }
+                // E06 / E04: one row that scrolls sideways, so the welcome
+                // lines stay visible with the keyboard up.
+                ScrollView(.horizontal) {
+                    HStack(spacing: 8) {
+                        if selectorOpen { targets } else { chips }
+                    }
                 }
+                .scrollIndicators(.hidden)
                 // E07, E08
                 Composer(placeholder: computerTarget ? "Message OpenAgents on \(MockData.computerName)" : "Message OpenAgents",
                          text: $text, focused: $focused,
@@ -152,17 +155,18 @@ struct SCR15NewChat: View {
             ForEach(MockData.firstTimeChips, id: \.self) { id in
                 Chip(icon: "questionmark.circle", text: MockData.answer(id).question) { open(id) }
             }
-        case .fromTraining:
-            ForEach(MockData.trainingChips, id: \.self) { id in
-                Chip(icon: "questionmark.circle", text: MockData.answer(id).question) { open(id) }
-            }
         default:
+            // The starter chips (Test a tool, What's new, Check a result) on Cloud.
+            if !computerTarget {
+                ForEach(MockData.starterChips, id: \.self) { id in
+                    Chip(icon: MockData.answer(id).icon, text: MockData.answer(id).question) { open(id) }
+                }
+            }
             Chip(icon: "clock", text: MockData.recentChats[0]) { app.go(.coderChat(.done)) }
-            Chip(icon: "clock", text: MockData.recentChats[1]) { app.go(.conversation(.aboutResult)) }
+            Chip(icon: "clock", text: MockData.recentChats[1]) { app.go(.conversation(.answer("result"))) }
             if computerTarget {
                 Chip(icon: "folder", text: "website") {}
             }
-            if app.runsLeft > 0 { Chip(icon: "dumbbell", text: "Go to the Gym") { app.go(.gym(.returning)) } }
             if !computerTarget { Chip(icon: "plus", text: "Connect a computer") { app.go(.stub("Your computers")) } }
         }
     }

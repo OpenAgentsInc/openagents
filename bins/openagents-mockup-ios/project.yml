@@ -36,6 +36,22 @@ targets:
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.developer-tools
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         "EXCLUDED_ARCHS[sdk=iphonesimulator*]": x86_64
+  # build.sh test: taps through FLOW-01, FLOW-02, FLOW-07, and FLOW-08 on a
+  # simulator and counts the taps (spec CHK-06). Never archived or shipped.
+  OpenAgentsMockupUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: UITests
+    dependencies:
+      - target: OpenAgentsMockup
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.openagents.mockup.uitests
+        GENERATE_INFOPLIST_FILE: true
+        SWIFT_VERSION: "5.10"
+        TARGETED_DEVICE_FAMILY: "1"
+        TEST_TARGET_NAME: OpenAgentsMockup
 schemes:
   OpenAgentsMockup:
     build:
@@ -43,5 +59,9 @@ schemes:
         OpenAgentsMockup: all
     run:
       config: Debug
+    test:
+      config: Debug
+      targets:
+        - OpenAgentsMockupUITests
     archive:
       config: Release

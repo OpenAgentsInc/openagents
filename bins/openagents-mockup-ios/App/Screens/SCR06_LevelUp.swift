@@ -1,6 +1,7 @@
 import SwiftUI
 
-// SCR-06 Level up. An overlay over SCR-05 when XP crosses a level.
+// SCR-06 Level up. An overlay when XP crosses a level: after Add to the Gym
+// (SCR-20), or when chat shows a new award (CARD-07).
 
 enum SCR06State: String, Hashable, CaseIterable {
     case withTitle, noTitle
@@ -50,8 +51,11 @@ struct SCR06LevelUp: View {
                 Spacer()
                 // E04, E05
                 VStack(spacing: Theme.Space.xs) {
-                    NextLine(text: "come back tomorrow for new runs.")
-                    PrimaryButton(title: "Nice") { app.backToMenu() }
+                    NextLine(text: "check someone's result for more XP.")
+                    // E05: back to the chat, or SCR-01 at the end of the first run.
+                    PrimaryButton(title: "Nice") {
+                        if app.isFirstRun || app.path.count <= 1 { app.backToMenu() } else { app.back() }
+                    }
                 }
                 .padding(.horizontal, Theme.Space.page)
                 .padding(.bottom, Theme.Space.xs)

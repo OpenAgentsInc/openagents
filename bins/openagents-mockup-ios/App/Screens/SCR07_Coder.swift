@@ -1,7 +1,7 @@
 import SwiftUI
 
-// SCR-07 Coder: your agent (later). Score today, a chart, and the tools
-// Coder uses now.
+// SCR-07 Coder: your agent (later). Starter tests passed, a chart, and the
+// tools Coder uses now.
 
 enum SCR07State: String, Hashable, CaseIterable {
     case normal, loading, emptyTesting, error
@@ -22,26 +22,26 @@ struct SCR07Coder: View {
                 HStack(spacing: Theme.Space.m) {
                     CoderFigure().frame(height: 130)
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Score today").font(Theme.Fonts.body).foregroundStyle(Theme.Colors.textSecondary)
+                        Text("Starter tests").font(Theme.Fonts.body).foregroundStyle(Theme.Colors.textSecondary)
                         if state == .loading {
                             LoadingBar(width: 120, height: 36)
                         } else {
-                            Text("\(MockData.coderScoreAfter) of \(MockData.practiceTasks)").font(Theme.Fonts.hugeNumber)
+                            Text("\(MockData.starterPassedNow) of \(MockData.starterTests)").font(Theme.Fonts.hugeNumber)
                         }
-                        Text("practice tasks").font(Theme.Fonts.body).foregroundStyle(Theme.Colors.textSecondary)
+                        Text("passed today").font(Theme.Fonts.body).foregroundStyle(Theme.Colors.textSecondary)
                     }
                 }
                 // E03
                 Card {
                     VStack(alignment: .leading, spacing: 8) {
-                        SectionLabel(text: "Score by week")
+                        SectionLabel(text: "Tests passed by week")
                         if state == .loading { LoadingBar(width: 260, height: 90) } else { chart }
                     }
                 }
                 // E04
                 SectionLabel(text: "Tools Coder uses now")
                 ListRow(icon: "map", title: "Project map",
-                        subtitle: "Confirmed by \(MockData.tools[0].confirmedBy) trainers · added Oct 3")
+                        subtitle: "Confirmed by \(MockData.tools[0].checks) trainers · added Oct 3")
                 // E05
                 SectionLabel(text: "Being tested")
                 if state == .emptyTesting {
@@ -54,22 +54,23 @@ struct SCR07Coder: View {
                 }
             } bottom: {
                 // E06, E07
-                NextLine(text: "train Coder to raise its score.")
-                PrimaryButton(title: "Train Coder") { app.go(.gym(.returning)) }
+                NextLine(text: "test a tool to help Coder pass more tests.")
+                // E07: chat with "Which tool should I try?" sent (CHAT-2).
+                PrimaryButton(title: "Test a tool") { app.go(.conversation(.answer("whichTool"))) }
             }
         }
     }
 
     private var chart: some View {
         HStack(alignment: .bottom, spacing: Theme.Space.l) {
-            ForEach(Array(MockData.coderScoreHistory.enumerated()), id: \.offset) { i, score in
+            ForEach(Array(MockData.starterHistory.enumerated()), id: \.offset) { i, score in
                 VStack(spacing: 6) {
                     Text("\(score)").font(Theme.Fonts.bodyBold)
                     RoundedRectangle(cornerRadius: 4)
-                        .fill(i == MockData.coderScoreHistory.count - 1 ? Theme.Colors.textPrimary : Theme.Colors.surfaceRaised)
+                        .fill(i == MockData.starterHistory.count - 1 ? Theme.Colors.textPrimary : Theme.Colors.surfaceRaised)
                         .overlay(RoundedRectangle(cornerRadius: 4).stroke(Theme.Colors.stroke, lineWidth: 1))
-                        .frame(width: 44, height: CGFloat(score) * 11)
-                    Text(MockData.coderScoreWeeks[i]).font(Theme.Fonts.caption).foregroundStyle(Theme.Colors.textSecondary)
+                        .frame(width: 44, height: CGFloat(score) * 13)
+                    Text(MockData.starterHistoryWeeks[i]).font(Theme.Fonts.caption).foregroundStyle(Theme.Colors.textSecondary)
                 }
             }
         }

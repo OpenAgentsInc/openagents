@@ -1,60 +1,43 @@
 import SwiftUI
 
-// SCR-05 Result. The payoff: before and after, XP, and one action that
-// adds the result to the Gym. The after score counts up as a fake reveal.
+// SCR-05 Result (detail). Opened from CARD-04's See details: the headline,
+// tests passed without and with the tool, and each test with a mark per
+// side. The with-the-tool count counts up as a fake reveal.
 
 enum SCR05State: String, Hashable, CaseIterable {
-    case better, noChange, worse, added, addingFailed, checkConfirmed, checkFailed
+    case better, noChange, worse, firstTry, added, addingFailed, confirmed, didntHold
+
+    init(outcomeKey: String, added: Bool) {
+        if added { self = .added; return }
+        self = SCR05State(rawValue: outcomeKey == "madeBetter" ? "better" : outcomeKey) ?? .better
+    }
+
+    var outcomeKey: String {
+        switch self {
+        case .added, .addingFailed: "better"
+        default: rawValue
+        }
+    }
 }
 
 struct SCR05Result: View {
     @Environment(MockApp.self) private var app
     let state: SCR05State
-    @State private var shownAfter: Int = MockData.coderScoreBefore
+    /// The chat message whose CARD-04 opened this, so adding here updates it.
+    var messageID: UUID? = nil
+    @State private var shownWith = 0
     @State private var revealed = false
-    @State private var adding = false
-    @State private var added = false
 
-    private var isAdded: Bool { added || state == .added }
-    private var before: Int { MockData.coderScoreBefore }
-    private var after: Int {
-        switch state {
-        case .noChange, .checkFailed: before
-        case .worse: before - 1
-        default: MockData.coderScoreAfter
-        }
-    }
-
-    private var headline: String {
-        switch state {
-        case .better, .added: "Coder got better"
-        case .noChange: "No clear change"
-        case .worse: "Coder did worse with this tool"
-        case .checkConfirmed: "You confirmed it"
-        case .checkFailed: "It didn't hold up"
-        case .addingFailed: ""
-        }
-    }
+    private var o: MockData.Outcome { MockData.outcome(state.outcomeKey) }
+    private var set: MockData.TestSet { MockData.testSet(o.testSet) }
+    private var isAdded: Bool { state == .added }
 
     private var headlineColor: Color {
         switch state {
-        case .noChange, .checkFailed: Theme.Colors.verdictNoChange
+        case .noChange, .didntHold: Theme.Colors.verdictNoChange
         case .worse: Theme.Colors.verdictWorse
         default: Theme.Colors.verdictBetter
         }
-    }
-
-    private var why: String {
-        switch state {
-        case .noChange: "That's useful too. Now everyone knows this tool doesn't help here."
-        case .worse: "That's useful too. We won't give Coder this tool."
-        case .checkConfirmed, .checkFailed: "Checks keep the Gym honest. Every trainer can trust what ships."
-        default: "Your result helps every trainer. When others confirm it, Coder uses \(toolName) for everyone."
-        }
-    }
-
-    private var toolName: String {
-        state == .checkConfirmed || state == .checkFailed ? MockData.checkTool : app.selectedTool.name
     }
 
     var body: some View {
@@ -63,105 +46,130 @@ struct SCR05Result: View {
         } else {
             ScreenScaffold {
                 // E01
-                TopBar(back: BackControl(label: "Menu") { app.backToMenu() }, title: "Your result")
+                TopBar(back: BackControl(label: "Chat") { app.returnToChat() }, title: "Your result")
             } content: {
                 // E02
-                Text(headline)
+                Text(o.headline)
                     .condensedTitle(Theme.Fonts.headline, tracking: 1)
                     .foregroundStyle(headlineColor)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: .infinity)
                     .opacity(revealed ? 1 : 0)
                     .scaleEffect(revealed ? 1 : 0.9)
-                    .padding(.top, Theme.Space.s)
+                    .padding(.top, Theme.Space.xs)
 
                 // E03
-                HStack(alignment: .top, spacing: Theme.Space.m) {
-                    score(before, caption: "before")
-                    Image(systemName: "arrow.right").font(.system(size: 28, weight: .bold))
-                        .padding(.top, 10)
-                    score(shownAfter, caption: "with \(toolName)")
+                HStack(alignment: .top, spacing: Theme.Space.s) {
+                    score(o.withoutCount, caption: "without the tool")
+                    Image(systemName: "arrow.right").font(.system(size: 26, weight: .bold)).padding(.top, 10)
+                    score(shownWith, caption: "with \(o.toolName)")
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, Theme.Space.m)
                 .background(RoundedRectangle(cornerRadius: Theme.Radius.card).fill(Theme.Colors.surface))
                 .overlay(RoundedRectangle(cornerRadius: Theme.Radius.card).stroke(Theme.Colors.stroke, lineWidth: 1))
 
-                // E04
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        Text("+\(MockData.xpPerRun) XP").font(Theme.Fonts.hugeNumber)
-                        Text(isAdded ? "Added. It counts once another trainer checks it."
-                                     : "Pending until another trainer checks it")
-                            .font(Theme.Fonts.body).foregroundStyle(Theme.Colors.textSecondary)
-                    }
-                    XPBar(progress: Double(app.xp + (isAdded ? 0 : MockData.xpPerRun)) / Double(app.xpForNextLevel))
-                    Text("Level \(app.level) · \(app.xp + (isAdded ? 0 : MockData.xpPerRun))/\(app.xpForNextLevel) XP")
-                        .font(Theme.Fonts.caption).foregroundStyle(Theme.Colors.textSecondary)
+                // E12
+                testList
+                // E13
+                OutlinedButton(title: "See the whole test set", icon: "list.bullet") {
+                    app.present(.testSet(o.testSet, draft: false))
                 }
 
+                // E04
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(isAdded ? "Added. \(o.xpLine)." : o.xpLine)
+                        .font(Theme.Fonts.bodyBold).fixedSize(horizontal: false, vertical: true)
+                    XPBar(progress: Double(app.xp) / Double(app.xpForNextLevel))
+                    Text("Level \(app.level) · \(app.xp)/\(app.xpForNextLevel) XP")
+                        .font(Theme.Fonts.caption).foregroundStyle(Theme.Colors.textSecondary)
+                }
                 // E05
-                Text(why).font(Theme.Fonts.body).foregroundStyle(Theme.Colors.textSecondary)
+                Text(o.why).font(Theme.Fonts.body).foregroundStyle(Theme.Colors.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             } bottom: {
                 if isAdded {
                     Label("Added to the Gym", systemImage: "checkmark.circle.fill")
                         .font(Theme.Fonts.bodyBold)
-                        .frame(maxWidth: .infinity, minHeight: 44)
-                    NextLine(text: "come back tomorrow for new runs.")
-                    PrimaryButton(title: "Back to menu") { app.backToMenu() }
+                        .frame(maxWidth: .infinity, minHeight: 40)
+                    NextLine(text: "check someone else's result for more XP.")
+                    PrimaryButton(title: "Back to chat") { app.returnToChat() }
+                } else if o.isFirstTry {
+                    NextLine(text: "run the full test set to add it to the Gym.")
+                    PrimaryButton(title: "Run the full test set") {
+                        app.returnToChat(command: .runFullTestSet(messageID))
+                    }
                 } else {
-                    // E06, E07, E08
+                    // E06, E07 (opens SCR-20, which says what becomes public)
                     NextLine(text: "add your result to the Gym.")
-                    PrimaryButton(title: adding ? "Adding…" : "Add my result to the gym", enabled: !adding) { add() }
-                    Text("Your result and trainer name are public.")
-                        .font(Theme.Fonts.caption).foregroundStyle(Theme.Colors.textTertiary)
+                    PrimaryButton(title: "Add to the Gym") {
+                        app.present(.addToGym(.normal, state.outcomeKey, messageID))
+                    }
                 }
                 // E09, E10, E11
-                ShareLink(item: "Coder went from \(before) of 10 to \(after) of 10 with \(toolName) on OpenAgents.") {
+                ShareLink(item: o.shareText) {
                     Label("Share outside the app", systemImage: "square.and.arrow.up")
                         .font(Theme.Fonts.body).foregroundStyle(Theme.Colors.textSecondary)
-                        .frame(maxWidth: .infinity, minHeight: 40)
+                        .frame(maxWidth: .infinity, minHeight: 36)
                 }
                 HStack {
-                    SecondaryLink(title: "Try another tool") { app.go(.gym(.returning)) }
-                    SecondaryLink(title: "Ask about this result") { app.go(.conversation(.aboutResult)) }
+                    SecondaryLink(title: "Test another tool") { app.returnToChat(sending: "whichTool") }
+                    SecondaryLink(title: "Ask about this result") { app.returnToChat(sending: "result") }
                 }
             }
             .task { await reveal() }
         }
     }
 
+    private var testList: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            SectionLabel(text: "Tests").padding(.bottom, 6)
+            HStack(spacing: 6) {
+                Text("without").frame(width: 50, alignment: .center)
+                Text("with").frame(width: 30, alignment: .center)
+                Spacer()
+            }
+            .font(Theme.Fonts.caption).foregroundStyle(Theme.Colors.textTertiary)
+            ForEach(Array(set.tests.enumerated()), id: \.offset) { i, test in
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    TestMark(passed: o.passedWithout(i)).frame(width: 50)
+                    TestMark(passed: o.passedWith(i)).frame(width: 30)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(test.name).font(Theme.Fonts.body).fixedSize(horizontal: false, vertical: true)
+                        if test.stayOut {
+                            Text(MockData.stayOutNote).font(Theme.Fonts.caption)
+                                .foregroundStyle(Theme.Colors.textSecondary)
+                        }
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding(.vertical, 7)
+                if i < set.tests.count - 1 { Divider().overlay(Theme.Colors.divider) }
+            }
+        }
+    }
+
     private func score(_ n: Int, caption: String) -> some View {
         VStack(spacing: 2) {
-            Text("\(n) of \(MockData.practiceTasks)").font(Theme.Fonts.hugeNumber)
+            Text("\(n) of \(o.total)").font(Theme.Fonts.hugeNumber)
                 .contentTransition(.numericText())
             Text(caption).font(Theme.Fonts.caption).foregroundStyle(Theme.Colors.textSecondary)
+                .lineLimit(1).minimumScaleFactor(0.8)
         }
         .frame(minWidth: 120)
     }
 
     private func reveal() async {
-        added = state == .added
         guard !revealed else { return }
+        shownWith = o.withoutCount
         try? await Task.sleep(for: .seconds(0.4))
-        while shownAfter != after {
+        while shownWith != o.withCount {
             try? await Task.sleep(for: .seconds(0.35))
-            withAnimation(.snappy) { shownAfter += after > shownAfter ? 1 : -1 }
+            withAnimation(.snappy) { shownWith += o.withCount > shownWith ? 1 : -1 }
         }
         try? await Task.sleep(for: .seconds(0.2))
         withAnimation(Theme.Motion.reveal) { revealed = true }
         UINotificationFeedbackGenerator().notificationOccurred(.success)
-    }
-
-    private func add() {
-        adding = true
-        Task {
-            try? await Task.sleep(for: .seconds(0.8))
-            adding = false
-            withAnimation { added = true }
-            if app.addResult() { app.go(.levelUp(.withTitle)) }
-        }
     }
 }
 
@@ -177,6 +185,14 @@ struct SCR05Result: View {
     NavigationStack { SCR05Result(state: .worse) }.environment(MockApp())
 }
 
+#Preview("SCR-05 First try") {
+    NavigationStack { SCR05Result(state: .firstTry) }.environment(MockApp())
+}
+
 #Preview("SCR-05 Added") {
     NavigationStack { SCR05Result(state: .added) }.environment(MockApp())
+}
+
+#Preview("SCR-05 You confirmed it") {
+    NavigationStack { SCR05Result(state: .confirmed) }.environment(MockApp())
 }

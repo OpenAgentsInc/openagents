@@ -49,11 +49,11 @@ struct SCR02ChooseAgent: View {
                     }
                     Text("Writes and fixes code.").font(Theme.Fonts.body).foregroundStyle(Theme.Colors.textSecondary)
                     HStack(spacing: 6) {
-                        Text("Score today:").font(Theme.Fonts.body).foregroundStyle(Theme.Colors.textSecondary)
+                        Text("Today:").font(Theme.Fonts.body).foregroundStyle(Theme.Colors.textSecondary)
                         if state == .loading {
                             LoadingBar(width: 150, height: 14)
                         } else {
-                            Text("\(MockData.coderScoreBefore) of \(MockData.practiceTasks) practice tasks")
+                            Text("passes \(MockData.starterPassedToday) of \(MockData.starterTests) starter tests")
                                 .font(Theme.Fonts.bodyBold)
                         }
                     }

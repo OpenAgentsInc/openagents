@@ -4,7 +4,9 @@
 #   bins/openagents-mockup-ios/build.sh sim       build, install, and launch on a simulator
 #   bins/openagents-mockup-ios/build.sh archive   signed App Store archive; does not upload
 #   bins/openagents-mockup-ios/build.sh upload    upload the archive to TestFlight
-#   bins/openagents-mockup-ios/build.sh shots     screenshot the key screens into screenshots/
+#   bins/openagents-mockup-ios/build.sh shots     screenshot every screen, card, and sheet into verification/
+#   bins/openagents-mockup-ios/build.sh check     fail on a banned word in any on-screen string (check-words.sh)
+#   bins/openagents-mockup-ios/build.sh test      tap through FLOW-01, 02, 07, 08 on a simulator (UITests/)
 #
 # OPENAGENTS_MOCKUP_DEVICE names the simulator (a UDID or "booted"; default: booted).
 # OPENAGENTS_MOCKUP_BUILD_NUMBER overrides the checked-in build number (project.yml).
@@ -34,29 +36,40 @@ build_sim() {
 }
 
 case "$command" in
+  check)
+    "$here/check-words.sh"
+    ;;
+  test)
+    generate
+    [[ "$device" == booted ]] && device="$(xcrun simctl list devices booted | grep -Eo '[0-9A-F-]{36}' | head -1)"
+    xcodebuild -project "$here/OpenAgentsMockup.xcodeproj" -scheme OpenAgentsMockup -configuration Debug \
+      -destination "id=$device" -derivedDataPath "$output/DerivedData" CODE_SIGNING_ALLOWED=NO -quiet test
+    ;;
   sim)
     app="$(build_sim | tail -1)"
     xcrun simctl install "$device" "$app"
     xcrun simctl launch "$device" "$bundle" "$@"
     ;;
   shots)
+    "$here/check-words.sh"
     app="$(build_sim | tail -1)"
     xcrun simctl install "$device" "$app"
     xcrun simctl status_bar "$device" override --time 9:41 --batteryState charged --batteryLevel 100 \
       --cellularBars 4 --wifiBars 3 >/dev/null 2>&1 || true
-    mkdir -p "$here/screenshots"
+    mkdir -p "$here/verification"
     # name  screen-index-id  seconds-to-wait
     while read -r name screen wait; do
       [[ -z "$name" || "$name" == \#* ]] && continue
       xcrun simctl terminate "$device" "$bundle" >/dev/null 2>&1 || true
       xcrun simctl launch "$device" "$bundle" --screen "$screen" >/dev/null
       sleep "$wait"
-      xcrun simctl io "$device" screenshot "$here/screenshots/$name.png" >/dev/null 2>&1
-      sips -Z 1311 "$here/screenshots/$name.png" >/dev/null   # half size keeps the repo small
-      echo "screenshots/$name.png"
+      xcrun simctl io "$device" screenshot "$here/verification/$name.png" >/dev/null 2>&1
+      sips -Z 1100 "$here/verification/$name.png" >/dev/null   # small keeps the repo small
+      echo "verification/$name.png"
     done < "$here/screenshots.txt"
     ;;
   archive)
+    "$here/check-words.sh"
     generate
     args=(-project "$here/OpenAgentsMockup.xcodeproj" -scheme OpenAgentsMockup -configuration Release
           -destination 'generic/platform=iOS' -derivedDataPath "$output/DerivedData" -archivePath "$archive")
@@ -82,5 +95,5 @@ case "$command" in
       -authenticationKeyPath "$ASC_API_PRIVATE_KEY_PATH" \
       -authenticationKeyID "$ASC_API_KEY_ID" -authenticationKeyIssuerID "$ASC_API_ISSUER_ID"
     ;;
-  *) echo "usage: bins/openagents-mockup-ios/build.sh sim|archive|upload|shots" >&2; exit 64 ;;
+  *) echo "usage: bins/openagents-mockup-ios/build.sh sim|shots|check|test|archive|upload" >&2; exit 64 ;;
 esac

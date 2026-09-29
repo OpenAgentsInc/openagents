@@ -36,14 +36,11 @@ struct SCR16PreviousChats: View {
                                 .padding(.vertical, Theme.Space.s)
                         }
                         // E05
-                        ForEach(Array(MockData.previousChats.enumerated()), id: \.element.id) { i, chat in
+                        ForEach(MockData.previousChats) { chat in
                             ListRow(icon: chat.onComputer ? "desktopcomputer" : "bubble.left",
                                     title: chat.title, trailing: chat.when) {
-                                switch i {
-                                case 0: app.go(.conversation(.aboutResult))
-                                case 1: app.go(.coderChat(.done))
-                                default: app.go(.conversation(.answer("cost")))
-                                }
+                                if chat.opens == "coder" { app.go(.coderChat(.done)) }
+                                else { app.go(.conversation(.answer(chat.opens))) }
                             }
                             Divider().overlay(Theme.Colors.divider)
                         }
