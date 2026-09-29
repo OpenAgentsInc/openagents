@@ -9,8 +9,6 @@ notes: Every number in the deck comes from a dated record in the repository; the
 
 layout: compare
 id: compute-vs-capabilities
-kicker: PART I · THE IDEA
-title: Test-time compute and test-time capabilities
 source: docs/essays/2026-09-29-test-time-capabilities.md#what-test-time-compute-is; docs/essays/2026-09-29-test-time-capabilities.md#the-thesis-capability-is-something-you-can-acquire-at-test-time
 
 column: Test-time compute
@@ -26,7 +24,44 @@ row: What is left after | Nothing is kept | The capability, for every agent
 notes: Test-time compute: think longer (chain of thought, o1, DeepSeek-R1), control the budget (s1: AIME24 from 50 to 57 percent), sample many and pick (SWE-bench Lite: 15.9 to 56 percent with 250 samples), allocate per question (compute-optimal beat best-of-N fourfold), adapt the weights briefly (test-time training on ARC). Wei 2022, OpenAI 2024, DeepSeek-AI 2025, Muennighoff 2025, Brown 2024, Snell 2024, Akyürek 2024.
 notes: Both leave the weights alone. Compute spends more per answer and keeps nothing. A capability is admitted to the run, proven by a claim someone else can rerun, and stays: adopted once, every agent that shares the defaults has it.
 notes: Two lessons carry over from the compute literature: a verifier is what makes extra effort pay, and the allocation is itself a judgment that should cost far less than the work it allocates.
+---
 
+layout: compare
+id: protocol-find
+title: The NIPs: from finding a capability to delegating
+column: Carries
+column: Why it matters
+column: Status
+source: docs/essays/2026-09-29-test-time-capabilities.md#the-nips-one-by-one; nips/openagents/README.md
+row: EXT | releases | the exact version tested | Partial
+row: CAP | grants | describing never grants use | Partial
+row: KB | knowledge | tested with and without | Implemented
+row: CJ | judgment, jobs | judgment and eval jobs on wire | Partial
+row: PRG | decide, delegate | pinned, bounded steps | Partial
+row: CTX | briefings | what a delegate was shown | Designed
+row: SESS | delegate engines | how each engine is steered | Designed
+row: WORK | tracked delegation | who answers for the work | Designed
+notes: EXT keeps installing, enabling, granting, and admitting separate, so the lock the with arm held is exact. CAP keeps definition, host binding, grant, and presence apart, and a grant now records whether it was for evaluation or for real use. KB never counts a task an entry was written from as its evidence.
+notes: CJ carries decision jobs and the router's judgment feedback; the hosted eval runner is an execution job. PRG's decide calls a pinned decision function, and delegate hands a bounded task to an admitted executor. The delegate door's briefing and failover run locally, with no Nostr record yet.
+---
+
+layout: compare
+id: protocol-prove
+title: The NIPs: from the run to the shared result
+column: Carries
+column: Why it matters
+column: Status
+source: docs/essays/2026-09-29-test-time-capabilities.md#the-nips-one-by-one; nips/openagents/README.md
+row: RUN | run journal | lock, grant, baseline agent | Partial
+row: ATIF | trajectories | each arm, step by step | Designed
+row: EVAL | claims, checks | signed claims, whole scope | Partial
+row: XP | credit | paid to confirm or dispute | Implemented
+row: POL | cost, adoption | operator adopts; runs keep lock | Designed
+row: OPT | optimization | faces the same test | Designed
+row: MV | Verse | Gym notes cite the result | Partial
+row: Contracts | locks | "the same tool", exactly | Partial
+notes: RUN decides; trajectories only observe. ATIF traces stay local files today; no component publishes them yet. EVAL carries the subject and baseline arms, what the run relied on, the tool's identity strength, the task distribution, a verdict from a gate that declares its primary outcome, 3189 results, checks by a different trainer, and validations on a second suite read for independence by signer and chronology.
+notes: XP: eval-check pays the checker, evaluator, and suite author whether the check confirms or disputes; eval-adopt needs a confirming check and a validation and pays the tool's author too; XP is never money. POL's route receipts would carry a judgment's time and cost. OPT's result reaches an agent only through EVAL admission and a new EXT release.
 ---
 
 layout: points
@@ -251,50 +286,6 @@ note: The hosted runner runs on coderos-4080 with a per-trainer daily quota. Sui
 source: docs/essays/2026-09-29-test-time-capabilities.md#what-is-a-capability-means-in-our-system; docs/deployment/eval-runner.md; nips/openagents/NIP-EVAL.md; packages/coder-defaults/policy.md
 notes: A tool becomes a candidate when its result is Better, three distinct trainers' checks confirmed it, and a Better result on a second test set validates it: written by someone other than the tool's author, released after the tool, on the same kind of task. Adoption is an operator decision, never automatic.
 notes: Credit is XP and a name, never money. A check is paid whether it confirms or disputes; a good dispute is worth more than a fourth confirmation. eval-adopt credits the tool's author too.
-
----
-
-layout: compare
-id: protocol-find
-kicker: PART II · OUR IMPLEMENTATION
-title: The protocol: which NIP carries what, from finding a tool to delegating
-column: Carries
-column: Why it matters
-column: Status
-note: Status is each whole NIP's, from the implementation coverage report.
-source: docs/essays/2026-09-29-test-time-capabilities.md#the-nips-one-by-one; nips/openagents/README.md
-row: EXT | releases | the exact tool version tested | Partial
-row: CAP | grants | describing never grants use | Partial
-row: KB | knowledge | tested with and without | Implemented
-row: CJ | judgment, jobs | judgment and eval jobs on wire | Partial
-row: PRG | decide, delegate | pinned, bounded steps | Partial
-row: CTX | briefings | what a delegate was shown | Designed
-row: SESS | delegate engines | how each engine is steered | Designed
-row: WORK | tracked delegation | who answers for the work | Designed
-notes: EXT keeps installing, enabling, granting, and admitting separate, so the lock the with arm held is exact. CAP keeps definition, host binding, grant, and presence apart, and a grant now records whether it was for evaluation or for real use. KB never counts a task an entry was written from as its evidence.
-notes: CJ carries decision jobs and the router's judgment feedback; the hosted eval runner is an execution job. PRG's decide calls a pinned decision function, and delegate hands a bounded task to an admitted executor. The delegate door's briefing and failover run locally, with no Nostr record yet.
-
----
-
-layout: compare
-id: protocol-prove
-kicker: PART II · OUR IMPLEMENTATION
-title: The protocol: which NIP carries what, from the run to sharing the result
-column: Carries
-column: Why it matters
-column: Status
-note: The shared contracts sit under every row: exact references, locks, the private envelope.
-source: docs/essays/2026-09-29-test-time-capabilities.md#the-nips-one-by-one; nips/openagents/README.md
-row: RUN | run journal | lock, grant, baseline agent | Partial
-row: ATIF | trajectories | each arm, step by step | Designed
-row: EVAL | claims, checks | signed claims, whole scope | Partial
-row: XP | credit | paid to confirm or dispute | Implemented
-row: POL | cost, adoption | operator adopts; runs keep lock | Designed
-row: OPT | optimization | faces the same test | Designed
-row: MV | Verse | Gym notes cite the result | Partial
-row: Contracts | locks | "the same tool", exactly | Partial
-notes: RUN decides; trajectories only observe. ATIF traces stay local files today; no component publishes them yet. EVAL carries the subject and baseline arms, what the run relied on, the tool's identity strength, the task distribution, a verdict from a gate that declares its primary outcome, 3189 results, checks by a different trainer, and validations on a second suite read for independence by signer and chronology.
-notes: XP: eval-check pays the checker, evaluator, and suite author whether the check confirms or disputes; eval-adopt needs a confirming check and a validation and pays the tool's author too; XP is never money. POL's route receipts would carry a judgment's time and cost. OPT's result reaches an agent only through EVAL admission and a new EXT release.
 
 ---
 
