@@ -33,6 +33,10 @@ serde_json = "1"
 tokio = { version = "1", features = ["macros", "rt", "sync", "time"], optional = true }
 
 [dev-dependencies]
+# Connect a computer: a fake computer answering the enroll ALPN on loopback
+# iroh, and the `coder-host:` layout its test codes are read from.
+openagents-connect = { path = "../openagents-connect" }
+base64 = "0.22"
 # The live acceptance test serves a real host on the synthetic relay and
 # drives the SSH path through coder-ssh's fake ssh harness.
 coder-host = { path = "../coder-host" }

@@ -10,6 +10,8 @@ import android.view.Surface
  */
 object OpenAgentsNative {
     init { System.loadLibrary("openagents_mobile") }
+    /** Publishes the JVM and [context] (the application context) to iroh's DNS resolver; call it once, before [create]. */
+    @JvmStatic external fun installContext(context: android.content.Context)
     @JvmStatic external fun create(config: String): Long
     @JvmStatic external fun call(handle: Long, request: String): String
     @JvmStatic external fun destroy(handle: Long)

@@ -100,6 +100,7 @@ impl Client {
             revoked: false,
             ssh: None,
             delisted: false,
+            iroh: None,
         });
         self.store.save(&self.saved).map_err(Error::new)?;
         Ok(host)

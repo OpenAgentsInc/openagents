@@ -86,6 +86,11 @@ pub struct Home {
     /// Owner-directory controls for the list's menu, when they apply.
     pub owner_key: bool,
     pub keep_directory: bool,
+    /// The row that opens **Connect a computer** (`SCR-22`), the scanner.
+    pub connect: &'static str,
+    /// The list menu's entry for Coder's other ways to add a computer: a
+    /// pasted invitation, SSH, or an approval code.
+    pub add_other: &'static str,
 }
 
 pub fn home(computers: &Computers, caps: Capabilities) -> Option<Home> {
@@ -109,11 +114,13 @@ pub fn home(computers: &Computers, caps: Capabilities) -> Option<Home> {
         empty: snapshot
             .hosts
             .is_empty()
-            .then_some("No computers yet. Add one to reach it from this device."),
+            .then_some("No computers yet. Connect one to reach it from this device."),
         notice,
         owner_key: snapshot.directory == DirectoryState::NoOwnerKey
             && check(snapshot, caps, Action::ImportOwnerKey).is_ok(),
         keep_directory: matches!(snapshot.directory, DirectoryState::Conflict { .. }),
+        connect: "Connect a computer",
+        add_other: "Add another way",
     })
 }
 

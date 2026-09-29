@@ -447,10 +447,13 @@ internal class AccountScreens(private val activity: MainActivity, private val br
                         setImageResource(R.drawable.ic_computer); importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
                     }, 0, -2)
                     add(activity.label(empty, 14f, Palette.SECONDARY).apply { gravity = Gravity.CENTER }, 12)
-                    add(activity.pill("Add a computer", "computers-add-empty", primary = true) { bridge.computersGo("add") }, 16, -2)
+                    add(activity.pill(home.getString("connect"), "computers-connect", primary = true) { bridge.connectOpen() }, 16, -2)
                 })
             }
         } else {
+            body.section(null) {
+                add(activity.pill(home.getString("connect"), "computers-connect", primary = true) { bridge.connectOpen() }, 0, -2)
+            }
             body.section(null, home.textOrNull("notice")) {
                 home.getJSONArray("rows").objects().forEachIndexed { index, row ->
                     if (index > 0) rowDivider()
@@ -506,7 +509,7 @@ internal class AccountScreens(private val activity: MainActivity, private val br
     /** The list's own menu: Activity, Refresh, and the owner-directory controls when they apply. */
     fun listMenu(anchor: View, home: JSONObject) {
         val entries = buildList {
-            add("Activity" to "activity"); add("Refresh" to "refresh")
+            add(home.getString("add_other") to "add"); add("Activity" to "activity"); add("Refresh" to "refresh")
             if (home.optBoolean("owner_key")) add("Enter owner key" to "owner_key")
             if (home.optBoolean("keep_directory")) add("Keep this device's version" to "keep_directory")
         }

@@ -196,6 +196,38 @@ pub extern "system" fn Java_com_openagents_app_OpenAgentsNative_coderShown<'loca
     crate::wake::set_shown(shown);
 }
 
+/// Publish the JVM and the application context to iroh's DNS resolver,
+/// which reads Android's DNS configuration through JNI. Call it once, with
+/// the application context, before the app is created; a later call does
+/// nothing.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_openagents_app_OpenAgentsNative_installContext<'local>(
+    mut unowned: EnvUnowned<'local>,
+    _class: JClass<'local>,
+    context: JObject<'local>,
+) {
+    static INSTALLED: std::sync::Once = std::sync::Once::new();
+    unowned
+        .with_env(|env| -> Result<_, BridgeError> {
+            if context.is_null() {
+                return Err(error("The Android context is missing"));
+            }
+            let vm = env.get_java_vm()?;
+            let context = env.new_global_ref(&context)?;
+            INSTALLED.call_once(|| {
+                let vm = vm.get_raw().cast::<std::ffi::c_void>();
+                let object = context.as_obj().as_raw().cast::<std::ffi::c_void>();
+                // SAFETY: the VM lives as long as the process, and the
+                // global reference is leaked here, so both pointers stay
+                // valid until the process exits, as iroh requires.
+                unsafe { openagents_connect::iroh::dns::install_android_jni_context(vm, object) };
+                std::mem::forget(context);
+            });
+            Ok(())
+        })
+        .resolve::<ThrowRuntimeExAndDefault>()
+}
+
 /// One acquired `ANativeWindow` reference.
 struct NativeWindow(NonNull<ndk_sys::ANativeWindow>);
 impl NativeWindow {

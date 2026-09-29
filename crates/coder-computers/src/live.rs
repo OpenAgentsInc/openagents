@@ -44,6 +44,7 @@ use crate::service::{ComputersService, Result};
 use coder_access::client::{OpenedEnrollment, pending_enrollments, redeem};
 use coder_access::protocol::{DeviceEntry, QueueEdit, TaskCommand, TaskCreate, TaskQueue};
 use coder_access::{Access, Code, Error, Operation, Outcome, RelayPolicy, Right, Rights};
+use coder_host::client::iroh::{DEFAULT_RELAY, Dialer, EnrollError, IrohRoute};
 use coder_host::client::{
     Connector, Device, Link, Reports, Route, fetch_directory_revisions, fetch_reach,
     fetch_summaries, watch_summaries,
@@ -156,6 +157,10 @@ pub struct SavedHost {
     /// with its grant and leaves placement.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub delisted: bool,
+    /// The computer's iroh endpoint, from the code it was connected with.
+    /// Routing only: the NIP-REACH handshake and the grant decide access.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub iroh: Option<IrohRoute>,
 }
 
 /// Where a platform keeps [`Saved`].
@@ -297,6 +302,16 @@ pub struct Settings {
     /// How this client starts hosts over SSH. `None` offers no SSH setup.
     #[cfg(feature = "ssh")]
     pub ssh: Option<SshSetup>,
+    /// This device's iroh secret key, from the platform's protected store.
+    /// With it, connecting a computer and its channel go over iroh first;
+    /// without it, over the Nostr relay only.
+    pub iroh_secret: Option<[u8; 32]>,
+    /// How the iroh endpoint binds, in place of the OpenAgents relay. Only
+    /// a test sets it, to loopback with relays disabled.
+    pub iroh_loopback: bool,
+    /// The Nostr relay a connect code is redeemed for, and on when iroh
+    /// cannot connect: the relay a desktop app host's invitations name.
+    pub connect_relay: String,
 }
 
 impl Settings {
@@ -312,6 +327,9 @@ impl Settings {
             now: unix_now,
             #[cfg(feature = "ssh")]
             ssh: None,
+            iroh_secret: None,
+            iroh_loopback: false,
+            connect_relay: DEFAULT_RELAY.to_owned(),
         }
     }
 }
@@ -448,6 +466,8 @@ struct Shared {
     store: Mutex<Box<dyn Store>>,
     /// Called after background work changes what a snapshot shows.
     changed: Mutex<Option<Changed>>,
+    /// This device's iroh endpoint, when it has an iroh key.
+    dialer: Option<Arc<Dialer>>,
 }
 
 /// A caller's hook for background changes; see [`Live::on_change`].
@@ -485,7 +505,17 @@ impl Live {
                 owner.as_deref() == Some(directory.owner.as_str()) && directory.validate().is_ok()
             });
         }
-        let (connector, reports) = Connector::new(runtime.clone(), settings.locality);
+        let (mut connector, reports) = Connector::new(runtime.clone(), settings.locality);
+        let dialer = settings.iroh_secret.map(|secret| {
+            Arc::new(if settings.iroh_loopback {
+                Dialer::loopback(secret)
+            } else {
+                Dialer::new(secret)
+            })
+        });
+        if let Some(dialer) = &dialer {
+            connector.set_iroh(dialer.clone());
+        }
         let registry = Registry::new(SystemClock::new(), connector, settings.link.clone())
             .map_err(|error| Error::new(Code::Unavailable, error.to_string()))?;
         let shared = Arc::new(Shared {
@@ -507,6 +537,7 @@ impl Live {
             }),
             store: Mutex::new(store),
             changed: Mutex::new(None),
+            dialer,
         });
         let hosts: Vec<SavedHost> = lock(&shared.state).saved.hosts.clone();
         for host in hosts {
@@ -544,6 +575,15 @@ impl Live {
     /// connected now.
     pub fn host_link(&self, host: &str) -> Result<Arc<Link>> {
         self.shared.link(host).map(|(_, _, link)| link)
+    }
+
+    /// A handle that connects computers from scanned or pasted codes, in the
+    /// background ([`Pairing::pair`]).
+    #[must_use]
+    pub fn pairing(&self) -> Pairing {
+        Pairing {
+            shared: self.shared.clone(),
+        }
     }
 
     /// A handle that reads each host's current link, for terminal sessions.
@@ -652,12 +692,67 @@ async fn pump(shared: Arc<Shared>, mut reports: Reports) {
             _ = ticker.tick() => lock(&shared.registry).tick(),
         }
         shared.schedule();
+        shared.renewals();
         #[cfg(feature = "ssh")]
         ssh::watch(&shared);
     }
 }
 
 impl Shared {
+    /// Store each renewed grant a host sent on its channel, after checking
+    /// that it keeps the grant's terms, so a paired phone never has to pair
+    /// again while it keeps connecting. A renewal that fails the check is
+    /// dropped and the current grant stays.
+    fn renewals(&self) {
+        let hosts: Vec<String> = lock(&self.state).hosts.keys().cloned().collect();
+        for host in hosts {
+            let Ok((_, _, link)) = self.link(&host) else {
+                continue;
+            };
+            let Some(envelope) = link.take_renewal() else {
+                continue;
+            };
+            let now = (self.settings.now)();
+            let saved = {
+                let mut state = lock(&self.state);
+                let Some(saved) = state
+                    .saved
+                    .hosts
+                    .iter_mut()
+                    .find(|saved| saved.access.grant.host == host)
+                else {
+                    continue;
+                };
+                let Ok(renewed) =
+                    saved
+                        .access
+                        .renewed(envelope, &self.secret, now, self.settings.policy)
+                else {
+                    continue;
+                };
+                saved.access = renewed;
+                let saved = saved.clone();
+                let record = state.saved.clone();
+                drop(state);
+                if self.save(&record).is_err() {
+                    continue;
+                }
+                saved
+            };
+            // Later connections use the renewed grant; the open channel
+            // already follows it.
+            if let Ok(device) =
+                Device::new(saved.access.clone(), self.secret, self.settings.policy).map(Arc::new)
+            {
+                let _ = lock(&self.registry).connector_mut().add(device.clone());
+                if let Some(live) = lock(&self.state).hosts.get_mut(&host) {
+                    live.device = Some(device);
+                }
+            }
+            self.changed();
+        }
+    }
+
     fn save(&self, saved: &Saved) -> Result<()> {
         lock(&self.store)
             .save(saved)
@@ -683,6 +778,9 @@ impl Shared {
                 .ok()
                 .filter(|key| registry.register(key.clone(), Default::default()).is_ok());
             if let Some(key) = registered {
+                registry
+                    .connector_mut()
+                    .set_iroh_route(&key, host.iroh.clone());
                 if host.enabled {
                     let _ = registry.signal(&key, Signal::Connect);
                 } else {
@@ -879,6 +977,32 @@ impl Shared {
         ssh: Option<String>,
     ) -> Result<String> {
         let access = runtime.block_on(redeem(invitation, &self.secret, self.settings.policy))?;
+        self.adopt(access, label, ssh, None)
+    }
+
+    /// The name this device's list gives `host`.
+    fn label(&self, host: &str) -> String {
+        lock(&self.state)
+            .saved
+            .hosts
+            .iter()
+            .find(|saved| saved.access.grant.host == host)
+            .map_or_else(
+                || format!("Computer {}", short(host)),
+                |saved| saved.label.clone(),
+            )
+    }
+
+    /// Save a verified access record and start supervising its host. A
+    /// computer paired before keeps its name and its SSH destination; a new
+    /// iroh route replaces the old one.
+    fn adopt(
+        &self,
+        access: Access,
+        label: Option<String>,
+        ssh: Option<String>,
+        iroh: Option<IrohRoute>,
+    ) -> Result<String> {
         let host = access.grant.host.clone();
         self.unsupervise(&host);
         let saved = {
@@ -903,6 +1027,7 @@ impl Shared {
                 enabled: true,
                 revoked: false,
                 delisted: previous.as_ref().is_some_and(|saved| saved.delisted),
+                iroh: iroh.or_else(|| previous.as_ref().and_then(|saved| saved.iroh.clone())),
                 ssh: ssh.or_else(|| previous.and_then(|saved| saved.ssh)),
             };
             state.saved.hosts.push(saved.clone());
@@ -915,6 +1040,150 @@ impl Shared {
         };
         self.supervise(&saved);
         Ok(host)
+    }
+}
+
+/// Connects computers from scanned or pasted codes (**Connect a
+/// computer**). It runs on the caller's runtime and never blocks it: a
+/// platform host starts [`Pairing::pair`] in the background and shows
+/// **Connecting** until it answers.
+#[derive(Clone)]
+pub struct Pairing {
+    shared: Arc<Shared>,
+}
+
+impl std::fmt::Debug for Pairing {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Pairing").finish_non_exhaustive()
+    }
+}
+
+impl Pairing {
+    /// Pair with the computer a code names, and add it to this device's
+    /// list. A connect code goes over iroh to the code's `EndpointId`, and
+    /// on the Nostr relay when iroh cannot connect; a host invitation goes
+    /// on the relay it names. The grant is kept only when it is signed by
+    /// the code's host key, names this device, and carries the connect-code
+    /// rights.
+    ///
+    /// # Errors
+    /// Why the computer was not added, in words for the screen.
+    pub async fn pair(
+        &self,
+        code: &str,
+    ) -> std::result::Result<crate::connect::Paired, crate::connect::PairFailure> {
+        use crate::connect::{PairFailure, Paired, PairedOver, Scanned, classify};
+        let shared = &self.shared;
+        let policy = shared.settings.policy;
+        let (enrolled, over) = match classify(code).map_err(PairFailure::new)? {
+            Scanned::HostInvitation(text) => {
+                let access = redeem(&text, &shared.secret, policy)
+                    .await
+                    .map_err(|error| PairFailure::new(pair_message(&error)))?;
+                let host = shared
+                    .adopt(access, None, None, None)
+                    .map_err(|error| PairFailure::new(crate::describe(&error)))?;
+                return Ok(Paired {
+                    label: shared.label(&host),
+                    host,
+                    over: PairedOver::Relay,
+                    clock_off: None,
+                });
+            }
+            Scanned::Connect(text) => {
+                let iroh = match &shared.dialer {
+                    Some(dialer) => {
+                        coder_host::client::iroh::enroll(
+                            dialer,
+                            &text,
+                            &shared.settings.connect_relay,
+                            &shared.secret,
+                            policy,
+                        )
+                        .await
+                    }
+                    None => Err(EnrollError::Unreachable),
+                };
+                match iroh {
+                    Ok(enrolled) => (enrolled, PairedOver::Iroh),
+                    Err(EnrollError::Unreachable) => (
+                        coder_host::client::iroh::enroll_on_relay(
+                            &text,
+                            &shared.settings.connect_relay,
+                            &shared.secret,
+                            policy,
+                        )
+                        .await
+                        .map_err(|error| PairFailure::new(host_message(&error, true)))?,
+                        PairedOver::Relay,
+                    ),
+                    Err(EnrollError::Mismatch) => {
+                        return Err(PairFailure::new(MISMATCH));
+                    }
+                    Err(EnrollError::Refused { error, clock_off }) => {
+                        return Err(PairFailure {
+                            message: host_message(&error, false),
+                            clock_off,
+                        });
+                    }
+                }
+            }
+        };
+        let label = (!enrolled.label.is_empty()).then(|| enrolled.label.clone());
+        let host = shared
+            .adopt(enrolled.access, label, None, Some(enrolled.route))
+            .map_err(|error| PairFailure::new(crate::describe(&error)))?;
+        shared.changed();
+        Ok(Paired {
+            label: shared.label(&host),
+            host,
+            over,
+            clock_off: enrolled.clock_off,
+        })
+    }
+}
+
+/// What the screen says when an answer did not come from the computer that
+/// showed the code.
+const MISMATCH: &str = "This phone didn't connect: the answer didn't come from the computer that showed the code. Scan the code on your own computer again.";
+
+/// The screen's sentence for a refused host invitation.
+fn pair_message(error: &Error) -> String {
+    match error.code {
+        Code::Expired => {
+            "This invitation has expired. Make a new one on your computer and scan again.".into()
+        }
+        Code::Forbidden | Code::Revoked => {
+            "Your computer didn't accept this invitation. It may have been used already. Make a new one and scan again.".into()
+        }
+        Code::Transport | Code::Unavailable => {
+            "Couldn't reach your computer. Check that it's on and online, then scan again.".into()
+        }
+        _ => format!("Couldn't connect: {}", error.message),
+    }
+}
+
+/// The screen's sentence for a refused connect code. `relay` says the phone
+/// already fell back to the Nostr relay.
+fn host_message(error: &coder_host::Error, relay: bool) -> String {
+    match error {
+        coder_host::Error::Access(error) if error.code == Code::Expired => {
+            "This code has expired. Show a new code on your computer and scan again.".into()
+        }
+        coder_host::Error::Access(error)
+            if matches!(error.code, Code::Forbidden | Code::Revoked | Code::Denied) =>
+        {
+            "Your computer didn't accept this code. It may have been used already. Show a new code on your computer and scan again.".into()
+        }
+        coder_host::Error::Access(error)
+            if matches!(error.code, Code::Transport | Code::Unavailable) || relay =>
+        {
+            "Couldn't reach your computer. Check that OpenAgents is open on it and that both are online, then scan again.".into()
+        }
+        coder_host::Error::Transport(_) | coder_host::Error::Closed(_) => {
+            "Couldn't reach your computer. Check that OpenAgents is open on it and that both are online, then scan again.".into()
+        }
+        _ => "Couldn't connect to your computer. Show a new code on it and scan again.".into(),
     }
 }
 

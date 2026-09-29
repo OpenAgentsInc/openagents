@@ -1180,10 +1180,7 @@ fn a_first_chat_needs_no_computer_and_streams_its_reply() {
     let connect = node(&chat, "coder-connect").expect("connect a computer");
     assert_eq!(connect["element"]["props"]["label"], "Connect a computer");
     fixture.tap("coder-connect");
-    assert_eq!(
-        fixture.coder.take_go(),
-        Some(crate::coder_tab::Go::Computers)
-    );
+    assert_eq!(fixture.coder.take_go(), Some(crate::coder_tab::Go::Connect));
     assert_eq!(fixture.coder.take_go(), None);
 
     // A follow-up carries the conversation.
@@ -1432,10 +1429,7 @@ fn offers_become_the_phones_own_controls() {
         keys(&chat)
     );
     fixture.tap("coder-connect");
-    assert_eq!(
-        fixture.coder.take_go(),
-        Some(crate::coder_tab::Go::Computers)
-    );
+    assert_eq!(fixture.coder.take_go(), Some(crate::coder_tab::Go::Connect));
 
     fixture.say("How do I back up my wallet?");
     hand.route(&[

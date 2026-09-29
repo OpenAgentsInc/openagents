@@ -102,6 +102,7 @@ struct ComputersTab: View {
             if let home {
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
+                        Button(home.add_other, systemImage: "plus") { bridge.computersGo("add") }
                         Button("Activity", systemImage: "list.bullet") { bridge.computersGo("activity") }
                         Button("Refresh", systemImage: "arrow.clockwise") { bridge.computersGo("refresh") }
                         if home.owner_key {
@@ -118,8 +119,8 @@ struct ComputersTab: View {
                     .accessibilityLabel("More")
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button { bridge.computersGo("add") } label: { Image(systemName: "plus") }
-                        .accessibilityLabel("Add a computer")
+                    Button { bridge.connectOpen() } label: { Image(systemName: "plus") }
+                        .accessibilityLabel(home.connect)
                 }
             } else {
                 ToolbarItem(placement: .topBarLeading) {
@@ -177,7 +178,8 @@ private struct ComputersList: View {
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)
-                        Button("Add a computer") { bridge.computersGo("add") }
+                        Button(home.connect) { bridge.connectOpen() }
+                            .accessibilityIdentifier("computers-connect")
                             .buttonStyle(.borderedProminent)
                             .tint(.white)
                             .foregroundStyle(.black)
@@ -186,6 +188,10 @@ private struct ComputersList: View {
                     .padding(.vertical, 24)
                 }
             } else {
+                Section {
+                    Button(home.connect, systemImage: "qrcode.viewfinder") { bridge.connectOpen() }
+                        .accessibilityIdentifier("computers-connect")
+                }
                 Section {
                     ForEach(home.rows) { row in
                         Button { bridge.openComputer(row.host) } label: { ComputerRow(row: row) }

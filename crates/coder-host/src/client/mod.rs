@@ -28,6 +28,7 @@ use crate::mailbox::{self, Stream};
 use crate::{Error, Result, unix_time};
 
 mod connector;
+pub mod iroh;
 mod link;
 mod order;
 mod websocket;

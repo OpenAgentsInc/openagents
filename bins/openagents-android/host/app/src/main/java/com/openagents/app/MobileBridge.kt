@@ -60,6 +60,12 @@ class MobileBridge(private val context: Context, private val computersFixture: B
                     "pulled_transcripts" to true,
                     // The chat router's context names the build.
                     "app_build" to "${ReportDevice.version} (${ReportDevice.build})")
+                // The iroh key beside the device key: connecting a computer
+                // dials it over iroh. Without it, pairing uses the relay only.
+                runCatching { DeviceKey.loadOrCreate(context, DeviceKey.Purpose.IROH) }
+                    .onSuccess { config.put("iroh_secret_hex", it) }
+                // iroh's DNS resolver reads Android's settings through JNI.
+                OpenAgentsNative.installContext(context.applicationContext)
                 // Debug builds only: Coder's offline Computers fixture, which
                 // contacts no host or relay.
                 if (computersFixture) config.put("computers_fixture", true)
@@ -290,6 +296,10 @@ class MobileBridge(private val context: Context, private val computersFixture: B
     fun chooseComputer(host: String, choice: String) = send(json("op" to "computers_choose", "host" to host, "choice" to choice))
     /** `home`, `add`, `activity`, `owner_key`, `keep_directory`, or `refresh`. */
     fun computersGo(destination: String) = send(json("op" to "computers_go", "to" to destination))
+    /** Connect a computer: open the scanner, hand Rust a code, or close. */
+    fun connectOpen() = send(json("op" to "connect_open"))
+    fun connectCode(value: String) = send(json("op" to "connect_code", "value" to value))
+    fun connectClose() = send(json("op" to "connect_close"))
     fun refreshComputers() = send(json("op" to "computers_refresh"))
     fun snapshot() = send(json("op" to "snapshot"))
 

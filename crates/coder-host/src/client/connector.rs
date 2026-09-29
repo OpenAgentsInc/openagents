@@ -1,8 +1,9 @@
 //! A `coder-link` connector that proves routes to Coder hosts.
 //!
 //! Each attempt reads the host's presence and hints from the device's relay,
-//! tries the selected direct routes in order, over TCP or WebSocket as each
-//! hint names, and falls back to the relay.
+//! tries the host's iroh endpoint when this device saved one and has an
+//! iroh key, then the selected direct routes in order, over TCP or
+//! WebSocket as each hint names, and falls back to the relay.
 //! Selection never offers a loopback route to a device on another machine.
 //! A local route, such as the loopback port of an SSH tunnel this process
 //! owns, is tried before the hints: it is same-machine evidence for that one
@@ -28,6 +29,7 @@ use tokio::runtime::Handle;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
+use super::iroh::{Dialer, IrohRoute, open_link};
 use super::{Device, Link, Route, fetch_reach, websocket};
 use crate::{Error, unix_time};
 
@@ -42,6 +44,24 @@ const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(5);
 type Links = Arc<Mutex<HashMap<(HostKey, u64), Arc<Link>>>>;
 /// Local routes by host: loopback addresses only this process can use.
 type LocalRoutes = Arc<Mutex<HashMap<HostKey, SocketAddr>>>;
+/// Saved iroh endpoints by host, from pairing.
+type IrohRoutes = Arc<Mutex<HashMap<HostKey, IrohRoute>>>;
+
+/// This device's iroh endpoint and the hosts' saved iroh routes.
+#[derive(Clone, Default)]
+struct Iroh {
+    dialer: Option<Arc<Dialer>>,
+    routes: IrohRoutes,
+}
+
+impl Iroh {
+    /// The route to try for `host`, when this device can dial one.
+    fn route(&self, host: &HostKey) -> Option<(Arc<Dialer>, IrohRoute)> {
+        let dialer = self.dialer.clone()?;
+        let route = lock(&self.routes).get(host).cloned()?;
+        Some((dialer, route))
+    }
+}
 
 /// Proves routes for the hosts a registry supervises.
 pub struct Connector {
@@ -52,6 +72,7 @@ pub struct Connector {
     reports: mpsc::UnboundedSender<(HostKey, Report)>,
     links: Links,
     local: LocalRoutes,
+    iroh: Iroh,
     attempts: HashMap<(HostKey, u64), JoinHandle<()>>,
 }
 
@@ -79,6 +100,7 @@ impl Connector {
                 reports,
                 links: Arc::default(),
                 local: Arc::default(),
+                iroh: Iroh::default(),
                 attempts: HashMap::new(),
             },
             receiver,
@@ -140,6 +162,28 @@ impl Connector {
         lock(&self.local).get(host).copied()
     }
 
+    /// Dial saved iroh routes with `dialer`, this device's iroh endpoint.
+    pub fn set_iroh(&mut self, dialer: Arc<Dialer>) {
+        self.iroh.dialer = Some(dialer);
+    }
+
+    /// Set or clear the saved iroh route for `host`, from pairing. Each
+    /// attempt tries it first when this device has an iroh endpoint; a
+    /// route that does not answer moves on to the hints and the relay.
+    pub fn set_iroh_route(&mut self, host: &HostKey, route: Option<IrohRoute>) {
+        let mut routes = lock(&self.iroh.routes);
+        match route {
+            Some(route) => routes.insert(host.clone(), route),
+            None => routes.remove(host),
+        };
+    }
+
+    /// The saved iroh route for `host`, if any.
+    #[must_use]
+    pub fn iroh_route(&self, host: &HostKey) -> Option<IrohRoute> {
+        lock(&self.iroh.routes).get(host).cloned()
+    }
+
     /// The link a registry connection names.
     #[must_use]
     pub fn link(&self, host: &HostKey, connection: ConnectionId) -> Option<Arc<Link>> {
@@ -178,8 +222,9 @@ impl coder_link::Connector for Connector {
             host.clone(),
         );
         let local = self.local_route(host);
+        let iroh = self.iroh.route(host);
         self.spawn(host, attempt, async move {
-            match establish(device, locality, local, &tls).await {
+            match establish(device, locality, local, iroh, &tls).await {
                 Ok(link) => {
                     let link = Arc::new(link);
                     lock(&links).insert((key.clone(), attempt.0), link.clone());
@@ -210,6 +255,7 @@ impl coder_link::Connector for Connector {
             host.clone(),
         );
         let local = self.local_route(host);
+        let iroh = self.iroh.route(host);
         self.spawn(host, attempt, async move {
             let Some(link) = link else {
                 let _ = reports.send((key, Report::Failed(attempt, Failure::Closed)));
@@ -220,7 +266,7 @@ impl coder_link::Connector for Connector {
             // route answers, so the supervisor replaces it with that route.
             let better = matches!(link.route(), Route::Relay(_))
                 && healthy
-                && direct_answers(link.device().clone(), locality, local, &tls).await;
+                && direct_answers(link.device().clone(), locality, local, iroh, &tls).await;
             let report = if healthy && !better {
                 Report::Established(attempt)
             } else {
@@ -247,12 +293,13 @@ impl coder_link::Connector for Connector {
     }
 }
 
-/// Prove the best route: the local route, selected direct hints in order,
-/// then the relay.
+/// Prove the best route: the saved iroh route, the local route, selected
+/// direct hints in order, then the relay.
 async fn establish(
     device: Arc<Device>,
     locality: Locality,
     local: Option<SocketAddr>,
+    iroh: Option<(Arc<Dialer>, IrohRoute)>,
     tls: &websocket::Tls,
 ) -> Result<Link, Failure> {
     let relay = device.relay().to_owned();
@@ -278,6 +325,13 @@ async fn establish(
     let now = unix_time().map_err(|_| Failure::Unreachable)?;
     let hints =
         select(&reach.hints, locality, generation, now).map_err(|_| Failure::Unreachable)?;
+    if let Some((dialer, route)) = &iroh {
+        match try_iroh(&device, dialer, route, generation).await {
+            Ok(link) => return Ok(link),
+            Err(Some(blocked)) => return Err(blocked),
+            Err(None) => {}
+        }
+    }
     for (transport, address) in direct_routes(local, &hints) {
         match try_direct(&device, transport, address, generation, tls).await {
             Ok(link) => return Ok(link),
@@ -292,6 +346,18 @@ async fn establish(
         .map_err(|_| Failure::Unreachable)?;
     let _ = socket.close().await;
     Ok(Link::relay_at(device, relay, generation))
+}
+
+/// The saved iroh route. `Err(Some)` blocks the attempt; `Err(None)` tries
+/// the next route. The handshake is the one TCP runs.
+async fn try_iroh(
+    device: &Arc<Device>,
+    dialer: &Dialer,
+    route: &IrohRoute,
+    generation: u64,
+) -> Result<Link, Option<Failure>> {
+    let opened = open_link(dialer, device.clone(), route, generation, HANDSHAKE_TIMEOUT).await;
+    handshake_outcome(opened)
 }
 
 /// `Err(Some)` blocks the attempt; `Err(None)` tries the next route. A
@@ -320,6 +386,12 @@ async fn try_direct(
         }
         Transport::Nostr => return Err(None),
     };
+    handshake_outcome(opened)
+}
+
+/// Whether a handshake's outcome proves the route, blocks the attempt, or
+/// moves on to the next route.
+fn handshake_outcome(opened: crate::Result<Link>) -> Result<Link, Option<Failure>> {
     match opened {
         Ok(link) => Ok(link),
         Err(Error::Reach(refusal)) if refusal.detail != UNAUTHENTICATED => {
@@ -340,17 +412,24 @@ async fn try_direct(
     }
 }
 
-/// Whether a direct route, the local route included, answers now.
+/// Whether a direct route, the iroh and local routes included, answers
+/// now.
 async fn direct_answers(
     device: Arc<Device>,
     locality: Locality,
     local: Option<SocketAddr>,
+    iroh: Option<(Arc<Dialer>, IrohRoute)>,
     tls: &websocket::Tls,
 ) -> bool {
     let Ok(reach) = fetch_reach(&device, device.relay()).await else {
         return false;
     };
     let generation = reach.presence.presence.generation;
+    if let Some((dialer, route)) = &iroh
+        && try_iroh(&device, dialer, route, generation).await.is_ok()
+    {
+        return true;
+    }
     let Ok(now) = unix_time() else { return false };
     let Ok(hints) = select(&reach.hints, locality, generation, now) else {
         return false;

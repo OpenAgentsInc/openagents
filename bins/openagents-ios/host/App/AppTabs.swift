@@ -129,6 +129,10 @@ struct AppTabs: View {
         }
         .onAppear {
             #if targetEnvironment(simulator)
+            // `--connect` opens Connect a computer, the scanner.
+            if ProcessInfo.processInfo.arguments.contains("--connect") {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { bridge.connectOpen() }
+            }
             // `--report` opens Report a problem for the first screen.
             if ProcessInfo.processInfo.arguments.contains("--report") {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
@@ -144,6 +148,14 @@ struct AppTabs: View {
         .sheet(item: Binding(get: { bridge.packet?.spend?.sheet }, set: { _ in })) { sheet in
             SpendApprovalSheet(sheet: sheet, waiting: bridge.packet?.spend?.waiting ?? 0,
                                busy: bridge.packet?.spend?.busy ?? false, bridge: bridge)
+        }
+        // Connect a computer, from a chat's offer or Account > Computers.
+        // Done or Close returns to the screen it was opened from.
+        .fullScreenCover(isPresented: Binding(get: { bridge.packet?.connect != nil },
+                                              set: { shown in if !shown { bridge.connectClose() } })) {
+            if let screen = bridge.packet?.connect {
+                ConnectView(screen: screen, bridge: bridge)
+            }
         }
     }
 }

@@ -15,6 +15,7 @@
 
 pub mod authority;
 pub mod cache;
+pub mod connect;
 mod controller;
 pub mod intent;
 #[cfg(feature = "live")]

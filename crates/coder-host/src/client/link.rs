@@ -57,6 +57,9 @@ pub struct Link {
     frames_in: mpsc::UnboundedSender<Frame>,
     frames: tokio::sync::Mutex<mpsc::UnboundedReceiver<Frame>>,
     subscriptions: Mutex<Vec<JoinHandle<()>>>,
+    /// The newest renewed grant envelope the host sent on this channel,
+    /// not yet taken ([`Link::take_renewal`]).
+    renewal: Arc<Mutex<Option<nostr::domain::Event>>>,
 }
 
 impl std::fmt::Debug for Link {
@@ -135,6 +138,8 @@ impl Link {
         });
         let reader_waiters = waiters.clone();
         let reader_frames = frames_in.clone();
+        let renewal: Arc<Mutex<Option<nostr::domain::Event>>> = Arc::default();
+        let reader_renewal = renewal.clone();
         let reader_task = tokio::spawn(async move {
             let mut assembler = Assembler::default();
             let mut code = None;
@@ -147,6 +152,9 @@ impl Link {
                         let _ = reader_frames.send(frame);
                     }
                     Ok(ToDevice::Closing(sent)) => code = Some(sent),
+                    // Kept for the device to check and store; the channel
+                    // itself follows the renewed grant on the host's side.
+                    Ok(ToDevice::Renewal(event)) => *lock(&reader_renewal) = Some(event),
                     Ok(answer) => {
                         let key = match &answer {
                             ToDevice::Answer(event) => {
@@ -181,6 +189,7 @@ impl Link {
             frames_in,
             frames: tokio::sync::Mutex::new(frames),
             subscriptions: Mutex::default(),
+            renewal,
         })
     }
 
@@ -196,7 +205,16 @@ impl Link {
             frames_in,
             frames: tokio::sync::Mutex::new(frames),
             subscriptions: Mutex::default(),
+            renewal: Arc::default(),
         }
+    }
+
+    /// The renewed grant envelope the host sent on this channel, once. The
+    /// device checks it with `coder_access::Access::renewed` before it
+    /// stores it; a relay route never carries one.
+    #[must_use]
+    pub fn take_renewal(&self) -> Option<nostr::domain::Event> {
+        lock(&self.renewal).take()
     }
 
     /// A relay fallback route to a host whose fresh presence named

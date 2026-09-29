@@ -22,17 +22,19 @@ object DeviceKey {
     /**
      * A secret's purpose: `device` holds host grants; `world` signs only
      * Verse presence; `spark` is the phone wallet's BIP39 entropy; `gym` is
-     * the saved Gym connection code for the world key. Each has its own
+     * the saved Gym connection code for the world key; `iroh` is the key the
+     * phone's iroh endpoint proves when it connects a computer, kept beside
+     * the device key and never authorizing anything. Each has its own
      * Keystore key and file.
      */
     enum class Purpose(val id: String, val maxBytes: Int) {
-        DEVICE("device", 32), WORLD("world", 32), SPARK("spark", 32), GYM("gym", 65_536),
+        DEVICE("device", 32), WORLD("world", 32), SPARK("spark", 32), GYM("gym", 65_536), IROH("iroh", 32),
     }
     private val lock = Any()
 
     /** The 32-byte secret key as lowercase hex, created on first use. */
     fun loadOrCreate(context: Context, purpose: Purpose = Purpose.DEVICE): String = synchronized(lock) {
-        require(purpose == Purpose.DEVICE || purpose == Purpose.WORLD)
+        require(purpose == Purpose.DEVICE || purpose == Purpose.WORLD || purpose == Purpose.IROH)
         val secret = try { read(context, purpose) ?: random(32).also { write(context, purpose, it) } }
         catch (failure: Exception) {
             throw IllegalStateException("The device key is unavailable. Unlock the device and reopen OpenAgents.", failure)

@@ -71,6 +71,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var scanner: QRScanner
     private lateinit var world: VerseSurface
     private lateinit var terminal: TerminalScreen
+    private lateinit var connect: ConnectScreen
     private val main = Handler(Looper.getMainLooper())
     private var tab = AppTab.CODER
     private var route: AccountRoute? = null
@@ -169,6 +170,7 @@ class MainActivity : ComponentActivity() {
         payments = AgentPayments(this, bridge)
         tailnetRenderer = NativeRenderer(this, { view, node -> bridge.activate("tailnet", view, node) })
         terminal = TerminalScreen(this, bridge)
+        connect = ConnectScreen(this, bridge, scanner)
 
         val root = FrameLayout(this).apply { setBackgroundColor(Palette.BACKGROUND) }
         val body = column()
@@ -203,6 +205,8 @@ class MainActivity : ComponentActivity() {
         pages.getValue(AppTab.ACCOUNT).addView(accountPage, FrameLayout.LayoutParams(-1, -1))
         root.addView(body, FrameLayout.LayoutParams(-1, -1))
         root.addView(terminal.root, FrameLayout.LayoutParams(-1, -1))
+        // Connect a computer shows over every tab.
+        root.addView(connect.root, FrameLayout.LayoutParams(-1, -1))
         setContentView(root)
 
         ViewCompat.setOnApplyWindowInsetsListener(root) { _, insets ->
@@ -212,6 +216,7 @@ class MainActivity : ComponentActivity() {
             statusTop = bars.top
             body.setPadding(bars.left, 0, bars.right, maxOf(bars.bottom, keyboard.bottom))
             terminal.root.setPadding(bars.left, bars.top, bars.right, maxOf(bars.bottom, keyboard.bottom))
+            connect.root.setPadding(bars.left, bars.top, bars.right, maxOf(bars.bottom, keyboard.bottom))
             tabBar.visibility = if (typing) View.GONE else View.VISIBLE
             // Every page but Verse starts below the status bar; the world
             // fills the screen behind it and keeps its controls below.
@@ -225,6 +230,7 @@ class MainActivity : ComponentActivity() {
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
                 when {
+                    connect.showing -> connect.back()
                     tab == AppTab.ACCOUNT && route == AccountRoute.COMPUTERS && bridge.packet != null &&
                         bridge.packet?.objectOrNull("computers_home") == null -> bridge.computersGo("home")
                     tab == AppTab.ACCOUNT && route != null -> open(null)
@@ -661,6 +667,7 @@ class MainActivity : ComponentActivity() {
             }
         }
         val packet = bridge.packet
+        if (::connect.isInitialized) connect.update(packet?.objectOrNull("connect"))
         mount(coderRenderer, coderContent, fixture ?: packet?.objectOrNull("coder"))
         renderGym(packet?.objectOrNull("gym"))
         when (route) {
@@ -826,6 +833,7 @@ class MainActivity : ComponentActivity() {
         main.removeCallbacks(tick)
         terminal.stop()
         routeInput?.dispose()
+        if (::connect.isInitialized) connect.dispose()
         scanner.dispose()
         world.release()
         bridge.dispose()

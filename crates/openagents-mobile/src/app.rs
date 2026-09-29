@@ -101,6 +101,12 @@ pub struct Launch {
     /// Absent, the default, leaves push off.
     #[serde(default)]
     pub push: Option<coder_mobile::PushConfig>,
+    /// This device's iroh secret key as 64 hex characters, from the same
+    /// this-device-only store as the device key. Connecting a computer
+    /// dials it over iroh with this key; without it the phone connects over
+    /// the Nostr relay only.
+    #[serde(default)]
+    pub iroh_secret_hex: Option<String>,
 }
 
 /// The basic Coder's door: the OpenAgents chat worker on its relay, or, in
@@ -175,6 +181,14 @@ pub enum Request {
         token: String,
     },
     ComputersRefresh,
+    /// Show **Connect a computer** (`SCR-22`), from Account > Computers.
+    ConnectOpen,
+    /// The text of a scanned or pasted code on `SCR-22`.
+    ConnectCode {
+        value: String,
+    },
+    /// Close `SCR-22` or `SCR-23` (**Done**).
+    ConnectClose,
     /// Open a computer from the native Computers list.
     ComputersOpen {
         host: String,
@@ -608,8 +622,11 @@ pub struct Packet {
     /// milliseconds.
     pub chat_streaming: bool,
     /// Show this screen of another tab, once: `computers` is Account >
-    /// Computers, where a computer is connected.
+    /// Computers.
     pub coder_go: Option<crate::coder_tab::Go>,
+    /// **Connect a computer** (`SCR-22`) or **Connected** (`SCR-23`), while
+    /// it shows. The host draws the camera and the paste field.
+    pub connect: Option<crate::connect::View>,
     pub tailnet: Option<serde_json::Value>,
     /// The Tailnet surface is reading in the background.
     pub tailnet_loading: bool,
@@ -708,6 +725,8 @@ pub struct App {
     notices: Vec<String>,
     /// The trainer's world key, once the host handed it over.
     world: Option<SecretKey>,
+    /// Connect a computer (`SCR-22`, `SCR-23`).
+    connect: crate::connect::Connect,
 }
 
 impl App {
@@ -728,6 +747,9 @@ impl App {
             .map_err(|e| e.to_string())?;
         let mut notices = vec![];
         let mut terminals = None;
+        let mut pairing = None;
+        let handle = runtime.handle().clone();
+        let iroh_secret = launch.iroh_secret_hex.as_deref().and_then(secret_bytes);
         // A phone never runs a host; it reaches hosts through the live
         // client, which keeps its grants in their own encrypted store.
         // Debug builds only: a release build has no Computers fixture.
@@ -748,6 +770,7 @@ impl App {
                 match Cache::open(&config.state_dir.join("computers"), &secret).and_then(|cache| {
                     let mut settings = Settings::new(Platform::Phone);
                     settings.now = now;
+                    settings.iroh_secret = iroh_secret;
                     Live::open(
                         settings,
                         secret,
@@ -758,6 +781,7 @@ impl App {
                 }) {
                     Ok(live) => {
                         terminals = Some(live.terminals());
+                        pairing = Some(live.pairing());
                         // A summary, a catch-up, or a connection change
                         // shows at once instead of on the host's timer.
                         live.on_change(Arc::new(crate::wake::computers));
@@ -965,6 +989,10 @@ impl App {
             push_status,
             notices,
             world: None,
+            connect: crate::connect::Connect::new(
+                pairing.map(|pairing| Arc::new(LivePair(pairing)) as Arc<dyn crate::connect::Pair>),
+                Some(handle),
+            ),
         })
     }
 
@@ -1216,6 +1244,9 @@ impl App {
                     let _ = computers.cancel_input(&token);
                 }
             }
+            Request::ConnectOpen => self.connect.open(),
+            Request::ConnectCode { value } => self.connect.code(&value),
+            Request::ConnectClose => self.connect.close(),
             Request::ComputersRefresh => {
                 if let Some(computers) = self.computers.as_mut() {
                     let _ = computers.refresh();
@@ -1709,6 +1740,13 @@ impl App {
 
     fn packet(&mut self, open_url: Option<String>) -> Packet {
         self.chats.settle();
+        // A computer just connected: list it, and send Run Coder there.
+        if let Some(paired) = self.connect.poll() {
+            if let Some(computers) = self.computers.as_mut() {
+                let _ = computers.refresh();
+            }
+            self.coder.prefer(paired.host);
+        }
         self.poll_spends();
         let tailnet = self.render_tailnet();
         // Chat commands that waited for their computer try again.
@@ -1777,7 +1815,16 @@ impl App {
             // A payment request on the sheet keeps packets coming too.
             coder_live,
             chat_streaming: self.coder.streaming(),
-            coder_go: self.coder.take_go(),
+            coder_go: match self.coder.take_go() {
+                // The scanner is this app's own screen.
+                Some(crate::coder_tab::Go::Connect) => {
+                    self.connect.open();
+                    None
+                }
+                go => go,
+            },
+            // After `coder_go`, which may have opened it.
+            connect: self.connect.view(),
             tailnet,
             tailnet_loading: {
                 let state = self.lock_tailnet();
@@ -1932,6 +1979,31 @@ fn framed(mut view: serde_json::Value) -> serde_json::Value {
         style.insert("gap".into(), "md".into());
     }
     view
+}
+
+/// The live service's pairing, as the Connect screen's [`Pair`].
+///
+/// [`Pair`]: crate::connect::Pair
+struct LivePair(coder_computers::live::Pairing);
+
+impl crate::connect::Pair for LivePair {
+    fn pair(&self, code: String) -> crate::connect::Pairing {
+        let pairing = self.0.clone();
+        Box::pin(async move { pairing.pair(&code).await })
+    }
+}
+
+/// A 32-byte secret from 64 hex characters.
+fn secret_bytes(hex: &str) -> Option<[u8; 32]> {
+    if hex.len() != 64 {
+        return None;
+    }
+    let mut bytes = [0u8; 32];
+    for (index, pair) in hex.as_bytes().chunks_exact(2).enumerate() {
+        let text = std::str::from_utf8(pair).ok()?;
+        bytes[index] = u8::from_str_radix(text, 16).ok()?;
+    }
+    Some(bytes)
 }
 
 fn now() -> u64 {

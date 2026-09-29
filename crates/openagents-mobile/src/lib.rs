@@ -32,6 +32,7 @@ mod cli_run;
 mod coder_list;
 mod coder_tab;
 mod computers_home;
+mod connect;
 mod conversation;
 mod eval_cards;
 mod first_run;

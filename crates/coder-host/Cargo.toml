@@ -21,11 +21,12 @@ host = [
     "dep:libc",
     "dep:coder-service",
     "dep:tokio-rustls",
-    "dep:openagents-connect",
     "dep:security-framework",
 ]
 
 [dependencies]
+# The `coder-host:` layout of a connect code's invitation.
+base64 = "0.22"
 coder-access = { path = "../coder-access", default-features = false }
 coder-connect = { path = "../coder-connect", default-features = false }
 # Chat invitations handed out by tailnet admission (host feature only).
@@ -35,9 +36,10 @@ coder-pty = { path = "../coder-pty", default-features = false }
 # The host root's one generation counter, shared with the service launcher.
 coder-service = { path = "../coder-service", optional = true }
 libc = { version = "0.2", optional = true }
-# The host's iroh endpoint (enroll and reach ALPNs), connect codes, the
-# local control protocol, and the key source (host feature only).
-openagents-connect = { path = "../openagents-connect", optional = true }
+# The iroh endpoint (enroll and reach ALPNs) and connect codes, for the host
+# and the client; the local control protocol and the key source are the
+# host's.
+openagents-connect = { path = "../openagents-connect" }
 coder-reach = { path = "../coder-reach" }
 nostr = { path = "../nostr" }
 nostr-transport = { path = "../nostr-transport" }

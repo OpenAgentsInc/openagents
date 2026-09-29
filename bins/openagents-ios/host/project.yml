@@ -71,7 +71,9 @@ targets:
         CODE_SIGN_ENTITLEMENTS: Entitlements/OpenAgents.entitlements
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         SWIFT_OBJC_BRIDGING_HEADER: App/OpenAgentsMobile.h
-        OTHER_LDFLAGS: '$(inherited) "$(OPENAGENTS_RUST_LIBRARY_DIR)/libopenagents_mobile.a" -framework Metal -liconv'
+        # SystemConfiguration: iroh reads the network interfaces and DNS
+        # settings when the phone connects a computer.
+        OTHER_LDFLAGS: '$(inherited) "$(OPENAGENTS_RUST_LIBRARY_DIR)/libopenagents_mobile.a" -framework Metal -framework SystemConfiguration -liconv'
         "EXCLUDED_ARCHS[sdk=iphonesimulator*]": x86_64
         DEAD_CODE_STRIPPING: YES
   # Simulator UI tests; `xcodebuild test -scheme OpenAgents` runs them.

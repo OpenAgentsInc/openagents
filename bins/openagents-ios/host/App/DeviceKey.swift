@@ -16,6 +16,15 @@ enum DeviceKey {
                          accessible: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly)
     }
 
+    /// This device's iroh key: the key its QUIC endpoint proves when it
+    /// connects a computer. It is generated apart from every Nostr key, kept
+    /// beside the device key under the same this-device-only rule, and
+    /// never authorizes anything; the host's grant does.
+    static func loadOrCreateIroh() throws -> Data {
+        try loadOrCreate(service: "com.openagents.app.iroh",
+                         accessible: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly)
+    }
+
     /// The Verse tab's world identity: a separate key that signs only world
     /// presence, so players in the world never see the device key that holds
     /// host grants.

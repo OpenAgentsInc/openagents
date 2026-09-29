@@ -72,6 +72,9 @@ url = "2"
 
 # The Android host's JNI surface (`src/android.rs`).
 [target.'cfg(target_os = "android")'.dependencies]
+# iroh's DNS resolver reads Android's configuration through JNI; the host
+# publishes the JVM and context once (`installContext`).
+openagents-connect = { path = "../openagents-connect" }
 jni = "=0.22.4"
 libc = "0.2"
 ndk-sys = "0.6"

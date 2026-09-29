@@ -32,6 +32,21 @@ struct ComputersQR: Decodable, Equatable {
     let rows: [String]
 }
 
+/// **Connect a computer** (`SCR-22`) or **Connected** (`SCR-23`). Rust
+/// writes every word and decides what a code is.
+struct ConnectScreen: Decodable, Equatable {
+    /// `scan`, `connecting`, or `connected`.
+    let stage: String
+    let title: String
+    let prompt: String?
+    let paste: String?
+    let get_app: String?
+    let notice: String?
+    let computer: String?
+    let done: String?
+    let max_bytes: Int
+}
+
 /// The native Computers list, while Coder's shared Computers screens are on
 /// their list. Rust builds every row and checks every choice.
 struct ComputersHome: Decodable, Equatable {
@@ -57,6 +72,10 @@ struct ComputersHome: Decodable, Equatable {
     let notice: String?
     let owner_key: Bool
     let keep_directory: Bool
+    /// Opens Connect a computer, the scanner.
+    let connect: String
+    /// Coder's other ways to add a computer.
+    let add_other: String
 }
 
 struct AppPacket: Decodable {
@@ -75,6 +94,8 @@ struct AppPacket: Decodable {
     let chat_streaming: Bool?
     /// Show another tab's screen once: `computers` is Account > Computers.
     let coder_go: String?
+    /// Connect a computer, while it shows.
+    let connect: ConnectScreen?
     let tailnet: NativeView?
     let tailnet_loading: Bool
     let open_url: String?
@@ -332,6 +353,11 @@ final class MobileBridge: ObservableObject {
                 // The chat router's context names the build.
                 "app_build": "\(ReportDevice.version) (\(ReportDevice.build))",
             ]
+            // The iroh key beside the device key: connecting a computer
+            // dials it over iroh. Without it, pairing uses the relay only.
+            if let iroh = try? DeviceKey.loadOrCreateIroh() {
+                options["iroh_secret_hex"] = iroh.map { String(format: "%02x", $0) }.joined()
+            }
             // Push stays off unless this build names a relay and a gateway.
             if let push = PushSettings.configured { options["push"] = push.rust }
             // Simulator screenshots: an offline wallet with no money.
@@ -530,6 +556,10 @@ final class MobileBridge: ObservableObject {
     }
     /// `home`, `add`, `activity`, `owner_key`, `keep_directory`, or `refresh`.
     func computersGo(_ destination: String) { send(["op": "computers_go", "to": destination]) }
+    /// Connect a computer: open the scanner, hand Rust a code, or close.
+    func connectOpen() { send(["op": "connect_open"]) }
+    func connectCode(_ value: String) { send(["op": "connect_code", "value": value]) }
+    func connectClose() { send(["op": "connect_close"]) }
 
     /// Answer or close an input request, or send from a composer.
     func submit(_ surface: String, token: String, value: String) {

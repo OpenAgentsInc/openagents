@@ -974,7 +974,7 @@ fn without_a_runner_the_card_says_why_it_cant_run() {
     ));
     assert_plain(&phone.gym());
     phone.tap(&card.chips[0].id);
-    assert_eq!(phone.tab.take_go(), Some(crate::coder_tab::Go::Computers));
+    assert_eq!(phone.tab.take_go(), Some(crate::coder_tab::Go::Connect));
 }
 
 /// A computer run is a Coder task that runs `openagents ext eval run`; its

@@ -175,8 +175,11 @@ pub enum Intent {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Go {
-    /// Account > Computers, to connect a computer.
+    /// Account > Computers.
     Computers,
+    /// **Connect a computer** (`SCR-22`): the scanner. The app opens it
+    /// itself and never hands this to the host.
+    Connect,
     /// The Wallet tab.
     Wallet,
     /// Account > Identity keys.
@@ -388,6 +391,9 @@ pub struct CoderTab {
     pub(crate) gym: crate::gym::Gym,
     /// Text the next composer puts in its field, as **Change it** does.
     compose: Option<String>,
+    /// The computer this device connected last: **Run Coder** goes there
+    /// while it is ready.
+    preferred: Option<String>,
 }
 
 /// The most turns an open basic conversation shows at first.
@@ -423,7 +429,14 @@ impl CoderTab {
             script: std::collections::VecDeque::new(),
             gym: crate::gym::Gym::empty(),
             compose: None,
+            preferred: None,
         }
+    }
+
+    /// Send **Run Coder** to `host` while it is ready, as after the person
+    /// connected it.
+    pub(crate) fn prefer(&mut self, host: String) {
+        self.preferred = Some(host);
     }
 
     /// Keep the Gym's state in `gym`.
@@ -975,7 +988,7 @@ impl CoderTab {
                     self.basic.retry(id);
                 }
             }
-            Intent::ConnectComputer => self.go = Some(Go::Computers),
+            Intent::ConnectComputer => self.go = Some(Go::Connect),
             Intent::OpenScreen { screen } => {
                 // Only a screen an offer under the last reply names.
                 let offered = self
@@ -1013,6 +1026,16 @@ impl CoderTab {
                             if let Some(source) = source {
                                 self.gym.sheet = Some(crate::gym::Sheet::TestSet(source));
                             }
+                        }
+                        // With no computer, the Computers offer is Connect a
+                        // computer: the scanner.
+                        Screen::Computers
+                            if matches!(
+                                self.availability(computers.as_deref()),
+                                Availability::NotConfigured
+                            ) =>
+                        {
+                            self.go = Some(Go::Connect);
                         }
                         _ => self.go = Some(Go::of(screen)),
                     }
@@ -1061,7 +1084,7 @@ impl CoderTab {
             }
             Intent::RunCoder => {
                 let Some(computers) = computers else {
-                    self.go = Some(Go::Computers);
+                    self.go = Some(Go::Connect);
                     return;
                 };
                 self.run_coder(computers, chats);
@@ -1415,7 +1438,7 @@ impl CoderTab {
                 self.talk = None;
                 self.open(host, task, chats);
             }
-            Effect::ConnectComputer => self.go = Some(Go::Computers),
+            Effect::ConnectComputer => self.go = Some(Go::Connect),
             Effect::OpenChat { talk } => {
                 self.gym.on_menu = false;
                 self.open = None;
@@ -1792,7 +1815,7 @@ impl CoderTab {
                 return;
             }
             Availability::NotConfigured => {
-                self.go = Some(Go::Computers);
+                self.go = Some(Go::Connect);
                 return;
             }
         };
@@ -2089,7 +2112,7 @@ impl CoderTab {
     /// Whether a new chat can start now on the chosen computer.
     fn availability<'a>(&self, computers: Option<&'a Computers>) -> Availability<'a> {
         computers.map_or(Availability::NotConfigured, |computers| {
-            availability(computers.snapshot(), None)
+            availability(computers.snapshot(), self.preferred.as_deref())
         })
     }
 
