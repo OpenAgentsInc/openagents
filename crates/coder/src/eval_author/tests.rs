@@ -25,7 +25,11 @@ fn judge() -> Arc<ScriptJudge> {
             let message = state["message"].as_str().unwrap_or_default();
             if message.contains("Project map") {
                 ("tool_0".into(), 0.93)
-            } else if message.contains("changelog") || message.contains("Slack") {
+            } else if message.contains("changelog")
+                || message.contains("Slack")
+                || message.contains("commit messages")
+                || message.contains("Jira")
+            {
                 ("make".into(), 0.9)
             } else {
                 ("unclear".into(), 0.7)
@@ -35,8 +39,11 @@ fn judge() -> Arc<ScriptJudge> {
             let message = state["message"].as_str().unwrap_or_default();
             if message.contains("Slack") {
                 ("code".into(), 0.9)
+            } else if message.contains("Jira") {
+                // A close call: `code` is Jev's choice, but not sure enough.
+                ("code".into(), 0.6)
             } else {
-                ("guidance".into(), 0.9)
+                ("skill".into(), 0.9)
             }
         }
         "reply" => match state["they_replied"].as_str().unwrap_or_default() {
@@ -387,6 +394,53 @@ async fn making_a_tool_is_a_skill_and_code_goes_to_coder() {
     assert_eq!(step.stage, Stage::Start);
     assert!(step.reply.contains("Which tool"));
     assert!(step.offers.is_empty());
+}
+
+/// #9945: a tool that only tells Coder how to do something is a skill made
+/// in chat, and reaches a draft (`CARD-02`) with its first gate; only a
+/// sure `code` goes to Coder, and a close call stays a skill.
+#[tokio::test]
+async fn a_skill_shaped_tool_stays_in_the_interview_and_reaches_a_draft() {
+    let judge = judge();
+    let author = author(StepModel::default(), judge.clone());
+    for message in [
+        "Help me make a tool that tells Coder how we write commit messages",
+        "Help me make a tool that files Jira tickets from failing tests",
+    ] {
+        let picked = author.read_pick(message, &[]).await.unwrap();
+        assert_eq!(picked.pick, Pick::Make, "{message}");
+        let mut phone = Phone::new();
+        let step = phone.send(&author, message, None).await;
+        assert_eq!(step.stage, Stage::Tool, "{message}");
+        assert!(
+            step.offers.is_empty(),
+            "no Coder offer for a skill: {message}"
+        );
+        let draft = parse_draft(step.draft.as_ref().unwrap()).unwrap();
+        assert!(draft.tool.catalog.is_none());
+        assert!(draft.tool.skill.is_some(), "a made tool is a skill");
+        assert!(
+            step.reply
+                .ends_with(Stage::Tool.line(Surface::Chat).unwrap()),
+            "the first gate waits for a tap"
+        );
+        // The gate still needs the tap: a change request stays at step 1.
+        let step = phone.send(&author, "Make it shorter", None).await;
+        assert_eq!(step.stage, Stage::Tool);
+    }
+    let picked = author
+        .read_pick("Make a tool that posts my test results to Slack", &[])
+        .await
+        .unwrap();
+    assert_eq!(picked.pick, Pick::NeedsCode);
+    assert!(picked.code >= CODE_AT);
+    // Jev read the catalog and the structured questions.
+    let (_, state) = judge
+        .asked()
+        .into_iter()
+        .find(|(id, _)| id == "build")
+        .unwrap();
+    assert_eq!(state["catalog"].as_array().unwrap().len(), 3);
 }
 
 #[tokio::test]

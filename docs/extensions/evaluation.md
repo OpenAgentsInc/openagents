@@ -575,7 +575,12 @@ What "make a tool" means in chat in v1: a tool made in chat is a skill
 (plain-language instructions Coder follows) that may also turn on catalog
 tools such as Project map. Tools with new code (Wasm guests, programs) are
 made with Coder on a connected computer or in a terminal, and are then
-tested the same way.
+tested the same way. Which one a request is comes from Jev's typed `build`
+question (`crates/coder/src/eval_author/rubric.rs`): writing, reviewing,
+checking, explaining, or following a team's conventions is a skill, even
+when what Coder writes is code; reaching a service outside the repository,
+running on a schedule, or a new program or plugin is new code. A tool goes
+to Coder only when Jev chooses `code` with 0.7 or more.
 
 ## Authoring a suite
 

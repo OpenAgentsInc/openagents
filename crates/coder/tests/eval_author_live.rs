@@ -72,6 +72,8 @@ struct Script {
     tests_change: Option<&'static str>,
     /// A change request at the checks gate, once.
     checks_change: Option<&'static str>,
+    /// The answer when a tool we make needs one more detail at the start.
+    detail: Option<&'static str>,
 }
 
 const SCRIPTS: [Script; 3] = [
@@ -81,6 +83,7 @@ const SCRIPTS: [Script; 3] = [
         quality: "A good run finds the right file or folder quickly and names it; a failed run guesses, or opens every file one by one.",
         tests_change: None,
         checks_change: None,
+        detail: None,
     },
     Script {
         tool: "code-finder",
@@ -88,6 +91,7 @@ const SCRIPTS: [Script; 3] = [
         quality: "A good run points at the exact lines where something is defined or used, with the file and line; a failed run lists unrelated files or misses a use.",
         tests_change: Some("Add one test about finding every caller of a function."),
         checks_change: None,
+        detail: None,
     },
     Script {
         tool: "test-reader",
@@ -95,6 +99,7 @@ const SCRIPTS: [Script; 3] = [
         quality: "A good run reads the failing test's name, file, and message from the report and explains why it failed; a failed run reruns everything or guesses.",
         tests_change: None,
         checks_change: Some("Also check that the answer names the failing test."),
+        detail: None,
     },
 ];
 
@@ -248,6 +253,10 @@ async fn interview(
         last: None,
     };
     let mut step = chat.send(author, script.opening, None).await;
+    if let (Stage::Start, Some(detail)) = (step.stage, script.detail) {
+        assert!(step.offers.is_empty(), "{}", chat.log);
+        step = chat.send(author, detail, None).await;
+    }
     assert_eq!(step.stage, Stage::Tool, "{}", chat.log);
     let mut tests_change = script.tests_change;
     let mut checks_change = script.checks_change;
@@ -308,4 +317,115 @@ async fn three_live_interviews_write_valid_test_sets() {
         let (log, evals) = interview(&author, script, &out).await;
         println!("\n## {}\n{log}\nWrote {}\n", script.tool, evals.display());
     }
+}
+
+/// #9945: realistic "make a tool" requests against live Jev. A skill-shaped
+/// tool must stay in the interview (and, with the live door, reach a draft
+/// at step 1 with no Coder offer); a tool that needs new code goes to
+/// Coder. Prints one line per request.
+///
+/// ```sh
+/// CODER_ENV_FILE=/path/to/door.env TYPESAFE_ENV_FILE=/path/to/typesafe.env \
+///   cargo test -p coder --test eval_author_live live_make_a_tool -- --ignored --nocapture
+/// ```
+/// The answer a scripted person gives when the interview asks one more
+/// thing about a tool we make.
+const GENERIC_DETAIL: &str =
+    "Follow the common conventions most teams use; nothing special for us.";
+
+/// The two requests from #9945, walked from the request to a finished test
+/// set, one tap per gate.
+const MADE: [Script; 2] = [
+    Script {
+        tool: "changelog-entries",
+        opening: "Help me make a tool that writes changelog entries",
+        quality: "A good run writes one short past-tense line per change, grouped under Added, Changed, and Fixed; a failed run copies commit messages or invents changes.",
+        tests_change: None,
+        checks_change: None,
+        detail: Some(GENERIC_DETAIL),
+    },
+    Script {
+        tool: "commit-messages",
+        opening: "Help me make a tool that tells Coder how we write commit messages",
+        quality: "A good run writes a Conventional Commits subject under 72 characters in the imperative, with a body saying why; a failed run writes a vague subject like 'fix stuff' or a wall of text.",
+        tests_change: None,
+        checks_change: None,
+        detail: Some(
+            "We use Conventional Commits: type(scope): subject, imperative, under 72 characters, and a body that says why.",
+        ),
+    },
+];
+
+#[tokio::test]
+#[ignore = "calls the live model door and Jev, and spends quota"]
+async fn the_issue_requests_make_a_skill_and_a_test_set_live() {
+    let door = door();
+    let model = door.model.clone();
+    let author = Author::new(door, model, Some(judge()), Catalog::starter());
+    let out = std::env::var("EVAL_AUTHOR_LIVE_OUT")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| std::env::temp_dir().join("eval-author-live"));
+    for script in &MADE {
+        let (log, evals) = interview(&author, script, &out).await;
+        println!("\n## {}\n{log}\nWrote {}\n", script.tool, evals.display());
+    }
+}
+
+#[tokio::test]
+#[ignore = "calls the live model door and Jev, and spends quota"]
+async fn live_make_a_tool_requests_are_skills_unless_they_need_code() {
+    use coder::eval_author::rubric::LIVE_PICKS;
+    use ext_eval::author::Pick;
+    let door = door();
+    let model = door.model.clone();
+    let author = Author::new(door, model, Some(judge()), Catalog::starter());
+    let mut wrong = Vec::new();
+    println!("| Request | Expected | Jev tool | p | p(code) | Pick | First step |");
+    println!("| --- | --- | --- | --- | --- | --- | --- |");
+    for (request, expected) in LIVE_PICKS {
+        let picked = author.read_pick(request, &[]).await.expect("Jev answers");
+        let got = match picked.pick {
+            Pick::Make => "skill",
+            Pick::NeedsCode => "code",
+            Pick::Existing(_) => "existing",
+            Pick::Unclear => "unclear",
+        };
+        let started = std::time::Instant::now();
+        let mut chat = Chat {
+            transcript: Vec::new(),
+            draft: None,
+            log: String::new(),
+            last: None,
+        };
+        let mut step = chat.send(&author, request, None).await;
+        let mut asked = String::new();
+        if step.stage == Stage::Start && step.offers.is_empty() && expected == "skill" {
+            // The interview asked one question about the tool: answer it.
+            asked = format!(" after asking \"{}\"", step.reply.replace('\n', " "));
+            step = chat.send(&author, GENERIC_DETAIL, None).await;
+        }
+        let first = match (&step.draft, step.offers.first()) {
+            (Some(draft), None) => format!(
+                "draft \"{}\" at step {}{asked} ({:.1} s)",
+                parse_draft(draft).unwrap().tool.name,
+                step.stage.number(),
+                started.elapsed().as_secs_f64()
+            ),
+            (None, Some(Offer::RunCoder { .. })) => "Run Coder offer".into(),
+            _ => format!("step {}: {}", step.stage.number(), step.reply),
+        };
+        println!(
+            "| {request} | {expected} | {} | {:.2} | {:.2} | {got} | {first} |",
+            picked.choice, picked.probability, picked.code
+        );
+        let reached_draft = step.draft.is_some() && step.stage == Stage::Tool;
+        let coder = matches!(step.offers.as_slice(), [Offer::RunCoder { .. }]);
+        if got != expected
+            || (expected == "skill") != reached_draft
+            || (expected == "code") != coder
+        {
+            wrong.push(request);
+        }
+    }
+    assert!(wrong.is_empty(), "misread: {wrong:?}");
 }

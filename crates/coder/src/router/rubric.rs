@@ -163,7 +163,9 @@ pub fn route(route: RouteId) -> Value {
                  connect, sign in to, or link GitHub (meta); questions about how the OpenAgents code works (codebase.kb); checking \
                  their computers, sessions, XP, or other things an `openagents` command reads \
                  (cli); testing a Gym tool on Coder (eval.run); making a tool or writing a \
-                 test set for a tool with us (eval.author)",
+                 test set for a tool with us (eval.author), including tests for a Gym tool \
+                 such as Project map, Code finder, or Test reader, which are Coder's tools, \
+                 not the user's code",
             ),
             &[
                 "fix the typo in my README",
@@ -293,7 +295,8 @@ pub fn route(route: RouteId) -> Value {
         ),
         RouteId::EvalAuthor => option(
             "The user wants to make a new tool for Coder, or write tests or a test set for a \
-             tool, with us; or answers our questions in that interview: what the tool is for, \
+             tool with us, including a Gym tool such as Project map, Code finder, or Test \
+             reader (tools Coder uses, not the user's repository); or answers our questions in that interview: what the tool is for, \
              what a good run looks like, approving or changing a draft, or trying it once",
             Some(
                 "Unit tests or other code in their own repository (work.dispatch); running an \

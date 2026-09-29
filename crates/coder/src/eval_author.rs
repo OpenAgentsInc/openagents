@@ -43,8 +43,8 @@ use crate::product_kb::Judge;
 pub const APPROVE_AT: f64 = 0.8;
 /// The probability the tool choice needs; below it we ask which tool.
 pub const PICK_AT: f64 = 0.5;
-/// The probability of `code` that sends a new tool to Coder on a connected
-/// computer.
+/// The probability of `code` (as Jev's choice) that sends a new tool to
+/// Coder on a connected computer; anything less is a skill made in chat.
 pub const CODE_AT: f64 = 0.7;
 /// The earlier turns Jev reads when it picks the tool.
 pub const EARLIER_TURNS: usize = 4;
@@ -136,6 +136,20 @@ pub struct Step {
     pub model: String,
 }
 
+/// What Jev answered at the start, and the pick the driver made from it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Picked {
+    /// The pick.
+    pub pick: Pick,
+    /// The tool question's choice: `tool_<n>`, `make`, or `unclear`.
+    pub choice: String,
+    /// Its probability.
+    pub probability: f64,
+    /// The probability that a tool to make needs new code, when Jev chose
+    /// `code`; zero when it chose a skill.
+    pub code: f64,
+}
+
 /// The interview's driver.
 pub struct Author<G> {
     model: G,
@@ -210,6 +224,24 @@ impl<G: Generate> Author<G> {
     ///
     /// [`AuthorError::Judge`] when Jev doesn't answer.
     pub async fn pick(&self, message: &str, transcript: &[Message]) -> Result<Pick, AuthorError> {
+        Ok(self.read_pick(message, transcript).await?.pick)
+    }
+
+    /// The pick with what Jev answered: the tool question's choice and its
+    /// probability, and the probability that a tool to make needs new code.
+    ///
+    /// A tool to make is a skill unless Jev chooses `code` with at least
+    /// [`CODE_AT`]: a skill stays in the interview and reaches a draft,
+    /// while new code sends the person to a computer they may not have.
+    ///
+    /// # Errors
+    ///
+    /// [`AuthorError::Judge`] when Jev doesn't answer.
+    pub async fn read_pick(
+        &self,
+        message: &str,
+        transcript: &[Message],
+    ) -> Result<Picked, AuthorError> {
         let earlier: Vec<Value> = transcript
             .iter()
             .rev()
@@ -226,50 +258,34 @@ impl<G: Generate> Author<G> {
         for (index, tool) in self.catalog.tools.iter().enumerate() {
             options.insert(
                 format!("tool_{index}"),
-                Some(Entry::from(format!("{}: {}", tool.name, tool.summary))),
+                Some(Entry::from(rubric::catalog_tool(&tool.name, &tool.summary))),
             );
         }
-        options.insert(
-            "make".into(),
-            Some(Entry::from(
-                "They want to make a new tool, or describe what a tool they want should do, and it isn't one of the tools above.",
-            )),
-        );
-        options.insert(
-            "unclear".into(),
-            Some(Entry::from(
-                "They haven't said which tool, or which one can't be told from what they wrote.",
-            )),
-        );
+        options.insert("make".into(), Some(Entry::from(rubric::make())));
+        options.insert("unclear".into(), Some(Entry::from(rubric::unclear())));
+        let catalog: Vec<Value> = self
+            .catalog
+            .tools
+            .iter()
+            .map(|t| json!({"name": t.name, "does": t.summary}))
+            .collect();
         let questions = Questions::new()
-            .with(
-                "tool",
-                Choice::new(
-                    "The person wants to write tests for a tool Coder uses. Which tool do they mean, or do they want to make a new one?",
-                    options,
-                ),
-            )
+            .with("tool", Choice::new(rubric::tool_instructions(), options))
             .with(
                 "build",
                 Choice::new(
-                    "If they want a new tool, what would building the tool they describe take?",
+                    rubric::build_instructions(),
                     IndexMap::from([
-                        (
-                            "guidance".to_string(),
-                            Some(Entry::from(
-                                "Written guidance that tells Coder how to do a kind of task, possibly with existing tools turned on.",
-                            )),
-                        ),
-                        (
-                            "code".to_string(),
-                            Some(Entry::from(
-                                "New code: a program, a plugin, a script that runs, or a connection to another service.",
-                            )),
-                        ),
+                        ("skill".to_string(), Some(Entry::from(rubric::skill()))),
+                        ("code".to_string(), Some(Entry::from(rubric::code()))),
                     ]),
                 ),
             );
-        let state = json!({"message": cut(message, 1_200), "earlier": earlier});
+        let state = json!({
+            "message": cut(message, 1_200),
+            "earlier": earlier,
+            "catalog": catalog,
+        });
         let response = self
             .ask_judge(SystemOneRequest::new(Entry::from(state), questions))
             .await?;
@@ -277,34 +293,39 @@ impl<G: Generate> Author<G> {
             .choice("tool")
             .map_err(|e| AuthorError::Judge(e.to_string()))?;
         let p = tool.probabilities.get(&tool.choice).copied().unwrap_or(0.0);
-        if p < PICK_AT {
-            return Ok(Pick::Unclear);
-        }
-        if let Some(index) = tool
+        let code = response
+            .choice("build")
+            .ok()
+            .filter(|b| b.choice == "code")
+            .and_then(|b| b.probabilities.get("code").copied())
+            .unwrap_or(0.0);
+        let pick = if p < PICK_AT {
+            Pick::Unclear
+        } else if let Some(index) = tool
             .choice
             .strip_prefix("tool_")
             .and_then(|n| n.parse::<usize>().ok())
         {
-            return Ok(self
-                .catalog
+            self.catalog
                 .tools
                 .get(index)
                 .cloned()
-                .map_or(Pick::Unclear, Pick::Existing));
-        }
-        if tool.choice == "make" {
-            let code = response
-                .choice("build")
-                .ok()
-                .and_then(|b| b.probabilities.get("code").copied())
-                .unwrap_or(0.0);
-            return Ok(if code >= CODE_AT {
+                .map_or(Pick::Unclear, Pick::Existing)
+        } else if tool.choice == "make" {
+            if code >= CODE_AT {
                 Pick::NeedsCode
             } else {
                 Pick::Make
-            });
-        }
-        Ok(Pick::Unclear)
+            }
+        } else {
+            Pick::Unclear
+        };
+        Ok(Picked {
+            pick,
+            choice: tool.choice.clone(),
+            probability: p,
+            code,
+        })
     }
 
     /// How the person's reply answers what we last said, from Jev's typed
@@ -679,6 +700,7 @@ pub fn seam(
 }
 
 pub mod fake;
+pub mod rubric;
 
 #[cfg(test)]
 mod tests;
