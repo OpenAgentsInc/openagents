@@ -541,6 +541,15 @@ invoke them through CJ execution v1 over `25920`/`26920`/`27020`:
 The CJ request carries the exact signed request artifact. Admission is
 identical in both bindings. A host advertises only the binding it serves.
 
+A relay connection lives at most 120 seconds, and CJ kinds are ephemeral, so
+a request published while a host has no subscription open is lost until the
+device retries. A host therefore keeps each binding's subscription open
+without a gap: it subscribes on a new connection before the current one's
+lifetime ends, reads both until the older one closes, and answers an event
+that both deliver once. As on a direct channel, it answers each request
+independently, so one slow request does not hold the others; requests are
+not ordered by arrival.
+
 The host advertises the role as one CAP `adapter` definition with the `d`
 slug `host-access`, the ID `<host-key>:openagents/host-access`, transport
 `nostr-cj`, `interface` `openagents.host-request.v1`, `operations` listing

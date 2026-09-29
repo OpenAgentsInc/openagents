@@ -10,13 +10,13 @@ use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::sync::Arc;
 use std::time::Duration;
 
-use coder_connect::transport::Receiver;
 use coder_pty::host::{FrameSink, SinkError};
 use coder_pty::wire::{Frame, Reason, Refusal, TerminalResult};
 use nostr::domain::Event;
-use serde_json::Value;
+use serde_json::{Value, json};
 use tokio::sync::oneshot;
 
+use super::standing::{self, Subscription};
 use super::{Shared, dispatch::Dispatcher, summarize, terminal};
 use crate::authority::Standing;
 use crate::message::TermRequest;
@@ -38,56 +38,77 @@ pub(super) async fn serve(shared: Arc<Shared>, ready: oneshot::Sender<()>) {
 }
 
 async fn serve_one(shared: Arc<Shared>, relay: String, mut ready: Option<oneshot::Sender<()>>) {
+    let host_key = shared.host_key.clone();
+    let standing = Subscription {
+        relay: relay.clone(),
+        subscription: SUBSCRIPTION,
+        lifetime: LIFETIME,
+        filter: Box::new(move |now| {
+            json!({
+                "kinds": [nostr::contracts::ARTIFACT_ENVELOPE_KIND],
+                "#p": [host_key],
+                "since": now.saturating_sub(60),
+                "limit": 128
+            })
+        }),
+    };
     // When the last subscription connected, by the wall clock, which keeps
     // counting while the machine sleeps.
     let mut connected_at: Option<u64> = None;
-    loop {
-        let mut receiver =
-            match Receiver::connect(&relay, &shared.secret, shared.config.policy).await {
-                Ok(receiver) => receiver,
-                Err(_) => {
-                    tokio::time::sleep(Duration::from_secs(1)).await;
-                    continue;
-                }
-            };
+    let catching = (shared.clone(), relay.clone());
+    let connected = move || {
         if let Some(ready) = ready.take() {
             let _ = ready.send(());
         }
-        // A subscription replays its last minute, so an ordinary renewal
-        // misses nothing. After a longer gap, such as the machine sleeping,
-        // nudges sent meanwhile wait on the relay.
+        // Renewals overlap and each replays its last minute, so an ordinary
+        // renewal misses nothing. After a longer gap, such as the machine
+        // sleeping, nudges sent meanwhile wait on the relay.
         let now = unix_time().unwrap_or_default();
         if connected_at.is_none_or(|at| now.saturating_sub(at) > CATCH_UP_GAP) {
-            tokio::spawn(catch_up(shared.clone(), relay.clone()));
+            tokio::spawn(catch_up(catching.0.clone(), catching.1.clone()));
         }
         connected_at = Some(now);
-        // The subscription ends with the connection's lifetime or frame
-        // budget; reconnecting replays the last minute, and every path below
-        // answers an exact retry with its original result.
-        while let Ok(event) = receiver.next_request().await {
-            if event.pubkey == shared.host_key {
-                continue;
-            }
-            match schema(&shared, &event).as_deref() {
-                Some(coder_access::protocol::REQUEST) => {
-                    if let Some(reply) = host_request(&shared, event, &relay).await
-                        && receiver.publish(&reply).await.is_err()
-                    {
-                        break;
+    };
+    let handler = shared.clone();
+    standing::serve(
+        shared.secret,
+        shared.publisher.clone(),
+        standing,
+        connected,
+        move |event, reply| {
+            let (shared, relay) = (handler.clone(), relay.clone());
+            async move {
+                if event.pubkey == shared.host_key
+                    || nostr::private_artifact::admit(&event).is_err()
+                    || event.tag_values("p").collect::<Vec<_>>() != [shared.host_key.as_str()]
+                {
+                    return;
+                }
+                // Every path answers an exact retry with its original result, so
+                // a request read again after a reconnect is answered the same.
+                match schema(&shared, &event).as_deref() {
+                    Some(coder_access::protocol::REQUEST) => {
+                        if let Some(answer) = host_request(&shared, event, &relay).await {
+                            reply.send(answer).await;
+                        }
                     }
+                    Some(schema) if schema.starts_with("openagents.terminal-") => {
+                        terminal_request(shared, relay, event).await;
+                    }
+                    Some(crate::nudge::SCHEMA) => nudged(&shared, &event).await,
+                    _ => {}
                 }
-                Some(schema) if schema.starts_with("openagents.terminal-") => {
-                    tokio::spawn(terminal_request(shared.clone(), relay.clone(), event));
-                }
-                Some(crate::nudge::SCHEMA) => {
-                    let shared = shared.clone();
-                    tokio::spawn(async move { nudged(&shared, &event).await });
-                }
-                _ => {}
             }
-        }
-    }
+        },
+    )
+    .await;
 }
+
+/// The subscription ID on each relay connection.
+const SUBSCRIPTION: &str = "history-input";
+/// One subscription connection's lifetime, the longest a relay connection
+/// may hold. The next one subscribes [`standing::OVERLAP`] before it ends.
+const LIFETIME: Duration = Duration::from_secs(120);
 
 fn schema(shared: &Shared, event: &Event) -> Option<String> {
     nostr::private_artifact::open(event, &shared.secret)

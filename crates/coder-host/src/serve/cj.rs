@@ -15,14 +15,15 @@ use std::time::Duration;
 use coder_access::cj::{Capability, Intake, intake};
 use nostr::domain::Event;
 use nostr::execution;
-use nostr_transport::Connection;
 use serde_json::json;
 
 use super::Shared;
 use super::relay::host_request;
+use super::standing::{self, Subscription};
 use crate::unix_time;
 
-/// One subscription connection's lifetime. The loop reconnects after it.
+/// One subscription connection's lifetime. The next one subscribes
+/// [`standing::OVERLAP`] before it ends.
 const LIFETIME: Duration = Duration::from_secs(110);
 /// The subscription ID on each relay connection.
 const SUBSCRIPTION: &str = "host-cj";
@@ -47,44 +48,39 @@ pub(super) async fn serve(shared: Arc<Shared>) {
 }
 
 async fn serve_one(shared: Arc<Shared>, capability: Arc<Capability>, relay: String) {
-    loop {
-        let Ok(mut socket) = Connection::connect(&relay, &shared.secret, LIFETIME).await else {
-            tokio::time::sleep(Duration::from_secs(1)).await;
-            continue;
-        };
-        let since = unix_time().unwrap_or_default().saturating_sub(60);
-        let filter = json!({
-            "kinds": [execution::REQUEST_KIND],
-            "#p": [shared.host_key],
-            "since": since
-        });
-        if socket
-            .send(json!(["REQ", SUBSCRIPTION, filter]))
-            .await
-            .is_err()
-        {
-            continue;
-        }
-        // Execution kinds are ephemeral: a request sent while this loop
-        // reconnects is not replayed, and the device retries the same
-        // request, which the host answers as a retransmission.
-        while let Ok(frame) = socket.next().await {
-            if frame[0] == "CLOSED" && frame[1] == SUBSCRIPTION {
-                break;
+    let host_key = shared.host_key.clone();
+    let standing = Subscription {
+        relay: relay.clone(),
+        subscription: SUBSCRIPTION,
+        lifetime: LIFETIME,
+        filter: Box::new(move |now| {
+            json!({
+                "kinds": [execution::REQUEST_KIND],
+                "#p": [host_key],
+                "since": now.saturating_sub(60)
+            })
+        }),
+    };
+    // Execution kinds are ephemeral: a request sent while no subscription
+    // is open is not replayed. Renewals overlap, so one always is; a
+    // request both connections deliver is answered once, and a device's
+    // retry is answered as a retransmission.
+    let handler = shared.clone();
+    standing::serve(
+        shared.secret,
+        shared.publisher.clone(),
+        standing,
+        || {},
+        move |event, reply| {
+            let (shared, capability, relay) = (handler.clone(), capability.clone(), relay.clone());
+            async move {
+                if let Some(result) = answer(&shared, &capability, event, &relay).await {
+                    reply.send(result).await;
+                }
             }
-            if frame[0] != "EVENT" || frame[1] != SUBSCRIPTION {
-                continue;
-            }
-            let Ok(event) = serde_json::from_value::<Event>(frame[2].clone()) else {
-                continue;
-            };
-            if let Some(result) = answer(&shared, &capability, event, &relay).await
-                && socket.send(json!(["EVENT", result])).await.is_err()
-            {
-                break;
-            }
-        }
-    }
+        },
+    )
+    .await;
 }
 
 /// The sealed CJ result for one request, if the request earns one. A
