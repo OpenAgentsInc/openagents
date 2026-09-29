@@ -78,6 +78,7 @@ pub mod repo;
 pub mod resolve;
 pub mod review;
 pub mod router;
+pub mod router_eval;
 pub mod runstate;
 pub mod runtime;
 pub mod select;

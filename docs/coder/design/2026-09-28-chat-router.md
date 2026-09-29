@@ -968,6 +968,10 @@ answered from documentation, without reading source code?"):
 
 Answers name the commit they read ("as of `820bc02`").
 
+Implemented in `coder::codebase` ([#9924](https://github.com/OpenAgentsInc/openagents/issues/9924)):
+the index, where it lives, and how it is refreshed are in
+[codebase-kb.md](codebase-kb.md).
+
 Private material never enters either index: only this public repository,
 never `alpha` or other private repositories, which `AGENTS.md` keeps behind a
 private/public boundary.
@@ -1021,6 +1025,12 @@ implements it:
    steps keep JSON-only results, as `opener` is today.
 
 ## Evaluation and training data
+
+**Built ([#9925](https://github.com/OpenAgentsInc/openagents/issues/9925)):** 457 rows in
+`crates/coder/fixtures/chat-router/routes-v1.json`, exported as the Gym
+suite `chat-router-v1`; the eval runner is `crates/coder/tests/router_eval.rs`
+and the numbers are in
+[the router eval measurement](../measurements/2026-09-28-chat-router-eval.md).
 
 **The labeled set: `chat-router-v1` in the Gym.** A JSON suite beside
 `crates/gym/questions/coder-turns-v1.json`, each row a transcript and the

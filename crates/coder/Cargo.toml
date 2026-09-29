@@ -46,6 +46,9 @@ receipts = { path = "../receipts" }
 
 [dev-dependencies]
 coderbench = { path = "../coderbench" }
+# The labeled route set is exported as a Gym suite; its test checks the
+# committed suite against the fixture.
+gym = { path = "../gym" }
 tempfile = "3"
 wat = "1"
 
