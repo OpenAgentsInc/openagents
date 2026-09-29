@@ -33,3 +33,13 @@ one) and Run Coder with a ready computer are covered by
 `the_tab_opens_on_a_new_chat_ready_to_type` and
 `run_coder_starts_a_task_with_the_conversation`, which use a synthetic
 ready computer.
+
+## Build 29
+
+Archived from `a2085c73f2` (clean, rebased on `origin/main`) with
+`build.sh archive`; the archive says `com.openagents.app` 1.0.0 (29).
+Uploaded with `build.sh upload` between 20:31 and 20:33 UTC ("Upload
+succeeded", "EXPORT SUCCEEDED"). App Store Connect, filtered by
+pre-release version 1.0.0 and build 29, shows it uploaded at
+2026-09-29T13:33:28-07:00, processing state `VALID`, internal beta state
+`IN_BETA_TESTING`.
