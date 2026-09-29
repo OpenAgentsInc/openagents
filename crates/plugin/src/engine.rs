@@ -168,6 +168,15 @@ pub(crate) fn metered(call: Call<'_>) -> (Result<GuestValue, HostError>, u64) {
     let mut config = wasmtime::Config::new();
     config.consume_fuel(true);
     config.epoch_interruption(true);
+    // On macOS, Wasmtime's default trap handler is a Mach-port thread that
+    // receives with `MACH_RCV_INTERRUPT` and aborts the process when the
+    // receive is interrupted. The host installs a SIGCHLD handler to reap
+    // child processes, so a child exiting while the kernel delivers that
+    // signal to the trap thread killed the whole host with SIGABRT. Unix
+    // signal handlers trap guests the same way and survive other signals.
+    // Trap delivery does not change guest results, so `replay::ENGINE`
+    // keeps its name. Every engine in a process must agree on this.
+    config.macos_use_mach_ports(false);
     let engine = match Engine::new(&config) {
         Ok(engine) => engine,
         Err(error) => return (Err(HostError::Failed(error.to_string())), 0),

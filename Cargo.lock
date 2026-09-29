@@ -6096,6 +6096,7 @@ dependencies = [
 name = "plugin"
 version = "0.1.0"
 dependencies = [
+ "libc",
  "nostr",
  "serde_json",
  "sha2 0.11.0",
