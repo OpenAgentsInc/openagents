@@ -1045,10 +1045,14 @@ fn the_first_run_starts_a_test_in_three_taps_and_resumes() {
     assert_eq!(view.menu.next, "Next: add your result to the Gym.");
     assert_plain(&view);
 
-    // A relaunch opens on the menu.
+    // A relaunch opens on the menu, and its CHAT goes back to the result
+    // the next step names.
     drop(phone);
     let mut phone = Phone::in_dir(&worker, Some(&runner), dir);
     assert_eq!(phone.gym().screen, "menu");
+    let view = phone.tap("menu.chat");
+    assert_eq!(view.screen, "chat");
+    assert!(phone.card("result").primary.is_some());
 }
 
 /// A run survives a relaunch: its follower picks the request up again.
@@ -1185,8 +1189,16 @@ fn credit_comes_from_the_phones_own_ledger() {
         sheet.headline.as_deref(),
         Some("Level 2 · 143 XP to level 3")
     );
-    assert_eq!(sheet.sections[1].heading.as_deref(), Some("WHAT YOU MADE"));
-    assert_eq!(sheet.sections[1].items.len(), 3);
+    // With no run kept on this phone (a reinstall), the ledger's results
+    // stand alone: no "No results yet" over them.
+    assert_eq!(sheet.sections[0].heading.as_deref(), Some("WHAT YOU MADE"));
+    assert_eq!(sheet.sections[0].items.len(), 3);
+    assert!(
+        sheet
+            .sections
+            .iter()
+            .all(|section| section.heading.as_deref() != Some("YOUR RESULTS"))
+    );
 }
 
 #[test]

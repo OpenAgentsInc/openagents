@@ -1465,7 +1465,7 @@ impl CoderTab {
                 self.gym.sheet = None;
                 self.gym.credit_seen();
                 Effect::OpenChat {
-                    talk: self.gym.active().map(|run| run.talk.clone()),
+                    talk: self.gym.waiting().map(|run| run.talk.clone()),
                 }
             }
             Action::Profile => {

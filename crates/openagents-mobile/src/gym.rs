@@ -684,6 +684,15 @@ impl Gym {
         self.saved.runs.iter().rev().find(|run| run.running())
     }
 
+    /// The run the menu's next step is about: one still running, or a
+    /// full result not yet added to the Gym. CHAT reopens its chat.
+    pub(crate) fn waiting(&self) -> Option<&Run> {
+        self.active().or_else(|| {
+            self.latest_result()
+                .filter(|run| !run.pilot() && run.publish == PublishState::None)
+        })
+    }
+
     /// The share sheet to open, once.
     pub(crate) fn take_share(&mut self) -> Option<String> {
         self.share.take()
@@ -2362,18 +2371,22 @@ impl Gym {
             })
             .take(6)
             .collect();
-        sections.push(Section {
-            heading: Some("YOUR RESULTS".into()),
-            lines: if results.is_empty() {
-                vec![line(
-                    "No results yet. Your first test takes a few minutes.",
-                    Tone::Quiet,
-                )]
-            } else {
-                vec![]
-            },
-            items: results,
-        });
+        // Runs this phone keeps; after a reinstall only the ledger has them,
+        // and "No results yet" over a result it shows would contradict it.
+        if !(results.is_empty() && !standing.results.is_empty()) {
+            sections.push(Section {
+                heading: Some("YOUR RESULTS".into()),
+                lines: if results.is_empty() {
+                    vec![line(
+                        "No results yet. Your first test takes a few minutes.",
+                        Tone::Quiet,
+                    )]
+                } else {
+                    vec![]
+                },
+                items: results,
+            });
+        }
         let made = made_items(&standing);
         sections.push(Section {
             heading: Some("WHAT YOU MADE".into()),
@@ -2476,14 +2489,12 @@ impl Gym {
 /// The next step on the menu and the profile, from real state
 /// (`SCR-01.E11`).
 pub(crate) fn next_step(gym: &Gym) -> &'static str {
-    if gym.active().is_some() {
-        return "Next: your test is running. We'll post the result in chat.";
-    }
-    if let Some(run) = gym.latest_result()
-        && !run.pilot()
-        && run.publish == PublishState::None
-    {
-        return "Next: add your result to the Gym.";
+    if let Some(run) = gym.waiting() {
+        return if run.running() {
+            "Next: your test is running. We'll post the result in chat."
+        } else {
+            "Next: add your result to the Gym."
+        };
     }
     if gym.standing.pending > 0 {
         return "Next: a check confirmed your result. XP is on its way.";

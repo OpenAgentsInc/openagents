@@ -813,13 +813,24 @@ impl App {
         let _ = std::fs::remove_dir_all(config.state_dir.join("wallet"));
         let amounts = crate::amounts::Amounts::open(&config.state_dir);
         spend.set_format(amounts.format());
+        // The recorded Gym keeps its chats and runs apart, so its fixture
+        // numbers never show in the real app's results.
+        let recorded = if launch.gym_fixture && cfg!(debug_assertions) {
+            "-fixture"
+        } else {
+            ""
+        };
         let basic = crate::basic_chats::BasicChats::new(
             Some(runtime.handle().clone()),
             basic_door(&launch, secret),
-            Cache::open(&config.state_dir.join("basic-chats"), &secret).ok(),
+            Cache::open(
+                &config.state_dir.join(format!("basic-chats{recorded}")),
+                &secret,
+            )
+            .ok(),
         );
         let mut gym = crate::gym::Gym::new(
-            Cache::open(&config.state_dir.join("gym"), &secret).ok(),
+            Cache::open(&config.state_dir.join(format!("gym{recorded}")), &secret).ok(),
             hosted_runner(&launch, secret),
             Some(runtime.handle().clone()),
         );

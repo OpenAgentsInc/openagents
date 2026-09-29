@@ -33,10 +33,10 @@ The real app against `relay.openagents.com` and the deployed chat worker
   interview hands the tool to Coder on a computer, so no draft card yet; the
   phone shows **Connect a computer**.
 
-The live worker has no published eval result or test set yet, so it offers
-no `start_eval` and a run, a result, and a check can't be reached from a
+At that release, the live worker had no published eval result or test set yet (the next section is the real run once they were), so it offered
+no `start_eval`, and a run, a result, and a check couldn't be reached from a
 live chat ([#9943](https://github.com/OpenAgentsInc/openagents/issues/9943));
-the interview hands chat-made tools to Coder, so the draft can't either
+the interview handed chat-made tools to Coder, so the draft couldn't either
 ([#9945](https://github.com/OpenAgentsInc/openagents/issues/9945)). The
 phone's hosted path itself is live: `live_the_runner_answers_the_phone` in
 `crates/openagents-mobile/src/hosted.rs` sent the phone's signed request
@@ -44,6 +44,53 @@ from a fresh key to the deployed runner, which answered in 0.7 s
 (`not_admitted` for a test set it doesn't run, before anything ran), and
 the phone bound the answer and showed "Our test computers don't run this
 tool or test set."
+
+## A real hosted test, end to end
+
+After the hosted runner ([#9935](https://github.com/OpenAgentsInc/openagents/issues/9935),
+`0b39640d66`) and the chat worker release that offers the starter test
+sets (`0546032e17`, [#9943](https://github.com/OpenAgentsInc/openagents/issues/9943))
+were deployed, the same simulator app (Trainer 7GW) ran a real test.
+Every number below comes from the runner's records:
+
+- [`live-CARD-01-tool.png`](live-CARD-01-tool.png): "Test Project map on
+  Coder": the worker's tool card with the published latest result and
+  **START THE TEST** (release `8e4ae48b9d14…`, 6 tests × 3 runs × 2 sides).
+- [`live-CARD-03-run.png`](live-CARD-03-run.png): after the tap, the
+  phone's signed `25920` reached the runner; its progress, 35 of 36 runs.
+- [`live-CARD-04-result.png`](live-CARD-04-result.png): the result about
+  a minute after the tap, from the sealed report (`3188`) opened on the
+  phone: 2 of 6 without the tool, 5 of 6 with it, **Better** (the
+  report's own `ext-eval-v2` verdict).
+- [`live-SCR-05-result.png`](live-SCR-05-result.png): each test on each
+  side, by the majority of its runs.
+- [`live-SCR-20-added.png`](live-SCR-20-added.png): **Add to the Gym**
+  published it through the runner: `3189`
+  `c4a9a2b54eea6698fb9978e79ce3d8d031ac83f6850f6961e1ff1944002c36c6`,
+  naming the trainer and carrying their signed request.
+- A second trainer checked it through the runner (5 of 6 against 2 of 6,
+  **Better**; check `8f28f3a6e5bf…`), and the XP referee awarded 25 XP to
+  Trainer 7GW (`3193` `b066590dca81…`).
+- [`live-SCR-01-menu-credited.png`](live-SCR-01-menu-credited.png): the
+  menu read the award from the phone's own ledger: 25 of 100 XP, "Your
+  work was checked. +25 XP."
+- [`live-SCR-11-profile-credited.png`](live-SCR-11-profile-credited.png):
+  Profile's **What you made**: the result, checked by 1 trainer, +25 XP.
+
+The chat's own **CARD-07** ("What have I earned?") couldn't be captured
+live the same day: this trainer had used the chat worker's daily message
+quota, and the phone said so ("Try again in 16 hours, or run Coder on
+your computer"). The card draws from the same ledger as the menu and
+Profile (`credit_comes_from_the_phones_own_ledger`); `CARD-07-credit.png`
+above shows it live with nothing earned yet.
+
+Found and fixed on the way: after a relaunch, **CHAT WITH OPENAGENTS**
+now reopens the chat holding a result not yet added to the Gym, the one
+the menu's next step names. The recorded Gym (`--gym-fixture`) now keeps
+its chats and runs in their own stores, because its fixture results had
+shown up in this simulator's Profile; those stores were cleared before
+the Profile capture. Profile also leaves out an empty **Your results**
+list when the ledger shows results (as after a reinstall).
 
 ## From the recorded Gym (`fixture-…`)
 
