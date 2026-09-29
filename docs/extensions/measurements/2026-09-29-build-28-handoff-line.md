@@ -36,5 +36,5 @@ passed, 20 ignored; clippy clean.
 Archived from `7fe0739b97` (clean) with `build.sh archive`; the archive
 says `com.openagents.app` 1.0.0 (28). Uploaded with `build.sh upload`
 between 19:13 and 19:14 UTC ("Upload succeeded", "EXPORT SUCCEEDED").
-App Store Connect processing state: pending at the time of this commit;
-updated once the build shows VALID.
+App Store Connect (filtered by pre-release version 1.0.0 and build 28)
+shows it uploaded at 2026-09-29T12:15:49-07:00, processing state `VALID`.
