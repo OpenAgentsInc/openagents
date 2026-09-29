@@ -82,23 +82,53 @@ has to answer a key nobody has seen, so it is open under a quota instead
 ## Deploying
 
 The chat worker runs beside the executor worker on the Coder worker VM
-(`oa-coder-worker-1`) from the same release directory, under its own unit and
-environment file. Follow [`deploy/README.md`](../../deploy/README.md) for the
-user, release directory, and binary, then:
+(`oa-coder-worker-1`), under its own unit and environment file. Follow
+[`deploy/README.md`](../../deploy/README.md) for the user and release
+directory. The chat worker gets its own release symlink,
+`/opt/coder-worker/chat`, through a drop-in, so upgrading it never changes
+the binary the executor worker runs from `current`.
+
+The VM has no Rust toolchain or C compiler. Build a static Linux binary on a
+development Mac with `cargo-zigbuild` (the target needs only
+`rustup target add x86_64-unknown-linux-musl`), then copy it, the filled
+environment file, the unit, and the drop-in to the VM with
+`gcloud compute scp --tunnel-through-iap` into a private directory (not
+`/tmp`, where another user's `coder-worker` file already sits):
 
 ```sh
-sudo install -o root -g coder-worker -m 0640 deploy/coder-worker-chat.env.example \
-  /etc/coder-worker/coder-worker-chat.env
-sudoedit /etc/coder-worker/coder-worker-chat.env   # the worker secret and the gateway key
+cargo zigbuild --locked --release -p coder --bin coder-worker \
+  --target x86_64-unknown-linux-musl
+```
+
+On the VM, with `<VERSION>` the short commit:
+
+```sh
+sudo install -d -o root -g root -m 0755 /opt/coder-worker/releases/<VERSION>
+sudo install -o root -g root -m 0755 coder-worker /opt/coder-worker/releases/<VERSION>/coder-worker
+sudo ln -sfn /opt/coder-worker/releases/<VERSION> /opt/coder-worker/chat
+# The filled env: the worker secret, the gateway key, and TYPESAFE_API_KEY.
+# systemd reads it as root, so it can be root-only.
+sudo install -o root -g root -m 0600 coder-worker-chat.env /etc/coder-worker/coder-worker-chat.env
 sudo systemd-run --pipe --wait -p User=coder-worker \
   -p EnvironmentFile=/etc/coder-worker/coder-worker-chat.env \
-  /opt/coder-worker/current/coder-worker --check
+  /opt/coder-worker/chat/coder-worker --check
 sudo install -o root -g root -m 0644 deploy/systemd/coder-worker-chat.service \
   /etc/systemd/system/coder-worker-chat.service
+sudo install -d -m 0755 /etc/systemd/system/coder-worker-chat.service.d
+sudo tee /etc/systemd/system/coder-worker-chat.service.d/release.conf >/dev/null <<'EOF'
+[Service]
+ExecStartPre=
+ExecStartPre=/usr/bin/test -x /opt/coder-worker/chat/coder-worker
+ExecStart=
+ExecStart=/opt/coder-worker/chat/coder-worker
+EOF
 sudo systemctl daemon-reload
 sudo systemctl enable --now coder-worker-chat
 sudo journalctl -u coder-worker-chat -n 20 --no-pager
 ```
+
+To upgrade, install the new release beside the old one, move the `chat`
+symlink, and `sudo systemctl restart coder-worker-chat`.
 
 The first log line must be `worker  32c07895…` (the key the app carries),
 the judge line must name `https://api.typesafe.ai`, and the admits line must
@@ -117,3 +147,9 @@ cargo test --manifest-path crates/openagents-mobile/Cargo.toml \
 On 2026-09-28 that test answered through the production relay in 5.7 s,
 with the first words at 5.1 s, from a worker with this configuration running
 on a development machine.
+
+After the production deploy on `oa-coder-worker-1` (release `358975bdbd`,
+2026-09-28), three runs of the same test showed the first words (the Jev
+opener) at 0.50 to 0.59 s and the finished reply at 4.9 to 5.3 s. `chat-load-bench --basic-coder 5`, which does
+not ask for an opener, measured Send to first words at a median 4.2 s (the
+model's first token) and Send to done at a median 4.4 s.
