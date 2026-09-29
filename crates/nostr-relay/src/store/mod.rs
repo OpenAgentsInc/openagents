@@ -1734,7 +1734,13 @@ impl Store {
                 result = &mut query => result?,
                 changed = cancel.changed() => {
                     if changed.is_err() || *cancel.borrow() {
-                        self.client.cancel_token().cancel_query(NoTls).await?;
+                        // Postgres cancels whatever statement the backend
+                        // is running when the signal lands. Wait for this
+                        // query to end, cancelled or not, before the
+                        // connection takes its next statement, so a late
+                        // cancel can't land on that one instead (#9947).
+                        let _ = self.client.cancel_token().cancel_query(NoTls).await;
+                        let _ = query.await;
                         return Err(StoreError::QueryCancelled);
                     }
                     query.await?
@@ -2353,38 +2359,52 @@ impl Drop for Store {
     }
 }
 
+/// The `application_name` of the notification connection, so operators
+/// (and the listener regression test) can find its backend.
+pub const LISTENER_APPLICATION_NAME: &str = "nostr-relay-listener";
+
 /// Dedicated bounded durable and ephemeral notification connection. A
 /// malformed payload, incomplete protocol state, driver failure, or full
-/// local queue marks it not current so the gateway can fail closed.
+/// local queue ends it: [`recv_notification`](Self::recv_notification)
+/// then returns `None` once the queued notifications are drained, and
+/// [`fault`](Self::fault) says why. The gateway replaces a lost listener
+/// and catches up by sequence; it never trusts one after a fault.
 pub struct NotificationListener {
     receiver: mpsc::Receiver<StoreNotification>,
     connection_current: Arc<AtomicBool>,
-    _client: Client,
+    fault: Arc<std::sync::OnceLock<&'static str>>,
+    client: Client,
     connection_task: JoinHandle<()>,
 }
 
 impl NotificationListener {
     pub async fn connect(config: &str, capacity: usize) -> Result<Self, StoreError> {
-        let (client, mut connection) = tokio_postgres::connect(config, NoTls).await?;
+        let mut config = config.parse::<tokio_postgres::Config>()?;
+        config.application_name(LISTENER_APPLICATION_NAME);
+        let (client, mut connection) = config.connect(NoTls).await?;
         let (sender, receiver) = mpsc::channel(capacity.max(1));
         let connection_current = Arc::new(AtomicBool::new(true));
         let task_current = Arc::clone(&connection_current);
+        let fault = Arc::new(std::sync::OnceLock::new());
+        let task_fault = Arc::clone(&fault);
         let connection_task = tokio::spawn(async move {
             let mut assemblies = HashMap::new();
-            loop {
+            let reason = loop {
                 match poll_fn(|context| connection.poll_message(context)).await {
                     Some(Ok(AsyncMessage::Notification(notification)))
                         if notification.channel() == EVENT_CHANNEL =>
                     {
                         let Ok(ingest_seq) = notification.payload().parse::<i64>() else {
-                            break;
+                            break "malformed durable notification";
                         };
-                        if ingest_seq <= 0
-                            || sender
-                                .try_send(StoreNotification::Stored(ingest_seq))
-                                .is_err()
+                        if ingest_seq <= 0 {
+                            break "malformed durable notification";
+                        }
+                        if sender
+                            .try_send(StoreNotification::Stored(ingest_seq))
+                            .is_err()
                         {
-                            break;
+                            break "notification queue full";
                         }
                     }
                     Some(Ok(AsyncMessage::Notification(notification)))
@@ -2396,17 +2416,19 @@ impl NotificationListener {
                                     .try_send(StoreNotification::Ephemeral(event))
                                     .is_err()
                                 {
-                                    break;
+                                    break "notification queue full";
                                 }
                             }
                             Ok(None) => {}
-                            Err(()) => break,
+                            Err(()) => break "malformed ephemeral notification",
                         }
                     }
                     Some(Ok(_)) => {}
-                    Some(Err(_)) | None => break,
+                    Some(Err(_)) => break "Postgres connection error",
+                    None => break "Postgres connection closed",
                 }
-            }
+            };
+            let _ = task_fault.set(reason);
             task_current.store(false, Ordering::Release);
         });
 
@@ -2417,13 +2439,30 @@ impl NotificationListener {
         Ok(Self {
             receiver,
             connection_current,
-            _client: client,
+            fault,
+            client,
             connection_task,
         })
     }
 
     pub fn is_current(&self) -> bool {
         self.connection_current.load(Ordering::Acquire)
+    }
+
+    /// Why the listener stopped, once it has.
+    pub fn fault(&self) -> Option<&'static str> {
+        self.fault.get().copied()
+    }
+
+    /// The largest committed `ingest_seq`, read on the listening connection
+    /// after `LISTEN` took effect: every later commit is notified here, so
+    /// a reader that catches up through this value misses nothing.
+    pub async fn latest_ingest_seq(&self) -> Result<i64, StoreError> {
+        Ok(self
+            .client
+            .query_one("SELECT COALESCE(MAX(ingest_seq), 0) FROM nostr_event", &[])
+            .await?
+            .get(0))
     }
 
     pub async fn recv(&mut self) -> Option<i64> {

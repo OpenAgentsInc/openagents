@@ -152,9 +152,32 @@ sequence order.
 
 Each gateway establishes `LISTEN` before sampling its durable cursor. A later
 notification jump is recovered with the prepared, bounded `events_after`
-query, so a missed individual notification does not lose delivery. Gaps larger
-than 4,096 sequence positions, a cursor beyond the database high-water mark,
-or a failed catch-up make the process non-current and close its clients.
+query, so a missed individual notification does not lose delivery. A jump
+larger than 4,096 sequence positions is read back in steps of at most 4,096.
+
+Losing the notification listener never stops the relay (#9947). The
+listener's connection (`application_name` `nostr-relay-listener`) can end
+because Postgres or the Cloud SQL connector dropped it, its local queue of
+2,048 notifications filled, or a payload was malformed. The gateway then
+logs a warning with the reason and keeps serving: events this process
+commits still go out from memory. It reconnects with backoff (100 ms,
+doubling to 5 s), establishes `LISTEN`, reads the high-water mark on that
+same connection, and catches up through it by sequence, so every stored
+event committed during the outage reaches each subscriber once, in order.
+Ephemeral events sent while no listener was connected are not replayed;
+they were never stored. A catch-up read that fails is retried with the same
+backoff. A notification that names a sequence above the database's
+high-water mark is treated as a listener fault: events up to the high-water
+mark are delivered, and the listener is replaced and resynchronized.
+
+A database worker still stops the process on a failure it can't isolate to
+one request, such as its connection closing. A cancelled statement
+(SQLSTATE 57014) fails only its own request: Postgres applies a cancel to
+whatever statement is running when it arrives, so one meant for a finished
+history read could land on the next statement on that connection. A
+cancelled history read also waits for its statement to end before the
+connection takes another. Each stop logs one JSON `error` line naming the
+reason before the process exits.
 
 ## Admission policy
 

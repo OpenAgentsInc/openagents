@@ -214,7 +214,11 @@ impl DbPool {
                                 request,
                                 protocol.relay_signer.as_ref(),
                             ).await;
-                            if fatal || !store.is_current() {
+                            if fatal.is_some() || !store.is_current() {
+                                super::server::log_failure(
+                                    "a database worker failed",
+                                    fatal.as_deref().unwrap_or("its Postgres connection closed"),
+                                );
                                 worker_current.store(false, Ordering::Release);
                                 let _ = failure_shutdown.send(true);
                                 break;
@@ -552,7 +556,7 @@ async fn handle_request(
     store: &mut Store,
     request: DbRequest,
     relay_signer: Option<&RelaySigner>,
-) -> bool {
+) -> Option<String> {
     match request {
         DbRequest::Admit {
             event,
@@ -563,13 +567,13 @@ async fn handle_request(
             let result = store
                 .admit_with_identity(&event, now, relay_signer, virtual_owner.as_deref())
                 .await;
-            let fatal = result.as_ref().is_err_and(is_fatal);
+            let fatal = fatal_error(&result);
             let _ = response.send(result);
             fatal
         }
         DbRequest::IdentityStatus { pubkey, response } => {
             let result = store.identity_status(&pubkey).await;
-            let fatal = result.as_ref().is_err_and(is_fatal);
+            let fatal = fatal_error(&result);
             let _ = response.send(result);
             fatal
         }
@@ -582,7 +586,7 @@ async fn handle_request(
             let result = store
                 .materialize_agent_owner(&agent_pubkey, &owner_pubkey, require_owner_member)
                 .await;
-            let fatal = result.as_ref().is_err_and(is_fatal);
+            let fatal = fatal_error(&result);
             let _ = response.send(result);
             fatal
         }
@@ -592,13 +596,13 @@ async fn handle_request(
             response,
         } => {
             let result = store.is_agent_owner(&agent_pubkey, &owner_pubkey).await;
-            let fatal = result.as_ref().is_err_and(is_fatal);
+            let fatal = fatal_error(&result);
             let _ = response.send(result);
             fatal
         }
         DbRequest::WorkspaceIcon { response } => {
             let result = store.workspace_icon().await;
-            let fatal = result.as_ref().is_err_and(is_fatal);
+            let fatal = fatal_error(&result);
             let _ = response.send(result);
             fatal
         }
@@ -608,7 +612,7 @@ async fn handle_request(
             response,
         } => {
             let result = store.set_workspace_icon(&event, &icon).await;
-            let fatal = result.as_ref().is_err_and(is_fatal);
+            let fatal = fatal_error(&result);
             let _ = response.send(result);
             fatal
         }
@@ -629,7 +633,7 @@ async fn handle_request(
                     "relay signing key is required for identity archival".into(),
                 )),
             };
-            let fatal = result.as_ref().is_err_and(is_fatal);
+            let fatal = fatal_error(&result);
             let _ = response.send(result);
             fatal
         }
@@ -650,7 +654,7 @@ async fn handle_request(
                     "relay signing key is required for DM visibility".into(),
                 )),
             };
-            let fatal = result.as_ref().is_err_and(is_fatal);
+            let fatal = fatal_error(&result);
             let _ = response.send(result);
             fatal
         }
@@ -664,7 +668,7 @@ async fn handle_request(
             let result = store
                 .read_state_snapshot(&pubkey, &authorization, &community, now)
                 .await;
-            let fatal = result.as_ref().is_err_and(is_fatal);
+            let fatal = fatal_error(&result);
             let _ = response.send(result);
             fatal
         }
@@ -678,7 +682,7 @@ async fn handle_request(
         } => {
             let result =
                 query_history(store, filters, now, max_results, cancel, read_pubkeys).await;
-            let fatal = result.as_ref().is_err_and(is_fatal);
+            let fatal = fatal_error(&result);
             let _ = response.send(result);
             fatal
         }
@@ -692,7 +696,7 @@ async fn handle_request(
             let result = store
                 .count_filters(&filters, now, max_count, &read_pubkeys)
                 .await;
-            let fatal = result.as_ref().is_err_and(is_fatal);
+            let fatal = fatal_error(&result);
             let _ = response.send(result);
             fatal
         }
@@ -712,13 +716,13 @@ async fn handle_request(
                     relay_signer,
                 )
                 .await;
-            let fatal = result.as_ref().is_err_and(is_fatal);
+            let fatal = fatal_error(&result);
             let _ = response.send(result);
             fatal
         }
         DbRequest::MediaLookup { sha256, response } => {
             let result = store.media_blob(&sha256).await;
-            let fatal = result.as_ref().is_err_and(is_fatal);
+            let fatal = fatal_error(&result);
             let _ = response.send(result);
             fatal
         }
@@ -743,7 +747,7 @@ async fn handle_request(
                     max_bytes_per_pubkey,
                 )
                 .await;
-            let fatal = result.as_ref().is_err_and(is_fatal);
+            let fatal = fatal_error(&result);
             let _ = response.send(result);
             fatal
         }
@@ -756,13 +760,13 @@ async fn handle_request(
             let result = store
                 .delete_media(&authorization_id, &authorization_pubkey, &sha256)
                 .await;
-            let fatal = result.as_ref().is_err_and(is_fatal);
+            let fatal = fatal_error(&result);
             let _ = response.send(result);
             fatal
         }
         DbRequest::MediaFinalize { sha256, response } => {
             let result = store.finalize_media(&sha256).await;
-            let fatal = result.as_ref().is_err_and(is_fatal);
+            let fatal = fatal_error(&result);
             let _ = response.send(result);
             fatal
         }
@@ -775,7 +779,7 @@ async fn handle_request(
             let result = store
                 .abandon_media(&authorization_pubkey, &sha256, owned_before)
                 .await;
-            let fatal = result.as_ref().is_err_and(is_fatal);
+            let fatal = fatal_error(&result);
             let _ = response.send(result);
             fatal
         }
@@ -787,7 +791,7 @@ async fn handle_request(
             response,
         } => {
             let result = catch_up(store, after, through, now, limit).await;
-            let fatal = result.as_ref().is_err_and(is_fatal);
+            let fatal = fatal_error(&result);
             let _ = response.send(result);
             fatal
         }
@@ -797,7 +801,7 @@ async fn handle_request(
             response,
         } => {
             let result = store.channel_window_served(&channel, &reader).await;
-            let fatal = result.as_ref().is_err_and(is_fatal);
+            let fatal = fatal_error(&result);
             let _ = response.send(result);
             fatal
         }
@@ -810,7 +814,7 @@ async fn handle_request(
             let result = store
                 .admit_push_lease(&event, now, &lease, relay_signer)
                 .await;
-            let fatal = result.as_ref().is_err_and(is_fatal);
+            let fatal = fatal_error(&result);
             let _ = response.send(result);
             fatal
         }
@@ -894,7 +898,23 @@ async fn query_history(
     })
 }
 
+/// The error text when `result` failed in a way that stops this worker.
+fn fatal_error<T>(result: &Result<T, StoreError>) -> Option<String> {
+    match result {
+        Err(error) if is_fatal(error) => Some(error.to_string()),
+        _ => None,
+    }
+}
+
 fn is_fatal(error: &StoreError) -> bool {
+    // A cancelled statement fails only its own request; the connection
+    // stays usable. A cancel meant for an earlier query can still land on
+    // the next one, so this is never a reason to stop the relay (#9947).
+    if let StoreError::Database(database) = error
+        && database.code() == Some(&tokio_postgres::error::SqlState::QUERY_CANCELED)
+    {
+        return false;
+    }
     !matches!(
         error,
         StoreError::Domain(_)

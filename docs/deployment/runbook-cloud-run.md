@@ -144,9 +144,14 @@ gcloud run services update-traffic openagents-nostr-relay \
 ```
 
 Revisions from before the last migration can't start against the current
-ledger. As of 2026-09-26 that means `openagents-nostr-relay-00023-kax`
-(`9b5bb212f1`, migrations 1-8) won't cold-start, so the safe rollback is
-forward: fix `main`, build, deploy. Do not delete migration-ledger rows to force an older binary to start: that
+ledger. As of 2026-09-26 that meant `openagents-nostr-relay-00023-kax`
+(`9b5bb212f1`, migrations 1-8) wouldn't cold-start, so the safe rollback is
+forward: fix `main`, build, deploy. Don't leave such a revision tagged: a
+tagged revision keeps its minimum instance, and 00023-kax crash-looped
+under its `candidate` tag (`schema migration drift: database has unknown
+version 9`) from 2026-09-26 until 2026-09-29, when the tag was removed
+(`update-traffic --remove-tags candidate`) and the revision deleted, as
+`chris@`; the serving revision, 00031-mel, was not touched (#9947). Do not delete migration-ledger rows to force an older binary to start: that
 separates the recorded schema from the installed schema and causes subsequent
 migration replay to fail. If a code rollback is necessary, build the corrected
 code with the current migration set and verify compatibility, or use a separately

@@ -5,8 +5,7 @@ use std::{
     io::{BufRead, BufReader},
     net::{SocketAddr, TcpStream},
     process::{Child, Command, Stdio},
-    thread,
-    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use nostr_relay::domain::Event;
@@ -14,8 +13,6 @@ use secp256k1::{Keypair, Secp256k1, SecretKey};
 use serde_json::{Value, json};
 use tokio_postgres::{Client, NoTls};
 use tokio_tungstenite::tungstenite::{Message, WebSocket, client};
-
-const EXIT_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[test]
 fn m4_two_process_gap_and_chaos_contract() {
@@ -71,20 +68,32 @@ fn m4_two_process_gap_and_chaos_contract() {
     publish(&mut survivor_publisher, &survivor);
     assert_event(&mut subscriber, &survivor);
 
+    // A notification naming a sequence the database does not hold can't be
+    // trusted. The relay replaces its listener and keeps serving: the next
+    // real event arrives once, and nothing is skipped (#9947).
     runtime.block_on(inject_unbounded_gap(&admin));
-    match subscriber.read() {
-        Ok(Message::Close(_))
-        | Err(tokio_tungstenite::tungstenite::Error::ConnectionClosed)
-        | Err(tokio_tungstenite::tungstenite::Error::AlreadyClosed)
-        | Err(tokio_tungstenite::tungstenite::Error::Protocol(_)) => {}
-        other => panic!("relay did not fail closed on an unbounded gap: {other:?}"),
-    }
-    let failed = relay_two.wait_for_exit(EXIT_TIMEOUT);
+    let after_gap = signed_event(35, now(), "after an impossible notification");
+    publish(&mut survivor_publisher, &after_gap);
+    assert_event(&mut subscriber, &after_gap);
+    let later = signed_event(36, now(), "the replaced listener delivers");
+    let mut other_publisher = connect_client(relay_two.address);
+    runtime.block_on(insert_without_notify(&admin, &later));
+    let trigger_later = signed_event(37, now(), "catch-up trigger after the gap");
+    publish(&mut other_publisher, &trigger_later);
+    assert_event(&mut subscriber, &later);
+    assert_event(&mut subscriber, &trigger_later);
     assert!(
-        !failed.success(),
-        "a process that cannot prove its notification gap must exit non-zero"
+        relay_two
+            .child
+            .as_mut()
+            .unwrap()
+            .try_wait()
+            .unwrap()
+            .is_none(),
+        "an impossible notification must not stop the relay"
     );
 
+    drop(other_publisher);
     drop(survivor_publisher);
     drop(admin);
     runtime.block_on(driver).unwrap().unwrap();
@@ -134,22 +143,6 @@ impl RelayProcess {
         let mut child = self.child.take().unwrap();
         child.kill().unwrap();
         child.wait().unwrap()
-    }
-
-    fn wait_for_exit(&mut self, duration: Duration) -> std::process::ExitStatus {
-        let deadline = Instant::now() + duration;
-        let child = self.child.as_mut().unwrap();
-        loop {
-            if let Some(status) = child.try_wait().unwrap() {
-                self.child = None;
-                return status;
-            }
-            assert!(
-                Instant::now() < deadline,
-                "relay did not exit before timeout"
-            );
-            thread::sleep(Duration::from_millis(10));
-        }
     }
 }
 

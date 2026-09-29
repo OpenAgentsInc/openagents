@@ -32,6 +32,13 @@ update this file in the same change and name the test that checks it.
 
 See [the auto-start guide](docs/coder/runtime/host-autostart.md).
 
+## Relay notification delivery
+
+| Invariant | Status | Checked by |
+| --- | --- | --- |
+| Every stored event reaches each live subscriber of a relay process once, in `ingest_seq` order, never before its commit, and never skipped. Losing the Postgres notification listener, or a notification naming a sequence the database doesn't hold, does not stop the process: it keeps serving, replaces the listener with backoff, reads the high-water mark on the new listening connection, and catches up through it by sequence in reads of at most 4,096 positions. Ephemeral events sent while no listener was connected are not replayed. | Reinterpreted on 2026-09-29 ([#9947](https://github.com/OpenAgentsInc/openagents/issues/9947)). Before, a lost listener, a gap over 4,096 positions, or a notification past the high-water mark stopped the process and closed every client; Cloud Run then restarted it. Delivery order and no-skip are unchanged. | `the_relay_keeps_serving_and_catches_up_when_its_listener_is_killed` in `crates/nostr-relay/tests/listener_postgres.rs`; `m4_two_process_gap_and_chaos_contract` in `crates/nostr-relay/tests/multiprocess_postgres.rs`; `a_long_outage_is_read_back_in_bounded_steps`, `a_notification_past_the_database_is_dropped_without_skipping_real_events` in `crates/nostr-relay` (`gateway::server`) |
+| A cancelled history read fails only its own request. A statement cancelled on a relay worker's connection (SQLSTATE 57014) never stops the process, and a cancelled read waits for its statement to end before the connection runs another. | New on 2026-09-29 ([#9947](https://github.com/OpenAgentsInc/openagents/issues/9947)): each of the four relay crashes on 2026-09-29 came 20 to 50 ms after Postgres logged a history read `canceling statement due to user request`. | `a_cancelled_read_never_fails_the_next_statement` in `crates/nostr-relay/tests/listener_postgres.rs` |
+
 ## Device commands
 
 | Invariant | Status | Checked by |

@@ -6,7 +6,7 @@ use std::{
         Arc,
         atomic::{AtomicBool, AtomicU64, Ordering},
     },
-    time::{SystemTime, UNIX_EPOCH},
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use tokio::{
@@ -60,7 +60,13 @@ const MAX_PROCESS_CONNECTIONS: usize = 4_096;
 const NOTIFICATION_QUEUE_CAPACITY: usize = 2_048;
 const HUB_COMMAND_CAPACITY: usize = 2_048;
 const MAX_DB_QUEUED_JOBS: usize = 256;
+/// The most sequences one catch-up read covers.
 const MAX_NOTIFICATION_GAP: usize = 4_096;
+/// Backoff for replacing a lost notification listener and for retrying a
+/// failed catch-up read.
+const LISTENER_RETRY_MIN: Duration = Duration::from_millis(100);
+const LISTENER_RETRY_MAX: Duration = Duration::from_secs(5);
+const LISTENER_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 /// Locally committed events waiting for the delivery task. When it is full
 /// an event waits for its database notification instead.
 const COMMITTED_CAPACITY: usize = 1_024;
@@ -101,8 +107,41 @@ struct ServerState {
 
 enum Wake {
     Notification(StoreNotification),
+    ListenerLost,
+    Reconnected(Result<(NotificationListener, i64), String>),
     Committed(PublishedEvent),
     Read(Result<CatchUpResult, StoreError>),
+}
+
+/// A replacement listener being connected, after its backoff delay, with
+/// the latest sequence read on it once `LISTEN` took effect.
+type PendingListener = std::pin::Pin<
+    Box<dyn std::future::Future<Output = Result<(NotificationListener, i64), String>> + Send>,
+>;
+
+fn reconnect_listener(database_url: String, delay: Duration) -> PendingListener {
+    Box::pin(async move {
+        tokio::time::sleep(delay).await;
+        let connect = async {
+            let listener =
+                NotificationListener::connect(&database_url, NOTIFICATION_QUEUE_CAPACITY).await?;
+            let latest = listener.latest_ingest_seq().await?;
+            Ok::<_, StoreError>((listener, latest))
+        };
+        match timeout(LISTENER_CONNECT_TIMEOUT, connect).await {
+            Ok(Ok(connected)) => Ok(connected),
+            Ok(Err(error)) => Err(error.to_string()),
+            Err(_) => Err("connecting timed out".to_owned()),
+        }
+    })
+}
+
+fn next_read_retry(previous: Duration) -> Duration {
+    if previous.is_zero() {
+        LISTENER_RETRY_MIN
+    } else {
+        (previous * 2).min(LISTENER_RETRY_MAX)
+    }
 }
 
 /// A catch-up read in flight, through `through`.
@@ -152,23 +191,42 @@ impl DurableSequence {
         }
     }
 
-    /// The range to read next, after `.0` through `.1`, if any.
+    /// The range to read next, after `.0` through `.1`, if any. A range
+    /// holds at most [`MAX_NOTIFICATION_GAP`] sequences, so a long outage
+    /// is read back in bounded steps.
     fn read_needed(&self) -> Option<(i64, i64)> {
-        (self.wanted > self.delivered).then_some((self.delivered, self.wanted))
+        let step = i64::try_from(MAX_NOTIFICATION_GAP).unwrap_or(i64::MAX);
+        (self.wanted > self.delivered).then(|| {
+            (
+                self.delivered,
+                self.wanted.min(self.delivered.saturating_add(step)),
+            )
+        })
     }
 
-    /// A read through `through` returned `events` in sequence order. Returns
-    /// those not yet delivered.
+    /// A read through `through`, whose database held sequences up to
+    /// `latest`, returned `events` in sequence order. Returns those not yet
+    /// delivered, and false when `through` names a sequence the database
+    /// does not hold: the notifications that asked for it can't be trusted,
+    /// so nothing past `latest` is wanted until a new listener says so.
     fn read(
         &mut self,
         through: i64,
+        latest: i64,
         events: Vec<crate::store::StoredEvent>,
-    ) -> impl Iterator<Item = crate::store::StoredEvent> {
+    ) -> (Vec<crate::store::StoredEvent>, bool) {
         let after = self.delivered;
-        self.delivered = self.delivered.max(through);
-        events
+        let covered = through.min(latest.max(after));
+        self.delivered = self.delivered.max(covered);
+        let consistent = latest >= through;
+        if !consistent {
+            self.wanted = self.delivered;
+        }
+        let events = events
             .into_iter()
-            .filter(move |stored| stored.ingest_seq > after && stored.ingest_seq <= through)
+            .filter(|stored| stored.ingest_seq > after && stored.ingest_seq <= covered)
+            .collect();
+        (events, consistent)
     }
 }
 
@@ -215,7 +273,7 @@ impl Gateway {
             print_legacy_import_report("startup", &total);
         }
         let policy = migration_store.relay_policy().await?;
-        let mut notifications =
+        let notifications =
             NotificationListener::connect(&config.database_url, NOTIFICATION_QUEUE_CAPACITY)
                 .await?;
         // LISTEN is current before the cursor is sampled. Notifications at or
@@ -260,7 +318,7 @@ impl Gateway {
                         if expiration_store.delete_expired(now).await.is_err()
                             || !expiration_store.is_current()
                         {
-                            fail_process(&expiration_current, &expiration_shutdown);
+                            fail_process(&expiration_current, &expiration_shutdown, "the expiration sweep failed");
                             break;
                         }
                         if let Some(storage) = &expiration_media {
@@ -272,7 +330,7 @@ impl Gateway {
                                     }
                                 }
                                 Err(_) => {
-                                    fail_process(&expiration_current, &expiration_shutdown);
+                                    fail_process(&expiration_current, &expiration_shutdown, "releasing stale media reservations failed");
                                     break;
                                 }
                             }
@@ -312,7 +370,7 @@ impl Gateway {
                                     }
                                 }
                                 Err(_) => {
-                                    fail_process(&import_current, &import_shutdown);
+                                    fail_process(&import_current, &import_shutdown, "the nostr-effect import sweep failed");
                                     break;
                                 }
                             }
@@ -334,25 +392,32 @@ impl Gateway {
         let notify_shutdown = shutdown.clone();
         let notify_current = Arc::clone(&current);
         let mut notify_stop = shutdown_receiver.clone();
+        let notify_database_url = config.database_url.clone();
         let (committed, mut committed_receiver) =
             mpsc::channel::<PublishedEvent>(COMMITTED_CAPACITY);
         background.push(tokio::spawn(async move {
             let mut sequence = DurableSequence::new(initial_ingest_seq);
             let mut reading: Option<PendingCatchUp> = None;
+            let mut read_retry = Duration::ZERO;
+            // The listener, or the reconnection that will replace it. A lost
+            // listener never stops the relay: local commits keep going out
+            // from memory, and the replacement's first read catches up by
+            // sequence on everything committed meanwhile (#9947).
+            let mut listener = Some(notifications);
+            let mut reconnecting: Option<PendingListener> = None;
+            let mut listener_retry = LISTENER_RETRY_MIN;
             loop {
                 if reading.is_none()
                     && let Some((after, through)) = sequence.read_needed()
                 {
-                    if usize::try_from(through - after)
-                        .map_or(true, |gap| gap > MAX_NOTIFICATION_GAP)
-                    {
-                        fail_process(&notify_current, &notify_shutdown);
-                        break;
-                    }
                     let db = notify_db.clone();
+                    let delay = read_retry;
                     reading = Some(PendingCatchUp {
                         through,
                         read: Box::pin(async move {
+                            if !delay.is_zero() {
+                                tokio::time::sleep(delay).await;
+                            }
                             db.catch_up(after, through, unix_now(), MAX_NOTIFICATION_GAP + 1)
                                 .await
                         }),
@@ -365,13 +430,21 @@ impl Gateway {
                         }
                         continue;
                     }
-                    notification = notifications.recv_notification() => {
-                        let Some(notification) = notification else {
-                            fail_process(&notify_current, &notify_shutdown);
-                            break;
-                        };
-                        Wake::Notification(notification)
-                    }
+                    notification = async {
+                        match listener.as_mut() {
+                            Some(listener) => listener.recv_notification().await,
+                            None => std::future::pending().await,
+                        }
+                    }, if listener.is_some() => match notification {
+                        Some(notification) => Wake::Notification(notification),
+                        None => Wake::ListenerLost,
+                    },
+                    connected = async {
+                        match reconnecting.as_mut() {
+                            Some(pending) => pending.as_mut().await,
+                            None => std::future::pending().await,
+                        }
+                    }, if reconnecting.is_some() => Wake::Reconnected(connected),
                     Some(local) = committed_receiver.recv() => Wake::Committed(local),
                     result = async {
                         match reading.as_mut() {
@@ -392,6 +465,41 @@ impl Gateway {
                             ingest_seq: None,
                         });
                     }
+                    Wake::ListenerLost => {
+                        let reason = listener
+                            .take()
+                            .and_then(|lost| lost.fault())
+                            .unwrap_or("the listener stopped");
+                        log_warning(
+                            "the relay lost its Postgres notification listener; reconnecting",
+                            reason,
+                        );
+                        reconnecting = Some(reconnect_listener(
+                            notify_database_url.clone(),
+                            listener_retry,
+                        ));
+                    }
+                    Wake::Reconnected(Ok((restored, latest))) => {
+                        reconnecting = None;
+                        listener_retry = LISTENER_RETRY_MIN;
+                        // Everything committed before LISTEN took effect is
+                        // at or below `latest`; the read it starts delivers
+                        // what was missed, once, in order.
+                        sequence.notified(latest);
+                        listener = Some(restored);
+                        log_info("the relay's Postgres notification listener is back", latest);
+                    }
+                    Wake::Reconnected(Err(reason)) => {
+                        listener_retry = (listener_retry * 2).min(LISTENER_RETRY_MAX);
+                        log_warning(
+                            "the relay could not reconnect its Postgres notification listener; retrying",
+                            &reason,
+                        );
+                        reconnecting = Some(reconnect_listener(
+                            notify_database_url.clone(),
+                            listener_retry,
+                        ));
+                    }
                     Wake::Committed(local) => {
                         if let Some(ingest_seq) = local.ingest_seq
                             && sequence.committed(ingest_seq)
@@ -409,20 +517,42 @@ impl Gateway {
                     Wake::Read(result) => {
                         let through = reading.take().map_or(0, |pending| pending.through);
                         match result {
-                            Ok(catch_up)
-                                if catch_up.latest >= through
-                                    && catch_up.events.len() <= MAX_NOTIFICATION_GAP =>
-                            {
-                                publish.extend(sequence.read(through, catch_up.events).map(
-                                    |stored| PublishedEvent {
-                                        event: Arc::new(stored.event),
-                                        ingest_seq: Some(stored.ingest_seq),
-                                    },
-                                ));
+                            Ok(catch_up) if catch_up.events.len() <= MAX_NOTIFICATION_GAP => {
+                                read_retry = Duration::ZERO;
+                                let (events, consistent) =
+                                    sequence.read(through, catch_up.latest, catch_up.events);
+                                publish.extend(events.into_iter().map(|stored| PublishedEvent {
+                                    event: Arc::new(stored.event),
+                                    ingest_seq: Some(stored.ingest_seq),
+                                }));
+                                if !consistent && listener.is_some() {
+                                    // A notification named a sequence the
+                                    // database does not hold. Trust nothing
+                                    // it sent: replace it and resynchronize.
+                                    listener = None;
+                                    log_warning(
+                                        "the relay's Postgres notification listener named a sequence the database does not hold; reconnecting",
+                                        &format!("read through {through}, latest {}", catch_up.latest),
+                                    );
+                                    reconnecting = Some(reconnect_listener(
+                                        notify_database_url.clone(),
+                                        LISTENER_RETRY_MIN,
+                                    ));
+                                }
                             }
-                            Ok(_) | Err(_) => {
-                                fail_process(&notify_current, &notify_shutdown);
-                                break;
+                            Ok(catch_up) => {
+                                read_retry = next_read_retry(read_retry);
+                                log_warning(
+                                    "a notification catch-up read returned more rows than its range; retrying",
+                                    &catch_up.events.len().to_string(),
+                                );
+                            }
+                            Err(error) => {
+                                read_retry = next_read_retry(read_retry);
+                                log_warning(
+                                    "a notification catch-up read failed; retrying",
+                                    &error.to_string(),
+                                );
                             }
                         }
                     }
@@ -435,7 +565,11 @@ impl Gateway {
                     }
                 }
                 if failed {
-                    fail_process(&notify_current, &notify_shutdown);
+                    fail_process(
+                        &notify_current,
+                        &notify_shutdown,
+                        "the subscription hub stopped",
+                    );
                     break;
                 }
             }
@@ -512,7 +646,7 @@ impl Gateway {
                     let (stream, peer) = match accepted {
                         Ok(accepted) => accepted,
                         Err(_) => {
-                            fail_process(&self.state.current, &self.shutdown);
+                            fail_process(&self.state.current, &self.shutdown, "accepting a connection failed");
                             break;
                         }
                     };
@@ -556,7 +690,7 @@ impl Gateway {
         }
         if failed {
             Err(GatewayError::Internal(
-                "the relay lost its Postgres notification listener or a database worker failed"
+                "a database worker or background task failed; the line before this one says which"
                     .to_owned(),
             ))
         } else {
@@ -1709,7 +1843,11 @@ async fn admit_event(
                     .await
                     .is_err()
                 {
-                    fail_process(&context.state.current, &context.state.shutdown);
+                    fail_process(
+                        &context.state.current,
+                        &context.state.shutdown,
+                        "the subscription hub stopped",
+                    );
                 }
             }
             if let AdmissionOutcome::Stored { ingest_seq } = outcome
@@ -2282,14 +2420,39 @@ async fn spawn_push_worker(
             .await
             .is_err()
         {
-            fail_process(&current, &shutdown);
+            fail_process(&current, &shutdown, "the push worker failed");
         }
     }))
 }
 
-fn fail_process(current: &AtomicBool, shutdown: &watch::Sender<bool>) {
+fn fail_process(current: &AtomicBool, shutdown: &watch::Sender<bool>, reason: &str) {
+    log_failure("the relay is stopping", reason);
     current.store(false, Ordering::Release);
     let _ = shutdown.send(true);
+}
+
+/// One JSON error line naming what stopped the relay, before it exits.
+pub(super) fn log_failure(message: &str, reason: &str) {
+    log_line(serde_json::json!({"level": "error", "message": message, "reason": reason}));
+}
+
+fn log_warning(message: &str, reason: &str) {
+    log_line(serde_json::json!({"level": "warn", "message": message, "reason": reason}));
+}
+
+fn log_info(message: &str, latest_ingest_seq: i64) {
+    log_line(serde_json::json!({
+        "level": "info",
+        "message": message,
+        "latest_ingest_seq": latest_ingest_seq,
+    }));
+}
+
+/// Writes to stderr and ignores a closed stream: a log line never stops
+/// the relay.
+fn log_line(line: serde_json::Value) {
+    use std::io::Write;
+    let _ = writeln!(io::stderr().lock(), "{line}");
 }
 
 pub fn unix_now() -> u64 {
@@ -2307,7 +2470,7 @@ mod tests {
         store::StoredEvent,
     };
 
-    use super::{DurableSequence, validate_and_clamp_filters};
+    use super::{DurableSequence, MAX_NOTIFICATION_GAP, validate_and_clamp_filters};
 
     fn stored(ingest_seq: i64) -> StoredEvent {
         StoredEvent {
@@ -2324,8 +2487,9 @@ mod tests {
         }
     }
 
-    fn sequences(events: impl Iterator<Item = StoredEvent>) -> Vec<i64> {
-        events.map(|stored| stored.ingest_seq).collect()
+    fn sequences((events, consistent): (Vec<StoredEvent>, bool)) -> Vec<i64> {
+        assert!(consistent);
+        events.into_iter().map(|stored| stored.ingest_seq).collect()
     }
 
     #[test]
@@ -2346,7 +2510,7 @@ mod tests {
         // Another process committed 11; this one committed 12.
         assert!(!sequence.committed(12));
         assert_eq!(sequence.read_needed(), Some((10, 12)));
-        let delivered = sequences(sequence.read(12, vec![stored(11), stored(12)]));
+        let delivered = sequences(sequence.read(12, 12, vec![stored(11), stored(12)]));
         assert_eq!(delivered, [11, 12]);
         assert_eq!(sequence.read_needed(), None);
         assert!(sequence.committed(13));
@@ -2363,10 +2527,57 @@ mod tests {
         // The read through 11 was already covered; the next asks for 12..13.
         assert_eq!(sequence.read_needed(), Some((11, 13)));
         // A read that started at 10 still delivers nothing twice.
-        let delivered = sequences(sequence.read(13, vec![stored(11), stored(12), stored(13)]));
+        let delivered = sequences(sequence.read(13, 13, vec![stored(11), stored(12), stored(13)]));
         assert_eq!(delivered, [12, 13]);
         assert!(!sequence.committed(13));
         assert_eq!(sequence.read_needed(), None);
+    }
+
+    #[test]
+    fn a_long_outage_is_read_back_in_bounded_steps() {
+        let step = i64::try_from(MAX_NOTIFICATION_GAP).unwrap();
+        let mut sequence = DurableSequence::new(10);
+        // A replacement listener reports far more than one read covers.
+        sequence.notified(10 + 2 * step + 5);
+        assert_eq!(sequence.read_needed(), Some((10, 10 + step)));
+        let (events, consistent) = sequence.read(10 + step, 10 + 2 * step + 5, vec![stored(11)]);
+        assert!(consistent);
+        assert_eq!(events.len(), 1);
+        assert_eq!(sequence.read_needed(), Some((10 + step, 10 + 2 * step)));
+        let _ = sequence.read(10 + 2 * step, 10 + 2 * step + 5, Vec::new());
+        assert_eq!(
+            sequence.read_needed(),
+            Some((10 + 2 * step, 10 + 2 * step + 5))
+        );
+        let _ = sequence.read(10 + 2 * step + 5, 10 + 2 * step + 5, Vec::new());
+        assert_eq!(sequence.read_needed(), None);
+    }
+
+    #[test]
+    fn a_notification_past_the_database_is_dropped_without_skipping_real_events() {
+        let mut sequence = DurableSequence::new(10);
+        sequence.notified(10_000);
+        let (after, through) = sequence.read_needed().unwrap();
+        assert_eq!(
+            (after, through),
+            (10, 10 + i64::try_from(MAX_NOTIFICATION_GAP).unwrap())
+        );
+        // The database holds only 11 and 12; a row committed after the
+        // read sampled `latest` is not delivered by it.
+        let (events, consistent) =
+            sequence.read(through, 12, vec![stored(11), stored(12), stored(13)]);
+        assert!(!consistent);
+        assert_eq!(
+            events
+                .iter()
+                .map(|stored| stored.ingest_seq)
+                .collect::<Vec<_>>(),
+            [11, 12]
+        );
+        assert_eq!(sequence.read_needed(), None);
+        // The next real commit, 13, still goes out exactly once.
+        assert!(sequence.committed(13));
+        assert!(!sequence.committed(13));
     }
 
     #[test]
