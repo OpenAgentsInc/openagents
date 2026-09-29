@@ -856,8 +856,8 @@ a reward: the tester returns them, and can skip any step.
 - **Play (15 to 20 minutes).**
   1. **"Open the wallet and tell me what it's telling you."** Then: **"Find
      out who holds your money in this wallet."** (The **i** button, the
-     trust note.) Note whether the ₿ amounts and the note explaining them
-     make sense, and whether the tester switches to BTC.
+     trust note.) Note whether the ₿ amounts make sense, and whether the
+     tester switches to BTC under **Show amounts as**.
   2. **"Back up the wallet the way you'd back up any wallet."** (Recovery,
      **Show recovery words**.) Camera off. Note hesitation and whether
      they write the words down.

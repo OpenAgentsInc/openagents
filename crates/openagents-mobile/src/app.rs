@@ -416,8 +416,6 @@ pub enum Request {
     AmountFormat {
         format: String,
     },
-    /// The person read the note that explains BIP 177 amounts.
-    AmountNoteAcknowledge,
 }
 
 /// The direct reply to [`Request::WalletWords`] and
@@ -564,7 +562,7 @@ pub struct Packet {
     /// Agents' payment requests: the approval sheet, the computers that may
     /// ask, and the payments they asked for.
     pub spend: crate::spend::View,
-    /// How amounts show and are typed, app-wide, and the transitional note.
+    /// How amounts show and are typed, app-wide.
     pub amounts: crate::amounts::AmountsView,
     /// Push wake status (`Wakes on`, `Wakes off`, or why not), once the
     /// build is configured for push or a push request arrived.
@@ -1229,7 +1227,6 @@ impl App {
                     self.spend.set_format(format);
                 }
             }
-            Request::AmountNoteAcknowledge => self.amounts.acknowledge(),
             // `respond` answers these directly; the app packet never
             // carries recovery words or a seed.
             Request::WalletWords

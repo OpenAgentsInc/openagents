@@ -149,7 +149,6 @@ fn the_amount_format_is_saved_and_reaches_the_wallet() {
     };
     let packet = app.call(Request::Snapshot);
     assert_eq!(packet.amounts.format, "bip177");
-    assert!(packet.amounts.note.is_some(), "the transitional note shows");
     // BIP 177 mode takes whole base units only.
     assert_eq!(
         invoice_error(&mut app, "1.5").as_deref(),
@@ -159,7 +158,7 @@ fn the_amount_format_is_saved_and_reaches_the_wallet() {
         serde_json::from_str(r#"{"op":"amount_format","format":"btc"}"#).expect("request");
     let packet = app.call(request);
     assert_eq!((packet.amounts.format, packet.amounts.unit), ("btc", "BTC"));
-    assert!(packet.amounts.decimal && packet.amounts.note.is_none());
+    assert!(packet.amounts.decimal);
     // Legacy mode reads decimal BTC, so the amount passes and the wallet,
     // which has no key here, is what stops it.
     assert_eq!(

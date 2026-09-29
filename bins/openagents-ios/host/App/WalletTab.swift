@@ -11,29 +11,22 @@ import UniformTypeIdentifiers
 /// summary. `ready` shows from launch: while the wallet starts it carries
 /// the last balance read (or `balance_unknown`) and a `status`.
 /// Rust's amount format (`amounts::AmountsView`): BIP 177 integer base units
-/// (`₿12,345`) or legacy BTC (`0.00012345 BTC`), saved and applied app-wide,
-/// with the transitional note until the person reads it.
+/// (`₿12,345`) or legacy BTC (`0.00012345 BTC`), saved and applied app-wide.
 struct AmountsState: Decodable, Equatable {
     struct Choice: Decodable, Equatable, Identifiable {
         let id: String
         let label: String
         let selected: Bool
     }
-    struct Note: Decodable, Equatable {
-        let title: String
-        let lines: [String]
-    }
     let format: String
     let unit: String
     let decimal: Bool
     let choices: [Choice]
-    let note: Note?
 
     static let standard = AmountsState(
         format: "bip177", unit: "₿", decimal: false,
         choices: [Choice(id: "bip177", label: "₿ bitcoin (BIP 177)", selected: true),
-                  Choice(id: "btc", label: "BTC (legacy)", selected: false)],
-        note: nil)
+                  Choice(id: "btc", label: "BTC (legacy)", selected: false)])
 }
 
 struct WalletState: Decodable, Equatable {
@@ -327,7 +320,6 @@ struct WalletTab: View {
 
     @ViewBuilder private func ready(_ wallet: WalletState) -> some View {
         balance(wallet)
-        if let note = amounts.note { amountNote(note) }
         if let warning = wallet.warning {
             Text(warning).font(.footnote).foregroundStyle(.white)
                 .padding(12).background(Color(white: 0.12), in: RoundedRectangle(cornerRadius: 12))
@@ -355,21 +347,6 @@ struct WalletTab: View {
     }
 
     // MARK: Amount format
-
-    /// The one-time note on BIP 177 amounts, with the choice beside it.
-    private func amountNote(_ note: AmountsState.Note) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(note.title).font(.headline).foregroundStyle(.white)
-            ForEach(note.lines, id: \.self) { Text($0).font(.footnote).foregroundStyle(.white) }
-            formatPicker()
-            Button("Got it") { bridge.wallet("amount_note_acknowledge") }
-                .buttonStyle(.bordered).tint(.white)
-                .accessibilityIdentifier("amount-note-done")
-        }
-        .padding(12)
-        .background(Color(white: 0.12), in: RoundedRectangle(cornerRadius: 12))
-        .accessibilityIdentifier("amount-note")
-    }
 
     private func amountSetting() -> some View {
         VStack(alignment: .leading, spacing: 10) {

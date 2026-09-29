@@ -25,11 +25,11 @@ decision, 2026-09-28 ([#9881](https://github.com/OpenAgentsInc/openagents/issues
   applies it to the Wallet and every other surface through the packet's
   `amounts` view. The command line reads `OPENAGENTS_AMOUNT_FORMAT` for its
   text output.
-- **Transitional note.** Until the person reads it, the Wallet shows a short
-  note explaining the change, with the format choice beside it. The balance
-  always shows both forms (the chosen one large, the other below it), which
-  is BIP 177's transitional dual display. The **Show amounts as** control
-  stays in the Wallet after the note is gone.
+- **Dual display.** The balance always shows both forms (the chosen one
+  large, the other below it), which is BIP 177's transitional dual display.
+  The **Show amounts as** control in the Wallet switches the format. The
+  Wallet shows no one-time notice about the change (owner decision,
+  2026-09-28).
 - **No "sat" in product copy.** Screens say "bitcoin", `₿`, or BTC.
 
 ## Names that keep `sat` and `msat`
@@ -63,8 +63,8 @@ Changed:
 | Balance warning (#9858) | `wallet.rs` | "more than ₿1,000,000". |
 | Agent payment approval sheet, computer grants, history, and notices (#9863) | `crates/openagents-mobile/src/spend.rs` | Amount, fee, fee ceiling, and what a grant has left follow the saved format; `docs/breez/spend-protocol.md` defaults read ₿. |
 | Deposit refunds and on-chain send speeds (#9862) | `wallet.rs` | Refund amount, refund fee, and each speed's fee through the formatter; the fee rate stays `sat/vB`. |
-| Android Wallet (#9861) | `bins/openagents-android/.../WalletScreen.kt`, `bins/openagents-android/README.md` | Same Rust views: `balance_alternate`, `balance_spoken`, the note, **Show amounts as**, and unit-named amount fields with a decimal keyboard in legacy mode. |
-| Amount format setting and transitional note | `crates/openagents-mobile/src/amounts.rs`, `app.rs`, `WalletTab.swift`, `MobileBridge.swift` | `amount_format` and `amount_note_acknowledge` requests; packet `amounts`. |
+| Android Wallet (#9861) | `bins/openagents-android/.../WalletScreen.kt`, `bins/openagents-android/README.md` | Same Rust views: `balance_alternate`, `balance_spoken`, **Show amounts as**, and unit-named amount fields with a decimal keyboard in legacy mode. |
+| Amount format setting | `crates/openagents-mobile/src/amounts.rs`, `app.rs`, `WalletTab.swift`, `MobileBridge.swift` | `amount_format` request; packet `amounts`. |
 | iOS amount fields | `WalletTab.swift` | Placeholders name ₿ or BTC; number pad in BIP 177 mode, decimal pad in legacy mode. |
 | `openagents wallet info` text | `crates/openagents-cli/src/wallet.rs` | On-chain and Lightning balances as `₿N`; usage explains the flag units. |
 | `openagents` help for x402 | `crates/openagents-cli/src/main.rs` | "for an exact bitcoin amount". |

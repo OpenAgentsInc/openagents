@@ -140,19 +140,6 @@ class WalletScreen(private val activity: MainActivity, private val bridge: Mobil
         }
     }
 
-    /** The one-time note on BIP 177 amounts, with the choice beside it. */
-    private fun amountNote(note: JSONObject) {
-        val card = activity.column().apply {
-            setPadding(activity.dp(12), activity.dp(12), activity.dp(12), activity.dp(12))
-            background = activity.rounded(0xFF1F1F1F.toInt(), 12f); tag = "amount-note"
-        }
-        card.add(activity.label(note.optString("title"), 16f, bold = true))
-        note.optJSONArray("lines")?.let { lines -> for (i in 0 until lines.length()) card.add(activity.label(lines.getString(i), 13f), 6) }
-        card.add(formatPicker(), 10)
-        card.add(activity.pill("Got it", "amount-note-done") { bridge.wallet("amount_note_acknowledge") }, 10, -2)
-        content.add(card, 16)
-    }
-
     private fun amountSetting() {
         content.add(activity.label("Show amounts as", 17f, bold = true), 24)
         content.add(formatPicker(), 10)
@@ -180,7 +167,6 @@ class WalletScreen(private val activity: MainActivity, private val bridge: Mobil
 
     private fun ready(wallet: JSONObject) {
         balance(wallet)
-        amounts?.objectOrNull("note")?.let { amountNote(it) }
         wallet.textOrNull("warning")?.let { warning ->
             content.add(activity.label(warning, 13f, key = "wallet-warning").apply {
                 setPadding(activity.dp(12), activity.dp(12), activity.dp(12), activity.dp(12))
