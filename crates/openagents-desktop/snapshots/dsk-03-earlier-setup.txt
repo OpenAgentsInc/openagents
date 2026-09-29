@@ -1,0 +1,9 @@
+vertical stack
+  heading "Coder runs here from an earlier setup."
+  vertical stack [card]
+    body "Phones" [bold]
+    status "6 phones can reach this Mac."
+  vertical stack [card]
+    body "Coder" [bold]
+    status "Nothing yet. On your phone, ask for work and tap Run Coder."
+  button "Connect another phone" -> connect_another

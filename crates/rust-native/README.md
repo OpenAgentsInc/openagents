@@ -4,6 +4,8 @@ Rust Native is an experimental reusable Rust UI foundation. Applications
 produce bounded semantic views with typed intents and generic styles. Platform
 adapters render those views with native controls, terminal facilities, or web
 elements. Applications retain their state, effects, permissions, and palettes.
+The desktop adapter, which lays out and paints views in Rust in a `winit`
+window, is the separate crate [`rust-native-desktop`](../rust-native-desktop/).
 
 The crate implements data contracts and validation. It does not yet include a
 native renderer, general mounting runtime, text editor, or stable API. It depends only

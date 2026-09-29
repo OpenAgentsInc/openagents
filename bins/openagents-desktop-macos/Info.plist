@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleName</key>
+  <string>OpenAgents</string>
+  <key>CFBundleDisplayName</key>
+  <string>OpenAgents</string>
+  <key>CFBundleIdentifier</key>
+  <string>com.openagents.desktop</string>
+  <key>CFBundleExecutable</key>
+  <string>OpenAgents</string>
+  <key>CFBundleIconFile</key>
+  <string>OpenAgents</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+  <key>CFBundleShortVersionString</key>
+  <string>0.1.0</string>
+  <key>CFBundleVersion</key>
+  <string>1</string>
+  <key>LSMinimumSystemVersion</key>
+  <string>13.0</string>
+  <key>LSApplicationCategoryType</key>
+  <string>public.app-category.developer-tools</string>
+  <key>NSHighResolutionCapable</key>
+  <true/>
+  <key>NSLocalNetworkUsageDescription</key>
+  <string>OpenAgents connects your phone to this Mac over your Wi-Fi.</string>
+</dict>
+</plist>

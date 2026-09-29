@@ -1,0 +1,13 @@
+vertical stack
+  heading "Offline."
+  vertical stack [card]
+    body "Phones" [bold]
+    status "No phones yet."
+  vertical stack [card]
+    body "Coder" [bold]
+    status "Nothing yet. On your phone, ask for work and tap Run Coder."
+    horizontal stack
+      status "No project yet."
+      button "Choose folder…" -> choose_folder
+    checkbox [ ] "Let my phone start Coder here" -> toggle_autostart (disabled)
+  button "Connect another phone" -> connect_another

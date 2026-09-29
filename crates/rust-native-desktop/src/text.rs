@@ -1,0 +1,368 @@
+//! Text: lines broken by Rust Native's shaper, glyphs painted with `swash`.
+//!
+//! [`Fonts::paragraph`] breaks a paragraph with
+//! [`rust_native::layout::shape::ShapingMeasurer`], the same line breaker
+//! the iOS transcript is checked against, and [`Fonts::draw`] shapes and
+//! rasterizes each line with the face and variations
+//! [`FontSpec`](rust_native::layout::shape::FontSpec) names, so the adapter
+//! paints exactly the outlines it measured.
+
+use crate::canvas::Frame;
+use rust_native::layout::display::{Font, Weight};
+use rust_native::layout::shape::{FACES, FontSpec, ShapingMeasurer};
+use rust_native::layout::{MeasureRun, Measurer};
+use rust_native::style::{Color, TextAlign};
+use std::collections::HashMap;
+use std::rc::Rc;
+use swash::FontRef;
+use swash::scale::{Render, ScaleContext, Source};
+use swash::shape::ShapeContext;
+use swash::zeno::{Format, Vector};
+
+/// A line height, in ems.
+pub const LINE_EM: f32 = 1.4;
+
+/// A paragraph broken into lines at one width.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Paragraph {
+    pub text: String,
+    pub font: Font,
+    pub lines: Vec<TextLine>,
+    /// The widest line, in points.
+    pub width: f32,
+    /// Every line's height together, in points.
+    pub height: f32,
+}
+
+/// One line of a paragraph.
+#[derive(Clone, Debug, PartialEq)]
+pub struct TextLine {
+    /// The line's text, as a byte range of the paragraph, without trailing
+    /// whitespace or a line break.
+    pub start: usize,
+    pub end: usize,
+    /// The line's width, in points.
+    pub width: f32,
+}
+
+impl Paragraph {
+    /// The height of one line, in points.
+    pub fn line_height(&self) -> f32 {
+        (self.font.size * LINE_EM).round()
+    }
+}
+
+/// A rasterized glyph.
+struct Glyph {
+    left: i32,
+    top: i32,
+    width: usize,
+    height: usize,
+    coverage: Vec<u8>,
+}
+
+type GlyphKey = (usize, u32, u32, u16, u8);
+
+/// The shaper, the rasterizer, and their caches. Keep one per thread.
+pub struct Fonts {
+    measurer: ShapingMeasurer,
+    shape: ShapeContext,
+    scale: ScaleContext,
+    faces: [FontRef<'static>; 4],
+    paragraphs: HashMap<(String, u64, u32), Rc<Paragraph>>,
+    glyphs: HashMap<GlyphKey, Option<Glyph>>,
+}
+
+impl Default for Fonts {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// A font's cache key.
+fn font_bits(font: Font) -> u64 {
+    u64::from(font.size.to_bits())
+        | (font.weight as u64) << 32
+        | u64::from(font.italic) << 40
+        | u64::from(font.mono) << 41
+}
+
+/// A regular or bold font at `size`.
+pub fn font(size: f32, weight: Weight, mono: bool) -> Font {
+    Font {
+        size,
+        weight,
+        italic: false,
+        mono,
+    }
+}
+
+impl Fonts {
+    pub fn new() -> Fonts {
+        Fonts {
+            measurer: ShapingMeasurer::new(),
+            shape: ShapeContext::new(),
+            scale: ScaleContext::new(),
+            faces: FACES.map(|data| FontRef::from_index(data, 0).expect("a bundled face")),
+            paragraphs: HashMap::new(),
+            glyphs: HashMap::new(),
+        }
+    }
+
+    /// `text` in `font`, broken to fit `width` points, or only at hard line
+    /// breaks when `width` is `None`.
+    pub fn paragraph(&mut self, text: &str, font: Font, width: Option<f32>) -> Rc<Paragraph> {
+        let key = (
+            text.to_string(),
+            font_bits(font),
+            width.map_or(u32::MAX, f32::to_bits),
+        );
+        if let Some(paragraph) = self.paragraphs.get(&key) {
+            return paragraph.clone();
+        }
+        if self.paragraphs.len() > 4_096 {
+            self.paragraphs.clear();
+        }
+        let paragraph = Rc::new(self.break_lines(text, font, width));
+        self.paragraphs.insert(key, paragraph.clone());
+        paragraph
+    }
+
+    fn break_lines(&mut self, text: &str, font: Font, width: Option<f32>) -> Paragraph {
+        let length16: u32 = text.chars().map(|c| c.len_utf16() as u32).sum();
+        let runs = [MeasureRun {
+            font,
+            start16: 0,
+            end16: length16,
+        }];
+        let measured = self
+            .measurer
+            .measure(text, &runs, width.map(|w| w.max(1.0)))
+            .unwrap_or_default();
+        // UTF-16 offset to byte offset.
+        let mut bytes = Vec::with_capacity(length16 as usize + 1);
+        for (at, ch) in text.char_indices() {
+            for _ in 0..ch.len_utf16() {
+                bytes.push(at);
+            }
+        }
+        bytes.push(text.len());
+        let byte = |at16: u32| bytes[(at16 as usize).min(bytes.len() - 1)];
+        let lines: Vec<TextLine> = measured
+            .lines
+            .iter()
+            .map(|line| {
+                let start = byte(line.start16);
+                let end = start + text[start..byte(line.end16)].trim_end().len();
+                TextLine {
+                    start,
+                    end,
+                    width: line.width,
+                }
+            })
+            .collect();
+        let line_height = (font.size * LINE_EM).round();
+        Paragraph {
+            text: text.to_string(),
+            font,
+            width: lines.iter().map(|line| line.width).fold(0.0, f32::max),
+            height: line_height * lines.len() as f32,
+            lines,
+        }
+    }
+
+    /// Paints `paragraph` with its top-left corner at `x`, `y` pixels, lines
+    /// aligned within `width` points, at `scale` pixels a point.
+    #[allow(clippy::too_many_arguments)]
+    pub fn draw(
+        &mut self,
+        frame: &mut Frame,
+        paragraph: &Paragraph,
+        x: f32,
+        y: f32,
+        width: f32,
+        align: TextAlign,
+        scale: f32,
+        color: Color,
+    ) {
+        let spec = FontSpec::of(paragraph.font);
+        let size = spec.size * scale;
+        let face = self.faces[spec.face];
+        let mut variations = vec![("wght", spec.weight)];
+        if spec.optical > 0.0 {
+            variations.push(("opsz", spec.optical));
+        }
+        let metrics = face.metrics(&[]).scale(size);
+        let line_height = paragraph.line_height() * scale;
+        for (index, line) in paragraph.lines.iter().enumerate() {
+            let text = &paragraph.text[line.start..line.end];
+            if text.is_empty() {
+                continue;
+            }
+            let offset = match align {
+                TextAlign::Start => 0.0,
+                TextAlign::Center => ((width - line.width) / 2.0).max(0.0),
+                TextAlign::End => (width - line.width).max(0.0),
+            } * scale;
+            let top = y + index as f32 * line_height;
+            let baseline =
+                (top + (line_height - (metrics.ascent + metrics.descent)) / 2.0 + metrics.ascent)
+                    .round();
+            let mut shaper = self
+                .shape
+                .builder(face)
+                .size(size)
+                .variations(variations.clone())
+                .features([("calt", u16::from(spec.calt))])
+                .build();
+            shaper.add_str(text);
+            let mut placed = Vec::new();
+            let mut pen = x + offset;
+            shaper.shape_with(|cluster| {
+                for glyph in cluster.glyphs {
+                    placed.push((glyph.id, pen + glyph.x, glyph.y));
+                    pen += glyph.advance;
+                }
+            });
+            for (id, gx, gy) in placed {
+                let whole = gx.floor();
+                let quarter = ((gx - whole) * 4.0).round() as u8 % 4;
+                let key = (
+                    spec.face,
+                    spec.weight.to_bits(),
+                    size.to_bits(),
+                    id,
+                    quarter,
+                );
+                if !self.glyphs.contains_key(&key) {
+                    let mut scaler = self
+                        .scale
+                        .builder(face)
+                        .size(size)
+                        .hint(false)
+                        .variations(variations.clone())
+                        .build();
+                    let image = Render::new(&[Source::Outline])
+                        .format(Format::Alpha)
+                        .offset(Vector::new(f32::from(quarter) / 4.0, 0.0))
+                        .render(&mut scaler, id)
+                        .map(|image| Glyph {
+                            left: image.placement.left,
+                            top: image.placement.top,
+                            width: image.placement.width as usize,
+                            height: image.placement.height as usize,
+                            coverage: image.data,
+                        });
+                    if self.glyphs.len() > 8_192 {
+                        self.glyphs.clear();
+                    }
+                    self.glyphs.insert(key, image);
+                }
+                let Some(Some(glyph)) = self.glyphs.get(&key) else {
+                    continue;
+                };
+                let left = whole as i64 + i64::from(glyph.left);
+                let top = (baseline - gy) as i64 - i64::from(glyph.top);
+                for row in 0..glyph.height {
+                    for col in 0..glyph.width {
+                        let coverage = glyph.coverage[row * glyph.width + col];
+                        if coverage > 0 {
+                            frame.blend(
+                                left + col as i64,
+                                top + row as i64,
+                                color,
+                                f32::from(coverage) / 255.0,
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_long_paragraph_wraps_and_a_short_one_does_not() {
+        let mut fonts = Fonts::new();
+        let body = font(15.0, Weight::Regular, false);
+        let text = "Scan with the OpenAgents app on your phone.";
+        let one = fonts.paragraph(text, body, Some(1_000.0));
+        assert_eq!(one.lines.len(), 1);
+        let narrow = fonts.paragraph(text, body, Some(120.0));
+        assert!(narrow.lines.len() > 1);
+        assert!(narrow.width <= 120.0);
+        // The lines cover the words without their trailing spaces.
+        let words: Vec<&str> = narrow
+            .lines
+            .iter()
+            .map(|line| &narrow.text[line.start..line.end])
+            .collect();
+        assert_eq!(words.join(" "), text);
+    }
+
+    #[test]
+    fn drawing_lights_pixels_in_the_color() {
+        let mut fonts = Fonts::new();
+        let paragraph = fonts.paragraph("Hello", font(20.0, Weight::Bold, false), None);
+        let mut frame = Frame::new(120, 40, Color::rgb(0, 0, 0));
+        fonts.draw(
+            &mut frame,
+            &paragraph,
+            2.0,
+            2.0,
+            100.0,
+            TextAlign::Start,
+            1.0,
+            Color::rgb(255, 255, 255),
+        );
+        let lit = (0..40)
+            .flat_map(|y| (0..120).map(move |x| (x, y)))
+            .filter(|(x, y)| frame.pixel(*x, *y) == [255, 255, 255])
+            .count();
+        assert!(lit > 30, "{lit} pixels");
+    }
+}
+
+#[cfg(test)]
+mod coverage {
+    #[test]
+    fn the_body_face_has_the_marks_screens_use() {
+        let face = swash::FontRef::from_index(rust_native::layout::shape::FACES[0], 0).unwrap();
+        for ch in ['✓', '·', '…', '—', '’'] {
+            assert_ne!(face.charmap().map(ch), 0, "Inter lacks {ch}");
+        }
+    }
+}
+
+#[cfg(test)]
+mod refit {
+    use super::*;
+
+    #[test]
+    fn a_paragraph_refits_its_own_width() {
+        let mut fonts = Fonts::new();
+        for (text, weight) in [
+            ("Connect another phone", Weight::Bold),
+            (
+                "Let this phone open a terminal on this Mac",
+                Weight::Regular,
+            ),
+            ("Can't scan? Copy a code instead", Weight::Regular),
+        ] {
+            let body = font(15.0, weight, false);
+            let one = fonts.paragraph(text, body, None);
+            let again = fonts.paragraph(text, body, Some(one.width + 1.0));
+            assert_eq!(
+                again.lines.len(),
+                1,
+                "{text}: {} then {:?}",
+                one.width,
+                again.lines
+            );
+        }
+    }
+}

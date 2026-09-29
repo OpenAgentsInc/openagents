@@ -1,0 +1,55 @@
+# OpenAgents for Mac: the desktop app that shows the QR code a phone scans
+# to connect, lists the connected phones, and shows what Coder is doing.
+# The window is Rust Native views drawn by `rust-native-desktop`; it talks
+# to the host only through the local control socket and holds no secret key.
+[package]
+name = "openagents-desktop"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "OpenAgents for Mac: pair a phone by QR code, manage phones, and watch Coder."
+
+[features]
+default = ["app"]
+# The window and its macOS glue.
+app = [
+    "keychain",
+    "dep:rust-native-desktop",
+    "dep:objc2",
+    "dep:objc2-foundation",
+    "dep:objc2-service-management",
+    "dep:core-foundation",
+]
+# The keychain store and the adoption of an old-style setup. The window
+# process never calls it; the host and the `migrate` helper process do.
+keychain = ["dep:keyring", "dep:coder-service"]
+
+[dependencies]
+base64 = "0.22"
+# The control protocol's messages, and the host's key names and key source.
+openagents-connect = { path = "../openagents-connect" }
+qrcodegen = "1.8.0"
+rust-native = { path = "../rust-native" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+coder-service = { path = "../coder-service", optional = true }
+keyring = { version = "4.2.0", optional = true }
+rust-native-desktop = { path = "../rust-native-desktop", optional = true }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+core-foundation = { version = "0.9.4", optional = true }
+objc2 = { version = "0.6.4", optional = true }
+objc2-foundation = { version = "0.3.2", optional = true, default-features = false, features = ["std", "NSString", "NSError"] }
+objc2-service-management = { version = "0.3.2", optional = true, default-features = false, features = ["std", "SMAppService", "objc2", "objc2-foundation"] }
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "openagents-desktop"
+path = "src/main.rs"
+required-features = ["app"]

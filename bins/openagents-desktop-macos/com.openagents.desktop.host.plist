@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  The login agent OpenAgents.app registers with SMAppService on first
+  launch: the bundled Coder host, started at login and kept running when
+  the window closes. It reads its keys from the login keychain (service
+  com.openagents.desktop) and serves the window over its control socket.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.openagents.desktop.host</string>
+  <key>BundleProgram</key>
+  <string>Contents/MacOS/coder</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>coder</string>
+    <string>host</string>
+    <string>serve</string>
+  </array>
+  <key>AssociatedBundleIdentifiers</key>
+  <array>
+    <string>com.openagents.desktop</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+  </dict>
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+  <key>ProcessType</key>
+  <string>Interactive</string>
+</dict>
+</plist>

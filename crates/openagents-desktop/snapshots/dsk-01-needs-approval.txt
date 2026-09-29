@@ -1,0 +1,7 @@
+vertical stack
+  vertical stack [align=center]
+    body "OpenAgents needs your OK to run in the background." [align=center]
+    status "Turn on OpenAgents under Allow in the Background, then come back here." [align=center]
+    button "Open Login Items" -> open_login_items
+    heading "Scan with the OpenAgents app on your phone." [align=center]
+    checkbox [ ] "Let this phone open a terminal on this Mac" -> toggle_terminal

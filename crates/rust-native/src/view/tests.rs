@@ -697,3 +697,41 @@ fn a_wrapping_stack_round_trips() {
         }
     ));
 }
+
+#[test]
+fn checkbox_glyphs_round_trip() {
+    for (glyph, name) in [(Glyph::Unchecked, "unchecked"), (Glyph::Checked, "checked")] {
+        let icon = Icon {
+            glyph,
+            circular: false,
+            pill: false,
+        };
+        let view: View<Intent> = View::new(
+            "instance",
+            1,
+            Node {
+                key: "allow".into(),
+                style: Style::default(),
+                element: Element::Button {
+                    label: "Allow it".into(),
+                    enabled: true,
+                    icon: Some(icon),
+                    intent: Intent::InspectTask {
+                        task: "task-1".into(),
+                    },
+                },
+            },
+        );
+        let encoded = view.validate().unwrap().to_json().unwrap();
+        assert!(
+            String::from_utf8(encoded.clone())
+                .unwrap()
+                .contains(&format!(r#""glyph":"{name}""#))
+        );
+        let decoded = View::<Intent>::from_json(&encoded).unwrap();
+        assert!(matches!(
+            decoded.view().root.element,
+            Element::Button { icon: Some(i), .. } if i == icon
+        ));
+    }
+}

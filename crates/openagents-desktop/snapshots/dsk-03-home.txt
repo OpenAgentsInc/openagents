@@ -1,0 +1,25 @@
+vertical stack
+  heading "Online. Your phone can reach this Mac."
+  vertical stack [card]
+    body "Phones" [bold]
+    list "Phones"
+      horizontal stack
+        vertical stack
+          body "Kai's iPhone"
+          status "seen 2 min ago · terminal"
+        button "Remove" -> ask_remove
+      horizontal stack
+        vertical stack
+          body "Kai's iPad"
+          status "seen 2 hours ago"
+        button "Remove" -> ask_remove
+  vertical stack [card]
+    body "Coder" [bold]
+    list "Coder's tasks"
+      body "Fix the login test · Working"
+      body "Update the README · Done"
+    horizontal stack
+      body "/Users/kai/code/website"
+      button "Choose another folder…" -> choose_folder
+    checkbox [x] "Let my phone start Coder here" -> toggle_autostart
+  button "Connect another phone" -> connect_another

@@ -214,6 +214,12 @@ pub enum Glyph {
     Key,
     /// A person, such as the trainer's profile.
     Person,
+    /// A checkbox that is off. The label says what turning it on allows;
+    /// activating the button asks the application to turn it on.
+    Unchecked,
+    /// A checkbox that is on. Activating the button asks the application
+    /// to turn it off.
+    Checked,
 }
 
 /// The control that loads older rows at a transcript's top.

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  The Coder host (Contents/MacOS/coder) runs outside the App Sandbox, where the network, the control socket,
+  and the login keychain need no entitlement. The network keys are declared
+  so it keeps working if it is ever sandboxed. No keychain-access-groups:
+  that key needs a provisioning profile, and a Developer ID app with it and
+  none would not launch (docs/desktop/release.md).
+-->
+<plist version="1.0">
+<dict>
+  <key>com.apple.security.network.client</key>
+  <true/>
+  <key>com.apple.security.network.server</key>
+  <true/>
+</dict>
+</plist>
