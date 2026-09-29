@@ -510,7 +510,14 @@ two effects objects), and `stakes` (`{severity: low | moderate | severe,
 authority: none | read | write | act | spend, reversibility: reversible |
 costly | irreversible}`), with the evidence adoption demands rising with
 the stakes. Utility establishes the claim; safety and stakes decide
-admissibility; neither is traded against the other. For Coder's
+admissibility; neither is traded against the other. Adoption is not
+terminal: a claim is scoped to its baseline, environment, grant,
+distribution, and subject identity, and a material change in any of them
+reopens it. Revalidation is a new report on the new scope, checked and
+validated like the first; a lapsed claim leads to quarantine (a later
+defaults release that no longer depends on the subject) or revocation (a
+NIP-EXT `3185`), and active runs keep the lock they started with
+(NIP-POL). For Coder's
 defaults, the admitted change is then published as a NIP-EXT release of
 the `coder-defaults` package that depends on the extension's release, and
 whose manifest `provenance.receipts` cites the admission's ArtifactRef

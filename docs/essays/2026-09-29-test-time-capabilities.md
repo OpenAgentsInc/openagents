@@ -30,8 +30,9 @@ text says so.
 - **Most of the mechanisms are prior art; the chain is the proposal.**
   Tools, retrieval, stored skills, memories, routing, and other agents are
   all known to help fixed-weight models. What's proposed here is one
-  accountable path for all of them: artifact, admission, controlled delta,
-  reproduction, external validation, adoption, credit. Adoption measures
+  accountable path for all of them: candidate, admission, controlled delta,
+  reproduction, external validation, adoption, credit, and revalidation
+  whenever what the claim was scoped to changes. Adoption measures
   the marginal effect against the current default set, not the historical
   one, and credit goes to verification work, not to agreement.
   [Related work](#related-work-and-prior-art) says what came before.
@@ -65,6 +66,7 @@ text says so.
   - [How the protocol carries test-time capabilities](#how-the-protocol-carries-test-time-capabilities)
   - [The NIPs, one by one](#the-nips-one-by-one)
 - [Part III: What we'll measure next](#part-iii-what-well-measure-next)
+- [Appendix: the literature search](#appendix-the-literature-search)
 - [References](#references)
 
 ## Part I: The concept
@@ -180,7 +182,7 @@ near the end of the a16z conversation: the hosts contrast coding agents,
 which produce the same kind of software faster and sometimes with less
 oversight, with a primitive that reasons over natural language and
 marries the result to a state machine, and Almeida calls that reading
-the greatest compliment to what TypeSafe is building, a "little brain"
+the greatest compliment to what he is building, a "little brain"
 inside otherwise ordinary logic, while declining to promise it. The
 hosts' next question is the right caveat: how deep such judgment can
 safely go into systems that need state consistency and durability is an
@@ -234,8 +236,8 @@ reproduced claim; a new independent suite may make it externally
 validated; only then is it eligible for adoption into a shared default
 agent. The chain is:
 
-**artifact → admission → controlled delta → reproduction → external
-validation → adoption → credit.**
+**candidate → admission → controlled delta → reproduction → external
+validation → adoption → credit → revalidation.**
 
 Pieces of it exist: paired with-and-without evaluation of agent skills
 ([Li et al., 2026](https://arxiv.org/abs/2602.12670);
@@ -254,10 +256,17 @@ work lays it out column by column.
 A **test-time capability** is an ability an agent gains, or loses, at
 inference time, without a weight update, because something was admitted
 into the run. The unit of account is not the component but the
-**capability claim** about it: *admitting artifact A to locked baseline
+**capability claim** about it: *admitting subject A to locked baseline
 agent B, under environment E and grant G, on task distribution D as
 sampled by suite S, judged by evaluation rule R, changed the outcomes R
-names by Δ, with a stated uncertainty.* The seven letters are the
+names by Δ, with a stated uncertainty.* In one line, and this is the form
+the rest of the essay uses literally:
+
+**Claim(A, B, D, S, E, G, R) → Δ ± uncertainty**
+
+A is the subject's identity at the strongest level available (an
+artifact's bytes, a provider's version, an endpoint), not necessarily
+bytes. The seven letters are the
 experiment; the delta, its cost and latency, and its interval are the
 result. D and S are different objects and the difference does work. D is
 the population of tasks the suite claims to represent, which its author
@@ -277,7 +286,7 @@ one. Artifacts exist; claims are evidence; adoption is policy.
 | Capability claim | A measured delta with its whole scope, A, B, D, S, E, G, R, and its uncertainty |
 | Reproduced capability claim | The same claim rerun by someone other than its author, S held fixed, with a compatible result |
 | Externally validated capability claim | The improvement persisting on a new S from the same D, written independently of the author and revealed after the artifact was locked |
-| Adopted capability | A policy decision, taken on claims, to make the artifact part of a shared default |
+| Adopted capability | A policy decision, taken on claims, to make the subject part of a shared default, and to keep it there only while the claims it rests on still hold |
 
 A remote model or service is a candidate whose bytes nobody but its
 provider holds, and that is an edge of the ontology rather than an
@@ -388,17 +397,15 @@ the component some authority (a directory it may read, a network it may
 reach), and a claim's scope names that grant as G. But a grant says nothing
 about whether the component helps, and a favorable delta grants nothing.
 Throughout, *grant* or *authority* is the security sense and *capability*
-the measured sense. (Our own NIP-CAP, in Part II, is named for the
-authority sense: it describes an execution interface and the grant to use
-it, and a definition there grants nothing.)
+the measured sense.
 
 ### The lifecycle in one figure
 
 ```text
-candidate artifact         tool, plugin, skill, knowledge entry, delegate, judgment
+candidate subject          tool, plugin, skill, knowledge entry, delegate, judgment
         │
         ▼
-identity and provenance    exact bytes, locked, signed
+identity and provenance    the strongest identity available: bytes, version, or endpoint
         │
         ▼
 evaluation admission       a sandboxed grant, enough to measure it
@@ -407,11 +414,10 @@ evaluation admission       a sandboxed grant, enough to measure it
 controlled with-and-without run
         │
         ▼
-capability claim: Δ ± uncertainty ─── no positive delta ───────▶ reject
-  scope: A, B, D, E, G, R
+Claim(A, B, D, S, E, G, R) → Δ ± uncertainty ── no positive delta ▶ reject
         │
         ▼
-independent reproduction   another party, same artifact, same protocol
+independent reproduction   another party, same subject, same S, same protocol
         │
         ▼
 external validation        new tasks the author didn't write or see
@@ -427,15 +433,21 @@ adoption against current defaults ── regression in composition ▶ reject
 credit                     for verification work and adoption
         │
         ▼
+monitoring and revalidation ── B, E, G, D, identity, or dependencies changed
+        │                       ── claim no longer holds ────────▶ quarantine or revoke
+        ▼
 new default agent ──▶ harder tasks ──▶ new failures ──▶ new candidates
         ▲                                                      │
         └──────────────────────────────────────────────────────┘
 ```
 
-Three exits, and none can be bought back by the others. A component that
-the evidence shows unsafe is rejected however useful it is. One with no
-positive delta is rejected however safe. One that regresses the default
-set when composed with it is rejected however well it did alone. There
+Three exits and one revocation, and none can be bought back by the
+others. A component that the evidence shows unsafe is rejected however
+useful it is. One with no positive delta is rejected however safe. One
+that regresses the default set when composed with it is rejected however
+well it did alone. And one whose claim stops holding after adoption,
+because something in its scope changed, is quarantined or revoked rather
+than kept on the strength of a claim that no longer describes it. There
 are two admissions because a candidate has to run somewhere before anyone
 knows whether it is safe: the first is a sandbox that exists to produce
 the evidence, and the second is the decision, on that evidence, to let it
@@ -454,10 +466,12 @@ matters, and how anyone would measure it.
 
 **Definition:** an ability an agent gains or loses at inference time,
 without updating weights, because a component was admitted to the run. It
-is stated only as a **capability claim**: admitting artifact A to locked
-baseline agent B, under environment E and grant G, on task distribution
-D, judged by rule R, changed the outcomes R names by Δ, with a stated
-uncertainty. B is the whole executable agent, not "the agent minus the
+is stated only as a **capability claim**, Claim(A, B, D, S, E, G, R) →
+Δ ± uncertainty: admitting subject A to locked baseline agent B, under
+environment E and grant G, on task distribution D as sampled by suite S,
+judged by rule R, changed the outcomes R names by Δ, with a stated
+uncertainty. A is the subject at its strongest identity, which may be
+bytes, a version, or an endpoint. B is the whole executable agent, not "the agent minus the
 component": model and version, system instructions, router, the existing
 default set, sampling settings, runtime, and provider endpoint. Whatever
 in B can't be pinned, such as the weights behind a hosted endpoint, the
@@ -510,6 +524,18 @@ permissions *and* from the behavior of what sits on the permitted paths
 but "what effects could it cause under that grant, given the components
 already present?" A claim's G names the grant; admission safety bounds
 the effective authority, which the grant alone doesn't show.
+
+**Two grants, one rule.** The claim is established under the evaluation
+grant, and the sandbox deliberately gives a candidate less authority than
+real use would. So the two grants have to be related explicitly, or
+someone can fairly ask why a component shown useful and safe under one
+grant may run under another. The rule: *if the operational authority
+differs materially from the grant under which the claim was established,
+operational admission requires safety evidence under the operational
+grant; and if the changed grant can change task behavior, it creates a
+new capability claim, with the new G in its scope, rather than extending
+the old one.* A repository tool measured with no shell and run with one
+has both a new safety question and a new delta.
 
 Admission is also a security boundary, not only a performance decision.
 A tool that reads untrusted data (email, web pages, files someone else
@@ -633,9 +659,18 @@ says it used and what actually changed its decision come apart, and that
 mentions in the transcript, trace similarity, and LLM judges all fail to
 detect real reliance ([Hu et al., 2026](https://arxiv.org/abs/2607.27484)).
 
-**How to measure it:** mark each test should-use or should-not-use, and
-report outcomes per test in both arms. Reach is read from those outcomes,
-not from the transcript's claims.
+**How to measure it:** keep three things apart that a single "should
+fire" label runs together. The *declared label* on a test (should-use or
+should-not-use) is the suite author's hypothesis about where the
+component helps, not ground truth. The *exposure and invocation* record
+(was the component offered, selected, and called on this run) is an
+instrumentation fact. The *observed conditional outcome* (did the run
+with the component do better than the run without it, on this test) is
+the causal evidence. A should-fire test the baseline already passes
+proves no router failure; a component that fired and changed nothing
+reached nothing. Reach and restraint are read from the second and third,
+per test in both arms, never from the label alone and never from the
+transcript's claims about itself.
 
 #### 5. Judgment budget
 
@@ -660,9 +695,12 @@ source: models, tools, knowledge, and delegation, and routing as one use
 of the [primitive](#the-thesis-capability-is-something-you-can-acquire-at-test-time)
 rather than the whole of it.
 
-The judgment's probabilities are the interface, so **calibration** is a
-property of the capability, not metadata. Accuracy asks whether the judge
-chose correctly. Calibration asks whether, when the judge says 0.97,
+The judgment's probabilities are the interface, so **calibration** is part
+of a probabilistic capability claim, and like the rest of the claim it
+belongs to a task distribution and, more narrowly, to an operating point:
+a judge can be well calibrated on one distribution and badly miscalibrated
+on another, or good on average and wrong exactly at the threshold it
+serves from. Accuracy asks whether the judge chose correctly. Calibration asks whether, when the judge says 0.97,
 downstream code should behave as if this were a 97 % event. Every
 threshold in a judgment budget, serve cheaply or escalate, call a tool or
 not, delegate or not, is a bet on the second question. A judge that is
@@ -678,8 +716,9 @@ narrow band where "never wrong fast" lives. So the measurement that
 matters is the **operating point**: the precision and the coverage above
 each serving threshold, the abstention or escalation rate, and the
 risk–coverage curve they lie on, which says how much traffic the judge
-can carry at a tolerated error rate; and how those move across task
-distributions.
+can carry at a tolerated error rate. That curve, per distribution, is the
+operational centerpiece; an aggregate calibration score is context for
+it, not a substitute.
 
 #### 6. Test-time delegation
 
@@ -726,7 +765,7 @@ compared with the attempt made without delegating.
 
 **Definition:** a capability claim whose result was reproduced by someone
 other than the person who first ran it: a different evaluator, and A, B,
-D, E, G, and R all held fixed, with a compatible result.
+D, S, E, G, and R all held fixed, with a compatible result.
 
 **Why it matters:** confidence should come from reproduction by someone
 else, not from the author's report. Reproduction is the verifier that
@@ -781,28 +820,34 @@ adoption everyone already has the thing. It is also what a leaderboard
 can't supply and a network can: someone else's tests.
 
 Three levels are worth keeping apart, because each changes a different
-part of the scope. *Reproduction* holds A, B, D, E, G, and R fixed and
-changes only who runs it. *External validation* keeps D and changes the
-sampled tasks. *Transfer* deliberately changes D to a different
+part of the scope. *Reproduction* holds A, B, D, S, E, G, and R fixed and
+changes only who runs it. *External validation* keeps D and changes S,
+the sampled tasks. *Transfer* deliberately changes D to a different
 distribution D′, and is a new claim, not a stronger version of the old
 one: a repository-mapping tool validated on more repositories has been
 externally validated; the same tool measured on spreadsheet tasks has
 been tested for transfer.
 
-**How to measure it:** a with-and-without result on a second test set
-with its own claim scope. A different author is provenance, not
-independence. What independence needs is chronology and information flow:
-the artifact was locked before the suite was revealed to its author, or
-the suite was hidden, so that the author could not tune against it. The
-externally validated delta is usually smaller than the original; how much
-smaller is the finding.
+**How to measure it:** a with-and-without result on a second S with its
+own claim scope. A different author is provenance, not independence. What
+independence needs is chronology and information flow: the subject was
+locked before the suite was revealed to its author, or the suite was
+hidden, so that the author could not tune against it. A protocol can
+check two observable conditions consistent with independence, distinct
+authorship keys and subject-before-suite chronology; it cannot establish
+social independence, that the people did not collaborate or that the
+tests did not leak, which is why the
+[open questions](#open-questions-for-the-field) treat evaluator
+independence as unsolved. The externally validated delta is usually
+smaller than the original; how much smaller is the finding.
 
 #### 9. Capability adoption
 
-**Definition:** making an externally validated claim's artifact part of
+**Definition:** making an externally validated claim's subject part of
 the agent everyone starts with, on the strength of its marginal effect
-against the current default set. Adoption is a status conferred on the
-artifact; it is the one object in the list that is a policy decision
+against the current default set, and keeping it there only while the
+claims it rests on still hold. Adoption is a status conferred on the
+subject; it is the one object in the list that is a policy decision
 rather than evidence.
 
 **Why it matters:** adoption is how one person's reproduced result becomes
@@ -871,13 +916,30 @@ wrong decision's effect, the effective authority the component holds,
 and how hard the effect is to reverse. The principle matters more than
 any formula for it.
 
+**Adoption is not terminal.** Every claim is scoped to a baseline, an
+environment, a grant, a distribution, and an identity, and every one of
+those moves after adoption: hosted endpoints change silently, the default
+set changes with every later adoption, dependencies drift, graders and
+gates get fixed. A claim that described the component on adoption day
+may not describe it a month later, and an adopted component that keeps
+its place on the strength of a stale claim is a default nobody measured.
+So the lifecycle's tail is *monitoring and revalidation*, and its
+outcomes are *retain*, *quarantine* (withdrawn from the default set,
+claims kept), or *revoke* (release withdrawn). Revalidation is triggered
+by a material change in B, E, G, D, the subject's identity, or its
+dependencies, or by a reader's dispute that survives; a revalidation is
+an ordinary claim on the new scope, reproduced and validated like the
+first. This is where the skill-library literature's calls for rollback
+belong in the framework, as a lifecycle stage rather than a wish.
+
 **How to measure it:** the marginal delta, current defaults plus the
 candidate against current defaults; whether the whole default set still
 passes what it passed before; whether the candidate keeps its externally
 validated delta in the composition; the reliability evidence above,
-scaled to the stakes; and whether the composition's effective authority
+scaled to the stakes; whether the composition's effective authority
 grew, which means tracing the paths the newcomer opens, not reading its
-grant.
+grant; and, after adoption, whether the claim still holds on the scope
+the component now runs in.
 
 #### 10. Capability credit
 
@@ -1188,8 +1250,9 @@ sense of the word and this essay's relate.
 **What we did not find.** Surveys of skill libraries already call for
 provenance, rollback, and reporting standards
 ([Li, 2026](https://arxiv.org/abs/2607.10113)). Within our search we found
-no work that joins the whole chain, artifact → admission → controlled
-delta → reproduction → external validation → adoption → credit, across
+no work that joins the whole chain, candidate → admission → controlled
+delta → reproduction → external validation → adoption → credit →
+revalidation, across
 tools, skills, knowledge, delegation, and judgment. The table below is the claim
 made auditable: a cell says *yes* only where we read it in the source, and
 *not described* where the source is silent, which is not the same as
@@ -1197,7 +1260,7 @@ absent. The last row uses *built* and *proposed* rather than a check mark,
 because a mechanism that exists and a mechanism that has been used are
 different things, and Part II says which is which.
 
-| Work | Exact artifact identity | Paired with-and-without delta | Reproduction by others | External validation | Adoption into a shared default | Credit | Capability types |
+| Work | Subject identity and pinning | Paired with-and-without delta | Reproduction by others | External validation | Adoption into a shared default | Credit | Capability types |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | SkillsBench ([Li et al., 2026](https://arxiv.org/abs/2602.12670)) | not described | yes: matched no-skills and curated-skills conditions | not described | not described | not described | not described | skills |
 | ACES ([Kevin et al., 2026](https://arxiv.org/abs/2608.20614)) | current repository state, not a pinned version | yes: paired live trials | not described | not described | thresholds left to each team; no shared default described | not described | skills |
@@ -1230,6 +1293,11 @@ corrections to any cell.
   dispute farming, and one contribution split across identities. What
   counts as a rerun that followed the protocol, and what evidence of
   independence should a claim carry beyond a second key?
+- **Revalidation triggers.** Which changes in a baseline, environment,
+  grant, distribution, or identity are material enough to reopen an
+  adopted claim, who is obliged to notice them, and what does a network
+  do with a default whose claim has lapsed but whose replacement hasn't
+  been measured?
 - **Composition depth.** How many decisions deep does a judgment stay
   useful, how should a workflow's end-to-end reliability be reported
   beside its components' single-call numbers, and which recovery designs
@@ -1319,7 +1387,7 @@ rather than left to the reader:
 
 | Scope | In the report |
 | --- | --- |
-| A, the artifact | The `subject` arm's lock: the exact extension release and its dependencies |
+| A, the subject | The `subject` arm's lock: the exact extension release and its dependencies, so `identity` is `content`; a decision-service subject would be a `30180` head with the question set pinned as `name@digest`, `version` at best |
 | B, the baseline agent | The `baseline` arm's lock (Coder with no extension admitted, or the current defaults for a marginal report, named in `meta.ext_eval.defaults`) plus the run config: the door URL and model name the harness pinned in the child, and Coder's own bounds. `meta.ext_eval.reliance` records what the run relied on (runner, host digest, door, model, agent build, selector, graders) and `identity` the subject's identity strength (`content` for every extension). Not pinned: the weights behind the door, which the door doesn't report yet, so `model` is null rather than guessed, and the version of Jev behind the decision door. A hosted model changing underneath us would still void a reproduction while every digest matched. |
 | D, the distribution | The task population the suite claims: `meta.ext_eval.distribution` when the suite's workload names one, else the tool's definition ID, "the tasks this tool claims to help with". A second suite that names the same D validates; one that names another transfers |
 | S, the suite | The suite release the report cites, case by case |
@@ -1427,7 +1495,13 @@ What's missing is the evidence that should connect them: grants bound
 what a Wasm guest can touch, but our extension evals don't yet include
 prompt-injection cases of the kind AgentDojo measures, so operational
 admission today rests on the grant's bounds alone, which is to say on
-permission, not on a bound of effective authority.
+permission, not on a bound of effective authority. Part I's two-grant
+rule applies to us directly. The hosted evaluation grant has no shell;
+an ordinary Coder turn may have one. That is a materially different G,
+so by the rule the claims in the hosted record justify running those
+tools under the no-shell grant and nothing wider; running them with a
+shell needs safety evidence under that grant and is a new claim with a
+new delta, which is the "deltas under a full grant" item in Part III.
 
 Part I's "let designation carry authority" is built in one place and not
 in another. A Wasm guest never sees a path: the host mints an opaque
@@ -1564,8 +1638,12 @@ same subject and lock, a different suite, the same claimed distribution,
 the suite's release signed by someone other than the tool's author, and
 created after the tool's release
 ([NIP-EVAL validations](../../nips/openagents/NIP-EVAL.md#validations)).
-The candidate queue counts one only when it holds both releases, so
-independence is checked, never assumed, and the
+The candidate queue counts one only when it holds both releases, so the
+two observable conditions consistent with independence, distinct
+authorship keys and tool-before-suite chronology, are checked rather than
+assumed. They do not establish social independence: nothing in the record
+shows that two key holders didn't collaborate or that the tests weren't
+leaked, which Part I's open questions leave open. The
 [candidate policy](../../packages/coder-defaults/policy.md) requires at
 least one beside the three confirming checks; an admission that admits
 without one doesn't parse. What's still true of the record: the runner
@@ -1581,9 +1659,22 @@ An operator issues an `openagents.eval-admission.v1` decision citing the
 reports and publishes a release of the
 [`openagents:coder-defaults`](../../packages/coder-defaults/) package that
 depends on the tool. A tool becomes a candidate when its result is
-**Better** and at least three distinct trainers' checks confirmed it.
-Adoption is an operator decision, never automatic. The mechanism exists; no
-adoption has been made yet.
+**Better**, at least three distinct trainers' checks confirmed it, and at
+least one **Better** result on an independent second suite validates it,
+and the admission cites that validation. Adoption is an operator
+decision, never automatic. The mechanism exists; no adoption has been
+made yet.
+
+Part I's tail, revalidation and revocation, has carriers and no trigger.
+A NIP-EXT revocation (`3185`) withdraws a tool or suite release from new
+checks and quests while published reports keep their meaning; a later
+`coder-defaults` release that no longer depends on a tool is how a
+default is quarantined; NIP-POL keeps active runs on the lock they
+started with, so nothing changes underneath a running agent. What nobody
+does yet is notice a material change in a claim's scope: the report pins
+the door and model name and not the weights, so a hosted model changing
+would not reopen anything, and no job reruns an adopted tool's suites
+when the defaults, the agent build, or the gate change.
 
 The marginal question in Part I has a plain answer today and a harder one
 soon. The baseline arm is Coder with nothing admitted. While
@@ -2003,6 +2094,14 @@ versions.
   reader tool, release them after the tool's release, and run them; the
   runner cannot validate its own catalog. Hidden or challenge suites,
   which would make chronology unnecessary, don't exist yet.
+- **Revalidate after adoption.** Nothing reopens a claim when its scope
+  moves. After the first adoption we need a job that reruns an adopted
+  tool's suites, standalone and marginal, when the defaults release, the
+  agent build, the gate, or the door's reported model changes, and an
+  operator path from a lapsed claim to quarantine (a defaults release
+  without the tool) or revocation (`3185`). Until then an adopted tool
+  keeps its place on the day-of-adoption claim, which the essay says is a
+  default nobody measured.
 - **State the distribution.** The runner's workload artifact names no
   `distribution`, so every claim's D defaults to the tool's definition ID,
   "the tasks this tool claims to help with". A suite author should say
@@ -2091,6 +2190,43 @@ versions.
   validated utility on a declared distribution per adopted contribution,
   with raw passes reported beside it and never instead of it. We will
   report it, including when it's zero, which it is.
+
+## Appendix: the literature search
+
+The novelty claim in [Related work](#related-work-and-prior-art) says
+"as far as our search went." This is what the search was, so a reader can
+judge how far that is. It is not a systematic review and claims no
+database coverage.
+
+- **When.** 2026-09-29, in three passes over drafts of this essay.
+- **How.** Two passes were reviewer-assisted: a language model was given
+  the draft and asked for prior art and omissions, and returned candidate
+  lists with links. Every candidate was then checked by hand against its
+  arXiv abstract page, venue page, or publisher page, fetched directly,
+  for the claim attributed to it, its numbers, its venue, and its year.
+  The third pass was targeted: the security lineage (Dennis and Van Horn,
+  Miller, Odersky et al.), the three Almeida talks, and the two 2026
+  skills benchmarks were read in full or in the sections cited.
+- **Queries and themes.** Test-time compute and scaling; tool use and tool
+  learning; skill libraries and agent-skill benchmarks; retrieval-augmented
+  generation; agent memory and reflection; model routing and cascades;
+  agent evaluation reliability and process metrics; prompt injection
+  against tool-using agents; software supply-chain provenance and
+  reproducible builds; capability-based and object-capability security;
+  and the assistance-versus-automation framing of RLHF.
+- **Inclusion.** Peer-reviewed or arXiv works with a stated mechanism or
+  measurement bearing on a lexicon term; talks only for the framing they
+  supply, never for numbers.
+- **What was dropped or narrowed.** A number the two versions of a paper
+  disagreed on (AnyTool's margin) is not quoted. A suggested link that
+  resolved to a different paper (AgentBench for ToolLLM) was replaced by
+  the right one. Venues that could not be confirmed are cited by arXiv
+  year. A conversational figure in an interview (an average pull request
+  size) is not used because the study behind it isn't identified.
+- **Works examined.** The [References](#references) are the complete
+  list; nothing examined was left out of it. The comparison table's cells
+  were filled only from text read, and say "not described" where the
+  source is silent.
 
 ## References
 
