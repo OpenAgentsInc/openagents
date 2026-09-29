@@ -95,9 +95,9 @@ loopback listener, so a real tailnet adds its round trip to each direct read.
 | Coder tab to composer in a running app | phone | 0 ms | the first packet shows it | one tap to New chat | nothing |
 | Send to first words, basic Coder | NIP-CJ, production | never | 10 of 10 silent | never | no chat worker is running (bottleneck 1) |
 | Send to done, basic Coder, stub worker | NIP-CJ, loopback | 0.9 ms | p95 3.7 ms (10) | | the model and the relay are the cost |
-| Send to Working, Coder on a computer | NIP-HOST + auto-start | 2.6 s | 1.7 to 4.8 s (6) | | the engine's session opening |
-| Send to first reply row, Coder on a computer | NIP-HOST + observer | 10.0 s | 8.1 to 12.6 s (6) | | the engine's whole turn; nothing streams |
-| Send to Done, Coder on a computer | | 11.3 s | 9.0 to 13.4 s (6) | | |
+| Send to Working, Coder on a computer | NIP-HOST + auto-start | 1.3 s | 1.2 to 2.7 s (6) | 2.6 s | admission: Git reads and the workspace snapshot |
+| Send to first reply row, Coder on a computer | NIP-HOST + observer | 3.2 s | 2.8 to 4.2 s (6) | 10.0 s | the model's first words, streamed |
+| Send to Done, Coder on a computer | | 5.7 s | 5.3 to 10.5 s (6) | 11.3 s | the model writing the rest of the step |
 | Earlier Coder chats list, relay link already warm | relay, production | 459 ms | 417 to 473 ms, 2 pages (3) | 846 ms | relay transit |
 | Earlier Coder chats list, new client | relay, production | 762 ms | 693 to 911 ms, 2 pages (3) | 846 ms | opening the relay link |
 | Earlier Coder chats list | direct, loopback | 2.5 ms | p95 2.6 ms, 1 page (5) | 11 ms | |
@@ -155,9 +155,23 @@ poll.
 
 ### Coder on a computer, from the host's own records
 
-Each run's times from the phone's Send, lined up with the task's ATIF
-records and the host's `autostart.jsonl` (runs 1 and 2 before, 4 to 6 on
-`cd999566cd`; run 3's records were not read):
+The three computer rows in the first table were measured at `358975bdbd`,
+which streams the reply into the transcript as the model writes it (see
+bottleneck 2), on this Mac at load averages 16 to 33, with the live test
+patched locally for the Coder tab's new target selector. From the task's
+ATIF session opening, those six runs' host records:
+
+| Step | Median | Range (6) |
+| --- | ---: | --- |
+| The model call starts (`claude_request`) | 0.39 s | 0.32 to 0.82 s |
+| The first Jev decision answers, beside the model call | 1.10 s | 0.64 to 1.47 s |
+| The reply's first words are in the transcript (`replying`) | 2.24 s | 2.03 to 2.55 s |
+| The step is whole (`generated`) | 3.55 s | 3.40 to 4.03 s |
+| The turn ends | 4.50 s | 4.02 to 9.20 s |
+
+Before, at `cd999566cd`, each run's times from the phone's Send, lined up
+with the task's ATIF records and the host's `autostart.jsonl` (runs 1 and 2
+before, 4 to 6 on `cd999566cd`; run 3's records were not read):
 
 | Step | Run 1 | Run 2 | Run 4 | Run 5 | Run 6 |
 | --- | ---: | ---: | ---: | ---: | ---: |
@@ -195,15 +209,20 @@ save. The estimates come from the measurements above, not from prototypes.
    is not installed on `oa-coder-worker-1`. Installing it is an owner step
    (its secret and gateway key live only in its environment file), and it
    turns "never" into about 0.5 s plus the worker's first answer.
-2. **Coder on a computer shows nothing until the engine's turn ends.** The
-   first reply row appears when the turn's `effect_result` is written, 5.9 to
-   6.6 s after the turn starts. The turn starts 1.4 to 3.1 s after auto-start
-   picks the task up (the session opening), after a Jev decision of 0.25 to
-   0.5 s (`crates/microcoder/src/repository/native.rs:66`). Writing the
-   engine's reply into the transcript as it streams, and keeping an engine
-   warm so the session opens at once, would move first words from about
-   10 s to the model's first token plus about 1 s: an estimated 3 to 5 times
-   sooner. This is the longest wait a person sees.
+2. **Coder on a computer showed nothing until the engine's turn ended.**
+   Fixed at `358975bdbd`: first words from 10.0 s to 3.2 s after Send, and
+   Done from 11.3 s to 5.7 s. The model now writes the step's `reply`
+   first, both native routes stream the action's JSON, and each whole
+   paragraph of the reply is appended to the transcript as a `replying`
+   event the moment it is written (`crates/microcoder-loop/src/reply.rs`,
+   `crates/microcoder/src/repository.rs`); the observer's change push
+   carries it to the phone. The `claude` call returns at its result instead
+   of at the binary's exit, the first Jev decision runs beside the first
+   model call, and admission no longer waits for the owner's login shell or
+   rehashes the whole workspace (kept snapshot digests). What remains is
+   the model: about 1.8 s from the call to its first words through Claude
+   Code, then about 1.3 s writing the rest of the step, which Done waits
+   for.
 3. **Every relay hop costs about three round trips.** Observer requests and
    replies are stored kind `3188` events, and the relay fans a stored event
    out only after its Postgres admission transaction, with its `NOTIFY`,
