@@ -212,6 +212,18 @@ save. The estimates come from the measurements above, not from prototypes.
    as ephemeral events, would bring each hop to about one round trip: an
    exchange from about 230 ms to about 80 ms, for every relay read on this
    page.
+
+   A local relay on Postgres behind a delaying proxy
+   (`crates/nostr-relay/tests/exchange_latency_postgres.rs`) showed the hop's
+   cost was the admission's sequential database statements, about 23 round
+   trips to the `OK` and 2.5 more before delivery, not where the fan-out sits.
+   The relay now pipelines them (about 6 round trips) and delivers its own
+   commits from memory. At a 4 ms database round trip an exchange went from
+   215 ms to 53 ms (`OK` 97 to 27 ms, delivery 108 to 27 ms); at about 8 ms,
+   from 418 ms to 99 ms. Production reaches `OK` about 60 ms after its
+   30 ms network round trip, about 2.5 ms per Cloud SQL statement, which
+   predicts an exchange near 100 to 150 ms once deployed. Not yet measured
+   on production.
 4. **Opening a Coder chat reads until it finds 10 messages.** A Coder task's
    transcript is about 88% `System` adapter records that show no row (on this
    Mac, 969 of 1,118 records), so the first batch rarely finds

@@ -111,6 +111,18 @@ heads, inserts the event and indexed tags, applies deletion tombstones and
 deletes superseded rows, updates the head, allocates `ingest_seq`, and calls
 `pg_notify`. A stored result is returned only after commit.
 
+The transaction pipelines its statements rather than waiting for each reply,
+because every sequential statement costs a database round trip: one pipeline
+carries the policy reads, the conflict locks, and the duplicate, tombstone, and
+replacement-head reads that follow the locks; a second carries the sequence
+lock, insert, indexed tags, head update, and notification of a plain event.
+Postgres runs one session's statements in the order sent, so locking and
+visibility are unchanged, and the results are judged in the order the checks
+always ran. Group, deletion, and push-lease admissions write their side effects
+one statement at a time after the insert. With a 4 ms database round trip, a
+private `3188` event's `OK` fell from about 97 ms to about 27 ms
+(`tests/exchange_latency_postgres.rs`).
+
 The advisory-lock keys serialize every conflicting event ID and replacement
 address across relay processes. Keys are sorted before acquisition, avoiding
 deadlocks when one deletion request names several targets. This closes the
@@ -129,6 +141,14 @@ allocating `ingest_seq`. Conflicting event/replacement locks have already been
 taken at that point. This makes durable sequence order equal commit order, so
 the gateway can use a sampled high-water mark as a race-free historical/live
 EOSE boundary.
+
+A stored event this process committed outside a NIP-29 group is delivered to
+its live subscribers from memory as soon as its commit returns, if every
+smaller sequence has already been delivered; its later notification then asks
+for nothing. Commit order equals sequence order, so no earlier event can still
+appear. Otherwise the event waits for the catch-up read below. Nothing is
+delivered before its commit, and subscribers still see stored events in
+sequence order.
 
 Each gateway establishes `LISTEN` before sampling its durable cursor. A later
 notification jump is recovered with the prepared, bounded `events_after`

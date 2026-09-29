@@ -141,6 +141,10 @@ WHERE kind = $1
   AND created_at <= $4
 "#;
 const NOTIFY_SQL: &str = "SELECT pg_notify('nostr_event', $1)";
+// Notify the sequence of an event inserted earlier in the same transaction,
+// so the notification can be pipelined behind its insert. No row, no notice.
+const NOTIFY_EVENT_SQL: &str =
+    "SELECT pg_notify('nostr_event', ingest_seq::text) FROM nostr_event WHERE id = $1";
 const NOTIFY_EPHEMERAL_SQL: &str = "SELECT pg_notify('nostr_ephemeral', $1)";
 const EVENT_BY_ID_SQL: &str = r#"
 SELECT id, pubkey, created_at, kind, tags::text, content, sig, ingest_seq
@@ -719,6 +723,7 @@ pub(crate) struct Statements {
     pub delete_event_target: Statement,
     pub delete_address_target: Statement,
     pub notify: Statement,
+    pub notify_event: Statement,
     pub notify_ephemeral: Statement,
     pub event_by_id: Statement,
     pub event_by_ingest: Statement,
@@ -808,6 +813,7 @@ impl Statements {
             delete_event_target: client.prepare(DELETE_EVENT_TARGET_SQL).await?,
             delete_address_target: client.prepare(DELETE_ADDRESS_TARGET_SQL).await?,
             notify: client.prepare(NOTIFY_SQL).await?,
+            notify_event: client.prepare(NOTIFY_EVENT_SQL).await?,
             notify_ephemeral: client.prepare(NOTIFY_EPHEMERAL_SQL).await?,
             event_by_id: client.prepare(EVENT_BY_ID_SQL).await?,
             event_by_ingest: client.prepare(EVENT_BY_INGEST_SQL).await?,

@@ -11,11 +11,13 @@ mod statements;
 
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
-    future::poll_fn,
+    future::{Future, poll_fn},
+    pin::Pin,
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
     },
+    task::Poll,
 };
 
 use serde_json::{Value, json};
@@ -476,58 +478,137 @@ impl Store {
             None
         };
         let lock_keys = admission_lock_keys(event, replacement.as_ref(), deletion.as_ref());
+        let group_id = (mode == AdmissionMode::Public)
+            .then(|| group_scope(event))
+            .flatten();
         let statements = self.statements.clone();
         let transaction = self.client.transaction().await?;
 
-        if transaction
-            .query_opt(&statements.duplicate, &[&event.id])
-            .await?
-            .is_some()
-        {
+        // Every read before the storing writes goes out as one pipeline:
+        // the policy reads, the conflict locks, and, outside a group, the
+        // duplicate, tombstone, and replacement-head reads that must follow
+        // the locks. Postgres runs one session's statements in the order
+        // sent, so the post-lock reads still see every conflicting commit.
+        // The results are judged below in the order the checks always ran;
+        // a refusal commits nothing but these reads and locks.
+        let replacement_identifier = replacement
+            .as_ref()
+            .map(|address| address.identifier.as_str());
+        let head_address = replacement
+            .as_ref()
+            .map(|address| (i32::from(address.kind), address));
+        let id_params: [&(dyn ToSql + Sync); 1] = [&event.id];
+        let pubkey_params: [&(dyn ToSql + Sync); 1] = [&event.pubkey];
+        let kind_params: [&(dyn ToSql + Sync); 1] = [&kind];
+        let owner_params = virtual_owner
+            .as_ref()
+            .map(|owner| -> [&(dyn ToSql + Sync); 2] { [&event.pubkey, owner] });
+        let lock_params = lock_keys
+            .iter()
+            .map(|key| -> [&(dyn ToSql + Sync); 1] { [key] })
+            .collect::<Vec<_>>();
+        let tombstone_params: [&(dyn ToSql + Sync); 5] = [
+            &event.id,
+            &event.pubkey,
+            &kind,
+            &replacement_identifier,
+            &created_at,
+        ];
+        let head_params =
+            head_address
+                .as_ref()
+                .map(|(address_kind, address)| -> [&(dyn ToSql + Sync); 3] {
+                    [address_kind, &address.pubkey, &address.identifier]
+                });
+        let reads_after_locks = group_id.is_none();
+        let mut round = Vec::new();
+        let duplicate_at = push_statement(
+            &mut round,
+            transaction.query(&statements.duplicate, &id_params),
+        );
+        let policy_at = push_statement(&mut round, transaction.query(&statements.policy, &[]));
+        let blocked_pubkey_at = push_statement(
+            &mut round,
+            transaction.query(&statements.blocked_pubkey, &pubkey_params),
+        );
+        let blocked_kind_at = push_statement(
+            &mut round,
+            transaction.query(&statements.blocked_kind, &kind_params),
+        );
+        let allowed_pubkey_at = push_statement(
+            &mut round,
+            transaction.query(&statements.allowed_pubkey, &pubkey_params),
+        );
+        let allowed_kind_at = push_statement(
+            &mut round,
+            transaction.query(&statements.allowed_kind, &kind_params),
+        );
+        let member_at = push_statement(
+            &mut round,
+            transaction.query(&statements.member, &pubkey_params),
+        );
+        let owner_at = owner_params.as_ref().map(|params| {
+            push_statement(
+                &mut round,
+                transaction.query(&statements.agent_owner, params),
+            )
+        });
+        for params in &lock_params {
+            push_statement(
+                &mut round,
+                transaction.query(&statements.advisory_lock, params),
+            );
+        }
+        let after_locks_at = reads_after_locks.then(|| {
+            let duplicate = push_statement(
+                &mut round,
+                transaction.query(&statements.duplicate, &id_params),
+            );
+            let tombstone = (event.kind != 5).then(|| {
+                push_statement(
+                    &mut round,
+                    transaction.query(&statements.tombstone_match, &tombstone_params),
+                )
+            });
+            let head = head_params.as_ref().map(|params| {
+                push_statement(&mut round, transaction.query(&statements.head, params))
+            });
+            (duplicate, tombstone, head)
+        });
+        let mut rows = pipeline(round).await?;
+
+        if !rows[duplicate_at].is_empty() {
             transaction.commit().await?;
             return Ok(AdmissionOutcome::Duplicate);
         }
 
-        let policy_row = transaction
-            .query_opt(&statements.policy, &[])
-            .await?
+        let policy_row = rows[policy_at]
+            .first()
             .ok_or_else(|| StoreError::InvalidPolicy("singleton row is missing".to_owned()))?;
-        let policy = AdmissionPolicy::from_row(&policy_row)?;
+        let policy = AdmissionPolicy::from_row(policy_row)?;
 
-        if let Some(row) = transaction
-            .query_opt(&statements.blocked_pubkey, &[&event.pubkey])
-            .await?
-        {
+        if let Some(row) = rows[blocked_pubkey_at].first() {
             let reason = row.get::<_, String>(0);
             transaction.commit().await?;
             return Ok(AdmissionOutcome::Rejected(
                 AdmissionRejection::BlockedPubkey(reason),
             ));
         }
-        if let Some(row) = transaction
-            .query_opt(&statements.blocked_kind, &[&kind])
-            .await?
-        {
+        if let Some(row) = rows[blocked_kind_at].first() {
             let reason = row.get::<_, String>(0);
             transaction.commit().await?;
             return Ok(AdmissionOutcome::Rejected(AdmissionRejection::BlockedKind(
                 reason,
             )));
         }
-        let pubkey_allowed = transaction
-            .query_one(&statements.allowed_pubkey, &[&event.pubkey])
-            .await?
-            .get::<_, bool>(0);
+        let pubkey_allowed = one_row(&rows[allowed_pubkey_at])?.get::<_, bool>(0);
         if !pubkey_allowed {
             transaction.commit().await?;
             return Ok(AdmissionOutcome::Rejected(
                 AdmissionRejection::PubkeyNotAllowed,
             ));
         }
-        let kind_allowed = transaction
-            .query_one(&statements.allowed_kind, &[&kind])
-            .await?
-            .get::<_, bool>(0);
+        let kind_allowed = one_row(&rows[allowed_kind_at])?.get::<_, bool>(0);
         if !kind_allowed {
             transaction.commit().await?;
             return Ok(AdmissionOutcome::Rejected(
@@ -535,20 +616,9 @@ impl Store {
             ));
         }
         if policy.closed_membership {
-            let direct_member = transaction
-                .query_opt(&statements.member, &[&event.pubkey])
-                .await?
-                .is_some();
-            let virtual_member = if direct_member {
-                false
-            } else if let Some(owner) = virtual_owner {
-                transaction
-                    .query_opt(&statements.agent_owner, &[&event.pubkey, &owner])
-                    .await?
-                    .is_some()
-            } else {
-                false
-            };
+            let direct_member = !rows[member_at].is_empty();
+            let virtual_member =
+                !direct_member && owner_at.is_some_and(|owner_at| !rows[owner_at].is_empty());
             if !direct_member && !virtual_member {
                 transaction.commit().await?;
                 return Ok(AdmissionOutcome::Rejected(AdmissionRejection::NotMember));
@@ -594,16 +664,14 @@ impl Store {
                 ));
             }
         }
+        let pipelined_after_locks = after_locks_at.map(|(duplicate, tombstone, head)| {
+            (
+                !rows[duplicate].is_empty(),
+                tombstone.map(|at| std::mem::take(&mut rows[at])),
+                head.map(|at| std::mem::take(&mut rows[at])),
+            )
+        });
 
-        for lock_key in lock_keys {
-            transaction
-                .query_one(&statements.advisory_lock, &[&lock_key])
-                .await?;
-        }
-
-        let group_id = (mode == AdmissionMode::Public)
-            .then(|| group_scope(event))
-            .flatten();
         if mode == AdmissionMode::Public
             && (39_000..=39_005).contains(&event.kind)
             && relay_signer.is_none_or(|signer| signer.pubkey() != event.pubkey)
@@ -746,69 +814,68 @@ impl Store {
         }
 
         // A conflicting process may have committed while this transaction
-        // waited for an event lock.
-        if transaction
-            .query_opt(&statements.duplicate, &[&event.id])
-            .await?
-            .is_some()
-        {
+        // waited for an event lock, so these reads follow the locks.
+        let (duplicate_after_locks, tombstone_rows, head_rows) = match pipelined_after_locks {
+            Some(reads) => reads,
+            None => {
+                let duplicate = transaction
+                    .query_opt(&statements.duplicate, &id_params)
+                    .await?
+                    .is_some();
+                let tombstone = if event.kind == 5 {
+                    None
+                } else {
+                    Some(
+                        transaction
+                            .query(&statements.tombstone_match, &tombstone_params)
+                            .await?,
+                    )
+                };
+                let head = match &head_params {
+                    Some(params) => Some(transaction.query(&statements.head, params).await?),
+                    None => None,
+                };
+                (duplicate, tombstone, head)
+            }
+        };
+        if duplicate_after_locks {
             transaction.commit().await?;
             return Ok(AdmissionOutcome::Duplicate);
         }
 
-        if event.kind != 5 {
-            let replacement_identifier = replacement
-                .as_ref()
-                .map(|address| address.identifier.as_str());
-            let params: &[&(dyn ToSql + Sync)] = &[
-                &event.id,
-                &event.pubkey,
-                &kind,
-                &replacement_identifier,
-                &created_at,
-            ];
-            let deleted = transaction
-                .query_one(&statements.tombstone_match, params)
-                .await?
-                .get::<_, bool>(0);
-            if deleted {
-                transaction.commit().await?;
-                return Ok(AdmissionOutcome::Rejected(AdmissionRejection::Deleted));
-            }
+        if let Some(rows) = &tombstone_rows
+            && one_row(rows)?.get::<_, bool>(0)
+        {
+            transaction.commit().await?;
+            return Ok(AdmissionOutcome::Rejected(AdmissionRejection::Deleted));
         }
 
         let mut replaced_event_id = None;
-        if let Some(address) = &replacement {
-            let address_kind = i32::from(address.kind);
-            let params: &[&(dyn ToSql + Sync)] =
-                &[&address_kind, &address.pubkey, &address.identifier];
-            if let Some(row) = transaction.query_opt(&statements.head, params).await? {
-                let current_id = row.get::<_, String>(0);
-                let current_created_at = row.get::<_, i64>(1);
-                let current_created_at = u64::try_from(current_created_at).map_err(|_| {
-                    StoreError::CorruptRow("replaceable head has negative timestamp".to_owned())
-                })?;
-                match compare_replacement_order(
-                    current_created_at,
-                    &current_id,
-                    event.created_at,
-                    &event.id,
-                ) {
-                    ReplacementDecision::KeepCurrent => {
-                        transaction.commit().await?;
-                        return Ok(AdmissionOutcome::Rejected(AdmissionRejection::Superseded));
-                    }
-                    ReplacementDecision::Duplicate => {
-                        transaction.commit().await?;
-                        return Ok(AdmissionOutcome::Duplicate);
-                    }
-                    ReplacementDecision::ReplaceCurrent => {
-                        replaced_event_id = Some(current_id);
-                    }
+        if let Some(row) = head_rows.as_deref().and_then(<[Row]>::first) {
+            let current_id = row.get::<_, String>(0);
+            let current_created_at = row.get::<_, i64>(1);
+            let current_created_at = u64::try_from(current_created_at).map_err(|_| {
+                StoreError::CorruptRow("replaceable head has negative timestamp".to_owned())
+            })?;
+            match compare_replacement_order(
+                current_created_at,
+                &current_id,
+                event.created_at,
+                &event.id,
+            ) {
+                ReplacementDecision::KeepCurrent => {
+                    transaction.commit().await?;
+                    return Ok(AdmissionOutcome::Rejected(AdmissionRejection::Superseded));
+                }
+                ReplacementDecision::Duplicate => {
+                    transaction.commit().await?;
+                    return Ok(AdmissionOutcome::Duplicate);
+                }
+                ReplacementDecision::ReplaceCurrent => {
+                    replaced_event_id = Some(current_id);
                 }
             }
         }
-
         if let Some(lease) = lease
             && let Some(reason) = push::check_lease(&transaction, lease, now).await?
         {
@@ -826,14 +893,9 @@ impl Store {
 
         // Serialize sequence allocation and commit order across processes.
         // This makes an `ingest_seq` high-water mark a safe EOSE boundary.
-        transaction.query_one(&statements.ingest_lock, &[]).await?;
-
         let tags_json = serde_json::to_string(&event.tags)
             .map_err(|error| StoreError::Serialization(error.to_string()))?;
-        let replacement_identifier = replacement
-            .as_ref()
-            .map(|address| address.identifier.as_str());
-        let insert_params: &[&(dyn ToSql + Sync)] = &[
+        let insert_params: [&(dyn ToSql + Sync); 9] = [
             &event.id,
             &event.pubkey,
             &created_at,
@@ -844,38 +906,86 @@ impl Store {
             &replacement_identifier,
             &expires_at,
         ];
-        let Some(row) = transaction
-            .query_opt(&statements.insert_event, insert_params)
-            .await?
-        else {
-            transaction.commit().await?;
+        let indexed_tags = event.indexed_tags().collect::<Vec<_>>();
+        let tag_params = indexed_tags
+            .iter()
+            .map(|(tag_name, tag_value)| -> [&(dyn ToSql + Sync); 4] {
+                [&event.id, tag_name, tag_value, &created_at]
+            })
+            .collect::<Vec<_>>();
+        let head_write =
+            head_address
+                .as_ref()
+                .map(|(address_kind, address)| -> [&(dyn ToSql + Sync); 5] {
+                    [
+                        address_kind,
+                        &address.pubkey,
+                        &address.identifier,
+                        &event.id,
+                        &created_at,
+                    ]
+                });
+        let replaced_params = replaced_event_id
+            .as_ref()
+            .map(|old_id| -> [&(dyn ToSql + Sync); 1] { [old_id] });
+        let group_write = group_id.is_some() && group_action.is_some();
+        let plain = lease.is_none() && deletion.is_none() && !group_write;
+
+        // A plain event's writes, including its notification, are one more
+        // pipeline. The event and replacement locks make the insert's
+        // conflict branch unreachable; if it is ever taken, nothing commits.
+        let mut round = Vec::new();
+        push_statement(&mut round, transaction.query(&statements.ingest_lock, &[]));
+        let insert_at = push_statement(
+            &mut round,
+            transaction.query(&statements.insert_event, &insert_params),
+        );
+        if plain {
+            for params in &tag_params {
+                push_statement(
+                    &mut round,
+                    transaction.query(&statements.insert_tag, params),
+                );
+            }
+            if let Some(params) = &head_write {
+                push_statement(
+                    &mut round,
+                    transaction.query(&statements.upsert_head, params),
+                );
+            }
+            if let Some(params) = &replaced_params {
+                push_statement(
+                    &mut round,
+                    transaction.query(&statements.delete_event, params),
+                );
+            }
+            push_statement(
+                &mut round,
+                transaction.query(&statements.notify_event, &id_params),
+            );
+        }
+        let rows = pipeline(round).await?;
+        let Some(inserted) = rows[insert_at].first() else {
+            transaction.rollback().await?;
             return Ok(AdmissionOutcome::Duplicate);
         };
-        let ingest_seq = row.get::<_, i64>(0);
+        let ingest_seq = inserted.get::<_, i64>(0);
+        if plain {
+            transaction.commit().await?;
+            return Ok(AdmissionOutcome::Stored { ingest_seq });
+        }
 
-        for (tag_name, tag_value) in event.indexed_tags() {
-            let tag_name = tag_name.to_string();
-            let params: &[&(dyn ToSql + Sync)] = &[&event.id, &tag_name, &tag_value, &created_at];
+        for params in &tag_params {
             transaction.execute(&statements.insert_tag, params).await?;
         }
-
-        if let Some(address) = &replacement {
-            let address_kind = i32::from(address.kind);
-            let params: &[&(dyn ToSql + Sync)] = &[
-                &address_kind,
-                &address.pubkey,
-                &address.identifier,
-                &event.id,
-                &created_at,
-            ];
+        if let Some(params) = &head_write {
             transaction.execute(&statements.upsert_head, params).await?;
-            if let Some(old_id) = replaced_event_id {
-                transaction
-                    .execute(&statements.delete_event, &[&old_id])
-                    .await?;
-            }
         }
-
+        if let Some(params) = &replaced_params {
+            transaction
+                .execute(&statements.delete_event, params)
+                .await?;
+        }
         if let Some(lease) = lease {
             push::write_lease(&transaction, lease, &event.id, created_at, now).await?;
         }
@@ -1082,17 +1192,17 @@ impl Store {
 
     pub async fn identity_status(&self, pubkey: &str) -> Result<IdentityStatus, StoreError> {
         self.ensure_current()?;
-        let policy_row = self
-            .client
-            .query_opt(&self.statements.policy, &[])
-            .await?
+        let member_params: [&(dyn ToSql + Sync); 1] = [&pubkey];
+        let rows = pipeline(vec![
+            Box::pin(self.client.query(&self.statements.policy, &[])),
+            Box::pin(self.client.query(&self.statements.member, &member_params)),
+        ])
+        .await?;
+        let policy_row = rows[0]
+            .first()
             .ok_or_else(|| StoreError::InvalidPolicy("singleton row is missing".to_owned()))?;
-        let closed_membership = AdmissionPolicy::from_row(&policy_row)?.closed_membership;
-        let direct_member = self
-            .client
-            .query_opt(&self.statements.member, &[&pubkey])
-            .await?
-            .is_some();
+        let closed_membership = AdmissionPolicy::from_row(policy_row)?.closed_membership;
+        let direct_member = !rows[1].is_empty();
         Ok(IdentityStatus {
             closed_membership,
             direct_member,
@@ -2349,6 +2459,72 @@ async fn open_client(
     Ok((client, connection_current, connection_task))
 }
 
+/// One statement of a pipeline, sent when first polled.
+type PendingRows<'a> =
+    Pin<Box<dyn Future<Output = Result<Vec<Row>, tokio_postgres::Error>> + Send + 'a>>;
+
+/// Add a statement to a pipeline and return its position.
+fn push_statement<'a>(
+    round: &mut Vec<PendingRows<'a>>,
+    statement: impl Future<Output = Result<Vec<Row>, tokio_postgres::Error>> + Send + 'a,
+) -> usize {
+    round.push(Box::pin(statement));
+    round.len() - 1
+}
+
+/// Send every statement before waiting for any reply, and return each
+/// statement's rows in order, or the first statement's error in order.
+///
+/// tokio-postgres writes a request when its future is first polled, and the
+/// first poll below visits them in order; Postgres runs one session's
+/// requests in the order it receives them. A pipeline therefore keeps the
+/// statements' order and effects and costs one database round trip instead
+/// of one per statement. Once one statement fails, Postgres aborts the
+/// transaction and the rest fail too, so nothing after it takes effect.
+async fn pipeline(round: Vec<PendingRows<'_>>) -> Result<Vec<Vec<Row>>, StoreError> {
+    let mut pending = round.into_iter().map(Some).collect::<Vec<_>>();
+    let mut results = pending.iter().map(|_| None).collect::<Vec<_>>();
+    poll_fn(|context| {
+        let mut finished = true;
+        for (slot, result) in pending.iter_mut().zip(results.iter_mut()) {
+            if let Some(statement) = slot {
+                match statement.as_mut().poll(context) {
+                    Poll::Ready(rows) => {
+                        *result = Some(rows);
+                        *slot = None;
+                    }
+                    Poll::Pending => finished = false,
+                }
+            }
+        }
+        if finished {
+            Poll::Ready(())
+        } else {
+            Poll::Pending
+        }
+    })
+    .await;
+    results
+        .into_iter()
+        .map(|result| {
+            result
+                .expect("a finished pipeline holds every result")
+                .map_err(StoreError::from)
+        })
+        .collect()
+}
+
+/// The single row of a statement that always returns one.
+fn one_row(rows: &[Row]) -> Result<&Row, StoreError> {
+    match rows {
+        [row] => Ok(row),
+        _ => Err(StoreError::CorruptRow(format!(
+            "expected one row, got {}",
+            rows.len()
+        ))),
+    }
+}
+
 fn admission_lock_keys(
     event: &Event,
     replacement: Option<&crate::domain::ReplacementAddress>,
@@ -2377,6 +2553,12 @@ fn admission_lock_keys(
         keys.insert(format!("group:{group_id}"));
     }
     keys
+}
+
+/// Whether admitting `event` may touch NIP-29 group state, and so write
+/// relay-signed events or remove events in the same transaction.
+pub fn writes_group_state(event: &Event) -> bool {
+    group_scope(event).is_some() || (39_000..=39_005).contains(&event.kind)
 }
 
 fn group_scope(event: &Event) -> Option<&str> {

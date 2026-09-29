@@ -11,7 +11,7 @@ use std::{
 
 use tokio::{
     net::{TcpListener, TcpStream},
-    sync::{Semaphore, watch},
+    sync::{Semaphore, mpsc, watch},
     task::{JoinHandle, JoinSet},
     time::timeout,
 };
@@ -39,7 +39,7 @@ use crate::{
 use super::{
     GatewayConfig, GatewayError,
     auth::{AuthState, make_challenge, read_process_secret},
-    db::{DbPool, DbProtocolConfig},
+    db::{CatchUpResult, DbPool, DbProtocolConfig},
     management::{is_management_request, serve_management},
     media::{MediaStorage, STALE_RESERVATION_AGE, is_media_request, serve_media},
     push::{self, PushExecutor},
@@ -61,6 +61,9 @@ const NOTIFICATION_QUEUE_CAPACITY: usize = 2_048;
 const HUB_COMMAND_CAPACITY: usize = 2_048;
 const MAX_DB_QUEUED_JOBS: usize = 256;
 const MAX_NOTIFICATION_GAP: usize = 4_096;
+/// Locally committed events waiting for the delivery task. When it is full
+/// an event waits for its database notification instead.
+const COMMITTED_CAPACITY: usize = 1_024;
 
 pub const GIFT_WRAP_RECIPIENT_RATE_EXCEEDED: &str =
     "rate-limited: gift-wrap recipient rate exceeded";
@@ -92,6 +95,81 @@ struct ServerState {
     media: Option<MediaStorage>,
     /// Shortens the push worker's wait after an admission.
     push_wake: Arc<tokio::sync::Notify>,
+    /// Events this process committed, for delivery without a catch-up read.
+    committed: mpsc::Sender<PublishedEvent>,
+}
+
+enum Wake {
+    Notification(StoreNotification),
+    Committed(PublishedEvent),
+    Read(Result<CatchUpResult, StoreError>),
+}
+
+/// A catch-up read in flight, through `through`.
+struct PendingCatchUp {
+    through: i64,
+    read: std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<CatchUpResult, StoreError>> + Send>,
+    >,
+}
+
+/// Which stored events the process may deliver, so that every subscriber
+/// sees them in `ingest_seq` order and none is skipped.
+///
+/// Durable admissions commit in sequence order, so once an admission
+/// commits, every smaller sequence is already committed or will never be.
+/// An event this process committed right after the last delivered one can
+/// therefore go out from memory. Any other sequence a notification or a
+/// commit names is read back from the database with the gap before it.
+#[derive(Debug)]
+struct DurableSequence {
+    delivered: i64,
+    wanted: i64,
+}
+
+impl DurableSequence {
+    fn new(cursor: i64) -> Self {
+        Self {
+            delivered: cursor,
+            wanted: cursor,
+        }
+    }
+
+    /// Another admission, here or in another process, committed `ingest_seq`.
+    fn notified(&mut self, ingest_seq: i64) {
+        self.wanted = self.wanted.max(ingest_seq);
+    }
+
+    /// This process committed `ingest_seq`. True means deliver it now.
+    fn committed(&mut self, ingest_seq: i64) -> bool {
+        if self.delivered.checked_add(1) == Some(ingest_seq) {
+            self.delivered = ingest_seq;
+            self.wanted = self.wanted.max(ingest_seq);
+            true
+        } else {
+            self.notified(ingest_seq);
+            false
+        }
+    }
+
+    /// The range to read next, after `.0` through `.1`, if any.
+    fn read_needed(&self) -> Option<(i64, i64)> {
+        (self.wanted > self.delivered).then_some((self.delivered, self.wanted))
+    }
+
+    /// A read through `through` returned `events` in sequence order. Returns
+    /// those not yet delivered.
+    fn read(
+        &mut self,
+        through: i64,
+        events: Vec<crate::store::StoredEvent>,
+    ) -> impl Iterator<Item = crate::store::StoredEvent> {
+        let after = self.delivered;
+        self.delivered = self.delivered.max(through);
+        events
+            .into_iter()
+            .filter(move |stored| stored.ingest_seq > after && stored.ingest_seq <= through)
+    }
 }
 
 struct ConnectionContext {
@@ -256,92 +334,109 @@ impl Gateway {
         let notify_shutdown = shutdown.clone();
         let notify_current = Arc::clone(&current);
         let mut notify_stop = shutdown_receiver.clone();
+        let (committed, mut committed_receiver) =
+            mpsc::channel::<PublishedEvent>(COMMITTED_CAPACITY);
         background.push(tokio::spawn(async move {
-            let mut durable_cursor = initial_ingest_seq;
+            let mut sequence = DurableSequence::new(initial_ingest_seq);
+            let mut reading: Option<PendingCatchUp> = None;
             loop {
-                tokio::select! {
+                if reading.is_none()
+                    && let Some((after, through)) = sequence.read_needed()
+                {
+                    if usize::try_from(through - after)
+                        .map_or(true, |gap| gap > MAX_NOTIFICATION_GAP)
+                    {
+                        fail_process(&notify_current, &notify_shutdown);
+                        break;
+                    }
+                    let db = notify_db.clone();
+                    reading = Some(PendingCatchUp {
+                        through,
+                        read: Box::pin(async move {
+                            db.catch_up(after, through, unix_now(), MAX_NOTIFICATION_GAP + 1)
+                                .await
+                        }),
+                    });
+                }
+                let wake = tokio::select! {
                     changed = notify_stop.changed() => {
                         if changed.is_err() || *notify_stop.borrow() {
                             break;
                         }
+                        continue;
                     }
                     notification = notifications.recv_notification() => {
                         let Some(notification) = notification else {
                             fail_process(&notify_current, &notify_shutdown);
                             break;
                         };
-                        let now = unix_now();
-                        let published = match notification {
-                            StoreNotification::Stored(ingest_seq) => {
-                                if ingest_seq <= durable_cursor {
-                                    continue;
-                                }
-                                let Some(gap) = ingest_seq
-                                    .checked_sub(durable_cursor)
-                                    .and_then(|gap| usize::try_from(gap).ok())
-                                else {
-                                    fail_process(&notify_current, &notify_shutdown);
-                                    break;
-                                };
-                                if gap > MAX_NOTIFICATION_GAP {
-                                    fail_process(&notify_current, &notify_shutdown);
-                                    break;
-                                }
-                                let catch_up = match notify_db
-                                    .catch_up(
-                                        durable_cursor,
-                                        ingest_seq,
-                                        now,
-                                        MAX_NOTIFICATION_GAP + 1,
-                                    )
-                                    .await
-                                {
-                                    Ok(catch_up)
-                                        if catch_up.latest >= ingest_seq
-                                            && catch_up.events.len() <= MAX_NOTIFICATION_GAP =>
-                                    {
-                                        catch_up
-                                    }
-                                    Ok(_) | Err(_) => {
-                                        fail_process(&notify_current, &notify_shutdown);
-                                        break;
-                                    }
-                                };
-                                let mut failed = false;
-                                for stored in catch_up.events {
-                                    if notify_hub
-                                        .publish(
-                                            PublishedEvent {
-                                                event: Arc::new(stored.event),
-                                                ingest_seq: Some(stored.ingest_seq),
-                                            },
-                                            now,
-                                        )
-                                        .await
-                                        .is_err()
-                                    {
-                                        failed = true;
-                                        break;
-                                    }
-                                }
-                                if failed {
-                                    fail_process(&notify_current, &notify_shutdown);
-                                    break;
-                                }
-                                durable_cursor = ingest_seq;
-                                None
+                        Wake::Notification(notification)
+                    }
+                    Some(local) = committed_receiver.recv() => Wake::Committed(local),
+                    result = async {
+                        match reading.as_mut() {
+                            Some(pending) => pending.read.as_mut().await,
+                            None => std::future::pending().await,
+                        }
+                    }, if reading.is_some() => Wake::Read(result),
+                };
+                let now = unix_now();
+                let mut publish = Vec::new();
+                match wake {
+                    Wake::Notification(StoreNotification::Stored(ingest_seq)) => {
+                        sequence.notified(ingest_seq);
+                    }
+                    Wake::Notification(StoreNotification::Ephemeral(event)) => {
+                        publish.push(PublishedEvent {
+                            event: Arc::new(event),
+                            ingest_seq: None,
+                        });
+                    }
+                    Wake::Committed(local) => {
+                        if let Some(ingest_seq) = local.ingest_seq
+                            && sequence.committed(ingest_seq)
+                        {
+                            publish.push(local);
+                            // The pending read covered nothing new.
+                            if reading
+                                .as_ref()
+                                .is_some_and(|pending| pending.through <= ingest_seq)
+                            {
+                                reading = None;
                             }
-                            StoreNotification::Ephemeral(event) => Some(PublishedEvent {
-                                event: Arc::new(event),
-                                ingest_seq: None,
-                            }),
-                        };
-                        if let Some(published) = published
-                            && notify_hub.publish(published, now).await.is_err() {
+                        }
+                    }
+                    Wake::Read(result) => {
+                        let through = reading.take().map_or(0, |pending| pending.through);
+                        match result {
+                            Ok(catch_up)
+                                if catch_up.latest >= through
+                                    && catch_up.events.len() <= MAX_NOTIFICATION_GAP =>
+                            {
+                                publish.extend(sequence.read(through, catch_up.events).map(
+                                    |stored| PublishedEvent {
+                                        event: Arc::new(stored.event),
+                                        ingest_seq: Some(stored.ingest_seq),
+                                    },
+                                ));
+                            }
+                            Ok(_) | Err(_) => {
                                 fail_process(&notify_current, &notify_shutdown);
                                 break;
                             }
+                        }
                     }
+                }
+                let mut failed = false;
+                for published in publish {
+                    if notify_hub.publish(published, now).await.is_err() {
+                        failed = true;
+                        break;
+                    }
+                }
+                if failed {
+                    fail_process(&notify_current, &notify_shutdown);
+                    break;
                 }
             }
         }));
@@ -381,6 +476,7 @@ impl Gateway {
             shutdown: shutdown.clone(),
             media,
             push_wake,
+            committed,
         });
         Ok(Self {
             listener,
@@ -424,6 +520,9 @@ impl Gateway {
                         drop(stream);
                         continue;
                     };
+                    // Frames are small and written one at a time; do not let
+                    // Nagle's algorithm hold one back for an earlier ACK.
+                    let _ = stream.set_nodelay(true);
                     let state = Arc::clone(&self.state);
                     connections.spawn(async move {
                         let _slot = slot;
@@ -1567,6 +1666,12 @@ async fn admit_event(
     }
     let event_id = event.id.clone();
     let ephemeral = (event.class() == EventClass::Ephemeral).then(|| Arc::new(event.clone()));
+    // A stored event outside a group is delivered from memory once its
+    // admission commits. A group admission may also write relay-signed
+    // events, so it is delivered from the database in sequence order.
+    let local = (event.class() != EventClass::Ephemeral
+        && !crate::store::writes_group_state(&event))
+    .then(|| Arc::new(event.clone()));
     let admission_now = unix_now();
     let is_lease = lease.is_some();
     let admission = match lease {
@@ -1606,6 +1711,16 @@ async fn admit_event(
                 {
                     fail_process(&context.state.current, &context.state.shutdown);
                 }
+            }
+            if let AdmissionOutcome::Stored { ingest_seq } = outcome
+                && let Some(event) = local
+            {
+                // Full means the delivery task is behind; the event's
+                // notification then delivers it.
+                let _ = context.state.committed.try_send(PublishedEvent {
+                    event,
+                    ingest_seq: Some(ingest_seq),
+                });
             }
             let stored = matches!(outcome, AdmissionOutcome::Stored { .. });
             let (accepted, reason) = if is_lease
@@ -2186,9 +2301,73 @@ pub fn unix_now() -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use crate::{domain::Filter, gateway::GatewayConfig};
+    use crate::{
+        domain::{Event, Filter},
+        gateway::GatewayConfig,
+        store::StoredEvent,
+    };
 
-    use super::validate_and_clamp_filters;
+    use super::{DurableSequence, validate_and_clamp_filters};
+
+    fn stored(ingest_seq: i64) -> StoredEvent {
+        StoredEvent {
+            event: Event {
+                id: format!("{ingest_seq:064x}"),
+                pubkey: "0".repeat(64),
+                created_at: 0,
+                kind: 1,
+                tags: Vec::new(),
+                content: String::new(),
+                sig: "0".repeat(128),
+            },
+            ingest_seq,
+        }
+    }
+
+    fn sequences(events: impl Iterator<Item = StoredEvent>) -> Vec<i64> {
+        events.map(|stored| stored.ingest_seq).collect()
+    }
+
+    #[test]
+    fn a_commit_right_after_the_last_delivered_goes_out_from_memory() {
+        let mut sequence = DurableSequence::new(10);
+        assert!(sequence.committed(11));
+        assert_eq!(sequence.read_needed(), None);
+        // Its own notification, arriving later, asks for nothing.
+        sequence.notified(11);
+        assert_eq!(sequence.read_needed(), None);
+        assert!(sequence.committed(12));
+        assert!(!sequence.committed(12), "a sequence is delivered once");
+    }
+
+    #[test]
+    fn a_commit_past_a_gap_waits_for_the_read_of_the_gap() {
+        let mut sequence = DurableSequence::new(10);
+        // Another process committed 11; this one committed 12.
+        assert!(!sequence.committed(12));
+        assert_eq!(sequence.read_needed(), Some((10, 12)));
+        let delivered = sequences(sequence.read(12, vec![stored(11), stored(12)]));
+        assert_eq!(delivered, [11, 12]);
+        assert_eq!(sequence.read_needed(), None);
+        assert!(sequence.committed(13));
+    }
+
+    #[test]
+    fn a_read_delivers_only_what_memory_did_not() {
+        let mut sequence = DurableSequence::new(10);
+        // A notification for 11 starts a read before the commit arrives.
+        sequence.notified(11);
+        assert_eq!(sequence.read_needed(), Some((10, 11)));
+        sequence.notified(13);
+        assert!(sequence.committed(11));
+        // The read through 11 was already covered; the next asks for 12..13.
+        assert_eq!(sequence.read_needed(), Some((11, 13)));
+        // A read that started at 10 still delivers nothing twice.
+        let delivered = sequences(sequence.read(13, vec![stored(11), stored(12), stored(13)]));
+        assert_eq!(delivered, [12, 13]);
+        assert!(!sequence.committed(13));
+        assert_eq!(sequence.read_needed(), None);
+    }
 
     #[test]
     fn req_limits_reject_empty_arrays_and_expensive_queries_and_clamp_limits() {
