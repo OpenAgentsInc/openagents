@@ -408,6 +408,26 @@ symlink; the environment file and unit did not change.
 0.68 s). See
 [the build 22 verification](../extensions/measurements/2026-09-29-build-22-verification.md).
 
+Release `af6d0fae2d` (2026-09-29) carries build 23's changelog ("Ready for
+launch": no sample screens, no empty playtest card, plain reasons when we
+can't run your tests) for Gym news; the worker's code did not change since
+`a9ba87d828`. It was built with `cargo zigbuild` as above, installed as
+`/opt/coder-worker/releases/af6d0fae2d` with `knowledge/` (no `._*` files)
+and `codebase-kb.gz` copied from `a9ba87d828`, checked with `--check` under
+the chat environment, and put live by moving the `chat` symlink and
+restarting `coder-worker-chat`; the environment file and unit did not
+change, `coder-worker.service` and `/opt/coder-worker/current` were not
+touched, and `a9ba87d828` stays in `releases/` for rollback. The first read
+logged `gym records: 28 verified results, 4 test sets, 1 refused`.
+`live_basic_coder_streams_a_reply` passed (first words 0.68 s, done
+6.3 s). "What's new in the Gym?" (three runs) showed first words at 1.2 to
+1.9 s and finished at 2.9 to 3.6 s, with a `Build 23: Ready for launch`
+news card and replies naming build 23's items; the worker logged `router
+gym reply: … 0 invented, banned [], 0 raw ids` for each. "Who are you?"
+answered with the whole `meta.who` answer in 0.66 s, and "Test Project map
+on Coder" answered in 0.91 s with the tool card and a `start_eval` for the
+newest Project map test set (6 tests, 3 runs, 2 arms, `hosted`).
+
 Release `dbad257c51` (2026-09-29) makes Gym news answer at once (#9950),
 on top of `d0a053650d` and `69587cc286` (phone only). It was built as
 above, installed as `/opt/coder-worker/releases/dbad257c51` with the
