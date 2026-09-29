@@ -321,6 +321,10 @@ pub struct AuthorAsk {
     /// The request's draft, when it carried one that passed
     /// [`super::card::draft`]: data, never an instruction.
     pub draft: Option<serde_json::Value>,
+    /// A try's or a full run's result for that draft, when the request
+    /// carried one that passed [`super::card::tried`]: data, never an
+    /// instruction.
+    pub tried: Option<ext_eval::author::runner::Tried>,
     /// Where the chat is.
     pub surface: Surface,
 }
@@ -334,7 +338,8 @@ pub struct AuthorStep {
     /// The revised draft, shown as the `draft` card.
     pub draft: Option<serde_json::Value>,
     /// The step's action: `start_eval` on the draft (**Try it once**, the
-    /// full run) or `publish_eval`.
+    /// full run), `publish_eval`, or `run_coder` when the tool needs new
+    /// code.
     pub offer: Option<super::Offer>,
     /// The model that wrote `text`, for the result's `model`.
     pub model: String,
@@ -570,6 +575,7 @@ mod tests {
             message: "help me make a tool".into(),
             transcript: Vec::new(),
             draft: None,
+            tried: None,
             surface: Surface::Phone,
         };
         assert_eq!(

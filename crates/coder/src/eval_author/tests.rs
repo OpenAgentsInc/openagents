@@ -454,6 +454,7 @@ async fn the_router_seam_runs_a_step() {
             message: "Help me write tests for Project map".into(),
             transcript: Vec::new(),
             draft: None,
+            tried: None,
             surface: crate::router::Surface::Phone,
         },
     )

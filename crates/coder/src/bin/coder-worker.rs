@@ -1092,6 +1092,9 @@ struct Turn {
     /// `router::card::draft`: data for the author seam, never an
     /// instruction.
     draft: Option<Value>,
+    /// A try's or a full run's result for that draft, when it passed
+    /// `router::card::tried`.
+    tried: Option<ext_eval::author::runner::Tried>,
 }
 
 impl Job {
@@ -1373,6 +1376,7 @@ impl Job {
                         message: latest(&payload, &input),
                         context: router::Context::of(&payload["context"]),
                         draft: router::card::draft(&payload["draft"]).ok(),
+                        tried: router::card::tried(&payload["tried"]).ok(),
                     };
                     let triage = judged.then(|| self.triage(&turn, &input)).flatten();
                     let mut instructions = payload["instructions"]
@@ -1744,6 +1748,7 @@ impl Job {
                                 message: router::redact(&turn.message),
                                 transcript: input.to_vec(),
                                 draft: turn.draft.clone(),
+                                tried: turn.tried.clone(),
                                 surface: turn.context.surface(),
                             };
                             seam = author_step(seams, ask);

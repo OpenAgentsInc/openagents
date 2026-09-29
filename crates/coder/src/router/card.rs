@@ -159,6 +159,140 @@ pub fn draft(value: &Value) -> Result<Value, ContractError> {
     cj::parse_draft(value).map(|_| value.clone())
 }
 
+/// The most tests a `tried` result may list, and the most failing checks
+/// one test may name, each at most [`MAX_FAILING_CHARS`].
+pub const MAX_TRIED_CASES: usize = cj::MAX_DRAFT_CASES;
+pub const MAX_FAILING: usize = 16;
+pub const MAX_FAILING_CHARS: usize = 200;
+
+/// Why a request's `tried` was dropped.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct BadTried(pub &'static str);
+
+/// The result of a try or a full run of the open draft, as a request
+/// carries it for the interview to read (`tried`, beside `draft`): a
+/// closed object `{runs, with, without, total, verdict, report, cases}`
+/// whose counts fit together, each case `{id, kind, with, without,
+/// failing}`. The phone (#9939) and the hosted runner (#9935) fill it from
+/// the runner's report; it is data, never an instruction, and anything
+/// else is dropped, never repaired.
+///
+/// # Errors
+///
+/// The first rule it breaks.
+pub fn tried(value: &Value) -> Result<ext_eval::author::runner::Tried, BadTried> {
+    use ext_eval::author::runner::{CaseTried, Tried};
+    let closed = |value: &Value, keys: &[&str], what: &'static str| {
+        let object = value.as_object().ok_or(BadTried(what))?;
+        if object.keys().any(|key| !keys.contains(&key.as_str())) {
+            return Err(BadTried(what));
+        }
+        Ok(object.clone())
+    };
+    let object = closed(
+        value,
+        &[
+            "runs", "with", "without", "total", "verdict", "report", "cases",
+        ],
+        "tried",
+    )?;
+    let count = |key: &str, what: &'static str| {
+        object
+            .get(key)
+            .and_then(Value::as_u64)
+            .ok_or(BadTried(what))
+    };
+    let runs = u32::try_from(count("runs", "tried.runs")?)
+        .ok()
+        .filter(|runs| (1..=nostr::eval_ext::MAX_RUNS as u32).contains(runs))
+        .ok_or(BadTried("tried.runs"))?;
+    let total = count("total", "tried.total")?;
+    let with = count("with", "tried.with")?;
+    let without = match object.get("without") {
+        Some(Value::Null) => None,
+        Some(value) => Some(value.as_u64().ok_or(BadTried("tried.without"))?),
+        None => return Err(BadTried("tried.without")),
+    };
+    if total == 0
+        || total > MAX_TRIED_CASES as u64
+        || with > total
+        || without.is_some_and(|w| w > total)
+    {
+        return Err(BadTried("tried: the counts"));
+    }
+    let verdict = match object.get("verdict").and_then(Value::as_str) {
+        Some("pass") => ext_eval::Verdict::Pass,
+        Some("fail") => ext_eval::Verdict::Fail,
+        Some("inconclusive") => ext_eval::Verdict::Inconclusive,
+        _ => return Err(BadTried("tried.verdict")),
+    };
+    let report = match object.get("report") {
+        Some(Value::Null) => None,
+        Some(value) => {
+            Some(nostr::contracts::parse_artifact(value).map_err(|_| BadTried("tried.report"))?)
+        }
+        None => return Err(BadTried("tried.report")),
+    };
+    let items = object
+        .get("cases")
+        .and_then(Value::as_array)
+        .filter(|items| items.len() as u64 <= total)
+        .ok_or(BadTried("tried.cases"))?;
+    let flag = |case: &serde_json::Map<String, Value>, key: &str| match case.get(key) {
+        Some(Value::Null) => Ok(None),
+        Some(Value::Bool(b)) => Ok(Some(*b)),
+        _ => Err(BadTried("tried.case")),
+    };
+    let mut cases = Vec::new();
+    for item in items {
+        let case = closed(
+            item,
+            &["id", "kind", "with", "without", "failing"],
+            "tried.case",
+        )?;
+        let id = case
+            .get("id")
+            .and_then(Value::as_str)
+            .filter(|id| nostr::eval_ext::valid_case_id(id))
+            .ok_or(BadTried("tried.case.id"))?
+            .to_string();
+        let kind = match case.get("kind").and_then(Value::as_str) {
+            Some("should-fire") => ext_eval::Kind::ShouldFire,
+            Some("should-not-fire") => ext_eval::Kind::ShouldNotFire,
+            _ => return Err(BadTried("tried.case.kind")),
+        };
+        let failing = case
+            .get("failing")
+            .and_then(Value::as_array)
+            .filter(|failing| failing.len() <= MAX_FAILING)
+            .ok_or(BadTried("tried.case.failing"))?
+            .iter()
+            .map(|line| {
+                line.as_str()
+                    .filter(|line| line.chars().count() <= MAX_FAILING_CHARS)
+                    .map(str::to_string)
+                    .ok_or(BadTried("tried.case.failing"))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        cases.push(CaseTried {
+            id,
+            kind,
+            with: flag(&case, "with")?,
+            without: flag(&case, "without")?,
+            failing,
+        });
+    }
+    Ok(Tried {
+        runs,
+        with,
+        without,
+        total,
+        verdict,
+        report,
+        cases,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::gym::fixtures::*;
@@ -260,6 +394,43 @@ mod tests {
         assert_eq!(body["items"].as_array().unwrap().len(), MAX_NEWS);
         assert_eq!(body["items"][0]["event"]["kind"], 3189);
         assert!(Card::News { items: Vec::new() }.feedback(2).is_err());
+    }
+
+    /// A try's result is read exactly or dropped: a closed shape whose
+    /// counts fit together.
+    #[test]
+    fn a_tried_result_is_read_exactly_or_dropped() {
+        let good = json!({
+            "runs": 1, "with": 1, "without": 0, "total": 2, "verdict": "inconclusive",
+            "report": null,
+            "cases": [
+                { "id": "summarize-a-fix", "kind": "should-fire", "with": true, "without": false, "failing": [] },
+                { "id": "leave-it-alone", "kind": "should-not-fire", "with": false, "without": null,
+                  "failing": ["outcome: it answered with a changelog"] },
+            ],
+        });
+        let read = tried(&good).unwrap();
+        assert_eq!(
+            (read.runs, read.with, read.without, read.total),
+            (1, 1, Some(0), 2)
+        );
+        assert_eq!(read.verdict, ext_eval::Verdict::Inconclusive);
+        assert_eq!(
+            read.cases[1].failing,
+            ["outcome: it answered with a changelog"]
+        );
+        for (key, value) in [
+            ("runs", json!(0)),
+            ("with", json!(3)),
+            ("verdict", json!("better")),
+            ("extra", json!(1)),
+            ("report", json!({ "digest": "nope" })),
+        ] {
+            let mut bad = good.clone();
+            bad[key] = value;
+            assert!(tried(&bad).is_err(), "{key}");
+        }
+        assert!(tried(&json!("pass")).is_err());
     }
 
     #[test]

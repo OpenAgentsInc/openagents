@@ -106,8 +106,9 @@ phone <--27000 partials, 26900 result------- relay.openagents.com <-- chat worke
   builds, … notes` and then `gym records: N verified results, M refused`
   after each read, or `gym records off:` and why. A request may name
   `chat-router-v1` (build 20) or `chat-router-v2`; both are routed with
-  v2. The authoring interview (`eval.author`) answers with the bank's
-  `eval.author.soon` until #9937 wires it.
+  v2. The authoring interview (`eval.author`, `coder::eval_author`) runs
+  on the worker's door and judge; without them it answers with the
+  bank's `eval.author.soon`.
 - **CLI route.** With a judge, the worker holds `coder::cli_route`'s
   `CommandRoute` as its CLI seam, filling free text through its own door;
   `CODER_WORKER_CLI=off` turns it off. On the phone it proposes only the

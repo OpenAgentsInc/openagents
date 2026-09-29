@@ -698,7 +698,8 @@ pub enum BadStep {
 /// An interview step as it may be shown: its text is non-empty, at most
 /// [`MAX_STEP_CHARS`], and plural; a draft that fails
 /// [`super::card::draft`] is dropped, and so is any offer but `start_eval`
-/// on the draft, `publish_eval`, or opening the test set or Add to the Gym.
+/// on the draft, `publish_eval`, `run_coder` (the handoff when a tool needs
+/// new code), or opening the test set or Add to the Gym.
 /// The seam proposes; this decides what reaches the phone.
 ///
 /// # Errors
@@ -731,7 +732,11 @@ pub fn check_step(step: &super::seams::AuthorStep) -> Result<super::seams::Autho
         Offer::OpenScreen { screen, .. } => {
             matches!(screen, Screen::GymTestSet | Screen::GymPublish)
         }
-        Offer::RunCoder { .. } | Offer::Cli { .. } => false,
+        // A tool that needs new code is made with Coder on a connected
+        // computer: the interview hands off with Run Coder (the phone shows
+        // Connect a computer when none is ready).
+        Offer::RunCoder { .. } => true,
+        Offer::Cli { .. } => false,
     });
     Ok(super::seams::AuthorStep {
         text: text.to_string(),
@@ -1219,13 +1224,25 @@ mod tests {
         assert!(checked.offer.is_some());
         let sneaky = AuthorStep {
             draft: Some(json!({ "v": "other" })),
-            offer: Some(Offer::RunCoder {
-                label: "Run Coder".into(),
+            offer: Some(Offer::Cli {
+                argv: vec!["computer".into(), "list".into()],
+                effect: crate::router::Effect::ReadOnly,
+                runs_on: crate::router::RunsOn::ThisDevice,
             }),
             ..step.clone()
         };
         let checked = check_step(&sneaky).unwrap();
         assert_eq!((checked.draft, checked.offer), (None, None));
+        let handoff = AuthorStep {
+            offer: Some(Offer::RunCoder {
+                label: "Run Coder".into(),
+            }),
+            ..step.clone()
+        };
+        assert!(matches!(
+            check_step(&handoff).unwrap().offer,
+            Some(Offer::RunCoder { .. })
+        ));
         for (text, why) in [
             ("  ", BadStep::Empty),
             ("I'll write the tests.", BadStep::FirstPersonSingular),

@@ -616,7 +616,7 @@ impl<G: Generate + 'static> crate::router::seams::EvalAuthor for Author<G> {
                     message: ask.message.clone(),
                     transcript: ask.transcript.clone(),
                     draft: ask.draft.clone(),
-                    tried: None,
+                    tried: ask.tried.clone(),
                 })
                 .await
                 .map_err(|e| crate::router::seams::SeamError::Failed(e.to_string()))?;

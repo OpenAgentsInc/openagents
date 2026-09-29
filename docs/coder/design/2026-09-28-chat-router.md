@@ -1272,8 +1272,16 @@ in `coder::eval_author` and wires it in `coder-worker` (one line, marked
 there). The router passes it an `AuthorAsk` (the redacted message, the
 transcript, the request's checked draft, the surface) and checks the
 `AuthorStep` it returns (`gym::check_step`: plural, at most 1,200
-characters, the draft through `parse_draft`, only draft-scoped offers).
-Until then, `eval.author` answers `eval.author.soon`.
+characters, the draft through `parse_draft`, and only `start_eval` on the
+draft, `publish_eval`, opening the test set or Add to the Gym, or
+`run_coder` when a tool needs new code). #9937 landed and the worker wires
+it (`coder::eval_author::seam`); without a live door and a judge,
+`eval.author` answers `eval.author.soon`. A request may also carry
+`tried`, the result of a try or a full run of the open draft, which the
+interview reads (`router::card::tried`: a closed object `{runs, with,
+without, total, verdict, report, cases}` whose counts fit together, each
+case `{id, kind, with, without, failing}`); the phone (#9939) and the
+hosted runner (#9935) fill it from the runner's report.
 
 ### Not in this change
 
@@ -1286,8 +1294,8 @@ Until then, `eval.author` answers `eval.author.soon`.
   draws `CARD-07` from its own ledger (`xp_ledger::eval`, #9938) on an
   `eval.credit` route, and `router::card::Card::Credit` is ready for a
   worker that is given the trainer.
-- **The interview** (#9937) and **the hosted runner** (#9935): `start_eval`
-  offers name the hosted runner when the test set fits its bounds.
+- **The hosted runner** (#9935): `start_eval` offers name the hosted
+  runner when the test set fits its bounds.
 
 ## Open questions for the owner
 
