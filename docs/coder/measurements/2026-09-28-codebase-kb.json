@@ -1,0 +1,1188 @@
+{
+  "schema": "openagents.codebase-kb.eval.v1",
+  "fixture": "crates/coder/fixtures/chat-router/codebase-questions-v1.json",
+  "index_commit": "e1d499def7813c3d40a25c72587bdd47d325834a",
+  "composer": "gateway:google/gemini-3.8-flash",
+  "summary": {
+    "questions": 52,
+    "errors": 0,
+    "answerable": 42,
+    "answered": 41,
+    "answerable_escalated": 1,
+    "escalation_expected": 10,
+    "escalation_recall": 0.9,
+    "escalation_missed": 1,
+    "gold_retrieved_rate": 0.833,
+    "gold_kept_rate": 0.81,
+    "answer_correct_rate": 0.805,
+    "answer_correct_rate_of_answerable": 0.786,
+    "answer_quality_mean_p": 0.73,
+    "citations": 198,
+    "citation_validity": 1.0,
+    "citation_gold_precision": 0.424,
+    "answers_citing_gold": 0.756,
+    "latency_ms_p50": 6394,
+    "latency_ms_p95": 10825
+  },
+  "rows": [
+    {
+      "id": "cb-001",
+      "expect": "answer",
+      "ms": 6882,
+      "needs_live": 0.16,
+      "kept": [
+        "docs/deployment/chat-worker.md:55-83",
+        "crates/coder/src/relay/quota.rs:1-21",
+        "INVARIANTS.md:73-76"
+      ],
+      "retrieved_gold": true,
+      "kept_gold": true,
+      "outcome": "answer",
+      "text": "The chat worker's per-caller quota is implemented in `crates/coder/src/relay/quota.rs` (`coder::relay::quota`) (crates/coder/src/relay/quota.rs:1-14; docs/deployment/chat-worker.md:58-59).\n\nUnder its deployed configuration, the limits are:\n- 6 jobs per caller key in any 60 seconds (docs/deployment/chat-worker.md:63);\n- 40 jobs per caller key per UTC day (docs/deployment/chat-worker.md:64);\n- 3,000 jobs per UTC day across every caller combined (docs/deployment/chat-worker.md:65);\n- a maximum request ciphertext size of 96 KiB (docs/deployment/chat-worker.md:66);\n- at most 8 jobs at once (docs/deployment/chat-worker.md:67).\n\nSources, as of commit e1d499def7: crates/coder/src/relay/quota.rs:1-14, docs/deployment/chat-worker.md:58-59, docs/deployment/chat-worker.md:63, docs/deployment/chat-worker.md:64, docs/deployment/chat-worker.md:65, docs/deployment/chat-worker.md:66, docs/deployment/chat-worker.md:67",
+      "citations": [
+        "crates/coder/src/relay/quota.rs:1-14",
+        "docs/deployment/chat-worker.md:58-59",
+        "docs/deployment/chat-worker.md:63",
+        "docs/deployment/chat-worker.md:64",
+        "docs/deployment/chat-worker.md:65",
+        "docs/deployment/chat-worker.md:66",
+        "docs/deployment/chat-worker.md:67"
+      ],
+      "unsupported": [],
+      "correct_p": 0.86
+    },
+    {
+      "id": "cb-002",
+      "expect": "answer",
+      "ms": 11769,
+      "needs_live": 0.14,
+      "kept": [
+        "crates/coder/src/first.rs:1-22",
+        "docs/coder/design/2026-09-28-chat-router.md:162-177",
+        "docs/coder/measurements/2026-09-28-first-reply.md:111-137",
+        "docs/coder/measurements/2026-09-28-first-reply.md:142-155",
+        "INVARIANTS.md:78"
+      ],
+      "retrieved_gold": true,
+      "kept_gold": true,
+      "outcome": "answer",
+      "text": "When a message arrives, we ask Jev five independent questions from the same state in the first-response judgment (crates/coder/src/first.rs:8-10):\n\n- `action`: the turn's route, matching `coder-turns-v2` (crates/coder/src/first.rs:12-13).\n- `lane`: whether the request can be answered in chat or requires a computer (crates/coder/src/first.rs:14-15).\n- `answer`: which prepared answer from the `chat-answers-v1` bank fully answers the message, or `none` (crates/coder/src/first.rs:16-17).\n- `needs_specifics`: whether a good reply must refer to specific things the user named that a prepared answer cannot cover (crates/coder/src/first.rs:18-19).\n- `opener`: which prepared opener the reply should begin with, or `none` (crates/coder/src/first.rs:20-21).\n\nAdditionally, the `chat-router-v1` design schema expands this into seven questions by including `route`, `answer`, `needs_specifics`, `lane`, `opener`, `cli_group`, and `risk` (docs/coder/design/2026-09-28-chat-router.md:164-177).\n\nSources, as of commit e1d499def7: crates/coder/src/first.rs:8-10, crates/coder/src/first.rs:12-13, crates/coder/src/first.rs:14-15, crates/coder/src/first.rs:16-17, crates/coder/src/first.rs:18-19, crates/coder/src/first.rs:20-21, docs/coder/design/2026-09-28-chat-router.md:164-177",
+      "citations": [
+        "crates/coder/src/first.rs:8-10",
+        "crates/coder/src/first.rs:12-13",
+        "crates/coder/src/first.rs:14-15",
+        "crates/coder/src/first.rs:16-17",
+        "crates/coder/src/first.rs:18-19",
+        "crates/coder/src/first.rs:20-21",
+        "docs/coder/design/2026-09-28-chat-router.md:164-177"
+      ],
+      "unsupported": [],
+      "correct_p": 0.8
+    },
+    {
+      "id": "cb-003",
+      "expect": "answer",
+      "ms": 6123,
+      "needs_live": 0.13,
+      "kept": [
+        "docs/coder/measurements/2026-09-28-first-reply.md:111-137",
+        "INVARIANTS.md:78",
+        "docs/coder/measurements/2026-09-28-first-reply.md:142-155"
+      ],
+      "retrieved_gold": true,
+      "kept_gold": true,
+      "outcome": "answer",
+      "text": "Before a prepared answer from the `chat-answers-v1` bank replaces the model's reply entirely, the code requires an `answer` confidence of p ≥ 0.80 along with `needs_specifics` < 0.30 (docs/coder/measurements/2026-09-28-first-reply.md:126-129, INVARIANTS.md:78). When these criteria are met, the canned answer constitutes the entire reply, its model is set to `bank:chat-answers-v1`, and the model call is dropped (docs/coder/measurements/2026-09-28-first-reply.md:126-129, INVARIANTS.md:78).\n\nSources, as of commit e1d499def7: docs/coder/measurements/2026-09-28-first-reply.md:126-129, INVARIANTS.md:78",
+      "citations": [
+        "docs/coder/measurements/2026-09-28-first-reply.md:126-129",
+        "INVARIANTS.md:78"
+      ],
+      "unsupported": [],
+      "correct_p": 0.93
+    },
+    {
+      "id": "cb-004",
+      "expect": "answer",
+      "ms": 5576,
+      "needs_live": 0.13,
+      "kept": [
+        "nips/openagents/NIP-CJ.md:76-99",
+        "crates/openagents-mobile/src/basic_coder.rs:242-245",
+        "docs/terminal-bench/2026-09-27-fable-delegate.md:666-691"
+      ],
+      "retrieved_gold": true,
+      "kept_gold": false,
+      "outcome": "answer",
+      "text": "We observe that a rank job request carries 1 to 16 candidates to order (nips/openagents/NIP-CJ.md:76-78). Additionally, the mobile basic coder specifies that a rank job's payload carries at most `MAX_RANK_CANDIDATES` candidates (crates/openagents-mobile/src/basic_coder.rs:242-244).\n\nSources, as of commit e1d499def7: nips/openagents/NIP-CJ.md:76-78, crates/openagents-mobile/src/basic_coder.rs:242-244",
+      "citations": [
+        "nips/openagents/NIP-CJ.md:76-78",
+        "crates/openagents-mobile/src/basic_coder.rs:242-244"
+      ],
+      "unsupported": [],
+      "correct_p": 0.83
+    },
+    {
+      "id": "cb-005",
+      "expect": "answer",
+      "ms": 8052,
+      "needs_live": 0.12,
+      "kept": [
+        "nips/openagents/README.md:287-304",
+        "nips/openagents/NIP-CJ.md:42-57",
+        "docs/glossary.md:579-582"
+      ],
+      "retrieved_gold": true,
+      "kept_gold": true,
+      "outcome": "answer",
+      "text": "Based on the provided excerpts, we can confirm that NIP-CJ uses Nostr event kind `27000` for conversation job feedback (nips/openagents/README.md:288). While the excerpts establish that NIP-CJ spans request, result, and feedback families for encrypted conversation jobs (docs/glossary.md:579-580) and outline conversation job request structures and feedback types (nips/openagents/NIP-CJ.md:42-57), they do not list the specific event kinds for conversation job requests or results. Coder can look further on a connected computer.\n\nSources, as of commit e1d499def7: nips/openagents/README.md:288, docs/glossary.md:579-580, nips/openagents/NIP-CJ.md:42-57",
+      "citations": [
+        "nips/openagents/README.md:288",
+        "docs/glossary.md:579-580",
+        "nips/openagents/NIP-CJ.md:42-57"
+      ],
+      "unsupported": [],
+      "correct_p": 0.11
+    },
+    {
+      "id": "cb-006",
+      "expect": "answer",
+      "ms": 6366,
+      "needs_live": 0.09,
+      "kept": [
+        "nips/openagents/NIP-CJ.md:42-57",
+        "crates/coder/src/generate.rs:231-233",
+        "docs/coder/guides/headless.md:127-151",
+        "nips/openagents/NIP-CJ.md:58-75"
+      ],
+      "retrieved_gold": true,
+      "kept_gold": true,
+      "outcome": "answer",
+      "text": "In a NIP-CJ conversation, feedback carries `v: 1`, `requires`, and `type` set to `judgment` (nips/openagents/NIP-CJ.md:49-52). Its required fields are `verdict` (`respond`, `clarify`, `end_conversation`, or `unrouted`) and `line` (a bounded display string) (nips/openagents/NIP-CJ.md:52). \n\nIt can also carry optional typed additions: `set` (the question set's identity), `lane` (`chat`, `computer`, or `unknown`), `opener` (the ID of the opener shown, or null), `confidence` (the opener choice's probability), `bank` (the prepared-answer bank's identity), `answer` (the argmax prepared answer as `id@version`, or null), `answer_p` (its probability), `needs_specifics` (the probability that a reply needs particulars named by the user), and `tier` (`canned`, `opener`, or `model`, indicating what the worker chose to show first) (nips/openagents/NIP-CJ.md:52). It is an optional observation rather than permission (nips/openagents/NIP-CJ.md:52).\n\nSources, as of commit e1d499def7: nips/openagents/NIP-CJ.md:49-52, nips/openagents/NIP-CJ.md:52",
+      "citations": [
+        "nips/openagents/NIP-CJ.md:49-52",
+        "nips/openagents/NIP-CJ.md:52"
+      ],
+      "unsupported": [],
+      "correct_p": 0.9
+    },
+    {
+      "id": "cb-007",
+      "expect": "answer",
+      "ms": 7978,
+      "needs_live": 0.19,
+      "kept": [
+        "docs/coder/measurements/relay-transport.md:278-302",
+        "crates/coder/src/relay.rs:1070-1079",
+        "crates/coder/tests/relay_binding.rs:539-544",
+        "crates/coder/tests/relay_binding.rs:352-355",
+        "crates/coder/src/relay.rs:1-27",
+        "docs/coder/runtime/delegate.md:414-438"
+      ],
+      "retrieved_gold": true,
+      "kept_gold": true,
+      "outcome": "answer",
+      "text": "We bind the job on what the event's signature covers rather than relying on the relay's label (docs/coder/measurements/relay-transport.md:288-289, crates/coder/src/relay.rs:1072-1073). Because every checked field is inside the signature, the relay cannot forge or manipulate any of them (crates/coder/src/relay.rs:1072-1073). \n\nSpecifically, we verify that the incoming event is kind `26900` or `27000`, is signed by the worker's key, contains an `e` tag naming the request this turn published, and contains a `p` tag naming this identity (docs/coder/measurements/relay-transport.md:289-292, crates/coder/src/relay.rs:1073-1076). Only after verifying these fields is the event ID deduplicated (docs/coder/measurements/relay-transport.md:292-294). The relay's subscription label is completely ignored: a correctly bound answer is accepted under any label, while anything bound elsewhere is skipped (docs/coder/measurements/relay-transport.md:294-296, crates/coder/tests/relay_binding.rs:353-354, crates/coder/tests/relay_binding.rs:540-543).\n\nSources, as of commit e1d499def7: docs/coder/measurements/relay-transport.md:288-289, crates/coder/src/relay.rs:1072-1073, docs/coder/measurements/relay-transport.md:289-292, crates/coder/src/relay.rs:1073-1076, docs/coder/measurements/relay-transport.md:292-294, docs/coder/measurements/relay-transport.md:294-296, crates/coder/tests/relay_binding.rs:353-354, crates/coder/tests/relay_binding.rs:540-543",
+      "citations": [
+        "docs/coder/measurements/relay-transport.md:288-289",
+        "crates/coder/src/relay.rs:1072-1073",
+        "docs/coder/measurements/relay-transport.md:289-292",
+        "crates/coder/src/relay.rs:1073-1076",
+        "docs/coder/measurements/relay-transport.md:292-294",
+        "docs/coder/measurements/relay-transport.md:294-296",
+        "crates/coder/tests/relay_binding.rs:353-354",
+        "crates/coder/tests/relay_binding.rs:540-543"
+      ],
+      "unsupported": [],
+      "correct_p": 0.93
+    },
+    {
+      "id": "cb-008",
+      "expect": "answer",
+      "ms": 6237,
+      "needs_live": 0.14,
+      "kept": [
+        "bins/openagents-android/README.md:16-37",
+        "AGENTS.md:72-88"
+      ],
+      "retrieved_gold": false,
+      "kept_gold": false,
+      "outcome": "answer",
+      "text": "No, the app holds no model key (bins/openagents-android/README.md:29-30). Each basic chat message is signed by the device key and sent encrypted through `relay.openagents.com` to the OpenAgents chat worker, which meters each caller key (bins/openagents-android/README.md:26-30). We also forbid putting an API key in source, log lines, test fixtures, or issues, with the Breez API key in `crates/openagents-mobile/src/spark.rs` being the only exception (AGENTS.md:79-82).\n\nSources, as of commit e1d499def7: bins/openagents-android/README.md:29-30, bins/openagents-android/README.md:26-30, AGENTS.md:79-82",
+      "citations": [
+        "bins/openagents-android/README.md:29-30",
+        "bins/openagents-android/README.md:26-30",
+        "AGENTS.md:79-82"
+      ],
+      "unsupported": [],
+      "correct_p": 0.84
+    },
+    {
+      "id": "cb-009",
+      "expect": "answer",
+      "ms": 7645,
+      "needs_live": 0.11,
+      "kept": [
+        "crates/jev/README.md:143-168",
+        "docs/decision-models/jev/rust-sdk.md:153-176",
+        "crates/jev/src/retry.rs:1-5",
+        "docs/decision-models/jev/knowledge-base.md:167-190",
+        "crates/microcoder-loop/src/models.rs:19-22",
+        "docs/decision-models/guides/clients.md:74-90"
+      ],
+      "retrieved_gold": true,
+      "kept_gold": true,
+      "outcome": "answer",
+      "text": "By default, the `jev` client's `RetryPolicy` performs up to two retries after the first attempt (crates/jev/README.md:145-146, docs/decision-models/jev/rust-sdk.md:157). It uses an initial backoff of 500 ms doubling up to a 5-second cap, with a jitter fraction of 0.25 subtracted at random (crates/jev/README.md:145-147, docs/decision-models/jev/rust-sdk.md:158-160). It retries connection failures, timeouts, and HTTP statuses `408`, `429`, and `500` through `599` (crates/jev/README.md:147-151, docs/decision-models/jev/rust-sdk.md:161-165). Server delay headers `retry-after-ms` and `Retry-After` are honored up to 60 seconds, with `retry-after-ms` taking precedence over `Retry-After` (crates/jev/README.md:148-150, docs/decision-models/jev/rust-sdk.md:162-163). In Rust, no total retry budget is set by default (crates/jev/README.md:166, docs/decision-models/jev/rust-sdk.md:166). Each retry carries the `X-TypeSafe-Retry-Count` header (crates/jev/README.md:151).\n\nSources, as of commit e1d499def7: crates/jev/README.md:145-146, docs/decision-models/jev/rust-sdk.md:157, crates/jev/README.md:145-147, docs/decision-models/jev/rust-sdk.md:158-160, crates/jev/README.md:147-151, docs/decision-models/jev/rust-sdk.md:161-165, crates/jev/README.md:148-150, docs/decision-models/jev/rust-sdk.md:162-163, crates/jev/README.md:166, docs/decision-models/jev/rust-sdk.md:166, crates/jev/README.md:151",
+      "citations": [
+        "crates/jev/README.md:145-146",
+        "docs/decision-models/jev/rust-sdk.md:157",
+        "crates/jev/README.md:145-147",
+        "docs/decision-models/jev/rust-sdk.md:158-160",
+        "crates/jev/README.md:147-151",
+        "docs/decision-models/jev/rust-sdk.md:161-165",
+        "crates/jev/README.md:148-150",
+        "docs/decision-models/jev/rust-sdk.md:162-163",
+        "crates/jev/README.md:166",
+        "docs/decision-models/jev/rust-sdk.md:166",
+        "crates/jev/README.md:151"
+      ],
+      "unsupported": [],
+      "correct_p": 0.92
+    },
+    {
+      "id": "cb-010",
+      "expect": "answer",
+      "ms": 4045,
+      "needs_live": 0.09,
+      "kept": [
+        "crates/jev/README.md:85-97",
+        "docs/decision-models/jev/rust-sdk.md:99-103",
+        "docs/kev/jev-unmasked.md:65-91",
+        "crates/kev/src/serve.rs:351-354"
+      ],
+      "retrieved_gold": false,
+      "kept_gold": false,
+      "outcome": "answer",
+      "text": "A Jev `Choice` question can have at most 255 options (crates/jev/README.md:95-97). Providing more than 255 options results in `Error::Question` during validation before I/O (docs/decision-models/jev/rust-sdk.md:100-103). This 255-option API cap is enforced by validation rather than the underlying model itself (docs/kev/jev-unmasked.md:83-85).\n\nSources, as of commit e1d499def7: crates/jev/README.md:95-97, docs/decision-models/jev/rust-sdk.md:100-103, docs/kev/jev-unmasked.md:83-85",
+      "citations": [
+        "crates/jev/README.md:95-97",
+        "docs/decision-models/jev/rust-sdk.md:100-103",
+        "docs/kev/jev-unmasked.md:83-85"
+      ],
+      "unsupported": [],
+      "correct_p": 0.87
+    },
+    {
+      "id": "cb-011",
+      "expect": "answer",
+      "ms": 8879,
+      "needs_live": 0.08,
+      "kept": [
+        "docs/decision-models/api/decision-api.md:58-82",
+        "docs/glossary.md:361-368",
+        "docs/decision-models/guides/choosing.md:89-118",
+        "docs/coder/design/coder-as-decision-router-consumer.md:13-25",
+        "docs/decision-models/jev/rust-sdk.md:85-98"
+      ],
+      "retrieved_gold": true,
+      "kept_gold": true,
+      "outcome": "answer",
+      "text": "In our decision contract, a `Noul` represents a yes-or-no probability judgment on whether a proposition or condition holds, outputting a scalar value from 0 to 1 with no separate confidence field (docs/decision-models/api/decision-api.md:68; docs/glossary.md:365). A Noul near 0.5 expresses uncertainty regarding the proposition rather than medium severity (docs/decision-models/api/decision-api.md:80-81).\n\nIn contrast, a `Choice` represents a categorical judgment among caller-supplied named options (docs/glossary.md:366; docs/coder/design/coder-as-decision-router-consumer.md:17-18). Its output includes the selected choice, categorical probabilities across the alternatives, and a confidence measure reflecting distribution concentration (docs/decision-models/api/decision-api.md:68,78-79; docs/glossary.md:366). Additionally, Choice constitutes classification and can be served by almost everything, whereas Noul requires a model capable of producing a calibrated scalar (docs/decision-models/guides/choosing.md:93,98-99).\n\nSources, as of commit e1d499def7: docs/decision-models/api/decision-api.md:68, docs/glossary.md:365, docs/decision-models/api/decision-api.md:80-81, docs/glossary.md:366, docs/coder/design/coder-as-decision-router-consumer.md:17-18, docs/decision-models/guides/choosing.md:93",
+      "citations": [
+        "docs/decision-models/api/decision-api.md:68",
+        "docs/glossary.md:365",
+        "docs/decision-models/api/decision-api.md:80-81",
+        "docs/glossary.md:366",
+        "docs/coder/design/coder-as-decision-router-consumer.md:17-18",
+        "docs/decision-models/guides/choosing.md:93"
+      ],
+      "unsupported": [],
+      "correct_p": 0.95
+    },
+    {
+      "id": "cb-012",
+      "expect": "answer",
+      "ms": 6544,
+      "needs_live": 0.16,
+      "kept": [
+        "docs/coder/design/knowledge-base.md:141-164",
+        "crates/knowledge/src/lib.rs:1-19",
+        "docs/terminal-bench/2026-09-27-fable-delegate.md:343-374",
+        "docs/coder/guides/knowledge-base.md:11-34",
+        "docs/coder/guides/knowledge-base.md:35-57"
+      ],
+      "retrieved_gold": true,
+      "kept_gold": true,
+      "outcome": "answer",
+      "text": "We build a query from the agent's state, including the task, the environment, names and first lines of visible files, and any failing test output (docs/coder/design/knowledge-base.md:141-144). We then select candidate entries using the top 20 results by cosine similarity over embeddings of each entry's `title`, `summary`, `tags`, and `applies_when`, combined with BM25 lexical scoring across those same fields, falling back to lexical scoring alone without a key or network (docs/coder/design/knowledge-base.md:145-155). \n\nNext, Jev scores each candidate by answering whether the entry bears on the state; we keep up to 8 entries scoring at or above 0.5 in order of Jev's answer (docs/coder/design/knowledge-base.md:156-160). Finally, we render each kept entry's ID, kind, title, summary, author, and status into the prompt's `# Knowledge base` section (docs/coder/design/knowledge-base.md:161-163).\n\nSources, as of commit e1d499def7: docs/coder/design/knowledge-base.md:141-144, docs/coder/design/knowledge-base.md:145-155, docs/coder/design/knowledge-base.md:156-160, docs/coder/design/knowledge-base.md:161-163",
+      "citations": [
+        "docs/coder/design/knowledge-base.md:141-144",
+        "docs/coder/design/knowledge-base.md:145-155",
+        "docs/coder/design/knowledge-base.md:156-160",
+        "docs/coder/design/knowledge-base.md:161-163"
+      ],
+      "unsupported": [],
+      "correct_p": 0.84
+    },
+    {
+      "id": "cb-013",
+      "expect": "answer",
+      "ms": 4512,
+      "needs_live": 0.13,
+      "kept": [
+        "docs/coder/design/knowledge-base.md:168-186"
+      ],
+      "retrieved_gold": true,
+      "kept_gold": true,
+      "outcome": "answer",
+      "text": "At most 6 bodies and 20,000 characters of knowledge-base text can be shown in the prompt at once (docs/coder/design/knowledge-base.md:174-175).\n\nSources, as of commit e1d499def7: docs/coder/design/knowledge-base.md:174-175",
+      "citations": [
+        "docs/coder/design/knowledge-base.md:174-175"
+      ],
+      "unsupported": [],
+      "correct_p": 0.67
+    },
+    {
+      "id": "cb-014",
+      "expect": "answer",
+      "ms": 10045,
+      "needs_live": 0.1,
+      "kept": [
+        "nips/openagents/NIP-KB.md:181-200",
+        "docs/coder/design/knowledge-base.md:261-265",
+        "docs/glossary.md:283-286",
+        "docs/coder/guides/knowledge-base.md:384-408",
+        "docs/glossary.md:287-290",
+        "nips/openagents/NIP-KB.md:1-16"
+      ],
+      "retrieved_gold": true,
+      "kept_gold": true,
+      "outcome": "answer",
+      "text": "To be eligible for default retrieval, an entry must be admitted, because candidate entries require explicit inclusion (docs/glossary.md:286, docs/glossary.md:288). Trust is decided per reader (nips/openagents/NIP-KB.md:183, docs/coder/design/knowledge-base.md:261). Entries signed with the reader's own key or from authors the reader trusts keep the status their author specified (nips/openagents/NIP-KB.md:186-187, docs/coder/guides/knowledge-base.md:395-396). Entries from any other author are treated as candidates at most and are not shown as admitted unless they earn admission on the reader's side through the reader's own review or evidence from evaluators the reader trusts (nips/openagents/NIP-KB.md:188-192, docs/glossary.md:286). By default, runs only search entries signed with our own key unless additional authors are listed in the trust file (docs/coder/guides/knowledge-base.md:389-397).\n\nSources, as of commit e1d499def7: docs/glossary.md:286, docs/glossary.md:288, nips/openagents/NIP-KB.md:183, docs/coder/design/knowledge-base.md:261, nips/openagents/NIP-KB.md:186-187, docs/coder/guides/knowledge-base.md:395-396, nips/openagents/NIP-KB.md:188-192, docs/coder/guides/knowledge-base.md:389-397",
+      "citations": [
+        "docs/glossary.md:286",
+        "docs/glossary.md:288",
+        "nips/openagents/NIP-KB.md:183",
+        "docs/coder/design/knowledge-base.md:261",
+        "nips/openagents/NIP-KB.md:186-187",
+        "docs/coder/guides/knowledge-base.md:395-396",
+        "nips/openagents/NIP-KB.md:188-192",
+        "docs/coder/guides/knowledge-base.md:389-397"
+      ],
+      "unsupported": [],
+      "correct_p": 0.45
+    },
+    {
+      "id": "cb-015",
+      "expect": "answer",
+      "ms": 6498,
+      "needs_live": 0.09,
+      "kept": [
+        "nips/openagents/NIP-KB.md:17-42"
+      ],
+      "retrieved_gold": true,
+      "kept_gold": true,
+      "outcome": "answer",
+      "text": "We note that NIP-KB defines four draft event kinds: regular kind `3190` representing one immutable version of one entry, addressable kind `30190` representing the author's current version of one entry, regular kind `3191` representing an irreversible withdrawal of one entry version, and regular kind `3189` representing evidence, which is a NIP-EVAL publication citing entry versions (nips/openagents/NIP-KB.md:19-27).\n\nSources, as of commit e1d499def7: nips/openagents/NIP-KB.md:19-27",
+      "citations": [
+        "nips/openagents/NIP-KB.md:19-27"
+      ],
+      "unsupported": [],
+      "correct_p": 0.92
+    },
+    {
+      "id": "cb-016",
+      "expect": "answer",
+      "ms": 12341,
+      "needs_live": 0.31,
+      "kept": [
+        "docs/gym/regression.md:20-55",
+        "docs/gym/terminal-bench-tui.md:208-235",
+        "docs/gym/terminal-bench-cli.md:741-764"
+      ],
+      "retrieved_gold": false,
+      "kept_gold": false,
+      "outcome": "answer",
+      "text": "The provided excerpts do not explicitly explain how the Gym stops someone from quietly deleting a bad result. \n\nThey do cover related integrity mechanics: in `gym regress`, two runs that lost different items will not be compared, and stores enforce one trial per perturbation while refusing repeats (docs/gym/regression.md:31-37). Additionally, the Gym records run marks to an append-only store at `~/.openagents/gym/marks/marks.jsonl` (docs/gym/terminal-bench-tui.md:228-229) and appends early stop events to an experiment's `ledger.jsonl` (docs/gym/terminal-bench-cli.md:743-745). \n\nCoder can look further on a connected computer.\n\nSources, as of commit e1d499def7: docs/gym/regression.md:31-37, docs/gym/terminal-bench-tui.md:228-229, docs/gym/terminal-bench-cli.md:743-745",
+      "citations": [
+        "docs/gym/regression.md:31-37",
+        "docs/gym/terminal-bench-tui.md:228-229",
+        "docs/gym/terminal-bench-cli.md:743-745"
+      ],
+      "unsupported": [],
+      "correct_p": 0.08
+    },
+    {
+      "id": "cb-017",
+      "expect": "answer",
+      "ms": 6651,
+      "needs_live": 0.09,
+      "kept": [
+        "docs/history/2026-09-26-retired-gym-migration.md:21-44",
+        "docs/gym/README.md:1-8",
+        "docs/verse/gym.md:1-17"
+      ],
+      "retrieved_gold": false,
+      "kept_gold": false,
+      "outcome": "answer",
+      "text": "We built the Gym as the measurement and control plane for coding-agent runs to perform two jobs: benchmark and improve (docs/history/2026-09-26-retired-gym-migration.md:23-25). Originating as the benchmark harness to build next, it was created to run head-to-head comparisons of models and agents on identical prompts—reporting tokens, money, wall clock, and cost per accepted outcome—while training and exercising the same agent it measures (docs/history/2026-09-26-retired-gym-migration.md:34-39). It runs agents against fixed suites of containerized tasks to record trajectories with tool calls, token counts, wall time, and independent verifier verdicts, and hands traces to the agent's editing loop to test proposed source changes against a frozen control (docs/history/2026-09-26-retired-gym-migration.md:25-33). It also serves as the measurement and evidence interface evaluating decision doors against pinned suites and applying comparison gates (docs/gym/README.md:3-5).\n\nSources, as of commit e1d499def7: docs/history/2026-09-26-retired-gym-migration.md:23-25, docs/history/2026-09-26-retired-gym-migration.md:34-39, docs/history/2026-09-26-retired-gym-migration.md:25-33, docs/gym/README.md:3-5",
+      "citations": [
+        "docs/history/2026-09-26-retired-gym-migration.md:23-25",
+        "docs/history/2026-09-26-retired-gym-migration.md:34-39",
+        "docs/history/2026-09-26-retired-gym-migration.md:25-33",
+        "docs/gym/README.md:3-5"
+      ],
+      "unsupported": [],
+      "correct_p": 0.46
+    },
+    {
+      "id": "cb-018",
+      "expect": "answer",
+      "ms": 5725,
+      "needs_live": 0.14,
+      "kept": [
+        "nips/openagents/NIP-ATIF.md:1-25",
+        "crates/atif/src/lib.rs:1-30",
+        "docs/glossary.md:158-164",
+        "docs/coder/runtime/traces.md:185-217"
+      ],
+      "retrieved_gold": true,
+      "kept_gold": true,
+      "outcome": "answer",
+      "text": "We write `ATIF-v1.8` for our trace logs, which is canonical and declared by `crates/atif` for new bytes (crates/atif/src/lib.rs:10; nips/openagents/NIP-ATIF.md:15-18). Logs recorded before 2026-09-28 declare `ATIF-v1.7` and are preserved and verified as they were recorded (nips/openagents/NIP-ATIF.md:18-20; docs/coder/runtime/traces.md:209-211; docs/glossary.md:160).\n\nSources, as of commit e1d499def7: crates/atif/src/lib.rs:10, nips/openagents/NIP-ATIF.md:15-18, nips/openagents/NIP-ATIF.md:18-20, docs/coder/runtime/traces.md:209-211, docs/glossary.md:160",
+      "citations": [
+        "crates/atif/src/lib.rs:10",
+        "nips/openagents/NIP-ATIF.md:15-18",
+        "nips/openagents/NIP-ATIF.md:18-20",
+        "docs/coder/runtime/traces.md:209-211",
+        "docs/glossary.md:160"
+      ],
+      "unsupported": [],
+      "correct_p": 0.9
+    },
+    {
+      "id": "cb-019",
+      "expect": "answer",
+      "ms": 3687,
+      "needs_live": 0.18,
+      "kept": [
+        "crates/atif/src/lib.rs:31-58",
+        "crates/oak/src/lib.rs:1357-1360"
+      ],
+      "retrieved_gold": true,
+      "kept_gold": true,
+      "outcome": "answer",
+      "text": "We do not truncate tool results in the `atif` crate because capping output makes a trace useless for the analysis it exists for (crates/atif/src/lib.rs:31-33). Specifically, a record of a command whose output has been cut cannot answer whether the agent had what it needed (crates/atif/src/lib.rs:32-34). A trace holds what the process held, and when a process itself has already bounded something, the call's `extra` field records that bound so a reader can distinguish what the agent saw from what the machine said (crates/atif/src/lib.rs:34-37).\n\nSources, as of commit e1d499def7: crates/atif/src/lib.rs:31-33, crates/atif/src/lib.rs:32-34, crates/atif/src/lib.rs:34-37",
+      "citations": [
+        "crates/atif/src/lib.rs:31-33",
+        "crates/atif/src/lib.rs:32-34",
+        "crates/atif/src/lib.rs:34-37"
+      ],
+      "unsupported": [],
+      "correct_p": 0.95
+    },
+    {
+      "id": "cb-020",
+      "expect": "answer",
+      "ms": 10825,
+      "needs_live": 0.13,
+      "kept": [
+        "nips/openagents/README.md:36-50",
+        "nips/README.md:28-48",
+        "nips/openagents/NIP-ATIF.md:374-384"
+      ],
+      "retrieved_gold": true,
+      "kept_gold": true,
+      "outcome": "answer",
+      "text": "We use kinds `3198` and `3199` alongside kind `3188` (nips/README.md:44-47, nips/openagents/NIP-ATIF.md:378-379). Trajectories stay owner-encrypted as `3188` artifacts by default, while public publications use kind `3198` declarations with ordered kind `3199` chunks (nips/README.md:45-47). \n\nWe do not use `39230` and `39231` because NIP-ATIF replaces the historical SA `39230`/`39231` records with the two regular kinds `3198` and `3199` (nips/openagents/README.md:48-50). Furthermore, the historical `392xx` records were incompatible, and updating to these current records distinguishes the profile from the historical SA wire format (nips/README.md:41-43, nips/openagents/README.md:39-42).\n\nSources, as of commit e1d499def7: nips/README.md:44-47, nips/openagents/NIP-ATIF.md:378-379, nips/README.md:45-47, nips/openagents/README.md:48-50, nips/README.md:41-43, nips/openagents/README.md:39-42",
+      "citations": [
+        "nips/README.md:44-47",
+        "nips/openagents/NIP-ATIF.md:378-379",
+        "nips/README.md:45-47",
+        "nips/openagents/README.md:48-50",
+        "nips/README.md:41-43",
+        "nips/openagents/README.md:39-42"
+      ],
+      "unsupported": [],
+      "correct_p": 0.35
+    },
+    {
+      "id": "cb-021",
+      "expect": "answer",
+      "ms": 5113,
+      "needs_live": 0.14,
+      "kept": [
+        "crates/tenancy/src/training.rs:1-15",
+        "AGENTS.md:161-183",
+        "crates/tenancy/tests/training.rs:1-3",
+        "crates/tenancy/src/lib.rs:1-27",
+        "crates/tenancy/src/training.rs:42-49",
+        "training/tenant-demo/README.md:1-12"
+      ],
+      "retrieved_gold": true,
+      "kept_gold": true,
+      "outcome": "answer",
+      "text": "We maintain the `tenancy` crate as the tenant-to-artifact registry that documents who may reach which door and under which identity (crates/tenancy/src/lib.rs:1-2). It provides a versioned, self-digested manifest mapping tenant identities to doors, artifact digests, and execution configurations, allowing `Registry::authorize` to issue admissions and `Admission::verify` to check serving identities (crates/tenancy/src/lib.rs:5-24). \n\nAdditionally, the crate includes:\n- `tenancy::billing`, the billing book managing versioned plans, subscriptions, checkout sessions, invoices, and a provider-event journal posting to the money ledger (AGENTS.md:161-168).\n- `tenancy::skills`, the skill-directory book handling versioned `SKILL.md` submissions, review stages, moderation, withdrawals, and audit trails (AGENTS.md:168-173).\n- `tenancy::training`, the tenant-training book managing a four-partition corpus with item provenance, headroom assessments, frozen recipes, an append-only trials ledger, sealed candidates, and retention tombstones (AGENTS.md:173-181; crates/tenancy/src/training.rs:3-10, 42-45).\n\nSources, as of commit e1d499def7: crates/tenancy/src/lib.rs:1-2, crates/tenancy/src/lib.rs:5-24, AGENTS.md:161-168, AGENTS.md:168-173, AGENTS.md:173-181, crates/tenancy/src/training.rs:3-10",
+      "citations": [
+        "crates/tenancy/src/lib.rs:1-2",
+        "crates/tenancy/src/lib.rs:5-24",
+        "AGENTS.md:161-168",
+        "AGENTS.md:168-173",
+        "AGENTS.md:173-181",
+        "crates/tenancy/src/training.rs:3-10"
+      ],
+      "unsupported": [],
+      "correct_p": 0.88
+    },
+    {
+      "id": "cb-022",
+      "expect": "answer",
+      "ms": 8069,
+      "needs_live": 0.13,
+      "kept": [
+        "crates/tenancy/src/quota.rs:1-28",
+        "docs/decision-models/api/decision-api.md:477-500",
+        "crates/tenancy/src/bin/tenant-usage.rs:1-15",
+        "docs/glossary.md:474-477"
+      ],
+      "retrieved_gold": true,
+      "kept_gold": true,
+      "outcome": "answer",
+      "text": "In the tenancy ledger, a reservation begins in the `reserved` state when budget units are held on disk before dispatch with an assigned deadline (crates/tenancy/src/quota.rs:10-14). From `reserved`, it transitions to `settled` or `released`, or is marked `orphaned` by recovery (crates/tenancy/src/quota.rs:10-11). It reaches `settled` once an attempt resolves and records its outcome (crates/tenancy/src/quota.rs:16-19). It transitions to `released` if the attempt was never dispatched, which returns the units to the budget (crates/tenancy/src/quota.rs:20-21). Finally, recovery marks a reservation `orphaned` with an outcome of `unknown` if its deadline passes without a settlement because its writer disappeared (crates/tenancy/src/quota.rs:10-11, 22-25).\n\nSources, as of commit e1d499def7: crates/tenancy/src/quota.rs:10-14, crates/tenancy/src/quota.rs:10-11, crates/tenancy/src/quota.rs:16-19, crates/tenancy/src/quota.rs:20-21",
+      "citations": [
+        "crates/tenancy/src/quota.rs:10-14",
+        "crates/tenancy/src/quota.rs:10-11",
+        "crates/tenancy/src/quota.rs:16-19",
+        "crates/tenancy/src/quota.rs:20-21"
+      ],
+      "unsupported": [],
+      "correct_p": 0.88
+    },
+    {
+      "id": "cb-023",
+      "expect": "answer",
+      "ms": 7447,
+      "needs_live": 0.16,
+      "kept": [
+        "crates/gateway/src/lib.rs:1-32",
+        "docs/decision-models/service/gateway.md:243-254",
+        "docs/decision-models/guides/classification-callers.md:66-86",
+        "docs/decision-models/service/gateway.md:8-11"
+      ],
+      "retrieved_gold": true,
+      "kept_gold": true,
+      "outcome": "answer",
+      "text": "On every `POST /v1/systemone`, we run a set sequence: authenticate the bearer key to its tenant, authorize the named door against the registry, bound the request's shape and the door's capacity, reserve the tenant's quota durably, verify the backend publishes the artifact the binding pins, forward the request, settle the reservation, and leave a receipt (crates/gateway/src/lib.rs:3-8). \n\nA forwarded answer arrives with four headers: `x-request-id`, `x-attempt`, `x-outcome`, and `x-receipt` (crates/gateway/src/lib.rs:14-15, docs/decision-models/service/gateway.md:243-244). The `x-receipt` header provides the receipt's digest, which resolves to a sealed record in `receipts.jsonl` beside the registry (crates/gateway/src/lib.rs:15-16, docs/decision-models/service/gateway.md:244-245).\n\nSources, as of commit e1d499def7: crates/gateway/src/lib.rs:3-8, crates/gateway/src/lib.rs:14-15, docs/decision-models/service/gateway.md:243-244, crates/gateway/src/lib.rs:15-16, docs/decision-models/service/gateway.md:244-245",
+      "citations": [
+        "crates/gateway/src/lib.rs:3-8",
+        "crates/gateway/src/lib.rs:14-15",
+        "docs/decision-models/service/gateway.md:243-244",
+        "crates/gateway/src/lib.rs:15-16",
+        "docs/decision-models/service/gateway.md:244-245"
+      ],
+      "unsupported": [],
+      "correct_p": 0.97
+    },
+    {
+      "id": "cb-024",
+      "expect": "answer",
+      "ms": 7422,
+      "needs_live": 0.11,
+      "kept": [
+        "docs/breez/README.md:10-28",
+        "INVARIANTS.md:140-147",
+        "docs/breez/README.md:1-9",
+        "INVARIANTS.md:158-160",
+        "docs/breez/wallet-design.md:429-451"
+      ],
+      "retrieved_gold": true,
+      "kept_gold": true,
+      "outcome": "answer",
+      "text": "We run the phone wallet on Bitcoin mainnet (docs/breez/README.md:3-5, INVARIANTS.md:142-144). \n\nWe commit the Breez API key in the source because, as confirmed with the Breez team, it is a basic validation key that every shipped app carries and cannot hide, and it authorizes no spending (docs/breez/README.md:19-21, INVARIANTS.md:159). For this reason, it is the only API key exempt from our rule against committing keys in source (INVARIANTS.md:159).\n\nSources, as of commit e1d499def7: docs/breez/README.md:3-5, INVARIANTS.md:142-144, docs/breez/README.md:19-21, INVARIANTS.md:159",
+      "citations": [
+        "docs/breez/README.md:3-5",
+        "INVARIANTS.md:142-144",
+        "docs/breez/README.md:19-21",
+        "INVARIANTS.md:159"
+      ],
+      "unsupported": [],
+      "correct_p": 0.7
+    },
+    {
+      "id": "cb-025",
+      "expect": "answer",
+      "ms": 5815,
+      "needs_live": 0.14,
+      "kept": [
+        "docs/breez/spend-protocol.md:232-244",
+        "crates/coder-access/src/spend.rs:217-220",
+        "docs/breez/spend-protocol.md:128-141"
+      ],
+      "retrieved_gold": true,
+      "kept_gold": true,
+      "outcome": "answer",
+      "text": "For standing grants that pay automatically, the default limits in the `auto` section are:\n- `per_payment_max`: ₿1,000 (1,000 sats, representing `AUTO_PER_PAYMENT_MAX`), which is the amount above which Approve prompts for Face ID (docs/breez/spend-protocol.md:239, crates/coder-access/src/spend.rs:217-220).\n- `period_max`: ₿5,000 a day (docs/breez/spend-protocol.md:240).\n- `purposes`: all four purposes, with tips capped at ₿1,000 a day and the rest at ₿5,000 (docs/breez/spend-protocol.md:241).\n- `payees`: only the payees the owner trusted, capped at ₿2,000 a day each (docs/breez/spend-protocol.md:242).\n\nSources, as of commit e1d499def7: docs/breez/spend-protocol.md:239, crates/coder-access/src/spend.rs:217-220, docs/breez/spend-protocol.md:240, docs/breez/spend-protocol.md:241, docs/breez/spend-protocol.md:242",
+      "citations": [
+        "docs/breez/spend-protocol.md:239",
+        "crates/coder-access/src/spend.rs:217-220",
+        "docs/breez/spend-protocol.md:240",
+        "docs/breez/spend-protocol.md:241",
+        "docs/breez/spend-protocol.md:242"
+      ],
+      "unsupported": [],
+      "correct_p": 0.04
+    },
+    {
+      "id": "cb-026",
+      "expect": "answer",
+      "ms": 6759,
+      "needs_live": 0.11,
+      "kept": [
+        "docs/breez/amounts.md:9-34",
+        "crates/bitcoin-amount/src/lib.rs:1-19",
+        "crates/openagents-mobile/src/amounts.rs:1-6",
+        "INVARIANTS.md:158-160",
+        "docs/breez/amounts.md:1-8",
+        "bins/openagents-ios/verification/2026-09-28-bip177-amounts/README.md:1-12"
+      ],
+      "retrieved_gold": true,
+      "kept_gold": true,
+      "outcome": "answer",
+      "text": "We format every bitcoin amount through `crates/bitcoin-amount` using two display formats (docs/breez/amounts.md:11-12, crates/bitcoin-amount/src/lib.rs:8-9). The default is `Format::Bip177`, which renders integer base units preceded by the `₿` symbol and grouped by thousands (such as `₿12,345`), spoken as \"12,345 bitcoin\" (docs/breez/amounts.md:12-14, crates/bitcoin-amount/src/lib.rs:10-12). The alternative is `Format::LegacyBtc`, which renders amounts with the BTC currency code and eight decimals, grouped by thousands (such as `0.00012345 BTC`) (docs/breez/amounts.md:14-15, crates/bitcoin-amount/src/lib.rs:13-14). Internally, in memory, and in storage, we represent amounts strictly as `u64` base units without floating-point numbers (docs/breez/amounts.md:16-18). Product copy avoids the term \"sat\" and uses \"bitcoin\", `₿`, or BTC instead (docs/breez/amounts.md:30). The balance always uses a transitional dual display showing both forms simultaneously (docs/breez/amounts.md:24-25).\n\nSources, as of commit e1d499def7: docs/breez/amounts.md:11-12, crates/bitcoin-amount/src/lib.rs:8-9, docs/breez/amounts.md:12-14, crates/bitcoin-amount/src/lib.rs:10-12, docs/breez/amounts.md:14-15, crates/bitcoin-amount/src/lib.rs:13-14, docs/breez/amounts.md:16-18, docs/breez/amounts.md:30, docs/breez/amounts.md:24-25",
+      "citations": [
+        "docs/breez/amounts.md:11-12",
+        "crates/bitcoin-amount/src/lib.rs:8-9",
+        "docs/breez/amounts.md:12-14",
+        "crates/bitcoin-amount/src/lib.rs:10-12",
+        "docs/breez/amounts.md:14-15",
+        "crates/bitcoin-amount/src/lib.rs:13-14",
+        "docs/breez/amounts.md:16-18",
+        "docs/breez/amounts.md:30",
+        "docs/breez/amounts.md:24-25"
+      ],
+      "unsupported": [],
+      "correct_p": 0.93
+    },
+    {
+      "id": "cb-027",
+      "expect": "answer",
+      "ms": 6736,
+      "needs_live": 0.14,
+      "kept": [
+        "crates/x402/src/lib.rs:1-15",
+        "crates/nostr/src/x402.rs:1-7"
+      ],
+      "retrieved_gold": true,
+      "kept_gold": true,
+      "outcome": "answer",
+      "text": "We add the two things a paid service needs around stateless verification: a restart-durable replay store whose insert is atomic across processes, and an embedded facilitator that maps every refusal to the upstream `errorReason` vocabulary (crates/x402/src/lib.rs:4-8). In addition, our `x402` crate adds wire types and base64 header codecs, HTTP server loop bindings for paid resources, MCP tooling tolls on `tools/call`, and buyer policies including standing ceilings, allowlists, daily caps, and payment ledgers (crates/x402/src/lib.rs:8-15).\n\nSources, as of commit e1d499def7: crates/x402/src/lib.rs:4-8, crates/x402/src/lib.rs:8-15",
+      "citations": [
+        "crates/x402/src/lib.rs:4-8",
+        "crates/x402/src/lib.rs:8-15"
+      ],
+      "unsupported": [],
+      "correct_p": 0.57
+    },
+    {
+      "id": "cb-028",
+      "expect": "answer",
+      "ms": 6368,
+      "needs_live": 0.09,
+      "kept": [
+        "docs/cli/README.md:17-30",
+        "crates/openagents-cli/src/main.rs:1-11",
+        "crates/openagents-cli/src/out.rs:1-3"
+      ],
+      "retrieved_gold": true,
+      "kept_gold": true,
+      "outcome": "answer",
+      "text": "We use exit codes `0` for success, `1` for an operation that was refused or failed, and `64` for invalid usage (docs/cli/README.md:22, crates/openagents-cli/src/main.rs:9-10). To receive JSON output, specify `--json` anywhere on the command line, or before the command group name (docs/cli/README.md:19, crates/openagents-cli/src/main.rs:7-8). This switches the output to one JSON document on stdout, or one document per line for streaming commands (docs/cli/README.md:19-20, crates/openagents-cli/src/out.rs:1-2). When `--json` is active, errors are also output as a `{\"error\": ...}` document on stdout (crates/openagents-cli/src/out.rs:2-3).\n\nSources, as of commit e1d499def7: docs/cli/README.md:22, crates/openagents-cli/src/main.rs:9-10, docs/cli/README.md:19, crates/openagents-cli/src/main.rs:7-8, docs/cli/README.md:19-20, crates/openagents-cli/src/out.rs:1-2, crates/openagents-cli/src/out.rs:2-3",
+      "citations": [
+        "docs/cli/README.md:22",
+        "crates/openagents-cli/src/main.rs:9-10",
+        "docs/cli/README.md:19",
+        "crates/openagents-cli/src/main.rs:7-8",
+        "docs/cli/README.md:19-20",
+        "crates/openagents-cli/src/out.rs:1-2",
+        "crates/openagents-cli/src/out.rs:2-3"
+      ],
+      "unsupported": [],
+      "correct_p": 0.96
+    },
+    {
+      "id": "cb-029",
+      "expect": "answer",
+      "ms": 3761,
+      "needs_live": 0.1,
+      "kept": [
+        "docs/cli/README.md:971-996",
+        "crates/openagents-cli/src/mcp.rs:1-19"
+      ],
+      "retrieved_gold": true,
+      "kept_gold": true,
+      "outcome": "answer",
+      "text": "Yes, we can plug the `openagents` command into Claude Code as an MCP server (docs/cli/README.md:985-989). Running `openagents mcp serve` speaks MCP over stdio using newline-delimited JSON-RPC 2.0 (docs/cli/README.md:977-978; crates/openagents-cli/src/mcp.rs:1-2, 10). To register it with Claude Code, we can run `claude mcp add openagents -- openagents mcp serve` (docs/cli/README.md:985-989).\n\nSources, as of commit e1d499def7: docs/cli/README.md:985-989, docs/cli/README.md:977-978, crates/openagents-cli/src/mcp.rs:1-2",
+      "citations": [
+        "docs/cli/README.md:985-989",
+        "docs/cli/README.md:977-978",
+        "crates/openagents-cli/src/mcp.rs:1-2"
+      ],
+      "unsupported": [],
+      "correct_p": 0.74
+    },
+    {
+      "id": "cb-030",
+      "expect": "answer",
+      "ms": 11485,
+      "needs_live": 0.12,
+      "kept": [
+        "nips/openagents/NIP-HOST.md:484-508",
+        "nips/openagents/NIP-CTRL.md:147-166",
+        "nips/openagents/NIP-CTRL.md:258-269",
+        "crates/coder-access/README.md:1-15",
+        "nips/openagents/NIP-HOST.md:25-29",
+        "nips/openagents/NIP-LIVE.md:69-90"
+      ],
+      "retrieved_gold": true,
+      "kept_gold": true,
+      "outcome": "answer",
+      "text": "The provided excerpts do not list all rights a NIP-HOST grant can give, but they explicitly mention the `terminal` right (nips/openagents/NIP-HOST.md:25), `access_read` (nips/openagents/NIP-HOST.md:496), and the host-wide `operate` right (nips/openagents/NIP-CTRL.md:261).\n\nRegarding what is in a grant, a retained NIP-HOST grant record contains `device`, `grant`, `epoch`, a canonical `rights` list, `origin`, `issued_at`, and `expires_at` (nips/openagents/NIP-HOST.md:486-492). Under NIP-CTRL, a control grant artifact contains `v: \"openagents.control-grant.v1\"`, `grant`, `epoch`, `owner`, `authority`, `client`, `scope`, `rights`, `policy`, `invitation`, `pairing`, `admission`, `issued_at`, and `expires_at` (nips/openagents/NIP-CTRL.md:147-151).\n\nCoder can look further on a connected computer for the complete catalog of NIP-HOST rights.\n\nSources, as of commit e1d499def7: nips/openagents/NIP-HOST.md:25, nips/openagents/NIP-HOST.md:496, nips/openagents/NIP-CTRL.md:261, nips/openagents/NIP-HOST.md:486-492, nips/openagents/NIP-CTRL.md:147-151",
+      "citations": [
+        "nips/openagents/NIP-HOST.md:25",
+        "nips/openagents/NIP-HOST.md:496",
+        "nips/openagents/NIP-CTRL.md:261",
+        "nips/openagents/NIP-HOST.md:486-492",
+        "nips/openagents/NIP-CTRL.md:147-151"
+      ],
+      "unsupported": [],
+      "correct_p": 0.15
+    },
+    {
+      "id": "cb-031",
+      "expect": "answer",
+      "ms": 6394,
+      "needs_live": 0.09,
+      "kept": [
+        "nips/openagents/NIP-REACH.md:390-411",
+        "nips/openagents/NIP-REACH.md:71-89"
+      ],
+      "retrieved_gold": true,
+      "kept_gold": true,
+      "outcome": "answer",
+      "text": "We pick one host for new work through a placement function that evaluates the directory, each host's newest accepted presence, the client's profile, and the reader's clock (nips/openagents/NIP-REACH.md:392-395). \n\nWe first filter out hosts: those the client cannot start work on, those with weight 0, hosts without presence or with stale, future, or incompatible presence, hosts withholding telemetry, and overloaded hosts with CPU utilization at or above the limit (reference 90 percent) or available memory below the limit (reference 10 percent) (nips/openagents/NIP-REACH.md:397-404). \n\nWe score the remaining hosts in exact integer arithmetic using `weight × cpu_count × (100 − cpu_utilization_pct) × memory_available_pct` (nips/openagents/NIP-REACH.md:405-406). Finally, we select the host with the highest score, resolving any ties by choosing the lexicographically smallest host key (nips/openagents/NIP-REACH.md:407-408).\n\nSources, as of commit e1d499def7: nips/openagents/NIP-REACH.md:392-395, nips/openagents/NIP-REACH.md:397-404, nips/openagents/NIP-REACH.md:405-406, nips/openagents/NIP-REACH.md:407-408",
+      "citations": [
+        "nips/openagents/NIP-REACH.md:392-395",
+        "nips/openagents/NIP-REACH.md:397-404",
+        "nips/openagents/NIP-REACH.md:405-406",
+        "nips/openagents/NIP-REACH.md:407-408"
+      ],
+      "unsupported": [],
+      "correct_p": 0.96
+    },
+    {
+      "id": "cb-032",
+      "expect": "answer",
+      "ms": 6503,
+      "needs_live": 0.18,
+      "kept": [
+        "docs/kev/jev-unmasked.md:149-159",
+        "docs/kev/architecture.md:1-21",
+        "docs/kev/architecture.md:167-177",
+        "docs/kev/port-roadmap.md:1-26",
+        "docs/kev/port-roadmap.md:40-46",
+        "docs/kev/README.md:82-100"
+      ],
+      "retrieved_gold": true,
+      "kept_gold": true,
+      "outcome": "answer",
+      "text": "We port Kev from the Python reference into this repository as `crates/kev`, a Rust implementation built on `candle` exposing the TypeSafe `/v1/systemone` wire contract (docs/kev/port-roadmap.md:6-9).\n\nKev operates as a prefill-only mechanism on frozen dense causal language models (such as Qwen2.5/Qwen3 bases from 0.5B to 8B) with merged LoRA adapters and a pointer readout head, using cross-entropy training and direct readout without decoding (docs/kev/architecture.md:12-21, docs/kev/jev-unmasked.md:152-157). It executes a single packed prefill sequence per request with isolated branches via a block-causal mask and custom position IDs (docs/kev/jev-unmasked.md:153-158, docs/kev/architecture.md:169-171).\n\nThe codebase is organized into modules under `crates/kev`: `encode.rs` for encoding and branch masking, `model.rs`/`lora.rs` for backbone and adapters, `head.rs` for pointer readout, `decision.rs` for the assembled model, and `serve.rs` / `src/bin/kev_serve.rs` for the HTTP server (docs/kev/architecture.md:5-9, docs/kev/port-roadmap.md:40).\n\nSources, as of commit e1d499def7: docs/kev/port-roadmap.md:6-9, docs/kev/architecture.md:12-21, docs/kev/jev-unmasked.md:152-157, docs/kev/jev-unmasked.md:153-158, docs/kev/architecture.md:169-171, docs/kev/architecture.md:5-9, docs/kev/port-roadmap.md:40",
+      "citations": [
+        "docs/kev/port-roadmap.md:6-9",
+        "docs/kev/architecture.md:12-21",
+        "docs/kev/jev-unmasked.md:152-157",
+        "docs/kev/jev-unmasked.md:153-158",
+        "docs/kev/architecture.md:169-171",
+        "docs/kev/architecture.md:5-9",
+        "docs/kev/port-roadmap.md:40"
+      ],
+      "unsupported": [],
+      "correct_p": 0.66
+    },
+    {
+      "id": "cb-033",
+      "expect": "answer",
+      "ms": 4902,
+      "needs_live": 0.11,
+      "kept": [
+        "docs/laya/README.md:30-53",
+        "docs/decision-models/others/laya-adapter-prerequisites.md:22-41",
+        "docs/laya/measurements/2026-09-22-port-baseline.md:87-99",
+        "docs/laya/README.md:1-12",
+        "docs/decision-models/others/laya-adapter-prerequisites.md:89-114",
+        "crates/laya/src/bin/laya_serve.rs:1-12"
+      ],
+      "retrieved_gold": true,
+      "kept_gold": true,
+      "outcome": "answer",
+      "text": "We support three checkpoints from `convaiinnovations/laya`, all ported to serve `POST /v1/systemone` (docs/laya/README.md:4-5, docs/laya/README.md:32-34). \n\nThe supported checkpoints are:\n- `english` (at the repository root), using a 421M-parameter ModernBERT-large encoder for English text, guardrails, and email triage (docs/laya/README.md:36-37, docs/decision-models/others/laya-adapter-prerequisites.md:28-29).\n- `multilingual` (in the `multilingual/` subfolder), using a 322M-parameter mmBERT-base encoder supporting 100+ languages (docs/laya/README.md:36-38, docs/decision-models/others/laya-adapter-prerequisites.md:28-30).\n- `typed-decisions` (in the `typed-decisions/` subfolder), using a 421M-parameter ModernBERT-large encoder for invoice processing, customer service, security alerts, and agent observability workflows (docs/laya/README.md:36-39, docs/decision-models/others/laya-adapter-prerequisites.md:28-31).\n\nSources, as of commit e1d499def7: docs/laya/README.md:4-5, docs/laya/README.md:32-34, docs/laya/README.md:36-37, docs/decision-models/others/laya-adapter-prerequisites.md:28-29, docs/laya/README.md:36-38, docs/decision-models/others/laya-adapter-prerequisites.md:28-30, docs/laya/README.md:36-39, docs/decision-models/others/laya-adapter-prerequisites.md:28-31",
+      "citations": [
+        "docs/laya/README.md:4-5",
+        "docs/laya/README.md:32-34",
+        "docs/laya/README.md:36-37",
+        "docs/decision-models/others/laya-adapter-prerequisites.md:28-29",
+        "docs/laya/README.md:36-38",
+        "docs/decision-models/others/laya-adapter-prerequisites.md:28-30",
+        "docs/laya/README.md:36-39",
+        "docs/decision-models/others/laya-adapter-prerequisites.md:28-31"
+      ],
+      "unsupported": [],
+      "correct_p": 0.75
+    },
+    {
+      "id": "cb-034",
+      "expect": "answer",
+      "ms": 8688,
+      "needs_live": 0.12,
+      "kept": [
+        "docs/lev/README.md:1-30",
+        "docs/lev/improvement-strategy.md:8-41",
+        "docs/lev/disposition.md:36-57",
+        "docs/lev/disposition.md:9-35",
+        "docs/lev/measurements/2026-09-19-suite-v2-scores.md:9-21",
+        "docs/lev/measurements/2026-09-19-suite-scores.md:7-19"
+      ],
+      "retrieved_gold": true,
+      "kept_gold": true,
+      "outcome": "answer",
+      "text": "On the support evaluation partition, hosted Jev outperforms Lev in accuracy (0.96 versus 0.85), Brier sharpness score (0.026 versus 0.127), negative log likelihood (0.117 versus 0.361), and latency (~220–250 ms versus ~1,600–2,100 ms) (docs/lev/README.md:15-18; docs/lev/disposition.md:25-28). Jev also exhibits zero observed greedy answer flips when reversing option lists, whereas Lev flips one in eight (docs/lev/improvement-strategy.md:35-38).\n\nHowever, Lev achieves a lower expected calibration error (ECE) of 0.087 compared to hosted Jev's 0.099 (docs/lev/README.md:15-20). We note this low ECE paired with a high Brier score means Lev's probabilities are honestly vague and heavily hedged, whereas Jev is both right more often and willing to commit (docs/lev/improvement-strategy.md:28-29; docs/lev/disposition.md:36-44). Both doors record zero confident errors on this evaluation suite (docs/lev/disposition.md:25-28).\n\nSources, as of commit e1d499def7: docs/lev/README.md:15-18, docs/lev/disposition.md:25-28, docs/lev/improvement-strategy.md:35-38, docs/lev/README.md:15-20, docs/lev/improvement-strategy.md:28-29, docs/lev/disposition.md:36-44",
+      "citations": [
+        "docs/lev/README.md:15-18",
+        "docs/lev/disposition.md:25-28",
+        "docs/lev/improvement-strategy.md:35-38",
+        "docs/lev/README.md:15-20",
+        "docs/lev/improvement-strategy.md:28-29",
+        "docs/lev/disposition.md:36-44"
+      ],
+      "unsupported": [],
+      "correct_p": 0.95
+    },
+    {
+      "id": "cb-035",
+      "expect": "answer",
+      "ms": 8218,
+      "needs_live": 0.09,
+      "kept": [
+        "docs/verse/gdd.md:268-287",
+        "docs/verse/gdd.md:288-308",
+        "nips/openagents/NIP-XP.md:25-30",
+        "docs/coder/cheapest-verified-passes.md:132-150",
+        "docs/verse/agent-trainer-leveling.md:400-427",
+        "docs/minecraft/economy.md:6-22"
+      ],
+      "retrieved_gold": true,
+      "kept_gold": true,
+      "outcome": "answer",
+      "text": "In the Verse, three quantities stay strictly separate (docs/verse/gdd.md:270-271). Sats are real Bitcoin in an agent's wallet earned from jobs for other players, contest purses, and sales; they buy real goods, services, cosmetics, and other agents' work, without allowing pay-to-win (docs/verse/gdd.md:272-279). XP represents evidence of verified accepted work earned only from tasks and quests that pass verification; it unlocks levels, stat points, titles, and grants, but is never spendable and never converts into sats, compute credits, or spending authority (docs/verse/gdd.md:274-281, docs/verse/gdd.md:296-297). Compute credits are an operator-funded game allocation earned through play, events, and seasons; they provide model time for tasks and are neither transferable nor redeemable (docs/verse/gdd.md:275-276). Sats settle separately after acceptance and never create XP (docs/verse/gdd.md:298-299).\n\nSources, as of commit e1d499def7: docs/verse/gdd.md:270-271, docs/verse/gdd.md:272-279, docs/verse/gdd.md:274-281, docs/verse/gdd.md:296-297, docs/verse/gdd.md:275-276, docs/verse/gdd.md:298-299",
+      "citations": [
+        "docs/verse/gdd.md:270-271",
+        "docs/verse/gdd.md:272-279",
+        "docs/verse/gdd.md:274-281",
+        "docs/verse/gdd.md:296-297",
+        "docs/verse/gdd.md:275-276",
+        "docs/verse/gdd.md:298-299"
+      ],
+      "unsupported": [],
+      "correct_p": 0.88
+    },
+    {
+      "id": "cb-036",
+      "expect": "answer",
+      "ms": 5959,
+      "needs_live": 0.08,
+      "kept": [
+        "docs/coder/guides/contribute-knowledge.md:188-211",
+        "docs/coder/cheapest-verified-passes.md:132-150",
+        "nips/openagents/NIP-XP.md:25-30",
+        "docs/verse/agent-trainer-leveling.md:400-427",
+        "nips/openagents/NIP-XP.md:579-588"
+      ],
+      "retrieved_gold": true,
+      "kept_gold": true,
+      "outcome": "answer",
+      "text": "No, NIP-XP experience points cannot be converted into sats. We record XP strictly as an accounting of accepted work, and it cannot be spent, transferred, or converted into sats, credits, or permissions (docs/coder/guides/contribute-knowledge.md:207-209). XP is never money and never converts into sats (docs/coder/cheapest-verified-passes.md:147). \n\nIn NIP-XP, sats are out of scope; paying a purse never creates XP, and XP never unlocks a purse (nips/openagents/NIP-XP.md:25-30). Furthermore, sats are staged separately from XP, and clients must not turn XP into spending authority (docs/verse/agent-trainer-leveling.md:402; nips/openagents/NIP-XP.md:586-588).\n\nSources, as of commit e1d499def7: docs/coder/guides/contribute-knowledge.md:207-209, docs/coder/cheapest-verified-passes.md:147, nips/openagents/NIP-XP.md:25-30, docs/verse/agent-trainer-leveling.md:402, nips/openagents/NIP-XP.md:586-588",
+      "citations": [
+        "docs/coder/guides/contribute-knowledge.md:207-209",
+        "docs/coder/cheapest-verified-passes.md:147",
+        "nips/openagents/NIP-XP.md:25-30",
+        "docs/verse/agent-trainer-leveling.md:402",
+        "nips/openagents/NIP-XP.md:586-588"
+      ],
+      "unsupported": [],
+      "correct_p": 0.95
+    },
+    {
+      "id": "cb-037",
+      "expect": "answer",
+      "ms": 3258,
+      "needs_live": 0.12,
+      "kept": [
+        "docs/coder/guides/microcoder.md:1-29",
+        "docs/coder/runtime/delegate-door.md:23-44",
+        "crates/coder/src/delegate_door/microcoder.rs:1-29"
+      ],
+      "retrieved_gold": false,
+      "kept_gold": false,
+      "outcome": "answer",
+      "text": "Microcoder's simple loop operates as follows:\n\n```text\nwhile next_action isn't finished:\n    knowledge   = kb.retrieve(state)\n    jev_results = jev(state + knowledge, user_prompt)\n    prompt      = state + user_prompt + jev_results + knowledge\n    next_action = generate(prompt)      # one structured call, not a conversation\n    run next_action's commands\n```\n(docs/coder/guides/microcoder.md:3-17).\n\nIn each step, Jev judges the state, one call to GPT-6 Luna returns the next commands, and the host runs them (docs/coder/guides/microcoder.md:5-7). In the context of a delegate door turn, the loop runs while the reply is not finished, judging state (done, progress, repeating), prompting the request, conversation, state, and Jev's answers, executing one structured model call for the next commands and reply, and running commands inside a `coder-boundary` boundary (docs/coder/runtime/delegate-door.md:25-32).\n\nSources, as of commit e1d499def7: docs/coder/guides/microcoder.md:3-17, docs/coder/guides/microcoder.md:5-7, docs/coder/runtime/delegate-door.md:25-32",
+      "citations": [
+        "docs/coder/guides/microcoder.md:3-17",
+        "docs/coder/guides/microcoder.md:5-7",
+        "docs/coder/runtime/delegate-door.md:25-32"
+      ],
+      "unsupported": [],
+      "correct_p": 0.7
+    },
+    {
+      "id": "cb-038",
+      "expect": "answer",
+      "ms": 7523,
+      "needs_live": 0.14,
+      "kept": [
+        "docs/coder/design/microluna.md:1-14",
+        "crates/microluna/src/lib.rs:1-16",
+        "crates/microluna/README.md:18-29",
+        "docs/coder/design/microluna-v8.md:1-17",
+        "crates/microluna/README.md:30-36",
+        "docs/coder/design/luna-pivot.md:159-164"
+      ],
+      "retrieved_gold": true,
+      "kept_gold": true,
+      "outcome": "answer",
+      "text": "Microluna is deprecated; Microcoder replaced it as Coder's loop on 2026-09-25, and the owner deprecated it on 2026-09-28 (crates/microluna/src/lib.rs:3-5). Coder's terminal and `coder -p` no longer run it, answering through Microcoder instead (crates/microluna/src/lib.rs:5-7). \n\nHowever, `crates/microluna` remains in the workspace solely so recorded Terminal-Bench evidence stays reproducible (crates/microluna/src/lib.rs:7-9; crates/microluna/README.md:20-21). To reproduce those records, Coder One's mini-handoff loop (`coder_one::micro`), its `microluna-*` policies in `crates/coder-one/policies/`, and the `microluna` binary still run Microluna sessions (crates/microluna/README.md:21-26). Coder One is the only crate that depends on it, neither Coder nor Verse runs a Microluna session, and we must not build new work on it (crates/microluna/src/lib.rs:10-11; crates/microluna/README.md:27-29).\n\nSources, as of commit e1d499def7: crates/microluna/src/lib.rs:3-5, crates/microluna/src/lib.rs:5-7, crates/microluna/src/lib.rs:7-9, crates/microluna/README.md:20-21, crates/microluna/README.md:21-26, crates/microluna/src/lib.rs:10-11, crates/microluna/README.md:27-29",
+      "citations": [
+        "crates/microluna/src/lib.rs:3-5",
+        "crates/microluna/src/lib.rs:5-7",
+        "crates/microluna/src/lib.rs:7-9",
+        "crates/microluna/README.md:20-21",
+        "crates/microluna/README.md:21-26",
+        "crates/microluna/src/lib.rs:10-11",
+        "crates/microluna/README.md:27-29"
+      ],
+      "unsupported": [],
+      "correct_p": 0.73
+    },
+    {
+      "id": "cb-039",
+      "expect": "answer",
+      "ms": 8182,
+      "needs_live": 0.19,
+      "kept": [
+        "docs/roadmap/2026-09-28-tassadar-revival.md:26-32"
+      ],
+      "retrieved_gold": false,
+      "kept_gold": false,
+      "outcome": "answer",
+      "text": "The provided excerpt does not answer whether you are allowed to add TypeScript to this repository in general. It only covers that reviving Tassadar's TypeScript code is not proposed and remains the owner's decision, as revived patterns and policies are instead reimplemented in this repository's Rust (docs/roadmap/2026-09-28-tassadar-revival.md:27-31). Coder can look further on a connected computer.\n\nSources, as of commit e1d499def7: docs/roadmap/2026-09-28-tassadar-revival.md:27-31",
+      "citations": [
+        "docs/roadmap/2026-09-28-tassadar-revival.md:27-31"
+      ],
+      "unsupported": [],
+      "correct_p": 0.06
+    },
+    {
+      "id": "cb-040",
+      "expect": "answer",
+      "ms": 4979,
+      "needs_live": 0.11,
+      "kept": [
+        "AGENTS.md:72-88"
+      ],
+      "retrieved_gold": true,
+      "kept_gold": true,
+      "outcome": "answer",
+      "text": "You cannot build `openagents-mobile` with `-p` because `crates/openagents-mobile` is its own Cargo workspace (AGENTS.md:84-85). It is separated into its own workspace because Breez's SQLite and `ldk-node` link different `libsqlite3-sys` versions (AGENTS.md:84-86). Instead of `-p`, we build and test it using `--manifest-path crates/openagents-mobile/Cargo.toml` (AGENTS.md:86-88).\n\nSources, as of commit e1d499def7: AGENTS.md:84-85, AGENTS.md:84-86, AGENTS.md:86-88",
+      "citations": [
+        "AGENTS.md:84-85",
+        "AGENTS.md:84-86",
+        "AGENTS.md:86-88"
+      ],
+      "unsupported": [],
+      "correct_p": 0.96
+    },
+    {
+      "id": "cb-041",
+      "expect": "answer",
+      "ms": 600,
+      "needs_live": 0.66,
+      "kept": [],
+      "retrieved_gold": false,
+      "kept_gold": false,
+      "outcome": "escalate",
+      "why": "needs_live"
+    },
+    {
+      "id": "cb-042",
+      "expect": "answer",
+      "ms": 6983,
+      "needs_live": 0.12,
+      "kept": [
+        "nips/openagents/README.md:246-258",
+        "INVARIANTS.md:183-188",
+        "crates/nostr/src/kinds.rs:1-16",
+        ".agents/skills/nostr/SKILL.md:117-137"
+      ],
+      "retrieved_gold": true,
+      "kept_gold": true,
+      "outcome": "answer",
+      "text": "We require that each OpenAgents kind has exactly one owner (nips/openagents/README.md:248). Specifically, each OpenAgents Nostr kind must have exactly one owning specification under `nips/openagents`, listed once in `crates/nostr/src/kinds.rs` and the Kind registry table in `nips/openagents/README.md` (INVARIANTS.md:185; crates/nostr/src/kinds.rs:1-3, 5-8). \n\nUnder this invariant, no claim may take a kind assigned in the official NIP list or a Block kind (INVARIANTS.md:185; nips/openagents/README.md:251-253; crates/nostr/src/kinds.rs:11-12). Tests enforce this rule by failing if two specifications claim one kind, if a specification declares a kind not registered to it, if a registered kind is not declared, or if the README table and constants disagree (nips/openagents/README.md:253-256; crates/nostr/src/kinds.rs:8-12). Kinds that a specification only uses do not count as claims and are not registered (nips/openagents/README.md:256-258; crates/nostr/src/kinds.rs:12-14).\n\nSources, as of commit e1d499def7: nips/openagents/README.md:248, INVARIANTS.md:185, crates/nostr/src/kinds.rs:1-3, nips/openagents/README.md:251-253, crates/nostr/src/kinds.rs:11-12, nips/openagents/README.md:253-256, crates/nostr/src/kinds.rs:8-12, nips/openagents/README.md:256-258, crates/nostr/src/kinds.rs:12-14",
+      "citations": [
+        "nips/openagents/README.md:248",
+        "INVARIANTS.md:185",
+        "crates/nostr/src/kinds.rs:1-3",
+        "nips/openagents/README.md:251-253",
+        "crates/nostr/src/kinds.rs:11-12",
+        "nips/openagents/README.md:253-256",
+        "crates/nostr/src/kinds.rs:8-12",
+        "nips/openagents/README.md:256-258",
+        "crates/nostr/src/kinds.rs:12-14"
+      ],
+      "unsupported": [],
+      "correct_p": 0.95
+    },
+    {
+      "id": "cb-043",
+      "expect": "escalate",
+      "ms": 541,
+      "needs_live": 0.96,
+      "kept": [],
+      "retrieved_gold": false,
+      "kept_gold": false,
+      "outcome": "escalate",
+      "why": "needs_live"
+    },
+    {
+      "id": "cb-044",
+      "expect": "escalate",
+      "ms": 579,
+      "needs_live": 0.85,
+      "kept": [],
+      "retrieved_gold": false,
+      "kept_gold": false,
+      "outcome": "escalate",
+      "why": "needs_live"
+    },
+    {
+      "id": "cb-045",
+      "expect": "escalate",
+      "ms": 8767,
+      "needs_live": 0.35,
+      "kept": [
+        "docs/deployment/chat-worker.md:137-160",
+        "docs/coder/measurements/2026-09-28-first-reply.md:28-44",
+        "docs/deployment/chat-worker.md:161-175",
+        "docs/coder/design/2026-09-28-chat-router.md:91-98",
+        "docs/coder/runtime/chat-load-benchmark.md:206-227",
+        "docs/coder/runtime/chat-load-benchmark.md:133-155"
+      ],
+      "retrieved_gold": false,
+      "kept_gold": false,
+      "outcome": "answer",
+      "text": "When testing on `oa-coder-worker-1` under release `358975bdbd`, `chat-load-bench --basic-coder 5` (which does not ask for an opener) measured Send to first words at a median 4.2 s, representing the model's first token (docs/deployment/chat-worker.md:151-157). Prior measurements showed the model's time to first token was 3.0 to 4.3 s (docs/coder/measurements/2026-09-28-first-reply.md:39-42). While subsequent release `9ca003acbe` introduced prepared answers with varied timings, the excerpts do not list a newer overall median time to first token for that release (docs/deployment/chat-worker.md:161-175). Coder can look further on a connected computer.\n\nSources, as of commit e1d499def7: docs/deployment/chat-worker.md:151-157, docs/coder/measurements/2026-09-28-first-reply.md:39-42, docs/deployment/chat-worker.md:161-175",
+      "citations": [
+        "docs/deployment/chat-worker.md:151-157",
+        "docs/coder/measurements/2026-09-28-first-reply.md:39-42",
+        "docs/deployment/chat-worker.md:161-175"
+      ],
+      "unsupported": []
+    },
+    {
+      "id": "cb-046",
+      "expect": "escalate",
+      "ms": 585,
+      "needs_live": 0.91,
+      "kept": [
+        "docs/gym/regression.md:20-55",
+        "crates/gym/src/bin/gym.rs:1-36"
+      ],
+      "retrieved_gold": false,
+      "kept_gold": false,
+      "outcome": "escalate",
+      "why": "needs_live"
+    },
+    {
+      "id": "cb-047",
+      "expect": "escalate",
+      "ms": 666,
+      "needs_live": 0.96,
+      "kept": [],
+      "retrieved_gold": false,
+      "kept_gold": false,
+      "outcome": "escalate",
+      "why": "needs_live"
+    },
+    {
+      "id": "cb-048",
+      "expect": "escalate",
+      "ms": 532,
+      "needs_live": 0.84,
+      "kept": [
+        "bins/openagents-android/README.md:262-299",
+        "bins/openagents-android/README.md:488-493"
+      ],
+      "retrieved_gold": false,
+      "kept_gold": false,
+      "outcome": "escalate",
+      "why": "needs_live"
+    },
+    {
+      "id": "cb-049",
+      "expect": "escalate",
+      "ms": 580,
+      "needs_live": 0.8,
+      "kept": [
+        "docs/deployment/chat-worker.md:55-83",
+        "docs/coder/runtime/chat-load-benchmark.md:133-155",
+        "docs/coder/design/2026-09-28-chat-router.md:47-54"
+      ],
+      "retrieved_gold": false,
+      "kept_gold": false,
+      "outcome": "escalate",
+      "why": "needs_live"
+    },
+    {
+      "id": "cb-050",
+      "expect": "escalate",
+      "ms": 549,
+      "needs_live": 0.93,
+      "kept": [],
+      "retrieved_gold": false,
+      "kept_gold": false,
+      "outcome": "escalate",
+      "why": "needs_live"
+    },
+    {
+      "id": "cb-051",
+      "expect": "escalate",
+      "ms": 1031,
+      "needs_live": 0.9,
+      "kept": [],
+      "retrieved_gold": false,
+      "kept_gold": false,
+      "outcome": "escalate",
+      "why": "needs_live"
+    },
+    {
+      "id": "cb-052",
+      "expect": "escalate",
+      "ms": 541,
+      "needs_live": 0.9,
+      "kept": [
+        "docs/terminal-bench/tb4-results.md:374-397"
+      ],
+      "retrieved_gold": false,
+      "kept_gold": false,
+      "outcome": "escalate",
+      "why": "needs_live"
+    }
+  ]
+}

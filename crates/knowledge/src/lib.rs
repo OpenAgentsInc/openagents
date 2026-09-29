@@ -19,6 +19,7 @@
 //! a relay connection.
 
 pub mod cli;
+pub mod codebase;
 pub mod evidence;
 pub mod harvest;
 pub mod lint;

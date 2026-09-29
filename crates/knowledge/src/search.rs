@@ -173,6 +173,13 @@ pub type Embeddings = (Vec<Vec<f32>>, Option<Vec<f32>>, Option<f64>);
 /// OpenAI's API, for embeddings without OpenRouter.
 pub const OPENAI_BASE_URL: &str = "https://api.openai.com/v1";
 
+/// The Vercel AI Gateway's OpenAI-compatible API.
+pub const GATEWAY_BASE_URL: &str = "https://ai-gateway.vercel.sh/v1";
+
+/// The variables that hold an AI Gateway key, in the order they are read:
+/// the chat worker's door key names.
+pub const GATEWAY_KEY_VARS: [&str; 2] = ["CODER_AI_GATEWAY_KEY", "CODER_DOOR_KEY"];
+
 /// The environment variable that holds an OpenAI API key.
 pub const OPENAI_KEY_VAR: &str = "OPENAI_API_KEY";
 
@@ -197,6 +204,9 @@ pub enum EmbeddingProvider {
     Openrouter,
     /// Vertex AI, with Google's `text-embedding-005`. Opt-in only.
     Vertex,
+    /// The Vercel AI Gateway, which forwards the same OpenAI model; the
+    /// chat worker's own door key reaches it.
+    Gateway,
 }
 
 impl EmbeddingProvider {
@@ -207,6 +217,7 @@ impl EmbeddingProvider {
             EmbeddingProvider::Openai => "openai",
             EmbeddingProvider::Openrouter => "openrouter",
             EmbeddingProvider::Vertex => "vertex",
+            EmbeddingProvider::Gateway => "gateway",
         }
     }
 }
@@ -365,6 +376,26 @@ impl Embedder {
         ))
     }
 
+    /// An embedder on the Vercel AI Gateway, with the chat worker's door key
+    /// from `CODER_AI_GATEWAY_KEY` or `CODER_DOOR_KEY`.
+    ///
+    /// # Errors
+    ///
+    /// No key, or the HTTP client can't start.
+    pub fn gateway() -> Result<Self, String> {
+        let key = GATEWAY_KEY_VARS
+            .iter()
+            .find_map(|name| std::env::var(name).ok().filter(|k| !k.trim().is_empty()))
+            .ok_or_else(|| format!("no AI Gateway key: set {}", GATEWAY_KEY_VARS.join(" or ")))?;
+        let mut config =
+            openrouter::Config::new(openrouter::ApiKey::new(&key)).base_url(GATEWAY_BASE_URL);
+        config.title = None;
+        Ok(Embedder::compatible(
+            openrouter::Client::new(config).map_err(|e| e.to_string())?,
+            EmbeddingProvider::Gateway,
+        ))
+    }
+
     /// OpenAI's API when an OpenAI key is set up, else OpenRouter.
     ///
     /// # Errors
@@ -382,7 +413,9 @@ impl Embedder {
     #[must_use]
     pub fn basis(&self) -> &'static str {
         match self.provider {
-            EmbeddingProvider::Openai | EmbeddingProvider::Vertex => "list_price",
+            EmbeddingProvider::Openai | EmbeddingProvider::Vertex | EmbeddingProvider::Gateway => {
+                "list_price"
+            }
             EmbeddingProvider::Openrouter => "billed",
         }
     }
@@ -406,7 +439,9 @@ impl Embed for Embedder {
         };
         let wire = match self.provider {
             EmbeddingProvider::Openai => self.model.rsplit('/').next().unwrap_or(&self.model),
-            EmbeddingProvider::Openrouter | EmbeddingProvider::Vertex => &self.model,
+            EmbeddingProvider::Openrouter
+            | EmbeddingProvider::Vertex
+            | EmbeddingProvider::Gateway => &self.model,
         };
         let request = openrouter::EmbeddingRequest::new(wire, inputs);
         let reply = client.embeddings(&request).await.map_err(|e| EmbedError {
@@ -414,13 +449,16 @@ impl Embed for Embedder {
             message: match self.provider {
                 // The client is OpenRouter's, which names itself in errors.
                 EmbeddingProvider::Openai => e.to_string().replace("OpenRouter", "OpenAI"),
+                EmbeddingProvider::Gateway => e.to_string().replace("OpenRouter", "the AI Gateway"),
                 EmbeddingProvider::Openrouter | EmbeddingProvider::Vertex => e.to_string(),
             },
         })?;
         let tokens = reply.usage.prompt_tokens.max(reply.usage.total_tokens);
         let list = (tokens > 0).then(|| tokens as f64 * EMBEDDING_USD_PER_MILLION / 1_000_000.0);
         let usd = match self.provider {
-            EmbeddingProvider::Openai | EmbeddingProvider::Vertex => list,
+            EmbeddingProvider::Openai | EmbeddingProvider::Vertex | EmbeddingProvider::Gateway => {
+                list
+            }
             EmbeddingProvider::Openrouter => reply.usage.cost.or(list),
         };
         Ok((reply.vectors, usd))

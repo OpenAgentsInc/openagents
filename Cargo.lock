@@ -4140,6 +4140,7 @@ name = "knowledge"
 version = "0.1.0"
 dependencies = [
  "codex-transport",
+ "flate2",
  "nostr",
  "openrouter",
  "secp256k1 0.31.1",

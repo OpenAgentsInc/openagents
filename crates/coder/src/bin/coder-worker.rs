@@ -460,6 +460,7 @@ async fn serve(options: &Options) -> Result<(), String> {
     // not configured stays the no-op, and the router falls back past it.
     let mut seams = Seams {
         personalize: router::personalize::seam_from_env()?,
+        codebase: coder::codebase::seam_from_env(judge.clone())?,
         ..Seams::default()
     };
     // The product knowledge base answers `product.kb` turns when its corpus,

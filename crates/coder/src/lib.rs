@@ -53,6 +53,7 @@ pub mod child;
 pub mod classify;
 pub mod cli_route;
 pub mod cloud;
+pub mod codebase;
 pub mod decision;
 pub mod delegate;
 pub mod delegate_door;

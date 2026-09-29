@@ -152,6 +152,7 @@ pub fn provider_name(provider: EmbeddingProvider) -> &'static str {
         EmbeddingProvider::Openai => "OpenAI",
         EmbeddingProvider::Openrouter => "OpenRouter",
         EmbeddingProvider::Vertex => "Google Vertex AI",
+        EmbeddingProvider::Gateway => "the Vercel AI Gateway",
     }
 }
 

@@ -1,0 +1,463 @@
+{
+  "schema": "openagents.chat-router.codebase-questions.v1",
+  "commit": "e1d499def7813c3d40a25c72587bdd47d325834a",
+  "questions": [
+    {
+      "id": "cb-001",
+      "question": "Where is the chat worker's per-key quota implemented, and what are the limits?",
+      "expect": "answer",
+      "gold": [
+        "crates/coder/src/relay/quota.rs",
+        "docs/coder/design/2026-09-28-chat-router.md"
+      ],
+      "reference": "In crates/coder/src/relay/quota.rs: each caller key gets at most `minute` jobs in any 60 seconds and `day` jobs per UTC day, plus a global `total` per UTC day and a request-size bound; the configured shape is `day=40,minute=6,total=3000`, i.e. 6 jobs a minute and 40 a day per key."
+    },
+    {
+      "id": "cb-002",
+      "question": "When a chat message arrives, what questions does the worker's first-response judgment ask Jev?",
+      "expect": "answer",
+      "gold": [
+        "crates/coder/src/first.rs"
+      ],
+      "reference": "One System One request asks five independent questions over the message and bounded transcript: `action` (the turn's route, worded like Classify's coder-turns-v2), `lane` (chat or computer), `answer` (which prepared chat-answers-v1 answer fully answers it, or none), `needs_specifics`, and `opener` (which opener to lead with, or none). It runs in parallel with the model call, never in front of it."
+    },
+    {
+      "id": "cb-003",
+      "question": "How confident does Jev have to be before a canned answer replaces the model's reply entirely?",
+      "expect": "answer",
+      "gold": [
+        "crates/coder/src/first.rs",
+        "INVARIANTS.md"
+      ],
+      "reference": "A prepared answer is the whole reply only when `answer` p >= 0.80 (ANSWER_CONFIDENCE) and `needs_specifics` < 0.30 (SPECIFICS_CEILING); then the model call is dropped. Otherwise an opener leads the reply only at p >= 0.70 (OPENER_CONFIDENCE), else nothing is shown before the model's words."
+    },
+    {
+      "id": "cb-004",
+      "question": "How many candidates can a rank job order?",
+      "expect": "answer",
+      "gold": [
+        "crates/coder/src/first.rs",
+        "docs/coder/design/2026-09-28-chat-router.md"
+      ],
+      "reference": "At most 16 (MAX_CANDIDATES in crates/coder/src/first.rs); a rank job orders up to 16 candidate repositories or actions by one Choice and is metered as a turn."
+    },
+    {
+      "id": "cb-005",
+      "question": "Which Nostr event kinds does NIP-CJ use for conversation jobs?",
+      "expect": "answer",
+      "gold": [
+        "nips/openagents/NIP-CJ.md",
+        "crates/coder/src/relay.rs"
+      ],
+      "reference": "Conversation requests are kind 25900, results 26900, and feedback 27000 (decision jobs use 25910/26910/27010, execution 25920/26920/27020). All are ephemeral and NIP-44 v2 encrypted to the recipient."
+    },
+    {
+      "id": "cb-006",
+      "question": "What does a `judgment` feedback event in a NIP-CJ conversation carry?",
+      "expect": "answer",
+      "gold": [
+        "nips/openagents/NIP-CJ.md"
+      ],
+      "reference": "A `judgment` feedback has a `verdict` (`respond`, `clarify`, `end_conversation`, or `unrouted`) and a bounded display `line`, with optional typed additions such as `set`, `lane` (`chat`, `computer`, or `unknown`), `opener`, and `confidence`."
+    },
+    {
+      "id": "cb-007",
+      "question": "If the relay relabels or replays events, how does the Coder relay door know an answer belongs to its job?",
+      "expect": "answer",
+      "gold": [
+        "crates/coder/src/relay.rs"
+      ],
+      "reference": "Subscription labels are unsigned routing hints, so an answer is bound by what the signature covers: the worker's key, the request's `e` tag, the caller identity's `p` tag, and an allowed kind. tests/relay_binding.rs runs a loopback relay that relabels, replays, and duplicates events to prove it."
+    },
+    {
+      "id": "cb-008",
+      "question": "Does the OpenAgents phone app ship a model API key for chat?",
+      "expect": "answer",
+      "gold": [
+        "INVARIANTS.md"
+      ],
+      "reference": "No. The basic chat reaches a model only as a NIP-CJ conversation job signed by the device key and encrypted to the chat worker, whose door key stays in the worker's environment; the job carries no credential, model choice, or grant."
+    },
+    {
+      "id": "cb-009",
+      "question": "What retry policy does the jev client use?",
+      "expect": "answer",
+      "gold": [
+        "crates/jev/src/retry.rs"
+      ],
+      "reference": "The same defaults as TypeSafe's official SDKs: two retries, with delays starting at 500 ms and doubling to 5 s, a quarter of each delay taken off at random, retrying only statuses where a later attempt can succeed and honoring server delay headers."
+    },
+    {
+      "id": "cb-010",
+      "question": "How many options can a Jev Choice question have?",
+      "expect": "answer",
+      "gold": [
+        "crates/jev/src/questions.rs"
+      ],
+      "reference": "A Choice question names at most 255 options; a request with more (or a Score with fewer than two or more than ten levels) is rejected with an error naming the question."
+    },
+    {
+      "id": "cb-011",
+      "question": "What's the difference between a Noul and a Choice in the decision contract?",
+      "expect": "answer",
+      "gold": [
+        "docs/glossary.md"
+      ],
+      "reference": "A Noul is a yes-or-no judgment given as the probability (0 to 1) that the condition holds, with no separate confidence field; a Choice picks among caller-supplied named options and returns the selected option, a probability distribution over the options, and a confidence."
+    },
+    {
+      "id": "cb-012",
+      "question": "How does the knowledge base decide which entries to show an agent?",
+      "expect": "answer",
+      "gold": [
+        "docs/coder/design/knowledge-base.md",
+        "crates/knowledge/src/lib.rs"
+      ],
+      "reference": "It builds a query from the state, takes the top 20 entries by cosine similarity (text-embedding-3-small) combined with BM25 over title, summary, tags, and applies_when, then asks Jev a Noul relevance question per candidate and keeps those at or above 0.5, at most 8. Without embeddings it falls back to lexical scoring."
+    },
+    {
+      "id": "cb-013",
+      "question": "How much knowledge-base text can be expanded into the prompt at once?",
+      "expect": "answer",
+      "gold": [
+        "docs/coder/design/knowledge-base.md"
+      ],
+      "reference": "At most 6 entry bodies and 20,000 characters at once, via the action's `expand` field; Jev also auto-expands an entry when its relevance answer is 0.8 or more."
+    },
+    {
+      "id": "cb-014",
+      "question": "When is a knowledge entry trusted enough to be shown by default?",
+      "expect": "answer",
+      "gold": [
+        "docs/coder/design/knowledge-base.md"
+      ],
+      "reference": "Only once it is `admitted`, either by measured help (a paired with/without comparison on a task other than the one it was written from, recorded as NIP-EVAL evidence, requiring the prospective study verifier) or by operator review naming the reviewer. `candidate` entries show only with `--kb candidates`."
+    },
+    {
+      "id": "cb-015",
+      "question": "What event kinds does NIP-KB define?",
+      "expect": "answer",
+      "gold": [
+        "nips/openagents/NIP-KB.md"
+      ],
+      "reference": "3190 (regular, one immutable entry version), 30190 (addressable, the author's current version head), 3191 (irreversible withdrawal of a version), and 3189 (evidence, a NIP-EVAL publication citing entry versions)."
+    },
+    {
+      "id": "cb-016",
+      "question": "How does the Gym stop someone from quietly deleting a bad result?",
+      "expect": "answer",
+      "gold": [
+        "crates/gym/src/lib.rs"
+      ],
+      "reference": "Its `store` is an append-only file whose rows carry a receipt chain, so a worse result cannot be quietly removed and a better one cannot be quietly inserted."
+    },
+    {
+      "id": "cb-017",
+      "question": "Why was the Gym built in the first place?",
+      "expect": "answer",
+      "gold": [
+        "crates/gym/src/lib.rs"
+      ],
+      "reference": "Comparing Jev, Kev, and Lev by hand produced three record-keeping faults in as many days: items silently dropped from a denominator, calibration records that could not say which model they were fitted against, and a gate and suite replaced in one commit. The Gym is the record-keeping: pinned suites, rows, an append-only store, digested gates."
+    },
+    {
+      "id": "cb-018",
+      "question": "Which ATIF version do our trace logs write?",
+      "expect": "answer",
+      "gold": [
+        "crates/atif/src/lib.rs",
+        "nips/openagents/NIP-ATIF.md"
+      ],
+      "reference": "crates/atif writes ATIF-v1.8 (the Harbor trajectory RFC) and reads every earlier 1.x version; logs recorded before 2026-09-28 declare ATIF-v1.7 and are never relabeled."
+    },
+    {
+      "id": "cb-019",
+      "question": "Why doesn't the atif crate truncate long tool outputs?",
+      "expect": "answer",
+      "gold": [
+        "crates/atif/src/lib.rs"
+      ],
+      "reference": "Because a capped record cannot answer whether the agent had what it needed; a trace holds what the process held. Where the process itself bounded output (e.g. coder's shell capture), the call's `extra` records that bound."
+    },
+    {
+      "id": "cb-020",
+      "question": "What Nostr kinds does NIP-ATIF use, and why not the old 39230/39231?",
+      "expect": "answer",
+      "gold": [
+        "nips/openagents/NIP-ATIF.md"
+      ],
+      "reference": "3198 (public manifest), 3199 (public chunk), and 3188 private artifacts. The 392xx kinds were retired by NIP-SOV and are addressable, so a relay would keep only the newest event per coordinate, the wrong storage rule for an ordered record."
+    },
+    {
+      "id": "cb-021",
+      "question": "What is the tenancy crate responsible for?",
+      "expect": "answer",
+      "gold": [
+        "crates/tenancy/src/lib.rs"
+      ],
+      "reference": "It is the tenant-to-artifact registry: a versioned, self-digested manifest mapping a tenant to the door names it may use, each bound to an artifact digest and execution configuration. Registry::authorize returns an Admission snapshot, and updates are atomic with prior revisions archived by digest."
+    },
+    {
+      "id": "cb-022",
+      "question": "What states can a quota reservation go through in the tenancy ledger?",
+      "expect": "answer",
+      "gold": [
+        "crates/tenancy/src/quota.rs"
+      ],
+      "reference": "`reserved` then `settled` or `released`, with `orphaned` for a reservation whose deadline passed with no settlement (outcome unknown). The ledger is an append-only quota-ledger.jsonl, and `(request, attempt)` is the idempotency key."
+    },
+    {
+      "id": "cb-023",
+      "question": "What does the gateway do on every POST /v1/systemone, and what headers come back?",
+      "expect": "answer",
+      "gold": [
+        "crates/gateway/src/lib.rs"
+      ],
+      "reference": "It authenticates the bearer key to a tenant, authorizes the door against the registry, bounds shape and capacity, reserves quota, verifies the backend's artifact, forwards, settles, and writes a receipt. Answers carry x-request-id, x-attempt, x-outcome, and x-receipt headers."
+    },
+    {
+      "id": "cb-024",
+      "question": "Which Bitcoin network does the phone wallet run on, and why is the Breez API key in the source?",
+      "expect": "answer",
+      "gold": [
+        "docs/breez/README.md",
+        "INVARIANTS.md"
+      ],
+      "reference": "The Wallet tab runs Breez's Spark SDK on mainnet only (regtest only for automated tests). The Breez API key is committed in crates/openagents-mobile/src/spark.rs because the Breez team confirmed it is a basic validation key every shipped app exposes and it authorizes no spending."
+    },
+    {
+      "id": "cb-025",
+      "question": "What are the default limits on a phone's spend grant to a computer?",
+      "expect": "answer",
+      "gold": [
+        "docs/breez/spend-protocol.md"
+      ],
+      "reference": "Per payment ₿10,000 (fee ceiling included), ₿50,000 per rolling 24 hours, ₿500,000 over the grant's life, and a fee max of ₿100 / 1,000,000 ppm; amounts are msat, Lightning BOLT11 only, mainnet only, and grants last at most 30 days."
+    },
+    {
+      "id": "cb-026",
+      "question": "How are bitcoin amounts formatted in the app?",
+      "expect": "answer",
+      "gold": [
+        "crates/bitcoin-amount/src/lib.rs"
+      ],
+      "reference": "As u64 base units with no floating point. The default Format::Bip177 shows integer base units with the ₿ symbol grouped by thousands (e.g. `₿12,345`, spoken \"12,345 bitcoin\"); legacy BTC decimal is the alternative."
+    },
+    {
+      "id": "cb-027",
+      "question": "What does the x402 crate add on top of the nostr x402 verification?",
+      "expect": "answer",
+      "gold": [
+        "crates/x402/src/lib.rs"
+      ],
+      "reference": "A restart-durable replay store with an atomic cross-process insert and an embedded facilitator mapping refusals to upstream `errorReason`, plus wire shapes pinned to x402 commit 4fcf836c and a server binding one paid resource over HTTP (`http:1`) and MCP (`mcp:1`)."
+    },
+    {
+      "id": "cb-028",
+      "question": "What exit codes does the openagents CLI use, and how do I get JSON output?",
+      "expect": "answer",
+      "gold": [
+        "docs/cli/README.md"
+      ],
+      "reference": "Pass `--json` anywhere to get one JSON document on stdout (one per line for streaming commands). Exit codes are 0 success, 1 refused or failed, and 64 invalid usage."
+    },
+    {
+      "id": "cb-029",
+      "question": "Can I plug the openagents command into Claude Code as an MCP server?",
+      "expect": "answer",
+      "gold": [
+        "docs/cli/README.md"
+      ],
+      "reference": "Yes: `openagents mcp serve` speaks MCP over stdio, generating one tool per command group (except `host` and `mcp`) from `openagents --help`, each running `openagents --json GROUP ARGS...`; register with `claude mcp add openagents -- openagents mcp serve`. Default per-call timeout is 120 s."
+    },
+    {
+      "id": "cb-030",
+      "question": "What rights can a NIP-HOST grant give a device, and what's in a standard grant?",
+      "expect": "answer",
+      "gold": [
+        "nips/openagents/NIP-HOST.md",
+        "crates/coder-access/README.md"
+      ],
+      "reference": "Rights are observe, operate, terminal, review, access_read, and access_admin; no right implies another. A standard device grant is observe, operate, terminal, and review, excluding both access rights."
+    },
+    {
+      "id": "cb-031",
+      "question": "How does NIP-REACH choose which host gets new work?",
+      "expect": "answer",
+      "gold": [
+        "nips/openagents/NIP-REACH.md"
+      ],
+      "reference": "Placement skips hosts the client can't start work on, weight 0, stale/incompatible presence, withheld telemetry, or overload (CPU >= 90%, memory < 10%), then scores weight × cpu_count × (100 − cpu_utilization_pct) × memory_available_pct and picks the highest, breaking ties by the smallest host key."
+    },
+    {
+      "id": "cb-032",
+      "question": "What is Kev and how is it built?",
+      "expect": "answer",
+      "gold": [
+        "docs/kev/README.md"
+      ],
+      "reference": "Kev is Jared Palmer's open reconstruction of a Jev-style decision model, ported to Rust in crates/kev (kev-0.5b, 0.6b, 4b, 8b served by kev-serve on CPU and Metal). It is a LoRA adapter plus a small pointer head on a frozen Qwen base run prefill-only under a block-causal mask, so each question sees the state but not sibling questions."
+    },
+    {
+      "id": "cb-033",
+      "question": "Which Laya checkpoints are supported?",
+      "expect": "answer",
+      "gold": [
+        "docs/laya/README.md"
+      ],
+      "reference": "Three: `english` (ModernBERT-large, 421M), `multilingual` (mmBERT-base, 322M), and `typed-decisions` (ModernBERT-large, 421M), pinned by SHA-256 and served over POST /v1/systemone from crates/laya."
+    },
+    {
+      "id": "cb-034",
+      "question": "How does Lev compare to hosted Jev on the support suite?",
+      "expect": "answer",
+      "gold": [
+        "docs/lev/README.md",
+        "docs/lev/disposition.md"
+      ],
+      "reference": "On the historical 52-item support suite, Jev scored 0.96 accuracy (ECE 0.099, Brier 0.026, ~220-250 ms) and Lev (Apple on-device, N=8) 0.85 with the lowest ECE 0.087 but Brier 0.127 and ~1.6-2.1 s latency."
+    },
+    {
+      "id": "cb-035",
+      "question": "In the Verse, what's the difference between sats, XP, and compute credits?",
+      "expect": "answer",
+      "gold": [
+        "docs/verse/gdd.md"
+      ],
+      "reference": "Sats are real Bitcoin earned from jobs and purses; XP is evidence of verified accepted work that is never spendable; compute credits are an operator-funded game allocation for model time, not transferable or redeemable. Money buys cosmetics and goods, not stats."
+    },
+    {
+      "id": "cb-036",
+      "question": "Can NIP-XP experience points be converted into sats?",
+      "expect": "answer",
+      "gold": [
+        "nips/openagents/NIP-XP.md"
+      ],
+      "reference": "No. XP is evidence of verified accepted work, never a balance: it can't be spent, transferred, sold, or converted into sats, compute credits, or permissions, and is awarded once per accepted outcome. Quests are kind 30193 and awards kind 3193."
+    },
+    {
+      "id": "cb-037",
+      "question": "What does Microcoder's loop look like?",
+      "expect": "answer",
+      "gold": [
+        "crates/microcoder/src/lib.rs"
+      ],
+      "reference": "state = {environment, task}; each step asks Jev over the state, builds a prompt from state + user prompt + Jev results, makes one structured model call for next_action, and runs its commands until finished. The loop itself lives in crates/microcoder-loop."
+    },
+    {
+      "id": "cb-038",
+      "question": "Is Microluna still used?",
+      "expect": "answer",
+      "gold": [
+        "docs/coder/design/microluna.md"
+      ],
+      "reference": "No, it is historical: Microcoder replaced it as Coder's loop on 2026-09-25 and it was deprecated on 2026-09-28; crates/microluna stays only to keep recorded Terminal-Bench evidence reproducible, and its Codex transport moved to crates/codex-transport."
+    },
+    {
+      "id": "cb-039",
+      "question": "Am I allowed to add TypeScript to this repo?",
+      "expect": "answer",
+      "gold": [
+        "AGENTS.md"
+      ],
+      "reference": "No. Product code is Rust; the exceptions are the swift/lev-bridge helper for Apple's FoundationModels, thin SwiftUI/Kotlin host glue for iOS/Android, and retained Python training tooling and shell orchestration as infrastructure."
+    },
+    {
+      "id": "cb-040",
+      "question": "Why can't I build openagents-mobile with `cargo build -p`?",
+      "expect": "answer",
+      "gold": [
+        "AGENTS.md"
+      ],
+      "reference": "crates/openagents-mobile is its own Cargo workspace because Breez's SQLite and ldk-node link different libsqlite3-sys versions, so it is built with `--manifest-path crates/openagents-mobile/Cargo.toml`."
+    },
+    {
+      "id": "cb-041",
+      "question": "If a host has no model provider configured, how does Coder still answer?",
+      "expect": "answer",
+      "gold": [
+        "INVARIANTS.md"
+      ],
+      "reference": "Through the cloud fallback: the `vertex` provider is always last in Microcoder's lineup and generates via NIP-CJ jobs signed by the host's key to the OpenAgents cloud worker, which holds the credential; a signed-in Claude Code or Codex CLI or an own door key is preferred."
+    },
+    {
+      "id": "cb-042",
+      "question": "What rule governs who owns each OpenAgents Nostr kind?",
+      "expect": "answer",
+      "gold": [
+        "INVARIANTS.md"
+      ],
+      "reference": "Each OpenAgents kind has exactly one owning spec under nips/openagents, listed once in crates/nostr/src/kinds.rs and the kind registry in nips/openagents/README.md, and no claim takes an official or Block NIP kind."
+    },
+    {
+      "id": "cb-043",
+      "question": "Which tests in crates/coder are failing on main right now?",
+      "expect": "escalate",
+      "gold": [],
+      "reference": "Requires checking out main and running `cargo test -p coder`; test results are not in any doc."
+    },
+    {
+      "id": "cb-044",
+      "question": "How long does a clean release build of coder-worker take?",
+      "expect": "escalate",
+      "gold": [],
+      "reference": "Build time depends on the machine and cache state; it has to be measured by running cargo."
+    },
+    {
+      "id": "cb-045",
+      "question": "What's the chat worker's current median time to first token in production?",
+      "expect": "escalate",
+      "gold": [],
+      "reference": "Live latency is current runtime state; it requires querying the running worker or its logs, not the docs."
+    },
+    {
+      "id": "cb-046",
+      "question": "Run the Gym regression for the hosted Jev door and tell me if it passes its gate.",
+      "expect": "escalate",
+      "gold": [],
+      "reference": "Requires executing `gym` against a live door and the store; the result is not in indexed text."
+    },
+    {
+      "id": "cb-047",
+      "question": "Trace every call site of jev::Client::system_one across the workspace and tell me which ones hold a lock while awaiting.",
+      "expect": "escalate",
+      "gold": [],
+      "reference": "Needs reading and analyzing large amounts of code bodies across many crates, not doc comments."
+    },
+    {
+      "id": "cb-048",
+      "question": "Does crates/openagents-mobile compile for Android on a Linux machine at HEAD today?",
+      "expect": "escalate",
+      "gold": [],
+      "reference": "Only a real build on Linux with the Android toolchain can answer."
+    },
+    {
+      "id": "cb-049",
+      "question": "How many jobs has the chat worker admitted today, and how much of the global total is left?",
+      "expect": "escalate",
+      "gold": [],
+      "reference": "The day's counts live in the worker's runtime count file on its host; live state."
+    },
+    {
+      "id": "cb-050",
+      "question": "Which of my computers are online right now, and which would placement pick for a new task?",
+      "expect": "escalate",
+      "gold": [],
+      "reference": "Needs live NIP-REACH presence from the relay and the owner's directory; current state."
+    },
+    {
+      "id": "cb-051",
+      "question": "Are there any unused public functions in crates/gym?",
+      "expect": "escalate",
+      "gold": [],
+      "reference": "Requires static analysis or compiling with lints over the code bodies, not doc excerpts."
+    },
+    {
+      "id": "cb-052",
+      "question": "If I run Microcoder on the Terminal-Bench tasks now with the knowledge base on vs off, how many does each pass?",
+      "expect": "escalate",
+      "gold": [],
+      "reference": "Requires actually running the benchmark with model calls; the outcome is not in docs."
+    }
+  ]
+}
