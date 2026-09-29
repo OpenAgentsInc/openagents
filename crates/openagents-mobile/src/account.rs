@@ -36,6 +36,22 @@ pub struct Item {
 pub const CHANGELOG: &[Release] = &[
     Release {
         version: "1.0.0",
+        build: "27",
+        title: "A plain chat",
+        what_to_test: "Open the app: the chat header has only the previous-chats button and the OpenAgents title, with no person icon and no Cloud pill, and no line under it. Ask \"Who are you?\": the reply has no \"Prepared answer\" note and no Wrong answer button. Open Account and tap Profile: the Chat tab shows your Profile sheet. Connect a computer and check a Cloud pill appears under the header for choosing where a chat runs.",
+        items: &[
+            Item {
+                title: "A plain chat header",
+                detail: "The person icon and the Cloud pill are gone from the chat header, and so is the line under it. Profile is under Account. Where a chat runs shows as a pill under the header only once a computer is connected.",
+            },
+            Item {
+                title: "No notes on replies",
+                detail: "Replies no longer say \"Prepared answer\", and the Wrong answer button is gone. Report a problem is still a long press on the tab bar.",
+            },
+        ],
+    },
+    Release {
+        version: "1.0.0",
         build: "26",
         title: "A fresh chat on upgrade",
         what_to_test: "Install this build over build 24 or 25 without deleting the app. It should open on a fresh chat with OpenAgents, not on the old Project map test. Tap the hamburger, then New chat, and check you get a new chat; the old test chat stays in the list. Everything from build 25 still applies.",

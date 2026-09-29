@@ -60,7 +60,7 @@ use crate::cli_run::{self, RemoteCli};
 use crate::coder_list::{List, Row, Store};
 use crate::conversation::{Conversation, Pending};
 use crate::outbox::{Attempt, Draft, Outbox};
-use crate::router::{Context, Meta, Offer, RunsOn, Screen};
+use crate::router::{Context, Offer, RunsOn, Screen};
 use crate::transcripts::Transcripts;
 use coder_computers::{
     Action, Capabilities, Computers, Denial, HostRecord, HostStatus, OfflineCause, Platform,
@@ -183,16 +183,8 @@ pub enum Intent {
     RunCli {
         index: usize,
     },
-    /// Say the last reply, a prepared answer, was wrong: shows what would
-    /// be sent, and asks.
-    WrongAnswer,
-    /// Send the wrong-answer report the chat showed.
-    SendWrongAnswer,
-    CancelWrongAnswer,
     /// Back to the Gym menu, for a person who opted into the Gym.
     Hub,
-    /// The chat header's **Profile** (`SCR-11`).
-    Profile,
     /// Start a new chat with a starter's words.
     Starter {
         text: String,
@@ -214,9 +206,6 @@ pub enum Go {
     Playtest,
     /// Report a problem, for the chat on screen.
     Report,
-    /// File the wrong-answer report the person confirmed: the host sends
-    /// `report_wrong_answer` with the Verse world key and device facts.
-    WrongAnswer,
     /// The Verse tab, walked into the Gym before its EVALS board: the host
     /// sends the world `go_evals`.
     VerseGym,
@@ -251,18 +240,6 @@ pub(crate) enum CliOutcome {
     Running(String),
     /// Why it did not run.
     Refused(String),
-}
-
-/// Where a wrong-answer report stands.
-#[derive(Clone, Debug, PartialEq, Eq)]
-enum Flag {
-    /// Showing what would be sent, waiting for **Send**.
-    Confirm,
-    /// The host is sending it.
-    Sending,
-    /// Filed: the line to show.
-    Filed(String),
-    Failed(String),
 }
 
 /// Another way to send the composer's text while Coder works, which a long
@@ -434,13 +411,8 @@ pub struct CoderTab {
     remote: Option<Arc<dyn RemoteCli>>,
     /// Where the running command's outcome lands.
     running: Option<Arc<Mutex<Option<CliOutcome>>>>,
-    /// A wrong-answer report for a conversation's last reply.
-    flag: Option<(String, Flag)>,
-    /// The wrong-answer report the host is to file, taken once.
-    flagged: Option<playtest::report::SharedChat>,
     /// Debug builds' screenshot script: messages to send one reply at a
-    /// time, and `!run` (the first offered command) or `!wrong` (Wrong
-    /// answer) steps.
+    /// time, and `!run` (the first offered command) steps.
     script: std::collections::VecDeque<String>,
     /// The Gym in chat: cards, sheets, runs, the menu, and the first run.
     pub(crate) gym: crate::gym::Gym,
@@ -482,8 +454,6 @@ impl CoderTab {
             cli: None,
             remote: None,
             running: None,
-            flag: None,
-            flagged: None,
             script: std::collections::VecDeque::new(),
             gym: crate::gym::Gym::empty(),
             compose: None,
@@ -515,11 +485,6 @@ impl CoderTab {
         };
         let now = unix_now();
         match (step.as_str(), self.talk.clone()) {
-            ("!wrong", Some(id)) => {
-                if self.basic.wrong_answer(&id).is_some() {
-                    self.flag = Some((id, Flag::Confirm));
-                }
-            }
             ("!run", Some(id)) => {
                 let offer = self.basic.last_meta(&id).and_then(|meta| {
                     meta.offers
@@ -611,28 +576,6 @@ impl CoderTab {
     pub(crate) fn shared_chat(&mut self) -> Option<playtest::report::SharedChat> {
         let id = self.talk.clone()?;
         self.basic.shared(&id)
-    }
-
-    /// The wrong-answer report the person confirmed, for the host to file.
-    pub(crate) fn take_wrong_answer(&mut self) -> Option<playtest::report::SharedChat> {
-        self.flagged.take()
-    }
-
-    /// What came of filing the wrong-answer report: its code, or why not.
-    pub(crate) fn wrong_answer_filed(&mut self, filed: Result<crate::playtest::Row, String>) {
-        let Some((_, flag)) = self.flag.as_mut() else {
-            return;
-        };
-        *flag = match filed {
-            Ok(row) => Flag::Filed(match (row.status, row.code) {
-                (crate::playtest::Status::Waiting, _) => {
-                    "Saved on this phone. A later build sends it to the OpenAgents team.".into()
-                }
-                (_, Some(code)) => format!("Sent to the OpenAgents team as {code}. Thank you."),
-                (_, None) => "Sent to the OpenAgents team. Thank you.".into(),
-            }),
-            Err(why) => Flag::Failed(why),
-        };
     }
 
     /// What the next basic turn tells the worker: whether a computer is
@@ -1191,32 +1134,8 @@ impl CoderTab {
                 };
                 self.run_offer(id, argv, runs_on, computers.as_deref());
             }
-            Intent::WrongAnswer => {
-                if let Some(id) = self.talk.clone()
-                    && self.basic.wrong_answer(&id).is_some()
-                {
-                    self.flag = Some((id, Flag::Confirm));
-                }
-            }
-            Intent::CancelWrongAnswer => self.flag = None,
             Intent::Hub => self.hub(),
-            Intent::Profile => {
-                self.gym.sheet = Some(crate::gym::Sheet::Profile);
-                self.notice = None;
-            }
             Intent::Starter { text } => self.start_talk(&text, computers.as_deref()),
-            Intent::SendWrongAnswer => {
-                let Some((id, Flag::Confirm)) = self.flag.clone() else {
-                    return;
-                };
-                let Some(chat) = self.basic.wrong_answer(&id) else {
-                    self.flag = None;
-                    return;
-                };
-                self.flagged = Some(chat);
-                self.flag = Some((id, Flag::Sending));
-                self.go = Some(Go::WrongAnswer);
-            }
             Intent::OpenSpawned => {
                 let spawned = self
                     .talk
@@ -1372,16 +1291,12 @@ impl CoderTab {
         ))
     }
 
-    /// The chat header's **Profile**: `SCR-11` as a sheet, reachable from
-    /// every chat.
-    fn profile_button() -> Node<Intent> {
-        icon_button(
-            "coder-profile",
-            "Profile",
-            Glyph::Person,
-            true,
-            Intent::Profile,
-        )
+    /// **Profile**, from Account: `SCR-11` as a sheet on the Chat tab, so
+    /// the host switches to it.
+    pub(crate) fn show_profile(&mut self) {
+        self.gym.sheet = Some(crate::gym::Sheet::Profile);
+        self.notice = None;
+        self.go = Some(Go::Chat);
     }
 
     /// **Train Coder**, from the Verse's Gym board or Account: opt into the
@@ -2453,8 +2368,6 @@ impl CoderTab {
             }
             _ => ("Cloud".to_owned(), Glyph::Cloud),
         };
-        let mut selector = pill("coder-target", &clip(&target, 30), glyph, Intent::Pick);
-        selector.style.align = Some(TextAlign::End);
         let mut top = vec![];
         top.extend(self.back_button());
         top.extend([
@@ -2466,11 +2379,16 @@ impl CoderTab {
                 Intent::Menu,
             ),
             heading("coder-title", "OpenAgents"),
-            Self::profile_button(),
-            selector,
         ]);
         let mut children = vec![header("coder-header", top)];
-        if self.picking {
+        // Where the first message goes, as a pill under the header, only
+        // once a computer is enrolled: with none, every chat is the cloud.
+        let enrolled = computers.is_some_and(|c| !Self::hosts(c).is_empty());
+        if enrolled {
+            let selector = pill("coder-target", &clip(&target, 30), glyph, Intent::Pick);
+            children.push(row("coder-target-row", vec![selector]));
+        }
+        if self.picking && enrolled {
             children.push(self.targets(computers, on_computer));
         }
         let ready = if on_computer {
@@ -2482,14 +2400,6 @@ impl CoderTab {
         };
         if let Some(notice) = &self.notice {
             children.push(status("coder-notice", notice));
-        }
-        // What the empty chat is for, in two lines (`SCR-15.E05`).
-        if !self.picking && !on_computer {
-            children.push(status(
-                "coder-welcome",
-                "Ask us anything. No setup needed. We answer here, and send Coder to your \
-                 computer when a job needs one.",
-            ));
         }
         // An empty conversation fills the screen above the suggestions.
         children.push(node(
@@ -2740,13 +2650,10 @@ impl CoderTab {
         let tail = self.basic.tail(id);
         let limit = self.talk_turns;
         let mut header = chat_header(status("coder-chat-place", "OpenAgents"));
-        if let Element::Stack { children, .. } = &mut header.element {
-            // Profile before the new-chat button, which stays last.
-            let at = children.len().saturating_sub(1);
-            children.insert(at, Self::profile_button());
-            if let Some(back) = self.back_button() {
-                children.insert(0, back);
-            }
+        if let Element::Stack { children, .. } = &mut header.element
+            && let Some(back) = self.back_button()
+        {
+            children.insert(0, back);
         }
         let turns = self.basic.turns(id);
         let mut children = vec![header];
@@ -2763,19 +2670,11 @@ impl CoderTab {
                     TurnRole::User => MessageRole::User,
                     TurnRole::Assistant => MessageRole::Assistant,
                 };
-                let mut row = message(
+                message(
                     &format!("talk-m{index}"),
                     role,
                     rust_native::markdown::parse(&turn.text),
-                );
-                // Where a reply came from, quietly: a prepared answer is
-                // reviewed text, not the model's.
-                if turn.meta.as_ref().is_some_and(Meta::canned)
-                    && let Element::Message { note, .. } = &mut row.element
-                {
-                    *note = Some(PREPARED.into());
-                }
-                row
+                )
             })
             .collect();
         match tail {
@@ -2937,9 +2836,6 @@ impl CoderTab {
             if !chips.is_empty() {
                 children.push(wrap("coder-followups", chips));
             }
-            if meta.canned() {
-                children.extend(self.wrong_answer(id));
-            }
         }
         let compose = self.compose.clone();
         let focus = compose.is_some();
@@ -3026,42 +2922,6 @@ impl CoderTab {
                 axis: Axis::Vertical,
                 children,
             },
-        }
-    }
-
-    /// Under a prepared answer: **Wrong answer**, then what it would send
-    /// and a choice, then what came of it.
-    fn wrong_answer(&self, id: &str) -> Vec<Node<Intent>> {
-        let flag = self
-            .flag
-            .as_ref()
-            .filter(|(talk, _)| talk == id)
-            .map(|(_, flag)| flag);
-        match flag {
-            None => vec![row(
-                "coder-wrong-row",
-                vec![icon_button(
-                    "coder-wrong",
-                    "Wrong answer",
-                    Glyph::Flag,
-                    false,
-                    Intent::WrongAnswer,
-                )],
-            )],
-            Some(Flag::Confirm) => vec![
-                status("coder-wrong-what", WRONG_ANSWER_SENDS),
-                row(
-                    "coder-wrong-choice",
-                    vec![
-                        button("coder-wrong-send", "Send", Intent::SendWrongAnswer),
-                        button("coder-wrong-cancel", "Cancel", Intent::CancelWrongAnswer),
-                    ],
-                ),
-            ],
-            Some(Flag::Sending) => vec![status("coder-wrong-status", "Sending…")],
-            Some(Flag::Filed(line) | Flag::Failed(line)) => {
-                vec![status("coder-wrong-status", line)]
-            }
         }
     }
 
@@ -3609,13 +3469,7 @@ fn ago(now: u64, then: u64) -> String {
     }
 }
 
-/// The quiet note under a reply that is a prepared answer.
-const PREPARED: &str = "Prepared answer";
-
 /// What **Wrong answer** says it sends before the person chooses.
-const WRONG_ANSWER_SENDS: &str = "We'll send your question, our answer, and how we chose it to \
-the OpenAgents team, encrypted, to improve our answers. Nothing else from this chat is sent.";
-
 /// The chip an `open_screen` offer shows: the phone's own name for the
 /// screen, never the worker's words.
 fn screen_chip(screen: Screen, connecting: bool) -> (&'static str, Glyph) {

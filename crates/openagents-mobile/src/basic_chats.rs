@@ -206,25 +206,6 @@ impl BasicChats {
         })
     }
 
-    /// The last reply of `id`, when it is a prepared answer, with the
-    /// message it answered: what **Wrong answer** sends.
-    pub(crate) fn wrong_answer(&mut self, id: &str) -> Option<SharedChat> {
-        if self.busy(id) {
-            return None;
-        }
-        let turns = self.turns(id);
-        let [.., question, answer] = turns else {
-            return None;
-        };
-        (question.role == Role::User
-            && answer.role == Role::Assistant
-            && answer.meta.as_ref().is_some_and(Meta::canned))
-        .then(|| SharedChat {
-            reason: ShareReason::WrongAnswer,
-            turns: vec![chat_turn(question), chat_turn(answer)],
-        })
-    }
-
     /// Where the worker's judgment placed the last reply of `id`.
     pub(crate) fn lane(&self, id: &str) -> Option<Lane> {
         self.lanes.get(id).copied()

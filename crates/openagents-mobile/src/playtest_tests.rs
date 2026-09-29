@@ -1,4 +1,5 @@
 use super::*;
+use playtest::report::ShareReason;
 use secp256k1::Secp256k1;
 
 const WORLD: [u8; 32] = [3; 32];
@@ -572,48 +573,4 @@ fn a_shared_chat_leaves_only_as_previewed() {
     {
         assert!(!event.content.contains("Gemini") && !event.content.contains("meta.model"));
     }
-}
-
-/// **Wrong answer** files a bug from the Chat tab that carries the
-/// question, the prepared answer, and the judgment, and nothing else of the
-/// chat.
-#[test]
-fn a_wrong_answer_report_carries_the_exchange() {
-    let relay = Arc::new(Fake::default());
-    let key = triage_hex();
-    let (mut playtest, _dir) = setup(relay.clone(), Some(&key));
-    let device = Device {
-        app_version: "1.0.0".into(),
-        build: "19".into(),
-        device: "iPhone17,1".into(),
-        os_version: "26.0".into(),
-    };
-    assert!(
-        playtest
-            .wrong_answer(
-                chat(ShareReason::Shared),
-                device.clone(),
-                &world(),
-                Platform::Ios
-            )
-            .is_err()
-    );
-    let row = playtest
-        .wrong_answer(
-            chat(ShareReason::WrongAnswer),
-            device,
-            &world(),
-            Platform::Ios,
-        )
-        .expect("filed");
-    assert!(row.code.is_some());
-    assert_eq!(row.place, "coder/chat");
-    playtest.wait();
-    let triage = SecretKey::from_byte_array(TRIAGE).unwrap();
-    let opened = report::open(&relay.sent.lock().unwrap()[0], &triage).unwrap();
-    assert_eq!(opened.report.kind, Kind::Bug);
-    assert_eq!(opened.report.happened, WRONG_ANSWER);
-    assert!(!opened.report.quote);
-    assert!(opened.report.session.is_none() && opened.report.screenshot.is_none());
-    assert_eq!(opened.report.chat, Some(chat(ShareReason::WrongAnswer)));
 }

@@ -505,6 +505,8 @@ class MainActivity : ComponentActivity() {
                 "★  ${AccountRoute.TRAINER.title}" to "account-trainer" to { open(AccountRoute.TRAINER) },
                 // Opt into the Gym: Rust opens its intro on the Chat tab.
                 "Train Coder" to "account-train" to { bridge.gymTrain() },
+                // Profile: Rust shows it as a sheet on the Chat tab.
+                "Profile" to "account-profile" to { bridge.profile() },
             )))
             addView(group(listOf(
                 "Playtest" to "account-playtest" to { open(AccountRoute.PLAYTEST) },

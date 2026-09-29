@@ -1069,8 +1069,11 @@ fn a_fresh_install_opens_on_the_chat_with_nothing_of_the_gym() {
     assert!(view.cards.is_empty(), "{:?}", view.cards.keys());
     assert!(view.sheet.is_none());
     assert!(!phone.tab.gym.opted_in());
-    // The chat's header: Profile and the previous chats, no Menu.
-    assert!(find(&coder, |n| n["key"] == "coder-profile").is_some());
+    // The chat's header: the previous chats only; no Profile, no target
+    // pill, no Menu.
+    assert!(find(&coder, |n| n["key"] == "coder-profile").is_none());
+    assert!(find(&coder, |n| n["key"] == "coder-target").is_none());
+    assert!(find(&coder, |n| n["key"] == "coder-welcome").is_none());
     assert!(find(&coder, |n| n["key"] == "coder-menu").is_some());
     assert!(find(&coder, |n| n["key"] == "coder-back").is_none());
     // First-time questions, and no Gym starter.
@@ -1079,16 +1082,8 @@ fn a_fresh_install_opens_on_the_chat_with_nothing_of_the_gym() {
         let key = format!("coder-starter-{id}");
         assert!(find(&coder, |n| n["key"] == key).is_none(), "{key}");
     }
-    // Profile opens from the header.
-    phone.tab.activate(
-        &rust_native::Activation {
-            instance: coder["instance"].as_str().expect("instance").into(),
-            revision: coder["revision"].as_u64().expect("revision"),
-            node: "coder-profile".into(),
-        },
-        None,
-        &mut phone.chats,
-    );
+    // Profile opens from Account, as a sheet on the Chat tab.
+    phone.tab.show_profile();
     assert_eq!(
         phone.gym().sheet.map(|sheet| sheet.kind),
         Some("profile"),

@@ -1169,26 +1169,15 @@ fn a_first_chat_needs_no_computer_and_streams_its_reply() {
     // The tab opens on a new chat with the basic Coder, and offers to
     // connect a computer beside it.
     let screen = fixture.tap("coder-back");
-    assert_eq!(
-        node(&screen, "coder-target").unwrap()["element"]["props"]["label"],
-        "Cloud"
-    );
+    // With no computer enrolled there is no target to pick: no selector,
+    // and no welcome line; the chat is the cloud.
+    assert!(node(&screen, "coder-target").is_none());
+    assert!(node(&screen, "coder-welcome").is_none());
+    assert!(node(&screen, "coder-profile").is_none());
     assert!(node(&screen, "coder-continue-0").is_none());
     let connect = &node(&screen, "coder-connect").unwrap()["element"]["props"];
     assert_eq!(connect["label"], "Connect a computer");
     assert_eq!(connect["icon"]["glyph"], "add");
-    // No computer to offer in the selector.
-    let picking = fixture.tap("coder-target");
-    assert!(
-        node(&picking, "coder-target-0").is_none(),
-        "{:?}",
-        keys(&picking)
-    );
-    assert_eq!(
-        node(&picking, "coder-target-cloud").unwrap()["element"]["props"]["icon"]["glyph"],
-        "check"
-    );
-    let screen = fixture.tap("coder-target");
     assert_eq!(composer_of(&screen)["enabled"], true);
     assert_eq!(composer_of(&screen)["placeholder"], "Message OpenAgents");
 
@@ -1390,65 +1379,22 @@ fn canned(hand: &Hand, text: &str) {
     hand.say(text, true);
 }
 
-/// A prepared answer says so quietly, offers its follow-ups as chips that
-/// send their words, and can be marked wrong: the chat shows what would be
-/// sent, and only **Send** hands the question, the answer, and the
-/// judgment to the host to file.
+/// A prepared answer offers its follow-ups as chips that send their
+/// words; it carries no note and no report control.
 #[test]
-fn a_prepared_answer_offers_followups_and_a_wrong_answer_report() {
+fn a_prepared_answer_offers_followups() {
     let hand = Hand::default();
     let mut fixture =
         Fixture::new(NoComputers(Synthetic::fixture(Platform::Phone, now))).answered_by(&hand);
     fixture.say("What model are you?");
     canned(&hand, "Our chat runs on Gemini 3.8 Flash.");
     let chat = fixture.render();
-    assert_eq!(
-        node(&chat, "talk-m1").unwrap()["element"]["props"]["note"],
-        "Prepared answer"
-    );
-    // The user's own message carries no note.
+    assert!(node(&chat, "talk-m1").unwrap()["element"]["props"]["note"].is_null());
     assert!(node(&chat, "talk-m0").unwrap()["element"]["props"]["note"].is_null());
+    assert!(node(&chat, "coder-wrong").is_none());
     let chip = &node(&chat, "coder-followup-1").expect("follow-up")["element"]["props"];
     assert_eq!(chip["label"], "What is Coder?");
     assert_eq!(chip["icon"]["glyph"], "ask");
-
-    // Wrong answer asks first, and sends nothing until Send.
-    let asking = fixture.tap("coder-wrong");
-    assert!(
-        texts(&asking)
-            .iter()
-            .any(|t| t.starts_with("We'll send your question"))
-    );
-    let back = fixture.tap("coder-wrong-cancel");
-    assert!(node(&back, "coder-wrong").is_some());
-    assert_eq!(fixture.coder.take_go(), None);
-    fixture.tap("coder-wrong");
-    let sending = fixture.tap("coder-wrong-send");
-    assert!(texts(&sending).contains(&"Sending…".to_owned()));
-    assert_eq!(
-        fixture.coder.take_go(),
-        Some(crate::coder_tab::Go::WrongAnswer)
-    );
-    let flagged = fixture
-        .coder
-        .take_wrong_answer()
-        .expect("the flagged exchange");
-    assert_eq!(flagged.reason, playtest::report::ShareReason::WrongAnswer);
-    assert_eq!(flagged.turns.len(), 2);
-    assert_eq!(flagged.turns[0].text, "What model are you?");
-    assert_eq!(flagged.turns[1].answer.as_deref(), Some("meta.model@1"));
-    assert!(
-        flagged.turns[1]
-            .judgment
-            .as_deref()
-            .unwrap()
-            .contains("answer_p")
-    );
-    assert!(fixture.coder.take_wrong_answer().is_none());
-    fixture
-        .coder
-        .wrong_answer_filed(Err("No relay accepted it.".into()));
-    assert!(texts(&fixture.render()).contains(&"No relay accepted it.".to_owned()));
 
     // A follow-up chip sends its words as the next message.
     fixture.tap("coder-followup-0");
@@ -1460,11 +1406,10 @@ fn a_prepared_answer_offers_followups_and_a_wrong_answer_report() {
             "Is this chat private?"
         ]
     );
-    // The model's own reply is not a prepared answer: no note, no report.
+    // The model's own reply offers no follow-ups.
     hand.say("It is encrypted.", true);
     let chat = fixture.render();
     assert!(node(&chat, "talk-m3").unwrap()["element"]["props"]["note"].is_null());
-    assert!(node(&chat, "coder-wrong").is_none());
     assert!(node(&chat, "coder-followup-0").is_none());
     // Share this chat carries the whole conversation, with its judgments.
     let shared = fixture.coder.shared_chat().expect("shared");

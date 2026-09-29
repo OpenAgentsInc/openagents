@@ -181,6 +181,14 @@ struct AccountTab: View {
                     }
                     .foregroundStyle(.white)
                     .accessibilityIdentifier("account-train")
+                    // Profile: Rust shows it as a sheet on the Chat tab.
+                    Button {
+                        bridge.profile()
+                    } label: {
+                        Label("Profile", systemImage: "person.circle")
+                    }
+                    .foregroundStyle(.white)
+                    .accessibilityIdentifier("account-profile")
                 }
                 Section {
                     NavigationLink(value: AccountRoute.playtest) {

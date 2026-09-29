@@ -97,6 +97,9 @@ class MobileBridge(private val context: Context, private val computersFixture: B
     /** Train Coder, from the Verse's Gym board or Account: Rust opts into the Gym and asks for the Chat tab (`coder_go` is `chat`). */
     fun gymTrain() = send(json("op" to "gym_train"))
 
+    /** Profile, from Account: Rust shows the Profile sheet on the Chat tab (`coder_go` is `chat`). */
+    fun profile() = send(json("op" to "profile"))
+
     /** Text Rust asked the system share sheet to open, until it shows. */
     var gymShare: String? = null
 
@@ -245,14 +248,6 @@ class MobileBridge(private val context: Context, private val computersFixture: B
         call(json("op" to "report_send", "world_secret_hex" to secret, "form" to form)) { reply(it, "openagents.reports.v1")?.let(received) }
     }
 
-    /** Files the wrong-answer report the person confirmed in the chat, signed by the Verse world key; the chat shows what came of it. */
-    fun reportWrongAnswer() {
-        val secret = try { DeviceKey.loadOrCreate(context, DeviceKey.Purpose.WORLD) } catch (_: Exception) { "" }
-        val device = json("app_version" to ReportDevice.version, "build" to ReportDevice.build,
-            "device" to ReportDevice.model, "os_version" to ReportDevice.os)
-        call(json("op" to "report_wrong_answer", "world_secret_hex" to secret, "device" to device)) { snapshot() }
-    }
-
     /** My reports; with the world key, reports that wait or failed are sent again. */
     fun reports(received: (JSONObject) -> Unit) {
         val secret = try { DeviceKey.loadOrCreate(context, DeviceKey.Purpose.WORLD) } catch (_: Exception) { "" }
@@ -358,8 +353,6 @@ class MobileBridge(private val context: Context, private val computersFixture: B
             when (val go = next.textOrNull("coder_go")) {
                 "computers" -> computersRequested += 1
                 "wallet", "keys", "playtest", "report", "verse_gym", "chat" -> { screenRequested = go; screenRequests += 1 }
-                // The person confirmed Wrong answer in the chat: file it.
-                "wrong_answer" -> reportWrongAnswer()
             }
             if (!next.optBoolean("terminal")) { terminalView = null; terminalRevision = 0 }
             next.textOrNull("open_url")?.let { link -> open(link) }

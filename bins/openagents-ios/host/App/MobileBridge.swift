@@ -378,6 +378,10 @@ final class MobileBridge: ObservableObject {
     /// the Gym and asks for the Chat tab (`coder_go` is `chat`).
     func gymTrain() { send(["op": "gym_train"]) }
 
+    /// Profile, from Account: Rust shows the Profile sheet on the Chat tab
+    /// (`coder_go` is `chat`).
+    func profile() { send(["op": "profile"]) }
+
     /// Text for the system share sheet, which Rust asked to open.
     @Published var gymShare: String?
 
@@ -620,20 +624,6 @@ final class MobileBridge: ObservableObject {
         }
     }
 
-    /// File the wrong-answer report the person confirmed in the chat, signed
-    /// by the Verse world key. Rust chose what it carries; the chat shows
-    /// what came of it.
-    func reportWrongAnswer() {
-        let hex = (try? DeviceKey.loadOrCreateVerse())?.map { String(format: "%02x", $0) }.joined() ?? ""
-        let device: [String: Any] = [
-            "app_version": ReportDevice.version, "build": ReportDevice.build,
-            "device": ReportDevice.model, "os_version": ReportDevice.os,
-        ]
-        call(["op": "report_wrong_answer", "world_secret_hex": hex, "device": device]) { _ in
-            self.send(["op": "snapshot"])
-        }
-    }
-
     /// My reports; reports that wait or failed are sent again.
     func reports(received: @escaping (ReportsPacket) -> Void) {
         let hex = (try? DeviceKey.loadOrCreateVerse())?.map { String(format: "%02x", $0) }.joined() ?? ""
@@ -706,8 +696,6 @@ final class MobileBridge: ObservableObject {
             case "computers": self.computersRequested += 1
             case let screen? where ["wallet", "keys", "playtest", "report", "verse_gym", "chat"].contains(screen):
                 self.screenRequest = ScreenRequest(screen: screen, serial: self.screenRequest.serial + 1)
-            // The person confirmed Wrong answer in the chat: file it.
-            case "wrong_answer": self.reportWrongAnswer()
             default: break
             }
             if !packet.terminal { self.terminalView = nil; self.terminalRevision = 0 }

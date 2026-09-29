@@ -370,6 +370,7 @@ pub(crate) struct Meta {
 
 impl Meta {
     /// The reply is a prepared answer from the bank, not model text.
+    #[cfg(test)]
     pub(crate) fn canned(&self) -> bool {
         self.tier.as_deref() == Some("canned") && self.answer.is_some()
     }

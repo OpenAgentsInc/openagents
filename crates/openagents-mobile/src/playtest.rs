@@ -34,9 +34,7 @@ use std::time::Duration;
 
 use coder_computers::cache::Cache;
 use nostr::domain::Event;
-use playtest::report::{
-    self, Context, Kind, Platform, Randomness, Report, Screenshot, ShareReason, SharedChat,
-};
+use playtest::report::{self, Context, Kind, Platform, Randomness, Report, Screenshot, SharedChat};
 use playtest::session::{self, Code, Log, Route, Tab};
 use secp256k1::{SecretKey, XOnlyPublicKey};
 use serde::{Deserialize, Serialize};
@@ -286,20 +284,6 @@ pub struct Form {
     #[serde(default)]
     pub screenshot: Option<Screenshot>,
 }
-
-/// The device facts a report carries, from the host.
-#[derive(Clone, Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Device {
-    pub app_version: String,
-    pub build: String,
-    pub device: String,
-    pub os_version: String,
-}
-
-/// What a wrong-answer report says happened. The chat it carries is the
-/// question, the prepared answer, and the judgment.
-pub const WRONG_ANSWER: &str = "A prepared answer in the chat didn't answer the question.";
 
 /// Publishes a sealed report and its public record.
 pub trait Relay: Send + Sync {
@@ -660,47 +644,6 @@ impl Playtest {
             }
             Err(error) => self.packet(None, Some(error)),
         }
-    }
-
-    /// Files a wrong-answer report: the question, the prepared answer, and
-    /// the judgment the tester chose to send with **Wrong answer**. Returns
-    /// the report's row, or why it wasn't filed.
-    pub fn wrong_answer(
-        &mut self,
-        chat: SharedChat,
-        device: Device,
-        world: &SecretKey,
-        platform: Platform,
-    ) -> Result<Row, String> {
-        if chat.reason != ShareReason::WrongAnswer {
-            return Err("Only a wrong answer is sent this way.".into());
-        }
-        let form = Form {
-            app_version: device.app_version,
-            build: device.build,
-            device: device.device,
-            os_version: device.os_version,
-            tab: Tab::Coder,
-            route: Route::Chat,
-            kind: Kind::Bug,
-            happened: WRONG_ANSWER.into(),
-            expected: String::new(),
-            steps: String::new(),
-            quote: false,
-            include_task: false,
-            include_log: false,
-            log_digest: String::new(),
-            include_chat: true,
-            chat_digest: report::chat_digest(&chat),
-            screenshot: None,
-        };
-        let digest = self.file(form, world, None, Some(chat), platform)?;
-        lock(&self.inner)
-            .saved
-            .iter()
-            .find(|s| s.digest == digest)
-            .map(row)
-            .ok_or_else(|| "The report couldn't be filed.".to_string())
     }
 
     fn file(
