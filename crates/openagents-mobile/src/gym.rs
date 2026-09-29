@@ -1913,10 +1913,10 @@ impl Gym {
             self.standing.evaluator_xp,
         ) {
             (Purpose::Check { .. }, Some(xp), _) => {
-                format!("+{xp} XP once our referee confirms your check.")
+                format!("+{xp} XP once our referee signs your check, whichever way it went.")
             }
             (Purpose::Check { .. }, None, _) => {
-                "You earn XP once our referee confirms your check.".into()
+                "You earn XP once our referee signs your check, whichever way it went.".into()
             }
             (_, _, Some(xp)) => format!("+{xp} XP when another trainer checks it."),
             (_, _, None) => "You earn XP when another trainer checks it.".into(),
@@ -2064,7 +2064,7 @@ impl Gym {
                 "A check shows whether a result holds up when someone else runs the same tests."
             }
             (false, Verdict3::Pass, None) => {
-                "When other trainers confirm it, Coder can use this tool for everyone."
+                "When other trainers confirm it and it holds up on a test set someone else wrote, Coder can use this tool for everyone."
             }
             (false, Verdict3::Inconclusive, None) => {
                 "That's useful too. Now everyone knows this tool doesn't help on these tests."
@@ -2232,11 +2232,11 @@ impl Gym {
                     line("Coder's full work on each test stays private.", Tone::Quiet),
                     line(
                         if credited {
-                            "If your check confirms the result, the trainer who added it earns XP. You already earned XP for checking this test set."
+                            "You already earned XP for checking this test set, so this check earns no more. The trainer who added the result earns XP whether you confirm it or not."
                         } else if run.check().is_some() {
-                            "If your check confirms the result, you and the trainer who added it earn XP."
+                            "You and the trainer who added the result earn XP whether your check confirms it or not."
                         } else {
-                            "Other trainers can run these tests to check the result. You earn XP when they confirm it."
+                            "Other trainers can run these tests to check the result. You earn XP when they do, whether they confirm it or not."
                         },
                         Tone::Quiet,
                     ),
@@ -2253,7 +2253,7 @@ impl Gym {
                         if credited {
                             "Added to the Gym. You already earned XP for checking this test set."
                         } else if run.check().is_some() {
-                            "Added to the Gym. If your check confirms the result, XP comes once our referee signs it."
+                            "Added to the Gym. XP comes once our referee signs your check, whichever way it went."
                         } else {
                             "Added to the Gym. You'll earn XP when another trainer checks it."
                         },
@@ -2623,7 +2623,7 @@ pub(crate) fn next_step(gym: &Gym) -> &'static str {
         };
     }
     if gym.standing.pending > 0 {
-        return "Next: a check confirmed your result. XP is on its way.";
+        return "Next: someone checked your result. XP is on its way.";
     }
     if gym.latest_result().is_some() {
         return "Next: check someone else's result for more XP.";
@@ -2724,8 +2724,8 @@ fn made_items(s: &Standing) -> Vec<Item> {
     }
     for row in &s.results {
         let (mark, text) = match (row.check, row.standing.as_str()) {
-            (true, "awarded") => ("check", "Your check was confirmed".to_owned()),
-            (true, "pending") => ("wait", "Your check holds up. XP is on its way".to_owned()),
+            (true, "awarded") => ("check", "Your check earned XP".to_owned()),
+            (true, "pending") => ("wait", "Your check followed the rules. XP is on its way".to_owned()),
             (true, "disputed") => ("cross", "Your check disagreed with the result".to_owned()),
             (true, _) => ("dot", "A check you added".to_owned()),
             (false, "awarded" | "pending") => (

@@ -19,7 +19,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use nostr::contracts::{self, ArtifactRef};
 use nostr::domain::Event;
-use nostr::eval_ext::{self, Publication, Verdict};
+use nostr::eval_ext::{self, IdentityStrength, Publication, Verdict};
 use nostr::xp::{self, Adoption, Award};
 use nostr::{ext, kb, kinds};
 use serde::Serialize;
@@ -41,6 +41,44 @@ pub const CONFIRMING_CHECKS: usize = 3;
 /// checks. Reproduction on the author's own suite proves reproducibility;
 /// this proves the delta wasn't fitted to that suite.
 pub const VALIDATIONS: usize = 1;
+
+/// How long an admission lasts, in days, by the adopted subject's identity
+/// strength: the weaker the identity, the sooner the evidence expires. A
+/// content-addressed subject (every extension) gets the ordinary
+/// revalidation cadence; a version-addressed one should be revalidated
+/// when the provider's version changes and lapses sooner; an
+/// endpoint-addressed one gets a short lifetime; an unresolved subject is
+/// never eligible for a shared default, so it has no lifetime. The package
+/// record repeats these numbers, and a test keeps them equal.
+pub const EXPIRY_DAYS: [(IdentityStrength, Option<u64>); 4] = [
+    (IdentityStrength::Content, Some(365)),
+    (IdentityStrength::Version, Some(90)),
+    (IdentityStrength::Endpoint, Some(14)),
+    (IdentityStrength::Unresolved, None),
+];
+
+/// The admission lifetime, in days, for a subject of `identity` strength;
+/// `None` for an unresolved subject, which can't be adopted. A result that
+/// recorded no identity is an extension under a lock, so `content`.
+#[must_use]
+pub fn expiry_days(identity: Option<IdentityStrength>) -> Option<u64> {
+    let identity = identity.unwrap_or(IdentityStrength::Content);
+    EXPIRY_DAYS
+        .iter()
+        .find(|(i, _)| *i == identity)
+        .and_then(|(_, days)| *days)
+}
+
+/// The admission lifetime for results on one subject: the shortest the
+/// results' identities allow, or `None` when any records `unresolved`.
+#[must_use]
+pub fn expiry_days_for(results: &[&Publication]) -> Option<u64> {
+    results
+        .iter()
+        .map(|p| expiry_days(p.report.profile.identity))
+        .try_fold(u64::MAX, |shortest, days| days.map(|d| shortest.min(d)))
+        .filter(|d| *d != u64::MAX)
+}
 
 /// The slug of Coder's defaults package.
 pub const DEFAULTS_SLUG: &str = "coder-defaults";

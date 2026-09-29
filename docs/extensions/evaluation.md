@@ -556,7 +556,9 @@ across different suites.
 **A check** is a rerun of a published suite against the same subject
 release by a trainer who is not the evaluator. It publishes its own `3189`
 that cites the original with an `e` tag. It confirms the original when its
-verdict matches; it disputes it otherwise. Both outcomes stay visible.
+verdict matches; it disputes it otherwise. Both outcomes stay visible. A
+verdict match is the lossy count: the two headlines are the estimates,
+and `eval_ext::Effect` says whether they are compatible.
 
 **A validation** is a result on a *second* suite for the same tool,
 naming the original with the `validates` marker. It answers what a check
@@ -575,7 +577,11 @@ release of the `openagents:coder-defaults` package that depends on the
 extension's release. A tool is a candidate for adoption when its result
 is **Better**, at least three checks by distinct trainers confirmed it,
 and at least one result externally validates it. Adoption is an operator
-decision, never automatic. Once `coder-defaults` holds anything, a
+decision, never automatic. The admission lasts 365 days for a
+content-addressed tool, 90 for a version-addressed subject, and 14 for
+an endpoint; a subject with unresolved identity is never adopted; a gate
+change reinterprets the cited reports and reopens nothing. Once
+`coder-defaults` holds anything, a
 candidate's report should also be marginal: its baseline arm the current
 defaults rather than nothing admitted, named in `meta.ext_eval.defaults`;
 the runner has no such arm yet.

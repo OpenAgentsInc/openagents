@@ -392,6 +392,48 @@ fn checks_by(w: &World, labels: &[&str]) -> Vec<Event> {
 }
 
 #[test]
+fn the_admission_lifetime_follows_the_subjects_identity_and_the_record_agrees() {
+    use nostr::eval_ext::IdentityStrength;
+    // The weaker the identity, the sooner the evidence expires; an
+    // unresolved subject never becomes a shared default.
+    assert_eq!(eval::expiry_days(None), Some(365));
+    assert_eq!(eval::expiry_days(Some(IdentityStrength::Content)), Some(365));
+    assert_eq!(eval::expiry_days(Some(IdentityStrength::Version)), Some(90));
+    assert_eq!(eval::expiry_days(Some(IdentityStrength::Endpoint)), Some(14));
+    assert_eq!(eval::expiry_days(Some(IdentityStrength::Unresolved)), None);
+    let record: serde_json::Value = serde_json::from_str(adopt::PACKAGE_RECORD).unwrap();
+    let days = &record["candidate"]["expiry_days"];
+    for (identity, expected) in eval::EXPIRY_DAYS {
+        assert_eq!(days[identity.word()].as_u64(), expected, "{}", identity.word());
+    }
+    assert_eq!(
+        record["candidate"]["confirming_checks"].as_u64(),
+        Some(eval::CONFIRMING_CHECKS as u64)
+    );
+    assert_eq!(
+        record["candidate"]["validations"].as_u64(),
+        Some(eval::VALIDATIONS as u64)
+    );
+    // Results on one subject take the shortest lifetime among them; the
+    // fixture's extensions are content-addressed, so the ordinary cadence.
+    let suite = release(&signer("suite-author"), "project-map-tests", AT - 5_000);
+    let subject = release(&signer("ext-author"), "project-map", AT - 5_000);
+    let run = Run::better(&suite, &subject);
+    let events = [
+        published(&signer("alice"), &run, None, AT),
+        published(&signer("bob"), &run, None, AT + 1),
+    ];
+    let results: Vec<nostr::eval_ext::Publication> = events
+        .iter()
+        .filter_map(|e| nostr::eval_ext::parse_publication(e).ok())
+        .collect();
+    assert_eq!(results.len(), 2);
+    let refs: Vec<&nostr::eval_ext::Publication> = results.iter().collect();
+    assert_eq!(eval::expiry_days_for(&refs), Some(365));
+    assert_eq!(eval::expiry_days_for(&[]), None);
+}
+
+#[test]
 fn a_better_result_is_a_candidate_after_three_distinct_trainers_confirm_and_one_validates() {
     let w = World::new();
     let (suite2, validation) = validation_of(&w);

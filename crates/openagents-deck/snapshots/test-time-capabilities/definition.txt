@@ -3,24 +3,24 @@ width 108 height 28
 
 
 
-
                    PART I · THE IDEA
 
                    ┌────────────────────────────────────────────────────────────────────┐
                    │                                                                    │
                    │  An ability an agent gains, or loses, at inference time, without   │
                    │  a weight update, because something was admitted into the run. A   │
-                   │  component is a candidate; evidence makes a capability claim: how  │
-                   │  much admitting that exact component changed outcomes, against a   │
-                   │  stated baseline, on stated tasks, under a stated grant and rule.  │
+                   │  component is a candidate; evidence makes a capability claim: a    │
+                   │  key (subject, baseline agent, tasks, environment, grant,          │
+                   │  measurement), the records on it, and a written policy that reads  │
+                   │  them. Reports are evidence; claims summarize; adoption is         │
+                   │  policy.                                                           │
                    │                                                                    │
                    └────────────────────────────────────────────────────────────────────┘
 
                        Test-time capability, and the capability claim that states it
 
-    Claim(A, B, D, S, E, G, R) → Δ ± uncertainty: subject, baseline agent, task distribution, sampled
-    suite, environment, grant, rule.
-
+    Key K = (A, B, D, S, E, G, M): subject, baseline agent, distribution, sampled suite, environment,
+    grant, measurement. Records on K estimate Δ ± CI; a policy P reads them.
 
 
 
@@ -32,24 +32,24 @@ width 108 height 28
 
 
 
-
                    22222222222222222
 
                    1111111111111111111111111111111111111111111111111111111111111111111111
                    1                                                                    1
                    1  44 4444444 44 44444 444444 44 444444 44 444444444 44444 4444444   1
                    1  4 444444 4444444 4444444 444444444 444 44444444 4444 444 4444 4   1
-                   1  444444444 44 4 4444444444 44444444 44444 4 4444444444 444444 444  1
-                   1  4444 444444444 4444 44444 444444444 4444444 444444444 4444444 4   1
-                   1  444444 444444444 44 444444 444444 44444 4 444444 44444 444 44444  1
+                   1  444444444 44 4 4444444444 44444444 44444 4 4444444444 444444 4    1
+                   1  444 444444444 44444444 444444 444444 444444444444 444444          1
+                   1  4444444444444 444 4444444 44 444 444 4 4444444 444444 4444 44444  1
+                   1  44444 4444444 444 444444444 444444 4444444444 44444444 44         1
+                   1  4444444                                                           1
                    1                                                                    1
                    1111111111111111111111111111111111111111111111111111111111111111111111
 
                        2222222222222222222222222222222222222222222222222222222222222
 
     2222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222
-    22222222222222222222222222222222
-
+    222222222222222222222222222222222222222222222222222222222222222222222222
 
 
 

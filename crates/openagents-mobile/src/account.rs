@@ -36,6 +36,26 @@ pub struct Item {
 pub const CHANGELOG: &[Release] = &[
     Release {
         version: "1.0.0",
+        build: "24",
+        title: "Checks pay either way",
+        what_to_test: "From the menu, tap Check a result and read the card: it says a check earns XP whether it confirms the result or not. Run one, add it to the Gym, and check the sheet says the same before and after you publish. Open Profile and check a checked result reads as checked, not confirmed. Ask what it takes for Coder to adopt a tool, and check the answer names a second test set someone else wrote.",
+        items: &[
+            Item {
+                title: "A check earns XP either way",
+                detail: "Checking a result pays for the work, not for agreeing. A check that disagrees earns the same XP as one that confirms, stays visible as a disagreement, and counts toward nothing else.",
+            },
+            Item {
+                title: "Adoption needs a second test set",
+                detail: "Coder adopts a tool only after three trainers' checks confirm its result and it holds up on a test set someone other than its author wrote. No tool has such a test set yet.",
+            },
+            Item {
+                title: "The numbers beside the verdict",
+                detail: "A check's card shows how many tests passed with the tool and without it, the same way the result does, so you can see whether two runs agree on the size of the change and not only on the verdict.",
+            },
+        ],
+    },
+    Release {
+        version: "1.0.0",
         build: "23",
         title: "Ready for launch",
         what_to_test: "Open Account, then Playtest, and check there is no card of zeros: the playtest card shows only once playtest awards are counted. From the menu, test a tool and check it runs on our computers; if a test set is too big for them, the card says how big it can be. Look through Chat, Wallet, Account, and the Verse and tell us if anything shows a number or a name that isn't yours or the Gym's.",
@@ -66,7 +86,7 @@ pub const CHANGELOG: &[Release] = &[
             },
             Item {
                 title: "Results you can check",
-                detail: "Check a result offers only results our test computers can run again and that still earn XP when you confirm them.",
+                detail: "Check a result offers only results our test computers can run again and that still earn XP when you check them.",
             },
             Item {
                 title: "Your results",
@@ -106,7 +126,7 @@ pub const CHANGELOG: &[Release] = &[
             },
             Item {
                 title: "Check others' results and earn XP",
-                detail: "Check a result runs another trainer's tests again. When a check confirms a result, both trainers earn XP, and Coder can adopt a tool that holds up. Ask what you've earned, or open Profile. XP can't be spent.",
+                detail: "Check a result runs another trainer's tests again. A check earns XP whether it confirms the result or not, and so does the trainer who added it. Coder adopts a tool only after checks confirm it and it holds up on a test set someone else wrote. Ask what you've earned, or open Profile. XP can't be spent.",
             },
             Item {
                 title: "Gym news",

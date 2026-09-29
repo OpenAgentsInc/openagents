@@ -958,7 +958,23 @@ author, released after the tool, that names it with the validates marker",
         .filter_map(|id| seen.publications.get(id).map(|(e, _)| e))
         .collect();
     let at = now();
-    let days = o.expires_days.unwrap_or(365);
+    let parsed: Vec<Publication> = results
+        .iter()
+        .filter_map(|e| eval_ext::parse_publication(e).ok())
+        .collect();
+    let identities: Vec<&Publication> = parsed.iter().collect();
+    let days = match (o.expires_days, credit::expiry_days_for(&identities)) {
+        (Some(days), _) => days,
+        (None, Some(days)) => days,
+        (None, None) => {
+            println!(
+                "tool release {} can't be adopted: a cited result records its subject as \
+unresolved, and a shared default never rests on a subject nobody can name again",
+                short(subject)
+            );
+            return Ok(1);
+        }
+    };
     let admission = adopt::admission(
         identity.pubkey(),
         &results,

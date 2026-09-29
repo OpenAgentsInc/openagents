@@ -78,11 +78,11 @@ Each of these has a way to be wrong. That's the test for whether a word earns a 
 
 ---
 
-## Slide 7: Evals are the unit of account
+## Slide 7: Capability claims are the unit of account
 
 Why evals and not a leaderboard. A leaderboard rewards one system on one fixed task set, and it rewards fitting that set. A per-component eval asks a narrower question with a clearer answer: does this thing help, where, and at what cost. Two arms, not one score. A written rule gives the verdict, and the rule is a versioned file whose digest travels with every result, so when the rule has a bug, and ours did, the old results keep their old digest. And others can rerun it.
 
-Benchmarks ask how capable an agent is. A claim says what caused it to become more capable. Benchmarks still check the agent as a whole. Evals decide what goes into it.
+Benchmarks ask how capable an agent is. A claim says what caused it to become more capable. Benchmarks still check the agent as a whole. Evals decide what goes into it. Reports are evidence; claims summarize effects; adoption is policy. A rule is a versioned file, and replacing it reinterprets old results without rerunning anything.
 
 And one more thing the essay had to say plainly: once adoption and credit depend on evals, the evals stop being a measurement and become the objective function of the whole network. People will build what gets adopted. So independent test sets, held-out tasks, and paying for disputes aren't hygiene. They're what keeps the flywheel pointed at capability instead of at the tests.
 

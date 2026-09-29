@@ -1125,7 +1125,7 @@ fn a_checks_add_to_the_gym_speaks_of_the_check() {
     );
     assert_eq!(
         sheet.sections[1].lines[1].text,
-        "If your check confirms the result, you and the trainer who added it earn XP."
+        "You and the trainer who added the result earn XP whether your check confirms it or not."
     );
     phone.tap("sheet.publish");
     let (_, _, live) = runner.published.lock().unwrap()[0].clone();
@@ -1133,7 +1133,7 @@ fn a_checks_add_to_the_gym_speaks_of_the_check() {
     let sheet = phone.gym().sheet.unwrap();
     assert_eq!(
         sheet.sections[2].lines[0].text,
-        "Added to the Gym. If your check confirms the result, XP comes once our referee signs it."
+        "Added to the Gym. XP comes once our referee signs your check, whichever way it went."
     );
     assert_eq!(sheet.primary.as_ref().unwrap().label, "BACK TO CHAT");
     assert_plain(&phone.gym());
@@ -1563,7 +1563,7 @@ fn a_second_check_of_a_test_set_promises_no_xp() {
         result
             .lines
             .iter()
-            .any(|l| l.text == "+50 XP once our referee confirms your check.")
+            .any(|l| l.text == "+50 XP once our referee signs your check, whichever way it went.")
     );
     // A check's own award doesn't count against it.
     let run = phone.tab.gym.saved.runs[0].clone();

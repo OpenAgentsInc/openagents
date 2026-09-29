@@ -19,5 +19,14 @@ marginal report, current defaults plus the candidate against current
 defaults alone, and a regression check across the whole set; the evidence
 asked of a candidate rises with what a wrong decision by it could do.
 
+The admission's lifetime follows the tool's identity: the weaker the
+identity, the sooner the evidence expires. A content-addressed tool
+(every extension under a lock) is admitted for 365 days, a
+version-addressed subject for 90, an endpoint-addressed one for 14, and a
+subject whose identity is unresolved is never adopted;
+`microcoder xp adopt --expires-days` overrides the default. A gate change
+reinterprets the cited reports and reopens nothing; a change to the tool,
+the defaults, the agent build, the grant, or the graders does.
+
 Adoption earns XP under NIP-XP's `eval-adopt` rule. XP is never spent,
 transferred, or converted, and adoption pays no money.

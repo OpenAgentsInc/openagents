@@ -45,13 +45,13 @@ layout: quote
 id: definition
 kicker: PART I · THE IDEA
 lead: Test-time capability, and the capability claim that states it
-note: Claim(A, B, D, S, E, G, R) → Δ ± uncertainty: subject, baseline agent, task distribution, sampled suite, environment, grant, rule.
+note: Key K = (A, B, D, S, E, G, M): subject, baseline agent, distribution, sampled suite, environment, grant, measurement. Records on K estimate Δ ± CI; a policy P reads them.
 source: docs/glossary.md#test-time-capabilities; docs/essays/2026-09-29-test-time-capabilities.md#the-thesis-capability-is-something-you-can-acquire-at-test-time
 
 An ability an agent gains, or loses, at inference time, without a weight update, because
 something was admitted into the run. A component is a candidate; evidence makes a capability
-claim: how much admitting that exact component changed outcomes, against a stated baseline, on
-stated tasks, under a stated grant and rule.
+claim: a key (subject, baseline agent, tasks, environment, grant, measurement), the records on it,
+and a written policy that reads them. Reports are evidence; claims summarize; adoption is policy.
 
 notes: A repository map, a written guide, a knowledge entry, another agent. The weights did not change; what the agent can do did.
 notes: Nothing is a capability in general. The same tool can add twenty points to one agent and nothing to another; each claim belongs to its baseline and its tasks. Installed, described, or demoed makes no claim.
@@ -100,13 +100,13 @@ notes: Each term names something built or measured, and each has a way to be wro
 layout: points
 id: evals
 kicker: PART I · THE IDEA
-title: Evals are the unit of account
-source: docs/essays/2026-09-29-test-time-capabilities.md#evals-as-the-unit-of-account
+title: Capability claims are the unit of account
+source: docs/essays/2026-09-29-test-time-capabilities.md#capability-claims-as-the-unit-of-account
 
 - **Two arms, not one score.** A benchmark says how an agent did. A with-and-without result says what
   one component changed, which is the thing worth sharing.
 - **A written rule gives the verdict.** The rule is a versioned file, and every result carries the
-  digest of the rule that judged it. Rules have bugs; old results keep their old digest.
+  digest of the rule that judged it. A replaced rule reinterprets old results; it reruns nothing.
 - **Others can rerun it.** Published tests and exact component versions let someone else confirm or
   dispute the result.
 

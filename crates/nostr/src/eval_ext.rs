@@ -114,11 +114,17 @@ pub const RELIANCE_KEYS: &[&str] = &[
 const RESERVED: &[&str] = &[".git", ".openagents", "node_modules", "results"];
 
 /// The event kinds a report's published subject may be: a NIP-EXT release
-/// (an extension, plugin, skill, or package) or a NIP-CAP discovery head (a
-/// decision service). A delegate is a CAP operation DefinitionRef with the
-/// engine's artifact in the subject arm's lock, and has no event. Credit
-/// rules that pin a subject release stay on NIP-EXT releases.
-pub const SUBJECT_KINDS: &[u16] = &[crate::kinds::EXT_RELEASE, crate::kinds::CAP_DISCOVERY];
+/// (an extension, plugin, skill, or package), a NIP-CAP discovery head (a
+/// decision service), or a NIP-PRG program head (a context-construction
+/// policy: a program that probes, selects, and orders the evidence another
+/// capability receives). A delegate is a CAP operation DefinitionRef with
+/// the engine's artifact in the subject arm's lock, and has no event.
+/// Credit rules that pin a subject release stay on NIP-EXT releases.
+pub const SUBJECT_KINDS: &[u16] = &[
+    crate::kinds::EXT_RELEASE,
+    crate::kinds::CAP_DISCOVERY,
+    crate::kinds::PRG_DISCOVERY,
+];
 
 /// Whether the extension ought to be used on a case.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1165,7 +1171,7 @@ pub fn parse_report(bytes: &[u8]) -> Result<Report, ContractError> {
         && !SUBJECT_KINDS.contains(&event.kind)
     {
         return Err(mismatch(
-            "subject.definition.event: a NIP-EXT release or a NIP-CAP decision-service head",
+            "subject.definition.event: a NIP-EXT release, a NIP-CAP decision-service head, or a NIP-PRG program head",
         ));
     }
     let baseline = match require(object, "baseline")? {
@@ -1309,6 +1315,56 @@ impl Publication {
     #[must_use]
     pub fn reliance(&self) -> Reliance {
         self.report.profile.reliance.clone().unwrap_or_default()
+    }
+
+    /// The effect this record estimates, from its headline: cases passed
+    /// with the subject minus cases passed without it, over the total.
+    /// `None` for a report with no baseline, which estimates no effect.
+    #[must_use]
+    pub fn effect(&self) -> Option<Effect> {
+        let headline = &self.report.profile.headline;
+        headline.baseline_passed.map(|baseline| Effect {
+            passed: headline.subject_passed,
+            baseline,
+            total: headline.total,
+        })
+    }
+}
+
+/// One evidence record's estimate of a claim's effect, in cases: the
+/// quantity a check should be compared on, beside the verdict it matched.
+/// A verdict match is the operational simplification; two records can
+/// both read **Better** while estimating +1 and +5 of 6, and a rerun can
+/// miss a gate while being indistinguishable from the original. No
+/// interval exists yet, so compatibility is direction plus a tolerance.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Effect {
+    /// Cases passed with the subject admitted.
+    pub passed: u64,
+    /// Cases passed without it.
+    pub baseline: u64,
+    /// Cases scored in each arm.
+    pub total: u64,
+}
+
+impl Effect {
+    /// Subject minus baseline, in cases.
+    #[must_use]
+    pub fn delta(&self) -> i64 {
+        i64::try_from(self.passed).unwrap_or(i64::MAX)
+            - i64::try_from(self.baseline).unwrap_or(i64::MAX)
+    }
+
+    /// Whether `other` is compatible with this estimate: the same total
+    /// (the same S), the same direction (both favorable, both unfavorable,
+    /// or both zero), and deltas no more than `tolerance` cases apart.
+    #[must_use]
+    pub fn compatible(&self, other: &Effect, tolerance: u64) -> bool {
+        if self.total != other.total {
+            return false;
+        }
+        let (a, b) = (self.delta(), other.delta());
+        a.signum() == b.signum() && a.abs_diff(b) <= tolerance
     }
 }
 

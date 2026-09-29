@@ -38,7 +38,16 @@ changes who runs it, an external validation holds D and changes S, and a
 transfer changes D. A workload MAY name its distribution with a stable
 `distribution` ID, so a second suite can say whether it samples the same
 population; a suite that names none claims the subject's own definition
-ID, "the tasks this component claims to help with". Labels name
+ID, "the tasks this component claims to help with". A workload SHOULD also
+carry the suite's **sampling story**, because a second author prevents
+one kind of overfitting and makes neither suite representative: `frame`
+(the source the tasks were drawn from), `inclusion` and `exclusions` (the
+rules that decided which were in), `strata` (coverage categories and
+their counts), and `method` (`random`, `exhaustive`, or `constructed`).
+"Same D" then means the same `distribution` ID and comparable frames; a
+workload with no frame claims only what its author says. The reference
+runner writes all five, with `method: constructed`, since every starter
+case was written by hand. Labels name
 their source, rubric, annotator/procedure, and uncertainty. Environment pins
 the runner, toolchain, execution policy, and relevant hardware/configuration.
 
@@ -277,6 +286,21 @@ arm) and with it absent (the `baseline` arm). It allocates no kinds. It
 uses this NIP's report and `3189` publication, NIP-EXT releases for
 suites and subjects, NIP-XP for credit, and NIP-CJ for hosted runs.
 
+**Claim key, records, and policy.** A report is one **evidence record**
+on a **claim key** K = (A, B, D, S, E, G, M): the subject arm's lock (A),
+the baseline arm's lock and run configuration (B, E, G), the suite's
+workload (D) and cases (S), and the suite's metrics and each case's
+graders (M). Two reports with the same key are evidence about one claim,
+and a check is a second record on the same key. The gate is the
+**decision policy** P. Its digest, in `acceptance` and
+`meta.ext_eval.gate`, is not part of the key: a replaced gate
+reinterprets the records that exist and reruns nothing, and a report
+judged by a since-replaced gate is still a record on the same claim,
+read under the gate digest it carries. `meta.ext_eval.headline` is the
+record's effect estimate (`eval_ext::Effect`: cases passed with the
+subject minus without, over the total); no interval is carried yet.
+Reports are evidence; claims summarize effects; adoption is policy.
+
 ### Suites
 
 An extension suite is an `openagents.eval-suite.v1` with `purpose:
@@ -325,11 +349,14 @@ published keep their meaning.
 The report is `openagents.eval-report.v1` with these profile rules:
 
 - `subject.definition` is the subject's DefinitionRef, with `event`
-  set to its release when published. The subject is one of four kinds: an
+  set to its release when published. The subject is one of five kinds: an
   extension (a NIP-EXT `3184` release: tool, plugin, skill, or package), a
   knowledge entry (NIP-KB's own profile, on a `3190`), a decision service
   (a NIP-CAP `30180` head, with `configuration` pinning the question set
-  as `name@digest`), or a delegate (a NIP-CAP operation DefinitionRef with
+  as `name@digest`), a context-construction policy (a NIP-PRG `30182`
+  program head: a program that probes, selects, and orders the evidence
+  another capability receives, measured with and without it like any
+  other subject), or a delegate (a NIP-CAP operation DefinitionRef with
   the engine's artifact in `subject.lock`, and no event). Credit rules that
   pin a subject release stay on NIP-EXT releases. `subject.lock` is the
   run lock the subject arm held. `baseline` has the same shape with no
@@ -347,6 +374,15 @@ The report is `openagents.eval-report.v1` with these profile rules:
   and, for the `comparison` arm, `change` (subject minus baseline).
 - `verdict` is the gate's decision; the gate's digest is in `acceptance`
   and repeated in `meta.ext_eval.gate`.
+- A runner SHOULD earn the words "treatment effect": interleave the arms
+  attempt by attempt, or randomize their order, rather than run one arm
+  to completion first; give every attempt its own isolated workspace so
+  that neither arm leaves caches, files, or other state the other
+  benefits from; pair the same case and, where it means anything, the
+  same seed across arms; and stamp each run with its time and the
+  provider it reached. The reference runner interleaves, isolates, and
+  stamps, and does not randomize. `eval_ext` checks none of this; a
+  reader judges it from `runs`.
 - `meta.ext_eval` is `{v: "openagents.ext-eval.v1", gate, cases:
   [{id, kind}], headline: {subject_passed, baseline_passed, total},
   requester, reliance?, identity?, distribution?, defaults?}`, closed.
@@ -431,7 +467,13 @@ one runner are a check when different trainers asked for them. A check
 otherwise; readers show both counts beside the original. A check with a
 different lock for the subject arm is not a check of that result; readers
 show it as a separate result. `eval_ext::confirms` decides this from the
-two signed events alone.
+two signed events alone. A verdict match is the operational
+simplification, and it is lossy: two checks can both read **Better**
+while estimating +1 and +5 of 6. Readers SHOULD show the two headlines'
+effects beside the confirm and dispute counts, and
+`eval_ext::Effect::compatible` (the same total, the same direction,
+deltas within a stated number of cases) is the comparison until reports
+carry intervals.
 
 ### Validations
 
@@ -511,13 +553,31 @@ authority: none | read | write | act | spend, reversibility: reversible |
 costly | irreversible}`), with the evidence adoption demands rising with
 the stakes. Utility establishes the claim; safety and stakes decide
 admissibility; neither is traded against the other. Adoption is not
-terminal: a claim is scoped to its baseline, environment, grant,
-distribution, and subject identity, and a material change in any of them
-reopens it. Revalidation is a new report on the new scope, checked and
-validated like the first; a lapsed claim leads to quarantine (a later
-defaults release that no longer depends on the subject) or revocation (a
-NIP-EXT `3185`), and active runs keep the lock they started with
-(NIP-POL). For Coder's
+terminal. What a change means depends on which part of the claim key
+moved:
+
+| What changed | What it means |
+| --- | --- |
+| A (the subject or its dependencies), B (including the defaults), E, G, or M | The key changed: revalidate with new reports on the new key, checked and validated like the first |
+| S, with D fixed | An external validation, not a trigger |
+| D | A transfer: a new claim, never a reopening |
+| P (the gate) | Reinterpret the existing reports under the new gate; rerun nothing unless M moved too |
+
+Because B includes the defaults, every adoption changes B for every
+adopted subject. A host SHOULD run a whole-default `regression` on every
+defaults release and reopen an individual subject's claim only where
+that regression or a changed dependency touched it, rather than
+revalidate every adopted subject on every adoption. A lapsed claim leads
+to quarantine (a later defaults release that no longer depends on the
+subject) or revocation (a NIP-EXT `3185`), and active runs keep the lock
+they started with (NIP-POL). The admission's `expires_at` is where
+identity sets the clock: the weaker the subject's identity
+(`meta.ext_eval.identity` on the cited reports), the sooner the evidence
+expires. Coder's policy gives a content-addressed subject 365 days, a
+version-addressed one 90, and an endpoint-addressed one 14
+(`packages/coder-defaults/package.json`, `candidate.expiry_days`); an
+`unresolved` subject is never adoptable, and `eval-adopt` refuses an
+admission that cites such a result. For Coder's
 defaults, the admitted change is then published as a NIP-EXT release of
 the `coder-defaults` package that depends on the extension's release, and
 whose manifest `provenance.receipts` cites the admission's ArtifactRef

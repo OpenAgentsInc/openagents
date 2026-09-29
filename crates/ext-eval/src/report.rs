@@ -154,8 +154,21 @@ pub(crate) fn suite_artifacts(
                 "should-fire": count(crate::case::Kind::ShouldFire),
                 "should-not-fire": count(crate::case::Kind::ShouldNotFire),
             },
+            // The sampling story: what S was drawn from, the rules that
+            // decided which cases were in, the strata, and whether the
+            // cases were sampled, enumerated, or written. Every starter
+            // case was written by hand, so the method is `constructed`;
+            // a suite whose author names no frame claims only the tasks
+            // its subject says it helps with.
+            "frame": "the case directories the suite's author wrote under its eval directory",
+            "inclusion": "every case directory the run kept",
             "sampling": "every case under the eval directory the run kept",
             "exclusions": [],
+            "strata": {
+                "should-fire": count(crate::case::Kind::ShouldFire),
+                "should-not-fire": count(crate::case::Kind::ShouldNotFire),
+            },
+            "method": "constructed",
         }),
         WORKLOAD_SCHEMA,
     );

@@ -493,6 +493,10 @@ confirmed result for the subject. In full:
    two releases; the operator's adopt command checks it before writing
    the admission, and a reader with the releases uses NIP-EVAL's
    validation rule.
+6. No cited result records its subject's identity
+   (`meta.ext_eval.identity`) as `unresolved`: reproducibility cannot be
+   stronger than identity, and neither can adoption. The admission's
+   `expires_at` follows the identity strength (NIP-EVAL, Adoption).
 
 Each award credits one role, with `evidence` the release, then a
 confirmed result and its check (the evaluator's own, or the suite

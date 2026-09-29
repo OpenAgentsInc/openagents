@@ -21,7 +21,9 @@ use super::eval_check::{Payee, award_parts, collapse, confirmed_check, paid};
 use super::{Award, EVAL_ADOPT, Quest, in_season, parse_quest};
 use crate::contracts::{ContractError, RefusalCode, check_artifact_bytes};
 use crate::domain::Event;
-use crate::eval_ext::{Publication, parse_admission, parse_publication, parse_release};
+use crate::eval_ext::{
+    IdentityStrength, Publication, parse_admission, parse_publication, parse_release,
+};
 use crate::kb::{self, Pointer, Unsigned, malformed, mismatch};
 use crate::kinds;
 
@@ -107,6 +109,12 @@ impl AdoptCompletion {
 ///    handed; the operator's adopt command checks it before writing the
 ///    admission, and a reader with the releases uses
 ///    [`crate::eval_ext::validation`].
+/// 6. No cited result records its subject's identity as `unresolved`.
+///    Reproducibility cannot be stronger than identity, and neither can
+///    adoption: a subject nobody can name again is never eligible for a
+///    shared default. The admission's `expires_at` is where the rest of
+///    that rule lives (the weaker the identity, the sooner the evidence
+///    expires), and the adopt command sets it.
 ///
 /// # Errors
 ///
@@ -179,6 +187,15 @@ pub fn check_eval_adopt(
         })
         .collect();
     results.sort_by(|a, b| a.id.cmp(&b.id));
+    if results
+        .iter()
+        .any(|p| p.report.profile.identity == Some(IdentityStrength::Unresolved))
+    {
+        return refuse(
+            "a cited result's subject identity is unresolved, which no shared default may rest on"
+                .into(),
+        );
+    }
     let mut checks: Vec<Publication> = adoption
         .checks
         .iter()

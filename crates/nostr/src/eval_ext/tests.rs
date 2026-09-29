@@ -138,6 +138,8 @@ pub(crate) struct Spec {
     pub suite: Option<(Value, &'static str)>,
     /// The task distribution the suite claims (`meta.ext_eval.distribution`).
     pub distribution: Option<&'static str>,
+    /// The subject's identity strength (`meta.ext_eval.identity`).
+    pub identity: Option<&'static str>,
     /// The reliance set the run recorded.
     pub reliance: Option<Value>,
     /// The subject's release pointer, when a test needs a real release
@@ -155,6 +157,7 @@ impl Spec {
             baseline: true,
             suite: None,
             distribution: None,
+            identity: None,
             reliance: None,
             subject: None,
         }
@@ -225,6 +228,9 @@ pub(crate) fn report_value(spec: &Spec) -> Value {
     let mut value = value;
     if let Some(distribution) = spec.distribution {
         value["meta"]["ext_eval"]["distribution"] = json!(distribution);
+    }
+    if let Some(identity) = spec.identity {
+        value["meta"]["ext_eval"]["identity"] = json!(identity);
     }
     if let Some(reliance) = &spec.reliance {
         value["meta"]["ext_eval"]["reliance"] = reliance.clone();
@@ -850,6 +856,61 @@ fn a_report_may_name_a_decision_service_as_its_subject() {
         code(parse_report(report(&spec).as_bytes())),
         RefusalCode::IdentityMismatch
     );
+    // A context-construction policy is a NIP-PRG program head: a program
+    // that probes, selects, and orders the evidence another capability
+    // receives is a candidate capability like any other.
+    spec.subject = Some(json!({"id": id("jev-probe"), "pubkey": pubkey("coder-one"), "kind": 30182}));
+    let publication = parse_publication(&published("alice", &spec, None, AT)).unwrap();
+    assert_eq!(
+        publication.subject_release.as_ref().map(|s| s.kind),
+        Some(30182)
+    );
+}
+
+#[test]
+fn a_record_estimates_an_effect_and_two_records_are_compared_on_it() {
+    // A verdict match is the lossy count; the effect is the estimate.
+    let original = parse_publication(&published("alice", &Spec::by("alice"), None, AT)).unwrap();
+    let effect = original.effect().unwrap();
+    assert_eq!(
+        effect,
+        Effect {
+            passed: 2,
+            baseline: 1,
+            total: 2
+        }
+    );
+    assert_eq!(effect.delta(), 1);
+    // The same headline is compatible at any tolerance; a rerun that
+    // passed the same with and without the tool estimates no effect and
+    // isn't, whatever the verdict says.
+    assert!(effect.compatible(&effect, 0));
+    let flat = Effect {
+        passed: 2,
+        baseline: 2,
+        total: 2,
+    };
+    assert!(!effect.compatible(&flat, 5));
+    // Same direction, within tolerance; another total is another S.
+    let bigger = Effect {
+        passed: 6,
+        baseline: 2,
+        total: 6,
+    };
+    let smaller = Effect {
+        passed: 4,
+        baseline: 3,
+        total: 6,
+    };
+    assert!(bigger.compatible(&smaller, 3));
+    assert!(!bigger.compatible(&smaller, 2));
+    assert!(!bigger.compatible(&effect, 10));
+    // No baseline, no effect.
+    let mut spec = Spec::by("alice");
+    spec.baseline = false;
+    spec.verdict = "inconclusive";
+    let bare = parse_publication(&published("alice", &spec, None, AT)).unwrap();
+    assert!(bare.effect().is_none());
 }
 
 #[test]

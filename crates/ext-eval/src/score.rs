@@ -61,14 +61,18 @@ impl Plan {
 
     /// Every planned attempt, in case order, subject arm first.
     #[must_use]
+    /// The arms are interleaved attempt by attempt (subject 1, baseline 1,
+    /// subject 2, …) rather than one arm run to completion first, so that
+    /// provider load, caches, and other things that drift with time fall
+    /// on both arms alike. The order is deterministic, not randomized.
     pub fn attempts(&self, suite: &Suite) -> Vec<(String, Arm, u32)> {
         let mut out = Vec::new();
         for case in &suite.cases {
-            for arm in [Arm::Subject, Arm::Baseline] {
-                if arm == Arm::Baseline && !self.baseline_runs(case) {
-                    continue;
-                }
-                for attempt in 1..=self.runs_for(case) {
+            for attempt in 1..=self.runs_for(case) {
+                for arm in [Arm::Subject, Arm::Baseline] {
+                    if arm == Arm::Baseline && !self.baseline_runs(case) {
+                        continue;
+                    }
                     out.push((case.name.clone(), arm, attempt));
                 }
             }

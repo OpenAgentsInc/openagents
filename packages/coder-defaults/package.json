@@ -10,7 +10,13 @@
     "verdict": "pass",
     "confirming_checks": 3,
     "validations": 1,
-    "decision": "operator"
+    "decision": "operator",
+    "expiry_days": {
+      "content": 365,
+      "version": 90,
+      "endpoint": 14,
+      "unresolved": null
+    }
   },
   "documents": "packages/coder-defaults/documents/<sha256 hex>.json holds each published manifest and admission, named by the digest its release or manifest pins"
 }

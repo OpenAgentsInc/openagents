@@ -24,6 +24,11 @@ slug, `t: oa:program:v1`, and one `t: oa:step:<kind>` for each distinct
 step kind. Its body contains the complete definition below or
 `{v: 1, requires: [], definition: DefinitionRef}`. Tags MUST match the
 resolved definition. Multi-letter `step` tags are not portable filters.
+A program head may be the subject of a NIP-EVAL extension evaluation
+report: a context-construction policy, a program that probes, selects,
+and orders the evidence another capability receives, is a candidate
+capability, measured with and without it like any other subject
+(NIP-EVAL, Reports).
 
 Replacement changes discovery only. Admission MUST resolve exact bytes,
 verify identity, construct the full lock, and retain the definitions and

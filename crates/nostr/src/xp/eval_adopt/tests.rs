@@ -336,6 +336,50 @@ fn an_adoption_needs_an_externally_validated_result() {
 }
 
 #[test]
+fn an_unresolved_subject_is_never_adopted() {
+    // Reproducibility cannot be stronger than identity, and neither can
+    // adoption: a result that records its subject as unresolved is
+    // refused however many checks confirmed it.
+    let mut spec = Spec::by("alice");
+    spec.identity = Some("unresolved");
+    let result = published("alice", &spec, None, AT);
+    let check = published("bob", &Spec::by("bob"), Some(&result.id), AT + 10);
+    let validation = validation_of(&result);
+    let decision = admission(&result, Some(&validation), "admit", AT + 5_000);
+    let manifest = manifest(&decision, true);
+    let w = World {
+        quest: quest_event(standard()),
+        release: release("operator", &manifest, AT + 100),
+        manifest,
+        admission: decision,
+        results: vec![result, validation],
+        checks: vec![check],
+    };
+    let quest = parse_quest(&w.quest).unwrap();
+    assert_eq!(
+        code(check_eval_adopt(&quest, &w.adoption())),
+        RefusalCode::NotAdmitted
+    );
+    // A content-addressed subject with the same evidence is adopted.
+    let mut spec = Spec::by("alice");
+    spec.identity = Some("content");
+    let result = published("alice", &spec, None, AT);
+    let check = published("bob", &Spec::by("bob"), Some(&result.id), AT + 10);
+    let validation = validation_of(&result);
+    let decision = admission(&result, Some(&validation), "admit", AT + 5_000);
+    let bytes = self::manifest(&decision, true);
+    let w = World {
+        quest: w.quest.clone(),
+        release: release("operator", &bytes, AT + 100),
+        manifest: bytes,
+        admission: decision,
+        results: vec![result, validation],
+        checks: vec![check],
+    };
+    assert!(check_eval_adopt(&quest, &w.adoption()).is_ok());
+}
+
+#[test]
 fn an_author_who_also_evaluated_is_paid_once_in_the_larger_role() {
     let w = world_with("ext-author", "admit", true);
     let quest = parse_quest(&w.quest).unwrap();

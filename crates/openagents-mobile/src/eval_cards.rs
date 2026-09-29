@@ -878,7 +878,11 @@ pub(crate) fn check_card(
         None
     } else {
         lines.push(Line {
-            text: "Run the same tests to check it. A check doesn't use a daily run.".into(),
+            text: if credited {
+                "Run the same tests to check it. A check doesn't use a daily run.".into()
+            } else {
+                "Run the same tests to check it. A check doesn't use a daily run, and it earns XP whether it confirms the result or not.".into()
+            },
             tone: Tone::Quiet,
         });
         if credited {

@@ -19,9 +19,13 @@ text says so.
   when a tool, a plugin, a skill, a knowledge entry, or another agent is
   admitted into the run.
 - **A component is a candidate capability; evidence makes a capability
-  claim.** The claim says how much admitting that exact component changed
-  outcomes against a stated baseline, on a stated task distribution, under
-  a stated grant and evaluation rule. Nothing is a capability in general.
+  claim.** A claim has a key (which identified subject, admitted to which
+  baseline agent, on which task distribution and sample, under which
+  environment, grant, and measurement), evidence records on that key
+  (each run's estimate of the effect, with its uncertainty), and a written
+  policy that turns the records into a verdict. Reports are evidence;
+  claims summarize effects; adoption is policy. Nothing is a capability in
+  general.
   Having a component installed, described, or demonstrated makes no claim,
   and admitting one can destroy capability as easily as create it.
 - **Cheap judgments should come before expensive thinking,** and claims
@@ -51,7 +55,7 @@ text says so.
   - [What the word capability means here](#what-the-word-capability-means-here)
   - [The lifecycle in one figure](#the-lifecycle-in-one-figure)
   - [A lexicon of test-time capabilities](#a-lexicon-of-test-time-capabilities)
-  - [Evals as the unit of account](#evals-as-the-unit-of-account)
+  - [Capability claims as the unit of account](#capability-claims-as-the-unit-of-account)
   - [Cheap judgments before expensive thinking](#cheap-judgments-before-expensive-thinking)
   - [How capabilities compound across a network](#how-capabilities-compound-across-a-network)
   - [Related work and prior art](#related-work-and-prior-art)
@@ -157,7 +161,8 @@ is his argument, not a premise of this essay; the framework below
 survives even if models trained other ways close the gap.
 
 What the divide implies for a test-time capability is a second bar. A
-capability meant for assistance needs a positive delta. A capability meant
+capability meant for assistance needs a favorable effect on its declared
+primary outcome, with its non-inferiority bounds met. A capability meant
 for automation needs, in addition, a machine-readable contract for its
 output, bounded authority where it can act, calibrated uncertainty where
 it makes probabilistic decisions, and repeatably reliable behavior. A
@@ -229,8 +234,8 @@ can improve fixed-weight models at inference time. We propose treating
 these mechanisms uniformly as versioned *candidate* capabilities, and
 treating what each does for an agent as an empirical **capability claim**:
 a versioned empirical statement of the marginal effect of admitting that
-exact artifact into a particular agent system, not a property the
-artifact declares about itself. A controlled with-and-without evaluation
+identified subject into a particular agent system, not a property the
+subject declares about itself. A controlled with-and-without evaluation
 establishes a capability claim. Independent rerunning may make it a
 reproduced claim; a new independent suite may make it externally
 validated; only then is it eligible for adoption into a shared default
@@ -246,7 +251,7 @@ verifiable provenance for software artifacts
 ([SLSA](https://slsa.dev/spec/v1.0/provenance);
 [Torres-Arias et al., 2019](https://www.usenix.org/conference/usenixsecurity19/presentation/torres-arias)).
 As far as our search went, we found no prior work that puts the whole
-chain together: exact artifact identity, a per-component controlled delta,
+chain together: an identified subject, a per-component controlled delta,
 reproduction by someone other than the author, external validation before
 adoption, adoption into a shared default, and credit tied to those
 events. That is a claim about our search, not about the literature's
@@ -255,37 +260,62 @@ work lays it out column by column.
 
 A **test-time capability** is an ability an agent gains, or loses, at
 inference time, without a weight update, because something was admitted
-into the run. The unit of account is not the component but the
-**capability claim** about it: *admitting subject A to locked baseline
-agent B, under environment E and grant G, on task distribution D as
-sampled by suite S, judged by evaluation rule R, changed the outcomes R
-names by Δ, with a stated uncertainty.* In one line, and this is the form
-the rest of the essay uses literally:
+into the run. Ability means what outcomes the agent can achieve under
+stated resource constraints: **a test-time capability changes the
+achievable frontier.** Going from 60 % to 80 % success at the same budget
+is one; reaching the same 80 % for a fifth of the cost is another. The
+unit of account is not the component but the **capability claim** about
+it, and a claim has three layers that the rest of the essay keeps apart:
 
-**Claim(A, B, D, S, E, G, R) → Δ ± uncertainty**
+- **Claim key, K = (A, B, D, S, E, G, M).** The estimand: what admitting
+  subject A to locked baseline agent B does, under environment E and
+  grant G, on task distribution D as sampled by suite S, with outcomes
+  measured by M. Two runs with the same key are evidence about the same
+  claim.
+- **Evidence record, Rᵢ = (K, Δᵢ, CIᵢ, nᵢ, costᵢ, latencyᵢ,
+  provenanceᵢ).** One controlled with-and-without run on the key: its
+  estimate of the effect, the interval around it, how many tests and
+  repeats produced it, what both arms cost and took, and who ran it
+  where. A report is an evidence record, and a reproduction is a second
+  record on the same key. (R for record; E already names the
+  environment.)
+- **Decision policy, P(R₁ … Rₙ) → Better | No clear change | Worse |
+  adopt.** The written, versioned rule that turns records into a verdict,
+  and the later policy that turns verdicts into a default. P is the gate,
+  and it is not part of the key: changing an acceptance threshold
+  reinterprets the evidence that exists and cannot change the experiment
+  that was run.
+
+In one line, and this is the form the rest of the essay uses literally:
+
+**K = (A, B, D, S, E, G, M); Rᵢ = (K, Δᵢ ± CIᵢ, …); P(R₁ … Rₙ) → verdict**
 
 A is the subject's identity at the strongest level available (an
 artifact's bytes, a provider's version, an endpoint), not necessarily
-bytes. The seven letters are the
-experiment; the delta, its cost and latency, and its interval are the
-result. D and S are different objects and the difference does work. D is
+bytes. M is how outcomes are measured, the metrics and the graders, and
+it belongs to the experiment; which outcome is primary and what
+threshold it must clear belong to P. The seven letters of K are the
+experiment; each record is one result of it; P is a decision about the
+records. D and S are different objects and the difference does work. D is
 the population of tasks the suite claims to represent, which its author
-has to state; S is the six tests actually written. A reproduction holds S
-fixed and changes who runs it. An external validation holds D and changes
-S. A transfer changes D to some D′, and is a new claim rather than a
-stronger version of the old one. Every part of that scope is part of the
-claim. The same tool can add twenty points to one agent, nothing to a
-second, and three points to the first agent on another domain, and none
-of those results contradicts another, because each belongs to its
-baseline and its distribution. So the vocabulary has five objects, not
-one. Artifacts exist; claims are evidence; adoption is policy.
+has to state; S is the six tests actually written, with the metadata that
+says what they were sampled from. A reproduction holds K fixed and
+changes who runs it. An external validation holds D and changes S. A
+transfer changes D to some D′, and is a new claim rather than a stronger
+version of the old one. Every part of the key is part of the claim. The
+same tool can add twenty points to one agent, nothing to a second, and
+three points to the first agent on another domain, and none of those
+results contradicts another, because each belongs to its baseline and its
+distribution. So the vocabulary has five objects, not one. Artifacts
+exist; reports are evidence; claims summarize effects; adoption is
+policy.
 
 | Object | What it is |
 | --- | --- |
 | Candidate capability | An identified artifact, service binding, or delegate implementation that might help, recorded at the strongest identity available: content-addressed (exact bytes), version-addressed (a build or weights version the provider declares), endpoint-addressed (only a provider, model name, or endpoint is known), or unresolved |
-| Capability claim | A measured delta with its whole scope, A, B, D, S, E, G, R, and its uncertainty |
-| Reproduced capability claim | The same claim rerun by someone other than its author, S held fixed, with a compatible result |
-| Externally validated capability claim | The improvement persisting on a new S from the same D, written independently of the author and revealed after the artifact was locked |
+| Capability claim | A claim key K and the evidence records on it: each record's effect estimate with its uncertainty, on that whole scope |
+| Reproduced capability claim | A second evidence record on the same key K, made by someone other than the author, whose effect estimate is compatible with the first |
+| Externally validated capability claim | The improvement persisting on a new S from the same D, written independently of the author and revealed after the subject was locked |
 | Adopted capability | A policy decision, taken on claims, to make the subject part of a shared default, and to keep it there only while the claims it rests on still hold |
 
 A remote model or service is a candidate whose bytes nobody but its
@@ -314,9 +344,9 @@ capability as reach. There are five general sources:
 | Skills | A written guide the agent reads before a task |
 | Knowledge | Cited entries (methods, edge cases, known mistakes) retrieved and filtered for the task |
 | Delegation | Another agent, briefed with selected evidence |
-| Typed judgment | A fast, cheap decision that picks which of the above to use, and when |
+| Typed judgment | A typed decision with probabilities that deterministic code acts on; picking which of the above to use, and when, is one such decision |
 
-Two boundary cases follow from the definition, rather than needing new
+Three boundary cases follow from the definition, rather than needing new
 rows. First, **a capability need not be a single component.** An
 orchestration policy over capabilities, such as planning a graph of
 function calls and running independent ones in parallel
@@ -336,6 +366,19 @@ for itself before solving landed *below* the no-skills baseline on all
 three configurations tested (−8.1 and −11.3 points on two of them), while
 curated skills on the same configurations added 18.2 to 24.8 points
 ([Li et al., 2026](https://arxiv.org/abs/2602.12670)).
+Third, **a context-construction policy is itself a candidate
+capability**: a policy that probes the environment, judges which evidence
+matters, and compresses and orders it into the context another capability
+receives. Our own Terminal-Bench work has the example. Handing the
+executor per-step hints from a decision model did not help; the ablation
+without them passed the same tasks and cost slightly less. What helped
+was having code run read-only probes, the decision model choose which
+outputs the executor should see first, and code assemble the briefing
+before the expensive model ran
+([development results](../terminal-bench/development-results.md)). The
+executor's weights were identical in both arms; what changed was the
+runtime around them, which is the thesis in its purest form. Part II
+reports that experiment with its caveats.
 
 The last row is different in kind from the other four. Tools *act*,
 knowledge *informs*, delegates *work*; a typed judgment turns fuzzy
@@ -414,7 +457,8 @@ evaluation admission       a sandboxed grant, enough to measure it
 controlled with-and-without run
         │
         ▼
-Claim(A, B, D, S, E, G, R) → Δ ± uncertainty ── no positive delta ▶ reject
+evidence record Rᵢ = (K, Δᵢ ± CIᵢ, …) ── under policy P: no favorable
+  K = (A, B, D, S, E, G, M)              primary effect, or a bound failed ▶ reject
         │
         ▼
 independent reproduction   another party, same subject, same S, same protocol
@@ -433,7 +477,8 @@ adoption against current defaults ── regression in composition ▶ reject
 credit                     for verification work and adoption
         │
         ▼
-monitoring and revalidation ── B, E, G, D, identity, or dependencies changed
+monitoring and revalidation ── A, B, E, G, or M changed ────▶ revalidate
+        │                       ── P changed ──────────────────▶ reinterpret the records
         │                       ── claim no longer holds ────────▶ quarantine or revoke
         ▼
 new default agent ──▶ harder tasks ──▶ new failures ──▶ new candidates
@@ -443,7 +488,8 @@ new default agent ──▶ harder tasks ──▶ new failures ──▶ new ca
 
 Three exits and one revocation, and none can be bought back by the
 others. A component that the evidence shows unsafe is rejected however
-useful it is. One with no positive delta is rejected however safe. One
+useful it is. One with no favorable effect on its primary outcome, or
+that fails a non-inferiority bound, is rejected however safe. One
 that regresses the default set when composed with it is rejected however
 well it did alone. And one whose claim stops holding after adoption,
 because something in its scope changed, is quarantined or revoked rather
@@ -464,14 +510,16 @@ matters, and how anyone would measure it.
 
 #### 1. Test-time capability (TTCap)
 
-**Definition:** an ability an agent gains or loses at inference time,
-without updating weights, because a component was admitted to the run. It
-is stated only as a **capability claim**, Claim(A, B, D, S, E, G, R) →
-Δ ± uncertainty: admitting subject A to locked baseline agent B, under
-environment E and grant G, on task distribution D as sampled by suite S,
-judged by rule R, changed the outcomes R names by Δ, with a stated
-uncertainty. A is the subject at its strongest identity, which may be
-bytes, a version, or an endpoint. B is the whole executable agent, not "the agent minus the
+**Definition:** a change in what outcomes an agent can achieve under
+stated resource constraints, at inference time, without updating weights,
+because a component was admitted to the run. It is stated only as a
+**capability claim**: a key K = (A, B, D, S, E, G, M), evidence records
+Rᵢ = (K, Δᵢ ± CIᵢ, …) on it, and a policy P that reads them. Admitting
+subject A to locked baseline agent B, under environment E and grant G, on
+task distribution D as sampled by suite S, changed the outcomes M
+measures by Δ, with a stated uncertainty; P says whether that is Better.
+A is the subject at its strongest identity, which may be bytes, a
+version, or an endpoint. B is the whole executable agent, not "the agent minus the
 component": model and version, system instructions, router, the existing
 default set, sampling settings, runtime, and provider endpoint. Whatever
 in B can't be pinned, such as the weights behind a hosted endpoint, the
@@ -580,8 +628,8 @@ for the baseline it was measured against: a tool can add a lot to an agent
 that otherwise can't see the files, and little to one that can. A negative
 delta is a finding about the component, not a failure of the evaluation.
 
-A delta has more than one outcome, and the rule R says which one the
-claim is about. Observed cost and latency are results of the experiment,
+A delta has more than one outcome, and the policy P says which one the
+verdict is about. Observed cost and latency are results of the experiment,
 not part of its scope; what belongs in the scope is a **predeclared
 primary outcome** and **non-inferiority bounds** on the others. The usual
 claim names correctness as primary and requires cost and time not to be
@@ -603,6 +651,18 @@ if more tests pass and the gain clears the spread between repeats, with
 cost and time within a stated bound." That rule is an engineering gate.
 Its threshold is not the definition of the delta, and a gate should say
 what it can't see.
+
+**"Treatment effect" is earned by the design, not by the word.** Paired
+tests and repeats are not enough for a hosted, stochastic system, where
+time itself confounds: provider load, silent model updates, caches, rate
+limits, and warm filesystem state all move between one arm and the next.
+So both arms start from isolated, equivalent state; arm order is
+randomized or interleaved rather than one arm run to completion first;
+the same task instance and, where it means anything, the same seed are
+paired across arms; timestamps and provider identity are recorded with
+every run; and neither arm may leave caches, files, or other state that
+the other benefits from. Without these, "with minus without" is a
+comparison, and the causal language is stronger than the design.
 
 Repeats matter because agents are inconsistent. τ-bench grades an agent by
 the database state it leaves behind, not its text, and its pass^k metric
@@ -763,9 +823,10 @@ compared with the attempt made without delegating.
 
 #### 7. Reproduced capability claim
 
-**Definition:** a capability claim whose result was reproduced by someone
-other than the person who first ran it: a different evaluator, and A, B,
-D, S, E, G, and R all held fixed, with a compatible result.
+**Definition:** a capability claim with a second evidence record from
+someone other than the person who made the first: a different evaluator,
+the key K held fixed, and an effect estimate compatible with the
+original's.
 
 **Why it matters:** confidence should come from reproduction by someone
 else, not from the author's report. Reproduction is the verifier that
@@ -773,9 +834,17 @@ decides which claims deserve to spread. It answers one question only: can
 someone else get this result? It does not say whether the result was
 fitted to the tests; that is the next term's job.
 
-**How to measure it:** an independent rerun that publishes its own result,
-citing the original, and confirms on a matching verdict or disputes
-otherwise, with both kept visible.
+**How to measure it:** an independent rerun that publishes its own
+record, Δ₂ ± CI₂, citing the original. Compatibility is a property of two
+estimates, not of two labels: the same direction, a difference smaller
+than the minimum effect worth caring about, and intervals that overlap or
+a model that pools them. Two reruns can both read **Better** while
+estimating +2 and +25, and a rerun can just miss a gate while being
+statistically indistinguishable from the original. A count of matching
+verdicts is the operational simplification, and it is lossy. Once several
+records exist on one key, the object of interest is the distribution of
+their estimates, synthesized, not the sentence "three people confirmed
+it". Confirmations and disputes both stay visible.
 
 **Every claim has a reliance set.** Miller defines a program's reliance
 set as everything whose correct behavior its own correct behavior depends
@@ -820,8 +889,8 @@ adoption everyone already has the thing. It is also what a leaderboard
 can't supply and a network can: someone else's tests.
 
 Three levels are worth keeping apart, because each changes a different
-part of the scope. *Reproduction* holds A, B, D, S, E, G, and R fixed and
-changes only who runs it. *External validation* keeps D and changes S,
+part of the scope. *Reproduction* holds K fixed and changes only who runs
+it. *External validation* keeps D and changes S,
 the sampled tasks. *Transfer* deliberately changes D to a different
 distribution D′, and is a new claim, not a stronger version of the old
 one: a repository-mapping tool validated on more repositories has been
@@ -829,7 +898,14 @@ externally validated; the same tool measured on spreadsheet tasks has
 been tested for transfer.
 
 **How to measure it:** a with-and-without result on a second S with its
-own claim scope. A different author is provenance, not independence. What
+own claim key. A second author prevents one kind of overfitting and does
+not make either suite representative, so "same D" has to mean more than
+two people typing the same distribution name. S therefore carries a
+sampling story as metadata: the frame the tasks were drawn from, the
+inclusion and exclusion rules, the strata or coverage categories, and
+whether the cases were randomly sampled, exhaustively enumerated, or
+deliberately constructed. A suite with no frame is a suite whose D is
+whatever its author says. A different author is provenance, not independence. What
 independence needs is chronology and information flow: the subject was
 locked before the suite was revealed to its author, or the suite was
 hidden, so that the author could not tune against it. A protocol can
@@ -925,12 +1001,40 @@ may not describe it a month later, and an adopted component that keeps
 its place on the strength of a stale claim is a default nobody measured.
 So the lifecycle's tail is *monitoring and revalidation*, and its
 outcomes are *retain*, *quarantine* (withdrawn from the default set,
-claims kept), or *revoke* (release withdrawn). Revalidation is triggered
-by a material change in B, E, G, D, the subject's identity, or its
-dependencies, or by a reader's dispute that survives; a revalidation is
-an ordinary claim on the new scope, reproduced and validated like the
-first. This is where the skill-library literature's calls for rollback
+claims kept), or *revoke* (release withdrawn). What a change means
+depends on which letter moved:
+
+| What changed | What it means for the claim |
+| --- | --- |
+| A (including its dependencies), B, E, G, or M | The key changed; the old records describe another claim. Revalidate: new records on the new key, reproduced and validated like the first |
+| S, with D fixed | New evidence on the same population: an external validation, not a trigger |
+| D | A different population is a transfer, a new claim, never a reopening of this one |
+| P | Reinterpret the existing records under the new policy; rerun nothing unless M moved too |
+
+A reader's dispute that survives reopens a claim the way a changed key
+does. This is where the skill-library literature's calls for rollback
 belong in the framework, as a lifecycle stage rather than a wish.
+
+One consequence scales badly unless it is designed for. B includes the
+current default set, so **every adoption changes B for every capability
+already adopted**, and a literal reading would have adoption N reopen
+claims 1 to N−1 each time. The answer is dependency-aware revalidation:
+run the whole default set's regression suite on every adoption, and
+reopen an individual component's claim only where that regression, a
+changed dependency, or a measured interaction with the newcomer says it
+was affected.
+
+**Identity sets the clock.** Reproducibility cannot be stronger than
+identity, and neither can adoption: a content-addressed artifact and an
+endpoint called "latest" should not hold the same status for the same
+time. The weaker the identity, the faster the evidence expires.
+
+| Subject identity | Adoption status |
+| --- | --- |
+| Content-addressed | The ordinary revalidation cadence |
+| Version-addressed | Revalidate when the provider's version changes |
+| Endpoint-addressed | A short claim lifetime and a continuous canary |
+| Unresolved | Not eligible for a shared default above the lowest stakes |
 
 **How to measure it:** the marginal delta, current defaults plus the
 candidate against current defaults; whether the whole default set still
@@ -980,7 +1084,7 @@ declared task distribution per adopted contribution*, with regressions,
 cost, latency, and authority reported beside it. Raw new passes are
 reported too; they are not the target.
 
-### Evals as the unit of account
+### Capability claims as the unit of account
 
 If capabilities are acquired and shared, something has to decide which ones
 actually improve an agent's results. The proposal is that the capability
@@ -994,7 +1098,8 @@ of the work.
 - **A written rule gives the verdict.** The rule is a versioned file, and
   every result carries the digest of the rule that judged it. Rules have
   bugs too; when one is replaced, old results keep their old digest and stay
-  readable.
+  readable. The rule is policy, not part of the claim: a replaced rule
+  reinterprets the records that exist and reruns nothing.
 - **Others can rerun it.** A published test set, a published result, and
   the exact component versions let someone else rerun the evaluation and
   confirm or dispute it.
@@ -1110,7 +1215,14 @@ independent suites, held-out tasks, negative cases, marginal
 re-evaluation, and credit for disputes are not only hygiene for
 individual claims. They are what keeps the flywheel pointed at
 capability rather than at the tests, which is Goodhart's problem at the
-scale of a network. And it turns the essay's question around. The
+scale of a network. The same problem has a statistical form, **candidate
+selection**, the winner's curse. Make forty variants of a tool, run all
+forty against S, publish the one that got lucky, and send it for
+reproduction: a faithful rerun of S reproduces the luck. External
+validation on a suite the author never saw removes most of it, and a
+network can in time optimize against validation too, which is why the
+open questions below ask for a separation of development from
+confirmation. And it turns the essay's question around. The
 question is no longer only what a test-time capability means. It is
 whether a decentralized network can construct a trustworthy empirical
 record of which runtime components software can actually depend on. The
@@ -1293,11 +1405,20 @@ corrections to any cell.
   dispute farming, and one contribution split across identities. What
   counts as a rerun that followed the protocol, and what evidence of
   independence should a claim carry beyond a second key?
-- **Revalidation triggers.** Which changes in a baseline, environment,
-  grant, distribution, or identity are material enough to reopen an
-  adopted claim, who is obliged to notice them, and what does a network
-  do with a default whose claim has lapsed but whose replacement hasn't
-  been measured?
+- **Candidate selection and the winner's curse.** A published claim is
+  the best of however many variants its author tried, and reproduction on
+  the same S preserves the selection. What separation of development from
+  confirmation does a network need: the subject frozen before any
+  challenge suite is seen, every evaluation attempt recorded rather than
+  only the winner, exploratory results labeled apart from confirmatory
+  ones, hidden and rotating suites, and, once the record is large,
+  sequential or multiple-testing corrections?
+- **Revalidation triggers.** Which changes in a subject, baseline,
+  environment, grant, or measurement are material enough to reopen an
+  adopted claim, who is obliged to notice them, how should
+  dependency-aware revalidation decide which adopted claims an adoption
+  touched, and what does a network do with a default whose claim has
+  lapsed but whose replacement hasn't been measured?
 - **Composition depth.** How many decisions deep does a judgment stay
   useful, how should a workflow's end-to-end reliability be reported
   beside its components' single-call numbers, and which recovery designs
@@ -1330,8 +1451,9 @@ corrections to any cell.
 - **Uncertainty and power.** A handful of tests and repeats is enough to
   see a large change and too few to see a small one. What interval is
   honest for a few binary tests and a few repeats, what is the smallest
-  effect worth detecting, and how should test sets grow as the deltas
-  people care about shrink?
+  effect worth detecting, how should several records on one key be
+  synthesized into one estimate rather than counted, and how should test
+  sets grow as the deltas people care about shrink?
 - **Grader quality.** Graders are code and make mistakes. How should they
   be checked the way results are?
 - **Process-level deltas.** Final pass rates hide where a capability
@@ -1380,9 +1502,9 @@ The full protocol mapping, stage by stage and field by field, is
 
 ### What "is a capability" means in our system
 
-Part I's unit of account, the capability claim, is a
+Part I's evidence record is a
 [NIP-EVAL extension evaluation](../../nips/openagents/NIP-EVAL.md#extension-evaluation-profile)
-report in our system, and the claim's scope is written into the report
+report in our system, and the claim's key is written into the report
 rather than left to the reader:
 
 | Scope | In the report |
@@ -1390,9 +1512,10 @@ rather than left to the reader:
 | A, the subject | The `subject` arm's lock: the exact extension release and its dependencies, so `identity` is `content`; a decision-service subject would be a `30180` head with the question set pinned as `name@digest`, `version` at best |
 | B, the baseline agent | The `baseline` arm's lock (Coder with no extension admitted, or the current defaults for a marginal report, named in `meta.ext_eval.defaults`) plus the run config: the door URL and model name the harness pinned in the child, and Coder's own bounds. `meta.ext_eval.reliance` records what the run relied on (runner, host digest, door, model, agent build, selector, graders) and `identity` the subject's identity strength (`content` for every extension). Not pinned: the weights behind the door, which the door doesn't report yet, so `model` is null rather than guessed, and the version of Jev behind the decision door. A hosted model changing underneath us would still void a reproduction while every digest matched. |
 | D, the distribution | The task population the suite claims: `meta.ext_eval.distribution` when the suite's workload names one, else the tool's definition ID, "the tasks this tool claims to help with". A second suite that names the same D validates; one that names another transfers |
-| S, the suite | The suite release the report cites, case by case |
+| S, the suite | The suite release the report cites, case by case, and its workload's sampling story: the frame, the inclusion and exclusion rules, the strata, and the method (the runner writes `constructed`, since every starter case was authored) |
 | E and G, environment and grant | The run config and the grant it ran under (in the hosted runs, no shell) |
-| R, the rule | The gate digest in `acceptance`, and the gate file's declared primary outcome: `ext-eval-v2` is tests passed with cost and time held not materially worse; `ext-eval-cost-v1` is cost with cases, score, and time held non-inferior |
+| M, the measurement | The suite's metric definitions and each case's graders, inside the suite artifact the report cites: `cases_passed`, `mean_score`, `cost_usd`, and `seconds`, scored by mechanical graders or by the `decision` and `judge` graders |
+| P, the policy | The gate digest in `acceptance`, and the gate file's declared primary outcome: `ext-eval-v2` is tests passed with cost and time held not materially worse; `ext-eval-cost-v1` is cost with cases, score, and time held non-inferior. Not part of the key: a report judged by a since-replaced gate is still a record on the same claim |
 | The result | `change` on the `comparison` arm for `cases_passed` and `mean_score`, with `cost_usd` and `seconds` per arm (unknown where a lane isn't priced); no interval yet |
 
 A claim decides three concrete things in OpenAgents. Installing a tool,
@@ -1551,7 +1674,42 @@ cost-primary with cases, score, and time held non-inferior, the shape of
 "the same correctness at a lower cost"; a suite names one in its
 acceptance, and the runner can load either. The reports carry per-case
 outcomes for both arms, so a reader can compute a paired interval from
-them; we don't publish one yet.
+them; we don't publish one yet. The runner interleaves the two arms
+attempt by attempt, gives every attempt its own confined workspace, and
+stamps each run, which is Part I's hygiene as far as a local runner can
+supply it; it does not randomize order, and nothing pins provider load.
+
+**A second delta, with a stronger baseline.** The starter results have an
+easy critic: the baseline had no shell, so the tool gave Coder
+information it could not otherwise reach. Our
+[Terminal-Bench development record](../terminal-bench/development-results.md)
+holds a claim of a harder kind, where the executor is the same model in
+both arms and what changes is the runtime around it. Jev-probe is a
+context-construction policy: before the expensive model runs, code runs a
+battery of read-only probes in parallel, Jev keeps the outputs the task
+needs, and code assembles the briefing the executor receives. The subject
+is the `coder-one` artifact that implements the policy, content-addressed
+(`03401dad7483`); the baseline is Claude Code on Opus 5.5 alone; the
+executor in the subject arm is the same Opus 5.5, with six tools and a
+five-minute cache.
+
+| Arm | Four-task panel, three trials per task | Summed per-task mean cost | Agent time |
+| --- | --- | --- | --- |
+| Claude Code 2.1.280 / Opus 5.5 alone | 12 of 12 | $0.6554 | 195.9 s |
+| Jev-probe v2 → lean Opus 5.5, low effort, 5-minute cache | 12 of 12 | $0.2433 | 133.8 s |
+
+On the panel that is 63 % cheaper and 32 % faster at the same
+correctness; on four tasks the panel doesn't cover it passed 12 of 12
+again, 57 % cheaper and 48 % faster. Read it with the labels the record
+puts on it: the panel is development data the arms were tuned on, three
+trials per task, not a held-out benchmark, and the four other tasks were
+a screen. It is a claim of the cost-primary shape, correctness held
+non-inferior, which is why `ext-eval-cost-v1` exists. And it is not yet
+an evidence record in Part II's sense: it lives in the Terminal-Bench
+harness, so no check can cite it and nothing can validate it until the
+policy is packaged as a subject and run through the Gym. What it shows is
+the thesis in its purest form: the weights were identical in both arms,
+and the achievable frontier moved because the runtime changed.
 
 #### Reach and restraint in OpenAgents
 
@@ -1612,8 +1770,14 @@ An [eval check](../extensions/evaluation.md#checks-adoption-and-credit)
 reruns a published suite and publishes its own NIP-EVAL `3189` that cites
 the original: a different trainer, the same test set release, the same
 tool release. It confirms on a matching verdict and disputes otherwise;
-both stay visible. In the hosted record, a second trainer checked each of
-the three results and all three confirmed.
+both stay visible. That is the lossy count Part I warns about. The
+check's own headline is the estimate, and `eval_ext::Effect` reads two
+publications into paired effects (cases passed with the tool minus
+without, over the total) and says whether they are compatible: the same
+direction and a difference within a stated number of cases. No interval
+exists yet to overlap. In the hosted record, a second trainer checked
+each of the three results and all three confirmed, with the same
+headlines.
 
 Read those checks with their reliance set. Both trainers' runs executed
 on the same hosted runner on `coderos-4080`, through the same door and
@@ -1665,16 +1829,23 @@ and the admission cites that validation. Adoption is an operator
 decision, never automatic. The mechanism exists; no adoption has been
 made yet.
 
-Part I's tail, revalidation and revocation, has carriers and no trigger.
+Part I's tail, revalidation and revocation, has carriers and one clock.
 A NIP-EXT revocation (`3185`) withdraws a tool or suite release from new
 checks and quests while published reports keep their meaning; a later
 `coder-defaults` release that no longer depends on a tool is how a
 default is quarantined; NIP-POL keeps active runs on the lock they
-started with, so nothing changes underneath a running agent. What nobody
-does yet is notice a material change in a claim's scope: the report pins
-the door and model name and not the weights, so a hosted model changing
-would not reopen anything, and no job reruns an adopted tool's suites
-when the defaults, the agent build, or the gate change.
+started with, so nothing changes underneath a running agent. The clock
+is the admission's `expires_at`, and identity now sets it: the adopt
+command's default lifetime follows the cited results' identity strength
+(365 days for a content-addressed subject, 90 for a version-addressed
+one, 14 for an endpoint), and a result whose subject is unresolved can't
+be adopted at all, which `eval-adopt` refuses. What nobody does yet is
+notice a material change in a claim's key: the report pins the door and
+model name and not the weights, so a hosted model changing would not
+reopen anything, and no job reruns an adopted tool's suites when the
+defaults, the agent build, or the graders change. A gate change needs no
+rerun; it reinterprets the records, and every report keeps the digest of
+the gate that read it.
 
 The marginal question in Part I has a plain answer today and a harder one
 soon. The baseline arm is Coder with nothing admitted. While
@@ -2094,18 +2265,35 @@ versions.
   reader tool, release them after the tool's release, and run them; the
   runner cannot validate its own catalog. Hidden or challenge suites,
   which would make chronology unnecessary, don't exist yet.
-- **Revalidate after adoption.** Nothing reopens a claim when its scope
-  moves. After the first adoption we need a job that reruns an adopted
-  tool's suites, standalone and marginal, when the defaults release, the
-  agent build, the gate, or the door's reported model changes, and an
-  operator path from a lapsed claim to quarantine (a defaults release
-  without the tool) or revocation (`3185`). Until then an adopted tool
-  keeps its place on the day-of-adoption claim, which the essay says is a
-  default nobody measured.
-- **State the distribution.** The runner's workload artifact names no
-  `distribution`, so every claim's D defaults to the tool's definition ID,
-  "the tasks this tool claims to help with". A suite author should say
-  what population six tests stand for, and the runner should write it.
+- **Revalidate after adoption.** Nothing reopens a claim when its key
+  moves. After the first adoption we need a job that reruns the whole
+  default set's regression on every defaults release, reopens an adopted
+  tool's own claim only where that regression or a changed dependency says
+  it was touched, reruns when the agent build, the graders, or the door's
+  reported model changes, and gives an operator a path from a lapsed
+  claim to quarantine (a defaults release without the tool) or revocation
+  (`3185`). A gate change reinterprets; it doesn't rerun. Until then an
+  adopted tool keeps its place until its admission expires, which the
+  essay says is a default nobody measured.
+- **State the distribution.** The runner's workload artifact now carries
+  a sampling story (frame, inclusion, exclusions, strata, method) and
+  names no `distribution`, so every claim's D still defaults to the
+  tool's definition ID, "the tasks this tool claims to help with". A
+  suite author should say what population six tests stand for, and the
+  runner should write it.
+- **Publish the effect, not only the verdict.** A check confirms on a
+  matching verdict, which is the lossy count. The reports hold both
+  headlines, `eval_ext::Effect` compares them, and the Gym should show
+  the estimates beside the count and, once intervals exist, whether they
+  overlap.
+- **Record the attempts, not only the winner.** Nothing distinguishes an
+  exploratory run from a confirmatory one, and nothing counts how many
+  variants a tool's author tried before publishing. The partition
+  artifact has the fields; the runner and the Gym should use them.
+- **Package Jev-probe as a subject.** The strongest claim we hold lives
+  in the Terminal-Bench harness, not the Gym. The context-construction
+  policy should become a release with a cost-primary suite, so a check
+  can cite it and a second suite can validate it.
 - **A cost-primary run.** `ext-eval-cost-v1` exists and the runner can
   load it, but no suite names it in its acceptance and the CLI has no way
   to choose it. The router's cheap tiers are claims of that shape, the

@@ -2,7 +2,7 @@
   "v": "openagents.eval-report.v1",
   "requires": [],
   "suite": {
-    "digest": "sha256:90317ffa2374c528b013a3cfec76fc5cb2f78bfc2b832b54a8a5de908915fccb",
+    "digest": "sha256:0de3056d7c225bdeb7e672b31056d152bd0d94fa8f00a6fe7eec8ceb3cfc757e",
     "size": 1783,
     "media_type": "application/json",
     "schema": "openagents.eval-suite.v1"
