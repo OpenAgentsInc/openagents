@@ -375,6 +375,58 @@ mod tests {
         );
     }
 
+    /// The starter test sets load as `openagents ext eval run` loads them,
+    /// fit the hosted runner, ask for read and write only, have both kinds
+    /// of test, and grade should-fire tests on what the run found rather
+    /// than the reply.
+    #[test]
+    fn the_starter_test_sets_load_and_fit_the_hosted_runner() {
+        use ext_eval::case::{Grant, Kind};
+        for tool in &starters().tools {
+            let suite = ext_eval::Suite::load(
+                &tool.root.join("evals"),
+                ext_eval::case::LoadOptions::default(),
+            )
+            .unwrap_or_else(|error| panic!("{}: {error}", tool.name));
+            assert!(suite.cases.len() as u64 <= nostr::eval_ext::HOSTED_MAX_CASES);
+            assert!(
+                suite
+                    .cases
+                    .iter()
+                    .any(|case| case.kind == Kind::ShouldNotFire)
+            );
+            for case in &suite.cases {
+                assert_eq!(
+                    case.run.allowed_operations,
+                    std::collections::BTreeSet::from([Grant::Read, Grant::Write]),
+                    "{}: {}",
+                    tool.name,
+                    case.name
+                );
+                assert!(
+                    case.warnings().is_empty(),
+                    "{}: {:?}",
+                    case.name,
+                    case.warnings()
+                );
+                if case.kind == Kind::ShouldFire {
+                    assert!(
+                        case.graders.iter().any(|grader| matches!(
+                            grader.check,
+                            ext_eval::Check::Regex {
+                                target: ext_eval::grader::Focus::Trajectory,
+                                ..
+                            }
+                        )),
+                        "{}: {} grades what the run found",
+                        tool.name,
+                        case.name
+                    );
+                }
+            }
+        }
+    }
+
     #[test]
     fn a_slug_is_plain() {
         assert_eq!(made_slug("Brief the Layout!"), "brief-the-layout");
