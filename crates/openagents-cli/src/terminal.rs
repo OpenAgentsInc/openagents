@@ -13,39 +13,14 @@ use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use coder_computers::live::Live;
+use coder_computers::terminal::Phase;
+use coder_computers::terminal::exec::{Limits, attached, phase_json};
 use coder_computers::terminal::session::Session;
-use coder_computers::terminal::{Model, Phase};
 use serde_json::json;
 
 use crate::{Args, Output};
 
-/// Marks where the echoed command line ends and the command's output starts.
-const START_MARK: u8 = 0x1e;
-
-/// The remote shell's phase, in words and as JSON.
-fn phase_json(phase: &Phase) -> serde_json::Value {
-    match phase {
-        Phase::Exited {
-            code,
-            signal,
-            cause,
-        } => json!({ "phase": "exited", "code": code, "signal": signal, "cause": cause }),
-        Phase::Refused(reason) => json!({ "phase": "refused", "reason": reason }),
-        other => json!({ "phase": format!("{other:?}").to_lowercase() }),
-    }
-}
-
-/// Quote `word` for a POSIX shell.
-pub fn quote(word: &str) -> String {
-    if !word.is_empty()
-        && word
-            .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || b"-_./=:@%+,".contains(&b))
-    {
-        return word.to_owned();
-    }
-    format!("'{}'", word.replace('\'', "'\\''"))
-}
+pub use coder_computers::terminal::exec::{Run, quote};
 
 /// The size of this terminal, or 24 by 80 when it is not one.
 fn local_size() -> (u16, u16) {
@@ -67,25 +42,6 @@ fn local_size() -> (u16, u16) {
     (24, 80)
 }
 
-/// Wait until the session is attached, or return the phase it ended in.
-fn attached(session: &Session, deadline: Instant) -> Result<(), Phase> {
-    loop {
-        let phase = session.model().phase.clone();
-        match phase {
-            Phase::Attached => return Ok(()),
-            phase if phase.ended() => return Err(phase),
-            _ => {}
-        }
-        if Instant::now() >= deadline {
-            return Err(Phase::Refused(
-                "the host did not open a terminal in time; pass --wait SECONDS to wait longer"
-                    .into(),
-            ));
-        }
-        std::thread::sleep(Duration::from_millis(50));
-    }
-}
-
 fn start(
     live: &Live,
     runtime: &tokio::runtime::Handle,
@@ -93,31 +49,7 @@ fn start(
     rows: u16,
     cols: u16,
 ) -> (Session, mpsc::Receiver<Vec<u8>>) {
-    let (tap, output) = mpsc::channel();
-    let mut model = Model::new(host, host, rows, cols);
-    model.tap = Some(tap);
-    let links = live.terminals().links(host);
-    (Session::start(runtime, links, model), output)
-}
-
-/// One command's run on a host: what it wrote, how it ended, and the route.
-pub struct Run {
-    pub output: String,
-    pub exit: i32,
-    pub timed_out: bool,
-    pub phase: Phase,
-    pub route: Option<String>,
-    pub seconds: f64,
-}
-
-impl Run {
-    pub fn json(&self, host: &str, words: &[String]) -> serde_json::Value {
-        json!({
-            "host": host, "command": words, "output": self.output, "exit": self.exit,
-            "timed_out": self.timed_out, "shell": phase_json(&self.phase),
-            "route": self.route, "seconds": self.seconds,
-        })
-    }
+    coder_computers::terminal::exec::start(runtime, live.terminals().links(host), host, rows, cols)
 }
 
 /// Run `words` on `host`, handing each output chunk to `sink` as it
@@ -133,72 +65,22 @@ pub fn run(
     args: &Args,
     sink: &mut dyn FnMut(&[u8]),
 ) -> Result<Run, String> {
-    let wait: u64 = args.number("wait", 15)?;
-    let timeout: u64 = args.number("timeout", 600)?;
-    let rows: u16 = args.number("rows", 50)?;
-    let cols: u16 = args.number("cols", 200)?;
-    let began = Instant::now();
-    let (session, frames) = start(live, runtime, host, rows, cols);
-    if let Err(phase) = attached(&session, Instant::now() + Duration::from_secs(wait)) {
-        return Err(phase.describe());
-    }
-    let command = words.iter().map(|w| quote(w)).collect::<Vec<_>>().join(" ");
-    // Echo is off before the marker prints, so the marker separates what
-    // the shell echoed from what the command wrote. `exec` makes the
-    // shell's exit the command's exit.
-    let line = format!("stty -echo 2>/dev/null; printf '\\036'; exec {command}\n");
-    session.send(line.into_bytes());
-
-    let deadline = Instant::now() + Duration::from_secs(timeout);
-    let mut bytes = Vec::new();
-    let mut started = false;
-    let mut timed_out = false;
-    loop {
-        match frames.recv_timeout(Duration::from_millis(100)) {
-            Ok(chunk) => {
-                let chunk = if started {
-                    chunk
-                } else if let Some(at) = chunk.iter().position(|b| *b == START_MARK) {
-                    started = true;
-                    chunk[at + 1..].to_vec()
-                } else {
-                    continue;
-                };
-                sink(&chunk);
-                bytes.extend(chunk);
-            }
-            Err(mpsc::RecvTimeoutError::Timeout) => {}
-            Err(mpsc::RecvTimeoutError::Disconnected) => break,
-        }
-        let phase = session.model().phase.clone();
-        if phase.ended() {
-            // Frames in flight arrive before the exit frame is applied.
-            while let Ok(chunk) = frames.try_recv() {
-                sink(&chunk);
-                bytes.extend(chunk);
-            }
-            break;
-        }
-        if Instant::now() >= deadline {
-            timed_out = true;
-            session.close();
-            break;
-        }
-    }
-    let phase = session.model().phase.clone();
-    let exit = match &phase {
-        Phase::Exited { code, signal, .. } => code.or_else(|| signal.map(|s| 128 + s)).unwrap_or(1),
-        _ => crate::EXIT_FAILURE.into(),
+    let limits = Limits {
+        wait: Duration::from_secs(args.number("wait", 15)?),
+        timeout: Duration::from_secs(args.number("timeout", 600)?),
+        rows: args.number("rows", 50)?,
+        cols: args.number("cols", 200)?,
     };
-    let route = session.model().route.clone();
-    Ok(Run {
-        output: String::from_utf8_lossy(&bytes).replace("\r\n", "\n"),
-        exit: if timed_out { 124 } else { exit },
-        timed_out,
-        phase,
-        route,
-        seconds: began.elapsed().as_secs_f64(),
-    })
+    coder_computers::terminal::exec::run(
+        runtime,
+        live.terminals().links(host),
+        host,
+        words,
+        limits,
+        crate::EXIT_FAILURE.into(),
+        sink,
+    )
+    .map_err(|phase| phase.describe())
 }
 
 /// Run `words` on `host` and report its output and exit code.
@@ -464,19 +346,5 @@ impl Drop for RawMode {
                 libc::tcsetattr(libc::STDIN_FILENO, libc::TCSANOW, &raw const saved);
             }
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::quote;
-
-    #[test]
-    fn quotes_for_a_posix_shell() {
-        assert_eq!(quote("ls"), "ls");
-        assert_eq!(quote("--model=gpt"), "--model=gpt");
-        assert_eq!(quote("hello world"), "'hello world'");
-        assert_eq!(quote("it's"), "'it'\\''s'");
-        assert_eq!(quote(""), "''");
     }
 }
