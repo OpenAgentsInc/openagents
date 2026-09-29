@@ -483,3 +483,32 @@ The first production renewal ran on schedule at 08:42:09, 45 minutes after
 the `0546032e17` start (`renewed the jobs subscription on a new
 connection`, no `relay:` fault, `NRestarts=0`), and the live test answered
 through the renewed connection in 0.65 s.
+
+Release `375cef66ef` (2026-09-29) puts `chat-router-v3` live: the
+missing-capability route and its `capability` card over the admitted
+capability set ([#9960](https://github.com/OpenAgentsInc/openagents/issues/9960)),
+the question-set and bank digests on the wire, the router evidence record
+and the calibration switch (off) ([#9959](https://github.com/OpenAgentsInc/openagents/issues/9959)),
+and the "capability" vocabulary in the Gym notes and replies
+([#9957](https://github.com/OpenAgentsInc/openagents/issues/9957),
+[#9958](https://github.com/OpenAgentsInc/openagents/issues/9958)). It was
+built with `cargo zigbuild` as above, installed as
+`/opt/coder-worker/releases/375cef66ef` with the current
+`knowledge/openagents/` (61 entries, seven Gym notes changed; copied with
+`COPYFILE_DISABLE=1`, no `._*` files) and `codebase-kb.gz` from
+`af6d0fae2d`, checked with `--check` under the chat environment ("the
+configuration is safe to deploy"), and put live by moving the `chat`
+symlink and restarting `coder-worker-chat`; the environment file and unit
+did not change, `coder-worker.service` and `/opt/coder-worker/current` were
+not touched, and `af6d0fae2d` stays in `releases/` for rollback. The log
+names `router chat-router-v3@a19f8c201312 (Live), bank
+chat-answers-v1@a04859020455 with 58 answers`, `calibration off: raw
+probabilities`, and `gym records: 34 verified results, 7 test sets, 1
+refused` on the first read. With
+`live_basic_coder_streams_a_reply`, "Book me a flight to Austin tomorrow"
+answered in 0.71 s (first words 0.68 s) from the bank with route
+`capability.missing`, answer `capability.missing@1`, and the card "There's
+no capability for that yet. Anyone can add one and test it in the Gym, so
+everyone can see whether it helps."; "Who are you?" still answered from the
+bank. The record is
+[the build 25 record](../extensions/measurements/2026-09-29-build-25-chat-first.md).
