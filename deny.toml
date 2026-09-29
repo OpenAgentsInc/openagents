@@ -28,6 +28,18 @@ allow = [
     "Unicode-3.0",
     "Zlib",
 ]
+# Per-crate exceptions, each for one reviewed version; see
+# docs/dependencies.md, "iroh transport". No identifier here is allowed
+# graph-wide.
+exceptions = [
+    # A proc macro under iroh's n0-error; builds nothing into the binary.
+    { crate = "spez@0.1.2", allow = ["BSD-2-Clause"] },
+    # wasm32-only dependencies of iroh-relay's browser WebSocket client.
+    # They never build for macOS, Linux, iOS, or Android.
+    { crate = "ws_stream_wasm@0.7.5", allow = ["Unlicense"] },
+    { crate = "async_io_stream@0.3.3", allow = ["Unlicense"] },
+    { crate = "pharos@0.5.3", allow = ["Unlicense"] },
+]
 
 # Workspace licensing is a separate release check. Do not exclude unpublished
 # roots from the graph: their third-party dependencies still need review.

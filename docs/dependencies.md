@@ -151,6 +151,63 @@ default features, and only in the optional `host` feature). Reviewed on
   is added: the operator supplies the files, and the tests use checked-in,
   test-only PEM fixtures instead of `rcgen`.
 
+## iroh transport
+
+`crates/openagents-connect` carries QR pairing and the NIP-REACH direct
+channel over [iroh](https://docs.rs/iroh/1.3.0/iroh/) QUIC connections
+([design](coder/design/2026-09-29-auto-pairing.md), issue
+[#9966](https://github.com/OpenAgentsInc/openagents/issues/9966)). The root
+`Cargo.toml` pins `iroh` and `iroh-relay` exactly, at `=1.3.0`, as workspace
+dependencies. Reviewed on 2026-09-29:
+
+- Default features are off. The crate enables only `tls-ring` and
+  `fast-apple-datapath`, so the graph has no `portmapper` (UPnP and
+  NAT-PMP), no metrics service, and no `aws-lc-rs`: TLS is `rustls` with
+  `ring`, as elsewhere in the workspace. Hole punching and the relay replace
+  port mapping. iroh's default features would also bring `attohttpc`
+  (MPL-2.0).
+- The endpoint uses `presets::Minimal`, only our relay or none, and an
+  in-memory address lookup. No n0 relay, n0 DNS, PKARR, or DHT is
+  configured, so none of their code paths runs.
+- The lockfile gains 120 registry packages, among them `noq`,
+  `noq-proto`, and `noq-udp` (iroh's QUIC), `netwatch` and `netlink-*`
+  (interface monitoring), `ed25519-dalek` 3 and `curve25519-dalek` 5,
+  `reqwest` 0.13 (relay HTTPS), `rustls-platform-verifier`, and
+  platform crates for Windows, macOS, and Android. No existing locked
+  version changed.
+- 1.3.0 was published on 2026-09-28. The design asks for a release at least
+  seven days old; the owner directed this pin on 2026-09-29, one day after
+  release, so that rule is waived for it. The next dependency update checks
+  for a 1.3.x fix release.
+
+Four license findings remain in iroh's graph. Each has a per-crate,
+per-version exception in `deny.toml`; no identifier is allowed graph-wide:
+
+- `spez` 0.1.2, `BSD-2-Clause`: a proc macro used by `n0-error`, iroh's
+  error crate. It runs at compile time and contributes no code to a binary.
+  BSD-2-Clause is permissive; retain its notice with the others.
+- `ws_stream_wasm` 0.7.5, `async_io_stream` 0.3.3, and `pharos` 0.5.3,
+  `Unlicense`: `iroh-relay`'s browser WebSocket client, a dependency only on
+  `wasm32`. They appear because the gate inspects every target; they never
+  build for macOS, Linux, iOS, or Android. A wasm build of this crate would
+  need its own review.
+
+With these exceptions, iroh adds no finding to the gate. At `e3bc2d4064`,
+before iroh, the gate already failed on findings outside this graph: Git
+sources under `openagents-wallet`'s `ldk-node`, the `bip21`, `hex_lit`,
+`webpki-roots` 0.25, and `musig2` licenses, advisories for `cgmath` and
+`wasmtime`, and a wildcard in `verse-ruins`. The run with iroh reports
+exactly those and nothing else.
+
+`crates/openagents-mobile` is its own workspace and lockfile; adding
+`openagents-connect` there (issue #9971) needs the same review of that
+graph.
+
+The crate checks for `aarch64-apple-darwin`, `x86_64-apple-darwin`,
+`aarch64-apple-ios`, `aarch64-apple-ios-sim`, `aarch64-linux-android` (with
+`cargo ndk` and NDK 27.1), and `x86_64-unknown-linux-gnu`. On Android the
+app must call `iroh::dns::install_android_jni_context` before binding.
+
 ## Verification record
 
 On 2026-09-20, `./scripts/check-dependencies.sh` passed advisory, license, and

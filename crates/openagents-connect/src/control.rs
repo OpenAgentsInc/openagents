@@ -1,0 +1,257 @@
+//! The local control protocol.
+//!
+//! The host serves it on a Unix socket (`0600`, in a `0700` directory) and
+//! answers only a peer whose user ID equals its own; the desktop app and
+//! `openagents connect` are its clients. A caller that passes is the local
+//! operator, which NIP-HOST treats as the owner acting on that machine. No
+//! device, relay message, or grant reaches this protocol.
+//!
+//! Each connection carries length-prefixed JSON messages
+//! ([`crate::wire`]): a [`Request`] and its [`Response`] with the same `id`,
+//! in order. Requests are closed enums: an unknown operation or field is
+//! `malformed`.
+
+use std::path::{Path, PathBuf};
+
+use serde::{Deserialize, Serialize};
+use tokio::io::{AsyncRead, AsyncWrite};
+
+use crate::wire::{read_message, write_message};
+use crate::{Code, Error, Result, fail};
+
+/// Message version string.
+pub const VERSION: &str = "openagents.control.v1";
+/// Largest message, in bytes of JSON.
+pub const MAX_MESSAGE_BYTES: usize = 256 * 1024;
+/// The socket's file name.
+pub const SOCKET_NAME: &str = "control.sock";
+
+/// Where the host's control socket lives: on macOS
+/// `~/Library/Application Support/OpenAgents/control.sock`, on Linux
+/// `$XDG_RUNTIME_DIR/openagents/control.sock`. `None` when the variable it
+/// needs is unset, or on another platform.
+#[must_use]
+pub fn socket_path() -> Option<PathBuf> {
+    let home = std::env::var_os("HOME").map(PathBuf::from);
+    let runtime = std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from);
+    socket_path_for(std::env::consts::OS, home.as_deref(), runtime.as_deref())
+}
+
+/// [`socket_path`] for a given platform and environment.
+#[must_use]
+pub fn socket_path_for(os: &str, home: Option<&Path>, runtime: Option<&Path>) -> Option<PathBuf> {
+    let dir = match os {
+        "macos" => home?.join("Library/Application Support/OpenAgents"),
+        "linux" => runtime?.join("openagents"),
+        _ => return None,
+    };
+    Some(dir.join(SOCKET_NAME))
+}
+
+/// One request.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Request {
+    pub v: String,
+    /// Chosen by the client; echoed in the response.
+    pub id: u64,
+    pub op: Op,
+}
+
+impl Request {
+    #[must_use]
+    pub fn new(id: u64, op: Op) -> Self {
+        Self {
+            v: VERSION.into(),
+            id,
+            op,
+        }
+    }
+}
+
+/// The operations.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum Op {
+    /// The host's identity, reachability, and counts.
+    Status {},
+    /// Create a host invitation and its `openagents-connect:` code. A QR
+    /// pairing grants `observe` and `operate`, plus `terminal` when asked.
+    InviteCreate { terminal: bool },
+    /// Cancel one unredeemed invitation.
+    InviteCancel { invitation: String },
+    /// Cancel every unredeemed invitation.
+    InviteCancelAll {},
+    /// The enrolled devices.
+    DeviceList {},
+    /// Revoke a device's grant; its open channels close.
+    DeviceRevoke { device: String },
+    /// Read the auto-start policy.
+    AutostartGet {},
+    /// Replace the auto-start policy.
+    AutostartSet { policy: Autostart },
+    /// The projects (workspaces) the host admits.
+    ProjectList {},
+    /// Admit a Git checkout as a project.
+    ProjectAdd { path: String },
+    /// Stop admitting a project.
+    ProjectRemove { label: String },
+}
+
+/// One response.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Response {
+    pub v: String,
+    pub id: u64,
+    pub result: Reply,
+}
+
+impl Response {
+    #[must_use]
+    pub fn new(id: u64, result: Reply) -> Self {
+        Self {
+            v: VERSION.into(),
+            id,
+            result,
+        }
+    }
+}
+
+/// What the host answers, by operation.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum Reply {
+    Status(Status),
+    /// `code` is the `openagents-connect:` text. It carries a bearer
+    /// capability: show it only in the code window.
+    Invite {
+        invitation: String,
+        code: String,
+        expires_at: u64,
+        rights: Vec<String>,
+    },
+    /// How many invitations were cancelled.
+    Cancelled {
+        count: u32,
+    },
+    Devices {
+        devices: Vec<Device>,
+    },
+    /// The device's grant epoch after revocation.
+    Revoked {
+        device: String,
+        epoch: u64,
+    },
+    Autostart {
+        policy: Autostart,
+    },
+    Projects {
+        projects: Vec<Project>,
+    },
+    /// The operation was refused.
+    Refused {
+        code: String,
+        message: String,
+    },
+}
+
+/// The host at a glance.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Status {
+    /// Host Nostr key, lowercase hex.
+    pub host: String,
+    /// Host iroh endpoint ID, lowercase hex.
+    pub endpoint: String,
+    /// The computer's display name.
+    pub label: String,
+    /// Whether the endpoint reaches its relay or has a direct address.
+    pub online: bool,
+    pub relay: Option<String>,
+    pub devices: u32,
+    pub outstanding_invitations: u32,
+    /// The host build, for display.
+    pub version: String,
+}
+
+/// An enrolled device.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Device {
+    /// Device Nostr key, lowercase hex.
+    pub device: String,
+    pub label: String,
+    pub rights: Vec<String>,
+    pub grant: String,
+    pub epoch: u64,
+    pub enrolled_at: u64,
+    pub last_seen: Option<u64>,
+    pub revoked: bool,
+}
+
+/// The auto-start policy as the desktop app edits it. The host maps it onto
+/// its full policy and refuses what it cannot admit.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Autostart {
+    pub enabled: bool,
+    /// Project labels whose tasks may start on their own.
+    pub projects: Vec<String>,
+    /// Most auto-started tasks at once, 1 to 8.
+    pub max_running: u8,
+}
+
+/// A project the host admits.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Project {
+    pub label: String,
+    pub path: String,
+}
+
+/// Send a request and read its response, on one connection.
+///
+/// # Errors
+/// `unavailable` for a closed socket; `malformed` for a response with
+/// another ID; `unsupported_version` for another version.
+pub async fn call<S: AsyncRead + AsyncWrite + Unpin>(
+    stream: &mut S,
+    request: &Request,
+) -> Result<Reply> {
+    write_message(stream, request, MAX_MESSAGE_BYTES).await?;
+    let response: Response = read_message(stream, MAX_MESSAGE_BYTES)
+        .await?
+        .ok_or_else(|| Error::new(Code::Unavailable, "host closed the control socket"))?;
+    if response.v != VERSION {
+        return fail(Code::UnsupportedVersion, "control response version");
+    }
+    if response.id != request.id {
+        return fail(Code::Malformed, "control response for another request");
+    }
+    Ok(response.result)
+}
+
+/// Read the next request on a host's side. `Ok(None)` when the client
+/// closed.
+///
+/// # Errors
+/// `malformed` or `bounds` for a bad message; `unsupported_version` for
+/// another version.
+pub async fn next_request<S: AsyncRead + Unpin>(stream: &mut S) -> Result<Option<Request>> {
+    let Some(request) = read_message::<_, Request>(stream, MAX_MESSAGE_BYTES).await? else {
+        return Ok(None);
+    };
+    if request.v != VERSION {
+        return fail(Code::UnsupportedVersion, "control request version");
+    }
+    Ok(Some(request))
+}
+
+/// Write a response on a host's side.
+///
+/// # Errors
+/// `unavailable` when the write fails.
+pub async fn respond<S: AsyncWrite + Unpin>(stream: &mut S, response: &Response) -> Result<()> {
+    write_message(stream, response, MAX_MESSAGE_BYTES).await
+}

@@ -1,0 +1,191 @@
+{
+  "cases": [
+    {
+      "code": "openagents-connect:AU1LbNE2EDLKm9KuudkAqk1F2erYCslCM3TEUaclTQdm7UkoxijRwsbq6QM4kFmVYSlZJzpcY_k2NsFGFKyHN9ERERERERERERERERERERERERERERERERERERERERERESIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiAAAAAGtJ0gAAAAAAa0nTLBxodHRwczovL2lyb2gub3BlbmFnZW50cy5jb20vAgTAqAEUuGAG_QAAAAAAAAAAAAAAAAAAILhgClN0dWRpbyBNYWM",
+      "expect": "ok",
+      "name": "studio",
+      "now": 1800000010
+    },
+    {
+      "code": "openagents-connect:AU1LbNE2EDLKm9KuudkAqk1F2erYCslCM3TEUaclTQdm7UkoxijRwsbq6QM4kFmVYSlZJzpcY_k2NsFGFKyHN9ERERERERERERERERERERERERERERERERERERERERERESIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiAAAAAGtJ0gAAAAAAa0nTLAAAAA",
+      "expect": "ok",
+      "name": "bare",
+      "now": 1800000000
+    },
+    {
+      "code": "openagents-connect:AU1LbNE2EDLKm9KuudkAqk1F2erYCslCM3TEUaclTQdm7UkoxijRwsbq6QM4kFmVYSlZJzpcY_k2NsFGFKyHN9ERERERERERERERERERERERERERERERERERERERERERESIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiAAAAAGtJ0gAAAAAAa0nTLIBodHRwczovL3JycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJyci5leGFtcGxlLwgECgAAAbhgBAoAAAK4YQQKAAADuGIECgAABLhjBAoAAAW4ZAQKAAAGuGUECgAAB7hmBAoAAAi4ZzDDqcOpw6nDqcOpw6nDqcOpw6nDqcOpw6nDqcOpw6nDqcOpw6nDqcOpw6nDqcOpw6k",
+      "expect": "ok",
+      "name": "largest",
+      "now": 1800000000
+    },
+    {
+      "code": "openagents-connect:AU1LbNE2EDLKm9KuudkAqk1F2erYCslCM3TEUaclTQdm7UkoxijRwsbq6QM4kFmVYSlZJzpcY_k2NsFGFKyHN9ERERERERERERERERERERERERERERERERERERERERERESIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiAAAAAGtJ0gAAAAAAa0nTLBxodHRwczovL2lyb2gub3BlbmFnZW50cy5jb20vAgTAqAEUuGAG_QAAAAAAAAAAAAAAAAAAILhgClN0dWRpbyBNYWM",
+      "expect": "ok",
+      "name": "issued_within_skew",
+      "now": 1799999940
+    },
+    {
+      "code": "openagents-connect:AU1LbNE2EDLKm9KuudkAqk1F2erYCslCM3TEUaclTQdm7UkoxijRwsbq6QM4kFmVYSlZJzpcY_k2NsFGFKyHN9ERERERERERERERERERERERERERERERERERERERERERESIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiAAAAAGtJ0gAAAAAAa0nTLBxodHRwczovL2lyb2gub3BlbmFnZW50cy5jb20vAgTAqAEUuGAG_QAAAAAAAAAAAAAAAAAAILhgClN0dWRpbyBNYWM",
+      "expect": "expired",
+      "name": "expired_at_expiry",
+      "now": 1800000300
+    },
+    {
+      "code": "openagents-connect:AU1LbNE2EDLKm9KuudkAqk1F2erYCslCM3TEUaclTQdm7UkoxijRwsbq6QM4kFmVYSlZJzpcY_k2NsFGFKyHN9ERERERERERERERERERERERERERERERERERERERERERESIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiAAAAAGtJ0gAAAAAAa0nTLBxodHRwczovL2lyb2gub3BlbmFnZW50cy5jb20vAgTAqAEUuGAG_QAAAAAAAAAAAAAAAAAAILhgClN0dWRpbyBNYWM",
+      "expect": "expired",
+      "name": "issued_in_future",
+      "now": 1799999939
+    },
+    {
+      "code": "openagents-connect:Ak1LbNE2EDLKm9KuudkAqk1F2erYCslCM3TEUaclTQdm7UkoxijRwsbq6QM4kFmVYSlZJzpcY_k2NsFGFKyHN9ERERERERERERERERERERERERERERERERERERERERERESIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiAAAAAGtJ0gAAAAAAa0nTLBxodHRwczovL2lyb2gub3BlbmFnZW50cy5jb20vAgTAqAEUuGAG_QAAAAAAAAAAAAAAAAAAILhgClN0dWRpbyBNYWM",
+      "expect": "unsupported_version",
+      "name": "bad_version",
+      "now": 1800000000
+    },
+    {
+      "code": "openagents-connect:AU1LbNE2EDLKm9KuudkAqk1F2erYCslCM3TEUaclTQdm7UkoxijRwsbq6QM4kFmVYSlZJzpcY_k2NsFGFKyHN9ERERERERERERERERERERERERERERERERERERERERERESIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiAAAAAGtJ0gAAAAAAa0nTLBxodHRwczovL2lyb2gub3BlbmFnZW50cy5jb20vAgTAqAEUuGAG_QAAAAAAAAAAAAAAAAAAILhgClN0dWRpbyBNYWMA",
+      "expect": "malformed",
+      "name": "trailing_bytes",
+      "now": 1800000000
+    },
+    {
+      "code": "openagents-connect:AU1LbNE2EDLKm9KuudkAqk1F2erYCslCM3TEUaclTQdm7UkoxijRwsbq6QM4kFmVYSlZJzpcY_k2NsFGFKyHN9ERERERERERERERERERERERERERERERERERERERERERESIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiAAAAAGtJ0gAAAAAAa0nTLIFodHRwczovL3JycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnIuZXhhbXBsZS8CBMCoARS4YAb9AAAAAAAAAAAAAAAAAAAguGAKU3R1ZGlvIE1hYw",
+      "expect": "bounds",
+      "name": "relay_too_long",
+      "now": 1800000000
+    },
+    {
+      "code": "openagents-connect:AU1LbNE2EDLKm9KuudkAqk1F2erYCslCM3TEUaclTQdm7UkoxijRwsbq6QM4kFmVYSlZJzpcY_k2NsFGFKyHN9ERERERERERERERERERERERERERERERERERERERERERESIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiAAAAAGtJ0gAAAAAAa0nTLBxodHRwczovL2lyb2gub3BlbmFnZW50cy5jb20vAgTAqAEUuGAG_QAAAAAAAAAAAAAAAAAAILhgMWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWE",
+      "expect": "bounds",
+      "name": "label_too_long",
+      "now": 1800000000
+    },
+    {
+      "code": "openagents-connect:AU1LbNE2EDLKm9KuudkAqk1F2erYCslCM3TEUaclTQdm7UkoxijRwsbq6QM4kFmVYSlZJzpcY_k2NsFGFKyHN9ERERERERERERERERERERERERERERERERERERERERERESIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiAAAAAGtJ0gAAAAAAa0nTLBxodHRwczovL2lyb2gub3BlbmFnZW50cy5jb20vCQQKAAABuGAECgAAArhhBAoAAAO4YgQKAAAEuGMECgAABbhkBAoAAAa4ZQQKAAAHuGYECgAACLhnBAoAAGO4wwpTdHVkaW8gTWFj",
+      "expect": "bounds",
+      "name": "too_many_addresses",
+      "now": 1800000000
+    },
+    {
+      "code": "openagents-connect:AU1LbNE2EDLKm9KuudkAqk1F2erYCslCM3TEUaclTQdm7UkoxijRwsbq6QM4kFmVYSlZJzpcY_k2NsFGFKyHN9ERERERERERERERERERERERERERERERERERERERERERESIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiAAAAAGtJ0gAAAAAAa0nTLBxodHRwczovL2lyb2gub3BlbmFnZW50cy5jb20vAQXAqAEUuGAKU3R1ZGlvIE1hYw",
+      "expect": "malformed",
+      "name": "bad_address_family",
+      "now": 1800000000
+    },
+    {
+      "code": "openagents-connect:AU1LbNE2EDLKm9KuudkAqk1F2erYCslCM3TEUaclTQdm7UkoxijRwsbq6QM4kFmVYSlZJzpcY_k2NsFGFKyHN9ERERERERERERERERERERERERERERERERERERERERERESIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiAAAAAGtJ0gAAAAAAa0nTLBxodHRwczovL2lyb2gub3BlbmFnZW50cy5jb20vAwTAqAEUuGAG_QAAAAAAAAAAAAAAAAAAILhgClN0dWRpbyBNYWM",
+      "expect": "malformed",
+      "name": "count_past_the_end",
+      "now": 1800000000
+    },
+    {
+      "code": "openagents-connect:AU1LbNE2EDLKm9KuudkAqk1F2erYCslCM3TEUaclTQdm7UkoxijRwsbq6QM4kFmVYSlZJzpcY_k2NsFGFKyHN9ERERERERERERERERERERERERERERERERERERERERERESIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiAAAAAGtJ0gAAAAAAa0nTLBxodHRwczovL2lyb2gub3BlbmFnZW50cy5jb20vAQTAqAEUAAAKU3R1ZGlvIE1hYw",
+      "expect": "malformed",
+      "name": "zero_port",
+      "now": 1800000000
+    },
+    {
+      "code": "openagents-connect:AU1LbNE2EDLKm9KuudkAqk1F2erYCslCM3TEUaclTQdm7UkoxijRwsbq6QM4kFmVYSlZJzpcY_k2NsFGFKyHN9ERERERERERERERERERERERERERERERERERERERERERESIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiAAAAAGtJ0gAAAAAAa0nTLBxodHRwczovL2lyb2gub3BlbmFnZW50cy5jb20vAQQAAAAAuGAKU3R1ZGlvIE1hYw",
+      "expect": "malformed",
+      "name": "unspecified_address",
+      "now": 1800000000
+    },
+    {
+      "code": "openagents-connect:AU1LbNE2EDLKm9KuudkAqk1F2erYCslCM3TEUaclTQdm7UkoxijRwsbq6QM4kFmVYSlZJzpcY_k2NsFGFKyHN9ERERERERERERERERERERERERERERERERERERERERERESIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiAAAAAGtJ0gAAAAAAa0nTLBxodHRwczovL2lyb2gub3BlbmFnZW50cy5jb20vAgTAqAEUuGAEwKgBFLhgClN0dWRpbyBNYWM",
+      "expect": "malformed",
+      "name": "duplicate_address",
+      "now": 1800000000
+    },
+    {
+      "code": "openagents-connect:AU1LbNE2EDLKm9KuudkAqk1F2erYCslCM3TEUaclTQdm7UkoxijRwsbq6QM4kFmVYSlZJzpcY_k2NsFGFKyHN9ERERERERERERERERERERERERERERERERERERERERERESIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiAAAAAGtJ0gAAAAAAa0nTLBtodHRwOi8vaXJvaC5vcGVuYWdlbnRzLmNvbS8CBMCoARS4YAb9AAAAAAAAAAAAAAAAAAAguGAKU3R1ZGlvIE1hYw",
+      "expect": "malformed",
+      "name": "relay_not_https",
+      "now": 1800000000
+    },
+    {
+      "code": "openagents-connect:AU1LbNE2EDLKm9KuudkAqk1F2erYCslCM3TEUaclTQdm7UkoxijRwsbq6QM4kFmVYSlZJzpcY_k2NsFGFKyHN9ERERERERERERERERERERERERERERERERERERERERERESIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiAAAAAGtJ0gAAAAAAa0nTLBtodHRwczovL2lyb2gub3BlbmFnZW50cy5jb20CBMCoARS4YAb9AAAAAAAAAAAAAAAAAAAguGAKU3R1ZGlvIE1hYw",
+      "expect": "malformed",
+      "name": "relay_not_canonical",
+      "now": 1800000000
+    },
+    {
+      "code": "openagents-connect:AU1LbNE2EDLKm9KuudkAqk1F2erYCslCM3TEUaclTQdm7UkoxijRwsbq6QM4kFmVYSlZJzpcY_k2NsFGFKyHN9ERERERERERERERERERERERERERERERERERERERERERESIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiAAAAAGtJ0gAAAAAAa0nTLCRodHRwczovL2lyb2gub3BlbmFnZW50cy5jb20vP3Rva2VuPXgCBMCoARS4YAb9AAAAAAAAAAAAAAAAAAAguGAKU3R1ZGlvIE1hYw",
+      "expect": "malformed",
+      "name": "relay_with_query",
+      "now": 1800000000
+    },
+    {
+      "code": "openagents-connect:AU1LbNE2EDLKm9KuudkAqk1F2erYCslCM3TEUaclTQdm7UkoxijRwsbq6QM4kFmVYSlZJzpcY_k2NsFGFKyHN9ERERERERERERERERERERERERERERERERERERERERERESIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiAAAAAGtJ0gAAAAAAa0nTLAL__gIEwKgBFLhgBv0AAAAAAAAAAAAAAAAAACC4YApTdHVkaW8gTWFj",
+      "expect": "malformed",
+      "name": "relay_not_utf8",
+      "now": 1800000000
+    },
+    {
+      "code": "openagents-connect:AU1LbNE2EDLKm9KuudkAqk1F2erYCslCM3TEUaclTQdm7UkoxijRwsbq6QM4kFmVYSlZJzpcY_k2NsFGFKyHN9ERERERERERERERERERERERERERERERERERERERERERESIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiAAAAAGtJ0gAAAAAAa0nTLBxodHRwczovL2lyb2gub3BlbmFnZW50cy5jb20vAgTAqAEUuGAG_QAAAAAAAAAAAAAAAAAAILhgClN0dWRpbwpNYWM",
+      "expect": "malformed",
+      "name": "label_control_character",
+      "now": 1800000000
+    },
+    {
+      "code": "openagents-connect:AU1LbNE2EDLKm9KuudkAqk1F2erYCslCM3TEUaclTQdm7UkoxijRwsbq6QM4kFmVYSlZJzpcY_k2NsFGFKyHN9ERERERERERERERERERERERERERERERERERERERERERESIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiAAAAAGtJ0gAAAAAAa0nTLBxodHRwczovL2lyb2gub3BlbmFnZW50cy5jb20vAgTAqAEUuGAG_QAAAAAAAAAAAAAAAAAAILhgAcM",
+      "expect": "malformed",
+      "name": "label_not_utf8",
+      "now": 1800000000
+    },
+    {
+      "code": "openagents-connect:AU1LbNE2EDLKm9KuudkAqk1F2erYCslCM3TEUaclTQdm7UkoxijRwsbq6QM4kFmVYSlZJzpcY_k2NsFGFKyHN9ERERERERERERERERERERERERERERERERERERERERERESIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiAAAAAGtJ0gAAAAAAa0nTLRxodHRwczovL2lyb2gub3BlbmFnZW50cy5jb20vAgTAqAEUuGAG_QAAAAAAAAAAAAAAAAAAILhgClN0dWRpbyBNYWM",
+      "expect": "malformed",
+      "name": "lifetime_not_300",
+      "now": 1800000000
+    },
+    {
+      "code": "openagents-connect:Af__________________________________________7UkoxijRwsbq6QM4kFmVYSlZJzpcY_k2NsFGFKyHN9ERERERERERERERERERERERERERERERERERERERERERESIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiAAAAAGtJ0gAAAAAAa0nTLBxodHRwczovL2lyb2gub3BlbmFnZW50cy5jb20vAgTAqAEUuGAG_QAAAAAAAAAAAAAAAAAAILhgClN0dWRpbyBNYWM",
+      "expect": "malformed",
+      "name": "host_not_a_key",
+      "now": 1800000000
+    },
+    {
+      "code": "openagents-connect:AU1LbNE2EDLKm9KuudkAqk1F2erYCslCM3TEUaclTQdmAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIRERERERERERERERERERERERERERERERERERERERERESIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiAAAAAGtJ0gAAAAAAa0nTLBxodHRwczovL2lyb2gub3BlbmFnZW50cy5jb20vAgTAqAEUuGAG_QAAAAAAAAAAAAAAAAAAILhgClN0dWRpbyBNYWM",
+      "expect": "malformed",
+      "name": "endpoint_not_a_key",
+      "now": 1800000000
+    },
+    {
+      "code": "openagents-connect:AU1LbNE2EDLKm9KuudkAqk1F2erYCslCM3TEUaclTQdm7UkoxijRwsbq6QM4kFmVYSlZJzpcY_k2NsFGFKyHN9EREREREREREREREREREREREREREREREREREREREREREQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAGtJ0gAAAAAAa0nTLBxodHRwczovL2lyb2gub3BlbmFnZW50cy5jb20vAgTAqAEUuGAG_QAAAAAAAAAAAAAAAAAAILhgClN0dWRpbyBNYWM",
+      "expect": "malformed",
+      "name": "zero_capability",
+      "now": 1800000000
+    },
+    {
+      "code": "openagents-connect:AU1LbNE2EDLKm9KuudkAqk1F2erYCslCM3TEUaclTQdm7UkoxijRwsbq6QM4kFmVYSlZJzpcY_k2NsFGFKyHN9ERERERERERERERERERERERERERERERERERERERERERESIiIg",
+      "expect": "malformed",
+      "name": "truncated",
+      "now": 1800000000
+    },
+    {
+      "code": "coder-host:AU1LbNE2EDLKm9KuudkAqk1F2erYCslCM3TEUaclTQdm7UkoxijRwsbq6QM4kFmVYSlZJzpcY_k2NsFGFKyHN9ERERERERERERERERERERERERERERERERERERERERERESIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiAAAAAGtJ0gAAAAAAa0nTLBxodHRwczovL2lyb2gub3BlbmFnZW50cy5jb20vAgTAqAEUuGAG_QAAAAAAAAAAAAAAAAAAILhgClN0dWRpbyBNYWM",
+      "expect": "malformed",
+      "name": "wrong_prefix",
+      "now": 1800000000
+    },
+    {
+      "code": "openagents-connect:AU1LbNE2EDLKm9KuudkAqk1F2erYCslCM3TEUaclTQdm7UkoxijRwsbq6QM4kFmVYSlZJzpcY_k2NsFGFKyHN9ERERERERERERERERERERERERERERERERERERERERERESIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiAAAAAGtJ0gAAAAAAa0nTLBxodHRwczovL2lyb2gub3BlbmFnZW50cy5jb20vAgTAqAEUuGAG_QAAAAAAAAAAAAAAAAAAILhgClN0dWRpbyBNYWM=",
+      "expect": "malformed",
+      "name": "padded",
+      "now": 1800000000
+    },
+    {
+      "code": "openagents-connect:AU1LbNE2EDLKm9KuudkAqk1F2erYCslCM3TEUaclTQdm7UkoxijRwsbq6QM4kFmVYSlZJzpcY/k2NsFGFKyHN9ERERERERERERERERERERERERERERERERERERERERERESIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiAAAAAGtJ0gAAAAAAa0nTLBxodHRwczovL2lyb2gub3BlbmFnZW50cy5jb20vAgTAqAEUuGAG/QAAAAAAAAAAAAAAAAAAILhgClN0dWRpbyBNYWM",
+      "expect": "malformed",
+      "name": "standard_alphabet",
+      "now": 1800000000
+    },
+    {
+      "code": "openagents-connect:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "expect": "bounds",
+      "name": "text_too_long",
+      "now": 1800000000
+    }
+  ],
+  "description": "openagents-connect: payload vectors. Each case parses at `now` to `ok` or the refusal code in `expect`. Keys are test-only: host Nostr secret 0x02 repeated, iroh secret 0x03 repeated."
+}

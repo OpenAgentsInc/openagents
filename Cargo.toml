@@ -18,6 +18,12 @@ exclude = [
 ]
 resolver = "2"
 
+[workspace.dependencies]
+# Pinned exactly; reviewed in docs/dependencies.md (iroh). Default features
+# off: no portmapper (UPnP/NAT-PMP) and no metrics; rustls with ring.
+iroh = { version = "=1.3.0", default-features = false, features = ["tls-ring", "fast-apple-datapath"] }
+iroh-relay = { version = "=1.3.0", default-features = false, features = ["tls-ring"] }
+
 [workspace.package]
 version = "0.1.0"
 publish = false

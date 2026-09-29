@@ -1,0 +1,24 @@
+[package]
+name = "openagents-connect"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Connect a phone to a computer over iroh: the endpoint, the enroll and reach ALPNs, the openagents-connect: QR payload, and the local control protocol."
+
+[dependencies]
+base64 = "0.22"
+coder-reach = { path = "../coder-reach" }
+iroh = { workspace = true }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.11.0"
+tokio = { version = "1", features = ["io-util", "sync", "time", "rt"] }
+
+[dev-dependencies]
+secp256k1 = { version = "0.31.1", features = ["rand"] }
+tempfile = "3"
+tokio = { version = "1", features = ["io-util", "macros", "rt-multi-thread", "sync", "time"] }
+
+[lints]
+workspace = true
