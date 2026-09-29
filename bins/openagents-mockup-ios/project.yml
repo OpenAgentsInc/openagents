@@ -1,0 +1,47 @@
+# OpenAgents Mockup: a screens-only SwiftUI app for design work.
+# No Rust, no network, and no code shared with bins/openagents-ios.
+# Regenerate the Xcode project with `xcodegen generate` in this folder
+# (build.sh does it for you).
+name: OpenAgentsMockup
+options:
+  bundleIdPrefix: com.openagents
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+targets:
+  OpenAgentsMockup:
+    type: application
+    platform: iOS
+    sources:
+      - path: App
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.openagents.mockup
+        PRODUCT_NAME: OpenAgentsMockup
+        INFOPLIST_KEY_CFBundleDisplayName: OpenAgents Mockup
+        SWIFT_VERSION: "5.10"
+        TARGETED_DEVICE_FAMILY: "1"
+        DEVELOPMENT_TEAM: HQWSG26L43
+        CODE_SIGN_STYLE: Manual
+        "CODE_SIGN_IDENTITY[sdk=iphoneos*]": "Apple Distribution"
+        "PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]": "OpenAgents Mockup App Store"
+        CURRENT_PROJECT_VERSION: 1
+        MARKETING_VERSION: 0.1.0
+        GENERATE_INFOPLIST_FILE: true
+        INFOPLIST_KEY_UILaunchScreen_Generation: true
+        INFOPLIST_KEY_UIStatusBarStyle: UIStatusBarStyleLightContent
+        INFOPLIST_KEY_UIUserInterfaceStyle: Dark
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
+        INFOPLIST_KEY_ITSAppUsesNonExemptEncryption: false
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.developer-tools
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        "EXCLUDED_ARCHS[sdk=iphonesimulator*]": x86_64
+schemes:
+  OpenAgentsMockup:
+    build:
+      targets:
+        OpenAgentsMockup: all
+    run:
+      config: Debug
+    archive:
+      config: Release

@@ -1,0 +1,12 @@
+# build.sh shots: file name, Screen index id (--screen), seconds to wait.
+SCR-01-main-menu            SCR-01.normal          2
+SCR-02-choose-agent         SCR-02.normal          2
+CIN-01-S04-gym              CIN-01.S04             3
+CIN-01-S08-end-card         CIN-01.S08             3
+SCR-03-gym-first-run        SCR-03.firstRun        2
+SCR-04-training             SCR-04.running         6
+SCR-05-result               SCR-05.better          4
+SCR-06-level-up             SCR-06.withTitle       3
+SCR-15-new-chat             SCR-15.firstTime       2
+SCR-17-conversation         SCR-17.prepared        3
+SCR-19-coder-on-computer    SCR-19.asked           2
