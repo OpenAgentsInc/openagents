@@ -167,7 +167,9 @@ pub(crate) fn menu(gym: &mut Gym, app_build: Option<&str>) -> MenuView {
         bar_max: standing.next_at.saturating_sub(standing.level_at).max(1),
     };
     let next = match gym.new_credit() {
-        Some(xp) => format!("Your work was checked. +{xp} XP."),
+        // New XP can come from a check of your result, your own check
+        // confirmed, or an adoption: say it earned, not how.
+        Some(xp) => format!("Your work earned XP. +{xp} XP."),
         None => next_step(gym).to_owned(),
     };
     let primary = gym.actions.button(

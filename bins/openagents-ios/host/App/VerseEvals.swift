@@ -71,7 +71,7 @@ struct VerseEvalsPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Label("Evals", systemImage: "checklist").font(.headline)
+                Label("Results", systemImage: "checklist").font(.headline)
                 Spacer()
                 Button("Back to world", systemImage: "xmark", action: close)
                     .labelStyle(.iconOnly).frame(width: 44, height: 44)
@@ -94,7 +94,7 @@ struct VerseEvalsPanel: View {
         VStack(alignment: .leading, spacing: 14) {
             notes(view)
             Divider().overlay(.white.opacity(0.3))
-            Text("Published eval results").font(.headline)
+            Text("Published results").font(.headline)
             if view.state != "ready" {
                 ProgressView(view.state == "connecting" ? "Connecting to \(view.relay)…" : "Reading \(view.relay)…")
                     .font(.caption)
@@ -131,7 +131,7 @@ struct VerseEvalsPanel: View {
             Text(row.headline).font(.callout)
             HStack(spacing: 6) {
                 Text(row.mine ? "You (\(row.trainer_tag))" : row.trainer_tag).font(.caption.monospaced())
-                if row.hosted { Text("· hosted run").font(.caption) }
+                if row.hosted { Text("· run on our computers").font(.caption) }
                 if row.credit_xp > 0 { Text("· \(row.credit_xp) XP credit").font(.caption) }
             }.foregroundStyle(.secondary)
             if !row.checks.isEmpty { Text(row.checks).font(.caption) }

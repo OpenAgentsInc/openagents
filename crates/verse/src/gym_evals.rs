@@ -41,7 +41,7 @@ pub const MAX_ROWS: usize = 50;
 pub const MAX_GROUPS: usize = 50;
 
 /// What the board says under its list, in plain words.
-pub const NOTE: &str = "Results published to the relay and checked on this phone. Each test set \
+pub const NOTE: &str = "Results added to the Gym and checked on this phone. Each test set \
 is compared only with itself. Credit is XP from checks and adoptions; it can't be spent.";
 
 /// A NIP-EXT release as the board names it: the package's slug and its

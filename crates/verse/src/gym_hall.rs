@@ -43,7 +43,7 @@ const MAX_FETCH: usize = 1_000;
 /// What the notes section says about itself.
 pub const NOTES_NOTE: &str = "With Compare notes on, our agent trades short notes with other \
 trainers' agents here about results you both published: the tool, the test set, and what \
-changed. It shares only published results, never your chats, files, or keys, and it speaks at \
+changed. It shares only published results, never your chats or files, and it speaks at \
 most four times an hour.";
 
 /// Where the hall reads and who speaks.
@@ -314,7 +314,7 @@ impl Hall {
             state,
             relay: host(&self.config.relay).to_owned(),
             board: snapshot.board,
-            empty: "No eval results are published yet. Test a tool in chat and publish the result; it shows here.",
+            empty: "No results are published yet. Test a tool in chat and add the result to the Gym; it shows here.",
             note: gym_evals::NOTE,
             notes_on: self.opted_in,
             notes: snapshot.notes,

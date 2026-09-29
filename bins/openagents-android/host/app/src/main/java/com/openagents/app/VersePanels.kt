@@ -151,7 +151,7 @@ class VersePanels(private val context: Context, private val world: VerseSurface)
             if (key == mounted) return
             mount(key) { gym.build(board) }
         } else if (open == "evals") {
-            title.text = "Evals"; close.tag = "evals-close"; headerBack.visibility = View.GONE
+            title.text = "Results"; close.tag = "evals-close"; headerBack.visibility = View.GONE
             val key = "evals:${evalsView?.toString()?.hashCode()}"
             if (key == mounted) return
             mount(key) { evals.build(evalsView) }

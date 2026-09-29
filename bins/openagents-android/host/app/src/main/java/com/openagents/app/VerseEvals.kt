@@ -49,7 +49,7 @@ internal class EvalsPanel(private val context: Context, private val world: Verse
             }, 6)
         }
         addDivider(12)
-        add(context.label("Published eval results", 16f, bold = true), 10)
+        add(context.label("Published results", 16f, bold = true), 10)
         val state = view.optString("state")
         if (state != "ready") add(context.label(
             if (state == "connecting") "Connecting to ${view.optString("relay")}…" else "Reading ${view.optString("relay")}…",
@@ -80,7 +80,7 @@ internal class EvalsPanel(private val context: Context, private val world: Verse
         val who = if (row.optBoolean("mine")) "You (${row.optString("trainer_tag")})" else row.optString("trainer_tag")
         val extra = buildList {
             add(who)
-            if (row.optBoolean("hosted")) add("hosted run")
+            if (row.optBoolean("hosted")) add("run on our computers")
             if (row.optLong("credit_xp") > 0) add("${row.optLong("credit_xp")} XP credit")
         }.joinToString(" · ")
         add(context.label(extra, 12f, Palette.SECONDARY, mono = true))
