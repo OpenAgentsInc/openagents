@@ -54,8 +54,8 @@ Archived from `375cef66ef` (clean; `project.yml` bumped to 25 in the same
 commit as this record) with `bins/openagents-ios/build.sh archive`; the
 archive's Info.plist says `com.openagents.app` 1.0.0 (25). Uploaded with
 `build.sh upload` between 18:34 and 18:35 UTC ("Upload succeeded",
-"EXPORT SUCCEEDED"). App Store Connect processing state: pending at the time of this
-commit; updated once the build shows VALID.
+"EXPORT SUCCEEDED"). App Store Connect (filtered by pre-release version 1.0.0 and build 25)
+shows it uploaded at 2026-09-29T11:35:58-07:00, processing state `VALID`.
 
 ## Not in this build
 
