@@ -35,6 +35,8 @@ class MobileBridge(private val context: Context, private val computersFixture: B
 
     /** The latest app packet (`openagents.mobile.v1`). */
     var packet: JSONObject? = null; private set
+    /** The Wi-Fi multicast lock nearby pairing needs while it listens. */
+    private val nearby = NearbyMulticast(context)
     /** The open terminal's latest view. */
     var terminalView: JSONObject? = null; private set
     var failure: String? = null; private set
@@ -317,6 +319,7 @@ class MobileBridge(private val context: Context, private val computersFixture: B
 
     fun dispose() {
         disposed = true
+        nearby.hold(false)
         worker.execute { if (handle != 0L) { runCatching { OpenAgentsNative.destroy(handle) }; handle = 0 } }
     }
 
@@ -349,6 +352,7 @@ class MobileBridge(private val context: Context, private val computersFixture: B
             }
             packet = next
             failure = null
+            nearby.hold(next.optBoolean("nearby_listening"))
             next.objectOrNull("gym")?.textOrNull("share")?.let { gymShare = it }
             when (val go = next.textOrNull("coder_go")) {
                 "computers" -> computersRequested += 1

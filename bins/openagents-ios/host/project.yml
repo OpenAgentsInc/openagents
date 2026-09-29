@@ -66,6 +66,9 @@ targets:
         MARKETING_VERSION: 1.0.0
         GENERATE_INFOPLIST_FILE: false
         INFOPLIST_FILE: App/Info.plist
+        # Multicast for nearby pairing (mDNS on _openagents._udp). The
+        # OpenAgents App Store profile carries the approved entitlement.
+        CODE_SIGN_ENTITLEMENTS: Entitlements/OpenAgents.entitlements
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         SWIFT_OBJC_BRIDGING_HEADER: App/OpenAgentsMobile.h
         OTHER_LDFLAGS: '$(inherited) "$(OPENAGENTS_RUST_LIBRARY_DIR)/libopenagents_mobile.a" -framework Metal -liconv'

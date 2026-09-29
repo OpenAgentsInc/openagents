@@ -10,10 +10,16 @@ description = "Connect a phone to a computer over iroh: the endpoint, the enroll
 base64 = "0.22"
 coder-reach = { path = "../coder-reach" }
 iroh = { workspace = true }
+# Nearby approval: the mDNS advertisement and browser.
+iroh-mdns-address-lookup = { workspace = true }
+# The nearby browser's event stream.
+futures-util = "0.3"
+# Nearby nonces.
+getrandom = "0.3"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.11.0"
-tokio = { version = "1", features = ["io-util", "sync", "time", "rt"] }
+tokio = { version = "1", features = ["io-util", "macros", "sync", "time", "rt"] }
 
 [dev-dependencies]
 secp256k1 = { version = "0.31.1", features = ["rand"] }

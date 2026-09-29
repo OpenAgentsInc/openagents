@@ -19,6 +19,8 @@
 //! - [`control`]: the local control protocol the desktop app and
 //!   `openagents connect` speak to the host over a same-user socket.
 //! - [`keys`]: where secret keys live, behind the [`keys::KeySource`] trait.
+//! - [`nearby`]: nearby approval: the mDNS advertisement and browser, and
+//!   the six-digit confirmation-code exchange on the enroll ALPN.
 //!
 //! iroh is transport only. An `EndpointId` proves which iroh key answered;
 //! it never authorizes anything. Access is decided by the NIP-REACH
@@ -33,6 +35,7 @@ pub mod endpoint;
 pub mod enroll;
 pub mod keys;
 pub mod ledger;
+pub mod nearby;
 pub mod reach;
 pub mod stream;
 pub mod wire;

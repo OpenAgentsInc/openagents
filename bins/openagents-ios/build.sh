@@ -85,7 +85,9 @@ if [[ -n "${OPENAGENTS_IOS_BUILD_NUMBER:-}" ]]; then
 fi
 
 if [[ "$command" == bench ]]; then
+  # The bench bundle ID has no multicast approval, so it signs without it.
   xcodebuild "${args[@]}" PRODUCT_BUNDLE_IDENTIFIER=com.openagents.app.bench CODE_SIGN_STYLE=Automatic \
+    CODE_SIGN_ENTITLEMENTS= \
     "CODE_SIGN_IDENTITY=Apple Development" PROVISIONING_PROFILE_SPECIFIER= \
     'SWIFT_ACTIVE_COMPILATION_CONDITIONS=$(inherited) RUST_NATIVE_BENCH' -allowProvisioningUpdates build
   xcrun devicectl device install app --device "$OPENAGENTS_IOS_DEVICE_ID" \

@@ -199,6 +199,18 @@ sources under `openagents-wallet`'s `ldk-node`, the `bip21`, `hex_lit`,
 `wasmtime`, and a wildcard in `verse-ruins`. The run with iroh reports
 exactly those and nothing else.
 
+Nearby approval (issue
+[#9975](https://github.com/OpenAgentsInc/openagents/issues/9975)) adds
+`iroh-mdns-address-lookup`, pinned at `=0.5.0` as a workspace dependency
+with default features off: 0.5.0 (2026-08-18) is the newest release at least
+seven days old, and it takes `iroh` `^1`. It brings four registry packages:
+`swarm-discovery` 0.6.3 (Apache-2.0; its own UDP multicast socket on
+224.0.0.251 and ff02::fb, port 5353), `acto` 0.8.2, `smol_str` 0.1.24, and a
+second `hickory-proto` (0.26.3), all MIT or Apache-2.0. `cargo deny check`
+reports no new finding for them. The advertisement carries only the
+`EndpointId`, IP addresses, and a display label
+(`openagents_connect::nearby::advertised`); relay URLs are dropped.
+
 `crates/openagents-mobile` is its own workspace and lockfile; adding
 `openagents-connect` there (issue #9971) needs the same review of that
 graph.

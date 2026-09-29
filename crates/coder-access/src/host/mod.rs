@@ -10,8 +10,10 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 mod enroll;
+mod nearby;
 mod serve;
 pub use enroll::{EnrollmentStatus, IssuedInvitation, PendingEnrollment};
+pub use nearby::is_connect_code_rights;
 pub use serve::{serve, serve_once};
 
 const STORE: &str = "access";

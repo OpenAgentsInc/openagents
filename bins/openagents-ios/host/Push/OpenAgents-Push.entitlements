@@ -5,10 +5,13 @@
   builds keep signing with profiles that lack Push Notifications. Build with
   OPENAGENTS_IOS_PUSH=development or production (bins/openagents-ios/README.md)
   only after Push Notifications is on for com.openagents.app and the profile
-  in use was regenerated.
+  in use was regenerated. It keeps the multicast entitlement of the default
+  Entitlements/OpenAgents.entitlements, which it replaces.
 -->
 <plist version="1.0">
 <dict>
+	<key>com.apple.developer.networking.multicast</key>
+	<true/>
 	<key>aps-environment</key>
 	<string>$(OPENAGENTS_APS_ENVIRONMENT)</string>
 </dict>

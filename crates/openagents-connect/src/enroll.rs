@@ -18,6 +18,7 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::{mpsc, oneshot};
 
 use crate::endpoint::ConnectEndpoint;
+use crate::nearby::{NearbyCall, NearbyRequestMessage};
 use crate::stream::IrohStream;
 use crate::wire::{read_message, write_message};
 use crate::{Code, ENROLL_ALPN, Error, Result, fail};
@@ -127,15 +128,27 @@ pub struct EnrollCall {
 
 /// A router handler for [`ENROLL_ALPN`]: it reads one request per
 /// connection, hands it to the host as an [`EnrollCall`], and writes the
-/// answer back.
+/// answer back. With [`Self::with_nearby`], a first message whose `v` is
+/// the nearby request goes to the host as a [`NearbyCall`] instead.
 pub struct EnrollProtocol {
     calls: mpsc::Sender<EnrollCall>,
+    nearby: Option<mpsc::Sender<NearbyCall>>,
 }
 
 impl EnrollProtocol {
     #[must_use]
     pub fn new(calls: mpsc::Sender<EnrollCall>) -> Self {
-        Self { calls }
+        Self {
+            calls,
+            nearby: None,
+        }
+    }
+
+    /// Also serve nearby approval on this ALPN (NIP-HOST).
+    #[must_use]
+    pub fn with_nearby(mut self, nearby: mpsc::Sender<NearbyCall>) -> Self {
+        self.nearby = Some(nearby);
+        self
     }
 }
 
@@ -151,13 +164,28 @@ impl ProtocolHandler for EnrollProtocol {
         connection: iroh::endpoint::Connection,
     ) -> std::result::Result<(), AcceptError> {
         let remote = connection.remote_id();
-        let answer = tokio::time::timeout(TIMEOUT, async {
+        let first = tokio::time::timeout(TIMEOUT, async {
             let mut stream = IrohStream::accept(connection)
                 .await
                 .map_err(|_| Error::new(Code::Unavailable, "no stream arrived"))?;
-            let request: EnrollRequest = read_message(&mut stream, MAX_MESSAGE_BYTES)
+            let first: serde_json::Value = read_message(&mut stream, MAX_MESSAGE_BYTES)
                 .await?
                 .ok_or_else(|| Error::new(Code::Malformed, "no request"))?;
+            Ok((stream, first))
+        })
+        .await
+        .unwrap_or_else(|_| fail(Code::Unavailable, "enrollment timed out"));
+        let (mut stream, first) = first.map_err(AcceptError::from_err)?;
+        if let Some(nearby) = &self.nearby
+            && first.get("v").and_then(serde_json::Value::as_str) == Some(crate::nearby::REQUEST)
+        {
+            return serve_nearby(nearby, remote, first, stream)
+                .await
+                .map_err(AcceptError::from_err);
+        }
+        let answer = tokio::time::timeout(TIMEOUT, async {
+            let request: EnrollRequest = serde_json::from_value(first)
+                .map_err(|_| Error::new(Code::Malformed, "message is not the expected JSON"))?;
             if request.v != REQUEST {
                 return fail(Code::UnsupportedVersion, "enroll request version");
             }
@@ -179,4 +207,28 @@ impl ProtocolHandler for EnrollProtocol {
         .unwrap_or_else(|_| fail(Code::Unavailable, "enrollment timed out"));
         answer.map_err(AcceptError::from_err)
     }
+}
+
+/// Hands a nearby request to the host and keeps the connection open until
+/// the host finishes with it.
+async fn serve_nearby(
+    nearby: &mpsc::Sender<NearbyCall>,
+    remote: EndpointId,
+    first: serde_json::Value,
+    stream: IrohStream,
+) -> Result<()> {
+    let request = NearbyRequestMessage::from_value(first)
+        .map_err(|_| Error::new(Code::Malformed, "nearby request"))?;
+    let (done, finished) = oneshot::channel();
+    nearby
+        .send(NearbyCall {
+            remote,
+            request,
+            stream,
+            done,
+        })
+        .await
+        .map_err(|_| Error::new(Code::Unavailable, "host stopped taking nearby requests"))?;
+    let _ = tokio::time::timeout(crate::nearby::SESSION_LIMIT, finished).await;
+    Ok(())
 }

@@ -96,6 +96,15 @@ pub enum Op {
     ProjectAdd { path: String },
     /// Stop admitting a project.
     ProjectRemove { label: String },
+    /// The nearby request waiting for a click (`DSK-04`), if any.
+    NearbyPending {},
+    /// Answer the nearby request `id`: **Connect** (with the terminal
+    /// checkbox) or **Don't connect**.
+    NearbyDecide {
+        id: u64,
+        connect: bool,
+        terminal: bool,
+    },
 }
 
 /// One response.
@@ -149,6 +158,11 @@ pub enum Reply {
     Projects {
         projects: Vec<Project>,
     },
+    /// The nearby request waiting for a click, after `nearby_pending` or
+    /// `nearby_decide`.
+    Nearby {
+        pending: Option<NearbyPrompt>,
+    },
     /// The operation was refused.
     Refused {
         code: String,
@@ -200,6 +214,18 @@ pub struct Autostart {
     pub projects: Vec<String>,
     /// Most auto-started tasks at once, 1 to 8.
     pub max_running: u8,
+}
+
+/// A phone nearby that wants to connect (`DSK-04`).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NearbyPrompt {
+    /// Answers this request in `nearby_decide`.
+    pub id: u64,
+    /// The phone's label; it chose it, so it is a name, never an identity.
+    pub label: String,
+    /// The six-digit confirmation code, digits only.
+    pub code: String,
 }
 
 /// A project the host admits.

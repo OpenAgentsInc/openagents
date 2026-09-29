@@ -22,6 +22,12 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Scan the invitation shown on your computer to add it.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Find and connect to your computers on this Wi-Fi.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_openagents._udp</string>
+	</array>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Confirm larger payments your agents ask you to approve.</string>
 	<key>OpenAgentsPushAppProfile</key>
