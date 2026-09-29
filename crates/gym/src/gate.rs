@@ -952,6 +952,14 @@ pub struct ExtEvalRule {
     /// How many spreads an improvement has to clear before the gate calls
     /// it a change rather than the agent's own variation.
     pub spread_multiple: Bound,
+    /// How much more cost or time per attempt, relative to the baseline,
+    /// still counts as not materially worse. Absent in `ext-eval-v1`, which
+    /// keeps an extension that improves the mean score, the cost, *or* the
+    /// time; present from `ext-eval-v2`, which keeps one only when it passes
+    /// more cases and its score gain clears the spread, and reads cost and
+    /// time only as a ceiling on how much worse they may get.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_increase: Option<Bound>,
     /// The measurement that would complete this rule, when one is missing.
     #[serde(default, deserialize_with = "pending_field")]
     pub pending_measurement: Option<Pending>,
@@ -1063,6 +1071,7 @@ impl Rule {
             Self::ExtEval(rule) => RuleIdentity::ExtEval(ExtEvalRuleIdentity {
                 min_runs: rule.min_runs.identity(),
                 spread_multiple: rule.spread_multiple.identity(),
+                max_increase: rule.max_increase.as_ref().map(Bound::identity),
                 pending_measurement: rule.pending_measurement.as_ref().map(Pending::identity),
             }),
         }
@@ -1302,6 +1311,9 @@ impl Gate {
             Rule::ExtEval(rule) => {
                 rule.min_runs.validate(&self.id, "min_runs")?;
                 rule.spread_multiple.validate(&self.id, "spread_multiple")?;
+                if let Some(bound) = &rule.max_increase {
+                    bound.validate(&self.id, "max_increase")?;
+                }
             }
         }
         if let Some(pending) = self.rule.pending_measurement() {
@@ -1734,6 +1746,10 @@ enum RuleIdentity<'a> {
 struct ExtEvalRuleIdentity<'a> {
     min_runs: BoundIdentity<'a>,
     spread_multiple: BoundIdentity<'a>,
+    /// Written only when the rule carries it, so `ext-eval-v1` projects
+    /// exactly as it did before the field existed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    max_increase: Option<BoundIdentity<'a>>,
     pending_measurement: Option<PendingIdentity<'a>>,
 }
 
@@ -2344,7 +2360,13 @@ fn judge_ext_eval(rule: &ExtEvalRule, comparison: &ExtEvalComparison) -> Vec<Cri
     if let Some(reason) = blocked {
         criteria.push(not_judged(PASSES.into(), 1, &reason));
         criteria.push(not_judged(KEPT.into(), 1, &reason));
-        criteria.push(not_judged(IMPROVES.into(), 2, &reason));
+        if rule.max_increase.is_some() {
+            for name in V2_BETTER {
+                criteria.push(not_judged(name.into(), 2, &reason));
+            }
+        } else {
+            criteria.push(not_judged(IMPROVES.into(), 2, &reason));
+        }
         return criteria;
     }
 
@@ -2379,7 +2401,111 @@ fn judge_ext_eval(rule: &ExtEvalRule, comparison: &ExtEvalComparison) -> Vec<Cri
             )
         },
     });
-    criteria.push(improvement(rule, comparison, IMPROVES));
+    match &rule.max_increase {
+        None => criteria.push(improvement(rule, comparison, IMPROVES)),
+        Some(bound) => criteria.extend(more_passed_and_better(rule, bound, comparison)),
+    }
+    criteria
+}
+
+/// The criteria `ext-eval-v2` adds in place of v1's one improvement.
+const V2_BETTER: [&str; 3] = [
+    "subject_passes_more_cases",
+    "score_gain_clears_the_spread",
+    "cost_and_time_not_materially_worse",
+];
+
+/// The `ext-eval-v2` path to **Better**, every criterion rank 2: the
+/// subject arm passes more compared cases, its mean score gain clears the
+/// spread, and neither the cost nor the time per attempt is materially
+/// worse. A faster or cheaper run that passes the same cases is not better;
+/// the time and the cost only ever block, and their change is reported in
+/// the criterion's detail.
+fn more_passed_and_better(
+    rule: &ExtEvalRule,
+    max_increase: &Bound,
+    comparison: &ExtEvalComparison,
+) -> Vec<Criterion> {
+    let (subject, baseline, cases) = (
+        comparison.subject_passed,
+        comparison.baseline_passed,
+        comparison.cases,
+    );
+    let mut criteria = vec![Criterion {
+        name: V2_BETTER[0].into(),
+        rank: 2,
+        verdict: if subject > baseline {
+            Verdict::Passed
+        } else {
+            Verdict::Unverifiable
+        },
+        detail: format!("{subject} of {cases} with the extension, {baseline} of {cases} without"),
+    }];
+    let (Some(multiple), Some(relative)) = (rule.spread_multiple.value(), max_increase.value())
+    else {
+        criteria.push(Criterion {
+            name: V2_BETTER[1].into(),
+            rank: 2,
+            verdict: Verdict::Unverifiable,
+            detail: "the spread multiple or the increase ceiling has no value".into(),
+        });
+        return criteria;
+    };
+    let score = &comparison.mean_score;
+    criteria.push(match (score.subject, score.baseline, score.spread) {
+        (Some(with), Some(without), Some(spread)) => {
+            let gain = with - without;
+            let bound = multiple * spread;
+            Criterion {
+                name: V2_BETTER[1].into(),
+                rank: 2,
+                verdict: if gain > bound {
+                    Verdict::Passed
+                } else {
+                    Verdict::Unverifiable
+                },
+                detail: format!(
+                    "mean score {without:.4} to {with:.4}, gain {gain:+.4} against a spread \
+                     bound of {bound:.4}"
+                ),
+            }
+        }
+        _ => Criterion {
+            name: V2_BETTER[1].into(),
+            rank: 2,
+            verdict: Verdict::Unverifiable,
+            detail: "the mean score or its spread is unknown".into(),
+        },
+    });
+    let mut notes = Vec::new();
+    let mut worse = false;
+    for (label, measure) in [
+        ("cost", &comparison.cost_usd),
+        ("time", &comparison.seconds),
+    ] {
+        let (Some(with), Some(without)) = (measure.subject, measure.baseline) else {
+            notes.push(format!("{label} unknown"));
+            continue;
+        };
+        let slack = multiple * measure.spread.unwrap_or(0.0);
+        let ceiling = without * (1.0 + relative) + slack;
+        if with > ceiling {
+            worse = true;
+        }
+        notes.push(format!(
+            "{label} {without:.4} to {with:.4} per attempt, ceiling {ceiling:.4}"
+        ));
+    }
+    criteria.push(Criterion {
+        name: V2_BETTER[2].into(),
+        rank: 2,
+        verdict: if worse {
+            Verdict::Unverifiable
+        } else {
+            Verdict::Passed
+        },
+        detail: notes.join("; "),
+    });
     criteria
 }
 
@@ -2830,6 +2956,127 @@ mod tests {
         load("probability-v2").expect("probability-v2 loads")
     }
 
+    fn ext_eval(id: &str) -> Gate {
+        load(id).unwrap_or_else(|error| panic!("{id} loads: {error}"))
+    }
+
+    fn measure(subject: f64, baseline: f64, spread: f64) -> ArmMeasure {
+        ArmMeasure {
+            subject: Some(subject),
+            baseline: Some(baseline),
+            spread: Some(spread),
+        }
+    }
+
+    /// Eight compared cases, three runs each, the same pass count and
+    /// score in both arms, and the subject about twice as fast: the run
+    /// the live measurement of 2026-09-29 recorded.
+    fn faster_only() -> ExtEvalComparison {
+        ExtEvalComparison {
+            group: "suite".into(),
+            baseline_present: true,
+            cases: 8,
+            runs: 3,
+            subject_passed: 5,
+            baseline_passed: 5,
+            should_not_fire_lost: Vec::new(),
+            mean_score: measure(0.625, 0.625, 0.05),
+            cost_usd: ArmMeasure::default(),
+            seconds: measure(17.0, 31.0, 2.0),
+        }
+    }
+
+    #[test]
+    fn a_faster_run_that_passes_no_more_is_better_under_v1_and_not_under_v2() {
+        let comparison = faster_only();
+        assert_eq!(
+            ext_eval("ext-eval-v1").judge_ext_eval(&comparison).verdict,
+            Verdict::Passed
+        );
+        let outcome = ext_eval("ext-eval-v2").judge_ext_eval(&comparison);
+        assert_eq!(outcome.verdict, Verdict::Unverifiable, "{outcome:?}");
+        let time = outcome
+            .criteria
+            .iter()
+            .find(|c| c.name == "cost_and_time_not_materially_worse")
+            .expect("the time is reported");
+        assert!(
+            time.detail.contains("time 31.0000 to 17.0000"),
+            "{}",
+            time.detail
+        );
+    }
+
+    #[test]
+    fn more_tests_passed_beyond_the_spread_is_better_under_v2() {
+        let comparison = ExtEvalComparison {
+            subject_passed: 7,
+            mean_score: measure(0.875, 0.625, 0.05),
+            seconds: measure(20.0, 18.0, 2.0),
+            ..faster_only()
+        };
+        let outcome = ext_eval("ext-eval-v2").judge_ext_eval(&comparison);
+        assert_eq!(outcome.verdict, Verdict::Passed, "{outcome:?}");
+    }
+
+    #[test]
+    fn more_tests_passed_at_three_times_the_time_is_not_better_under_v2() {
+        let comparison = ExtEvalComparison {
+            subject_passed: 7,
+            mean_score: measure(0.875, 0.625, 0.05),
+            seconds: measure(90.0, 30.0, 2.0),
+            ..faster_only()
+        };
+        let outcome = ext_eval("ext-eval-v2").judge_ext_eval(&comparison);
+        assert_eq!(outcome.verdict, Verdict::Unverifiable, "{outcome:?}");
+    }
+
+    #[test]
+    fn more_tests_passed_inside_the_score_spread_is_not_better_under_v2() {
+        let comparison = ExtEvalComparison {
+            subject_passed: 6,
+            mean_score: measure(0.70, 0.625, 0.2),
+            ..faster_only()
+        };
+        let outcome = ext_eval("ext-eval-v2").judge_ext_eval(&comparison);
+        assert_eq!(outcome.verdict, Verdict::Unverifiable, "{outcome:?}");
+    }
+
+    #[test]
+    fn fewer_tests_passed_or_a_lost_should_not_fire_case_is_worse_under_v2() {
+        let fewer = ExtEvalComparison {
+            subject_passed: 4,
+            ..faster_only()
+        };
+        assert_eq!(
+            ext_eval("ext-eval-v2").judge_ext_eval(&fewer).verdict,
+            Verdict::Failed
+        );
+        let lost = ExtEvalComparison {
+            subject_passed: 7,
+            mean_score: measure(0.875, 0.625, 0.05),
+            should_not_fire_lost: vec!["greeting".into()],
+            ..faster_only()
+        };
+        assert_eq!(
+            ext_eval("ext-eval-v2").judge_ext_eval(&lost).verdict,
+            Verdict::Failed
+        );
+    }
+
+    #[test]
+    fn the_increase_ceiling_identifies_v2_and_leaves_v1_as_it_was() {
+        let v1 = ext_eval("ext-eval-v1");
+        let v2 = ext_eval("ext-eval-v2");
+        assert!(!v1.identity_canonical().contains("max_increase"));
+        assert!(v2.identity_canonical().contains("max_increase"));
+        let mut without = v2.clone();
+        if let Rule::ExtEval(rule) = &mut without.rule {
+            rule.max_increase = None;
+        }
+        assert_ne!(v2.digest(), without.digest());
+    }
+
     /// One seed block of the unchanged `lev-base` door on `support-v2`'s
     /// evaluation split, with the confident-error count the block drew.
     /// `docs/lev/measurements/2026-09-19-calibration-variance.md`.
@@ -3118,6 +3365,7 @@ mod tests {
                 "deployment-v1",
                 "deployment-v2",
                 "ext-eval-v1",
+                "ext-eval-v2",
                 "probability-v1",
                 "probability-v2"
             ]
@@ -3627,7 +3875,11 @@ mod tests {
                     &rule.latency_block_sigma_relative,
                     &rule.regression_sigmas,
                 ],
-                Rule::ExtEval(rule) => vec![&rule.min_runs, &rule.spread_multiple],
+                Rule::ExtEval(rule) => {
+                    let mut bounds = vec![&rule.min_runs, &rule.spread_multiple];
+                    bounds.extend(rule.max_increase.as_ref());
+                    bounds
+                }
             };
             for bound in bounds {
                 assert!(

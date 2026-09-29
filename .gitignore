@@ -15,3 +15,6 @@ mc-bridge/target/
 
 # Firebase configuration for an opt-in push build; never committed.
 bins/coder-android/host/app/google-services.json
+
+# Results `openagents ext eval run` writes beside a catalog extension's suite.
+/crates/plugin-*/evals/results/

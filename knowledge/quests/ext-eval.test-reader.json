@@ -3,10 +3,12 @@
   "rule": "eval-check",
   "id": "ext-eval.test-reader.check",
   "name": "Test reader",
-  "note": "The referee publishes one quest version per Test reader test set release and tool release, the first time another trainer's check confirms a result on them. publishers lists the keys whose releases of the suite package are the starter test set; until it lists one, no quest is published.",
+  "note": "The referee publishes one quest version per Test reader test set release and tool release, the first time another trainer's check confirms a result on them. publishers lists the keys whose releases of the suite package are the starter test set: the hosted runner's key, which released it (docs/deployment/eval-runner.md).",
   "suite": {
     "package": "test-reader-tests",
-    "publishers": []
+    "publishers": [
+      "a7cff3ee1ff0209f971b9f24673db310ab858899c9d9a99b640e6cb29b1753f0"
+    ]
   },
   "season": {
     "id": "ext-eval-2026-q4",

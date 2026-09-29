@@ -30,7 +30,8 @@ the recorded commands.
 
 An extension eval compares one extension's effect on Coder over a test
 set; it is not a benchmark of Coder. Its verdict comes from the
-`ext-eval-v1` gate, recorded like every gate.
+`ext-eval-v2` gate, recorded like every gate; results judged earlier name
+`ext-eval-v1`.
 
 ## Measure decision doors
 

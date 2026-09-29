@@ -612,6 +612,15 @@ uses, and marks which are implemented and which are only specified.
   station-keeping, the L1 tidal field, and the EVA construction sandbox built
   on `crates/physics`. No renderer or I/O. Keep named constants and the approximations listed in
   `docs/verse/lagrange-1.md` accurate; convert physics regressions into tests.
+- `crates/eval-runner` — the hosted eval runner: a NIP-CJ execution
+  worker (`nostr::eval_ext::hosted`) that runs extension test sets for the
+  phone's chat on our computers through `crates/ext-eval`, for catalog
+  tools (`crates/plugin-*` as extensions) and chat-made tools only, with
+  the fixed read-and-sandbox-write grant, a per-trainer daily quota, and a
+  turn ceiling. It seals each report to the trainer and publishes only on
+  the trainer's publish request. It runs on `coderos-4080`; read
+  `docs/deployment/eval-runner.md` before changing admission, the quota,
+  or what a result carries.
 - `crates/nostr` — pure Nostr protocol and verification primitives
   (events, filters, signatures, NIP-19/NIP-44, replacement and deletion,
   Block NIP validators). No storage, no network, no third-party Nostr

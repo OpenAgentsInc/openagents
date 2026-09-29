@@ -114,6 +114,22 @@ impl Results {
         })
     }
 
+    /// A suite that hasn't run, as [`suite_release`] reads it: its cases
+    /// and the `suite.json` and `cases.json` bytes
+    /// [`crate::evaluate::suite_documents`] writes. Releasing it first is
+    /// how a runner cites a suite's release before its first run.
+    #[must_use]
+    pub fn of_suite(loaded: Suite, suite: Vec<u8>, cases: Vec<u8>) -> Self {
+        Self {
+            dir: PathBuf::new(),
+            report: Vec::new(),
+            value: Value::Null,
+            suite,
+            cases,
+            loaded,
+        }
+    }
+
     /// The suite's qualified ID, `<author>:<package>/<component>`.
     #[must_use]
     pub fn suite_id(&self) -> String {

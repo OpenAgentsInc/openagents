@@ -1,0 +1,13 @@
+{
+  "v": 1,
+  "slug": "code-finder",
+  "name": "Code finder",
+  "summary": "Finds the lines of code people marked for follow-up: TODO, FIXME, XXX, and HACK notes, grouped by file.",
+  "version": "0.1.0",
+  "publisher": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "provenance": "OpenAgents catalog: the code-search evidence guest (crates/plugin-code-search)",
+  "program": {
+    "name": "code-finder",
+    "digest": "69f4534a9916b8097ffcd4282aed9e75becf45a583d5d35b9c2ae210a5e7ef74"
+  }
+}

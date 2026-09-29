@@ -554,7 +554,7 @@ fn attempt_series(
 /// The spread between repeats: the highest minus the lowest. None for
 /// fewer than two repeats, which have no spread.
 ///
-/// The `ext-eval-v1` gate's `min_runs` bound cites this function.
+/// The `ext-eval-v2` gate's `min_runs` bound cites this function.
 #[must_use]
 pub fn spread(values: Option<&[f64]>) -> Option<f64> {
     let values = values?;

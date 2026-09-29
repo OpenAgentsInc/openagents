@@ -228,6 +228,48 @@ impl Subject {
     }
 }
 
+/// The subject's DefinitionRef for an extension directory: the package
+/// `<publisher>:<slug>/<program>`, pinned by the exact bytes of its
+/// package record. `openagents ext eval` and the hosted runner both name a
+/// subject this way, so a check on one names the same subject as a result
+/// on the other.
+#[must_use]
+pub fn definition(publisher: &str, slug: &str, program: &str, record: &[u8]) -> Value {
+    json!({
+        "id": format!("{publisher}:{slug}/{program}"),
+        "artifact": ArtifactRef::of(record, JSON, Some(PACKAGE_SCHEMA)).value(),
+    })
+}
+
+/// Every skill under `dir` (`*.md`, by file name), or none when `dir`
+/// doesn't exist.
+///
+/// # Errors
+///
+/// Returns why the directory or a file can't be read.
+pub fn skills_in(dir: &std::path::Path) -> Result<Vec<Skill>, String> {
+    if !dir.is_dir() {
+        return Ok(Vec::new());
+    }
+    let mut paths: Vec<PathBuf> = std::fs::read_dir(dir)
+        .map_err(|error| format!("{}: {error}", dir.display()))?
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| path.extension().is_some_and(|ext| ext == "md") && path.is_file())
+        .collect();
+    paths.sort();
+    let mut skills = Vec::new();
+    for path in paths {
+        let name = path
+            .file_stem()
+            .map(|stem| stem.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let bytes = std::fs::read(&path).map_err(|error| format!("{}: {error}", path.display()))?;
+        skills.push(Skill { name, bytes });
+    }
+    Ok(skills)
+}
+
 /// The baseline arm's DefinitionRef: the agent alone.
 #[must_use]
 pub fn baseline_definition(author: &str, agent: &AgentPin) -> Value {

@@ -78,6 +78,11 @@ Per case, every run of each arm answered the same way:
   time beyond the spread, so a tool that makes Coder answer faster and no
   better reads as Better. We record this for the gate's owners rather than
   change the gate here.
+  Later the same day, `ext-eval-v2` replaced that rule: **Better** now
+  needs more tests passed beyond the spread, and time and cost are
+  reported as separate notes. Under `ext-eval-v2` this run reads **No
+  clear change** (1 of 2 in both arms), with the note "Faster". The
+  report above keeps the `ext-eval-v1` digest it was judged by.
 - A program turn doesn't put the guest's output in Coder's reply, so an
   outcome grader on `last_message` can't see what a guest found. Suites
   for guest tools (the #9935 starters) should grade files or mechanism

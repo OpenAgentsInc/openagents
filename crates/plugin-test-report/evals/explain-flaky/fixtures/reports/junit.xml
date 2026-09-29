@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="smoke" tests="2" failures="0" errors="0">
+  <testcase classname="smoke" name="boots" file="tests/smoke.py" time="0.01"/>
+  <testcase classname="smoke" name="serves" file="tests/smoke.py" time="0.02"/>
+</testsuite>

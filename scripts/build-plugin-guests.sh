@@ -10,6 +10,11 @@
 #    the PDK source digest, the guest source digest, and the module digest.
 # 4. Inlines the module into `programs/evidence-guests.json`, as the step's
 #    `bytes_base64`, and pins its digest and size in the step's target.
+# 5. Does the same for the guest's catalog extension, the program under
+#    `crates/plugin-<guest>/programs/` that the hosted eval runner and
+#    `openagents ext eval` test, and restates that program's digest in the
+#    extension's `package.json`. A guest that changes changes its starter
+#    test set's subject, so release new results after rebuilding.
 #
 # Paths are remapped so the bytes don't depend on where the checkout or the
 # Cargo home is. Run it twice and the digests match.
@@ -90,4 +95,29 @@ for guest in "${guests[@]}"; do
     "$program" > "$scratch/program.json"
   mv "$scratch/program.json" "$program"
   printf '%s %s %s bytes\n' "$guest" "$guest_digest" "$size"
+done
+
+# The catalog extensions: one program per guest, pinned by its package.
+for guest in "${guests[@]}"; do
+  crate="$root/crates/plugin-$guest"
+  name="$(jq -r .program.name "$crate/package.json")"
+  extension="$crate/programs/$name.json"
+  wasm="$fixtures/$guest.wasm"
+  step="${guest//-/_}"
+  base64 -w0 "$wasm" > "$scratch/$guest.b64"
+  jq --indent 2 \
+    --arg step "$step" \
+    --arg module "$(digest "$wasm")" \
+    --argjson size "$(wc -c < "$wasm" | tr -d ' ')" \
+    --rawfile bytes "$scratch/$guest.b64" \
+    '(.definition.steps[] | select(.name == $step) | .target.artifact) |= (.digest = $module | .size = $size)
+     | .binding.steps[$step].module.bytes_base64 = $bytes' \
+    "$extension" > "$scratch/extension.json"
+  mv "$scratch/extension.json" "$extension"
+  # A package states a file's digest as the SHA-256 of the file's text as
+  # a JSON string (`coder::package::digest`).
+  stated="$(jq -Rs . "$extension" | tr -d '\n' | sha256sum | cut -d' ' -f1)"
+  jq --indent 2 --arg digest "$stated" '.program.digest = $digest' "$crate/package.json" > "$scratch/package.json"
+  mv "$scratch/package.json" "$crate/package.json"
+  printf '%s extension %s\n' "$guest" "$stated"
 done

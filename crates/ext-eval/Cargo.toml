@@ -3,7 +3,7 @@ name = "ext-eval"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-description = "The extension evaluation engine: cases, graders, scoring, the ext-eval-v1 gate, and the report."
+description = "The extension evaluation engine: cases, graders, scoring, the ext-eval-v2 gate, and the report."
 publish.workspace = true
 
 [features]
@@ -43,7 +43,7 @@ tempfile = { version = "3", optional = true }
 tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "sync", "time"], optional = true }
 # Trajectories are ATIF documents; the crate reads and version-checks them.
 atif = { path = "../atif" }
-# The verdict is the Gym gate `ext-eval-v1`, recorded by its digest.
+# The verdict is the Gym gate `ext-eval-v2`, recorded by its digest.
 gym = { path = "../gym" }
 indexmap = { version = "2", features = ["serde"] }
 # `decision` graders ask Jev through `POST /v1/systemone`. The engine is

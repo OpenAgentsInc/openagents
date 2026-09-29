@@ -1,0 +1,36 @@
+[package]
+name = "eval-runner"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "The hosted eval runner: runs extension test sets for chat on our computers, over NIP-CJ execution jobs, within a quota."
+
+[[bin]]
+name = "eval-runner"
+path = "src/bin/eval-runner.rs"
+
+[dependencies]
+# The package resolver (`coder::package`) for catalog extensions, and the
+# relay connection and identity helpers (`coder::relay`).
+coder = { path = "../coder" }
+# The engine: the run sandbox, both arms, the report, and the publish
+# builders. The runner adds admission, the quota, and the relay.
+ext-eval = { path = "../ext-eval" }
+futures-util = "0.3"
+jev = { path = "../jev", features = ["blocking"] }
+nostr = { path = "../nostr" }
+secp256k1 = { version = "0.31.1", features = ["rand"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tempfile = "3"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "time", "signal"] }
+tokio-tungstenite = { version = "0.30.0", features = ["rustls-tls-webpki-roots"] }
+
+[dev-dependencies]
+# `tests/hosted.rs` runs the whole path against a local relay.
+nostr-relay = { path = "../nostr-relay" }
+xp-ledger = { path = "../xp-ledger" }
+
+[lints]
+workspace = true

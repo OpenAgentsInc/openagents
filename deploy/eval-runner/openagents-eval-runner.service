@@ -1,0 +1,20 @@
+[Unit]
+Description=OpenAgents hosted eval runner: runs extension test sets for chat over NIP-CJ
+Documentation=https://github.com/OpenAgentsInc/openagents/blob/main/docs/deployment/eval-runner.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Keys stay in this file (mode 0600) and the runner key file; the service
+# never prints either.
+EnvironmentFile=%h/.config/openagents/eval-runner.env
+ExecStart=%h/.local/libexec/openagents-eval-runner/eval-runner serve
+Restart=on-failure
+RestartSec=5
+Nice=5
+NoNewPrivileges=true
+UMask=0077
+
+[Install]
+WantedBy=default.target

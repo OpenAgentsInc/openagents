@@ -1,0 +1,13 @@
+{
+  "v": 1,
+  "slug": "test-reader",
+  "name": "Test reader",
+  "summary": "Reads the test reports in a project for Coder: which tests failed, where, and why.",
+  "version": "0.1.0",
+  "publisher": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "provenance": "OpenAgents catalog: the test-report evidence guest (crates/plugin-test-report)",
+  "program": {
+    "name": "test-reader",
+    "digest": "13dd2533762b25549d30f0955a25dd5addf20dbbfd99707b7288dfbb2f7c8ef3"
+  }
+}

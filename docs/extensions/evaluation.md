@@ -90,7 +90,7 @@ changes the following.
 | Stand-ins | Stand-ins for host entries and doors, agent responders, record and replay. | Moved to [Later](#later). | No extension can declare a host entry yet: the concept has no code. We add stand-ins with host entries. |
 | `baseline` grader and `context.history` | In v1. | Moved to [Later](#later). | Both need replayed trajectories we don't produce yet; v1 compares arms directly. |
 | Judge | An unnamed "judge door". | `decision` graders ask Jev through `POST /v1/systemone` (the default); a `judge` grader asks the chat model door for PASS or FAIL. | Jev is our typed selector; a prose judge is new code and says so. |
-| Verdict | A keep rule written in prose. | A Gym gate, `crates/gym/gates/ext-eval-v1.json`, digested like every gate, decides **Better**, **No clear change**, or **Worse**. | The Gym already records which rule produced which verdict. |
+| Verdict | A keep rule written in prose. | A Gym gate, `crates/gym/gates/ext-eval-v2.json`, digested like every gate, decides **Better**, **No clear change**, or **Worse**; **Better** needs more tests passed, and time and cost are separate notes. `ext-eval-v1`, which also kept a faster or cheaper tool, stays readable for older results. | The Gym already records which rule produced which verdict, and a verdict should match the tests passed. |
 | Suite publication | Not specified. | A suite is published as a NIP-EXT release whose package holds an `eval-suite` component. | Suites need an author, versions, and revocation; NIP-EXT has all three and needs no new kind. |
 | Result publication | "Kind `3189`" with no profile. | A `3189` NIP-EVAL publication with the `oa:ext-eval:v1` profile marker, citing the suite release. | Same kind, with a marker readers filter on, as NIP-XP's run evidence does. |
 | Credit | "A `gym-trial` XP award candidate". | Two NIP-XP rules, `eval-check` and `eval-adopt`, define exactly when authors, publishers, and checkers earn XP. No money. | `gym-trial` never had a definition; the owner asked for credit when work is used. |
@@ -316,16 +316,28 @@ the change.
   8 without"), the mean case score per arm, and the change
   (`subject - baseline`) per case and overall. It also reports cost and
   wall time per arm.
-- The **verdict** comes from the Gym gate `ext-eval-v1`
-  (`crates/gym/gates/ext-eval-v1.json`), recorded by its digest like every
+- The **verdict** comes from the Gym gate `ext-eval-v2`
+  (`crates/gym/gates/ext-eval-v2.json`), recorded by its digest like every
   gate ([Gate digests](../gym/gate-digests.md)). It keeps (**Better**)
-  only when the subject arm passes at least as many cases as the baseline,
-  passes every should-not-fire case the baseline passes, and improves the
-  mean score, cost, or time by more than the spread between repeats of
-  the same arm. It rejects (**Worse**) when the subject arm passes fewer
-  cases or loses a should-not-fire case. Everything else is
-  **inconclusive** (**No clear change**). The spread is measured on this
-  run's repeats; with `runs = 1` every verdict is inconclusive.
+  only when the subject arm passes more cases than the baseline, passes
+  every should-not-fire case the baseline passes, raises the mean score by
+  more than the spread between repeats of the same arm, and isn't
+  materially worse on cost or time: neither may rise past half again the
+  baseline's per run, plus the spread. It rejects (**Worse**) when the
+  subject arm passes fewer cases or loses a should-not-fire case.
+  Everything else is **inconclusive** (**No clear change**). The spread is
+  measured on this run's repeats; with `runs = 1` every verdict is
+  inconclusive.
+- Cost and time never make a tool **Better** on their own. When the
+  change clears the spread, the result says so in a separate note beside
+  the verdict: **Faster**, **Slower**, **Cheaper**, or **Costlier**, with
+  both arms' numbers per run (`ext_eval::notes`).
+- `ext-eval-v1`, the rule before 2026-09-29, kept an extension that
+  improved the mean score, cost, *or* time, so a tool that made Coder
+  answer faster and no better read as **Better**
+  ([the live run](measurements/2026-09-29-ext-eval-runner-live.md)). It
+  stays committed, and results and suites that name it keep their
+  meaning.
 
 ## The run sandbox
 
@@ -395,6 +407,30 @@ Every path runs the same crate (`crates/ext-eval`), writes the same
 report, and publishes the same way. A chat request never runs anything
 until the person taps; the tap sends a request signed by their device.
 
+Built ([#9935](https://github.com/OpenAgentsInc/openagents/issues/9935)):
+the hosted runner is `crates/eval-runner` on `coderos-4080`, and its wire
+is `nostr::eval_ext::hosted` ([NIP-EVAL, Hosted runs](../../nips/openagents/NIP-EVAL.md#hosted-runs);
+[the runbook](../deployment/eval-runner.md)). Its catalog is the three
+evidence guests as extensions (`crates/plugin-repo-map`,
+`crates/plugin-code-search`, and `crates/plugin-test-report`, each a
+package record, one program, and a starter test set under `evals/`). A
+request names a catalog tool by its extension's DefinitionRef or by the
+DefinitionRef of the guest it runs. Limits: 3 runs per trainer per UTC day
+(a check doesn't count) and a turn ceiling for everyone per day. A hosted
+result is published only on the trainer's publish request, signed by the
+runner, and carries the trainer's signed request inline
+(`meta.ext_eval_request`), because relays keep no `25920`.
+
+The starter test sets grade what the tool found, not Coder's reply: a
+program turn answers with its run summary, so each should-fire test checks
+the run's trajectory (where the guest's output is recorded) for a fact only
+the tool, or looking at the files, would turn up, and each should-not-fire
+test checks the reply and that the tool stayed out of the way. Every test
+asks for `read` and `write`. A hosted run has no shell (the grant is never
+`exec`), so neither arm can make files there; a test that grades a file a
+run made measures something only on a connected computer. See
+[the live run](measurements/2026-09-29-hosted-runner-live.md).
+
 ## Trust and admission
 
 Evaluation sits on the [package trust ladder](packages.md#trust-is-several-independent-decisions):
@@ -459,7 +495,7 @@ result public. It does two things, each only once:
 2. **Publish the result**: a NIP-EVAL `3189` publication with the
    `oa:ext-eval:v1` marker, signed by the evaluator, citing the suite
    release, the subject release, and for a hosted run the trainer's signed
-   request.
+   request, which the result also carries whole.
 
 What becomes public: the suite (every case, grader, and fixture), the
 subject and baseline locks, the report, and the trainer name of the

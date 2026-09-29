@@ -2559,6 +2559,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "eval-runner"
+version = "0.1.0"
+dependencies = [
+ "coder",
+ "ext-eval",
+ "futures-util",
+ "jev",
+ "nostr",
+ "nostr-relay",
+ "secp256k1 0.31.1",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tokio-tungstenite",
+ "xp-ledger",
+]
+
+[[package]]
 name = "ext-eval"
 version = "0.1.0"
 dependencies = [

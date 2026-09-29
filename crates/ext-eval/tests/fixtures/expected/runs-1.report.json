@@ -2,7 +2,7 @@
   "v": "openagents.eval-report.v1",
   "requires": [],
   "suite": {
-    "digest": "sha256:91fac477ea731b6ae5a0f52f6c107d681d9e96fe59f032348e56ad27662dd074",
+    "digest": "sha256:90317ffa2374c528b013a3cfec76fc5cb2f78bfc2b832b54a8a5de908915fccb",
     "size": 1783,
     "media_type": "application/json",
     "schema": "openagents.eval-suite.v1"
@@ -518,7 +518,7 @@
   "meta": {
     "ext_eval": {
       "v": "openagents.ext-eval.v1",
-      "gate": "sha256:361adde42a2753d3bb5bc2a901b1e089d04afe768e2a2d090535c1ab584c97dd",
+      "gate": "sha256:4db54843c687cc4bd22beddb0622339d5ebd656b674d3785f16bc1bbcafde6b7",
       "cases": [
         {
           "id": "find-callers",

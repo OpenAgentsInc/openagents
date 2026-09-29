@@ -277,7 +277,8 @@ lexicographic order of `id`, each a closed object:
 Every case file's ArtifactRef (`prompt`, `config`, each grader) carries
 schema `openagents.eval-case.v1`, and every file, fixtures included, is at
 most 1 MiB. `acceptance` is the DefinitionRef of the Gym gate that decides
-the verdict: its component is `ext-eval-v1`. `labels` names the
+the verdict: its component is `ext-eval-v2`, or `ext-eval-v1` for a
+suite published before 2026-09-29. `labels` names the
 suite author as the label source; a suite written by the extension's
 publisher says so, and a reader weighs it as the publisher's own claim.
 
@@ -337,13 +338,20 @@ A result is a `3189` publication as above, with these additions:
   hosted result also carries exactly one `p` tag, the requesting trainer;
   any other result carries none. An `e` tag with another marker, or none,
   refuses.
-- `meta` holds only `ext_eval_report`: the report's exact bytes, at most
+- `meta` holds `ext_eval_report`: the report's exact bytes, at most
   64 KiB, which a reader checks against `report.digest` before reading.
+  A hosted result also holds `ext_eval_request` (added 2026-09-29): the
+  trainer's signed NIP-CJ `25920` request, the whole event, at most
+  96 KiB as JSON. Relays keep no `25920`, so this is where a reader finds
+  it. Any other `meta` key refuses, and so does a request that isn't the
+  one the report's `requester` names, whose signature fails, whose one `p`
+  isn't the result's signer, or on a result that isn't hosted.
   The body's `subject` is the report's `subject.definition`, and the
   report ArtifactRef's schema is `openagents.eval-report.v1`.
 - The signer is the evaluator, as for every `3189`. A hosted runner signs
   its own results; the trainer who asked is named by `requester`, and a
-  reader verifies that request's signature before crediting them.
+  reader verifies that request's signature before crediting them, from
+  `meta.ext_eval_request` (or a copy of the request the reader holds).
 
 A reader lists results with `{"kinds": [3189], "#t": ["oa:ext-eval:v1"]}`
 and groups them by subject. It never ranks results from different suites
@@ -374,8 +382,30 @@ refuses others as `not_admitted`. A hosted request runs at most 8 cases,
 3 runs per arm, and 2 arms. A reader credits the requester only after
 checking the request event the report names: its ID and signer, kind
 `25920`, its signature, and its one `p` tag naming the runner that signed
-the result. Its result's body carries the report ArtifactRef; the report stays private (the `3188` envelope to the
-requester) until the requester sends a publish control naming it.
+the result. The result carries that event in `meta.ext_eval_request`. Its result's body carries the report ArtifactRef; the report stays private (the `3188` envelope to the
+requester) until the requester sends a publish request naming it.
+
+Built (2026-09-29, [#9935](https://github.com/OpenAgentsInc/openagents/issues/9935)):
+`nostr::eval_ext::hosted` holds the wire and `crates/eval-runner` the
+runner. A request's `target` is `<runner>:ext-eval/run` pinned by the
+hosted program's description, and `lock`, `context`, and `requirements`
+are fixed documents (`requirements` names reads and sandbox writes only).
+`input` (`openagents.ext-eval-hosted.v1`) is one of two actions: `run`
+(`suite`, a `3184` EventRef or `"draft"`; `subject`, a DefinitionRef or
+`"draft"`; `draft`, the NIP-CJ draft exactly when a side is the draft;
+`runs`, 1 to 3; `baseline: true`; and `check`, the publication a rerun
+checks, or null) and `publish` (`report`, the ArtifactRef a run's result
+named, sent by the same trainer). The runner answers `27020` `accepted`
+and `progress` with `meta.ext_eval: {completed, planned}` in case runs,
+and one `26920` whose `output` is `{v, action: "run", report, sealed,
+headline, verdict, notes}` or `{v, action: "publish", suite_release,
+result}`. It refuses `not_admitted` (not a catalog or chat-made tool, a
+suite asking for `exec` or `network`, a check of a result not on the
+relay, another trainer's report, or admission switched off),
+`over_quota` (the trainer's runs for the UTC day, or the day's turns),
+and `too_large` (over 8 cases, 3 runs, 2 arms, a 64 KiB draft, or a
+result the relay can't hold), each before anything runs. A check doesn't
+count against the trainer's runs.
 
 ### Adoption
 

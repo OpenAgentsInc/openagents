@@ -1,7 +1,7 @@
 //! From a suite and finished runs to a verdict and a report.
 //!
 //! [`evaluate`] grades every planned run and then [`conclude`]s: it scores
-//! the runs, asks the Gym gate `ext-eval-v1` for the verdict, and builds
+//! the runs, asks the Gym gate `ext-eval-v2` for the verdict, and builds
 //! `report.json`, the documents it references, and `report.html`. Grading
 //! is the only step that calls a door; a runner that grades runs as they
 //! finish calls [`crate::score::grade_all`] itself and then [`conclude`].
@@ -19,7 +19,7 @@ use crate::report::{Artifacts, DoorNames, Identity, MAX_INLINE_REPORT, Parts, RE
 use crate::score::{GradedRun, Plan, PlanError, Scores, grade_all};
 
 /// The gate every extension evaluation is judged by.
-pub const GATE_ID: &str = "ext-eval-v1";
+pub const GATE_ID: &str = "ext-eval-v2";
 
 /// A report's verdict.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
@@ -115,7 +115,88 @@ pub struct Evaluation {
     pub html: String,
 }
 
-/// The committed `ext-eval-v1` gate and its file's exact bytes.
+/// The suite's own documents, as a run writes them under `artifacts/`:
+/// `suite.json` and `cases.json`'s exact bytes, for a suite by `author`
+/// published as `<author>:<package>/<component>`. A suite released from
+/// these bytes is the suite every later run of the same cases writes,
+/// which is what lets a hosted run or a check cite the release before it
+/// runs anything.
+///
+/// # Errors
+///
+/// Returns [`EvalError::GateLoad`] when the gate does not load.
+pub fn suite_documents(
+    suite: &Suite,
+    author: &str,
+    package: &str,
+    component: &str,
+) -> Result<(Vec<u8>, Vec<u8>), EvalError> {
+    let (_, gate_file) = load_gate()?;
+    let placeholder = crate::report::ArmSetup {
+        definition: Value::Null,
+        lock: ArtifactRef::of(b"", JSON, None),
+        door: String::new(),
+        run: Value::Null,
+    };
+    let identity = Identity {
+        author: author.to_string(),
+        package: package.to_string(),
+        component: component.to_string(),
+        evaluator: author.to_string(),
+        subject: placeholder,
+        baseline: None,
+        started_at: 0,
+        ended_at: 0,
+        requester: None,
+        suite_release: None,
+        environment: None,
+        partial: None,
+    };
+    let mut artifacts = Artifacts::new();
+    crate::report::suite_artifacts(suite, &identity, &gate_file, &mut artifacts);
+    let take = |name: &str| artifacts.get(name).cloned().unwrap_or_default();
+    Ok((take("suite.json"), take("cases.json")))
+}
+
+/// The time and cost changes, as plain notes beside the verdict: `Faster`,
+/// `Slower`, `Cheaper`, or `Costlier`, per run, when both arms measured
+/// it and the change clears the spread between repeats. The gate never
+/// keeps an extension on these alone (`ext-eval-v2`), so a reader sees
+/// them here instead: "Faster: 17.0 s against 31.0 s per run".
+#[must_use]
+pub fn notes(scores: &Scores) -> Vec<String> {
+    let comparison = &scores.comparison;
+    if !comparison.baseline_present {
+        return Vec::new();
+    }
+    let mut out = Vec::new();
+    let mut note = |measure: &gym::gate::ArmMeasure,
+                    lower: &str,
+                    higher: &str,
+                    show: &dyn Fn(f64) -> String| {
+        let (Some(with), Some(without)) = (measure.subject, measure.baseline) else {
+            return;
+        };
+        if (with - without).abs() <= measure.spread.unwrap_or(0.0) || with == without {
+            return;
+        }
+        let word = if with < without { lower } else { higher };
+        out.push(format!(
+            "{word}: {} against {} per run",
+            show(with),
+            show(without)
+        ));
+    };
+    note(&comparison.seconds, "Faster", "Slower", &|v| {
+        format!("{v:.1} s")
+    });
+    note(&comparison.cost_usd, "Cheaper", "Costlier", &|v| {
+        format!("${v:.4}")
+    });
+    out
+}
+
+/// The committed `ext-eval-v2` gate and its file's exact bytes.
 ///
 /// # Errors
 ///

@@ -1,0 +1,18 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.4, pytest-8.3.2, pluggy-1.5.0
+rootdir: /work/contacts
+collected 6 items
+
+tests/test_parser.py ..F...                                              [100%]
+
+=================================== FAILURES ===================================
+__________________________ test_parses_unicode_names ___________________________
+
+    def test_parses_unicode_names():
+>       assert parse("Zoë Ångström").last == "Ångström"
+E       AssertionError: assert 'Angstrom' == 'Ångström'
+
+tests/test_parser.py:27: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_parser.py::test_parses_unicode_names - AssertionError: assert 'Angstrom' == 'Ångström'
+========================= 1 failed, 5 passed in 0.12s ==========================

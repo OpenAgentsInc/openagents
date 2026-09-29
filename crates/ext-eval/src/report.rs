@@ -211,7 +211,7 @@ pub(crate) fn suite_artifacts(
             "labels": labels.value(),
             "metrics": metrics.value(),
             "acceptance": {
-                "id": format!("{}:gym-gates/ext-eval-v1", identity.author),
+                "id": format!("{}:gym-gates/ext-eval-v2", identity.author),
                 "artifact": gate.value(),
             },
             "environment": environment.value(),

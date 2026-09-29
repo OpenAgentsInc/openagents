@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites>
+  <testsuite name="payments" tests="4" failures="2" errors="0" time="1.84">
+    <testcase classname="tests.test_refunds" name="test_refund_full_amount" file="tests/test_refunds.py" line="12" time="0.10"/>
+    <testcase classname="tests.test_refunds" name="test_refund_rounds_half_even" file="tests/test_refunds.py" line="42" time="0.11">
+      <failure message="assert 9.99 == 10.00">tests/test_refunds.py:42: AssertionError: assert 9.99 == 10.00</failure>
+    </testcase>
+    <testcase classname="tests.test_webhooks" name="test_webhook_signature" file="tests/test_webhooks.py" line="8" time="0.20"/>
+    <testcase classname="tests.test_webhooks" name="test_webhook_retries_three_times" file="tests/test_webhooks.py" line="31" time="1.43">
+      <failure message="expected 3 attempts, saw 1">tests/test_webhooks.py:31: AssertionError: expected 3 attempts, saw 1</failure>
+    </testcase>
+  </testsuite>
+</testsuites>

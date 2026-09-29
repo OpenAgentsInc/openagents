@@ -84,10 +84,17 @@ fn better_when_the_tool_wins_cases_and_clears_the_spread() {
     assert_eq!(scores.comparison.baseline_passed, 2);
     assert_eq!(evaluation.exit_code(), 0);
     assert_eq!(evaluation.verdict.plain(), "Better");
-    assert_eq!(
-        criterion(&evaluation, "improvement_clears_the_spread").verdict,
-        GateVerdict::Passed
-    );
+    for name in [
+        "subject_passes_more_cases",
+        "score_gain_clears_the_spread",
+        "cost_and_time_not_materially_worse",
+    ] {
+        assert_eq!(
+            criterion(&evaluation, name).verdict,
+            GateVerdict::Passed,
+            "{name}"
+        );
+    }
     let headline = &evaluation.report["meta"]["ext_eval"]["headline"];
     assert_eq!(headline["subject_passed"], 4);
     assert_eq!(headline["baseline_passed"], 2);
@@ -127,7 +134,7 @@ fn worse_when_the_tool_loses_a_should_not_fire_case() {
 fn inconclusive_when_the_change_is_inside_the_spread() {
     let evaluation = check("inconclusive-spread", Verdict::Inconclusive);
     assert_eq!(
-        criterion(&evaluation, "improvement_clears_the_spread").verdict,
+        criterion(&evaluation, "score_gain_clears_the_spread").verdict,
         GateVerdict::Unverifiable
     );
     assert_eq!(evaluation.exit_code(), 1);
@@ -142,7 +149,9 @@ fn inconclusive_with_one_run_whatever_the_passes_say() {
     for name in [
         "subject_passes_at_least_as_many_cases",
         "subject_keeps_every_should_not_fire_case",
-        "improvement_clears_the_spread",
+        "subject_passes_more_cases",
+        "score_gain_clears_the_spread",
+        "cost_and_time_not_materially_worse",
     ] {
         let judged = criterion(&evaluation, name);
         assert_eq!(judged.verdict, GateVerdict::Unverifiable, "{name}");
@@ -181,7 +190,7 @@ fn a_run_that_did_not_finish_makes_the_report_partial() {
 fn the_gate_digest_is_recorded_in_the_report() {
     let evaluation = run("better");
     let (gate, _) = load_gate().unwrap();
-    assert_eq!(evaluation.gate.gate_id, "ext-eval-v1");
+    assert_eq!(evaluation.gate.gate_id, "ext-eval-v2");
     assert_eq!(evaluation.gate.gate_digest, gate.digest());
     assert_eq!(
         evaluation.report["meta"]["ext_eval"]["gate"],
@@ -190,7 +199,7 @@ fn the_gate_digest_is_recorded_in_the_report() {
     let suite: Value = serde_json::from_slice(&evaluation.artifacts["suite.json"]).unwrap();
     let acceptance = &suite["acceptance"];
     nostr::contracts::parse_definition(acceptance).expect("acceptance is a DefinitionRef");
-    let gate_file = std::fs::read(gym::gate::gates_dir().join("ext-eval-v1.json")).unwrap();
+    let gate_file = std::fs::read(gym::gate::gates_dir().join("ext-eval-v2.json")).unwrap();
     let artifact = nostr::contracts::parse_artifact(&acceptance["artifact"]).unwrap();
     nostr::contracts::check_artifact_bytes(&artifact, &gate_file).expect("the gate's exact bytes");
 }
@@ -481,4 +490,35 @@ fn an_identity_that_fails_the_contracts_is_refused() {
         .contains("execution request")
     );
     assert!(attempt(&|i| i.started_at = i.ended_at + 1).contains("ended before"));
+}
+
+/// Faster alone is not better: the same cases passed at the same score,
+/// in about half the time, is **No clear change** under `ext-eval-v2`,
+/// and the time is a note beside the verdict. `ext-eval-v1` called it
+/// Better (`docs/extensions/measurements/2026-09-29-ext-eval-runner-live.md`).
+#[test]
+fn a_time_only_improvement_is_no_clear_change_with_a_faster_note() {
+    let mut scores = run("better").scores;
+    let comparison = &mut scores.comparison;
+    comparison.subject_passed = comparison.baseline_passed;
+    comparison.mean_score.subject = comparison.mean_score.baseline;
+    comparison.should_not_fire_lost.clear();
+    comparison.seconds = gym::gate::ArmMeasure {
+        subject: Some(17.0),
+        baseline: Some(31.0),
+        spread: Some(2.0),
+    };
+    let (gate, _) = load_gate().unwrap();
+    assert_eq!(gate.id, "ext-eval-v2");
+    let outcome = gate.judge_ext_eval(comparison);
+    assert_eq!(outcome.verdict, GateVerdict::Unverifiable, "{outcome:#?}");
+    let v1 = gym::gate::load("ext-eval-v1").unwrap();
+    assert_eq!(v1.judge_ext_eval(comparison).verdict, GateVerdict::Passed);
+    assert_eq!(
+        ext_eval::notes(&scores),
+        vec![
+            "Faster: 17.0 s against 31.0 s per run".to_string(),
+            "Cheaper: $0.0300 against $0.0600 per run".to_string(),
+        ]
+    );
 }

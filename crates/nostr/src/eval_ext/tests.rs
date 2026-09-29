@@ -283,7 +283,18 @@ fn a_case_manifest_round_trips_and_refuses_bad_entries() {
 #[test]
 fn a_suite_parses_and_refuses_another_purpose_or_gate() {
     let suite = parse_suite(&suite_bytes()).unwrap();
-    assert_eq!(suite.acceptance.id.rsplit('/').next(), Some(GATE));
+    assert!(
+        suite
+            .acceptance
+            .id
+            .rsplit('/')
+            .next()
+            .is_some_and(|gate| GATES.contains(&gate))
+    );
+    let mut v2: Value = serde_json::from_slice(&suite_bytes()).unwrap();
+    v2["acceptance"]["id"] = json!(format!("{}:gym/{GATE}", pubkey("operator")));
+    let v2 = parse_suite(&serde_json::to_vec(&v2).unwrap()).unwrap();
+    assert_eq!(v2.acceptance.id.rsplit('/').next(), Some("ext-eval-v2"));
     check_artifact_bytes(&suite.cases, &cases_bytes()).unwrap();
 
     let mut value: Value = serde_json::from_slice(&suite_bytes()).unwrap();
@@ -646,4 +657,56 @@ pub(crate) fn schema_check(name: &str, instance: &Value) {
     let closure = crate::contracts::prepare_closure(&documents).expect("schema");
     crate::contracts::validate_instance(&closure, &digest, instance)
         .unwrap_or_else(|e| panic!("{name} refuses the instance: {e:?}"));
+}
+
+/// A hosted result carries the trainer's signed request inline, so a
+/// reader credits the trainer with no relay-held `25920`; an inline
+/// request that isn't the report's, was sent elsewhere, or rides on a
+/// result that isn't hosted refuses the whole publication.
+#[test]
+fn a_hosted_result_carries_its_request_inline() {
+    let asked = request("carol", "runner", AT - 700);
+    let mut spec = Spec::by("runner");
+    spec.requester = Some(requester(&asked));
+    let parts = hosted_publication(&report(&spec), None, &asked).unwrap();
+    let event = sign_at(&signer("runner"), AT, parts);
+    let parsed = parse_publication(&event).unwrap();
+    assert_eq!(parsed.request.as_ref(), Some(&asked));
+    assert_eq!(verified_trainer(&parsed, &[]).unwrap(), pubkey("carol"));
+
+    // Another trainer's request in place of the named one.
+    let forged = request("mallory", "runner", AT - 700);
+    assert_eq!(
+        code(hosted_publication(&report(&spec), None, &forged)),
+        RefusalCode::IdentityMismatch
+    );
+    let swapped = resign("runner", &event, |_, content| {
+        content["meta"]["ext_eval_request"] = serde_json::to_value(&forged).unwrap();
+    });
+    assert_eq!(
+        code(parse_publication(&swapped)),
+        RefusalCode::IdentityMismatch
+    );
+    // A request whose signature doesn't hold.
+    let tampered = resign("runner", &event, |_, content| {
+        content["meta"]["ext_eval_request"]["content"] = json!("other ciphertext");
+    });
+    assert!(parse_publication(&tampered).is_err());
+    // Sent to another worker.
+    let elsewhere = request("carol", "someone-else", AT - 700);
+    let mut other = Spec::by("runner");
+    other.requester = Some(requester(&elsewhere));
+    assert_eq!(
+        code(hosted_publication(&report(&other), None, &elsewhere)),
+        RefusalCode::IdentityMismatch
+    );
+    // Only a hosted result carries a request.
+    let plain = published("alice", &Spec::by("alice"), None, AT);
+    let smuggled = resign("alice", &plain, |_, content| {
+        content["meta"]["ext_eval_request"] = serde_json::to_value(&asked).unwrap();
+    });
+    assert_eq!(
+        code(parse_publication(&smuggled)),
+        RefusalCode::IdentityMismatch
+    );
 }

@@ -32,6 +32,7 @@ leaves media disabled.
 | Durable local Coder task owner | [Portable host packaging](../coder/runtime/portable-host.md) |
 | Decision API gateway | [Gateway deployment](../decision-models/service/deployment.md) |
 | NIP-PL push gateway, which holds APNs and FCM credentials for the relay's push executor | [Push gateway](push-gateway.md) |
+| Hosted eval runner, which runs extension test sets for chat on our computers | [Hosted eval runner](eval-runner.md) |
 | Free-only labor reference host | [Labor runtime](../coder/runtime/free-labor.md) |
 | Local model doors | [Kev](../kev/README.md), [Lev](../lev/README.md), and [Laya](../laya/README.md) |
 

@@ -9,11 +9,11 @@
 <body>
 <main>
 <h1>Extension evaluation</h1>
-<p class="muted">Evaluator <code>0b1c2d3e4f506172894a5b6c7d8e9f00112233445566778899aabbccddeeff00</code> · suite <code>sha256:91fac477ea731b6ae5a0f52f6c107d681d9e96fe59f032348e56ad27662dd074</code> · report <code>sha256:3f7e090f8f955ea049ece747120c7f610bafe1fb79f1b3f3438e7b19a8b38dde</code></p>
+<p class="muted">Evaluator <code>0b1c2d3e4f506172894a5b6c7d8e9f00112233445566778899aabbccddeeff00</code> · suite <code>sha256:90317ffa2374c528b013a3cfec76fc5cb2f78bfc2b832b54a8a5de908915fccb</code> · report <code>sha256:11e0758a77ab071c0ef763c58fcf61bbfbc45076a562d88599146bd5b47a3013</code></p>
 <section class="headline">
 <div class="verdict good">Better</div>
 <p>Passes 4 of 4 tests with the tool, 2 of 3 without. Change in mean score: +0.33.</p>
-<p class="muted">Decided by gate <code>ext-eval-v1</code> <code>gate:361adde42a2753d3bb5bc2a901b1e089d04afe768e2a2d090535c1ab584c97dd</code>.</p>
+<p class="muted">Decided by gate <code>ext-eval-v2</code> <code>gate:4db54843c687cc4bd22beddb0622339d5ebd656b674d3785f16bc1bbcafde6b7</code>.</p>
 </section>
 <h2>Per arm</h2>
 <div class="wrap"><table>
@@ -29,7 +29,9 @@
 <tr><td><code>compared_cases&gt;=1</code></td><td class="good">passed</td><td>3 cases scored in both arms</td></tr>
 <tr><td><code>subject_passes_at_least_as_many_cases</code></td><td class="good">passed</td><td>3 of 3 with the extension, 2 of 3 without</td></tr>
 <tr><td><code>subject_keeps_every_should_not_fire_case</code></td><td class="good">passed</td><td>every should-not-fire case the baseline passed, the subject passed too</td></tr>
-<tr><td><code>improvement_clears_the_spread</code></td><td class="good">passed</td><td>mean score 0.6667 to 1.0000, improvement +0.3333 against a spread bound of 0.0000; cost 0.0600 to 0.0300, improvement +0.0300 against a spread bound of 0.0000; time 135.0000 to 90.0000, improvement +45.0000 against a spread bound of 0.0000</td></tr>
+<tr><td><code>subject_passes_more_cases</code></td><td class="good">passed</td><td>3 of 3 with the extension, 2 of 3 without</td></tr>
+<tr><td><code>score_gain_clears_the_spread</code></td><td class="good">passed</td><td>mean score 0.6667 to 1.0000, gain +0.3333 against a spread bound of 0.0000</td></tr>
+<tr><td><code>cost_and_time_not_materially_worse</code></td><td class="good">passed</td><td>cost 0.0600 to 0.0300 per attempt, ceiling 0.0900; time 135.0000 to 90.0000 per attempt, ceiling 202.5000</td></tr>
 </table></div>
 <h2>Tests</h2>
 <section class="case">

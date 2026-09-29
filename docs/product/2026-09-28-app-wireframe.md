@@ -325,7 +325,7 @@ docs, and the Advanced section of Profile.
 | **Test set** | A suite | A set of tests. |
 | **With the tool**, **without it** | The subject and baseline arms | Says what's being compared. |
 | **Passes 7 of 8 tests** | Cases passed in the subject arm | Whole numbers, whole denominator. |
-| **Better**, **No clear change**, **Worse** | The `ext-eval-v1` gate: keep, inconclusive, reject, against the spread between repeats | Plain verdict. |
+| **Better**, **No clear change**, **Worse** | The `ext-eval-v2` gate: keep (more tests passed, beyond the spread between repeats, at a cost and time not materially worse), inconclusive, reject. Faster or cheaper is a note beside the verdict, never Better on its own | Plain verdict. |
 | **Try it once** | A one-run pilot | Says it's a quick try. |
 | **Check a result** | A rerun of a published test set by another trainer | Says what you do. |
 | **Add to the Gym** | Publish the suite and the signed result (NIP-EXT, NIP-EVAL) | Says where it goes. |
@@ -627,7 +627,7 @@ States:
 | ID | Element | What it does | Loop | Status |
 | --- | --- | --- | --- | --- |
 | `SCR-05.E01` | Title and **< Chat** | Back to the chat; the result is kept on the phone. | — | NEW |
-| `SCR-05.E02` | Verdict headline | **Better**, **No clear change**, or **Worse**, from the Gym's rule against the spread between repeats. | `LOOP-4` | NEW (the `ext-eval-v1` gate) |
+| `SCR-05.E02` | Verdict headline | **Better**, **No clear change**, or **Worse**, from the Gym's rule against the spread between repeats. | `LOOP-4` | NEW (the `ext-eval-v2` gate) |
 | `SCR-05.E03` | Tests passed without and with the tool | Whole numbers with whole denominators. | `LOOP-4` | NEW |
 | `SCR-05.E04` | XP line and level bar | Says when XP comes: when another trainer checks it. | `LOOP-6` | NEW (the `eval-check` rule) |
 | `SCR-05.E05` | Why it matters | One sentence on the network effect. | `LOOP-5` | NEW |
@@ -2047,7 +2047,7 @@ New work v1 depends on, outside the screens (the
 [evals epic](../extensions/evaluation.md#delivery) tracks each):
 
 1. **The eval engine** (`openagents ext eval`): cases, graders, both arms,
-   the sandbox, the report, and the `ext-eval-v1` gate.
+   the sandbox, the report, and the `ext-eval-v2` gate.
 2. **A hosted runner** that runs a test set for a tool on our computers,
    with no player setup, within a daily quota.
 3. **A starter test set** for each catalog tool (Project map, Code finder,

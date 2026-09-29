@@ -14,7 +14,10 @@
 //! - the **profile record** `meta.ext_eval` (`openagents.ext-eval.v1`) a
 //!   report carries;
 //! - the **result publication**: a `3189` with the `oa:ext-eval:v1`
-//!   marker, its report inline in `meta.ext_eval_report`;
+//!   marker, its report inline in `meta.ext_eval_report` and, for a hosted
+//!   run, the trainer's signed request inline in `meta.ext_eval_request`;
+//! - the **hosted runner's wire** ([`hosted`]): the NIP-CJ execution
+//!   request a phone sends and the answers it gets;
 //! - **check linkage** ([`confirms`]): whether one publication confirms or
 //!   disputes another, from the two signed events alone.
 //!
@@ -51,9 +54,17 @@ pub const PROFILE_MARKER: &str = "oa:ext-eval:v1";
 /// The NIP-EXT component kind a published suite has.
 pub const COMPONENT_KIND: &str = "eval-suite";
 /// The component name of the Gym gate that decides the verdict.
-pub const GATE: &str = "ext-eval-v1";
+pub const GATE: &str = "ext-eval-v2";
+/// Every Gym gate a suite may name: `ext-eval-v2`, the current one, and
+/// `ext-eval-v1`, which results judged before 2026-09-29 name.
+pub const GATES: &[&str] = &["ext-eval-v1", "ext-eval-v2"];
 /// The most bytes a report inline in a publication may have.
 pub const MAX_REPORT_BYTES: usize = 64 * 1024;
+/// The most bytes a hosted result's signed request, inline in the
+/// publication as `meta.ext_eval_request`, may have as JSON. A NIP-44 v2
+/// body is at most 64 KiB, which base64 and the event's other fields
+/// widen.
+pub const MAX_REQUEST_BYTES: usize = 96 * 1024;
 /// The most cases a suite may hold.
 pub const MAX_CASES: usize = 256;
 /// Runs per arm, at most; the default is [`DEFAULT_RUNS`].
@@ -113,7 +124,7 @@ impl CaseKind {
     }
 }
 
-/// A report's verdict under the `ext-eval-v1` gate.
+/// A report's verdict under the suite's `ext-eval` gate.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Verdict {
     /// The gate keeps the extension: **Better**.
@@ -411,7 +422,7 @@ pub struct Suite {
     /// Names the suite author as the label source.
     pub labels: ArtifactRef,
     pub metrics: ArtifactRef,
-    /// The Gym gate `ext-eval-v1`.
+    /// The Gym gate: `ext-eval-v2`, or `ext-eval-v1` for older suites.
     pub acceptance: DefinitionRef,
     pub environment: ArtifactRef,
 }
@@ -422,7 +433,7 @@ pub struct Suite {
 ///
 /// A typed refusal naming the first check that failed: another purpose, a
 /// `cases` artifact of another schema, or an acceptance that isn't the
-/// `ext-eval-v1` gate.
+/// `ext-eval-v2` or `ext-eval-v1` gate.
 pub fn parse_suite(bytes: &[u8]) -> Result<Suite, ContractError> {
     let value = parse_strict(bytes)?;
     let object = value.as_object().ok_or_else(|| malformed("suite"))?;
@@ -452,8 +463,15 @@ pub fn parse_suite(bytes: &[u8]) -> Result<Suite, ContractError> {
     }
     let id = text(object, "id")?;
     let acceptance = parse_definition(require(object, "acceptance")?)?;
-    if acceptance.id.rsplit('/').next() != Some(GATE) {
-        return Err(mismatch(format!("acceptance: the gate is {GATE}")));
+    if !acceptance
+        .id
+        .rsplit('/')
+        .next()
+        .is_some_and(|gate| GATES.contains(&gate))
+    {
+        return Err(mismatch(
+            "acceptance: the gate is ext-eval-v2 or ext-eval-v1",
+        ));
     }
     let cases = parse_artifact(require(object, "cases")?)?;
     if cases.schema.as_deref() != Some(CASE_SCHEMA) {
@@ -619,7 +637,7 @@ pub struct Headline {
 /// A verified `meta.ext_eval` (`openagents.ext-eval.v1`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Profile {
-    /// The `ext-eval-v1` gate's digest.
+    /// The `ext-eval` gate's digest.
     pub gate: String,
     /// Each case's ID and kind, in the case manifest's order.
     pub cases: Vec<(String, CaseKind)>,
@@ -999,6 +1017,11 @@ pub struct Publication {
     pub subject_release: Option<EventPointer>,
     /// The publication this one checks, when it's a check.
     pub checks: Option<String>,
+    /// A hosted result's signed NIP-CJ request, carried inline in
+    /// `meta.ext_eval_request` and already checked with
+    /// [`check_request`]. `None` when the result isn't hosted or doesn't
+    /// carry it.
+    pub request: Option<Event>,
 }
 
 impl Publication {
@@ -1046,7 +1069,36 @@ fn pointer_from(event: &crate::contracts::EventRef) -> EventPointer {
 /// When the report isn't valid under the profile, its suite has no
 /// release, or `checks` isn't an event ID.
 pub fn publication(report: &str, checks: Option<&str>) -> Result<Unsigned, ContractError> {
+    publication_with(report, checks, None)
+}
+
+/// [`publication`] for a hosted run: the trainer's signed NIP-CJ
+/// execution `request` rides inline as `meta.ext_eval_request`, so a
+/// reader can credit the trainer without a relay that stored the request
+/// (relays keep no `25920`). The request must be the one the report's
+/// `requester` names, sent to the report's evaluator, the runner.
+///
+/// # Errors
+///
+/// [`publication`]'s refusals; [`check_request`]'s for a request that
+/// isn't the report's, and a request over [`MAX_REQUEST_BYTES`].
+pub fn hosted_publication(
+    report: &str,
+    checks: Option<&str>,
+    request: &Event,
+) -> Result<Unsigned, ContractError> {
+    publication_with(report, checks, Some(request))
+}
+
+fn publication_with(
+    report: &str,
+    checks: Option<&str>,
+    request: Option<&Event>,
+) -> Result<Unsigned, ContractError> {
     let parsed = parse_report(report.as_bytes())?;
+    if let Some(request) = request {
+        check_inline_request(&parsed, request)?;
+    }
     let suite = parsed.suite.event.as_ref().ok_or_else(|| {
         malformed("report.suite.event: publish the suite's release before its results")
     })?;
@@ -1067,7 +1119,10 @@ pub fn publication(report: &str, checks: Option<&str>) -> Result<Unsigned, Contr
         },
         "subject": subject,
         "supersedes": [],
-        "meta": {"ext_eval_report": report},
+        "meta": match request {
+            Some(request) => json!({"ext_eval_report": report, "ext_eval_request": request}),
+            None => json!({"ext_eval_report": report}),
+        },
     });
     let mut tags = vec![
         tag(&["t", kb::EVAL_MARKER]),
@@ -1146,7 +1201,7 @@ pub fn parse_publication(event: &Event) -> Result<Publication, ContractError> {
     let meta = require(object, "meta")?
         .as_object()
         .ok_or_else(|| malformed("meta"))?;
-    reject(meta, &["ext_eval_report"])?;
+    reject(meta, &["ext_eval_report", "ext_eval_request"])?;
     let report_text = meta
         .get("ext_eval_report")
         .and_then(Value::as_str)
@@ -1164,6 +1219,15 @@ pub fn parse_publication(event: &Event) -> Result<Publication, ContractError> {
     if report.evaluator != event.pubkey {
         return Err(mismatch("the signer isn't the report's evaluator"));
     }
+    let inline_request = match meta.get("ext_eval_request") {
+        None => None,
+        Some(value) => {
+            let request: Event = serde_json::from_value(value.clone())
+                .map_err(|_| malformed("meta.ext_eval_request: a signed event"))?;
+            check_inline_request(&report, &request)?;
+            Some(request)
+        }
+    };
     let report_value = parse_strict(report_text.as_bytes())?;
     if report_value.pointer("/subject/definition") != Some(subject_value) {
         return Err(mismatch("subject: not the report's"));
@@ -1233,7 +1297,39 @@ pub fn parse_publication(event: &Event) -> Result<Publication, ContractError> {
         suite_release,
         subject_release,
         checks,
+        request: inline_request,
     })
+}
+
+/// Checks a hosted result's inline request against its report: the report
+/// names a requester, the request is that exact signed event, at most
+/// [`MAX_REQUEST_BYTES`] as JSON, and was sent to the report's evaluator.
+fn check_inline_request(report: &Report, request: &Event) -> Result<(), ContractError> {
+    let Some(requester) = &report.profile.requester else {
+        return Err(mismatch(
+            "meta.ext_eval_request: only a hosted result carries a request",
+        ));
+    };
+    if serde_json::to_vec(request).map_or(usize::MAX, |bytes| bytes.len()) > MAX_REQUEST_BYTES {
+        return Err(ContractError::new(
+            RefusalCode::LimitExceeded,
+            "meta.ext_eval_request is over 96 KiB",
+        ));
+    }
+    if request.id != requester.id
+        || request.pubkey != requester.pubkey
+        || request.kind != crate::kinds::CJ_EXECUTION_REQUEST
+    {
+        return Err(mismatch("not the request the result names"));
+    }
+    request
+        .validate_crypto()
+        .map_err(|_| mismatch("request signature"))?;
+    let workers: Vec<&str> = request.tag_values("p").collect();
+    if workers != [report.evaluator.as_str()] {
+        return Err(mismatch("the request wasn't sent to the result's runner"));
+    }
+    Ok(())
 }
 
 /// How a publication relates to another it may check.
@@ -1299,27 +1395,15 @@ pub fn linkage(original: &Publication, check: &Publication) -> Linkage {
 /// [`RefusalCode::IdentityMismatch`] when it isn't that request; a result
 /// that names no requester has none to check.
 pub fn check_request(result: &Publication, request: &Event) -> Result<(), ContractError> {
-    let Some(requester) = &result.report.profile.requester else {
+    if result.report.profile.requester.is_none() {
         return Err(mismatch("the result isn't hosted: it names no request"));
-    };
-    if request.id != requester.id
-        || request.pubkey != requester.pubkey
-        || request.kind != crate::kinds::CJ_EXECUTION_REQUEST
-    {
-        return Err(mismatch("not the request the result names"));
     }
-    request
-        .validate_crypto()
-        .map_err(|_| mismatch("request signature"))?;
-    let workers: Vec<&str> = request.tag_values("p").collect();
-    if workers != [result.evaluator.as_str()] {
-        return Err(mismatch("the request wasn't sent to the result's runner"));
-    }
-    Ok(())
+    check_inline_request(&result.report, request)
 }
 
-/// The trainer of `result`, after checking a hosted result's request is
-/// among `requests`: the requester when it verifies, the evaluator when
+/// The trainer of `result`, after checking a hosted result's request: the
+/// one it carries inline (already checked when it was parsed), else one
+/// among `requests`. The requester when it verifies, the evaluator when
 /// the result isn't hosted.
 ///
 /// # Errors
@@ -1330,7 +1414,9 @@ pub fn verified_trainer<'a>(
     result: &'a Publication,
     requests: &[Event],
 ) -> Result<&'a str, ContractError> {
-    if let Some(requester) = &result.report.profile.requester {
+    if let Some(requester) = &result.report.profile.requester
+        && result.request.is_none()
+    {
         let request = requests
             .iter()
             .find(|r| r.id == requester.id)
@@ -1514,6 +1600,8 @@ pub(crate) fn valid_qualified(id: &str) -> bool {
                 .is_some_and(|(package, component)| slug(package) && slug(component))
     })
 }
+
+pub mod hosted;
 
 #[cfg(test)]
 pub(crate) mod tests;

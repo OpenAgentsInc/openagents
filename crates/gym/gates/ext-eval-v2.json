@@ -1,0 +1,44 @@
+{
+  "$comment": [
+    "Answers one question: does admitting this extension make the agent pass more of its suite? crates/ext-eval runs a suite of cases with the extension admitted (the subject arm) and with it absent (the baseline arm), scores both, and hands this rule the suite-level comparison. docs/extensions/evaluation.md, Scoring and the verdict, states the rule in prose.",
+    "It keeps (Better) only when the subject arm passes more compared cases than the baseline, passes every should-not-fire case the baseline passes, raises the mean score by more than the spread between repeats of the same arm, and is not materially worse on cost or time per attempt. It rejects (Worse) when the subject arm passes fewer cases or loses a should-not-fire case. Everything else is inconclusive (No clear change).",
+    "ext-eval-v1 kept an extension that improved the mean score, the cost, or the time, so a tool that made the agent answer faster and no better read as Better (docs/extensions/measurements/2026-09-29-ext-eval-runner-live.md). This rule never keeps on cost or time: they only block, when either rises past max_increase. The runner reports a faster or cheaper run as a separate note beside the verdict. ext-eval-v1 stays committed so results judged by it keep their meaning.",
+    "The spread is measured on the run being judged, never carried over from another: per attempt, the arm's mean score over the compared cases, its total cost, and its total time, and the spread is the highest minus the lowest of those across the arm's attempts, the larger of the two arms. A run of one attempt has no spread, so runs = 1 leaves every criterion unjudged and the verdict is inconclusive whatever the passes say.",
+    "A case whose every grader is subject-only scores the subject arm alone and is not compared; it does not count toward the passes either arm is judged on.",
+    "The spread of three repeats is itself a noisy estimate. What would replace it is the spread of whole evaluations repeated on the same extension, which nothing has measured yet; pending_measurement records that gap."
+  ],
+  "schema": "openagents.gym.gate.v2",
+  "id": "ext-eval-v2",
+  "question": "Does admitting this extension make the agent pass more of its suite than running without it, at a cost and time not materially worse?",
+  "rule": {
+    "decides": "ext_eval",
+    "min_runs": {
+      "value": 2,
+      "basis": "derived",
+      "evidence": [
+        {
+          "kind": "code",
+          "id": "ext_eval::score::spread"
+        }
+      ],
+      "why": "The spread between repeats is the highest minus the lowest of an arm's attempts, and one attempt has no spread. Two is the fewest runs per case from which the rule can tell a change from the agent's own variation; the case format's default is three."
+    },
+    "spread_multiple": {
+      "value": 1.0,
+      "basis": "convention",
+      "evidence": [],
+      "why": "The evaluation spec asks for an improvement larger than the spread between repeats of the same arm, which is one spread. It is the stated product rule and not a measurement of any suite, so it is labelled a convention."
+    },
+    "max_increase": {
+      "value": 0.5,
+      "basis": "convention",
+      "evidence": [],
+      "why": "How much more cost or time per attempt the subject arm may take, relative to the baseline arm and beyond the spread between repeats, and still count as not materially worse. Half again is the stated product rule for a tool that passes more tests: slower or dearer is acceptable within it, and a tool that doubles the time does not read as Better. It is not a measurement of any suite, so it is labelled a convention."
+    },
+    "pending_measurement": {
+      "quantity": "the spread of a suite's mean score across whole evaluations repeated on the same extension",
+      "issue": null,
+      "why": "Until whole evaluations are repeated and their spread recorded, the rule reads the spread between attempts inside the run it judges, which a run of three can understate. The direction of that error is towards Better, which is why an inconclusive result stays the default and adoption needs three confirming checks by other trainers."
+    }
+  }
+}

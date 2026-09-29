@@ -19,7 +19,7 @@
 //! 2. [`Plan::attempts`] lists the runs to make.
 //! 3. The runner makes them and builds [`RunRecord`]s.
 //! 4. [`evaluate`] grades every run ([`grade_all`]), scores the arms
-//!    ([`Scores`]), asks the Gym gate `ext-eval-v1` for the verdict, and
+//!    ([`Scores`]), asks the Gym gate `ext-eval-v2` for the verdict, and
 //!    builds `report.json`, its artifacts, and `report.html`
 //!    ([`Evaluation`]); [`Evaluation::write`] puts them in a results
 //!    directory.
@@ -92,7 +92,7 @@ pub use discover::{Filter, Suite, eval_dir};
 pub use door::{
     DecisionAnswer, DecisionDoor, Doors, JevDoor, JudgeDoor, ReplayVerdict, Replayer, RunKey,
 };
-pub use evaluate::{EvalError, Evaluation, GATE_ID, Verdict, conclude, evaluate, load_gate};
+pub use evaluate::{EvalError, Evaluation, GATE_ID, Verdict, conclude, evaluate, load_gate, notes};
 pub use grade::{GraderResult, Vote, grade_run};
 pub use grader::{ArmRule, Check, DecisionQuestion, Focus, Grader, Match};
 pub use record::{Arm, RunOutcome, RunRecord, run_path};

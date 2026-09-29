@@ -419,7 +419,9 @@ publication. It is accepted when all of these hold:
    the result's.
 3. The checker is neither the evaluator nor the suite author. For a
    hosted result, the requester named in the report stands in for the
-   evaluator in this test, and that request's signature verifies.
+   evaluator in this test, and that request's signature verifies. The
+   result carries the request in `meta.ext_eval_request`, because relays
+   keep no `25920`.
 4. The check's verdict equals the result's verdict, and neither is
    `inconclusive`.
 5. The check was published after the result and both inside the season.

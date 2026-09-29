@@ -1,0 +1,24 @@
+   Compiling ledger v0.3.0 (/work/ledger)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 4.12s
+     Running unittests src/lib.rs (target/debug/deps/ledger-3f1c)
+
+running 5 tests
+test tests::opens_account ... ok
+test tests::posts_credit ... ok
+test tests::posts_debit ... ok
+test tests::rejects_negative_balance ... FAILED
+test tests::closes_account ... ok
+
+failures:
+
+---- tests::rejects_negative_balance stdout ----
+
+thread 'tests::rejects_negative_balance' panicked at src/ledger.rs:88:9:
+assertion failed: result.is_err()
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    tests::rejects_negative_balance
+
+test result: FAILED. 4 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s

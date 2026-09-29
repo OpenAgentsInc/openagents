@@ -156,13 +156,31 @@ pub fn report(evaluator: &str, run: &Run<'_>) -> String {
 }
 
 /// A result publication `by` signs at `at`; with `checks`, a check of
-/// that result.
+/// that result. A hosted run's request rides inline, as the hosted
+/// runner publishes it.
 ///
 /// # Panics
 ///
 /// When the fixture isn't a valid publication, which a test would catch.
 #[must_use]
 pub fn published(by: &RelaySigner, run: &Run<'_>, checks: Option<&str>, at: u64) -> Event {
+    let report = report(by.pubkey(), run);
+    let parts = match run.request {
+        Some(request) => eval_ext::hosted_publication(&report, checks, request),
+        None => eval_ext::publication(&report, checks),
+    }
+    .expect("a valid result");
+    by.sign(at, parts.kind, parts.tags, parts.content)
+}
+
+/// [`published`] for a hosted run without its request inline: a reader
+/// then needs the request from elsewhere.
+///
+/// # Panics
+///
+/// When the fixture isn't a valid publication, which a test would catch.
+#[must_use]
+pub fn published_bare(by: &RelaySigner, run: &Run<'_>, checks: Option<&str>, at: u64) -> Event {
     let parts = eval_ext::publication(&report(by.pubkey(), run), checks).expect("a valid result");
     by.sign(at, parts.kind, parts.tags, parts.content)
 }

@@ -13,8 +13,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use coder::package::{HeldLock, Package};
-use ext_eval::arms::{self, AgentPin, Program, Skill, Subject};
-use ext_eval::artifact::{ArtifactRef, JSON};
+use ext_eval::arms::{self, AgentPin, Program, Subject};
 use ext_eval::case::{Grant, LoadOptions};
 use ext_eval::proxy::Secret;
 use ext_eval::run::{self, Author, DecisionPin, Door, Options, Progress, Setup};
@@ -243,26 +242,7 @@ fn resolve(target: &str) -> Result<Target, String> {
     let program_path = root.join(&lock.program.found);
     let program = std::fs::read(&program_path)
         .map_err(|error| format!("{}: {error}", program_path.display()))?;
-    let mut skills = Vec::new();
-    let skills_dir = root.join(SKILLS_DIR);
-    if skills_dir.is_dir() {
-        let mut paths: Vec<PathBuf> = std::fs::read_dir(&skills_dir)
-            .map_err(|error| format!("{}: {error}", skills_dir.display()))?
-            .filter_map(Result::ok)
-            .map(|entry| entry.path())
-            .filter(|path| path.extension().is_some_and(|ext| ext == "md") && path.is_file())
-            .collect();
-        paths.sort();
-        for path in paths {
-            let name = path
-                .file_stem()
-                .map(|stem| stem.to_string_lossy().into_owned())
-                .unwrap_or_default();
-            let bytes =
-                std::fs::read(&path).map_err(|error| format!("{}: {error}", path.display()))?;
-            skills.push(Skill { name, bytes });
-        }
-    }
+    let skills = arms::skills_in(&root.join(SKILLS_DIR))?;
     // An unpublished extension is named under the local key, whoever runs
     // it, so a check by another trainer names the same subject.
     let publisher = if is_hex64(&package.publisher) {
@@ -270,10 +250,7 @@ fn resolve(target: &str) -> Result<Target, String> {
     } else {
         crate::ext_eval_init::LOCAL_KEY.to_string()
     };
-    let definition = json!({
-        "id": format!("{publisher}:{}/{}", package.slug, package.program.name),
-        "artifact": ArtifactRef::of(&bytes, JSON, Some(arms::PACKAGE_SCHEMA)).value(),
-    });
+    let definition = arms::definition(&publisher, &package.slug, &package.program.name, &bytes);
     let subject = Subject {
         slug: package.slug.clone(),
         definition,
@@ -679,6 +656,11 @@ fn summary(evaluation: &ext_eval::Evaluation, results: &Path) -> String {
             scores.subject.cases_passed
         ),
     }];
+    // Time and cost never make a tool Better (ext-eval-v2); they are
+    // stated beside the verdict instead.
+    for note in ext_eval::notes(scores) {
+        lines.push(format!("{note}."));
+    }
     if let Some(partial) = &evaluation.partial {
         lines.push(format!("Partial: {partial}."));
     }

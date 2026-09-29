@@ -324,6 +324,54 @@ async fn an_operator_adopts_a_candidate_and_the_referee_credits_the_adoption() {
     assert_eq!(ledger.totals.get(signer("alice").pubkey()), Some(&75));
 }
 
+/// Hosted results: the runner signs both the result and the check, each
+/// naming the trainer who asked, and each carries that trainer's signed
+/// `25920` inline, because relays keep no `25920`. The referee credits the
+/// two trainers without any request on the relay; a hosted result without
+/// its request inline, whose request no relay holds, is refused.
+#[tokio::test]
+async fn hosted_results_credit_their_trainers_from_the_inline_request() {
+    let s = Setup::new("eval-referee-hosted").await;
+    let runner = signer("hosted-runner");
+    let at = now();
+    let asked = xp_ledger::eval::fixture::request(&signer("dana"), runner.pubkey(), at - 300);
+    let mut run = s.run();
+    run.request = Some(&asked);
+    let result = published(&runner, &run, None, at - 90);
+    let rechecked = xp_ledger::eval::fixture::request(&signer("erin"), runner.pubkey(), at - 80);
+    let mut check_run = s.run();
+    check_run.request = Some(&rechecked);
+    let check = published(&runner, &check_run, Some(&result.id), at - 20);
+    put(&s.store, &[result.clone(), check]);
+    assert_eq!(count(&s.store, nostr::kinds::CJ_EXECUTION_REQUEST), 0);
+
+    let tally = s.pass().await;
+    assert_eq!(tally.signed, 3, "{tally:?}");
+    let ledger = knowledge::xp::derive(&events(&s.store), &s.trust());
+    assert_eq!(ledger.refused, Vec::<String>::new());
+    assert_eq!(ledger.totals.get(signer("erin").pubkey()), Some(&50));
+    assert_eq!(ledger.totals.get(signer("dana").pubkey()), Some(&25));
+    assert_eq!(
+        ledger.totals.get(runner.pubkey()),
+        None,
+        "the runner earns nothing"
+    );
+
+    // Without the request inline and none on the relay, nobody is credited.
+    let bare = Setup::new("eval-referee-hosted-bare").await;
+    let mut run = bare.run();
+    run.request = Some(&asked);
+    let result = xp_ledger::eval::fixture::published_bare(&runner, &run, None, at - 90);
+    let mut check_run = bare.run();
+    check_run.request = Some(&rechecked);
+    let check =
+        xp_ledger::eval::fixture::published_bare(&runner, &check_run, Some(&result.id), at - 20);
+    put(&bare.store, &[result, check]);
+    let tally = bare.pass().await;
+    assert_eq!(tally.signed, 0, "{tally:?}");
+    assert_eq!(tally.refused, 1, "{tally:?}");
+}
+
 #[test]
 fn the_built_in_templates_parse_and_promise_no_money() {
     let built = templates(None).unwrap();
