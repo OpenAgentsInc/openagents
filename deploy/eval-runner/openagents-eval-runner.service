@@ -12,6 +12,13 @@ EnvironmentFile=%h/.config/openagents/eval-runner.env
 ExecStart=%h/.local/libexec/openagents-eval-runner/eval-runner serve
 Restart=on-failure
 RestartSec=5
+# The backstop behind the runner's own relay liveness probes (#9946):
+# every answered probe (one each 30 seconds) sends WATCHDOG=1, and a runner
+# that hasn't proven its relay subscription for two minutes is restarted.
+# A runner built before that change sends none; install.sh installs this
+# unit from the same commit as the binary, so the two always match.
+WatchdogSec=120
+NotifyAccess=main
 Nice=5
 NoNewPrivileges=true
 UMask=0077

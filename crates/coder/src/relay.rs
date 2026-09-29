@@ -47,6 +47,8 @@
 
 /// Authenticated, bounded reads and publication of exact private artifacts.
 pub mod artifacts;
+/// Probing and renewing a long-lived relay subscription (#9946).
+pub mod liveness;
 /// An open conversation worker's per-caller quota.
 pub mod quota;
 

@@ -68,6 +68,29 @@ phone <--26920 result, 3188 report----- relay.openagents.com <--
   `test-reader-tests`), so `knowledge/quests/ext-eval.*.json` list it as
   their publisher.
 
+- **Liveness.** The runner never trusts a quiet socket, the same way
+  the chat worker doesn't
+  ([#9946](https://github.com/OpenAgentsInc/openagents/issues/9946)).
+  `relay.openagents.com` is a Cloud Run domain mapping, so the runner's
+  WebSocket ends at Google's front end, and when the relay instance
+  behind it restarts, the front end can keep the connection established
+  while nothing reaches it. So the runner sends a probe every 30 seconds
+  (a `REQ` with `limit` 0 on its requests filter, which the relay answers
+  with `EOSE` at once) and treats a probe still unanswered at the next
+  one as a dropped connection: it logs `relay: the relay stopped
+  answering: …; reconnecting in 1 s` and subscribes again. Every 45
+  minutes, before the relay's one-hour request timeout, it opens a second
+  connection, subscribes there, and only then closes the first
+  (`renewed the requests subscription on a new connection`), reading the
+  old one 5 seconds longer, so no request falls into the gap. A request
+  delivered on both connections is handled once: the runner drops an
+  event it has seen, and the ledger answers a retransmission with its
+  recorded answer and never runs it again. `EVAL_RUNNER_PROBE_MS` and
+  `EVAL_RUNNER_RENEW_MS` change the two periods. Each answered probe also
+  sends systemd `WATCHDOG=1`; the unit's `WatchdogSec=120` restarts a
+  runner that stops proving its subscription. The probe and renewal code
+  is shared with the chat worker (`coder::relay::liveness`).
+
 The runner runs on `coderos-4080`, the NixOS machine that already runs
 the XP referee: it has `bwrap`, 28 cores, and a Rust toolchain, and its
 user services outlive a logout. The Coder worker VM has no toolchain and
@@ -161,8 +184,38 @@ reuses the releases. The measured first runs are in
 
 ## Checking the deployed path
 
+From a checkout, send the phone's own hosted request from a fresh key; the
+runner refuses it `not_admitted` at once, which proves it receives
+requests:
+
+```sh
+cargo test --manifest-path crates/openagents-mobile/Cargo.toml --lib \
+  live_the_runner_answers_the_phone -- --ignored --nocapture
+```
+
 `crates/eval-runner/tests/hosted.rs` runs the whole path against a local
 relay (it needs `NOSTR_RELAY_TEST_DATABASE_URL`). Against production, send
 a request from a fresh key with the phone's code path and watch the
 service's journal: each request logs one line when it's admitted or
 refused, and one when it finishes, with ids and counts only.
+
+### When the phone gets no answer
+
+A tap on **Start the test** that is never acknowledged, with the unit
+still `active`, means the runner isn't receiving requests. On
+`coderos-4080`:
+
+1. `journalctl --user -u openagents-eval-runner --since -15min
+   --no-pager`. A healthy runner logs nothing between requests except
+   `renewed the requests subscription` every 45 minutes. `relay: …
+   reconnecting` lines mean the relay is failing and the runner is
+   rejoining it; check the relay (`openagents-nostr-relay` on Cloud Run,
+   [runbook-cloud-run.md](runbook-cloud-run.md)).
+2. `systemctl --user show openagents-eval-runner -p WatchdogTimestamp -p
+   NRestarts`. A `WatchdogTimestamp` that isn't recent, or restarts
+   climbing, means the runner can't prove its subscription.
+3. Run `live_the_runner_answers_the_phone` (above). If it fails while the
+   journal shows no fault, save `ss -tnpi` for the runner's PID (the
+   relay socket's `lastrcv` says how long it has heard nothing) and the
+   journal, then `systemctl --user restart openagents-eval-runner` and
+   open an issue with both.

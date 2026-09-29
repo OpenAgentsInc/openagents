@@ -192,9 +192,15 @@ async fn a_hosted_run_over_a_local_relay_credits_its_trainer() {
         let (runner, url) = (Arc::clone(&runner), local.url.clone());
         tokio::spawn(async move {
             let identity =
-                coder::relay::Identity::from_text(&support::hex(&key), "runner").unwrap();
+                Arc::new(coder::relay::Identity::from_text(&support::hex(&key), "runner").unwrap());
             loop {
-                let _ = eval_runner::runner::listen(&url, &identity, &runner).await;
+                let _ = eval_runner::runner::listen(
+                    &url,
+                    &identity,
+                    &runner,
+                    coder::relay::liveness::Liveness::default(),
+                )
+                .await;
                 tokio::time::sleep(Duration::from_millis(200)).await;
             }
         });

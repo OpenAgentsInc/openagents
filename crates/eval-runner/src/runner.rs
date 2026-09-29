@@ -14,15 +14,16 @@ use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::str::FromStr as _;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
 
-use coder::relay::Identity;
+use coder::relay::liveness::{self, Liveness, Renewal, Successor};
+use coder::relay::{Identity, Socket, send};
 use ext_eval::arms::{AgentPin, Subject};
 use ext_eval::artifact::{ArtifactRef, JSON};
 use ext_eval::case::{Grant, LoadOptions};
 use ext_eval::discover::Suite;
 use ext_eval::run::{self, Author, Options, Progress as RunProgress, Setup};
 use ext_eval::signal::Cancel;
+use futures_util::StreamExt as _;
 use nostr::cj_conversation::{SubjectSource, SuiteSource};
 use nostr::contracts::{digest_bytes, jcs};
 use nostr::domain::{Event, Tag};
@@ -31,6 +32,7 @@ use nostr::eval_ext::{self, EventPointer, Headline, Verdict};
 use nostr::execution::{self, Admission, Body, Execute, Opened, Report, Seal, Service, Window};
 use secp256k1::XOnlyPublicKey;
 use serde_json::{Value, json};
+use tokio_tungstenite::tungstenite;
 
 use crate::catalog::{self, Catalog};
 use crate::config::Config;
@@ -1260,57 +1262,189 @@ fn horizon(now: u64) -> u64 {
     now + hosted::DEADLINE_SECONDS + hosted::RETAIN_SECONDS + 86_400
 }
 
+/// The subscription that carries the runner's requests.
+pub const JOBS: &str = "jobs";
+
+/// Overrides the probe period (`coder::relay::liveness::PROBE_EVERY`), in
+/// milliseconds.
+pub const PROBE_VAR: &str = "EVAL_RUNNER_PROBE_MS";
+
+/// Overrides the renewal period (`coder::relay::liveness::RENEW_EVERY`),
+/// in milliseconds.
+pub const RENEW_VAR: &str = "EVAL_RUNNER_RENEW_MS";
+
+/// Why a connection ended.
+#[derive(Debug)]
+pub struct Ended {
+    /// Whether the relay had confirmed the subscription on it, so a
+    /// reconnect starts from the shortest wait again.
+    pub subscribed: bool,
+    /// What happened.
+    pub why: String,
+}
+
+/// Hands one `EVENT` frame on the jobs subscription to the runner, from
+/// whichever connection delivered it. [`Runner::handle`] drops an event it
+/// has seen, and the ledger answers a retransmission with its recorded
+/// answer, so a request delivered on two connections runs once.
+fn deliver(runner: &Arc<Runner>, value: &Value) {
+    if let Ok(event) = serde_json::from_value::<Event>(value[2].clone()) {
+        let runner = Arc::clone(runner);
+        tokio::spawn(async move { runner.handle(event).await });
+    }
+}
+
 /// One connection: subscribe to this runner's requests and hand each to
-/// the runner, until the socket fails.
+/// the runner, until the connection fails.
 ///
-/// # Errors
+/// The runner never trusts a quiet socket (#9946). `relay.openagents.com`
+/// is a Cloud Run domain mapping, and when the relay instance restarts,
+/// Google's front end can keep this connection established while nothing
+/// reaches it. So every [`Liveness::probe`] the runner sends a probe (a
+/// `REQ` with `limit` 0 that the relay answers with `EOSE`), and a probe
+/// still unanswered at the next one ends the connection. Every
+/// [`Liveness::renew`], before the relay's one-hour request timeout, a
+/// successor connection subscribes first, then this one is closed and
+/// read for [`liveness::DRAIN`] longer, so a request is never published
+/// to neither. Each answered probe tells systemd's watchdog the runner is
+/// live.
 ///
-/// Why the connection ended.
+/// It returns only when the connection ends, saying why.
 pub async fn listen(
     url: &str,
-    identity: &coder::relay::Identity,
+    identity: &Arc<Identity>,
     runner: &Arc<Runner>,
-) -> Result<(), String> {
-    let mut socket = coder::relay::connect(url, identity)
-        .await
-        .map_err(|error| error.to_string())?;
-    coder::relay::send(&mut socket, json!(["REQ", "jobs", runner.filter()]))
-        .await
-        .map_err(|error| error.to_string())?;
-    let mut ping = tokio::time::interval(Duration::from_secs(30));
+    liveness: Liveness,
+) -> Ended {
+    let mut subscribed = false;
+    let ended = |subscribed: bool, why: String| Ended { subscribed, why };
+    let jobs = || json!(["REQ", JOBS, runner.filter()]);
+    let mut socket = match liveness::subscribe(url, identity, jobs()).await {
+        Ok(socket) => socket,
+        Err(why) => return ended(false, why),
+    };
+    let probe_every = liveness.probe;
+    let mut probes =
+        tokio::time::interval_at(tokio::time::Instant::now() + probe_every, probe_every);
+    probes.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    let mut probe_count: u64 = 0;
+    // The probe the relay hasn't answered yet.
+    let mut outstanding: Option<String> = None;
+    let mut renew_at = tokio::time::Instant::now() + liveness.renew;
+    let mut renewing: Option<Renewal> = None;
+    // The replaced connection and when reading it stops.
+    let mut draining: Option<(Socket, tokio::time::Instant)> = None;
     loop {
         tokio::select! {
-            _ = ping.tick() => {
-                use futures_util::SinkExt as _;
-                socket
-                    .send(tokio_tungstenite::tungstenite::Message::Ping(Vec::new().into()))
-                    .await
-                    .map_err(|error| error.to_string())?;
+            _ = probes.tick() => {
+                if outstanding.is_some() {
+                    return ended(subscribed, format!(
+                        "the relay stopped answering: a liveness probe had no reply in {} s",
+                        probe_every.as_secs_f64()
+                    ));
+                }
+                probe_count += 1;
+                let id = format!("{}{probe_count}", liveness::PROBE_PREFIX);
+                if let Err(error) = send(&mut socket, liveness::probe_request(&id, runner.filter())).await {
+                    return ended(subscribed, error.to_string());
+                }
+                outstanding = Some(id);
             }
-            frame = futures_util::StreamExt::next(&mut socket) => {
+            () = tokio::time::sleep_until(renew_at), if subscribed && renewing.is_none() => {
+                renewing = Some(Box::pin(liveness::successor(url.to_string(), Arc::clone(identity), JOBS, jobs())));
+            }
+            made = liveness::poll_some(&mut renewing) => {
+                renewing = None;
+                match made {
+                    Ok(Successor { socket: next, early }) => {
+                        let mut old = std::mem::replace(&mut socket, next);
+                        // The old subscription stops after the new one is
+                        // live; whatever it delivered meanwhile is still
+                        // read for a moment.
+                        let _ = send(&mut old, json!(["CLOSE", JOBS])).await;
+                        draining = Some((old, tokio::time::Instant::now() + liveness::DRAIN));
+                        outstanding = None;
+                        probes.reset();
+                        renew_at = tokio::time::Instant::now() + liveness.renew;
+                        log("renewed the requests subscription on a new connection");
+                        liveness::notify_watchdog();
+                        for value in &early {
+                            deliver(runner, value);
+                        }
+                    }
+                    Err(why) => {
+                        // The current connection still proves itself with
+                        // probes; try again after the next one.
+                        log(&format!("relay: renewing the subscription failed: {why}; keeping the current connection"));
+                        renew_at = tokio::time::Instant::now() + probe_every;
+                    }
+                }
+            }
+            frame = liveness::next_draining(&mut draining) => {
+                match frame {
+                    Some(Ok(tungstenite::Message::Text(text))) => {
+                        let Ok(value) = serde_json::from_str::<Value>(&text) else { continue };
+                        if value[1].as_str() != Some(JOBS) {
+                            continue;
+                        }
+                        match value[0].as_str() {
+                            Some("EVENT") => deliver(runner, &value),
+                            Some("CLOSED") => draining = None,
+                            _ => {}
+                        }
+                    }
+                    Some(Ok(_)) => {}
+                    Some(Err(_)) | None => draining = None,
+                }
+            }
+            frame = socket.next() => {
                 let Some(frame) = frame else {
-                    return Err("the relay closed the socket".into());
+                    return ended(subscribed, "the relay closed the socket".into());
                 };
-                let tokio_tungstenite::tungstenite::Message::Text(text) = frame.map_err(|error| error.to_string())? else {
-                    continue;
+                let text = match frame {
+                    Ok(tungstenite::Message::Text(text)) => text,
+                    Ok(_) => continue,
+                    Err(error) => return ended(subscribed, error.to_string()),
                 };
                 let Ok(value) = serde_json::from_str::<Value>(&text) else {
                     continue;
                 };
+                // The answer to a liveness probe: the relay is there and
+                // serving this connection.
+                if outstanding.as_deref().is_some_and(|id| value[1].as_str() == Some(id)) {
+                    match value[0].as_str() {
+                        Some("EOSE") => {
+                            let id = outstanding.take().unwrap_or_default();
+                            if let Err(error) = send(&mut socket, json!(["CLOSE", id])).await {
+                                return ended(subscribed, error.to_string());
+                            }
+                            liveness::notify_watchdog();
+                        }
+                        // A refused probe still came from the relay.
+                        Some("CLOSED") => {
+                            outstanding = None;
+                            liveness::notify_watchdog();
+                        }
+                        _ => {}
+                    }
+                    continue;
+                }
+                if value[1].as_str() != Some(JOBS) {
+                    continue;
+                }
                 match value[0].as_str() {
-                    Some("EOSE") => eprintln!("subscribed; requests arrive live from here"),
+                    Some("EOSE") => {
+                        log("subscribed; requests arrive live from here");
+                        subscribed = true;
+                        liveness::notify_watchdog();
+                    }
                     Some("CLOSED") => {
-                        return Err(format!(
+                        return ended(subscribed, format!(
                             "the relay closed the subscription: {}",
                             value[2].as_str().unwrap_or_default()
                         ));
                     }
-                    Some("EVENT") if value[1] == "jobs" => {
-                        if let Ok(event) = serde_json::from_value::<Event>(value[2].clone()) {
-                            let runner = Arc::clone(runner);
-                            tokio::spawn(async move { runner.handle(event).await });
-                        }
-                    }
+                    Some("EVENT") => deliver(runner, &value),
                     _ => {}
                 }
             }

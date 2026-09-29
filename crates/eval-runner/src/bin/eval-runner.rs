@@ -16,8 +16,9 @@ use std::process::ExitCode;
 use std::sync::Arc;
 use std::time::Duration;
 
+use coder::relay::liveness::Liveness;
 use eval_runner::config::{Config, load_identity};
-use eval_runner::runner::Runner;
+use eval_runner::runner::{PROBE_VAR, RENEW_VAR, Runner};
 use eval_runner::wire::{Blobs, Blossom, Bucket, Relay, Wire};
 
 const USAGE: &str = "usage: eval-runner serve | check | pubkey | release DIR...";
@@ -167,6 +168,7 @@ async fn serve() -> Result<ExitCode, String> {
     ext_eval::sandbox::confinement_available()
         .map_err(|error| format!("unconfined_host: {error}"))?;
     let identity = Arc::new(load_identity(&config.key_file)?);
+    let liveness = Liveness::from_env(PROBE_VAR, RENEW_VAR)?;
     let runner = runner()?;
     eprintln!("runner  {}", runner.pubkey());
     eprintln!("relay   {}", config.relay);
@@ -181,6 +183,11 @@ async fn serve() -> Result<ExitCode, String> {
             .join(", ")
     );
     eprintln!("agent   {}", runner.agent().digest);
+    eprintln!(
+        "liveness a probe every {} s; the subscription is renewed every {} s",
+        liveness.probe.as_secs_f64(),
+        liveness.renew.as_secs_f64()
+    );
     match runner.release_tools().await {
         Ok(released) => {
             for (name, release) in released {
@@ -194,10 +201,17 @@ async fn serve() -> Result<ExitCode, String> {
     }
     let mut backoff = RECONNECT.0;
     loop {
-        match eval_runner::runner::listen(&config.relay, &identity, &runner).await {
-            Ok(()) => backoff = RECONNECT.0,
-            Err(why) => eprintln!("relay: {why}; reconnecting in {} s", backoff.as_secs()),
+        let ended = eval_runner::runner::listen(&config.relay, &identity, &runner, liveness).await;
+        // A connection the relay had confirmed was working: the next one
+        // starts from the shortest wait.
+        if ended.subscribed {
+            backoff = RECONNECT.0;
         }
+        eprintln!(
+            "relay: {}; reconnecting in {} s",
+            ended.why,
+            backoff.as_secs()
+        );
         tokio::time::sleep(backoff).await;
         backoff = (backoff * 2).min(RECONNECT.1);
     }

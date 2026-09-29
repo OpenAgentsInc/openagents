@@ -103,10 +103,14 @@ use coder::first;
 use coder::generate::{
     Door, Generate, GenerateError, Lane, Message, Role, Usage, WORKER_MODEL_VAR, model_from_env,
 };
+use coder::relay::liveness::{
+    self, DRAIN, Liveness, PROBE_PREFIX, Renewal, Successor, next_draining, notify_watchdog,
+    poll_some,
+};
 use coder::relay::quota::{Ledger, Policy};
 use coder::relay::{
     DEFAULT_RELAY_URL, FEEDBACK_KIND, Identity, PAYLOAD_VERSION, REQUEST_KIND, RESULT_KIND, Socket,
-    connect, parse_pubkey, partial_payload, payload_version, send,
+    parse_pubkey, partial_payload, payload_version, send,
 };
 use coder::router::seams::{
     Ask, AuthorAsk, AuthorStep, CliAnswer, CliAsk, Continuation, Grounding, GymLookup, Lookup,
@@ -138,79 +142,16 @@ const RECONNECT_FLOOR: Duration = Duration::from_secs(1);
 /// The longest wait between reconnect attempts.
 const RECONNECT_CEILING: Duration = Duration::from_secs(60);
 
-/// How often the worker proves its relay connection still carries its
-/// subscription, and how long each proof may take.
-///
-/// A socket can stay open on the worker's side after the relay behind it
-/// is gone. `relay.openagents.com` is a Cloud Run service behind Google's
-/// front end, and when the relay instance restarts, the front end can keep
-/// the worker's TCP connection established while nothing reaches it: the
-/// worker reads silence and every job published meanwhile is lost (#9946).
-/// Silence cannot tell an idle relay from a dead one, so the worker asks:
-/// every probe interval it sends a `REQ` that matches nothing new and
-/// expects the relay's `EOSE` or `CLOSED` for it before the next probe. A
-/// probe still unanswered then ends the connection as a fault, and the
-/// worker reconnects and subscribes again.
-const PROBE_EVERY: Duration = Duration::from_secs(30);
-
-/// How long one connection's subscription is kept before the worker opens
-/// its successor.
-///
-/// Cloud Run ends every request, a WebSocket included, at its request
-/// timeout (an hour for the relay). The worker replaces the connection
-/// before that, and the new subscription is live before the old one is
-/// closed, so no job falls into the gap between them.
-const RENEW_EVERY: Duration = Duration::from_secs(45 * 60);
-
-/// How long a replaced connection is still read after its successor
-/// subscribed, for a job the relay delivered on it in the meantime.
-const DRAIN: Duration = Duration::from_secs(5);
-
-/// The bound on opening a successor connection, authentication and the
-/// subscription's `EOSE` included.
-const RENEW_WITHIN: Duration = Duration::from_secs(30);
-
-/// Overrides [`PROBE_EVERY`], in milliseconds.
+/// Overrides the probe period (`coder::relay::liveness::PROBE_EVERY`), in
+/// milliseconds.
 const PROBE_VAR: &str = "CODER_WORKER_PROBE_MS";
 
-/// Overrides [`RENEW_EVERY`], in milliseconds.
+/// Overrides the renewal period (`coder::relay::liveness::RENEW_EVERY`),
+/// in milliseconds.
 const RENEW_VAR: &str = "CODER_WORKER_RENEW_MS";
 
 /// The subscription that carries the worker's jobs.
 const JOBS_SUBSCRIPTION: &str = "jobs";
-
-/// The prefix of a liveness probe's subscription ID.
-const PROBE_PREFIX: &str = "alive-";
-
-/// How the worker keeps its relay connection honest.
-#[derive(Clone, Copy, Debug)]
-struct Liveness {
-    /// How often a probe goes out, and how long each may take.
-    probe: Duration,
-    /// How long a subscription is kept before it is renewed.
-    renew: Duration,
-}
-
-impl Liveness {
-    fn from_env() -> Result<Self, String> {
-        Ok(Self {
-            probe: millis_from_env(PROBE_VAR)?.unwrap_or(PROBE_EVERY),
-            renew: millis_from_env(RENEW_VAR)?.unwrap_or(RENEW_EVERY),
-        })
-    }
-}
-
-fn millis_from_env(name: &str) -> Result<Option<Duration>, String> {
-    match env::var(name) {
-        Ok(text) => match text.trim().parse::<u64>() {
-            Ok(millis) if millis > 0 => Ok(Some(Duration::from_millis(millis))),
-            _ => Err(format!(
-                "{name} is a positive number of milliseconds, not `{text}`"
-            )),
-        },
-        Err(_) => Ok(None),
-    }
-}
 
 /// How long past a delegation's stated minutes the worker keeps waiting.
 ///
@@ -669,7 +610,7 @@ async fn serve(options: &Options) -> Result<(), String> {
         }
         None => None,
     };
-    let liveness = Liveness::from_env()?;
+    let liveness = Liveness::from_env(PROBE_VAR, RENEW_VAR)?;
     eprintln!(
         "liveness a probe every {} s; the subscription is renewed every {} s",
         liveness.probe.as_secs_f64(),
@@ -1047,123 +988,19 @@ fn jobs_request(worker: &str) -> Value {
 /// aside by subscription ID; jobs are taken only from the jobs
 /// subscription.
 fn probe_request(id: &str, worker: &str) -> Value {
-    json!(["REQ", id, { "kinds": [REQUEST_KIND], "#p": [worker], "limit": 0 }])
+    liveness::probe_request(id, json!({ "kinds": [REQUEST_KIND], "#p": [worker] }))
 }
 
 /// Connects, authenticates, and sends the jobs subscription.
 async fn subscribe(url: &str, identity: &Identity) -> Result<Socket, String> {
-    let mut socket = connect(url, identity)
-        .await
-        .map_err(|error| error.to_string())?;
-    send(&mut socket, jobs_request(identity.pubkey()))
-        .await
-        .map_err(|error| error.to_string())?;
-    Ok(socket)
-}
-
-/// A successor connection being opened.
-type Renewal = Pin<Box<dyn Future<Output = Result<Successor, String>> + Send>>;
-
-/// A renewed connection whose subscription the relay confirmed, with any
-/// jobs frames it delivered before its `EOSE`.
-struct Successor {
-    socket: Socket,
-    early: Vec<Value>,
+    liveness::subscribe(url, identity, jobs_request(identity.pubkey())).await
 }
 
 /// Opens the connection that replaces the current one, and returns it once
 /// its jobs subscription is live.
 async fn successor(url: String, identity: Arc<Identity>) -> Result<Successor, String> {
-    let opening = async {
-        let mut socket = subscribe(&url, &identity).await?;
-        let mut early = Vec::new();
-        loop {
-            let frame = socket
-                .next()
-                .await
-                .ok_or_else(|| "the relay closed the socket".to_string())?
-                .map_err(|error| format!("socket: {error}"))?;
-            let tungstenite::Message::Text(text) = frame else {
-                continue;
-            };
-            let Ok(value) = serde_json::from_str::<Value>(&text) else {
-                continue;
-            };
-            if value[1].as_str() != Some(JOBS_SUBSCRIPTION) {
-                continue;
-            }
-            match value[0].as_str() {
-                Some("EOSE") => return Ok(Successor { socket, early }),
-                Some("CLOSED") => {
-                    return Err(format!(
-                        "the relay closed the jobs subscription: {}",
-                        value[2].as_str().unwrap_or_default()
-                    ));
-                }
-                Some("EVENT") => early.push(value),
-                _ => {}
-            }
-        }
-    };
-    tokio::time::timeout(RENEW_WITHIN, opening)
-        .await
-        .map_err(|_| format!("no subscription in {} s", RENEW_WITHIN.as_secs()))?
-}
-
-/// Awaits the pending future in `slot`, or never when there is none.
-async fn poll_some<T>(slot: &mut Option<Pin<Box<dyn Future<Output = T> + Send>>>) -> T {
-    match slot {
-        Some(future) => future.as_mut().await,
-        None => std::future::pending().await,
-    }
-}
-
-/// The next frame of the connection being drained, or `None` once it
-/// ends or its [`DRAIN`] is over; never when there is none.
-async fn next_draining(
-    draining: &mut Option<(Socket, tokio::time::Instant)>,
-) -> Option<Result<tungstenite::Message, tungstenite::Error>> {
-    match draining {
-        Some((socket, end)) => tokio::time::timeout_at(*end, socket.next())
-            .await
-            .ok()
-            .flatten(),
-        None => std::future::pending().await,
-    }
-}
-
-/// Tells systemd's watchdog the worker has just proven its relay
-/// subscription live.
-///
-/// Under a unit with `WatchdogSec=`, systemd restarts a worker that stops
-/// saying so, a backstop behind the probes for a worker that is stuck
-/// somewhere they cannot see. Without `NOTIFY_SOCKET` (any other way the
-/// binary runs) this does nothing.
-fn notify_watchdog() {
-    #[cfg(unix)]
-    {
-        use std::os::unix::net::UnixDatagram;
-        let Some(path) = env::var_os("NOTIFY_SOCKET") else {
-            return;
-        };
-        let Ok(socket) = UnixDatagram::unbound() else {
-            return;
-        };
-        let bytes = path.as_encoded_bytes();
-        if let Some(name) = bytes.strip_prefix(b"@") {
-            #[cfg(target_os = "linux")]
-            {
-                use std::os::linux::net::SocketAddrExt;
-                if let Ok(address) = std::os::unix::net::SocketAddr::from_abstract_name(name) {
-                    let _ = socket.send_to_addr(b"WATCHDOG=1", &address);
-                }
-            }
-            #[cfg(not(target_os = "linux"))]
-            let _ = name;
-            return;
-        }
-        let _ = socket.send_to(b"WATCHDOG=1", &path);
-    }
+    let request = jobs_request(identity.pubkey());
+    liveness::successor(url, identity, JOBS_SUBSCRIPTION, request).await
 }
 
 /// Whether `request` is a signed job request naming this worker.
