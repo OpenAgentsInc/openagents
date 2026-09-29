@@ -116,6 +116,17 @@ impl Context {
                 None
             }
             Request::Adopt => Some(Outcome::Adopted(crate::helper::adopt_in_helper())),
+            Request::NearbyDecide {
+                id,
+                connect,
+                terminal,
+            } => self
+                .control
+                .nearby_decide(id, connect, terminal)
+                .err()
+                .map(|_| Outcome::Failed {
+                    message: "That phone stopped asking. Ask again from the phone.".into(),
+                }),
         }
     }
 
@@ -137,6 +148,7 @@ impl Context {
                     projects: vec![],
                     max_running: 1,
                 }),
+            nearby: self.control.nearby_pending().unwrap_or_default(),
         })
     }
 

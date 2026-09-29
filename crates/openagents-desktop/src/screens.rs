@@ -1,5 +1,6 @@
 //! The screens as Rust Native views: `DSK-01` Connect a phone, `DSK-02`
-//! Connected, `DSK-03` Home, and the adoption question.
+//! Connected, `DSK-03` Home, `DSK-04` a phone nearby ([`nearby`]), and the
+//! adoption question.
 //!
 //! Words follow the wireframe's "Words on screen": plain words, and none of
 //! the banned ones ([`crate::words`] checks every screen). "Project" names
@@ -9,6 +10,8 @@ use crate::codes::Held;
 use crate::model::{Agent, Intent, Model, Screen};
 use rust_native::style::{Color, Space, Style, TextAlign, TextWeight};
 use rust_native::{Axis, Element, Glyph, Icon, Node, TextRole, ValidatedView, View};
+
+mod nearby;
 
 /// The drawing surface the code is painted on.
 pub const CODE_SURFACE: &str = "pairing-code";
@@ -144,6 +147,9 @@ fn task_status(status: &str) -> &'static str {
 
 /// The root of the current screen. `now` is Unix seconds, for "last seen".
 pub fn root(model: &Model, now: u64) -> Node<Intent> {
+    if let Some(prompt) = model.nearby() {
+        return nearby::prompt(prompt, model.nearby_terminal());
+    }
     match &model.screen {
         Screen::Connect => connect(model),
         Screen::Connected { device } => connected(model, device),

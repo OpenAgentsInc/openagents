@@ -9,7 +9,7 @@
 //! it is showing, which is on the screen anyway.
 
 use crate::codes::{Action, Codes, Conditions};
-use crate::control::{Autostart, Device, Project, Status};
+use crate::control::{Autostart, Device, NearbyPrompt, Project, Status};
 use serde::Serialize;
 use std::collections::BTreeSet;
 use std::path::PathBuf;
@@ -71,6 +71,12 @@ pub enum Intent {
     NotNow,
     /// "Open Login Items".
     OpenLoginItems,
+    /// `DSK-04`: flip "Let this phone open a terminal on this Mac".
+    NearbyTerminal,
+    /// `DSK-04`: "Connect", for the request the prompt showed.
+    NearbyConnect { id: u64 },
+    /// `DSK-04`: "Don't connect".
+    NearbyDecline { id: u64 },
 }
 
 /// A request for the shell to run.
@@ -100,6 +106,12 @@ pub enum Request {
     OpenLoginItems,
     /// Run the adoption helper.
     Adopt,
+    /// Answer the nearby request `id` (`DSK-04`).
+    NearbyDecide {
+        id: u64,
+        connect: bool,
+        terminal: bool,
+    },
 }
 
 impl std::fmt::Debug for Request {
@@ -124,6 +136,14 @@ impl std::fmt::Debug for Request {
             Request::Coder => f.write_str("Coder"),
             Request::OpenLoginItems => f.write_str("OpenLoginItems"),
             Request::Adopt => f.write_str("Adopt"),
+            Request::NearbyDecide {
+                id,
+                connect,
+                terminal,
+            } => write!(
+                f,
+                "NearbyDecide {{ id: {id}, connect: {connect}, terminal: {terminal} }}"
+            ),
         }
     }
 }
@@ -228,6 +248,8 @@ pub struct Refreshed {
     pub devices: Vec<Device>,
     pub projects: Vec<Project>,
     pub autostart: Autostart,
+    /// A phone nearby waiting for a click (`DSK-04`).
+    pub nearby: Option<NearbyPrompt>,
 }
 
 /// The window's state.
@@ -260,6 +282,8 @@ pub struct Model {
     /// Clipboard entries to clear, and when.
     clear: Vec<(String, Instant)>,
     adopting: bool,
+    /// `DSK-04`'s terminal checkbox, and the request it was set for.
+    nearby_terminal: (u64, bool),
 }
 
 impl Model {
@@ -284,7 +308,20 @@ impl Model {
             next_coder: now,
             clear: Vec::new(),
             adopting: false,
+            nearby_terminal: (0, false),
         }
+    }
+
+    /// The phone nearby waiting for a click, if any. It shows over every
+    /// screen until it is answered, withdrawn, or expires.
+    pub fn nearby(&self) -> Option<&NearbyPrompt> {
+        self.host.as_ref().and_then(|host| host.nearby.as_ref())
+    }
+
+    /// `DSK-04`'s terminal checkbox for the shown request; off for a new one.
+    pub fn nearby_terminal(&self) -> bool {
+        self.nearby()
+            .is_some_and(|prompt| self.nearby_terminal == (prompt.id, true))
     }
 
     /// The screen a first launch opens on: the adoption question when an
@@ -335,7 +372,7 @@ impl Model {
                 requests.push(Request::Coder);
                 self.next_coder = now + CODER_POLL;
             }
-            let wait = if self.screen == Screen::Connect {
+            let wait = if self.screen == Screen::Connect || self.nearby().is_some() {
                 FAST_POLL
             } else {
                 SLOW_POLL
@@ -473,6 +510,31 @@ impl Model {
                 }
             }
             Intent::OpenLoginItems => vec![Request::OpenLoginItems],
+            Intent::NearbyTerminal => {
+                if let Some(id) = self.nearby().map(|prompt| prompt.id) {
+                    self.nearby_terminal = (id, !self.nearby_terminal());
+                }
+                Vec::new()
+            }
+            Intent::NearbyConnect { id } | Intent::NearbyDecline { id } => {
+                // Only the request on screen, and only once.
+                if self.nearby().map(|prompt| prompt.id) != Some(id) {
+                    return Vec::new();
+                }
+                let connect = matches!(intent, Intent::NearbyConnect { .. });
+                let terminal = connect && self.nearby_terminal();
+                if let Some(host) = &mut self.host {
+                    host.nearby = None;
+                }
+                vec![
+                    Request::NearbyDecide {
+                        id,
+                        connect,
+                        terminal,
+                    },
+                    Request::Refresh,
+                ]
+            }
         }
     }
 
@@ -651,6 +713,7 @@ mod tests {
                                 devices: host.devices().unwrap_or_default(),
                                 projects: host.projects().unwrap_or_default(),
                                 autostart: host.autostart().expect("a policy"),
+                                nearby: host.nearby_pending().unwrap_or_default(),
                             })
                         });
                         Some(Outcome::Refreshed(state))
@@ -708,6 +771,14 @@ mod tests {
                         }],
                     }),
                     Request::OpenLoginItems | Request::Adopt => None,
+                    Request::NearbyDecide {
+                        id,
+                        connect,
+                        terminal,
+                    } => {
+                        let _ = self.host.nearby_decide(id, connect, terminal);
+                        None
+                    }
                 };
                 if let Some(outcome) = outcome {
                     queue.extend(self.model.outcome(outcome, self.now));
@@ -835,5 +906,41 @@ mod tests {
         rig.host.set_down(false);
         rig.tick(10);
         assert!(rig.model.codes.shown().is_some());
+    }
+
+    #[test]
+    fn a_nearby_phone_is_connected_only_by_the_click_on_its_prompt() {
+        let mut rig = Rig::new();
+        rig.tick(0);
+        let id = rig.host.ask_nearby("Kai's iPhone", "482913");
+        rig.tick(5);
+        assert_eq!(rig.model.nearby().map(|p| p.code.as_str()), Some("482913"));
+        assert!(!rig.model.nearby_terminal(), "the checkbox starts off");
+        // A click for another request does nothing.
+        rig.click(Intent::NearbyConnect { id: id + 1 });
+        assert!(rig.host.nearby_answers().is_empty());
+        rig.click(Intent::NearbyTerminal);
+        assert!(rig.model.nearby_terminal());
+        rig.click(Intent::NearbyConnect { id });
+        assert_eq!(rig.host.nearby_answers(), vec![(id, true, true)]);
+        assert!(rig.model.nearby().is_none());
+        // A second click on the same prompt sends nothing more.
+        rig.click(Intent::NearbyConnect { id });
+        assert_eq!(rig.host.nearby_answers().len(), 1);
+    }
+
+    #[test]
+    fn dont_connect_answers_no_and_a_new_request_starts_without_a_terminal() {
+        let mut rig = Rig::new();
+        rig.tick(0);
+        let first = rig.host.ask_nearby("Kai's iPhone", "111111");
+        rig.tick(5);
+        rig.click(Intent::NearbyTerminal);
+        rig.click(Intent::NearbyDecline { id: first });
+        assert_eq!(rig.host.nearby_answers(), vec![(first, false, false)]);
+        let second = rig.host.ask_nearby("Kai's iPad", "222222");
+        rig.tick(10);
+        assert_eq!(rig.model.nearby().map(|p| p.id), Some(second));
+        assert!(!rig.model.nearby_terminal());
     }
 }

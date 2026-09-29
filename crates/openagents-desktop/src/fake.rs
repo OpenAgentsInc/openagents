@@ -9,7 +9,8 @@
 //! random keys, so a QR drawn from one has the real size.
 
 use crate::control::{
-    Autostart, ControlError, ControlResult, Device, HostControl, Invite, Project, Status,
+    Autostart, ControlError, ControlResult, Device, HostControl, Invite, NearbyPrompt, Project,
+    Status,
 };
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
@@ -47,6 +48,9 @@ struct State {
     projects: Vec<Project>,
     autostart: Option<Autostart>,
     counter: u64,
+    /// The nearby request waiting for a click, and the answers given.
+    nearby: Option<NearbyPrompt>,
+    answers: Vec<(u64, bool, bool)>,
 }
 
 /// The fake host. Clones share one state, so a test can hold one and give
@@ -98,6 +102,24 @@ impl FakeHost {
     }
 
     /// Stops answering, as a host that is not running.
+    /// A phone nearby asks to connect showing `code`; returns its ID.
+    pub fn ask_nearby(&self, label: &str, code: &str) -> u64 {
+        let mut state = self.state();
+        state.counter += 1;
+        let id = state.counter;
+        state.nearby = Some(NearbyPrompt {
+            id,
+            label: label.into(),
+            code: code.into(),
+        });
+        id
+    }
+
+    /// The nearby answers given: (id, connect, terminal).
+    pub fn nearby_answers(&self) -> Vec<(u64, bool, bool)> {
+        self.state().answers.clone()
+    }
+
     pub fn set_down(&self, down: bool) {
         self.state().down = down;
     }
@@ -321,5 +343,26 @@ impl HostControl for FakeHost {
             });
         }
         Ok(state.projects.clone())
+    }
+
+    fn nearby_pending(&mut self) -> ControlResult<Option<NearbyPrompt>> {
+        let state = self.state();
+        if state.down {
+            return Err(ControlError::Unreachable);
+        }
+        Ok(state.nearby.clone())
+    }
+
+    fn nearby_decide(&mut self, id: u64, connect: bool, terminal: bool) -> ControlResult<()> {
+        let mut state = self.state();
+        if state.nearby.as_ref().map(|p| p.id) != Some(id) {
+            return Err(ControlError::Refused {
+                code: "not_pending".into(),
+                message: "no such nearby request".into(),
+            });
+        }
+        state.nearby = None;
+        state.answers.push((id, connect, terminal));
+        Ok(())
     }
 }

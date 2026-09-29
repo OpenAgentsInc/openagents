@@ -70,6 +70,7 @@ fn host(devices: Vec<Device>, project: bool, autostart: bool) -> Refreshed {
             max_running: 1,
         },
         projects,
+        nearby: None,
     }
 }
 
@@ -207,6 +208,24 @@ fn states() -> Vec<(&'static str, Model)> {
         ready: false,
     });
     states.push(("dsk-03-earlier-setup", earlier));
+
+    let prompt = |label: &str| crate::control::NearbyPrompt {
+        id: 7,
+        label: label.into(),
+        code: "482913".into(),
+    };
+    let mut nearby = with_code(false);
+    if let Some(host) = &mut nearby.host {
+        host.nearby = Some(prompt("Kai's iPhone"));
+    }
+    states.push(("dsk-04-nearby", nearby));
+
+    let (mut unnamed, now) = model(Screen::Home);
+    let mut state = host(vec![phone('d', "Kai's iPhone", true, 120)], true, true);
+    state.nearby = Some(prompt(""));
+    unnamed.host = Some(state);
+    let _ = unnamed.activate(Intent::NearbyTerminal, now);
+    states.push(("dsk-04-nearby-terminal-unnamed", unnamed));
 
     let old = |ready| OldSetup { phones: 6, ready };
     let now = Instant::now();

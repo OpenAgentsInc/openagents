@@ -16,8 +16,8 @@
 //! in-process one.
 
 pub use openagents_connect::control::{
-    Autostart, Device, MAX_MESSAGE_BYTES, Op, Project, Reply, Request, Response, SOCKET_NAME,
-    Status, VERSION, socket_path, socket_path_for,
+    Autostart, Device, MAX_MESSAGE_BYTES, NearbyPrompt, Op, Project, Reply, Request, Response,
+    SOCKET_NAME, Status, VERSION, socket_path, socket_path_for,
 };
 use serde::Serialize;
 use std::io::{Read, Write};
@@ -91,6 +91,10 @@ pub trait HostControl: Send {
     fn set_autostart(&mut self, policy: Autostart) -> ControlResult<Autostart>;
     fn projects(&mut self) -> ControlResult<Vec<Project>>;
     fn add_project(&mut self, path: &str) -> ControlResult<Vec<Project>>;
+    /// The phone nearby waiting for a click (`DSK-04`), if any.
+    fn nearby_pending(&mut self) -> ControlResult<Option<NearbyPrompt>>;
+    /// **Connect** or **Don't connect** for the nearby request `id`.
+    fn nearby_decide(&mut self, id: u64, connect: bool, terminal: bool) -> ControlResult<()>;
 }
 
 /// The blocking client for the host's socket. One connection a request.
@@ -254,6 +258,24 @@ impl HostControl for SocketControl {
     fn add_project(&mut self, path: &str) -> ControlResult<Vec<Project>> {
         match self.call(Op::ProjectAdd { path: path.into() })? {
             Reply::Projects { projects } => Ok(projects),
+            _ => unexpected(),
+        }
+    }
+
+    fn nearby_pending(&mut self) -> ControlResult<Option<NearbyPrompt>> {
+        match self.call(Op::NearbyPending {})? {
+            Reply::Nearby { pending } => Ok(pending),
+            _ => unexpected(),
+        }
+    }
+
+    fn nearby_decide(&mut self, id: u64, connect: bool, terminal: bool) -> ControlResult<()> {
+        match self.call(Op::NearbyDecide {
+            id,
+            connect,
+            terminal,
+        })? {
+            Reply::Nearby { .. } => Ok(()),
             _ => unexpected(),
         }
     }
