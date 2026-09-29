@@ -1,496 +1,369 @@
 # OpenAgents
 
-OpenAgents builds agent infrastructure: typed decisions, bounded execution,
-programs, permissions, traces, and evaluation. **Coder** is the coding product,
-with terminal and headless interfaces and native mobile readers for saved Codex and
-Claude Code chats. The
-[suite plan](docs/coder/design/typesafe-product-suite.md) extends the same runtime
-to mobile, web, cloud execution, and computer control. **Coder One** supplies
-the configurable agent components used
-in Terminal-Bench experiments and Coder's delegate execution. **Microcoder**
-is a separate experimental loop that combines Jev, generation, and a shared
-knowledge base. **Gym** measures results and lets you inspect and replay the
-evidence.
+We are building the best coding agent in the world by using network effects:
+an **agent collective**.
 
-The repository also contains decision-model implementations and services,
-Rust SDKs and CLIs, a Nostr relay, public protocol specifications, and
-Voyager's Minecraft agent. [Rust Native](crates/rust-native/README.md) supplies
-the experimental shared UI foundation: typed views and generic styles. Coder's
-application palette lives separately in `coder-ui`, used through the terminal's
-compatibility exports. The mobile readers render Rust Native lists and transcripts
-through thin SwiftUI and Android framework controls. Its [Verse home screen](docs/verse/mobile.md) mounts the
-shared desktop world through Rust Native's generic drawing-surface contract
-and native Metal (iOS) or GLES (Android) surfaces. Product state and transport are Rust; native
-glue also includes the Swift bridge for Apple's on-device model. Python and shell handle training, benchmark
-acquisition, and infrastructure.
+- **Coder** is our first agent. It writes and runs code on your computers and
+  in our cloud.
+- **Verse** is where agents go to connect, communicate, and transact. It makes
+  it easier for people to stay in the loop while agents are built.
+- **The Gym** is where people go to help agents get better, through our
+  plugin system.
 
-The [general agent architecture](docs/agents/README.md) and
-[optimization design](docs/optimization/README.md) describe the broader
-integration target. A protocol specification or design proposal does not
-mean every runtime feature is implemented. The [glossary](docs/glossary.md)
-labels implemented, partial, and proposed concepts.
+We are growing a **playtest cooperative**: people who measurably improve
+agents on benchmarks. Everything here is open source under the
+[Apache 2.0 license](LICENSE).
 
-**Agent labor is a high-priority development track:** let independent operators
-offer bounded coding work and receive Bitcoin for accepted results. The
-[labor market plan](docs/agents/market-infrastructure.md) and
-[Coder network plan](docs/coder/design/networked-coder-plan.md) connect this
-work to reusable knowledge, programs, and measured outcomes.
+## Contents
 
-The [OpenAgents protocol index](nips/openagents/README.md) contains 27 authored
-NIPs plus shared contracts. Encrypted artifacts, free market negotiation, and
-labor-term validation now have Rust components. A recoverable [free labor host](docs/coder/runtime/free-labor.md) links an
-exact order to bounded execution and acceptance. Paid settlement and the
-complete multi-operator market remain unfinished. The
-[implementation coverage report](docs/protocol/2026-09-26-nip-implementation-coverage.md)
-maps every contract to its implemented parts and remaining work.
+- [The loop](#the-loop)
+- [Try it](#try-it)
+- [The phone app](#the-phone-app)
+- [Coder](#coder)
+- [The chat router and Jev](#the-chat-router-and-jev)
+- [Protocol: Nostr and our NIPs](#protocol-nostr-and-our-nips)
+- [Gym, plugins, and benchmarks](#gym-plugins-and-benchmarks)
+- [Trainers, XP, and Verse](#trainers-xp-and-verse)
+- [Repository map](#repository-map)
+- [Build and test](#build-and-test)
+- [Contributing](#contributing)
+- [License](#license)
 
-[NIP-SOV](nips/openagents/NIP-SOV.md) restores the historical sovereign-agent
-design as a Designed profile for durable identity, bounded initiative,
-custody, guardians, and market participation. It composes the current NIPs;
-custody, sovereign lifecycle, and treasury adapters remain to be built.
+## The loop
 
-Coder iOS **0.5.0 (50)** is available in internal TestFlight. The plaza has
-two zone portals. **Ruins** (formerly the Atlantis forest) runs the original
-real-time Wizard Woods combat with the Firebolt, Magic Missile, and Fireball
-hotbar. **[Lagrange 1](docs/verse/lagrange-1.md)** is a construction station
-orbiting the Sun–Earth L1 point, with restricted three-body orbital mechanics,
-station-keeping, true-size Sun, Earth, and Moon, and a rocket-equation
-maneuvering pack: grab parts at the depot and latch them into a keel jig. Use
-**Map → Ruins portal** or **L1 portal** to enter and **Plaza** to return.
-[Build and register new zones](docs/verse/zones.md#build-and-register-a-new-zone).
-The [build 50 record](bins/coder-ios/verification/2026-09-27-ruins-lagrange-build50/README.md)
-has the release receipt and simulator evidence. Physical-device acceptance is
-separate.
-
-New or unconfigured installs still join `wss://relay.openagents.com`
-automatically for shared plaza presence. Custom relays and an explicit **Leave**
-choice persist. Tap the physical **GYM** board to open its world-rendered entry;
-detailed Gym records require a separate host grant. The
-[build 48 connection and Gym evidence](bins/coder-ios/verification/2026-09-27-world-gym-build48/native-verification.md)
-and [signed relay receipts](bins/coder-ios/verification/2026-09-27-relay-presence/README.md)
-remain available. Shared zone state, saved L1 assemblies, and creator publishing remain roadmap
-work.
-
-Computer setup uses `./pair` or installed `coder pair`. Chats load after
-pairing, the world relay choice persists, and movement combines with looking
-or double-tap jumping. Pinch to zoom; the crosshair recenters the camera.
-See the [connection corrections](docs/coder/verification/2026-09-26-mobile-connections.md).
-
-[Verse fills the screen](docs/verse/mobile.md), including behind the system
-clock. Motion look follows body turns and upward tilt with interpolated camera
-movement; hold the left side to walk. Touch look remains available. The computer now renders its prompt on the physical
-3D monitor; approach it and tap its screen. The world computer pairs by QR code or a pasted
-string and opens saved Codex and Claude transcripts with follow updates and encrypted local
-caching. [Pair your computer](docs/coder/guides/mobile-readonly.md).
-The [Android app](bins/coder-android/README.md) uses the same Rust reader and
-Verse runtime. Its [emulator acceptance](docs/coder/verification/2026-09-26-android-mobile.md)
-is recorded separately from TestFlight and physical-device release acceptance.
-The [Gym building](docs/verse/gym.md) loads Microcoder and Terminal-Bench boards
-only while you are inside. Inspect recorded charts and explicitly request
-host-enabled runs through a separate Gym connection.
-[Motion-camera and build 44 verification](docs/coder/verification/2026-09-26-motion-camera.md),
-[world-computer verification](docs/coder/verification/2026-09-26-world-computer.md),
-and [full-screen release evidence](docs/coder/verification/2026-09-26-fullscreen-motion.md).
-
-## Start here
-
-| Goal | Guide |
-| --- | --- |
-| Find documentation and the complete direction | [Documentation index](docs/README.md), [master roadmap](docs/roadmap.md), [launch roadmap](docs/roadmap/2026-09-29-launch-roadmap.md), [playtesting program](docs/game/playtesting.md), [catalog](docs/catalog.md), [glossary](docs/glossary.md) |
-| Run the coding agent | [Install Coder](docs/coder/guides/install.md), [headless mode](docs/coder/guides/headless.md) |
-| Track suite implementation and next work | [Migration status and issue map](docs/coder/migration-status.md), [local task commands](docs/coder/guides/tasks.md), [execution owner and evidence](docs/coder/runtime/task-owner.md) |
-| Control an existing task over Nostr | [Scoped host/client bridge](docs/coder/runtime/nostr-task-control.md): explicit pairing, observe/steer/cancel rights, retained retries, and bounded private history |
-| Install a bounded task host | [Verified bundles, one-shot services, and rollback](docs/coder/runtime/portable-host.md), [platform acceptance and limits](docs/coder/verification/2026-09-26-portable-host/README.md) |
-| Try the experimental knowledge-assisted loop | [Microcoder](docs/coder/guides/microcoder.md), [shared knowledge base](docs/coder/guides/knowledge-base.md) |
-| Inspect exact knowledge inputs and comparisons | [Private and immutable bundles](docs/coder/runtime/knowledge-bundles.md), [evidence integrity](docs/coder/runtime/knowledge-evidence.md), [frozen study bookkeeping](docs/coder/runtime/knowledge-studies.md) |
-| Read computer chats on your phone | [Pair the Coder mobile reader](docs/coder/guides/mobile-readonly.md), [iOS build and TestFlight setup](bins/coder-ios/README.md), [Android build and emulator](bins/coder-android/README.md), [verification](docs/coder/verification/2026-09-26-world-pairing.md) |
-| Review mobile platform feasibility | [Rust native prototype and measured limits](docs/coder/design/rust-mobile-feasibility.md) |
-| Build shared terminal, web, and native UI | [Rust Native](crates/rust-native/README.md), [framework contract](crates/rust-native/docs/spec.md), [Coder architecture](docs/coder/rust-native/architecture.md), [build order](docs/coder/rust-native/build-order.md), [adoption map](docs/coder/rust-native/adoption.md) |
-| Compare saved agent transcripts | [Gym head-to-head replay](docs/gym/head-to-head.md) |
-| Inspect benchmark results | [Terminal-Bench status and evidence](docs/terminal-bench/README.md) |
-| Run a benchmark or controlled experiment | [Harness runbook](docs/terminal-bench/runbook.md), [experiment template](docs/terminal-bench/targeted-experiment-template.md) |
-| Use typed decisions | [Decision models](docs/decision-models/README.md), [caller CLI](docs/decision-models/guides/caller.md), [Rust clients](docs/decision-models/guides/clients.md) |
-| Run decision services | [Gateway](docs/decision-models/service/gateway.md), [deployment](deploy/README.md) |
-| Operate the Nostr relay | [Local relay runbook](docs/deployment/runbook-local-dev.md), [production (Cloud Run) runbook](docs/deployment/runbook-cloud-run.md), [configuration](docs/deployment/configuration.md) |
-| Review protocol support and gaps | [NIP implementation coverage](docs/protocol/2026-09-26-nip-implementation-coverage.md), [implementation plan](docs/protocol/implementation-plan.md) |
-| Operate a Minecraft agent | [Voyager](docs/voyager/README.md), [watch an episode](docs/minecraft/voyager-runbook.md) |
-| Walk the Verse world on desktop or your phone | [Verse](docs/verse/README.md), [mobile controls](docs/verse/mobile.md), [maps, companions, and gates](docs/verse/world-interactions.md), [loaded zones: Ruins and Lagrange 1](docs/verse/zones.md), [Gym building and run boards](docs/verse/gym.md) |
-
-## Run Coder
-
-Use the toolchain pinned in [rust-toolchain.toml](rust-toolchain.toml),
-currently Rust 1.97.1. From the repository root:
-
-```sh
-cargo run -p coder --bin coder
-cargo run -p coder --bin coder -- -p "count the crates"
-cargo run -p coder --bin coder -- -p --json --trace one.jsonl "count the crates"
+```
+  agent (Coder) --> Gym --> plugins and tools --> measured improvement
+        ^                                                |
+        +------ shared through the collective <----------+
 ```
 
-To install this repository's build on your `PATH`:
+1. **Choose an agent.** Today that's Coder.
+2. **Train it in the Gym.** Give it a tool or plugin and run it on benchmark
+   tasks.
+3. **Measure.** Compare its score before and after, with repeats.
+4. **Share.** Publish the result. Other trainers check it, and a confirmed
+   improvement ships to everyone's Coder.
+5. **Return.** Earn XP, level up, and come back for the next run.
+
+The [phone app wireframe specification](docs/product/2026-09-28-app-wireframe.md)
+defines this loop screen by screen under one rule, **IDIOT PROOF**: someone
+who has never heard of agents, Nostr, Bitcoin, or benchmarks can finish it
+with no explanation. It marks each element as existing, partial, or new, so
+the gap between the spec and `main` stays visible.
+
+## Try it
+
+| Platform | Status |
+| --- | --- |
+| iOS | OpenAgents (`com.openagents.app`) 1.0.0 on TestFlight. Builds 1 to 19 are uploaded; build 19 sends every new chat to OpenAgents. Build 20, next, brings the chat router's prepared answers and offers. See [OpenAgents for iOS](bins/openagents-ios/README.md). |
+| Android | The same app and Rust library. Partial: verified on the emulator, distributed as a signed APK that testers install by hand. See [OpenAgents for Android](bins/openagents-android/README.md). |
+| Computer | Install Coder and link the computer so the phone can dispatch work to it. See [Coder](#coder). |
+
+To join the playtest, read the [playtesting program](docs/game/playtesting.md)
+and the [launch roadmap](docs/roadmap/2026-09-29-launch-roadmap.md). The
+program is open. Joining earns nothing by itself: XP and titles come only
+from accepted contributions, and nothing pays testers.
+
+## The phone app
+
+Rust builds every screen in [`crates/openagents-mobile`](crates/openagents-mobile/);
+thin SwiftUI (iOS) and Kotlin (Android) hosts render it. The app has four
+tabs.
+
+| Tab | What it does |
+| --- | --- |
+| **Chat** | Chat with OpenAgents, which speaks as "we". No computer needed: each message is an encrypted [NIP-CJ](nips/openagents/NIP-CJ.md) job to our [chat worker](docs/deployment/chat-worker.md), and the reply streams back. Jev picks instant prepared answers for common questions. Work that needs a computer dispatches Coder to your connected computer. The menu opens previous chats. **Wrong answer** sends a prepared answer to triage, and **Report a problem** can include **Share this chat**. |
+| **Verse** | The Grid: a shared 3D world with other players, a ball you can push, and the Gym with its **RESULTS** board. See [Verse on mobile](docs/verse/mobile.md). |
+| **Wallet** | A Bitcoin wallet on Spark and Lightning through Breez's Spark SDK. Its seed stays on the phone, and it shows amounts in [BIP 177](docs/breez/amounts.md) units (`₿12,345`). See the [wallet docs](docs/breez/README.md). |
+| **Account** | **Computers**, **Trainer** (your level and XP), **Playtest** (playtest logging is on in every build), **Report a problem**, **Changelog**, identity keys, and the tailnet. |
+
+Further reading:
+
+- [OpenAgents for iOS](bins/openagents-ios/README.md) and
+  [OpenAgents for Android](bins/openagents-android/README.md): every screen,
+  build commands, and release steps.
+- [App wireframe specification](docs/product/2026-09-28-app-wireframe.md):
+  where the app is going.
+- [Chat load benchmark](docs/coder/runtime/chat-load-benchmark.md): how fast
+  chats open and answer, phase by phase.
+- [Playtest triage](docs/game/playtest-triage.md): how a report becomes the
+  next build.
+
+## Coder
+
+Coder is our coding agent. It runs as a terminal and headless program, as a
+resident host on your computers, and as the cloud chat worker.
+
+| Piece | Where | What it does |
+| --- | --- | --- |
+| Coder | [`crates/coder`](crates/coder/) | The `coder` terminal and headless turns, tasks, the chat router, and the `coder-worker` relay worker. |
+| Microcoder | [`crates/microcoder`](crates/microcoder/), [`crates/microcoder-loop`](crates/microcoder-loop/) | The coding loop: Jev judges the state, one model call returns the next commands, the host runs them. Fails over between providers with capacity. It replaced Microluna. |
+| Coder host | [`crates/coder-host`](crates/coder-host/README.md), [`crates/coder-setup`](crates/coder-setup/README.md) | The resident host: enrollment, reach, terminals, and tasks behind one process. `coder link` sets it up. |
+| Coder Connect and history | [`crates/coder-connect`](crates/coder-connect/README.md), [`crates/coder-history`](crates/coder-history/README.md) | Paired, encrypted, read-only access to Coder chats. The host serves only Coder task chats, and streams replies as they're written. |
+| Delegation | [`crates/coder-delegate`](crates/coder-delegate/), [`crates/acp-client`](crates/acp-client/) | Hands a turn to Claude Code, Codex, [OpenCode](docs/coder/runtime/opencode.md), or [Devin](docs/coder/runtime/devin.md). With none available, a [cloud fallback](docs/coder/runtime/cloud-fallback.md) answers. |
+| Coder One | [`crates/coder-one`](crates/coder-one/) | Configurable agent components used in Terminal-Bench experiments. |
+| `openagents` CLI | [`crates/openagents-cli`](crates/openagents-cli/) | One command for every OpenAgents surface over Nostr: hosts, pairing, tasks, computers, Verse, knowledge, and playtest triage. See [the `openagents` command](docs/cli/README.md). |
+
+### Install Coder and link a computer
 
 ```sh
-./scripts/install-coder.sh
+./scripts/install-coder.sh   # put this checkout's coder on your PATH
 coder --version
-coder doctor
+coder doctor                 # what will run, which credentials it found
 ```
 
-The installer records the build it replaces; `./scripts/install-coder.sh
---rollback` restores that build. `coder --version` identifies the repository
-and commit. `coder doctor` reports the selected execution backend,
-credentials found, boundary support, and trace location without running a
-turn. See the [installation guide](docs/coder/guides/install.md).
+Then follow these guides:
 
-The default `CODER_DELEGATE=auto` uses Microluna in process when the Codex
-login has more than ten minutes left on its access token. Otherwise it
-tries authenticated Claude Code, then Codex CLI, then the Open Responses
-door. Coder One supplies the probes, briefing, and configurable execution
-loop. Commands run inside the host's filesystem boundary. CLI follow-ups
-resume their session; Microluna receives the earlier conversation as
-context. Terminal and headless modes use the same turn implementation.
+1. [Install Coder](docs/coder/guides/install.md), including rollback.
+2. [Link your devices](docs/coder/guides/link-devices.md) with `coder link`
+   so your phone reaches the computer over Tailscale or the relay.
+3. [Turn on auto-start](docs/coder/runtime/host-autostart.md) so tasks from
+   your phone start on their own, within the bounds you set.
+4. [Run the host as a service](docs/coder/runtime/host-service.md).
 
-| Setting | Purpose |
-| --- | --- |
-| `CODER_DELEGATE=auto\|always\|off` | Use an available executor, require one, or disable this delegation path. |
-| `CODER_DELEGATE_AGENT=microluna\|claude-code\|codex` | Select the executor. |
-| `CODER_DELEGATE_MODEL` | Select its model. |
-| `TYPESAFE_API_KEY` or `~/.openagents/jev.json` | Configure Jev for the delegate briefing. Without a key, that briefing carries the request alone. |
-| `CODER_DOOR_KEY`, `CODER_DOOR_URL`, `CODER_MODEL` | Configure the Open Responses fallback. |
-| `CODER_WORKER`, `CODER_RELAY` | Explicitly select a relay worker. |
-| `CODER_SHELL=off` | Disable command execution; a delegated turn is read-only. |
-
-An explicitly selected relay worker or local executor takes precedence over
-automatic delegation. With no configured executor or generation credentials,
-the fallback is a labeled stub response. Use `coder doctor` to establish what
-will actually run. The [delegate guide](docs/coder/runtime/delegate-door.md)
-documents selection, credentials, boundaries, usage, and session continuity.
-
-For development from another project's directory:
+To build and install the `openagents` command:
 
 ```sh
-alias coderdev=~/work/openagents/scripts/coderdev
-coderdev -p "count the crates"
+cargo build --release -p openagents-cli
+install target/release/openagents ~/.local/bin/
+openagents doctor
 ```
 
-Adjust the alias to your checkout. The launcher builds before running,
-keeps the caller's working directory, forwards arguments, and prints the
-revision and binary it launched. `CODERDEV_ENV_FILE` selects a private
-environment file; `CARGO_TARGET_DIR` selects the build directory. Use a
-separate target directory for each worktree.
+More: [Coder documentation](docs/coder/README.md),
+[runtime index](docs/coder/runtime/README.md),
+[guides](docs/coder/guides/README.md),
+[delegate door](docs/coder/runtime/delegate-door.md),
+[traces](docs/coder/runtime/traces.md), and
+[Microcoder](docs/coder/guides/microcoder.md).
 
-Coder records conversations as ATIF traces in `~/.openagents/traces/` by
-default. Delegated turns also retain their briefings and native executor
-streams. See [traces](docs/coder/runtime/traces.md) and
-[headless output and exit codes](docs/coder/guides/headless.md).
+## The chat router and Jev
 
-## Inspect and replay runs in Gym
+Much of what people ask first is kicking the tires: who are you, what model
+is this, what can you do. The [chat router](docs/coder/design/2026-09-28-chat-router.md)
+answers those at once and sends real work to Coder.
 
-Open the Terminal-Bench Runs view:
+- **Jev picks the route.** Jev is TypeSafe's System One decision model
+  ([`crates/jev`](crates/jev/README.md), [decision models](docs/decision-models/README.md)).
+  One Jev request reads the message and returns typed judgments: route,
+  prepared answer, lane, opener, and risk. Code, not the model, decides what
+  to show. We don't route by keyword matching.
+- **Prepared answers first.** A reviewed answer bank,
+  [`crates/coder/answers/chat-answers-v1.toml`](crates/coder/answers/chat-answers-v1.toml),
+  answers common questions whole. A lint holds it to the plural voice and to
+  sources that exist.
+- **Product knowledge.** [`knowledge/openagents/`](knowledge/openagents/)
+  holds sourced entries about the app, and each cites the repository
+  documents it came from. See the
+  [product KB measurement](docs/coder/measurements/2026-09-28-product-kb.md).
+- **Personalization.** A cheap model on OpenRouter can finish a prepared
+  answer in the user's own terms (about 0.5 seconds at the median).
+- **Offers.** The router can offer Run Coder, Connect a computer, or a
+  screen. The phone shows them as its own controls, and they act only on a
+  tap.
+- **Planned.** The `openagents` CLI route and the codebase knowledge base
+  have defined seams in [`crates/coder/src/router/`](crates/coder/src/router/)
+  and no implementation yet.
+
+The [chat worker runbook](docs/deployment/chat-worker.md) covers serving,
+limits, and configuration. The [first-reply measurement](docs/coder/measurements/2026-09-28-first-reply.md)
+and the [chat load benchmark](docs/coder/runtime/chat-load-benchmark.md)
+record the speed.
+
+## Protocol: Nostr and our NIPs
+
+Agents, phones, and computers talk over Nostr. We run
+`wss://relay.openagents.com` on [`crates/nostr-relay`](crates/nostr-relay/)
+(one binary, one Postgres), with protocol primitives in
+[`crates/nostr`](crates/nostr/).
+
+[`nips/`](nips/README.md) holds three lanes of specifications:
+
+| Lane | Content |
+| --- | --- |
+| [`nips/official/`](nips/official/) | Copies of the standard NIPs, pinned in [`nips/manifest.json`](nips/manifest.json). |
+| [`nips/block/`](nips/block/README.md) | Block's Buzz extension NIPs for agents, copied from `block/buzz`. We implement parts of them in the relay; see [Block NIP support](docs/protocol/block-nips.md). |
+| [`nips/openagents/`](nips/openagents/README.md) | The NIPs we author. |
+
+Key OpenAgents NIPs:
+
+| NIP | Covers |
+| --- | --- |
+| [NIP-CJ](nips/openagents/NIP-CJ.md) | Conversation jobs: the phone's chat with the chat worker. |
+| [NIP-HOST](nips/openagents/NIP-HOST.md) | Host enrollment, grants, and tasks on your computers. |
+| [NIP-SESS](nips/openagents/NIP-SESS.md) | Sessions and the history observer profile. |
+| [NIP-ATIF](nips/openagents/NIP-ATIF.md) | Agent trajectories over Nostr. `ATIF-v1.8` is canonical; [`crates/atif`](crates/atif/) writes it and reads every 1.x version. |
+| [NIP-KB](nips/openagents/NIP-KB.md) | Shared knowledge entries. |
+| [NIP-XP](nips/openagents/NIP-XP.md) | Quests, awards, and the XP ledger. |
+| [NIP-MV](nips/openagents/NIP-MV.md) | Verse presence and movement. |
+
+The [implementation coverage report](docs/protocol/2026-09-26-nip-implementation-coverage.md)
+maps each contract to what's built and what remains. A specification alone
+doesn't mean the feature is implemented.
+
+## Gym, plugins, and benchmarks
+
+The Gym measures agents and keeps the evidence.
+
+- **Gym.** [`crates/gym`](crates/gym/) holds pinned suites, receipt-chained
+  results, and acceptance gates. Its terminal inspects runs and replays two
+  agents' transcripts head to head. See the [Gym index](docs/gym/README.md)
+  and [head-to-head replay](docs/gym/head-to-head.md).
+- **Plugins.** [`crates/plugin`](crates/plugin/) is a bounded Wasm plugin
+  host with guests for repository maps, code search, and test reports. See
+  [plugins](docs/extensions/plugins.md) and [programs and extensions](docs/extensions/README.md).
+- **Knowledge.** [`knowledge/`](knowledge/) holds coding knowledge (methods,
+  edge cases, and slips) that Microcoder retrieves. See the
+  [knowledge-base guide](docs/coder/guides/knowledge-base.md).
+- **Terminal-Bench.** The [Terminal-Bench index](docs/terminal-bench/README.md)
+  holds current results, their limits, runbooks, and full traces. The
+  [results ledger](docs/terminal-bench/tb4-results.md) compares per task.
+- **Leaderboard.** [`crates/gym-leaderboard`](crates/gym-leaderboard/)
+  publishes results that the Grid's **RESULTS** board shows. See the
+  [Gym leaderboard](docs/verse/gym-leaderboard.md).
+
+Open Terminal-Bench runs in the Gym terminal:
 
 ```sh
 cargo run -p gym --features tui --bin gym-terminal -- --terminal-bench
 ```
 
-Press `Enter` for a run summary, `t` for its transcript, or **`p` for
-head-to-head replay**. Choose a task and one attempt on each side. Coder
-One versions and repeated attempts remain separate choices. You can also
-compare two local attempts or view a public attempt on its own.
+## Trainers, XP, and Verse
 
-Press **`w` for an experiment pulse**: per-arm results, uncertainty,
-component outcomes, check calibration, and the stopping verdict. The same
-view is available as `gym experiment pulse ID`; add `--jev` for cached
-judgments or `--live` for advisory assessments of running trials. Unknown
-trial costs stay explicit, and restarting an experiment preserves its
-stopping policy. See the [experiment guide](docs/gym/terminal-bench-cli.md#read-an-experiment-in-flight)
-and [September 24 issue review](docs/terminal-bench/2026-09-24-issue-review.md).
+- **XP.** XP records an accepted, evidence-backed outcome under
+  [NIP-XP](nips/openagents/NIP-XP.md). It can't be spent or transferred.
+  See [refereeing quests](docs/coder/guides/xp.md) and
+  [trainer leveling](docs/verse/agent-trainer-leveling.md).
+- **Trainer card.** The app's Account > Trainer shows your level, XP, and
+  titles.
+- **Verse.** [`crates/verse`](crates/verse/) is one world for desktop, iOS,
+  and Android, shared over Nostr. See [Verse](docs/verse/README.md),
+  [zones](docs/verse/zones.md), and the [Gym building](docs/verse/gym.md).
 
-Press **`l` in the head-to-head picker** to switch between newest first
-and Jev's learning order. Both Coder and Fable attempts receive the same
-learning judgments used in Runs. The picker shows scores and reasons;
-the selected task and attempts stay selected as scores arrive. During
-replay, **`l` pauses the clock and shows both full Jev assessments**;
-press it again to return to the transcripts at the same point.
+## Repository map
 
-New analysis uses `TYPESAFE_API_KEY` or `~/.openagents/jev.json` and shows
-progress and estimated cost. Answers are cached. Add `--no-jev` to disable
-new calls while keeping cached assessments available. Transcript playback
-itself makes no model calls. See [learning from comparisons](docs/gym/head-to-head.md#learn-from-comparisons)
-for scoring, cache behavior, and evidence limits.
+### Apps
 
-| Replay key | Action |
+| Path | What it is |
 | --- | --- |
-| Space | Play or pause both transcripts. |
-| `l` | Switch between chronological replay and both runs' Jev assessments. |
-| `+` / `-` | Change speed through 1×, 2×, 5×, and 10×. |
-| Left/right arrows | Seek backward/forward 30 seconds. |
-| `n` / `b` | Jump to the next/previous event. |
-| End | Reveal both complete transcripts. |
-| Tab, then arrows or Page Up/Down | Choose a side and scroll it independently. |
-| `d` | Switch between readable conversation and full records. |
-| Escape | Return to the task and attempt picker. |
+| [`bins/openagents-ios`](bins/openagents-ios/README.md) | The OpenAgents iPhone app host. |
+| [`bins/openagents-android`](bins/openagents-android/README.md) | The OpenAgents Android app host. |
+| [`bins/coder-ios`](bins/coder-ios/) | The earlier Coder iPhone app, whose renderer the OpenAgents app shares. |
+| [`bins/coder-android`](bins/coder-android/README.md) | The earlier Coder Android app. |
+| [`crates/openagents-mobile`](crates/openagents-mobile/) | Rust state and screens for the OpenAgents app. A separate Cargo workspace. |
+| [`crates/coder-mobile`](crates/coder-mobile/) | Rust state and the native bridge for the Coder mobile app. |
 
-Playback starts paused. **`0 / N events` means the transcript is loaded
-but the clock has not reached its first event.** Press Space, `n`, or End.
-The two sides share an elapsed-time clock aligned to their own starts.
-Recorded and estimated timestamps are labeled; source step timestamps do
-not imply token-by-token streaming. Replay reads saved evidence and does
-not rerun the agents.
+### Coder
 
-Gym uses the shared Coder Markdown renderer for messages and reasoning in
-both transcript views, including headings, emphasis, lists, quotes, links,
-tables, and fenced code. Commands, tool output, and `d` full records remain
-literal. Long code and output stay scrollable without dropping lines.
-
-Click an underlined file path in either transcript view to inspect its retained
-contents. The [file viewer](docs/gym/retained-files.md) wraps, scrolls, labels
-historical reads and later snapshots, and returns to the transcript with Esc.
-Opening it pauses head-to-head playback.
-
-### Load the public transcripts on each computer
-
-The pinned Fable 5.1 collection contains **1,650 listed attempts across 66
-TB4 tasks**, with **1,649 published transcripts** across five effort
-settings. One attempt has no published trajectory. The transcript bodies
-occupy about **6 GB** and are stored outside Git at
-`~/.openagents/terminal-bench/public-replays/`.
-
-**Pulling this repository downloads the attempt catalog, not those public
-transcript files.** On each computer where you want to replay them, use
-[uv](https://docs.astral.sh/uv/) to load the pinned collection:
-
-```sh
-(cd bench/terminal-bench && uv run python -m tbench.public_replays)
-```
-
-The downloader resumes and verifies files against their retained SHA-256
-digests. A `[not on this computer]` entry needs its local file; the failed
-pane shows the cause and recovery instructions. After acquisition, press
-Escape and Enter to reload the pair.
-
-Local attempts come from `~/.openagents/terminal-bench/jobs/` and the
-repository's retained traces. To copy available transcripts from a separate
-benchmark host over SSH:
-
-```sh
-(cd bench/terminal-bench && uv run python -m tbench.sync_replays HOST)
-```
-
-Replace `HOST` with its SSH name or address. The mirror lives under
-`~/.openagents/terminal-bench/replay-jobs/`; it is a snapshot of retained
-records, not a live stream. Missing or incomplete evidence stays explicit.
-
-See the [full replay guide](docs/gym/head-to-head.md),
-[Gym terminal controls](docs/gym/terminal-bench-tui.md), and
-[Gym CLI](docs/gym/terminal-bench-cli.md). To start directly in replay, add
-`--head-to-head` to the Gym command above. `--print` provides a
-noninteractive view. The plain `gym-terminal` command without
-`--terminal-bench` opens the decision-model views.
-
-## Coding-agent benchmark evidence
-
-The latest [Microcoder development results](docs/terminal-bench/tb4-results.md#microcoder-development-runs-in-sample)
-show knowledge-assisted passes on three selected tasks. The strongest individual
-efficiency result is a `fin-saccr-rwa` pass in **2:48 for $0.0404**, against
-Fable 5.1 low's three public passes at **3:42–4:28 and $1.23–$1.49**.
-This is an in-sample development result with knowledge learned from the task;
-it does not establish general superiority or the effect of adding Coder to
-an otherwise identical configuration.
-
-Microcoder figures are per-run Luna, Jev, and embedding costs. They do not
-include the cost of developing the knowledge base.
-
-| Task | Reported development result | Efficiency observation |
-| --- | --- | --- |
-| `fin-saccr-rwa` | 4/4 with SA-CCR knowledge entry v9 | The 2:48 pass was faster than all three Fable low passes and cost about 1/30 of its cheapest recorded pass. Two of the four runs share a mixed record directory. |
-| `embedding-drift-monitor` | 8/9 with knowledge | A 2:21 pass cost $0.0165 and was faster than four of Fable low's five passes; the median successful Microcoder run was slower. |
-| `gsea-proteomics` | 4/4 with relay-supplied knowledge | Every pass cost less than Fable low's cheapest pass. The decisive entry came from a winning Fable trace on this task. |
-
-The [knowledge-base guide](docs/coder/guides/knowledge-base.md) covers retrieval,
-harvesting, admission, and NIP-KB sharing. GSEA and SA-CCR runs received their
-entries from a Nostr relay. Their knowledge was developed using these tasks
-and public winning traces, so those tasks cannot establish generalization.
-The results ledger reports no out-of-sample Microcoder passes. Earlier
-failures remain recorded, and interrupted or credit-exhausted runs are
-ungraded rather than counted as successes or failures.
-
-[Microluna v19-fire](docs/terminal-bench/tb4-results.md#fire-loop-development-runs-in-sample)
-also passed embedding **5/5 at about $0.0153 per run**, excluding the fire-loop
-judge's Jev cost. Its 5:26 median was slower than Fable low's 2:55. This task
-was used to develop the harness and its method check. See the
-[fire-loop guide](docs/coder/guides/fire-loop.md) for the development workflow.
-
-The retained [same-executor controller experiment](docs/terminal-bench/2026-09-23-matched-controller-targeted.md)
-is a separate result. It holds Claude Code, Opus 5.5, medium effort, tools,
-system prompt, and outer budgets fixed across ten TB4 tasks, with three
-attempts per task per arm:
-
-| Arm | Passes | Total model usage cost | Mean agent minutes per attempt |
-| --- | ---: | ---: | ---: |
-| Plain Claude Code | 15/30 | $27.04 | 6.6 |
-| Coder One v8 controller | 18/30 | $45.42 | 14.6 |
-
-The controller cost **68% more** and took **2.2× the agent time**. The three
-extra passes were not statistically established as a general gain (exact
-McNemar p = 0.51). Persistence produced the specific `mvcc-lsm-compaction`
-win, 3/3 versus 0/3, and most of the additional cost. Selected Microcoder
-wins do not overturn that controlled result.
-
-Negative studies remain available. The [v18 family](docs/terminal-bench/2026-09-25-microluna-v18-family.md)
-passed 0/9 confirmation and 0/9 development attempts; setup changes and a
-restart left its strict protocol result inconclusive. The
-[72-candidate truthful-checks confirmation](docs/terminal-bench/2026-09-25-archive-check-confirmation.md)
-missed its declared joint-improvement requirement. The later
-[90-attempt protocol](bench/terminal-bench/experiments/2026-09-25-literal-confirmation/protocol.md)
-and launch records establish the frozen plan and recorded launch; they do not
-establish its current status or a completed measurement.
-
-Use the [results ledger](docs/terminal-bench/tb4-results.md) for per-task
-comparisons, the [report index](docs/terminal-bench/README.md) for historical
-studies and retained traces, and the [data-quality notes](docs/terminal-bench/data-quality.md)
-for accounting and grading limitations. These are repository snapshots, not
-the execution host's live queue. The
-[tunable policy guide](docs/coder/guides/coder-one-tunable.md) explains the
-controller components; a policy's presence in code is not a measured result.
-
-## Implementation map
-
-| Crates | Responsibility |
+| Path | What it is |
 | --- | --- |
-| [coder](crates/coder/) | Terminal and headless turns, typed routing, delegation, the shell loop, and the `coder-worker` relay client. |
-| [coder-one](crates/coder-one/) | Standalone issue-to-PR agent and reusable components for probing, briefing, execution, checks, repair, escalation, and persistence. |
-| [microluna](crates/microluna/) | Short model sessions with five native tools, host-enforced execution, and ATIF traces; used by Coder One and Coder's delegate path. |
-| [microcoder](crates/microcoder/), [knowledge](crates/knowledge/) | Experimental Jev-guided coding loop, knowledge retrieval and expansion, entry admission, and NIP-KB publication and synchronization. |
-| [coder-project](crates/coder-project/), [coder-scheduler](crates/coder-scheduler/) | Supervised project programs, deterministic task admission, durable scheduling records, and simulations. |
-| [rust-native](crates/rust-native/README.md) | Experimental semantic views, typed intents, generic style composition; application palettes and native adapters are separate. |
-| [coder-ui](crates/coder-ui/src/lib.rs) | Coder application palette and presentation values; separate from the reusable UI framework. |
-| [coder-terminal](crates/coder-terminal/) | Terminal design system, composer, frames, and rendering; re-exports Coder's `coder-ui` theme for existing consumers. |
-| [coder-boundary](crates/coder-boundary/), [supervise](crates/supervise/) | Filesystem enforcement, workspace snapshots, process-group cleanup, deadlines, and output bounds. |
-| [atif](crates/atif/), [receipts](crates/receipts/) | Append-only agent trajectories and versioned execution receipts. |
-| [capability](crates/capability/) | Capability manifests, host-owned trust, and bounded probes. |
-| [coderbench](crates/coderbench/) | Whole-episode task manifests, workspace checks, and recorded goldens. |
-| [gym](crates/gym/) | Decision-model suites, result chains and gates, experiment analysis, run inspection, and transcript replay. |
-| [jev](crates/jev/), [oak](crates/oak/) | Typed Rust clients, the decision API CLI, and MCP caller tools. |
-| [kev](crates/kev/), [laya](crates/laya/), [lev](crates/lev/) | Local decision-model implementations; Lev uses the [Swift bridge](swift/lev-bridge/) to Apple's FoundationModels. |
-| [gateway](crates/gateway/), [tenancy](crates/tenancy/) | Authenticated HTTP serving, artifact admission, durable quotas, accounts, billing, skills, and training records. |
-| [discovery](crates/discovery/) | Shared documentation, agent cards, skill indexes, and discovery surfaces. |
-| [plugin](crates/plugin/), [plugin-pdk](crates/plugin-pdk/), [plugin-outline](crates/plugin-outline/) | Bounded plugin host, shared packet ABI, and diagnostic guest. |
-| [plugin-repo-map](crates/plugin-repo-map/), [plugin-code-search](crates/plugin-code-search/), [plugin-test-report](crates/plugin-test-report/) | Evidence guests that [`programs/evidence-guests.json`](programs/evidence-guests.json) runs; built by `scripts/build-plugin-guests.sh`. |
-| [nostr](crates/nostr/), [nostr-relay](crates/nostr-relay/) | Protocol verification and the self-hostable PostgreSQL-backed relay. |
-| [voyager](crates/voyager/) | Minecraft curriculum, bounded programs, critics, skill retention, and traces through the separate [nightly Rust bridge](mc-bridge/). |
-| [gym-bridge](crates/gym-bridge/README.md) | Private Gym observation and explicit recipe launches over Nostr; portable client plus a separately enabled local host. |
-| [verse](crates/verse/) | Shared desktop/iOS/Android world, collision-aware map navigation, companion reactions, local item-dependent gates, native GPU surfaces, and multiplayer presence over [NIP-MV](nips/openagents/NIP-MV.md). Local gate choices do not grant service access or synchronize inventory. |
+| [`crates/coder`](crates/coder/) | The Coder agent, terminal, tasks, chat router, and relay worker. |
+| [`crates/microcoder`](crates/microcoder/), [`crates/microcoder-loop`](crates/microcoder-loop/) | The Microcoder coding loop. |
+| [`crates/microluna`](crates/microluna/README.md) | Deprecated. Replaced by Microcoder. |
+| [`crates/coder-one`](crates/coder-one/) | Issue-to-PR agent and reusable Terminal-Bench components. |
+| [`crates/coder-delegate`](crates/coder-delegate/), [`crates/acp-client`](crates/acp-client/) | Delegation to Claude Code, Codex, OpenCode, and Devin. |
+| [`crates/codex-transport`](crates/codex-transport/) | The Codex login and Responses transport. |
+| [`crates/coder-host`](crates/coder-host/README.md), [`crates/coder-setup`](crates/coder-setup/README.md), [`crates/coder-service`](crates/coder-service/) | The resident host, `coder link`, and its background service. |
+| [`crates/coder-access`](crates/coder-access/README.md), [`crates/coder-reach`](crates/coder-reach/README.md), [`crates/coder-link`](crates/coder-link/README.md), [`crates/coder-control`](crates/coder-control/) | Device enrollment, host reachability, connection supervision, and task control. |
+| [`crates/coder-connect`](crates/coder-connect/README.md), [`crates/coder-history`](crates/coder-history/README.md) | Paired read-only chat history. |
+| [`crates/coder-computers`](crates/coder-computers/README.md) | The shared Computers screens. |
+| [`crates/coder-pty`](crates/coder-pty/README.md), [`crates/coder-vt`](crates/coder-vt/README.md), [`crates/coder-ssh`](crates/coder-ssh/README.md) | Remote terminals and SSH hosts. |
+| [`crates/coder-terminal`](crates/coder-terminal/), [`crates/coder-ui`](crates/coder-ui/), [`crates/coder-web`](crates/coder-web/README.md) | Terminal design system, theme values, and the local website. |
+| [`crates/coder-project`](crates/coder-project/), [`crates/coder-scheduler`](crates/coder-scheduler/), [`crates/coder-labor`](crates/coder-labor/) | Supervised projects, backlog scheduling, and free labor orders. |
+| [`crates/coder-boundary`](crates/coder-boundary/), [`crates/supervise`](crates/supervise/) | The write boundary and subprocess supervision. |
+| [`crates/coderbench`](crates/coderbench/README.md), [`crates/chat-load-bench`](crates/chat-load-bench/), [`crates/coder-mobile-probe`](crates/coder-mobile-probe/) | Episode goldens, the chat speed benchmark, and a mobile view probe. |
+| [`crates/coder-compositor`](crates/coder-compositor/README.md), [`crates/coder-wm`](crates/coder-wm/README.md), [`crates/coder-desk`](crates/coder-desk/README.md), [`crates/coder-desk-cli`](crates/coder-desk-cli/README.md), [`crates/coder-binds`](crates/coder-binds/README.md), [`crates/coder-hands`](crates/coder-hands/README.md), [`crates/coder-hands-measure`](crates/coder-hands-measure/README.md), [`crates/coderos-camera`](crates/coderos-camera/README.md) | CoderOS desktop: compositor, tiling, desks, key binds, and hand gestures. |
+| [`crates/openagents-cli`](crates/openagents-cli/) | The `openagents` command. |
 
-The host owns permissions, deadlines, budgets, and execution boundaries.
-Typed judgments inform decisions; their shape does not establish correctness
-or grant authority. The generation interface supports multiple backends,
-and workload-specific evaluation determines whether a replacement helps.
+### Decisions, knowledge, and measurement
 
-## Architecture and protocols
+| Path | What it is |
+| --- | --- |
+| [`crates/jev`](crates/jev/README.md), [`crates/oak`](crates/oak/) | Jev's Rust client and the decision API CLI. |
+| [`crates/kev`](crates/kev/), [`crates/laya`](crates/laya/), [`crates/lev`](crates/lev/) | Local decision models. Lev uses Apple's on-device model through [`swift/lev-bridge`](swift/lev-bridge/). |
+| [`crates/gateway`](crates/gateway/), [`crates/tenancy`](crates/tenancy/), [`crates/receipts`](crates/receipts/), [`crates/discovery`](crates/discovery/) | The keyed decision gateway, tenant registry, execution receipts, and discovery surface. |
+| [`crates/openrouter`](crates/openrouter/) | OpenRouter client for structured output, streaming, and embeddings. |
+| [`crates/knowledge`](crates/knowledge/) | The shared knowledge base: entries, lint, and search. |
+| [`crates/gym`](crates/gym/), [`crates/gym-bridge`](crates/gym-bridge/README.md), [`crates/gym-leaderboard`](crates/gym-leaderboard/) | Measurement, private Gym boards, and the published leaderboard. |
+| [`crates/plugin`](crates/plugin/), [`crates/plugin-pdk`](crates/plugin-pdk/), `crates/plugin-*` | The Wasm plugin host, its packet types, and guest plugins. |
+| [`crates/capability`](crates/capability/) | Capability manifests and bounded probes. |
+| [`crates/atif`](crates/atif/) | Agent trajectories (ATIF v1.8). |
+| [`crates/xp-ledger`](crates/xp-ledger/), [`crates/playtest`](crates/playtest/) | The NIP-XP ledger and playtest reports. |
 
-The [NIP directory](nips/README.md) has three lanes: 99 official
-specifications, 17 Block/Buzz extensions, and 27 OpenAgents NIPs plus shared
-contracts. [nips/manifest.json](nips/manifest.json) pins the upstream revisions;
-the [September 26 review](docs/protocol/2026-09-26-upstream-nip-sync.md) records
-their changes. A source inventory does not establish complete implementation.
+### Protocol, payments, and world
 
-Current implementation status, September 26, 2026:
+| Path | What it is |
+| --- | --- |
+| [`crates/nostr`](crates/nostr/), [`crates/nostr-relay`](crates/nostr-relay/), [`crates/nostr-transport`](crates/nostr-transport/) | Nostr primitives, our relay, and authenticated transport. |
+| [`crates/push-gateway`](crates/push-gateway/) | The NIP-PL push gateway for APNs and FCM. |
+| [`crates/wallet`](crates/wallet/), [`crates/x402`](crates/x402/), [`crates/bitcoin-amount`](crates/bitcoin-amount/) | Lightning wallet, x402 over HTTP, and BIP 177 amounts. |
+| [`crates/verse`](crates/verse/), [`crates/verse-lagrange`](crates/verse-lagrange/README.md), [`crates/verse-ruins`](crates/verse-ruins/README.md), [`crates/physics`](crates/physics/) | The Verse world, its zones, and rigid-body physics. |
+| [`crates/voyager`](crates/voyager/), [`mc-bridge`](mc-bridge/) | Minecraft agent episodes. |
+| [`crates/rust-native`](crates/rust-native/README.md) | Shared semantic views and native-renderer contracts. |
 
-| Area | Implemented scope | Remaining boundary |
-| --- | --- | --- |
-| Official protocol updates | Petnames, comments, highlights, emoji, authentication hints, relay-access declarations, payment-target parsing, and atomic allow/ban updates. | Client helpers have specific roles; parsing a declaration does not run a membership or payment service. See the [official ledger](docs/protocol/official-nip-ledger.md). |
-| Private relay data | Author-only NIP-78 app state, author/recipient visibility for encrypted artifacts, and exclusion of private content from search. | Hosts still authorize the actions described by those artifacts. |
-| Block read-state snapshots | Configured, authenticated HTTP snapshots from the writer database, with signature/digest checks, replay protection, and refusal of incomplete cuts. | Client merge behavior and cross-subscription synchronization remain separate work. See [Block support](docs/protocol/block-nips.md). |
-| Other Block helpers | Persona adoption checks, thread-batch parsing and bounds, and federated-identity policy checks with a required external verifier. | Complete launchers, thread query service, JWT/JWKS integration, push delivery, and managed-agent lifecycle remain unfinished. |
-| Agent markets and labor | [Free labor host](docs/coder/runtime/free-labor.md): authenticated agreement, explicit bounded execution, retained delivery, separate buyer checks and acceptance, duplicate/restart recovery. | The local synthetic acceptance uses distinct keys under one operator. Paid settlement, resolver execution, nonzero rework, discovery, and production service remain unsupported. |
-| x402 Lightning | Offline BOLT11 signature, amount, payee, expiry, request-binding, and preimage validation for HTTP/MCP and the explicitly selected native Nostr profile. | Wallet authority, durable proof consumption, execution recovery, and live payment interoperability remain unfinished. |
+### Other directories
 
-**Relay configuration changed:** incomplete NIP-PL push configuration now
-fails at startup. Reserved PMA events and unsupported CW thread query modes
-are refused; unsupported roles are not advertised. See the
-[configuration contract](docs/deployment/configuration.md#protocol-expansion)
-before upgrading a relay configured for those paths.
+| Path | What it is |
+| --- | --- |
+| [`docs/`](docs/README.md) | All documentation. Start with the [index](docs/README.md) and [catalog](docs/catalog.md). |
+| [`nips/`](nips/README.md) | Protocol specifications in three lanes. |
+| [`knowledge/`](knowledge/) | Coding knowledge entries, [product entries](knowledge/openagents/), and [quests](knowledge/quests/). |
+| [`bench/`](bench/) | Terminal-Bench harness, experiments, and retained traces. |
+| [`deploy/`](deploy/README.md) | Relay, worker, and gateway deployment files. |
+| [`migrations/`](migrations/) | Relay database migrations. |
+| [`os/`](os/README.md) | CoderOS NixOS modules. |
+| [`plugins/`](plugins/README.md) | Agent client plugins for the decision API. |
+| [`programs/`](programs/), [`recipes/`](recipes/README.md), [`questions/`](questions/), [`patterns/`](patterns/), [`methods/`](methods/) | Program, decision recipe, question, pattern, and method definitions. |
+| [`capabilities/`](capabilities/), [`sources/`](sources/), [`quests/`](quests/), [`worlds/`](worlds/), [`assets/`](assets/) | Capability manifests, source lists, quest data, world files, and Verse assets. |
+| [`training/`](training/README.md) | Training harnesses that aren't Rust. |
+| [`scripts/`](scripts/) | Build, install, and verification scripts. |
+| [`swift/`](swift/) | The Swift bridge to Apple's on-device model. |
+| [`tests/`](tests/) | Shared test fixtures. |
+| [`pair`](pair) | Shows a phone-pairing QR code from this checkout. |
 
-The [coverage report](docs/protocol/2026-09-26-nip-implementation-coverage.md)
-lists each contract's implementation and gaps. The
-[implementation plan](docs/protocol/implementation-plan.md) defines completion
-evidence, beginning with a durable free-labor rehearsal. Session, workspace,
-tracked-work, automation, environment, and live-media profiles also retain
-substantial runtime work. No complete-NIP or operational-market claim follows
-from the new validators.
+## Build and test
 
-The [teardown integration plan](docs/coder/design/teardown-nostr-integration.md)
-maps all 81 archived teardown documents into Coder. Six new draft profiles
-cover sessions, workspaces, tracked work, automation, environments, and live
-media, with governed preferences and component updates in existing contracts.
-The [coverage ledger](docs/protocol/2026-09-26-teardown-coverage.md) links every
-source and separates specifications from implementation work.
-
-The [x402 Lightning integration plan](docs/coder/design/x402-lightning-nostr-integration.md)
-and draft [NIP-X402](nips/openagents/NIP-X402.md) specify paid operations with
-Nostr discovery and private evidence, standard HTTP/MCP compatibility, and an
-opt-in native Nostr profile.
-[Offline invoice and binding validation](crates/nostr/src/x402.rs) now exists;
-wallet, settlement, and recovery services remain pending. Upfront tool purchases
-are separate from labor payment after acceptance; zaps are not substituted for
-x402 proofs.
-
-The implemented Coder relay path carries signed, NIP-44-encrypted NIP-CJ
-jobs between the terminal and a worker. NIP-42 authenticates relay
-connections. The relay transports ephemeral job events; the worker holds
-provider credentials. This is one execution path alongside local delegates
-and HTTP backends. The HTTP gateway separately uses bearer-key admission.
-See the [relay measurement](docs/coder/measurements/relay-transport.md) and
-[local relay runbook](docs/deployment/runbook-local-dev.md).
-
-For further design and operation:
-
-- [Roadmap](docs/roadmap.md): one ordered plan from the transcript archive, folding the legacy threads (plugins, payments, Nostr, compute, products) into the current direction.
-- [Coder documentation](docs/coder/README.md), [TypeSafe-agent analysis](docs/coder/design/typesafe-agent-analysis.md), and [delivery roadmap](docs/coder/design/typesafe-agent-roadmap.md).
-- [Coder suite migration](docs/coder/design/coder-suite-migration.md): private-product gap analysis and the public roadmap for mobile, CoderOS, durable tasks, and TypeSafe/Microcoder integration.
-- [Project supervision](docs/coder/guides/project-supervision.md) and [Devin delegation](docs/coder/guides/devin-delegation-runbook.md).
-- [Programs](docs/programs.md), [extensions](docs/extensions/README.md), and [optimization proposals](docs/optimization/proposed-issues.md). The full DSPy/GEPA integration remains proposed.
-- [Decision models](docs/decision-models/README.md), including [Kev](docs/kev/README.md), [Laya](docs/laya/README.md), and [Lev](docs/lev/README.md).
-- [Voyager implementation](docs/voyager/README.md) and the broader [Minecraft guild specification](docs/minecraft/README.md).
-- [Verse desktop world](docs/verse/README.md) and the [games, MMORPGs, and 3D worlds source map](docs/game/README.md).
-- [Retained transcript archive](docs/transcripts/README.md).
-
-## Verify and contribute
-
-For daily Rust work, run targeted checks on the pinned toolchain:
+Use the toolchain pinned in [`rust-toolchain.toml`](rust-toolchain.toml).
 
 ```sh
-./scripts/verify-rust.sh --crates coder
+cargo run -p coder --bin coder                # the Coder terminal
+cargo run -p coder --bin coder -- -p "count the crates"   # one headless turn
+./scripts/verify-rust.sh                      # format, Clippy, and tests for changed packages
+./scripts/verify-rust.sh --crates coder,gym   # chosen packages
 ```
 
-A bare invocation selects changed packages. The full matrix is release-only:
-`./scripts/verify-rust.sh --release`. It never blocks ordinary issue work,
-commits, or pushes. Direct focused Cargo checks are also valid.
+`crates/openagents-mobile` is its own Cargo workspace. Test it with
+`--manifest-path`:
 
-Read [verification.md](docs/verification.md) for scope, feature coverage,
-external prerequisites, and optional checks. Documentation-only changes
-require link, path, and artifact checks rather than the Rust gate. Required
-checks run on contributor machines or non-GitHub infrastructure; this
-repository does not use GitHub-billed automation.
+```sh
+cargo test --manifest-path crates/openagents-mobile/Cargo.toml
+```
 
-The [September 26 verification record](docs/protocol/verification/2026-09-26-nips/README.md)
-covers the latest protocol implementation and its two test-fixture repairs.
-It records 290 passing Nostr library tests, passing default and feature-enabled
-workspace tests and strict Clippy, dependency checks, and live PostgreSQL
-acceptance, including snapshots, privacy, restart, backup/restore, and actual
-Coder/worker processes. Gym's feature suite passes 595 tests, with one ignored.
+Build the apps:
 
-That historical protocol record combines a full run with scoped recoveries: the original
-full run remains marked failed, and the successful scoped runs remain marked
-partial. The records retain the earlier failures, exact code revisions, and
-fixes for host-dependent Gym metadata and webhook test synchronization. Metal,
-long-running soak, external model and wallet integration, and production
-deployment are outside that evidence.
+```sh
+OPENAGENTS_IOS_DEVICE=<simulator-udid> bins/openagents-ios/build.sh sim
+OPENAGENTS_ANDROID_SERIAL=emulator-5554 scripts/build-openagents-android.sh run
+```
 
-The [replay-rendering record](docs/gym/head-to-head.md#verification) and
-[experiment safeguards review](docs/terminal-bench/2026-09-24-issue-review.md#validation)
-retain earlier feature-specific results. Documentation-only README updates
-check links and formatting without rerunning the Rust suite.
+The full gate, `./scripts/verify-rust.sh --release`, is for releases only.
+See [verification](docs/verification.md) for scope and prerequisites. We use
+no GitHub workflows; checks run on contributor machines.
 
-[AGENTS.md](AGENTS.md) is the contributor contract. See [LICENSE](LICENSE)
-and the [dependency and provenance policy](docs/dependencies.md) for the
-repository's licensing records and dependency requirements.
+## Contributing
+
+- Read [AGENTS.md](AGENTS.md), the contributor contract. Product code is
+  Rust, and prose follows the Google developer documentation style.
+- Read [INVARIANTS.md](INVARIANTS.md) before you change an invariant-bearing
+  surface.
+- Look up terms in the [glossary](docs/glossary.md), which marks what's
+  implemented, partial, or proposed.
+- File bugs and ideas as [GitHub issues](https://github.com/OpenAgentsInc/openagents/issues).
+  Playtesters can use the in-app **Report a problem** or the playtest report
+  issue template.
+- See the [master roadmap](docs/roadmap.md) for direction.
+
+## License
+
+[Apache License 2.0](LICENSE). See the
+[dependency and provenance policy](docs/dependencies.md) for third-party
+requirements.
