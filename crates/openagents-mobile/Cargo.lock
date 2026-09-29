@@ -4332,6 +4332,7 @@ dependencies = [
  "secp256k1 0.31.1",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "tempfile",
  "tokio",
  "tokio-tungstenite 0.30.0",

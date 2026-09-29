@@ -33,6 +33,8 @@ struct WalletState: Decodable, Equatable {
     struct Trust: Decodable, Equatable {
         let acknowledged: Bool
         let title: String
+        /// The note in one plain paragraph, shown first.
+        let summary: String?
         let lines: [String]
     }
     struct Code: Decodable, Equatable {
@@ -65,6 +67,8 @@ struct WalletState: Decodable, Equatable {
     struct Quote: Decodable, Equatable {
         let id: UInt64
         let kind: String
+        /// What is paid, in plain words: "Payment request", "Address".
+        let to: String?
         let destination: String
         let amount: String
         let fee: String
@@ -139,6 +143,17 @@ struct WalletState: Decodable, Equatable {
         let actionable: Bool?
         var id: String { "\(txid):\(vout)" }
     }
+    /// Shown until the person writes down this wallet's recovery words.
+    struct BackupCard: Decodable, Equatable {
+        let title: String
+        let detail: String
+        let action: String
+    }
+    /// Everything but Receive, Send, and recent activity.
+    struct Advanced: Decodable, Equatable {
+        let open: Bool
+        let note: String?
+    }
     struct Claim: Decodable, Equatable {
         let txid: String
         let vout: UInt32
@@ -151,7 +166,7 @@ struct WalletState: Decodable, Equatable {
     let message: String?
     let network: String?
     let balance: String?
-    /// The balance in the other format, for the transitional dual display.
+    /// The balance in the other format, shown under Advanced.
     let balance_alternate: String?
     /// "12,345 bitcoin", for VoiceOver.
     let balance_spoken: String?
@@ -173,15 +188,25 @@ struct WalletState: Decodable, Equatable {
     let refund: Refund?
     let backup: Backup?
     let people: [Person]?
+    /// The balance is old: the main screen says when it was read.
+    let stale: Bool?
+    /// The newest few payments, for Recent activity.
+    let recent: [Payment]?
+    let more_payments: Bool?
+    let backup_card: BackupCard?
+    let advanced: Advanced?
 }
 
+
 struct WalletTab: View {
-    enum Section: String, CaseIterable { case receive = "Receive", send = "Send", buy = "Buy" }
+    /// What the main screen shows under the two buttons.
+    enum Mode: String { case home, receive, send }
+    /// The other ways to receive, under Advanced.
     enum Method: String, CaseIterable { case lightning = "Lightning", spark = "Spark", bitcoin = "Bitcoin", nostr = "Nostr" }
 
     @ObservedObject var bridge: MobileBridge
-    @State private var section = Section.receive
-    @State private var method = Method.lightning
+    @State private var mode = Mode.home
+    @State private var method = Method.spark
     @State private var invoiceAmount = ""
     @State private var payInput = ""
     @State private var payAmount = ""
@@ -194,15 +219,19 @@ struct WalletTab: View {
     @State private var words: [String]?
     @State private var restoring = false
     @State private var showTrust = false
+    @State private var showHistory = false
     @State private var refundAddress = ""
     @State private var refundSpeed = "medium"
     @State private var exportFile: ExitFile?
     @State private var exportError: String?
+    /// Simulator checks open Advanced without saving the choice.
+    @State private var forceAdvanced = false
 
     private var wallet: WalletState? { bridge.packet?.wallet }
     private var amounts: AmountsState { bridge.packet?.amounts ?? .standard }
     private var amountKeyboard: UIKeyboardType { amounts.decimal ? .decimalPad : .numberPad }
     private var loading: Bool { bridge.packet?.wallet_loading == true }
+    private var advancedOpen: Bool { forceAdvanced || wallet?.advanced?.open == true }
 
     var body: some View {
         ScrollViewReader { scroller in
@@ -229,6 +258,7 @@ struct WalletTab: View {
             let refund = AppTabLaunch.wallet("--wallet-refund")
             let backup = AppTabLaunch.wallet("--wallet-backup")
             guard refund != nil || backup != nil else { return }
+            forceAdvanced = true
             while !Task.isCancelled, wallet?.status != nil || wallet == nil {
                 try? await Task.sleep(for: .seconds(1))
             }
@@ -244,15 +274,30 @@ struct WalletTab: View {
             }
             scroller.scrollTo("wallet-deposits", anchor: .top)
         }
+        .task {
+            // Simulator checks: open Advanced and show its end.
+            guard AppTabLaunch.wallet("--wallet-advanced") != nil else { return }
+            forceAdvanced = true
+            try? await Task.sleep(for: .seconds(1))
+            scroller.scrollTo("wallet-advanced", anchor: .top)
+        }
         }
         .scrollDismissesKeyboard(.interactively)
         .dismissesKeyboard()
         .background(Color.black.ignoresSafeArea())
+        // Pull down to read the wallet again.
         .refreshable { bridge.refreshWallet() }
         .onAppear {
             bridge.openWallet()
-            if let value = AppTabLaunch.wallet("--wallet-section"), let chosen = Section(rawValue: value.capitalized) { section = chosen }
-            if let value = AppTabLaunch.wallet("--wallet-method"), let chosen = Method(rawValue: value.capitalized) { method = chosen }
+            switch AppTabLaunch.wallet("--wallet-section") {
+            case "receive": mode = .receive
+            case "send": mode = .send
+            case "buy": forceAdvanced = true
+            default: break
+            }
+            if let value = AppTabLaunch.wallet("--wallet-method"), let chosen = Method(rawValue: value.capitalized) {
+                method = chosen; forceAdvanced = true
+            }
             if AppTabLaunch.wallet("--wallet-info") != nil { showTrust = true }
             if let format = AppTabLaunch.wallet("--amount-format") { bridge.wallet("amount_format", ["format": format]) }
         }
@@ -265,11 +310,12 @@ struct WalletTab: View {
                 try? await Task.sleep(for: .seconds(1))
             }
             if let send {
+                mode = .send
                 payInput = send
                 payAmount = AppTabLaunch.wallet("--wallet-amount") ?? ""
                 bridge.wallet("wallet_quote", ["input": send, "amount": payAmount])
             }
-            if let invoice { invoiceAmount = invoice; bridge.wallet("wallet_invoice", ["amount": invoice]) }
+            if let invoice { mode = .receive; invoiceAmount = invoice; bridge.wallet("wallet_invoice", ["amount": invoice]) }
         }
         // Starts, syncs, quotes, and payments finish in the background;
         // poll quickly while one runs, and slowly otherwise to pick up
@@ -289,7 +335,10 @@ struct WalletTab: View {
             Text("Anyone who sees these words can take your bitcoin. Make sure no one is watching and nothing is recording your screen.")
         }
         .sheet(isPresented: Binding(get: { words != nil }, set: { if !$0 { words = nil } })) {
-            WordsSheet(words: words ?? []) { words = nil }
+            WordsSheet(words: words ?? [], saved: {
+                bridge.wallet("wallet_words_saved")
+                words = nil
+            }) { words = nil }
         }
         .sheet(isPresented: $showTrust) {
             if let trust = wallet?.trust {
@@ -299,6 +348,9 @@ struct WalletTab: View {
                 }
                 .presentationDetents([.medium, .large])
             }
+        }
+        .sheet(isPresented: $showHistory) {
+            HistorySheet(payments: wallet?.payments ?? []) { showHistory = false }
         }
         .sheet(isPresented: $restoring) {
             RestoreSheet(bridge: bridge, hasBalance: (wallet?.empty == false)) { restoring = false }
@@ -318,163 +370,148 @@ struct WalletTab: View {
         }
     }
 
+    /// The main screen: the balance, Receive and Send, recent activity, the
+    /// backup card while it's needed, and everything else under Advanced.
     @ViewBuilder private func ready(_ wallet: WalletState) -> some View {
         balance(wallet)
         if let warning = wallet.warning {
             Text(warning).font(.footnote).foregroundStyle(.white)
                 .padding(12).background(Color(white: 0.12), in: RoundedRectangle(cornerRadius: 12))
         }
-        Picker("Action", selection: $section) {
-            ForEach(Section.allCases, id: \.self) { Text($0.rawValue).tag($0) }
-        }
-        .pickerStyle(.segmented)
-        .accessibilityIdentifier("wallet-section")
-        switch section {
+        if let card = wallet.backup_card { backupCard(card) }
+        primaryButtons(wallet)
+        switch activeMode(wallet) {
         case .receive: receive(wallet)
         case .send: send(wallet)
-        case .buy: buy(wallet)
+        case .home: EmptyView()
         }
-        if let deposits = wallet.deposits, !deposits.isEmpty {
-            depositsView(deposits, claim: wallet.claim, refund: wallet.refund)
-        }
-        history(wallet.payments ?? [])
-        if let spend = bridge.packet?.spend {
-            AgentPaymentsSection(spend: spend, bridge: bridge)
-        }
-        amountSetting()
-        recovery(wallet)
-        if let backup = wallet.backup { backupView(backup) }
+        recent(wallet)
+        advanced(wallet)
     }
 
-    // MARK: Amount format
-
-    private func amountSetting() -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Show amounts as").font(.headline).foregroundStyle(.white)
-            formatPicker()
-            Text("Applies everywhere in the app. Stored amounts don't change.")
-                .font(.footnote).foregroundStyle(.gray)
-        }
+    /// A payment in progress keeps the Send panel open.
+    private func activeMode(_ wallet: WalletState) -> Mode {
+        if let state = wallet.send?.state, state != "idle", state != "failed" || mode == .send { return .send }
+        return mode
     }
 
-    private func formatPicker() -> some View {
-        Picker("Show amounts as", selection: Binding(
-            get: { amounts.format },
-            set: { chosen in
-                // What was typed was in the old format; start over.
-                invoiceAmount = ""; payAmount = ""; buyAmount = ""
-                bridge.wallet("amount_format", ["format": chosen])
-            })) {
-            ForEach(amounts.choices) { Text($0.label).tag($0.id) }
-        }
-        .pickerStyle(.segmented)
-        .accessibilityIdentifier("amount-format")
-    }
+    // MARK: Balance
 
     private func balance(_ wallet: WalletState) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text((wallet.network ?? "Bitcoin · Spark").uppercased())
-                .font(.caption.weight(.semibold)).foregroundStyle(.gray)
             let unknown = wallet.balance_unknown == true
             Text(unknown ? "₿000,000" : wallet.balance ?? "")
-                .font(.system(size: 44, weight: .semibold, design: .rounded))
+                .font(.system(size: 52, weight: .semibold, design: .rounded))
                 .foregroundStyle(.white)
                 .minimumScaleFactor(0.5).lineLimit(1)
                 .redacted(reason: unknown ? .placeholder : [])
                 .accessibilityLabel(unknown ? "Balance not read yet" : wallet.balance_spoken ?? wallet.balance ?? "")
                 .accessibilityIdentifier("wallet-balance")
-            Text(unknown ? "0.00000000 BTC" : wallet.balance_alternate ?? "")
-                .font(.callout.monospacedDigit()).foregroundStyle(.gray)
-                .redacted(reason: unknown ? .placeholder : [])
-            HStack(spacing: 8) {
-                if let status = wallet.status {
-                    ProgressView()
-                    Text(status).foregroundStyle(.gray)
-                } else if wallet.refreshing == true {
-                    ProgressView()
-                    Text("Refreshing…").foregroundStyle(.gray)
-                } else {
-                    Text(updated(wallet.synced_at)).foregroundStyle(.gray)
-                    Spacer()
-                    Button("Refresh", systemImage: "arrow.clockwise") { bridge.refreshWallet() }
-                        .labelStyle(.iconOnly)
-                }
-            }
-            .font(.footnote)
-            .padding(.top, 4)
-            if let error = wallet.error {
-                Text(error).font(.footnote).foregroundStyle(.white)
+            // Quiet: only while starting, or when the balance is old or failed to update.
+            if let status = wallet.status {
+                HStack(spacing: 8) { ProgressView(); Text(status) }
+                    .font(.footnote).foregroundStyle(.gray)
+            } else if let error = wallet.error {
+                Text(error).font(.footnote).foregroundStyle(.gray)
+            } else if wallet.stale == true, wallet.refreshing != true {
+                Text(updated(wallet.synced_at)).font(.footnote).foregroundStyle(.gray)
             }
             if wallet.empty == true {
-                Text("No bitcoin yet. Receive some below, or buy it with dollars.")
+                Text("No bitcoin yet. Tap Receive to get some.")
                     .font(.callout).foregroundStyle(.gray)
             }
         }
     }
 
+    private func backupCard(_ card: WalletState.BackupCard) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(card.title).font(.headline).foregroundStyle(.white)
+            Text(card.detail).font(.footnote).foregroundStyle(.gray)
+            Button(card.action) { confirmWords = true }
+                .buttonStyle(.bordered).tint(.white)
+                .disabled(wallet?.can_show_words != true)
+                .accessibilityIdentifier("wallet-backup-card")
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(white: 0.12), in: RoundedRectangle(cornerRadius: 14))
+    }
+
+    private func primaryButtons(_ wallet: WalletState) -> some View {
+        HStack(spacing: 12) {
+            bigButton("Receive", systemImage: "arrow.down", on: activeMode(wallet) == .receive) {
+                bridge.wallet("wallet_send_reset")
+                if mode == .receive { mode = .home; return }
+                mode = .receive
+            }
+            .accessibilityIdentifier("wallet-receive")
+            bigButton("Send", systemImage: "arrow.up", on: activeMode(wallet) == .send) {
+                if mode == .send { bridge.wallet("wallet_send_reset") }
+                mode = mode == .send ? .home : .send
+            }
+            .accessibilityIdentifier("wallet-send")
+        }
+    }
+
+    /// White, or dimmed while the other button's panel is open.
+    private func bigButton(_ title: String, systemImage: String, on: Bool, action: @escaping () -> Void) -> some View {
+        let dimmed = !on && activeMode(wallet ?? WalletState.opening) != .home
+        return Button(action: action) {
+            Label(title, systemImage: systemImage)
+                .font(.headline)
+                .frame(maxWidth: .infinity, minHeight: 52)
+                .foregroundStyle(dimmed ? .white : .black)
+                .background(dimmed ? Color(white: 0.2) : Color.white, in: RoundedRectangle(cornerRadius: 14))
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(on ? .isSelected : [])
+    }
+
     // MARK: Receive
 
     @ViewBuilder private func receive(_ wallet: WalletState) -> some View {
+        let receive = wallet.receive
         VStack(alignment: .leading, spacing: 12) {
-            Picker("Method", selection: $method) {
-                ForEach(Method.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+            if let code = receive?.lightning { codeView(code) } else if receive?.lightning_busy == true || wallet.status != nil {
+                placeholderCode()
             }
-            .pickerStyle(.segmented)
-            let receive = wallet.receive
-            switch method {
-            case .lightning:
-                HStack {
-                    TextField("Amount in \(amounts.unit) (optional)", text: $invoiceAmount)
-                        .keyboardType(amountKeyboard)
-                        .textFieldStyle(.roundedBorder)
-                        .accessibilityIdentifier("wallet-invoice-amount")
-                    Button(receive?.lightning_busy == true ? "Making…" : "New invoice") {
-                        bridge.wallet("wallet_invoice", ["amount": invoiceAmount])
-                    }
-                    .buttonStyle(.borderedProminent).tint(.white).foregroundStyle(.black)
-                    .disabled(receive?.lightning_busy == true || wallet.status != nil)
+            if let error = receive?.lightning_error { Text(error).font(.footnote).foregroundStyle(.white) }
+            HStack {
+                TextField("Amount in \(amounts.unit) (optional)", text: $invoiceAmount)
+                    .keyboardType(amountKeyboard)
+                    .textFieldStyle(.roundedBorder)
+                    .accessibilityIdentifier("wallet-invoice-amount")
+                Button(receive?.lightning_busy == true ? "Making…" : (receive?.lightning == nil ? "Create" : "Update")) {
+                    bridge.wallet("wallet_invoice", ["amount": invoiceAmount])
                 }
-                if let error = receive?.lightning_error { Text(error).font(.footnote).foregroundStyle(.white) }
-                if let code = receive?.lightning { codeView(code) } else {
-                    Text("Make an invoice for someone to pay over Lightning. Leave the amount empty to let them choose.")
-                        .font(.footnote).foregroundStyle(.gray)
-                }
-            case .spark:
-                if let code = receive?.spark { codeView(code) } else { placeholderCode() }
-            case .bitcoin:
-                if let code = receive?.bitcoin { codeView(code) } else { placeholderCode() }
-            case .nostr:
-                if let code = receive?.nostr { codeView(code) } else { placeholderCode() }
-                if let publish = receive?.publish {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Toggle(isOn: Binding(get: { publish.on }, set: { bridge.wallet("wallet_publish", ["on": $0]) })) {
-                            Text("Publish my Spark address").foregroundStyle(.white)
-                        }
-                        .tint(.white)
-                        .disabled(publish.busy || wallet.status != nil)
-                        .accessibilityIdentifier("wallet-publish")
-                        Text(publish.detail).font(.footnote).foregroundStyle(.gray)
-                        if publish.busy { ProgressView() }
-                        if let message = publish.message { Text(message).font(.footnote).foregroundStyle(.white) }
-                    }
-                }
+                .buttonStyle(.bordered).tint(.white)
+                .disabled(receive?.lightning_busy == true || wallet.status != nil)
+                .accessibilityIdentifier("wallet-new-invoice")
+            }
+            Text("Other ways to receive are under Advanced.").font(.footnote).foregroundStyle(.gray)
+        }
+        // One request for any amount, ready to scan, once the wallet runs.
+        .task(id: wallet.status == nil) {
+            if wallet.status == nil, receive?.lightning == nil, receive?.lightning_busy != true, receive?.lightning_error == nil {
+                bridge.wallet("wallet_invoice", ["amount": ""])
             }
         }
     }
 
-    private func codeView(_ code: WalletState.Code) -> some View {
+    private func codeView(_ code: WalletState.Code, size: CGFloat = 240) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             if let qr = code.qr {
                 InvitationQR(qr: qr)
-                    .frame(width: 220, height: 220)
+                    .frame(width: size, height: size)
                     .frame(maxWidth: .infinity)
                     .accessibilityLabel("QR code")
             }
             Text(code.caption).font(.footnote).foregroundStyle(.gray)
+                .frame(maxWidth: .infinity)
             Text(code.text)
                 .font(.system(.footnote, design: .monospaced))
                 .foregroundStyle(.white)
-                .lineLimit(3).truncationMode(.middle)
+                .lineLimit(2).truncationMode(.middle)
                 .textSelection(.enabled)
                 .accessibilityIdentifier("wallet-receive-code")
             HStack(spacing: 12) {
@@ -483,25 +520,21 @@ struct WalletTab: View {
                     copied = code.text
                     Task { try? await Task.sleep(for: .seconds(2)); copied = nil }
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(.borderedProminent).foregroundStyle(.black)
                 ShareLink(item: code.text) { Label("Share", systemImage: "square.and.arrow.up") }
                     .buttonStyle(.bordered)
             }
             .tint(.white)
+            .frame(maxWidth: .infinity)
         }
     }
 
     private func placeholderCode() -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            RoundedRectangle(cornerRadius: 12)
-                .fill(Color.white.opacity(0.08))
-                .frame(width: 220, height: 220)
-                .frame(maxWidth: .infinity)
-                .accessibilityHidden(true)
-            Text("spark1000000000000000000000000000000000000000")
-                .font(.system(.footnote, design: .monospaced))
-                .redacted(reason: .placeholder)
-        }
+        RoundedRectangle(cornerRadius: 12)
+            .fill(Color.white.opacity(0.08))
+            .frame(width: 240, height: 240)
+            .frame(maxWidth: .infinity)
+            .accessibilityHidden(true)
     }
 
     // MARK: Send
@@ -515,7 +548,7 @@ struct WalletTab: View {
             case "sent":
                 VStack(alignment: .leading, spacing: 8) {
                     Text(send?.message ?? "Sent.").font(.headline).foregroundStyle(.white)
-                    if let result = send?.result { paymentRow(result) }
+                    if let result = send?.result { paymentRow(result, method: false) }
                     if let said = send?.recipient_message {
                         Text(said).font(.footnote).foregroundStyle(.white)
                             .textSelection(.enabled)
@@ -523,7 +556,7 @@ struct WalletTab: View {
                     }
                     if let address = send?.save_suggestion {
                         VStack(alignment: .leading, spacing: 6) {
-                            Text("Save \(address) as a contact?").font(.footnote).foregroundStyle(.gray)
+                            Text("Save \(address) for next time?").font(.footnote).foregroundStyle(.gray)
                             HStack {
                                 TextField("Name", text: $contactName)
                                     .textFieldStyle(.roundedBorder)
@@ -537,12 +570,15 @@ struct WalletTab: View {
                             }
                         }
                     }
-                    Button("Done") { payInput = ""; payAmount = ""; payComment = ""; bridge.wallet("wallet_send_reset") }
-                        .buttonStyle(.borderedProminent).tint(.white).foregroundStyle(.black)
+                    Button("Done") {
+                        payInput = ""; payAmount = ""; payComment = ""; mode = .home
+                        bridge.wallet("wallet_send_reset")
+                    }
+                    .buttonStyle(.borderedProminent).tint(.white).foregroundStyle(.black)
                 }
             default:
                 if scanning {
-                    InlineQRScanner(prompt: "Point the camera at a Lightning invoice, Lightning address, LNURL, Spark, Bitcoin, or Nostr (npub) QR code.",
+                    InlineQRScanner(prompt: "Point the camera at a payment QR code.",
                                     accept: QRInvitation.payment) { scanned in
                         scanning = false
                         payInput = scanned
@@ -550,28 +586,7 @@ struct WalletTab: View {
                     }
                     Button("Type instead") { scanning = false }
                 } else {
-                    if let people = wallet.people, !people.isEmpty, send?.state == "idle" || send?.state == nil {
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 8) {
-                                ForEach(people) { person in
-                                    Button {
-                                        payInput = person.input
-                                        bridge.wallet("wallet_quote", ["input": person.input, "amount": payAmount, "comment": payComment])
-                                    } label: {
-                                        VStack(alignment: .leading, spacing: 2) {
-                                            Text(person.name).font(.callout).foregroundStyle(.white)
-                                            Text(person.detail).font(.caption2).foregroundStyle(.gray).lineLimit(1)
-                                        }
-                                        .padding(.horizontal, 12).padding(.vertical, 8)
-                                        .background(Color(white: 0.1), in: RoundedRectangle(cornerRadius: 10))
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                            }
-                        }
-                        .accessibilityIdentifier("wallet-people")
-                    }
-                    TextField("Invoice, Lightning address, npub, LNURL, or Bitcoin address", text: $payInput, axis: .vertical)
+                    TextField("Paste or scan", text: $payInput, axis: .vertical)
                         .lineLimit(1...4)
                         .autocorrectionDisabled().textInputAutocapitalization(.never)
                         .textFieldStyle(.roundedBorder)
@@ -579,11 +594,13 @@ struct WalletTab: View {
                     HStack(spacing: 12) {
                         Button("Paste", systemImage: "doc.on.clipboard") {
                             payInput = UIPasteboard.general.string ?? ""
+                            if !payInput.isEmpty { review() }
                         }
                         Button("Scan", systemImage: "qrcode.viewfinder") { scanning = true }
                     }
                     .buttonStyle(.bordered).tint(.white)
-                    if send?.state == "needs_amount", let recipient = send?.recipient {
+                    let needsAmount = send?.state == "needs_amount"
+                    if needsAmount, let recipient = send?.recipient {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(recipient).font(.system(.callout, design: .monospaced)).foregroundStyle(.white)
                             if let description = send?.description {
@@ -592,46 +609,50 @@ struct WalletTab: View {
                         }
                         .accessibilityIdentifier("wallet-recipient")
                     }
-                    TextField("Amount in \(amounts.unit), if the request has none", text: $payAmount)
-                        .keyboardType(amountKeyboard)
-                        .textFieldStyle(.roundedBorder)
-                        .accessibilityIdentifier("wallet-send-amount")
-                    if send?.state == "needs_amount", let most = send?.comment_max {
-                        TextField("Comment (optional, up to \(most) characters)", text: $payComment)
+                    if needsAmount || !payAmount.isEmpty {
+                        TextField("Amount in \(amounts.unit)", text: $payAmount)
+                            .keyboardType(amountKeyboard)
+                            .textFieldStyle(.roundedBorder)
+                            .accessibilityIdentifier("wallet-send-amount")
+                    }
+                    if needsAmount, let most = send?.comment_max {
+                        TextField("Note (optional, up to \(most) characters)", text: $payComment)
                             .textFieldStyle(.roundedBorder)
                             .accessibilityIdentifier("wallet-send-comment")
                     }
                     if let message = send?.message, send?.state != "idle" {
                         Text(message).font(.footnote).foregroundStyle(.white)
                     }
-                    Button(send?.state == "quoting" ? "Preparing…" : "Review payment") {
-                        bridge.wallet("wallet_quote", ["input": payInput, "amount": payAmount, "comment": payComment])
-                    }
-                    .buttonStyle(.borderedProminent).tint(.white).foregroundStyle(.black)
-                    .disabled(payInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                              || send?.state == "quoting" || wallet.status != nil)
-                    .accessibilityIdentifier("wallet-review")
+                    Button(send?.state == "quoting" ? "Preparing…" : "Continue") { review() }
+                        .buttonStyle(.borderedProminent).tint(.white).foregroundStyle(.black)
+                        .disabled(payInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                  || send?.state == "quoting" || wallet.status != nil)
+                        .accessibilityIdentifier("wallet-review")
                 }
             }
         }
     }
 
+    /// Rust reads what was pasted or scanned and says what it is.
+    private func review() {
+        bridge.wallet("wallet_quote", ["input": payInput, "amount": payAmount, "comment": payComment])
+    }
+
     private func confirm(_ quote: WalletState.Quote, paying: Bool, message: String?) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Confirm payment").font(.headline).foregroundStyle(.white)
+            Text("Send \(quote.amount)?").font(.title3.weight(.semibold)).foregroundStyle(.white)
             if let person = wallet?.send?.person {
-                row("Person", person)
+                row("To", person)
             }
-            row("To", "\(quote.kind)\n\(quote.destination)")
+            row(wallet?.send?.person == nil ? "To" : (quote.to ?? quote.kind), quote.destination, mono: true)
             if let source = wallet?.send?.person_source {
                 Text(source).font(.caption).foregroundStyle(.gray)
             }
             if let note = quote.note { row("For", note) }
-            if let comment = quote.comment { row("Comment", comment) }
-            row("Amount", quote.amount)
+            if let comment = quote.comment { row("Note", comment) }
             if let speeds = quote.speeds, !speeds.isEmpty {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Speed").foregroundStyle(.gray).font(.callout)
+                    Text("How fast").foregroundStyle(.gray).font(.callout)
                     ForEach(speeds) { speed in
                         speedButton(speed, disabled: paying) {
                             bridge.wallet("wallet_speed", ["quote": quote.id, "speed": speed.id])
@@ -640,10 +661,12 @@ struct WalletTab: View {
                 }
                 .accessibilityIdentifier("wallet-speeds")
             }
+            row("Amount", quote.amount)
             row("Fee", quote.fee)
             Divider().overlay(Color.white.opacity(0.3))
             row("Total", quote.total).fontWeight(.semibold)
             if let message { Text(message).font(.footnote).foregroundStyle(.gray) }
+            Text("Payments can't be undone.").font(.footnote).foregroundStyle(.gray)
             HStack {
                 Button(paying ? "Sending…" : "Send \(quote.total)") {
                     bridge.wallet("wallet_pay", ["quote": quote.id])
@@ -676,21 +699,147 @@ struct WalletTab: View {
         .accessibilityAddTraits(speed.chosen ? .isSelected : [])
     }
 
-    private func row(_ label: String, _ value: String) -> some View {
+    private func row(_ label: String, _ value: String, mono: Bool = false) -> some View {
         HStack(alignment: .firstTextBaseline) {
             Text(label).foregroundStyle(.gray)
             Spacer()
             Text(value).foregroundStyle(.white).multilineTextAlignment(.trailing)
-                .font(.system(.callout, design: label == "To" ? .monospaced : .default))
+                .font(.system(.callout, design: mono ? .monospaced : .default))
         }
         .font(.callout)
+    }
+
+    // MARK: Recent activity
+
+    private func recent(_ wallet: WalletState) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Recent activity").font(.headline).foregroundStyle(.white)
+                Spacer()
+                if wallet.more_payments == true {
+                    Button("See all") { showHistory = true }.tint(.white)
+                        .accessibilityIdentifier("wallet-see-all")
+                }
+            }
+            let recent = wallet.recent ?? []
+            if recent.isEmpty {
+                Text("Payments you send and receive appear here.").font(.footnote).foregroundStyle(.gray)
+            }
+            ForEach(recent) { paymentRow($0, method: false) }
+        }
+    }
+
+    private func paymentRow(_ payment: WalletState.Payment, method: Bool) -> some View {
+        WalletPaymentRow(payment: payment, method: method)
+    }
+
+    // MARK: Advanced
+
+    @ViewBuilder private func advanced(_ wallet: WalletState) -> some View {
+        VStack(alignment: .leading, spacing: 24) {
+            Button {
+                if forceAdvanced { forceAdvanced = false }
+                bridge.wallet("wallet_advanced", ["open": !advancedOpen])
+            } label: {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Advanced").font(.headline)
+                        if !advancedOpen, let note = wallet.advanced?.note {
+                            Text(note).font(.footnote).foregroundStyle(.gray)
+                        }
+                    }
+                    Spacer()
+                    Image(systemName: advancedOpen ? "chevron.up" : "chevron.down")
+                }
+                .foregroundStyle(.white)
+                .padding(.vertical, 12)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("wallet-advanced")
+            .id("wallet-advanced")
+            if advancedOpen {
+                details(wallet)
+                otherWays(wallet)
+                buy(wallet)
+                if let deposits = wallet.deposits, !deposits.isEmpty {
+                    depositsView(deposits, claim: wallet.claim, refund: wallet.refund)
+                }
+                people(wallet)
+                if let spend = bridge.packet?.spend {
+                    AgentPaymentsSection(spend: spend, bridge: bridge)
+                }
+                amountSetting()
+                recovery(wallet)
+                if let backup = wallet.backup { backupView(backup) }
+            }
+        }
+        .padding(.top, 8)
+    }
+
+    /// The balance in the other unit, the network, and when it was read.
+    private func details(_ wallet: WalletState) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Balance").font(.headline).foregroundStyle(.white)
+            if let alternate = wallet.balance_alternate, !alternate.isEmpty { row("Also", alternate, mono: true) }
+            row("Network", wallet.network ?? "Bitcoin · Spark")
+            HStack {
+                Text(wallet.refreshing == true ? "Refreshing…" : updated(wallet.synced_at))
+                    .font(.footnote).foregroundStyle(.gray)
+                Spacer()
+                Button("Refresh", systemImage: "arrow.clockwise") { bridge.refreshWallet() }
+                    .font(.footnote).tint(.white)
+                    .disabled(wallet.refreshing == true)
+                    .accessibilityIdentifier("wallet-refresh")
+            }
+        }
+    }
+
+    // MARK: Other ways to receive
+
+    @ViewBuilder private func otherWays(_ wallet: WalletState) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Other ways to receive").font(.headline).foregroundStyle(.white)
+            Picker("Method", selection: $method) {
+                ForEach(Method.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+            }
+            .pickerStyle(.segmented)
+            .accessibilityIdentifier("wallet-method")
+            let receive = wallet.receive
+            switch method {
+            case .lightning:
+                if let code = receive?.lightning { codeView(code, size: 200) } else {
+                    Text("Tap Receive above to make a Lightning request.").font(.footnote).foregroundStyle(.gray)
+                }
+            case .spark:
+                if let code = receive?.spark { codeView(code, size: 200) } else { placeholderCode() }
+            case .bitcoin:
+                if let code = receive?.bitcoin { codeView(code, size: 200) } else { placeholderCode() }
+            case .nostr:
+                if let code = receive?.nostr { codeView(code, size: 200) } else { placeholderCode() }
+                if let publish = receive?.publish {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Toggle(isOn: Binding(get: { publish.on }, set: { bridge.wallet("wallet_publish", ["on": $0]) })) {
+                            Text("Publish my Spark address").foregroundStyle(.white)
+                        }
+                        .tint(.white)
+                        .disabled(publish.busy || wallet.status != nil)
+                        .accessibilityIdentifier("wallet-publish")
+                        Text(publish.detail).font(.footnote).foregroundStyle(.gray)
+                        if publish.busy { ProgressView() }
+                        if let message = publish.message { Text(message).font(.footnote).foregroundStyle(.white) }
+                    }
+                }
+            }
+        }
     }
 
     // MARK: Buy
 
     @ViewBuilder private func buy(_ wallet: WalletState) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Buy bitcoin with dollars. The provider's page opens in your browser.")
+            Text("Buy bitcoin").font(.headline).foregroundStyle(.white)
+            Text("Pay with dollars. The provider's page opens in your browser.")
                 .font(.footnote).foregroundStyle(.gray)
             TextField("Amount in \(amounts.unit)", text: $buyAmount)
                 .keyboardType(amountKeyboard)
@@ -717,7 +866,58 @@ struct WalletTab: View {
         }
     }
 
-    // MARK: Deposits, history, recovery
+    // MARK: People
+
+    @ViewBuilder private func people(_ wallet: WalletState) -> some View {
+        if let people = wallet.people, !people.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("People").font(.headline).foregroundStyle(.white)
+                ForEach(people) { person in
+                    Button {
+                        payInput = person.input
+                        mode = .send
+                        bridge.wallet("wallet_quote", ["input": person.input, "amount": payAmount, "comment": payComment])
+                    } label: {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(person.name).font(.callout).foregroundStyle(.white)
+                                Text(person.detail).font(.caption2).foregroundStyle(.gray).lineLimit(1)
+                            }
+                            Spacer()
+                            Text("Pay").font(.footnote).foregroundStyle(.white)
+                        }
+                        .padding(.horizontal, 12).padding(.vertical, 8)
+                        .background(Color(white: 0.1), in: RoundedRectangle(cornerRadius: 10))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .accessibilityIdentifier("wallet-people")
+        }
+    }
+
+    // MARK: Amount format
+
+    private func amountSetting() -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Show amounts as").font(.headline).foregroundStyle(.white)
+            Picker("Show amounts as", selection: Binding(
+                get: { amounts.format },
+                set: { chosen in
+                    // What was typed was in the old format; start over.
+                    invoiceAmount = ""; payAmount = ""; buyAmount = ""
+                    bridge.wallet("amount_format", ["format": chosen])
+                })) {
+                ForEach(amounts.choices) { Text($0.label).tag($0.id) }
+            }
+            .pickerStyle(.segmented)
+            .accessibilityIdentifier("amount-format")
+            Text("Applies everywhere in the app. Stored amounts don't change.")
+                .font(.footnote).foregroundStyle(.gray)
+        }
+    }
+
+    // MARK: Deposits, recovery, exit backup
 
     private func depositsView(_ deposits: [WalletState.Deposit], claim: WalletState.Claim?, refund: WalletState.Refund?) -> some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -845,34 +1045,6 @@ struct WalletTab: View {
         }
     }
 
-    private func history(_ payments: [WalletState.Payment]) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("History").font(.headline).foregroundStyle(.white)
-            if payments.isEmpty {
-                Text("Payments you send and receive appear here.").font(.footnote).foregroundStyle(.gray)
-            }
-            ForEach(payments) { paymentRow($0) }
-        }
-    }
-
-    private func paymentRow(_ payment: WalletState.Payment) -> some View {
-        HStack(alignment: .top) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(payment.title).foregroundStyle(.white)
-                Text([payment.method, payment.status == "completed" ? nil : payment.status.capitalized,
-                      Date(timeIntervalSince1970: TimeInterval(payment.at)).formatted(.relative(presentation: .named))]
-                    .compactMap { $0 }.joined(separator: " · "))
-                    .font(.caption).foregroundStyle(.gray)
-            }
-            Spacer()
-            VStack(alignment: .trailing, spacing: 2) {
-                Text(payment.amount).font(.callout.monospacedDigit()).foregroundStyle(.white)
-                if let fee = payment.fee { Text(fee).font(.caption).foregroundStyle(.gray) }
-            }
-        }
-        .accessibilityElement(children: .combine)
-    }
-
     private func recovery(_ wallet: WalletState) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Recovery").font(.headline).foregroundStyle(.white)
@@ -888,11 +1060,59 @@ struct WalletTab: View {
     }
 
     private func updated(_ seconds: UInt64?) -> String {
-        guard let seconds else { return "Not synced yet" }
+        guard let seconds else { return "Not updated yet" }
         let date = Date(timeIntervalSince1970: TimeInterval(seconds))
         return "Updated " + date.formatted(.relative(presentation: .named))
     }
 }
+
+/// One payment: Sent or Received, when, and the amount. `method` adds how it
+/// traveled, for the full history.
+private struct WalletPaymentRow: View {
+    let payment: WalletState.Payment
+    let method: Bool
+
+    var body: some View {
+        HStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(payment.title).foregroundStyle(.white)
+                Text([method ? payment.method : nil, payment.status == "completed" ? nil : payment.status.capitalized,
+                      Date(timeIntervalSince1970: TimeInterval(payment.at)).formatted(.relative(presentation: .named))]
+                    .compactMap { $0 }.joined(separator: " · "))
+                    .font(.caption).foregroundStyle(.gray)
+            }
+            Spacer()
+            VStack(alignment: .trailing, spacing: 2) {
+                Text(payment.amount).font(.callout.monospacedDigit()).foregroundStyle(.white)
+                if let fee = payment.fee { Text(fee).font(.caption).foregroundStyle(.gray) }
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/// Every payment the wallet lists, from See all.
+private struct HistorySheet: View {
+    let payments: [WalletState.Payment]
+    let done: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    ForEach(payments) { WalletPaymentRow(payment: $0, method: true) }
+                }
+                .padding(20)
+            }
+            .background(Color.black.ignoresSafeArea())
+            .navigationTitle("Activity")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done", action: done) } }
+        }
+        .preferredColorScheme(.dark)
+    }
+}
+
 
 /// The trust note, opened from the info button.
 private struct TrustSheet: View {
@@ -903,7 +1123,11 @@ private struct TrustSheet: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
-                    ForEach(trust.lines, id: \.self) { Text($0).font(.callout).foregroundStyle(.white) }
+                    if let summary = trust.summary {
+                        Text(summary).font(.body).foregroundStyle(.white)
+                        Text("Details").font(.headline).foregroundStyle(.white).padding(.top, 8)
+                    }
+                    ForEach(trust.lines, id: \.self) { Text($0).font(.footnote).foregroundStyle(.gray) }
                 }
                 .padding(20)
             }
@@ -919,6 +1143,8 @@ private struct TrustSheet: View {
 /// The recovery words, numbered. They exist only while this sheet is open.
 private struct WordsSheet: View {
     let words: [String]
+    /// The person wrote them down: the Back up card goes away.
+    let saved: () -> Void
     let done: () -> Void
     @State private var copied = false
 
@@ -950,6 +1176,11 @@ private struct WordsSheet: View {
                     .accessibilityIdentifier("wallet-copy-words")
                     Text("The copy stays on this phone and is cleared after a minute. Paste it somewhere offline, not into a message or a notes app that syncs.")
                         .font(.footnote).foregroundStyle(.gray)
+                    Button("I wrote them down", action: saved)
+                        .buttonStyle(.borderedProminent).tint(.white).foregroundStyle(.black)
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 8)
+                        .accessibilityIdentifier("wallet-words-saved")
                 }
                 .padding(20)
             }
@@ -1040,5 +1271,6 @@ extension WalletState {
         balance_alternate: nil, balance_spoken: nil,
         empty: nil, synced_at: nil, refreshing: true, error: nil, balance_unknown: true,
         status: "Opening the wallet…", warning: nil, trust: nil, receive: nil, send: nil,
-        payments: nil, can_show_words: false, buy: nil, deposits: nil, claim: nil, refund: nil, backup: nil, people: nil)
+        payments: nil, can_show_words: false, buy: nil, deposits: nil, claim: nil, refund: nil, backup: nil, people: nil,
+        stale: nil, recent: nil, more_payments: nil, backup_card: nil, advanced: nil)
 }

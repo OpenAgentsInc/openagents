@@ -136,6 +136,22 @@ fn push_wakes_are_off_unless_the_build_names_a_relay_and_gateway() {
 }
 
 #[test]
+fn the_wallets_advanced_section_opens_from_the_host_and_is_remembered() {
+    let (mut app, _dir) = app();
+    let advanced = |packet: crate::app::Packet| match packet.wallet {
+        crate::wallet::Screen::Ready(summary) => summary.advanced.open,
+        crate::wallet::Screen::Failed { .. } => panic!("the wallet failed"),
+    };
+    assert!(!advanced(app.call(Request::Snapshot)));
+    let request: Request =
+        serde_json::from_str(r#"{"op":"wallet_advanced","open":true}"#).expect("request");
+    assert!(advanced(app.call(request)));
+    // Saving the words before a wallet runs changes nothing.
+    let request: Request = serde_json::from_str(r#"{"op":"wallet_words_saved"}"#).expect("request");
+    assert!(advanced(app.call(request)));
+}
+
+#[test]
 fn the_amount_format_is_saved_and_reaches_the_wallet() {
     let (mut app, dir) = app();
     let invoice_error = |app: &mut App, amount: &str| {

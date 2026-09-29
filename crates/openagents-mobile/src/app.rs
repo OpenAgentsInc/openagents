@@ -377,6 +377,13 @@ pub enum Request {
     WalletExitExport,
     /// The person read the wallet's trust note.
     WalletAcknowledge,
+    /// The person wrote down the recovery words the words sheet showed; the
+    /// Back up card goes away for this wallet.
+    WalletWordsSaved,
+    /// Open or close the Wallet's Advanced section, remembered on this phone.
+    WalletAdvanced {
+        open: bool,
+    },
     /// The recovery words, in the direct reply only. The host sends it after
     /// the person asks to see them and confirms a warning.
     WalletWords,
@@ -1267,6 +1274,8 @@ impl App {
                 self.wallet.save_contact(&name, &address)
             }
             Request::WalletAcknowledge => self.wallet.acknowledge(),
+            Request::WalletWordsSaved => self.wallet.words_saved(),
+            Request::WalletAdvanced { open } => self.wallet.set_advanced(open),
             Request::AmountFormat { format } => {
                 if let Some(format) = self.amounts.choose(&format) {
                     self.wallet.set_format(format);

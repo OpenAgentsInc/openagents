@@ -29,7 +29,9 @@ import android.widget.TextView
 import org.json.JSONObject
 
 class WalletScreen(private val activity: MainActivity, private val bridge: MobileBridge, private val scanner: QRScanner) {
-    private enum class Section(val title: String) { RECEIVE("Receive"), SEND("Send"), BUY("Buy") }
+    /** What the main screen shows under the two buttons. */
+    private enum class Mode { HOME, RECEIVE, SEND }
+    /** The other ways to receive, under Advanced. */
     private enum class Method(val title: String, val key: String) { LIGHTNING("Lightning", "lightning"), SPARK("Spark", "spark"), BITCOIN("Bitcoin", "bitcoin"), NOSTR("Nostr", "nostr") }
 
     val root = FrameLayout(activity)
@@ -39,16 +41,16 @@ class WalletScreen(private val activity: MainActivity, private val bridge: Mobil
         gravity = Gravity.CENTER; contentDescription = "About this wallet"; tag = "wallet-info"
         setOnClickListener { showTrust() }
     }
-    private var section = Section.RECEIVE
-    private var method = Method.LIGHTNING
+    private var mode = Mode.HOME
+    private var method = Method.SPARK
     private var scanning = false
     private var shown: String? = null
     private var copied: String? = null
 
     // Fields keep what the person typed across Rust's updates.
     private val invoiceAmount = field("Amount in ₿ (optional)", "wallet-invoice-amount", number = true)
-    private val payInput = field("Invoice, Lightning address, npub, LNURL, or Bitcoin address", "wallet-send-input", lines = 4)
-    private val payComment = field("Comment (optional)", "wallet-send-comment")
+    private val payInput = field("Paste or scan", "wallet-send-input", lines = 4)
+    private val payComment = field("Note (optional)", "wallet-send-comment")
     private val contactName = field("Name", "wallet-contact-name")
     private val refundAddress = field("Bitcoin address to refund to", "wallet-refund-address")
     private var refundSpeed = "medium"
@@ -66,7 +68,7 @@ class WalletScreen(private val activity: MainActivity, private val bridge: Mobil
         } catch (problem: Exception) { problem.message ?: "The backup couldn't be saved." }
         redraw()
     }
-    private val payAmount = field("Amount in ₿, if the request has none", "wallet-send-amount", number = true)
+    private val payAmount = field("Amount in ₿", "wallet-send-amount", number = true)
     private val buyAmount = field("Amount in ₿", "wallet-buy-amount", number = true)
     // Rust's amount format (`amounts::AmountsView`): BIP 177 or legacy BTC.
     private var amounts: JSONObject? = null
@@ -114,7 +116,7 @@ class WalletScreen(private val activity: MainActivity, private val bridge: Mobil
     fun update(packet: JSONObject?, force: Boolean = false) {
         val wallet = packet?.objectOrNull("wallet")
         amounts = packet?.objectOrNull("amounts")
-        val key = "${wallet?.toString()}|${amounts?.toString()}|$section|$method|$scanning|$copied"
+        val key = "${wallet?.toString()}|${amounts?.toString()}|$mode|$method|$scanning|$copied"
         if (!force && key == shown) return
         shown = key
         applyFormat()
@@ -133,7 +135,7 @@ class WalletScreen(private val activity: MainActivity, private val bridge: Mobil
     private fun applyFormat() {
         val unit = amounts?.textOrNull("unit") ?: "₿"
         val decimal = amounts?.optBoolean("decimal") == true
-        listOf(invoiceAmount to "Amount in $unit (optional)", payAmount to "Amount in $unit, if the request has none",
+        listOf(invoiceAmount to "Amount in $unit (optional)", payAmount to "Amount in $unit",
             buyAmount to "Amount in $unit").forEach { (field, hint) ->
             field.hint = hint; field.contentDescription = hint
             field.inputType = if (decimal) InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL else InputType.TYPE_CLASS_NUMBER
@@ -173,46 +175,170 @@ class WalletScreen(private val activity: MainActivity, private val bridge: Mobil
                 background = activity.rounded(0xFF1F1F1F.toInt(), 12f)
             }, 16)
         }
-        content.add(segments(Section.entries.map { it.title }, section.ordinal, "wallet-section") { section = Section.entries[it]; redraw() }, 20)
-        when (section) {
-            Section.RECEIVE -> receive(wallet)
-            Section.SEND -> send(wallet)
-            Section.BUY -> buy(wallet)
+        wallet.objectOrNull("backup_card")?.let { backupCard(it, wallet) }
+        primaryButtons(wallet)
+        when (activeMode(wallet)) {
+            Mode.RECEIVE -> receive(wallet)
+            Mode.SEND -> send(wallet)
+            Mode.HOME -> Unit
         }
+        recent(wallet)
+        advanced(wallet)
+    }
+
+    /** A payment in progress keeps the Send panel open. */
+    private fun activeMode(wallet: JSONObject): Mode {
+        val state = wallet.objectOrNull("send")?.optString("state") ?: "idle"
+        return if (state != "idle" && (state != "failed" || mode == Mode.SEND)) Mode.SEND else mode
+    }
+
+    /** Shown until the person writes down this wallet's recovery words. */
+    private fun backupCard(card: JSONObject, wallet: JSONObject) {
+        val box = activity.column().apply {
+            setPadding(activity.dp(14), activity.dp(14), activity.dp(14), activity.dp(14))
+            background = activity.rounded(0xFF1F1F1F.toInt(), 14f)
+            add(activity.label(card.getString("title"), 17f, bold = true))
+            add(activity.label(card.getString("detail"), 13f, Palette.SECONDARY), 4)
+            add(activity.pill(card.getString("action"), "wallet-backup-card") { confirmWords() }
+                .enabled(wallet.optBoolean("can_show_words")), 10, -2)
+        }
+        content.add(box, 16)
+    }
+
+    /** Receive and Send: the screen's two big buttons. */
+    private fun primaryButtons(wallet: JSONObject) {
+        val active = activeMode(wallet)
+        val row = activity.row()
+        // White, or dimmed while the other button's panel is open.
+        fun big(title: String, key: String, on: Boolean, action: () -> Unit) = activity.text(title, 17f,
+            if (!on && active != Mode.HOME) Palette.PRIMARY else Palette.BACKGROUND).apply {
+            gravity = Gravity.CENTER; setTypeface(typeface, Typeface.BOLD)
+            setPadding(0, activity.dp(16), 0, activity.dp(16))
+            background = activity.rounded(if (!on && active != Mode.HOME) 0xFF333333.toInt() else Palette.PRIMARY, 14f)
+            tag = key; contentDescription = title; isSelected = on
+            setOnClickListener { action() }
+        }
+        row.addView(big("↓  Receive", "wallet-receive", active == Mode.RECEIVE) {
+            bridge.wallet("wallet_send_reset")
+            if (mode == Mode.RECEIVE) { mode = Mode.HOME; redraw(); return@big }
+            mode = Mode.RECEIVE
+            // One request for any amount, ready to scan.
+            val receive = wallet.objectOrNull("receive")
+            if (receive?.objectOrNull("lightning") == null && receive?.optBoolean("lightning_busy") != true &&
+                wallet.textOrNull("status") == null) bridge.wallet("wallet_invoice", "amount" to "")
+            redraw()
+        }, LinearLayout.LayoutParams(0, -2, 1f))
+        row.addView(big("↑  Send", "wallet-send", active == Mode.SEND) {
+            if (mode == Mode.SEND) bridge.wallet("wallet_send_reset")
+            mode = if (mode == Mode.SEND) Mode.HOME else Mode.SEND
+            redraw()
+        }, LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = activity.dp(12) })
+        content.add(row, 20)
+    }
+
+    /** The newest payments, with See all for the rest. */
+    private fun recent(wallet: JSONObject) {
+        val header = activity.row().apply { gravity = Gravity.CENTER_VERTICAL }
+        header.addView(activity.label("Recent activity", 17f, bold = true), LinearLayout.LayoutParams(0, -2, 1f))
+        if (wallet.optBoolean("more_payments")) header.addView(activity.pill("See all", "wallet-see-all") {
+            showHistory(wallet.optJSONArray("payments")?.objects() ?: emptyList())
+        })
+        content.add(header, 24)
+        val recent = wallet.optJSONArray("recent")?.objects() ?: emptyList()
+        if (recent.isEmpty()) content.add(activity.label("Payments you send and receive appear here.", 13f, Palette.SECONDARY), 6)
+        for (payment in recent) content.add(paymentRow(payment, method = false), 10)
+    }
+
+    private fun showHistory(payments: List<JSONObject>) {
+        val body = activity.column().apply {
+            setPadding(activity.dp(24), activity.dp(8), activity.dp(24), activity.dp(8))
+            for (payment in payments) add(paymentRow(payment, method = true), 10)
+        }
+        dialog().setTitle("Activity").setView(ScrollView(activity).apply { addView(body) })
+            .setPositiveButton("Done", null).show()
+    }
+
+    /** Everything else, closed by default and remembered on this phone. */
+    private fun advanced(wallet: JSONObject) {
+        val advanced = wallet.objectOrNull("advanced")
+        val open = advanced?.optBoolean("open") == true
+        val header = activity.row().apply {
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, activity.dp(12), 0, activity.dp(12))
+            val title = activity.column().apply {
+                add(activity.label("Advanced", 17f, bold = true))
+                if (!open) advanced?.textOrNull("note")?.let { add(activity.label(it, 13f, Palette.SECONDARY), 2) }
+            }
+            addView(title, LinearLayout.LayoutParams(0, -2, 1f))
+            addView(activity.label(if (open) "⌃" else "⌄", 20f))
+            tag = "wallet-advanced"; contentDescription = if (open) "Advanced, open" else "Advanced"
+            setOnClickListener { bridge.wallet("wallet_advanced", "open" to !open) }
+        }
+        content.add(header, 24)
+        if (!open) return
+        details(wallet)
+        otherWays(wallet)
+        buy(wallet)
         val deposits = wallet.optJSONArray("deposits")?.objects() ?: emptyList()
         if (deposits.isNotEmpty()) deposits(deposits, wallet.objectOrNull("claim"), wallet.objectOrNull("refund"))
-        history(wallet.optJSONArray("payments")?.objects() ?: emptyList())
+        people(wallet)
         bridge.packet?.objectOrNull("spend")?.let { AgentPayments.section(activity, content, it, bridge) }
         if (amounts != null) amountSetting()
         recovery(wallet)
         wallet.objectOrNull("backup")?.let { backup(it) }
     }
 
+    /** The balance in the other unit, the network, and when it was read. */
+    private fun details(wallet: JSONObject) {
+        content.add(activity.label("Balance", 17f, bold = true), 16)
+        wallet.textOrNull("balance_alternate")?.let { content.add(line("Also", it, mono = true), 6) }
+        content.add(line("Network", wallet.optString("network", "Bitcoin · Spark")), 6)
+        val status = activity.row().apply { gravity = Gravity.CENTER_VERTICAL }
+        val synced = if (wallet.has("synced_at") && !wallet.isNull("synced_at")) wallet.getLong("synced_at") else null
+        status.addView(activity.label(if (wallet.optBoolean("refreshing")) "Refreshing…" else updated(synced), 13f, Palette.SECONDARY),
+            LinearLayout.LayoutParams(0, -2, 1f))
+        status.addView(activity.pill("Refresh", "wallet-refresh") { bridge.wallet("wallet_refresh") })
+        content.add(status, 6)
+    }
+
+    /** Contacts and people paid before: tap to pay. */
+    private fun people(wallet: JSONObject) {
+        val people = wallet.optJSONArray("people")?.objects() ?: emptyList()
+        if (people.isEmpty()) return
+        content.add(activity.label("People", 17f, bold = true), 24)
+        for (person in people) content.add(activity.column().apply {
+            setPadding(activity.dp(12), activity.dp(8), activity.dp(12), activity.dp(8))
+            background = activity.rounded(0xFF1A1A1A.toInt(), 10f)
+            add(activity.label(person.getString("name"), 14f))
+            add(activity.label(person.getString("detail"), 11f, Palette.SECONDARY).apply { maxLines = 1 }, 2)
+            tag = "wallet-person"; contentDescription = "Pay ${person.getString("name")}, ${person.getString("detail")}"
+            setOnClickListener {
+                val input = person.getString("input")
+                payInput.setText(input); mode = Mode.SEND
+                quote(input)
+            }
+        }, 8)
+    }
+
     private fun balance(wallet: JSONObject) {
         val unknown = wallet.optBoolean("balance_unknown")
-        content.add(activity.label(wallet.optString("network", "Bitcoin · Spark").uppercase(), 12f, Palette.SECONDARY, bold = true), 8)
-        content.add(activity.label(if (unknown) "₿—" else wallet.optString("balance"), 40f, bold = true, key = "wallet-balance").apply {
+        content.add(activity.label(if (unknown) "₿—" else wallet.optString("balance"), 48f, bold = true, key = "wallet-balance").apply {
             maxLines = 1; if (unknown) setTextColor(Palette.TERTIARY)
             contentDescription = if (unknown) "Balance not read yet" else wallet.optString("balance_spoken", wallet.optString("balance"))
-        }, 4)
-        content.add(activity.label(if (unknown) "— BTC" else wallet.optString("balance_alternate"), 14f,
-            if (unknown) Palette.TERTIARY else Palette.SECONDARY, mono = true), 2)
-        val status = activity.row().apply { gravity = Gravity.CENTER_VERTICAL }
-        val busy = wallet.textOrNull("status") ?: if (wallet.optBoolean("refreshing")) "Refreshing…" else null
-        if (busy != null) {
-            status.addView(ProgressBar(activity).apply { isIndeterminate = true }, LinearLayout.LayoutParams(activity.dp(18), activity.dp(18)))
-            status.addView(activity.label(busy, 13f, Palette.SECONDARY), LinearLayout.LayoutParams(-2, -2).apply { marginStart = activity.dp(8) })
-        } else {
-            val synced = if (wallet.has("synced_at") && !wallet.isNull("synced_at")) wallet.getLong("synced_at") else null
-            status.addView(activity.label(updated(synced), 13f, Palette.SECONDARY), LinearLayout.LayoutParams(0, -2, 1f))
-            status.addView(activity.text("↻", 20f).apply {
-                gravity = Gravity.CENTER; contentDescription = "Refresh"; tag = "wallet-refresh"
-                setOnClickListener { bridge.wallet("wallet_refresh") }
-            }, LinearLayout.LayoutParams(activity.dp(44), activity.dp(36)))
-        }
-        content.add(status, 6)
-        wallet.textOrNull("error")?.let { content.add(activity.label(it, 13f), 4) }
-        if (wallet.optBoolean("empty")) content.add(activity.label("No bitcoin yet. Receive some below, or buy it with dollars.",
+        }, 8)
+        // Quiet: only while starting, or when the balance is old or failed to update.
+        val status = wallet.textOrNull("status")
+        if (status != null) {
+            val row = activity.row().apply { gravity = Gravity.CENTER_VERTICAL }
+            row.addView(ProgressBar(activity).apply { isIndeterminate = true }, LinearLayout.LayoutParams(activity.dp(18), activity.dp(18)))
+            row.addView(activity.label(status, 13f, Palette.SECONDARY), LinearLayout.LayoutParams(-2, -2).apply { marginStart = activity.dp(8) })
+            content.add(row, 6)
+        } else wallet.textOrNull("error")?.let { content.add(activity.label(it, 13f, Palette.SECONDARY), 6) }
+            ?: if (wallet.optBoolean("stale") && !wallet.optBoolean("refreshing")) {
+                val synced = if (wallet.has("synced_at") && !wallet.isNull("synced_at")) wallet.getLong("synced_at") else null
+                content.add(activity.label(updated(synced), 13f, Palette.SECONDARY), 6)
+            } else Unit
+        if (wallet.optBoolean("empty")) content.add(activity.label("No bitcoin yet. Tap Receive to get some.",
             14f, Palette.SECONDARY), 6)
     }
 
@@ -238,24 +364,32 @@ class WalletScreen(private val activity: MainActivity, private val bridge: Mobil
 
     // Receive
 
+    /** One request that just works: a QR code, Copy, and Share, with an optional amount. */
     private fun receive(wallet: JSONObject) {
+        val receive = wallet.objectOrNull("receive")
+        val starting = wallet.textOrNull("status") != null
+        val busy = receive?.optBoolean("lightning_busy") == true
+        receive?.objectOrNull("lightning")?.let { code(it) } ?: if (busy || starting) placeholder() else Unit
+        receive?.textOrNull("lightning_error")?.let { content.add(activity.label(it, 13f), 6) }
+        val row = activity.row().apply { gravity = Gravity.CENTER_VERTICAL }
+        (invoiceAmount.parent as? android.view.ViewGroup)?.removeView(invoiceAmount)
+        row.addView(invoiceAmount, LinearLayout.LayoutParams(0, -2, 1f))
+        row.addView(activity.pill(if (busy) "Making…" else if (receive?.objectOrNull("lightning") == null) "Create" else "Update", "wallet-new-invoice") {
+            hideKeyboard(); bridge.wallet("wallet_invoice", "amount" to invoiceAmount.text.toString())
+        }.enabled(!busy && !starting), LinearLayout.LayoutParams(-2, -2).apply { marginStart = activity.dp(8) })
+        content.add(row, 12)
+        content.add(activity.label("Other ways to receive are under Advanced.", 13f, Palette.SECONDARY), 8)
+    }
+
+    /** Lightning, Spark, on-chain Bitcoin, and Nostr, under Advanced. */
+    private fun otherWays(wallet: JSONObject) {
+        content.add(activity.label("Other ways to receive", 17f, bold = true), 24)
         content.add(segments(Method.entries.map { it.title }, method.ordinal, "wallet-method") { method = Method.entries[it]; redraw() }, 12)
         val receive = wallet.objectOrNull("receive")
         val starting = wallet.textOrNull("status") != null
         when (method) {
-            Method.LIGHTNING -> {
-                val busy = receive?.optBoolean("lightning_busy") == true
-                val row = activity.row().apply { gravity = Gravity.CENTER_VERTICAL }
-                (invoiceAmount.parent as? android.view.ViewGroup)?.removeView(invoiceAmount)
-                row.addView(invoiceAmount, LinearLayout.LayoutParams(0, -2, 1f))
-                row.addView(activity.pill(if (busy) "Making…" else "New invoice", "wallet-new-invoice", primary = true) {
-                    hideKeyboard(); bridge.wallet("wallet_invoice", "amount" to invoiceAmount.text.toString())
-                }.enabled(!busy && !starting), LinearLayout.LayoutParams(-2, -2).apply { marginStart = activity.dp(8) })
-                content.add(row, 12)
-                receive?.textOrNull("lightning_error")?.let { content.add(activity.label(it, 13f), 6) }
-                receive?.objectOrNull("lightning")?.let { code(it) } ?: content.add(activity.label(
-                    "Make an invoice for someone to pay over Lightning. Leave the amount empty to let them choose.", 13f, Palette.SECONDARY), 8)
-            }
+            Method.LIGHTNING -> receive?.objectOrNull("lightning")?.let { code(it) }
+                ?: content.add(activity.label("Tap Receive above to make a Lightning request.", 13f, Palette.SECONDARY), 8)
             Method.SPARK -> receive?.objectOrNull("spark")?.let { code(it) } ?: placeholder()
             Method.BITCOIN -> receive?.objectOrNull("bitcoin")?.let { code(it) } ?: placeholder()
             Method.NOSTR -> {
@@ -322,10 +456,10 @@ class WalletScreen(private val activity: MainActivity, private val bridge: Mobil
             "quoted", "paying" -> send?.objectOrNull("quote")?.let { confirm(it, state == "paying", send.textOrNull("message")) }
             "sent" -> {
                 content.add(activity.label(send?.textOrNull("message") ?: "Sent.", 17f, bold = true), 12)
-                send?.objectOrNull("result")?.let { content.add(paymentRow(it), 8) }
+                send?.objectOrNull("result")?.let { content.add(paymentRow(it, method = false), 8) }
                 send?.textOrNull("recipient_message")?.let { content.add(activity.label(it, 13f, key = "wallet-recipient-message", selectable = true), 8) }
                 send?.textOrNull("save_suggestion")?.let { address ->
-                    content.add(activity.label("Save $address as a contact?", 13f, Palette.SECONDARY), 12)
+                    content.add(activity.label("Save $address for next time?", 13f, Palette.SECONDARY), 12)
                     val row = activity.row().apply { gravity = Gravity.CENTER_VERTICAL }
                     (contactName.parent as? android.view.ViewGroup)?.removeView(contactName)
                     row.addView(contactName, LinearLayout.LayoutParams(0, -2, 1f))
@@ -338,40 +472,24 @@ class WalletScreen(private val activity: MainActivity, private val bridge: Mobil
                     content.add(row, 6)
                 }
                 content.add(activity.pill("Done", "wallet-send-done", primary = true) {
-                    payInput.setText(""); payAmount.setText(""); payComment.setText(""); bridge.wallet("wallet_send_reset")
+                    payInput.setText(""); payAmount.setText(""); payComment.setText(""); mode = Mode.HOME
+                    bridge.wallet("wallet_send_reset")
                 }, 12, -2)
             }
             else -> {
                 if (scanning) {
-                    content.add(activity.label("Point the camera at a Lightning invoice, Lightning address, LNURL, Spark, Bitcoin, or Nostr (npub) QR code.", 13f, Palette.SECONDARY), 12)
+                    content.add(activity.label("Point the camera at a payment QR code.", 13f, Palette.SECONDARY), 12)
                     place(camera, 8)
                     content.add(activity.pill("Type instead", "wallet-type") { stopScan() }, 8, -2)
                     return
-                }
-                val people = wallet.optJSONArray("people")?.objects() ?: emptyList()
-                if (people.isNotEmpty() && state == "idle") {
-                    val chips = activity.row()
-                    for (person in people) chips.addView(activity.column().apply {
-                        setPadding(activity.dp(12), activity.dp(8), activity.dp(12), activity.dp(8))
-                        background = activity.rounded(0xFF1A1A1A.toInt(), 10f)
-                        add(activity.label(person.getString("name"), 14f))
-                        add(activity.label(person.getString("detail"), 11f, Palette.SECONDARY).apply { maxLines = 1 }, 2)
-                        contentDescription = "${person.getString("name")}, ${person.getString("detail")}"
-                        setOnClickListener {
-                            val input = person.getString("input")
-                            payInput.setText(input)
-                            quote(input)
-                        }
-                    }, LinearLayout.LayoutParams(-2, -2).apply { marginEnd = activity.dp(8) })
-                    content.add(android.widget.HorizontalScrollView(activity).apply {
-                        isHorizontalScrollBarEnabled = false; tag = "wallet-people"; addView(chips)
-                    }, 12)
                 }
                 place(payInput)
                 val actions = activity.row()
                 actions.addView(activity.pill("Paste", "wallet-paste") {
                     val clipboard = activity.getSystemService(ClipboardManager::class.java)
-                    clipboard?.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(activity)?.let { payInput.setText(it) }
+                    clipboard?.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(activity)?.let {
+                        payInput.setText(it); if (it.isNotBlank()) quote(it.toString())
+                    }
                 })
                 actions.addView(activity.pill("Scan", "wallet-scan") { startScan() },
                     LinearLayout.LayoutParams(-2, -2).apply { marginStart = activity.dp(12) })
@@ -380,17 +498,17 @@ class WalletScreen(private val activity: MainActivity, private val bridge: Mobil
                     content.add(activity.label(recipient, 14f, mono = true, key = "wallet-recipient"), 10)
                     send.textOrNull("description")?.let { content.add(activity.label(it, 13f, Palette.SECONDARY), 2) }
                 }
-                place(payAmount, 10)
+                if (state == "needs_amount" || payAmount.text.isNotEmpty()) place(payAmount, 10)
                 if (state == "needs_amount" && send?.has("comment_max") == true && !send.isNull("comment_max")) {
                     val most = send.optInt("comment_max")
-                    payComment.hint = "Comment (optional, up to $most characters)"
+                    payComment.hint = "Note (optional, up to $most characters)"
                     payComment.filters = arrayOf(android.text.InputFilter.LengthFilter(most))
                     place(payComment, 10)
                 }
                 if (state != "idle") send?.textOrNull("message")?.let { content.add(activity.label(it, 13f), 8) }
                 val starting = wallet.textOrNull("status") != null
                 reviewReady = { state != "quoting" && !starting && payInput.text.isNotBlank() }
-                content.add(activity.pill(if (state == "quoting") "Preparing…" else "Review payment", "wallet-review", primary = true) {
+                content.add(activity.pill(if (state == "quoting") "Preparing…" else "Continue", "wallet-review", primary = true) {
                     hideKeyboard()
                     quote(payInput.text.toString())
                 }.also { review = it }.enabled(reviewReady()), 12, -2)
@@ -420,26 +538,28 @@ class WalletScreen(private val activity: MainActivity, private val bridge: Mobil
         val box = activity.column().apply {
             setPadding(activity.dp(14), activity.dp(14), activity.dp(14), activity.dp(14))
             background = activity.rounded(0xFF1A1A1A.toInt(), 14f)
-            add(activity.label("Confirm payment", 17f, bold = true))
-            send?.textOrNull("person")?.let { add(line("Person", it), 10) }
-            add(line("To", "${quote.getString("kind")}\n${quote.getString("destination")}", mono = true), 10)
+            add(activity.label("Send ${quote.getString("amount")}?", 19f, bold = true))
+            val person = send?.textOrNull("person")
+            person?.let { add(line("To", it), 10) }
+            add(line(if (person == null) "To" else quote.textOrNull("to") ?: quote.getString("kind"), quote.getString("destination"), mono = true), 10)
             send?.textOrNull("person_source")?.let { add(activity.label(it, 12f, Palette.SECONDARY), 4) }
             quote.textOrNull("note")?.let { add(line("For", it), 6) }
-            quote.textOrNull("comment")?.let { add(line("Comment", it), 6) }
-            add(line("Amount", quote.getString("amount")), 6)
+            quote.textOrNull("comment")?.let { add(line("Note", it), 6) }
             val speeds = quote.optJSONArray("speeds")?.objects() ?: emptyList()
             if (speeds.isNotEmpty()) {
-                add(activity.label("Speed", 14f, Palette.SECONDARY), 8)
+                add(activity.label("How fast", 14f, Palette.SECONDARY), 8)
                 val list = activity.column().apply { tag = "wallet-speeds" }
                 for (option in speeds) list.add(speed(option, option.optBoolean("chosen"), !paying) {
                     bridge.wallet("wallet_speed", "quote" to quote.getLong("id"), "speed" to option.getString("id"))
                 })
                 add(list, 2)
             }
+            add(line("Amount", quote.getString("amount")), 6)
             add(line("Fee", quote.getString("fee")), 6)
             addDivider(8)
             add(line("Total", quote.getString("total"), bold = true), 8)
             message?.let { add(activity.label(it, 13f, Palette.SECONDARY), 8) }
+            add(activity.label("Payments can't be undone.", 13f, Palette.SECONDARY), 8)
             val actions = activity.row().apply { gravity = Gravity.CENTER_VERTICAL }
             actions.addView(activity.pill(if (paying) "Sending…" else "Send ${quote.getString("total")}", "wallet-confirm", primary = true) {
                 bridge.wallet("wallet_pay", "quote" to quote.getLong("id"))
@@ -483,7 +603,8 @@ class WalletScreen(private val activity: MainActivity, private val bridge: Mobil
     // Buy
 
     private fun buy(wallet: JSONObject) {
-        content.add(activity.label("Buy bitcoin with dollars. The provider's page opens in your browser.", 13f, Palette.SECONDARY), 12)
+        content.add(activity.label("Buy bitcoin", 17f, bold = true), 24)
+        content.add(activity.label("Pay with dollars. The provider's page opens in your browser.", 13f, Palette.SECONDARY), 6)
         place(buyAmount, 10)
         val buy = wallet.objectOrNull("buy")
         val busy = buy?.optBoolean("busy") == true
@@ -599,16 +720,11 @@ class WalletScreen(private val activity: MainActivity, private val bridge: Mobil
         }.enabled(backup.optBoolean("can_export")), 10, -2)
     }
 
-    private fun history(payments: List<JSONObject>) {
-        content.add(activity.label("History", 17f, bold = true), 24)
-        if (payments.isEmpty()) content.add(activity.label("Payments you send and receive appear here.", 13f, Palette.SECONDARY), 6)
-        for (payment in payments) content.add(paymentRow(payment), 10)
-    }
-
-    private fun paymentRow(payment: JSONObject): View = activity.row().apply {
+    /** One payment; `method` adds how it traveled, for the full history. */
+    private fun paymentRow(payment: JSONObject, method: Boolean): View = activity.row().apply {
         val status = payment.optString("status")
         val when_ = DateUtils.getRelativeTimeSpanString(payment.optLong("at") * 1000, System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS)
-        val detail = listOfNotNull(payment.optString("method"), if (status == "completed") null else status.replaceFirstChar { it.uppercase() },
+        val detail = listOfNotNull(if (method) payment.optString("method") else null, if (status == "completed") null else status.replaceFirstChar { it.uppercase() },
             when_.toString()).joinToString(" · ")
         val left = activity.column().apply {
             add(activity.label(payment.getString("title"), 15f))
@@ -638,7 +754,7 @@ class WalletScreen(private val activity: MainActivity, private val bridge: Mobil
     }
 
     private fun updated(seconds: Long?): String {
-        seconds ?: return "Not synced yet"
+        seconds ?: return "Not updated yet"
         return "Updated " + DateUtils.getRelativeTimeSpanString(seconds * 1000, System.currentTimeMillis(), DateUtils.SECOND_IN_MILLIS)
     }
 
@@ -658,7 +774,11 @@ class WalletScreen(private val activity: MainActivity, private val bridge: Mobil
         val trust = bridge.packet?.objectOrNull("wallet")?.objectOrNull("trust") ?: return
         val body = activity.column().apply {
             setPadding(activity.dp(24), activity.dp(8), activity.dp(24), activity.dp(8))
-            for (line in trust.optJSONArray("lines").strings()) add(activity.label(line, 15f), 10)
+            trust.textOrNull("summary")?.let {
+                add(activity.label(it, 16f), 10)
+                add(activity.label("Details", 15f, bold = true), 16)
+            }
+            for (line in trust.optJSONArray("lines").strings()) add(activity.label(line, 13f, Palette.SECONDARY), 10)
         }
         dialog().setTitle(trust.getString("title"))
             .setView(ScrollView(activity).apply { addView(body); tag = "wallet-trust" })
@@ -699,7 +819,9 @@ class WalletScreen(private val activity: MainActivity, private val bridge: Mobil
                 12f, Palette.SECONDARY), 8)
         }
         val shown = dialog().setTitle("Recovery words").setView(ScrollView(activity).apply { addView(body) })
-            .setPositiveButton("Done", null).create()
+            // The person wrote them down: the Back up card goes away.
+            .setPositiveButton("I wrote them down") { _, _ -> bridge.wallet("wallet_words_saved") }
+            .setNegativeButton("Done", null).create()
         // No screenshots or recents thumbnail while the words show.
         secure(shown)
         shown.setOnDismissListener { list = null; grid.removeAllViews() }

@@ -72,6 +72,19 @@ BOLT11, on-chain deposit, QR and copy); send (scan or paste anything `parse`
 accepts, fee quote, confirm); history; backup and reveal; settings (network,
 Lightning address, disclosures). Later: grants, agent wallets, and dollars.
 
+The shipped screen keeps the main surface plain (the owner's decision on
+2026-09-28): one balance, **Receive** (one payment request with a QR code;
+no method to pick), **Send** (one **Paste or scan** field that the Rust
+parser reads, then one confirm screen), the last five payments, and a
+**Back up your wallet** card until the words are written down. Everything
+else (other ways to receive, buying, deposits, people, agent payments, the
+amount unit, recovery, the exit backup, the network and the balance in the
+other unit) sits under one **Advanced** section, closed by default and
+remembered on the phone. Buying moved there because it leaves the app for
+a provider's page and can end in an on-chain deposit that waits for
+confirmations, which is not a one-tap action. Main-surface labels avoid
+"Spark", "Lightning", "on-chain", "invoice", and "sats".
+
 ### Agent wallets
 
 An agent spends in one of four ways. They differ in who holds the key and

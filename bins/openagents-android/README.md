@@ -79,22 +79,27 @@ The app has four tabs, shown as white icons on black:
   Gym connection code is kept encrypted under its own Keystore key; the
   verified results are cached in the app's cache directory.
 - **Wallet** runs Breez's Spark SDK on Bitcoin mainnet, as the iPhone
-  app's Wallet tab does, from the same Rust state: the balance and sync
-  status in BIP 177 amounts (`₿12,345`, with **Show amounts as** switching
-  every amount to legacy BTC), a
-  balance warning above ₿1,000,000, **Receive** (a Lightning
-  invoice, the Spark address, or the Bitcoin deposit address, each with a
-  QR code, Copy, and Share, and **Nostr** with your npub and a switch to
-  publish your Spark address), **Send** (saved people, then paste or scan
-  an invoice, Lightning address, LNURL, npub, Spark, or Bitcoin address;
-  a Lightning address or LNURL asks for an amount and an optional comment
-  within the recipient's terms; review the person, amount, fee, and a fee
-  speed where one applies, then confirm; afterward save a new address as a
-  contact), **Buy** (the provider's page opens in the browser), deposits
-  that need attention (claim at a quoted fee, or refund on-chain to an
-  address at a chosen speed after a review), history, **Agent payments**
-  (the computers that may ask and their payments), **Recovery**, and the
-  **Exit backup**, exported to a file you pick. An agent's payment request
+  app's Wallet tab does, from the same Rust state. The main screen shows
+  one big balance in BIP 177 amounts (`₿12,345`), a quiet "Updated …" line
+  only when it is old or failed to update, a balance warning above
+  ₿1,000,000, a **Back up your wallet** card until the recovery words are
+  written down, two big buttons, **Receive** (a payment request for any
+  amount with a QR code, Copy, and Share, and an optional amount) and
+  **Send** (one **Paste or scan** field that Rust reads to tell what it
+  is; an amount and an optional note only when the recipient needs them;
+  review the person, amount, fee, and a fee speed where one applies, then
+  confirm; afterward save a new address for next time), **Recent activity**
+  (the newest five, with **See all**), and **Advanced**, closed by default
+  and remembered on the phone. Advanced holds the balance in the other unit
+  and the network with **Refresh**, **Other ways to receive** (Lightning,
+  the Spark address, the Bitcoin deposit address, and **Nostr** with your
+  npub and a switch to publish your Spark address), **Buy bitcoin** (the
+  provider's page opens in the browser), deposits that need attention
+  (claim at a quoted fee, or refund on-chain to an address at a chosen
+  speed after a review), people paid before, **Agent payments** (the
+  computers that may ask and their payments), **Show amounts as** (legacy
+  BTC for every amount), **Recovery**, and the **Exit backup**, exported to
+  a file you pick. An agent's payment request
   opens an approval sheet over any tab: the amount and fee, who asked and
   why, the payee read from the invoice, and the computer's remaining
   budget; above Rust's threshold, **Approve** asks for the screen lock

@@ -121,18 +121,28 @@ The app has four tabs, shown as icons:
   (`com.openagents.app.gym`). `--gym-preview` shows the labeled synthetic
   board offline.
 - **Wallet** is a Bitcoin wallet on mainnet through Breez's Spark SDK
-  (`host/App/WalletTab.swift` over `crates/openagents-mobile/src/wallet.rs`):
-  balance, receive (Lightning invoice, Spark address, Bitcoin deposit
-  address, and this device's npub, each with a QR code, and a switch that
-  publishes the Spark address in the Nostr profile), send (paste or scan an invoice, Lightning
-  address, LNURL code, npub, Spark or Bitcoin address; an npub pays its
-  published Spark address or its profile's Lightning address; a Lightning address shows
-  its range and takes a comment; then a confirm screen with amount and fee),
-  buy with dollars (MoonPay or Cash App), deposit
-  claims, history, and recovery words. Its seed is in Keychain
-  (`com.openagents.app.spark`). The **i** button opens the trust note.
-  Simulator arguments: `--wallet-section receive|send|buy`,
-  `--wallet-method lightning|spark|bitcoin`, `--wallet-invoice AMOUNT`,
+  (`host/App/WalletTab.swift` over `crates/openagents-mobile/src/wallet.rs`).
+  The main screen is plain: one big balance (no second unit and no network
+  label; a quiet "Updated …" line only when the balance is old or failed
+  to update; pull down to refresh), a **Back up your wallet** card until
+  the recovery words are written down, two big buttons, **Receive** (a
+  payment request for any amount with a large QR code, Copy, and Share,
+  and an optional amount) and **Send** (one **Paste or scan** field that
+  Rust reads to tell what it is: an invoice, Lightning address, LNURL code,
+  npub, Spark or Bitcoin address; an amount only when one is needed; then
+  one confirm screen in plain words), **Recent activity** (the newest five,
+  with **See all**), and **Advanced**, closed by default and remembered on
+  the phone. Advanced holds the balance in the other unit, the network and
+  refresh, **Other ways to receive** (Lightning, Spark, Bitcoin, and Nostr,
+  with the switch that publishes the Spark address), **Buy bitcoin**
+  (MoonPay or Cash App), deposits, people, **Agent payments**, **Show
+  amounts as**, **Recovery**, and the exit backup; while it's closed it
+  notes a deposit on its way or one that needs you. Its seed is in Keychain
+  (`com.openagents.app.spark`). The **i** button opens the trust note, a
+  plain paragraph first and the details below.
+  Simulator arguments: `--wallet-section receive|send|buy` (`buy` opens
+  Advanced), `--wallet-advanced 1`,
+  `--wallet-method lightning|spark|bitcoin` (in Advanced), `--wallet-invoice AMOUNT`,
   `--wallet-send TEXT` (with `--wallet-amount AMOUNT`, typed in the amount
   format), `--wallet-info 1`, `--amount-format bip177|btc`, and,
   on the offline fixture wallet `--wallet-fixture 1` (debug builds, no

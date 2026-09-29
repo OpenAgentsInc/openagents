@@ -27,6 +27,11 @@ const INVOICE_DESCRIPTION: &str = "OpenAgents";
 pub const BALANCE_WARNING_SATS: u64 = 1_000_000;
 /// How many payments the history shows.
 const HISTORY_LIMIT: u32 = 50;
+/// How many payments the main screen lists under Recent activity; the rest
+/// are behind See all.
+pub const RECENT_LIMIT: usize = 5;
+/// A balance read longer ago than this says when it was read.
+pub const STALE_SECS: u64 = 15 * 60;
 
 /// Files under the wallet home. None holds a secret: the last balance read,
 /// the receive addresses, recent payments, and whether the trust note was
@@ -40,11 +45,19 @@ const TRUST_FILE: &str = "trust-acknowledged";
 const PUBLISHED_FILE: &str = "published-spark";
 /// People paid by npub, newest first.
 const PEOPLE_FILE: &str = "people.json";
+/// The person confirmed they wrote down the recovery words: a fingerprint of
+/// the seed they were shown (a hash, never the seed), so another wallet on
+/// this phone asks again.
+const WORDS_SAVED_FILE: &str = "words-saved";
+/// The Advanced section is open, remembered on this phone.
+const ADVANCED_FILE: &str = "advanced-open";
 /// How many people paid by npub are kept.
 const PEOPLE_LIMIT: usize = 20;
 
 /// The trust note: what Spark is and who the person relies on.
 pub const TRUST_TITLE: &str = "About this wallet";
+/// The trust note in one plain paragraph, shown first.
+pub const TRUST_SUMMARY: &str = "Your bitcoin is kept by this phone, and only your recovery words can bring it back. Payments are instant because a few companies help move them; if they ever stop, you can still take your bitcoin out yourself, slowly. Keep only what you'd carry in your pocket.";
 pub const TRUST_LINES: [&str; 5] = [
     "This wallet runs on Spark, not on a Lightning node of your own. Your keys stay on this phone.",
     "Three companies run Spark's operators: Lightspark, Breez, and Flashnet. Two of them must cooperate for payments off the chain, and your safety depends on at least one of them having deleted old keys, which no one can check.",
@@ -531,6 +544,16 @@ impl Seed {
             .to_string();
         Ok(Self { entropy, mnemonic })
     }
+
+    /// A one-way fingerprint that tells this seed apart from another, for
+    /// the words-saved marker. It reveals nothing about the seed.
+    fn fingerprint(&self) -> String {
+        use sha2::{Digest, Sha256};
+        let mut hash = Sha256::new();
+        hash.update(b"openagents-wallet-words-saved-v1");
+        hash.update(&self.entropy);
+        hex(&hash.finalize()[..16])
+    }
 }
 
 /// Check recovery words for a restore and return their entropy as hex, for
@@ -661,6 +684,8 @@ struct Shared {
     open_url: Option<String>,
     /// How amounts are shown and read; the app's choice.
     format: Format,
+    /// The Advanced section is open.
+    advanced_open: bool,
 }
 
 /// A balance read by an earlier sync, shown until this launch reads again.
@@ -710,6 +735,8 @@ pub struct Wallet {
     home: PathBuf,
     opener: Opener,
     seed: Option<Seed>,
+    /// The fingerprint of the seed whose words the person wrote down.
+    words_saved: Option<String>,
     shared: Arc<Mutex<Shared>>,
 }
 
@@ -767,6 +794,40 @@ pub struct Summary {
     pub backup: BackupView,
     /// Contacts and people paid by npub, for the Send screen.
     pub people: Vec<PersonView>,
+    /// The balance was read long ago (or never): the main screen says when,
+    /// quietly. A fresh balance shows no time.
+    pub stale: bool,
+    /// The newest payments for the main screen's Recent activity, at most
+    /// [`RECENT_LIMIT`]; `payments` has them all for See all.
+    pub recent: Vec<PaymentView>,
+    /// There are more payments than `recent` shows.
+    pub more_payments: bool,
+    /// Shown on the main screen only until the person has written down this
+    /// wallet's recovery words.
+    pub backup_card: Option<BackupCard>,
+    /// The Advanced section at the bottom of the main screen.
+    pub advanced: AdvancedView,
+}
+
+/// The one card that asks the person to back up the wallet.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct BackupCard {
+    pub title: &'static str,
+    pub detail: &'static str,
+    /// The button that shows the words, after the warning.
+    pub action: &'static str,
+}
+
+/// Everything that is not Receive, Send, recent activity, or the backup
+/// card: other ways to receive, buying, deposits, recovery, the exit
+/// backup, people, agent payments, and the amount setting.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct AdvancedView {
+    /// Open on this phone; closed by default.
+    pub open: bool,
+    /// Something inside wants attention while the section is closed:
+    /// "1 deposit waiting".
+    pub note: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -843,6 +904,8 @@ pub struct Trust {
     /// The person has read the note; the screen shows a link to it instead.
     pub acknowledged: bool,
     pub title: &'static str,
+    /// The note in one plain paragraph, shown before the details.
+    pub summary: &'static str,
     pub lines: Vec<&'static str>,
 }
 
@@ -853,7 +916,7 @@ pub struct Code {
     pub text: String,
     pub uri: String,
     pub qr: Option<crate::app::QrModules>,
-    /// "Lightning invoice for ₿1,000", or what the code is for.
+    /// "Request for ₿1,000", or what the code is for.
     pub caption: String,
 }
 
@@ -923,8 +986,11 @@ pub struct QuoteView {
     /// Send this back with `wallet_pay`.
     pub id: u64,
     /// "Lightning invoice", "Lightning address", "Spark address", or
-    /// "Bitcoin address".
+    /// "Bitcoin address", for Advanced detail.
     pub kind: &'static str,
+    /// What is paid, in plain words for the confirm screen: "Payment
+    /// request", "Address", "Wallet address", or "Bitcoin address".
+    pub to: &'static str,
     /// The destination, shortened for the screen.
     pub destination: String,
     pub amount: String,
@@ -992,11 +1058,16 @@ impl Wallet {
             buy_error: None,
             open_url: None,
             format: Format::default(),
+            advanced_open: home.join(ADVANCED_FILE).exists(),
         };
+        let words_saved = std::fs::read_to_string(home.join(WORDS_SAVED_FILE))
+            .ok()
+            .map(|text| text.trim().to_owned());
         Self {
             home,
             opener,
             seed: None,
+            words_saved,
             shared: Arc::new(Mutex::new(shared)),
         }
     }
@@ -1069,7 +1140,36 @@ impl Wallet {
                 self.seed = Some(seed);
             }
         }
+        // A restore was typed from the recovery words, so the person has
+        // them.
+        if replace {
+            self.words_saved();
+        }
         self.start();
+    }
+
+    /// The person confirmed they wrote down the recovery words of the
+    /// running wallet; the Back up card goes away.
+    pub fn words_saved(&mut self) {
+        let Some(seed) = &self.seed else {
+            return;
+        };
+        let fingerprint = seed.fingerprint();
+        let _ = std::fs::create_dir_all(&self.home);
+        let _ = std::fs::write(self.home.join(WORDS_SAVED_FILE), format!("{fingerprint}\n"));
+        self.words_saved = Some(fingerprint);
+    }
+
+    /// Open or close the Advanced section; this phone remembers it.
+    pub fn set_advanced(&mut self, open: bool) {
+        let file = self.home.join(ADVANCED_FILE);
+        if open {
+            let _ = std::fs::create_dir_all(&self.home);
+            let _ = std::fs::write(file, b"1\n");
+        } else {
+            let _ = std::fs::remove_file(file);
+        }
+        self.lock().advanced_open = open;
     }
 
     /// Stop the running wallet and clear what the screen shows of it.
@@ -1870,7 +1970,44 @@ impl Wallet {
         let shown = shared.last;
         let total = shown.map_or(0, |last| last.total);
         let addresses = &shared.addresses;
+        let stale = shown
+            .and_then(|last| last.synced_at)
+            .is_none_or(|at| now().saturating_sub(at) > STALE_SECS);
+        let payments: Vec<PaymentView> = shared
+            .payments
+            .iter()
+            .map(|row| payment_view(row, format))
+            .collect();
+        let open = shared
+            .deposits
+            .iter()
+            .filter(|row| row.refund_txid.is_none());
+        let stuck = open.clone().filter(|row| row.problem.is_some()).count();
+        let arriving = open.count() - stuck;
+        let backup_card = self
+            .seed
+            .as_ref()
+            .filter(|seed| self.words_saved.as_deref() != Some(seed.fingerprint().as_str()))
+            .map(|_| BackupCard {
+                title: "Back up your wallet",
+                detail: "If you lose this phone, your recovery words are the only way to get your bitcoin back.",
+                action: "Show my recovery words",
+            });
         Screen::Ready(Box::new(Summary {
+            stale,
+            recent: payments.iter().take(RECENT_LIMIT).cloned().collect(),
+            more_payments: payments.len() > RECENT_LIMIT,
+            backup_card,
+            advanced: AdvancedView {
+                open: shared.advanced_open,
+                note: match (stuck, arriving) {
+                    (0, 0) => None,
+                    (0, 1) => Some("A deposit is on its way".into()),
+                    (0, count) => Some(format!("{count} deposits are on their way")),
+                    (1, _) => Some("A deposit needs you".into()),
+                    (count, _) => Some(format!("{count} deposits need you")),
+                },
+            },
             network: NETWORK_LABEL,
             balance_sats: total,
             balance: shown.map(|_| format.show(total)).unwrap_or_default(),
@@ -1893,6 +2030,7 @@ impl Wallet {
             trust: Trust {
                 acknowledged: shared.trust_acknowledged,
                 title: TRUST_TITLE,
+                summary: TRUST_SUMMARY,
                 lines: TRUST_LINES.to_vec(),
             },
             receive: Receive {
@@ -1902,9 +2040,9 @@ impl Wallet {
                         &format!("lightning:{invoice}"),
                         match amount {
                             Some(amount) => {
-                                format!("Lightning invoice for {}", format.show(*amount))
+                                format!("Request for {}", format.show(*amount))
                             }
-                            None => "Lightning invoice for any amount".into(),
+                            None => "Request for any amount".into(),
                         },
                     )
                 }),
@@ -1953,11 +2091,7 @@ impl Wallet {
                 view.save_suggestion = shared.save_suggestion.clone();
                 view
             },
-            payments: shared
-                .payments
-                .iter()
-                .map(|row| payment_view(row, format))
-                .collect(),
+            payments,
             can_show_words: self.seed.is_some(),
             buy: BuyView {
                 busy: shared.buy_busy,
@@ -2270,15 +2404,18 @@ fn claim_view(claim: &Claim, format: Format) -> ClaimView {
 }
 
 fn quote_view(quote: &Quote, format: Format) -> QuoteView {
-    let (kind, destination) = match &quote.destination {
-        Destination::Lightning(invoice) => ("Lightning invoice", shorten(invoice)),
-        Destination::LightningAddress(address) => ("Lightning address", address.clone()),
-        Destination::Spark(address) => ("Spark address", shorten(address)),
-        Destination::Bitcoin(address) => ("Bitcoin address", shorten(address)),
+    let (kind, to, destination) = match &quote.destination {
+        Destination::Lightning(invoice) => {
+            ("Lightning invoice", "Payment request", shorten(invoice))
+        }
+        Destination::LightningAddress(address) => ("Lightning address", "Address", address.clone()),
+        Destination::Spark(address) => ("Spark address", "Wallet address", shorten(address)),
+        Destination::Bitcoin(address) => ("Bitcoin address", "Bitcoin address", shorten(address)),
     };
     QuoteView {
         id: quote.id,
         kind,
+        to,
         destination,
         amount: format.show(quote.amount_sats),
         fee: format.show(quote.fee_sats),
@@ -3270,13 +3407,13 @@ mod tests {
         wallet.invoice("");
         settle(&wallet);
         let any = ready(&wallet).receive.lightning.expect("invoice");
-        assert_eq!(any.caption, "Lightning invoice for any amount");
+        assert_eq!(any.caption, "Request for any amount");
         assert!(any.uri.starts_with("lightning:lnbc"));
         assert!(any.qr.is_some());
         wallet.invoice("2,500");
         settle(&wallet);
         let fixed = ready(&wallet).receive.lightning.expect("invoice");
-        assert_eq!(fixed.caption, "Lightning invoice for ₿2,500");
+        assert_eq!(fixed.caption, "Request for ₿2,500");
         assert!(fixed.text.ends_with("2500"));
         wallet.invoice("a lot");
         assert!(ready(&wallet).receive.lightning_error.is_some());
@@ -3327,6 +3464,7 @@ mod tests {
         assert_eq!(quoted.state, "quoted");
         let quote = quoted.quote.expect("quote");
         assert_eq!(quote.kind, "Lightning invoice");
+        assert_eq!(quote.to, "Payment request");
         assert_eq!(
             (
                 quote.amount.as_str(),
@@ -3409,6 +3547,7 @@ mod tests {
         settle(&wallet);
         let quote = ready(&wallet).send.quote.expect("quote");
         assert_eq!(quote.kind, "Lightning address");
+        assert_eq!(quote.to, "Address");
         assert_eq!(quote.destination, "alice@example.com");
         assert_eq!(
             (
@@ -3601,6 +3740,120 @@ mod tests {
     }
 
     #[test]
+    fn the_main_screen_is_plain_and_the_rest_waits_under_advanced() {
+        let home = tempfile::tempdir().expect("temp dir");
+        let node = Arc::new(Fake::default());
+        for index in 0..7 {
+            node.payments.lock().unwrap().push(PaymentRow {
+                id: format!("in-{index}"),
+                received: true,
+                amount_sats: 1_000,
+                fee_sats: 0,
+                method: "Lightning".into(),
+                status: "completed".into(),
+                at: 1_790_000_000 + index,
+            });
+        }
+        let mut wallet = Wallet::new(
+            home.path().to_path_buf(),
+            opener(node.clone(), Arc::new(Mutex::new(vec![]))),
+        );
+        // Before the key arrives there is nothing to back up yet, and the
+        // Advanced section starts closed.
+        let opening = ready(&wallet);
+        assert!(opening.backup_card.is_none());
+        assert!(opening.stale);
+        assert_eq!(
+            opening.advanced,
+            AdvancedView {
+                open: false,
+                note: None
+            }
+        );
+        wallet.open(ENTROPY, false);
+        settle(&wallet);
+        let shown = ready(&wallet);
+        // A fresh balance shows no time; recent activity is the newest few.
+        assert!(!shown.stale);
+        assert_eq!(shown.recent.len(), RECENT_LIMIT);
+        assert_eq!(shown.payments.len(), 7);
+        assert!(shown.more_payments);
+        assert_eq!(shown.recent[0], shown.payments[0]);
+        // Receiving is a plain request, and its caption has no jargon.
+        wallet.invoice("");
+        settle(&wallet);
+        let request = ready(&wallet).receive.lightning.expect("request");
+        for word in ["Lightning", "invoice", "Spark", "sat", "on-chain"] {
+            assert!(!request.caption.contains(word), "{}", request.caption);
+        }
+        assert!(!TRUST_SUMMARY.contains("Spark") && !TRUST_SUMMARY.contains("Lightning"));
+
+        // The backup card shows until the person saves the words of this
+        // wallet, and stays gone across launches.
+        let card = shown.backup_card.expect("backup card");
+        assert_eq!(card.title, "Back up your wallet");
+        wallet.words_saved();
+        assert!(ready(&wallet).backup_card.is_none());
+        let mut again = Wallet::new(
+            home.path().to_path_buf(),
+            opener(node.clone(), Arc::new(Mutex::new(vec![]))),
+        );
+        again.open(ENTROPY, false);
+        assert!(ready(&again).backup_card.is_none());
+        // The marker holds a fingerprint, never the seed or its words.
+        let marker = std::fs::read_to_string(home.path().join(WORDS_SAVED_FILE)).expect("marker");
+        assert!(!marker.contains(ENTROPY));
+        let words = again.words().expect("words");
+        assert!(!words.iter().any(|word| marker.contains(word.as_str())));
+        // Another wallet on this phone asks again; restoring one from its
+        // words counts as saved.
+        let other = Wallet::new(
+            home.path().to_path_buf(),
+            opener(node.clone(), Arc::new(Mutex::new(vec![]))),
+        );
+        let mut other = other;
+        other.open(&hex(&[9; 16]), false);
+        assert!(ready(&other).backup_card.is_some());
+        other.open(&hex(&[8; 16]), true);
+        assert!(ready(&other).backup_card.is_none());
+
+        // Deposits wait under Advanced, with a note while it is closed.
+        node.deposits
+            .lock()
+            .unwrap()
+            .push(deposit("arriving", false, None, None));
+        again.refresh();
+        settle(&again);
+        assert_eq!(
+            ready(&again).advanced.note.as_deref(),
+            Some("A deposit is on its way")
+        );
+        node.deposits.lock().unwrap().push(deposit(
+            "stuck",
+            true,
+            Some(DepositProblem::Missing),
+            None,
+        ));
+        again.refresh();
+        settle(&again);
+        assert_eq!(
+            ready(&again).advanced.note.as_deref(),
+            Some("A deposit needs you")
+        );
+        // Opening Advanced is remembered on this phone.
+        again.set_advanced(true);
+        assert!(ready(&again).advanced.open);
+        let relaunched = Wallet::new(home.path().to_path_buf(), spark_opener());
+        assert!(ready(&relaunched).advanced.open);
+        again.set_advanced(false);
+        assert!(
+            !ready(&Wallet::new(home.path().to_path_buf(), spark_opener()))
+                .advanced
+                .open
+        );
+    }
+
+    #[test]
     fn the_trust_note_shows_until_read_and_large_balances_warn() {
         let home = tempfile::tempdir().expect("temp dir");
         let node = Arc::new(Fake::default());
@@ -3765,7 +4018,7 @@ mod tests {
         settle(&wallet);
         assert_eq!(
             ready(&wallet).receive.lightning.expect("invoice").caption,
-            "Lightning invoice for 0.00010000 BTC"
+            "Request for 0.00010000 BTC"
         );
         // Switching back changes every amount on the next screen.
         wallet.set_format(Format::Bip177);
@@ -3773,7 +4026,7 @@ mod tests {
         assert_eq!(summary.balance, "₿123,456");
         assert_eq!(
             summary.receive.lightning.expect("invoice").caption,
-            "Lightning invoice for ₿10,000"
+            "Request for ₿10,000"
         );
         wallet.invoice("0.0001");
         assert_eq!(

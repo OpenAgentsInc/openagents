@@ -36,6 +36,16 @@ pub struct Item {
 pub const CHANGELOG: &[Release] = &[
     Release {
         version: "1.0.0",
+        build: "20",
+        title: "A simpler Wallet",
+        what_to_test: "Open the Wallet tab: check it shows just the balance, Receive, Send, and recent activity. Tap Receive and check a QR code appears at once; tap Send, paste a request or address, and check the confirm screen reads plainly. Open Advanced at the bottom and check everything else is there.",
+        items: &[Item {
+            title: "A simpler Wallet",
+            detail: "The Wallet shows your balance, two big buttons (Receive and Send), and your last five payments. Receive shows a QR code right away; Send takes one pasted or scanned code and figures out what it is. A card asks you to back up your recovery words until you do. Everything else (other ways to receive, buying, deposits, people, agent payments, the amount unit, recovery) is under Advanced.",
+        }],
+    },
+    Release {
+        version: "1.0.0",
         build: "19",
         title: "New chats go to OpenAgents",
         what_to_test: "With a computer connected, ask \"Who are you?\" in a new chat and check the answer appears within a second.",

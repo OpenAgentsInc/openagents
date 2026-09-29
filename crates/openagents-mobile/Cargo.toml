@@ -46,6 +46,8 @@ breez-sdk-spark = { git = "https://github.com/breez/spark-sdk", tag = "0.26.0", 
 bip39 = "2"
 # Breez's event listener trait is an `async_trait`.
 async-trait = "0.1"
+# The fingerprint that remembers which wallet's recovery words were saved.
+sha2 = "0.10"
 # Idempotency keys for wallet payments.
 uuid = { version = "1", features = ["v4"] }
 # The Wallet tab's receive-address QR code.
