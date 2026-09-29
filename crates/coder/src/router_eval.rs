@@ -114,6 +114,10 @@ pub struct Row {
     pub tier: String,
     pub risk: String,
     pub cli_group: Option<String>,
+    /// For an `eval.run` row, the catalog tool its message names, or
+    /// `None` when it names none and the default tool is right.
+    #[serde(default)]
+    pub tool: Option<String>,
     #[serde(default)]
     pub tags: Vec<String>,
     pub split: String,
@@ -753,6 +757,33 @@ mod tests {
         "eval.credit.mine",
     ];
 
+    /// An `eval.run` row's tool is a tool of the product corpus's catalog
+    /// or none; no other row names one.
+    #[test]
+    fn eval_run_rows_name_catalog_tools() {
+        let root = knowledge::product::repository();
+        let corpus =
+            knowledge::product::Corpus::load(&knowledge::product::default_dir(), Some(&root))
+                .expect("the corpus loads");
+        let tools: BTreeSet<String> = crate::gym_kb::tools(&corpus)
+            .into_iter()
+            .map(|tool| tool.id)
+            .collect();
+        let set = Set::fixture();
+        let mut named = 0;
+        for row in &set.rows {
+            match (&row.tool, row.route.as_str()) {
+                (Some(tool), "eval.run") => {
+                    assert!(tools.contains(tool), "{}: {tool}", row.id);
+                    named += 1;
+                }
+                (Some(tool), _) => panic!("{} names {tool} off eval.run", row.id),
+                (None, _) => {}
+            }
+        }
+        assert!(named >= 10, "{named}");
+    }
+
     #[test]
     fn the_set_is_well_formed_and_covers_every_route() {
         let set = Set::fixture();
@@ -852,6 +883,7 @@ mod tests {
             tier: tier.to_string(),
             risk: "ok".to_string(),
             cli_group: None,
+            tool: None,
             tags: Vec::new(),
             split: "tune".to_string(),
         }

@@ -102,9 +102,18 @@ phone <--27000 partials, 26900 result------- relay.openagents.com <-- chat worke
   product corpus's entries tagged `tool` and `gym`, its builds come from
   the app's changelog compiled into the binary, and published results are
   read from the worker's own relay every 10 minutes and admitted only when
-  `nostr::eval_ext` verifies them. The log says `gym records: 3 tools, 3
-  builds, … notes` and then `gym records: N verified results, M refused`
-  after each read, or `gym records off:` and why. A request may name
+  `nostr::eval_ext` verifies them. The same read takes the starter test
+  sets, the hosted runner's `3184` releases, and fetches their files by
+  digest from the runner's public bucket
+  (`https://storage.googleapis.com/openagentsgemini-eval-blobs`;
+  `CODER_EVAL_BLOBS` names another, `off` reads none), so `eval.run` offers
+  **Start the test** on the hosted runner before anyone has published a
+  result (#9943). The log says `gym records: 3 tools, 3 builds, … notes`
+  and then `gym records: N verified results, T test sets, M refused` after
+  each read, or `gym records off:` and why. A `gym.news` reply's
+  citations are taken out before the phone sees them, and each grounded
+  reply logs `router gym reply:` with its citation counts and the
+  post-check's banned words and raw-id count (#9944). A request may name
   `chat-router-v1` (build 20) or `chat-router-v2`; both are routed with
   v2. The authoring interview (`eval.author`, `coder::eval_author`) runs
   on the worker's door and judge; without them it answers with the

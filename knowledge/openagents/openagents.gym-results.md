@@ -1,11 +1,12 @@
 ---
 id: openagents.gym-results
-version: 2
+version: 3
 kind: product
 title: "The Gym and its RESULTS board"
 summary: >-
-  The Gym stands ahead of the Grid's spawn; its RESULTS board shows published
-  Terminal-Bench results and traces without any connection.
+  The Gym stands straight ahead of where you start in the Grid; its RESULTS
+  board shows our published coding results, each attempt step by step, with
+  no connection needed.
 tags: [gym, results, leaderboard, terminal-bench, verse]
 applies_when: >-
   The user asks what the Gym is, what the RESULTS board shows, how to see
@@ -30,6 +31,7 @@ provenance:
 evidence:
   - "2026-09-28: written from the cited documents and checked against them (#9923); the answer text awaits the owner's copy review."
   - "2026-09-28: version 2 (#9936) adds that tool test results and the Gym's news come to chat, from docs/extensions/evaluation.md; the answer is unchanged."
+  - "2026-09-29: version 3 (#9944) words the summary, which the Gym's news card shows as a line, in the app's plain words (no Terminal-Bench or traces, CHK-02); the answer is unchanged."
 ---
 
 ## Answer

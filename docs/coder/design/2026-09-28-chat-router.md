@@ -1224,7 +1224,7 @@ The Gym seam (`router::seams::GymKb`, implemented by
 | Record | Where it comes from | How it is verified |
 | --- | --- | --- |
 | Published results and checks | `3189` with `oa:ext-eval:v1`, read from the relay every 10 minutes | `nostr::eval_ext::parse_publication`: signature, markers, the inline report against its digest and `x` tag, the profile; checks counted by `nostr::eval_ext::linkage` |
-| Published test sets | `eval-suite` releases (NIP-EXT `3184`), or the test set a verified result ran | A release reader over the manifest's bytes (`ReleaseReader`; `PendingReleases` until an artifact fetcher is wired); a result's suite release and case count otherwise |
+| Published test sets | The starter test sets: `eval-suite` releases (NIP-EXT `3184`) signed by `gym_kb::STARTER_PUBLISHERS` (the hosted runner), with their files from the runner's public bucket; or the test set a verified result ran | `gym_kb::suite_record`: the release's signature and marker, the manifest, suite, and case manifest against their digests; the tool by the package's slug, the size by the case count (#9943); a result's suite release and case count otherwise |
 | Adoptions | `coder-defaults` releases | The same release reader |
 | App builds | `CHANGELOG` in `crates/openagents-mobile/src/account.rs`, compiled in, newest three | Read for its fixed shape (`gym_kb::changelog`) |
 | Notes and the tool catalog | `knowledge/openagents/` entries tagged `gym` or `tool` | The product corpus's own checks (sources exist, plural, short) |
@@ -1285,10 +1285,14 @@ hosted runner (#9935) fill it from the runner's report.
 
 ### Not in this change
 
-- **Releases.** Test sets and adoptions are read from their NIP-EXT
-  releases only once an artifact fetcher gives the release reader the
-  manifests' bytes; until then a test set is read from the results that
-  ran it, and no adoption is listed.
+- **Releases.** The starter test sets are read from the hosted runner's
+  releases and bucket (#9943), so `eval.run` offers **Start the test** for
+  each catalog tool before anyone has published a result. Other authors'
+  test sets are read from the results that ran them, and adoptions are not
+  read yet.
+- **Citations on the phone.** A `gym.news` reply's `[gym:…]` citations are
+  taken out as it streams (`router::gym::Tidy`, #9944); the news card
+  already says where its items come from.
 - **The `credit` card from the worker.** Awards are NIP-XP records of the
   trainer's world key, which a chat request does not carry; the phone
   draws `CARD-07` from its own ledger (`xp_ledger::eval`, #9938) on an

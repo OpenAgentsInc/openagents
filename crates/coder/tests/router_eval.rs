@@ -137,6 +137,11 @@ async fn run_router(name: &str, mode: router::Mode) {
     let (rows, split_label) = rows(&set, &split());
     let mut readings = Vec::new();
     let mut traces = Vec::new();
+    // `eval.run`: whether the reply offers `start_eval` for the row's tool
+    // (the default tool when it names none), against the starter test
+    // sets as the deployed worker reads them (#9943).
+    let starter = starter_records(&tools);
+    let mut offers = Offers::default();
     for row in &rows {
         let started = Instant::now();
         let asked = judge
@@ -154,7 +159,10 @@ async fn run_router(name: &str, mode: router::Mode) {
             Ok(response) => {
                 let routing = router::reading(&response, bank, &facts);
                 let tier = router::decide(&routing, bank, &facts, &situation);
-                traces.push(trace(row, &routing, &tier));
+                let offered = offers.count(row, &tier, &starter, bank, &facts);
+                let mut traced = trace(row, &routing, &tier);
+                traced["start_eval"] = serde_json::json!(offered);
+                traces.push(traced);
                 routed_reading(&row.id, &routing, &tier, ms)
             }
             Err(error) => Reading {
@@ -166,7 +174,104 @@ async fn run_router(name: &str, mode: router::Mode) {
         });
     }
     publish(&Report::of(name, &split_label, &rows, &readings));
+    if offers.rows > 0 {
+        println!(
+            "eval.run start_eval ({split_label}): offered on {} of {} rows, for the right tool on {}",
+            offers.offered, offers.rows, offers.right
+        );
+    }
     write_traces(name, &split_label, &traces);
+}
+
+/// The Gym's records with a starter test set for every catalog tool, as a
+/// refresh reads them from the hosted runner's releases: six tests each,
+/// the tool named by its starter catalog reference.
+fn starter_records(tools: &[router::gym::Tool]) -> router::gym::Records {
+    let suites = tools
+        .iter()
+        .enumerate()
+        .filter_map(|(n, tool)| {
+            let release = router::gym::EventPointer {
+                id: format!("{:064x}", n + 1),
+                pubkey: nostr::eval_ext::hosted::RUNNER.to_string(),
+                kind: 3184,
+            };
+            Some(router::gym::SuiteRecord {
+                release: release.clone(),
+                tool: Some(tool.id.clone()),
+                tool_name: tool.name.clone(),
+                author: release.pubkey.clone(),
+                subject: coder::gym_kb::catalog_definition(tool)?,
+                cases: 6,
+                at: 1_790_667_164,
+                source: release,
+            })
+        })
+        .collect();
+    router::gym::Records {
+        tools: tools.to_vec(),
+        suites,
+        ..router::gym::Records::default()
+    }
+}
+
+/// `eval.run` rows and the offers their replies made.
+#[derive(Default)]
+struct Offers {
+    rows: usize,
+    offered: usize,
+    right: usize,
+}
+
+impl Offers {
+    /// Counts `row` when it is labeled `eval.run`: the tool the reply's
+    /// `start_eval` names, if it made one.
+    fn count(
+        &mut self,
+        row: &coder::router_eval::Row,
+        tier: &router::Tier,
+        records: &router::gym::Records,
+        bank: &router::Bank,
+        facts: &router::Facts,
+    ) -> Option<String> {
+        if row.route != "eval.run" {
+            return None;
+        }
+        self.rows += 1;
+        let router::Tier::Gym { route, tool, .. } = tier else {
+            return None;
+        };
+        let grounding = router::gym::Grounding {
+            records: records.clone(),
+            news: Vec::new(),
+        };
+        let reply = router::gym::reply(*route, tool.as_deref(), &grounding, bank, facts);
+        let router::gym::Reply::Bank {
+            offer:
+                Some(router::Offer::StartEval {
+                    subject: nostr::cj_conversation::SubjectSource::Definition(subject),
+                    ..
+                }),
+            ..
+        } = reply
+        else {
+            return None;
+        };
+        self.offered += 1;
+        let offered = records
+            .tools
+            .iter()
+            .find(|tool| coder::gym_kb::catalog_definition(tool).as_ref() == Some(&*subject))
+            .map(|tool| tool.id.clone());
+        let wanted = row
+            .tool
+            .clone()
+            .unwrap_or_else(|| coder::gym_kb::DEFAULT_TOOL.to_string());
+        if offered.as_deref() == Some(wanted.as_str()) {
+            self.right += 1;
+        }
+        offered
+    }
 }
 
 /// One row's reading in full, for tuning on the tune split: ids and

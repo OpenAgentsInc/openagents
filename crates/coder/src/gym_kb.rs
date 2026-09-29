@@ -15,11 +15,16 @@
 //!   against what the report names. A check counts toward a result only as
 //!   `nostr::eval_ext::linkage` reads it (same suite, subject, and lock; a
 //!   different trainer).
-//! - **Published test sets** (`eval-suite` releases) and **adoptions**
-//!   (`coder-defaults` releases) through a [`ReleaseReader`], which needs
-//!   the releases' manifest bytes; until an artifact fetcher is wired it
-//!   is [`PendingReleases`], and a test set is read from the verified
-//!   results that ran it instead.
+//! - **Published test sets** (`eval-suite` releases) through a
+//!   [`ReleaseReader`], which needs each release's manifest, suite, and
+//!   case manifest bytes. The worker reads the starter test sets: the
+//!   `3184` releases [`STARTER_PUBLISHERS`] signed (the hosted runner's
+//!   key, which `knowledge/quests/ext-eval.*.json` name as their
+//!   publisher), with their bytes fetched from [`SUITE_BLOBS`] and checked
+//!   against every digest ([`suite_record`]). So the first run can start a
+//!   test before anyone has published a result. A tool's test set is also
+//!   read from the verified results that ran it. **Adoptions**
+//!   (`coder-defaults` releases) are not read yet.
 //! - **The app's changelog**, `CHANGELOG` in
 //!   `crates/openagents-mobile/src/account.rs`, compiled in and read by
 //!   [`changelog`].
@@ -85,6 +90,28 @@ pub const MAX_RESULTS: usize = 500;
 
 /// How long one relay read may take.
 pub const FETCH_BUDGET: Duration = Duration::from_secs(15);
+
+/// The keys whose `eval-suite` releases are the starter test sets: the
+/// hosted runner's, which released Project map's, Code finder's, and Test
+/// reader's (`docs/deployment/eval-runner.md`). The starter quests
+/// (`knowledge/quests/ext-eval.*.json`) list the same keys as the suites'
+/// publishers; a test holds them equal.
+pub const STARTER_PUBLISHERS: &[&str] = &[nostr::eval_ext::hosted::RUNNER];
+
+/// Where a starter test set's files are read: the hosted runner's
+/// public-read bucket, read like a Blossom server (`GET <base>/<sha256>`).
+/// `CODER_EVAL_BLOBS` names another; `off` reads no releases.
+pub const SUITE_BLOBS: &str = "https://storage.googleapis.com/openagentsgemini-eval-blobs";
+
+/// The most test set releases one relay read admits.
+pub const MAX_SUITES: usize = 64;
+
+/// The largest release file fetched: a manifest, a suite, or a case
+/// manifest.
+pub const MAX_BLOB: usize = 1024 * 1024;
+
+/// How long one file fetch may take.
+pub const BLOB_BUDGET: Duration = Duration::from_secs(10);
 
 /// How often the worker reads the relay for new results.
 pub const REFRESH: Duration = Duration::from_secs(600);
@@ -302,6 +329,150 @@ impl ReleaseReader for PendingReleases {
     }
 }
 
+/// Why a release was not read as a test set.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ReleaseError {
+    /// A file with this digest is needed and not at hand yet.
+    Missing(String),
+    /// The release is refused; why, naming a check, never content.
+    Refused(String),
+}
+
+impl std::fmt::Display for ReleaseError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ReleaseError::Missing(digest) => write!(f, "{digest} is not fetched"),
+            ReleaseError::Refused(why) => f.write_str(why),
+        }
+    }
+}
+
+fn refused(why: impl std::fmt::Display) -> ReleaseError {
+    ReleaseError::Refused(why.to_string())
+}
+
+/// The DefinitionRef the chat names `tool` by when it offers a run: the
+/// starter catalog's Wasm guest (`ext_eval::author::catalog`) whose
+/// component is one of the tool's slugs. The hosted runner admits a
+/// catalog tool by this reference.
+#[must_use]
+pub fn catalog_definition(tool: &Tool) -> Option<nostr::contracts::DefinitionRef> {
+    ext_eval::author::catalog::Catalog::starter()
+        .tools
+        .into_iter()
+        .find_map(|known| match known.source {
+            ext_eval::author::catalog::Source::Existing(definition)
+                if definition
+                    .id
+                    .rsplit_once('/')
+                    .is_some_and(|(_, component)| tool.slugs.iter().any(|s| s == component)) =>
+            {
+                Some(definition)
+            }
+            _ => None,
+        })
+}
+
+/// Reads a starter test set from its signed `3184` `release` and the
+/// files `fetch` returns by digest: the release's signature and marker
+/// (`nostr::ext::parse_record`), its manifest against the release's digest
+/// (`nostr::eval_ext::parse_release`), and the suite and case manifest
+/// against the manifest (`nostr::eval_ext::check_suite_package`). The
+/// signer must be one of [`STARTER_PUBLISHERS`] and the package theirs;
+/// the package `<slug>-tests` is the catalog tool with that slug, and the
+/// test set's size is its case manifest's count.
+///
+/// # Errors
+///
+/// [`ReleaseError::Missing`] names a file `fetch` does not have yet;
+/// [`ReleaseError::Refused`] names the check that failed.
+pub fn suite_record(
+    release: &Event,
+    tools: &[Tool],
+    fetch: &dyn Fn(&str) -> Option<Vec<u8>>,
+) -> Result<SuiteRecord, ReleaseError> {
+    if !STARTER_PUBLISHERS.contains(&release.pubkey.as_str()) {
+        return Err(refused("the release is not a starter publisher's"));
+    }
+    let get = |digest: &str| fetch(digest).ok_or_else(|| ReleaseError::Missing(digest.to_string()));
+    let body = nostr::ext::parse_record(release).map_err(refused)?;
+    let manifest_ref =
+        nostr::contracts::parse_artifact(body.get("manifest").unwrap_or(&Value::Null))
+            .map_err(refused)?;
+    let manifest_bytes = get(&manifest_ref.digest)?;
+    let parsed = eval_ext::parse_release(release, &manifest_bytes).map_err(refused)?;
+    let manifest: Value = serde_json::from_slice(&manifest_bytes).map_err(refused)?;
+    let suite_ref = manifest
+        .get("components")
+        .and_then(Value::as_array)
+        .and_then(|components| {
+            components.iter().find(|component| {
+                component.get("kind").and_then(Value::as_str) == Some(eval_ext::COMPONENT_KIND)
+            })
+        })
+        .and_then(|component| component.get("definition"))
+        .ok_or_else(|| refused("the release holds no eval-suite component"))?;
+    let suite_ref = nostr::contracts::parse_artifact(suite_ref).map_err(refused)?;
+    let suite_bytes = get(&suite_ref.digest)?;
+    let suite = eval_ext::parse_suite(&suite_bytes).map_err(refused)?;
+    let cases_bytes = get(&suite.cases.digest)?;
+    let package =
+        eval_ext::check_suite_package(&manifest, &suite_bytes, &cases_bytes).map_err(refused)?;
+    let slug = parsed
+        .package
+        .strip_prefix(&format!("{}:", release.pubkey))
+        .ok_or_else(|| refused("the package is not its signer's"))?;
+    let tool_slug = slug
+        .strip_suffix("-tests")
+        .ok_or_else(|| refused("the package is not a tool's test set"))?;
+    let tool = tools
+        .iter()
+        .find(|tool| tool.slugs.iter().any(|s| s == tool_slug))
+        .ok_or_else(|| refused("the test set is for no tool in the catalog"))?;
+    let subject =
+        catalog_definition(tool).ok_or_else(|| refused("the tool has no catalog reference"))?;
+    let at = pointer(release);
+    Ok(SuiteRecord {
+        release: at.clone(),
+        tool: Some(tool.id.clone()),
+        tool_name: tool.name.clone(),
+        author: release.pubkey.clone(),
+        subject,
+        cases: package.cases.cases.len() as u64,
+        at: release.created_at,
+        source: at,
+    })
+}
+
+/// Whether `release` names a test set's package (`<signer>:<slug>-tests`),
+/// read from its content's bounded `package` field; [`suite_record`]
+/// checks the rest.
+#[must_use]
+pub fn is_test_set_release(release: &Event) -> bool {
+    serde_json::from_str::<Value>(&release.content)
+        .ok()
+        .and_then(|body| body.get("package")?.as_str().map(str::to_string))
+        .is_some_and(|package| package.ends_with("-tests"))
+}
+
+/// Releases read from files already fetched, by digest.
+#[derive(Clone, Debug, Default)]
+pub struct Fetched {
+    pub files: HashMap<String, Arc<Vec<u8>>>,
+}
+
+impl ReleaseReader for Fetched {
+    fn suite(&self, event: &Event, tools: &[Tool]) -> Result<SuiteRecord, String> {
+        suite_record(event, tools, &|digest| {
+            self.files.get(digest).map(|bytes| bytes.as_ref().clone())
+        })
+        .map_err(|error| error.to_string())
+    }
+    fn adoption(&self, _: &Event, _: &[Tool]) -> Result<AdoptionRecord, String> {
+        Err("adoptions are not read yet".to_string())
+    }
+}
+
 /// What [`admit`] did with a batch of events.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Admitted {
@@ -396,10 +567,23 @@ pub fn filter() -> Value {
     })
 }
 
-/// Reads the published results from the relay at `url`, as `identity`:
-/// one subscription with [`filter`], until the relay's end of stored
-/// events or [`FETCH_BUDGET`]. The events are unverified here; [`admit`]
-/// checks each one.
+/// The relay filter for the starter test sets: the `3184` releases
+/// [`STARTER_PUBLISHERS`] signed.
+#[must_use]
+pub fn suite_filter() -> Value {
+    json!({
+        "kinds": [nostr::ext::RELEASE_KIND],
+        "authors": STARTER_PUBLISHERS,
+        "#t": ["oa:ext:release:v1"],
+        "limit": MAX_SUITES,
+    })
+}
+
+/// Reads the published results and the starter test sets from the relay
+/// at `url`, as `identity`: one subscription with [`filter`] and
+/// [`suite_filter`], until the relay's end of stored events or
+/// [`FETCH_BUDGET`]. The events are unverified here; [`admit`] checks each
+/// one.
 ///
 /// # Errors
 ///
@@ -413,7 +597,7 @@ pub async fn fetch_results(
         .await
         .map_err(|error| error.to_string())?;
     let id = "gym-results";
-    crate::relay::send(&mut socket, json!(["REQ", id, filter()]))
+    crate::relay::send(&mut socket, json!(["REQ", id, filter(), suite_filter()]))
         .await
         .map_err(|error| error.to_string())?;
     let mut events = Vec::new();
@@ -429,7 +613,7 @@ pub async fn fetch_results(
                 (Some("EVENT"), Some(sub)) if sub == id => {
                     if let Ok(event) = serde_json::from_value::<Event>(value[2].clone()) {
                         events.push(event);
-                        if events.len() >= MAX_RESULTS {
+                        if events.len() >= MAX_RESULTS + MAX_SUITES {
                             break;
                         }
                     }
@@ -456,7 +640,12 @@ pub struct GymKnowledge<E: Embed = Embedder> {
     embedder: E,
     recipient: String,
     judge: Arc<dyn Judge>,
-    releases: Arc<dyn ReleaseReader>,
+    /// Where the starter test sets' files are fetched, or `None` to read
+    /// no releases.
+    blobs: Option<String>,
+    /// Release files fetched, by digest; content-addressed, so kept.
+    files: Mutex<HashMap<String, Arc<Vec<u8>>>>,
+    http: reqwest::Client,
     /// Item vectors by item id and the model that made them.
     vectors: Mutex<HashMap<String, Arc<Vec<f32>>>>,
 }
@@ -464,7 +653,8 @@ pub struct GymKnowledge<E: Embed = Embedder> {
 impl GymKnowledge<Embedder> {
     /// The committed product corpus's tools and Gym notes, the compiled-in
     /// changelog, embeddings from the product KB's configuration, and
-    /// `judge`; releases through [`PendingReleases`].
+    /// `judge`; the starter test sets' files from `CODER_EVAL_BLOBS`, else
+    /// [`SUITE_BLOBS`] (`off` reads no releases).
     ///
     /// # Errors
     ///
@@ -475,25 +665,27 @@ impl GymKnowledge<Embedder> {
         let corpus = Corpus::load(&dir, root.join("knowledge").exists().then_some(&*root))?;
         let embedder = crate::product_kb::embedder_from_env()?;
         let recipient = crate::codebase::embedding_recipient(embedder.provider).to_string();
+        let blobs = match std::env::var("CODER_EVAL_BLOBS") {
+            Ok(value) if value.trim() == "off" => None,
+            Ok(value) if !value.trim().is_empty() => Some(value.trim().to_string()),
+            _ => Some(SUITE_BLOBS.to_string()),
+        };
         Ok(GymKnowledge::new(
-            &corpus,
-            embedder,
-            recipient,
-            judge,
-            Arc::new(PendingReleases),
+            &corpus, embedder, recipient, judge, blobs,
         ))
     }
 }
 
 impl<E: Embed> GymKnowledge<E> {
     /// The Gym's records from `corpus` and the changelog, before any
-    /// published record is admitted.
+    /// published record is admitted; release files are fetched from
+    /// `blobs` (`None`: releases are not read).
     pub fn new(
         corpus: &Corpus,
         embedder: E,
         recipient: impl Into<String>,
         judge: Arc<dyn Judge>,
-        releases: Arc<dyn ReleaseReader>,
+        blobs: Option<String>,
     ) -> Self {
         let records = Records {
             tools: tools(corpus),
@@ -506,7 +698,12 @@ impl<E: Embed> GymKnowledge<E> {
             embedder,
             recipient: recipient.into(),
             judge,
-            releases,
+            blobs: blobs.map(|base| base.trim_end_matches('/').to_string()),
+            files: Mutex::new(HashMap::new()),
+            http: reqwest::Client::builder()
+                .timeout(BLOB_BUDGET)
+                .build()
+                .unwrap_or_default(),
             vectors: Mutex::new(HashMap::new()),
         }
     }
@@ -520,8 +717,9 @@ impl<E: Embed> GymKnowledge<E> {
             .unwrap_or_default()
     }
 
-    /// Reads the relay at `url` for published results and admits the
-    /// verified ones in place of the last read's.
+    /// Reads the relay at `url` for published results and the starter
+    /// test sets, fetches the test sets' files, and admits the verified
+    /// ones in place of the last read's.
     ///
     /// # Errors
     ///
@@ -533,9 +731,99 @@ impl<E: Embed> GymKnowledge<E> {
     ) -> Result<Admitted, String> {
         let events = fetch_results(url, identity).await?;
         let tools = self.records().tools;
-        let admitted = admit(&tools, &events, self.releases.as_ref(), &[], &[]);
+        let (suites, results): (Vec<Event>, Vec<Event>) = events
+            .into_iter()
+            .partition(|event| event.kind == nostr::ext::RELEASE_KIND);
+        // The runner also releases its catalog tools under the same
+        // marker; a test set's package is `<slug>-tests`.
+        let suites: Vec<Event> = suites
+            .into_iter()
+            .filter(is_test_set_release)
+            .take(MAX_SUITES)
+            .collect();
+        let admitted = if self.blobs.is_some() {
+            for release in &suites {
+                self.fetch_release(release, &tools).await;
+            }
+            let fetched = Fetched {
+                files: self
+                    .files
+                    .lock()
+                    .map(|files| files.clone())
+                    .unwrap_or_default(),
+            };
+            admit(&tools, &results, &fetched, &suites, &[])
+        } else {
+            admit(&tools, &results, &PendingReleases, &suites, &[])
+        };
         self.publish(&admitted);
         Ok(admitted)
+    }
+
+    /// Fetches the files `release` needs, one digest at a time as
+    /// [`suite_record`] asks for them, each checked against its digest and
+    /// kept. A failure leaves the file missing, which [`admit`] reports.
+    async fn fetch_release(&self, release: &Event, tools: &[Tool]) {
+        // A manifest, a suite, and a case manifest.
+        for _ in 0..3 {
+            let missing = {
+                let Ok(files) = self.files.lock() else {
+                    return;
+                };
+                match suite_record(release, tools, &|digest| {
+                    files.get(digest).map(|bytes| bytes.as_ref().clone())
+                }) {
+                    Err(ReleaseError::Missing(digest)) => digest,
+                    _ => return,
+                }
+            };
+            match self.fetch_file(&missing).await {
+                Ok(bytes) => {
+                    if let Ok(mut files) = self.files.lock() {
+                        files.insert(missing, Arc::new(bytes));
+                    }
+                }
+                Err(why) => {
+                    eprintln!("gym records: a test set's file was not fetched: {why}");
+                    return;
+                }
+            }
+        }
+    }
+
+    /// One file from the blob store, by its `sha256:` digest, checked.
+    async fn fetch_file(&self, digest: &str) -> Result<Vec<u8>, String> {
+        let base = self.blobs.as_deref().ok_or("no blob store")?;
+        let hex = digest
+            .strip_prefix("sha256:")
+            .filter(|hex| hex.len() == 64 && hex.chars().all(|c| c.is_ascii_hexdigit()))
+            .ok_or_else(|| format!("{digest} is not a sha256 digest"))?;
+        let response = self
+            .http
+            .get(format!("{base}/{hex}"))
+            .send()
+            .await
+            .map_err(|error| format!("{hex}: {error}"))?;
+        if !response.status().is_success() {
+            return Err(format!("{hex}: {}", response.status()));
+        }
+        if response
+            .content_length()
+            .is_some_and(|length| length > MAX_BLOB as u64)
+        {
+            return Err(format!("{hex}: larger than {MAX_BLOB} bytes"));
+        }
+        let bytes = response
+            .bytes()
+            .await
+            .map_err(|error| format!("{hex}: {error}"))?;
+        if bytes.len() > MAX_BLOB {
+            return Err(format!("{hex}: larger than {MAX_BLOB} bytes"));
+        }
+        if nostr::contracts::digest_bytes(&bytes) != digest {
+            return Err(format!("{hex}: the bytes do not match their digest"));
+        }
+        Ok(bytes.to_vec())
     }
 
     /// Replaces the published records with what `admitted` holds.

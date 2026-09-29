@@ -370,15 +370,24 @@ pub fn route(route: RouteId) -> Value {
 pub fn tool_instructions() -> Value {
     instructions(
         "Which tool, if any, does the user's latest message name or mean?",
-        "A tool is something Coder can use, such as Project map. Pick one only when the message, \
-         or what it refers to earlier in the conversation, names or clearly means it.",
+        "A tool is something Coder can use, such as Project map. Pick one when the message, or \
+         what it refers to earlier in the conversation, names or clearly means it. A name counts \
+         however it is written: in lower case, or inside a request to test, run, or try the \
+         tool. Pick none only when no tool is named or clearly meant.",
     )
 }
 
-/// A tool option: its name and its plain line.
+/// A tool option: its name and its plain line, with its name as people
+/// type it (lower case, in a request to test it).
 #[must_use]
 pub fn tool(tool: &Tool) -> Value {
-    option(&format!("{}: {}", tool.name, tool.line), None, &[])
+    let lower = tool.name.to_lowercase();
+    let examples = [
+        format!("test {lower} on coder"),
+        format!("run the tests for {lower}"),
+    ];
+    let examples: Vec<&str> = examples.iter().map(String::as_str).collect();
+    option(&format!("{}: {}", tool.name, tool.line), None, &examples)
 }
 
 /// A risk option's rubric.

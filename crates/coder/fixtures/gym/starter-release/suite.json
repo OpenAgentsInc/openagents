@@ -1,0 +1,51 @@
+{
+  "v": "openagents.eval-suite.v1",
+  "requires": [],
+  "id": "a7cff3ee1ff0209f971b9f24673db310ab858899c9d9a99b640e6cb29b1753f0:project-map-tests/suite",
+  "purpose": "operation",
+  "workload": {
+    "digest": "sha256:1f0b15ee1b791159dac416fc0a13ca0b6078f43b0a3b23e4016107f9060399c7",
+    "size": 271,
+    "media_type": "application/json",
+    "schema": "openagents.ext-eval-workload.v1"
+  },
+  "cases": {
+    "digest": "sha256:6e6cc06570081856d37d160f8a4015362a292e98f7ffe6ac20951affe0b837ce",
+    "size": 8798,
+    "media_type": "application/json",
+    "schema": "openagents.eval-case.v1"
+  },
+  "partition": {
+    "digest": "sha256:77752afba2751e31b7da3cad04dfb9d56d48dcea44a1d3d2361ac5c0c6698a7d",
+    "size": 229,
+    "media_type": "application/json",
+    "schema": "openagents.eval-partition.v1"
+  },
+  "labels": {
+    "digest": "sha256:bb2dd5998923b28b8f7ef49a0b3fa5626a5700d3168bc51fc959001961708c48",
+    "size": 434,
+    "media_type": "application/json",
+    "schema": "openagents.ext-eval-labels.v1"
+  },
+  "metrics": {
+    "digest": "sha256:eb27a6423e0b4e0726f5397359d2ca343f5449a0fd9a8bc81bf98723e92a0660",
+    "size": 5433,
+    "media_type": "application/json",
+    "schema": "openagents.ext-eval-metrics.v1"
+  },
+  "acceptance": {
+    "id": "a7cff3ee1ff0209f971b9f24673db310ab858899c9d9a99b640e6cb29b1753f0:gym-gates/ext-eval-v2",
+    "artifact": {
+      "digest": "sha256:73e17f106b1e445884f93741416cafa63ce4f59b4b6ab3074481d6754073ad39",
+      "size": 4200,
+      "media_type": "application/json",
+      "schema": "openagents.gym.gate.v2"
+    }
+  },
+  "environment": {
+    "digest": "sha256:c9065b11ef0d5b5e787e648869c7a5d8b0a758036c9764a5e2063587cae39a6f",
+    "size": 96,
+    "media_type": "application/json",
+    "schema": "openagents.ext-eval-environment.v1"
+  }
+}

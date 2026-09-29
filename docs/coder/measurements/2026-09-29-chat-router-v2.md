@@ -161,3 +161,54 @@ feedback the old phone ignores (`live_basic_coder_streams_a_reply`):
 The news reply's first words wait for the restarted model (the records,
 then the model's first token), as a grounded product answer does.
 
+
+## Starter test sets and the tool reading (#9943, #9944)
+
+Before this change `eval.run` offered **Start the test** only for a tool
+whose test set a published result had run, so the first run (`FLOW-01`)
+had nothing to start. The worker now reads the starter test sets, the
+hosted runner's `3184` releases, with their files from the runner's
+bucket, each checked against its digest (`gym_kb::suite_record`), and
+names each tool in the offer by the starter catalog's reference, which the
+runner admits. The three releases were republished on 2026-09-29 (the
+first release run's `3184`s never reached the relay, which restarted
+while they were sent): Project map `4aa8599a…`, Code finder `086f3b73…`,
+Test reader `e42741c2…`, six tests each. `live_starter_test_sets`
+(`gym_kb`) read all three from production in 1.3 s.
+
+The labeled set's 29 `eval.run` rows now name the tool their message names
+(`tool`, null for none, where the default tool, Project map, is right).
+The live eval gives each row's reply the three starter test sets and
+counts the `start_eval` offers and their tool. The first held-out run
+found the offer on 6 of 7 rows but the right tool on only 4: "kick off a
+test run for code finder" read Code finder at 0.42, under
+`TOOL_CONFIDENCE` (0.60), so the default tool was offered, and the tune
+split showed the cause ("run the tests for code finder" read no tool). The
+`tool` question's instructions now say a name counts in lower case or
+inside a request to test it, and each tool option carries two examples
+made from its name ("test code finder on coder", "run the tests for code
+finder"). Tuned on the tune split's Gym rows, then measured:
+
+| Split | Runs | `start_eval` offered | Right tool, of offered | Canned precision | Dispatch precision | Gym and interview precision | Route accuracy |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Held-out (186), before the tool tune | 2 | 6 / 7, 6 / 7 | 4 / 6, 4 / 6 | 100 % (49/49), 100 % (47/47) | 94.7 % (18/19), 94.7 % (18/19) | 96.6 % (28/29), 96.6 % | 88.7 %, 88.6 % |
+| Held-out (186), after | 2 | 6 / 7, 6 / 7 | **6 / 6**, **6 / 6** | **100 %** (49/49), **100 %** (48/48) | **94.7 %** (18/19), **94.7 %** (18/19) | 96.6 % (28/29), 96.6 % | 88.2 %, 88.7 % |
+| Tune, Gym rows (136), after | 1 | 18 / 22 | 18 / 18 | 100 % (22/22) | 100 % (3/3) | 100 % (96/96) | 97.8 % |
+
+The one held-out `eval.run` row without an offer, "give coder a tool to
+test", read `eval.run` at 0.39 to 0.45, under the 0.70 floor for an offer,
+and the model answered; the four on the tune split are the same kind
+("run the full test set for project map" at 0.60). The false dispatch
+offer is the one recorded above ("which file handles the x402 spending
+policy"). Judgment latency p50 stayed at 215 to 218 ms.
+
+**News replies (#9944).** The grounded news model still cites each item by
+its `gym:` id, so invented citations are counted, but the ids never reach
+the phone: `router::gym::Tidy` takes them out as the reply streams and
+from the result, and the news card already says where its items come
+from. The instructions list the banned words, and the `openagents.gym-results`
+note's summary, which a news card shows as a line, no longer says
+"Terminal-Bench" or "traces". `every_news_items_words_are_the_phones`
+checks every item a news card can carry, from the real catalog, notes,
+and changelog, against the wireframe's banned list (plurals included) and
+for raw ids; the worker logs the same post-check on each grounded reply.

@@ -664,18 +664,24 @@ pub fn reply(
 
 /// The grounded model's instructions for `items`: answer only from them,
 /// in the plural voice and the phone's plain words, citing each item used
-/// by its id.
+/// by its id. The citations are for [`check_reply`]; [`Tidy`] takes them
+/// out before the phone sees the reply, whose news card already names
+/// each item's source.
 #[must_use]
 pub fn instructions(items: &[Item]) -> String {
     let mut out = String::from(
         "We are OpenAgents, answering in the OpenAgents app's chat about what's new in the Gym, \
 where people test tools on Coder. Always speak as \"we\", never \"I\". Answer the user's latest \
 message using only the Gym records below, which we verified. After each sentence that uses a \
-record, cite it by its id in square brackets, such as [gym:build:build-20]. Every result, count, \
-verdict, tool name, and build you mention must come from a record below; state no other result, \
-score, count, XP, or date. Use plain words: a tool, a test, a test set, with and without the \
-tool, Better, No clear change, Worse. If the records don't answer what the user asked, say we \
-don't have a record of that yet. Keep it short for a phone screen.\n",
+record, cite it by its id in square brackets, such as [gym:build:build-20]; we take the brackets \
+out before the reply is shown, so never write an id, a file path, an event, or a \"source\" line \
+anywhere else. Every result, count, verdict, tool name, and build you mention must come from a \
+record below; state no other result, score, count, XP, or date. Use the app's plain words: a \
+tool, a test, a test set, with and without the tool, Better, No clear change, Worse, results, \
+attempts. Never use these words, even when a record does: benchmark, Terminal-Bench, trace, \
+eval, evaluation, suite, case, grader, rubric, judge, baseline, arm, harness, extension, plugin, \
+Wasm, relay, Nostr, key, host, workspace. If the records don't answer what the user asked, say \
+we don't have a record of that yet. Keep it short for a phone screen.\n",
     );
     for item in items {
         out.push_str(&format!(
@@ -794,6 +800,284 @@ pub fn check_reply(reply: &str, items: &[Item]) -> Cited {
         }
     }
     cited
+}
+
+/// Words the app never shows on a card, a label, or a Gym reply: the
+/// wireframe's banned list (`docs/product/2026-09-28-app-wireframe.md`,
+/// Words on screen; `CHK-02`), lowercased. The phone keeps the same list
+/// (`crates/openagents-mobile/src/eval_cards.rs`).
+pub const BANNED: &[&str] = &[
+    "npub",
+    "nsec",
+    "key",
+    "relay",
+    "nostr",
+    "nip",
+    "atif",
+    "tailnet",
+    "tailscale",
+    "wasm",
+    "plugin",
+    "extension",
+    "benchmark",
+    "terminal-bench",
+    "tb",
+    "eval",
+    "evaluation",
+    "suite",
+    "case",
+    "grader",
+    "rubric",
+    "judge",
+    "baseline",
+    "arm",
+    "harness",
+    "stand-in",
+    "mock",
+    "pilot",
+    "jev",
+    "luna",
+    "microcoder",
+    "verifier",
+    "trace",
+    "recipe",
+    "grant",
+    "sats",
+    "btc",
+    "₿",
+    "lightning",
+    "invoice",
+    "host",
+    "workspace",
+    "pubkey",
+    "hex",
+];
+
+/// The banned words in `text`, each once, in order: whole words or their
+/// plurals ("traces"), in any case. This checks words we show, after the
+/// route was chosen; it routes nothing.
+#[must_use]
+pub fn jargon_all(text: &str) -> Vec<&'static str> {
+    let lower = text.to_lowercase();
+    let mut found: Vec<&'static str> = Vec::new();
+    for word in lower
+        .split(|c: char| !(c.is_alphanumeric() || c == '-' || c == '₿'))
+        .filter(|word| !word.is_empty())
+    {
+        let hit = BANNED.iter().copied().find(|banned| {
+            word == *banned
+                || word
+                    .strip_suffix('s')
+                    .is_some_and(|stem| stem == *banned || stem.strip_suffix('e') == Some(banned))
+        });
+        if let Some(hit) = hit
+            && !found.contains(&hit)
+        {
+            found.push(hit);
+        }
+    }
+    found
+}
+
+/// The first banned word in `text` ([`jargon_all`]).
+#[must_use]
+pub fn jargon(text: &str) -> Option<&'static str> {
+    jargon_all(text).first().copied()
+}
+
+/// The raw identifiers in `text` a person should never see: a `gym:`
+/// citation id, a note id (`openagents.…`), a repository path, a digest,
+/// a key, or a run of eight or more hex digits (an event id or its
+/// start). Bounded shapes of our own output, read after routing.
+#[must_use]
+pub fn raw_ids(text: &str) -> Vec<String> {
+    let mut found = Vec::new();
+    for token in text.split(|c: char| {
+        c.is_whitespace() || matches!(c, '[' | ']' | '(' | ')' | ',' | ';' | '"' | '`' | '*')
+    }) {
+        let token = token.trim_matches(|c: char| matches!(c, '.' | ':' | '!' | '?' | '\''));
+        if token.is_empty() {
+            continue;
+        }
+        let lower = token.to_lowercase();
+        let hex_run = lower.split(|c: char| !c.is_ascii_hexdigit()).any(|run| {
+            run.len() >= 8
+                && run.chars().any(|c| c.is_ascii_digit())
+                && run.chars().any(|c| c.is_ascii_alphabetic())
+        });
+        let raw = lower.starts_with(CITE_PREFIX)
+            || lower.contains(":gym:")
+            || lower.starts_with("openagents.")
+            || lower.starts_with("knowledge/")
+            || lower.starts_with("crates/")
+            || lower.starts_with("sha256:")
+            || lower.starts_with("npub1")
+            || lower.starts_with("nsec1")
+            || lower.starts_with("event ")
+            || hex_run;
+        if raw && !found.iter().any(|seen: &String| seen == token) {
+            found.push(token.to_string());
+        }
+    }
+    found
+}
+
+/// What a Gym reply must not show, once tidied: banned words and raw ids.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Shown {
+    pub banned: Vec<&'static str>,
+    pub raw: Vec<String>,
+}
+
+impl Shown {
+    /// Whether the reply is fit to show.
+    #[must_use]
+    pub fn clean(&self) -> bool {
+        self.banned.is_empty() && self.raw.is_empty()
+    }
+}
+
+/// Checks a reply as the phone will draw it: every banned word and raw id
+/// in it.
+#[must_use]
+pub fn post_check(text: &str) -> Shown {
+    Shown {
+        banned: jargon_all(text),
+        raw: raw_ids(text),
+    }
+}
+
+/// The longest bracket [`Tidy`] holds back before it shows it as text.
+const HOLD: usize = 200;
+
+/// Takes a grounded Gym reply's `[gym:…]` citations out as it streams, so
+/// the phone never shows an id; the news card names each item's source.
+/// A bracket that is not only citations is shown as written. A space
+/// before a citation is dropped when punctuation follows it
+/// ("credit [gym:note:gym-news]." reads "credit.").
+#[derive(Clone, Debug, Default)]
+pub struct Tidy {
+    /// Whitespace not yet shown.
+    space: String,
+    /// An open bracket and what followed it.
+    bracket: String,
+    /// A citation was just taken out.
+    after: bool,
+}
+
+/// Whether `inside` (a bracket's text) is only citation ids.
+fn citations_only(inside: &str) -> bool {
+    let ids: Vec<&str> = inside.split([',', ';']).map(str::trim).collect();
+    !ids.is_empty()
+        && ids.iter().all(|id| {
+            id.starts_with(CITE_PREFIX)
+                && id.len() <= 96
+                && id
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || matches!(c, ':' | '-' | '_' | '.' | '@'))
+        })
+}
+
+/// Whether `open` (a bracket so far) could still become a citation.
+fn could_cite(open: &str) -> bool {
+    let inside = &open[1..];
+    let last = inside.rsplit([',', ';']).next().unwrap_or("").trim_start();
+    let prefix_ok = |id: &str| {
+        if id.len() < CITE_PREFIX.len() {
+            CITE_PREFIX.starts_with(id)
+        } else {
+            id.starts_with(CITE_PREFIX)
+        }
+    };
+    open.len() <= HOLD
+        && !inside.contains('\n')
+        && inside
+            .split([',', ';'])
+            .map(str::trim)
+            .all(|id| id.is_empty() || prefix_ok(id))
+        && prefix_ok(last)
+}
+
+impl Tidy {
+    /// The text of `delta` that may be shown now.
+    pub fn push(&mut self, delta: &str) -> String {
+        let mut out = String::new();
+        for c in delta.chars() {
+            if !self.bracket.is_empty() {
+                self.bracket.push(c);
+                let close = if self.bracket.starts_with('[') {
+                    ']'
+                } else {
+                    ')'
+                };
+                if c == close {
+                    let inside = &self.bracket[1..self.bracket.len() - 1];
+                    if citations_only(inside) {
+                        self.after = true;
+                    } else {
+                        out.push_str(&self.space);
+                        out.push_str(&self.bracket);
+                        self.space.clear();
+                        self.after = false;
+                    }
+                    self.bracket.clear();
+                } else if !could_cite(&self.bracket) {
+                    out.push_str(&self.space);
+                    out.push_str(&self.bracket);
+                    self.space.clear();
+                    self.bracket.clear();
+                    self.after = false;
+                }
+                continue;
+            }
+            if c == '[' || c == '(' {
+                self.bracket.push(c);
+                continue;
+            }
+            if c.is_whitespace() {
+                self.space.push(c);
+                continue;
+            }
+            if self.after {
+                // "credit [gym:…]." reads "credit.", and a citation that
+                // ended a line leaves no space before the break.
+                if let Some(at) = self.space.find('\n') {
+                    self.space.drain(..at);
+                } else if matches!(c, '.' | ',' | ';' | ':' | '!' | '?') {
+                    self.space.clear();
+                }
+            }
+            out.push_str(&self.space);
+            self.space.clear();
+            self.after = false;
+            out.push(c);
+        }
+        out
+    }
+
+    /// What is left once the reply ends.
+    pub fn finish(&mut self) -> String {
+        let mut out = String::new();
+        if !self.bracket.is_empty() {
+            out.push_str(&self.space);
+            out.push_str(&self.bracket);
+        } else if !self.after {
+            out.push_str(&self.space);
+        } else if let Some(at) = self.space.find('\n') {
+            out.push_str(&self.space[at..]);
+        }
+        *self = Tidy::default();
+        out
+    }
+}
+
+/// `text` with its citations taken out, as [`Tidy`] streams it.
+#[must_use]
+pub fn tidy(text: &str) -> String {
+    let mut tidy = Tidy::default();
+    let mut out = tidy.push(text);
+    out.push_str(&tidy.finish());
+    out
 }
 
 #[cfg(test)]
@@ -1175,6 +1459,120 @@ mod tests {
             cited.invented,
             vec!["gym:result:ffffffff", "gym:note:made-up"]
         );
+    }
+
+    /// The reply the phone showed in #9944, and replies shaped like the
+    /// model's: tidied, they carry no citation id, and the check finds
+    /// nothing; streamed in any split, the tidy is the same.
+    #[test]
+    fn a_news_reply_shows_no_ids_and_no_banned_words() {
+        let items = records().items();
+        let ids: Vec<String> = items.iter().map(Item::id).collect();
+        let replies = [
+            (
+                "In the Gym you can test tools on Coder, check results, and see your credit \
+                 [gym:note:gym-news]."
+                    .to_string(),
+                "In the Gym you can test tools on Coder, check results, and see your credit.",
+            ),
+            (
+                format!(
+                    "Build 20 made chat smarter [{}]. Project map did Better, 7 of 8 tests \
+                     [{}, {}].\n\nWant to try it?",
+                    ids[ids.len() - 1],
+                    ids[0],
+                    ids[1]
+                ),
+                "Build 20 made chat smarter. Project map did Better, 7 of 8 tests.\n\nWant to \
+                 try it?",
+            ),
+            (
+                format!("A new test set for Project map [{}]", ids[1]),
+                "A new test set for Project map",
+            ),
+            (
+                "We measure with and without the tool (see the card) [1] and [a link](x).".into(),
+                "We measure with and without the tool (see the card) [1] and [a link](x).",
+            ),
+            (
+                "Two items:\n- Better [gym:result:0a0a0a0a]\n- Build 20 [gym:build:build-20]\n"
+                    .into(),
+                "Two items:\n- Better\n- Build 20\n",
+            ),
+        ];
+        for (reply, want) in &replies {
+            let tidied = tidy(reply);
+            assert_eq!(&tidied, want);
+            assert!(
+                post_check(&tidied).clean(),
+                "{tidied}: {:?}",
+                post_check(&tidied)
+            );
+            // The model's own citations are still read before tidying.
+            assert!(check_reply(reply, &items).invented.len() <= 1);
+            for size in 1..=7 {
+                let mut stream = Tidy::default();
+                let chars: Vec<char> = reply.chars().collect();
+                let mut out = String::new();
+                for chunk in chars.chunks(size) {
+                    out.push_str(&stream.push(&chunk.iter().collect::<String>()));
+                }
+                out.push_str(&stream.finish());
+                assert_eq!(&out, want, "split every {size}");
+            }
+        }
+        // Untidied, the check sees the ids; banned words are whole words
+        // or their plurals.
+        let raw = post_check(&replies[0].0);
+        assert_eq!(raw.raw, vec!["gym:note:gym-news".to_string()]);
+        let worded = post_check("It shows Terminal-Bench results and traces for each case.");
+        assert_eq!(worded.banned, vec!["terminal-bench", "trace", "case"]);
+        assert!(post_check("Your keyboard and monkey business").clean());
+        assert_eq!(
+            raw_ids("event 1a2b3c4d5e from openagents.gym-news in knowledge/openagents/x.md"),
+            vec![
+                "1a2b3c4d5e",
+                "openagents.gym-news",
+                "knowledge/openagents/x.md"
+            ]
+        );
+        assert!(raw_ids("Build 20, 7 of 8 tests, version 1.0.0").is_empty());
+    }
+
+    /// Every news item a card can carry, from the real catalog, Gym notes,
+    /// and changelog, and from every kind of published record, reads in
+    /// the phone's words: no banned word and no raw id in its title or
+    /// line (CHK-02).
+    #[test]
+    fn every_news_items_words_are_the_phones() {
+        let root = knowledge::product::repository();
+        let corpus =
+            knowledge::product::Corpus::load(&knowledge::product::default_dir(), Some(&root))
+                .expect("the corpus loads");
+        let mut records = records();
+        records.tools = crate::gym_kb::tools(&corpus);
+        records.notes = crate::gym_kb::notes(&corpus);
+        records.releases = crate::gym_kb::changelog()
+            .into_iter()
+            .take(crate::gym_kb::BUILDS)
+            .collect();
+        let mut check = result(12, "project-map", 0);
+        check.checks = Some(event(10, 3189).id);
+        records.results.push(check);
+        records.adoptions.push(AdoptionRecord {
+            release: event(30, 3184),
+            tool: Some("openagents.tool-project-map".into()),
+            tool_name: "Project map".into(),
+            at: 1_790_000_030,
+        });
+        let items = records.items();
+        assert!(items.iter().any(|item| item.kind() == "note"));
+        assert!(items.iter().any(|item| item.kind() == "build"));
+        for item in &items {
+            let (title, line) = item.title_and_line();
+            let shown = post_check(&format!("{title}\n{line}"));
+            assert!(shown.clean(), "{}: {title} / {line}: {shown:?}", item.id());
+        }
     }
 
     /// Every number an item's line carries is its record's.

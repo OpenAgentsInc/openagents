@@ -1,0 +1,315 @@
+{
+  "v": "openagents.package.v1",
+  "requires": [],
+  "package": "a7cff3ee1ff0209f971b9f24673db310ab858899c9d9a99b640e6cb29b1753f0:project-map-tests",
+  "version": "suite-a6d7a88ee832",
+  "license": "NOASSERTION",
+  "provenance": {
+    "source": "local",
+    "receipts": [],
+    "unknowns": []
+  },
+  "components": [
+    {
+      "slug": "suite",
+      "kind": "eval-suite",
+      "definition": {
+        "digest": "sha256:a6d7a88ee832b328bc86471a39f1aef0501e5b1d0cb46dc29656ab938c305b99",
+        "size": 1787,
+        "media_type": "application/json",
+        "schema": "openagents.eval-suite.v1"
+      }
+    }
+  ],
+  "files": [
+    {
+      "path": "suite.json",
+      "digest": "sha256:a6d7a88ee832b328bc86471a39f1aef0501e5b1d0cb46dc29656ab938c305b99",
+      "size": 1787,
+      "media_type": "application/json"
+    },
+    {
+      "path": "cases.json",
+      "digest": "sha256:6e6cc06570081856d37d160f8a4015362a292e98f7ffe6ac20951affe0b837ce",
+      "size": 8798,
+      "media_type": "application/json"
+    },
+    {
+      "path": "evals/build-files/prompt.md",
+      "digest": "sha256:17f7ef096f5098c1c81a35f20016c45801055a3c3cf956404e271f109ac36fe4",
+      "size": 280,
+      "media_type": "text/markdown"
+    },
+    {
+      "path": "evals/build-files/graders/gradle.md",
+      "digest": "sha256:e90e80181b29f0bf03b9ee15c562e0b314eda4f0a536aef59119ed3683fbd96a",
+      "size": 77,
+      "media_type": "text/markdown"
+    },
+    {
+      "path": "evals/build-files/graders/mapped.md",
+      "digest": "sha256:1bbb53ad1fc1de0d61c8c443026ec1cf3a6e3f46e609d0d9def9cf0642f2690b",
+      "size": 55,
+      "media_type": "text/markdown"
+    },
+    {
+      "path": "evals/build-files/fixtures/Makefile",
+      "digest": "sha256:eee0c43c75665d6939a5c1d21ab531f7879dc47aadc031c8a32a7b0bc79984f3",
+      "size": 43,
+      "media_type": "application/octet-stream"
+    },
+    {
+      "path": "evals/build-files/fixtures/android/app/build.gradle.kts",
+      "digest": "sha256:1edb966ed36eaff576835542add29f6e9160aa69dabcc35da0334c81702c122c",
+      "size": 110,
+      "media_type": "application/octet-stream"
+    },
+    {
+      "path": "evals/build-files/fixtures/android/app/src/main/kotlin/Main.kt",
+      "digest": "sha256:25604b0057d584324e539c22ead70b0cb1a7e9783bf393ef17e8099eabaaaa19",
+      "size": 55,
+      "media_type": "application/octet-stream"
+    },
+    {
+      "path": "evals/build-files/fixtures/android/settings.gradle.kts",
+      "digest": "sha256:1baa37a9002eee88a3931b3148028f35893bff35d1c75998602c4ea64501f3f5",
+      "size": 16,
+      "media_type": "application/octet-stream"
+    },
+    {
+      "path": "evals/build-files/fixtures/web/package.json",
+      "digest": "sha256:9f693a1c28b4b951fbcbf0b0cd3410431b42f276ce6ac5388387926e06b0d9d7",
+      "size": 74,
+      "media_type": "application/json"
+    },
+    {
+      "path": "evals/build-files/fixtures/web/src/index.js",
+      "digest": "sha256:9b2c76075178f68534fcbdba5f2d868d5bf298e2e37abb34d1d869440b570047",
+      "size": 21,
+      "media_type": "application/octet-stream"
+    },
+    {
+      "path": "evals/explain-404/prompt.md",
+      "digest": "sha256:12954711920a0f5265e2213ad5bacee40a7bd177b48ad668709b78b222f95791",
+      "size": 265,
+      "media_type": "text/markdown"
+    },
+    {
+      "path": "evals/explain-404/graders/answer.md",
+      "digest": "sha256:aa81c40a1a1ab416e3e0e9981b23acacce82206291fae4a1e5fe23f6bc6daa0e",
+      "size": 138,
+      "media_type": "text/markdown"
+    },
+    {
+      "path": "evals/explain-404/graders/untouched.md",
+      "digest": "sha256:4934c4eb5afdff0ea1dd619a0d68aaf7719fe632845b7ceffa6c0c11f3e632f7",
+      "size": 84,
+      "media_type": "text/markdown"
+    },
+    {
+      "path": "evals/explain-404/fixtures/src/server.rs",
+      "digest": "sha256:0e27c884dfea705bd23ed8849baa4a25b6f08775f2930bae7b0efcd7de45272c",
+      "size": 73,
+      "media_type": "application/octet-stream"
+    },
+    {
+      "path": "evals/greeting/prompt.md",
+      "digest": "sha256:6e94ca0789ae9d346a89bd5f011b4b62666c369ff9d18d1d759d6a58308b703d",
+      "size": 279,
+      "media_type": "text/markdown"
+    },
+    {
+      "path": "evals/greeting/graders/greeting.md",
+      "digest": "sha256:268a9823234db770b8cb20f27e76bbf0de424f6c1ce3a64db6f348b09bad3bb7",
+      "size": 98,
+      "media_type": "text/markdown"
+    },
+    {
+      "path": "evals/greeting/graders/untouched.md",
+      "digest": "sha256:4934c4eb5afdff0ea1dd619a0d68aaf7719fe632845b7ceffa6c0c11f3e632f7",
+      "size": 84,
+      "media_type": "text/markdown"
+    },
+    {
+      "path": "evals/languages/prompt.md",
+      "digest": "sha256:e5b100b322b47091110da2b0d66dad8e23cccd381ac857b25458f93f508aa9de",
+      "size": 328,
+      "media_type": "text/markdown"
+    },
+    {
+      "path": "evals/languages/graders/haskell.md",
+      "digest": "sha256:e58738b8dcb4a5fb71b3be770f28ef5057b5c7386f3cc1f4fa39b133a3638a45",
+      "size": 70,
+      "media_type": "text/markdown"
+    },
+    {
+      "path": "evals/languages/graders/mapped.md",
+      "digest": "sha256:1bbb53ad1fc1de0d61c8c443026ec1cf3a6e3f46e609d0d9def9cf0642f2690b",
+      "size": 55,
+      "media_type": "text/markdown"
+    },
+    {
+      "path": "evals/languages/fixtures/cmd/ingest.go",
+      "digest": "sha256:025c559059e35ce73317d2ed4f8efdee373969c2a39fedfcd5c1c6abf7cacfea",
+      "size": 89,
+      "media_type": "application/octet-stream"
+    },
+    {
+      "path": "evals/languages/fixtures/cmd/parse.go",
+      "digest": "sha256:4263276b5287831a5c19e437fac7dc09ffa7ec8bac0415dc951a77f552020e5c",
+      "size": 87,
+      "media_type": "application/octet-stream"
+    },
+    {
+      "path": "evals/languages/fixtures/cmd/retry.go",
+      "digest": "sha256:6cac5cbdfcd9f38a3d0b26807b618b682979f369ae9b8cb73fa639a5002f1854",
+      "size": 87,
+      "media_type": "application/octet-stream"
+    },
+    {
+      "path": "evals/languages/fixtures/cmd/serve.go",
+      "digest": "sha256:7f4b84d82df6724624dd8c44aed69fbc87b2a0534806750cbce9a25aa12150be",
+      "size": 87,
+      "media_type": "application/octet-stream"
+    },
+    {
+      "path": "evals/languages/fixtures/cmd/store.go",
+      "digest": "sha256:05b5efaa2f8c9300c948436a40e3ad92e67a07510263c1da9a15d412316e69a8",
+      "size": 87,
+      "media_type": "application/octet-stream"
+    },
+    {
+      "path": "evals/languages/fixtures/go.mod",
+      "digest": "sha256:53310885dd575b98c2e6b3403d9929f8af7f2cad69cfa16436dfd1b56edbf4ef",
+      "size": 37,
+      "media_type": "application/octet-stream"
+    },
+    {
+      "path": "evals/languages/fixtures/scripts/backfill.py",
+      "digest": "sha256:841f7f3914e92cd11b2836d459872766d144f0a9c3acfc0cbe28d0cdf00a9fca",
+      "size": 127,
+      "media_type": "application/octet-stream"
+    },
+    {
+      "path": "evals/languages/fixtures/scripts/report.py",
+      "digest": "sha256:697c1ab55d2c08245ca9ce6e56fe42b9db88e482e981edbb405c4591ddc432d0",
+      "size": 99,
+      "media_type": "application/octet-stream"
+    },
+    {
+      "path": "evals/languages/fixtures/tools/Checksum.hs",
+      "digest": "sha256:182ba88896b7d3e1e38917e766b12465ca85a0c56047c4bab06d86e33d1a08bf",
+      "size": 156,
+      "media_type": "application/octet-stream"
+    },
+    {
+      "path": "evals/largest-file/prompt.md",
+      "digest": "sha256:e2d02dfbffb064877fa776ae7fa02d9770cfd1c1490283107e681d29007e0263",
+      "size": 294,
+      "media_type": "text/markdown"
+    },
+    {
+      "path": "evals/largest-file/graders/mapped.md",
+      "digest": "sha256:1bbb53ad1fc1de0d61c8c443026ec1cf3a6e3f46e609d0d9def9cf0642f2690b",
+      "size": 55,
+      "media_type": "text/markdown"
+    },
+    {
+      "path": "evals/largest-file/graders/replays.md",
+      "digest": "sha256:6865f0fab6d4cdf4aee515b89b130d972cb754ac4670e2323cc648c4e0ba3cde",
+      "size": 69,
+      "media_type": "text/markdown"
+    },
+    {
+      "path": "evals/largest-file/graders/size.md",
+      "digest": "sha256:a1d416ed2b5ae67d5af17af695f48a72745cf701f16b800c2a356a83f2f64a8a",
+      "size": 56,
+      "media_type": "text/markdown"
+    },
+    {
+      "path": "evals/largest-file/fixtures/Cargo.toml",
+      "digest": "sha256:371f16fa480d82706347545c637da5e4ff13029d4c6bb5da9a06c79215836491",
+      "size": 65,
+      "media_type": "application/toml"
+    },
+    {
+      "path": "evals/largest-file/fixtures/README.md",
+      "digest": "sha256:c1d2e4a720b2cf1b886995639cf8a734f1a1b2fb0318099ed1df93259059c0bc",
+      "size": 82,
+      "media_type": "text/markdown"
+    },
+    {
+      "path": "evals/largest-file/fixtures/db/seed.sql",
+      "digest": "sha256:12fb6fe7e1627ae0030090875bea6634f07b0d6e7c08c92e566637836fd738bd",
+      "size": 23117,
+      "media_type": "application/octet-stream"
+    },
+    {
+      "path": "evals/largest-file/fixtures/src/main.rs",
+      "digest": "sha256:adf4905c305ffeba42ffa20ea5bc8813ca899c9016459fc8beac79a2f8484a5e",
+      "size": 173,
+      "media_type": "application/octet-stream"
+    },
+    {
+      "path": "evals/largest-file/fixtures/src/routes.rs",
+      "digest": "sha256:ef2dd016740a74139fa0b2fd64c59e9f9a44e151b23bc62f32397219dccd2e10",
+      "size": 96,
+      "media_type": "application/octet-stream"
+    },
+    {
+      "path": "evals/where-tests/prompt.md",
+      "digest": "sha256:c8e62373ab1ccf8b1480d501f180e710bbb313d3fbca3dc5781af08ff91ff28b",
+      "size": 280,
+      "media_type": "text/markdown"
+    },
+    {
+      "path": "evals/where-tests/graders/checkout.md",
+      "digest": "sha256:cfd4af459d2f46b74f082732a58c305842ad7806a99d29bcf3d193a747278660",
+      "size": 69,
+      "media_type": "text/markdown"
+    },
+    {
+      "path": "evals/where-tests/graders/mapped.md",
+      "digest": "sha256:1bbb53ad1fc1de0d61c8c443026ec1cf3a6e3f46e609d0d9def9cf0642f2690b",
+      "size": 55,
+      "media_type": "text/markdown"
+    },
+    {
+      "path": "evals/where-tests/fixtures/Gemfile",
+      "digest": "sha256:2501450a8af09ac10ee936e27f691b1aed813a0aeb0e8b60d1f687bbc15d76bf",
+      "size": 42,
+      "media_type": "application/octet-stream"
+    },
+    {
+      "path": "evals/where-tests/fixtures/app/models/cart.rb",
+      "digest": "sha256:cdb9eb3f79105d9908c4ac29f883b3efb90499bc13163f618542edac0ecacc69",
+      "size": 113,
+      "media_type": "application/octet-stream"
+    },
+    {
+      "path": "evals/where-tests/fixtures/app/services/checkout.rb",
+      "digest": "sha256:62ba92329684147d7604338ad454e84c5050e0e71adc066eede6dbee723d6c32",
+      "size": 85,
+      "media_type": "application/octet-stream"
+    },
+    {
+      "path": "evals/where-tests/fixtures/spec/features/checkout/checkout_flow_spec.rb",
+      "digest": "sha256:ab42ac6ff8c32e047fa3901fdd86b053de13117d33bf7bfd478479178be46cfc",
+      "size": 161,
+      "media_type": "application/octet-stream"
+    },
+    {
+      "path": "evals/where-tests/fixtures/spec/models/cart_spec.rb",
+      "digest": "sha256:c671ebc2353f4c7745362efccb387d00b99e382a34d4a2ea5beef53883edb38d",
+      "size": 115,
+      "media_type": "application/octet-stream"
+    },
+    {
+      "path": "evals/where-tests/fixtures/spec/spec_helper.rb",
+      "digest": "sha256:36e33aa5418e00fec6fbbdb418c1dc642c6e6b4e4a4619ddcb4cb2d558ee3089",
+      "size": 82,
+      "media_type": "application/octet-stream"
+    }
+  ],
+  "dependencies": []
+}

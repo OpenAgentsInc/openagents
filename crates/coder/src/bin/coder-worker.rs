@@ -576,10 +576,10 @@ async fn serve(options: &Options) -> Result<(), String> {
     }
     // The Gym's records answer the Gym and eval routes when the product
     // corpus (its tool catalog and Gym notes), an embeddings key, and the
-    // judge are here. Published results, test sets, and adoptions are read
-    // through the ext-eval profile parser, which is pending until #9932
-    // lands it in `crates/nostr`; until then the records are the app's
-    // changelog and our notes, and none of the eval routes states a result.
+    // judge are here. Published results are read through the ext-eval
+    // profile parser, and the starter test sets from the hosted runner's
+    // releases and bucket (`CODER_EVAL_BLOBS`), so `eval.run` offers a test
+    // before anyone has published a result; adoptions are not read yet.
     match judge.clone() {
         Some(judge) => match coder::gym_kb::GymKnowledge::from_env(judge) {
             Ok(gym) => {
@@ -604,8 +604,9 @@ async fn serve(options: &Options) -> Result<(), String> {
                     loop {
                         match warming.refresh(&relay, &reader).await {
                             Ok(admitted) => eprintln!(
-                                "gym records: {} verified results, {} refused",
+                                "gym records: {} verified results, {} test sets, {} refused",
                                 admitted.results.len(),
+                                admitted.suites.len(),
                                 admitted.refused.len()
                             ),
                             Err(why) => eprintln!("gym records not read: {why}"),
@@ -1965,6 +1966,9 @@ impl Job {
         let mut model_started = false;
         let mut draining = true;
         let mut served: Option<Served> = None;
+        // A grounded Gym reply's citations are for us: they are taken out
+        // as the reply streams, with the items the model was given.
+        let mut tidy: Option<(router::gym::Tidy, Vec<router::gym::Item>)> = None;
         let send = |seq: u64, text: &str| {
             publish(FEEDBACK_KIND, partial_payload(version, seq, text))
                 .map_err(GenerateError::Stream)
@@ -2214,6 +2218,7 @@ impl Job {
                                     if let Some(record) = &mut served {
                                         record.citations = items.iter().map(Into::into).collect();
                                     }
+                                    tidy = Some((router::gym::Tidy::default(), items));
                                 }
                                 router::gym::Reply::Model => {
                                     (generating, incoming) = start_model(
@@ -2382,7 +2387,10 @@ impl Job {
                 }
                 delta = incoming.recv(), if draining => match delta {
                     Some(delta) => {
-                        buffer.push_str(&delta);
+                        match &mut tidy {
+                            Some((tidying, _)) => buffer.push_str(&tidying.push(&delta)),
+                            None => buffer.push_str(&delta),
+                        }
                         // The model's first delta goes at once, so a reader
                         // sees the answer begin; later ones collect.
                         if buffer.len() >= PARTIAL_BYTES || !model_started {
@@ -2401,7 +2409,26 @@ impl Job {
                     None => draining = false,
                 },
                 answered = &mut generating => {
-                    return answered.map(|(text, usage)| (format!("{lead}{text}"), usage, served));
+                    return answered.map(|(text, usage)| {
+                        let text = match &tidy {
+                            Some((_, items)) => {
+                                let cited = router::gym::check_reply(&text, items);
+                                let shown = router::gym::tidy(&text);
+                                let check = router::gym::post_check(&shown);
+                                // Ids and words only, never the reply.
+                                eprintln!(
+                                    "router gym reply: {} cited, {} invented, banned {:?}, {} raw ids",
+                                    cited.known.len(),
+                                    cited.invented.len(),
+                                    check.banned,
+                                    check.raw.len()
+                                );
+                                shown
+                            }
+                            None => text,
+                        };
+                        (format!("{lead}{text}"), usage, served)
+                    });
                 }
             }
         }

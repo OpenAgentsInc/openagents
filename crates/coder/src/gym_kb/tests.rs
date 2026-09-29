@@ -402,17 +402,164 @@ fn checks_are_counted_as_the_profile_links_them() {
     assert_eq!(pending.refused.len(), 2);
 }
 
-/// The relay filter asks for the profile's publications only.
+/// The relay filters ask for the profile's publications and the starter
+/// publishers' releases only.
 #[test]
 fn the_relay_filter_names_the_profile() {
     assert_eq!(
         filter(),
         json!({ "kinds": [3189], "#t": ["oa:ext-eval:v1"], "limit": MAX_RESULTS })
     );
+    assert_eq!(
+        suite_filter(),
+        json!({
+            "kinds": [3184],
+            "authors": [nostr::eval_ext::hosted::RUNNER],
+            "#t": ["oa:ext:release:v1"],
+            "limit": MAX_SUITES,
+        })
+    );
+}
+
+// The starter release as the hosted runner published it on 2026-09-29:
+// Project map's test set, its `3184` from the relay and its three files
+// from the runner's bucket, byte for byte.
+const STARTER_RELEASE: &str = include_str!("../../fixtures/gym/starter-release/release.json");
+const STARTER_MANIFEST: &[u8] = include_bytes!("../../fixtures/gym/starter-release/manifest.json");
+const STARTER_SUITE: &[u8] = include_bytes!("../../fixtures/gym/starter-release/suite.json");
+const STARTER_CASES: &[u8] = include_bytes!("../../fixtures/gym/starter-release/cases.json");
+
+fn starter_files() -> Fetched {
+    let files = [STARTER_MANIFEST, STARTER_SUITE, STARTER_CASES]
+        .into_iter()
+        .map(|bytes| (digest_bytes(bytes), Arc::new(bytes.to_vec())))
+        .collect();
+    Fetched { files }
+}
+
+fn starter_release() -> Event {
+    serde_json::from_str(STARTER_RELEASE).expect("the release parses")
+}
+
+/// The published starter test set reads as Project map's, with its six
+/// tests, and the offer names the starter catalog's reference the hosted
+/// runner admits; a missing file is asked for by digest, one at a time.
+#[test]
+fn a_starter_release_reads_as_its_tools_test_set() {
+    let release = starter_release();
+    let tools = tools(&corpus());
+    let suite = Fetched::suite(&starter_files(), &release, &tools).expect("the release reads");
+    assert_eq!(suite.tool.as_deref(), Some(DEFAULT_TOOL));
+    assert_eq!(suite.tool_name, "Project map");
+    assert_eq!(suite.cases, 6);
+    assert_eq!(suite.release.id, release.id);
+    assert_eq!(suite.release.kind, 3184);
+    assert_eq!(suite.author, nostr::eval_ext::hosted::RUNNER);
+    assert_eq!(suite.at, release.created_at);
+    assert_eq!(
+        suite.subject.id,
+        format!(
+            "{}:openagents/repo-map",
+            ext_eval::author::catalog::STARTER_KEY
+        )
+    );
+    // Every catalog tool has a reference the runner admits.
+    for tool in &tools {
+        assert!(catalog_definition(tool).is_some(), "{}", tool.id);
+    }
+
+    let asked = std::cell::RefCell::new(Vec::new());
+    let have = [STARTER_MANIFEST];
+    let result = suite_record(&release, &tools, &|digest| {
+        asked.borrow_mut().push(digest.to_string());
+        have.iter()
+            .find(|bytes| digest_bytes(bytes) == digest)
+            .map(|bytes| bytes.to_vec())
+    });
+    assert_eq!(
+        result,
+        Err(ReleaseError::Missing(digest_bytes(STARTER_SUITE)))
+    );
+
+    assert!(is_test_set_release(&release));
+    let mut tool_release = release.clone();
+    tool_release.content = tool_release
+        .content
+        .replace("project-map-tests", "project-map");
+    assert!(!is_test_set_release(&tool_release));
+
+    // Admitted through `admit`, the test set is the one `eval.run` offers.
+    let admitted = admit(&tools, &[], &starter_files(), &[release], &[]);
+    assert!(admitted.refused.is_empty(), "{:?}", admitted.refused);
+    assert_eq!(admitted.suites, vec![suite]);
+}
+
+/// A release another key signed, a forged one, or one whose files don't
+/// match its digests is refused, and nothing it says is read.
+#[test]
+fn a_release_that_does_not_check_is_refused() {
+    let release = starter_release();
+    let tools = tools(&corpus());
+    let files = starter_files();
+
+    let other = signer("someone").sign(
+        release.created_at,
+        release.kind,
+        release.tags.clone(),
+        release.content.clone(),
+    );
+    let mut forged = release.clone();
+    forged.content = forged
+        .content
+        .replace("project-map-tests", "code-finder-tests");
+    let mut wrong = starter_files();
+    let manifest = digest_bytes(STARTER_MANIFEST);
+    wrong
+        .files
+        .insert(manifest, Arc::new(STARTER_SUITE.to_vec()));
+
+    for (event, reader) in [(&other, &files), (&forged, &files), (&release, &wrong)] {
+        assert!(
+            matches!(
+                suite_record(event, &tools, &|digest| {
+                    reader.files.get(digest).map(|bytes| bytes.to_vec())
+                }),
+                Err(ReleaseError::Refused(_))
+            ),
+            "{}",
+            event.id
+        );
+    }
+    // No tool in the catalog: refused, not guessed.
+    assert!(matches!(
+        Fetched::suite(&files, &release, &[]),
+        Err(why) if why.contains("no tool")
+    ));
+}
+
+/// The starter quests name the same publishers the router reads.
+#[test]
+fn the_starter_publishers_are_the_quests() {
+    let dir = knowledge::product::repository().join("knowledge/quests");
+    let mut seen = 0;
+    for name in ["project-map", "code-finder", "test-reader"] {
+        let text = std::fs::read_to_string(dir.join(format!("ext-eval.{name}.json"))).unwrap();
+        let quest: Value = serde_json::from_str(&text).unwrap();
+        let publishers: Vec<&str> = quest["suite"]["publishers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(Value::as_str)
+            .collect();
+        assert_eq!(publishers, STARTER_PUBLISHERS, "{name}");
+        assert_eq!(quest["suite"]["package"], format!("{name}-tests"));
+        seen += 1;
+    }
+    assert_eq!(seen, 3);
 }
 
 fn knowledge(judge: Arc<dyn Judge>) -> GymKnowledge<Words> {
-    GymKnowledge::new(&corpus(), Words, "words", judge, Arc::new(PendingReleases))
+    GymKnowledge::new(&corpus(), Words, "words", judge, None)
 }
 
 fn lookup(message: &str) -> GymLookup {
@@ -487,4 +634,54 @@ fn the_questions_ask_relevance_for_each_candidate() {
     assert_eq!(questions.iter().count(), items.len());
     let state = state(&lookup("what's new?"), &items);
     assert_eq!(state["records"]["item_1"]["record"], items[0].text());
+}
+
+/// Live: the deployed relay and the runner's bucket hold the three starter
+/// test sets, and a refresh reads each as its tool's, so `eval.run` offers
+/// every catalog tool a test to start.
+///
+/// ```sh
+/// cargo test -p coder --lib live_starter_test_sets -- --ignored --nocapture
+/// ```
+#[tokio::test]
+#[ignore = "reads the production relay and the runner's bucket"]
+async fn live_starter_test_sets() {
+    let secret: String = Sha256::digest(format!("gym-kb-live-{:?}", std::time::SystemTime::now()))
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    let identity = crate::relay::Identity::from_text(&secret, "a throwaway key").unwrap();
+    let gym = GymKnowledge::new(
+        &corpus(),
+        Words,
+        "words",
+        Arc::new(Down),
+        Some(SUITE_BLOBS.to_string()),
+    );
+    let started = std::time::Instant::now();
+    let admitted = gym
+        .refresh("wss://relay.openagents.com", &identity)
+        .await
+        .expect("the relay reads");
+    println!(
+        "{} results, {} test sets, {} refused in {} ms",
+        admitted.results.len(),
+        admitted.suites.len(),
+        admitted.refused.len(),
+        started.elapsed().as_millis()
+    );
+    for (id, why) in &admitted.refused {
+        println!("refused {}: {why}", &id[..12]);
+    }
+    let records = gym.records();
+    for tool in &records.tools {
+        let suite = records
+            .suite(&tool.id)
+            .expect("a test set per catalog tool");
+        println!(
+            "{}: {} tests, release {}",
+            tool.name, suite.cases, suite.release.id
+        );
+        assert!(suite.cases > 0 && suite.cases <= nostr::eval_ext::HOSTED_MAX_CASES);
+    }
 }
