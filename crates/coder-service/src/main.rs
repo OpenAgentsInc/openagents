@@ -6,6 +6,7 @@
 //! coder-service [--root DIR] run
 //! coder-service [--root DIR] update --to SHA256 [--wait SECONDS]
 //! coder-service [--root DIR] descriptor
+//! coder-service adopt detect
 //! ```
 //!
 //! The host root defaults to `~/.openagents/host`. Read
@@ -27,7 +28,7 @@ extern "C" fn on_signal(_: libc::c_int) {
     STOP.store(true, Ordering::SeqCst);
 }
 
-const USAGE: &str = "usage: coder-service [--root DIR] (service (install|status|restart|uninstall|render) | run | update --to SHA256 [--wait SECONDS] | descriptor)";
+const USAGE: &str = "usage: coder-service [--root DIR] (service (install|status|restart|uninstall|render) | run | update --to SHA256 [--wait SECONDS] | descriptor | adopt detect)";
 
 fn main() -> ExitCode {
     match real_main() {
@@ -136,6 +137,21 @@ fn real_main() -> Result<ExitCode> {
             }
             print(&serde_json::json!({ "result": "waiting", "request": request.id }))?;
             return Ok(ExitCode::from(3));
+        }
+        ["adopt", "detect"] => {
+            // Read-only: what the desktop app would adopt. No secret.
+            let paths = coder_service::adopt::Paths::under(&home);
+            let now = coder_service::fsx::now_ms() / 1000;
+            let detection = coder_service::adopt::detect(&paths, now)?;
+            let status = match Config::load(&Layout::new(&paths.host_root)) {
+                Ok(config) => Some(service::status(
+                    &Layout::new(&paths.host_root),
+                    &config,
+                    &mut SystemRunner,
+                )?),
+                Err(_) => None,
+            };
+            print(&serde_json::json!({ "detection": detection, "service": status }))?;
         }
         ["descriptor", ..] => match launcher::read_descriptor(&layout)? {
             Some(descriptor) => print(&descriptor)?,

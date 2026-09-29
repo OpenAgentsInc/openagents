@@ -19,6 +19,10 @@
 //! [`generation`] owns the host root's one generation counter, which the
 //! launcher and a standalone `coder host serve` both advance.
 //!
+//! [`adopt`] moves a host set up the old way (key files and this crate's
+//! agent) to the desktop app: keys into the keychain, the old agent out,
+//! the same state kept.
+//!
 //! [`snapshot`] copies and restores the host's state directories for the
 //! launcher. [`bundle`] reads the immutable, digest-named bundles that
 //! `scripts/coder-host.py` stages; this crate never stages a binary.
@@ -27,6 +31,7 @@
 //! `supervise` crate does. Read `docs/coder/runtime/host-service.md` before
 //! you change a state transition, a rendered unit, or the descriptor.
 
+pub mod adopt;
 pub mod bundle;
 pub mod descriptor;
 pub mod fsx;

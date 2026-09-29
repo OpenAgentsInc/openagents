@@ -19,6 +19,7 @@ sha2 = "0.10"
 supervise = { path = "../supervise", default-features = false }
 
 [dev-dependencies]
+coder-access = { path = "../coder-access" }
 tempfile = "3"
 
 [lints]

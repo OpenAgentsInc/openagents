@@ -288,6 +288,20 @@ A client that asked for an update reconnects and reads the descriptor: it
 sees `update.state` `committed` with `update.target` equal to `version`, or
 `rolled-back` with a reason and the previous `version`.
 
+## Adoption by the desktop app
+
+The desktop app adopts a host this crate installed (`coder_service::adopt`,
+[#9973](https://github.com/OpenAgentsInc/openagents/issues/9973)): it copies
+`~/.openagents/coder-access/host.key`, and
+`~/.openagents/coder-owner/owner.key` when that is the access store's owner,
+into the keychain (service `com.openagents.desktop`, accounts `host-key` and
+`owner-key`, 64 hex characters each), reads each back, uninstalls this
+crate's agent, deletes the key files under the access store's lock, and
+registers its own agent on the same `~/.openagents` state. Grants, epochs,
+`serve.json` (tailnet admission included), the auto-start policy, and tasks
+are not written. `coder-service adopt detect` prints what would be adopted
+and changes nothing.
+
 ## Limits
 
 - **Linux runtime.** The

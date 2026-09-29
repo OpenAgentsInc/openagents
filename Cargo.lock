@@ -1440,6 +1440,7 @@ dependencies = [
 name = "coder-service"
 version = "0.1.0"
 dependencies = [
+ "coder-access",
  "libc",
  "secp256k1 0.31.1",
  "serde",
