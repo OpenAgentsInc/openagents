@@ -14,26 +14,28 @@ tabs, navigation, the camera, keyboards, the Keystore, and the Verse
 The app has four tabs, shown as white icons on black:
 
 - **Coder** (the code icon) opens on a new chat, ready to type: the
-  composer has the cursor, the line above it says what the message starts,
-  and a few suggested actions sit above the field. With a computer this
-  phone may operate ready, a new chat starts Coder there as a NIP-HOST
-  `task.create` in the workspace the line names; **Chat here instead**
-  switches to the basic Coder, **Start on** switches back, **Change** picks
-  another computer, and the workspace buttons pick another of its
-  workspaces (the one this phone used last comes first). The suggestions
-  also continue the newest chats, and with no computer added they offer
-  **Connect a computer**, which opens Account > Computers. The basic Coder
-  needs no computer: each message is a NIP-CJ conversation job signed by
-  the device key and sent, NIP-44 encrypted, through `relay.openagents.com`
-  to the OpenAgents chat worker, and the reply streams back as partials
-  drawn with incremental Markdown. The app holds no model key; the worker
-  meters each caller key (see `INVARIANTS.md`). From a conversation,
-  **Run Coder on** a computer starts Coder on it with the conversation so
+  composer has the cursor, a selector beside the **Coder** title says
+  where the message goes, and suggested actions sit above the field as
+  chips. With a computer this phone may operate ready, a new chat starts
+  Coder there as a NIP-HOST `task.create` in the workspace the selector
+  names; tapping the selector offers each computer, **Cloud** (the basic
+  Coder), and **Connect a computer**. The chips continue the newest chats
+  and pick another of the computer's workspaces (the one this phone used
+  last comes first), and with no computer added they offer **Connect a
+  computer**, which opens Account > Computers. The basic Coder needs no
+  computer: each message is a NIP-CJ conversation job signed by the device
+  key and sent, NIP-44 encrypted, through `relay.openagents.com` to the
+  OpenAgents chat worker, over one signed-in connection kept while the tab
+  shows, and the reply streams back, opener first, as partials drawn with
+  incremental Markdown. The app holds no model key; the worker meters each
+  caller key (see `INVARIANTS.md`). From a conversation, **Run Coder on** a
+  computer starts Coder on it with the conversation so
   far. The menu button at the top left opens the previous chats, newest
   first: basic conversations and Coder's tasks on your computers, painted
   from what the phone kept while the computers are read again. Only Coder's
   chats show; the phone does not list Claude Code, Codex, OpenCode, or
-  Devin sessions. An open Coder chat follows the task's transcript. Later
+  Devin sessions; one a Coder task delegated shows inside its chat as a
+  **Delegated to** row. An open Coder chat follows the task's transcript. Later
   messages are durable `task.command`s that continue, queue, steer, or
   answer; a long press on send offers the other ways to send, as a menu.
   An open chat's header has the menu button, its phase and computer, and a

@@ -8,11 +8,11 @@
 //! and offers to try again. When the person runs Coder on a computer from a
 //! conversation, the task it started is remembered with it.
 
-use crate::basic_coder::{self, Door, Reply, Role, Turn, lock};
+use crate::basic_coder::{self, Door, Lane, Reply, Role, Turn, lock};
 use coder_computers::cache::Cache;
 use rust_native::markdown::IncrementalMarkdown;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex};
 use tokio::runtime::Handle;
 use tokio::task::JoinHandle;
@@ -75,7 +75,18 @@ pub(crate) struct BasicChats {
     turns: BTreeMap<String, Vec<Turn>>,
     streams: BTreeMap<String, Stream>,
     failures: BTreeMap<String, String>,
+    /// Where the worker's judgment placed each conversation's last reply.
+    lanes: BTreeMap<String, Lane>,
+    /// The worker's ordering of a new chat's suggestions, for one set of
+    /// candidate IDs.
+    ranking: Option<(BTreeSet<String>, Arc<Mutex<Reply>>)>,
+    /// A rank job may go: once each time the tab shows, since it is metered
+    /// as a message.
+    rank_allowed: bool,
 }
+
+/// A new chat's suggestions this few are shown as they are, unranked.
+const RANK_AT_LEAST: usize = 2;
 
 impl BasicChats {
     /// Conversations kept in `store`, answered through `door` on `runtime`.
@@ -96,6 +107,9 @@ impl BasicChats {
             turns: BTreeMap::new(),
             streams: BTreeMap::new(),
             failures: BTreeMap::new(),
+            lanes: BTreeMap::new(),
+            ranking: None,
+            rank_allowed: false,
         }
     }
 
@@ -126,9 +140,81 @@ impl BasicChats {
         self.turns.get(id).map_or(&[], Vec::as_slice)
     }
 
-    /// Whether a reply is streaming into any conversation.
+    /// Whether a reply is streaming into any conversation, or the worker is
+    /// ranking the suggestions.
     pub(crate) fn streaming(&self) -> bool {
         !self.streams.is_empty()
+            || self
+                .ranking
+                .as_ref()
+                .is_some_and(|(_, reply)| !lock(reply).ended())
+    }
+
+    /// Keep the way to the worker open while the tab shows, and let the
+    /// next new chat's suggestions be ranked once.
+    pub(crate) fn warm(&mut self) {
+        self.rank_allowed = true;
+        if let (Some(door), Some(runtime)) = (&self.door, &self.runtime) {
+            door.warm(runtime);
+        }
+    }
+
+    /// Close the way to the worker once no reply waits on it.
+    pub(crate) fn rest(&self) {
+        if let Some(door) = &self.door {
+            door.rest();
+        }
+    }
+
+    /// Where the worker's judgment placed the last reply of `id`.
+    pub(crate) fn lane(&self, id: &str) -> Option<Lane> {
+        self.lanes.get(id).copied()
+    }
+
+    /// Ask the worker once to order a new chat's suggestions (ID and
+    /// label), when there are enough to order, this set was not asked
+    /// about already, and the tab has shown since the last rank job.
+    pub(crate) fn want_rank(&mut self, candidates: Vec<(String, String)>) {
+        if candidates.len() < RANK_AT_LEAST || !self.rank_allowed {
+            return;
+        }
+        let set: BTreeSet<String> = candidates.iter().map(|(id, _)| id.clone()).collect();
+        if self
+            .ranking
+            .as_ref()
+            .is_some_and(|(asked, _)| *asked == set)
+        {
+            return;
+        }
+        let (Some(door), Some(runtime)) = (&self.door, &self.runtime) else {
+            return;
+        };
+        self.rank_allowed = false;
+        let reply = Arc::new(Mutex::new(Reply::default()));
+        runtime.spawn(door.rank(candidates, reply.clone()));
+        self.ranking = Some((set, reply));
+    }
+
+    /// Order `items` by the worker's ranking when it answered for exactly
+    /// their IDs; otherwise, or when it failed, leave the phone's order.
+    pub(crate) fn rank_order<T>(&self, items: &mut [(String, T)]) {
+        let Some((set, reply)) = &self.ranking else {
+            return;
+        };
+        if set.len() != items.len() || !items.iter().all(|(id, _)| set.contains(id)) {
+            return;
+        }
+        let reply = lock(reply);
+        if !reply.done || reply.ranked.is_empty() {
+            return;
+        }
+        items.sort_by_key(|(id, _)| {
+            reply
+                .ranked
+                .iter()
+                .position(|ranked| ranked == id)
+                .unwrap_or(usize::MAX)
+        });
     }
 
     /// Whether a reply is streaming into `id`.
@@ -223,6 +309,7 @@ impl BasicChats {
 
     fn ask(&mut self, id: &str) {
         self.failures.remove(id);
+        self.lanes.remove(id);
         let reply = Arc::new(Mutex::new(Reply::default()));
         let turns = self.turns.get(id).cloned().unwrap_or_default();
         let handle = match (&self.door, &self.runtime) {
@@ -254,6 +341,11 @@ impl BasicChats {
                 continue;
             };
             let reply = lock(&stream.reply).clone();
+            if let Some(lane) = reply.lane
+                && self.lanes.insert(id.clone(), lane) != Some(lane)
+            {
+                changed = true;
+            }
             if reply.text.len() != stream.markdown.source().len() {
                 stream.markdown.set(&reply.text);
                 changed = true;

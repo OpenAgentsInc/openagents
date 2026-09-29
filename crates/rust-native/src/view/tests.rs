@@ -634,6 +634,7 @@ fn a_button_icon_is_optional_and_keeps_its_label() {
     let icon = Icon {
         glyph: Glyph::Compose,
         circular: true,
+        pill: false,
     };
     let encoded = button(Some(icon)).validate().unwrap().to_json().unwrap();
     let decoded = View::<Intent>::from_json(&encoded).unwrap();
@@ -647,4 +648,52 @@ fn a_button_icon_is_optional_and_keeps_its_label() {
         *label = " ".into();
     }
     assert!(matches!(unnamed.validate(), Err(ViewError::MissingLabel)));
+    // A glyph without `pill` encodes as before; a pill chip round-trips.
+    assert!(!String::from_utf8(encoded).unwrap().contains("pill"));
+    let chip = Icon {
+        glyph: Glyph::History,
+        circular: false,
+        pill: true,
+    };
+    let encoded = button(Some(chip)).validate().unwrap().to_json().unwrap();
+    assert!(
+        String::from_utf8(encoded.clone())
+            .unwrap()
+            .contains(r#""glyph":"history","circular":false,"pill":true"#)
+    );
+    let decoded = View::<Intent>::from_json(&encoded).unwrap();
+    assert!(matches!(
+        decoded.view().root.element,
+        Element::Button { icon: Some(i), .. } if i == chip
+    ));
+}
+
+#[test]
+fn a_wrapping_stack_round_trips() {
+    let view: View<Intent> = View::new(
+        "instance",
+        1,
+        Node {
+            key: "chips".into(),
+            style: Style::default(),
+            element: Element::Stack {
+                axis: Axis::Wrap,
+                children: vec![],
+            },
+        },
+    );
+    let encoded = view.validate().unwrap().to_json().unwrap();
+    assert!(
+        String::from_utf8(encoded.clone())
+            .unwrap()
+            .contains(r#""axis":"wrap""#)
+    );
+    let decoded = View::<Intent>::from_json(&encoded).unwrap();
+    assert!(matches!(
+        decoded.view().root.element,
+        Element::Stack {
+            axis: Axis::Wrap,
+            ..
+        }
+    ));
 }

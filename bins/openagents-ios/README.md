@@ -14,28 +14,40 @@ The Android build, with the same tabs and the same Rust library, is in
 The app has four tabs, shown as icons:
 
 - **Coder** (the code icon) opens on a new chat, ready to type: the
-  composer has the cursor, the line above it says what the message starts,
-  and a few suggested actions sit above the field. With a computer this
-  phone may operate ready, a new chat starts Coder there: a NIP-HOST
-  `task.create` in the workspace the line names, the same operation as
-  Order work; with the host's auto-start policy on, the host runs Coder's
-  engine right away. **Chat here instead** switches to the basic Coder,
-  **Start on** switches back, **Change** picks another computer, and the
-  workspace buttons pick another of its workspaces (the one this phone used
-  last comes first). The suggestions also continue the newest chats, and
-  with no computer added they offer **Connect a computer**, which opens
-  Account > Computers. The basic Coder needs no computer: each message is a
-  NIP-CJ conversation job signed by the device key and sent, NIP-44
+  composer has the cursor, a selector beside the **Coder** title says
+  where the message goes, and suggested actions sit above the field as
+  chips. With a computer this phone may operate ready, a new chat starts
+  Coder there: a NIP-HOST `task.create` in the workspace the selector
+  names (**Studio Mac · openagents**), the same operation as Order work;
+  with the host's auto-start policy on, the host runs Coder's engine right
+  away. Tapping the selector offers each computer, **Cloud** (the basic
+  Coder), and **Connect a computer**, with a check on the current one. The
+  chips continue the newest chats (a clock glyph), pick another of the
+  computer's workspaces (a folder glyph; the one this phone used last
+  comes first), and, with no computer added, **Connect a computer**,
+  which opens Account > Computers. The chat worker's `rank` job may order
+  the chips once each time the tab shows; the phone's own order stands
+  when it does not answer. The basic Coder needs no computer: each message
+  is a NIP-CJ conversation job signed by the device key and sent, NIP-44
   encrypted, through `relay.openagents.com` to the OpenAgents chat worker,
   and the reply streams back as partials drawn with incremental Markdown.
-  The app holds no model key; the worker meters each caller key (see
-  `INVARIANTS.md`). From a conversation, **Run Coder on** a computer starts
-  Coder on it with the conversation so far.
+  The job asks for the worker's first response (`opener`), so a short
+  opener shows about half a second after sending while the model starts,
+  and while the tab shows the phone keeps one signed-in relay connection
+  with its subscription placed, so a message only publishes its request;
+  the connection closes in the background. The app holds no model key; the
+  worker meters each caller key (see `INVARIANTS.md`). From a
+  conversation, **Run Coder on** a computer starts Coder on it with the
+  conversation so far; when the worker's judgment places the message on a
+  computer, it shows as a chip.
   The menu button at the top left opens the previous chats, newest first:
   basic conversations and Coder's tasks on your computers, painted from
   what the phone kept while the computers are read again. Only Coder's
   chats show; the phone does not list Claude Code, Codex, OpenCode, or
-  Devin sessions. An open Coder chat reads the task's ATIF transcript
+  Devin sessions. A session a Coder task delegated to OpenCode or Devin
+  shows inside its chat, where the task's transcript notes it, as a
+  **Delegated to OpenCode** (or Devin) row that opens to the session's
+  messages, read through the same observer. An open Coder chat reads the task's ATIF transcript
   through the computer's read-only history observer (its `coder` source)
   and follows it while the task runs: the model's replies, the commands it
   ran with their output, and how the run ended. A message in a finished

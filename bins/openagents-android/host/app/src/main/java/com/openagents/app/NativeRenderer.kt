@@ -81,8 +81,14 @@ class NativeRenderer(
         val kind = when {
             elementKind == "text" -> "text:${props.getString("role")}"
             // A glyph button from the closed set; an unknown glyph shows the label.
-            elementKind == "button" && glyph(props) != null ->
-                if (props.getJSONObject("icon").optBoolean("circular")) "button:circle" else "button:link"
+            elementKind == "button" && glyph(props) != null -> props.getJSONObject("icon").let { icon ->
+                when {
+                    icon.optBoolean("circular") -> "button:circle"
+                    icon.optBoolean("pill") -> "button:pill"
+                    else -> "button:link"
+                }
+            }
+            elementKind == "stack" && props.getString("axis") == "wrap" -> "stack:wrap"
             else -> elementKind
         }
         val mounted = mounts[key]?.takeIf { it.kind == kind } ?: create(kind, props).also { mounts[key] = it }
@@ -108,6 +114,18 @@ class NativeRenderer(
                     node(child, depth + 1) to params
                 })
             }
+            "stack:wrap" -> (view as NativeFlow).apply {
+                gap = space(style.textOrNull("gap"))
+                val children = props.getJSONArray("children").objects().map { node(it, depth + 1) }
+                children.forEachIndexed { index, child ->
+                    if (getChildAt(index) !== child) {
+                        (child.parent as? ViewGroup)?.removeView(child)
+                        addView(child, index.coerceAtMost(childCount), ViewGroup.LayoutParams(-2, -2))
+                    }
+                }
+                while (childCount > children.size) removeViewAt(childCount - 1)
+                requestLayout()
+            }
             "list" -> {
                 view.contentDescription = props.getString("label")
                 replaceChildren(mounted.rows!!, props.getJSONArray("children").objects().map { child ->
@@ -120,7 +138,7 @@ class NativeRenderer(
                 isEnabled = props.getBoolean("enabled")
                 alpha = if (isEnabled) 1f else 0.4f
             }
-            "button:circle", "button:link" -> {
+            "button:circle", "button:link", "button:pill" -> {
                 val label = props.getString("label")
                 val enabled = props.getBoolean("enabled")
                 view.isEnabled = enabled; view.alpha = if (enabled) 1f else 0.4f
@@ -128,9 +146,10 @@ class NativeRenderer(
                 val inner = (view as FrameLayout).getChildAt(0)
                 (inner.layoutParams as FrameLayout.LayoutParams).gravity =
                     (if (style.textOrNull("align") == "end") Gravity.END else Gravity.START) or Gravity.CENTER_VERTICAL
-                if (kind == "button:link") (inner as TextView).apply {
+                if (kind != "button:circle") (inner as TextView).apply {
                     if (text.toString() != label) text = label
-                    val icon = context.getDrawable(glyph(props)!!)?.apply { setBounds(0, 0, context.dp(18), context.dp(18)) }
+                    val size = context.dp(if (kind == "button:pill") 16 else 18)
+                    val icon = context.getDrawable(glyph(props)!!)?.apply { setBounds(0, 0, size, size) }
                     setCompoundDrawables(icon, null, null, null)
                 } else (inner as android.widget.ImageView).setImageResource(glyph(props)!!)
                 inner.requestLayout()
@@ -211,6 +230,21 @@ class NativeRenderer(
             isClickable = true; isFocusable = true
             setOnClickListener { v -> if (v.isEnabled) (v.getTag(R.id.native_key) as? String)?.let { activateNode(it) } }
         })
+        kind == "button:pill" -> Mounted(kind, FrameLayout(context).apply {
+            // A chip: the glyph and one line of label in a capsule.
+            addView(context.text("", 15f).apply {
+                compoundDrawablePadding = context.dp(6)
+                gravity = Gravity.CENTER_VERTICAL
+                maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.MIDDLE
+                minHeight = context.dp(36)
+                setPadding(context.dp(14), 0, context.dp(14), 0)
+                background = context.rounded(Palette.RAISED, 18f, Palette.BORDER)
+                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            }, FrameLayout.LayoutParams(-2, -2))
+            isClickable = true; isFocusable = true
+            setOnClickListener { v -> if (v.isEnabled) (v.getTag(R.id.native_key) as? String)?.let { activateNode(it) } }
+        })
+        kind == "stack:wrap" -> Mounted(kind, NativeFlow(context))
         kind == "stack" -> Mounted(kind, context.column())
         kind == "list" -> {
             val rows = context.column()
@@ -239,6 +273,12 @@ class NativeRenderer(
         "back" -> R.drawable.ic_glyph_back
         "compose" -> R.drawable.ic_glyph_compose
         "menu" -> R.drawable.ic_glyph_menu
+        "history" -> R.drawable.ic_glyph_history
+        "folder" -> R.drawable.ic_glyph_folder
+        "computer" -> R.drawable.ic_glyph_computer
+        "cloud" -> R.drawable.ic_glyph_cloud
+        "add" -> R.drawable.ic_glyph_add
+        "check" -> R.drawable.ic_glyph_check
         else -> null
     }
 
@@ -291,5 +331,38 @@ object TerminalMetrics {
         }
         val metrics = paint.fontMetrics
         return paint.measureText("M") to (metrics.descent - metrics.ascent)
+    }
+}
+
+/** Children left to right at their own sizes, continuing on the next line when the next does not fit. */
+class NativeFlow(context: Context) : ViewGroup(context) {
+    var gap = 0
+
+    override fun onMeasure(widthSpec: Int, heightSpec: Int) {
+        val width = (MeasureSpec.getSize(widthSpec) - paddingLeft - paddingRight).coerceAtLeast(0)
+        for (index in 0 until childCount) getChildAt(index).measure(
+            MeasureSpec.makeMeasureSpec(width, MeasureSpec.AT_MOST),
+            MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED))
+        val height = place(width) { _, _, _ -> }
+        setMeasuredDimension(MeasureSpec.getSize(widthSpec), height + paddingTop + paddingBottom)
+    }
+
+    override fun onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int) {
+        place(r - l - paddingLeft - paddingRight) { child, x, y ->
+            child.layout(paddingLeft + x, paddingTop + y, paddingLeft + x + child.measuredWidth, paddingTop + y + child.measuredHeight)
+        }
+    }
+
+    /** Visits each measured child at its place; returns the height the lines use. */
+    private fun place(width: Int, visit: (View, Int, Int) -> Unit): Int {
+        var x = 0; var y = 0; var line = 0
+        for (index in 0 until childCount) {
+            val child = getChildAt(index)
+            if (x > 0 && x + child.measuredWidth > width) { x = 0; y += line + gap; line = 0 }
+            visit(child, x, y)
+            x += child.measuredWidth + gap
+            line = maxOf(line, child.measuredHeight)
+        }
+        return y + line
     }
 }

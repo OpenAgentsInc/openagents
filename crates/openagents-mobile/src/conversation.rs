@@ -74,7 +74,20 @@ pub enum Entry {
         detail: String,
         body: String,
     },
+    /// The task's turn delegated to a whole coding agent (`opencode` or
+    /// `devin`): the transcript's `delegate_transcript` note, where the
+    /// agent's session shows, or why its copy failed.
+    Delegate {
+        agent: String,
+        session: String,
+        error: Option<String>,
+    },
 }
+
+/// The most rows of a delegate session one chat shows.
+const DELEGATE_ROWS: usize = 40;
+/// A delegate session's row, in a chat too large for one view.
+const COMPACT_DELEGATE_ROWS: usize = 8;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Row {
@@ -176,6 +189,9 @@ struct Inner {
     /// The computer said the newest source grew while a read ran: read
     /// again when it finishes.
     again: bool,
+    /// The rows of each delegate session the chat's notes name, by
+    /// session, as read through its own reader.
+    delegated: std::collections::BTreeMap<String, Vec<Row>>,
 }
 
 impl Inner {
@@ -388,6 +404,38 @@ impl Conversation {
             previous: inner.previous,
             through: inner.through,
         })
+    }
+
+    /// The delegate sessions the chat's notes name, as agent and session,
+    /// each once.
+    pub fn delegates(&self) -> Vec<(String, String)> {
+        let mut found: Vec<(String, String)> = vec![];
+        for row in &lock(&self.inner).rows {
+            if let Entry::Delegate {
+                agent,
+                session,
+                error: None,
+            } = &row.entry
+                && !found.iter().any(|(_, known)| known == session)
+            {
+                found.push((agent.clone(), session.clone()));
+            }
+        }
+        found
+    }
+
+    /// Show `rows`, a delegate session's, under the note that names
+    /// `session`.
+    pub fn delegated(&self, session: &str, rows: Vec<Row>) {
+        let mut inner = lock(&self.inner);
+        if inner.delegated.get(session) != Some(&rows) {
+            inner.delegated.insert(session.to_owned(), rows);
+        }
+    }
+
+    /// The rows read so far.
+    pub fn rows(&self) -> Vec<Row> {
+        lock(&self.inner).rows.clone()
     }
 
     /// How many of the user's messages with exactly `text` show.
@@ -667,7 +715,12 @@ fn transcript<I: Clone>(
     if let Some(error) = inner.error.as_ref().filter(|_| inner.rows.is_empty()) {
         children.push(system(&format!("{key}-error"), error));
     }
-    children.extend(inner.rows.iter().map(|row| draw(row, inner.compact)));
+    children.extend(
+        inner
+            .rows
+            .iter()
+            .map(|row| draw(row, inner.compact, &inner.delegated)),
+    );
     children.extend(pending.iter().map(sent));
     // One working row at most: the task's own state when it has one,
     // since it says more than the read that is still loading.
@@ -893,6 +946,10 @@ pub fn rows(chunks: &[RecordChunk]) -> Vec<Row> {
             .as_deref()
             .and_then(coder_history::readable_record_full);
         let carried = bytes.as_deref().is_some_and(carried);
+        if let Some(entry) = bytes.as_deref().and_then(delegate) {
+            out.push(Row::new(record, end, 0, entry));
+            continue;
+        }
         let Some(readable) = full.or_else(|| group.iter().rev().find_map(|c| c.readable.clone()))
         else {
             continue;
@@ -913,6 +970,36 @@ fn carried(bytes: &[u8]) -> bool {
     serde_json::from_slice::<serde_json::Value>(bytes)
         .ok()
         .is_some_and(|record| record.pointer("/step/extensions/carried_from").is_some())
+}
+
+/// The delegate note a Coder transcript record carries: a step whose
+/// `delegate_transcript` extension names the agent and its session, with
+/// the copy's file or why it failed.
+fn delegate(bytes: &[u8]) -> Option<Entry> {
+    let record = serde_json::from_slice::<serde_json::Value>(bytes).ok()?;
+    let note = record.pointer(&format!(
+        "/step/extensions/{}",
+        coder_history::delegate::NOTE
+    ))?;
+    let agent = note["agent"]
+        .as_str()
+        .filter(|a| matches!(*a, "opencode" | "devin"))?;
+    let session = note["session"]
+        .as_str()
+        .filter(|s| !s.is_empty() && s.len() <= 64)?;
+    Some(Entry::Delegate {
+        agent: agent.to_owned(),
+        session: session.to_owned(),
+        error: note["error"].as_str().map(|error| bounded(error, 300)),
+    })
+}
+
+/// A delegate agent's name as the chat shows it.
+fn agent_label(agent: &str) -> &'static str {
+    match agent {
+        "devin" => "Devin",
+        _ => "OpenCode",
+    }
 }
 
 /// What one record shows: messages by role, tool calls and results, or
@@ -1060,9 +1147,77 @@ fn sent<I>(pending: &Pending<'_>) -> Node<I> {
     )
 }
 
-fn draw<I>(row: &Row, compact: u8) -> Node<I> {
+fn draw<I>(
+    row: &Row,
+    compact: u8,
+    delegated: &std::collections::BTreeMap<String, Vec<Row>>,
+) -> Node<I> {
     let key = format!("r{}-{}-{}", row.segment, row.offset, row.part);
     match &row.entry {
+        // A compact row that opens to the delegate session, read-only.
+        Entry::Delegate {
+            agent,
+            session,
+            error,
+        } => {
+            let label = agent_label(agent);
+            let rows = delegated.get(session).map_or(&[][..], Vec::as_slice);
+            let (shown, bytes) = match compact {
+                0 => (DELEGATE_ROWS, 600),
+                1 => (COMPACT_DELEGATE_ROWS, 200),
+                _ => (0, 0),
+            };
+            let skip = rows.len().saturating_sub(shown);
+            let children = rows
+                .iter()
+                .skip(skip)
+                .enumerate()
+                .filter_map(|(index, row)| {
+                    let (value, role, color) = match &row.entry {
+                        Entry::Message { role, text } => (
+                            format!(
+                                "{}: {}",
+                                match role {
+                                    MessageRole::User => "Coder",
+                                    MessageRole::Assistant => label,
+                                    MessageRole::System => "Note",
+                                },
+                                bounded(text, bytes)
+                            ),
+                            TextRole::Body,
+                            WHITE,
+                        ),
+                        Entry::Tool { name, detail, .. } => (
+                            bounded(&format!("{name} {detail}"), bytes),
+                            TextRole::Code,
+                            GRAY,
+                        ),
+                        Entry::Delegate { .. } => return None,
+                    };
+                    Some(Node {
+                        key: format!("{key}-d{index}"),
+                        style: Style {
+                            foreground: Some(color),
+                            ..Style::default()
+                        },
+                        element: Element::Text { value, role },
+                    })
+                })
+                .collect();
+            node(
+                &key,
+                Element::Tool {
+                    name: format!("Delegated to {label}"),
+                    detail: error.clone().unwrap_or_else(|| session.clone()),
+                    state: if error.is_some() {
+                        ToolState::Failed
+                    } else {
+                        ToolState::Done
+                    },
+                    children,
+                },
+            )
+        }
         Entry::Message {
             role: MessageRole::System,
             text,
@@ -1249,7 +1404,7 @@ mod tests {
             .iter()
             .map(|row| match &row.entry {
                 Entry::Message { text, .. } => text.as_str(),
-                Entry::Tool { .. } => "",
+                Entry::Tool { .. } | Entry::Delegate { .. } => "",
             })
             .collect();
         assert_eq!(texts, ["Ask me.", "Apple or pear?", "Pear."]);
@@ -1364,6 +1519,90 @@ mod tests {
             text_truncated: false,
             unknown: false,
         }
+    }
+
+    /// A task transcript's delegate note becomes a row that opens to the
+    /// delegate session's rows, read-only; a failed copy says why.
+    #[test]
+    fn a_delegate_note_shows_the_delegated_session_under_it() {
+        let record = serde_json::json!({"step": {"source": "system", "message": "",
+            "extensions": {"delegate_transcript": {"agent": "opencode",
+                "session": "ses_abc", "file": "t.delegate.opencode.ses_abc.jsonl"}}}});
+        let bytes = format!("{record}\n");
+        let chunk = RecordChunk {
+            id: "c".into(),
+            index: 0,
+            record_offset: 0,
+            offset: 0,
+            end_offset: bytes.len() as u64,
+            raw_base64: base64::engine::general_purpose::STANDARD.encode(&bytes),
+            complete: true,
+            oversized: false,
+            readable: None,
+        };
+        let found = rows(&[chunk]);
+        assert_eq!(
+            found
+                .iter()
+                .map(|row| row.entry.clone())
+                .collect::<Vec<_>>(),
+            [Entry::Delegate {
+                agent: "opencode".into(),
+                session: "ses_abc".into(),
+                error: None,
+            }]
+        );
+        let mut inner = Inner {
+            rows: found,
+            ..Inner::default()
+        };
+        inner.delegated.insert(
+            "ses_abc".into(),
+            vec![
+                message(0, MessageRole::User, "Fix the test"),
+                message(10, MessageRole::Assistant, "Fixed."),
+            ],
+        );
+        let view = transcript(&inner, "t", (), &[], None);
+        let Element::Transcript { children, .. } = &view.element else {
+            panic!("a transcript");
+        };
+        let Element::Tool {
+            name,
+            detail,
+            state,
+            children,
+        } = &children[0].element
+        else {
+            panic!("a delegate row");
+        };
+        assert_eq!(name, "Delegated to OpenCode");
+        assert_eq!(detail, "ses_abc");
+        assert_eq!(*state, ToolState::Done);
+        let lines: Vec<&str> = children
+            .iter()
+            .map(|child| match &child.element {
+                Element::Text { value, .. } => value.as_str(),
+                _ => "",
+            })
+            .collect();
+        assert_eq!(lines, ["Coder: Fix the test", "OpenCode: Fixed."]);
+        let failed = Row::new(
+            0,
+            1,
+            0,
+            Entry::Delegate {
+                agent: "devin".into(),
+                session: "calm-river".into(),
+                error: Some("the store was locked".into()),
+            },
+        );
+        let view: Node<()> = draw(&failed, 0, &inner.delegated);
+        assert!(matches!(
+            view.element,
+            Element::Tool { ref name, state: ToolState::Failed, ref detail, .. }
+                if name == "Delegated to Devin" && detail == "the store was locked"
+        ));
     }
 
     #[test]

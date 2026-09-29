@@ -24,6 +24,10 @@ pub const MAX_TEXT_BYTES: usize = 64 * 1024;
 pub enum Axis {
     Vertical,
     Horizontal,
+    /// Left to right, continuing on the next line when the next child does
+    /// not fit, as a row of suggestion chips. An adapter without it lays
+    /// the children out vertically.
+    Wrap,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -169,6 +173,10 @@ pub struct Icon {
     /// Draw only the glyph in a circle, with the label as its spoken name.
     /// Otherwise the glyph leads the visible label, as a back link does.
     pub circular: bool,
+    /// Draw the glyph and the visible label together in a filled capsule,
+    /// as a suggestion chip or a selector. Ignored when `circular`.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub pill: bool,
 }
 
 /// The closed set of button glyphs. Adapters map each to a native symbol.
@@ -182,6 +190,18 @@ pub enum Glyph {
     /// Open a list of earlier items beside the screen, such as previous
     /// chats: a hamburger.
     Menu,
+    /// Continue something earlier, such as a recent chat.
+    History,
+    /// A folder, such as a computer's workspace.
+    Folder,
+    /// A computer.
+    Computer,
+    /// A hosted service, such as the cloud.
+    Cloud,
+    /// Add something, such as a computer.
+    Add,
+    /// The current choice among several.
+    Check,
 }
 
 /// The control that loads older rows at a transcript's top.

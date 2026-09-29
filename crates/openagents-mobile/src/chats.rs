@@ -8,12 +8,13 @@
 //! grant never admits a history read by itself. Reads run in the
 //! background; the host polls with `snapshot`.
 //!
-//! The phone keeps only Coder task chats. A computer that still lists its
-//! Claude Code, Codex, OpenCode, or Devin sessions in the same catalog has
-//! them ignored here, so the phone neither shows nor keeps them. A session
-//! Coder delegated to one of those harnesses belongs inside the Coder chat
-//! that delegated it, through the task's own transcript, never as a chat
-//! of its own.
+//! The phone keeps only Coder task chats and the sessions they delegated.
+//! A computer serves only those; an older one that still lists its Claude
+//! Code, Codex, OpenCode, or Devin sessions in the same catalog has them
+//! ignored here, so the phone neither shows nor keeps them. A session a
+//! Coder task delegated to OpenCode or Devin is listed as the task's
+//! subagent (`coder_history::delegate`); it shows inside the Coder chat
+//! that delegated it, never as a chat of its own.
 
 use coder_computers::cache::Cache;
 use coder_connect::direct::Change;
@@ -352,6 +353,37 @@ impl Chats {
         Some((computer.saved.code.host.clone(), client, chat))
     }
 
+    /// The copy of `agent`'s session `session` that Coder task `task` on
+    /// the machine whose Computers host key is `host` delegated to, with
+    /// the client that reads it. The host names it `<Agent> session <id>`
+    /// (`coder_history::delegate`).
+    pub fn delegate_chat(
+        &self,
+        host: &str,
+        task: &str,
+        agent: Harness,
+        session: &str,
+    ) -> Option<(Arc<Client>, Chat)> {
+        let title = format!("{} session {session}", agent_name(agent)?);
+        let state = lock(&self.state);
+        let computer = state
+            .computers
+            .iter()
+            .find(|c| c.saved.host.as_deref() == Some(host))?;
+        let client = computer.client.as_ref().ok()?.clone();
+        let chat = computer
+            .chats
+            .iter()
+            .find(|chat| {
+                delegated(chat)
+                    && chat.harness == agent
+                    && chat.native_id.as_deref() == Some(task)
+                    && chat.title == title
+            })?
+            .clone();
+        Some((client, chat))
+    }
+
     /// The observer client of the machine whose Computers host key is
     /// `host`, whether or not its catalog has been read.
     pub fn coder_client(&self, host: &str) -> Option<Arc<Client>> {
@@ -570,16 +602,34 @@ where
     }
 }
 
-/// Whether the phone keeps a chat: a Coder task's. Every other harness's
-/// session a computer lists is ignored.
+/// Whether a chat is a Coder task's own.
 fn coder(chat: &Chat) -> bool {
     chat.harness == Harness::Coder
 }
 
-/// Merge the Coder chats among `fresh` into `list`: a chat already listed
-/// is replaced in place, a new one is added. The Coder tab orders them.
+/// Whether a chat is a session a Coder task delegated to OpenCode or
+/// Devin: the task's subagent, named by the task's ID.
+fn delegated(chat: &Chat) -> bool {
+    chat.subagent
+        && matches!(chat.harness, Harness::OpenCode | Harness::Devin)
+        && chat
+            .native_id
+            .as_deref()
+            .is_some_and(|task| task.len() == 64 && task.bytes().all(|b| b.is_ascii_hexdigit()))
+}
+
+/// Whether the phone keeps a chat: a Coder task's, or a session one
+/// delegated. Every other harness's session an older computer lists is
+/// ignored.
+fn kept_chat(chat: &Chat) -> bool {
+    coder(chat) || delegated(chat)
+}
+
+/// Merge the chats the phone keeps among `fresh` into `list`: a chat
+/// already listed is replaced in place, a new one is added. The Coder tab
+/// orders them.
 fn merge(list: &mut Vec<Chat>, fresh: &[Chat]) {
-    for chat in fresh.iter().filter(|chat| coder(chat)) {
+    for chat in fresh.iter().filter(|chat| kept_chat(chat)) {
         match list.iter_mut().find(|known| known.id == chat.id) {
             Some(known) => known.clone_from(chat),
             None => list.push(chat.clone()),
@@ -623,7 +673,7 @@ fn kept(cache: &Cache, observer: &str) -> Option<Vec<Chat>> {
         .read(&format!("{CATALOG_KEY}{observer}"))
         .ok()
         .flatten()?;
-    chats.retain(coder);
+    chats.retain(kept_chat);
     Some(chats)
 }
 
@@ -631,7 +681,7 @@ fn kept(cache: &Cache, observer: &str) -> Option<Vec<Chat>> {
 /// empty list is not kept, so a relaunch never shows a computer as empty
 /// while a read that found nothing is still possible to redo.
 fn keep(cache: &Cache, observer: &str, mut chats: Vec<Chat>) {
-    chats.retain(coder);
+    chats.retain(kept_chat);
     if chats.is_empty() {
         return;
     }
@@ -699,6 +749,15 @@ where
         }
     }
     Ok((chats, complete))
+}
+
+/// The name the host gives a delegate agent in its sessions' titles.
+pub(crate) fn agent_name(agent: Harness) -> Option<&'static str> {
+    match agent {
+        Harness::OpenCode => Some("OpenCode"),
+        Harness::Devin => Some("Devin"),
+        Harness::Codex | Harness::Claude | Harness::Coder => None,
+    }
 }
 
 /// Whether a chat counts toward the Coder chats a read looks for: a Coder
@@ -895,6 +954,21 @@ mod speed {
         let mut newer = chat(100);
         newer.updated_at = Some("2026-09-29T00:00:00Z".into());
         list.push(newer.clone());
+        // A session a task delegated is kept for its chat; another
+        // harness's own session is not.
+        let task = "ab".repeat(32);
+        let mut delegate = chat(13);
+        delegate.id = "delegate-1".into();
+        delegate.harness = Harness::OpenCode;
+        delegate.subagent = true;
+        delegate.native_id = Some(task.clone());
+        delegate.title = "OpenCode session ses_1".into();
+        let mut mirrored = chat(13);
+        mirrored.harness = Harness::OpenCode;
+        merge(&mut list, &[delegate.clone(), mirrored]);
+        assert!(list.iter().any(|c| c.id == "delegate-1"));
+        assert!(!list.iter().any(|c| c.id == "chat-13"));
+        list.retain(|c| c.id != "delegate-1");
         merge(&mut list, &[renamed.clone(), chat(0), chat(12), chat(13)]);
         assert_eq!(list[1].title, "Renamed");
         prune(&mut list, &[renamed, chat(0), chat(12)], true);

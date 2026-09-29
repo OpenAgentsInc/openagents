@@ -16,6 +16,7 @@
 //! partial, next in sequence. A gap stops the preview; the result replaces
 //! it whole.
 
+use crate::basic_link::Link;
 use nostr::domain::{Event, RelaySigner, Tag};
 use nostr::kinds::{CJ_CONVERSATION_FEEDBACK, CJ_CONVERSATION_REQUEST, CJ_CONVERSATION_RESULT};
 use nostr::nip44;
@@ -45,12 +46,10 @@ reading or changing a repository, say that plainly in one sentence and tell them
 to tap Run Coder below the chat: it starts Coder on their connected computer with \
 this conversation, or helps them connect one first.";
 
-/// How long the worker has to answer at all.
+/// How long the worker has to answer at all, connection included.
 const CONTACT: Duration = Duration::from_secs(30);
 /// The longest one job may take, connection included.
 const LIFETIME: Duration = Duration::from_secs(120);
-/// The most relay frames one job reads.
-const FRAMES: usize = 2_048;
 /// The most conversation text one job sends, newest turns first.
 pub(crate) const MAX_TRANSCRIPT_BYTES: usize = 48 * 1024;
 /// The most streamed text one reply shows.
@@ -69,6 +68,19 @@ pub(crate) struct Turn {
     pub role: Role,
     pub text: String,
 }
+
+/// Where a turn belongs, as the worker's typed judgment (NIP-CJ
+/// `judgment`, its `lane`) says: an optional observation that grants
+/// nothing. The phone offers Run Coder on a computer beside a reply the
+/// judgment placed on a computer.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Lane {
+    Chat,
+    Computer,
+}
+
+/// The most candidates one rank job orders (NIP-CJ `rank`).
+pub(crate) const MAX_RANK_CANDIDATES: usize = 16;
 
 /// Why a reply did not arrive.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -135,6 +147,10 @@ pub(crate) struct Reply {
     pub failure: Option<Failure>,
     /// The model the worker named, an attribution claim.
     pub model: Option<String>,
+    /// Where the worker's first-response judgment says the turn belongs.
+    pub lane: Option<Lane>,
+    /// A rank job's ordering: candidate IDs, most likely first.
+    pub ranked: Vec<String>,
     /// The next partial's sequence number.
     next: u64,
     /// A gap or repeat stopped the preview; wait for the result.
@@ -159,10 +175,29 @@ pub(crate) trait Door: Send + Sync {
         turns: Vec<Turn>,
         reply: Arc<Mutex<Reply>>,
     ) -> Pin<Box<dyn Future<Output = ()> + Send>>;
+
+    /// Order `candidates` (ID and label) for a new chat with a rank job,
+    /// into `reply.ranked`. A door without ranking refuses.
+    fn rank(
+        &self,
+        _candidates: Vec<(String, String)>,
+        reply: Arc<Mutex<Reply>>,
+    ) -> Pin<Box<dyn Future<Output = ()> + Send>> {
+        lock(&reply).failure = Some(Failure::Transport("no ranking here".into()));
+        Box::pin(async {})
+    }
+
+    /// Keep the way to the worker open, as while the Coder tab shows.
+    fn warm(&self, _runtime: &tokio::runtime::Handle) {}
+
+    /// Close the way to the worker once no reply waits on it.
+    fn rest(&self) {}
 }
 
 /// The job's payload: the newest turns within [`MAX_TRANSCRIPT_BYTES`], the
-/// last user message as the task, and the basic Coder's instructions.
+/// last user message as the task, and the basic Coder's instructions. It asks
+/// for the worker's first response (`opener`): a typed judgment, and a short
+/// opener as the reply's first partial while the model starts.
 pub(crate) fn payload(turns: &[Turn]) -> Value {
     let mut kept: Vec<&Turn> = vec![];
     let mut bytes = 0;
@@ -197,6 +232,30 @@ pub(crate) fn payload(turns: &[Turn]) -> Value {
             .collect::<Vec<_>>(),
         "instructions": INSTRUCTIONS,
         "client": "openagents-mobile",
+        "opener": true,
+    })
+}
+
+/// A rank job's payload: the candidates for a new chat, at most
+/// [`MAX_RANK_CANDIDATES`], each ID 1 to 64 bytes and not `none`, each label
+/// up to 200 bytes; others are left out.
+pub(crate) fn rank_payload(candidates: &[(String, String)]) -> Option<Value> {
+    let candidates: Vec<Value> = candidates
+        .iter()
+        .filter(|(id, label)| (1..=64).contains(&id.len()) && id != "none" && !label.is_empty())
+        .take(MAX_RANK_CANDIDATES)
+        .map(|(id, label)| json!({"id": id, "label": truncate(label, 200)}))
+        .collect();
+    (candidates.len() >= 2).then(|| {
+        json!({
+            "v": 2,
+            "requires": [],
+            "type": "rank",
+            "draft": "",
+            "transcript": [],
+            "candidates": candidates,
+            "client": "openagents-mobile",
+        })
     })
 }
 
@@ -272,6 +331,15 @@ impl Reading {
                 };
                 reply.text = truncate(text, MAX_REPLY_BYTES).to_owned();
                 reply.model = payload["model"].as_str().map(str::to_owned);
+                reply.ranked = payload["ranked"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .take(MAX_RANK_CANDIDATES)
+                    .filter_map(|entry| entry["id"].as_str())
+                    .filter(|id| (1..=64).contains(&id.len()))
+                    .map(str::to_owned)
+                    .collect();
                 reply.done = true;
             }
             (CJ_CONVERSATION_FEEDBACK, Some("partial")) => {
@@ -288,6 +356,15 @@ impl Reading {
                     reply.text.push_str(delta);
                 }
                 reply.next += 1;
+            }
+            // The typed first-response judgment: its lane is an exact
+            // enum value, never read from text.
+            (CJ_CONVERSATION_FEEDBACK, Some("judgment")) => {
+                reply.lane = match payload["lane"].as_str() {
+                    Some("computer") => Some(Lane::Computer),
+                    Some("chat") => Some(Lane::Chat),
+                    _ => None,
+                };
             }
             (CJ_CONVERSATION_FEEDBACK, Some("status"))
                 if payload["status"].as_str() == Some("error") =>
@@ -316,11 +393,12 @@ fn unix_now() -> u64 {
         .map_or(0, |elapsed| elapsed.as_secs())
 }
 
-/// The basic Coder through the OpenAgents chat worker, on a relay.
+/// The basic Coder through the OpenAgents chat worker, on a relay, over
+/// one kept connection ([`Link`]).
 pub(crate) struct Relay {
-    url: String,
     worker: XOnlyPublicKey,
     secret: SecretKey,
+    link: Link,
 }
 
 impl Relay {
@@ -336,25 +414,31 @@ impl Relay {
         let worker = XOnlyPublicKey::from_byte_array(bytes)
             .map_err(|_| "the chat worker's key is not a public key")?;
         Ok(Self {
-            url: url.to_owned(),
             worker,
             secret,
+            link: Link::new(url, secret),
         })
     }
 
+    #[cfg(test)]
+    pub(crate) fn link(&self) -> &Link {
+        &self.link
+    }
+
     async fn run(
-        url: String,
+        link: Link,
         worker: XOnlyPublicKey,
         secret: SecretKey,
-        turns: Vec<Turn>,
+        payload: Value,
         reply: Arc<Mutex<Reply>>,
     ) -> Result<(), Failure> {
+        let started = tokio::time::Instant::now();
         let signer = RelaySigner::from_secret_hex(&secret.display_secret().to_string())
             .map_err(|error| Failure::Transport(error.to_string()))?;
         let me = crate::account::public(&secret).0;
         let key = nip44::conversation_key(&secret, &worker);
         let content = nip44::encrypt(
-            &payload(&turns).to_string(),
+            &payload.to_string(),
             &key,
             secp256k1::rand::random::<[u8; 32]>(),
         )
@@ -367,49 +451,20 @@ impl Relay {
             content,
         );
         let reading = Reading::new(&secret, &me, &worker, &request.id);
-        let transport = |error: String| Failure::Transport(error);
-        let mut connection = nostr_transport::Connection::connect(&url, &secret, LIFETIME)
+        let mut job = link
+            .publish(&request, CONTACT)
             .await
-            .map_err(transport)?
-            .with_frame_budget(FRAMES);
-        let subscription = format!("chat-{}", &request.id[..16]);
-        connection
-            .send(json!(["REQ", subscription, {
-                "kinds": [CJ_CONVERSATION_FEEDBACK, CJ_CONVERSATION_RESULT],
-                "#p": [me],
-                "#e": [request.id],
-            }]))
-            .await
-            .map_err(transport)?;
-        // The worker answers only subscriptions open before the request.
-        loop {
-            let frame = connection.next().await.map_err(transport)?;
-            match frame[0].as_str() {
-                Some("EOSE") if frame[1] == subscription.as_str() => break,
-                Some("CLOSED") => {
-                    return Err(Failure::Transport(
-                        frame[2].as_str().unwrap_or("closed").into(),
-                    ));
-                }
-                _ => {}
-            }
-        }
-        connection
-            .send(json!(["EVENT", request]))
-            .await
-            .map_err(transport)?;
-        let contact = tokio::time::Instant::now() + CONTACT;
+            .map_err(Failure::Transport)?;
+        let contact = started + CONTACT;
+        let end = started + LIFETIME;
         loop {
             let heard = lock(&reply).heard;
-            let frame = if heard {
-                connection.next().await
-            } else {
-                match tokio::time::timeout_at(contact, connection.next()).await {
-                    Ok(frame) => frame,
-                    Err(_) => return Err(Failure::Silent),
-                }
-            }
-            .map_err(transport)?;
+            let deadline = if heard { end } else { contact.min(end) };
+            let frame = match tokio::time::timeout_at(deadline, job.frames.recv()).await {
+                Ok(Some(frame)) => frame,
+                Ok(None) => return Err(Failure::Transport("the relay connection closed".into())),
+                Err(_) => return Err(Failure::Silent),
+            };
             match frame[0].as_str() {
                 Some("OK") if frame[1] == request.id.as_str() && frame[2] == false => {
                     return Err(Failure::Transport(
@@ -419,39 +474,29 @@ impl Relay {
                             .into(),
                     ));
                 }
-                Some("CLOSED") if frame[1] == subscription.as_str() => {
-                    return Err(Failure::Transport(
-                        frame[2].as_str().unwrap_or("closed").into(),
-                    ));
-                }
-                Some("EVENT") if frame[1] == subscription.as_str() => {
+                Some("EVENT") => {
                     let Ok(event) = serde_json::from_value::<Event>(frame[2].clone()) else {
                         continue;
                     };
                     let mut reply = lock(&reply);
                     reading.take(&event, &mut reply);
                     if reply.ended() {
-                        break;
+                        return Ok(());
                     }
                 }
                 _ => {}
             }
         }
-        let _ = connection.send(json!(["CLOSE", subscription])).await;
-        let _ = connection.close().await;
-        Ok(())
     }
-}
 
-impl Door for Relay {
-    fn ask(
+    fn job(
         &self,
-        turns: Vec<Turn>,
+        payload: Value,
         reply: Arc<Mutex<Reply>>,
     ) -> Pin<Box<dyn Future<Output = ()> + Send>> {
-        let (url, worker, secret) = (self.url.clone(), self.worker, self.secret);
+        let (link, worker, secret) = (self.link.clone(), self.worker, self.secret);
         Box::pin(async move {
-            if let Err(failure) = Self::run(url, worker, secret, turns, reply.clone()).await {
+            if let Err(failure) = Self::run(link, worker, secret, payload, reply.clone()).await {
                 let mut reply = lock(&reply);
                 if !reply.ended() {
                     // Half a reply is better than none: keep what streamed
@@ -463,6 +508,38 @@ impl Door for Relay {
                 }
             }
         })
+    }
+}
+
+impl Door for Relay {
+    fn ask(
+        &self,
+        turns: Vec<Turn>,
+        reply: Arc<Mutex<Reply>>,
+    ) -> Pin<Box<dyn Future<Output = ()> + Send>> {
+        self.job(payload(&turns), reply)
+    }
+
+    fn rank(
+        &self,
+        candidates: Vec<(String, String)>,
+        reply: Arc<Mutex<Reply>>,
+    ) -> Pin<Box<dyn Future<Output = ()> + Send>> {
+        match rank_payload(&candidates) {
+            Some(payload) => self.job(payload, reply),
+            None => {
+                lock(&reply).failure = Some(Failure::Transport("nothing to rank".into()));
+                Box::pin(async {})
+            }
+        }
+    }
+
+    fn warm(&self, runtime: &tokio::runtime::Handle) {
+        self.link.warm(runtime);
+    }
+
+    fn rest(&self) {
+        self.link.rest();
     }
 }
 
@@ -675,12 +752,78 @@ mod tests {
             [
                 "client",
                 "instructions",
+                "opener",
                 "requires",
                 "task",
                 "transcript",
                 "v"
             ]
         );
+    }
+
+    /// The job asks for the worker's first response: the typed judgment
+    /// and an opener as the reply's first partial.
+    #[test]
+    fn a_basic_job_asks_for_the_first_response() {
+        let body = payload(&[Turn {
+            role: Role::User,
+            text: "hi".into(),
+        }]);
+        assert_eq!(body["opener"], true);
+    }
+
+    #[test]
+    fn the_judgment_places_the_turn_and_the_opener_leads_the_reply() {
+        let (me, me_hex, worker, worker_public) = keys();
+        let request = "ab".repeat(32);
+        let reading = Reading::new(&me, &me_hex, &worker_public, &request);
+        let mut reply = Reply::default();
+        let event = |kind, body| answer(&worker, &me_hex, &request, kind, body);
+        let judgment = json!({"v": 2, "requires": [], "type": "judgment",
+            "verdict": "respond", "line": "That needs your computer.",
+            "set": "coder-first-response-v1", "lane": "computer",
+            "opener": "computer", "confidence": 0.81});
+        reading.take(&event(CJ_CONVERSATION_FEEDBACK, judgment), &mut reply);
+        assert_eq!(reply.lane, Some(Lane::Computer));
+        assert!(reply.heard && reply.text.is_empty());
+        reading.take(
+            &event(
+                CJ_CONVERSATION_FEEDBACK,
+                partial(0, "That needs your computer."),
+            ),
+            &mut reply,
+        );
+        assert_eq!(reply.text, "That needs your computer.");
+        // An unknown lane places nothing.
+        let mut other = Reply::default();
+        let unknown = json!({"v": 2, "type": "judgment", "verdict": "respond",
+            "line": "", "lane": "unknown"});
+        reading.take(&event(CJ_CONVERSATION_FEEDBACK, unknown), &mut other);
+        assert_eq!(other.lane, None);
+    }
+
+    #[test]
+    fn a_rank_job_names_its_candidates_and_reads_the_order() {
+        let candidates = vec![
+            ("workspace:openagents".to_owned(), "openagents".to_owned()),
+            ("none".to_owned(), "Refused ID".to_owned()),
+            ("talk:1".to_owned(), "Deploy preview".to_owned()),
+        ];
+        let body = rank_payload(&candidates).expect("two candidates");
+        assert_eq!(body["type"], "rank");
+        assert_eq!(body["candidates"].as_array().unwrap().len(), 2);
+        assert!(rank_payload(&candidates[..2]).is_none());
+        let (me, me_hex, worker, worker_public) = keys();
+        let request = "ab".repeat(32);
+        let reading = Reading::new(&me, &me_hex, &worker_public, &request);
+        let mut reply = Reply::default();
+        let result = json!({"v": 2, "type": "result", "text": "talk:1", "model": "jev",
+            "ranked": [{"id": "talk:1", "p": 0.7}, {"id": "workspace:openagents", "p": 0.2}]});
+        reading.take(
+            &answer(&worker, &me_hex, &request, CJ_CONVERSATION_RESULT, result),
+            &mut reply,
+        );
+        assert_eq!(reply.ranked, ["talk:1", "workspace:openagents"]);
     }
 
     #[test]

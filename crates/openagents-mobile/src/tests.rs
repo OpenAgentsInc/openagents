@@ -294,22 +294,9 @@ fn new_chat(
     ready: impl Fn(&[String]) -> bool,
 ) -> serde_json::Value {
     loop {
+        // A new chat targets a computer once one is ready; before, it
+        // starts with the basic Coder.
         let coder = app.call(Request::ComputersRefresh).coder.unwrap();
-        // A new chat targets a ready computer; before it is ready it starts
-        // with the basic Coder, and this one runs on the computer.
-        if let Some(start) = nodes_of(&coder, "button").into_iter().find(|node| {
-            node["key"] == "coder-where"
-                && node["element"]["props"]["label"]
-                    .as_str()
-                    .is_some_and(|label| label.starts_with("Start on"))
-        }) {
-            app.call(Request::CoderActivate {
-                instance: coder["instance"].as_str().unwrap().into(),
-                revision: coder["revision"].as_u64().unwrap(),
-                node: start["key"].as_str().unwrap().into(),
-            });
-            continue;
-        }
         if !nodes_of(&coder, "composer").is_empty() && ready(&values(&coder)) {
             return coder;
         }
@@ -455,7 +442,7 @@ fn the_coder_tab_needs_no_computer() {
     let coder = packet.coder.expect("coder view");
     let text = values(&coder);
     assert!(text.contains(&"Coder".to_string()), "{text:?}");
-    assert!(text.contains(&"Chat with Coder".to_string()), "{text:?}");
+    assert!(text.contains(&"Cloud".to_string()), "{text:?}");
     assert!(key_for(&coder, "Connect a computer").is_some(), "{text:?}");
     let composer = &nodes_of(&coder, "composer")[0]["element"]["props"];
     assert_eq!(composer["enabled"], true);

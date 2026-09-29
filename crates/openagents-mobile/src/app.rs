@@ -1014,6 +1014,7 @@ impl App {
                     let _ = computers.set_active(active);
                 }
                 self.playtest.lifecycle(active);
+                self.coder.lifecycle(active);
                 if !active {
                     self.trainer.pause();
                 }
@@ -1167,6 +1168,7 @@ impl App {
                 if tab == playtest::session::Tab::Coder {
                     self.chats.warm();
                 }
+                self.coder.show(tab == playtest::session::Tab::Coder);
                 let route = self.place(tab, route);
                 self.playtest.screen(tab, route);
             }

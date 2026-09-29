@@ -129,12 +129,20 @@ indirect enum NativeElement: Decodable, Equatable {
 struct NativeIcon: Decodable, Equatable {
     let glyph: String
     let circular: Bool
+    /// The glyph and label in a filled capsule, as a suggestion chip.
+    let pill: Bool?
 
     var symbol: String? {
         switch glyph {
         case "back": "chevron.backward"
         case "compose": "square.and.pencil"
         case "menu": "line.3.horizontal"
+        case "history": "clock.arrow.circlepath"
+        case "folder": "folder"
+        case "computer": "desktopcomputer"
+        case "cloud": "cloud"
+        case "add": "plus"
+        case "check": "checkmark"
         default: nil
         }
     }
@@ -158,6 +166,18 @@ private struct NativeIconButton: View {
                     .background(Circle().fill(Color(uiColor: NativeChatPalette.raised)))
                     .overlay(Circle().strokeBorder(Color(uiColor: NativeChatPalette.border), lineWidth: 0.5))
                     .contentShape(Circle())
+            } else if icon.pill == true {
+                // A chip: the glyph and one line of label in a capsule, as
+                // tall as the round buttons' touch target allows.
+                HStack(spacing: 6) {
+                    Image(systemName: icon.symbol ?? "circle").font(.system(size: 13, weight: .semibold))
+                    Text(label).font(.subheadline).lineLimit(1).truncationMode(.middle)
+                }
+                .padding(.horizontal, 14)
+                .frame(minHeight: 36)
+                .background(Capsule().fill(Color(uiColor: NativeChatPalette.raised)))
+                .overlay(Capsule().strokeBorder(Color(uiColor: NativeChatPalette.border), lineWidth: 0.5))
+                .contentShape(Capsule())
             } else {
                 // Top-aligned rows keep the label level with text beside it;
                 // the padding widens the tap target without moving it.
@@ -219,6 +239,14 @@ struct NativeRenderer: View {
     private var content: AnyView {
         switch node.element {
         case let .stack(axis, children):
+            if axis == "wrap" {
+                // Left to right, continuing on the next line, as a row of
+                // suggestion chips.
+                let gap = NativeStyle.points(node.style.gap)
+                return AnyView(NativeFlow(spacing: gap) {
+                    ForEach(children) { child in render(child) }
+                }.frame(maxWidth: .infinity, alignment: .leading))
+            }
             if axis == "horizontal" {
                 // A centered row, such as a header, shares one line: a title
                 // beside a round button, or a back link beside its status.
@@ -360,5 +388,47 @@ private struct NativeList: View {
         guard enabled != following else { return }
         following = enabled
         followChanged?(enabled)
+    }
+}
+
+/// Children left to right at their ideal sizes, continuing on the next line
+/// when the next one does not fit; a child wider than the line is narrowed
+/// to it.
+struct NativeFlow: Layout {
+    var spacing: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = proposal.width ?? .infinity
+        let frames = place(subviews, width: width)
+        let used = frames.map(\.maxX).max() ?? 0
+        return CGSize(width: proposal.width ?? used, height: frames.map(\.maxY).max() ?? 0)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        for (subview, frame) in zip(subviews, place(subviews, width: bounds.width)) {
+            subview.place(at: CGPoint(x: bounds.minX + frame.minX, y: bounds.minY + frame.minY),
+                          proposal: ProposedViewSize(frame.size))
+        }
+    }
+
+    private func place(_ subviews: Subviews, width: CGFloat) -> [CGRect] {
+        var frames: [CGRect] = []
+        var x: CGFloat = 0, y: CGFloat = 0, line: CGFloat = 0
+        for subview in subviews {
+            var size = subview.sizeThatFits(.unspecified)
+            if size.width > width {
+                size = subview.sizeThatFits(ProposedViewSize(width: width, height: nil))
+                size.width = min(size.width, width)
+            }
+            if x > 0 && x + size.width > width {
+                x = 0
+                y += line + spacing
+                line = 0
+            }
+            frames.append(CGRect(origin: CGPoint(x: x, y: y), size: size))
+            x += size.width + spacing
+            line = max(line, size.height)
+        }
+        return frames
     }
 }
