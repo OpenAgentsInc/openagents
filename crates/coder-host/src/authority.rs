@@ -113,6 +113,40 @@ impl Authority {
         busy_retry(|| self.host.revoke(device, now))
     }
 
+    /// Renew `device`'s grant when it nears its end (see
+    /// `coder_access::host::Host::renew`). Best effort: a busy or
+    /// unreadable store renews nothing.
+    pub fn renew(&self, device: &str, grant: &str, epoch: u64) -> Option<Event> {
+        let _serial = lock(&self.serial);
+        coder_access::unix_time()
+            .and_then(|now| busy_retry(|| self.host.renew(device, grant, epoch, now)))
+            .ok()
+            .flatten()
+    }
+
+    /// Admit one `enroll.redeem` that arrived off the relays, bound to its
+    /// invitation's relay.
+    ///
+    /// # Errors
+    /// An error means no signed reply exists.
+    pub fn redeem(&self, event: &Event) -> coder_access::Result<Event> {
+        let _serial = lock(&self.serial);
+        busy_retry(|| self.host.handle_redemption(event, coder_access::unix_time))
+    }
+
+    /// Run a local operator action on the store, with this process's other
+    /// store operations serialized and a brief wait for other processes.
+    ///
+    /// # Errors
+    /// The action's own refusal.
+    pub fn local<T>(
+        &self,
+        mut action: impl FnMut(&Host, u64) -> coder_access::Result<T>,
+    ) -> coder_access::Result<T> {
+        let _serial = lock(&self.serial);
+        busy_retry(|| action(&self.host, coder_access::unix_time()?))
+    }
+
     /// Record that a direct channel admitted `device` under `grant` now, so
     /// `device.list` reports when the host last saw it. Best effort: a busy
     /// or unreadable store records nothing and admits nothing.

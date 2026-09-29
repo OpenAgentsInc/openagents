@@ -19,6 +19,7 @@ use std::time::{Duration, Instant};
 
 use coder_access::Right;
 use coder_reach::channel::Acceptor;
+use coder_reach::hints::v2::HintsV2;
 use coder_reach::hints::{Class, Hint, Hints, Status, Transport};
 use coder_reach::presence::{Presence, VersionRange};
 use nostr::activity_summary::{self, Attention, Phase, SubjectKind, SummaryDraft};
@@ -36,6 +37,8 @@ use crate::{CAPABILITIES, Error, PROTOCOL_VERSION, Result, unix_time};
 mod cj;
 mod direct;
 mod dispatch;
+pub(crate) mod iroh;
+pub mod keys;
 mod relay;
 mod standing;
 mod terminal;
@@ -70,6 +73,14 @@ pub(crate) struct Shared {
     /// The nudges this process answered, so a relay reconnect's catch-up
     /// answers each once.
     pub(crate) nudges: std::sync::Mutex<relay::Answered>,
+    /// The iroh endpoint, once bound.
+    pub(crate) iroh: std::sync::OnceLock<iroh::Listener>,
+    /// Woken when a local action changed the grants, so open channels
+    /// recheck at once instead of at their next tick.
+    pub(crate) grants_changed: tokio::sync::Notify,
+    /// Set when a local action changed what the host serves, such as its
+    /// projects, and the host must start again to serve it.
+    pub(crate) restart: tokio::sync::watch::Sender<bool>,
 }
 
 /// A running host.
@@ -103,7 +114,25 @@ pub async fn start(config: Config, tasks: Arc<dyn Tasks>) -> Result<Running> {
         .as_ref()
         .map(crate::tls::acceptor)
         .transpose()?;
-    let access = coder_access::host::Host::new(&config.access, config.policy);
+    let access = match &config.keys {
+        Some(keys) => coder_access::host::Host::with_keys(
+            &config.access,
+            config.policy,
+            Arc::new(keys::HostKey(keys.0.clone())),
+        ),
+        None => coder_access::host::Host::new(&config.access, config.policy),
+    };
+    // A host whose keys another program keeps, such as the desktop app's
+    // keychain, establishes its own owner on first start: there is no
+    // owner step. Once the book exists, its owner never changes here.
+    if let Some(keys) = &config.keys
+        && !access.state_path().exists()
+    {
+        let owner = keys::owner(keys.0.as_ref())
+            .map_err(|_| Error::Config("the owner key cannot be created".into()))?;
+        coder_access::host::ensure_parent(&config.access)?;
+        access.init(&coder_reach::pubkey(&owner))?;
+    }
     let authority = Arc::new(Authority::open(access)?);
     let secret = authority.host().signing_key()?;
     let host_key = coder_reach::pubkey(&secret);
@@ -151,10 +180,27 @@ pub async fn start(config: Config, tasks: Arc<dyn Tasks>) -> Result<Running> {
         listen,
         listen_websocket,
         nudges: std::sync::Mutex::new(relay::Answered::default()),
+        iroh: std::sync::OnceLock::new(),
+        grants_changed: tokio::sync::Notify::new(),
+        restart: tokio::sync::watch::channel(false).0,
     });
 
     let (ready, relay_ready) = tokio::sync::oneshot::channel();
     let mut tasks = vec![];
+    if let Some(iroh_config) = shared.config.iroh.clone() {
+        let secret = iroh_secret(&shared.config)?;
+        let (listener, iroh_tasks) =
+            iroh::start(&shared, acceptor.clone(), secret, &iroh_config).await?;
+        let _ = shared.iroh.set(listener);
+        tasks.extend(iroh_tasks);
+    }
+    let control = match shared.config.control.clone() {
+        Some(control) => Some(crate::control::bind(&control).await?),
+        None => None,
+    };
+    if let Some(bound) = control {
+        tasks.push(tokio::spawn(crate::control::serve(shared.clone(), bound)));
+    }
     if let Some((listener, _)) = websocket {
         tasks.push(tokio::spawn(websocket::listen(
             shared.clone(),
@@ -228,6 +274,34 @@ impl Running {
         &self.shared.authority
     }
 
+    /// The iroh endpoint's address with the sockets it bound, when the
+    /// host serves iroh: what a device on this machine dials.
+    #[must_use]
+    pub fn iroh_addr(&self) -> Option<openagents_connect::iroh::EndpointAddr> {
+        self.shared
+            .iroh
+            .get()
+            .map(|iroh| iroh.endpoint.local_addr())
+    }
+
+    /// The control socket's path, when the host serves one.
+    #[must_use]
+    pub fn control_path(&self) -> Option<&Path> {
+        self.shared
+            .config
+            .control
+            .as_ref()
+            .map(|c| c.path.as_path())
+    }
+
+    /// Wait until a local action asks the host to start again, such as a
+    /// project added over the control socket. The caller shuts this host
+    /// down and starts it again.
+    pub async fn restart_requested(&self) {
+        let mut receiver = self.shared.restart.subscribe();
+        let _ = receiver.wait_for(|wanted| *wanted).await;
+    }
+
     /// Publish presence and hints to every enrolled device now.
     pub async fn publish_reach(&self) {
         publish_reach(&self.shared).await;
@@ -241,6 +315,12 @@ impl Running {
         }
         let shared = self.shared.clone();
         let _ = tokio::task::spawn_blocking(move || shared.pty.shutdown()).await;
+        if let Some(iroh) = self.shared.iroh.get() {
+            iroh.shutdown().await;
+        }
+        if let Some(control) = &self.shared.config.control {
+            let _ = std::fs::remove_file(&control.path);
+        }
         if let Some(path) = &self.shared.config.runtime {
             let _ = std::fs::remove_file(path);
         }
@@ -316,7 +396,7 @@ fn reach_events(shared: &Shared, device: &str, now: u64) -> Result<Vec<nostr::do
     };
     let presence_box = mailbox::mailbox(&shared.secret, device, Stream::Presence)?;
     let hints_box = mailbox::mailbox(&shared.secret, device, Stream::Hints)?;
-    Ok(vec![
+    let mut events = vec![
         presence.seal(
             &shared.secret,
             device,
@@ -324,7 +404,39 @@ fn reach_events(shared: &Shared, device: &str, now: u64) -> Result<Vec<nostr::do
             now + shared.config.presence_every.as_secs() * 3 + 60,
         )?,
         hints.seal(&shared.secret, device, &hints_box)?,
-    ])
+    ];
+    // A host with an iroh endpoint also publishes the v2 record, which
+    // alone carries the `iroh` hint; a v1 reader skips it.
+    if let Some(v2) = hints_v2(shared, &hints, now) {
+        events.push(v2.seal(&shared.secret, device, &hints_box)?);
+    }
+    Ok(events)
+}
+
+/// The v2 hint record: the v1 hints and the host's `iroh` hint, or `None`
+/// when the host serves no iroh endpoint with anything to dial.
+fn hints_v2(shared: &Shared, v1: &Hints, now: u64) -> Option<HintsV2> {
+    let iroh = shared.iroh.get()?.hint(now)?;
+    let mut record = HintsV2::from_v1(v1, Some(iroh));
+    record.hints.truncate(coder_reach::hints::MAX_HINTS);
+    record.validate().is_ok().then_some(record)
+}
+
+/// The iroh secret key: from the key source, or a file under
+/// `~/.openagents/connect` beside the access store, created on first use.
+fn iroh_secret(config: &Config) -> Result<openagents_connect::iroh::SecretKey> {
+    use openagents_connect::keys::{FileKeySource, KeyName, iroh_key};
+    let failed = |_| Error::Config("the iroh key cannot be read or created".into());
+    match &config.keys {
+        Some(keys) => iroh_key(keys.0.as_ref(), KeyName::HostIroh).map_err(failed),
+        None => {
+            let directory = config
+                .access
+                .parent()
+                .map_or_else(|| PathBuf::from("connect"), |parent| parent.join("connect"));
+            iroh_key(&FileKeySource::new(directory), KeyName::HostIroh).map_err(failed)
+        }
+    }
 }
 
 fn hints(shared: &Shared, now: u64) -> Vec<Hint> {

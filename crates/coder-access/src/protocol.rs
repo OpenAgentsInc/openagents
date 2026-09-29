@@ -36,6 +36,42 @@ impl HostInvitation {
                 mapped
             })
     }
+    /// The same invitation from another carriage, such as an
+    /// `openagents-connect:` code, which carries the host key, ID,
+    /// capability, and times but not the relay: the device supplies the
+    /// relay the host named for it. Checked exactly as [`Self::parse`]
+    /// checks a `coder-host:` string.
+    #[allow(clippy::too_many_arguments)]
+    pub fn from_parts(
+        host: &str,
+        id: &str,
+        capability: &str,
+        relay: &str,
+        issued_at: u64,
+        expires_at: u64,
+        now: u64,
+        policy: RelayPolicy,
+    ) -> Result<Self> {
+        let bytes32 = |hex: &str| -> Result<Vec<u8>> {
+            identity(hex).map_err(Error::from)?;
+            Ok((0..32)
+                .map(|i| u8::from_str_radix(&hex[i * 2..i * 2 + 2], 16).unwrap_or_default())
+                .collect())
+        };
+        public(host)?;
+        let relay_len = u16::try_from(relay.len())
+            .map_err(|_| Error::new(Code::Bounds, "relay exceeds its bound"))?;
+        let mut bytes = vec![1];
+        bytes.extend(bytes32(host)?);
+        bytes.extend(bytes32(id)?);
+        bytes.extend(bytes32(capability)?);
+        bytes.extend(issued_at.to_be_bytes());
+        bytes.extend(expires_at.to_be_bytes());
+        bytes.extend(relay_len.to_be_bytes());
+        bytes.extend(relay.as_bytes());
+        let code = format!("{INVITATION_PREFIX}{}", base64url(&bytes));
+        Self::parse(&code, now, policy)
+    }
     pub fn host(&self) -> &str {
         &self.0.host
     }
@@ -131,6 +167,33 @@ impl Access {
         };
         access.verify(secret, now, policy)?;
         Ok(access)
+    }
+    /// Accept a renewal of this access: a new grant envelope the host sent
+    /// unasked, for the same host, owner, device, relay, rights, epoch, and
+    /// origin, issued no earlier than the current grant and expiring later.
+    /// Store the result in place of `self` only on success; anything else
+    /// leaves the current access as it is.
+    pub fn renewed(
+        &self,
+        authorization: Event,
+        secret: &SecretKey,
+        now: u64,
+        policy: RelayPolicy,
+    ) -> Result<Self> {
+        let next = Self::from_authorization(authorization, secret, &self.grant.host, now, policy)?;
+        let (old, new) = (&self.grant, &next.grant);
+        if new.grant == old.grant
+            || new.owner != old.owner
+            || new.relay != old.relay
+            || new.rights != old.rights
+            || new.epoch != old.epoch
+            || new.origin != old.origin
+            || new.issued_at < old.issued_at
+            || new.expires_at <= old.expires_at
+        {
+            return fail(Code::Forbidden, "a renewal must keep the grant's terms");
+        }
+        Ok(next)
     }
     pub fn parse(bytes: &[u8]) -> Result<Self> {
         decode(bytes)
@@ -839,6 +902,22 @@ pub(crate) fn distinct(host: &str, owner: &str, device: &str) -> Result<()> {
 pub(crate) fn window(issued: u64, expires: u64, max: u64) -> Result<()> {
     coder_connect::protocol::window(issued, expires, max)
         .map_err(|_| Error::new(Code::Malformed, "invalid host access lifetime"))
+}
+/// Unpadded base64url (RFC 4648, section 5), the layout host invitations
+/// use.
+fn base64url(bytes: &[u8]) -> String {
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
+    for chunk in bytes.chunks(3) {
+        let n = chunk
+            .iter()
+            .enumerate()
+            .fold(0_u32, |n, (i, b)| n | u32::from(*b) << (16 - 8 * i));
+        for i in 0..=chunk.len() {
+            out.push(char::from(ALPHABET[(n >> (18 - 6 * i) & 63) as usize]));
+        }
+    }
+    out
 }
 pub(crate) fn fresh(issued: u64, expires: u64, now: u64) -> Result<()> {
     coder_connect::protocol::fresh(issued, expires, now)

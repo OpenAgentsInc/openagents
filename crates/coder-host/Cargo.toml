@@ -21,6 +21,8 @@ host = [
     "dep:libc",
     "dep:coder-service",
     "dep:tokio-rustls",
+    "dep:openagents-connect",
+    "dep:security-framework",
 ]
 
 [dependencies]
@@ -33,6 +35,9 @@ coder-pty = { path = "../coder-pty", default-features = false }
 # The host root's one generation counter, shared with the service launcher.
 coder-service = { path = "../coder-service", optional = true }
 libc = { version = "0.2", optional = true }
+# The host's iroh endpoint (enroll and reach ALPNs), connect codes, the
+# local control protocol, and the key source (host feature only).
+openagents-connect = { path = "../openagents-connect", optional = true }
 coder-reach = { path = "../coder-reach" }
 nostr = { path = "../nostr" }
 nostr-transport = { path = "../nostr-transport" }
@@ -48,6 +53,11 @@ tokio-tungstenite = { version = "0.30", features = ["rustls-tls-webpki-roots"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 # The host's TLS-terminating WebSocket listener.
 tokio-rustls = { version = "0.26", default-features = false, optional = true }
+
+# The macOS keychain key source: the same crate and version iroh's TLS
+# verifier already brings in, so the graph gains nothing new.
+[target.'cfg(target_os = "macos")'.dependencies]
+security-framework = { version = "3.7", optional = true }
 
 [dev-dependencies]
 # The ready record test decodes with the host service's own reader.
@@ -78,6 +88,18 @@ required-features = ["host"]
 
 [[test]]
 name = "headless"
+required-features = ["host"]
+
+[[test]]
+name = "iroh"
+required-features = ["host"]
+
+[[test]]
+name = "control"
+required-features = ["host"]
+
+[[test]]
+name = "adopt"
 required-features = ["host"]
 
 [lints]

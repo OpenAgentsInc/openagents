@@ -30,6 +30,10 @@ pub const PONG: &str = "openagents.host-pong.v1";
 /// The host's last message before it closes a channel whose grant or
 /// generation stopped admitting it.
 pub const CLOSING: &str = "openagents.host-closing.v1";
+/// A renewed grant the host sends unasked on an open channel when the
+/// channel's grant nears its end: the exact signed grant envelope, for the
+/// device to check with `coder_access::Access::renewed` and store.
+pub const RENEWAL: &str = "openagents.host-grant-renewal.v1";
 
 /// The largest reassembled message.
 pub const MAX_MESSAGE_BYTES: usize = 256 * 1024;
@@ -216,6 +220,9 @@ pub enum ToDevice {
     Closing(String),
     Result(TerminalResult),
     Frame(Frame),
+    /// A renewed grant envelope. A device that does not read renewals
+    /// ignores it, as it ignores every unknown message.
+    Renewal(Event),
 }
 
 impl ToHost {
@@ -266,6 +273,7 @@ impl ToDevice {
             Self::Answer(event) => json!({"v": ANSWER, "event": event}),
             Self::Pong(nonce) => json!({"v": PONG, "nonce": nonce}),
             Self::Closing(code) => json!({"v": CLOSING, "code": code}),
+            Self::Renewal(event) => json!({"v": RENEWAL, "event": event}),
             Self::Result(result) => serde_json::to_value(result).unwrap_or(Value::Null),
             Self::Frame(frame) => serde_json::to_value(frame).unwrap_or(Value::Null),
         };
@@ -285,6 +293,9 @@ impl ToDevice {
                 .map(|w| Self::Answer(w.event))
                 .map_err(malformed),
             Some(PONG) => nonce(value).map(Self::Pong),
+            Some(RENEWAL) => serde_json::from_value::<Wrapped>(value)
+                .map(|w| Self::Renewal(w.event))
+                .map_err(malformed),
             Some(CLOSING) => serde_json::from_value::<Closing>(value)
                 .map(|c| Self::Closing(c.code))
                 .map_err(malformed),

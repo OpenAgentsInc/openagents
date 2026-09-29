@@ -105,6 +105,12 @@ pub enum Op {
         connect: bool,
         terminal: bool,
     },
+    /// Make this computer use the owner key the person uses on their other
+    /// computers (`openagents connect owner import`), so one owner
+    /// directory lists them all. `secret` is the owner's Nostr secret key,
+    /// 64 lowercase hex characters; the host keeps it in its key source and
+    /// never echoes it. Refused while any phone holds a current grant.
+    OwnerImport { secret: String },
 }
 
 /// One response.
@@ -162,6 +168,10 @@ pub enum Reply {
     /// `nearby_decide`.
     Nearby {
         pending: Option<NearbyPrompt>,
+    },
+    /// The host's owner public key, after `owner_import`.
+    Owner {
+        owner: String,
     },
     /// The operation was refused.
     Refused {

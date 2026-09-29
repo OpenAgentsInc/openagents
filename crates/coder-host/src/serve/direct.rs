@@ -47,7 +47,20 @@ where
     let Ok(channel) = acceptor.accept(stream, now).await else {
         return;
     };
-    let binding = channel.binding().clone();
+    serve(shared, channel).await;
+}
+
+/// How often an open channel asks whether its grant is due for renewal,
+/// after the first time at admission.
+const RENEW_EVERY: std::time::Duration = std::time::Duration::from_secs(60 * 60);
+
+/// Serve one admitted direct channel, over any transport, until its grant
+/// stops admitting it or the device goes away.
+pub(super) async fn serve<S>(shared: Arc<Shared>, channel: coder_reach::channel::Channel<S>)
+where
+    S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
+{
+    let mut binding = channel.binding().clone();
     let (mut reader, mut writer) = channel.into_split();
 
     let (outbound, mut queue) = mpsc::channel::<ToDevice>(OUTBOUND);
@@ -102,6 +115,8 @@ where
     let seen_every = std::time::Duration::from_secs(coder_access::host::SEEN_RESOLUTION);
     shared.authority.touch(&binding.client, &binding.grant);
     let mut seen = std::time::Instant::now();
+    // Renewal is due at admission, then at most once per interval.
+    let mut renewed_at: Option<std::time::Instant> = None;
     let mut ticker = tokio::time::interval(shared.config.recheck_every);
     loop {
         let next = tokio::select! {
@@ -110,10 +125,24 @@ where
                 None => break,
             },
             _ = ticker.tick() => None,
+            // A local revocation rechecks at once, so the channel closes
+            // before the device's next message is served.
+            () = shared.grants_changed.notified() => None,
         };
         if let Err(code) = recheck(&shared, &binding) {
             let _ = outbound.send(ToDevice::Closing(code.into())).await;
             break;
+        }
+        if renewed_at.is_none_or(|at| at.elapsed() >= RENEW_EVERY) {
+            renewed_at = Some(std::time::Instant::now());
+            if let Some(grant) = renew(&shared, &binding).await {
+                // The channel follows the device to its renewed grant, at
+                // the same epoch, so it outlives the grant it opened with.
+                if let Some(id) = grant.tag_values("h").next() {
+                    binding.grant = id.to_owned();
+                }
+                let _ = outbound.send(ToDevice::Renewal(grant)).await;
+            }
         }
         if let Some(bytes) = next {
             if seen.elapsed() >= seen_every {
@@ -127,6 +156,16 @@ where
     drop(outbound);
     let _ = stop.send(());
     let _ = writer_task.await;
+}
+
+/// A renewed grant for the channel's device when its grant nears its end.
+async fn renew(shared: &Arc<Shared>, binding: &Binding) -> Option<nostr::domain::Event> {
+    let authority = shared.authority.clone();
+    let (device, grant, epoch) = (binding.client.clone(), binding.grant.clone(), binding.epoch);
+    tokio::task::spawn_blocking(move || authority.renew(&device, &grant, epoch))
+        .await
+        .ok()
+        .flatten()
 }
 
 /// The channel's grant, at its epoch, must still admit it.

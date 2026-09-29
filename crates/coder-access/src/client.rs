@@ -130,7 +130,10 @@ fn verify_reply(
         || reply.request_event != pending.event.id
         || reply.host != host
         || reply.expires_at != pending.request.expires_at
-        || reply.issued_at < pending.request.issued_at
+        // A host clock up to the skew behind this device's may date its
+        // reply just before the request.
+        || reply.issued_at.saturating_add(coder_connect::protocol::CLOCK_SKEW)
+            < pending.request.issued_at
         || event.tag_values("h").collect::<Vec<_>>() != [pending.request.request.as_str()]
     {
         return fail(Code::Forbidden, "host reply does not match this request");

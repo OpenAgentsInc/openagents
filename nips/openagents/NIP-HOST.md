@@ -552,6 +552,42 @@ grant. Revocation also discards the device's retained replies so a retry
 cannot disclose them. It cannot erase data already delivered or prove that
 an admitted operation stopped.
 
+### Renewal
+
+A grant lasts at most 30 days, and a device that keeps using a host must not
+have to pair again. So the host renews a grant on its own, without a
+request, while the device is connected:
+
+- When a [REACH](NIP-REACH.md) direct channel opens under a grant, and again
+  at most once an hour while it stays open, the host checks whether the
+  grant is due: it is current (not revoked, not expired, at the device's
+  current epoch), it is the device's newest current grant, its issuer is the
+  host or the owner, and a quarter or less of its lifetime remains.
+- If it is due, the host signs a new grant with a new ID and the same
+  device, relay, rights, epoch, origin, and lifetime, issued now, and sends
+  the exact grant envelope on the channel as
+  `{v: "openagents.host-grant-renewal.v1", event}`. The channel's grant
+  binding moves to the new grant.
+- The renewed grant stays admitted until its own expiry, which is at most a
+  quarter of its lifetime away, so a request already signed under it is not
+  refused and a device that does not read renewals keeps working until
+  then. Revoking the device revokes both.
+- A device accepts a renewal only when it opens as a grant from the same
+  host to its own key with the same owner, relay, rights, epoch, and
+  origin, a new ID, an issue time no earlier than its current grant's, and
+  a later expiry. It then stores the new grant and its envelope in place of
+  the old ones. Anything else is ignored and the current access is kept.
+- A revoked, expired, or stale grant never renews, and neither does a grant
+  a device delegated with `access_admin`: its issuer's own grant bounds it.
+
+This is an exception to one grant per device key: for at most a quarter of
+a grant's lifetime, a device holds its renewed grant and the renewal.
+
+A device clock may be up to 60 seconds behind the host's. The host admits a
+request dated up to 60 seconds before the invitation or grant it names, and
+a device accepts a reply dated up to 60 seconds before its request. The
+host's clock still decides expiry.
+
 ## Delegation
 
 A device with `access_admin` can issue invitations and approvals only for
@@ -995,9 +1031,22 @@ bindings give the same outcome for a granted operation, a missing right, a
 revoked grant, a stale epoch, and a reused request ID.
 
 [Connect codes](#connect-codes), [enrollment over iroh](#enrollment-over-iroh),
-and the [local operator socket](#local-operator-socket) are designed, not
-implemented. The
-[epic](https://github.com/OpenAgentsInc/openagents/issues/9965) builds them:
-`crates/openagents-connect` owns the connect code parser and its fixtures,
-and the host step serves the ALPN and the socket.
-[Nearby approval](#nearby-approval-planned) comes after that milestone.
+the [local operator socket](#local-operator-socket), and
+[renewal](#renewal) are implemented.
+[`crates/openagents-connect`](../../crates/openagents-connect) owns the
+connect code parser and its fixtures, the ALPNs, and the control protocol.
+`coder host serve --iroh --control` (the resident host in
+[`crates/coder-host`](../../crates/coder-host)) serves the enroll ALPN
+through the same redemption as the direct artifact binding, the reach ALPN
+through the same direct-channel session as TCP, and the socket with the
+peer user check; `openagents connect` is its command-line client. The
+reference enroll exchange is one message each way: the device sends
+`openagents.connect-enroll-request.v1` with the signed `enroll.redeem`, and
+the host answers `openagents.connect-enroll-reply.v1` with its time and the
+signed reply, or no reply. The info step above is not yet served, so the
+device signs the relay it uses by default, which a desktop host serves.
+`crates/coder-host/tests/iroh.rs` and `tests/control.rs` cover a
+redemption over iroh, a second device refused `forbidden`, a terminal only
+with `terminal`, revocation closing an open channel, an unknown key reaching
+only enrollment, clock skew, renewal on a channel, the socket's modes and
+peer check, and minting, rotating, and cancelling codes.

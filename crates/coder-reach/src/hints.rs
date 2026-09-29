@@ -13,6 +13,8 @@ use serde_json::Value;
 
 use crate::{Refusal, Result, artifact, fail, parse_pubkey, pubkey, relay_url, requires};
 
+pub mod v2;
+
 /// Schema of a hint set.
 pub const SCHEMA: &str = "openagents.reach-hints.v1";
 /// Most hints one set carries.

@@ -10,9 +10,11 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 mod enroll;
+mod keys;
 mod nearby;
 mod serve;
 pub use enroll::{EnrollmentStatus, IssuedInvitation, PendingEnrollment};
+pub use keys::{KeySource, MemoryKeys};
 pub use nearby::is_connect_code_rights;
 pub use serve::{serve, serve_once};
 
@@ -23,6 +25,9 @@ const MAX_INVITATIONS: usize = 64;
 const MAX_ENROLLMENTS: usize = 32;
 const MAX_REPLIES: usize = 1024;
 const MAX_EPOCHS: usize = 1024;
+/// How far a device's clock may trail the host's: the same bound readers
+/// allow for an `issued_at` ahead of them.
+const CLOCK_SKEW: u64 = coder_connect::protocol::CLOCK_SKEW;
 /// Revocation tombstones outlive grant expiry by the request window.
 const SKEW: u64 = MAX_REQUEST_LIFETIME;
 /// A channel admission refreshes last-seen at most this often, so an open
@@ -174,12 +179,40 @@ struct Principal {
 pub struct Host {
     directory: PathBuf,
     policy: RelayPolicy,
+    /// `None` keeps the key in `host.key` in the store directory.
+    keys: Option<keys::Keys>,
 }
 impl Host {
     pub fn new(directory: impl Into<PathBuf>, policy: RelayPolicy) -> Self {
         Self {
             directory: directory.into(),
             policy,
+            keys: None,
+        }
+    }
+    /// A host whose secret key lives in `source`, such as the OS keychain,
+    /// rather than in a file. The book and its lock stay in `directory`.
+    pub fn with_keys(
+        directory: impl Into<PathBuf>,
+        policy: RelayPolicy,
+        source: std::sync::Arc<dyn KeySource>,
+    ) -> Self {
+        Self {
+            directory: directory.into(),
+            policy,
+            keys: Some(keys::Keys::new(source)),
+        }
+    }
+    /// The store directory: the book, its lock, and, without a key source,
+    /// the host key.
+    pub fn directory(&self) -> &Path {
+        &self.directory
+    }
+    /// The host key from the key source, or from the store's key file.
+    fn read_key(&self, store: &Store, create: bool) -> Result<SecretKey> {
+        match &self.keys {
+            Some(keys) => keys.key(create),
+            None => Ok(store.key(create)?),
         }
     }
     /// Establish the owner locally. An invitation or relay event cannot do this.
@@ -188,7 +221,10 @@ impl Host {
         public(owner)?;
         ensure_parent(&self.directory)?;
         let mut store = Store::open_named(&self.directory, STORE, true)?;
-        let secret = store.key(true)?;
+        // A key is created only for a store without a book, so an empty key
+        // source can never give an existing book a second identity.
+        let fresh = store.load::<serde_json::Value>()?.is_none();
+        let secret = self.read_key(&store, fresh)?;
         let host = pubkey(&secret);
         if host == owner {
             return fail(Code::Forbidden, "owner and host keys must differ");
@@ -220,7 +256,8 @@ impl Host {
         Ok(pubkey(&self.key()?))
     }
     pub(crate) fn key(&self) -> Result<SecretKey> {
-        Ok(Store::open_named(&self.directory, STORE, false)?.key(false)?)
+        let store = Store::open_named(&self.directory, STORE, false)?;
+        self.read_key(&store, false)
     }
     /// The host's signing key. A resident host signs presence, hints,
     /// channel proofs, terminal results, and summaries with this one key, so
@@ -242,9 +279,43 @@ impl Host {
     }
     fn open(&self) -> Result<(Store, SecretKey, Book)> {
         let store = Store::open_named(&self.directory, STORE, false)?;
-        let secret = store.key(false)?;
+        let secret = self.read_key(&store, false)?;
         let book = self.book(&store, &secret)?;
         Ok((store, secret, book))
+    }
+    /// Make `owner` this host's owner, for a host whose owner another
+    /// program created, such as a desktop app, when the person imports the
+    /// owner key they use on their other computers. Grants name the owner,
+    /// so this is refused with `conflict` while any device holds a current
+    /// grant; the person removes those devices first. Revoked and expired
+    /// grants, invitations, enrollment requests, and retained replies leave
+    /// the book, and epochs stay, so no old grant can come back. The same
+    /// owner again is a no-op.
+    pub fn reown(&self, owner: &str, now: u64) -> Result<()> {
+        public(owner)?;
+        let (mut store, _, mut book) = self.open()?;
+        if book.owner == owner {
+            return Ok(());
+        }
+        if owner == book.host {
+            return fail(Code::Forbidden, "owner and host keys must differ");
+        }
+        if devices(&book, now)
+            .iter()
+            .any(|d| d.state == DeviceState::Active)
+        {
+            return fail(
+                Code::Conflict,
+                "remove every device before changing the owner",
+            );
+        }
+        book.owner = owner.into();
+        book.grants.clear();
+        book.invitations.clear();
+        book.enrollments.clear();
+        book.replies.clear();
+        store.save(&book)?;
+        Ok(())
     }
     /// Every enrolled grant with its current state.
     pub fn devices(&self, now: u64) -> Result<Vec<DeviceEntry>> {
@@ -281,6 +352,103 @@ impl Host {
         record.seen_at = Some(now);
         store.save(&book)?;
         Ok(())
+    }
+
+    /// Renew `device`'s grant `grant` at `epoch` when a quarter or less of
+    /// its lifetime remains, so a paired device never has to pair again
+    /// while it keeps connecting. The new grant has a new ID and the same
+    /// device, relay, rights, epoch, origin, and lifetime (at most 30 days),
+    /// issued now. The renewed grant stays admitted until its own expiry,
+    /// which is at most a quarter of its lifetime away, so a request already
+    /// signed under it, or a device that does not read renewals yet, is not
+    /// cut off; revoking the device revokes both.
+    ///
+    /// Returns the new grant envelope, or `None` when nothing is due: the
+    /// grant is not the device's newest current grant, is revoked, expired,
+    /// or at an old epoch, has more than a quarter of its life left, or was
+    /// delegated by a device rather than issued by the host or its owner.
+    ///
+    /// # Errors
+    /// Refuses a store that cannot be read or saved.
+    pub fn renew(&self, device: &str, grant: &str, epoch: u64, now: u64) -> Result<Option<Event>> {
+        public(device)?;
+        let (mut store, secret, mut book) = self.open()?;
+        let Some(record) = book.grants.get(grant).cloned() else {
+            return Ok(None);
+        };
+        let current = |r: &GrantRecord| {
+            r.revoked_at.is_none()
+                && r.grant.expires_at > now
+                && r.grant.epoch == book.epoch(&r.grant.device)
+        };
+        let lifetime = record
+            .grant
+            .expires_at
+            .saturating_sub(record.grant.issued_at)
+            .min(MAX_GRANT_LIFETIME);
+        let newest = !book.grants.values().any(|r| {
+            r.grant.device == device
+                && r.grant.grant != grant
+                && current(r)
+                && r.grant.expires_at >= record.grant.expires_at
+        });
+        let due = record
+            .grant
+            .expires_at
+            .saturating_sub(now)
+            .saturating_mul(4)
+            <= lifetime;
+        let issued_here =
+            record.grant.origin.issuer == book.host || record.grant.origin.issuer == book.owner;
+        if record.grant.device != device
+            || record.grant.epoch != epoch
+            || !current(&record)
+            || !newest
+            || !due
+            || !issued_here
+            || lifetime == 0
+        {
+            return Ok(None);
+        }
+        book.prune(now);
+        if book.grants.len() >= MAX_GRANTS && !evict_one_dead(&mut book, now) {
+            return Ok(None);
+        }
+        let renewed = Grant {
+            v: GRANT.into(),
+            requires: vec![],
+            grant: random_id(),
+            host: book.host.clone(),
+            owner: book.owner.clone(),
+            device: device.into(),
+            relay: record.grant.relay.clone(),
+            rights: record.grant.rights.clone(),
+            epoch,
+            origin: record.grant.origin.clone(),
+            issued_at: now,
+            expires_at: now.saturating_add(lifetime),
+        };
+        renewed.validate(RelayPolicy::LoopbackTest)?;
+        let authorization = seal(
+            &renewed,
+            GRANT,
+            &secret,
+            device,
+            &renewed.grant,
+            now,
+            renewed.expires_at,
+        )?;
+        book.grants.insert(
+            renewed.grant.clone(),
+            GrantRecord {
+                grant: renewed,
+                authorization: authorization.clone(),
+                revoked_at: None,
+                seen_at: Some(now),
+            },
+        );
+        store.save(&book)?;
+        Ok(Some(authorization))
     }
 
     /// Issue grants to `devices` in one commit, as if each had redeemed an
@@ -338,10 +506,43 @@ impl Host {
         &self,
         event: &Event,
         relay: &str,
+        clock: impl FnMut() -> Result<u64>,
+        dispatch: &mut dyn Dispatch,
+    ) -> Result<Event> {
+        self.handle_inner(event, Some(relay), clock, dispatch)
+    }
+    /// Admit one `enroll.redeem` that arrived on a transport other than a
+    /// relay, such as the iroh enroll ALPN. The relay binding is the
+    /// invitation's own: the request must name the relay the invitation
+    /// names, although it did not travel over it. Every other redemption
+    /// check is unchanged. Any other operation, and an invitation this host
+    /// does not retain, gets no signed reply.
+    pub fn handle_redemption(
+        &self,
+        event: &Event,
+        clock: impl FnMut() -> Result<u64>,
+    ) -> Result<Event> {
+        self.handle_inner(event, None, clock, &mut Unconnected)
+    }
+    /// The relay a retained invitation names, or `None` for an invitation
+    /// this host does not retain. A cancelled, consumed, or expired
+    /// invitation is still named, so its redemption earns its refusal.
+    pub fn invitation_relay(&self, id: &str) -> Result<Option<String>> {
+        let (_, _, book) = self.open()?;
+        Ok(book.invitations.get(id).map(|i| i.relay().to_owned()))
+    }
+    /// `relay` is the relay the request arrived on, or `None` for a
+    /// redemption on another transport, whose relay is its invitation's.
+    fn handle_inner(
+        &self,
+        event: &Event,
+        relay: Option<&str>,
         mut clock: impl FnMut() -> Result<u64>,
         dispatch: &mut dyn Dispatch,
     ) -> Result<Event> {
-        self.policy.validate(relay).map_err(Error::from)?;
+        if let Some(relay) = relay {
+            self.policy.validate(relay).map_err(Error::from)?;
+        }
         let (mut store, secret, mut book) = self.open()?;
         let host = book.host.clone();
         if event.pubkey == host {
@@ -349,6 +550,16 @@ impl Host {
         }
         let request: Request = open(event, &secret, &event.pubkey, &host, REQUEST)?;
         request.validate(self.policy)?;
+        let relay = match (relay, &request.op) {
+            (Some(relay), _) => relay.to_owned(),
+            (None, Operation::Redeem { invitation, .. }) => book
+                .invitations
+                .get(invitation)
+                .map(|i| i.relay().to_owned())
+                .ok_or_else(|| Error::new(Code::Forbidden, "invitation is not admitted"))?,
+            (None, _) => return fail(Code::Forbidden, "only a redemption is admitted here"),
+        };
+        let relay = relay.as_str();
         let now = clock()?;
         fresh(request.issued_at, request.expires_at, now)?;
         if request.host != host
@@ -701,7 +912,11 @@ fn principal(
     if request.epoch != Some(record.grant.epoch) || record.grant.epoch != book.epoch(signer) {
         return Err(Error::new(Code::Stale, "grant epoch is not current"));
     }
-    if request.expires_at > record.grant.expires_at || request.issued_at < record.grant.issued_at {
+    // A device clock up to the skew behind the host's may date a request
+    // just before the grant it holds was issued.
+    if request.expires_at > record.grant.expires_at
+        || request.issued_at.saturating_add(CLOCK_SKEW) < record.grant.issued_at
+    {
         return Err(Error::new(Code::Forbidden, "request is outside its grant"));
     }
     Ok(Principal {
@@ -903,6 +1118,29 @@ fn make_room(book: &mut Book, device: &str, now: u64) -> Result<()> {
         book.grants.remove(&id);
     }
     Ok(())
+}
+
+/// Remove the grant that stopped being live longest ago and that no
+/// retained record names. Returns whether one left.
+fn evict_one_dead(book: &mut Book, now: u64) -> bool {
+    let named = named_grants(book);
+    let oldest = book
+        .grants
+        .iter()
+        .filter(|(id, r)| {
+            !named.contains(*id)
+                && (r.revoked_at.is_some()
+                    || r.grant.expires_at <= now
+                    || r.grant.epoch != book.epoch(&r.grant.device))
+        })
+        .map(|(id, r)| {
+            (
+                r.revoked_at.unwrap_or(r.grant.expires_at).min(now),
+                id.clone(),
+            )
+        })
+        .min();
+    oldest.is_some_and(|(_, id)| book.grants.remove(&id).is_some())
 }
 
 /// Move `device`'s unredeemed delegated invitations from a grant that was

@@ -39,6 +39,9 @@ fn every_op() -> Vec<Op> {
         Op::ProjectRemove {
             label: "openagents".into(),
         },
+        Op::OwnerImport {
+            secret: "33".repeat(32),
+        },
     ]
 }
 
@@ -125,6 +128,9 @@ fn replies_round_trip() {
                 label: "openagents".into(),
                 path: "/Users/kai/work/openagents".into(),
             }],
+        },
+        Reply::Owner {
+            owner: "44".repeat(32),
         },
         Reply::Refused {
             code: "forbidden".into(),

@@ -511,10 +511,11 @@ mapping, and placement. The same handshake and frame tests run over TCP and
 over WebSocket. Grant checks go through a trait, so the crate does not depend
 on a grant store. It also splits an open channel into a reader and a writer.
 
-[iroh hints](#iroh-hints) and the [iroh mapping](#iroh-mapping) are designed,
-not implemented. The
-[epic](https://github.com/OpenAgentsInc/openagents/issues/9965) builds them in
-`crates/openagents-connect` and the resident host.
+[iroh hints](#iroh-hints) and the [iroh mapping](#iroh-mapping) are
+implemented. `coder_reach::hints::v2` reads and writes the v2 record and its
+`iroh` hint; `crates/openagents-connect` carries the channel over one QUIC
+stream; and the resident host, with `--iroh`, serves `openagents/reach/1`
+through the same session as TCP and publishes the v2 record beside v1.
 
 [`crates/coder-host`](../../crates/coder-host/README.md) is the resident host
 and its client. The host seals presence and hints to each enrolled device,

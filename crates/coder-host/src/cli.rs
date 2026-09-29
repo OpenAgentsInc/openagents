@@ -34,6 +34,7 @@ pub const USAGE: &str = "usage: coder host COMMAND [OPTIONS]
   list [--json]
   revoke --device KEY
   spend request|list|show ...   ask the owner's phone to pay (`coder host spend help`)
+  adopt [detect]    move a host set up the old way to the keychain, for the desktop app
   serve [--owner KEY] [--relay URL]... [--workspace LABEL=PATH]... [--listen ADDR]
         [--listen-websocket ADDR] [--allow-nonloopback]
         [--websocket-tls-cert FILE --websocket-tls-key FILE --websocket-name NAME]
@@ -41,6 +42,12 @@ pub const USAGE: &str = "usage: coder host COMMAND [OPTIONS]
         [--tailnet-admission RIGHTS [--no-tailnet-chats]]
         [--generation N] [--runtime FILE | --no-runtime] [--tasks DIR] [--loopback]
         [--no-telemetry]
+        [--iroh [--iroh-relay URL | --no-iroh-relay] [--iroh-bind ADDR]...]
+        [--control | --control-socket PATH] [--keychain | --keys DIR] [--label NAME]
+The desktop app runs `serve --keychain --iroh --control`: the owner, host,
+and iroh keys live in the keychain, the host establishes its own owner on
+first start, and `openagents connect` and the app reach it through the
+same-user control socket.
 Every command also takes --state DIR (the access store, default
 ~/.openagents/coder-access), --root DIR (default ~/.openagents/host), and
 --loopback-test (allow ws:// to a numeric loopback relay, for fixtures only).
@@ -67,6 +74,9 @@ pub async fn run(args: &[String], open_tasks: Box<OpenTasks>) -> u8 {
             }
         };
         return crate::spend::cli::run(rest, &state);
+    }
+    if command == "adopt" {
+        return adopt(rest);
     }
     let mut options = match Options::parse(rest) {
         Ok(options) => options,
@@ -139,7 +149,7 @@ struct Options {
     flags: Vec<String>,
 }
 
-const FLAGS: [&str; 7] = [
+const FLAGS: [&str; 11] = [
     "--json",
     "--loopback",
     "--loopback-test",
@@ -147,7 +157,16 @@ const FLAGS: [&str; 7] = [
     "--no-runtime",
     "--no-telemetry",
     "--help",
+    "--iroh",
+    "--no-iroh-relay",
+    "--control",
+    "--keychain",
 ];
+
+/// The Nostr relay a host serves when none is recorded or given and it
+/// serves iroh: the relay the phone app uses by default, so a connect
+/// code's invitation names a relay the phone already signs for.
+pub const DEFAULT_RELAY: &str = "wss://relay.openagents.com/";
 
 impl Options {
     fn parse(args: &[String]) -> std::result::Result<Self, String> {
@@ -526,6 +545,10 @@ async fn serve(common: &Common, options: &mut Options, open_tasks: Box<OpenTasks
         }
     };
     let telemetry = !options.flag("--no-telemetry");
+    let connect = connect_options(options, root)?;
+    if relays.is_empty() && connect.iroh.is_some() {
+        relays.push(DEFAULT_RELAY.to_owned());
+    }
     let tailnet = tailnet_admission(options)?.or_else(|| settings.tailnet_admission.clone());
     let mut advertise = options
         .all("--advertise")
@@ -617,9 +640,19 @@ async fn serve(common: &Common, options: &mut Options, open_tasks: Box<OpenTasks
     config.workspaces = workspaces;
     config.ready = ready;
     config.runtime = runtime;
+    config.keys = connect.keys;
+    config.iroh = connect.iroh;
+    config.control = connect.control;
+    config.label = connect.label;
 
     raise_open_file_limit();
     let running = crate::serve::start(config, tasks).await?;
+    if let Some(address) = running.iroh_addr() {
+        eprintln!("coder host: iroh endpoint {}", address.id);
+    }
+    if let Some(path) = running.control_path() {
+        eprintln!("coder host: control socket {}", path.display());
+    }
     eprintln!(
         "coder host: serving {} at generation {} on {}",
         running.host_key(),
@@ -639,9 +672,206 @@ async fn serve(common: &Common, options: &mut Options, open_tasks: Box<OpenTasks
             Err(error) => eprintln!("coder host: tailnet admission is off: {error}"),
         }
     }
-    wait_for_stop().await;
+    let restart = tokio::select! {
+        () = wait_for_stop() => false,
+        () = running.restart_requested() => true,
+    };
     running.shutdown().await;
+    if restart {
+        // A local action changed what the host serves, such as its
+        // projects. Start again as the same process, with the same
+        // arguments, so a service manager sees no exit.
+        eprintln!("coder host: starting again to serve the changed settings");
+        return Err(reexec());
+    }
     Ok(())
+}
+
+/// Replace this process with a fresh start of the same command. Returns
+/// only on failure.
+fn reexec() -> Error {
+    use std::os::unix::process::CommandExt;
+    let Ok(program) = std::env::current_exe() else {
+        return Error::Config("the host cannot start again".into());
+    };
+    let error = std::process::Command::new(program)
+        .args(std::env::args_os().skip(1))
+        .exec();
+    Error::Config(format!("the host cannot start again: {error}"))
+}
+
+/// `coder host adopt [detect]`: move a host set up the old way under the
+/// desktop app, keeping its host key, owner, grants, and settings, so every
+/// phone paired before keeps working. `detect` changes nothing. Adopting
+/// from this program, the one that later reads the keys, keeps the keychain
+/// from asking for them. Prints one line of JSON with no secret:
+/// `{"kind": "none" | "found" | "adopted" | "failed", ...}`.
+fn adopt(args: &[String]) -> u8 {
+    let detect_only = match args {
+        [] => false,
+        [only] if only == "detect" => true,
+        _ => {
+            eprintln!("coder host: adopt takes nothing or `detect`\n\n{USAGE}");
+            return EXIT_USAGE;
+        }
+    };
+    let (report, code) = match adopt_report(detect_only) {
+        Ok(report) => (report, 0),
+        Err(message) => (
+            serde_json::json!({"kind": "failed", "message": message}),
+            EXIT_FAILED,
+        ),
+    };
+    println!("{report}");
+    code
+}
+
+fn adopt_report(detect_only: bool) -> std::result::Result<serde_json::Value, String> {
+    use coder_service::adopt::{self, Paths};
+    let home = std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .ok_or_else(|| "HOME is not set".to_owned())?;
+    let paths = Paths::under(&home);
+    let now = coder_access::unix_time().map_err(|error| error.to_string())?;
+    let found = adopt::detect(&paths, now).map_err(|error| error.to_string())?;
+    let Some(found) = found else {
+        return Ok(serde_json::json!({"kind": "none"}));
+    };
+    if detect_only {
+        return Ok(serde_json::json!({
+            "kind": "found",
+            "phones": found.kept.active_grants,
+            "problems": found.problems,
+        }));
+    }
+    let keys = keychain_keys().map_err(|error| error.to_string())?;
+    let adopted = adopt::adopt(
+        &paths,
+        now,
+        &mut crate::serve::keys::AdoptInto(keys.0.as_ref()),
+        &mut coder_service::service::SystemRunner,
+        // The desktop app registers its own agent once this returns.
+        &mut |_| Ok(()),
+    )
+    .map_err(|error| error.to_string())?;
+    Ok(serde_json::json!({"kind": "adopted", "phones": adopted.kept.active_grants}))
+}
+
+/// What the QR pairing path adds to `serve`.
+struct Connect {
+    keys: Option<crate::serve::keys::Keys>,
+    iroh: Option<crate::config::Iroh>,
+    control: Option<crate::config::Control>,
+    label: String,
+}
+
+fn connect_options(options: &mut Options, root: &Path) -> Result<Connect> {
+    use crate::serve::keys::{FileKeySource, Keys};
+    let keychain = options.flag("--keychain");
+    let keys_dir = options.one("--keys")?;
+    let keys = match (keychain, keys_dir) {
+        (true, Some(_)) => return Err(usage(" --keychain and --keys do not go together")),
+        (true, None) => Some(keychain_keys()?),
+        (false, Some(dir)) => Some(Keys(Arc::new(FileKeySource::new(dir)))),
+        (false, None) => None,
+    };
+    let iroh_on = options.flag("--iroh");
+    let no_relay = options.flag("--no-iroh-relay");
+    let relay = options.one("--iroh-relay")?;
+    let bind = options
+        .all("--iroh-bind")
+        .iter()
+        .map(|text| {
+            text.parse::<SocketAddr>()
+                .map_err(|_| usage(" --iroh-bind takes HOST:PORT"))
+        })
+        .collect::<Result<Vec<_>>>()?;
+    if !iroh_on && (no_relay || relay.is_some() || !bind.is_empty()) {
+        return Err(usage(
+            " --iroh-relay, --no-iroh-relay, and --iroh-bind go with --iroh",
+        ));
+    }
+    if no_relay && relay.is_some() {
+        return Err(usage(
+            " --iroh-relay and --no-iroh-relay do not go together",
+        ));
+    }
+    let iroh = iroh_on.then(|| crate::config::Iroh {
+        relay: if no_relay {
+            None
+        } else {
+            Some(relay.unwrap_or_else(|| openagents_connect::RELAY_URL.to_owned()))
+        },
+        bind,
+    });
+    let control_on = options.flag("--control");
+    let control = match options.one("--control-socket")? {
+        Some(path) => Some(PathBuf::from(path)),
+        None if control_on => Some(crate::control::default_path().ok_or_else(|| {
+            Error::Config("no default control socket here; pass --control-socket PATH".into())
+        })?),
+        None => None,
+    }
+    .map(|path| crate::config::Control {
+        path,
+        root: root.to_path_buf(),
+        autostart: autostart_program(),
+        uid: crate::control::own_uid(),
+    });
+    let label = match options.one("--label")? {
+        Some(label) => label,
+        None => computer_name(),
+    };
+    Ok(Connect {
+        keys,
+        iroh,
+        control,
+        label,
+    })
+}
+
+#[cfg(target_os = "macos")]
+fn keychain_keys() -> Result<crate::serve::keys::Keys> {
+    Ok(crate::serve::keys::Keys(Arc::new(
+        crate::serve::keys::Keychain::default(),
+    )))
+}
+
+#[cfg(not(target_os = "macos"))]
+fn keychain_keys() -> Result<crate::serve::keys::Keys> {
+    Err(Error::Config(
+        "--keychain is macOS only here; pass --keys DIR".into(),
+    ))
+}
+
+/// The `coder` program that runs `coder host autostart`, when this host is
+/// that program.
+fn autostart_program() -> Option<PathBuf> {
+    std::env::current_exe()
+        .ok()
+        .filter(|path| path.file_name().is_some_and(|name| name == "coder"))
+}
+
+/// This computer's name for a connect code and a phone's list: the host
+/// name without a `.local` suffix, at most 48 bytes.
+fn computer_name() -> String {
+    let mut buffer = [0_u8; 256];
+    // SAFETY: gethostname writes at most `buffer.len()` bytes into `buffer`.
+    let status = unsafe { libc::gethostname(buffer.as_mut_ptr().cast(), buffer.len()) };
+    if status != 0 {
+        return String::new();
+    }
+    let end = buffer.iter().position(|b| *b == 0).unwrap_or(buffer.len());
+    let name = String::from_utf8_lossy(&buffer[..end]);
+    let name = name.strip_suffix(".local").unwrap_or(&name);
+    let mut label = String::new();
+    for c in name.chars().filter(|c| !c.is_control()) {
+        if label.len() + c.len_utf8() > openagents_connect::code::MAX_LABEL_BYTES {
+            break;
+        }
+        label.push(c);
+    }
+    label
 }
 
 /// `--websocket-tls-cert FILE --websocket-tls-key FILE --websocket-name NAME`:

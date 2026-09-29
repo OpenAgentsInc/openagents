@@ -15,6 +15,7 @@ use std::process::ExitCode;
 
 mod catalog;
 mod computer;
+mod connect;
 mod discover;
 mod eval;
 mod ext_defaults;
@@ -54,6 +55,7 @@ pub const USAGE: &str = "usage: openagents [--json] COMMAND [ARGS]
 
 Pairing and computers (NIP-HOST, NIP-REACH):
   host         Run and administer the resident host on this machine.
+  connect      Pair a phone with this computer by QR code, over its local host.
   pair         Show a QR code to read this computer's chats on a phone.
   computer     Enroll with hosts, list them, run commands, order and steer work.
   study        Launch and read Microcoder study runs on a host.
@@ -130,6 +132,7 @@ fn main() -> ExitCode {
         "pair" => runtime().block_on(pair(&rest)),
         "task" => runtime().block_on(coder::task::cli::run(&rest)),
         "computer" | "computers" => computer::run(&output, &rest),
+        "connect" => connect::run(&output, &rest),
         "verse" => world::run(&output, &rest),
         // `openagents xp …` is `openagents verse xp …`.
         "xp" => world::run(

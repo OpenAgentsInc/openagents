@@ -17,6 +17,9 @@
     <string>coder</string>
     <string>host</string>
     <string>serve</string>
+    <string>--keychain</string>
+    <string>--iroh</string>
+    <string>--control</string>
   </array>
   <key>AssociatedBundleIdentifiers</key>
   <array>

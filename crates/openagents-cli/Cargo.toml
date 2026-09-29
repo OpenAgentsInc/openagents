@@ -18,6 +18,8 @@ coder = { path = "../coder" }
 coder-access = { path = "../coder-access", default-features = false }
 coder-computers = { path = "../coder-computers" }
 coder-connect = { path = "../coder-connect" }
+# `openagents connect`: the local control protocol and the connect code.
+openagents-connect = { path = "../openagents-connect" }
 coder-host = { path = "../coder-host" }
 coder-labor = { path = "../coder-labor" }
 coder-link = { path = "../coder-link" }
@@ -48,7 +50,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.11.0"
 tempfile = "3"
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "time"] }
+tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
 verse = { path = "../verse", default-features = false, features = ["xp-host"] }
 verse-lagrange = { path = "../verse-lagrange" }
 

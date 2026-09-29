@@ -29,6 +29,8 @@ pub mod client;
 #[cfg(feature = "host")]
 pub mod config;
 #[cfg(feature = "host")]
+pub mod control;
+#[cfg(feature = "host")]
 pub mod enroll;
 #[cfg(feature = "host")]
 pub mod generation;

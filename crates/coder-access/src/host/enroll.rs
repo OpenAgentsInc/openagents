@@ -24,6 +24,9 @@ pub(super) struct InvitationRecord {
 }
 
 impl InvitationRecord {
+    pub(super) fn relay(&self) -> &str {
+        &self.relay
+    }
     /// See `reparent` in the host module.
     pub(super) fn reparent(&mut self, device: &str, handed_on: &[String], current: &Grant) {
         let covered = current.rights.contains(Right::AccessAdmin)
@@ -92,7 +95,12 @@ pub enum EnrollmentStatus {
 /// Contains the invitation's capability. Show it only to the enrolling device.
 pub struct IssuedInvitation {
     pub id: String,
+    /// The `coder-host:` string.
     pub code: String,
+    /// The capability, 64 lowercase hex characters, for another carriage
+    /// of the same invitation, such as an `openagents-connect:` code.
+    pub capability: String,
+    pub issued_at: u64,
     pub expires_at: u64,
 }
 /// The short code is shown on the host's own screen, never published.
@@ -121,6 +129,33 @@ impl Host {
             create_invitation(&mut book, relay, rights, grant_expires_at, now, &host, None)?;
         store.save(&book)?;
         Ok(issued)
+    }
+    /// The IDs of invitations a device could still redeem: not redeemed,
+    /// not cancelled, and not expired at `now`.
+    pub fn outstanding_invitations(&self, now: u64) -> Result<Vec<String>> {
+        let (_, _, book) = self.open()?;
+        Ok(book
+            .invitations
+            .iter()
+            .filter(|(_, i)| i.grant.is_none() && !i.cancelled && now < i.expires_at)
+            .map(|(id, _)| id.clone())
+            .collect())
+    }
+    /// Cancel every invitation a device could still redeem, in one commit.
+    /// Returns how many were cancelled.
+    pub fn cancel_outstanding(&self, now: u64) -> Result<usize> {
+        let (mut store, _, mut book) = self.open()?;
+        let mut count = 0;
+        for invitation in book.invitations.values_mut() {
+            if invitation.grant.is_none() && !invitation.cancelled && now < invitation.expires_at {
+                invitation.cancelled = true;
+                count += 1;
+            }
+        }
+        if count > 0 {
+            store.save(&book)?;
+        }
+        Ok(count)
     }
     /// Cancel an unused invitation. A redeemed one needs device revocation.
     pub fn cancel_invitation(&self, id: &str) -> Result<()> {
@@ -260,7 +295,11 @@ impl Host {
             Err(Error::new(Code::Revoked, "invitation was cancelled"))
         } else if now >= record.expires_at || now >= record.grant_expires_at {
             Err(Error::new(Code::Expired, "invitation has expired"))
-        } else if request.issued_at < record.issued_at || request.expires_at > record.expires_at {
+        } else if request.issued_at.saturating_add(CLOCK_SKEW) < record.issued_at
+            || request.expires_at > record.expires_at
+        {
+            // A device clock up to the skew behind the host's still pairs:
+            // its request may say it was made before the invitation was.
             Err(Error::new(
                 Code::Forbidden,
                 "request is outside the invitation",
@@ -385,6 +424,8 @@ fn create_invitation(
     Ok(IssuedInvitation {
         id: invitation.id.clone(),
         code,
+        capability: invitation.capability().to_owned(),
+        issued_at: invitation.issued_at,
         expires_at: invitation.expires_at,
     })
 }

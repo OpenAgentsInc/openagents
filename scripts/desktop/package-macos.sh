@@ -263,7 +263,7 @@ PLIST
   <key>Label</key><string>com.openagents.desktop.host</string>
   <key>BundleProgram</key><string>Contents/MacOS/coder</string>
   <key>ProgramArguments</key>
-  <array><string>coder</string><string>host</string><string>serve</string></array>
+  <array><string>coder</string><string>host</string><string>serve</string><string>--keychain</string><string>--iroh</string><string>--control</string></array>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
   <key>ProcessType</key><string>Interactive</string>

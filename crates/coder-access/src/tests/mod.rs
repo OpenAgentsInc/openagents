@@ -15,6 +15,7 @@ use tokio::sync::mpsc;
 mod flows;
 #[path = "../../../coder-control/src/tests/relay.rs"]
 mod relay;
+mod renew;
 mod supersede;
 
 const POLICY: RelayPolicy = RelayPolicy::LoopbackTest;

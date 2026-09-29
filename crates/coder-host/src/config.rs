@@ -58,6 +58,54 @@ pub struct WebsocketTls {
     pub name: String,
 }
 
+/// The host's iroh endpoint, which serves enrollment
+/// (`openagents/enroll/1`) and direct channels (`openagents/reach/1`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Iroh {
+    /// The iroh relay, or `None` for direct addresses only.
+    pub relay: Option<String>,
+    /// Sockets to bind; empty binds iroh's defaults on every interface.
+    pub bind: Vec<SocketAddr>,
+}
+
+impl Iroh {
+    /// Our relay and the default sockets.
+    #[must_use]
+    pub fn openagents() -> Self {
+        Self {
+            relay: Some(openagents_connect::RELAY_URL.into()),
+            bind: Vec::new(),
+        }
+    }
+
+    /// No relay, bound to `127.0.0.1` on a random port. For tests.
+    #[must_use]
+    pub fn loopback() -> Self {
+        Self {
+            relay: None,
+            bind: vec![SocketAddr::from(([127, 0, 0, 1], 0))],
+        }
+    }
+}
+
+/// The local control socket (NIP-HOST, local operator socket).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Control {
+    /// The socket's path. Its directory is made `0700` and the socket
+    /// `0600`.
+    pub path: PathBuf,
+    /// The host root: the recorded settings, whose workspaces are the
+    /// projects, and the auto-start policy.
+    pub root: PathBuf,
+    /// The `coder` program that changes the auto-start policy, as the
+    /// owner's own `coder host autostart` command does. `None` refuses
+    /// auto-start changes over the socket as unavailable.
+    pub autostart: Option<PathBuf>,
+    /// The user ID a peer must have; the host's own unless a test says
+    /// otherwise.
+    pub uid: u32,
+}
+
 /// One host's configuration.
 #[derive(Clone, Debug)]
 pub struct Config {
@@ -104,6 +152,15 @@ pub struct Config {
     /// rank this host. When off, or when a value cannot be read, presence
     /// withholds telemetry and placement skips the host.
     pub telemetry: bool,
+    /// Where the host's secret keys live. `None` keeps the host key in the
+    /// access store's `host.key` and the iroh key in a file beside it.
+    pub keys: Option<crate::serve::keys::Keys>,
+    /// Serve an iroh endpoint.
+    pub iroh: Option<Iroh>,
+    /// Serve the local control socket.
+    pub control: Option<Control>,
+    /// The computer's name, shown on a connect code and a phone's list.
+    pub label: String,
 }
 
 impl Config {
@@ -128,6 +185,10 @@ impl Config {
             recheck_every: Duration::from_millis(500),
             handshake_timeout: Duration::from_secs(10),
             telemetry: true,
+            keys: None,
+            iroh: None,
+            control: None,
+            label: String::new(),
         }
     }
 
@@ -189,6 +250,19 @@ impl Config {
                     "a workspace needs a short label and an absolute root".into(),
                 ));
             }
+        }
+        if let Some(iroh) = &self.iroh
+            && let Some(relay) = &iroh.relay
+            && relay.parse::<openagents_connect::iroh::RelayUrl>().is_err()
+        {
+            return Err(Error::Config("the iroh relay is not a URL".into()));
+        }
+        if self.label.len() > openagents_connect::code::MAX_LABEL_BYTES
+            || self.label.chars().any(char::is_control)
+        {
+            return Err(Error::Config(
+                "the computer's name is at most 48 bytes, without control characters".into(),
+            ));
         }
         if self.presence_every.is_zero()
             || self.recheck_every.is_zero()
