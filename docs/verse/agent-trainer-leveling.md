@@ -270,15 +270,17 @@ season of steady, verified work. Level 40 takes raids.
 ### What earns XP
 
 Each row is a quest *rule*: a check the referee runs before signing and every
-reader runs before counting. NIP-XP implements only `kb-transfer`; the rest
-are proposed.
+reader runs before counting. NIP-XP implements `kb-transfer`, `reproduce`,
+`eval-check`, and `eval-adopt` (and `playtest`, whose XP stays off the trainer
+level); the rest are proposed.
 
 | Contribution | Rule | Roles | What must be true |
 | --- | --- | --- | --- |
 | Knowledge that measurably helps | `kb-transfer` (exists) | author, runner | The entry wasn't written from the quest's task; paired runs by someone other than the author pass at the bar and under its cost. |
 | A trace accepted into a corpus | `trace-admit` (proposed) | trainer | An ATIF trace of a graded run on the quest's task, whose digest, harness, and grader outcome the referee re-derives, passes redaction and schema checks and is admitted to the quest's named corpus. |
-| A benchmark attempt reproduced | `reproduce` (proposed) | claimant, reproducer | A second key reruns a published attempt from its recipe (same task, pinned harness and model identity) and the grader accepts it. The reproducer is never the claimant. |
-| A Gym challenge cleared | `gym-trial` (proposed) | trainer, runner | A pinned suite run, recorded in the Gym's receipt-chained store, passes the challenge's digested gate and beats its bar. |
+| A benchmark attempt reproduced | `reproduce` (exists) | claimant, reproducer | A second key reruns a published attempt from its recipe (same task, pinned harness and model identity) and the grader accepts it. The reproducer is never the claimant. |
+| A published tool result another trainer's check confirmed | `eval-check` (exists) | checker, evaluator, suite author | A different trainer reran the published test set on the same tool release, with the same suite and lock, and got the same verdict, after the result and inside the season. Each role is paid once per suite version per season; a disputed check earns nothing. |
+| A tool adopted into Coder's defaults | `eval-adopt` (exists) | extension author, suite author, evaluator | A `coder-defaults` release depends on the tool's release and cites an operator's admission whose reports include a confirmed result. Each role is paid once per tool release. |
 | A raid cleared | `raid` (proposed) | party roles from a charter | The party's charter was signed by every member before the attempt; the completion passes the underlying rule; an outside key verified it. |
 | Teaching | `mentor` share (proposed) | mentor | The mentee named the mentor in the submission before acceptance. The mentor's share comes out of the mentee's fixed award; it never adds to it. |
 
@@ -334,7 +336,7 @@ contributed the largest share. It gates nothing.
 | Scholar | `kb-transfer` authorship |
 | Warden | `reproduce` and `kb-transfer` runner roles |
 | Pathfinder | `trace-admit` |
-| Champion | `gym-trial` |
+| Champion | `eval-check` and `eval-adopt` |
 | Raid leader | the `lead` role in `raid` charters |
 | Mentor | `mentor` shares |
 
@@ -408,7 +410,7 @@ has no agent spending path yet.
 **What must be true before any quest pays sats:**
 
 1. An award can actually be granted: a producer of admissible prospective
-   evidence (or the proposed `reproduce` and `gym-trial` rules) exists, and
+   evidence (or the `reproduce`, `eval-check`, and `eval-adopt` rules) exists, and
    the OpenAgents referee has signed at least one award to a key it doesn't
    control.
 2. A paid round trip over NIP-X402 is recorded end to end, with a receipt.
@@ -482,7 +484,7 @@ section fixes what leveling adds to it.
 
 Each is a new, versioned addition; none changes an existing event's meaning.
 
-1. **New rules** `reproduce`, `gym-trial`, `trace-admit`, and `raid`, each
+1. **New rules** `reproduce`, `trace-admit`, and `raid`, each
    with its roles, the exact evidence events it names, and fixtures, as
    NIP-XP already requires of "a future rule."
 2. **A `per-awardee` uniqueness policy** with a required `max_awards`, so a
@@ -535,8 +537,8 @@ export, and `openagents xp verify-card`.
 
 ### Phase 3: The training hall
 
-The Gym challenge board with daily and weekly quests, the `gym-trial` and
-`trace-admit` rules, the trainer rank board, classes, and the web trainer
+The Gym challenge board with daily and weekly quests, the `trace-admit`
+rule, the trainer rank board, classes, and the web trainer
 page.
 
 ### Phase 4: Purses, if the prerequisites hold

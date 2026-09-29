@@ -1,0 +1,11 @@
+[Unit]
+Description=Run the OpenAgents XP referee every five minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+RandomizedDelaySec=30s
+Unit=openagents-xp-referee.service
+
+[Install]
+WantedBy=timers.target

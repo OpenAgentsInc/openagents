@@ -389,8 +389,9 @@ the leveling spec proposes (issue #9894) may later subsume it.
 `draft` — added 2026-09-28. **Partial**: `crates/nostr`
 (`xp::eval_check`) implements the rule, its quests, and its awards as
 pure functions over signed events (2026-09-29); the ledger
-(`crates/xp-ledger`) and the referee job that signs awards are not built
-yet ([#9938](https://github.com/OpenAgentsInc/openagents/issues/9938)). It
+(`crates/xp-ledger`) counts its awards and the referee job
+(`microcoder xp referee`) signs them
+([#9938](https://github.com/OpenAgentsInc/openagents/issues/9938)). It
 credits the people behind an extension evaluation result
 ([NIP-EVAL's extension evaluation profile](NIP-EVAL.md#extension-evaluation-profile))
 when another trainer's check confirms it.

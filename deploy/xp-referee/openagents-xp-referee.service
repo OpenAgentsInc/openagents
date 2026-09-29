@@ -1,0 +1,16 @@
+[Unit]
+Description=OpenAgents XP referee: one pass over eval-check checks and coder-defaults adoptions
+Documentation=https://github.com/OpenAgentsInc/openagents/blob/main/docs/coder/guides/xp.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# The referee key stays at ~/.openagents/nostr/referee-key on this host;
+# the job signs only with it and never creates one.
+ExecStart=%h/.local/libexec/openagents-referee/microcoder xp referee --relay wss://relay.openagents.com
+TimeoutStartSec=10min
+Nice=10
+NoNewPrivileges=true
+PrivateTmp=true
+UMask=0077

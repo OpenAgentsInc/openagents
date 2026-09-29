@@ -23,6 +23,8 @@ use serde_json::{Value, json};
 
 use crate::kbnet::{LIMIT, Relay};
 
+pub mod eval;
+
 /// The `xp` command's help.
 pub const USAGE: &str = "usage: microcoder xp <command> --relay URL [options]
 
@@ -74,6 +76,22 @@ Run evidence (signed with your knowledge key, or --key):
                            Account > Trainer > Link a key); --unlink
                            withdraws it
 
+Extension evaluation credit (docs/extensions/evaluation.md):
+  referee [--quests DIR] [--documents DIR] [--queue FILE] [--state FILE]
+                           one pass of the automated referee job: publish
+                           the quest versions confirmed checks and
+                           coder-defaults releases need, and sign each
+                           eval-check and eval-adopt award the rules accept,
+                           once per key; write the adoption queue. Signs
+                           only with an existing referee key
+  adopt [--subject RELEASE-ID] [--expires-days N] [--package-dir DIR]
+                           list the tools that are candidates for Coder's
+                           defaults (Better, confirmed by checks from three
+                           distinct trainers), or adopt one: an operator's
+                           decision, signed with the coder-defaults key
+  defaults-keygen          create the coder-defaults key, once, at --key or
+                           ~/.openagents/nostr/coder-defaults-key (mode 0600)
+
 Reading:
   ledger [--referee KEY]... [--runner KEY]... [--json]
                            derive XP per public key from the awards of the
@@ -120,6 +138,24 @@ pub struct XpOptions {
     pub trainer: Option<String>,
     /// `link`: withdraw this key's link.
     pub unlink: bool,
+    /// `referee`: a directory of `ext-eval.*.json` quest templates
+    /// instead of the built-in ones.
+    pub quests: Option<PathBuf>,
+    /// Where `coder-defaults` documents are kept by digest.
+    pub documents: Option<PathBuf>,
+    /// `referee`: where the adoption queue is written.
+    pub queue: Option<PathBuf>,
+    /// `referee`: where logged refusals are remembered.
+    pub state: Option<PathBuf>,
+    /// The `coder-defaults` root, instead of the package record's.
+    pub defaults_root: Option<String>,
+    /// `adopt`: the tool release to adopt.
+    pub subject: Option<String>,
+    /// `adopt`: days until the admission expires.
+    pub expires_days: Option<u64>,
+    /// `adopt`: the repository's `packages/coder-defaults` to keep the
+    /// documents in, too.
+    pub package_dir: Option<PathBuf>,
     pub json: bool,
     /// Words that aren't options, in order.
     pub words: Vec<String>,
@@ -158,6 +194,20 @@ pub fn parse(args: &[String]) -> Result<XpOptions, String> {
             "--tester" => o.tester = Some(value()?),
             "--trainer" => o.trainer = Some(value()?),
             "--unlink" => o.unlink = true,
+            "--quests" => o.quests = Some(PathBuf::from(value()?)),
+            "--documents" => o.documents = Some(PathBuf::from(value()?)),
+            "--queue" => o.queue = Some(PathBuf::from(value()?)),
+            "--state" => o.state = Some(PathBuf::from(value()?)),
+            "--defaults-root" => o.defaults_root = Some(value()?),
+            "--subject" => o.subject = Some(value()?),
+            "--expires-days" => {
+                o.expires_days = Some(
+                    value()?
+                        .parse()
+                        .map_err(|_| "--expires-days needs a whole number".to_string())?,
+                );
+            }
+            "--package-dir" => o.package_dir = Some(PathBuf::from(value()?)),
             "--json" => o.json = true,
             "-h" | "--help" => return Err(USAGE.to_string()),
             other if other.starts_with("--") => return Err(format!("unknown option {other}")),
@@ -230,6 +280,13 @@ fn quest_key(o: &XpOptions) -> Result<PathBuf, String> {
     } else {
         referee_key(o)
     }
+}
+
+fn defaults_key(o: &XpOptions) -> Result<PathBuf, String> {
+    o.key
+        .clone()
+        .or_else(eval::defaults_key_file)
+        .ok_or("HOME isn't set, so there's no key file: pass --key".to_string())
 }
 
 fn trainer_key(o: &XpOptions) -> Result<PathBuf, String> {
@@ -316,6 +373,9 @@ pub async fn main(args: &[String]) -> u8 {
             "claim" => claim(&o, &trainer_key(&o)?).await,
             "reproduce" => reproduce(&o, &trainer_key(&o)?).await,
             "link" => link(&o, &trainer_key(&o)?).await,
+            "referee" => eval::referee(&o, &referee_key(&o)?).await,
+            "adopt" => eval::adopt_command(&o, &defaults_key(&o)?).await,
+            "defaults-keygen" => eval::defaults_keygen(&o),
             "ledger" => {
                 let key = remote::key_file().ok_or("HOME isn't set, so there's no key file")?;
                 ledger(&o, &key, &trust_for(&o)?).await
@@ -1033,7 +1093,18 @@ pub async fn ledger(o: &XpOptions, key: &Path, trust: &XpTrust) -> Result<u8, St
                 .await?,
         );
     }
-    let derived = ledger_xp::derive(&events, trust);
+    let releases: Vec<Event> = events
+        .iter()
+        .filter(|e| e.kind == nostr::ext::RELEASE_KIND)
+        .cloned()
+        .collect();
+    let documents = eval::documents_for(
+        &mut relay,
+        &releases,
+        o.documents.clone().or_else(eval::documents_dir).as_deref(),
+    )
+    .await;
+    let derived = ledger_xp::derive_with(&events, &documents, trust);
     if o.json {
         println!(
             "{}",

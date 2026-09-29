@@ -23,7 +23,9 @@ use nostr::kb;
 use nostr::xp::{self, Award};
 use serde::Serialize;
 
+pub mod adopt;
 pub mod entry;
+pub mod eval;
 pub mod front;
 pub mod trainers;
 
@@ -221,14 +223,19 @@ pub struct Credit {
     pub quest: String,
     pub title: String,
     pub season: String,
-    /// The quest's rule: `kb-transfer`, `reproduce`, or `playtest`.
+    /// The quest's rule: `kb-transfer`, `reproduce`, `playtest`,
+    /// `eval-check`, or `eval-adopt`.
     pub rule: String,
     /// `author` or `runner` under `kb-transfer`; `claimant` or
     /// `reproducer` under `reproduce`; `tester` or `triager` under
-    /// `playtest`.
+    /// `playtest`; `checker`, `evaluator`, or `suite-author` under
+    /// `eval-check`; `extension-author`, `suite-author`, or `evaluator`
+    /// under `eval-adopt`.
     pub role: String,
     pub pubkey: String,
     pub xp: u64,
+    /// The event IDs the award names as evidence, in its order.
+    pub evidence: Vec<String>,
 }
 
 /// What a reader derives.
@@ -268,9 +275,25 @@ fn short(hex: &str) -> &str {
 /// award's key names its keyed awardee, so each distinct reproducer is
 /// paid once. A quest version with more live awards than its `max_awards`
 /// counts none of them.
+///
+/// `eval-adopt` awards also need the `coder-defaults` manifest and
+/// admission bytes their release pins; [`derive`] holds none, so it
+/// refuses them, and [`derive_with`] takes them.
 #[must_use]
 pub fn derive(events: &[Event], trust: &XpTrust) -> Ledger {
+    derive_with(events, &eval::Documents::new(), trust)
+}
+
+/// [`derive`], with the document bytes `eval-adopt` awards are checked
+/// against.
+#[must_use]
+pub fn derive_with(events: &[Event], documents: &eval::Documents, trust: &XpTrust) -> Ledger {
     let mut ledger = Ledger::default();
+    let publications: Vec<Event> = eval::publications(events)
+        .into_values()
+        .map(|(event, _)| event)
+        .collect();
+    let requests = eval::requests(events);
     let mut by_id: BTreeMap<&str, &Event> = BTreeMap::new();
     for event in events {
         by_id.entry(event.id.as_str()).or_insert(event);
@@ -336,6 +359,22 @@ pub fn derive(events: &[Event], trust: &XpTrust) -> Ledger {
                     .ok_or(format!("the {what} {} isn't available", short(id)))
             };
             let quest = find(&award.quest.id, "quest")?;
+            if award.rule == xp::EVAL_CHECK {
+                let result = find(&award.evidence[0].id, "result")?;
+                let check = find(&award.evidence[1].id, "check")?;
+                return eval::verify_eval_check(event, quest, result, check, &requests);
+            }
+            if award.rule == xp::EVAL_ADOPT {
+                let release = find(&award.evidence[0].id, "defaults release")?;
+                return eval::verify_eval_adopt(
+                    event,
+                    quest,
+                    release,
+                    &publications,
+                    &requests,
+                    documents,
+                );
+            }
             if award.rule == xp::PLAYTEST {
                 let report = find(&award.evidence[0].id, "report")?;
                 let session = match award.evidence.get(1) {
@@ -434,6 +473,7 @@ the referee revokes the extra ones",
                 role: awardee.role.clone(),
                 pubkey: awardee.pubkey.clone(),
                 xp: awardee.xp,
+                evidence: award.evidence.iter().map(|e| e.id.clone()).collect(),
             });
         }
     }

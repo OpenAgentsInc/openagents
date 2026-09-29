@@ -1,0 +1,18 @@
+{
+  "v": 1,
+  "rule": "eval-adopt",
+  "id": "ext-eval.adopt",
+  "note": "The referee publishes one quest version per adopted tool release, when a coder-defaults release depends on it and cites the operator's admission.",
+  "season": {
+    "id": "ext-eval-2026-q4",
+    "opens_at": 1790553600,
+    "closes_at": 1798761600
+  },
+  "title": "Get a tool into Coder",
+  "objective": "Make a tool whose result is Better and confirmed by other trainers' checks, so an OpenAgents operator adopts it into Coder's defaults. Adoption earns XP for the tool's author, the test set's author, and the trainer of each confirmed result.",
+  "award": {
+    "extension-author": 200,
+    "suite-author": 100,
+    "evaluator": 50
+  }
+}

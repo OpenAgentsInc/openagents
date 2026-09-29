@@ -782,3 +782,5 @@ fn a_linked_trainer_sums_xp_across_its_keys() {
     // The award still credits the key it names.
     assert_eq!(ledger.totals.get(phone.pubkey()), None);
 }
+
+mod eval;

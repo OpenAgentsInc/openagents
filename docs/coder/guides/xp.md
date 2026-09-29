@@ -283,6 +283,75 @@ never move a trainer level ([playtesting](../../game/playtesting.md#rewards)).
    once under its rule-derived key, and a quest version stops at its
    `max_awards`.
 
+## Credit for tool results: checks and adoption
+
+[Extension evaluation](../../extensions/evaluation.md#checks-adoption-and-credit)
+credits a tool's result when it's used, and "used" means exactly two
+things: another trainer's check confirmed it (NIP-XP `eval-check`), or
+Coder adopted the tool into its defaults (`eval-adopt`). A run, a publish,
+a view, or a download earns nothing. Credit is XP and your name; it's never
+spent, transferred, or converted, and nothing here pays.
+
+| Rule | Who earns, and how much in the first quests | How often |
+| --- | --- | --- |
+| `eval-check` | The checker 50, the result's trainer (the evaluator) 25, the test set's author 25 | Each role once per test set version per season |
+| `eval-adopt` | The tool's author 200, the test set's author 100, each confirmed result's trainer 50 | Each role once per tool release |
+
+A key that holds two roles is paid once, in the larger role. A disputed or
+inconclusive check, a check of your own result, and a check of results on
+your own test set earn nothing.
+
+### The referee job
+
+The OpenAgents referee runs `microcoder xp referee` on its host every five
+minutes, as the user service in `deploy/xp-referee/`. Each pass:
+
+1. Reads `oa:ext-eval:v1` results and checks, trainer profiles and key
+   links, and `coder-defaults` releases from the relay.
+2. For a check that confirms a result on a starter test set (the templates
+   in `knowledge/quests/ext-eval.*.json`), publishes the quest version for
+   that test set release and tool release if it doesn't exist yet, then
+   checks the `eval-check` rule and signs one award per role.
+3. For a `coder-defaults` release that depends on a tool and cites its
+   admission, publishes the tool's `eval-adopt` quest version and signs its
+   awards.
+4. Writes the adoption queue to `~/.openagents/coder-defaults/candidates.json`.
+
+A key that already holds a live award is never signed again, so rerunning
+the job signs nothing twice. The referee also refuses a check whose key is
+linked (NIP-XP `13195`, both sides signed) to the result's trainer or the
+test set's author: the rule compares keys, and the referee compares the
+trainers behind them. Each refusal is logged once, with event IDs and the
+rule's reason, never a report's text. A template's `suite.publishers` lists
+the keys whose releases of its suite package are the starter test set;
+until it lists one, no quest is published for it.
+
+The job signs only with the existing referee key. It never creates one.
+
+### Adopt a tool into Coder's defaults
+
+A tool is a candidate when a result on it is **Better** and checks by at
+least three distinct trainers confirmed it. Adoption is always an
+operator's decision. On the referee host:
+
+```sh
+microcoder xp adopt --relay wss://relay.openagents.com
+microcoder xp adopt --relay wss://relay.openagents.com --subject <tool release ID> \
+  --package-dir ~/openagents/packages/coder-defaults
+```
+
+The first lists the queue. The second writes the
+`openagents.eval-admission.v1` decision citing the confirmed reports, the
+next `coder-defaults` manifest (the previous release's dependencies plus
+the tool's release, citing the decision), and publishes the release and
+NIP-94 locators, signed with the `coder-defaults` key
+(`~/.openagents/nostr/coder-defaults-key`, made once with
+`microcoder xp defaults-keygen`). The referee credits the adoption on its
+next pass. Commit the two new files under
+`packages/coder-defaults/documents/` so readers elsewhere can fetch them:
+a reader counts an `eval-adopt` award only when it holds the manifest and
+admission bytes the release pins.
+
 ## Revoke an award
 
 ```sh

@@ -1,0 +1,24 @@
+{
+  "v": 1,
+  "rule": "eval-check",
+  "id": "ext-eval.code-finder.check",
+  "name": "Code finder",
+  "note": "The referee publishes one quest version per Code finder test set release and tool release, the first time another trainer's check confirms a result on them. publishers lists the keys whose releases of the suite package are the starter test set; until it lists one, no quest is published.",
+  "suite": {
+    "package": "code-finder-tests",
+    "publishers": []
+  },
+  "season": {
+    "id": "ext-eval-2026-q4",
+    "opens_at": 1790553600,
+    "closes_at": 1798761600
+  },
+  "title": "Check a Code finder result",
+  "objective": "Rerun the Code finder test set on the same tool release as a published result, and publish your check. When your check confirms the result, you earn XP as the checker, the result's trainer earns XP as the evaluator, and the test set's author earns XP too. Each of you earns it once per test set version this season.",
+  "award": {
+    "checker": 50,
+    "evaluator": 25,
+    "suite-author": 25
+  },
+  "max_awards": 500
+}

@@ -1,0 +1,15 @@
+{
+  "v": 1,
+  "package": "51428dd2352a6008e0741e894238a5cbab34beff61e32463b9b70b2ad3ae0715:coder-defaults",
+  "title": "Coder defaults",
+  "summary": "The extensions Coder admits for everyone. Each release depends on the adopted extensions' releases and cites the operator's openagents.eval-admission.v1 decision for each.",
+  "root": "51428dd2352a6008e0741e894238a5cbab34beff61e32463b9b70b2ad3ae0715",
+  "npub": "npub129pgm5349fsq3cr5r6y5yw99ew4nf0hlv83jgcaeku9j45awqu2s8f3m3d",
+  "key": "~/.openagents/nostr/coder-defaults-key on the referee host; created once with microcoder xp defaults-keygen and never copied",
+  "candidate": {
+    "verdict": "pass",
+    "confirming_checks": 3,
+    "decision": "operator"
+  },
+  "documents": "packages/coder-defaults/documents/<sha256 hex>.json holds each published manifest and admission, named by the digest its release or manifest pins"
+}
