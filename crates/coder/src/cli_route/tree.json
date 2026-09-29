@@ -396,6 +396,63 @@
           ]
         },
         {
+          "name": "adopt",
+          "leaf": {
+            "path": [
+              "host",
+              "adopt"
+            ],
+            "usage": [
+              "adopt"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "adopt"
+                  }
+                ]
+              }
+            ],
+            "summary": "move a host set up the old way to the keychain, for the desktop app",
+            "effect": "local_write",
+            "runs_on": "connected_computer"
+          },
+          "children": [
+            {
+              "name": "detect",
+              "leaf": {
+                "path": [
+                  "host",
+                  "adopt",
+                  "detect"
+                ],
+                "usage": [
+                  "adopt detect"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "adopt"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "detect"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "report whether there is such a host to move, changing nothing",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            }
+          ]
+        },
+        {
           "name": "serve",
           "leaf": {
             "path": [
@@ -403,7 +460,7 @@
               "serve"
             ],
             "usage": [
-              "serve [--owner KEY] [--relay URL]... [--workspace LABEL=PATH]... [--listen ADDR] [--listen-websocket ADDR] [--allow-nonloopback] [--websocket-tls-cert FILE --websocket-tls-key FILE --websocket-name NAME] [--advertise lan|tailnet|public=HOST:PORT|URL]... [--tailnet-admission RIGHTS [--no-tailnet-chats]] [--generation N] [--runtime FILE | --no-runtime] [--tasks DIR] [--loopback] [--no-telemetry]"
+              "serve [--owner KEY] [--relay URL]... [--workspace LABEL=PATH]... [--listen ADDR] [--listen-websocket ADDR] [--allow-nonloopback] [--websocket-tls-cert FILE --websocket-tls-key FILE --websocket-name NAME] [--advertise lan|tailnet|public=HOST:PORT|URL]... [--tailnet-admission RIGHTS [--no-tailnet-chats]] [--generation N] [--runtime FILE | --no-runtime] [--tasks DIR] [--loopback] [--no-telemetry] [--iroh [--iroh-relay URL | --no-iroh-relay] [--iroh-bind ADDR]...] [--control | --control-socket PATH] [--keychain | --keys DIR] [--label NAME]"
             ],
             "forms": [
               {
@@ -533,6 +590,62 @@
                   {
                     "kind": "option",
                     "name": "no-telemetry",
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "iroh",
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "iroh-relay",
+                    "value": "URL",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "no-iroh-relay",
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "iroh-bind",
+                    "value": "ADDR",
+                    "open": true,
+                    "optional": true,
+                    "repeated": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "control",
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "control-socket",
+                    "value": "PATH",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "keychain",
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "keys",
+                    "value": "DIR",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "label",
+                    "value": "NAME",
+                    "open": true,
                     "optional": true
                   }
                 ]
@@ -711,6 +824,80 @@
         },
         {
           "kind": "option",
+          "name": "iroh",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "iroh-relay",
+          "value": "URL",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "no-iroh-relay",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "iroh-bind",
+          "value": "ADDR",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "control",
+          "value": "|",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "control-socket",
+          "value": "PATH",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "keychain",
+          "value": "|",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "keys",
+          "value": "DIR",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "label",
+          "value": "NAME",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "control`:",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
           "name": "state",
           "value": "DIR",
           "open": true,
@@ -728,6 +915,203 @@
         {
           "kind": "option",
           "name": "loopback-test",
+          "optional": true,
+          "repeated": true
+        }
+      ]
+    },
+    {
+      "name": "connect",
+      "summary": "Pair a phone with this computer by QR code, over its local host.",
+      "children": [
+        {
+          "name": "invite",
+          "leaf": {
+            "path": [
+              "connect",
+              "invite"
+            ],
+            "usage": [
+              "invite [--terminal] [--text]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "invite"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "terminal",
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "text",
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "show a QR code for the OpenAgents app on a phone; waits until a phone connects or the code expires, then cancels it",
+            "effect": "grants",
+            "runs_on": "screen",
+            "screen": "account.computers"
+          }
+        },
+        {
+          "name": "devices",
+          "leaf": {
+            "path": [
+              "connect",
+              "devices"
+            ],
+            "usage": [
+              "devices"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "devices"
+                  }
+                ]
+              }
+            ],
+            "summary": "the phones that can reach this computer",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "remove",
+          "leaf": {
+            "path": [
+              "connect",
+              "remove"
+            ],
+            "usage": [
+              "remove DEVICE"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "remove"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "DEVICE"
+                  }
+                ]
+              }
+            ],
+            "summary": "cut a phone off now (hex key or npub)",
+            "effect": "grants",
+            "runs_on": "screen",
+            "screen": "account.computers"
+          }
+        },
+        {
+          "name": "status",
+          "leaf": {
+            "path": [
+              "connect",
+              "status"
+            ],
+            "usage": [
+              "status"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "status"
+                  }
+                ]
+              }
+            ],
+            "summary": "this computer's host at a glance",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "owner",
+          "children": [
+            {
+              "name": "import",
+              "leaf": {
+                "path": [
+                  "connect",
+                  "owner",
+                  "import"
+                ],
+                "usage": [
+                  "owner import"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "owner"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "import"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "use the owner key from your other computers; reads an nsec or hex secret key from stdin",
+                "effect": "secret",
+                "runs_on": "connected_computer"
+              }
+            }
+          ]
+        }
+      ],
+      "options": [
+        {
+          "kind": "option",
+          "name": "ssh",
+          "value": "DESTINATION",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "terminal",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "text",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "control",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "socket",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "help",
           "optional": true,
           "repeated": true
         }

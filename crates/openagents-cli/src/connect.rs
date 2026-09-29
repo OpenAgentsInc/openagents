@@ -10,6 +10,8 @@
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+#[cfg(test)]
+use coder::cli_route::tree::{Declared, Effect};
 use openagents_connect::control::{self, Op, Reply, Request};
 use serde_json::{Value, json};
 use tokio::net::UnixStream;
@@ -19,6 +21,7 @@ use crate::out::{Output, table};
 mod ssh;
 
 pub const USAGE: &str = "usage: openagents connect COMMAND [--socket PATH]
+       openagents connect --ssh DESTINATION [OPTIONS]
   invite [--terminal] [--text]   show a QR code for the OpenAgents app on a
                                  phone; waits until a phone connects or the
                                  code expires, then cancels it
@@ -28,7 +31,21 @@ pub const USAGE: &str = "usage: openagents connect COMMAND [--socket PATH]
   owner import                   use the owner key from your other computers;
                                  reads an nsec or hex secret key from stdin
 The host must be running with its control socket (`coder host serve
---control`, or the OpenAgents desktop app). --socket names another socket.";
+--control`, or the OpenAgents desktop app). --socket names another socket.
+--ssh sets up a headless computer over SSH and pairs this computer with it;
+see `openagents connect --ssh --help`.";
+
+/// What each `connect` command does. `invite` and `remove` change who can
+/// reach this computer, so the phone does them on its computers screen;
+/// `owner import` reads a secret key.
+#[cfg(test)]
+pub(crate) const EFFECTS: &[Declared] = &[
+    Declared::screen("invite", Effect::Grants, "account.computers"),
+    Declared::computer("devices", Effect::ReadOnly),
+    Declared::screen("remove", Effect::Grants, "account.computers"),
+    Declared::computer("status", Effect::ReadOnly),
+    Declared::computer("owner import", Effect::Secret),
+];
 
 /// How often `invite` looks for the phone that scanned.
 const POLL: Duration = Duration::from_secs(1);

@@ -1552,6 +1552,7 @@ fn stop(pid: u32) -> Result<(), String> {
 
 /// Start `host serve` in its own session, so it outlives the SSH
 /// connection, with its output in a log beside its state.
+#[cfg_attr(not(test), allow(clippy::infallible_destructuring_match))]
 fn start(
     runtime: &tokio::runtime::Runtime,
     remote: &Remote,

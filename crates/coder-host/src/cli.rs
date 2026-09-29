@@ -34,7 +34,8 @@ pub const USAGE: &str = "usage: coder host COMMAND [OPTIONS]
   list [--json]
   revoke --device KEY
   spend request|list|show ...   ask the owner's phone to pay (`coder host spend help`)
-  adopt [detect]    move a host set up the old way to the keychain, for the desktop app
+  adopt             move a host set up the old way to the keychain, for the desktop app
+  adopt detect      report whether there is such a host to move, changing nothing
   serve [--owner KEY] [--relay URL]... [--workspace LABEL=PATH]... [--listen ADDR]
         [--listen-websocket ADDR] [--allow-nonloopback]
         [--websocket-tls-cert FILE --websocket-tls-key FILE --websocket-name NAME]

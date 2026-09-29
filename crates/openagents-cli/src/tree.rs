@@ -22,6 +22,8 @@ const HOST: &[Declared] = &[
     Declared::screen("spend request", Effect::Spends, "wallet"),
     Declared::screen("spend list", Effect::ReadOnly, "wallet"),
     Declared::screen("spend show", Effect::ReadOnly, "wallet"),
+    Declared::computer("adopt", Effect::LocalWrite),
+    Declared::computer("adopt detect", Effect::ReadOnly),
     Declared::computer("serve", Effect::LongRunning),
 ];
 
@@ -69,6 +71,11 @@ pub fn help() -> Vec<GroupHelp<'static>> {
     };
     vec![
         group("host", Some(coder_host::cli::USAGE), HOST),
+        group(
+            "connect",
+            Some(crate::connect::USAGE),
+            crate::connect::EFFECTS,
+        ),
         group("pair", None, PAIR),
         group(
             "computer",
