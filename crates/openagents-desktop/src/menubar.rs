@@ -630,6 +630,7 @@ mod tests {
             devices: host.devices().unwrap(),
             projects: host.projects().unwrap(),
             autostart: host.autostart().unwrap(),
+            nearby: None,
         });
         assert_eq!(MenuState::of(&model).coder, Coder::Running);
         assert_eq!(
