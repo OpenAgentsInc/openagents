@@ -193,6 +193,23 @@ fn titled(slide: &Slide, body: Grid, width: usize) -> Grid {
     let title = slide.title.clone().unwrap_or_default();
     let kicker = slide.kicker.clone().unwrap_or_default();
     if title.is_empty() && kicker.is_empty() {
+        // With no title to carry the slide's one full-intensity element,
+        // the body's lead phrases (its bold runs) do.
+        let mut body = body;
+        if !has_full(&body) {
+            for row in 0..body.height() {
+                for col in 0..body.width() {
+                    if let Some(cell) = body.get(col, row).copied()
+                        && cell.style.bold
+                        && !cell.is_blank()
+                    {
+                        let mut lit = cell;
+                        lit.style.intensity = Intensity::Full;
+                        body.put(col, row, lit);
+                    }
+                }
+            }
+        }
         return body;
     }
     let top = if kicker.is_empty() { 0 } else { 1 };

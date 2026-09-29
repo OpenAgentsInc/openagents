@@ -6,6 +6,16 @@ notes: Three parts, as the essay has them. Part I is the concept in general term
 notes: Every number in the deck comes from a dated record in the repository; the source line of each slide names it.
 
 ---
+layout: points
+id: definitions
+source: docs/essays/2026-09-29-test-time-capabilities.md#what-test-time-compute-is; docs/essays/2026-09-29-test-time-capabilities.md#1-test-time-capability-ttcap
+
+- **Test-time compute:** spending more computation when a model answers, not when it is trained.
+- **Test-time capabilities:** an agent gaining, or losing, an ability while it runs, because something
+  was admitted to the run, with no change to its weights.
+
+notes: One line each. Compute is the literature's word: longer reasoning, more samples, search. Capabilities are the step past it: the weights stay fixed and what the running agent can do changes.
+---
 
 layout: compare
 id: compute-vs-capabilities
@@ -24,6 +34,36 @@ row: What is left after | Nothing is kept | The capability, for every agent
 notes: Test-time compute: think longer (chain of thought, o1, DeepSeek-R1), control the budget (s1: AIME24 from 50 to 57 percent), sample many and pick (SWE-bench Lite: 15.9 to 56 percent with 250 samples), allocate per question (compute-optimal beat best-of-N fourfold), adapt the weights briefly (test-time training on ARC). Wei 2022, OpenAI 2024, DeepSeek-AI 2025, Muennighoff 2025, Brown 2024, Snell 2024, Akyürek 2024.
 notes: Both leave the weights alone. Compute spends more per answer and keeps nothing. A capability is admitted to the run, proven by a claim someone else can rerun, and stays: adopted once, every agent that shares the defaults has it.
 notes: Two lessons carry over from the compute literature: a verifier is what makes extra effort pay, and the allocation is itself a judgment that should cost far less than the work it allocates.
+---
+
+layout: points
+id: compounding
+title: Capabilities can compound across a network
+note: A hypothesis. Whether more participants make an agent measurably better has to be shown, measured the way the lexicon says.
+source: docs/essays/2026-09-29-test-time-capabilities.md#how-capabilities-compound-across-a-network
+
+- **More sources.** People bring the task families, libraries, and environments they know.
+- **More verification.** Independent reruns, including disputes, are the verifier extra effort depends on.
+- **Inheritance.** One validated result becomes a default for every agent, with no training run.
+- **Credit that tracks use.** Recognition for verification work and adoptions, not for agreement.
+
+notes: Weights improve when a lab trains them, on the lab's schedule. A test-time capability can come from anyone, be tested by anyone, and reach every agent once adopted.
+notes: The unit that compounds is a capability claim with independent evidence: an exact version, a with-and-without result, reruns by people who didn't write it, and a delta that survives tests they wrote. Say the zero on the status slide.
+---
+layout: points
+id: nostr
+title: Nostr is already the agent-to-agent protocol
+source: docs/transcripts/288-draft.md#nostr-before-the-nip-slides
+
+- **Perfect in the "worse is better" sense.** Like C and Unix: it started simple and became ubiquitous.
+- **Easily extensible.** About a hundred specs, and if they lack what you need, you add one.
+- **Agents can build on it in a few prompts.** Pointed at the NIPs repo, a coding agent added multiplayer
+  chat, presence, social feeds, and encrypted DMs to an app. Any human or agent can use the same specs
+  for immediate, permissionless interop.
+- **Don't overthink it.** Signed, optionally encrypted JSON over websockets works for most cases. If agents
+  need a custom peer-to-peer thing, they negotiate it over the chat primitives that already exist.
+
+notes: This is the owner's tweet of 2026-09-29, kept in its own words. The NIPs on the next two slides are our extensions of the same protocol; nothing here needed a new transport.
 ---
 
 layout: compare
@@ -59,7 +99,6 @@ row: XP | credit | paid to confirm or dispute | Implemented
 row: POL | cost, adoption | operator adopts; runs keep lock | Designed
 row: OPT | optimization | faces the same test | Designed
 row: MV | Verse | Gym notes cite the result | Partial
-row: Contracts | locks | "the same tool", exactly | Partial
 notes: RUN decides; trajectories only observe. ATIF traces stay local files today; no component publishes them yet. EVAL carries the subject and baseline arms, what the run relied on, the tool's identity strength, the task distribution, a verdict from a gate that declares its primary outcome, 3189 results, checks by a different trainer, and validations on a second suite read for independence by signer and chronology.
 notes: XP: eval-check pays the checker, evaluator, and suite author whether the check confirms or disputes; eval-adopt needs a confirming check and a validation and pays the tool's author too; XP is never money. POL's route receipts would carry a judgment's time and cost. OPT's result reaches an agent only through EVAL admission and a new EXT release.
 ---
@@ -169,23 +208,6 @@ source: docs/essays/2026-09-29-test-time-capabilities.md#cheap-judgments-before-
 
 notes: The literature allocates thinking per question. This allocates one level up, before any thinking.
 notes: The third principle is a hypothesis to test. Under a correctness-primary rule, time and cost are notes on a result, never the verdict. A claim may name cost as its primary outcome with correctness held non-inferior; what it can never be is faster and wrong.
-
----
-
-layout: points
-id: compounding
-kicker: PART I · THE IDEA
-title: Capabilities can compound across a network
-note: A hypothesis. Whether more participants make an agent measurably better has to be shown, measured the way the lexicon says.
-source: docs/essays/2026-09-29-test-time-capabilities.md#how-capabilities-compound-across-a-network
-
-- **More sources.** People bring the task families, libraries, and environments they know.
-- **More verification.** Independent reruns, including disputes, are the verifier extra effort depends on.
-- **Inheritance.** One validated result becomes a default for every agent, with no training run.
-- **Credit that tracks use.** Recognition for verification work and adoptions, not for agreement.
-
-notes: Weights improve when a lab trains them, on the lab's schedule. A test-time capability can come from anyone, be tested by anyone, and reach every agent once adopted.
-notes: The unit that compounds is a capability claim with independent evidence: an exact version, a with-and-without result, reruns by people who didn't write it, and a delta that survives tests they wrote. Say the zero on the status slide.
 
 ---
 

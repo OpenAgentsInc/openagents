@@ -44,6 +44,16 @@ The point isn't any one paper. The point is that a fixed set of weights answers 
 
 ---
 
+## Nostr (before the NIP slides)
+
+The owner's tweet of 2026-09-29, read as written:
+
+> Nostr is already the perfect agent-to-agent communication protocol. Perfect in the "worse is better" philosophy of C and Unix that started simply and became ubiquitous. Easily extensible if its 100ish specs don't have what you need. Pointing a coding agent at the Nostr NIPs repo last night I was able to add multiplayer chat and presence and social feeds and encrypted DMs to an app in a few prompts; any humans or agent could use the same specs for immediate permissionless interop. Don't overthink it! Signed and optionally encrypted JSON over websockets = works for most cases and if agents need some custom P2P thing they can negotiate it over the existing chat primitives.
+
+The two NIP slides that follow are our extensions of that same protocol.
+
+---
+
 ## Slide 3: Two lessons
 
 Two things from that literature carry past tokens. One: a verifier is what makes extra compute pay. Sampling only helps as far as something can tell right from wrong. Where the checker is weak, more samples stop helping. Two: compute should be allocated per question. Easy prompts don't need a long chain of thought. And the allocation decision is itself a judgment, and it should cost far less than the work it allocates.

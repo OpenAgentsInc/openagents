@@ -2,66 +2,66 @@ width 108 height 28
 
 
 
+
     The NIPs: from the run to the shared result
     ────────────────────────────────────────────────────────────────────────────────────────────────────
 
-                Carries          Why it matters                    Status
+           Carries          Why it matters                    Status
     ────────────────────────────────────────────────────────────────────────────────────────────────────
-    RUN         run journal      lock, grant, baseline agent       Partial
+    RUN    run journal      lock, grant, baseline agent       Partial
 
-    ATIF        trajectories     each arm, step by step            Designed
+    ATIF   trajectories     each arm, step by step            Designed
 
-    EVAL        claims, checks   signed claims, whole scope        Partial
+    EVAL   claims, checks   signed claims, whole scope        Partial
 
-    XP          credit           paid to confirm or dispute        Implemented
+    XP     credit           paid to confirm or dispute        Implemented
 
-    POL         cost, adoption   operator adopts; runs keep lock   Designed
+    POL    cost, adoption   operator adopts; runs keep lock   Designed
 
-    OPT         optimization     faces the same test               Designed
+    OPT    optimization     faces the same test               Designed
 
-    MV          Verse            Gym notes cite the result         Partial
-
-    Contracts   locks            "the same tool", exactly          Partial
+    MV     Verse            Gym notes cite the result         Partial
 
 
 
 
-─────────────────────────────────────────────────────────────────────────────────────────────────── 4 / 20 ─
+
+─────────────────────────────────────────────────────────────────────────────────────────────────── 7 / 22 ─
 --
+
 
 
 
     3333333333333333333333333333333333333333333
     1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111
 
-                2222222          22222222222222                    222222
+           2222222          22222222222222                    222222
     1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111
-    222         444 4444444      333333333333333333333333333       3333333
+    222    444 4444444      333333333333333333333333333       3333333
 
-    2222        444444444444     3333333333333333333333            33333333
+    2222   444444444444     3333333333333333333333            33333333
 
-    2222        4444444 444444   33333333333333333333333333        3333333
+    2222   4444444 444444   33333333333333333333333333        3333333
 
-    22          444444           33333333333333333333333333        33333333333
+    22     444444           33333333333333333333333333        33333333333
 
-    222         44444 44444444   3333333333333333333333333333333   33333333
+    222    44444 44444444   3333333333333333333333333333333   33333333
 
-    222         444444444444     3333333333333333333               33333333
+    222    444444444444     3333333333333333333               33333333
 
-    22          44444            3333333333333333333333333         3333333
-
-    222222222   44444            333333333333333333333333          3333333
+    22     44444            3333333333333333333333333         3333333
 
 
 
 
-222222222222222222222111111111111111111111111111111111111111111111111111111111111111111111111111111222222221
+
+222222222222222222222222222222222211111111111111111111111111111111111111111111111111111111111111111222222221
 --
 
 
 
-    bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 
+    bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 
 
 
