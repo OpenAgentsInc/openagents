@@ -1063,10 +1063,12 @@ dependencies = [
  "secp256k1 0.31.1",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "supervise",
  "tempfile",
  "tokio",
  "tokio-tungstenite",
+ "toml",
  "wat",
 ]
 

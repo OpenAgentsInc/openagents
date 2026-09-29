@@ -29,10 +29,19 @@
 //! (T1), the product and codebase knowledge bases (T2), and the
 //! `openagents` command tree (T4 CLI). Each has a no-op default.
 
+pub mod bank;
+pub mod judge;
 pub mod personalize;
+pub mod policy;
 pub mod seams;
+pub mod wire;
 
 use serde_json::{Value, json};
+
+pub use bank::{Bank, Entry, Facts};
+pub use judge::{Routing, reading, request};
+pub use policy::{Lead, Mode, Situation, Tier, decide};
+pub use seams::Seams;
 
 /// The question set's identity, for evidence and for the wire.
 pub const SET: &str = "chat-router-v1";
@@ -595,6 +604,18 @@ fn secret_shape(token: &str) -> bool {
         || lightning_address
 }
 
+/// Whether every `#` in `text` starts an issue or pull request number
+/// (`#9920`) that the user's own message contains; any other `#` is markup.
+fn hashes_are_the_users(text: &str, message: &str) -> bool {
+    text.match_indices('#').all(|(at, _)| {
+        let digits: String = text[at + 1..]
+            .chars()
+            .take_while(char::is_ascii_digit)
+            .collect();
+        !digits.is_empty() && message.contains(&format!("#{digits}"))
+    })
+}
+
 /// Why a continuation was not shown.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Invalid {
@@ -632,7 +653,8 @@ pub fn validate_continuation(continuation: &str, message: &str) -> Result<String
     }
     if trimmed
         .chars()
-        .any(|c| c.is_control() || matches!(c, '`' | '*' | '#' | '<' | '>' | '[' | ']' | '{' | '}'))
+        .any(|c| c.is_control() || matches!(c, '`' | '*' | '<' | '>' | '[' | ']' | '{' | '}'))
+        || !hashes_are_the_users(trimmed, message)
     {
         return Err(Invalid::Markup);
     }
@@ -684,6 +706,152 @@ pub fn validate_continuation(continuation: &str, message: &str) -> Result<String
     } else {
         format!(" {trimmed}")
     })
+}
+
+// ---------------------------------------------------------------------------
+// The worker's facts, and what the router does with a seam's answer
+// ---------------------------------------------------------------------------
+
+/// The facts a worker fills the bank's slots from: its model and door
+/// (`model` served at `url`, `None` for a door that is not a gateway
+/// door), its quota as `(per minute, per day)` for a metered worker, and
+/// every service its seams send text to. A value this cannot name is left
+/// out, and the entries that need it with it.
+#[must_use]
+pub fn worker_facts(
+    model: &str,
+    url: Option<&str>,
+    quota: Option<(u32, u32)>,
+    seams: &Seams,
+) -> Facts {
+    let door = crate::first::Facts::of(model, url);
+    let mut facts = Facts::default();
+    if let Some(model) = &door.chat_model {
+        facts = facts.set("worker.lane.display", model.clone());
+    }
+    if let Some(host) = &door.chat_model_host {
+        facts = facts.set("worker.door.display", host.clone());
+    }
+    if let (Some(model), Some(host)) = (&door.chat_model, &door.chat_model_host) {
+        let mut recipients = vec![format!("{host} for {model}")];
+        recipients.extend(seams.recipients());
+        recipients.push("TypeSafe for Jev, which chooses how we reply".to_string());
+        facts = facts.set("worker.recipients", series(&recipients));
+    }
+    if let Some((minute, day)) = quota {
+        facts = facts
+            .set("worker.quota.minute", minute.to_string())
+            .set("worker.quota.day", day.to_string());
+    }
+    facts
+}
+
+/// `a`, `a and b`, or `a, b, and c`.
+fn series(items: &[String]) -> String {
+    match items {
+        [] => String::new(),
+        [one] => one.clone(),
+        [one, two] => format!("{one} and {two}"),
+        [rest @ .., last] => format!("{}, and {last}", rest.join(", ")),
+    }
+}
+
+/// A stem closed with a continuation, or with its generic end when the
+/// continuation is missing or fails [`validate_continuation`]. Returns the
+/// words after the stem and, when a continuation was used, its model.
+#[must_use]
+pub fn close_stem(
+    generic_end: &str,
+    continuation: Option<&seams::Continuation>,
+    message: &str,
+) -> (String, Option<String>) {
+    continuation
+        .and_then(|continuation| {
+            validate_continuation(&continuation.text, message)
+                .ok()
+                .map(|text| (text, Some(continuation.model.clone())))
+        })
+        .unwrap_or_else(|| (generic_end.to_string(), None))
+}
+
+/// The most passages a grounded reply reads.
+pub const MAX_PASSAGES: usize = 6;
+
+/// What a retrieval means for the turn.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Grounded {
+    /// A product entry's reviewed answer, served whole (T0).
+    Answer(seams::Passage),
+    /// Passages at or above [`RELEVANCE_FLOOR`], most relevant first.
+    Passages(Vec<seams::Passage>),
+    /// Nothing relevant: the model says we have no documented answer.
+    Nothing,
+    /// The corpus says the question needs Coder.
+    Dispatch,
+}
+
+/// Reads a retrieval: dispatch when the corpus says so, a whole reviewed
+/// answer when the top passage carries one at [`KB_ANSWER_CONFIDENCE`] and
+/// the message needs no specifics, else the relevant passages.
+#[must_use]
+pub fn grounded(grounding: &seams::Grounding, needs_specifics: f64) -> Grounded {
+    if grounding.needs_dispatch {
+        return Grounded::Dispatch;
+    }
+    let mut passages: Vec<seams::Passage> = grounding
+        .passages
+        .iter()
+        .filter(|passage| passage.relevance.is_finite() && passage.relevance >= RELEVANCE_FLOOR)
+        .cloned()
+        .collect();
+    passages.sort_by(|a, b| b.relevance.total_cmp(&a.relevance));
+    passages.truncate(MAX_PASSAGES);
+    if let Some(top) = passages.first()
+        && top.relevance >= KB_ANSWER_CONFIDENCE
+        && needs_specifics < policy::SPECIFICS_CEILING
+        && top
+            .answer
+            .as_deref()
+            .is_some_and(|answer| !answer.trim().is_empty())
+    {
+        return Grounded::Answer(top.clone());
+    }
+    if passages.is_empty() {
+        Grounded::Nothing
+    } else {
+        Grounded::Passages(passages)
+    }
+}
+
+/// The instruction a model gets when retrieval found nothing relevant.
+pub const NO_DOCS_NOTE: &str = "We have no documented answer to this question. Say so plainly, \
+answer only what you are sure of, and do not invent OpenAgents product facts, screens, or \
+commands.";
+
+/// The instruction a grounded model gets: answer only from `passages`, and
+/// cite their ids.
+#[must_use]
+pub fn grounded_note(corpus: Corpus, passages: &[seams::Passage], commit: Option<&str>) -> String {
+    let what = match corpus {
+        Corpus::Product => "OpenAgents product documentation",
+        Corpus::Codebase => "the public OpenAgents repository",
+    };
+    let mut note = format!(
+        "Answer only from the reference passages below, from {what}. If they do not answer \
+         the question, say we have no documented answer. Cite the passages you use by id in \
+         square brackets, like [{}].",
+        passages.first().map_or("id", |passage| passage.id.as_str())
+    );
+    if let Some(commit) = commit {
+        note.push_str(&format!(" Say that this is as of commit {commit}."));
+    }
+    for passage in passages {
+        note.push_str(&format!(
+            "\n\n[{}] {} ({})\n{}",
+            passage.id, passage.title, passage.source, passage.text
+        ));
+    }
+    note
 }
 
 #[cfg(test)]
@@ -806,6 +974,10 @@ mod tests {
             Ok(" fix the flaky test in crates/coder.".to_string())
         );
         assert_eq!(
+            validate_continuation("pick up issue #9920.", "pick up issue #9920 and open a PR"),
+            Ok(" pick up issue #9920.".to_string())
+        );
+        assert_eq!(
             validate_continuation(", then bump the version to 0.4.", message),
             Ok(", then bump the version to 0.4.".to_string())
         );
@@ -818,6 +990,8 @@ mod tests {
             ("confirm the test is fixed", Invalid::ClaimsCompletion),
             ("bump to 0.5", Invalid::NewNumber),
             ("run `cargo test`", Invalid::Markup),
+            ("## pick it up", Invalid::Markup),
+            ("pick up #9921", Invalid::Markup),
         ];
         for (text, why) in bad {
             assert_eq!(validate_continuation(text, message), Err(why), "{text}");

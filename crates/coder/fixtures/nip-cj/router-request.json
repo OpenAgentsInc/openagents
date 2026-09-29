@@ -1,0 +1,12 @@
+{
+  "v": 2,
+  "requires": [],
+  "type": "conversation",
+  "task": "What model are you?",
+  "transcript": [{ "role": "user", "content": "What model are you?" }],
+  "instructions": "We are OpenAgents.",
+  "client": "openagents-mobile",
+  "opener": true,
+  "router": "chat-router-v1",
+  "context": { "surface": "phone", "computer_ready": false, "app_build": "1.0.0 (19)" }
+}

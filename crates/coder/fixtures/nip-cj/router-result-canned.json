@@ -1,0 +1,16 @@
+{
+  "v": 2,
+  "type": "result",
+  "text": "Our chat runs on Google's Gemini 3.8 Flash through the Vercel AI Gateway. A small, fast model, Jev from TypeSafe, reads each message first to choose how we answer.",
+  "usage": null,
+  "model": "bank:chat-answers-v1",
+  "tier": "canned",
+  "route": "meta",
+  "bank": "chat-answers-v1@DIGEST",
+  "answer": "meta.model@1",
+  "followups": [
+    { "id": "meta.jev", "label": "What is Jev?" },
+    { "id": "meta.privacy", "label": "What happens to my messages?" },
+    { "id": "meta.pricing", "label": "What does it cost?" }
+  ]
+}

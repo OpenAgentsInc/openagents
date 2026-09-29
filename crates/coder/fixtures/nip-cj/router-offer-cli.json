@@ -1,0 +1,1 @@
+{ "v": 2, "requires": [], "type": "offer", "offer": "cli", "argv": ["computer", "list"], "effect": "read_only", "runs_on": "this_device", "confirm": true }

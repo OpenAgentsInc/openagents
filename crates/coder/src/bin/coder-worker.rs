@@ -104,6 +104,9 @@ use coder::relay::{
     DEFAULT_RELAY_URL, FEEDBACK_KIND, Identity, PAYLOAD_VERSION, REQUEST_KIND, RESULT_KIND, Socket,
     connect, parse_pubkey, partial_payload, payload_version, send,
 };
+use coder::router::seams::{Ask, CliAnswer, CliAsk, Continuation, Grounding, Lookup, SeamError};
+use coder::router::wire::{Served, Shadow};
+use coder::router::{self, Bank, Mode, Seams, Tier};
 use futures_util::StreamExt;
 use nostr::domain::{Event, Tag};
 use nostr::nip44;
@@ -201,7 +204,10 @@ counts across a restart. CODER_WORKER_JOBS bounds
 how many jobs run at once; the rest are refused busy. The first-response
 judge answers a turn that asks for it (opener or judge in the request)
 through the decision profile the agent resolves (TYPESAFE_API_KEY or
-~/.openagents/jev.json); CODER_WORKER_JUDGE=off turns it off. The door the worker
+~/.openagents/jev.json); CODER_WORKER_JUDGE=off turns it off. A turn that
+names the chat router (\"router\": \"chat-router-v1\") gets every tier;
+CODER_WORKER_ROUTER=shadow logs the router's decision but serves what the
+first response alone would, and =off ignores the router. The door the worker
 answers through comes from the environment exactly as it does for the
 agent, except for the lane: CODER_WORKER_MODEL names the model or lane
 this worker runs, and outranks CODER_MODEL.";
@@ -437,6 +443,31 @@ async fn serve(options: &Options) -> Result<(), String> {
         ),
         None => eprintln!("judge   none: no first response before the model's"),
     }
+    // The chat router's bank ships inside the binary; a bank that breaks
+    // its own rules stops the worker here, and `--check` with it.
+    let bank = Bank::builtin();
+    let problems = router::bank::lint(bank, None);
+    if !problems.is_empty() {
+        return Err(format!(
+            "the answer bank {} breaks its rules:\n{}",
+            bank.id(),
+            problems.join("\n")
+        ));
+    }
+    let routing = Arc::new(RouterConfig::new(
+        router_from_env()?,
+        Seams::default(),
+        &door,
+        options.quota.as_ref(),
+    ));
+    eprintln!(
+        "router  {} ({:?}), bank {} with {} answers; seams {:?}",
+        router::SET,
+        routing.setting,
+        bank.id(),
+        bank.answers.len(),
+        routing.seams
+    );
     eprintln!("jobs    {jobs} at once; more are refused as busy");
     if let Some(code) = &options.decline {
         eprintln!("declining every job with {code}");
@@ -486,6 +517,7 @@ async fn serve(options: &Options) -> Result<(), String> {
         answered: 0,
         seen: VecDeque::with_capacity(SEEN_REQUESTS),
         ledger,
+        routing,
     };
     let mut backoff = RECONNECT_FLOOR;
     loop {
@@ -566,6 +598,8 @@ struct Worker<'a> {
     seen: VecDeque<String>,
     /// The day's counts, when the worker is open under a quota.
     ledger: Option<Arc<std::sync::Mutex<Ledger>>>,
+    /// The chat router's configuration.
+    routing: Arc<RouterConfig>,
 }
 
 impl Worker<'_> {
@@ -698,6 +732,7 @@ impl Worker<'_> {
                         publish: self.outgoing.clone(),
                         permit,
                         waits: WAITS,
+                        routing: self.routing.clone(),
                     };
                     self.tasks.spawn(async move { job.answer(&request).await });
                 }
@@ -821,6 +856,82 @@ struct Job {
     permit: Option<OwnedSemaphorePermit>,
     /// How long to wait for the job before refusing it `timed_out`.
     waits: Waits,
+    /// Everything a routed turn needs beyond the judge.
+    routing: Arc<RouterConfig>,
+}
+
+/// The chat router's configuration on this worker.
+struct RouterConfig {
+    /// How a request that asks for the router is served.
+    setting: RouterSetting,
+    /// The integration seams (no-ops until their modules are wired).
+    seams: Seams,
+    /// The bank's slot values, from this worker's configuration.
+    facts: router::Facts,
+}
+
+impl RouterConfig {
+    fn new(setting: RouterSetting, seams: Seams, door: &Door, quota: Option<&Policy>) -> Self {
+        let facts = match door {
+            Door::Live(live) => router::worker_facts(
+                &live.model,
+                Some(&live.url),
+                quota.map(|quota| (quota.per_key_minute, quota.per_key_day)),
+                &seams,
+            ),
+            door => router::worker_facts(
+                door.model(),
+                None,
+                quota.map(|quota| (quota.per_key_minute, quota.per_key_day)),
+                &seams,
+            ),
+        };
+        Self {
+            setting,
+            seams,
+            facts,
+        }
+    }
+}
+
+/// How the worker serves a request that asks for the router.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum RouterSetting {
+    /// Every tier.
+    Live,
+    /// Phase 0: route and log, but serve what `opener` alone would.
+    Shadow,
+    /// Ignore `router`; serve what `opener` alone would, without the log.
+    Off,
+}
+
+/// The environment variable that sets [`RouterSetting`].
+const ROUTER_VAR: &str = "CODER_WORKER_ROUTER";
+
+fn router_from_env() -> Result<RouterSetting, String> {
+    match env::var(ROUTER_VAR).as_deref() {
+        Ok("live") | Ok("") | Err(_) => Ok(RouterSetting::Live),
+        Ok("shadow") => Ok(RouterSetting::Shadow),
+        Ok("off") => Ok(RouterSetting::Off),
+        Ok(other) => Err(format!(
+            "{ROUTER_VAR} is live, shadow, or off, not `{other}`"
+        )),
+    }
+}
+
+/// What one judged turn asked for, and what it needs to act on the
+/// judgment.
+struct Turn {
+    mode: Mode,
+    /// Route and log, but serve the legacy tier.
+    shadow: bool,
+    /// Whether the caller asked to be shown a first response at all
+    /// (`opener` or `router`), rather than the judgment alone.
+    show: bool,
+    /// The user's latest message; it reaches a seam only through
+    /// `router::redact`.
+    message: String,
+    context: router::Context,
 }
 
 impl Job {
@@ -1080,9 +1191,27 @@ impl Job {
                     // as Microcoder's cloud steps whose replies must be one
                     // JSON object, gets the model's reply untouched and
                     // spends no judgment.
-                    let opener = payload["opener"].as_bool() == Some(true);
+                    // A request that names the router (`"router":
+                    // "chat-router-v1"`) gets every tier; one that asks
+                    // only for `opener` gets what the first response
+                    // always showed: a prepared answer with no offer, an
+                    // opener, or nothing.
+                    let routed = payload["router"].as_str() == Some(router::SET)
+                        && self.routing.setting != RouterSetting::Off;
+                    let opener = payload["opener"].as_bool() == Some(true) || routed;
                     let judged = opener || payload["judge"].as_bool() == Some(true);
-                    let triage = judged.then(|| self.triage(&payload, &input)).flatten();
+                    let turn = Turn {
+                        mode: if routed && self.routing.setting == RouterSetting::Live {
+                            Mode::Router
+                        } else {
+                            Mode::Legacy
+                        },
+                        shadow: routed && self.routing.setting == RouterSetting::Shadow,
+                        show: opener,
+                        message: latest(&payload, &input),
+                        context: router::Context::of(&payload["context"]),
+                    };
+                    let triage = judged.then(|| self.triage(&turn, &input)).flatten();
                     let mut instructions = payload["instructions"]
                         .as_str()
                         .unwrap_or_default()
@@ -1093,7 +1222,7 @@ impl Job {
                         }
                         instructions.push_str(first::MODEL_NOTE);
                     }
-                    self.generate(version, &instructions, &input, &publish, triage, opener)
+                    self.generate(version, &instructions, &input, &publish, triage, &turn)
                         .await
                 }
             }
@@ -1131,7 +1260,7 @@ impl Job {
         };
 
         match answered {
-            Ok((text, usage, canned)) => {
+            Ok((text, usage, served)) => {
                 let mut result = json!({
                     "v": version,
                     "type": "result",
@@ -1142,12 +1271,10 @@ impl Job {
                     })),
                     "model": self.door.model(),
                 });
-                // No model wrote a prepared answer, so the result names
-                // the bank and the entry instead.
-                if let Some(answer) = canned {
-                    result["model"] = json!(format!("bank:{}", first::BANK));
-                    result["tier"] = json!("canned");
-                    result["answer"] = json!(answer.tag());
+                // A routed turn names its tier, route, and bank; one whose
+                // text no model wrote names the bank as its `model`.
+                if let Some(served) = &served {
+                    router::wire::annotate(&mut result, served, Bank::builtin());
                 }
                 publish(RESULT_KIND, result)?;
                 eprintln!(
@@ -1173,49 +1300,62 @@ impl Job {
         Ok(())
     }
 
-    /// The first-response judgment for this turn, as a future the
-    /// generation races, or `None` when no judge is configured.
+    /// The router's judgment for this turn, as a future the generation
+    /// races, or `None` when no judge is configured.
     ///
     /// It never fails the turn: a judge that errs or runs past
     /// [`first::BUDGET`] answers `None`, and the turn is the model's alone.
-    fn triage(&self, payload: &Value, input: &[Message]) -> Option<Judging> {
+    /// Its log line is a [`Shadow`] record: ids, probabilities, tiers, and
+    /// the judge's time, never message text.
+    fn triage(&self, turn: &Turn, input: &[Message]) -> Option<Judging> {
         let judge = self.judge.clone()?;
-        let task = payload["task"]
-            .as_str()
-            .map(str::to_string)
-            .or_else(|| {
-                input
-                    .iter()
-                    .rev()
-                    .find(|message| message.role == Role::User)
-                    .map(|message| message.text.clone())
-            })
-            .unwrap_or_default();
-        let facts = match &*self.door {
-            Door::Live(door) => first::Facts::of(&door.model, Some(&door.url)),
-            door => first::Facts::of(door.model(), None),
-        };
-        let request = first::request(&task, input, &facts);
+        let routing = self.routing.clone();
+        let bank = Bank::builtin();
+        let groups = routing.seams.cli.groups();
+        let request = router::request(&turn.message, input, bank, &routing.facts, &groups);
+        let (mode, shadow, context) = (turn.mode, turn.shadow, turn.context.clone());
         Some(Box::pin(async move {
             let started = Instant::now();
             let answered = tokio::time::timeout(first::BUDGET, judge.system_one(request)).await;
             let milliseconds = started.elapsed().as_millis();
             match answered {
                 Ok(Ok(response)) => {
-                    let triage = first::triage_of(&response, &facts);
-                    // The tier and the chosen ids, never message text.
-                    eprintln!(
-                        "judged in {milliseconds} ms: {} {} {} answer={} opener={}",
-                        triage.verdict(),
-                        triage.lane.word(),
-                        triage.tier().word(),
-                        triage
-                            .answer
-                            .as_ref()
-                            .map_or_else(|| "none".to_string(), |(canned, _, _)| canned.tag()),
-                        triage.opener.map_or("none", |(id, _)| id),
+                    let reading = router::reading(&response, bank, &routing.facts);
+                    let personalize = routing.seams.personalize.available();
+                    let decide = |mode| {
+                        router::decide(
+                            &reading,
+                            bank,
+                            &routing.facts,
+                            &router::Situation {
+                                mode,
+                                context: &context,
+                                personalize,
+                            },
+                        )
+                    };
+                    let decided = decide(if shadow { Mode::Router } else { mode });
+                    let served = if shadow {
+                        decide(Mode::Legacy)
+                    } else {
+                        decided.clone()
+                    };
+                    let record = Shadow::of(
+                        &reading,
+                        bank,
+                        mode,
+                        shadow,
+                        &decided,
+                        &served,
+                        u64::try_from(milliseconds).unwrap_or(u64::MAX),
                     );
-                    Some(triage)
+                    eprintln!("{}", record.line());
+                    Some(Judged {
+                        routing: reading,
+                        decided,
+                        served,
+                        shadow,
+                    })
                 }
                 Ok(Err(error)) => {
                     eprintln!("judge failed in {milliseconds} ms: {error}");
@@ -1294,13 +1434,16 @@ impl Job {
     /// Generates through the door, publishing partials as text collects.
     ///
     /// `triage` races the generation. When it answers before the model's
-    /// first words and `opener` is on, what its tier shows goes out as the
-    /// first partial: a prepared answer is the whole reply, and the model
-    /// call is dropped; an opener leads the model's result; below the
-    /// thresholds nothing is shown. Either way its typed judgment goes out
-    /// as `judgment` feedback. A judgment that arrives after the model has
-    /// started adds the feedback only. The third value is the prepared
-    /// answer, when one was the reply.
+    /// first words and the caller asked to be shown a first response, its
+    /// tier decides what the caller sees (see `coder::router::policy`):
+    /// a whole bank answer or refusal, and the model call is dropped; a
+    /// bank stem closed by a validated continuation or its generic end,
+    /// and the model call is dropped; a retrieval or a CLI proposal, while
+    /// the model keeps running as the fallback; or a lead line above the
+    /// model's reply. Either way its typed judgment goes out as `judgment`
+    /// feedback, and an offer as `offer` feedback. A judgment that arrives
+    /// after the model has started adds the feedback only. The third value
+    /// is what a routed turn served, for its result.
     async fn generate(
         &self,
         version: u64,
@@ -1308,59 +1451,297 @@ impl Job {
         input: &[Message],
         publish: &(dyn Fn(u16, Value) -> Result<(), String> + Sync),
         triage: Option<Judging>,
-        opener: bool,
-    ) -> Result<(String, Option<Usage>, Option<&'static first::Canned>), GenerateError> {
-        // The `Generate` sink is synchronous and publishing wants the
-        // version and a sequence, so deltas go down a channel and the
-        // loop below drains it while the generation runs. Dropping the
-        // sender is what ends the drain.
-        let (deltas, mut incoming) = mpsc::unbounded_channel::<String>();
-        let generating = async {
-            let mut sink = |delta: &str| {
-                let _ = deltas.send(delta.to_string());
-            };
-            let answered = self
-                .door
-                .generate(instructions, input, &mut sink, &mut |_| {})
-                .await;
-            drop(deltas);
-            answered
-        };
-        tokio::pin!(generating);
-
+        turn: &Turn,
+    ) -> Result<(String, Option<Usage>, Option<Served>), GenerateError> {
+        let bank = Bank::builtin();
+        let facts = &self.routing.facts;
+        let seams = &self.routing.seams;
+        let (mut generating, mut incoming) =
+            start_model(self.door.clone(), instructions.to_string(), input.to_vec());
         let mut judging = triage.is_some();
         let mut triage: Judging =
-            triage.unwrap_or_else(|| Box::pin(std::future::pending::<Option<first::Triage>>()));
-        // The opener shown, which leads the result too.
+            triage.unwrap_or_else(|| Box::pin(std::future::pending::<Option<Judged>>()));
+        let mut seam: SeamCall = Box::pin(std::future::pending());
+        let mut seam_waiting = false;
+        // What the judgment decided, kept for the seam's answer.
+        let mut pending: Option<(router::Routing, Tier)> = None;
+        // The lead line shown above the model's reply, which leads the
+        // result too.
         let mut lead = String::new();
         let mut buffer = String::new();
         let mut partial_seq = 0u64;
         let mut model_started = false;
         let mut draining = true;
+        let mut served: Option<Served> = None;
+        let send = |seq: u64, text: &str| {
+            publish(FEEDBACK_KIND, partial_payload(version, seq, text))
+                .map_err(GenerateError::Stream)
+        };
+        let offer = |offer: &router::Offer| {
+            publish(FEEDBACK_KIND, offer.feedback(version)).map_err(GenerateError::Stream)
+        };
         loop {
             tokio::select! {
                 judged = &mut triage, if judging => {
                     judging = false;
                     let Some(judged) = judged else { continue };
-                    publish(FEEDBACK_KIND, first::feedback(version, &judged))
-                        .map_err(GenerateError::Stream)?;
-                    if !opener || partial_seq != 0 {
+                    publish(
+                        FEEDBACK_KIND,
+                        router::wire::judgment(
+                            version,
+                            &judged.routing,
+                            &judged.served,
+                            bank,
+                            judged.shadow.then_some(&judged.decided),
+                        ),
+                    )
+                    .map_err(GenerateError::Stream)?;
+                    let routing = judged.routing;
+                    let tier = judged.served;
+                    let mut record = served_of(&routing, &tier, bank, facts);
+                    if !turn.show || partial_seq != 0 {
                         continue;
                     }
-                    match judged.tier() {
+                    match &tier {
                         // The whole reply: returning drops the model call.
-                        first::Tier::Canned { answer, text } => {
-                            publish(FEEDBACK_KIND, partial_payload(version, 0, &text))
-                                .map_err(GenerateError::Stream)?;
-                            return Ok((text, None, Some(answer)));
+                        Tier::CannedFinal { text, .. } | Tier::Refuse { text, .. } => {
+                            send(0, text)?;
+                            if let Tier::CannedFinal { offer: Some(shown), .. } = &tier {
+                                offer(shown)?;
+                            }
+                            return Ok((text.clone(), None, Some(record)));
                         }
-                        first::Tier::Opener { text, .. } => {
-                            lead = format!("{text}\n\n");
-                            publish(FEEDBACK_KIND, partial_payload(version, partial_seq, &lead))
-                                .map_err(GenerateError::Stream)?;
-                            partial_seq += 1;
+                        Tier::CannedStem { stem, generic_end, offer: shown, personalize, answer } => {
+                            send(0, stem)?;
+                            partial_seq = 1;
+                            // The stem is the reply's start, so the model's
+                            // words can no longer follow it: drop the call.
+                            generating = Box::pin(std::future::pending());
+                            draining = false;
+                            if *personalize && seams.personalize.available() {
+                                let ask = Ask {
+                                    route: routing.route,
+                                    answer: answer.id.clone(),
+                                    stem: stem.clone(),
+                                    message: router::redact(&turn.message),
+                                };
+                                seam = continuation(seams, ask);
+                                seam_waiting = true;
+                                pending = Some((routing, tier.clone()));
+                                served = Some(record);
+                                continue;
+                            }
+                            send(1, generic_end)?;
+                            if let Some(shown) = shown {
+                                offer(shown)?;
+                            }
+                            return Ok((format!("{stem}{generic_end}"), None, Some(record)));
                         }
-                        first::Tier::Model => {}
+                        Tier::Grounded { corpus, .. } => {
+                            let lookup = Lookup {
+                                message: router::redact(&turn.message),
+                                transcript: input.to_vec(),
+                            };
+                            seam = grounding(seams, *corpus, lookup);
+                            seam_waiting = true;
+                            pending = Some((routing, tier.clone()));
+                        }
+                        Tier::Cli { group, .. } => {
+                            let ask = CliAsk {
+                                group: group.clone(),
+                                message: router::redact(&turn.message),
+                                transcript: input.to_vec(),
+                                surface: turn.context.surface(),
+                            };
+                            seam = proposal(seams, ask);
+                            seam_waiting = true;
+                            pending = Some((routing, tier.clone()));
+                        }
+                        Tier::Model { lead: shown, note } => {
+                            if let Some(note) = note {
+                                (generating, incoming) = start_model(
+                                    self.door.clone(),
+                                    format!("{instructions}\n\n{note}"),
+                                    input.to_vec(),
+                                );
+                                draining = true;
+                            }
+                            if let Some(shown) = shown {
+                                lead = format!("{}\n\n", shown.text);
+                                send(partial_seq, &lead)?;
+                                partial_seq += 1;
+                            }
+                        }
+                    }
+                    record.model = None;
+                    served = Some(record);
+                }
+                outcome = &mut seam, if seam_waiting => {
+                    seam_waiting = false;
+                    let Some((routing, tier)) = pending.take() else { continue };
+                    match (outcome, &tier) {
+                        (
+                            SeamOutcome::Continued(continued),
+                            Tier::CannedStem { stem, generic_end, offer: shown, .. },
+                        ) => {
+                            let (end, model) =
+                                router::close_stem(generic_end, continued.as_ref(), &turn.message);
+                            send(1, &end)?;
+                            if let Some(shown) = shown {
+                                offer(shown)?;
+                            }
+                            let mut record = served.take().unwrap_or_default();
+                            if let Some(model) = model {
+                                record.model = Some(model);
+                            }
+                            return Ok((format!("{stem}{end}"), None, Some(record)));
+                        }
+                        // The model has spoken meanwhile: its reply stands.
+                        _ if partial_seq != 0 => {}
+                        (SeamOutcome::Grounded(Ok(found)), Tier::Grounded { corpus, lead: shown }) => {
+                            match router::grounded(&found, routing.needs_specifics) {
+                                router::Grounded::Answer(passage) => {
+                                    let text = passage.answer.clone().unwrap_or_default();
+                                    send(0, &text)?;
+                                    let record = Served {
+                                        tier: "canned",
+                                        route: routing.route.word(),
+                                        answer: Some(passage.id.clone()),
+                                        model: Some(format!("kb:{}", corpus.word())),
+                                        citations: vec![(&passage).into()],
+                                        commit: found.commit.clone(),
+                                        ..Served::default()
+                                    };
+                                    return Ok((text, None, Some(record)));
+                                }
+                                router::Grounded::Dispatch => {
+                                    if let Some(tier) = explore(bank, facts, turn) {
+                                        return self
+                                            .finish_stem(&tier, &routing, bank, turn, &send, &offer)
+                                            .await;
+                                    }
+                                }
+                                grounded => {
+                                    let (note, passages) = match &grounded {
+                                        router::Grounded::Passages(passages) => (
+                                            router::grounded_note(*corpus, passages, found.commit.as_deref()),
+                                            passages.clone(),
+                                        ),
+                                        _ => (router::NO_DOCS_NOTE.to_string(), Vec::new()),
+                                    };
+                                    (generating, incoming) = start_model(
+                                        self.door.clone(),
+                                        format!("{instructions}\n\n{note}"),
+                                        input.to_vec(),
+                                    );
+                                    draining = true;
+                                    buffer.clear();
+                                    if let Some(record) = &mut served {
+                                        record.citations = passages.iter().map(Into::into).collect();
+                                        record.commit = found.commit.clone();
+                                    }
+                                    if let Some(shown) = shown {
+                                        lead = format!("{}\n\n", shown.text);
+                                        send(partial_seq, &lead)?;
+                                        partial_seq += 1;
+                                    }
+                                }
+                            }
+                        }
+                        (SeamOutcome::Cli(Ok(CliAnswer::Proposal(proposal))), Tier::Cli { lead: shown, .. }) => {
+                            match router::gate(proposal.effect, turn.context.surface()) {
+                                router::CliGate::Offer => {
+                                    if let Some(entry) = bank.entry("cli.offer")
+                                        && let Some(text) = entry.render(facts)
+                                    {
+                                        send(0, &text)?;
+                                        offer(&router::Offer::Cli {
+                                            argv: proposal.argv.clone(),
+                                            effect: proposal.effect,
+                                            runs_on: proposal.runs_on,
+                                        })?;
+                                        let record = Served {
+                                            tier: "cli",
+                                            route: routing.route.word(),
+                                            answer: Some(entry.tag()),
+                                            model: Some(format!("bank:{}", bank.name)),
+                                            ..Served::default()
+                                        };
+                                        return Ok((text, None, Some(record)));
+                                    }
+                                }
+                                router::CliGate::Screen(screen) => {
+                                    let id = match screen {
+                                        router::Screen::Wallet => "wallet.send",
+                                        _ => "account.computers",
+                                    };
+                                    if let Some(entry) = bank.entry(id)
+                                        && let Some(text) = entry.render(facts)
+                                    {
+                                        send(0, &text)?;
+                                        if let Some(shown) = entry.offer() {
+                                            offer(&shown)?;
+                                        }
+                                        let record = Served {
+                                            tier: "canned",
+                                            route: routing.route.word(),
+                                            answer: Some(entry.tag()),
+                                            model: Some(format!("bank:{}", bank.name)),
+                                            ..Served::default()
+                                        };
+                                        return Ok((text, None, Some(record)));
+                                    }
+                                }
+                                router::CliGate::Withhold => {}
+                            }
+                            if let Some(shown) = shown {
+                                lead = format!("{}\n\n", shown.text);
+                                send(partial_seq, &lead)?;
+                                partial_seq += 1;
+                            }
+                        }
+                        (SeamOutcome::Cli(Ok(CliAnswer::Missing(what))), _) => {
+                            if let Some(entry) = bank.entry("clarify.generic")
+                                && let Some((stem, generic_end)) = entry.stem(facts)
+                            {
+                                let asked = Continuation {
+                                    text: format!(" {}?", what.trim().trim_end_matches('?')),
+                                    model: format!("bank:{}", bank.name),
+                                };
+                                let (end, _) =
+                                    router::close_stem(&generic_end, Some(&asked), &turn.message);
+                                send(0, &format!("{stem}{end}"))?;
+                                let record = Served {
+                                    tier: "stem",
+                                    route: routing.route.word(),
+                                    answer: Some(entry.tag()),
+                                    model: Some(format!("bank:{}", bank.name)),
+                                    ..Served::default()
+                                };
+                                return Ok((format!("{stem}{end}"), None, Some(record)));
+                            }
+                        }
+                        // Nothing found, nothing configured, or a failure:
+                        // the model already running is the reply, under
+                        // its lead line.
+                        (outcome, tier) => {
+                            if let SeamOutcome::Grounded(Err(SeamError::Failed(why)))
+                            | SeamOutcome::Cli(Err(SeamError::Failed(why))) = &outcome
+                            {
+                                eprintln!("router seam failed: {why}");
+                            }
+                            let mut tier_word = "model";
+                            if let Tier::Grounded { lead: Some(shown), .. } | Tier::Cli { lead: Some(shown), .. } = tier {
+                                lead = format!("{}\n\n", shown.text);
+                                send(partial_seq, &lead)?;
+                                partial_seq += 1;
+                                tier_word = "opener";
+                            }
+                            // The result says what was served: the model.
+                            if let Some(record) = &mut served {
+                                record.tier = tier_word;
+                            }
+                        }
                     }
                 }
                 delta = incoming.recv(), if draining => match delta {
@@ -1374,8 +1755,7 @@ impl Job {
                             // checks deltas against; arrival order proves
                             // nothing. A version-1 answer makes no such
                             // promise and carries none.
-                            publish(FEEDBACK_KIND, partial_payload(version, partial_seq, &buffer))
-                                .map_err(GenerateError::Stream)?;
+                            send(partial_seq, &buffer)?;
                             partial_seq += 1;
                             buffer.clear();
                         }
@@ -1385,15 +1765,211 @@ impl Job {
                     None => draining = false,
                 },
                 answered = &mut generating => {
-                    return answered.map(|(text, usage)| (format!("{lead}{text}"), usage, None));
+                    return answered.map(|(text, usage)| (format!("{lead}{text}"), usage, served));
                 }
             }
         }
     }
+
+    /// Serves a dispatch stem decided after retrieval: the stem, a
+    /// continuation or its generic end, and the offer.
+    async fn finish_stem(
+        &self,
+        tier: &Tier,
+        routing: &router::Routing,
+        bank: &Bank,
+        turn: &Turn,
+        send: &(dyn Fn(u64, &str) -> Result<(), GenerateError> + Sync),
+        offer: &(dyn Fn(&router::Offer) -> Result<(), GenerateError> + Sync),
+    ) -> Result<(String, Option<Usage>, Option<Served>), GenerateError> {
+        let Tier::CannedStem {
+            answer,
+            stem,
+            generic_end,
+            offer: shown,
+            personalize,
+        } = tier
+        else {
+            return Err(GenerateError::Stream("not a stem".to_string()));
+        };
+        send(0, stem)?;
+        let seams = &self.routing.seams;
+        let continued = if *personalize && seams.personalize.available() {
+            let ask = Ask {
+                route: routing.route,
+                answer: answer.id.clone(),
+                stem: stem.clone(),
+                message: router::redact(&turn.message),
+            };
+            match continuation(seams, ask).await {
+                SeamOutcome::Continued(continued) => continued,
+                _ => None,
+            }
+        } else {
+            None
+        };
+        let (end, model) = router::close_stem(generic_end, continued.as_ref(), &turn.message);
+        send(1, &end)?;
+        if let Some(shown) = shown {
+            offer(shown)?;
+        }
+        let mut record = served_of(routing, tier, bank, &self.routing.facts);
+        if let Some(model) = model {
+            record.model = Some(model);
+        }
+        Ok((format!("{stem}{end}"), None, Some(record)))
+    }
 }
 
-/// The first-response judgment, running.
-type Judging = Pin<Box<dyn Future<Output = Option<first::Triage>> + Send>>;
+/// The router's judgment, decided.
+struct Judged {
+    routing: router::Routing,
+    /// What the router decided.
+    decided: Tier,
+    /// What the turn serves: `decided`, or in shadow mode the legacy tier.
+    served: Tier,
+    shadow: bool,
+}
+
+/// The router's judgment, running.
+type Judging = Pin<Box<dyn Future<Output = Option<Judged>> + Send>>;
+
+/// A model call, running.
+type Generation =
+    Pin<Box<dyn Future<Output = Result<(String, Option<Usage>), GenerateError>> + Send>>;
+
+/// Starts a model call whose deltas arrive on the returned receiver.
+/// Dropping the future cancels the call.
+fn start_model(
+    door: Arc<Door>,
+    instructions: String,
+    input: Vec<Message>,
+) -> (Generation, mpsc::UnboundedReceiver<String>) {
+    let (deltas, incoming) = mpsc::unbounded_channel::<String>();
+    let generating = async move {
+        // The sink owns the sender, so the channel closes when the call
+        // ends and the drain stops.
+        let mut sink = move |delta: &str| {
+            let _ = deltas.send(delta.to_string());
+        };
+        door.generate(&instructions, &input, &mut sink, &mut |_| {})
+            .await
+    };
+    (Box::pin(generating), incoming)
+}
+
+/// What a seam answered, bounded by its budget.
+enum SeamOutcome {
+    /// A continuation, or `None` when the seam failed or ran late.
+    Continued(Option<Continuation>),
+    Grounded(Result<Grounding, SeamError>),
+    Cli(Result<CliAnswer, SeamError>),
+}
+
+/// A seam call, running.
+type SeamCall = Pin<Box<dyn Future<Output = SeamOutcome> + Send>>;
+
+fn continuation(seams: &Seams, ask: Ask) -> SeamCall {
+    let personalize = seams.personalize.clone();
+    Box::pin(async move {
+        let answered = tokio::time::timeout(
+            router::seams::PERSONALIZE_BUDGET,
+            personalize.continuation(&ask),
+        )
+        .await;
+        SeamOutcome::Continued(match answered {
+            Ok(Ok(continued)) => Some(continued),
+            Ok(Err(error)) => {
+                eprintln!("router personalize: {error}");
+                None
+            }
+            Err(_) => {
+                eprintln!("router personalize ran past its budget");
+                None
+            }
+        })
+    })
+}
+
+fn grounding(seams: &Seams, corpus: router::Corpus, lookup: Lookup) -> SeamCall {
+    let product = seams.product.clone();
+    let codebase = seams.codebase.clone();
+    Box::pin(async move {
+        let found = match corpus {
+            router::Corpus::Product => {
+                tokio::time::timeout(router::seams::KB_BUDGET, product.ground(&lookup)).await
+            }
+            router::Corpus::Codebase => {
+                tokio::time::timeout(router::seams::KB_BUDGET, codebase.ground(&lookup)).await
+            }
+        };
+        SeamOutcome::Grounded(
+            found.unwrap_or_else(|_| Err(SeamError::Failed("ran past its budget".to_string()))),
+        )
+    })
+}
+
+fn proposal(seams: &Seams, ask: CliAsk) -> SeamCall {
+    let cli = seams.cli.clone();
+    Box::pin(async move {
+        SeamOutcome::Cli(
+            tokio::time::timeout(router::seams::CLI_BUDGET, cli.propose(&ask))
+                .await
+                .unwrap_or_else(|_| Err(SeamError::Failed("ran past its budget".to_string()))),
+        )
+    })
+}
+
+/// The exploration dispatch a codebase question escalates to: the
+/// no-computer answer when the device has none, else the explore stem.
+fn explore(bank: &Bank, facts: &router::Facts, turn: &Turn) -> Option<Tier> {
+    if turn.context.computer_ready == Some(false) {
+        return None;
+    }
+    let entry = bank.entry("dispatch.explore_stem")?;
+    let (stem, generic_end) = entry.stem(facts)?;
+    Some(Tier::CannedStem {
+        answer: entry.clone(),
+        stem,
+        generic_end,
+        offer: entry.offer(),
+        personalize: true,
+    })
+}
+
+/// The result fields for `tier`: its word, route, the bank entry that
+/// supplied text, the bank as the `model` when no model wrote any, and the
+/// entry's followup chips.
+fn served_of(routing: &router::Routing, tier: &Tier, bank: &Bank, facts: &router::Facts) -> Served {
+    let answer = tier.answer();
+    Served {
+        tier: tier.word(),
+        route: routing.route.word(),
+        answer: answer.map(router::Entry::tag),
+        model: answer.map(|_| format!("bank:{}", bank.name)),
+        followups: match tier {
+            Tier::CannedFinal { answer, .. } => bank.followups(answer, facts),
+            _ => Vec::new(),
+        },
+        ..Served::default()
+    }
+}
+
+/// The user's latest message: the request's `task`, else the last user
+/// turn of the transcript.
+fn latest(payload: &Value, input: &[Message]) -> String {
+    payload["task"]
+        .as_str()
+        .map(str::to_string)
+        .or_else(|| {
+            input
+                .iter()
+                .rev()
+                .find(|message| message.role == Role::User)
+                .map(|message| message.text.clone())
+        })
+        .unwrap_or_default()
+}
 
 /// The conversation a request carries, without falling back to its task:
 /// a ranking's draft is its own field.
@@ -1529,7 +2105,14 @@ mod tests {
             let (publish, mut frames) = mpsc::unbounded_channel();
             let slots = Arc::new(Semaphore::new(1));
             let permit = admitted.then(|| slots.clone().try_acquire_owned().unwrap());
+            let routing = Arc::new(RouterConfig::new(
+                RouterSetting::Live,
+                Seams::default(),
+                &door,
+                None,
+            ));
             let job = Job {
+                routing,
                 identity: Arc::new(worker),
                 door: Arc::new(door),
                 judge: None,
@@ -1922,37 +2505,54 @@ mod tests {
     /// A one-request HTTP server: it reads one request, waits `delay`, and
     /// answers `body` as `content_type`. Its base URL.
     fn serve_once(delay: Duration, content_type: &'static str, body: String) -> String {
-        use std::io::{BufRead, BufReader, Read, Write};
+        serve_times(1, delay, content_type, body)
+    }
+
+    /// Answers `times` requests, each on its own thread, each after `delay`.
+    fn serve_times(
+        times: usize,
+        delay: Duration,
+        content_type: &'static str,
+        body: String,
+    ) -> String {
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let url = format!("http://{}", listener.local_addr().unwrap());
         std::thread::spawn(move || {
-            let Ok((stream, _)) = listener.accept() else {
-                return;
-            };
-            let mut reader = BufReader::new(stream);
-            let mut length = 0usize;
-            loop {
-                let mut line = String::new();
-                if reader.read_line(&mut line).unwrap_or(0) == 0 || line == "\r\n" {
-                    break;
-                }
-                let lower = line.to_ascii_lowercase();
-                if let Some(value) = lower.strip_prefix("content-length:") {
-                    length = value.trim().parse().unwrap_or(0);
-                }
+            for _ in 0..times {
+                let Ok((stream, _)) = listener.accept() else {
+                    return;
+                };
+                let body = body.clone();
+                std::thread::spawn(move || answer_once(stream, delay, content_type, &body));
             }
-            let mut request = vec![0; length];
-            let _ = reader.read_exact(&mut request);
-            std::thread::sleep(delay);
-            let mut stream = reader.into_inner();
-            let _ = write!(
-                stream,
-                "HTTP/1.1 200 OK\r\ncontent-type: {content_type}\r\ncontent-length: {}\r\n\
-                 connection: close\r\n\r\n{body}",
-                body.len()
-            );
         });
         url
+    }
+
+    fn answer_once(stream: std::net::TcpStream, delay: Duration, content_type: &str, body: &str) {
+        use std::io::{BufRead, BufReader, Read, Write};
+        let mut reader = BufReader::new(stream);
+        let mut length = 0usize;
+        loop {
+            let mut line = String::new();
+            if reader.read_line(&mut line).unwrap_or(0) == 0 || line == "\r\n" {
+                break;
+            }
+            let lower = line.to_ascii_lowercase();
+            if let Some(value) = lower.strip_prefix("content-length:") {
+                length = value.trim().parse().unwrap_or(0);
+            }
+        }
+        let mut request = vec![0; length];
+        let _ = reader.read_exact(&mut request);
+        std::thread::sleep(delay);
+        let mut stream = reader.into_inner();
+        let _ = write!(
+            stream,
+            "HTTP/1.1 200 OK\r\ncontent-type: {content_type}\r\ncontent-length: {}\r\n\
+             connection: close\r\n\r\n{body}",
+            body.len()
+        );
     }
 
     /// A model door that starts answering after `delay`, from the recorded
@@ -1989,29 +2589,50 @@ mod tests {
         judged("none", 0.9, opener)
     }
 
-    /// The first-response answers: respond in the chat, the prepared
-    /// `answer`, the specifics probability, and `opener`.
+    /// The router's answers: respond, the prepared `answer` and its route
+    /// (the answer's first route, or `general` for `none`), the specifics
+    /// probability, and `opener`; the lane is computer when no answer fits.
     fn judged(answer: &str, specifics: f64, opener: &str) -> Value {
-        let openers: Vec<&str> = first::OPENERS
+        let bank = Bank::builtin();
+        let route = bank
+            .entry(answer)
+            .map_or("general", |entry| entry.routes[0].as_str());
+        routed(route, answer, specifics, opener)
+    }
+
+    /// The router's answers with the route named.
+    fn routed(route: &str, answer: &str, specifics: f64, opener: &str) -> Value {
+        let bank = Bank::builtin();
+        let openers: Vec<&str> = bank
+            .openers
             .iter()
-            .map(|(id, _, _)| *id)
+            .map(|opener| opener.id.as_str())
             .chain(["none"])
             .collect();
-        // The loopback door is no gateway, so the answers that name the
-        // gateway are not offered, and the judge answers only the rest.
-        let facts = first::Facts::of("google/gemini-3.8-flash", None);
-        let answers: Vec<&str> = first::ANSWERS
+        // The loopback door is no gateway and the test worker has no
+        // quota, so the answers that need either are not offered, and the
+        // judge answers only the rest.
+        let facts = router::worker_facts("google/gemini-3.8-flash", None, None, &Seams::default());
+        let answers: Vec<&str> = bank
+            .answers
             .iter()
-            .filter(|canned| canned.render(&facts).is_some())
-            .map(|canned| canned.id)
+            .filter(|entry| entry.eligible(&facts))
+            .map(|entry| entry.id.as_str())
+            .chain(["none"])
+            .collect();
+        let routes: Vec<&str> = router::RouteId::ALL
+            .iter()
+            .map(|route| route.word())
             .chain(["none"])
             .collect();
         json!({
             "action": sure("respond", &["respond", "clarify", "end_conversation", "none"]),
+            "route": sure(route, &routes),
             "lane": sure(if answer == "none" { "computer" } else { "chat" }, &["chat", "computer", "none"]),
             "answer": sure(answer, &answers),
             "needs_specifics": { "type": "noul", "noul": specifics },
             "opener": sure(opener, &openers),
+            "risk": sure("ok", &["ok", "secret_shared", "asks_for_secret", "harmful", "money_movement", "none"]),
         })
     }
 
@@ -2021,6 +2642,17 @@ mod tests {
         door: Door,
         judge: Option<Arc<jev::Client>>,
         payload: Value,
+    ) -> Vec<(Duration, Value)> {
+        frames_routed(door, judge, payload, Seams::default(), RouterSetting::Live).await
+    }
+
+    /// [`frames_through`] with the router's seams and setting.
+    async fn frames_routed(
+        door: Door,
+        judge: Option<Arc<jev::Client>>,
+        payload: Value,
+        seams: Seams,
+        setting: RouterSetting,
     ) -> Vec<(Duration, Value)> {
         let (worker, client, conversation) = identities();
         let content = nip44::encrypt(&payload.to_string(), &conversation, [43; 32]).unwrap();
@@ -2032,6 +2664,7 @@ mod tests {
         );
         let (publish, mut frames) = mpsc::unbounded_channel();
         let slots = Arc::new(Semaphore::new(1));
+        let routing = Arc::new(RouterConfig::new(setting, seams, &door, None));
         let job = Job {
             identity: Arc::new(worker),
             door: Arc::new(door),
@@ -2042,6 +2675,7 @@ mod tests {
             publish,
             permit: slots.clone().try_acquire_owned().ok(),
             waits: WAITS,
+            routing,
         };
         let started = Instant::now();
         tokio::spawn(async move { job.answer(&request).await });
@@ -2169,7 +2803,7 @@ mod tests {
         let (at, result) = frames.last().unwrap();
         assert_eq!(result["type"], "result");
         assert_eq!(result["text"], text);
-        assert_eq!(result["model"], format!("bank:{}", first::BANK));
+        assert_eq!(result["model"], "bank:chat-answers-v1");
         assert_eq!(result["answer"], "meta.who@1");
         assert_eq!(result["tier"], "canned");
         // The reply is done long before the model would have begun.
@@ -2300,5 +2934,410 @@ mod tests {
         )
         .await;
         assert_eq!(refused.last().unwrap().1["code"], "malformed");
+    }
+
+    // ---------------------------------------------------------------------
+    // The chat router (`"router": "chat-router-v1"`)
+    // ---------------------------------------------------------------------
+
+    /// A turn that asks for the router, as build 19 of the app does.
+    fn routed_turn(task: &str, context: Value) -> Value {
+        json!({
+            "v": 2, "requires": [], "task": task,
+            "transcript": [{ "role": "user", "content": task }],
+            "opener": true, "router": "chat-router-v1", "context": context,
+        })
+    }
+
+    fn of_type<'a>(frames: &'a [(Duration, Value)], kind: &str) -> Vec<&'a Value> {
+        frames
+            .iter()
+            .map(|(_, body)| body)
+            .filter(|body| body["type"] == kind)
+            .collect()
+    }
+
+    /// A personalization seam that answers `text` as `model`.
+    struct Writes(&'static str);
+
+    impl router::seams::Personalize for Writes {
+        fn available(&self) -> bool {
+            true
+        }
+        fn recipients(&self) -> Vec<String> {
+            vec!["a test provider".into()]
+        }
+        fn continuation<'a>(
+            &'a self,
+            ask: &'a Ask,
+        ) -> futures_util::future::BoxFuture<'a, Result<Continuation, SeamError>> {
+            // The seam sees the stem and a redacted message, nothing more.
+            assert!(!ask.message.contains("nsec1"), "{}", ask.message);
+            Box::pin(async move {
+                Ok(Continuation {
+                    text: self.0.to_string(),
+                    model: "test/cheap".into(),
+                })
+            })
+        }
+    }
+
+    fn personalized(text: &'static str) -> Seams {
+        Seams {
+            personalize: Arc::new(Writes(text)),
+            ..Seams::default()
+        }
+    }
+
+    /// A request for code work gets the dispatch sentence at once, closed
+    /// by the validated continuation, and a Run Coder offer; the model call
+    /// is dropped, so the result arrives long before the model's words.
+    #[tokio::test]
+    async fn a_routed_work_request_is_offered_to_coder_and_the_model_is_dropped() {
+        let answers = routed("work.dispatch", "dispatch.stem", 0.9, "none");
+        let frames = frames_routed(
+            slow_door(Duration::from_millis(1_500)),
+            Some(judge(Duration::ZERO, answers)),
+            routed_turn(
+                "fix the flaky relay test, my key is nsec1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq",
+                json!({ "surface": "phone", "computer_ready": true }),
+            ),
+            personalized(" fix the flaky relay test."),
+            RouterSetting::Live,
+        )
+        .await;
+        let judgment = of_type(&frames, "judgment")[0];
+        assert_eq!(judgment["set"], "chat-router-v1");
+        assert_eq!(judgment["route"], "work.dispatch");
+        assert_eq!(judgment["tier"], "offer");
+        let partials = of_type(&frames, "partial");
+        assert_eq!(partials[0]["seq"], 0);
+        assert_eq!(partials[0]["delta"], "We'll dispatch Coder to");
+        assert_eq!(partials[1]["seq"], 1);
+        assert_eq!(partials[1]["delta"], " fix the flaky relay test.");
+        assert_eq!(partials.len(), 2);
+        let offers = of_type(&frames, "offer");
+        assert_eq!(offers[0]["offer"], "run_coder");
+        assert_eq!(offers[0]["target"], "connected_computer");
+        let (at, result) = frames.last().unwrap();
+        assert_eq!(
+            result["text"],
+            "We'll dispatch Coder to fix the flaky relay test."
+        );
+        assert_eq!(result["tier"], "offer");
+        assert_eq!(result["answer"], "dispatch.stem@1");
+        assert_eq!(result["model"], "test/cheap");
+        assert_eq!(result["route"], "work.dispatch");
+        assert!(
+            result["bank"]
+                .as_str()
+                .unwrap()
+                .starts_with("chat-answers-v1@")
+        );
+        assert!(*at < Duration::from_millis(1_000), "{at:?}");
+    }
+
+    /// A continuation that breaks the rules is never shown: the stem's
+    /// generic end closes the sentence, and the bank is the `model`.
+    #[tokio::test]
+    async fn an_invalid_continuation_falls_back_to_the_generic_end() {
+        let answers = routed("work.dispatch", "dispatch.stem", 0.9, "none");
+        let frames = frames_routed(
+            slow_door(Duration::from_millis(1_500)),
+            Some(judge(Duration::ZERO, answers)),
+            routed_turn("fix it", json!({})),
+            personalized(" fix it. I already fixed it at https://example.com"),
+            RouterSetting::Live,
+        )
+        .await;
+        let result = &frames.last().unwrap().1;
+        assert_eq!(
+            result["text"],
+            "We'll dispatch Coder to take this on, with this conversation as its task."
+        );
+        assert_eq!(result["model"], "bank:chat-answers-v1");
+    }
+
+    /// With no computer ready, the answer says so and offers the computers
+    /// screen; nothing is dispatched.
+    #[tokio::test]
+    async fn with_no_computer_the_offer_is_to_connect_one() {
+        let answers = routed("work.dispatch", "dispatch.stem", 0.9, "none");
+        let frames = frames_routed(
+            slow_door(Duration::from_millis(1_500)),
+            Some(judge(Duration::ZERO, answers)),
+            routed_turn("look through my repo", json!({ "computer_ready": false })),
+            Seams::default(),
+            RouterSetting::Live,
+        )
+        .await;
+        let offers = of_type(&frames, "offer");
+        assert_eq!(offers[0]["offer"], "open_screen");
+        assert_eq!(offers[0]["screen"], "account.computers");
+        let result = &frames.last().unwrap().1;
+        assert_eq!(result["answer"], "dispatch.no_computer@1");
+        assert!(
+            result["text"]
+                .as_str()
+                .unwrap()
+                .starts_with("That needs a computer.")
+        );
+    }
+
+    /// A canned answer carries its followup chips, only for entries the
+    /// worker can fill.
+    #[tokio::test]
+    async fn a_routed_canned_answer_carries_followup_chips() {
+        let frames = frames_routed(
+            slow_door(Duration::from_millis(1_500)),
+            Some(judge(Duration::ZERO, judged("meta.who", 0.05, "none"))),
+            routed_turn("who are you", json!({})),
+            Seams::default(),
+            RouterSetting::Live,
+        )
+        .await;
+        let result = &frames.last().unwrap().1;
+        assert_eq!(result["tier"], "canned");
+        // meta.model needs the gateway and meta.pricing a quota; this test
+        // worker has neither.
+        assert_eq!(
+            result["followups"],
+            json!([{ "id": "meta.capabilities", "label": "What can you do?" }])
+        );
+    }
+
+    /// A message holding a secret is answered with the bank's refusal,
+    /// never model text.
+    #[tokio::test]
+    async fn a_shared_secret_gets_the_bank_refusal() {
+        let mut answers = judged("none", 0.2, "none");
+        answers["risk"] = sure(
+            "secret_shared",
+            &[
+                "ok",
+                "secret_shared",
+                "asks_for_secret",
+                "harmful",
+                "money_movement",
+                "none",
+            ],
+        );
+        let frames = frames_routed(
+            slow_door(Duration::from_millis(1_500)),
+            Some(judge(Duration::ZERO, answers)),
+            routed_turn("here are my words: abandon abandon ...", json!({})),
+            personalized(" never shown."),
+            RouterSetting::Live,
+        )
+        .await;
+        let result = &frames.last().unwrap().1;
+        assert_eq!(result["tier"], "refuse");
+        assert_eq!(result["answer"], "refuse.secret_shared@1");
+        assert!(of_type(&frames, "offer").is_empty());
+    }
+
+    /// In shadow mode the router's decision is logged and named, but the
+    /// turn is served as the first response always served it.
+    #[tokio::test]
+    async fn shadow_mode_serves_the_legacy_tier_and_names_the_routed_one() {
+        let answers = routed("work.dispatch", "dispatch.stem", 0.9, "plan");
+        let frames = frames_routed(
+            slow_door(Duration::from_millis(300)),
+            Some(judge(Duration::ZERO, answers)),
+            routed_turn("fix it", json!({})),
+            Seams::default(),
+            RouterSetting::Shadow,
+        )
+        .await;
+        let judgment = of_type(&frames, "judgment")[0];
+        assert_eq!(judgment["tier"], "opener");
+        assert_eq!(judgment["shadow"], "offer");
+        assert!(of_type(&frames, "offer").is_empty());
+        let result = &frames.last().unwrap().1;
+        assert_eq!(result["model"], "google/gemini-3.8-flash");
+        assert!(
+            result["text"]
+                .as_str()
+                .unwrap()
+                .starts_with("Here's a plan.")
+        );
+    }
+
+    /// A phone from before the router, asking only for `opener`, never
+    /// gets an offer or a stem, even for a wallet or dispatch reading.
+    #[tokio::test]
+    async fn an_opener_only_request_gets_no_offers() {
+        let frames = frames_through(
+            slow_door(Duration::from_millis(300)),
+            Some(judge(
+                Duration::ZERO,
+                routed("work.dispatch", "dispatch.stem", 0.9, "none"),
+            )),
+            turn("fix it"),
+        )
+        .await;
+        assert!(of_type(&frames, "offer").is_empty());
+        assert_eq!(of_type(&frames, "judgment")[0]["tier"], "model");
+        assert_eq!(frames.last().unwrap().1["model"], "google/gemini-3.8-flash");
+    }
+
+    /// A product knowledge seam for tests.
+    struct Knows(Grounding);
+
+    impl router::seams::ProductKb for Knows {
+        fn available(&self) -> bool {
+            true
+        }
+        fn recipients(&self) -> Vec<String> {
+            vec!["an embedding provider".into()]
+        }
+        fn ground<'a>(
+            &'a self,
+            _: &'a Lookup,
+        ) -> futures_util::future::BoxFuture<'a, Result<Grounding, SeamError>> {
+            Box::pin(async move { Ok(self.0.clone()) })
+        }
+    }
+
+    fn passage(relevance: f64, answer: Option<&str>) -> router::seams::Passage {
+        router::seams::Passage {
+            id: "product.connect@1".into(),
+            title: "Connect a computer".into(),
+            text: "Install the Coder host and link it from the app.".into(),
+            source: "docs/coder/runtime/host-service.md".into(),
+            relevance,
+            answer: answer.map(str::to_string),
+        }
+    }
+
+    /// A product entry's own reviewed answer is served whole; otherwise the
+    /// model is restarted with the passages and the result cites them.
+    #[tokio::test]
+    async fn product_questions_are_grounded_in_the_knowledge_base() {
+        let answers = routed("product.kb", "none", 0.1, "none");
+        let whole = frames_routed(
+            slow_door(Duration::from_millis(1_500)),
+            Some(judge(Duration::ZERO, answers.clone())),
+            routed_turn("how do I connect my Mac", json!({})),
+            Seams {
+                product: Arc::new(Knows(Grounding {
+                    passages: vec![passage(
+                        0.9,
+                        Some("We connect computers from your account."),
+                    )],
+                    ..Grounding::default()
+                })),
+                ..Seams::default()
+            },
+            RouterSetting::Live,
+        )
+        .await;
+        let result = &whole.last().unwrap().1;
+        assert_eq!(result["text"], "We connect computers from your account.");
+        assert_eq!(result["model"], "kb:product");
+        assert_eq!(result["citations"][0]["id"], "product.connect@1");
+
+        let stream = include_str!("../../fixtures/gateway/google-gemini-3.8-flash.sse");
+        let url = serve_times(
+            2,
+            Duration::from_millis(200),
+            "text/event-stream",
+            stream.to_string(),
+        );
+        let door = Door::Live(coder::generate::ResponsesDoor::new(
+            url,
+            "google/gemini-3.8-flash",
+            "test",
+        ));
+        let grounded = frames_routed(
+            door,
+            Some(judge(Duration::ZERO, answers)),
+            routed_turn("how do I connect my Mac", json!({})),
+            Seams {
+                product: Arc::new(Knows(Grounding {
+                    passages: vec![passage(0.7, None), passage(0.2, None)],
+                    ..Grounding::default()
+                })),
+                ..Seams::default()
+            },
+            RouterSetting::Live,
+        )
+        .await;
+        let result = &grounded.last().unwrap().1;
+        assert_eq!(result["type"], "result", "{result}");
+        assert_eq!(result["tier"], "grounded");
+        assert_eq!(result["model"], "google/gemini-3.8-flash");
+        assert_eq!(result["citations"].as_array().unwrap().len(), 1);
+    }
+
+    /// A CLI seam for tests: proposes `argv` with `effect`.
+    struct Proposes(Vec<&'static str>, router::Effect);
+
+    impl router::seams::CliRoute for Proposes {
+        fn groups(&self) -> Vec<router::seams::CliGroup> {
+            vec![router::seams::CliGroup {
+                id: "computer".into(),
+                summary: "Your computers".into(),
+            }]
+        }
+        fn recipients(&self) -> Vec<String> {
+            Vec::new()
+        }
+        fn propose<'a>(
+            &'a self,
+            _: &'a CliAsk,
+        ) -> futures_util::future::BoxFuture<'a, Result<CliAnswer, SeamError>> {
+            Box::pin(async move {
+                Ok(CliAnswer::Proposal(router::seams::CliProposal {
+                    argv: self.0.iter().map(|arg| (*arg).to_string()).collect(),
+                    effect: self.1,
+                    runs_on: router::RunsOn::ThisDevice,
+                }))
+            })
+        }
+    }
+
+    /// A read-only command is offered with a confirm; a spending one never
+    /// is, and the wallet screen is offered instead.
+    #[tokio::test]
+    async fn cli_proposals_pass_the_gate_or_are_not_offered() {
+        let mut answers = routed("cli", "none", 0.5, "none");
+        answers["cli_group"] = sure("computer", &["computer", "none"]);
+        let listed = frames_routed(
+            slow_door(Duration::from_millis(1_500)),
+            Some(judge(Duration::ZERO, answers.clone())),
+            routed_turn(
+                "which of my computers are online",
+                json!({ "surface": "phone" }),
+            ),
+            Seams {
+                cli: Arc::new(Proposes(vec!["computer", "list"], router::Effect::ReadOnly)),
+                ..Seams::default()
+            },
+            RouterSetting::Live,
+        )
+        .await;
+        let offer = of_type(&listed, "offer")[0];
+        assert_eq!(offer["offer"], "cli");
+        assert_eq!(offer["argv"], json!(["computer", "list"]));
+        assert_eq!(offer["confirm"], true);
+        assert_eq!(listed.last().unwrap().1["answer"], "cli.offer@1");
+
+        let paying = frames_routed(
+            slow_door(Duration::from_millis(1_500)),
+            Some(judge(Duration::ZERO, answers)),
+            routed_turn("pay that invoice", json!({ "surface": "phone" })),
+            Seams {
+                cli: Arc::new(Proposes(vec!["wallet", "pay"], router::Effect::Spends)),
+                ..Seams::default()
+            },
+            RouterSetting::Live,
+        )
+        .await;
+        let offers = of_type(&paying, "offer");
+        assert_eq!(offers.len(), 1);
+        assert_eq!(offers[0]["offer"], "open_screen");
+        assert_eq!(offers[0]["screen"], "wallet");
+        assert_eq!(paying.last().unwrap().1["answer"], "wallet.send@1");
     }
 }

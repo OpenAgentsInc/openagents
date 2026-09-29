@@ -46,12 +46,19 @@ array of `{role, content}`), and optional `instructions` and `client` strings.
 Role is `user` or `assistant`; content is a string. Both caller and worker
 bound the transcript. Instructions are caller-supplied guidance and cannot
 override host policy. Client is informational and conveys no authority.
+A request MAY also carry `router` (the name of a routing question set the
+worker serves, such as `chat-router-v1`) and `context`, a bounded object of
+`surface` (`phone`, `desktop`, or `terminal`), `computer_ready` (boolean),
+and `app_build` (at most 64 bytes). Context carries no credential, key, host
+name, or amount; a worker ignores fields it does not know and never lets
+context widen what it does.
 
 Feedback has `v: 1`, `requires`, `type`, and fields for that type:
 
 | Type | Fields |
 | --- | --- |
-| `judgment` | `verdict`: `respond`, `clarify`, `end_conversation`, or `unrouted`; `line`: bounded display string. Optional typed additions: `set` (the question set's identity), `lane` (`chat`, `computer`, or `unknown`), `opener` (the ID of the opener shown, or null), `confidence` (the opener choice's probability), `bank` (the prepared-answer bank's identity), `answer` (the argmax prepared answer as `id@version`, or null), `answer_p` (its probability), `needs_specifics` (the probability that a reply needs particulars the user named), and `tier` (`canned`, `opener`, or `model`: what the worker decided to show first). It is an optional observation, not permission. |
+| `judgment` | `verdict`: `respond`, `clarify`, `end_conversation`, or `unrouted`; `line`: bounded display string. Optional typed additions: `set` (the question set's identity), `lane` (`chat`, `computer`, or `unknown`), `opener` (the ID of the opener shown, or null), `confidence` (the opener choice's probability), `bank` (the prepared-answer bank's identity), `answer` (the argmax prepared answer as `id@version`, or null), `answer_p` (its probability), `needs_specifics` (the probability that a reply needs particulars the user named), and `tier` (what the worker decided to show first: `canned`, `opener`, or `model`, and for a routed turn also `stem`, `grounded`, `offer`, `cli`, or `refuse`). A routed turn adds `route` and `route_p` (the argmax route and its probability), `lane_p`, `risk` and `risk_p`, `cli_group` (or null), and, when the worker only shadows the router, `shadow` (the tier it would have shown). It is an optional observation, not permission. |
+| `offer` | `offer`: `run_coder` (with `target: "connected_computer"` and `label`), `open_screen` (with `screen`, such as `account.computers` or `wallet`, and `label`), or `cli` (with `argv`, `effect`, `runs_on`, and `confirm: true`). An action the client MAY render for the user to tap; it is an observation, never permission, and the worker takes no action for it. |
 | `partial` | `seq`: nonnegative integer starting at zero; `delta`: string. |
 | `status` | `status`: `queued`, `processing`, or `error`; error requires `code` and `message`, with optional nonnegative `retry_after_ms`. |
 
@@ -72,6 +79,21 @@ judgment is not sure enough of either. A request that asks for neither gets the 
 text unchanged, which a caller that parses the result as structured output
 relies on. A judgment never delays generation, and one that arrives after the
 model has started adds feedback only.
+
+A request with `router` asks for routing and implies `opener`. The worker
+MAY then answer from a reviewed bank in more shapes, each still starting at
+partial `seq` 0: a whole answer (as above); a bank stem at `seq` 0 closed at
+`seq` 1 by a validated continuation or the stem's reviewed ending; a refusal
+from the bank; or a sentence with `offer` feedback. In each of those it drops
+its model call. It MAY instead retrieve reference passages and answer with
+the model grounded in them, or show a bank line above the model's reply. A
+routed result adds `tier`, `route`, `bank` (the bank as `name@digest`), and
+optionally `answer` (`id@version`), `followups` (up to a few `{id, label}`
+suggestions whose label the client MAY send as the user's next message),
+`citations` (`{id, title, source}` for a grounded reply), and `commit`. Its
+`model` names who wrote the text: `bank:<bank name>` when no model did, the
+continuation's model for a personalized stem, `kb:<corpus>` for a knowledge
+base's reviewed answer. A routed turn is admitted and metered as any turn.
 
 A request with `type: "rank"` asks for an ordering instead of a turn. It
 carries `candidates` (1 to 16 `{id, label}`, IDs 1 to 64 bytes and not
