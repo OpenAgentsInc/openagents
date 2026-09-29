@@ -137,4 +137,6 @@ pub unsafe extern "C" fn openagents_mobile_destroy(handle: *mut App) {
 #[cfg(test)]
 mod coder_tab_tests;
 #[cfg(test)]
+mod speed_tests;
+#[cfg(test)]
 mod tests;

@@ -260,6 +260,11 @@ uses, and marks which are implemented and which are only specified.
 - `crates/coder-connect` — explicitly paired retained-history observation over
   NIP-42 and encrypted private Nostr artifacts. This cannot control an engine.
   Read its README and the NIP-SESS observer profile before changing authority.
+- `crates/chat-load-bench` — the phone chat-loading benchmark: drives the real
+  `coder-connect` client, observer host, relay and direct transports, and
+  transcript layout phase by phase, and times the basic Coder's NIP-CJ legs.
+  Its fixture run needs no network. Results and the ranked bottlenecks are in
+  `docs/coder/runtime/chat-load-benchmark.md`.
 - `crates/coder-access` — NIP-HOST host-wide device enrollment: single-use
   `coder-host:` invitations, reverse enrollment approved by code, host-signed
   device grants with six closed rights and revocation epochs, and delegation

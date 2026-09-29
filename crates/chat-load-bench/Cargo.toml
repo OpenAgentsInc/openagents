@@ -1,0 +1,33 @@
+[package]
+name = "chat-load-bench"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Phase-by-phase benchmark of how fast the phone apps load chats: catalog, transcript, and layout."
+
+[[bin]]
+name = "chat-load-bench"
+
+[dependencies]
+# The real client, host, relay transport, and direct transport the phone
+# and `coder host serve` run. Nothing here reimplements them.
+coder-connect = { path = "../coder-connect" }
+coder-history = { path = "../coder-history" }
+# The phone's transcript layout, with the bundled-font shaper.
+rust-native = { path = "../rust-native", features = ["shaping"] }
+# The loopback NIP-42 relay (`src/relay.rs`).
+nostr = { path = "../nostr" }
+# The basic Coder's NIP-CJ path (`src/cj.rs`).
+nostr-transport = { path = "../nostr-transport" }
+futures-util = "0.3"
+tokio-tungstenite = { version = "0.30", features = ["rustls-tls-webpki-roots"] }
+secp256k1 = { version = "0.31.1", features = ["rand"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+base64 = "0.22"
+tempfile = "3"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "net", "io-util", "sync", "process"] }
+
+[lints]
+workspace = true

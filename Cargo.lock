@@ -904,6 +904,25 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4b4b0fc281743d80256607bd65e8beedc42cb0787ea119c85b81b4c0eab85e5f"
 
 [[package]]
+name = "chat-load-bench"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "coder-connect",
+ "coder-history",
+ "futures-util",
+ "nostr",
+ "nostr-transport",
+ "rust-native",
+ "secp256k1 0.31.1",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tokio-tungstenite",
+]
+
+[[package]]
 name = "chrono"
 version = "0.4.45"
 source = "registry+https://github.com/rust-lang/crates.io-index"
