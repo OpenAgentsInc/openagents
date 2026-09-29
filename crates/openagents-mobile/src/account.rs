@@ -36,6 +36,30 @@ pub struct Item {
 pub const CHANGELOG: &[Release] = &[
     Release {
         version: "1.0.0",
+        build: "22",
+        title: "Clearer credit",
+        what_to_test: "From the menu, tap Check a result and run the check; when your XP arrives, tap Check a result again and check the card no longer promises XP for the same test set. Open Profile and check Your results lists only your full runs, and the XP bar fills as you earn. Tap What's new and check the first words show in about a second.",
+        items: &[
+            Item {
+                title: "A second check says what it earns",
+                detail: "You earn XP for checking a test set once. A second check of the same test set no longer promises XP, and Profile no longer says XP is on its way for it.",
+            },
+            Item {
+                title: "Results you can check",
+                detail: "Check a result offers only results our test computers can run again and that still earn XP when you confirm them.",
+            },
+            Item {
+                title: "Your results",
+                detail: "Profile's Your results lists only your full runs. Tries and checks show under What you made.",
+            },
+            Item {
+                title: "Faster Gym news",
+                detail: "What's new in the Gym shows its first words and the news in about a second.",
+            },
+        ],
+    },
+    Release {
+        version: "1.0.0",
         build: "21",
         title: "Test tools in chat",
         what_to_test: "On a fresh install, tap Choose Coder, then Let's go, then Start the test, and check the test starts in three taps; when the result comes, tap Add to the Gym. From the menu, tap What's new and Check a result, and run a check. In a chat, say \"Help me make a tool that writes changelog entries\" and answer each step with Looks good or a change. Open Profile to see what you made and the XP it earned, and tap The Gym in the Verse to see the board.",
