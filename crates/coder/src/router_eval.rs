@@ -207,6 +207,11 @@ pub struct Reading {
     pub route_p: f64,
     /// The prepared answer it served or would stem from.
     pub answer: Option<String>,
+    /// The `answer` question's argmax entry, served or not, whose
+    /// probability `answer_p` is: the reading the calibration map is
+    /// fitted on.
+    #[serde(default)]
+    pub read_answer: Option<String>,
     pub answer_p: f64,
     /// The tier it chose, by [`TIERS`] word.
     pub tier: String,
@@ -273,6 +278,9 @@ pub struct Report {
     /// Rows with a secret (`secret_shared` or `asks_for_secret`) that the
     /// system refused or read as that risk.
     pub secret: Counts,
+    /// Readings on which the router stood back and the model answered
+    /// alone (tier `model`): the abstentions, over the rows read.
+    pub abstained: usize,
     pub latency_p50: Option<u128>,
     pub latency_p95: Option<u128>,
     /// Every wrong canned answer: row id, served answer, expected answer.
@@ -323,6 +331,7 @@ impl Report {
                 continue;
             }
             latency.push(reading.ms);
+            report.abstained += usize::from(reading.tier == "model");
             if let Some(route) = &reading.route {
                 routed += 1;
                 if let Some(counts) = report.routes.get_mut(route) {
@@ -487,6 +496,13 @@ impl Report {
         let _ = writeln!(out, "| Route accuracy | {} | |", pct(self.route_accuracy));
         let _ = writeln!(
             out,
+            "| Abstention (the model alone) | {} | {}/{} |",
+            pct(self.abstention_rate()),
+            self.abstained,
+            self.read()
+        );
+        let _ = writeln!(
+            out,
             "| Latency p50 / p95 | {} / {} ms | |\n",
             self.latency_p50.map_or("-".into(), |v| v.to_string()),
             self.latency_p95.map_or("-".into(), |v| v.to_string())
@@ -537,6 +553,18 @@ impl Report {
         out
     }
 
+    /// The rows that got a reading: the rows less the errors.
+    #[must_use]
+    pub fn read(&self) -> usize {
+        self.rows.saturating_sub(self.errors)
+    }
+
+    /// The share of read rows on which the model answered alone.
+    #[must_use]
+    pub fn abstention_rate(&self) -> Option<f64> {
+        ratio(self.abstained, self.read())
+    }
+
     /// The report as JSON.
     #[must_use]
     pub fn json(&self) -> Value {
@@ -546,8 +574,104 @@ impl Report {
             "canned_precision": self.canned.precision(),
             "dispatch_precision": self.dispatch.precision(),
             "gym_precision": self.gym.precision(),
+            "abstention_rate": self.abstention_rate(),
         })
     }
+}
+
+/// One point of a risk–coverage curve: what serving on a question's
+/// reading at `threshold` or above would give.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize)]
+pub struct OperatingPoint {
+    pub threshold: f64,
+    /// Readings at or above the threshold.
+    pub served: usize,
+    /// Of those, the ones that were right.
+    pub right: usize,
+    /// Readings on the question.
+    pub read: usize,
+}
+
+impl OperatingPoint {
+    /// The share of readings served at this threshold.
+    #[must_use]
+    pub fn coverage(&self) -> Option<f64> {
+        ratio(self.served, self.read)
+    }
+
+    /// The share of served readings that were right.
+    #[must_use]
+    pub fn precision(&self) -> Option<f64> {
+        ratio(self.right, self.served)
+    }
+
+    /// The share of readings held back at this threshold.
+    #[must_use]
+    pub fn abstention(&self) -> Option<f64> {
+        ratio(self.read - self.served, self.read)
+    }
+}
+
+/// The thresholds the operating-point table is drawn at: the policy's
+/// serving floors ([`crate::router::policy`]) and the tenths around them.
+pub const THRESHOLDS: [f64; 9] = [0.5, 0.6, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95, 0.99];
+
+/// A question's readings as (probability, right) pairs, for the
+/// operating-point table and the calibration map: `route` is the route
+/// reading against the labeled route, `answer` the `answer` question's
+/// argmax entry against the row's accepted answers. A row with no reading
+/// on the question, or with an error, is left out (and counted as
+/// unavailable by the report).
+#[must_use]
+pub fn observations(
+    rows: &[&Row],
+    readings: &[Reading],
+) -> (Vec<gym::calibrate::Observation>, Vec<gym::calibrate::Observation>) {
+    let by_id: BTreeMap<&str, &Reading> = readings.iter().map(|r| (r.id.as_str(), r)).collect();
+    let mut route = Vec::new();
+    let mut answer = Vec::new();
+    for row in rows {
+        let Some(reading) = by_id.get(row.id.as_str()) else {
+            continue;
+        };
+        if reading.error.is_some() {
+            continue;
+        }
+        if let Some(read) = &reading.route {
+            route.push(gym::calibrate::Observation::new(
+                reading.route_p,
+                read == &row.route,
+            ));
+        }
+        if let Some(read) = &reading.read_answer {
+            answer.push(gym::calibrate::Observation::new(
+                reading.answer_p,
+                row.accepts(read),
+            ));
+        }
+    }
+    (route, answer)
+}
+
+/// The risk–coverage curve of one question's observations at
+/// [`THRESHOLDS`].
+#[must_use]
+pub fn operating_points(observations: &[gym::calibrate::Observation]) -> Vec<OperatingPoint> {
+    THRESHOLDS
+        .iter()
+        .map(|&threshold| {
+            let served: Vec<_> = observations
+                .iter()
+                .filter(|o| o.raw >= threshold)
+                .collect();
+            OperatingPoint {
+                threshold,
+                served: served.len(),
+                right: served.iter().filter(|o| o.correct).count(),
+                read: observations.len(),
+            }
+        })
+        .collect()
 }
 
 /// One row's cosine similarities: to each bank entry (id, route,
@@ -576,6 +700,7 @@ pub fn nearest_reading(
         id: id.to_string(),
         route_p: best_route.map_or(0.0, |(_, s)| *s),
         answer: canned.map(|(a, _, _)| a.clone()),
+        read_answer: best_answer.map(|(a, _, _)| a.clone()),
         answer_p: best_answer.map_or(0.0, |(_, _, s)| *s),
         tier: if canned.is_some() {
             "canned".to_string()
@@ -689,6 +814,7 @@ pub fn routed_reading(
         route: (routing.route != RouteId::Unknown).then(|| routing.route.word().to_string()),
         route_p: routing.route_p,
         answer: answer.map(|entry| entry.id.clone()),
+        read_answer: routing.answer.as_ref().map(|(entry, _)| entry.id.clone()),
         answer_p: routing.answer.as_ref().map_or(0.0, |(_, p)| *p),
         tier: match tier.word() {
             "opener" | "model" => "model",
@@ -926,11 +1052,52 @@ mod tests {
         assert_eq!(report.routes["meta"].recall(), Some(1.0));
         assert_eq!(report.routes["work.dispatch"].precision(), Some(0.5));
         assert_eq!(report.route_accuracy, Some(0.8));
+        assert_eq!(report.abstained, 0);
+        assert_eq!(report.abstention_rate(), Some(0.0));
         assert!(
             report
                 .markdown()
                 .contains("| Canned precision (target ≥ 98 %) | 33.3 % | 1/3 |")
         );
+    }
+
+    /// The operating-point table and the calibration observations read
+    /// each question's probability against the row's label: a route is
+    /// right when it is the labeled route, an answer reading when the row
+    /// accepts it, served or not; an errored or unread row is left out.
+    #[test]
+    fn observations_and_operating_points_read_each_question_against_its_label() {
+        let rows = [
+            row("a", "meta", Some("meta.who"), "canned"),
+            row("b", "meta", Some("meta.model"), "canned"),
+            row("c", "general", None, "model"),
+            row("d", "general", None, "model"),
+        ];
+        let refs: Vec<&Row> = rows.iter().collect();
+        let mut a = reading("a", "meta", Some("meta.who"), "canned", false);
+        (a.route_p, a.read_answer, a.answer_p) = (0.95, Some("meta.who".into()), 0.92);
+        let mut b = reading("b", "general", None, "model", false);
+        (b.route_p, b.read_answer, b.answer_p) = (0.55, Some("meta.who".into()), 0.65);
+        let mut c = reading("c", "general", None, "model", false);
+        (c.route_p, c.read_answer) = (0.85, None);
+        let mut d = reading("d", "general", None, "model", false);
+        d.error = Some("timeout".into());
+        let (route, answer) = observations(&refs, &[a, b, c, d]);
+        assert_eq!(route.len(), 3);
+        assert_eq!(answer.len(), 2);
+        assert!(route[0].correct && !route[1].correct && route[2].correct);
+        assert!(answer[0].correct && !answer[1].correct);
+        let points = operating_points(&route);
+        assert_eq!(points.len(), THRESHOLDS.len());
+        let at = |t: f64| points.iter().find(|p| (p.threshold - t).abs() < 1e-9).unwrap();
+        assert_eq!((at(0.8).served, at(0.8).right), (2, 2));
+        assert_eq!(at(0.8).coverage(), Some(2.0 / 3.0));
+        assert_eq!(at(0.8).precision(), Some(1.0));
+        assert_eq!(at(0.5).abstention(), Some(0.0));
+        assert_eq!((at(0.99).served, at(0.99).precision()), (0, None));
+        let report = Report::of("test", "tune", &refs, &[]);
+        assert_eq!(report.errors, 4);
+        assert_eq!(report.abstention_rate(), None);
     }
 
     #[test]

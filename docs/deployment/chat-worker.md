@@ -50,6 +50,24 @@ phone <--27000 partials, 26900 result------- relay.openagents.com <-- chat worke
   worker refuses to start when the bank breaks its lint. See the
   [chat router design](../coder/design/2026-09-28-chat-router.md) and
   [`docs/coder/measurements/2026-09-28-first-reply.md`](../coder/measurements/2026-09-28-first-reply.md).
+  The startup line names the question set and the bank by digest
+  (`router chat-router-v2@<digest> (Live), bank chat-answers-v1@<digest>`),
+  and every judgment carries the same two identities in `set` and `bank`:
+  they are what a router eval report pins as the subject's configuration
+  ([#9959](https://github.com/OpenAgentsInc/openagents/issues/9959),
+  [`docs/coder/measurements/2026-09-29-chat-router-claims.md`](../coder/measurements/2026-09-29-chat-router-claims.md)).
+- **Router calibration.** `CODER_WORKER_ROUTER_CALIBRATION=on` runs each
+  judgment's `route` and `answer` probabilities through the calibration
+  maps the last published eval fitted
+  (`crates/coder/fixtures/chat-router/calibration-v2.json`, one reliability
+  table per question, fitted on the labeled set's calibration partition)
+  before the policy table decides; the `router` log line then names the
+  map (`calibration-v2@<digest>`). Unset or `off` (the default) serves the
+  raw probabilities, which the policy's thresholds were tuned on. The
+  worker refuses to start with it on when the committed map was fitted for
+  another question set than this build asks (rerun the published eval to
+  refit), and logs when the bank has moved since the fit. The maps change
+  only probabilities, never which route or answer was chosen.
 - **Personalization (T1).** The chat router's stems ("We'll dispatch Coder
   to …") are finished by a cheap model through `coder::router::personalize`;
   the worker reads `personalize::seam_from_env()` at start, and its

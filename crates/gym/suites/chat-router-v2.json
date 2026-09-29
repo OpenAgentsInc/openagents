@@ -1,10 +1,11 @@
 {
   "schema": "openagents.gym.suite.v1",
   "name": "chat-router-v2",
-  "description": "The chat router's labeled route set for chat-router-v2 (#9936), from crates/coder/fixtures/chat-router/routes-v2.json: the v1 rows and rows for the Gym and eval routes, across 18 routes, labeled with the route a correct router takes. The fixture's held-out rows are the locked partition.",
+  "description": "The chat router's labeled route set for chat-router-v2 (#9936), from crates/coder/fixtures/chat-router/routes-v2.json: the v1 rows and rows for the Gym and eval routes, across 18 routes, labeled with the route a correct router takes. The fixture's held-out rows are the locked partition. Judged by the router-v1 gate (#9959): canned precision primary, route accuracy, canned recall, dispatch precision, and ECE held non-inferior.",
   "created": "2026-09-28",
   "digest": "aab46e3c80fde17cc7db3124a82dde8b1ccab632aa878e7524d2260be4f6bd82",
   "tier": "scored",
+  "gate": "router-v1",
   "questions": "chat-router-route-v3",
   "items": [
     {

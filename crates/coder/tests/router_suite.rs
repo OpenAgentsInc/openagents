@@ -35,7 +35,7 @@ fn gym(path: &str) -> PathBuf {
         .join(path)
 }
 
-fn suite(set: &Set, name: &str, questions: &str, description: &str) -> Suite {
+fn suite(set: &Set, name: &str, questions: &str, gate: &str, description: &str) -> Suite {
     let items: Vec<Item> = set
         .rows
         .iter()
@@ -80,7 +80,7 @@ fn suite(set: &Set, name: &str, questions: &str, description: &str) -> Suite {
         created: set.created.clone(),
         digest: String::new(),
         tier: Some("scored".to_string()),
-        gate: None,
+        gate: Some(gate.to_string()),
         questions: Some(questions.to_string()),
         sampling: None,
         exposure: None,
@@ -95,6 +95,7 @@ fn v1() -> Suite {
         &Set::v1(),
         SUITE_V1,
         SUITE_QUESTIONS_V1,
+        "probability-v2",
         "The chat router's labeled route set (#9925), from \
          crates/coder/fixtures/chat-router/routes-v1.json: realistic first \
          messages across the 12 routes, labeled with the route a correct router \
@@ -107,10 +108,13 @@ fn v2() -> Suite {
         &Set::fixture(),
         SUITE,
         SUITE_QUESTIONS,
+        coder::router_claim::GATE,
         "The chat router's labeled route set for chat-router-v2 (#9936), from \
          crates/coder/fixtures/chat-router/routes-v2.json: the v1 rows and rows for \
          the Gym and eval routes, across 18 routes, labeled with the route a correct \
-         router takes. The fixture's held-out rows are the locked partition.",
+         router takes. The fixture's held-out rows are the locked partition. Judged \
+         by the router-v1 gate (#9959): canned precision primary, route accuracy, \
+         canned recall, dispatch precision, and ECE held non-inferior.",
     )
 }
 
@@ -138,6 +142,12 @@ fn the_gym_suites_are_the_labeled_sets() {
     let v2_committed = committed(SUITE);
     assert_eq!(v2_committed.digest, v2().digest, "regenerate the suite");
     assert_eq!(v2_committed.questions.as_deref(), Some(SUITE_QUESTIONS));
+    assert_eq!(
+        v2_committed.gate.as_deref(),
+        Some(coder::router_claim::GATE),
+        "regenerate the suite"
+    );
+    gym::gate::load(coder::router_claim::GATE).expect("the named gate is a committed rule");
     // The v1 suite is kept as recorded.
     let v1_committed = committed(SUITE_V1);
     assert_eq!(v1_committed.digest, v1().digest);
@@ -158,6 +168,26 @@ fn the_gym_question_is_the_route_question() {
         "regenerate the question set"
     );
     gym::questions::load(SUITE_QUESTIONS).expect("the Gym reads it");
+}
+
+/// The question set's digest the worker puts on the wire
+/// (`chat-router-v2@<digest>`, [`coder::router::set_id`]) is the Gym's
+/// digest of the committed question file, so a judgment, a Gym row, and an
+/// eval report name one question by one digest (#9959).
+#[test]
+fn the_wire_names_the_question_set_by_the_gyms_digest() {
+    let served = gym::questions::load(SUITE_QUESTIONS).expect("the Gym reads it");
+    assert_eq!(served.digest(), coder::router::set_digest());
+    assert_eq!(
+        coder::router::set_id(),
+        format!("{SUITE}@{}", &served.digest()[..12])
+    );
+    // A question that reads differently is a different set.
+    let mut reworded = served.clone();
+    if let Some(question) = reworded.questions.get_mut("route") {
+        question["instructions"] = json!("Pick the route.");
+    }
+    assert_ne!(reworded.digest(), coder::router::set_digest());
 }
 
 /// The Gym asks the `route` question the deployed router asks, whatever

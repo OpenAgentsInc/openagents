@@ -16,6 +16,16 @@
 //! Each system prints a Markdown report ([`coder::router_eval::Report`]) and
 //! writes its JSON to `ROUTER_EVAL_OUT` (default `target/router-eval/`).
 //!
+//! `ROUTER_EVAL_PUBLISH=1` makes `live_router` the published eval (#9959):
+//! it reads the held-out rows and the calibration partition, fits the
+//! calibration maps on the latter ([`coder::router::calibration`]), scores
+//! the held-out split raw and calibrated, and writes the evidence record
+//! ([`coder::router_claim`]: `report.json` and its artifacts, an
+//! `openagents.eval-report.v1` on the router as a decision service) and
+//! `calibration-v2.json` to `target/router-eval/<date>/`. Commit the
+//! calibration file as `crates/coder/fixtures/chat-router/calibration-v2.json`
+//! and the numbers to a measurement under `docs/coder/measurements/`.
+//!
 //! Systems:
 //!
 //! - `chat-router-v2` (`live_router`): the router's Jev question set and
@@ -37,13 +47,32 @@ use std::time::Instant;
 use coder::generate::{DEFAULT_DOOR_URL, Message, Role};
 use coder::router;
 use coder::router_eval::{
-    CANNED_TARGET, Reading, Report, Row, Set, fit_threshold, nearest_reading, route_descriptions,
-    routed_reading,
+    CANNED_TARGET, Reading, Report, Row, Set, fit_threshold, nearest_reading, partition_of,
+    route_descriptions, routed_reading,
 };
 use knowledge::search::{Embed, cosine};
 
 fn split() -> String {
     std::env::var("ROUTER_EVAL_SPLIT").unwrap_or_else(|_| "held_out".to_string())
+}
+
+/// Whether this run is the published eval.
+fn publishing() -> bool {
+    std::env::var_os("ROUTER_EVAL_PUBLISH").is_some()
+}
+
+fn out_dir() -> PathBuf {
+    std::env::var_os("ROUTER_EVAL_OUT").map_or_else(
+        || PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/router-eval"),
+        PathBuf::from,
+    )
+}
+
+fn now() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|since| since.as_secs())
+        .unwrap_or_default()
 }
 
 /// The rows of `split` that `ROUTER_EVAL_ROWS` keeps, and the label the
@@ -81,10 +110,7 @@ fn transcript(row: &Row) -> Vec<Message> {
 
 fn publish(report: &Report) {
     println!("{}", report.markdown());
-    let dir = std::env::var_os("ROUTER_EVAL_OUT").map_or_else(
-        || PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/router-eval"),
-        PathBuf::from,
-    );
+    let dir = out_dir();
     let _ = std::fs::create_dir_all(&dir);
     let path = dir.join(format!("{}-{}.json", report.system, report.split));
     let _ = std::fs::write(
@@ -134,7 +160,19 @@ async fn run_router(name: &str, mode: router::Mode) {
         draft: false,
     };
     let set = Set::fixture();
-    let (rows, split_label) = rows(&set, &split());
+    let (rows, split_label) = if publishing() {
+        // The held-out rows the record is on, and the calibration
+        // partition the maps are fitted on.
+        let rows: Vec<&Row> = set
+            .rows
+            .iter()
+            .filter(|row| matches!(partition_of(row), "locked" | "calibration"))
+            .collect();
+        (rows, "held_out+calibration".to_string())
+    } else {
+        rows(&set, &split())
+    };
+    let started_at = now();
     let mut readings = Vec::new();
     let mut traces = Vec::new();
     // `eval.run`: whether the reply offers `start_eval` for the row's tool
@@ -173,6 +211,7 @@ async fn run_router(name: &str, mode: router::Mode) {
             },
         });
     }
+    let ended_at = now();
     publish(&Report::of(name, &split_label, &rows, &readings));
     if offers.rows > 0 {
         println!(
@@ -181,6 +220,129 @@ async fn run_router(name: &str, mode: router::Mode) {
         );
     }
     write_traces(name, &split_label, &traces);
+    if publishing() && mode == router::Mode::Router {
+        let profile = coder::decision::profile_from_env()
+            .ok()
+            .flatten()
+            .map_or("unknown".to_string(), |profile| format!("{}:jev", profile.name()));
+        record(&set, &rows, &readings, &profile, started_at, ended_at);
+    }
+}
+
+/// The published eval's evidence record (#9959): the held-out report as
+/// an `openagents.eval-report.v1`, with the calibration maps fitted on the
+/// calibration partition and scored on the held-out split.
+fn record(set: &Set, rows: &[&Row], readings: &[Reading], judge: &str, started_at: u64, ended_at: u64) {
+    use coder::router::calibration::{Calibration, Question, SCHEMA};
+    use coder::router_claim::{Claim, GATE};
+    use coder::router_eval::observations;
+
+    let held: Vec<&Row> = rows
+        .iter()
+        .copied()
+        .filter(|row| partition_of(row) == "locked")
+        .collect();
+    let fit: Vec<&Row> = rows
+        .iter()
+        .copied()
+        .filter(|row| partition_of(row) == "calibration")
+        .collect();
+    let held_readings: Vec<Reading> = readings
+        .iter()
+        .filter(|r| held.iter().any(|row| row.id == r.id))
+        .cloned()
+        .collect();
+    let fit_readings: Vec<Reading> = readings
+        .iter()
+        .filter(|r| fit.iter().any(|row| row.id == r.id))
+        .cloned()
+        .collect();
+    let report = Report::of("chat-router-v2", "held_out", &held, &held_readings);
+    publish(&report);
+    publish(&Report::of("chat-router-v2", "calibration", &fit, &fit_readings));
+
+    let probability = gym::gate::load("probability-v2").expect("probability-v2 loads");
+    let (fit_route, fit_answer) = observations(&fit, &fit_readings);
+    let (held_route, held_answer) = observations(&held, &held_readings);
+    let bank = router::Bank::builtin();
+    let date = gym::eval::utc_from_unix(ended_at)[..10].to_string();
+    let calibration = Calibration {
+        schema: SCHEMA.to_string(),
+        set: router::set_id(),
+        bank: bank.id(),
+        created: date.clone(),
+        fitted_on: "calibration".to_string(),
+        fitted_rows: fit.len(),
+        route: Question::fit(&fit_route, &held_route, &probability),
+        answer: Question::fit(&fit_answer, &held_answer, &probability),
+    };
+    for (name, question) in [("route", &calibration.route), ("answer", &calibration.answer)] {
+        println!(
+            "calibration {name}: fitted on {} rows, {} bins; held out {} rows: ECE {:.3} -> {:.3}, Brier {:.3} -> {:.3}, NLL {:.3} -> {:.3}, confident errors {} -> {}; probability-v2 {}",
+            question.map.fitted_on,
+            question.map.bins.len(),
+            question.held_out_items,
+            question.raw.ece,
+            question.calibrated.ece,
+            question.raw.brier,
+            question.calibrated.brier,
+            question.raw.nll,
+            question.calibrated.nll,
+            question.raw.confident_errors,
+            question.calibrated.confident_errors,
+            question.verdict,
+        );
+    }
+
+    let gym_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../gym");
+    let suite_bytes = std::fs::read(gym_dir.join("suites/chat-router-v2.json")).expect("the suite");
+    let gate_bytes = std::fs::read(gym_dir.join(format!("gates/{GATE}.json"))).expect("the gate");
+    let gate = gym::gate::load(GATE).expect("router-v1 loads");
+    let commit = std::process::Command::new("git")
+        .args(["rev-parse", "--short", "HEAD"])
+        .current_dir(env!("CARGO_MANIFEST_DIR"))
+        .output()
+        .ok()
+        .filter(|out| out.status.success())
+        .map(|out| String::from_utf8_lossy(&out.stdout).trim().to_string());
+    let worker = format!("coder@{}", env!("CARGO_PKG_VERSION"));
+    let claim = Claim {
+        set,
+        suite_bytes: &suite_bytes,
+        gate_bytes: &gate_bytes,
+        rows: &held,
+        readings: &held_readings,
+        report: &report,
+        calibration: &calibration,
+        gate: &gate,
+        bank,
+        judge,
+        worker: &worker,
+        commit: commit.as_deref(),
+        started_at,
+        ended_at,
+    };
+    let record = claim.record();
+    let bytes = record.bytes();
+    nostr::eval_ext::parse_report(&bytes).expect("the record is a NIP-EVAL report");
+    let outcome = gate.judge_router(&claim.comparison());
+    println!("gate {} ({}): {}", outcome.gate_id, outcome.gate_digest, outcome.verdict);
+    for criterion in &outcome.criteria {
+        println!("  {} {}: {}", criterion.name, criterion.verdict, criterion.detail);
+    }
+    let dir = out_dir().join(&date);
+    record.write(&dir).expect("the record is written");
+    std::fs::write(
+        dir.join("calibration-v2.json"),
+        serde_json::to_string_pretty(&calibration).unwrap_or_default() + "\n",
+    )
+    .expect("the calibration is written");
+    println!(
+        "wrote {} ({} bytes of report, {} files) and calibration-v2.json",
+        dir.display(),
+        bytes.len(),
+        record.files.len()
+    );
 }
 
 /// The Gym's records with a starter test set for every catalog tool, as a

@@ -33,6 +33,7 @@
 //! no-op default.
 
 pub mod bank;
+pub mod calibration;
 pub mod card;
 pub mod gym;
 pub mod judge;
@@ -49,9 +50,42 @@ pub use judge::{Routing, reading, request};
 pub use policy::{Lead, Mode, Situation, Tier, decide};
 pub use seams::Seams;
 
-/// The question set's identity, for evidence and for the wire. The route
-/// list is part of it: `chat-router-v2` added the Gym and eval routes.
+/// The question set's name, for evidence and for the wire. The route
+/// list is part of it: `chat-router-v2` added the Gym and eval routes. Its
+/// identity on the wire is [`set_id`], the name with the digest of the
+/// `route` question it asks.
 pub const SET: &str = "chat-router-v2";
+
+/// The digest of the question set: SHA-256, in hex, of the canonical JSON
+/// of the `route` question ([`judge::route`]), computed the way the Gym
+/// digests a question set (`gym::questions::QuestionSet::digest`), so the
+/// committed `crates/gym/questions/chat-router-route-v3.json` and a
+/// running worker name the same digest for the same question, and a
+/// changed route list or rubric is a changed set. The bank, the facts,
+/// the command groups, and the tools are outside it: the route question
+/// is the same whatever they hold, and the bank has its own digest.
+#[must_use]
+pub fn set_digest() -> &'static str {
+    static DIGEST: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    DIGEST.get_or_init(|| {
+        let set: ::gym::questions::QuestionSet = serde_json::from_value(serde_json::json!({
+            "schema": "openagents.gym.question_set.v1",
+            "id": crate::router_eval::SUITE_QUESTIONS,
+            "suite": SET,
+            "questions": { "route": jev::Question::from(judge::route()) },
+        }))
+        .expect("the route question is a question set");
+        set.digest()
+    })
+}
+
+/// `name@digest`, the question set's identity on the wire and in a
+/// report: [`SET`] and the first twelve hex digits of [`set_digest`], the
+/// bank's form ([`Bank::id`]).
+#[must_use]
+pub fn set_id() -> String {
+    format!("{SET}@{}", &set_digest()[..12])
+}
 
 /// The previous question set, which build 20 of the app still names in
 /// its requests. A request that names it is routed with [`SET`]; a

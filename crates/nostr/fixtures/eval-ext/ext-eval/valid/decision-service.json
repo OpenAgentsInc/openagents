@@ -1,0 +1,35 @@
+{
+  "v": "openagents.ext-eval.v1",
+  "gate": "sha256:c974e17b8e7321ce8c12983de3d0ed4a289821f579bbe0925b0181a4bc8e8d80",
+  "cases": [
+    {
+      "id": "general-004",
+      "kind": "should-not-fire"
+    },
+    {
+      "id": "meta-001",
+      "kind": "should-fire"
+    },
+    {
+      "id": "work.dispatch-012",
+      "kind": "should-fire"
+    }
+  ],
+  "headline": {
+    "subject_passed": 2,
+    "baseline_passed": null,
+    "total": 3
+  },
+  "requester": null,
+  "reliance": {
+    "runner": null,
+    "host": "sha256:0f3b6e2a1c9d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8091a2b3c4d5e6f708192a3b",
+    "door": "hosted_http:jev",
+    "model": null,
+    "agent": "coder@0.1.0",
+    "selector": "hosted_http:jev",
+    "graders": "coder router_eval 0.1.0"
+  },
+  "identity": "version",
+  "distribution": "chat-router/first-messages"
+}

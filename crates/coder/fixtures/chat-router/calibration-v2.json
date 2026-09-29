@@ -1,0 +1,182 @@
+{
+  "schema": "openagents.chat-router.calibration.v1",
+  "set": "chat-router-v2@dade99e606c5",
+  "bank": "chat-answers-v1@89920646b42c",
+  "created": "2026-09-29",
+  "fitted_on": "calibration",
+  "fitted_rows": 246,
+  "route": {
+    "map": {
+      "bins": [
+        {
+          "lo": 0.0,
+          "hi": 0.1,
+          "fitted": 0.9065040650406504,
+          "count": 0
+        },
+        {
+          "lo": 0.1,
+          "hi": 0.2,
+          "fitted": 0.9065040650406504,
+          "count": 0
+        },
+        {
+          "lo": 0.2,
+          "hi": 0.3,
+          "fitted": 0.9065040650406504,
+          "count": 0
+        },
+        {
+          "lo": 0.3,
+          "hi": 0.4,
+          "fitted": 0.1,
+          "count": 4
+        },
+        {
+          "lo": 0.4,
+          "hi": 0.5,
+          "fitted": 0.5,
+          "count": 6
+        },
+        {
+          "lo": 0.5,
+          "hi": 0.6,
+          "fitted": 0.6071428571428571,
+          "count": 13
+        },
+        {
+          "lo": 0.6,
+          "hi": 0.7,
+          "fitted": 0.65,
+          "count": 9
+        },
+        {
+          "lo": 0.7,
+          "hi": 0.8,
+          "fitted": 0.875,
+          "count": 11
+        },
+        {
+          "lo": 0.8,
+          "hi": 0.9,
+          "fitted": 0.8529411764705882,
+          "count": 16
+        },
+        {
+          "lo": 0.9,
+          "hi": 1.0,
+          "fitted": 0.9707446808510638,
+          "count": 187
+        }
+      ],
+      "base_rate": 0.9065040650406504,
+      "fitted_on": 246
+    },
+    "held_out_items": 188,
+    "raw": {
+      "accuracy": 0.8829787234042553,
+      "ece": 0.04755319148936155,
+      "brier": 0.08172553191489362,
+      "nll": 0.2619778638984893,
+      "confident_errors": 1,
+      "items": 188
+    },
+    "calibrated": {
+      "accuracy": 0.8829787234042553,
+      "ece": 0.031542322816349805,
+      "brier": 0.08817194754555141,
+      "nll": 0.28539910248488615,
+      "confident_errors": 2,
+      "items": 188
+    },
+    "verdict": "failed",
+    "gate": "gate:5bdfd1423c6c2d305a12d8f9f16e7e83a594f8548f1b605de0f77c1ef639e758"
+  },
+  "answer": {
+    "map": {
+      "bins": [
+        {
+          "lo": 0.0,
+          "hi": 0.1,
+          "fitted": 0.6187845303867403,
+          "count": 0
+        },
+        {
+          "lo": 0.1,
+          "hi": 0.2,
+          "fitted": 0.6187845303867403,
+          "count": 0
+        },
+        {
+          "lo": 0.2,
+          "hi": 0.3,
+          "fitted": 0.08333333333333333,
+          "count": 5
+        },
+        {
+          "lo": 0.3,
+          "hi": 0.4,
+          "fitted": 0.3,
+          "count": 4
+        },
+        {
+          "lo": 0.4,
+          "hi": 0.5,
+          "fitted": 0.14,
+          "count": 24
+        },
+        {
+          "lo": 0.5,
+          "hi": 0.6,
+          "fitted": 0.2391304347826087,
+          "count": 22
+        },
+        {
+          "lo": 0.6,
+          "hi": 0.7,
+          "fitted": 0.38235294117647056,
+          "count": 16
+        },
+        {
+          "lo": 0.7,
+          "hi": 0.8,
+          "fitted": 0.53125,
+          "count": 15
+        },
+        {
+          "lo": 0.8,
+          "hi": 0.9,
+          "fitted": 0.7352941176470589,
+          "count": 16
+        },
+        {
+          "lo": 0.9,
+          "hi": 1.0,
+          "fitted": 0.96875,
+          "count": 79
+        }
+      ],
+      "base_rate": 0.6187845303867403,
+      "fitted_on": 181
+    },
+    "held_out_items": 149,
+    "raw": {
+      "accuracy": 0.6308724832214765,
+      "ece": 0.13953020134228195,
+      "brier": 0.14647046979865763,
+      "nll": 0.4294349716531394,
+      "confident_errors": 0,
+      "items": 149
+    },
+    "calibrated": {
+      "accuracy": 0.6308724832214765,
+      "ece": 0.04952059624550145,
+      "brier": 0.11981985405178218,
+      "nll": 0.3678714326887229,
+      "confident_errors": 0,
+      "items": 149
+    },
+    "verdict": "passed",
+    "gate": "gate:5bdfd1423c6c2d305a12d8f9f16e7e83a594f8548f1b605de0f77c1ef639e758"
+  }
+}

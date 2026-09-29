@@ -1054,6 +1054,104 @@ pub struct ExtEvalComparison {
     pub seconds: ArmMeasure,
 }
 
+/// The rule that decides whether a chat router may serve in place of the
+/// one serving now (`router-v1`, openagents#9959).
+///
+/// It reads a [`RouterComparison`]: the router's held-out measures
+/// (`crates/coder/src/router_eval.rs`) as the subject arm, and the
+/// serving router's as the baseline when one ran. Two floors are the
+/// product's targets and are judged whether or not a baseline ran; the
+/// primary outcome and every non-inferior measure are judged against the
+/// baseline under one margin, `max_decrease`. When the Gym scores the
+/// suite door against door ([`Gate::judge`]), the rule reads accuracy as
+/// route accuracy and ECE as the calibration it holds non-inferior.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RouterRule {
+    /// Fewest held-out rows before a precision means anything.
+    pub min_items: Bound,
+    /// The **primary outcome** the claim is about: `canned_precision`,
+    /// higher. Inside the digest.
+    pub primary: Primary,
+    /// The least canned precision the product accepts, baseline or not.
+    pub canned_precision_floor: Bound,
+    /// The least dispatch precision the product accepts, baseline or not.
+    pub dispatch_precision_floor: Bound,
+    /// The measures held **non-inferior** beside the primary outcome, by
+    /// [`RouterScores`] field name (`ece` is the one measure where lower is
+    /// better). Inside the digest.
+    pub non_inferiority: Vec<String>,
+    /// How far the primary outcome or a non-inferior measure may move the
+    /// wrong way against the baseline before the move is a measured loss.
+    pub max_decrease: Bound,
+    /// The measurement that would complete this rule, when one is missing.
+    #[serde(default, deserialize_with = "pending_field")]
+    pub pending_measurement: Option<Pending>,
+}
+
+/// One router's measures on a held-out split, as the `router` rule reads
+/// them. Every field is optional, and absent means nobody measured it: a
+/// run that served no whole answer has no canned precision.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct RouterScores {
+    /// Rows the run scored.
+    pub items: usize,
+    /// Of the turns served a prepared answer whole, the share whose row
+    /// expects that tier and lists that answer.
+    pub canned_precision: Option<f64>,
+    /// Of the rows that expect a prepared answer whole, the share served
+    /// the right one.
+    pub canned_recall: Option<f64>,
+    /// Of the turns given a Coder offer, the share whose row asks for work.
+    pub dispatch_precision: Option<f64>,
+    /// Rows whose route reading is the labeled route, over rows with one.
+    pub route_accuracy: Option<f64>,
+    /// Expected calibration error of the route reading's probability.
+    pub ece: Option<f64>,
+}
+
+impl RouterScores {
+    /// The measure named `name`, and whether higher is better for it.
+    #[must_use]
+    pub fn measure(&self, name: &str) -> Option<(Option<f64>, bool)> {
+        match name {
+            "canned_precision" => Some((self.canned_precision, true)),
+            "canned_recall" => Some((self.canned_recall, true)),
+            "dispatch_precision" => Some((self.dispatch_precision, true)),
+            "route_accuracy" => Some((self.route_accuracy, true)),
+            "ece" => Some((self.ece, false)),
+            _ => None,
+        }
+    }
+
+    /// A door's scores on the route question, read as a router's measures:
+    /// accuracy is route accuracy and ECE is the calibration held
+    /// non-inferior; nothing was served, so the precisions are absent.
+    #[must_use]
+    pub const fn of_scores(scores: &Scores) -> Self {
+        Self {
+            items: scores.items,
+            canned_precision: None,
+            canned_recall: None,
+            dispatch_precision: None,
+            route_accuracy: scores.accuracy,
+            ece: scores.ece,
+        }
+    }
+}
+
+/// A router's held-out measures against the serving router's, as the
+/// `router` rule reads them.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct RouterComparison {
+    /// What was judged: the suite and split.
+    pub group: String,
+    /// The router under judgment.
+    pub subject: RouterScores,
+    /// The router serving now, when it ran on the same rows.
+    pub baseline: Option<RouterScores>,
+}
+
 /// Which product question a gate answers.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "decides", rename_all = "snake_case")]
@@ -1068,6 +1166,10 @@ pub enum Rule {
     /// Whether an extension changes what an agent does: a suite of cases run
     /// with the extension admitted and without it (`crates/ext-eval`).
     ExtEval(ExtEvalRule),
+    /// Whether a chat router may serve in place of the one serving now:
+    /// its held-out measures against the serving router's
+    /// (`crates/coder/src/router_eval.rs`).
+    Router(RouterRule),
 }
 
 impl Rule {
@@ -1079,6 +1181,7 @@ impl Rule {
             Self::Probability(rule) => rule.pending_measurement.as_ref(),
             Self::Deployment(rule) => rule.pending_measurement.as_ref(),
             Self::ExtEval(rule) => rule.pending_measurement.as_ref(),
+            Self::Router(rule) => rule.pending_measurement.as_ref(),
         }
     }
 
@@ -1117,6 +1220,15 @@ impl Rule {
                 max_increase: rule.max_increase.as_ref().map(Bound::identity),
                 primary: rule.primary.as_ref(),
                 non_inferiority: &rule.non_inferiority,
+                pending_measurement: rule.pending_measurement.as_ref().map(Pending::identity),
+            }),
+            Self::Router(rule) => RuleIdentity::Router(RouterRuleIdentity {
+                min_items: rule.min_items.identity(),
+                primary: &rule.primary,
+                canned_precision_floor: rule.canned_precision_floor.identity(),
+                dispatch_precision_floor: rule.dispatch_precision_floor.identity(),
+                non_inferiority: &rule.non_inferiority,
+                max_decrease: rule.max_decrease.identity(),
                 pending_measurement: rule.pending_measurement.as_ref().map(Pending::identity),
             }),
         }
@@ -1360,6 +1472,36 @@ impl Gate {
                     bound.validate(&self.id, "max_increase")?;
                 }
             }
+            Rule::Router(rule) => {
+                rule.min_items.validate(&self.id, "min_items")?;
+                rule.canned_precision_floor
+                    .validate(&self.id, "canned_precision_floor")?;
+                rule.dispatch_precision_floor
+                    .validate(&self.id, "dispatch_precision_floor")?;
+                rule.max_decrease.validate(&self.id, "max_decrease")?;
+                let measured = RouterScores::default();
+                if measured.measure(&rule.primary.metric).is_none() {
+                    return Err(GateError::Invalid {
+                        id: self.id.clone(),
+                        problem: format!(
+                            "names {} as its primary outcome, which a router run does not measure",
+                            rule.primary.metric
+                        ),
+                    });
+                }
+                if let Some(unknown) = rule
+                    .non_inferiority
+                    .iter()
+                    .find(|name| measured.measure(name).is_none())
+                {
+                    return Err(GateError::Invalid {
+                        id: self.id.clone(),
+                        problem: format!(
+                            "holds {unknown} non-inferior, which a router run does not measure"
+                        ),
+                    });
+                }
+            }
         }
         if let Some(pending) = self.rule.pending_measurement() {
             pending.validate(&self.id)?;
@@ -1456,6 +1598,14 @@ impl Gate {
                 "an extension evaluation: cases passed per arm and the spread between repeats",
                 "a comparison of door scores carries none of them",
             )],
+            Rule::Router(rule) => judge_router(
+                rule,
+                &RouterComparison {
+                    group: comparison.group.clone(),
+                    subject: RouterScores::of_scores(&comparison.candidate),
+                    baseline: Some(RouterScores::of_scores(&comparison.baseline)),
+                },
+            ),
         };
         self.outcome(comparison.group.clone(), criteria)
     }
@@ -1468,7 +1618,7 @@ impl Gate {
     pub fn judge_deployment(&self, deployment: &Deployment) -> Outcome {
         let criteria = match &self.rule {
             Rule::Deployment(rule) => judge_deployment(rule, deployment),
-            Rule::Decision(_) | Rule::Probability(_) | Rule::ExtEval(_) => {
+            Rule::Decision(_) | Rule::Probability(_) | Rule::ExtEval(_) | Rule::Router(_) => {
                 vec![wrong_measurement(
                     &self.id,
                     "a comparison of scores",
@@ -1488,11 +1638,31 @@ impl Gate {
     pub fn judge_ext_eval(&self, comparison: &ExtEvalComparison) -> Outcome {
         let criteria = match &self.rule {
             Rule::ExtEval(rule) => judge_ext_eval(rule, comparison),
-            Rule::Decision(_) | Rule::Probability(_) | Rule::Deployment(_) => {
+            Rule::Decision(_) | Rule::Probability(_) | Rule::Deployment(_) | Rule::Router(_) => {
                 vec![wrong_measurement(
                     &self.id,
-                    "door scores or a deployment profile",
-                    "an extension evaluation carries neither",
+                    "door scores, a deployment profile, or a router's held-out measures",
+                    "an extension evaluation carries none of them",
+                )]
+            }
+        };
+        self.outcome(comparison.group.clone(), criteria)
+    }
+
+    /// Judges a chat router's held-out measures against the serving
+    /// router's. Pure.
+    ///
+    /// A gate that judges anything else judges nothing here, and says so
+    /// rather than passing a comparison it never read.
+    #[must_use]
+    pub fn judge_router(&self, comparison: &RouterComparison) -> Outcome {
+        let criteria = match &self.rule {
+            Rule::Router(rule) => judge_router(rule, comparison),
+            Rule::Decision(_) | Rule::Probability(_) | Rule::Deployment(_) | Rule::ExtEval(_) => {
+                vec![wrong_measurement(
+                    &self.id,
+                    "door scores, a deployment profile, or an extension evaluation",
+                    "a router's held-out measures carry none of them",
                 )]
             }
         };
@@ -1784,6 +1954,20 @@ enum RuleIdentity<'a> {
     Deployment(DeploymentRuleIdentity<'a>),
     /// The rule that decides whether an extension changes what an agent does.
     ExtEval(ExtEvalRuleIdentity<'a>),
+    /// The rule that decides whether a chat router may serve.
+    Router(RouterRuleIdentity<'a>),
+}
+
+/// A router rule's identity.
+#[derive(Serialize)]
+struct RouterRuleIdentity<'a> {
+    min_items: BoundIdentity<'a>,
+    primary: &'a Primary,
+    canned_precision_floor: BoundIdentity<'a>,
+    dispatch_precision_floor: BoundIdentity<'a>,
+    non_inferiority: &'a [String],
+    max_decrease: BoundIdentity<'a>,
+    pending_measurement: Option<PendingIdentity<'a>>,
 }
 
 /// An extension evaluation rule's identity.
@@ -2731,6 +2915,210 @@ fn improvement(rule: &ExtEvalRule, comparison: &ExtEvalComparison, name: &str) -
     }
 }
 
+/// An absolute floor on one measure, judged whether or not a baseline ran:
+/// below it fails, at or above it passes, and unmeasured is unverifiable.
+fn measure_floor(
+    name: &str,
+    rank: u8,
+    blocked: Option<&str>,
+    bound: &Bound,
+    value: Option<f64>,
+    measure: &str,
+) -> Criterion {
+    if let Some(reason) = blocked {
+        return not_judged(name.to_string(), rank, reason);
+    }
+    let Some(floor) = bound.value() else {
+        return Criterion {
+            name: name.to_string(),
+            rank,
+            verdict: Verdict::Unverifiable,
+            detail: format!("no floor has been measured for {measure} ({})", bound.why),
+        };
+    };
+    let Some(value) = value else {
+        return Criterion {
+            name: name.to_string(),
+            rank,
+            verdict: Verdict::Unverifiable,
+            detail: format!("{measure} was not measured: nothing was served to measure it on"),
+        };
+    };
+    Criterion {
+        name: name.to_string(),
+        rank,
+        verdict: if value >= floor {
+            Verdict::Passed
+        } else {
+            Verdict::Failed
+        },
+        detail: format!("{measure} {value:.3} against a floor of {floor:.3}"),
+    }
+}
+
+/// One measure against the baseline under a margin: a move the wrong way
+/// past `margin` fails, anything else passes as not materially worse.
+fn not_materially_worse(
+    name: &str,
+    margin: f64,
+    higher_is_better: bool,
+    before: Option<f64>,
+    after: Option<f64>,
+    measure: &str,
+) -> Criterion {
+    let (Some(before), Some(after)) = (before, after) else {
+        return Criterion {
+            name: name.to_string(),
+            rank: 2,
+            verdict: Verdict::Unverifiable,
+            detail: format!("{measure} was not measured on both sides"),
+        };
+    };
+    let loss = if higher_is_better {
+        before - after
+    } else {
+        after - before
+    };
+    Criterion {
+        name: name.to_string(),
+        rank: 2,
+        verdict: if loss > margin {
+            Verdict::Failed
+        } else {
+            Verdict::Passed
+        },
+        detail: format!("{measure} {before:.3} to {after:.3}, margin {margin:.3}"),
+    }
+}
+
+/// The primary outcome against the baseline: **Better** only when it moves
+/// the right way by more than `margin`; a move inside the margin either
+/// way is no clear change.
+fn primary_improves(
+    name: &str,
+    margin: f64,
+    higher_is_better: bool,
+    before: Option<f64>,
+    after: Option<f64>,
+    measure: &str,
+) -> Criterion {
+    let (Some(before), Some(after)) = (before, after) else {
+        return Criterion {
+            name: name.to_string(),
+            rank: 2,
+            verdict: Verdict::Unverifiable,
+            detail: format!("{measure} was not measured on both sides"),
+        };
+    };
+    let gain = if higher_is_better {
+        after - before
+    } else {
+        before - after
+    };
+    Criterion {
+        name: name.to_string(),
+        rank: 2,
+        verdict: if gain > margin {
+            Verdict::Passed
+        } else {
+            Verdict::Unverifiable
+        },
+        detail: if gain > margin {
+            format!("{measure} {before:.3} to {after:.3}, past the margin {margin:.3}")
+        } else {
+            format!("{measure} {before:.3} to {after:.3}, inside the margin {margin:.3}: no clear change")
+        },
+    }
+}
+
+/// Judges a chat router's held-out measures.
+///
+/// Rank 1: the items floor, then the two product floors (canned and
+/// dispatch precision), judged with or without a baseline. Rank 2, with a
+/// baseline: the primary outcome and every non-inferior measure may not
+/// move the wrong way by more than `max_decrease`, and the only way to
+/// **Better** is the primary outcome moving the right way by more than
+/// that margin. Without a baseline nothing at rank 2 is judged, so the
+/// verdict is at best unverifiable: a record with no baseline claims no
+/// change.
+fn judge_router(rule: &RouterRule, comparison: &RouterComparison) -> Vec<Criterion> {
+    let mut criteria = Vec::new();
+    let (floor, blocked) = items_floor("scored_rows", 1, &rule.min_items, comparison.subject.items);
+    criteria.push(floor);
+    criteria.push(measure_floor(
+        "canned_precision_at_or_above_floor",
+        1,
+        blocked.as_deref(),
+        &rule.canned_precision_floor,
+        comparison.subject.canned_precision,
+        "canned precision",
+    ));
+    criteria.push(measure_floor(
+        "dispatch_precision_at_or_above_floor",
+        1,
+        blocked.as_deref(),
+        &rule.dispatch_precision_floor,
+        comparison.subject.dispatch_precision,
+        "dispatch precision",
+    ));
+    let baseline = comparison.baseline.as_ref();
+    let blocked = blocked.or_else(|| match baseline {
+        Some(_) => {
+            criteria.push(Criterion {
+                name: "baseline_arm_ran".into(),
+                rank: 2,
+                verdict: Verdict::Passed,
+                detail: "the serving router ran on the same rows".into(),
+            });
+            None
+        }
+        None => {
+            let reason = "no baseline ran, so this record claims no change".to_string();
+            criteria.push(Criterion {
+                name: "baseline_arm_ran".into(),
+                rank: 2,
+                verdict: Verdict::Unverifiable,
+                detail: reason.clone(),
+            });
+            Some(reason)
+        }
+    });
+    let blocked = blocked.or_else(|| {
+        rule.max_decrease.value().is_none().then(|| {
+            format!(
+                "no margin has been measured for a move against the baseline ({})",
+                rule.max_decrease.why
+            )
+        })
+    });
+    let primary = &rule.primary.metric;
+    let names: Vec<String> = std::iter::once(format!("{primary}_not_worse"))
+        .chain(std::iter::once(format!("{primary}_improves")))
+        .chain(
+            rule.non_inferiority
+                .iter()
+                .map(|name| format!("{name}_not_materially_worse")),
+        )
+        .collect();
+    let (Some(baseline), Some(margin), None) = (baseline, rule.max_decrease.value(), blocked.as_deref())
+    else {
+        let reason = blocked.unwrap_or_default();
+        criteria.extend(names.into_iter().map(|name| not_judged(name, 2, &reason)));
+        return criteria;
+    };
+    let higher = rule.primary.direction == Direction::Higher;
+    let before = baseline.measure(primary).and_then(|(v, _)| v);
+    let after = comparison.subject.measure(primary).and_then(|(v, _)| v);
+    criteria.push(not_materially_worse(&names[0], margin, higher, before, after, primary));
+    criteria.push(primary_improves(&names[1], margin, higher, before, after, primary));
+    for (name, criterion) in rule.non_inferiority.iter().zip(&names[2..]) {
+        let (before, higher) = baseline.measure(name).unwrap_or((None, true));
+        let after = comparison.subject.measure(name).and_then(|(v, _)| v);
+        criteria.push(not_materially_worse(criterion, margin, higher, before, after, name));
+    }
+    criteria
+}
+
 fn wrong_measurement(gate: &str, judges: &str, and: &str) -> Criterion {
     Criterion {
         name: "measurement_matches_the_rule".to_string(),
@@ -3125,6 +3513,159 @@ mod tests {
 
     fn ext_eval(id: &str) -> Gate {
         load(id).unwrap_or_else(|error| panic!("{id} loads: {error}"))
+    }
+
+    fn router() -> Gate {
+        load("router-v1").expect("router-v1 loads")
+    }
+
+    fn router_scores(canned: f64, recall: f64, dispatch: f64, route: f64, ece: f64) -> RouterScores {
+        RouterScores {
+            items: 186,
+            canned_precision: Some(canned),
+            canned_recall: Some(recall),
+            dispatch_precision: Some(dispatch),
+            route_accuracy: Some(route),
+            ece: Some(ece),
+        }
+    }
+
+    fn router_verdict(subject: RouterScores, baseline: Option<RouterScores>) -> Outcome {
+        router().judge_router(&RouterComparison {
+            group: "chat-router-v2/held_out".into(),
+            subject,
+            baseline,
+        })
+    }
+
+    /// `router-v1` declares canned precision as its primary outcome and
+    /// holds route accuracy, canned recall, dispatch precision, and ECE
+    /// non-inferior; both are inside the digest, so a rule that changes
+    /// what it is about is another rule.
+    #[test]
+    fn the_router_gate_declares_its_primary_outcome_inside_the_digest() {
+        let gate = router();
+        let Rule::Router(rule) = &gate.rule else {
+            panic!("router-v1 decides router");
+        };
+        assert_eq!(rule.primary.metric, "canned_precision");
+        assert_eq!(rule.primary.direction, Direction::Higher);
+        assert_eq!(
+            rule.non_inferiority,
+            ["route_accuracy", "canned_recall", "dispatch_precision", "ece"]
+        );
+        let mut repointed = gate.clone();
+        if let Rule::Router(rule) = &mut repointed.rule {
+            rule.primary.metric = "route_accuracy".into();
+        }
+        assert_ne!(gate.digest(), repointed.digest());
+        let mut relaxed = gate.clone();
+        if let Rule::Router(rule) = &mut relaxed.rule {
+            rule.non_inferiority.pop();
+        }
+        assert_ne!(gate.digest(), relaxed.digest());
+    }
+
+    /// Without a baseline the product floors are still judged, and the
+    /// verdict is at best unverifiable: the record claims no change.
+    #[test]
+    fn a_router_record_without_a_baseline_is_judged_on_its_floors_alone() {
+        let outcome = router_verdict(router_scores(1.0, 0.68, 0.947, 0.887, 0.08), None);
+        assert_eq!(outcome.verdict, Verdict::Unverifiable);
+        let by_name = |name: &str| {
+            outcome
+                .criteria
+                .iter()
+                .find(|c| c.name == name)
+                .unwrap_or_else(|| panic!("{name}"))
+                .verdict
+        };
+        assert_eq!(by_name("scored_rows>=30"), Verdict::Passed);
+        assert_eq!(by_name("canned_precision_at_or_above_floor"), Verdict::Passed);
+        assert_eq!(by_name("dispatch_precision_at_or_above_floor"), Verdict::Passed);
+        assert_eq!(by_name("baseline_arm_ran"), Verdict::Unverifiable);
+        assert_eq!(by_name("canned_precision_improves"), Verdict::Unverifiable);
+        assert_eq!(by_name("ece_not_materially_worse"), Verdict::Unverifiable);
+
+        let below = router_verdict(router_scores(0.95, 0.68, 0.947, 0.887, 0.08), None);
+        assert_eq!(below.verdict, Verdict::Failed, "a floor is judged without a baseline");
+
+        let nothing_served = router_verdict(
+            RouterScores {
+                items: 186,
+                route_accuracy: Some(0.9),
+                ..RouterScores::default()
+            },
+            None,
+        );
+        assert_eq!(nothing_served.verdict, Verdict::Unverifiable);
+        assert!(nothing_served.criteria.iter().all(|c| c.verdict != Verdict::Failed));
+
+        let thin = router_verdict(
+            RouterScores {
+                items: 12,
+                ..router_scores(0.5, 0.5, 0.5, 0.5, 0.5)
+            },
+            None,
+        );
+        assert_eq!(thin.verdict, Verdict::Unverifiable, "below the floor nothing is judged");
+    }
+
+    /// With a baseline: Better only when canned precision rises past the
+    /// margin with nothing held non-inferior falling past it; a loss past
+    /// the margin on any of them is Worse; anything else is no clear change.
+    #[test]
+    fn a_router_is_better_only_past_the_margin_and_worse_on_any_measured_loss() {
+        let serving = router_scores(0.94, 0.68, 0.947, 0.887, 0.08);
+        let better = router_verdict(router_scores(1.0, 0.68, 0.947, 0.887, 0.08), Some(serving));
+        assert_eq!(better.verdict, Verdict::Passed, "{:#?}", better.criteria);
+
+        let same = router_verdict(router_scores(0.98, 0.66, 0.95, 0.88, 0.09), Some(serving));
+        assert_eq!(same.verdict, Verdict::Unverifiable, "{:#?}", same.criteria);
+        let floor = router_verdict(router_scores(0.96, 0.68, 0.95, 0.88, 0.08), Some(serving));
+        assert_eq!(floor.verdict, Verdict::Failed, "the product floor holds with a baseline too");
+
+        let bought = router_verdict(router_scores(1.0, 0.40, 0.947, 0.887, 0.08), Some(serving));
+        assert_eq!(bought.verdict, Verdict::Failed, "recall was spent to buy precision");
+
+        let miscalibrated =
+            router_verdict(router_scores(1.0, 0.68, 0.947, 0.887, 0.20), Some(serving));
+        assert_eq!(miscalibrated.verdict, Verdict::Failed, "ECE rose past the margin");
+
+        let worse = router_verdict(router_scores(0.985, 0.68, 0.95, 0.887, 0.08), Some(router_scores(1.0, 0.68, 1.0, 0.887, 0.08)));
+        assert_eq!(worse.verdict, Verdict::Unverifiable, "a fall inside the margin is no clear change");
+        let lost = router_verdict(router_scores(0.985, 0.68, 0.90, 0.80, 0.08), Some(router_scores(1.0, 0.68, 1.0, 0.887, 0.08)));
+        assert_eq!(lost.verdict, Verdict::Failed, "route accuracy fell past the margin");
+    }
+
+    /// The Gym's door-against-door comparison on the route question reads
+    /// through the router rule as route accuracy and ECE.
+    #[test]
+    fn the_router_gate_reads_a_door_comparison_as_routing_and_calibration() {
+        let scores = |accuracy: f64, ece: f64| Scores {
+            items: 186,
+            accuracy: Some(accuracy),
+            ece: Some(ece),
+            brier: Some(0.1),
+            nll: Some(0.3),
+            confident_errors: Some(2),
+        };
+        let outcome = router().judge(&Comparison::new(
+            "route",
+            scores(0.887, 0.08),
+            scores(0.95, 0.07),
+        ));
+        assert_eq!(outcome.verdict, Verdict::Unverifiable, "{:#?}", outcome.criteria);
+        assert!(outcome.criteria.iter().any(|c| c.name == "route_accuracy_not_materially_worse" && c.verdict == Verdict::Passed));
+        let regressed = router().judge(&Comparison::new(
+            "route",
+            scores(0.887, 0.08),
+            scores(0.80, 0.07),
+        ));
+        assert_eq!(regressed.verdict, Verdict::Failed);
+        let wrong = router().judge_ext_eval(&ExtEvalComparison::default());
+        assert_eq!(wrong.verdict, Verdict::Unverifiable);
+        assert_eq!(wrong.criteria[0].name, "measurement_matches_the_rule");
     }
 
     fn measure(subject: f64, baseline: f64, spread: f64) -> ArmMeasure {
@@ -3535,7 +4076,8 @@ mod tests {
                 "ext-eval-v1",
                 "ext-eval-v2",
                 "probability-v1",
-                "probability-v2"
+                "probability-v2",
+                "router-v1"
             ]
         );
         for gate in &gates {
@@ -4048,6 +4590,12 @@ mod tests {
                     bounds.extend(rule.max_increase.as_ref());
                     bounds
                 }
+                Rule::Router(rule) => vec![
+                    &rule.min_items,
+                    &rule.canned_precision_floor,
+                    &rule.dispatch_precision_floor,
+                    &rule.max_decrease,
+                ],
             };
             for bound in bounds {
                 assert!(

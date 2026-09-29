@@ -1,0 +1,64 @@
+{
+  "$comment": [
+    "Answers one question: may this chat router serve in place of the one serving now? The router (crates/coder/src/router, the chat-router-v2 question set and its policy table) is a decision service, and a run over its labeled route set (crates/coder/src/router_eval.rs, on the held-out rows the Gym holds as the locked partition of crates/gym/suites/chat-router-v2.json) is an evidence record on it: an openagents.eval-report.v1 whose subject pins the question set and the answer bank by digest. This rule is the decision policy over such records (openagents#9959).",
+    "The primary outcome is canned precision: of the turns served a prepared answer whole, the share whose row expects that tier and lists that answer. A wrong whole answer is the harmful error direction for a router, because the phone shows it as our own words. Route accuracy, canned recall (how many of the rows that expect a prepared answer got one, right), and dispatch precision are held non-inferior: a router that buys precision by serving nothing, or by offering Coder on questions, is not Better.",
+    "Two floors are the product's targets, judged whenever a baseline ran or not: canned precision at or above 0.98 and dispatch precision at or above 0.90 (docs/coder/design/2026-09-28-chat-router.md). They are conventions the design chose before the first measurement, not numbers derived from a suite, and they are labelled so.",
+    "max_decrease is the margin a non-inferior measure, and the primary outcome, may fall by against the baseline before the fall is a measured loss: 0.053, the spread between the two held-out runs of the same router recorded in docs/coder/measurements/2026-09-29-chat-router-v2.md (dispatch precision 18/19 and 18/18). Two runs are a thin estimate of a spread, which is why the pending measurement below is recorded, and why a rise inside the margin is Unverifiable (no clear change) rather than Better.",
+    "When the Gym scores this suite door against door (gym run, the route question alone), the rule reads the comparison's accuracy as route accuracy and its ECE as the calibration it also holds non-inferior, under the same margin. A candidate door that routes more accurately at no worse calibration is Better; one that loses either past the margin is Worse.",
+    "This gate carries no previously binding: nothing was recorded under it before this file."
+  ],
+  "schema": "openagents.gym.gate.v2",
+  "id": "router-v1",
+  "question": "May this chat router serve in place of the one serving now: at least as precise on the answers it serves whole, and no worse at routing, covering, or dispatching?",
+  "rule": {
+    "decides": "router",
+    "min_items": {
+      "value": 30,
+      "basis": "derived",
+      "evidence": [
+        { "kind": "code", "id": "gym::calibrate::Map::fit_auto" },
+        { "kind": "measurement", "id": "2026-09-19-suite-scores" }
+      ],
+      "why": "The same floor probability-v2 carries: crates/gym/src/calibrate.rs fits one bin per fifteen observations and never fewer than two bins, so thirty is the smallest split that fills the coarsest table, and it is also the fewest held-out rows on which a precision of 0.98 can be told from one wrong answer. The chat-router-v2 held-out split has 186 rows."
+    },
+    "primary": {
+      "metric": "canned_precision",
+      "direction": "higher"
+    },
+    "canned_precision_floor": {
+      "value": 0.98,
+      "basis": "convention",
+      "evidence": [
+        { "kind": "measurement", "id": "2026-09-28-chat-router-eval" }
+      ],
+      "why": "The chat router design's target for the share of whole prepared answers that were right, set before the first measurement. Every measured run since has held 100 %, so the floor has not yet been the binding constraint; it is a product rule and labelled a convention."
+    },
+    "dispatch_precision_floor": {
+      "value": 0.9,
+      "basis": "convention",
+      "evidence": [
+        { "kind": "measurement", "id": "2026-09-28-chat-router-eval" }
+      ],
+      "why": "The design's target for the share of Coder offers made on rows that ask for work on code, set before the first measurement. Measured runs sit at 94.7 % to 100 %."
+    },
+    "non_inferiority": [
+      "route_accuracy",
+      "canned_recall",
+      "dispatch_precision",
+      "ece"
+    ],
+    "max_decrease": {
+      "value": 0.053,
+      "basis": "derived",
+      "evidence": [
+        { "kind": "measurement", "id": "2026-09-29-chat-router-v2" }
+      ],
+      "why": "The largest move between two held-out runs of an unchanged router in the recorded measurement: dispatch precision 94.7 % (18/19) then 100 % (18/18), a spread of 0.053. Route accuracy moved 0.000 and canned precision 0.000 in the same pair. It is one pair of runs on one suite, so it is a floor under a measured loss rather than a prize: a move inside it is no clear change either way."
+    },
+    "pending_measurement": {
+      "quantity": "the run-to-run spread of each held-out measure over repeated runs of an unchanged router",
+      "issue": "openagents#9959",
+      "why": "max_decrease rests on two runs. The margin for every non-inferior measure should be derived from its own spread over several repeated runs, and the primary outcome's improvement should clear that spread rather than any rise counting."
+    }
+  }
+}

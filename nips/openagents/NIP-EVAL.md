@@ -421,6 +421,35 @@ The report is `openagents.eval-report.v1` with these profile rules:
   `coverage.baseline` is null exactly when `baseline` is, and no
   measurement names the `baseline` or `comparison` arm of a report
   without one.
+- A **decision-service record** (added 2026-09-29,
+  [#9959](https://github.com/OpenAgentsInc/openagents/issues/9959)) is
+  this report on a router or another decision service, the first being
+  the chat router (`crates/coder/src/router_claim.rs`, the Gym suite
+  `chat-router-v2` under the `router-v1` gate). Its subject's
+  `configuration` pins the question set and the answer bank as
+  `name@digest`, the identities a NIP-CJ `judgment` carries in `set` and
+  `bank` and the worker logs at start, so a judgment on the wire, a Gym
+  row, and a report name one question by one digest. Its suite's `cases`
+  artifact is the Gym suite file (`openagents.gym.suite.v1`) and its
+  `partition` the suite's locked rows, with a `calibration` array beside
+  `development` naming the rows a calibration map was fitted on. A case
+  is `should-fire` when a correct decision acts on its own reading (a
+  prepared answer, a stem, an offer, a refusal, a Gym reply, an interview
+  step) and `should-not-fire` when it stands back and the model answers
+  alone; a case passes when the decision matches the label and made no
+  harmful error (a wrong whole answer, an offer or a Gym tier on another
+  route's row). `identity` is `version` at best (the question set and
+  bank by digest, the judge by name; the model behind the judge is not
+  pinned). The measurements are the semantic-decision profile's:
+  `cases_passed`, `route_accuracy`, `route.<route>.precision` and
+  `.recall` per family, `canned_precision`, `canned_recall`,
+  `dispatch_precision`, `abstention_rate`, `<question>.ece` and
+  `<question>.brier` raw and `_calibrated` on the held-out rows, and the
+  operating points `<question>.precision_at_<t>`, `.coverage_at_<t>`, and
+  `.abstention_at_<t>` at each serving threshold, which are the
+  risk–coverage curve. `eval_ext` checks it as any report: a first record
+  with no baseline is `inconclusive`, and the gate's product floors are
+  written into `limitations`.
 
 ### Publication
 

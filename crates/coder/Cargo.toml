@@ -22,6 +22,10 @@ jev = { path = "../jev" }
 # The authoring interview's machine (`ext_eval::author`), which
 # `eval_author` drives from chat and from `openagents ext eval init`.
 ext-eval = { path = "../ext-eval", default-features = false }
+# The chat router's question-set digest (`router::set_digest`) is the
+# Gym's question digest, its calibration map is `gym::calibrate::Map`, and
+# the labeled route set is exported as a Gym suite (`tests/router_suite`).
+gym = { path = "../gym" }
 knowledge = { path = "../knowledge" }
 # T1 personalization's OpenRouter lane (`coder::router::personalize`),
 # and the codebase route's OpenRouter composer.
@@ -49,9 +53,6 @@ receipts = { path = "../receipts" }
 
 [dev-dependencies]
 coderbench = { path = "../coderbench" }
-# The labeled route set is exported as a Gym suite; its test checks the
-# committed suite against the fixture.
-gym = { path = "../gym" }
 tempfile = "3"
 wat = "1"
 

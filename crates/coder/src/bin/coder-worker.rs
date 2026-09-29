@@ -572,21 +572,37 @@ async fn serve(options: &Options) -> Result<(), String> {
             .map(|j| j as Arc<dyn coder::product_kb::Judge>),
     );
     let news = gym_news_model_from_env();
-    let routing = Arc::new(RouterConfig::with_news(
-        router_from_env()?,
-        seams,
-        &door,
-        options.quota.as_ref(),
-        news.as_deref(),
-    ));
+    let routing = Arc::new(
+        RouterConfig::with_news(
+            router_from_env()?,
+            seams,
+            &door,
+            options.quota.as_ref(),
+            news.as_deref(),
+        )
+        .calibrated(router::calibration::Calibration::from_env(&bank.id())?),
+    );
     eprintln!(
         "router  {} ({:?}), bank {} with {} answers; seams {:?}",
-        router::SET,
+        router::set_id(),
         routing.setting,
         bank.id(),
         bank.answers.len(),
         routing.seams
     );
+    match &routing.calibration {
+        Some(map) if map.fitted_with(&bank.id()) => {
+            eprintln!("calibration {} on, fitted {}", map.id(), map.created);
+        }
+        Some(map) => eprintln!(
+            "calibration {} on, fitted {} with {} (this bank is {})",
+            map.id(),
+            map.created,
+            map.bank,
+            bank.id()
+        ),
+        None => eprintln!("calibration off: raw probabilities"),
+    }
     match &routing.news {
         Some(news) => eprintln!("gym news {} with its reasoning off", news.model()),
         None => eprintln!("gym news on the chat door"),
@@ -1141,9 +1157,19 @@ struct RouterConfig {
     /// gateway and key with [`router::gym::NEWS_MODEL`] and its reasoning
     /// off (#9950), or `None` for the chat door itself.
     news: Option<Arc<Door>>,
+    /// The calibration map each reading's probabilities go through before
+    /// the policy decides, when `CODER_WORKER_ROUTER_CALIBRATION=on`
+    /// (#9959); `None` serves the raw probabilities.
+    calibration: Option<router::calibration::Calibration>,
 }
 
 impl RouterConfig {
+    /// The configuration with `calibration` applied to every reading.
+    fn calibrated(mut self, calibration: Option<router::calibration::Calibration>) -> Self {
+        self.calibration = calibration;
+        self
+    }
+
     #[cfg(test)]
     fn new(setting: RouterSetting, seams: Seams, door: &Door, quota: Option<&Policy>) -> Self {
         Self::with_news(setting, seams, door, quota, Some(router::gym::NEWS_MODEL))
@@ -1191,6 +1217,7 @@ impl RouterConfig {
             seams,
             facts,
             news: news.map(Arc::new),
+            calibration: None,
         }
     }
 }
@@ -1706,7 +1733,10 @@ impl Job {
             let milliseconds = started.elapsed().as_millis();
             match answered {
                 Ok(Ok(response)) => {
-                    let reading = router::reading(&response, bank, &routing.facts);
+                    let mut reading = router::reading(&response, bank, &routing.facts);
+                    if let Some(map) = &routing.calibration {
+                        map.apply(&mut reading);
+                    }
                     let personalize = routing.seams.personalize.available();
                     let decide = |mode| {
                         router::decide(
@@ -1735,7 +1765,8 @@ impl Job {
                         &decided,
                         &served,
                         u64::try_from(milliseconds).unwrap_or(u64::MAX),
-                    );
+                    )
+                    .calibrated(routing.calibration.as_ref());
                     eprintln!("{}", record.line());
                     Some(Judged {
                         routing: reading,
@@ -3668,8 +3699,9 @@ mod tests {
         )
         .await;
         let judgment = of_type(&frames, "judgment")[0];
-        // Build 20 names `chat-router-v1`; it is routed with the v2 set.
-        assert_eq!(judgment["set"], "chat-router-v2");
+        // Build 20 names `chat-router-v1`; it is routed with the v2 set,
+        // named with its digest.
+        assert_eq!(judgment["set"], router::set_id());
         assert_eq!(judgment["route"], "work.dispatch");
         assert_eq!(judgment["tier"], "offer");
         let partials = of_type(&frames, "partial");
@@ -4147,7 +4179,7 @@ mod tests {
         )
         .await;
         let judgment = of_type(&frames, "judgment")[0];
-        assert_eq!(judgment["set"], "chat-router-v2");
+        assert_eq!(judgment["set"], router::set_id());
         assert_eq!(judgment["route"], "eval.run");
         assert_eq!(judgment["tool"], "openagents.tool-project-map");
         let cards = of_type(&frames, "card");

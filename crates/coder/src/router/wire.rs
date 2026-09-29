@@ -12,8 +12,8 @@
 use serde::Serialize;
 use serde_json::{Value, json};
 
-use super::SET;
 use super::bank::Bank;
+use super::set_id;
 use super::judge::Routing;
 use super::policy::{Mode, Tier};
 use super::seams::Passage;
@@ -57,9 +57,11 @@ pub fn line(routing: &Routing, tier: &Tier) -> String {
 /// `tier` keep the meaning `coder-first-response-v2` gave them, so a
 /// reader from before the router still reads them; `route`, `route_p`,
 /// `lane_p`, `risk`, `risk_p`, `cli_group`, and `tool` are the router's.
-/// `set` is `chat-router-v2` whichever set the request named. In shadow
-/// mode `tier` is what was served and `shadow` names what the router
-/// would have served.
+/// `set` is the question set's identity, `chat-router-v2@<digest>`
+/// ([`set_id`]), whichever set the request named, and `bank` the bank's,
+/// so a judgment names the exact question and answers it was decided
+/// with, as an eval report pins them (#9959). In shadow mode `tier` is
+/// what was served and `shadow` names what the router would have served.
 #[must_use]
 pub fn judgment(
     version: u64,
@@ -80,7 +82,7 @@ pub fn judgment(
         "type": "judgment",
         "verdict": verdict(routing, tier),
         "line": line(routing, tier),
-        "set": SET,
+        "set": set_id(),
         "bank": bank.id(),
         "route": routing.route.word(),
         "route_p": routing.route_p,
@@ -183,8 +185,12 @@ pub fn annotate(result: &mut Value, served: &Served, bank: &Bank) {
 /// word, or a duration: there is no field that could hold message text.
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct Shadow {
-    pub set: &'static str,
+    /// The question set, `chat-router-v2@<digest>`.
+    pub set: String,
     pub bank: String,
+    /// The calibration map the probabilities went through
+    /// (`calibration-v2@<digest>`), or `None` for raw.
+    pub calibration: Option<String>,
     pub mode: &'static str,
     pub route: &'static str,
     pub route_p: f64,
@@ -220,8 +226,9 @@ impl Shadow {
         judge_ms: u64,
     ) -> Self {
         Self {
-            set: SET,
+            set: set_id(),
             bank: bank.id(),
+            calibration: None,
             mode: match (mode, shadow) {
                 (_, true) => "shadow",
                 (Mode::Router, false) => "router",
@@ -244,6 +251,14 @@ impl Shadow {
             served: served.word(),
             judge_ms,
         }
+    }
+
+    /// The record with the calibration map the reading went through
+    /// named, when one did.
+    #[must_use]
+    pub fn calibrated(mut self, map: Option<&super::calibration::Calibration>) -> Self {
+        self.calibration = map.map(super::calibration::Calibration::id);
+        self
     }
 
     /// The log line: `router ` and the record as one JSON object.
@@ -270,13 +285,32 @@ mod tests {
         serde_json::from_str(&text).unwrap()
     }
 
-    /// The bank's digest moves with every reviewed text change, so the
-    /// fixtures name it as `chat-answers-v1@DIGEST`.
+    /// The bank's digest moves with every reviewed text change and the
+    /// set's with every change to the route question, so the fixtures name
+    /// them as `chat-answers-v1@DIGEST` and `chat-router-v2@DIGEST`.
     fn undigested(mut body: Value) -> Value {
         if body["bank"].is_string() {
             body["bank"] = json!("chat-answers-v1@DIGEST");
         }
+        if body["set"].is_string() {
+            assert_eq!(body["set"], set_id());
+            body["set"] = json!("chat-router-v2@DIGEST");
+        }
         body
+    }
+
+    /// The wire names the question set by its digest, the digest is the
+    /// Gym's for the committed question file, and it moves when the route
+    /// question does.
+    #[test]
+    fn the_set_is_named_with_its_digest() {
+        let id = set_id();
+        assert!(id.starts_with("chat-router-v2@"), "{id}");
+        assert_eq!(id.len(), "chat-router-v2@".len() + 12);
+        assert!(crate::router::set_digest().starts_with(&id["chat-router-v2@".len()..]));
+        let committed = ::gym::questions::load(crate::router_eval::SUITE_QUESTIONS)
+            .expect("the committed question set reads");
+        assert_eq!(committed.digest(), crate::router::set_digest());
     }
 
     fn facts() -> Facts {
@@ -540,6 +574,7 @@ mod tests {
             [
                 "set",
                 "bank",
+                "calibration",
                 "mode",
                 "route",
                 "route_p",
@@ -561,6 +596,8 @@ mod tests {
         );
         assert_eq!(value["answer"], "meta.model@1");
         assert_eq!(value["decided"], "canned");
+        assert_eq!(value["set"], set_id());
+        assert_eq!(value["calibration"], Value::Null);
         assert!(record.line().starts_with("router {"));
         // Every string value is a code-listed id: the bank's, a route, a
         // lane, a risk, a tier, or the set.
