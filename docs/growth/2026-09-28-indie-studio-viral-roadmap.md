@@ -124,21 +124,26 @@ We don't show a player result that didn't happen. What we can show this week:
 
 | Asset | Status | Where it comes from |
 | --- | --- | --- |
-| **Chat with OpenAgents**, no setup, instant prepared answers | Ships (builds 17 to 20) | [Launch roadmap](../roadmap/2026-09-29-launch-roadmap.md#chat-with-openagents-builds-17-to-20) |
+| **Chat with OpenAgents**, no setup, instant prepared answers | Ships (builds 17 to 21) | [Launch roadmap](../roadmap/2026-09-29-launch-roadmap.md#chat-with-openagents-builds-17-to-20) |
 | Run Coder on your own computer from your phone | Ships | Same |
 | The Grid: other players, name tags with trainer levels, the ball, the stack, the dominoes, the reset pillar | Ships | [Launch roadmap](../roadmap/2026-09-29-launch-roadmap.md#verse-the-grid) |
 | The Gym's **RESULTS** board and trace replay on the phone | Ships | [Gym leaderboard](../verse/gym-leaderboard.md) |
 | Real scoreboards: one shared fact took Coder from 0 of 10 to 4 of 4 on `gsea-proteomics`; 30 confirmed wins at a 2.9 percent median pass cost | Published, with labels (in-sample, knowledge-assisted) | [Beating Fable together](../coder/beat-fable-together.md), [Cheapest verified passes](../coder/cheapest-verified-passes.md) |
+| Tests in chat (build 21): test a tool with and without it on our computers, make your own, **Add to the Gym**, checks, and XP when a check confirms your result | Built on `main`; the hosted runner and chat worker are live, and build 21's upload is pending | [M10](../roadmap/2026-09-29-launch-roadmap.md#m10-evals-in-chat-build-21) |
+| The first real eval scoreboard: Project map 2 of 6 → 5 of 6, Code finder 2 of 6 → 4 of 6, Test reader 2 of 6 → 5 of 6, each confirmed by one other trainer's check | Recorded 2026-09-29, with labels (our starter test sets, run from our own trainer keys) | [Hosted runner record](../extensions/measurements/2026-09-29-hosted-runner-live.md) |
 | Trainer levels, six tutorial quests, playtest titles (**PLAYTESTER**, the season-1 founding ring) | Ships; titles need the playtest referee key | [Playtesting rewards](../game/playtesting.md#rewards) |
-| Builds shipping several times a day | True: builds 1 to 15 in two days, then 16 to 19 | [Launch roadmap](../roadmap/2026-09-29-launch-roadmap.md) |
+| Builds shipping several times a day | True: builds 1 to 15 in two days, then 16 to 21 | [Launch roadmap](../roadmap/2026-09-29-launch-roadmap.md) |
 | The intro cinematic `CIN-01` | Specified, not built (no scripted camera path yet) | [Wireframe](../product/2026-09-28-app-wireframe.md#cin-01-intro-cinematic) |
 
 The scoreboard line, "Coder passed 7 of 8 tests with Trainer 7KQ's tool,
-5 without, checked by 3 trainers", is the format we post as soon as the
-first real eval result is checked (the Gym moved from benchmark scores to
-evals on 2026-09-28; see [extension evaluation](../extensions/evaluation.md)
-and milestone M10 in the launch roadmap). Until then, scoreboards use our published boards, and spotlights
-use accepted playtest contributions.
+5 without, checked by 3 trainers", is the format for a player's checked
+result (the Gym moved from benchmark scores to evals on 2026-09-28; see
+[extension evaluation](../extensions/evaluation.md) and milestone M10 in the
+launch roadmap). The first real, checked eval results exist: our starter
+test sets, run on the hosted runner on 2026-09-29
+([the first real eval scoreboard](#the-first-real-eval-scoreboard)). Until a
+player's own result is checked, player spotlights use accepted playtest
+contributions.
 
 ## Formats and cadences
 
@@ -241,8 +246,8 @@ pin and show.
 | **Coder from your phone** | A phone starts a task, the computer on the desk runs it | Now |
 | **Title unlocked** | **PLAYTESTER** appearing under a real player's name tag | When the playtest referee key exists and the first award is signed |
 | **The cinematic** | `CIN-01.S05`: many lights stream into one emblem | Animatic now (Grid footage, subtitles, the narration script); the real cinematic when built |
-| **Player's result** | "Coder: 5 of 8 → 7 of 8 tests with Project map. Test set by Trainer 7KQ." | When the hosted runner ships (build 21) |
-| **Made in chat** | A screen recording: "Help me make a tool that…", the draft card, **Try it once**, the result card | When the chat's eval routes ship (build 21) |
+| **Player's result** | "Coder: 5 of 8 → 7 of 8 tests with Project map. Test set by Trainer 7KQ." | The hosted runner is live; post a player's result once build 21 is out and another trainer checks it |
+| **Made in chat** | A screen recording: "Help me make a tool that…", the draft card, **Try it once**, the result card | The chat worker offers it now; record it on build 21 |
 | **Shipped in an hour** | A player's report on the left, the build card with their name on the right | Every time it happens |
 
 ### Scoreboards
@@ -265,6 +270,27 @@ different test sets are never compared.
   change. Now everyone knows."), because the wireframe's **Result** screen
   treats them as useful, and posting them makes the positive ones credible.
 
+### The first real eval scoreboard
+
+The hosted runner's first live runs, on 2026-09-29, are the first real,
+checked eval results ([record](../extensions/measurements/2026-09-29-hosted-runner-live.md)). Each is our starter test set
+of six tests (four where the tool should help, two where it should stay out
+of the way), 3 runs per test on each side, run from a fresh trainer key of
+ours and confirmed by a second key of ours through the same runner:
+
+| Tool | Without it | With it | Verdict | Check |
+| --- | --- | --- | --- | --- |
+| Project map | 2 of 6 | 5 of 6 | **Better** | Confirmed by 1 trainer |
+| Code finder | 2 of 6 | 4 of 6 | **Better** | Confirmed by 1 trainer |
+| Test reader | 2 of 6 | 5 of 6 | **Better** | Confirmed by 1 trainer |
+
+The post, in the eval format: `CODER · 2 OF 6 → 5 OF 6 TESTS · PROJECT MAP ·
+OUR STARTER TEST SET · CHECKED BY 1 TRAINER`. Its labels: the test sets
+are ours, the tool's author wrote them, and our own keys ran and checked
+them, so they are not independent evidence (see
+[What this page does not claim](../extensions/evaluation.md#what-this-page-does-not-claim)).
+Each result compares only with its own test set. The first player's
+checked result gets the launch-sized beat on [day 60](#day-60-to-2026-11-27-the-gym-opens-the-real-scoreboard).
 ### Player spotlights and leaderboard moments
 
 The celebrate step. Every spotlight is opt-in: we ask the player first, as
