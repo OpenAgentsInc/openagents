@@ -51,8 +51,24 @@ invitation prints only on this terminal.";
 /// that computer could do there, short of changing access.
 const PEER_RIGHTS: &str = "observe,operate,terminal,review,access_read";
 
+/// Printed on standard error by every `coder link` command. `coder link` is
+/// deprecated by the QR pairing plan (issue #9978,
+/// `docs/coder/design/2026-09-29-auto-pairing.md`): it keeps working for one
+/// release after its replacements ship, then goes.
+///
+/// A caller that already showed it (`scripts/link-device.sh`, or this
+/// command running itself on another computer over SSH) sets
+/// [`NOTICE_SHOWN`] so it prints once.
+pub const DEPRECATED: &str = "coder link is deprecated and will be removed. Connect a computer with the OpenAgents desktop app: tap Connect a computer on your phone and scan the code the app shows. On a computer without a screen, use `openagents connect`. Until those reach you, coder link keeps working. See docs/coder/guides/link-devices.md.";
+
+/// Set to `1` by a caller that already printed [`DEPRECATED`].
+pub const NOTICE_SHOWN: &str = "OPENAGENTS_LINK_NOTICE_SHOWN";
+
 /// Run `coder link ARGS`. Returns the exit code.
 pub async fn run(args: &[String]) -> u8 {
+    if std::env::var_os(NOTICE_SHOWN).is_none_or(|shown| shown != "1") {
+        eprintln!("{DEPRECATED}");
+    }
     let Some((command, rest)) = args.split_first() else {
         eprintln!("{USAGE}");
         return EXIT_USAGE;
@@ -946,6 +962,19 @@ mod tests {
 
     fn parse(args: &[&str]) -> Options {
         Options::parse(&args.iter().map(|a| (*a).to_owned()).collect::<Vec<_>>()).unwrap()
+    }
+
+    #[test]
+    fn the_deprecation_notice_names_the_replacements() {
+        assert!(DEPRECATED.starts_with("coder link is deprecated"));
+        for replacement in [
+            "OpenAgents desktop app",
+            "Connect a computer",
+            "`openagents connect`",
+            "docs/coder/guides/link-devices.md",
+        ] {
+            assert!(DEPRECATED.contains(replacement), "{replacement}");
+        }
     }
 
     #[test]

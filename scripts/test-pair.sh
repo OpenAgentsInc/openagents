@@ -16,7 +16,10 @@ export PATH="$fixture/bin:$PATH"
 export PAIR_TEST_LOG="$fixture/arguments"
 export CARGO_TARGET_DIR="$fixture/target with spaces"
 cd "$fixture/unrelated directory"
-"$source_dir/pair" --codex-root "$fixture/chats with spaces" --no-claude
+"$source_dir/pair" --codex-root "$fixture/chats with spaces" --no-claude 2>"$fixture/stderr"
+# Deprecated (issue #9978): the notice names the replacement.
+grep -q '^./pair is deprecated' "$fixture/stderr"
+grep -q 'OpenAgents desktop app' "$fixture/stderr"
 printf '%s\n' "$source_dir" "$CARGO_TARGET_DIR" run --release --locked -p coder-connect -- connect --codex-root "$fixture/chats with spaces" --no-claude >"$fixture/expected"
 cmp "$fixture/expected" "$PAIR_TEST_LOG"
 unset CARGO_TARGET_DIR

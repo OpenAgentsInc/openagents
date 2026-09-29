@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # Show a phone-pairing QR code from this checkout, then serve read-only chats.
 set -euo pipefail
+# Deprecated (issue #9978): a phone connected by scanning the OpenAgents
+# desktop app's code reads chats through its host grant. This keeps working
+# for one release after that ships, then goes.
+echo "./pair is deprecated and will be removed. Connect a computer with the OpenAgents desktop app: tap Connect a computer on your phone and scan the code the app shows; the phone then reads this computer's chats. Until that reaches you, ./pair keeps working. See docs/coder/guides/link-devices.md." >&2
 
 source_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if ! command -v cargo >/dev/null 2>&1; then

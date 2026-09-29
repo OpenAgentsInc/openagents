@@ -6,6 +6,14 @@ the owner's other devices reach over Tailscale, with
 [link your devices guide](../../docs/coder/guides/link-devices.md) covers
 setup and operation; this README covers the crate.
 
+**Deprecated** ([#9978](https://github.com/OpenAgentsInc/openagents/issues/9978)):
+the OpenAgents desktop app's QR code and `openagents connect` replace
+`coder link` ([design](../../docs/coder/design/2026-09-29-auto-pairing.md)).
+Every command prints `cli::DEPRECATED` on standard error, once per run
+(`OPENAGENTS_LINK_NOTICE_SHOWN=1` marks a caller that already printed it,
+including the remote side of `--ssh`), and keeps working for one release
+after its replacements ship. Then this crate is removed.
+
 ## Modules
 
 | Module | What it does |

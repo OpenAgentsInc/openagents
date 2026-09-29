@@ -42,10 +42,15 @@ impl Remote {
         })
     }
 
-    /// The remote shell command for `coder link ARGS`.
+    /// The remote shell command for `coder link ARGS`. The remote side
+    /// skips the deprecation notice this side already printed.
     #[must_use]
     pub fn command(&self, args: &[String]) -> String {
-        let mut words = vec![shell_path(&self.coder), quote("link")];
+        let mut words = vec![
+            format!("{}=1", crate::cli::NOTICE_SHOWN),
+            shell_path(&self.coder),
+            quote("link"),
+        ];
         words.extend(args.iter().map(|arg| quote(arg)));
         words.join(" ")
     }
@@ -122,10 +127,14 @@ mod tests {
         let command = remote.command(&["setup".into(), "--label".into(), "it's; rm -rf /".into()]);
         assert_eq!(
             command,
-            r#""$HOME"/'.openagents/bin/coder' 'link' 'setup' '--label' 'it'\''s; rm -rf /'"#
+            r#"OPENAGENTS_LINK_NOTICE_SHOWN=1 "$HOME"/'.openagents/bin/coder' 'link' 'setup' '--label' 'it'\''s; rm -rf /'"#
         );
         let absolute = Remote::new("box", Some("/opt/coder")).unwrap();
-        assert!(absolute.command(&[]).starts_with("'/opt/coder' 'link'"));
+        assert!(
+            absolute
+                .command(&[])
+                .starts_with("OPENAGENTS_LINK_NOTICE_SHOWN=1 '/opt/coder' 'link'")
+        );
         assert!(Remote::new("-oProxyCommand=x", None).is_err());
     }
 }

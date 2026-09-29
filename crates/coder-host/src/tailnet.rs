@@ -14,6 +14,10 @@
 //! The wire format is one line of JSON each way over TCP:
 //! `openagents.host-tailnet-admission-request.v1` in, then
 //! `openagents.host-tailnet-admission.v1` out.
+//!
+//! Deprecated (issue #9978): nearby pairing with a confirmation code replaces
+//! it, and it is removed one release after that ships. See
+//! `docs/coder/design/2026-09-29-auto-pairing.md`.
 
 #[cfg(feature = "host")]
 use std::net::Ipv4Addr;
@@ -36,6 +40,9 @@ use tokio::sync::Semaphore;
 
 #[cfg(feature = "host")]
 use crate::{Error, Result};
+
+/// Printed when the admission listener starts.
+pub const DEPRECATED: &str = "coder host: tailnet admission (--tailnet-admission) is deprecated and will be removed one release after nearby pairing ships. Connect a phone with the OpenAgents desktop app's QR code instead. See docs/coder/guides/link-devices.md.";
 
 /// The default admission port on the tailnet address.
 pub const PORT: u16 = 47109;
@@ -281,6 +288,7 @@ pub fn is_tailnet(ip: IpAddr) -> bool {
 /// # Errors
 /// Reports a missing Tailscale, or a listener that cannot bind.
 pub async fn start(settings: Settings) -> Result<SocketAddr> {
+    eprintln!("{DEPRECATED}");
     let me = me(&settings.tailscale).await?;
     let listener = TcpListener::bind(listen_address(&me, settings.port)?)
         .await
@@ -633,6 +641,14 @@ pub async fn request(
 #[cfg(all(test, feature = "host"))]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_deprecation_notice_names_the_replacement() {
+        assert!(DEPRECATED.contains("--tailnet-admission"));
+        assert!(DEPRECATED.contains("is deprecated"));
+        assert!(DEPRECATED.contains("OpenAgents desktop app"));
+        assert!(DEPRECATED.contains("docs/coder/guides/link-devices.md"));
+    }
 
     #[test]
     fn tailnet_ranges() {

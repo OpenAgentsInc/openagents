@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # Build this checkout's Coder host and link a computer as a serving host.
 #
+# Deprecated (issue #9978): the OpenAgents desktop app's QR code, or
+# `openagents connect` on a computer without a screen, replaces this script.
+# It keeps working for one release after those ship, then goes.
+#
 #   scripts/link-device.sh [SETUP OPTIONS]            this computer
 #   scripts/link-device.sh --ssh DEST [SETUP OPTIONS] another computer
 #   scripts/link-device.sh --build-only               build and stage only
@@ -33,6 +37,12 @@ die() {
   exit 1
 }
 
+if test "${OPENAGENTS_LINK_NOTICE_SHOWN:-}" != 1; then
+  echo "scripts/link-device.sh is deprecated and will be removed. Connect a computer with the OpenAgents desktop app: tap Connect a computer on your phone and scan the code the app shows. On a computer without a screen, use \`openagents connect\`. Until those reach you, this script keeps working. See docs/coder/guides/link-devices.md." >&2
+  # `coder link`, run below or on the remote side, prints it only once.
+  export OPENAGENTS_LINK_NOTICE_SHOWN=1
+fi
+
 ssh_dest=""
 remote_checkout="openagents"
 build_only=0
@@ -54,7 +64,7 @@ while test $# -gt 0; do
       shift
       ;;
     -h | --help)
-      sed -n '2,22p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+      sed -n '2,27p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     *)
@@ -107,7 +117,8 @@ if test -n "$ssh_dest"; then
   test "$build_only" = 0 || die "--build-only runs on the computer being built"
   say "updating $ssh_dest:$remote_checkout to origin/main"
   # shellcheck disable=SC2029 # the checkout path expands on the remote side
-  ssh -o BatchMode=yes "$ssh_dest" "cd $(printf %q "$remote_checkout") &&
+  ssh -o BatchMode=yes "$ssh_dest" "export OPENAGENTS_LINK_NOTICE_SHOWN=1 &&
+    cd $(printf %q "$remote_checkout") &&
     test -z \"\$(git status --porcelain --untracked-files=no)\" &&
     git fetch --quiet origin main &&
     git merge --quiet --ff-only origin/main &&

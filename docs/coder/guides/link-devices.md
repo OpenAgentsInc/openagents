@@ -1,29 +1,75 @@
 # Link your devices
 
-This guide makes each of your computers a Coder host that your phone and
-your other computers reach over Tailscale, with `wss://relay.openagents.com/`
-as the fallback when no direct route works. When you finish, your phone can
-open a terminal on any linked computer and order coding work from it.
-[Issue #9731](https://github.com/OpenAgentsInc/openagents/issues/9731)
-delivers the `coder link` command as part of the
-[linked devices program](https://github.com/OpenAgentsInc/openagents/issues/9736).
+Connect a computer once, and your phone can send it Coder work from a chat and,
+if you allow it, open a terminal on it.
 
-`coder link` builds on three drafts: [NIP-HOST](../../../nips/openagents/NIP-HOST.md)
-enrolls devices with host-signed grants, [NIP-REACH](../../../nips/openagents/NIP-REACH.md)
-lists your hosts in an owner directory and proves routes, and
-[NIP-TERM](../../../nips/openagents/NIP-TERM.md) carries terminals.
+## Connect a computer with the desktop app
+
+1. Download **OpenAgents** for Mac, drag it to Applications, and open it.
+2. The window shows a QR code and **Scan with the OpenAgents app on your
+   phone.**
+3. On your phone, tap **Connect a computer** (the chip under a reply, or
+   Account > Computers) and point the camera at the code.
+4. Both screens say the computer is connected. **Run Coder** in a chat now
+   sends work to that Mac.
+
+Check **Let this phone open a terminal** before the code shows if you want
+the phone to open terminals there. To take a phone's access away, click
+**Remove** next to it in the desktop app.
+
+No Tailscale, no terminal, and no key to copy. The phone connects directly
+when it can and through the OpenAgents relay when it cannot, so it works on
+the same Wi-Fi and on mobile data.
+
+On a computer without a screen, `openagents connect invite` prints the same
+code in the terminal; `openagents connect devices`, `remove`, and `status`
+manage it.
+
+> **Status (2026-09-29).** The desktop app, **Connect a computer** on the
+> phone, and `openagents connect` are being built under
+> [#9965](https://github.com/OpenAgentsInc/openagents/issues/9965)
+> ([design](../design/2026-09-29-auto-pairing.md)). Until they reach you, use
+> [If you already use Tailscale](#if-you-already-use-tailscale) below.
 
 ## How authority works
 
-- Your **owner key** is the Nostr key every host serves. It lives in one
-  private file on one computer. Hosts receive only its public half.
-- Each computer's **host** has its own key and grants rights to devices.
-  Tailscale, SSH, and the relay only introduce devices; none of them is a
-  login, and a tailnet address grants nothing.
-- A device joins a host by redeeming a one-use **invitation** that expires
-  in five minutes. You choose its rights every time you mint one.
-- The host rechecks a device's grant on every message, and revoking the
-  device closes its channels at once.
+- Each computer's **host** has its own key and is the only thing that grants
+  rights. A scanned code, a network, or a route grants nothing by itself.
+- A code is good for one phone, once, and only for a short time. A phone
+  that scans it gets `observe` and `operate`, plus `terminal` only if you
+  checked the box first.
+- The host rechecks a phone's grant on every message, and **Remove** closes
+  its channels at once.
+
+Protocol details are in three drafts:
+[NIP-HOST](../../../nips/openagents/NIP-HOST.md) enrolls devices with
+host-signed grants, [NIP-REACH](../../../nips/openagents/NIP-REACH.md) lists
+hosts in an owner directory and proves routes, and
+[NIP-TERM](../../../nips/openagents/NIP-TERM.md) carries terminals.
+
+## Computers set up the old way
+
+The desktop app finds a computer already set up with `coder link` and asks
+**Use this Mac's existing Coder setup?** Say yes: it keeps the same host key,
+grants, projects, and tasks, so phones you already enrolled keep working
+without scanning again.
+
+## If you already use Tailscale
+
+`coder link`, `scripts/link-device.sh`, `coder pair` and `./pair`, and tailnet
+admission (`coder host serve --tailnet-admission`) are **deprecated**
+([#9978](https://github.com/OpenAgentsInc/openagents/issues/9978)).
+`coder link`, `scripts/link-device.sh`, `./pair`, and the admission listener
+print a notice naming the replacement. Each keeps working for one release
+after the desktop app and nearby pairing ship; then they are removed. Until
+then, this is how to link computers over Tailscale, with
+`wss://relay.openagents.com/` as the fallback when no direct route works.
+
+In this path your **owner key** is the Nostr key every host serves. It lives
+in one private file on one computer, and hosts receive only its public half.
+Tailscale, SSH, and the relay only introduce devices; a tailnet address
+grants nothing. Each invitation is one-use, expires in five minutes, and
+carries rights you choose every time.
 
 ## Before you start
 
@@ -36,7 +82,7 @@ lists your hosts in an owner directory and proves routes, and
   toolchain. Computers you set up remotely accept `ssh DEST` without a
   password prompt.
 
-## Create the owner key
+### Create the owner key
 
 On the computer you keep, run this once:
 
@@ -49,7 +95,7 @@ prints only the public key, in hex and as an `npub`. Set
 `OPENAGENTS_OWNER_KEY_FILE` or pass `--owner-key FILE` to keep it elsewhere.
 Back the file up; a host established with this owner refuses another.
 
-## Link this computer
+### Link this computer
 
 From the checkout:
 
@@ -83,7 +129,7 @@ git -C ~/work/openagents worktree add --detach ~/work/openagents-host-tasks orig
 
 On Linux, add `--linger` so the host starts at boot and survives logout.
 
-## Link another computer over SSH
+### Link another computer over SSH
 
 ```sh
 scripts/link-device.sh --ssh coderos-4080 \
@@ -96,7 +142,7 @@ This fast-forwards the remote checkout (`--remote-checkout DIR`, default
 public key and lists it with the owner key held here. The owner key never
 leaves this computer.
 
-## Let the computers reach each other
+### Let the computers reach each other
 
 ```sh
 coder link peer --ssh coderos-4080
@@ -110,7 +156,7 @@ the SSH channel's standard streams. `check` proves every route from this
 computer: each direct hint (a channel that proves both keys, then a ping)
 and the relay (a signed `device.list` answer).
 
-## Enroll your phone
+### Enroll your phone
 
 ```sh
 coder link invite --rights observe,operate,terminal
@@ -126,7 +172,7 @@ that.
 To see your owner directory on the phone, choose **Enter owner key** and
 enter the owner key. Without it, the phone lists the hosts it joined.
 
-## Order work from a device
+### Order work from a device
 
 A device holding `operate` creates a task with NIP-HOST `task.create`. From a
 linked computer:
@@ -145,7 +191,7 @@ coder host autostart show
 coder host autostart off
 ```
 
-## Inspect and undo
+### Inspect and undo
 
 | To | Run |
 | --- | --- |
@@ -154,7 +200,7 @@ coder host autostart off
 | Revoke a device | `coder host revoke --device KEY` |
 | Stop the host | `coder-service service uninstall` |
 
-## Where things live
+### Where things live
 
 | Path | Contents |
 | --- | --- |
@@ -165,7 +211,7 @@ coder host autostart off
 | `~/.openagents/host/autostart.json`, `autostart.jsonl` | The auto-start policy and its decisions. |
 | `~/.openagents/coder-computers/` | This computer's device key and the hosts it joined, shared with the Computers screens. |
 
-## Limits
+### Limits
 
 - The host reads its certificate only at start. `tailscale cert`
   certificates last 90 days; re-run `coder link setup` to renew and restart.
