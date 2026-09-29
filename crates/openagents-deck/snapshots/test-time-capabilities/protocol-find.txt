@@ -5,23 +5,23 @@ width 108 height 28
     The protocol: which NIP carries what, from finding a tool to delegating
     ────────────────────────────────────────────────────────────────────────────────────────────────────
 
-           Carries              Why it matters                                         Status
+           Carries              Why it matters                   Status
     ────────────────────────────────────────────────────────────────────────────────────────────────────
-    EXT    releases             a result names the exact tool version it tested        Partial
+    EXT    releases             the exact tool version tested    Partial
 
-    CAP    grants               describing a tool never grants its use                 Partial
+    CAP    grants               describing never grants use      Partial
 
-    KB     knowledge            an entry is tested with and without, like a tool       Implemented
+    KB     knowledge            tested with and without          Implemented
 
-    CJ     judgment, jobs       the cheap judgment and the eval jobs are on the wire   Partial
+    CJ     judgment, jobs       judgment and eval jobs on wire   Partial
 
-    PRG    decide, delegate     judgments and hand-offs are pinned, bounded steps      Partial
+    PRG    decide, delegate     pinned, bounded steps            Partial
 
-    CTX    briefings            says which evidence a delegate was given               Designed
+    CTX    briefings            what a delegate was shown        Designed
 
-    SESS   delegate engines     states how each engine can be steered                  Designed
+    SESS   delegate engines     how each engine is steered       Designed
 
-    WORK   tracked delegation   says who answers for delegated work                    Designed
+    WORK   tracked delegation   who answers for the work         Designed
 
 
     Status is each whole NIP's, from the implementation coverage report.
@@ -34,23 +34,23 @@ width 108 height 28
     33333333333333333333333333333333333333333333333333333333333333333333333
     1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111
 
-           2222222              22222222222222                                         222222
+           2222222              22222222222222                   222222
     1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111
-    222    44444444             33333333333333333333333333333333333333333333333        3333333
+    222    44444444             33333333333333333333333333333    3333333
 
-    222    444444               33333333333333333333333333333333333333                 3333333
+    222    444444               333333333333333333333333333      3333333
 
-    22     444444444            333333333333333333333333333333333333333333333333       33333333333
+    22     444444444            33333333333333333333333          33333333333
 
-    22     444444444 4444       3333333333333333333333333333333333333333333333333333   3333333
+    22     444444444 4444       333333333333333333333333333333   3333333
 
-    222    4444444 44444444     3333333333333333333333333333333333333333333333333      3333333
+    222    4444444 44444444     333333333333333333333            3333333
 
-    222    444444444            3333333333333333333333333333333333333333               33333333
+    222    444444444            3333333333333333333333333        33333333
 
-    2222   44444444 4444444     3333333333333333333333333333333333333                  33333333
+    2222   44444444 4444444     33333333333333333333333333       33333333
 
-    2222   4444444 4444444444   33333333333333333333333333333333333                    33333333
+    2222   4444444 4444444444   333333333333333333333333         33333333
 
 
     22222222222222222222222222222222222222222222222222222222222222222222

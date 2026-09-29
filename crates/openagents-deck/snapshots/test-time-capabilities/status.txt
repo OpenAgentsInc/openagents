@@ -3,25 +3,25 @@ width 108 height 28
 
 
 
-
     PART II · OUR IMPLEMENTATION
     Where it stands today
     ────────────────────────────────────────────────────────────────────────────────────────────────────
 
-            █████     █ █████                       ███                              ███
-               █     █     █                       █   █                            █   █
-              █      █    █                        █   █                            █  ██
-               █    █      █                        ████                            █ █ █
-                █  █        █                          █                            ██  █
-            █   █  █    █   █                         █                             █   █
-             ███  █      ███                        ██                               ███
+        █████     █ █████               ███                      ███                      ███
+           █     █     █               █   █                    █   █                    █   █
+          █      █    █                █   █                    █  ██                    █  ██
+           █    █      █                ████                    █ █ █                    █ █ █
+            █  █        █                  █                    ██  █                    ██  █
+        █   █  █    █   █                 █                     █   █                    █   █
+         ███  █      ███                ██                       ███                      ███
 
-         hosted results a second        XP awards signed from those        tools adopted into the
-            trainer confirmed                     checks                          defaults
+        hosted results a       XP awards signed from    results validated on      tools adopted into
+         second trainer            those checks           a second test set          the defaults
+            confirmed
 
-    Every part of the loop is built and the first runs, checks, and awards are live. The flywheel has
-    not been shown turning.
-
+    Every part of the loop is built and the first runs, checks, and awards are live. The policy now
+    requires a validation before any adoption, and none exists: the tests have to come from someone
+    else. The flywheel has not been shown turning.
 
 
 
@@ -32,25 +32,25 @@ width 108 height 28
 
 
 
-
     2222222222222222222222222222
     333333333333333333333
     1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111
 
-            44444     4 44444                       444                              444
-               4     4     4                       4   4                            4   4
-              4      4    4                        4   4                            4  44
-               4    4      4                        4444                            4 4 4
-                4  4        4                          4                            44  4
-            4   4  4    4   4                         4                             4   4
-             444  4      444                        44                               444
+        44444     4 44444               444                      444                      444
+           4     4     4               4   4                    4   4                    4   4
+          4      4    4                4   4                    4  44                    4  44
+           4    4      4                4444                    4 4 4                    4 4 4
+            4  4        4                  4                    44  4                    44  4
+        4   4  4    4   4                 4                     4   4                    4   4
+         444  4      444                44                       444                      444
 
-         22222222222222222222222        222222222222222222222222222        2222222222222222222222
-            22222222222222222                     222222                          22222222
+        2222222222222222       222222222222222222222    22222222222222222222      222222222222222222
+         22222222222222            222222222222           22222222222222222          222222222222
+            222222222
 
-    2222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222
-    22222222222222222222222
-
+    22222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222
+    22222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222
+    2222222222222222222222222222222222222222222222
 
 
 
@@ -62,8 +62,8 @@ width 108 height 28
 
 
 
-
     bbbbbbbbbbbbbbbbbbbbb
+
 
 
 

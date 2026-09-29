@@ -11,15 +11,15 @@ width 108 height 28
 
     • More sources. People bring the task families, libraries, and environments they know.
 
-    • More verification. Checks by other people are the verifier extra effort depends on.
+    • More verification. Independent reruns, including disputes, are the verifier extra effort depends
+      on.
 
-    • Inheritance. One confirmed result becomes a default for every agent, with no training run.
+    • Inheritance. One validated result becomes a default for every agent, with no training run.
 
-    • Credit that tracks use. Recognition for checks and adoptions keeps effort on tools that help.
+    • Credit that tracks use. Recognition for verification work and adoptions, not for agreement.
 
     A hypothesis. Whether more participants make an agent measurably better has to be shown, measured
     the way the lexicon says.
-
 
 
 
@@ -40,15 +40,15 @@ width 108 height 28
 
     2 333333333333333333333333333333333333333333333333333333333333333333333333333333333333
 
-    2 33333333333333333333333333333333333333333333333333333333333333333333333333333333333
+    2 333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333
+      333
 
     2 333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333
 
-    2 333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333
+    2 3333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333
 
     2222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222
     2222222222222222222222222
-
 
 
 
@@ -71,10 +71,10 @@ width 108 height 28
 
       bbbbbbbbbbbbbbbbbb
 
+
       bbbbbbbbbbbb
 
       bbbbbbbbbbbbbbbbbbbbbbb
-
 
 
 

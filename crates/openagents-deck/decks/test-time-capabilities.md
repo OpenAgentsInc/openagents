@@ -44,15 +44,18 @@ notes: Hold on to both lessons. Evals are the verifier; a cheap typed judgment i
 layout: quote
 id: definition
 kicker: PART I · THE IDEA
-lead: Test-time capability (TTCap), the term we propose
+lead: Test-time capability, and the capability claim that states it
+note: Claim(A, B, D, S, E, G, R) → Δ ± uncertainty: subject, baseline agent, task distribution, sampled suite, environment, grant, rule.
 source: docs/glossary.md#test-time-capabilities; docs/essays/2026-09-29-test-time-capabilities.md#the-thesis-capability-is-something-you-can-acquire-at-test-time
 
-An ability an agent gains at inference time, without a weight update, by admitting something into
-the run, and only if the same tests, run with it and without it, show the agent does measurably
-better with it.
+An ability an agent gains, or loses, at inference time, without a weight update, because
+something was admitted into the run. A component is a candidate; evidence makes a capability
+claim: how much admitting that exact component changed outcomes, against a stated baseline, on
+stated tasks, under a stated grant and rule.
 
 notes: A repository map, a written guide, a knowledge entry, another agent. The weights did not change; what the agent can do did.
-notes: The last clause does the work. Having it installed, described, or demonstrated is not evidence; without the comparison it is a candidate.
+notes: Nothing is a capability in general. The same tool can add twenty points to one agent and nothing to another; each claim belongs to its baseline and its tasks. Installed, described, or demoed makes no claim.
+notes: It cuts both ways. On SkillsBench, 13 of 87 tasks got worse when the agent was given a skill. Restraint is a capability too.
 
 ---
 
@@ -68,8 +71,8 @@ source: docs/essays/2026-09-29-test-time-capabilities.md#the-thesis-capability-i
 - **Delegation.** Another agent, briefed with selected evidence.
 - **Typed judgment.** A fast, cheap decision that picks which of the others to use, and when.
 
-notes: The last one makes the others usable. An agent with fifty tools and no good way to choose is worse than one with none.
-notes: A typed judgment answers a yes-or-no, a choice, or a score with probabilities; ordinary code decides what they cause. The judge writes no text and grants no authority: Kahneman's System 1, with the slow work left to the generator.
+notes: The last one is different in kind. Tools act, knowledge informs, delegates work; a typed judgment turns fuzzy evidence into a typed decision that ordinary code can build around. Ambiguous intent in, a probability out, a state machine after: a probabilistic branch instruction, not a chatbot.
+notes: Choosing which of the other four to use is one application of it. An agent with fifty tools and no good way to choose is worse than one with none. The judge writes no text and grants no authority; code decides what its probabilities cause.
 
 ---
 
@@ -80,15 +83,17 @@ title: Words for the parts of a capability's life
 column: Term
 column: What it names
 source: docs/essays/2026-09-29-test-time-capabilities.md#a-lexicon-of-test-time-capabilities
-row: Admit | Admission | A locked version of a component allowed into one run
-row: Measure | Delta | With arm minus without arm, same tests, repeated
-row: Use | Reach, restraint | Uses it when a test says to, leaves it alone otherwise
-row: Allocate | Judgment budget | Deciding how to answer costs far less than answering
-row: Verify | Verified | Someone else reran it and got the same verdict
-row: Share | Adoption, credit | It joins everyone's defaults; its authors get credit
+row: Admit | Admission | A locked component let into one run
+row: Measure | Delta | With minus without, same tests, repeated
+row: Use | Reach, restraint | Used where it helps, withheld where not
+row: Allocate | Judgment budget | Deciding costs far less than answering
+row: Reproduce | Reproduced | Someone else reran it: compatible result
+row: Validate | Validated | Helps on tests its author didn't write
+row: Adopt | Adoption | Joins the defaults, measured against them
+row: Credit | Credit | For reruns either way, and for adoption
 
-notes: Ten terms in the essay; these are the ones that change what someone does. Test-time delegation and the capability flywheel are the other two.
-notes: Each term names something built or measured, and each has a way to be wrong.
+notes: Eleven terms in the essay; these are the ones that change what someone does. Test-time delegation and the capability flywheel are the other two, and adoption is not terminal: a claim reopens when its scope changes.
+notes: Each term names something built or measured, and each has a way to be wrong. Reproduction proves the result repeats; validation proves it wasn't fitted to the author's own six tests.
 
 ---
 
@@ -105,8 +110,8 @@ source: docs/essays/2026-09-29-test-time-capabilities.md#evals-as-the-unit-of-ac
 - **Others can rerun it.** Published tests and exact component versions let someone else confirm or
   dispute the result.
 
-notes: Why not a leaderboard: it rewards one system fitting one fixed task set. A per-component eval asks a narrower question with a clearer answer: does this help, where, and at what cost?
-notes: Benchmarks still check the agent as a whole. Evals decide what goes into it. Graders are software too, and get the same scrutiny and versioning as the component under test.
+notes: Why not a leaderboard: it rewards one system fitting one fixed task set. A per-component eval asks a narrower question with a clearer answer: does this help, where, and at what cost? Benchmarks ask how capable an agent is; a claim says what caused it.
+notes: Once adoption and credit depend on evals, the evals are the network's objective function: people build what gets adopted. Independent test sets, held-out tasks, and paying for disputes keep the flywheel pointed at capability instead of at the tests.
 
 ---
 
@@ -124,7 +129,7 @@ source: docs/essays/2026-09-29-test-time-capabilities.md#cheap-judgments-before-
   to search for the answer, on time and on correctness.
 
 notes: The literature allocates thinking per question. This allocates one level up, before any thinking.
-notes: The third principle is a hypothesis to test. Time and cost are notes on a result, never the verdict: a faster wrong answer is not a capability.
+notes: The third principle is a hypothesis to test. Under a correctness-primary rule, time and cost are notes on a result, never the verdict. A claim may name cost as its primary outcome with correctness held non-inferior; what it can never be is faster and wrong.
 
 ---
 
@@ -136,12 +141,12 @@ note: A hypothesis. Whether more participants make an agent measurably better ha
 source: docs/essays/2026-09-29-test-time-capabilities.md#how-capabilities-compound-across-a-network
 
 - **More sources.** People bring the task families, libraries, and environments they know.
-- **More verification.** Checks by other people are the verifier extra effort depends on.
-- **Inheritance.** One confirmed result becomes a default for every agent, with no training run.
-- **Credit that tracks use.** Recognition for checks and adoptions keeps effort on tools that help.
+- **More verification.** Independent reruns, including disputes, are the verifier extra effort depends on.
+- **Inheritance.** One validated result becomes a default for every agent, with no training run.
+- **Credit that tracks use.** Recognition for verification work and adoptions, not for agreement.
 
 notes: Weights improve when a lab trains them, on the lab's schedule. A test-time capability can come from anyone, be tested by anyone, and reach every agent once adopted.
-notes: The unit that compounds is a reusable improvement with independent evidence: an exact component version, a with-and-without result, and confirming checks.
+notes: The unit that compounds is a capability claim with independent evidence: an exact version, a with-and-without result, reruns by people who didn't write it, and a delta that survives tests they wrote. Say the zero on the status slide.
 
 ---
 
@@ -170,7 +175,7 @@ metric: 5200 | ms: full model answer, at most
 note: Measured from Send on the phone. Judgment p95 235 ms; about 0.3 s of each phone time is relay setup. Prepared answers: 36 of 36 correct (100 % precision) on 138 held-out messages.
 source: docs/essays/2026-09-29-test-time-capabilities.md#our-numbers-judgments-before-thinking; docs/coder/measurements/2026-09-28-chat-router-eval.md; docs/coder/measurements/2026-09-28-first-reply.md
 notes: Every number is in milliseconds so the three compare at a glance. Prepared answer 0.62 to 0.70 s (build 21). Full model 3.2 to 5.2 s complete, median 4.2 s to first words. A T1 finish measured 496 ms median at about $0.00005 a call.
-notes: A turn answered at T0 costs a Jev call and no generation at all.
+notes: A turn answered at T0 costs a Jev call and no generation at all. Calibration is measured for one question on one partition: the route question alone, ECE 0.046 and Brier 0.083 on 151 development items. Say so if asked; the thresholds are bets we have checked once.
 
 ---
 
@@ -205,8 +210,8 @@ source: docs/essays/2026-09-29-test-time-capabilities.md#capability-delta-in-ope
 row: Project map | 5 of 6 | 2 of 6 | Better
 row: Code finder | 4 of 6 | 2 of 6 | Better
 row: Test reader | 5 of 6 | 2 of 6 | Better
-notes: The ext-eval-v2 gate reads Better only when more tests pass with the tool, the score gain clears the spread between repeats, and cost and time stay within 1.5 times plus the spread.
-notes: Project map took 10.7 s with the tool against 24.9 s without it, and passed more tests. Time is a note, not the verdict.
+notes: The ext-eval-v2 gate reads Better only when more tests pass with the tool, the score gain clears the spread between repeats, and cost and time stay within 1.5 times plus the spread. It is an engineering gate, not the delta's definition; its own file says the spread of three repeats is a noisy estimate.
+notes: Project map took 10.7 s with the tool against 24.9 s without it, and passed more tests. Time is a note, not the verdict. Reports written from now on record what the run relied on: runner, host, door, agent build, selector, graders.
 
 ---
 
@@ -232,15 +237,16 @@ layout: flow
 id: lifecycle
 kicker: PART II · OUR IMPLEMENTATION
 title: From a chat to every Coder
-step: make a tool
-step: run both arms
-step: publish it
-step: others check
+step: make
+step: run both
+step: publish
+step: check
+step: validate
 step: adopt
-note: The hosted runner runs on coderos-4080 with a per-trainer daily quota. Suites are NIP-EXT releases, results and checks NIP-EVAL 3189 events, credit NIP-XP awards; adoption is a coder-defaults release.
-source: docs/essays/2026-09-29-test-time-capabilities.md#what-is-a-capability-means-in-our-system; docs/deployment/eval-runner.md; nips/openagents/NIP-EVAL.md
-notes: A tool becomes a candidate when its result is Better and three distinct trainers' checks confirmed it. Adoption is an operator decision, never automatic.
-notes: Credit is XP and a name, never money. eval-check credits the checker, the evaluator, and the suite author; eval-adopt credits the tool's author too.
+note: The hosted runner runs on coderos-4080 with a per-trainer daily quota. Suites are NIP-EXT releases; results, checks, and validations NIP-EVAL 3189 events; credit NIP-XP awards; adoption a coder-defaults release.
+source: docs/essays/2026-09-29-test-time-capabilities.md#what-is-a-capability-means-in-our-system; docs/deployment/eval-runner.md; nips/openagents/NIP-EVAL.md; packages/coder-defaults/policy.md
+notes: A tool becomes a candidate when its result is Better, three distinct trainers' checks confirmed it, and a Better result on a second test set validates it: written by someone other than the tool's author, released after the tool, on the same kind of task. Adoption is an operator decision, never automatic.
+notes: Credit is XP and a name, never money. A check is paid whether it confirms or disputes; a good dispute is worth more than a fourth confirmation. eval-adopt credits the tool's author too.
 
 ---
 
@@ -253,15 +259,15 @@ column: Why it matters
 column: Status
 note: Status is each whole NIP's, from the implementation coverage report.
 source: docs/essays/2026-09-29-test-time-capabilities.md#the-nips-one-by-one; nips/openagents/README.md
-row: EXT | releases | a result names the exact tool version it tested | Partial
-row: CAP | grants | describing a tool never grants its use | Partial
-row: KB | knowledge | an entry is tested with and without, like a tool | Implemented
-row: CJ | judgment, jobs | the cheap judgment and the eval jobs are on the wire | Partial
-row: PRG | decide, delegate | judgments and hand-offs are pinned, bounded steps | Partial
-row: CTX | briefings | says which evidence a delegate was given | Designed
-row: SESS | delegate engines | states how each engine can be steered | Designed
-row: WORK | tracked delegation | says who answers for delegated work | Designed
-notes: EXT keeps installing, enabling, granting, and admitting separate, so the lock the with arm held is exact. CAP keeps definition, host binding, grant, and presence apart. KB never counts a task an entry was written from as its evidence.
+row: EXT | releases | the exact tool version tested | Partial
+row: CAP | grants | describing never grants use | Partial
+row: KB | knowledge | tested with and without | Implemented
+row: CJ | judgment, jobs | judgment and eval jobs on wire | Partial
+row: PRG | decide, delegate | pinned, bounded steps | Partial
+row: CTX | briefings | what a delegate was shown | Designed
+row: SESS | delegate engines | how each engine is steered | Designed
+row: WORK | tracked delegation | who answers for the work | Designed
+notes: EXT keeps installing, enabling, granting, and admitting separate, so the lock the with arm held is exact. CAP keeps definition, host binding, grant, and presence apart, and a grant now records whether it was for evaluation or for real use. KB never counts a task an entry was written from as its evidence.
 notes: CJ carries decision jobs and the router's judgment feedback; the hosted eval runner is an execution job. PRG's decide calls a pinned decision function, and delegate hands a bounded task to an admitted executor. The delegate door's briefing and failover run locally, with no Nostr record yet.
 
 ---
@@ -275,16 +281,16 @@ column: Why it matters
 column: Status
 note: The shared contracts sit under every row: exact references, locks, the private envelope.
 source: docs/essays/2026-09-29-test-time-capabilities.md#the-nips-one-by-one; nips/openagents/README.md
-row: RUN | the run journal | records the lock a capability was admitted under | Partial
-row: ATIF | trajectories | each arm and each delegate, step by step | Designed
-row: EVAL | deltas, checks | without it, a delta is an unsigned claim | Partial
-row: XP | credit | verified work earns credit anyone can recompute | Implemented
-row: POL | cost, adoption | adoption is an operator's call; runs keep their lock | Designed
-row: OPT | optimization | an optimized candidate faces the same test | Designed
-row: MV | Verse | Gym notes cite the trainer's published result | Partial
-row: Contracts | locks | "the same tool" and "the same tests", stated exactly | Partial
-notes: RUN decides; trajectories only observe. ATIF traces stay local files today; no component publishes them yet. EVAL carries the subject and baseline arms, a verdict from a pinned gate, 3189 results, and checks by a different trainer.
-notes: XP: eval-check pays the checker, evaluator, and suite author; eval-adopt pays the tool's author too; XP is never money. POL's route receipts would carry a judgment's time and cost. OPT's result reaches an agent only through EVAL admission and a new EXT release.
+row: RUN | run journal | lock, grant, baseline agent | Partial
+row: ATIF | trajectories | each arm, step by step | Designed
+row: EVAL | claims, checks | signed claims, whole scope | Partial
+row: XP | credit | paid to confirm or dispute | Implemented
+row: POL | cost, adoption | operator adopts; runs keep lock | Designed
+row: OPT | optimization | faces the same test | Designed
+row: MV | Verse | Gym notes cite the result | Partial
+row: Contracts | locks | "the same tool", exactly | Partial
+notes: RUN decides; trajectories only observe. ATIF traces stay local files today; no component publishes them yet. EVAL carries the subject and baseline arms, what the run relied on, the tool's identity strength, the task distribution, a verdict from a gate that declares its primary outcome, 3189 results, checks by a different trainer, and validations on a second suite read for independence by signer and chronology.
+notes: XP: eval-check pays the checker, evaluator, and suite author whether the check confirms or disputes; eval-adopt needs a confirming check and a validation and pays the tool's author too; XP is never money. POL's route receipts would carry a judgment's time and cost. OPT's result reaches an agent only through EVAL admission and a new EXT release.
 
 ---
 
@@ -294,11 +300,12 @@ kicker: PART II · OUR IMPLEMENTATION
 title: Where it stands today
 metric: 3/3 | hosted results a second trainer confirmed
 metric: 9 | XP awards signed from those checks
+metric: 0 | results validated on a second test set
 metric: 0 | tools adopted into the defaults
-note: Every part of the loop is built and the first runs, checks, and awards are live. The flywheel has not been shown turning.
-source: docs/extensions/measurements/2026-09-29-hosted-runner-live.md; docs/essays/2026-09-29-test-time-capabilities.md
-notes: The XP referee on coderos-4080 signed the nine awards; any reader can recompute them with crates/xp-ledger.
-notes: Say the zero out loud. No adoption yet means no evidence yet that the network compounds.
+note: Every part of the loop is built and the first runs, checks, and awards are live. The policy now requires a validation before any adoption, and none exists: the tests have to come from someone else. The flywheel has not been shown turning.
+source: docs/extensions/measurements/2026-09-29-hosted-runner-live.md; docs/essays/2026-09-29-test-time-capabilities.md; packages/coder-defaults/policy.md
+notes: The XP referee on coderos-4080 signed the nine awards; any reader can recompute them with crates/xp-ledger. Both trainers' checks ran on the same runner, door, build, and graders: independent as signers, not as a platform.
+notes: Say both zeros out loud. No validation yet means no adoption; no adoption yet means no evidence yet that the network compounds. The runner cannot validate its own catalog.
 
 ---
 
@@ -308,14 +315,15 @@ kicker: PART III · WHAT WE'LL MEASURE NEXT
 title: What we have not shown yet
 source: docs/essays/2026-09-29-test-time-capabilities.md#part-iii-what-well-measure-next
 
-- **The first adoption,** and whether it keeps its delta on tests its author did not write.
+- **The first validation,** then the first adoption, and whether it keeps its delta once it is a default.
 - **Reach.** Describe tools so the router picks them: likely the cheapest gain available.
-- **Deltas under a full grant.** The same tools against a Coder that can already run commands.
-- **Cost for both arms.** Until gateway lanes are priced, cost stays a blank, not a guess.
-- **Power and interactions.** Six tests show large changes only; adoption needs a check of the whole set.
-- **Network evidence:** verified out-of-sample passes per adopted contribution, reported when zero.
+- **Deltas under a full grant.** The same tools against a Coder with a shell: a new claim, not a correction.
+- **Cost and uncertainty.** Unpriced lanes stay blank; six tests show large changes only.
+- **Marginal adoption.** Once the defaults hold anything, measure against them, not against nothing.
+- **Revalidation.** Nothing reopens a claim yet when its baseline, grant, or model changes.
+- **Network evidence:** marginal validated utility per adopted contribution, reported when zero.
 
-notes: Also on the list: grader quality, checked the way results are; and compute and capability together, whether a tool lets a cheaper model with less reasoning match a stronger one.
+notes: Also on the list: grader quality, checked the way results are, with the prose judge measured against the typed grader before either gets trusted; and compute and capability together, whether a tool lets a cheaper model with less reasoning match a stronger one.
 
 ---
 

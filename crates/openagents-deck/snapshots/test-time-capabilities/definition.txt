@@ -4,22 +4,22 @@ width 108 height 28
 
 
 
-
-
                    PART I · THE IDEA
 
                    ┌────────────────────────────────────────────────────────────────────┐
                    │                                                                    │
-                   │  An ability an agent gains at inference time, without a weight     │
-                   │  update, by admitting something into the run, and only if the      │
-                   │  same tests, run with it and without it, show the agent does       │
-                   │  measurably better with it.                                        │
+                   │  An ability an agent gains, or loses, at inference time, without   │
+                   │  a weight update, because something was admitted into the run. A   │
+                   │  component is a candidate; evidence makes a capability claim: how  │
+                   │  much admitting that exact component changed outcomes, against a   │
+                   │  stated baseline, on stated tasks, under a stated grant and rule.  │
                    │                                                                    │
                    └────────────────────────────────────────────────────────────────────┘
 
-                             Test-time capability (TTCap), the term we propose
+                       Test-time capability, and the capability claim that states it
 
-
+    Claim(A, B, D, S, E, G, R) → Δ ± uncertainty: subject, baseline agent, task distribution, sampled
+    suite, environment, grant, rule.
 
 
 
@@ -33,22 +33,22 @@ width 108 height 28
 
 
 
-
-
                    22222222222222222
 
                    1111111111111111111111111111111111111111111111111111111111111111111111
                    1                                                                    1
-                   1  44 4444444 44 44444 44444 44 444444444 44444 4444444 4 444444     1
-                   1  4444444 44 444444444 444444444 4444 444 4444 444 4444 44 444      1
-                   1  4444 444444 444 4444 44 444 4444444 444 4444 444 44444 4444       1
-                   1  4444444444 444444 4444 444                                        1
+                   1  44 4444444 44 44444 444444 44 444444 44 444444444 44444 4444444   1
+                   1  4 444444 4444444 4444444 444444444 444 44444444 4444 444 4444 4   1
+                   1  444444444 44 4 4444444444 44444444 44444 4 4444444444 444444 444  1
+                   1  4444 444444444 4444 44444 444444444 4444444 444444444 4444444 4   1
+                   1  444444 444444444 44 444444 444444 44444 4 444444 44444 444 44444  1
                    1                                                                    1
                    1111111111111111111111111111111111111111111111111111111111111111111111
 
-                             2222222222222222222222222222222222222222222222222
+                       2222222222222222222222222222222222222222222222222222222222222
 
-
+    2222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222
+    22222222222222222222222222222222
 
 
 

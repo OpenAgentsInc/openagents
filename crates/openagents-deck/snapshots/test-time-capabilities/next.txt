@@ -3,25 +3,25 @@ width 108 height 28
 
 
 
-
     PART III · WHAT WE'LL MEASURE NEXT
     What we have not shown yet
     ────────────────────────────────────────────────────────────────────────────────────────────────────
 
-    • The first adoption, and whether it keeps its delta on tests its author did not write.
+    • The first validation, then the first adoption, and whether it keeps its delta once it is a
+      default.
 
     • Reach. Describe tools so the router picks them: likely the cheapest gain available.
 
-    • Deltas under a full grant. The same tools against a Coder that can already run commands.
+    • Deltas under a full grant. The same tools against a Coder with a shell: a new claim, not a
+      correction.
 
-    • Cost for both arms. Until gateway lanes are priced, cost stays a blank, not a guess.
+    • Cost and uncertainty. Unpriced lanes stay blank; six tests show large changes only.
 
-    • Power and interactions. Six tests show large changes only; adoption needs a check of the whole
-      set.
+    • Marginal adoption. Once the defaults hold anything, measure against them, not against nothing.
 
-    • Network evidence: verified out-of-sample passes per adopted contribution, reported when zero.
+    • Revalidation. Nothing reopens a claim yet when its baseline, grant, or model changes.
 
-
+    • Network evidence: marginal validated utility per adopted contribution, reported when zero.
 
 
 
@@ -32,25 +32,25 @@ width 108 height 28
 
 
 
-
     2222222222222222222222222222222222
     44444444444444444444444444
     1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111
 
-    2 3333333333333333333333333333333333333333333333333333333333333333333333333333333333333
+    2 333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333
+      33333333
 
     2 33333333333333333333333333333333333333333333333333333333333333333333333333333333333
 
-    2 3333333333333333333333333333333333333333333333333333333333333333333333333333333333333333
+    2 333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333
+      33333333333
 
-    2 333333333333333333333333333333333333333333333333333333333333333333333333333333333333
+    2 33333333333333333333333333333333333333333333333333333333333333333333333333333333333
 
     2 3333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333
-      3333
 
-    2 333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333
+    2 3333333333333333333333333333333333333333333333333333333333333333333333333333333333333
 
-
+    2 333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333
 
 
 
@@ -62,24 +62,24 @@ width 108 height 28
 
 
 
-
     bbbbbbbbbbbbbbbbbbbbbbbbbb
 
 
-      bbbbbbbbbbbbbbbbbbb
+      bbbbbbbbbbbbbbbbbbbbb
+
 
       bbbbbb
 
       bbbbbbbbbbbbbbbbbbbbbbbbbb
 
-      bbbbbbbbbbbbbbbbbbb
 
-      bbbbbbbbbbbbbbbbbbbbbbb
+      bbbbbbbbbbbbbbbbbbbbb
 
+      bbbbbbbbbbbbbbbbbb
+
+      bbbbbbbbbbbbb
 
       bbbbbbbbbbbbbbbbb
-
-
 
 
 

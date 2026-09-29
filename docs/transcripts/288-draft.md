@@ -6,7 +6,7 @@ Delivery: talking through the deck, conversational, one idea per slide. Say the 
 Audience: people who use coding agents, people building them, and the OpenAgents followers who have watched the last four episodes.
 Follows: [285 Bendcoder](285.md), [286 System One in Coding Agents](286.md), [287 Building a System One Coding Agent](287.md), and the unreleased [288 preparation session](288-prep.md) on the Coder Gym.
 Deck: `crates/openagents-deck/decks/test-time-capabilities.md` (20 slides; the essay it follows is [Test-Time Capabilities](../essays/2026-09-29-test-time-capabilities.md)).
-Sources for every number: named at each slide. Where the deck is behind the essay, the script says so, so the slide can be fixed before recording.
+Sources for every number: named at each slide. The deck was brought in line with the essay on 2026-09-29 (commit noted in the archive index); the slide text quoted below is the deck's current text.
 
 What this episode is for: we are about to start rolling out the next version of Coder and the Gym inside the OpenAgents app, and this episode explains what we're releasing and why. It introduces a term, test-time capabilities, walks the deck, explains the protocol underneath it, and ends on the rollout.
 
@@ -54,8 +54,6 @@ Both of those generalize to the whole system around a model. What is it allowed 
 
 ## Slide 4: The definition
 
-[The deck's wording on this slide is behind the essay. It still says a capability exists "only if the same tests, run with it and without it, show the agent does measurably better." The essay has moved past that to the capability claim. Update the slide to the wording below before recording.]
-
 Here's the term. A test-time capability is an ability an agent gains, or loses, at inference time, without a weight update, because something was admitted into the run. A repository map. A written guide. A knowledge entry about a recurring mistake. Another agent.
 
 And here's the part that took the most work to get right. Nothing is a capability in general. A component is a *candidate*. Evidence makes a *capability claim*, and the claim says exactly how much admitting that exact component changed outcomes, against a stated baseline, on a stated set of tasks, under a stated grant and a stated rule. The same tool can add twenty points to one agent, nothing to another, and three points on a different kind of task, and none of those contradicts the others. Each belongs to its baseline and its tasks.
@@ -73,8 +71,6 @@ The last one is different in kind. Tools act. Knowledge informs. Delegates work.
 ---
 
 ## Slide 6: The lexicon
-
-[The deck row "Verify | Verified" is retired wording; the essay now has "reproduced capability claim" and "externally validated capability claim" as two separate terms, and eleven terms total. Fix the row and the "ten terms" note.]
 
 Words for the parts of a capability's life. Admission: a locked version of a component allowed into one run, and that's a security boundary, not just a switch. Delta: the with arm minus the without arm, on the same tests, repeated enough to see the spread. Reach and restraint: does the host actually reach for the tool where it helps, and leave it alone where it doesn't. Judgment budget: deciding how to answer has to cost far less than answering. Reproduced: someone else reran it and got a compatible result. Externally validated: it still helps on tests its author didn't write. Adoption: it joins everyone's defaults, measured against the current defaults, not against nothing. Credit: the people behind it get recognized, for verification work and adoption, not for activity.
 
@@ -158,8 +154,6 @@ Two of those are the same lesson the ToolBench people learned the hard way: the 
 
 ## Slide 15: From a chat to every Coder
 
-[Deck note on this slide says a candidate needs Better plus three confirming checks. As of today the policy also requires one externally validating result, a Better on a second test set that someone other than the tool's author released after the tool. Add it.]
-
 The loop. Make a tool, in chat. Run both arms, on our computers. Publish it. Others check it. Adopt. The hosted runner lives on one of our machines with a per-trainer daily quota. Suites are NIP-EXT releases. Results and checks are NIP-EVAL events. Credit is NIP-XP awards. Adoption is a coder-defaults release, and it's an operator decision, never automatic.
 
 A tool becomes a candidate when its result is Better, three distinct trainers' checks confirmed it, and at least one result on an independent second test set validates it. That last requirement is new and it's the one I care about most. Three people rerunning the author's own six tests proves the result reproduces. It doesn't prove the tool wasn't built to pass those six. Someone else's tests do.
@@ -190,11 +184,9 @@ Here's the reason this is a shared language and not just our stack. If you write
 
 ## Slide 18: Where it stands today
 
-[Update the third metric's note: the policy now requires a validation before adoption, and none exists.]
+Three of three hosted results confirmed by a second trainer. Nine XP awards signed from those checks, recomputable by anyone with the ledger crate. Zero results validated on a second test set. Zero tools adopted into the defaults.
 
-Three of three hosted results confirmed by a second trainer. Nine XP awards signed from those checks, recomputable by anyone with the ledger crate. Zero tools adopted into the defaults.
-
-Say the zero. Every part of the loop is built. The first runs, checks, and awards are live. The flywheel has not been shown turning. And it can't turn yet, because no tool has a test set that someone other than us wrote. That's not a bug in the software. It's the thing only other people can supply, which is the point.
+Say both zeros. Every part of the loop is built. The first runs, checks, and awards are live. The flywheel has not been shown turning. And it can't turn yet, because no tool has a test set that someone other than us wrote. That's not a bug in the software. It's the thing only other people can supply, which is the point.
 
 ---
 

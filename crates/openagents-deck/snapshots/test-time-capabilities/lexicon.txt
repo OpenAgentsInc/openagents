@@ -1,27 +1,27 @@
 width 108 height 28
 
 
-
-
     PART I · THE IDEA
     Words for the parts of a capability's life
     ────────────────────────────────────────────────────────────────────────────────────────────────────
 
-               Term               What it names
+                Term               What it names
     ────────────────────────────────────────────────────────────────────────────────────────────────────
-    Admit      Admission          A locked version of a component allowed into one run
+    Admit       Admission          A locked component let into one run
 
-    Measure    Delta              With arm minus without arm, same tests, repeated
+    Measure     Delta              With minus without, same tests, repeated
 
-    Use        Reach, restraint   Uses it when a test says to, leaves it alone otherwise
+    Use         Reach, restraint   Used where it helps, withheld where not
 
-    Allocate   Judgment budget    Deciding how to answer costs far less than answering
+    Allocate    Judgment budget    Deciding costs far less than answering
 
-    Verify     Verified           Someone else reran it and got the same verdict
+    Reproduce   Reproduced         Someone else reran it: compatible result
 
-    Share      Adoption, credit   It joins everyone's defaults; its authors get credit
+    Validate    Validated          Helps on tests its author didn't write
 
+    Adopt       Adoption           Joins the defaults, measured against them
 
+    Credit      Credit             For reruns either way, and for adoption
 
 
 
@@ -30,27 +30,27 @@ width 108 height 28
 --
 
 
-
-
     22222222222222222
     333333333333333333333333333333333333333333
     1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111
 
-               2222               2222222222222
+                2222               2222222222222
     1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111
-    22222      444444444          3333333333333333333333333333333333333333333333333333
+    22222       444444444          33333333333333333333333333333333333
 
-    2222222    44444              333333333333333333333333333333333333333333333333
+    2222222     44444              3333333333333333333333333333333333333333
 
-    222        444444 444444444   333333333333333333333333333333333333333333333333333333
+    222         444444 444444444   333333333333333333333333333333333333333
 
-    22222222   44444444 444444    3333333333333333333333333333333333333333333333333333
+    22222222    44444444 444444    33333333333333333333333333333333333333
 
-    222222     44444444           3333333333333333333333333333333333333333333333
+    222222222   4444444444         3333333333333333333333333333333333333333
 
-    22222      444444444 444444   3333333333333333333333333333333333333333333333333333
+    22222222    444444444          33333333333333333333333333333333333333
 
+    22222       44444444           33333333333333333333333333333333333333333
 
+    222222      444444             333333333333333333333333333333333333333
 
 
 
@@ -60,9 +60,9 @@ width 108 height 28
 
 
 
-
-
     bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+
+
 
 
 
