@@ -777,7 +777,8 @@ final class VerseWorldView: UIView {
 /// and the look stick right with two pointers at once, `motion` and `touch`
 /// switch the look mode, `face`
 /// turns toward the Grid's portal to Lagrange 1 (39° right of the spawn's
-/// heading; `walk,walk` then goes through it), `board` taps the Gym's board
+/// heading; `walk,walk` then goes through it while the portal is shown; it
+/// is hidden for now, see `verse::zones::gate::GRID_PORTAL_OPEN`), `board` taps the Gym's board
 /// where the last packet placed it (with `--gym-preview`, `walk,walk,walk`
 /// first walks into the Gym and up to it), `right` holds the stick right,
 /// `results` taps the RESULTS board beside it (`walk,walk,walk,right`

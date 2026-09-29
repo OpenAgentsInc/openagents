@@ -916,8 +916,9 @@ impl WorldRuntime {
     #[must_use]
     pub fn dynamic_mesh_with_panels(&self, computer: bool, gym: bool, results: bool) -> Mesh {
         if self.bare && self.is_plaza() {
-            // The player, the ball and blocks, and the portal to Lagrange 1,
-            // on the neutral stage; in first person the camera is inside the
+            // The player, the ball and blocks, and the portal to Lagrange 1
+            // (hidden for now; see `zones::gate::GRID_PORTAL_OPEN`), on the
+            // neutral stage; in first person the camera is inside the
             // avatar, which is hidden.
             let mut player = if self.first_person() {
                 Mesh::default()
@@ -1257,8 +1258,8 @@ mod tests {
         let view = runtime.view(0.5);
         let head = runtime.player.pos + Vec3::Y * crate::camera::FOCUS_HEIGHT;
         assert!(view.eye.distance(head) < 1e-5, "{:?}", view.eye);
-        // The avatar is hidden; the ball, blocks, portal, and the Gym
-        // board's lettering still draw.
+        // The avatar is hidden; the ball, blocks, portal (while shown), and
+        // the Gym board's lettering still draw.
         let mesh = runtime.dynamic_mesh();
         assert!(mesh.lines.len() < third_person);
         assert_eq!(

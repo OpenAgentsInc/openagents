@@ -53,7 +53,9 @@ The app has four tabs, shown as white icons on black:
   button, at the bottom center between them, switches touch and motion
   look, and the crosshair recenters the camera. The world draws with
   Verse's shared renderer on Vulkan or OpenGL ES; see
-  [Graphics backends](#graphics-backends).
+  [Graphics backends](#graphics-backends). The Grid's portal to Lagrange 1 is hidden
+  for now, in debug and release builds alike (see
+  [the Grid's portal](../../docs/verse/mobile.md#the-grids-portal-to-lagrange-1)).
   The Grid's Gym has both native panels, as on iOS: a tap on the Gym board
   opens the **Gym** panel (runs, a run's metrics, recipes with confirmed
   starts, and the Gym connection, where you paste a `gym-connect:` code),

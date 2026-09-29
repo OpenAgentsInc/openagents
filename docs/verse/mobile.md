@@ -15,7 +15,7 @@ controls); Coder's plaza keeps its own name. The Grid has only the plaza's groun
 palette (each amber step's lightness in white light), and the player with the
 controls below ([the Grid's sticks](#the-grids-sticks)), and other players' avatars, and the Gym
 ([below](#the-grids-gym)). It has no chat, map, doors, computer, or
-companion, and one zone: a walk-in portal to Lagrange 1
+companion, and no zones for now: its walk-in portal to Lagrange 1 is hidden
 ([below](#the-grids-portal-to-lagrange-1)). See
 [presence in the OpenAgents app](#presence-in-the-openagents-app) and
 [OpenAgents for iOS](../../bins/openagents-ios/README.md).
@@ -142,8 +142,8 @@ Coder's plaza Gym is unchanged and amber.
   (`GRID_GYM_AHEAD`), facing it, and the hall runs 24 m farther along the
   spawn's heading. From the spawn, the **GYM** lettering stands above the
   doorway in the middle of the view, past the ball and between the stack and
-  the dominoes. Every block, the ball, the reset pillar, and the Lagrange 1
-  portal stand at least 14 m short of its walls. `GymSite::PLAZA` is the
+  the dominoes. Every block, the ball, the reset pillar, and the (hidden)
+  Lagrange 1 portal's site stand at least 14 m short of its walls. `GymSite::PLAZA` is the
   identity, so every `GYM_*` constant stays in the Gym's own frame.
 - **Walls.** The walls block walking, and the same boxes stand in the ball's
   physics world, so the ball and blocks bounce off them.
@@ -176,6 +176,18 @@ Coder's plaza Gym is unchanged and amber.
   now) shows the lettering but no tap cue, and loads nothing.
 
 ### The Grid's portal to Lagrange 1
+
+**Hidden for now.** `verse::zones::gate::GRID_PORTAL_OPEN` is `false`, so no
+build of the OpenAgents app (debug, simulator, TestFlight, or Android
+release) draws the arch or its lettering, admits a crossing, or offers a
+Lagrange 1 panel on the Grid; the spawn is unchanged and faces the ball and
+the Gym. Lagrange 1 itself, `verse-lagrange`, its CLI, and Coder's plaza
+arches are unchanged, and the tests keep the portal's path working with
+`WorldRuntime::open_grid_portal_for_tests`. To restore it, set the constant
+to `true` and drop these "hidden" notes (here, in
+[Lagrange 1](lagrange-1.md), and in the
+[iOS README](../../bins/openagents-ios/README.md)). The rest of this section
+describes the portal as it works when shown.
 
 One arch stands on the bare world (the Grid), lettered **LAGRANGE 1** and
 drawn in white and gray like the grid. It has no button: walk through its
@@ -403,8 +415,8 @@ readouts above two rows of controls: tap **Prev** or **Next** to select a knob,
 **Plaza**. The first knob switches among nine scenarios. See
 [Physics Lab](physics-lab.md).
 
-The OpenAgents app's bare world reaches only Lagrange 1, through its
-[walk-in portal](#the-grids-portal-to-lagrange-1).
+The OpenAgents app's bare world reaches no zone for now; its
+[walk-in portal](#the-grids-portal-to-lagrange-1) to Lagrange 1 is hidden.
 
 Plaza presence and Gym observation pause while loading or visiting a zone,
 then resume the configured plaza behavior on return. Zones are local-only;

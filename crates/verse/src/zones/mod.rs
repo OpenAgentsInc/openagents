@@ -265,6 +265,8 @@ pub(crate) struct State {
     elapsed: f32,
     /// Seconds before a walk-in portal admits another crossing.
     gate_cooldown: f32,
+    /// Whether the Grid shows its portal; see [`gate::GRID_PORTAL_OPEN`].
+    grid_portal: bool,
 }
 impl Default for State {
     fn default() -> Self {
@@ -280,6 +282,7 @@ impl Default for State {
             plaza_pose: None,
             elapsed: 0.0,
             gate_cooldown: 0.0,
+            grid_portal: gate::GRID_PORTAL_OPEN,
         }
     }
 }

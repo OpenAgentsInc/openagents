@@ -254,6 +254,8 @@ fn the_grid_portal_pauses_presence_in_lagrange_1_and_the_return_rejoins() {
     );
     assert!(joined, "the peer never appeared");
 
+    // The portal is hidden in the apps; this keeps its path working.
+    scene.world.open_grid_portal_for_tests();
     // Face the portal from in front of it and hold the stick forward.
     let gate = scene.world.grid_gate().expect("the Grid's portal");
     let (front, away) = gate.front();

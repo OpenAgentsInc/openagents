@@ -301,7 +301,7 @@ pub unsafe extern "C" fn coder_verse_call(
 impl VerseHandle {
     /// Mounts Verse's bare world on a Metal layer: the plaza's ground grid in
     /// the neutral palette, with Coder's player, touch, and motion controls,
-    /// the shared ball and blocks, the portal to Lagrange 1, and the Gym. With `presence`, it joins the bare world's own NIP-MV
+    /// the shared ball and blocks, and the Gym (its portal to Lagrange 1 is hidden for now; see `verse::zones::gate::GRID_PORTAL_OPEN`). With `presence`, it joins the bare world's own NIP-MV
     /// world for avatar presence alone while active; without it, it joins no
     /// relay and uses a throwaway identity.
     ///

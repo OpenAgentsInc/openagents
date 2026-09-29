@@ -319,6 +319,8 @@ fn walk_until_zone_changes(runtime: &mut WorldRuntime, seconds: f32) -> bool {
 #[test]
 fn walking_through_the_grid_portal_enters_a_neutral_lagrange_1_and_flying_back_returns() {
     let mut runtime = WorldRuntime::bare();
+    // The portal is hidden in the apps; this keeps its path working.
+    runtime.open_grid_portal_for_tests();
     let gate = runtime.grid_gate().expect("the Grid's portal");
     let ball_at = runtime.ball().unwrap().body().pos;
     // The arch is drawn in the neutral palette with the player and ball, and
@@ -403,6 +405,27 @@ fn walking_through_the_grid_portal_enters_a_neutral_lagrange_1_and_flying_back_r
     runtime.zone_intent(Intent::Return).unwrap();
     assert!(runtime.is_plaza());
     assert_eq!(runtime.player.pos, gate.front().0);
+}
+
+#[test]
+fn the_grid_shows_no_portal_while_it_is_hidden() {
+    const { assert!(!super::gate::GRID_PORTAL_OPEN) };
+    let mut runtime = WorldRuntime::bare();
+    assert!(runtime.grid_gate().is_none());
+    assert!(runtime.grid_portal_mesh().lines.is_empty());
+    assert!(runtime.grid_portal_mesh().faces.is_empty());
+    // Walking where the arch would stand, facing through it, stays on the
+    // Grid, and nothing offers to enter Lagrange 1.
+    let layout = runtime.ball().unwrap().layout();
+    let (front, away) = super::Gate::grid(&layout).front();
+    runtime
+        .place_player(front, away + std::f32::consts::PI)
+        .unwrap();
+    assert!(!walk_until_zone_changes(&mut runtime, 3.0));
+    assert!(runtime.is_plaza());
+    let snapshot = runtime.zone_snapshot(1.0);
+    assert!(!snapshot.portal.near && snapshot.controls.is_empty());
+    assert!(runtime.zone_intent(Intent::Enter).is_err());
 }
 
 #[test]

@@ -3,6 +3,9 @@
 //! has one, to Lagrange 1, and Lagrange 1 entered from it returns through
 //! its own arch the same way. Coder's plaza keeps its tap-and-button arches.
 //!
+//! The Grid's portal is hidden for now ([`GRID_PORTAL_OPEN`] is `false`):
+//! no arch, no lettering, and no crossing in any build of the phone apps.
+//!
 //! A gate is an arch at `at`, turned `yaw` about the vertical. Its local +Z
 //! points through the opening, away from the side the player approaches:
 //! the side the arch's lettering reads from.
@@ -12,6 +15,14 @@ use glam::{Quat, Vec3};
 use super::ZoneId;
 use crate::mesh::Mesh;
 
+/// Whether the Grid (the OpenAgents app's bare world) shows its walk-in
+/// portal to Lagrange 1. Off for now, in debug and release builds alike:
+/// the Grid draws no arch or lettering and nothing on it enters Lagrange 1.
+/// Lagrange 1 itself (the zone, `verse-lagrange`, its CLI) is unchanged, and
+/// Coder's plaza arches do not read this. Restore the portal by setting this
+/// to `true` (and reverting the "hidden for now" notes in
+/// `docs/verse/mobile.md` and the phone apps' READMEs).
+pub const GRID_PORTAL_OPEN: bool = false;
 /// The Grid's portal in the ball's layout frame: to the side opposite the
 /// dominoes and short of the stack, so the ball, the stack, and the
 /// dominoes all stand clear of the arch and its approach. Side, forward, m.

@@ -226,12 +226,16 @@ impl WorldRuntime {
                 self.zone_state.lab = None;
                 self.zone = ZoneId::Plaza;
                 self.zone_revision = self.zone_revision.saturating_add(1);
-                if let Some(gate) = self.grid_gate() {
+                if self.is_bare() {
                     // Back on the Grid in front of its portal, facing away,
-                    // with the ball and blocks where they were left.
+                    // with the ball and blocks where they were left. With the
+                    // portal hidden, back where the player left the Grid.
                     self.world = crate::world::bare();
-                    self.zone_state.plaza_pose = None;
-                    let (pos, yaw) = gate.front();
+                    let pose = self.zone_state.plaza_pose.take();
+                    let (pos, yaw) = self.grid_gate().map_or_else(
+                        || pose.unwrap_or((crate::world::SPAWN, 0.0)),
+                        |gate| gate.front(),
+                    );
                     self.place_player(pos, yaw)?;
                 } else {
                     self.world = crate::world::build();
@@ -711,10 +715,22 @@ impl WorldRuntime {
             crate::runtime::mesh_occludes(&self.dynamic_mesh(), eye, direction, distance)
         }
     }
-    /// The Grid's walk-in portal while on the Grid; none elsewhere.
+    /// The Grid's walk-in portal while on the Grid; none elsewhere, and none
+    /// while the portal is hidden ([`super::gate::GRID_PORTAL_OPEN`]).
     #[must_use]
     pub fn grid_gate(&self) -> Option<super::Gate> {
+        if !self.zone_state.grid_portal {
+            return None;
+        }
         self.ball().map(|ball| super::Gate::grid(&ball.layout()))
+    }
+
+    /// Show the Grid's portal on this world regardless of
+    /// [`super::gate::GRID_PORTAL_OPEN`], so tests keep the hidden portal's
+    /// path working until it is restored. No app build calls this.
+    #[doc(hidden)]
+    pub fn open_grid_portal_for_tests(&mut self) {
+        self.zone_state.grid_portal = true;
     }
 
     /// The label of the control that leaves a zone.
