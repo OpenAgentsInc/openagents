@@ -212,3 +212,14 @@ note's summary, which a news card shows as a line, no longer says
 checks every item a news card can carry, from the real catalog, notes,
 and changelog, against the wireframe's banned list (plurals included) and
 for raw ids; the worker logs the same post-check on each grounded reply.
+
+Live on release `0546032e17` (`live_basic_coder_streams_a_reply`, a fresh
+key per message): "Test Project map on Coder" read `eval.run` (1.00) and
+Project map, and answered in 0.60 s with `eval.run.offer` ("We'd test
+Project map with its published test set: 6 tests…"), the tool card
+(latest result 5 of 6 with the tool, 2 of 6 without), and `start_eval`
+for release `8e4ae48b…`, hosted. "What's new in the Gym?" read `gym.news`
+(1.00) and answered in 7.6 s from five records (the Gym news note, build
+21, the RESULTS board note in its new words, credit, and checks) with no
+citation id in the text; the worker's post-check logged 3 citations, 0
+invented, no banned word, and no raw id.

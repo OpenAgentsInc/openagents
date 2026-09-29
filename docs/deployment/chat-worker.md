@@ -366,3 +366,22 @@ the step-1 draft ("Is that the tool? Tap Looks good…") in 3.4 to 5.3 s;
 "Help me write tests for Project map" routed to `eval.author` and described
 Project map at step 1; "make a tool that sends me a Telegram message when
 Coder finishes a task" got the Run Coder offer in 0.8 s.
+
+Release `0546032e17` (2026-09-29) reads the starter test sets, so
+`eval.run` offers **Start the test** on the hosted runner (#9943), and
+keeps citation ids and banned words off Gym news (#9944), on top of
+`ebaa2af04a` (#9945) and `5882b3910e` (#9946). It was built as above,
+installed as `/opt/coder-worker/releases/0546032e17` with the current
+`knowledge/openagents/` (copied with `COPYFILE_DISABLE=1`, `._*` removed;
+the `openagents.gym-results` note changed) and `codebase-kb.gz` from
+`ebaa2af04a`, checked with `--check` under the chat environment, and put
+live by moving the `chat` symlink and restarting `coder-worker-chat`; the
+environment file and unit did not change, and `ebaa2af04a` stays in
+`releases/` for rollback. The first read logged `gym records: 14 verified
+results, 4 test sets, 0 refused`. With `live_basic_coder_streams_a_reply`,
+"Test Project map on Coder" answered in 0.60 s with the tool card and a
+`start_eval` for the newest Project map test set (`8e4ae48b…`, 6 tests, 3
+runs, 2 arms, `hosted`, the starter catalog's `repo-map` reference); "What's
+new in the Gym?" answered from five records in 7.6 s (first words 6.9 s)
+with no citation id and no banned word, and the worker logged `router gym
+reply: 3 cited, 0 invented, banned [], 0 raw ids`.
