@@ -476,14 +476,18 @@ impl Records {
             })
     }
 
-    /// The newest published result (not a check) with fewer than
-    /// [`CHECKS_FOR_ADOPTION`] confirming checks, for `tool` when given.
+    /// The newest published result (not a check) of a tool in our
+    /// catalog with fewer than [`CHECKS_FOR_ADOPTION`] confirming checks,
+    /// for `tool` when given. A chat-made tool's result isn't offered: its
+    /// skill stays on its maker's phone, so the hosted runner can't rerun
+    /// it and refuses the check `not_admitted`.
     #[must_use]
     pub fn checkable(&self, tool: Option<&str>) -> Option<&ResultRecord> {
         self.results
             .iter()
             .filter(|result| {
                 result.checks.is_none()
+                    && result.tool.is_some()
                     && result.checked.confirmed < CHECKS_FOR_ADOPTION
                     && tool.is_none_or(|tool| result.tool.as_deref() == Some(tool))
             })
@@ -1444,6 +1448,15 @@ mod tests {
             .map(|r| r.publication.id.clone())
             .collect();
         assert_eq!(offered(&all.skipping(&every)), None);
+
+        // A chat-made tool's result (no catalog tool) is never offered,
+        // even when it's the newest: the hosted runner can't rerun it.
+        let mut made = records();
+        let mut chat_made = fixtures::result(14, "code-finder", 0);
+        chat_made.tool = None;
+        chat_made.tool_name = "changelog-writer".into();
+        made.results.push(chat_made);
+        assert_eq!(offered(&grounded(made)), Some(event(10, 3189).id));
     }
 
     /// `eval.result`: a named tool's published result as a card; otherwise

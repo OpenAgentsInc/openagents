@@ -845,6 +845,10 @@ pub(crate) fn check_card(
     let tool_name = humane(tool);
     let mut lines = vec![Line {
         text: match claim.without {
+            Some(without) if without == claim.with => format!(
+                "{trainer} says Coder passed {} of {} tests with {tool_name} and without it.",
+                claim.with, claim.total
+            ),
             Some(without) => format!(
                 "{trainer} says {tool_name} made Coder pass {} of {} tests instead of {without}.",
                 claim.with, claim.total
@@ -951,6 +955,44 @@ mod tests {
         assert_eq!(body_of("Just a body"), "Just a body");
         assert_eq!(humane("sort-imports"), "Sort imports");
         assert_eq!(first_line(&"x".repeat(20), 5), "xxxx…");
+    }
+
+    /// A result that scored the same both ways says so, not "pass 3 of 6
+    /// tests instead of 3".
+    #[test]
+    fn a_check_of_an_even_result_says_it_plainly() {
+        let line = |with, without| {
+            let claim = Claim {
+                with,
+                without: Some(without),
+                total: 6,
+                verdict: Verdict3::Inconclusive,
+            };
+            let mut actions = Actions(BTreeMap::new());
+            check_card(
+                &mut actions,
+                "c",
+                "project-map",
+                "A trainer",
+                &claim,
+                0,
+                None,
+                None,
+                false,
+                false,
+            )
+            .lines[0]
+                .text
+                .clone()
+        };
+        assert_eq!(
+            line(3, 3),
+            "A trainer says Coder passed 3 of 6 tests with Project map and without it."
+        );
+        assert_eq!(
+            line(5, 2),
+            "A trainer says Project map made Coder pass 5 of 6 tests instead of 2."
+        );
     }
 
     #[test]
