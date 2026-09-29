@@ -29,22 +29,30 @@ phone <--27000 partials, 26900 result------- relay.openagents.com <-- chat worke
   lane the Coder terminal's chat used (`crates/coder/src/generate.rs`). The
   gateway key is in the worker's environment file on its host and nowhere
   else. No model API key ships in the app.
-- **First response.** The worker acknowledges every admitted turn with
-  `status: processing` at once. With `TYPESAFE_API_KEY` set, a turn that asks
-  with `"opener": true` also gets one Jev (System One) judgment run beside the
-  model call (`coder-first-response-v2`): the turn's route, whether it needs a
-  computer (`lane`), which prepared answer from the `chat-answers-v1` bank
-  fits, whether the reply needs the user's specifics, and which opener fits.
-  A sure prepared answer ("Who are you?", "What model are you?", "hi",
-  "thanks") is the whole reply in about half a second and the model call is
-  dropped; otherwise a sure opener ("Here's how that works.") leads the
-  model's reply; otherwise the model's own words come first. Every canned
-  line speaks as OpenAgents in the plural. See `crates/coder/src/first.rs`
-  and [`docs/coder/measurements/2026-09-28-first-reply.md`](../coder/measurements/2026-09-28-first-reply.md).
-- **Personalization (T1, not wired yet).** The chat router's stems ("We'll
-  dispatch Coder to …") are finished by a cheap model through
-  `coder::router::personalize` once the router's integration wires
-  `personalize::seam_from_env()` into the worker. It is off unless the
+- **First response and the chat router.** The worker acknowledges every
+  admitted turn with `status: processing` at once. With `TYPESAFE_API_KEY`
+  set, a turn that asks gets one Jev (System One) judgment run beside the
+  model call, the `chat-router-v1` question set (`crates/coder/src/router/`):
+  route, prepared answer, whether the reply needs the user's specifics,
+  lane, opener, risk, and a command group when a command tree is wired.
+  Code decides what is shown. A turn that sends `"router":
+  "chat-router-v1"` (build 19 of the app) gets every tier: a whole answer
+  from the reviewed bank (`crates/coder/answers/chat-answers-v1.toml`) with
+  followup chips, a refusal, a "We'll dispatch Coder to …" stem with a Run
+  Coder or Connect a computer offer, a wallet or account answer with its
+  screen offered, or the model led by an opener. A turn that sends only
+  `"opener": true` (builds before 19) gets a whole answer with no offer, an
+  opener, or nothing, as before. Every judged turn logs one `router` line
+  of ids, probabilities, tiers, and the judge's time, never message text.
+  `CODER_WORKER_ROUTER=shadow` logs what the router would serve but serves
+  what `opener` alone would; `off` ignores `router`; unset is `live`. The
+  worker refuses to start when the bank breaks its lint. See the
+  [chat router design](../coder/design/2026-09-28-chat-router.md) and
+  [`docs/coder/measurements/2026-09-28-first-reply.md`](../coder/measurements/2026-09-28-first-reply.md).
+- **Personalization (T1).** The chat router's stems ("We'll dispatch Coder
+  to …") are finished by a cheap model through `coder::router::personalize`;
+  the worker reads `personalize::seam_from_env()` at start, and its
+  `router` line names whether personalization is on. It is off unless the
   worker's environment sets it:
   - `CODER_PERSONALIZE=openrouter` turns it on with OpenRouter's
     `google/gemini-2.5-flash-lite`, the measured choice

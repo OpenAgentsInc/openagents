@@ -207,7 +207,9 @@ through the decision profile the agent resolves (TYPESAFE_API_KEY or
 ~/.openagents/jev.json); CODER_WORKER_JUDGE=off turns it off. A turn that
 names the chat router (\"router\": \"chat-router-v1\") gets every tier;
 CODER_WORKER_ROUTER=shadow logs the router's decision but serves what the
-first response alone would, and =off ignores the router. The door the worker
+first response alone would, and =off ignores the router. CODER_PERSONALIZE
+(openrouter[:MODEL], gateway[:LANE], or off) picks the model that writes
+the rest of a router stem. The door the worker
 answers through comes from the environment exactly as it does for the
 agent, except for the lane: CODER_WORKER_MODEL names the model or lane
 this worker runs, and outranks CODER_MODEL.";
@@ -454,9 +456,15 @@ async fn serve(options: &Options) -> Result<(), String> {
             problems.join("\n")
         ));
     }
+    // Each seam comes from its own module's configuration; one that is
+    // not configured stays the no-op, and the router falls back past it.
+    let seams = Seams {
+        personalize: router::personalize::seam_from_env()?,
+        ..Seams::default()
+    };
     let routing = Arc::new(RouterConfig::new(
         router_from_env()?,
-        Seams::default(),
+        seams,
         &door,
         options.quota.as_ref(),
     ));

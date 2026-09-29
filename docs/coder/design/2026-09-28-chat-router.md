@@ -1,6 +1,9 @@
 # The chat router: how OpenAgents answers a message, with Jev choosing the route
 
-Status: proposal, 2026-09-28. Nothing here is implemented. It extends the
+Status: phases 0 to 2 implemented on 2026-09-28 (the core in
+[#9922](https://github.com/OpenAgentsInc/openagents/issues/9922), T1
+personalization, and the phone's offers); knowledge, CLI, and codebase
+routes plug in through the seams below. It extends the
 first response that shipped in `95c7eda2e3` (`crates/coder/src/first.rs`,
 [the first-reply measurement](../measurements/2026-09-28-first-reply.md)) and
 the product change in `820bc02ce4` (the first tab is **Chat**, the assistant
@@ -283,6 +286,49 @@ passage below `RELEVANCE_FLOOR` (0.5) is dropped, and a CLI proposal passes
 `secret`; on the phone only `read_only`, and `grants` opens Account >
 Computers). `Seams::recipients` feeds the privacy answer, so adding a seam
 that sends text somewhere changes what that answer says.
+
+### Implemented core (2026-09-28)
+
+[#9922](https://github.com/OpenAgentsInc/openagents/issues/9922) shipped the
+core as `crates/coder/src/router/`:
+
+| Module | What it holds |
+| --- | --- |
+| `router.rs` | Route, risk, context, offer, and effect types; `gate`, `redact`, `validate_continuation`, `close_stem`, `grounded`, `grounded_note`, and `worker_facts` |
+| `router/judge.rs` | The `chat-router-v1` questions (`action`, `route`, `answer`, `needs_specifics`, `lane`, `opener`, `risk`, and `cli_group` when a command tree is wired) and `reading`, which turns an answer into a `Routing` |
+| `router/policy.rs` | `decide`: the policy table below, as code, with its thresholds as constants |
+| `router/bank.rs` | The bank file's parser, its digest, `Facts`, and the lint |
+| `router/wire.rs` | The judgment feedback, the result fields, and the `router` log record |
+| `answers/chat-answers-v1.toml` | The bank: 39 entries and 6 openers |
+
+`coder::first` keeps only what the router and the suggestion ranking share.
+Where the code settles something this design left open:
+
+- A whole prepared answer (T0) needs the `route` reading to agree: the
+  entry must belong to the argmax route at p ≥ 0.80.
+- Dispatch by `lane` alone (computer at p ≥ 0.75) is checked after the CLI
+  and knowledge routes, which read "which of my computers are online" more
+  precisely than the lane does.
+- A risk in the warn band (0.60 to 0.85) refuses when the `route` reading
+  is also `refuse` at p ≥ 0.80: two independent readings agreeing. Alone,
+  it turns off prepared answers, stems, and offers, and a possible secret
+  gets `warn.secret_shared` as the lead line above the model.
+- A turn that sends only `opener` (the phones before build 19) is decided in
+  legacy mode: T0 for entries with no offer, else an opener, else nothing.
+- `CODER_WORKER_ROUTER` is `live` (default), `shadow` (log the routed tier
+  and serve the legacy one; the judgment's `shadow` field names the routed
+  tier), or `off`.
+- The phase 0 shadow log is one `router {…}` line per judged turn, whose
+  fields are ids, probabilities, tiers, and the judge's time
+  (`wire::Shadow`); nothing in it can hold message text.
+
+A live check against Jev over 50 messages across every route (the ignored
+test `live_router_eval` in `router/judge.rs`, not the labeled set) chose the
+expected route for 47, served 20 whole answers, all correct, and answered in
+175 ms at the median and 228 ms at p90. The three misses were "How does
+Coder pick a provider?" (read as `meta`, answered by the model with an
+opener), "What does kind 25900 carry?" (read as `clarify`), and "That answer
+was wrong" (read as `clarify`, where `general` was expected).
 
 ## Confidence, thresholds, and fallbacks
 
@@ -1029,6 +1075,14 @@ Each phase is its own issue under #9920's umbrella, with its invariant rows
 and tests in the same change.
 
 ## Open questions for the owner
+
+The owner answered these on 2026-09-28: keep the parallel model start and
+cancel it on a bank answer (1); the plural voice everywhere, "We'll
+dispatch Coder to …" (2); canned turns count against the quota (4); naming
+Gemini, the AI Gateway, and Jev in the app is fine (5); no cloud Coder offer
+at launch, connect a computer only (6); phone CLI offers are read-only
+commands only (7); the bank's text is reviewed like user-facing copy (9).
+The original questions follow.
 
 1. **Hold the model for known-canned routes?** The design starts the model on
    every turn and cancels it when the bank answers. The alternative holds the
