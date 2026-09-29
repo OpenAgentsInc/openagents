@@ -82,3 +82,11 @@ Wallet tab or the finished menu, and played no script
 `line_breaks_match_coretext_for_the_bundled_fonts` on `main` before this
 change. It fails only under that feature unification: the corpus digest
 changes. It passes per crate.
+
+## Build 23
+
+We archived it from `eb0da033e8` (clean; the archive says 1.0.0 (23)) and
+uploaded it with `build.sh upload` at 12:41 UTC. App Store Connect (filtered
+by pre-release version 1.0.0 and build 23) shows it uploaded at
+2026-09-29T12:42:36Z, processing state `VALID`, internal state
+`IN_BETA_TESTING`.
