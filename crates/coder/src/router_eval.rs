@@ -751,6 +751,7 @@ mod tests {
         "refuse.asks_for_secret",
         "refuse.harmful",
         "clarify.generic",
+        "gym.what",
         "gym.what_test",
         "gym.what_tool",
         "eval.credit.how",

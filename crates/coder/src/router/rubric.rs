@@ -114,8 +114,8 @@ pub fn route(route: RouteId) -> Value {
         ),
         RouteId::ProductKb => option(
             "How to do something in the OpenAgents app or with OpenAgents services, or what an \
-             OpenAgents feature is: connecting a computer, the Grid, the Verse, XP, Pylon, \
-             relays, and protocols such as NIP-CJ or NIP-CAP",
+             OpenAgents feature is: connecting a computer, the Gym, the Grid, the Verse, XP, \
+             Pylon, relays, and protocols such as NIP-CJ or NIP-CAP",
             Some(
                 "The wallet (wallet); account settings (account); questions about us as an \
                  assistant (meta); how the OpenAgents code implements something (codebase.kb); \
@@ -130,6 +130,7 @@ pub fn route(route: RouteId) -> Value {
                 "what's the pylon thing",
                 "can two phones control the same computer",
                 "how do i steer a running coder task from my phone",
+                "what is the gym for",
                 "what counts as a test in the gym",
                 "what does a test check?",
                 "What's a tool?",

@@ -429,6 +429,18 @@ sources = ["docs/game/playtesting.md"]
 # ---------------------------------------------------------------------------
 
 [[answer]]
+id = "gym.what"
+version = 1
+routes = ["product.kb", "general"]
+when = "The user asks what the OpenAgents Gym is, what it's for, or what they can do there; not what's new in it, what a test or a tool is, or how their own test did"
+not_for = "What's new in the Gym (gym.news), or what a test or a tool is (gym.what_test, gym.what_tool)"
+examples = ["what is the gym for", "what do people do in the gym"]
+text = "The Gym is where we test the tools Coder, our coding agent, uses. We run the same tests with a tool and without it, so you can see whether it makes Coder better. You can start a test right here in chat, add your result to the Gym, and check other trainers' results to earn XP. The Gym in the Verse shows the results on a board."
+chip = "What's the Gym?"
+sources = ["docs/extensions/evaluation.md", "knowledge/openagents/openagents.gym-results.md", "docs/verse/gym.md"]
+followups = ["gym.what_tool", "gym.what_test", "eval.credit.how"]
+
+[[answer]]
 id = "gym.what_test"
 version = 1
 routes = ["product.kb", "general"]

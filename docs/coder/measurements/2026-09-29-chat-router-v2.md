@@ -223,3 +223,26 @@ for release `8e4ae48b…`, hosted. "What's new in the Gym?" read `gym.news`
 21, the RESULTS board note in its new words, credit, and checks) with no
 citation id in the text; the worker's post-check logged 3 citations, 0
 invented, no banned word, and no raw id.
+
+## "What's the Gym?" gets a prepared answer (#9941)
+
+In the build 21 end-to-end run, "What's the Gym?", a starter question on
+every new chat, read `product.kb` at 0.58 to 0.69, near the 0.70 floor.
+Above it, the product notes answered with the old benchmark board; under
+it, the model answered about OpenAI's reinforcement-learning Gym. The
+bank now has `gym.what` (routes `product.kb` and `general`), the
+`product.kb` rubric names the Gym among OpenAgents features with one tune
+example, "what is the gym for", and `routes-v2.json` has four new rows (two
+held out: "What's the Gym?" and "explain the openagents gym to me"). The Gym
+suite and question files were regenerated.
+
+Held out, one run (188 rows, `ROUTER_EVAL_SPLIT=held_out`): both new rows
+read `product.kb` at 0.99 and served `gym.what` (0.99 and 0.98). Canned
+precision 100 % (50/50); dispatch precision 94.7 % (18/19), recall 100 %;
+Gym and interview precision 96.6 % (28/29); refusal precision 100 %
+(9/9); route accuracy 87.8 %, inside the recorded spread (87.7 to 91.3 %).
+
+The phone's **Check a result** chip also changed its message from "Is
+there a result I can check?" (the held-out row above that reads
+`eval.check` at 0.46) to "Find me a result to check", which read
+`eval.check` at 0.99 on the deployed worker and drew the check card.

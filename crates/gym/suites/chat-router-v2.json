@@ -3,7 +3,7 @@
   "name": "chat-router-v2",
   "description": "The chat router's labeled route set for chat-router-v2 (#9936), from crates/coder/fixtures/chat-router/routes-v2.json: the v1 rows and rows for the Gym and eval routes, across 18 routes, labeled with the route a correct router takes. The fixture's held-out rows are the locked partition.",
   "created": "2026-09-28",
-  "digest": "1007a5807232ba9410479ed89e92172deb23606e03acc151e0e828c964c4ecb8",
+  "digest": "aab46e3c80fde17cc7db3124a82dde8b1ccab632aa878e7524d2260be4f6bd82",
   "tier": "scored",
   "questions": "chat-router-route-v3",
   "items": [
@@ -11373,6 +11373,78 @@
       },
       "truth": "eval.credit",
       "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/product.kb/v2-gym-002",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "What's the Gym?",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "What's the Gym?"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "product.kb",
+      "partition": "locked",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/product.kb/v2-gym-001",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "what is the gym for",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "what is the gym for"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "product.kb",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/product.kb/v2-gym-003",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "what do people do in the gym",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "what do people do in the gym"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "product.kb",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/product.kb/v2-gym-005",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "explain the openagents gym to me",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "explain the openagents gym to me"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "product.kb",
+      "partition": "locked",
       "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
     },
     {
