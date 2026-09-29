@@ -38,6 +38,7 @@ component or grant a provider access.
 | [Packages and distribution](packages.md) | Immutable contents, identity, installation, publication, revocation, and adoption. |
 | [TypeSafe opportunities](opportunities.md) | Concrete applications of explicit state and economical semantic operations. |
 | [Delivery and evaluation](delivery.md) | Implementation sequence and acceptance requirements. |
+| [Extension evaluation](evaluation.md) | `openagents ext eval`: suites, graders, stand-ins, the run sandbox, and publishing results to the Gym. |
 | [Optimization architecture](../optimization/architecture.md) | Stable semantic contracts and replaceable inference implementations. |
 
 The [OpenAgents NIPs](../../nips/openagents/README.md) are standalone v1
