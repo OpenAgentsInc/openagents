@@ -36,6 +36,16 @@ pub struct Item {
 pub const CHANGELOG: &[Release] = &[
     Release {
         version: "1.0.0",
+        build: "19",
+        title: "New chats go to OpenAgents",
+        what_to_test: "With a computer connected, ask \"Who are you?\" in a new chat and check the answer appears within a second.",
+        items: &[Item {
+            title: "New chats go to OpenAgents",
+            detail: "A new chat answers right away even with a computer connected; Coder runs on a computer only when you pick it in the selector or tap a workspace.",
+        }],
+    },
+    Release {
+        version: "1.0.0",
         build: "18",
         title: "Chat with OpenAgents",
         what_to_test: "Tap the Chat tab and start typing right away; ask who you're talking to or what model it is, and check the answer is instant. Pick your computer in the selector, send a task, and watch Coder's reply stream in. Open the menu at the top left and check that earlier chats open quickly, and that an OpenCode or Devin session a Coder task started shows inside its chat.",
