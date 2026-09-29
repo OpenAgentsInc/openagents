@@ -136,18 +136,18 @@ impl Failure {
                     wait(retry_after_ms.unwrap_or(60_000))
                 ),
                 "quota_exhausted" => format!(
-                    "Coder has answered all the messages it can today. Try again in {}, \
+                    "We've answered all the messages we can for you today. Try again in {}, \
                      or run Coder on your computer.",
                     wait(retry_after_ms.unwrap_or(3_600_000))
                 ),
                 "limit_exceeded" => {
-                    "This conversation is too long for Coder here. Start a new chat.".into()
+                    "This conversation is too long for us to answer here. Start a new chat.".into()
                 }
-                "busy" => "Coder is busy. Try again in a moment.".into(),
-                _ => format!("Coder couldn't answer ({code}): {message}"),
+                "busy" => "We're busy right now. Try again in a moment.".into(),
+                _ => format!("We couldn't answer ({code}): {message}"),
             },
-            Failure::Silent => "Coder didn't answer. Try again.".into(),
-            Failure::Transport(_) => "Coder couldn't be reached. Check your connection.".into(),
+            Failure::Silent => "We couldn't reply this time. Try again.".into(),
+            Failure::Transport(_) => "We couldn't reach the chat. Check your connection.".into(),
         }
     }
 }
@@ -742,11 +742,18 @@ mod tests {
             message: String::new(),
             retry_after_ms: Some(5 * 3_600_000),
         };
-        assert!(
-            exhausted.describe().contains("5 hours"),
-            "{}",
-            exhausted.describe()
+        assert_eq!(
+            exhausted.describe(),
+            "We've answered all the messages we can for you today. Try again in 5 hours, \
+             or run Coder on your computer."
         );
+        // The chat speaks as OpenAgents, in the plural.
+        let busy = Failure::Refused {
+            code: "busy".into(),
+            message: String::new(),
+            retry_after_ms: None,
+        };
+        assert_eq!(busy.describe(), "We're busy right now. Try again in a moment.");
     }
 
     #[test]

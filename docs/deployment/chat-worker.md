@@ -123,7 +123,7 @@ has to answer a key nobody has seen, so it is open under a quota instead
 - A job counts when it is admitted, whether or not the door answers.
 - The phone sends at most the newest 48 KiB of the conversation and shows
   each refusal from its code: "You're sending messages quickly. Try again in
-  40 seconds." or "Coder has answered all the messages it can today…".
+  40 seconds." or "We've answered all the messages we can for you today…".
 
 `INVARIANTS.md` (Basic chat) records these as invariants with their tests.
 

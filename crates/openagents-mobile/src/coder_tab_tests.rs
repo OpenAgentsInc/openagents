@@ -1195,6 +1195,10 @@ fn a_first_chat_needs_no_computer_and_streams_its_reply() {
     let chat = fixture.say("What is a **relay**?");
     assert_eq!(hand.asked(), vec![vec!["What is a **relay**?".to_owned()]]);
     assert!(node(&chat, "talk-working").is_some(), "{:?}", keys(&chat));
+    assert_eq!(
+        node(&chat, "talk-working").unwrap()["element"]["props"]["label"],
+        "Thinking"
+    );
     assert_eq!(composer_of(&chat)["busy"], true);
     assert!(fixture.coder.streaming());
     assert!(fixture.coder.live(Some(&fixture.computers)));

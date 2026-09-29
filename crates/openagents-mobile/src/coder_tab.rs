@@ -2208,7 +2208,7 @@ impl CoderTab {
             Tail::Thinking => rows.push(node(
                 "talk-working",
                 Element::Working {
-                    label: "Coder is thinking".into(),
+                    label: "Thinking".into(),
                 },
             )),
             Tail::Streaming(blocks) => rows.push(message(
