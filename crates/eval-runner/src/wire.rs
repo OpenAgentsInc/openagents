@@ -130,7 +130,7 @@ impl Blobs for Bucket {
         let mut file = tempfile::NamedTempFile::new().map_err(|error| error.to_string())?;
         std::io::Write::write_all(&mut file, bytes).map_err(|error| error.to_string())?;
         let out = std::process::Command::new("gcloud")
-            .args(["storage", "cp", "--quiet"])
+            .args(["storage", "cp", "--quiet", "--no-clobber"])
             .arg(file.path())
             .arg(format!("{}/{hex}", self.bucket))
             .arg(format!("--content-type={media}"))
@@ -138,7 +138,9 @@ impl Blobs for Bucket {
             .stdin(std::process::Stdio::null())
             .output()
             .map_err(|error| format!("gcloud: {error}"))?;
-        if !out.status.success() {
+        // The name is the content's digest, so an object already there is
+        // these bytes: a refused overwrite is a success.
+        if !out.status.success() && !self.read.inner()?.has(&digest) {
             let stderr = String::from_utf8_lossy(&out.stderr);
             return Err(format!(
                 "the bucket refused {hex}: {}",
