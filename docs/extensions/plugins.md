@@ -219,6 +219,27 @@ The following aren't built yet:
   [interoperability suite](../coder/verification/2026-09-22-relay-interoperability.md)
   locates a guest over a relay and runs it, but only in a test.
 
+### Extension evals
+
+[Extension evaluation](evaluation.md) is built and live
+([#9931](https://github.com/OpenAgentsInc/openagents/issues/9931)). It
+measures whether an extension changes what Coder does, with and without it:
+
+- `crates/ext-eval` is the engine and runner, and `openagents ext eval run
+  | init | publish | check` is its CLI. Each run is one confined `coder -p`
+  turn, and the Gym gate `ext-eval-v2` gives the verdict.
+- `crates/eval-runner` is the hosted runner that runs a test set for the
+  phone on our computers ([runbook](../deployment/eval-runner.md)).
+- The three [evidence guests](#evidence-guests) are the app's catalog
+  tools: Project map (Repository map), Code finder (Code search), and Test
+  reader (Test report). Each has a starter test set of six tests. On
+  2026-09-29, Coder passed 2 of 6 without each tool and 5, 4, and 5 of 6
+  with it (**Better** each time), and another trainer's check confirmed
+  each result ([live record](measurements/2026-09-29-hosted-runner-live.md)).
+- A tool made in chat is a skill, optionally with catalog tools turned on;
+  `CODER_GUIDANCE` and its digest carry the skill into a run. A tool that
+  needs new code is built with Coder on a connected computer.
+
 ## Evidence guests
 
 The pre-reset Coder evidence plugins, removed in `dabc08102f`, went unused

@@ -2,8 +2,10 @@
 
 Status: target specification, partly implemented. The Wasm plugin host
 core and the program `program` and `module` steps are built;
-[extension evaluation](evaluation.md) is specified (revision 2) and
-planned in epic [#9931](https://github.com/OpenAgentsInc/openagents/issues/9931);
+[extension evaluation](evaluation.md) (revision 2) is built and live in
+build 21, from epic [#9931](https://github.com/OpenAgentsInc/openagents/issues/9931):
+the engine, the CLI, the hosted runner, the chat interview, credit, and the
+phone's eval loop;
 [What is built](plugins.md#what-is-built) lists the plugin parts.
 OpenAgents defines general agent infrastructure; Coder is its first
 specialization. Programs compose typed work. Extensions

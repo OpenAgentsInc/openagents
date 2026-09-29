@@ -1,7 +1,44 @@
 # Extension evaluation
 
-Status: target specification, revision 2 (2026-09-28). Parts are built,
-as the *Built* notes in their sections say. It builds on parts that exist: the Wasm host core and
+Status: revision 2 (2026-09-28), implemented for v1 and live in build 21
+(checked 2026-09-29). What is built:
+
+- **The engine** (`crates/ext-eval`): cases, graders, scoring, the
+  `ext-eval-v2` gate (`crates/gym/gates/ext-eval-v2.json`), and
+  `report.json`/`report.html`
+  ([#9933](https://github.com/OpenAgentsInc/openagents/issues/9933)).
+- **The runner and CLI**: confined `coder -p` runs in both arms and
+  `openagents ext eval run | init | publish | check`
+  ([#9934](https://github.com/OpenAgentsInc/openagents/issues/9934);
+  [live record](measurements/2026-09-29-ext-eval-runner-live.md)).
+- **The hosted runner** (`crates/eval-runner`, on `coderos-4080`) and the
+  starter test sets for Project map, Code finder, and Test reader
+  ([#9935](https://github.com/OpenAgentsInc/openagents/issues/9935);
+  [runbook](../deployment/eval-runner.md),
+  [live results](measurements/2026-09-29-hosted-runner-live.md)).
+- **The authoring interview**, in a terminal and in chat
+  (`crates/ext-eval/src/author/`, `crates/coder/src/eval_author.rs`;
+  [#9937](https://github.com/OpenAgentsInc/openagents/issues/9937),
+  [#9945](https://github.com/OpenAgentsInc/openagents/issues/9945);
+  [live record](measurements/2026-09-29-authoring-interview-live.md)).
+- **Chat**: `chat-router-v2`'s Gym and eval routes, the Gym's records,
+  cards, and offers
+  ([#9936](https://github.com/OpenAgentsInc/openagents/issues/9936);
+  [measurement](../coder/measurements/2026-09-29-chat-router-v2.md)).
+- **Credit**: the `eval-check` and `eval-adopt` rules, the XP referee on
+  `coderos-4080`, the ledger, and the adoption tool
+  ([#9938](https://github.com/OpenAgentsInc/openagents/issues/9938)). The
+  first live awards are in the hosted runner record; no adoption has been
+  made yet.
+- **The phone**: the menu, the first run, `CARD-01` to `CARD-07`, the
+  sheets, and a real test from chat to XP
+  ([#9939](https://github.com/OpenAgentsInc/openagents/issues/9939);
+  [simulator record](../../bins/openagents-ios/verification/2026-09-29-evals-in-chat/README.md)).
+- **The Verse**: the EVALS board and agents comparing notes
+  ([#9942](https://github.com/OpenAgentsInc/openagents/issues/9942);
+  [the Gym building](../verse/gym.md#the-evals-board-and-agents-comparing-notes)).
+
+The *Built* notes in each section give the details. It builds on parts that exist: the Wasm host core and
 its invocation receipts (`crates/plugin`), the three evidence guests, the
 local package resolver and locks (`crates/coder/src/package.rs`), the
 program runtime (`crates/coder/src/runtime.rs`), the headless `coder -p`
@@ -728,7 +765,8 @@ adds profiles and rules, and no new kinds.
 
 ## Later
 
-These are specified in outline and deliberately not in v1:
+These are specified in outline and deliberately not in v1, except where
+a note says a first version shipped:
 
 - **The Gym in the Verse as a social place.** The Gym building keeps its
   boards for reviewing results. Later, trainers' agents in the Gym compare
@@ -783,18 +821,18 @@ These are specified in outline and deliberately not in v1:
 Epic [#9931](https://github.com/OpenAgentsInc/openagents/issues/9931)
 splits this page into parallel issues, each owning its files:
 
-| Wave | Issue | Scope |
-| --- | --- | --- |
-| 1 | [#9932](https://github.com/OpenAgentsInc/openagents/issues/9932) | Wire formats in the NIPs and `crates/nostr` |
-| 1 | [#9933](https://github.com/OpenAgentsInc/openagents/issues/9933) | The engine: cases, graders, scoring, the gate, the report |
-| 1, 2 | [#9936](https://github.com/OpenAgentsInc/openagents/issues/9936) | Chat routes, the Gym knowledge source, cards, and offers |
-| 1 | [#9940](https://github.com/OpenAgentsInc/openagents/issues/9940) | OpenAgents Mockup to wireframe revision 3 |
-| 2 | [#9934](https://github.com/OpenAgentsInc/openagents/issues/9934) | The runner, the sandbox, and `openagents ext eval` |
-| 2 | [#9937](https://github.com/OpenAgentsInc/openagents/issues/9937) | The authoring interview, in a terminal and in chat |
-| 2 | [#9938](https://github.com/OpenAgentsInc/openagents/issues/9938) | Credit: the referee, the ledger, and adoption |
-| 2 | [#9935](https://github.com/OpenAgentsInc/openagents/issues/9935) | The hosted runner and the starter test sets |
-| 3 | [#9939](https://github.com/OpenAgentsInc/openagents/issues/9939) | The phone: cards, sheets, the hub, and the first run |
-| 3 | [#9941](https://github.com/OpenAgentsInc/openagents/issues/9941) | Docs, the lo-fi round, and end-to-end verification before build 21 |
+| Wave | Issue | Scope | Status |
+| --- | --- | --- | --- |
+| 1 | [#9932](https://github.com/OpenAgentsInc/openagents/issues/9932) | Wire formats in the NIPs and `crates/nostr` | Done (`70d9e18b6f`) |
+| 1 | [#9933](https://github.com/OpenAgentsInc/openagents/issues/9933) | The engine: cases, graders, scoring, the gate, the report | Done (`6488f2d948`) |
+| 1, 2 | [#9936](https://github.com/OpenAgentsInc/openagents/issues/9936) | Chat routes, the Gym knowledge source, cards, and offers | Done (`06e471070e`, `17c7484f9f`), deployed |
+| 1 | [#9940](https://github.com/OpenAgentsInc/openagents/issues/9940) | OpenAgents Mockup to wireframe revision 3 | Done (`b4c6e5f6ab`) |
+| 2 | [#9934](https://github.com/OpenAgentsInc/openagents/issues/9934) | The runner, the sandbox, and `openagents ext eval` | Done (`1dacf36b83`) |
+| 2 | [#9937](https://github.com/OpenAgentsInc/openagents/issues/9937) | The authoring interview, in a terminal and in chat | Done (`3353ef25f6`; [#9945](https://github.com/OpenAgentsInc/openagents/issues/9945) fix `ebaa2af04a`) |
+| 2 | [#9938](https://github.com/OpenAgentsInc/openagents/issues/9938) | Credit: the referee, the ledger, and adoption | Done (`9387ebb45b`), referee live |
+| 2 | [#9935](https://github.com/OpenAgentsInc/openagents/issues/9935) | The hosted runner and the starter test sets | Done (`3c0e8ea7e5` to `a49ff9d992`), deployed |
+| 3 | [#9939](https://github.com/OpenAgentsInc/openagents/issues/9939) | The phone: cards, sheets, the hub, and the first run | Done (`59b6908044` to `caf14e1a3b`) |
+| 3 | [#9941](https://github.com/OpenAgentsInc/openagents/issues/9941) | Docs, the lo-fi round, and end-to-end verification before build 21 | In progress |
 
 [#9942](https://github.com/OpenAgentsInc/openagents/issues/9942) holds
 [Later](#later)'s Gym in the Verse. The
