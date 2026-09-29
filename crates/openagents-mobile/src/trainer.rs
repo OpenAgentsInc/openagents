@@ -549,6 +549,91 @@ impl Trainer {
         }
     }
 
+    /// The Gym's view of this trainer from the ledger: name, level, XP,
+    /// titles, what they made, and the eval-check quest's shares when a
+    /// trusted quest states them. It starts the reader when none runs.
+    pub(crate) fn standing(&mut self, secret: &SecretKey) -> crate::gym::Standing {
+        let (key, _) = secret.x_only_public_key(&Secp256k1::new());
+        let public_hex = key.to_string();
+        if !self.preview {
+            let board = self.board.get_or_insert_with(|| {
+                Board::start_with(
+                    ::verse::session::PUBLIC_RELAY,
+                    ::verse::xp::openagents_trust(),
+                    None,
+                    nostr::domain::RelaySigner::from_secret_hex(
+                        &secret.display_secret().to_string(),
+                    )
+                    .ok(),
+                )
+            });
+            board.tick();
+            if let Some(snapshot) = board.snapshot.take() {
+                self.snapshot = Some(snapshot);
+            }
+        }
+        let name = crate::eval_cards::trainer_name(&public_hex);
+        let Some(snapshot) = self.snapshot.as_ref() else {
+            return crate::gym::Standing {
+                name,
+                public_hex,
+                ..crate::gym::Standing::default()
+            };
+        };
+        let keys = ::verse::xp::trainer_keys(snapshot, &public_hex);
+        let card = ::verse::xp::card(snapshot, &keys);
+        let made = ::verse::xp::made(snapshot, &keys);
+        let level = ::verse::xp::level_of(card.xp);
+        let share = |role: &str| {
+            snapshot
+                .quests
+                .iter()
+                .find(|q| q.trusted && q.rule == nostr::xp::EVAL_CHECK)
+                .and_then(|q| q.split.iter().find(|(r, _)| r == role).map(|(_, xp)| *xp))
+        };
+        let row = |r: &xp_ledger::eval::MadeResult, check: bool| crate::gym::MadeRow {
+            id: r.id.clone(),
+            verdict: r.verdict.clone(),
+            confirmed_by: r.confirmed_by,
+            standing: serde_json::to_value(r.standing)
+                .ok()
+                .and_then(|v| v.as_str().map(str::to_owned))
+                .unwrap_or_default(),
+            xp: r.xp,
+            check,
+        };
+        crate::gym::Standing {
+            name,
+            public_hex,
+            read: true,
+            xp: card.xp,
+            level,
+            level_at: ::verse::xp::xp_to_reach(level),
+            next_at: ::verse::xp::xp_to_reach(level + 1),
+            titles: card.titles.clone(),
+            suites: made
+                .suites
+                .iter()
+                .map(|s| (s.release.clone(), s.results, s.xp))
+                .collect(),
+            results: made
+                .results
+                .iter()
+                .map(|r| row(r, false))
+                .chain(made.checks.iter().map(|r| row(r, true)))
+                .collect(),
+            adoptions: made
+                .adoptions
+                .iter()
+                .map(|c| (c.title.clone(), c.xp))
+                .collect(),
+            pending: made.pending,
+            eval_xp: made.xp,
+            checker_xp: share("checker"),
+            evaluator_xp: share("evaluator"),
+        }
+    }
+
     /// Answers a `trainer` request for the world key `secret_hex`.
     ///
     /// # Errors

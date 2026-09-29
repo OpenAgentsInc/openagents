@@ -189,6 +189,12 @@ pub enum Intent {
     /// Send the wrong-answer report the chat showed.
     SendWrongAnswer,
     CancelWrongAnswer,
+    /// Back to the main menu, or to step 1 of the first run.
+    Hub,
+    /// Start a new chat with a starter's words.
+    Starter {
+        text: String,
+    },
 }
 
 /// A screen of another tab the host should show, once, or something the
@@ -212,6 +218,9 @@ pub enum Go {
     /// The Verse tab, walked into the Gym before its EVALS board: the host
     /// sends the world `go_evals`.
     VerseGym,
+    /// The chat tab's own screens changed (menu, chat, or first run): the
+    /// host shows the one `gym.screen` names.
+    Gym,
 }
 
 impl Go {
@@ -223,6 +232,8 @@ impl Go {
             Screen::Playtest => Go::Playtest,
             Screen::Report => Go::Report,
             Screen::VerseGym => Go::VerseGym,
+            // The Gym's sheets open inside the chat.
+            Screen::GymResult | Screen::GymPublish | Screen::GymTestSet => Go::Gym,
         }
     }
 }
@@ -424,6 +435,10 @@ pub struct CoderTab {
     /// time, and `!run` (the first offered command) or `!wrong` (Wrong
     /// answer) steps.
     script: std::collections::VecDeque<String>,
+    /// The Gym in chat: cards, sheets, runs, the menu, and the first run.
+    pub(crate) gym: crate::gym::Gym,
+    /// Text the next composer puts in its field, as **Change it** does.
+    compose: Option<String>,
 }
 
 /// The most turns an open basic conversation shows at first.
@@ -462,7 +477,15 @@ impl CoderTab {
             flag: None,
             flagged: None,
             script: std::collections::VecDeque::new(),
+            gym: crate::gym::Gym::empty(),
+            compose: None,
         }
+    }
+
+    /// Keep the Gym's state in `gym`.
+    pub(crate) fn with_gym(mut self, gym: crate::gym::Gym) -> Self {
+        self.gym = gym;
+        self
     }
 
     /// Play `steps` in the chat at launch, for simulator screenshots.
@@ -500,7 +523,8 @@ impl CoderTab {
                 }
             }
             (text, talk) => {
-                self.basic.set_context(self.router_context(computers));
+                let context = self.router_context(computers);
+                self.basic.set_context(context);
                 match talk {
                     Some(id) => {
                         self.basic.send(&id, text, now);
@@ -605,10 +629,21 @@ impl CoderTab {
 
     /// What the next basic turn tells the worker: whether a computer is
     /// ready, and the build. No computer's name or workspace.
-    fn router_context(&self, computers: Option<&Computers>) -> Context {
+    /// It also carries the open chat's test-set draft and its last try,
+    /// which only the phone keeps.
+    fn router_context(&mut self, computers: Option<&Computers>) -> Context {
+        let (draft, tried) = match self.talk.clone() {
+            Some(id) => {
+                let turns = self.basic.turns(&id).to_vec();
+                self.gym.context_for(&id, &turns)
+            }
+            None => (None, None),
+        };
         Context {
             computer_ready: matches!(self.availability(computers), Availability::Ready(_)),
             app_build: self.app_build.clone(),
+            draft,
+            tried,
         }
     }
 
@@ -1071,8 +1106,8 @@ impl CoderTab {
                 self.target = Some(true);
             }
             Intent::Retry => {
-                self.basic
-                    .set_context(self.router_context(computers.as_deref()));
+                let context = self.router_context(computers.as_deref());
+                self.basic.set_context(context);
                 if let Some(id) = &self.talk {
                     self.basic.retry(id);
                 }
@@ -1086,7 +1121,38 @@ impl CoderTab {
                     .and_then(|id| self.basic.last_meta(id))
                     .is_some_and(|meta| meta.offers.contains(&Offer::OpenScreen { screen }));
                 if offered {
-                    self.go = Some(Go::of(screen));
+                    match screen {
+                        Screen::GymPublish => {
+                            if let Some(run) = self.gym.latest_result().map(|r| r.id.clone()) {
+                                self.gym.sheet = Some(crate::gym::Sheet::Publish { run });
+                            }
+                        }
+                        Screen::GymResult => {
+                            if let Some(run) = self.gym.latest_result().map(|r| r.id.clone()) {
+                                self.gym.sheet = Some(crate::gym::Sheet::Result { run });
+                            }
+                        }
+                        Screen::GymTestSet => {
+                            let id = self.talk.clone();
+                            let draft = id
+                                .as_ref()
+                                .and_then(|id| crate::gym::Gym::draft_of(self.basic.turns(id)));
+                            let source = match (draft, id) {
+                                (Some(_), Some(talk)) => {
+                                    Some(crate::eval_cards::TestSetSource::Draft { talk })
+                                }
+                                _ => self.gym.latest_result().map(|run| {
+                                    crate::eval_cards::TestSetSource::Run {
+                                        run: run.id.clone(),
+                                    }
+                                }),
+                            };
+                            if let Some(source) = source {
+                                self.gym.sheet = Some(crate::gym::Sheet::TestSet(source));
+                            }
+                        }
+                        _ => self.go = Some(Go::of(screen)),
+                    }
                 }
             }
             Intent::Followup { index } => {
@@ -1098,8 +1164,8 @@ impl CoderTab {
                 else {
                     return;
                 };
-                self.basic
-                    .set_context(self.router_context(computers.as_deref()));
+                let context = self.router_context(computers.as_deref());
+                self.basic.set_context(context);
                 if self.basic.send(&id, &followup.label, unix_now()) {
                     self.notice = None;
                 }
@@ -1123,6 +1189,8 @@ impl CoderTab {
                 }
             }
             Intent::CancelWrongAnswer => self.flag = None,
+            Intent::Hub => self.hub(),
+            Intent::Starter { text } => self.start_talk(&text, computers.as_deref()),
             Intent::SendWrongAnswer => {
                 let Some((id, Flag::Confirm)) = self.flag.clone() else {
                     return;
@@ -1225,6 +1293,358 @@ impl CoderTab {
                 self.edit_queue(QueueEdit::Reorder { commands: order }, computers);
             }
         }
+    }
+
+    /// Back to the main menu, or, before Coder is chosen, to step 1. The
+    /// first-run chat has no way back until its first result.
+    fn hub(&mut self) {
+        use crate::gym::FirstRun;
+        match self.gym.first_run() {
+            FirstRun::Choose => self.gym.set_asked_first(false),
+            FirstRun::Chat if self.gym.first_result().is_none() => return,
+            FirstRun::Chat => {
+                self.gym.set_first_run(FirstRun::Done);
+                self.gym.on_menu = true;
+            }
+            FirstRun::EndCard => return,
+            FirstRun::Done => self.gym.on_menu = true,
+        }
+        self.keep(true);
+        self.open = None;
+        self.talk = None;
+        self.drawer = false;
+        self.notice = None;
+        self.go = Some(Go::Gym);
+    }
+
+    /// A new chat with OpenAgents, starting with `text`.
+    fn start_talk(&mut self, text: &str, computers: Option<&Computers>) {
+        self.keep(true);
+        self.open = None;
+        self.drawer = false;
+        self.talk = None;
+        let context = self.router_context(computers);
+        self.basic.set_context(context);
+        if let Some(id) = self.basic.start(text, unix_now()) {
+            self.composers += 1;
+            self.notice = None;
+            self.talk_turns = TALK_TURNS;
+            self.talk = Some(id);
+        }
+    }
+
+    /// The back button an open chat's header starts with: to the menu, or
+    /// to step 1 before Coder is chosen. None in the first-run chat before
+    /// its first result.
+    fn back_button(&self) -> Option<Node<Intent>> {
+        use crate::gym::FirstRun;
+        let label = match self.gym.first_run() {
+            FirstRun::Choose => "Back",
+            FirstRun::Chat if self.gym.first_result().is_none() => return None,
+            FirstRun::EndCard => return None,
+            FirstRun::Chat | FirstRun::Done => "Menu",
+        };
+        Some(icon_button(
+            "coder-back",
+            label,
+            Glyph::Back,
+            true,
+            Intent::Hub,
+        ))
+    }
+
+    /// A ready computer's name, where a run may go.
+    fn ready_computer<'a>(&self, computers: Option<&'a Computers>) -> Option<&'a HostRecord> {
+        match self.availability(computers) {
+            Availability::Ready(host) => Some(host),
+            _ => None,
+        }
+    }
+
+    /// A tap on a Gym button: a card's, a sheet's, the menu's, or the first
+    /// run's. Only an ID the last view minted does anything.
+    pub(crate) fn gym_tap(
+        &mut self,
+        id: &str,
+        mut computers: Option<&mut Computers>,
+        chats: &mut Chats,
+    ) {
+        use crate::eval_cards::Action;
+        use crate::gym::{Effect, FirstRun, Sheet};
+        let Some(action) = self.gym.actions.get(id).cloned() else {
+            return;
+        };
+        let computer = self
+            .ready_computer(computers.as_deref())
+            .map(|host| host.label.clone());
+        let effect = match action {
+            Action::Start {
+                talk,
+                turn,
+                offer,
+                tool,
+                purpose,
+            } => {
+                let draft = crate::gym::Gym::draft_of(self.basic.turns(&talk));
+                self.gym.start(
+                    &talk,
+                    turn,
+                    &offer,
+                    &tool,
+                    purpose,
+                    draft,
+                    computer.as_deref(),
+                    None,
+                )
+            }
+            Action::Stop { run } => {
+                self.gym.sheet = Some(Sheet::Stop { run });
+                Effect::None
+            }
+            Action::ConfirmStop { run } => {
+                self.gym.sheet = None;
+                self.gym.stop(&run)
+            }
+            Action::Retry { run } => self.gym.again(&run, computer.as_deref(), false),
+            Action::FullRun { run } => {
+                self.gym.sheet = None;
+                self.gym.again(&run, computer.as_deref(), true)
+            }
+            Action::Details { run } => {
+                self.gym.sheet = Some(Sheet::Result { run });
+                Effect::None
+            }
+            Action::TestSet { source } => {
+                self.gym.sheet = Some(Sheet::TestSet(source));
+                Effect::None
+            }
+            Action::Publish { run } => {
+                self.gym.sheet = Some(Sheet::Publish { run });
+                Effect::None
+            }
+            Action::ConfirmPublish { run } => self.gym.publish(&run),
+            Action::CloseSheet | Action::Nice => {
+                let closing = self.gym.sheet.take();
+                // FLOW-01: after the first result, Add to the Gym or Not
+                // now ends the guided path at the menu.
+                if matches!(closing, Some(Sheet::Publish { .. }))
+                    && self.gym.first_run() == FirstRun::Chat
+                    && self.gym.first_result().is_some()
+                {
+                    self.hub();
+                }
+                Effect::None
+            }
+            Action::LooksGood { talk } => {
+                self.gym.sheet = None;
+                Effect::Say {
+                    talk,
+                    text: crate::gym::LOOKS_GOOD.into(),
+                }
+            }
+            Action::ChangeIt { .. } => Effect::Compose {
+                text: crate::gym::CHANGE.into(),
+            },
+            Action::Say { text, fresh } => {
+                self.gym.sheet = None;
+                match (&self.talk, fresh) {
+                    (Some(talk), false) => Effect::Say {
+                        talk: talk.clone(),
+                        text,
+                    },
+                    _ => Effect::Fresh { text },
+                }
+            }
+            Action::OpenCoder { host, task } => Effect::OpenCoder { host, task },
+            Action::ConnectComputer => Effect::ConnectComputer,
+            Action::Share { text } => {
+                self.gym.share(text);
+                Effect::None
+            }
+            Action::Chat => {
+                self.gym.sheet = None;
+                self.gym.credit_seen();
+                Effect::OpenChat {
+                    talk: self.gym.active().map(|run| run.talk.clone()),
+                }
+            }
+            Action::Profile => {
+                self.gym.sheet = Some(Sheet::Profile);
+                Effect::None
+            }
+            Action::VerseGym => Effect::VerseGym,
+            Action::ChooseCoder => {
+                self.gym.set_first_run(FirstRun::EndCard);
+                Effect::None
+            }
+            Action::LetsGo => {
+                self.gym.set_first_run(FirstRun::Chat);
+                Effect::Fresh {
+                    text: crate::first_run::FIRST_MESSAGE.into(),
+                }
+            }
+            Action::AskFirst => {
+                self.gym.set_asked_first(true);
+                Effect::None
+            }
+            Action::SkipFirstRun => {
+                self.gym.set_first_run(FirstRun::Done);
+                Effect::Menu
+            }
+        };
+        let first_chat = matches!(effect, Effect::Fresh { .. })
+            && self.gym.first_run() == FirstRun::Chat
+            && self.gym.first_talk().is_none();
+        match effect {
+            Effect::None => {}
+            Effect::Say { talk, text } => {
+                if self.talk.as_deref() != Some(talk.as_str()) {
+                    self.open = None;
+                    self.drawer = false;
+                    self.talk = Some(talk.clone());
+                }
+                let context = self.router_context(computers.as_deref());
+                self.basic.set_context(context);
+                if self.basic.send(&talk, &text, unix_now()) {
+                    self.composers += 1;
+                    self.notice = None;
+                }
+            }
+            Effect::Fresh { text } => {
+                self.gym.on_menu = false;
+                self.start_talk(&text, computers.as_deref());
+                if first_chat && let Some(talk) = self.talk.clone() {
+                    self.gym.set_first_talk(&talk);
+                }
+            }
+            Effect::Compose { text } => {
+                self.compose = Some(text);
+                self.composers += 1;
+            }
+            Effect::Computer { run, prompt } => {
+                let started = match computers.as_deref_mut() {
+                    Some(computers) => self.start_run_task(&prompt, computers),
+                    None => Err("Connect a computer to run this.".into()),
+                };
+                self.gym.on_computer(&run, started);
+            }
+            Effect::Command {
+                host,
+                task,
+                text,
+                stop,
+            } => {
+                if let Some(computers) = computers.as_deref_mut() {
+                    self.task_command(&host, &task, &text, stop, computers);
+                }
+            }
+            Effect::OpenCoder { host, task } => {
+                self.gym.sheet = None;
+                self.drawer = false;
+                self.talk = None;
+                self.open(host, task, chats);
+            }
+            Effect::ConnectComputer => self.go = Some(Go::Computers),
+            Effect::OpenChat { talk } => {
+                self.gym.on_menu = false;
+                self.open = None;
+                self.drawer = false;
+                self.talk = talk;
+                self.composers += 1;
+            }
+            Effect::Menu => self.hub(),
+            Effect::VerseGym => self.go = Some(Go::VerseGym),
+        }
+        if self.go.is_none() {
+            self.go = Some(Go::Gym);
+        }
+        let _ = computers;
+    }
+
+    /// A Coder task on the ready computer that runs a test set, for a
+    /// computer run: its host, the computer's name, and the task.
+    fn start_run_task(
+        &mut self,
+        prompt: &str,
+        computers: &mut Computers,
+    ) -> Result<(String, String, String), String> {
+        let host = match self.availability(Some(computers)) {
+            Availability::Ready(host) => host.key.clone(),
+            Availability::Connecting(host) => {
+                return Err(format!(
+                    "{} is still connecting. Try again in a moment.",
+                    host.label
+                ));
+            }
+            Availability::Offline(host) => {
+                return Err(format!(
+                    "{} is offline. Try again when it's back online.",
+                    host.label
+                ));
+            }
+            Availability::NotConfigured => return Err("Connect a computer to run this.".into()),
+        };
+        if computers
+            .snapshot()
+            .host(&host)
+            .and_then(|record| self.workspace(record))
+            .is_none()
+        {
+            computers
+                .refresh_workspaces(&host)
+                .map_err(|refusal| refusal.reason())?;
+        }
+        let record = computers
+            .snapshot()
+            .host(&host)
+            .ok_or("That computer isn't on this phone anymore.")?;
+        let label = record.label.clone();
+        let workspace = self
+            .workspace(record)
+            .ok_or_else(|| format!("{label} lists no workspace for Coder yet."))?;
+        let task = computers
+            .start_task(&host, &workspace, prompt)
+            .map_err(|refusal| refusal.reason())?;
+        let now = computers.snapshot().now;
+        self.list
+            .list
+            .titles
+            .insert(task.clone(), "Testing a tool".into());
+        self.list.list.sent.insert(task.clone(), now);
+        self.list.save();
+        Ok((host, label, task))
+    }
+
+    /// Send `text` to a run's Coder task: a follow-up in its finished chat,
+    /// or, with `stop`, an interrupt.
+    fn task_command(
+        &mut self,
+        host: &str,
+        task: &str,
+        text: &str,
+        stop: bool,
+        computers: &mut Computers,
+    ) {
+        let based_on =
+            Self::summary(computers.snapshot(), host, task).map_or(1, |summary| summary.sequence);
+        let now = computers.snapshot().now;
+        let draft = Draft {
+            task,
+            action: if stop {
+                CommandAction::Interrupt
+            } else {
+                CommandAction::Send
+            },
+            based_on,
+            text,
+            emulate: false,
+        };
+        if self.outbox.push(host, draft, now).is_none() {
+            self.gym.notice =
+                Some("Too many messages are waiting to send. Try again later.".into());
+            return;
+        }
+        self.flush(Some(computers));
     }
 
     fn open(&mut self, host: String, task: String, chats: &mut Chats) {
@@ -1424,12 +1844,14 @@ impl CoderTab {
             return;
         }
         // A basic conversation, open or new, needs no computer.
-        self.basic
-            .set_context(self.router_context(computers.as_deref()));
+        let context = self.router_context(computers.as_deref());
+        self.basic.set_context(context);
         if let Some(id) = self.talk.clone() {
             if self.basic.send(&id, prompt, unix_now()) {
                 self.composers += 1;
                 self.notice = None;
+                self.compose = None;
+                self.gym.notice = None;
             }
             return;
         }
@@ -1672,6 +2094,24 @@ impl CoderTab {
         }
         self.basic.settle(unix_now());
         self.poll_cli();
+        self.gym.begin();
+        let phase = |host: &str, task: &str| {
+            computers
+                .and_then(|c| Self::summary(c.snapshot(), host, task))
+                .map(|summary| summary.phase)
+        };
+        self.gym.settle(&phase);
+        self.gym.level_up();
+        // FLOW-01: the first-run chat reopens where it was.
+        if self.gym.first_run() == crate::gym::FirstRun::Chat
+            && self.open.is_none()
+            && self.talk.is_none()
+            && !self.drawer
+            && let Some(first) = self.gym.first_talk().map(str::to_owned)
+            && self.basic.get(&first).is_some()
+        {
+            self.talk = Some(first);
+        }
         self.play(computers);
         self.follow(computers, chats);
         self.settle_echoes(computers.map_or_else(unix_now, |c| c.snapshot().now));
@@ -1732,6 +2172,30 @@ impl CoderTab {
         self.current = Some(view);
         self.choices = self.current_choices(computers);
         value
+    }
+
+    /// The Gym's part of the app packet: which of the chat tab's screens
+    /// shows, the cards the last render drew, the sheet, the menu, and the
+    /// first run. Call it after [`CoderTab::render`], whose cards it
+    /// carries.
+    pub(crate) fn gym_view(&mut self) -> crate::gym::View {
+        let draft = self
+            .gym
+            .sheet_talk()
+            .map(str::to_owned)
+            .and_then(|talk| crate::gym::Gym::draft_of(self.basic.turns(&talk)));
+        let sheet = self.gym.sheet_view(draft);
+        let first_run = crate::first_run::first_run(&mut self.gym);
+        let menu = crate::first_run::menu(&mut self.gym, self.app_build.as_deref());
+        crate::gym::View {
+            screen: crate::first_run::screen(&self.gym),
+            first_run,
+            menu,
+            cards: self.gym.cards().clone(),
+            sheet,
+            share: self.gym.take_share(),
+            live: self.gym.active().is_some(),
+        }
     }
 
     /// The choices the open chat's composer offers now, with their tokens.
@@ -1939,20 +2403,20 @@ impl CoderTab {
         };
         let mut selector = pill("coder-target", &clip(&target, 30), glyph, Intent::Pick);
         selector.style.align = Some(TextAlign::End);
-        let mut children = vec![header(
-            "coder-header",
-            vec![
-                icon_button(
-                    "coder-menu",
-                    "Previous chats",
-                    Glyph::Menu,
-                    true,
-                    Intent::Menu,
-                ),
-                heading("coder-title", "OpenAgents"),
-                selector,
-            ],
-        )];
+        let mut top = vec![];
+        top.extend(self.back_button());
+        top.extend([
+            icon_button(
+                "coder-menu",
+                "Previous chats",
+                Glyph::Menu,
+                true,
+                Intent::Menu,
+            ),
+            heading("coder-title", "OpenAgents"),
+            selector,
+        ]);
+        let mut children = vec![header("coder-header", top)];
         if self.picking {
             children.push(self.targets(computers, on_computer));
         }
@@ -1965,6 +2429,14 @@ impl CoderTab {
         };
         if let Some(notice) = &self.notice {
             children.push(status("coder-notice", notice));
+        }
+        // What the empty chat is for, in two lines (`SCR-15.E05`).
+        if !self.picking && !on_computer {
+            children.push(status(
+                "coder-welcome",
+                "Ask us anything. No setup needed. We answer here, and send Coder to your \
+                 computer when a job needs one.",
+            ));
         }
         // An empty conversation fills the screen above the suggestions.
         children.push(node(
@@ -2140,6 +2612,38 @@ impl CoderTab {
                     }),
             );
         }
+        if !on_computer {
+            // A first chat ever: first-time questions, each answered at once.
+            if self.basic.list().is_empty() {
+                for (n, question) in crate::first_run::FIRST_QUESTIONS.iter().enumerate() {
+                    chips.push((
+                        format!("first:{n}"),
+                        pill(
+                            &format!("coder-first-{n}"),
+                            question,
+                            Glyph::Ask,
+                            Intent::Starter {
+                                text: (*question).to_owned(),
+                            },
+                        ),
+                    ));
+                }
+            }
+            // The Gym's starters: each opens a chat with its question sent.
+            for (id, label, message) in crate::first_run::STARTERS {
+                chips.push((
+                    format!("starter:{id}"),
+                    pill(
+                        &format!("coder-starter-{id}"),
+                        label,
+                        Glyph::Ask,
+                        Intent::Starter {
+                            text: (*message).to_owned(),
+                        },
+                    ),
+                ));
+            }
+        }
         if matches!(availability, Availability::NotConfigured) {
             chips.push((
                 "connect".into(),
@@ -2177,8 +2681,14 @@ impl CoderTab {
         let busy = self.basic.busy(id);
         let tail = self.basic.tail(id);
         let limit = self.talk_turns;
+        let mut header = chat_header(status("coder-chat-place", "OpenAgents"));
+        if let Some(back) = self.back_button()
+            && let Element::Stack { children, .. } = &mut header.element
+        {
+            children.insert(0, back);
+        }
         let turns = self.basic.turns(id);
-        let mut children = vec![chat_header(status("coder-chat-place", "OpenAgents"))];
+        let mut children = vec![header];
         if let Some(notice) = &self.notice {
             children.push(status("coder-notice", notice));
         }
@@ -2245,6 +2755,22 @@ impl CoderTab {
                 vec![button("talk-retry", "Try again", Intent::Retry)],
             ));
         }
+        // The Gym's cards under the newest reply: each a surface the host
+        // draws from the packet's `gym.cards`, by ID.
+        let here = crate::gym::Here { busy };
+        let kept = self.basic.turns(id).to_vec();
+        for card in self.gym.cards_for(id, &kept, &here) {
+            children.push(node(
+                &format!("gym-card-{card}"),
+                Element::Surface {
+                    resource: format!("gym-card:{card}"),
+                    label: "Card".into(),
+                },
+            ));
+        }
+        if let Some(notice) = self.gym.notice.clone() {
+            children.push(status("gym-notice", &notice));
+        }
         // Coder on a computer: the task this conversation started, and a way
         // to start one, or to connect a computer first.
         let spawned = summary.as_ref().and_then(|summary| summary.coder.clone());
@@ -2305,6 +2831,12 @@ impl CoderTab {
             let Offer::OpenScreen { screen } = offer else {
                 continue;
             };
+            // The person's own result is a card; Add to the Gym needs one.
+            if *screen == Screen::GymResult
+                || (*screen == Screen::GymPublish && self.gym.latest_result().is_none())
+            {
+                continue;
+            }
             let connecting =
                 *screen == Screen::Computers && matches!(availability, Availability::NotConfigured);
             if connecting && judged {
@@ -2348,13 +2880,15 @@ impl CoderTab {
                 children.extend(self.wrong_answer(id));
             }
         }
+        let compose = self.compose.clone();
+        let focus = compose.is_some();
         children.push(self.composer_with(
             "Message OpenAgents".to_owned(),
             true,
             busy,
             &[],
-            None,
-            false,
+            compose,
+            focus,
         ));
         page(children)
     }
@@ -2406,7 +2940,10 @@ impl CoderTab {
                     ));
                 }
                 CliOutcome::Running(label) => {
-                    children.push(status(&format!("{key}-running"), &format!("Running on {label}…")));
+                    children.push(status(
+                        &format!("{key}-running"),
+                        &format!("Running on {label}…"),
+                    ));
                 }
                 CliOutcome::Refused(why) => children.push(status(&format!("{key}-why"), why)),
             },
@@ -3029,6 +3566,9 @@ fn screen_chip(screen: Screen, connecting: bool) -> (&'static str, Glyph) {
         Screen::Playtest => ("Playtest", Glyph::Flag),
         Screen::Report => ("Report a problem", Glyph::Flag),
         Screen::VerseGym => ("See the board", Glyph::Check),
+        Screen::GymResult => ("See your result", Glyph::Check),
+        Screen::GymPublish => ("Add to the Gym", Glyph::Add),
+        Screen::GymTestSet => ("See the tests", Glyph::Ask),
     }
 }
 

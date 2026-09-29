@@ -95,6 +95,9 @@ class VerseSurface(context: Context, private val gymPreview: Boolean, private va
             // Verified copies of the Gym's published results stay in the
             // app's cache between visits.
             config.put("results_cache_directory", context.cacheDir.path)
+            // Compare notes, as the player last left it; off until switched on.
+            config.put("gym_notes", context.getSharedPreferences("verse", Context.MODE_PRIVATE)
+                .getBoolean("gym_notes", false))
             handle = OpenAgentsNative.verseCreate(holder.surface, config.toString())
             check(handle != 0L) { "The world renderer couldn't start on this device." }
             attached = true
@@ -176,6 +179,17 @@ class VerseSurface(context: Context, private val gymPreview: Boolean, private va
             require(result.getJSONArray("position").length() == 3 &&
                 result.getString("camera_mode") in listOf("touch", "motion")) { "Invalid world view." }
             snapshot = result
+            // Rust says whether Compare notes is on; keep it between launches.
+            if (result.has("gym_notes")) {
+                val prefs = context.getSharedPreferences("verse", Context.MODE_PRIVATE)
+                val on = result.optBoolean("gym_notes")
+                if (prefs.getBoolean("gym_notes", false) != on) prefs.edit().putBoolean("gym_notes", on).apply()
+            }
+            // A chat card's See the board asked for the EVALS board.
+            if (pendingEvals && running && request.optString("action") == "frame") {
+                pendingEvals = false
+                post { send(json("action" to "go_evals")) }
+            }
             if (BuildConfig.DEBUG) contentDescription = "Verse world. ${json(
                 "frames" to result.optLong("frames_presented"),
                 "position" to result.getJSONArray("position"),
@@ -221,6 +235,13 @@ class VerseSurface(context: Context, private val gymPreview: Boolean, private va
         changed(result, null)
         return true
     }
+
+    /** Walks into the Gym and opens its EVALS board on the next frame. */
+    fun goToEvals() { pendingEvals = true; if (running) send(json("action" to "go_evals")).also { pendingEvals = it?.optBoolean("evals_open") != true } }
+    private var pendingEvals = false
+
+    /** Sends a choice on the EVALS board to Rust. */
+    fun evals(command: JSONObject) = send(json("action" to "evals", "command" to command))
 
     /** Sends a choice in the results panel to Rust. */
     fun results(command: JSONObject) = send(json("action" to "results", "command" to command))

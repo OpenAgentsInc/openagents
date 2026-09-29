@@ -447,6 +447,16 @@ impl BasicChats {
         }
         match self.failures.get(id) {
             Some(why) => Tail::Failed(why.clone()),
+            // A message whose reply never came, as after a relaunch: it
+            // can be asked again, so the chat never ends on a dead end.
+            None if self
+                .turns
+                .get(id)
+                .and_then(|turns| turns.last())
+                .is_some_and(|turn| turn.role == Role::User) =>
+            {
+                Tail::Failed(basic_coder::Failure::Silent.describe())
+            }
             None => Tail::None,
         }
     }

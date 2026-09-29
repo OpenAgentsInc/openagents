@@ -36,6 +36,38 @@ pub struct Item {
 pub const CHANGELOG: &[Release] = &[
     Release {
         version: "1.0.0",
+        build: "21",
+        title: "Test tools in chat",
+        what_to_test: "On a fresh install, tap Choose Coder, then Let's go, then Start the test, and check the test starts in three taps. From the menu, tap What's new and Check a result. In a chat, say \"Help me make a tool that writes changelog entries\" and answer each step with Looks good or a change. Open Profile to see what you made.",
+        items: &[
+            Item {
+                title: "A menu with chat first",
+                detail: "The Chat tab opens on a menu whose big button is Chat with OpenAgents, with your trainer name, level, and a line that says what to do next. Test a tool, What's new, and Check a result each start a chat with that question.",
+            },
+            Item {
+                title: "Your first test in three taps",
+                detail: "A new install walks you through choosing Coder and testing Project map in chat. If you leave, the app reopens where you were.",
+            },
+            Item {
+                title: "Tests in chat",
+                detail: "Ask which tool to try and chat shows the tool with Start the test. The card shows the test while it runs and the result when it's done: how many tests Coder passed without the tool and with it.",
+            },
+            Item {
+                title: "Make a tool and its tests",
+                detail: "Chat drafts a tool and its tests with you, one step at a time. Tap Looks good to go on or Change it to say what to change, try it once, then run the full test set. The draft stays on your phone.",
+            },
+            Item {
+                title: "Add to the Gym",
+                detail: "Add to the Gym shows exactly what becomes public before anything does. Check another trainer's result from chat, too.",
+            },
+            Item {
+                title: "Your credit",
+                detail: "Ask what you've earned, or open Profile, to see the XP other trainers' checks and Coder's adoptions earned you. XP can't be spent.",
+            },
+        ],
+    },
+    Release {
+        version: "1.0.0",
         build: "20",
         title: "Smarter chat and a simpler Wallet",
         what_to_test: "In a new chat, ask \"Who are you?\", \"Connect to my GitHub\", \"What's the Grid?\", and \"Fix the failing test in my repo\", and tap the offer under a reply (Run Coder, Connect a computer, or a link to a screen). Open the Wallet tab and try Receive and Send. On a prepared reply, tap Wrong answer.",

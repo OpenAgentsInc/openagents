@@ -498,7 +498,7 @@ mod tests {
                 .lock()
                 .unwrap()
                 .iter()
-                .all(|payload| payload["opener"] == true && payload["router"] == "chat-router-v1")
+                .all(|payload| payload["opener"] == true && payload["router"] == "chat-router-v2")
         );
         // In the background the connection closes; the next message opens
         // one again.

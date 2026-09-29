@@ -75,8 +75,25 @@ class MobileBridge(private val context: Context, private val computersFixture: B
             }
         }
         send(json("op" to "snapshot"))
+        gymWorld()
         watchChanges()
     }
+
+    /**
+     * Hands Rust the trainer's Verse world key: it names the trainer on the
+     * menu, reads their XP, and signs their test requests. Rust keeps it in
+     * memory only.
+     */
+    fun gymWorld() {
+        val secret = try { DeviceKey.loadOrCreate(context, DeviceKey.Purpose.WORLD) } catch (_: Exception) { return }
+        send(json("op" to "gym_world", "world_secret_hex" to secret))
+    }
+
+    /** A tap on a Gym button, by the ID Rust gave it. */
+    fun gym(id: String) = send(json("op" to "gym", "id" to id))
+
+    /** Text Rust asked the system share sheet to open, until it shows. */
+    var gymShare: String? = null
 
     /**
      * Rust says when its packet changes (a transcript page, a streamed reply,
@@ -332,9 +349,10 @@ class MobileBridge(private val context: Context, private val computersFixture: B
             }
             packet = next
             failure = null
+            next.objectOrNull("gym")?.textOrNull("share")?.let { gymShare = it }
             when (val go = next.textOrNull("coder_go")) {
                 "computers" -> computersRequested += 1
-                "wallet", "keys", "playtest", "report" -> { screenRequested = go; screenRequests += 1 }
+                "wallet", "keys", "playtest", "report", "verse_gym" -> { screenRequested = go; screenRequests += 1 }
                 // The person confirmed Wrong answer in the chat: file it.
                 "wrong_answer" -> reportWrongAnswer()
             }

@@ -4342,6 +4342,7 @@ dependencies = [
  "url",
  "uuid",
  "verse",
+ "xp-ledger",
 ]
 
 [[package]]

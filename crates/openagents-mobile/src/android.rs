@@ -160,6 +160,10 @@ pub(crate) struct SurfaceConfig {
     /// fixture, offline. Debug builds only; a release build ignores it.
     #[serde(default)]
     pub(crate) xp_preview: bool,
+    /// At creation only: **Compare notes** on the Gym's EVALS board, as the
+    /// host saved it. Off until the player switches it on.
+    #[serde(default)]
+    pub(crate) gym_notes: bool,
 }
 
 impl SurfaceConfig {
@@ -198,10 +202,9 @@ impl SurfaceConfig {
             results_base: self.results_base.clone(),
             results_cache_directory: self.results_cache_directory.clone(),
             xp_preview: self.xp_preview && cfg!(debug_assertions),
-            // The Android host has no native EVALS panel yet: the board
-            // stands lettered, never opens, and reads nothing.
-            evals_panel: false,
-            notes: false,
+            // The host draws the EVALS panel natively (`VersePanels`).
+            evals_panel: true,
+            notes: self.gym_notes,
             check_relay: None,
         })
     }

@@ -503,6 +503,12 @@ impl Playtest {
         self.persist(&inner);
     }
 
+    /// Something structural happened where the tester is: a Gym card, a
+    /// run, a publish. A code, never text.
+    pub fn event(&self, code: Code) {
+        self.record(code, None);
+    }
+
     /// The tester moved to `tab` and `route`.
     pub fn screen(&self, tab: Tab, route: Route) {
         self.record(Code::Screen, Some((tab, route)));

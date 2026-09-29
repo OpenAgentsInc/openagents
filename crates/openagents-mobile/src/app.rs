@@ -85,6 +85,10 @@ pub struct Launch {
     /// context names it, so the worker can answer for this build.
     #[serde(default)]
     pub app_build: Option<String>,
+    /// Where the first run starts, for simulator screenshots: `choose`,
+    /// `end_card`, `chat`, or `done` (the main menu). Debug builds only.
+    #[serde(default)]
+    pub gym_first_run: Option<String>,
     /// Push wakes through a relay's NIP-PL executor and a push gateway, so
     /// a computer's spend request reaches a phone that is not looking.
     /// Absent, the default, leaves push off.
@@ -112,6 +116,13 @@ fn basic_door(launch: &Launch, secret: SecretKey) -> Option<Arc<dyn crate::basic
     crate::basic_coder::Relay::new(relay, worker, secret)
         .ok()
         .map(|door| Arc::new(door) as Arc<dyn crate::basic_coder::Door>)
+}
+
+/// The hosted eval runner this build sends test runs to, when it has one
+/// (`crate::gym::Hosted`). None until the runner is deployed; runs then go
+/// to a ready computer, or the card says why they can't run yet.
+fn hosted_runner(_launch: &Launch, _secret: SecretKey) -> Option<Arc<dyn crate::gym::Hosted>> {
+    None
 }
 
 /// What this phone's Computers screens can do.
@@ -392,6 +403,18 @@ pub enum Request {
     WalletRestoreCheck {
         words: String,
     },
+    /// A tap on a Gym button: a chat card's, a sheet's, the main menu's, or
+    /// the first run's, by the ID the last packet gave it. An ID the last
+    /// packet didn't carry does nothing.
+    Gym {
+        id: String,
+    },
+    /// The trainer's Verse world key (64 hex characters from the platform's
+    /// protected store): it names the trainer on the menu, reads their XP,
+    /// and signs their hosted test requests. Kept in memory only.
+    GymWorld {
+        world_secret_hex: String,
+    },
     /// Pay the agent's spend request on the approval sheet. The host sends
     /// it only after the owner's tap on Approve (and Face ID or the passcode
     /// when the sheet asks for it).
@@ -592,6 +615,10 @@ pub struct Packet {
     /// Push wake status (`Wakes on`, `Wakes off`, or why not), once the
     /// build is configured for push or a push request arrived.
     pub push: Option<String>,
+    /// The Gym in chat: which of the chat tab's screens shows (the main
+    /// menu, the chat, or the first run), the cards the chat's surfaces
+    /// name, the open sheet, and a share sheet to open.
+    pub gym: crate::gym::View,
 }
 
 /// The encrypted store for the Computers record, keyed by the device key.
@@ -661,6 +688,8 @@ pub struct App {
     push: Option<coder_mobile::Push>,
     push_status: Option<String>,
     notices: Vec<String>,
+    /// The trainer's world key, once the host handed it over.
+    world: Option<SecretKey>,
 }
 
 impl App {
@@ -778,6 +807,16 @@ impl App {
             basic_door(&launch, secret),
             Cache::open(&config.state_dir.join("basic-chats"), &secret).ok(),
         );
+        let mut gym = crate::gym::Gym::new(
+            Cache::open(&config.state_dir.join("gym"), &secret).ok(),
+            hosted_runner(&launch, secret),
+            Some(runtime.handle().clone()),
+        );
+        if cfg!(debug_assertions)
+            && let Some(step) = launch.gym_first_run.as_deref()
+        {
+            gym.set_start(step);
+        }
         // Loopback relay and gateway URLs are for simulator tests only.
         let (push, push_status) = match launch.push {
             None => (None, None),
@@ -803,6 +842,7 @@ impl App {
             computers,
             chats,
             coder: CoderTab::new(format!("coder:{}", id()))
+                .with_gym(gym)
                 .with_app_build(launch.app_build.clone())
                 .with_remote_cli(remote_cli)
                 .with_script(launch.chat_script.clone())
@@ -866,6 +906,7 @@ impl App {
             push,
             push_status,
             notices,
+            world: None,
         })
     }
 
@@ -990,10 +1031,24 @@ impl App {
         route: playtest::session::Route,
     ) -> playtest::session::Route {
         use playtest::session::{Route, Tab};
-        if tab == Tab::Coder && route == Route::Home && self.coder.in_chat() {
-            Route::Chat
-        } else {
-            route
+        if tab != Tab::Coder || route != Route::Home {
+            return route;
+        }
+        if let Some(sheet) = &self.coder.gym.sheet {
+            return match sheet {
+                crate::gym::Sheet::Result { .. } => Route::Result,
+                crate::gym::Sheet::Publish { .. } => Route::Publish,
+                crate::gym::Sheet::TestSet(_) => Route::TestSet,
+                crate::gym::Sheet::LevelUp { .. } => Route::LevelUp,
+                crate::gym::Sheet::Profile => Route::Profile,
+                crate::gym::Sheet::Stop { .. } => Route::Chat,
+            };
+        }
+        match crate::first_run::screen(&self.coder.gym) {
+            "menu" => Route::Menu,
+            "first_run" => Route::FirstRun,
+            _ if self.coder.in_chat() => Route::Chat,
+            _ => route,
         }
     }
 
@@ -1306,6 +1361,16 @@ impl App {
             }
             Request::SpendUntrust { host, payee } => self.spend.untrust(&host, &payee),
             Request::SpendManual { host } => self.spend.manual(&host),
+            Request::Gym { id } => {
+                self.coder
+                    .gym_tap(&id, self.computers.as_mut(), &mut self.chats);
+            }
+            Request::GymWorld { world_secret_hex } => {
+                if let Ok(world) = SecretKey::from_str(&world_secret_hex) {
+                    self.world = Some(world);
+                    self.coder.gym.set_world(world);
+                }
+            }
             Request::PushToken { token } => self.push_token(Some(&token)),
             Request::PushDisable => self.push_token(None),
         }
@@ -1615,7 +1680,14 @@ impl App {
         let tailnet = self.render_tailnet();
         // Chat commands that waited for their computer try again.
         self.coder.flush(self.computers.as_mut());
+        if let Some(world) = self.world {
+            self.coder.gym.standing = self.trainer.standing(&world);
+        }
         let coder = self.coder.render(self.computers.as_ref(), &mut self.chats);
+        let gym = self.coder.gym_view();
+        for code in self.coder.gym.take_logged() {
+            self.playtest.event(code);
+        }
         let computers = self.computers.as_ref();
         let computers_home = computers
             .filter(|_| self.native_computers)
@@ -1687,6 +1759,7 @@ impl App {
             spend: self.spend.view(),
             push: self.push_status.clone(),
             amounts: self.amounts.view(),
+            gym,
         }
     }
 

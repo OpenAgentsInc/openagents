@@ -19,7 +19,8 @@ import org.json.JSONObject
  * and a composer's draft survive a new revision. Callbacks return only the
  * node key; Rust resolves it against the view it issued.
  *
- * Supported: stack, list, text (every role), button, surface (as a refusal),
+ * Supported: stack, list, text (every role), button, surface (a registered
+ * one from `surfaces`, else a refusal),
  * and the conversation elements in [ChatViews] and [Transcript].
  *
  * `scrolling` means the host mounts this view in its own scroll view, so a
@@ -30,6 +31,8 @@ class NativeRenderer(
     private val activate: (JSONObject, String) -> Unit,
     private val submit: ((String, String) -> Unit)? = null,
     private val scrolling: Boolean = false,
+    /** Draws a surface the host registered (`gym-card:<id>`); null draws the refusal. */
+    private val surfaces: ((String) -> View?)? = null,
 ) {
     private class Mounted(val kind: String, val view: View) {
         var value: String? = null
@@ -154,7 +157,13 @@ class NativeRenderer(
                 } else (inner as android.widget.ImageView).setImageResource(glyph(props)!!)
                 inner.requestLayout()
             }
-            "surface" -> (view as TextView).text = "This device can't display ${props.getString("label")}."
+            "surface" -> (view as FrameLayout).let { frame ->
+                val value = props.getString("resource")
+                val drawn = surfaces?.invoke(value)
+                    ?: context.text("This device can't display ${props.getString("label")}.", 14f, Palette.SECONDARY)
+                frame.removeAllViews()
+                frame.addView(drawn, FrameLayout.LayoutParams(-1, -2))
+            }
             "transcript" -> mounted.transcript!!.update(props)
             "composer" -> mounted.composer!!.update(props)
             else -> if (kind.startsWith("text:")) {
@@ -253,7 +262,7 @@ class NativeRenderer(
             }
             Mounted(kind, outer).also { it.rows = rows }
         }
-        kind == "surface" -> Mounted(kind, context.text("", 14f, Palette.SECONDARY))
+        kind == "surface" -> Mounted(kind, FrameLayout(context))
         kind == "transcript" -> {
             val transcript = RustTranscript(context) { key -> activateNode(key) }
             Mounted(kind, transcript.root).also { it.transcript = transcript }

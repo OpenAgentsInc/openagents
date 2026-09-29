@@ -88,9 +88,12 @@ class MainActivity : ComponentActivity() {
     private lateinit var wallet: WalletScreen
     private lateinit var payments: AgentPayments
 
-    // Coder tab.
+    // Coder tab: the menu, the first run, or the chat (Rust's `gym.screen`).
     private lateinit var coderRenderer: NativeRenderer
     private val coderContent by lazy { FrameLayout(this) }
+    private val gymContent by lazy { FrameLayout(this) }
+    private lateinit var gym: GymViews
+    private var shownGym: String? = null
 
     // Account tab and its screens.
     private val accountPage by lazy { FrameLayout(this) }
@@ -142,8 +145,13 @@ class MainActivity : ComponentActivity() {
         bridge = MobileBridge(applicationContext, BuildConfig.DEBUG && intent.getBooleanExtra("computers_fixture", false),
             BuildConfig.DEBUG && intent.getBooleanExtra("wallet_fixture", false),
             BuildConfig.DEBUG && intent.getBooleanExtra("chat_fixture", false)) { render() }
+        gym = GymViews(this) { id -> bridge.gym(id) }
         coderRenderer = NativeRenderer(this, { view, node -> bridge.activate("coder", view, node) },
-            { token, value -> bridge.submit("coder", token, value) })
+            { token, value -> bridge.submit("coder", token, value) }, surfaces = { resource ->
+                resource.removePrefix("gym-card:").takeIf { it != resource }?.let { id ->
+                    bridge.packet?.objectOrNull("gym")?.objectOrNull("cards")?.objectOrNull(id)?.let { gym.card(it) }
+                }
+            })
         computersRenderer = NativeRenderer(this, { view, node -> bridge.activate("computers", view, node) }, scrolling = true)
         account = AccountScreens(this, bridge)
         playtest = Playtest(this, bridge)
@@ -178,6 +186,7 @@ class MainActivity : ComponentActivity() {
             pageHost.addView(page, FrameLayout.LayoutParams(-1, -1))
         }
         pages.getValue(AppTab.CODER).addView(coderContent, FrameLayout.LayoutParams(-1, -1))
+        pages.getValue(AppTab.CODER).addView(gymContent, FrameLayout.LayoutParams(-1, -1))
         buildVerse(pages.getValue(AppTab.VERSE))
         buildWallet(pages.getValue(AppTab.WALLET))
         pages.getValue(AppTab.ACCOUNT).addView(accountPage, FrameLayout.LayoutParams(-1, -1))
@@ -238,6 +247,7 @@ class MainActivity : ComponentActivity() {
         if (BuildConfig.DEBUG) {
             val taps = intent.getStringExtra("coder_tap")?.split(",").orEmpty().filter { it.isNotEmpty() }
             launchTaps(taps, intent.getStringExtra("coder_send"), 0)
+            intent.getStringExtra("gym_script")?.let { script -> gymScript(script.split("|").filter { it.isNotEmpty() }, 0) }
         }
         tabBar.setOnLongClickListener { report(); true }
         // Debug builds only: `--ez report true` opens Report a problem for the first screen.
@@ -562,6 +572,37 @@ class MainActivity : ComponentActivity() {
         }, 500)
     }
 
+    /**
+     * Debug builds only: `--es gym_script "tap:first.choose|send:TEXT|tap:*.start|sleep:3"`.
+     * Each step waits up to a minute for its Gym button, chat node, or composer;
+     * `*` ends a prefix, or starts a suffix.
+     */
+    private fun gymScript(steps: List<String>, attempt: Int) {
+        if (steps.isEmpty() || attempt > 120) return
+        val (verb, value) = steps.first().split(":", limit = 2).let { it[0] to it.getOrElse(1) { "" } }
+        if (verb == "sleep") { main.postDelayed({ gymScript(steps.drop(1), 0) }, ((value.toDoubleOrNull() ?: 1.0) * 1000).toLong()); return }
+        main.postDelayed({
+            fun matches(id: String) = when {
+                value.startsWith("*") -> id.endsWith(value.drop(1))
+                value.endsWith("*") -> id.startsWith(value.dropLast(1))
+                else -> id == value
+            }
+            val gymPacket = bridge.packet?.objectOrNull("gym")
+            val view = bridge.packet?.objectOrNull("coder")
+            val root = view?.optJSONObject("root")
+            val done = when {
+                bridge.busy -> false
+                verb == "send" -> root?.let { findNode(it) { n -> n.optJSONObject("element")?.optString("kind") == "composer" } }
+                    ?.takeIf { gymPacket?.optString("screen") == "chat" }
+                    ?.let { bridge.submit("coder", it.getJSONObject("element").getJSONObject("props").getString("token"), value); true } ?: false
+                else -> gymPacket?.let { gym.buttonIds(it).firstOrNull(::matches) }?.let { bridge.gym(it); true }
+                    ?: root?.takeIf { gymPacket?.optString("screen") == "chat" }?.let { findNode(it) { n -> matches(n.optString("key")) } }
+                        ?.let { bridge.activate("coder", view, it.optString("key")); true } ?: false
+            }
+            if (done) gymScript(steps.drop(1), 0) else gymScript(steps, attempt + 1)
+        }, 500)
+    }
+
     private fun findNode(node: JSONObject, matches: (JSONObject) -> Boolean): JSONObject? {
         if (matches(node)) return node
         val children = node.optJSONObject("element")?.optJSONObject("props")?.optJSONArray("children") ?: return null
@@ -589,10 +630,13 @@ class MainActivity : ComponentActivity() {
                 "keys" -> { select(AppTab.ACCOUNT); open(AccountRoute.IDENTITY) }
                 "playtest" -> { select(AppTab.ACCOUNT); open(AccountRoute.PLAYTEST) }
                 "report" -> report()
+                // See the board: the Verse tab, at the Gym's EVALS board.
+                "verse_gym" -> { select(AppTab.VERSE); panels.openEvals() }
             }
         }
         val packet = bridge.packet
         mount(coderRenderer, coderContent, fixture ?: packet?.objectOrNull("coder"))
+        renderGym(packet?.objectOrNull("gym"))
         when (route) {
             AccountRoute.COMPUTERS -> {
                 val home = packet?.objectOrNull("computers_home")
@@ -640,6 +684,36 @@ class MainActivity : ComponentActivity() {
         if (::payments.isInitialized) payments.update(packet)
         terminal.update(packet?.optBoolean("terminal") == true, bridge.terminalView)
         if (tab == AppTab.VERSE) renderVerse()
+    }
+
+    /** The Chat tab's own screen: the menu or a first-run step over the chat, and the Gym's sheet. */
+    private fun renderGym(gymPacket: JSONObject?) {
+        val screen = gymPacket?.optString("screen") ?: "chat"
+        val drawn = when (screen) {
+            "menu" -> gymPacket?.objectOrNull("menu")
+            "first_run" -> gymPacket?.objectOrNull("first_run")
+            else -> null
+        }
+        val encoded = drawn?.let { "$screen:$it" }
+        if (encoded != shownGym) {
+            shownGym = encoded
+            gymContent.removeAllViews()
+            if (drawn != null) gymContent.addView(if (screen == "menu") gym.menu(drawn) else gym.firstRun(drawn),
+                FrameLayout.LayoutParams(-1, -1))
+        }
+        if (drawn != null && gymContent.visibility != View.VISIBLE) {
+            // The chat's composer sits under the menu: put its keyboard away.
+            currentFocus?.let { focus ->
+                getSystemService(InputMethodManager::class.java)?.hideSoftInputFromWindow(focus.windowToken, 0)
+                focus.clearFocus()
+            }
+        }
+        gymContent.visibility = if (drawn != null) View.VISIBLE else View.GONE
+        coderContent.visibility = if (drawn != null) View.GONE else View.VISIBLE
+        // The first run is a guided path: no tabs until it reaches the chat.
+        if (tab == AppTab.CODER) tabBar.visibility = if (screen == "first_run") View.GONE else View.VISIBLE
+        gym.sheet(gymPacket?.objectOrNull("sheet"))
+        bridge.gymShare?.let { text -> bridge.gymShare = null; gym.share(text) }
     }
 
     private fun notices(packet: JSONObject?, app: Boolean) {

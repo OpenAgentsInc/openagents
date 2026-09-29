@@ -69,6 +69,20 @@ pub enum Route {
     Playtest,
     /// Account: My reports.
     Reports,
+    /// Chat: the main menu (`SCR-01`).
+    Menu,
+    /// Chat: the first run's Choose your agent or its end card.
+    FirstRun,
+    /// Chat: a result's detail sheet (`SCR-05`).
+    Result,
+    /// Chat: Add to the Gym (`SCR-20`).
+    Publish,
+    /// Chat: a test set's sheet (`SCR-21`).
+    TestSet,
+    /// Chat: the Level up overlay (`SCR-06`).
+    LevelUp,
+    /// Chat: the Profile sheet (`SCR-11`).
+    Profile,
 }
 
 impl Route {
@@ -108,6 +122,19 @@ pub enum Code {
     ReportSent,
     /// A report couldn't be sent.
     ReportFailed,
+    /// Chat showed a Gym card for the first time in its reply. The event's
+    /// route names none; the card's kind is its own code.
+    ToolCard,
+    DraftCard,
+    RunCard,
+    ResultCard,
+    NewsCard,
+    CheckCard,
+    CreditCard,
+    /// A test run started from a card's button.
+    RunStarted,
+    /// A result was added to the Gym from Add to the Gym's button.
+    Published,
 }
 
 /// One structural event.

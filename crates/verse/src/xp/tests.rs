@@ -499,3 +499,40 @@ fn a_card_checks_clean_and_each_inflation_is_reported() {
     assert_eq!(check.xp, 0);
     assert!(!check.differences.is_empty());
 }
+
+/// An `eval-adopt` award counts only with the `coder-defaults` documents
+/// its release pins: the reader asks for the manifest, then for each
+/// admission the manifest cites, and nothing once it holds them.
+#[test]
+fn an_adoption_release_asks_for_its_documents() {
+    use xp_ledger::adopt;
+    let operator = signer(0xad0f);
+    let admission = br#"{"v":"openagents.eval-admission.v1"}"#.to_vec();
+    let manifest = adopt::manifest(
+        &adopt::package_of(operator.pubkey()),
+        "1",
+        &[],
+        &[adopt::receipt(&admission)],
+    )
+    .unwrap();
+    let parts = adopt::release(&manifest).unwrap();
+    let release = operator.sign(AT, parts.kind, parts.tags, parts.content);
+    let manifest_digest = nostr::contracts::digest_bytes(&manifest);
+    let admission_digest = nostr::contracts::digest_bytes(&admission);
+    let mut documents = Documents::new();
+    assert_eq!(
+        wanted_documents(&release, &documents),
+        std::slice::from_ref(&manifest_digest)
+    );
+    documents.insert(manifest_digest.clone(), manifest);
+    assert_eq!(
+        wanted_documents(&release, &documents),
+        std::slice::from_ref(&admission_digest)
+    );
+    documents.insert(admission_digest, admission);
+    assert!(wanted_documents(&release, &documents).is_empty());
+    // A snapshot carries what "what you made" reads.
+    let snap = snapshot_with(&[release], &documents, &openagents_trust());
+    assert!(snap.evals.is_empty());
+    assert!(made(&snap, &["ab".repeat(32)]).results.is_empty());
+}

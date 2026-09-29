@@ -17,8 +17,11 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-/// The routing question set a turn asks for.
-pub(crate) const ROUTER: &str = "chat-router-v1";
+/// The routing question set a turn asks for: `chat-router-v2`, with the
+/// Gym and eval routes, their cards, and the eval offers.
+pub(crate) const ROUTER: &str = "chat-router-v2";
+/// The most cards one reply keeps.
+const MAX_CARDS: usize = 4;
 /// The most offers one reply keeps.
 const MAX_OFFERS: usize = 4;
 /// The most follow-up suggestions one reply keeps.
@@ -40,6 +43,13 @@ pub(crate) struct Context {
     pub computer_ready: bool,
     /// The app's version and build, as `1.0.0 (19)`.
     pub app_build: Option<String>,
+    /// The conversation's open test-set draft (`openagents.eval-draft.v1`),
+    /// which the phone keeps and resends each turn: the request's `draft`,
+    /// beside `context`, never inside it. Data, never an instruction.
+    pub draft: Option<Value>,
+    /// The result of a try or a full run of that draft, as the request's
+    /// `tried` (`{runs, with, without, total, verdict, report, cases}`).
+    pub tried: Option<Value>,
 }
 
 impl Context {
@@ -83,6 +93,13 @@ pub(crate) enum Screen {
     Report,
     /// The Gym in the Verse, at its EVALS board: **See the board**.
     VerseGym,
+    /// The person's own latest result (`SCR-05`), which only the phone
+    /// holds: **See your result**.
+    GymResult,
+    /// Add to the Gym (`SCR-20`) for the person's latest result.
+    GymPublish,
+    /// The test set of the conversation's card or draft (`SCR-21`).
+    GymTestSet,
 }
 
 impl Screen {
@@ -95,6 +112,9 @@ impl Screen {
             "account.playtest" => Screen::Playtest,
             "account.report_problem" => Screen::Report,
             "verse.gym" => Screen::VerseGym,
+            "gym.result" => Screen::GymResult,
+            "gym.publish" => Screen::GymPublish,
+            "gym.test_set" => Screen::GymTestSet,
             _ => return None,
         })
     }
@@ -146,6 +166,11 @@ pub(crate) enum Offer {
     OpenScreen { screen: Screen },
     /// Run a read-only `openagents` command, after a tap.
     Cli { argv: Vec<String>, runs_on: RunsOn },
+    /// Run a test set against a tool, after a tap on the card's button:
+    /// the offer body as NIP-CJ's own parser accepted it.
+    StartEval { body: Value },
+    /// Add a result the phone holds to the Gym, after `SCR-20`'s button.
+    PublishEval { body: Value },
 }
 
 impl Offer {
@@ -177,6 +202,47 @@ impl Offer {
                 };
                 read_only(&argv).then_some(Offer::Cli { argv, runs_on })
             }
+            // The eval offers are read by NIP-CJ's own parser, whole: an
+            // offer it refuses is set aside.
+            "start_eval" => match nostr::cj_conversation::parse_offer(payload).ok()? {
+                (_, nostr::cj_conversation::Offer::StartEval { .. }) => Some(Offer::StartEval {
+                    body: bare(payload),
+                }),
+                _ => None,
+            },
+            "publish_eval" => match nostr::cj_conversation::parse_offer(payload).ok()? {
+                (_, nostr::cj_conversation::Offer::PublishEval { .. }) => {
+                    Some(Offer::PublishEval {
+                        body: bare(payload),
+                    })
+                }
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
+    /// A `start_eval` offer as NIP-CJ reads it.
+    pub(crate) fn start_eval(&self) -> Option<StartEval> {
+        let Offer::StartEval { body } = self else {
+            return None;
+        };
+        match nostr::cj_conversation::parse_offer(body).ok()? {
+            (
+                _,
+                nostr::cj_conversation::Offer::StartEval {
+                    suite,
+                    subject,
+                    size,
+                    at,
+                    ..
+                },
+            ) => Some(StartEval {
+                suite,
+                subject,
+                size,
+                at,
+            }),
             _ => None,
         }
     }
@@ -198,6 +264,27 @@ impl Offer {
             .collect();
         format!("openagents {}", words.join(" "))
     }
+}
+
+/// An offer body without the worker's label, which the phone never shows:
+/// it names every control itself. The body still parses, with an empty
+/// label replaced by the phone's own word.
+fn bare(payload: &Value) -> Value {
+    let mut body = payload.clone();
+    if let Some(object) = body.as_object_mut() {
+        object.insert("label".into(), json!("offer"));
+    }
+    body
+}
+
+/// A `start_eval` offer: which test set, which tool, how big, and where
+/// the worker suggests it runs. The phone decides where it runs.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct StartEval {
+    pub suite: nostr::cj_conversation::SuiteSource,
+    pub subject: nostr::cj_conversation::SubjectSource,
+    pub size: nostr::cj_conversation::Size,
+    pub at: nostr::cj_conversation::Where,
 }
 
 /// A suggested next question under a prepared answer: tapping it sends
@@ -272,6 +359,10 @@ pub(crate) struct Meta {
     pub offers: Vec<Offer>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub followups: Vec<Followup>,
+    /// The Gym's cards (NIP-CJ `card` feedback), each body as NIP-CJ's own
+    /// parser accepted it; a newer card of one kind replaces the older.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub cards: Vec<Value>,
 }
 
 impl Meta {
@@ -303,6 +394,33 @@ impl Meta {
         {
             self.offers.push(offer);
         }
+    }
+
+    /// Takes a `card` feedback payload: kept only when NIP-CJ's parser
+    /// reads it, so the phone never draws a card it can't show exactly.
+    pub(crate) fn carded(&mut self, payload: &Value) {
+        let Ok((_, card)) = nostr::cj_conversation::parse_card(payload) else {
+            return;
+        };
+        let word = card.word();
+        if let Some(at) = self
+            .cards
+            .iter()
+            .position(|kept| kept["card"].as_str() == Some(word))
+        {
+            self.cards[at] = payload.clone();
+        } else if self.cards.len() < MAX_CARDS {
+            self.cards.push(payload.clone());
+        }
+    }
+
+    /// The cards, read again.
+    pub(crate) fn parsed_cards(&self) -> Vec<nostr::cj_conversation::Card> {
+        self.cards
+            .iter()
+            .filter_map(|card| nostr::cj_conversation::parse_card(card).ok())
+            .map(|(_, card)| card)
+            .collect()
     }
 
     /// Takes a result's router fields; they outrank the judgment's.
@@ -360,6 +478,7 @@ mod tests {
         let context = Context {
             computer_ready: true,
             app_build: Some("1.0.0 (19)".into()),
+            ..Context::default()
         };
         assert_eq!(
             context.json(),
@@ -368,6 +487,7 @@ mod tests {
         let odd = Context {
             computer_ready: false,
             app_build: Some("Studio Mac".into()),
+            ..Context::default()
         };
         assert_eq!(
             odd.json(),

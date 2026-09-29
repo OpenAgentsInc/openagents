@@ -26,8 +26,10 @@ use coder_ui::theme::Intensity;
 use nostr::domain::{Event, RelaySigner, Tag};
 use nostr::xp;
 use serde_json::json;
+use xp_ledger::eval::Documents;
 use xp_ledger::{
-    Credit, derive, own_pubkey, parse_key as parse_author, referee_key_file, trust_file,
+    Credit, Ledger, derive_with, own_pubkey, parse_key as parse_author, referee_key_file,
+    trust_file,
 };
 pub use xp_ledger::{Trainers, XpTrust};
 
@@ -173,6 +175,12 @@ pub struct Snapshot {
     pub referees: usize,
     /// Who published a trainer profile, and whether it asks to be shown.
     pub trainers: Trainers,
+    /// The ledger the snapshot was derived from.
+    pub ledger: Ledger,
+    /// The extension evaluation publications (`3189`, `oa:ext-eval:v1`)
+    /// and hosted requests the reader holds, for "what you made"
+    /// ([`made`]).
+    pub evals: Vec<Event>,
 }
 
 impl Snapshot {
@@ -199,11 +207,18 @@ impl Snapshot {
 /// never count.
 #[must_use]
 pub fn snapshot(events: &[Event], trust: &XpTrust) -> Snapshot {
+    snapshot_with(events, &Documents::new(), trust)
+}
+
+/// [`snapshot`], with the `coder-defaults` documents `eval-adopt` awards
+/// are checked against ([`xp_ledger::derive_with`]).
+#[must_use]
+pub fn snapshot_with(events: &[Event], documents: &Documents, trust: &XpTrust) -> Snapshot {
     let mut unique: BTreeMap<&str, &Event> = BTreeMap::new();
     for event in events {
         unique.entry(event.id.as_str()).or_insert(event);
     }
-    let ledger = derive(events, trust);
+    let ledger = derive_with(events, documents, trust);
 
     // Counted awards: their referee, awardees, and quest.
     let mut counted: BTreeMap<&str, (&str, &str, Vec<&str>)> = BTreeMap::new();
@@ -347,7 +362,89 @@ pub fn snapshot(events: &[Event], trust: &XpTrust) -> Snapshot {
         conflicts: ledger.conflicts.len(),
         referees: trust.referees.len(),
         trainers: Trainers::read(events),
+        evals: unique
+            .values()
+            .filter(|e| {
+                (e.kind == nostr::kb::EVIDENCE_KIND
+                    && nostr::eval_ext::parse_publication(e).is_ok())
+                    || e.kind == nostr::kinds::CJ_EXECUTION_REQUEST
+            })
+            .map(|e| (*e).clone())
+            .collect(),
+        ledger,
     }
+}
+
+/// What the trainer holding `keys` made, and where its credit stands
+/// (`xp_ledger::eval::made`): the phone's `CARD-07` and Profile.
+#[must_use]
+pub fn made(snapshot: &Snapshot, keys: &[String]) -> xp_ledger::eval::Made {
+    xp_ledger::eval::made(&snapshot.evals, &snapshot.ledger, keys)
+}
+
+/// The `sha256:` digests of the documents `release` pins that `documents`
+/// lacks: its manifest, then each admission the manifest cites.
+#[must_use]
+pub fn wanted_documents(release: &Event, documents: &Documents) -> Vec<String> {
+    let Ok(body) = nostr::ext::parse_record(release) else {
+        return Vec::new();
+    };
+    let Ok(manifest) = nostr::contracts::parse_artifact(&body["manifest"]) else {
+        return Vec::new();
+    };
+    let mut out = vec![manifest.digest.clone()];
+    if let Some(bytes) = documents.get(&manifest.digest) {
+        out.extend(
+            xp_ledger::adopt::receipts_of(bytes)
+                .unwrap_or_default()
+                .iter()
+                .filter_map(|r| nostr::contracts::parse_artifact(r).ok())
+                .map(|a| a.digest),
+        );
+    }
+    out.retain(|digest| !documents.contains_key(digest));
+    out
+}
+
+/// The releases trusted `eval-adopt` awards name, among `have`.
+fn adopted_releases<'a>(have: &'a BTreeMap<String, Event>, trust: &XpTrust) -> Vec<&'a Event> {
+    let mut out = Vec::new();
+    for event in have.values().filter(|e| e.kind == xp::AWARD_KIND) {
+        if !trust.referees.contains(&event.pubkey) {
+            continue;
+        }
+        let Ok(award) = xp::parse_award(event) else {
+            continue;
+        };
+        for evidence in award.evidence {
+            if let Some(release) = have.get(&evidence.id)
+                && release.kind == nostr::ext::RELEASE_KIND
+            {
+                out.push(release);
+            }
+        }
+    }
+    out
+}
+
+/// Fetches one document a NIP-94 locator names over HTTPS, checking its
+/// digest and size. Blocking; the reader thread calls it.
+fn fetch_document(url: &str, digest: &str) -> Option<Vec<u8>> {
+    if !url.starts_with("https://") {
+        return None;
+    }
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(15))
+        .build()
+        .ok()?;
+    let response = client.get(url).send().ok()?;
+    if !response.status().is_success() {
+        return None;
+    }
+    let bytes = response.bytes().ok()?;
+    (bytes.len() <= xp_ledger::eval::MAX_DOCUMENT_BYTES
+        && nostr::contracts::digest_bytes(&bytes) == digest)
+        .then(|| bytes.to_vec())
 }
 
 /// Event IDs the trusted referees' awards name that `have` lacks: their
@@ -535,6 +632,9 @@ fn filters() -> Vec<serde_json::Value> {
         json!({"kinds": [xp::QUEST_KIND, xp::AWARD_KIND, xp::REVOCATION_KIND], "limit": LIMIT}),
         json!({"kinds": [xp::LABEL_KIND], "#L": [xp::LABEL_NAMESPACE], "limit": LIMIT}),
         json!({"kinds": [xp::PROFILE_KIND, xp::LINK_KIND], "limit": LIMIT}),
+        // Extension eval results and checks: "what you made".
+        json!({"kinds": [nostr::kb::EVIDENCE_KIND], "#t": [nostr::eval_ext::PROFILE_MARKER],
+            "limit": LIMIT}),
     ]
 }
 
@@ -561,6 +661,10 @@ fn run(
     let mut dirty = false;
     let mut changed = Instant::now();
     let mut fetches = 0u32;
+    // `coder-defaults` documents `eval-adopt` awards need, by digest, and
+    // the digests already asked about.
+    let mut documents = Documents::new();
+    let mut asked_documents: BTreeSet<String> = BTreeSet::new();
     while !stop.load(Ordering::Acquire) {
         for message in link.drain() {
             match message {
@@ -575,6 +679,24 @@ fn run(
                     }
                 }
                 In::Event { event, .. } => {
+                    // A locator for a document an adoption needs: fetch
+                    // and check it, and keep only the bytes.
+                    if event.kind == nostr::ext::LOCATOR_KIND {
+                        if let (Some(url), Some(hex)) =
+                            (event.tag_values("url").next(), event.tag_values("x").next())
+                        {
+                            let digest = format!("sha256:{hex}");
+                            if asked_documents.contains(&digest)
+                                && !documents.contains_key(&digest)
+                                && let Some(bytes) = fetch_document(url, &digest)
+                            {
+                                documents.insert(digest, bytes);
+                                dirty = true;
+                                changed = Instant::now();
+                            }
+                        }
+                        continue;
+                    }
                     if event.validate_id().is_ok() && !events.contains_key(&event.id) {
                         events.insert(event.id.clone(), *event);
                         dirty = true;
@@ -631,9 +753,29 @@ fn run(
                     live: false,
                 });
             }
+            let wanted: Vec<String> = adopted_releases(&events, trust)
+                .into_iter()
+                .flat_map(|release| wanted_documents(release, &documents))
+                .filter(|digest| asked_documents.insert(digest.clone()))
+                .collect();
+            for chunk in wanted.chunks(50) {
+                fetches += 1;
+                let hexes: Vec<&str> = chunk
+                    .iter()
+                    .map(|d| d.trim_start_matches("sha256:"))
+                    .collect();
+                link.send(Out::Subscribe {
+                    id: format!("{SUB}-docs-{fetches}"),
+                    filters: vec![json!({"kinds": [nostr::ext::LOCATOR_KIND], "#x": hexes,
+                        "limit": LIMIT})],
+                    live: false,
+                });
+            }
             let all: Vec<Event> = events.values().cloned().collect();
             if tx
-                .send(Update::Snapshot(Box::new(snapshot(&all, trust))))
+                .send(Update::Snapshot(Box::new(snapshot_with(
+                    &all, &documents, trust,
+                ))))
                 .is_err()
             {
                 return;

@@ -90,6 +90,12 @@ struct AppPacket: Decodable {
     let amounts: AmountsState?
     /// Push wake status, present once push is configured or requested.
     let push: String?
+    /// The Gym in chat: which of the Chat tab's screens shows, the cards
+    /// the chat's surfaces name, the open sheet, and a share sheet to open.
+    let gym: GymSlot?
+
+    /// The Gym's part, when it decodes.
+    var gymPacket: GymPacket? { gym?.value }
 }
 
 /// Rust's direct reply with the recovery words or a checked restore. It is
@@ -337,6 +343,9 @@ final class MobileBridge: ObservableObject {
             if let script = AppTabLaunch.wallet("--chat-script") {
                 options["chat_script"] = script.split(separator: "|").map(String.init)
             }
+            // `--gym-first-run choose|end_card|chat|done` starts the first
+            // run at that step.
+            if let step = AppTabLaunch.wallet("--gym-first-run") { options["gym_first_run"] = step }
             let configuration = try JSONSerialization.data(withJSONObject: options)
             handle = configuration.withUnsafeBytes { bytes in
                 openagents_mobile_create(bytes.bindMemory(to: UInt8.self).baseAddress, bytes.count)
@@ -347,8 +356,23 @@ final class MobileBridge: ObservableObject {
             failure = error.localizedDescription
         }
         send(["op": "snapshot"])
+        gymWorld()
         if handle != nil { watchChanges() }
     }
+
+    /// Hand Rust the trainer's Verse world key: it names the trainer on the
+    /// menu, reads their XP, and signs their test requests. Rust keeps it in
+    /// memory only.
+    func gymWorld() {
+        guard let secret = try? DeviceKey.loadOrCreateVerse() else { return }
+        send(["op": "gym_world", "world_secret_hex": secret.map { String(format: "%02x", $0) }.joined()])
+    }
+
+    /// A tap on a Gym button, by the ID Rust gave it.
+    func gym(_ id: String) { send(["op": "gym", "id": id]) }
+
+    /// Text for the system share sheet, which Rust asked to open.
+    @Published var gymShare: String?
 
     /// Rust says when its packet changes (a transcript page, a streamed
     /// reply, a computer's task summary): a thread of its own waits on it
@@ -670,6 +694,7 @@ final class MobileBridge: ObservableObject {
                 return
             }
             self.packet = packet
+            if let share = packet.gymPacket?.share { self.gymShare = share }
             switch packet.coder_go {
             case "computers": self.computersRequested += 1
             case let screen? where ["wallet", "keys", "playtest", "report", "verse_gym"].contains(screen):

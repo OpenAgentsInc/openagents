@@ -1362,6 +1362,7 @@ fn a_turn_asks_for_routing_with_a_bounded_context() {
         [crate::router::Context {
             computer_ready: true,
             app_build: Some("1.0.0 (19)".into()),
+            ..crate::router::Context::default()
         }]
     );
     let wire = contexts[0].json().to_string();

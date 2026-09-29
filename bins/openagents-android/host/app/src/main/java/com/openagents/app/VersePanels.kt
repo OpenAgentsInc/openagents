@@ -38,9 +38,12 @@ class VersePanels(private val context: Context, private val world: VerseSurface)
     private val fixed = context.column()
     private val gym = GymPanel(context, world)
     private val results = ResultsPanel(context, world) { mounted = null; refresh() }
+    private val evals = EvalsPanel(context, world)
+    private var evalsView: JSONObject? = null
+    private var evalsRequested = -1L
     private var insetTop = 0
 
-    private var open = "" // "gym", "results", or ""
+    private var open = "" // "gym", "results", "evals", or ""
     private var gymBoard: JSONObject? = null
     private var gymRequested = -1L
     private var resultsView: JSONObject? = null
@@ -49,6 +52,7 @@ class VersePanels(private val context: Context, private val world: VerseSurface)
     private var mounted: String? = null
     private var gymAccessible = false
     private var resultsAccessible = false
+    private var evalsAccessible = false
     private var accessibilityActions = listOf<Int>()
 
     init {
@@ -61,7 +65,7 @@ class VersePanels(private val context: Context, private val world: VerseSurface)
         panel.addView(fixed)
         panel.addView(scroll, LinearLayout.LayoutParams(-1, -2))
         root.addView(panel, FrameLayout.LayoutParams(-1, -1))
-        close.setOnClickListener { world.send(json("action" to if (open == "gym") "close_gym" else "close_results")) }
+        close.setOnClickListener { world.send(json("action" to closeAction())) }
         root.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> place() }
     }
 
@@ -72,8 +76,13 @@ class VersePanels(private val context: Context, private val world: VerseSurface)
     /** The system Back gesture: a results screen's back, else back to the world. */
     fun back() {
         if (open == "results" && resultsView?.optBoolean("can_back") == true) world.results(json("do" to "back"))
-        else world.send(json("action" to if (open == "gym") "close_gym" else "close_results"))
+        else world.send(json("action" to closeAction()))
     }
+
+    private fun closeAction() = when (open) { "gym" -> "close_gym"; "evals" -> "close_evals"; else -> "close_results" }
+
+    /** A chat card's See the board: walk into the Gym and open its EVALS board. */
+    fun openEvals() = world.goToEvals()
 
     fun setTopInset(value: Int) { if (insetTop != value) { insetTop = value; place() } }
 
@@ -82,7 +91,18 @@ class VersePanels(private val context: Context, private val world: VerseSurface)
         packet ?: return
         val gymOpen = packet.optBoolean("gym_open")
         val resultsOpen = packet.optBoolean("results_open")
-        val next = if (gymOpen) "gym" else if (resultsOpen) "results" else ""
+        val evalsOpen = packet.optBoolean("evals_open")
+        val next = if (gymOpen) "gym" else if (resultsOpen) "results" else if (evalsOpen) "evals" else ""
+        val evalsActive = packet.optBoolean("evals_active") && evalsOpen
+        if (!evalsActive) { evalsView = null; evalsRequested = -1 }
+        else packet.objectOrNull("evals_view")?.let { evalsView = it; evalsRequested = it.optLong("revision") }
+        if (evalsActive) {
+            val revision = packet.optLong("evals_revision", -1)
+            if (revision >= 0 && evalsView?.optLong("revision") != revision && evalsRequested != revision) {
+                evalsRequested = revision
+                main.post { if (open == "evals") world.send(json("action" to "evals_view")) }
+            }
+        }
         val location = packet.objectOrNull("gym")
         val inside = packet.optBoolean("gym_active") && location?.optBoolean("inside") == true
         if (!inside) { gymBoard = null; gymRequested = -1 }
@@ -110,7 +130,7 @@ class VersePanels(private val context: Context, private val world: VerseSurface)
             root.visibility = if (next.isEmpty()) View.GONE else View.VISIBLE
         }
         if (open.isNotEmpty()) {
-            val anchor = packet.objectOrNull(if (open == "gym") "gym" else "results")
+            val anchor = packet.objectOrNull(open)
             if (anchor != null) line.anchor(anchor.optDouble("screen_x", 0.5), anchor.optDouble("screen_y", 0.5))
             refresh()
         }
@@ -130,6 +150,11 @@ class VersePanels(private val context: Context, private val world: VerseSurface)
                 else "gym:${board?.toString()?.hashCode()}:$problem"
             if (key == mounted) return
             mount(key) { gym.build(board) }
+        } else if (open == "evals") {
+            title.text = "Evals"; close.tag = "evals-close"; headerBack.visibility = View.GONE
+            val key = "evals:${evalsView?.toString()?.hashCode()}"
+            if (key == mounted) return
+            mount(key) { evals.build(evalsView) }
         } else {
             title.text = "Results"; close.tag = "results-close"
             val view = resultsView
@@ -185,20 +210,23 @@ class VersePanels(private val context: Context, private val world: VerseSurface)
 
     /** TalkBack opens the Gym and RESULTS boards with the same checks as a tap on them. */
     private fun updateAccessibility(packet: JSONObject) {
-        val panelOpen = packet.optBoolean("gym_open") || packet.optBoolean("results_open")
+        val panelOpen = packet.optBoolean("gym_open") || packet.optBoolean("results_open") || packet.optBoolean("evals_open")
         fun reachable(name: String, active: String) = packet.optBoolean(active) && packet.objectOrNull(name)?.let {
             it.optBoolean("inside") && it.optBoolean("near") && it.optBoolean("visible")
         } == true && !panelOpen
         val gymNow = reachable("gym", "gym_active")
         val resultsNow = reachable("results", "results_active")
-        if (gymNow == gymAccessible && resultsNow == resultsAccessible) return
-        gymAccessible = gymNow; resultsAccessible = resultsNow
+        val evalsNow = reachable("evals", "evals_active")
+        if (gymNow == gymAccessible && resultsNow == resultsAccessible && evalsNow == evalsAccessible) return
+        gymAccessible = gymNow; resultsAccessible = resultsNow; evalsAccessible = evalsNow
         accessibilityActions.forEach { ViewCompat.removeAccessibilityAction(world, it) }
         accessibilityActions = buildList {
             if (gymNow) add(ViewCompat.addAccessibilityAction(world, "Open Gym board", AccessibilityViewCommand { _, _ ->
                 world.send(json("action" to "interact_gym"))?.optBoolean("gym_open") == true }))
             if (resultsNow) add(ViewCompat.addAccessibilityAction(world, "Open results board", AccessibilityViewCommand { _, _ ->
                 world.send(json("action" to "interact_results"))?.optBoolean("results_open") == true }))
+            if (evalsNow) add(ViewCompat.addAccessibilityAction(world, "Open evals board", AccessibilityViewCommand { _, _ ->
+                world.send(json("action" to "interact_evals"))?.optBoolean("evals_open") == true }))
         }
     }
 }

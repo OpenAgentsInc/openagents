@@ -35,6 +35,8 @@ coder-mobile = { path = "../coder-mobile" }
 # The Account tab's trainer card: Verse's read-only NIP-XP reader and its
 # level curve, the same code that puts levels over heads in the Grid.
 verse = { path = "../verse", default-features = false, features = ["xp-host"] }
+# "What you made" (`CARD-07`, the Profile): the XP ledger's eval credit.
+xp-ledger = { path = "../xp-ledger" }
 base64 = "0.22"
 # Every amount on screen: BIP 177 integer base units, or legacy BTC.
 bitcoin-amount = { path = "../bitcoin-amount" }
@@ -78,6 +80,8 @@ ndk-sys = "0.6"
 # Signed BOLT11 invoices for the agent-spending tests.
 nostr = { path = "../nostr", features = ["test-invoice"] }
 tempfile = "3"
+# Signed eval results, checks, and reports for the Gym's tests.
+xp-ledger = { path = "../xp-ledger", features = ["fixtures"] }
 # A paused clock for the Chats time-to-first-rows tests, and a local relay
 # for the basic Coder's kept connection.
 tokio = { version = "1", features = ["test-util", "net"] }

@@ -252,7 +252,7 @@ pub(crate) fn payload(turns: &[Turn], context: &Context) -> Value {
         .find(|turn| turn.role == Role::User)
         .map_or("", |turn| turn.text.as_str());
     let task: String = truncate(task, MAX_TRANSCRIPT_BYTES).into();
-    json!({
+    let mut body = json!({
         "v": 2,
         "requires": [],
         "task": task,
@@ -268,7 +268,19 @@ pub(crate) fn payload(turns: &[Turn], context: &Context) -> Value {
         "opener": true,
         "router": ROUTER,
         "context": context.json(),
-    })
+    });
+    // An open test-set draft and its last try travel beside the context,
+    // each only when NIP-CJ's bounds hold: the draft within its 64 KiB.
+    if let Some(draft) = context.draft.as_ref().filter(|draft| {
+        nostr::cj_conversation::parse_draft(draft).is_ok()
+            && draft.to_string().len() <= nostr::cj_conversation::MAX_DRAFT_BYTES
+    }) {
+        body["draft"] = draft.clone();
+        if let Some(tried) = context.tried.as_ref() {
+            body["tried"] = tried.clone();
+        }
+    }
+    body
 }
 
 /// A rank job's payload: the candidates for a new chat, at most
@@ -406,6 +418,9 @@ impl Reading {
             // An offer is an observation, never permission: the phone reads
             // it against its own tables and shows a control.
             (CJ_CONVERSATION_FEEDBACK, Some("offer")) => reply.meta.offered(&payload),
+            // A card is a closed display record; NIP-CJ's parser reads it
+            // before the phone keeps it.
+            (CJ_CONVERSATION_FEEDBACK, Some("card")) => reply.meta.carded(&payload),
             (CJ_CONVERSATION_FEEDBACK, Some("status"))
                 if payload["status"].as_str() == Some("error") =>
             {
@@ -816,7 +831,7 @@ mod tests {
         let body = payload(&[Turn::user("hi")], &Context::default());
         assert_eq!(body["opener"], true);
         assert!(body.get("judge").is_none());
-        assert_eq!(body["router"], "chat-router-v1");
+        assert_eq!(body["router"], "chat-router-v2");
     }
 
     #[test]

@@ -263,22 +263,55 @@ private struct ComputerRow: View {
     }
 }
 
-/// The Coder tab: Rust opens it on a new chat ready to type, with previous
-/// Coder chats behind the menu button.
+/// The Chat tab: the main menu (`SCR-01`), whose primary is Chat with
+/// OpenAgents; the first run (`SCR-02`, the end card) on a new install; and
+/// the chat, which Rust opens on a new chat ready to type, with previous
+/// Coder chats behind the menu button and the Gym's cards under replies.
+/// Rust says which one shows (`gym.screen`).
 struct CoderTab: View {
     @ObservedObject var bridge: MobileBridge
+    /// The sheet this host is showing, to tell a swipe from Rust closing it.
+    @State private var shownSheet: String?
+
+    private var gym: GymPacket? { bridge.packet?.gymPacket }
 
     var body: some View {
         Group {
-            if let view = bridge.packet?.coder {
-                NativeRenderer(node: view.root, revision: view.revision, followTarget: nil,
-                               followChanged: nil,
-                               submit: { token, text in bridge.submit("coder", token: token, value: text) },
-                               activate: { node in bridge.activate("coder", view: view, node: node) })
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            } else {
-                Color.clear
+            switch gym?.screen {
+            case "menu":
+                if let menu = gym?.menu { GymMenuView(menu: menu) { bridge.gym($0) } }
+            case "first_run":
+                if let first = gym?.first_run { GymFirstRunView(first: first) { bridge.gym($0) } }
+            default:
+                if let view = bridge.packet?.coder {
+                    NativeRenderer(node: view.root, revision: view.revision, followTarget: nil,
+                                   followChanged: nil,
+                                   surface: { resource, _ in
+                                       AnyView(GymCardSurface(resource: resource, bridge: bridge))
+                                   },
+                                   submit: { token, text in bridge.submit("coder", token: token, value: text) },
+                                   activate: { node in bridge.activate("coder", view: view, node: node) })
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                } else {
+                    Color.clear
+                }
             }
+        }
+        .toolbar(gym?.screen == "first_run" ? .hidden : .visible, for: .tabBar)
+        .sheet(item: Binding(get: { gym?.sheet }, set: { _ in }), onDismiss: {
+            // A swipe closed it while Rust still shows it: tell Rust.
+            if let sheet = gym?.sheet, sheet.id == shownSheet {
+                bridge.gym(sheet.close?.id ?? (sheet.kind == "stop" ? "sheet.keep" : sheet.primary?.id ?? "sheet.close"))
+            }
+            shownSheet = nil
+        }) { sheet in
+            GymSheetView(sheet: sheet) { bridge.gym($0) }
+                .presentationDetents(sheet.kind == "publish" || sheet.kind == "stop" ? [.fraction(0.72), .large] : [.large])
+                .onAppear { shownSheet = sheet.id }
+        }
+        .sheet(item: Binding(get: { bridge.gymShare.map { GymShareText(text: $0) } },
+                             set: { if $0 == nil { bridge.gymShare = nil } })) { share in
+            GymShareSheet(text: share.text)
         }
         .background(Color.black.ignoresSafeArea())
         .task { await CoderLaunchTaps.run(bridge) }
@@ -294,6 +327,23 @@ struct CoderTab: View {
             }
         }
     }
+}
+
+/// Text to share, as a sheet's item.
+struct GymShareText: Identifiable {
+    let text: String
+    var id: String { text }
+}
+
+/// The system share sheet.
+struct GymShareSheet: UIViewControllerRepresentable {
+    let text: String
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: [text], applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ controller: UIActivityViewController, context: Context) {}
 }
 
 /// Simulator checks: `--coder-tap KEY[,KEY...]` taps Coder nodes in order
@@ -314,14 +364,73 @@ enum CoderLaunchTaps {
                 }
             }
         }
-        guard let index = arguments.firstIndex(of: "--coder-send"), index + 1 < arguments.count else { return }
-        for _ in 0..<20 {
-            try? await Task.sleep(for: .milliseconds(500))
-            guard let view = bridge.packet?.coder, let token = composer(in: view.root) else { continue }
-            bridge.submit("coder", token: token, value: arguments[index + 1])
-            break
+        if let index = arguments.firstIndex(of: "--coder-send"), index + 1 < arguments.count {
+            for _ in 0..<20 {
+                try? await Task.sleep(for: .milliseconds(500))
+                guard let view = bridge.packet?.coder, let token = composer(in: view.root) else { continue }
+                bridge.submit("coder", token: token, value: arguments[index + 1])
+                break
+            }
+        }
+        // `--gym-script "tap:menu.chat|send:Which tool should I try?|tap:*.start|sleep:3"`:
+        // each step waits up to a minute for its button or composer. A tap
+        // names a Gym button's ID or a chat node's key; `*` ends a prefix.
+        guard let index = arguments.firstIndex(of: "--gym-script"), index + 1 < arguments.count else { return }
+        for step in arguments[index + 1].split(separator: "|").map(String.init) {
+            let (verb, value) = step.split(separator: ":", maxSplits: 1).map(String.init)
+                .reduce(into: ("", "")) { pair, part in if pair.0.isEmpty { pair.0 = part } else { pair.1 = part } }
+            if verb == "sleep" {
+                try? await Task.sleep(for: .seconds(Double(value) ?? 1))
+                continue
+            }
+            for _ in 0..<120 {
+                try? await Task.sleep(for: .milliseconds(500))
+                if verb == "send" {
+                    guard !bridge.busy, bridge.packet?.gymPacket?.screen == "chat" || bridge.packet?.gymPacket == nil,
+                          let view = bridge.packet?.coder, let token = composer(in: view.root) else { continue }
+                    bridge.submit("coder", token: token, value: value)
+                    break
+                }
+                if let id = gymButton(value, in: bridge.packet?.gymPacket) {
+                    bridge.gym(id)
+                    break
+                }
+                if bridge.packet?.gymPacket?.screen == "chat", let view = bridge.packet?.coder,
+                   let node = find(value, in: view.root) {
+                    bridge.activate("coder", view: view, node: node)
+                    break
+                }
+            }
         }
         #endif
+    }
+
+    /// The first Gym button on screen whose ID is `key`, or starts with it
+    /// when it ends in `*`.
+    private static func gymButton(_ key: String, in gym: GymPacket?) -> String? {
+        guard let gym else { return nil }
+        var ids: [String] = []
+        if let sheet = gym.sheet {
+            ids += [sheet.primary?.id, sheet.close?.id].compactMap { $0 } + sheet.secondary.map(\.id)
+        } else {
+            switch gym.screen {
+            case "menu": ids += [gym.menu.primary.id] + gym.menu.chips.map(\.id) + gym.menu.rows.map(\.button.id)
+            case "first_run":
+                if let first = gym.first_run { ids += [first.primary.id] + [first.secondary?.id].compactMap { $0 } }
+            default:
+                for card in gym.cards.values.sorted(by: { $0.id < $1.id }) {
+                    ids += [card.primary?.id].compactMap { $0 } + card.secondary.map(\.id) + card.chips.map(\.id)
+                }
+            }
+        }
+        let prefix = key.hasSuffix("*") ? String(key.dropLast()) : nil
+        return ids.first { id in
+            if let prefix {
+                return prefix.hasPrefix("*") ? id.hasSuffix(String(prefix.dropFirst())) : id.hasPrefix(prefix)
+            }
+            if key.hasPrefix("*") { return id.hasSuffix(String(key.dropFirst())) }
+            return id == key
+        }
     }
 
     private static func composer(in node: NativeNode) -> String? {
