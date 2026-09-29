@@ -87,6 +87,68 @@ impl Blobs for Blossom {
     }
 }
 
+/// A Google Cloud Storage bucket as the blob store: read over public
+/// HTTPS like any Blossom server (`GET <base>/<sha256 hex>`), written with
+/// `gcloud storage cp` under a service account that may only create
+/// objects in that bucket. `relay.openagents.com` serves no Blossom media
+/// yet (`docs/deployment/eval-runner.md`), so the runner's suites live here.
+pub struct Bucket {
+    read: Blossom,
+    bucket: String,
+    gcloud: std::path::PathBuf,
+}
+
+impl Bucket {
+    /// The bucket `gs://…` read at `base` and written with the gcloud
+    /// configuration directory `gcloud`.
+    ///
+    /// # Errors
+    ///
+    /// Why the read client doesn't build.
+    pub fn new(base: &str, bucket: &str, gcloud: &std::path::Path) -> Result<Self, String> {
+        if !bucket.starts_with("gs://") {
+            return Err(format!("{bucket} is not a gs:// bucket"));
+        }
+        Ok(Self {
+            read: Blossom::new(Some(base), "")?,
+            bucket: bucket.trim_end_matches('/').to_string(),
+            gcloud: gcloud.to_path_buf(),
+        })
+    }
+}
+
+impl Blobs for Bucket {
+    fn fetch(&self, digest: &str) -> Result<Vec<u8>, String> {
+        self.read.fetch(digest)
+    }
+    fn upload(&self, _: &RelaySigner, bytes: &[u8], media: &str) -> Result<(), String> {
+        let digest = nostr::contracts::digest_bytes(bytes);
+        let hex = digest.trim_start_matches("sha256:");
+        if self.read.inner()?.has(&digest) {
+            return Ok(());
+        }
+        let mut file = tempfile::NamedTempFile::new().map_err(|error| error.to_string())?;
+        std::io::Write::write_all(&mut file, bytes).map_err(|error| error.to_string())?;
+        let out = std::process::Command::new("gcloud")
+            .args(["storage", "cp", "--quiet"])
+            .arg(file.path())
+            .arg(format!("{}/{hex}", self.bucket))
+            .arg(format!("--content-type={media}"))
+            .env("CLOUDSDK_CONFIG", &self.gcloud)
+            .stdin(std::process::Stdio::null())
+            .output()
+            .map_err(|error| format!("gcloud: {error}"))?;
+        if !out.status.success() {
+            let stderr = String::from_utf8_lossy(&out.stderr);
+            return Err(format!(
+                "the bucket refused {hex}: {}",
+                stderr.lines().last().unwrap_or_default()
+            ));
+        }
+        Ok(())
+    }
+}
+
 /// A relay reached over NIP-42 as the runner.
 pub struct Relay {
     url: String,

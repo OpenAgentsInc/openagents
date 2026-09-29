@@ -18,7 +18,7 @@ use std::time::Duration;
 
 use eval_runner::config::{Config, load_identity};
 use eval_runner::runner::Runner;
-use eval_runner::wire::{Blobs, Blossom, Relay, Wire};
+use eval_runner::wire::{Blobs, Blossom, Bucket, Relay, Wire};
 
 const USAGE: &str = "usage: eval-runner serve | check | pubkey | release DIR...";
 
@@ -62,7 +62,17 @@ fn runner() -> Result<Arc<Runner>, String> {
     let identity = load_identity(&config.key_file)?;
     let wire_identity = Arc::new(load_identity(&config.key_file)?);
     let wire: Arc<dyn Wire> = Arc::new(Relay::new(&config.relay, wire_identity));
-    let blobs: Arc<dyn Blobs> = Arc::new(Blossom::new(config.blossom.as_deref(), &config.relay)?);
+    let blobs: Arc<dyn Blobs> = match &config.bucket {
+        Some((bucket, gcloud)) => Arc::new(Bucket::new(
+            config
+                .blossom
+                .as_deref()
+                .ok_or("EVAL_RUNNER_BUCKET needs EVAL_RUNNER_BLOSSOM, its public read base")?,
+            bucket,
+            gcloud,
+        )?),
+        None => Arc::new(Blossom::new(config.blossom.as_deref(), &config.relay)?),
+    };
     Runner::new(config, identity, wire, blobs)
 }
 
@@ -79,6 +89,16 @@ fn check() -> Result<(), String> {
         );
     }
     println!("relay    {}", config.relay);
+    println!(
+        "blobs    {}",
+        match &config.bucket {
+            Some((bucket, _)) => bucket.clone(),
+            None => config
+                .blossom
+                .clone()
+                .unwrap_or_else(|| config.relay.clone()),
+        }
+    );
     println!("door     {}", config.door.label());
     println!(
         "decision {}",

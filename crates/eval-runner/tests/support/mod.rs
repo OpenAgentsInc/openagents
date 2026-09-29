@@ -154,6 +154,7 @@ pub fn config(dir: &Path, door: &FakeDoor, limits: Limits) -> Config {
     Config {
         relay: "memory".into(),
         blossom: None,
+        bucket: None,
         key_file: dir.join("runner-key"),
         state: dir.join("state"),
         catalog: vec![PathBuf::from(FIXTURE)],

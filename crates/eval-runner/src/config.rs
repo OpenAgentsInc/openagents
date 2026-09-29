@@ -38,7 +38,11 @@ pub struct Config {
     /// The relay it listens and publishes on.
     pub relay: String,
     /// The Blossom server suite files go to; `None` is the relay's own.
+    /// With [`Config::bucket`], the bucket's public read base.
     pub blossom: Option<String>,
+    /// A `gs://` bucket that holds suite files instead of a Blossom
+    /// server, and the gcloud configuration directory that may write it.
+    pub bucket: Option<(String, PathBuf)>,
     /// The file holding the runner's secret key, 64 hex.
     pub key_file: PathBuf,
     /// Where the runner keeps its ledger, quota, jobs, and results.
@@ -125,6 +129,15 @@ impl Config {
         Ok(Self {
             relay,
             blossom: var("EVAL_RUNNER_BLOSSOM"),
+            bucket: match (var("EVAL_RUNNER_BUCKET"), var("EVAL_RUNNER_GCLOUD_CONFIG")) {
+                (Some(bucket), Some(config)) => Some((bucket, PathBuf::from(config))),
+                (None, None) => None,
+                _ => {
+                    return Err(
+                        "EVAL_RUNNER_BUCKET and EVAL_RUNNER_GCLOUD_CONFIG go together".into(),
+                    );
+                }
+            },
             key_file: var("EVAL_RUNNER_KEY_FILE").map_or_else(
                 || home().join(".openagents/nostr/eval-runner-key"),
                 PathBuf::from,

@@ -46,6 +46,17 @@ phone <--26920 result, 3188 report----- relay.openagents.com <--
   `request` tag, and carrying the trainer's signed request in
   `meta.ext_eval_request`. Relays keep no `25920`, so that inline copy is
   how the referee and the phone's ledger credit the trainer.
+- **Suite files.** A released suite's files live in the public-read
+  bucket `gs://openagentsgemini-eval-blobs`, read like a Blossom server at
+  `https://storage.googleapis.com/openagentsgemini-eval-blobs/<sha256>`.
+  `relay.openagents.com` runs on Cloud Run with Blossom media off (media
+  needs persistent storage), so there's no relay-hosted store yet. The
+  runner writes the bucket with `gcloud storage cp` as the service account
+  `oa-eval-runner`, which may only create and read objects in that bucket;
+  its key and gcloud configuration stay on the runner host. To check a
+  hosted result from a terminal, pass
+  `--blossom https://storage.googleapis.com/openagentsgemini-eval-blobs`
+  to `openagents ext eval check`.
 - **Starter test sets.** The runner's key also released the three starter
   test sets (`<runner>:project-map-tests`, `code-finder-tests`, and
   `test-reader-tests`), so `knowledge/quests/ext-eval.*.json` list it as
@@ -85,7 +96,11 @@ On `coderos-4080`, once:
    0600). It was made on the host on 2026-09-29 and has never left it.
    `eval-runner pubkey` prints its public key, which must equal
    `hosted::RUNNER`.
-2. Copy `deploy/eval-runner/eval-runner.env.example` to
+2. The bucket's uploader: the key of `oa-eval-runner@openagentsgemini`
+   is `~/.openagents/eval-runner-gcs.json` (mode 0600), activated in the
+   gcloud configuration `~/.openagents/eval-runner-gcloud`, which only the
+   runner uses.
+3. Copy `deploy/eval-runner/eval-runner.env.example` to
    `~/.config/openagents/eval-runner.env`, mode 0600, and fill in the door
    key (`CODER_DOOR_KEY`, the AI Gateway key) and `TYPESAFE_API_KEY`.
    Copy keys between machines with a pipe (`ssh host 'cat > file'`), never
