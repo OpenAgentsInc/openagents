@@ -126,14 +126,14 @@ fn basic_door(launch: &Launch, secret: SecretKey) -> Option<Arc<dyn crate::basic
         .map(|door| Arc::new(door) as Arc<dyn crate::basic_coder::Door>)
 }
 
-/// The hosted eval runner this build sends test runs to, when it has one
-/// (`crate::gym::Hosted`). None until the runner is deployed; runs then go
-/// to a ready computer, or the card says why they can't run yet.
+/// The hosted eval runner this build sends test runs to
+/// (`crate::gym::Hosted`): the deployed runner, or, in a debug build with
+/// `gym_fixture`, the offline recorded one.
 fn hosted_runner(launch: &Launch, _secret: SecretKey) -> Option<Arc<dyn crate::gym::Hosted>> {
     if launch.gym_fixture && cfg!(debug_assertions) {
         return Some(Arc::new(crate::gym_fixture::FixtureRunner));
     }
-    None
+    Some(Arc::new(crate::hosted::HostedRelay::new(None, None)))
 }
 
 /// What this phone's Computers screens can do.

@@ -146,6 +146,7 @@ impl Hosted for FixtureRunner {
     ) -> Pin<Box<dyn Future<Output = ()> + Send>> {
         Box::pin(async move {
             lock(&live).request = Some("f1".repeat(32));
+            lock(&live).event = Some(json!({"id": "f1".repeat(32)}));
             lock(&live).queued = true;
             crate::wake::ring();
             let planned = 8 * run.runs.max(1) * 2;
@@ -166,7 +167,7 @@ impl Hosted for FixtureRunner {
     fn resume(
         &self,
         world: SecretKey,
-        _request: String,
+        _event: Value,
         live: Arc<Mutex<Live>>,
     ) -> Pin<Box<dyn Future<Output = ()> + Send>> {
         self.start(
@@ -181,11 +182,7 @@ impl Hosted for FixtureRunner {
         )
     }
 
-    fn stop(
-        &self,
-        _world: SecretKey,
-        _request: String,
-    ) -> Pin<Box<dyn Future<Output = ()> + Send>> {
+    fn stop(&self, _world: SecretKey, _event: Value) -> Pin<Box<dyn Future<Output = ()> + Send>> {
         Box::pin(async {})
     }
 

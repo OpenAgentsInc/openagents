@@ -67,7 +67,6 @@ pub(crate) const CHANGE: &str = "Change: ";
 /// The most runs the phone keeps; the oldest go first.
 const MAX_RUNS_KEPT: usize = 40;
 /// The most bytes of one report the phone keeps, NIP-EVAL's bound.
-#[cfg_attr(not(test), allow(dead_code))]
 const MAX_REPORT_BYTES: usize = eval_ext::MAX_REPORT_BYTES;
 
 /// Where the first-run path stands (`FLOW-01`). The phone records the
@@ -90,8 +89,14 @@ pub(crate) enum FirstRun {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "at", rename_all = "snake_case")]
 pub(crate) enum Place {
-    /// The hosted runner, by the signed request's event ID once sent.
-    Hosted { request: Option<String> },
+    /// The hosted runner, by the signed request's event ID once sent, and
+    /// the signed request itself, which the phone sends again to follow
+    /// the run after a relaunch.
+    Hosted {
+        request: Option<String>,
+        #[serde(default)]
+        event: Option<Value>,
+    },
     /// Coder on the person's computer, as a NIP-HOST task.
     Computer {
         host: String,
@@ -144,6 +149,9 @@ pub(crate) struct Outcome {
     /// The report's exact bytes, when the phone holds them.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub report_json: Option<String>,
+    /// Changes in time and cost, in plain words, apart from the verdict.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub notes: Vec<String>,
 }
 
 impl Outcome {
@@ -154,7 +162,6 @@ impl Outcome {
     /// # Errors
     ///
     /// The parser's refusal, as a sentence.
-    #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) fn from_report(bytes: &[u8]) -> Result<Self, String> {
         if bytes.len() > MAX_REPORT_BYTES {
             return Err("the report is too large".into());
@@ -203,7 +210,25 @@ impl Outcome {
                 "schema": nostr::kb::REPORT_SCHEMA,
             })),
             report_json: std::str::from_utf8(bytes).ok().map(str::to_owned),
+            notes: Vec::new(),
         })
+    }
+
+    /// What a hosted run's result states when its sealed report can't be
+    /// opened: the headline and verdict, and no test-by-test marks.
+    pub(crate) fn from_output(output: &eval_ext::hosted::RunOutput) -> Self {
+        Self {
+            claim: Claim::of(&output.headline, output.verdict),
+            cases: Vec::new(),
+            report: Some(json!({
+                "digest": output.report.digest,
+                "size": output.report.size,
+                "media_type": output.report.media_type,
+                "schema": nostr::kb::REPORT_SCHEMA,
+            })),
+            report_json: None,
+            notes: output.notes.clone(),
+        }
     }
 
     /// The `tried` a request carries for the interview to read.
@@ -357,15 +382,16 @@ pub(crate) trait Hosted: Send + Sync {
         run: HostedRun,
         live: Arc<Mutex<Live>>,
     ) -> Pin<Box<dyn Future<Output = ()> + Send>>;
-    /// Follow a run requested before a relaunch.
+    /// Follow a run requested before a relaunch: `event` is the signed
+    /// request, sent again.
     fn resume(
         &self,
         world: SecretKey,
-        request: String,
+        event: Value,
         live: Arc<Mutex<Live>>,
     ) -> Pin<Box<dyn Future<Output = ()> + Send>>;
-    /// Ask the runner to stop it.
-    fn stop(&self, world: SecretKey, request: String) -> Pin<Box<dyn Future<Output = ()> + Send>>;
+    /// Ask the runner to stop the run `event` requested.
+    fn stop(&self, world: SecretKey, event: Value) -> Pin<Box<dyn Future<Output = ()> + Send>>;
     /// The publish control: the runner publishes the test set and the
     /// signed result, naming this trainer.
     fn publish(
@@ -392,8 +418,9 @@ pub(crate) struct HostedRun {
 /// What a hosted run's follower has seen.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct Live {
-    /// The signed request's event ID, once sent.
+    /// The signed request's event ID, once sent, and the request itself.
     pub request: Option<String>,
+    pub event: Option<Value>,
     pub queued: bool,
     pub done: Option<u64>,
     pub planned: Option<u64>,
@@ -675,14 +702,16 @@ impl Gym {
             }
             if let Some(Place::Hosted {
                 request: Some(request),
+                event: Some(event),
             }) = &run.place
             {
                 let live = Arc::new(Mutex::new(Live {
                     request: Some(request.clone()),
+                    event: Some(event.clone()),
                     ..Live::default()
                 }));
                 self.lives.insert(run.id.clone(), live.clone());
-                runtime.spawn(rung(hosted.resume(world, request.clone(), live)));
+                runtime.spawn(rung(hosted.resume(world, event.clone(), live)));
             }
         }
     }
@@ -735,10 +764,14 @@ impl Gym {
             };
             let before = (run.state.clone(), run.publish.clone());
             if let Some(request) = &live.request
-                && let Some(Place::Hosted { request: slot }) = run.place.as_mut()
+                && let Some(Place::Hosted {
+                    request: slot,
+                    event,
+                }) = run.place.as_mut()
                 && slot.as_deref() != Some(request)
             {
                 *slot = Some(request.clone());
+                event.clone_from(&live.event);
                 changed = true;
             }
             if run.running() {
@@ -885,7 +918,10 @@ impl Gym {
         let effect = match (&self.hosted, hosted_fits) {
             (Some(hosted), true) => match (self.world, &self.runtime) {
                 (Some(world), Some(runtime)) => {
-                    run.place = Some(Place::Hosted { request: None });
+                    run.place = Some(Place::Hosted {
+                        request: None,
+                        event: None,
+                    });
                     let live = Arc::new(Mutex::new(Live::default()));
                     self.lives.insert(id.clone(), live.clone());
                     let check = match &purpose {
@@ -1023,10 +1059,10 @@ impl Gym {
         }
         let effect = match &run.place {
             Some(Place::Hosted {
-                request: Some(request),
+                event: Some(event), ..
             }) => {
                 if let (Some(hosted), Some(runtime), Some(world)) = (hosted, runtime, world) {
-                    runtime.spawn(hosted.stop(world, request.clone()));
+                    runtime.spawn(hosted.stop(world, event.clone()));
                 }
                 Effect::None
             }
@@ -1061,6 +1097,7 @@ impl Gym {
         match run.place.clone() {
             Some(Place::Hosted {
                 request: Some(request),
+                ..
             }) => {
                 let Some(report) = run.outcome.as_ref().and_then(|o| o.report.clone()) else {
                     run.publish = PublishState::Failed {
@@ -1698,6 +1735,12 @@ impl Gym {
                 ))
             }
         };
+        // Time and cost changes, as the runner stated them.
+        if let Some(outcome) = &run.outcome {
+            for note in &outcome.notes {
+                lines.push(line(note, Tone::Quiet));
+            }
+        }
         if !run.pilot() {
             lines.push(line(&self.xp_line(&run), Tone::Quiet));
         }

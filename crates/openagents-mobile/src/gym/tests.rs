@@ -136,16 +136,20 @@ impl Hosted for Runner {
     ) -> Pin<Box<dyn Future<Output = ()> + Send>> {
         let n = self.started.lock().unwrap().len();
         lock(&live).request = Some(format!("{n:0>64}"));
+        lock(&live).event = Some(json!({"id": format!("{n:0>64}")}));
         self.started.lock().unwrap().push((run, live));
         Box::pin(async {})
     }
     fn resume(
         &self,
         _world: SecretKey,
-        request: String,
+        event: Value,
         live: Arc<Mutex<Live>>,
     ) -> Pin<Box<dyn Future<Output = ()> + Send>> {
-        self.resumed.lock().unwrap().push(request);
+        self.resumed
+            .lock()
+            .unwrap()
+            .push(event["id"].as_str().unwrap_or_default().to_owned());
         self.started.lock().unwrap().push((
             HostedRun {
                 offer: Value::Null,
@@ -157,8 +161,11 @@ impl Hosted for Runner {
         ));
         Box::pin(async {})
     }
-    fn stop(&self, _world: SecretKey, request: String) -> Pin<Box<dyn Future<Output = ()> + Send>> {
-        self.stopped.lock().unwrap().push(request);
+    fn stop(&self, _world: SecretKey, event: Value) -> Pin<Box<dyn Future<Output = ()> + Send>> {
+        self.stopped
+            .lock()
+            .unwrap()
+            .push(event["id"].as_str().unwrap_or_default().to_owned());
         Box::pin(async {})
     }
     fn publish(

@@ -34,6 +34,7 @@ mod eval_cards;
 mod first_run;
 mod gym;
 mod gym_fixture;
+mod hosted;
 mod outbox;
 mod payees;
 mod playtest;
