@@ -3,6 +3,13 @@
 `draft` `optional` — v1.
 
 This NIP defines portable execution descriptions and operator preferences.
+Its object, what this NIP calls a capability definition, is an operation
+description: it describes operations and grants nothing. A grant is the
+security sense of the word. The measured sense, what a person adds to an
+agent and a capability claim establishes, lives in [NIP-EVAL](NIP-EVAL.md)
+and [the essay](../../docs/essays/2026-09-29-test-time-capabilities.md); the
+[one vocabulary](../../docs/glossary.md#one-vocabulary-what-you-can-add)
+relates the three.
 [NIP-PRG](NIP-PRG.md) defines workflows, [NIP-EXT](NIP-EXT.md) distributes
 components, and the [shared contracts](contracts.md) define identity,
 references, schemas, effects, limits, and refusal behavior.
@@ -19,7 +26,7 @@ publishing the same interface does not make those guarantees interchangeable.
 
 | Object | Meaning | Authority |
 | --- | --- | --- |
-| Capability definition | A portable typed interface and execution requirements. | Describes; grants nothing. |
+| Capability definition (an operation description) | A portable typed interface and execution requirements. | Describes; grants nothing. |
 | Host binding | The native operation, executable adapter, guest host, or remote worker satisfying that interface. | Host-owned configuration outside an untrusted checkout. |
 | Grant | Permission for a principal to use a binding within a scope and budget. | Host/operator policy, never supplied by the component itself. |
 | Presence | The binding's observed usability in this context. | Local observation, never inferred from publication. |

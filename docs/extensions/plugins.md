@@ -10,9 +10,11 @@ document is the target specification for typed operations, shared
 evidence, and [program execution](programs.md);
 [What is built](#what-is-built) says which parts exist today.
 
-In this document, *plugin* means an OpenAgents WebAssembly guest. It doesn't
-mean a Claude Code or Codex client package under `plugins/`; the
-[glossary](../glossary.md#plugins-and-skills) separates the meanings.
+In this document, and everywhere else, *plugin* means an OpenAgents
+WebAssembly guest, one of the four kinds of capability a contributor adds
+([one vocabulary](../glossary.md#one-vocabulary-what-you-can-add)). A Claude
+Code or Codex package under `plugins/` is a client plugin package, named in
+full; the [glossary](../glossary.md#plugins-and-skills) separates them.
 
 ## What is built
 
@@ -231,14 +233,15 @@ measures whether an extension changes what Coder does, with and without it:
 - `crates/eval-runner` is the hosted runner that runs a test set for the
   phone on our computers ([runbook](../deployment/eval-runner.md)).
 - The three [evidence guests](#evidence-guests) are the app's catalog
-  tools: Project map (Repository map), Code finder (Code search), and Test
-  reader (Test report). Each has a starter test set of six tests. On
-  2026-09-29, Coder passed 2 of 6 without each tool and 5, 4, and 5 of 6
+  capabilities: Project map (Repository map), Code finder (Code search),
+  and Test reader (Test report). Each has a starter test set of six tests.
+  On 2026-09-29, Coder passed 2 of 6 without each and 5, 4, and 5 of 6
   with it (**Better** each time), and another trainer's check confirmed
   each result ([live record](measurements/2026-09-29-hosted-runner-live.md)).
-- A tool made in chat is a skill, optionally with catalog tools turned on;
-  `CODER_GUIDANCE` and its digest carry the skill into a run. A tool that
-  needs new code is built with Coder on a connected computer.
+- A capability made in chat is a skill, optionally with catalog
+  capabilities turned on; `CODER_GUIDANCE` and its digest carry the skill
+  into a run. A capability that needs new code is built with Coder on a
+  connected computer.
 
 ## Evidence guests
 
@@ -542,7 +545,7 @@ boundaries and the evidence needed before adopting a generated component.
 ## Authoring and build provenance
 
 Provide a Rust PDK, starter manifests, fixtures, and a shared authoring service
-used by the CLI, terminal, and any model-facing tool. Expose closed typed
+used by the CLI, terminal, and any model-facing surface. Expose closed typed
 operations for initialize, build, inspect, test, package, install, list, and
 uninstall. These are proposed surfaces, not commands available today. Creating
 a project writes files under a selected directory; building runs native

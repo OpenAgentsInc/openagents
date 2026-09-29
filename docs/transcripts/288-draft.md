@@ -126,17 +126,17 @@ A turn answered at T0 costs a Jev call and no generation at all. That's the judg
 
 ## Slide 12: Five ways Coder acquires a capability
 
-The five sources, as built. Tools and plugins are Wasm guests with typed operations and bounded host access. A guest never sees a path; the host mints an opaque handle per invocation for exactly what it listed. Skills are a SKILL.md the agent reads. Knowledge is cited entries retrieved and filtered by Jev. Delegation goes through the delegate door: Microcoder on the first provider with capacity, failing over, or Claude Code or Codex briefed with evidence Jev chose. And Jev is the judgment.
+The five sources, as built. Programs and plugins, the ones the literature calls tools: a program is a typed workflow, and a plugin is a Wasm guest with typed operations and bounded host access. A guest never sees a path; the host mints an opaque handle per invocation for exactly what it listed. Skills are a SKILL.md the agent reads. Knowledge is cited entries retrieved and filtered by Jev. Delegation goes through the delegate door: Microcoder on the first provider with capacity, failing over, or Claude Code or Codex briefed with evidence Jev chose. And Jev is the judgment.
 
 The note on this slide matters: one declared Terminal-Bench 4 attempt passed fin-saccr-rwa for 94 cents in about 150 seconds, under Fable 5.1's cheapest and fastest. It was in-sample and tuned, and across seven series only 2 of 13 attempts beat the bar. Delegation is a capability to measure, not a guaranteed win.
 
 ---
 
-## Slide 13: Gym evals, with the tool and without it
+## Slide 13: Gym evals, with the capability and without it
 
-Here's the first real with-and-without record. Three tools, six tests each, three runs per arm, on our hosted runner. Project map: 5 of 6 with the tool, 2 of 6 without. Code finder: 4 of 6 against 2 of 6. Test reader: 5 of 6 against 2 of 6. All three read Better under the v2 gate.
+Here's the first real with-and-without record. Three capabilities, six tests each, three runs per arm, on our hosted runner. Project map: 5 of 6 with the capability, 2 of 6 without. Code finder: 4 of 6 against 2 of 6. Test reader: 5 of 6 against 2 of 6. All three read Better under the v2 gate.
 
-Read it at its scope, because that's the whole point of the claim idea. In these runs the grant has no shell. Without the tool Coder can't read the files at all. So the delta is what each tool adds under that grant, not what it adds on top of an agent that already has a shell. That's a real, honest, reproducible claim, and it's a narrow one. Project map also ran in 10.7 seconds with the tool against 24.9 without, and passed more tests. Time is a note, not the verdict.
+Read it at its scope, because that's the whole point of the claim idea. In these runs the grant has no shell. Without the capability Coder can't read the files at all. So the delta is what each capability adds under that grant, not what it adds on top of an agent that already has a shell. That's a real, honest, reproducible claim, and it's a narrow one. Project map also ran in 10.7 seconds with the capability against 24.9 without, and passed more tests. Time is a note, not the verdict.
 
 [Source: `docs/extensions/measurements/2026-09-29-hosted-runner-live.md`.]
 
@@ -144,9 +144,9 @@ Read it at its scope, because that's the whole point of the claim idea. In these
 
 ## Slide 14: What the first runs taught us
 
-Restraint held: tests that shouldn't use the tool passed as often with it as without, with one exception. Reach did not: four tests failed in both arms because Jev didn't pick the tool for that wording. The tool was there, the right answer depended on it, and the router didn't reach for it. Scoring both arms per test is what made that visible instead of averaging it into a smaller delta. Those four tests are now the work list.
+Restraint held: tests that shouldn't use the capability passed as often with it as without, with one exception. Reach did not: four tests failed in both arms because Jev didn't pick the capability for that wording. The capability was there, the right answer depended on it, and the router didn't reach for it. Scoring both arms per test is what made that visible instead of averaging it into a smaller delta. Those four tests are now the work list.
 
-The first gate was wrong. Under v1, a tool that made Coder faster but no more correct read Better. We found it in a live run and replaced the rule the same day; the old result keeps its old digest. And graders are software: one looked for "not found" and missed "the server cannot find the requested resource," flipping one run to Worse by chance. We fixed the pattern and released a new test set version.
+The first gate was wrong. Under v1, a capability that made Coder faster but no more correct read Better. We found it in a live run and replaced the rule the same day; the old result keeps its old digest. And graders are software: one looked for "not found" and missed "the server cannot find the requested resource," flipping one run to Worse by chance. We fixed the pattern and released a new test set version.
 
 Two of those are the same lesson the ToolBench people learned the hard way: the metric, not the agent, produced the verdict. Versioning is how you keep the fix from rewriting history.
 
@@ -154,19 +154,19 @@ Two of those are the same lesson the ToolBench people learned the hard way: the 
 
 ## Slide 15: From a chat to every Coder
 
-The loop. Make a tool, in chat. Run both arms, on our computers. Publish it. Others check it. Adopt. The hosted runner lives on one of our machines with a per-trainer daily quota. Suites are NIP-EXT releases. Results and checks are NIP-EVAL events. Credit is NIP-XP awards. Adoption is a coder-defaults release, and it's an operator decision, never automatic.
+The loop. Make a capability, in chat. Run both arms, on our computers. Publish it. Others check it. Adopt. The hosted runner lives on one of our machines with a per-trainer daily quota. Suites are NIP-EXT releases. Results and checks are NIP-EVAL events. Credit is NIP-XP awards. Adoption is a coder-defaults release, and it's an operator decision, never automatic.
 
-A tool becomes a candidate when its result is Better, three distinct trainers' checks confirmed it, and at least one result on an independent second test set validates it. That last requirement is new and it's the one I care about most. Three people rerunning the author's own six tests proves the result reproduces. It doesn't prove the tool wasn't built to pass those six. Someone else's tests do.
+A capability becomes a candidate when its result is Better, three distinct trainers' checks confirmed it, and at least one result on an independent second test set validates it. That last requirement is new and it's the one I care about most. Three people rerunning the author's own six tests proves the result reproduces. It doesn't prove the capability wasn't built to pass those six. Someone else's tests do.
 
 Credit is XP and your name. It is never money. And as of today a check gets paid whether it confirms or disputes, because a good dispute is worth more than a fourth confirmation, and a network that only pays agreement learns to agree.
 
 ---
 
-## Slide 16: The protocol, from finding a tool to delegating
+## Slide 16: The protocol, from finding a capability to delegating
 
-Now the part I've wanted to talk about since the first episode of this series. Why is this on Nostr? Because we want multiple clients and multiple projects to speak the same signed JSON over WebSockets, and to be able to check each other's work without asking anyone's permission. Every record here is a signed event. Every reference is a digest. "The tool we measured" and "the tool you installed" are provably the same bytes or provably not.
+Now the part I've wanted to talk about since the first episode of this series. Why is this on Nostr? Because we want multiple clients and multiple projects to speak the same signed JSON over WebSockets, and to be able to check each other's work without asking anyone's permission. Every record here is a signed event. Every reference is a digest. "The capability we measured" and "the capability you installed" are provably the same bytes or provably not.
 
-Which NIP carries what. EXT: releases. A result names the exact tool version it tested, and installing, enabling, granting, and admitting stay separate decisions. CAP: grants. Describing a tool never grants its use, and a grant is now an object with a purpose, evaluation or operational, so the sandbox a claim was measured in is on the record. KB: knowledge entries tested with and without, like tools. CJ: the jobs, including the router's judgment and the hosted eval runs. PRG: decide and delegate as pinned, bounded steps. CTX: what evidence a delegate was actually shown. SESS: how each delegate engine can be steered. WORK: who answers for delegated work.
+Which NIP carries what. EXT: releases. A result names the exact capability version it tested, and installing, enabling, granting, and admitting stay separate decisions. CAP: grants. Describing a capability never grants its use, and a grant is now an object with a purpose, evaluation or operational, so the sandbox a claim was measured in is on the record. KB: knowledge entries tested with and without, like the rest. CJ: the jobs, including the router's judgment and the hosted eval runs. PRG: decide and delegate as pinned, bounded steps. CTX: what evidence a delegate was actually shown. SESS: how each delegate engine can be steered. WORK: who answers for delegated work.
 
 The statuses on the slide are honest. Several are Designed, not Implemented. That column is there so nobody has to take my word for it.
 
@@ -174,7 +174,7 @@ The statuses on the slide are honest. Several are Designed, not Implemented. Tha
 
 ## Slide 17: The protocol, from the run to sharing the result
 
-RUN is the run's journal: the lock a capability was admitted under, the grant, the baseline agent. Trajectories observe; RUN decides. ATIF carries the step-by-step trace of each arm and each delegate. EVAL is the unit of account: the with-and-without report with the claim's whole scope in it, what the run relied on, the tool's identity, the task distribution, and the verdict from a pinned gate; then the published result, the checks by another trainer, and the validations on a second suite. XP: credit anyone can recompute from public events. POL: adoption stays an operator's call and running agents keep their lock. OPT: an optimized candidate faces the same test as anything else. MV: the Gym in the Verse, where results get seen.
+RUN is the run's journal: the lock a capability was admitted under, the grant, the baseline agent. Trajectories observe; RUN decides. ATIF carries the step-by-step trace of each arm and each delegate. EVAL is the unit of account: the with-and-without report with the claim's whole scope in it, what the run relied on, the capability's identity, the task distribution, and the verdict from a pinned gate; then the published result, the checks by another trainer, and the validations on a second suite. XP: credit anyone can recompute from public events. POL: adoption stays an operator's call and running agents keep their lock. OPT: an optimized candidate faces the same test as anything else. MV: the Gym in the Verse, where results get seen.
 
 The shared contracts sit under all of it: exact references, locks, and the private envelope.
 
@@ -184,15 +184,15 @@ Here's the reason this is a shared language and not just our stack. If you write
 
 ## Slide 18: Where it stands today
 
-Three of three hosted results confirmed by a second trainer. Nine XP awards signed from those checks, recomputable by anyone with the ledger crate. Zero results validated on a second test set. Zero tools adopted into the defaults.
+Three of three hosted results confirmed by a second trainer. Nine XP awards signed from those checks, recomputable by anyone with the ledger crate. Zero results validated on a second test set. Zero capabilities adopted into the defaults.
 
-Say both zeros. Every part of the loop is built. The first runs, checks, and awards are live. The flywheel has not been shown turning. And it can't turn yet, because no tool has a test set that someone other than us wrote. That's not a bug in the software. It's the thing only other people can supply, which is the point.
+Say both zeros. Every part of the loop is built. The first runs, checks, and awards are live. The flywheel has not been shown turning. And it can't turn yet, because no capability has a test set that someone other than us wrote. That's not a bug in the software. It's the thing only other people can supply, which is the point.
 
 ---
 
 ## Slide 19: What we haven't shown yet
 
-The first validation, and then the first adoption, and whether the tool keeps its delta once it's in everyone's defaults. Reach: describing tools so the router picks them, probably the cheapest gain we have. Deltas under a full grant: the same tools against a Coder that can already run commands, where the baseline is much stronger; that's a new claim, not a correction of this one. Cost for both arms, which stays blank until our gateway lanes are priced. Uncertainty: six tests and three runs show large effects only. Marginal adoption: once the defaults hold anything, a candidate has to be measured against them, not against nothing. And network evidence: marginal, externally validated utility per adopted contribution, reported even when it's zero. Which it is.
+The first validation, and then the first adoption, and whether the capability keeps its delta once it's in everyone's defaults. Reach: describing capabilities so the router picks them, probably the cheapest gain we have. Deltas under a full grant: the same capabilities against a Coder that can already run commands, where the baseline is much stronger; that's a new claim, not a correction of this one. Cost for both arms, which stays blank until our gateway lanes are priced. Uncertainty: six tests and three runs show large effects only. Marginal adoption: once the defaults hold anything, a candidate has to be measured against them, not against nothing. And network evidence: marginal, externally validated utility per adopted contribution, reported even when it's zero. Which it is.
 
 ---
 
@@ -208,12 +208,12 @@ So here's what we're releasing, starting tomorrow.
 
 The OpenAgents app, on a public TestFlight link and an Android APK. You open it and the first tab is Chat with OpenAgents. It needs no computer. Common questions get an instant prepared answer, product questions get answered from sourced notes, and the moment you ask for something that needs a machine, you get an offer to run Coder on your own computer over your tailnet.
 
-And inside that chat is the Gym. Ask what's new. Pick a tool we recommend, Project map, Code finder, Test reader, or describe a tool you want and we'll draft it and a test set with you. Tap Start the test. Our hosted runner runs the tests with the tool and without it, three times each, and shows you the change: tests passed without, tests passed with, and a verdict. Add it to the Gym. Someone else runs the check. You earn XP when their check comes in, and when Coder adopts your tool for everyone. A new install reaches Start the test in three taps. We ran the whole loop live from a phone this morning: one tap, 2 of 6 to 5 of 6, Better, added to the Gym, a second trainer's check, plus 25 XP on the menu.
+And inside that chat is the Gym. Ask what's new. Pick a capability we recommend, Project map, Code finder, Test reader, or describe a capability you want and we'll draft it and a test set with you. Tap Start the test. Our hosted runner runs the tests with the capability and without it, three times each, and shows you the change: tests passed without, tests passed with, and a verdict. Add it to the Gym. Someone else runs the check. You earn XP when their check comes in, and when Coder adopts your capability for everyone. A new install reaches Start the test in three taps. We ran the whole loop live from a phone this morning: one tap, 2 of 6 to 5 of 6, Better, added to the Gym, a second trainer's check, plus 25 XP on the menu.
 
 [Honest limits, say them: Coder on your computers needs your own Mac or Linux box on the same tailnet; chat needs nothing. No push notifications, no attachments, no model picker yet. XP is never money. Nothing has been adopted yet. Source: `docs/roadmap/2026-09-29-launch-roadmap.md`, `docs/extensions/measurements/2026-09-29-build-23-launch-audit.md`.]
 
 This is the plugin marketplace we've been talking about since January 2024, episode 48, the Extism and Wasm brainstorm. It's the composability we've been chasing since episode one of this series. The difference now is that we finally have the two things it needed: a primitive that can decide at machine speed which of a million components to reach for, and a way to prove, in public, in signed events anyone can check, that a component actually helps. Without the first, a big registry is noise. Without the second, it's a popularity contest.
 
-The big labs built incredible engines. We're building the thing that knows what to hand them, and the record that says whether it helped. Come put your tool in the Gym. Better yet, write a test set for someone else's. That's the one thing we can't do for ourselves.
+The big labs built incredible engines. We're building the thing that knows what to hand them, and the record that says whether it helped. Come put your capability in the Gym. Better yet, write a test set for someone else's. That's the one thing we can't do for ourselves.
 
 See you tomorrow.

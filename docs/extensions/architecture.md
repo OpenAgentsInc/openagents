@@ -4,11 +4,17 @@ Status: target specification. See the [delivery plan](delivery.md).
 
 ## Naming decision
 
-Use **programs and extensions** for the whole system and **Wasm plugin** for
-an executable guest. In interfaces, use **Programs** for workflows and
-**Extensions** for installed packages and their components. An extension's
-component type must remain visible: a program, plugin, skill, decision
-function, or adapter has a different lifecycle.
+Use **capability** for what a person adds to an agent, the app's one word,
+and name its kind when it matters: a **program**, a **plugin** (a Wasm
+guest), a **skill**, or a **knowledge entry**
+([one vocabulary](../glossary.md#one-vocabulary-what-you-can-add)). Use
+**extension package** for the container a capability ships in and
+**component** for an entry in a package. In the terminal and headless
+interfaces, **Programs** lists workflows and **Extensions** lists installed
+packages and their components; the phone says **capability**. A component's
+kind must remain visible: a program, plugin, skill, decision function, or
+adapter has a different lifecycle. *Tool* is not an umbrella; it names a
+model's tool call in a transcript and nothing else.
 
 The component types have distinct responsibilities:
 
@@ -16,8 +22,8 @@ The component types have distinct responsibilities:
 | --- | --- |
 | Program | Declarative named steps interpreted by a host under NIP-PRG. |
 | Operation descriptor | Discoverable metadata for a selectable interface; it grants no execution. |
-| Wasm plugin | Executable guest with a manifest and bounded host imports. |
-| Capability | Host-granted ability; a manifest describes requirements and grants nothing. |
+| Plugin | A Wasm guest: an executable guest with a manifest and bounded host imports. |
+| Operation description | What NIP-CAP calls a capability definition: a typed interface and its required effects; it grants nothing. A **grant** is the host-given authority to use a binding of it, and *capability* unqualified is what a person adds and a claim measures. |
 | Executor | An admitted binding that performs a bounded task. |
 | Skill | Scoped, progressively loaded guidance with optional supported hooks. |
 | Extension package | Immutable bundle of components, schemas, documentation, dependencies, and evidence. |
@@ -26,8 +32,8 @@ The component types have distinct responsibilities:
 | AI implementation | Exact realization of a signature through a supported entry and pinned dependencies. |
 
 The [repository glossary](../glossary.md) defines the adopted terms. An MCP
-server or an external agent is not a Wasm plugin merely because it adds a
-capability. Model weights remain decision artifacts served through a door;
+server or an external agent is not a Wasm plugin merely because it supplies
+operations. Model weights remain decision artifacts served through a door;
 a plugin may prepare their input but does not load arbitrary weights into a
 Wasm host or make a model call behind the host's accounting.
 

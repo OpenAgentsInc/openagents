@@ -2,7 +2,9 @@
 
 `draft` `optional` — v1. The [shared contracts](contracts.md) are normative.
 
-This NIP distributes immutable component packages with signed provenance.
+This NIP distributes immutable component packages with signed provenance. A
+package is the container a capability ships in, never the capability itself
+([one vocabulary](../../docs/glossary.md#one-vocabulary-what-you-can-add)).
 It does not grant execution or require the catalog to be online for every
 local invocation. Private component-set records below describe exact host
 configurations; public package discovery does not disclose or synchronize a
@@ -14,7 +16,7 @@ evaluations plus host-owned bindings and policy. It is not a new component kind
 or permission mechanism. Coding packages add repository-specific behavior;
 document, research, or business packages use the same distribution contract.
 
-Test-time capabilities: a release here is the component a [test-time capability](../../docs/essays/2026-09-29-test-time-capabilities.md#1-test-time-capability-ttcap) comes from, and installation, enablement, grants, and admission are the separate decisions behind [capability admission](../../docs/essays/2026-09-29-test-time-capabilities.md#2-capability-admission); an `eval-suite` component publishes its tests ([mapping](../../docs/essays/2026-09-29-test-time-capabilities.md#how-the-protocol-carries-test-time-capabilities)).
+Test-time capabilities: a release here is the package a [test-time capability](../../docs/essays/2026-09-29-test-time-capabilities.md#1-test-time-capability-ttcap) ships in, and installation, enablement, grants, and admission are the separate decisions behind [capability admission](../../docs/essays/2026-09-29-test-time-capabilities.md#2-capability-admission); an `eval-suite` component publishes its tests ([mapping](../../docs/essays/2026-09-29-test-time-capabilities.md#how-the-protocol-carries-test-time-capabilities)).
 
 ## Kinds
 
@@ -77,8 +79,10 @@ execution pin by itself.
 
 Kinds are `program`, `plugin`, `capability`, `decision-function`, `skill`,
 `source`, `checker`, `operation`, `ai-signature`, `ai-implementation`,
-`guidance`, `schema`, and `eval-suite`. Executable native
-bindings remain host-owned; their declarations cannot self-install adapters.
+`guidance`, `schema`, and `eval-suite`. A `capability` component is an
+operation description: a [NIP-CAP](NIP-CAP.md) definition of operations,
+which grants nothing. Executable native bindings remain host-owned; their
+declarations cannot self-install adapters.
 Program/plugin/capability definitions follow their NIPs. Source, checker, and
 operation definitions have `v: "openagents.binding.v1"`, `requires`, `id`,
 `kind`, `capability: DefinitionRef`, `operation` (slug), input/output
@@ -96,6 +100,18 @@ descriptor. A package that publishes a suite holds exactly one
 `eval-suite` component, and may hold only that, which is how a person
 other than an extension's publisher publishes tests for it. Unknown
 definition kinds refuse.
+
+### What a contributor publishes
+
+A person adds a capability of one of four kinds
+([one vocabulary](../../docs/glossary.md#one-vocabulary-what-you-can-add)),
+and a package carries it as a component: a program is a `program`
+component; a plugin, a Wasm guest, is a `plugin` component; a skill is a
+`skill` component, or inert `guidance`; a knowledge entry is not a
+component at all but a [NIP-KB](NIP-KB.md) `3190` version. A `capability`
+component describes operations and is none of the four. A test set for any
+of them is an `eval-suite` component. Delegates and decision services are
+advertised through [NIP-CAP](NIP-CAP.md), not published in a package.
 
 An operation descriptor contains `v: "openagents.operation.v1"`, `requires`,
 `id`, `kind`, `definition` (ArtifactRef), `summary`, `input`, `output`,

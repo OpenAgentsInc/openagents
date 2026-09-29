@@ -2,7 +2,10 @@
 
 `draft` `optional` — v1.
 
-A program is a typed workflow interpreted by a host. It names operations,
+A program is a typed workflow interpreted by a host, and the default kind
+of capability a contributor adds
+([one vocabulary](../../docs/glossary.md#one-vocabulary-what-you-can-add)).
+It names operations,
 sources, functions, and children by pinned identity, grants no authority,
 and contains no arbitrary executable expressions. The
 [shared contracts](contracts.md) are normative. [NIP-CAP](NIP-CAP.md)

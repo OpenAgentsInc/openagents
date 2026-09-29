@@ -8,10 +8,13 @@ the engine, the CLI, the hosted runner, the chat interview, credit, and the
 phone's eval loop;
 [What is built](plugins.md#what-is-built) lists the plugin parts.
 OpenAgents defines general agent infrastructure; Coder is its first
-specialization. Programs compose typed work. Extensions
-distribute programs, operations, Wasm plugins, skills, semantic AI signatures,
-and immutable AI implementations. Every component has an explicit identity,
-interface, effect boundary, and lifecycle.
+specialization. People add capabilities: a program, a plugin, a skill, or a
+knowledge entry ([one vocabulary](../glossary.md#one-vocabulary-what-you-can-add)).
+Programs compose typed work. Extension packages are the container a
+capability ships in; they distribute programs, operation descriptions, Wasm
+plugins, skills, semantic AI signatures, and immutable AI implementations.
+Every component has an explicit identity, interface, effect boundary, and
+lifecycle.
 
 The [AI programming design](../optimization/README.md) separates what an
 operation means from how a model-backed implementation realizes it. DSPy and
@@ -53,7 +56,7 @@ A specification does not imply an implemented runtime or measured benefit.
 ## Programs, plugins, and AI implementations
 
 A program is a workflow, not a model prompt. A Wasm plugin is a bounded
-executable guest, not every kind of extension. An AI signature describes
+executable guest, one kind of capability and not every kind. An AI signature describes
 semantic behavior; an AI implementation supplies a pinned realization through
 a decision function, program, or admitted operation. An extension package can
 contain several of these components without merging their authority.

@@ -5,8 +5,11 @@ are normative.
 
 This NIP publishes the entries of an agent knowledge base as signed Nostr
 events: definitions, edge cases, common mistakes, and how environments and
-tools behave. A reader fetches entries from relays, checks them, and decides
-for itself which to trust. `docs/coder/design/knowledge-base.md` describes
+commands behave. A reader fetches entries from relays, checks them, and decides
+for itself which to trust. A knowledge entry is one of the four kinds of
+capability a contributor adds
+([one vocabulary](../../docs/glossary.md#one-vocabulary-what-you-can-add)),
+shipped as an entry version here rather than in a NIP-EXT package. `docs/coder/design/knowledge-base.md` describes
 the knowledge base this carries; `crates/nostr` (`kb`) is the conformance
 implementation and `microcoder kb publish` and `kb sync` use it.
 

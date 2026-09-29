@@ -8,9 +8,12 @@ stays unresolved. Authenticated remote catalog import remains proposed.
 
 ## Package contents
 
-An extension package is an immutable distribution bundle. It can contain
-programs, Wasm plugins, operation descriptors, question sets and decision
-function definitions, skills/guidance, schemas, fixtures, and documentation.
+An extension package is an immutable distribution bundle: the container a
+capability ships in, never the capability itself
+([one vocabulary](../glossary.md#one-vocabulary-what-you-can-add)). It can
+contain programs, Wasm plugins, operation descriptions, question sets and
+decision function definitions, skills/guidance, schemas, fixtures, and
+documentation.
 It can declare dependencies on host adapters but cannot install an executable
 adapter into a trust store by shipping a manifest that approves itself.
 
@@ -202,8 +205,8 @@ Revoked identities remain distinguishable from merely unavailable sources.
 ## User-facing surfaces
 
 Programs are presented by the workflows they perform. Extensions show the
-packages and component types installed, enabled, unavailable, or awaiting
-authority. Plugin details show the actual Wasm access mode and effective
+packages and component kinds installed, enabled, unavailable, or awaiting
+authority; the phone calls what they carry a capability. Plugin details show the actual Wasm access mode and effective
 limits. Task records show selection, invocation, fallback, and verification.
 
 Inspection, installation, enablement, grant management, update, rollback,

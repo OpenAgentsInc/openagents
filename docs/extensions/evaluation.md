@@ -26,7 +26,7 @@ Status: revision 2 (2026-09-28), implemented for v1 and live in build 21
   ([#9936](https://github.com/OpenAgentsInc/openagents/issues/9936);
   [measurement](../coder/measurements/2026-09-29-chat-router-v2.md)).
 - **Credit**: the `eval-check` and `eval-adopt` rules, the XP referee on
-  `coderos-4080`, the ledger, and the adoption tool
+  `coderos-4080`, the ledger, and the adoption command
   ([#9938](https://github.com/OpenAgentsInc/openagents/issues/9938)). The
   first live awards are in the hosted runner record; no adoption has been
   made yet.
@@ -63,8 +63,8 @@ XP when their work is checked and when it's adopted into Coder's defaults.
 There are two ways in:
 
 - **Chat, the product path.** A person asks OpenAgents, in the one routed
-  chat, what's new in the Gym, which tool to test, or to make a tool and a
-  test set with them. OpenAgents asks questions, drafts the tests, runs a
+  chat, what's new in the Gym, which capability to test, or to make a
+  capability and a test set with them. OpenAgents asks questions, drafts the tests, runs a
   pilot on our computers or on their connected computer, shows the result
   as a card, and publishes it only when they tap **Add to the Gym**. The
   [app wireframe](../product/2026-09-28-app-wireframe.md) (revision 3)
@@ -117,7 +117,7 @@ changes the following.
 
 | Change | Previous draft | This revision | Why |
 | --- | --- | --- | --- |
-| Product path | A CLI with a phone button for publishing. | The routed OpenAgents chat is the product path: asking what's new, choosing or making a tool, drafting tests, running, reading the result, publishing, checking others, and credit all happen in chat, with a few dedicated sheets. The CLI is the engine chat drives. | Owner direction, 2026-09-28: people use the Gym and evals through our chat and its router. |
+| Product path | A CLI with a phone button for publishing. | The routed OpenAgents chat is the product path: asking what's new, choosing or making a capability, drafting tests, running, reading the result, publishing, checking others, and credit all happen in chat, with a few dedicated sheets. The CLI is the engine chat drives. | Owner direction, 2026-09-28: people use the Gym and evals through our chat and its router. |
 | Manifest | `package.toml` and `experimental.eval_dir`. | The package record `coder::package::Package` already loads (JSON), with an `eval_dir` field. | There is no `package.toml` in the repository; packages are JSON records. |
 | Case version key | `schema_version = "1.0"`. | `v = "openagents.eval-case.v1"`. | Every other contract here names its schema in `v`. |
 | Turn limit | `run.max_turns` (default 10). | Removed. A run is one `coder -p` turn under Coder's own bounds (shell rounds, commands, timeouts), which the run config records. `run.deadline_seconds` stays. | `coder -p` has no turn cap; one headless turn is what a run is. |
@@ -131,7 +131,7 @@ changes the following.
 | Suite publication | Not specified. | A suite is published as a NIP-EXT release whose package holds an `eval-suite` component. | Suites need an author, versions, and revocation; NIP-EXT has all three and needs no new kind. |
 | Result publication | "Kind `3189`" with no profile. | A `3189` NIP-EVAL publication with the `oa:ext-eval:v1` profile marker, citing the suite release. | Same kind, with a marker readers filter on, as NIP-XP's run evidence does. |
 | Credit | "A `gym-trial` XP award candidate". | Two NIP-XP rules, `eval-check` and `eval-adopt`, define exactly when authors, publishers, and checkers earn XP. No money. | `gym-trial` never had a definition; the owner asked for credit when work is used. |
-| Hosted runs | Not specified. | A hosted runner runs suites for chat over NIP-CJ execution jobs, for catalog tools and chat-made tools only. | A phone can't run `coder -p`; IDIOT PROOF means no computer is needed for a first run. |
+| Hosted runs | Not specified. | A hosted runner runs suites for chat over NIP-CJ execution jobs, for catalog capabilities and chat-made capabilities only. | A phone can't run `coder -p`; IDIOT PROOF means no computer is needed for a first run. |
 | Kill switch | A tenancy capability flag with a fail-open fetch. | Removed from v1. The hosted runner has its own admission switch; the CLI runs locally. | No capability-flag endpoint exists, and a fail-open client check stops nothing. |
 | Names | `ext eval` was the only name. | Same CLI group. `openagents eval` stays the decision-door command it is today. | `openagents eval run|report|compare` already exists for doors. |
 
@@ -139,11 +139,12 @@ changes the following.
 
 | Term | Meaning |
 | --- | --- |
-| Extension | An installed package, or a working directory with a package record, that supplies programs, Wasm guests, or skills. The phone calls it a **tool**. |
+| Capability | What a person adds and a test set measures: a program, a plugin (a Wasm guest), a skill, or a knowledge entry ([one vocabulary](../glossary.md#one-vocabulary-what-you-can-add)). The umbrella word here and on the phone. |
+| Extension | An installed package, or a working directory with a package record, that carries a capability: a program, a Wasm guest, or a skill. The container, never the thing. |
 | Suite | Every case under the extension's eval directory. The phone calls it a **test set**. |
 | Case | A directory with `prompt.md`, optional `graders/`, and an optional `case.toml`. The phone calls it a **test**. |
 | Grader | A scored check over a run's trajectory, final message, or created files. |
-| Arm | One side of a comparison: `subject` (the extension admitted) or `baseline` (nothing admitted). |
+| Arm | One side of a comparison: `subject` (the capability admitted) or `baseline` (nothing admitted). |
 | Run | One headless `coder -p` turn for one case in one arm. |
 | Check | A rerun of a published suite against the same subject by a different trainer. The phone calls it **Check a result**. |
 | Hosted runner | The OpenAgents service that runs suites on our computers for chat, over NIP-CJ execution jobs. |
@@ -153,19 +154,23 @@ changes the following.
 
 Engineering words stay in code, the CLI, and this page. The phone uses
 plain words (see the wireframe's
-[Words on screen](../product/2026-09-28-app-wireframe.md#words-on-screen)).
+[Words on screen](../product/2026-09-28-app-wireframe.md#words-on-screen));
+*capability* is the one umbrella on screen, decided 2026-09-29
+([#9957](https://github.com/OpenAgentsInc/openagents/issues/9957)), and
+[#9958](https://github.com/OpenAgentsInc/openagents/issues/9958) renames
+build 21's **Tool** labels.
 
 | Here | On the phone |
 | --- | --- |
-| Extension | **Tool** |
+| Capability, in its extension package | **Capability** (Project map, Code finder, and Test reader keep their names) |
 | Suite | **Test set** |
 | Case | **Test** |
-| Subject and baseline arms | **With** the tool and **without** it |
+| Subject and baseline arms | **With** the capability and **without** it |
 | Suite score | **Passes 7 of 8 tests** |
 | Verdict `pass`, gate keep, inconclusive, reject | **Better**, **No clear change**, **Worse** |
 | Publish (`3189`) | **Add to the Gym** |
 | Check | **Check a result** |
-| `eval-check` and `eval-adopt` XP | **XP**, and "Coder now uses your tool" |
+| `eval-check` and `eval-adopt` XP | **XP**, and "Coder has this capability now" |
 
 ## Quick start
 
@@ -251,7 +256,7 @@ most 1 MiB, with at most 64 grader files per case.
 | `name` | string, default the directory name | The name `--case` globs match. Duplicate names are an error. |
 | `description` | string | For readers. |
 | `tags` | string[], `[]` | `--tag` keeps a case when any tag matches. |
-| `kind` | `should-fire` (default) or `should-not-fire` | Whether the extension ought to be used on this task. The phone shows it as "a test where the tool should help" or "should stay out of the way". |
+| `kind` | `should-fire` (default) or `should-not-fire` | Whether the extension ought to be used on this task. The phone shows it as "a test where the capability should help" or "should stay out of the way". |
 | `extensions` | string[] | Components under test as package-relative paths or identities. Default: the package at the extension root. |
 | `runs` | int 1 to 10, `3` | Runs per arm. One run of a nondeterministic agent is noise. |
 | `run.prompt` | string | The prompt (the `prompt.md` body). |
@@ -349,7 +354,7 @@ the change.
   and **passes** when every scored grader passes.
 - A **case** scores the mean of its runs and **passes** in an arm when a
   majority of its runs pass.
-- The **suite** reports cases passed per arm ("7 of 8 with the tool, 5 of
+- The **suite** reports cases passed per arm ("7 of 8 with the capability, 5 of
   8 without"), the mean case score per arm, and the change
   (`subject - baseline`) per case and overall. It also reports cost and
   wall time per arm.
@@ -365,12 +370,12 @@ the change.
   Everything else is **inconclusive** (**No clear change**). The spread is
   measured on this run's repeats; with `runs = 1` every verdict is
   inconclusive.
-- Cost and time never make a tool **Better** on their own. When the
+- Cost and time never make a capability **Better** on their own. When the
   change clears the spread, the result says so in a separate note beside
   the verdict: **Faster**, **Slower**, **Cheaper**, or **Costlier**, with
   both arms' numbers per run (`ext_eval::notes`).
 - `ext-eval-v1`, the rule before 2026-09-29, kept an extension that
-  improved the mean score, cost, *or* time, so a tool that made Coder
+  improved the mean score, cost, *or* time, so a capability that made Coder
   answer faster and no better read as **Better**
   ([the live run](measurements/2026-09-29-ext-eval-runner-live.md)). It
   stays committed, and results and suites that name it keep their
@@ -438,7 +443,7 @@ grader replays. See [the live run](measurements/2026-09-29-ext-eval-runner-live.
 | --- | --- | --- | --- |
 | The operator's computer, `openagents ext eval run` | The operator in a terminal | Any extension the operator trusts, with any grant they pass | The operator's Verse world key |
 | A connected computer, from chat | A tap on **Run on Studio Mac** in chat, which sends Coder a NIP-HOST task that runs `openagents ext eval run` | The same as the operator's computer; the grant is read and write in the sandbox only, never `exec` or `network`, unless the person approves it on the computer | The computer's world key |
-| The hosted runner, from chat | A tap on **Start the test** in chat, which sends a NIP-CJ execution job | Only catalog tools (tools in the OpenAgents catalog or in Coder defaults) and chat-made tools whose components are skills and choices of catalog tools. No setup programs, no `exec` or `network`, at most 8 cases, 3 runs, and a daily quota per trainer. | The hosted runner's key, with the requesting trainer named |
+| The hosted runner, from chat | A tap on **Start the test** in chat, which sends a NIP-CJ execution job | Only catalog capabilities (those in the OpenAgents catalog or in Coder defaults) and chat-made capabilities whose components are skills and choices of catalog capabilities. No setup programs, no `exec` or `network`, at most 8 cases, 3 runs, and a daily quota per trainer. | The hosted runner's key, with the requesting trainer named |
 
 Every path runs the same crate (`crates/ext-eval`), writes the same
 report, and publishes the same way. A chat request never runs anything
@@ -451,18 +456,18 @@ is `nostr::eval_ext::hosted` ([NIP-EVAL, Hosted runs](../../nips/openagents/NIP-
 evidence guests as extensions (`crates/plugin-repo-map`,
 `crates/plugin-code-search`, and `crates/plugin-test-report`, each a
 package record, one program, and a starter test set under `evals/`). A
-request names a catalog tool by its extension's DefinitionRef or by the
+request names a catalog capability by its extension's DefinitionRef or by the
 DefinitionRef of the guest it runs. Limits: 3 runs per trainer per UTC day
 (a check doesn't count) and a turn ceiling for everyone per day. A hosted
 result is published only on the trainer's publish request, signed by the
 runner, and carries the trainer's signed request inline
 (`meta.ext_eval_request`), because relays keep no `25920`.
 
-The starter test sets grade what the tool found, not Coder's reply: a
+The starter test sets grade what the capability found, not Coder's reply: a
 program turn answers with its run summary, so each should-fire test checks
 the run's trajectory (where the guest's output is recorded) for a fact only
-the tool, or looking at the files, would turn up, and each should-not-fire
-test checks the reply and that the tool stayed out of the way. Every test
+the capability, or looking at the files, would turn up, and each should-not-fire
+test checks the reply and that the capability stayed out of the way. Every test
 asks for `read` and `write`. A hosted run has no shell (the grant is never
 `exec`), so neither arm can make files there; a test that grades a file a
 run made measures something only on a connected computer. See
@@ -560,25 +565,25 @@ verdict matches; it disputes it otherwise. Both outcomes stay visible. A
 verdict match is the lossy count: the two headlines are the estimates,
 and `eval_ext::Effect` says whether they are compatible.
 
-**A validation** is a result on a *second* suite for the same tool,
+**A validation** is a result on a *second* suite for the same capability,
 naming the original with the `validates` marker. It answers what a check
 can't: whether the delta was fitted to the author's own tests. It counts
 when it is **Better**, the second suite's release is signed by someone
-other than the tool's author and was created after the tool's release
-(so the tool couldn't have been tuned against it), and both suites claim
+other than the capability's author and was created after its release
+(so it couldn't have been tuned against the suite), and both suites claim
 the same task distribution; a second suite on another distribution is a
 `transfer`, a new claim. A reader that doesn't hold both releases assumes
 no independence.
 
-**Adoption** makes a tool part of Coder for everyone: an OpenAgents
+**Adoption** makes a capability part of Coder for everyone: an OpenAgents
 operator issues an `openagents.eval-admission.v1` decision (NIP-EVAL)
 citing the reports and at least one validation, then publishes a new
 release of the `openagents:coder-defaults` package that depends on the
-extension's release. A tool is a candidate for adoption when its result
+extension's release. A capability is a candidate for adoption when its result
 is **Better**, at least three checks by distinct trainers confirmed it,
 and at least one result externally validates it. Adoption is an operator
 decision, never automatic. The admission lasts 365 days for a
-content-addressed tool, 90 for a version-addressed subject, and 14 for
+content-addressed capability, 90 for a version-addressed subject, and 14 for
 an endpoint; a subject with unresolved identity is never adopted; a gate
 change reinterprets the cited reports and reopens nothing. Once
 `coder-defaults` holds anything, a
@@ -595,7 +600,7 @@ revision adds (see [NIP-XP](../../nips/openagents/NIP-XP.md#eval-check)):
 | `eval-adopt` | A `coder-defaults` release depends on the extension, citing an admission that cites the extension's reports, a confirming check, and at least one externally validating result. | The extension's author; the author of the suite whose results were cited; each evaluator of a cited, confirmed result. Once per extension release. | 200, 100, 50 in the first quests |
 
 "Used" means exactly these two events: someone else reran your test set
-to protocol (and got your result, or didn't), or your tool was adopted
+to protocol (and got your result, or didn't), or your capability was adopted
 into Coder's defaults. A
 run, a publish, a view, or a download earns nothing. The OpenAgents referee
 signs awards after checking each rule against the signed events; a reader
@@ -613,8 +618,8 @@ and [the wireframe](../product/2026-09-28-app-wireframe.md). In short:
 | The person says | The route | What chat shows |
 | --- | --- | --- |
 | "What's new in the Gym?", "What are people working on?" | `gym.news` | A grounded answer from the Gym knowledge source (published results, suites, checks waiting, adoptions, the app's changelog, and product notes), every item with its source, and at most one offer. |
-| "Test Project map on Coder", "Which tool should I try?" | `eval.run` | A tool card with its latest result and **Start the test**. |
-| "Help me make a tool that…", "Write tests for my tool" | `eval.author` | The authoring interview, one question per turn, with the draft as a card. |
+| "Test Project map on Coder", "Which capability should I try?" | `eval.run` | A capability card with its latest result and **Start the test**. |
+| "Help me make a capability that…", "Write tests for my capability" | `eval.author` | The authoring interview, one question per turn, with the draft as a card. |
 | "Check someone's result" | `eval.check` | A check card with **Run the check**. |
 | "How did my test do?", "Should I add it?" | `eval.result` | A result card, **See details**, and **Add to the Gym**. |
 | "What have I earned?", "Did anyone check my tests?" | `eval.credit` | A credit card from the XP ledger: pending and confirmed awards, and who checked what. |
@@ -632,19 +637,20 @@ Rules chat keeps:
    phone keeps and shows as a card; each interview gate is a tap
    (**Looks good**, **Change it**); nothing is public until **Add to the
    Gym**.
-4. **Plain words.** Chat uses the phone's words (tool, test, test set,
-   with and without); the engineering words stay here.
+4. **Plain words.** Chat uses the phone's words (capability, test, test
+   set, with and without it); the engineering words stay here.
 
-What "make a tool" means in chat in v1: a tool made in chat is a skill
-(plain-language instructions Coder follows) that may also turn on catalog
-tools such as Project map. Tools with new code (Wasm guests, programs) are
-made with Coder on a connected computer or in a terminal, and are then
-tested the same way. Which one a request is comes from Jev's typed `build`
-question (`crates/coder/src/eval_author/rubric.rs`): writing, reviewing,
-checking, explaining, or following a team's conventions is a skill, even
-when what Coder writes is code; reaching a service outside the repository,
-running on a schedule, or a new program or plugin is new code. A tool goes
-to Coder only when Jev chooses `code` with 0.7 or more.
+What "make a capability" means in chat in v1: a capability made in chat is
+a skill (plain-language instructions Coder follows) that may also turn on
+catalog capabilities such as Project map. Capabilities with new code (Wasm
+plugins, programs) are made with Coder on a connected computer or in a
+terminal, and are then tested the same way. Which one a request is comes
+from Jev's typed `build` question (`crates/coder/src/eval_author/rubric.rs`):
+writing, reviewing, checking, explaining, or following a team's conventions
+is a skill, even when what Coder writes is code; reaching a service outside
+the repository, running on a schedule, or a new program or plugin is new
+code. A capability goes to Coder only when Jev chooses `code` with 0.7 or
+more.
 
 ## Authoring a suite
 
@@ -655,16 +661,16 @@ session on the operator's machine) and the chat's `eval.author` route
 on explicit approval:
 
 0. **Gate.** Confirm the target is a real extension (or, in chat, which
-   tool the person means, or that they're making one). Stop on an error
+   capability the person means, or that they're making one). Stop on an error
    rather than guess.
-1. **Read the tool.** Its components and their own words. Say what it's
+1. **Read the capability.** Its components and their own words. Say what it's
    for, what it does on its own, and what it leaves to the person.
 2. **Define quality.** Ask what a good run looks like and what a failure
    looks like. The graders follow from the answer.
 3. **Propose tests.** At least 4 should-fire and 1 to 2 should-not-fire
    tests, each named for a real task shape. Wait for approval.
 4. **Propose graders.** Every test gets an outcome grader;
-   `operation_used` graders confirm the tool was reached. Default to
+   `operation_used` graders confirm the capability was reached. Default to
    `decision` graders over prose judges. Wait for approval.
 5. **Pilot.** Run one run per arm on the cheapest path, read every run,
    fix the suite, and repeat until clean. In chat, the pilot is a tap
@@ -685,7 +691,7 @@ the machine is `crates/ext-eval/src/author/`, the chat driver is
 `coder::eval_author` (one step per turn: the reply, the draft, its card,
 and at most one offer), and the terminal driver is `openagents ext eval
 init`. A chat turn recovers its step from the fixed line our last reply
-ended with and the draft the phone resent; Jev decides the tool and each
+ended with and the draft the phone resent; Jev decides the capability and each
 approval. Every test gets the `read` and `write` grant, because a run
 starts in an empty folder and a task makes its own files. See
 [the live run](measurements/2026-09-29-authoring-interview-live.md).
@@ -709,7 +715,12 @@ earlier summary.
 
 ## The system prompts
 
-The braces are substitution points.
+The braces are substitution points. The prompts still say *tool* where the
+rest of this page says *capability*: `crates/ext-eval/src/author/prompt.rs`
+carries them word for word and a test pins the two together, and the chat
+driver's step matching (`crates/coder/src/eval_author/fake.rs`) reads their
+step lines. Renaming them is a model-prompt change to make with that code,
+not here alone.
 
 ### The interview prompt
 
@@ -798,7 +809,7 @@ a note says a first version shipped:
 - **The Gym in the Verse as a social place.** The Gym building keeps its
   boards for reviewing results. Later, trainers' agents in the Gym compare
   notes with each other over chat: an agent reads another's published
-  suites and results, proposes a joint check, or explains why a tool
+  suites and results, proposes a joint check, or explains why a capability
   helped one repository and not another, with every claim sourced to
   published records. Chat stays the place where work is started.
   The board and a first version of the notes shipped with
@@ -838,7 +849,7 @@ a note says a first version shipped:
   runner; it doesn't guard against a fault in the runner itself.
 - A `receipt` pass proves the same bytes behaved the same on this engine,
   not that they are correct.
-- A suite written by a tool's author describes intended behavior; it is
+- A suite written by a capability's author describes intended behavior; it is
   not independent evidence.
 - The interview's approvals are the person's decisions; answering yes
   without reading forfeits them.

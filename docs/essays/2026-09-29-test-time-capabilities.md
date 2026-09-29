@@ -1485,7 +1485,7 @@ Status is the mechanism's, as the
 
 | Concept | Our component, crate, or doc | NIP and kinds | Status |
 | --- | --- | --- | --- |
-| [Test-time capability](#1-test-time-capability-ttcap) | Extensions (tool, plugin, skill, package) admitted to a Coder turn; [Wasm plugins](../extensions/plugins.md), `crates/plugin`; [extension eval](../extensions/evaluation.md) | [NIP-EXT](../../nips/openagents/NIP-EXT.md) `3184`, [NIP-EVAL](../../nips/openagents/NIP-EVAL.md#extension-evaluation-profile) `3189` | Implemented |
+| [Test-time capability](#1-test-time-capability-ttcap) | A capability of any of the four contributor kinds (program, plugin, skill, knowledge entry), shipped in an extension package or as a NIP-KB entry and admitted to a Coder turn; [Wasm plugins](../extensions/plugins.md), `crates/plugin`; [extension eval](../extensions/evaluation.md) | [NIP-EXT](../../nips/openagents/NIP-EXT.md) `3184`, [NIP-EVAL](../../nips/openagents/NIP-EVAL.md#extension-evaluation-profile) `3189` | Implemented |
 | [Capability admission](#2-capability-admission) | [Extension architecture](../extensions/architecture.md); eval run locks | [NIP-EXT](../../nips/openagents/NIP-EXT.md#listings-updates-and-installation), [NIP-CAP](../../nips/openagents/NIP-CAP.md#description-binding-and-grant), [NIP-RUN](../../nips/openagents/NIP-RUN.md#record-types) `3187` | Partial |
 | [Capability delta](#3-capability-delta) | `openagents ext eval`, the hosted runner, the [`ext-eval-v2` gate](../../crates/gym/gates/ext-eval-v2.json) | [NIP-EVAL reports](../../nips/openagents/NIP-EVAL.md#reports) | Implemented |
 | [Reach and restraint](#4-reach-and-restraint) | Should-fire and should-not-fire cases in every [suite](../extensions/evaluation.md) | [NIP-EVAL suites](../../nips/openagents/NIP-EVAL.md#suites) | Implemented |
@@ -1518,7 +1518,7 @@ rather than left to the reader:
 | P, the policy | The gate digest in `acceptance`, and the gate file's declared primary outcome: `ext-eval-v2` is tests passed with cost and time held not materially worse; `ext-eval-cost-v1` is cost with cases, score, and time held non-inferior. Not part of the key: a report judged by a since-replaced gate is still a record on the same claim |
 | The result | `change` on the `comparison` arm for `cases_passed` and `mean_score`, with `cost_usd` and `seconds` per arm (unknown where a lane isn't priced); no interval yet |
 
-A claim decides three concrete things in OpenAgents. Installing a tool,
+A claim decides three concrete things in OpenAgents. Installing a capability,
 describing it, or demoing it decides none of them.
 
 1. **The Gym's gate rates it Better.** `openagents ext eval` and the hosted
@@ -1538,13 +1538,13 @@ describing it, or demoing it decides none of them.
    only a confirming check counts toward a candidate.
 3. **It can be adopted into every Coder's defaults.** The
    [operator policy](../extensions/evaluation.md#checks-adoption-and-credit)
-   makes a tool an adoption candidate when its result is **Better**, at
+   makes a capability an adoption candidate when its result is **Better**, at
    least three distinct trainers' checks confirmed it, and at least one
    **Better** result on a second suite externally validates it: a suite
-   released by someone other than the tool's author, after the tool's
+   released by someone other than the capability's author, after its
    release, on the same distribution, naming the result with the
    `validates` marker. An admission that admits cites that validation or
-   doesn't parse. No tool has such a validation yet. Adoption
+   doesn't parse. No capability has such a validation yet. Adoption
    itself is an operator's
    [NIP-EVAL adoption](../../nips/openagents/NIP-EVAL.md#adoption) decision
    and a new [`coder-defaults`](../../packages/coder-defaults/) release, and
@@ -1553,28 +1553,32 @@ describing it, or demoing it decides none of them.
 
 A component with no such report is a candidate: the gate hasn't rated it,
 no check can confirm it, and it can't be adopted. And a report that rates
-it **Better** is a claim about that scope: three tools, six tests each,
+it **Better** is a claim about that scope: three capabilities, six tests each,
 one baseline, one grant.
 
 ### Each term in OpenAgents
 
 #### Test-time capability in OpenAgents
 
-All five sources exist in the system. They do not yet share one
-evaluation carrier: extensions and knowledge entries are measured by the
-same with-and-without report, while delegation and judgment are measured
-separately, as the sections below say.
+All five sources exist in the system. Part I calls the first "tools and
+plugins", the general literature's name; in our
+[vocabulary](../glossary.md#one-vocabulary-what-you-can-add) a person adds
+a capability of one of four kinds, a program, a plugin, a skill, or a
+knowledge entry, and delegation and judgment are capabilities the system
+supplies. They do not yet share one evaluation carrier: the four
+contributor kinds are measured by the same with-and-without report, while
+delegation and judgment are measured separately, as the sections below say.
 
 | Source | What gets admitted | Where it lives |
 | --- | --- | --- |
-| Tools and plugins | A Wasm guest with typed operations and bounded host access, or a program that runs one | [Wasm plugins](../extensions/plugins.md), `crates/plugin` |
-| Skills | A `SKILL.md` guide the agent reads before a task | [Plugins and skills](../glossary.md#plugins-and-skills) |
-| Knowledge | Cited entries (methods, edge cases, slips) retrieved and filtered by Jev | [Knowledge base](../coder/design/knowledge-base.md) |
+| Programs and plugins | A program, or a Wasm guest with typed operations and bounded host access and the program that runs it | [NIP-PRG](../../nips/openagents/NIP-PRG.md), [Wasm plugins](../extensions/plugins.md), `crates/plugin` |
+| Skills | A `SKILL.md` guide the agent reads before a task, or the instructions a chat-made capability is | [Plugins and skills](../glossary.md#plugins-and-skills) |
+| Knowledge entries | Cited entries (methods, edge cases, slips) retrieved and filtered by Jev | [Knowledge base](../coder/design/knowledge-base.md) |
 | Delegation | Another agent, briefed with evidence Jev chose | [The delegate door](../coder/runtime/delegate-door.md) |
 | Typed judgment | A typed decision with probabilities that code acts on; in chat, it picks which of the above to use, and when | [The chat router](../coder/design/2026-09-28-chat-router.md) |
 
-Concretely: an extension (tool, plugin, skill, or package) admitted to a
-Coder turn, measured by an [extension eval](../extensions/evaluation.md);
+Concretely: a capability (a program, plugin, or skill, shipped in an
+extension package) admitted to a Coder turn, measured by an [extension eval](../extensions/evaluation.md);
 a knowledge entry retrieved into a Microcoder step, whose evidence is the
 same report; a delegate briefed by Coder One, measured today on
 Terminal-Bench attempts rather than by a paired eval; and Jev's judgment,
@@ -1873,7 +1877,7 @@ checks, and any reader can recompute them with `crates/xp-ledger`.
 #### The capability flywheel in OpenAgents
 
 The chat is the front door. A person asks OpenAgents what to test or makes
-a tool by chatting, runs the tests on our computers, adds the result to the
+a capability by chatting, runs the tests on our computers, adds the result to the
 Gym, and earns credit when others check it or Coder adopts it. The
 [README's loop](../../README.md#the-loop) draws it. Its test is the network
 plan's
@@ -2004,8 +2008,8 @@ along than the NIP as a whole; the notes say where.
 
 | NIP | Status | What it's for in this lifecycle | Kinds it owns |
 | --- | --- | --- | --- |
-| [NIP-EXT](../../nips/openagents/NIP-EXT.md) | Partial | The components a capability comes from: signed immutable releases of tools, plugins, skills, and `eval-suite` test sets, with installation, enablement, grants, and admission kept separate. | `3184`, `3185`, `3186`, `30184`, `30185` |
-| [NIP-CAP](../../nips/openagents/NIP-CAP.md) | Partial | Describes an execution interface, its host binding, the grant to use it, and its observed presence; a `service` profile advertises decision services such as Jev's. Its "capability" is the [authority sense](#what-the-word-capability-means-here), the G in a claim's scope. | `30180`, `30181` |
+| [NIP-EXT](../../nips/openagents/NIP-EXT.md) | Partial | The packages a capability ships in: signed immutable releases of programs, plugins, skills, and `eval-suite` test sets, with installation, enablement, grants, and admission kept separate. | `3184`, `3185`, `3186`, `30184`, `30185` |
+| [NIP-CAP](../../nips/openagents/NIP-CAP.md) | Partial | Describes an execution interface, its host binding, the grant to use it, and its observed presence; a `service` profile advertises decision services such as Jev's. Its object is an operation description; its "capability" is the [authority sense](#what-the-word-capability-means-here), the G in a claim's scope. | `30180`, `30181` |
 | [NIP-KB](../../nips/openagents/NIP-KB.md) | Implemented | Knowledge as a capability: signed entry versions and heads, with evidence that an entry helps as a with-and-without `3189` report. | `3190`, `30190`, `3191` |
 | [NIP-PRG](../../nips/openagents/NIP-PRG.md) | Partial | Typed workflows whose `decide` and `delegate` steps call a pinned decision function or hand a bounded task to an admitted executor. | `30182`, `30183` |
 | [NIP-CJ](../../nips/openagents/NIP-CJ.md) | Partial | The jobs: conversation turns with the router's `judgment` feedback, typed decision jobs, execution jobs (the hosted eval runner), and the chat's eval `offer`s, `card`s, and test-set `draft`. | `25900`/`26900`/`27000`, `25910`/`26910`/`27010`, `25920`/`26920`/`27020` |
@@ -2079,12 +2083,13 @@ measured, checked, credited, adopted, and shared. Each status is the one in
 
 #### NIP-EXT
 
-NIP-EXT (extension distribution) publishes tools, plugins, skills, and
-packages as signed, immutable releases (kind `3184`), and keeps installing,
+NIP-EXT (extension distribution) publishes extension packages, the
+container a program, plugin, or skill ships in, as signed, immutable
+releases (kind `3184`), and keeps installing,
 enabling, granting, and admitting a component as separate decisions. It is
 where a test-time capability comes from, and a test set travels the same way,
-as an `eval-suite` component. Without it, "the tool we measured" and "the tool
-you installed" could be different bytes, and no result could name exactly
+as an `eval-suite` component. Without it, "the capability we measured" and "the
+capability you installed" could be different bytes, and no result could name exactly
 what it tested. Status: Partial. [NIP-EXT](../../nips/openagents/NIP-EXT.md)
 
 #### NIP-CAP
@@ -2096,7 +2101,8 @@ advertises decision services such as Jev's. It matters for admission: a
 description alone never grants anything, so a capability an agent read about
 can't quietly start acting. Its "capability" is the
 [authority sense](#what-the-word-capability-means-here) of the word, a
-grant over an operation, and never a measured ability. Its effects object
+grant over an operation, and never a measured ability; in our vocabulary
+its object is an operation description. Its effects object
 already keeps reads, writes, network, process, delegation, and spend as
 separately declared effects, which is the first half of Miller's rule to
 reify each distinct authority as a distinct object; the second half,

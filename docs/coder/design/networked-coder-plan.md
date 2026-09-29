@@ -28,7 +28,8 @@ exist in this workspace today; that plan identifies the gaps and release tests.
 
 Coder can become the best coding agent by combining reliable execution,
 independent evidence, economical model routing, and a growing collection of
-reusable, measured components. No single model or prompt can guarantee that
+reusable, measured capabilities: programs, plugins, skills, and knowledge
+entries ([one vocabulary](../../glossary.md#one-vocabulary-what-you-can-add)). No single model or prompt can guarantee that
 position. An open network matters only if a contribution improves a new
 task for another operator after its cost, privacy, and failure risks count.
 
@@ -220,11 +221,13 @@ evaluation evidence to trust. A signature authenticates an author; it does
 not certify correctness. Private traces remain local unless their owner
 explicitly permits a scoped publication or study.
 
-The first shared currency should be compact, cited knowledge and reproducible
-evaluation reports because [NIP-KB](../../../nips/openagents/NIP-KB.md)
-already has a local implementation. Grow to immutable program, plugin, and
-decision implementations only after their interfaces and host boundaries are
-tested. The `plugins/` directory currently packages decision-service clients
+Of the four kinds of capability a contributor adds, the knowledge entry came
+first as the shared currency, beside reproducible evaluation reports, because
+[NIP-KB](../../../nips/openagents/NIP-KB.md) already had a local
+implementation and an entry needs no execution authority. Programs, plugins,
+and skills follow as their interfaces and host boundaries are tested, and
+each is measured by the same with-and-without report; decision
+implementations come after that. The `plugins/` directory currently packages decision-service clients
 for other agents; it is different from the bounded Wasm plugin host in
 `crates/plugin`. The [extension specification](../../extensions/README.md)
 describes future distribution, but installed packages remain inert until an

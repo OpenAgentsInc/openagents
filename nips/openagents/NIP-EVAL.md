@@ -2,7 +2,8 @@
 
 `draft` `optional` — v1, 2026-09-21. The [shared contracts](contracts.md)
 are normative. This NIP lets hosts compare attributable workload evidence
-for models, context policies, tools, plugins, programs, and complete agents.
+for models, context policies, programs, plugins, skills, knowledge entries,
+and complete agents.
 It does not create a global leaderboard, universal confidence threshold,
 automatic training pipeline, or remote attestation.
 
@@ -100,7 +101,7 @@ A verdict is an engineering gate over the estimate, not the estimate.
 
 Runs establish matched-case comparisons through exact case/input identities.
 If baseline and candidate differ in sources, budgets, recipients, hardware,
-verification, or offered tools, disclose that in limitations and narrow the
+verification, or the operations offered to the model, disclose that in limitations and narrow the
 claim. A reduction in supplied tokens is not task success. Correct output shape
 does not establish judgment accuracy, calibration, or safe execution.
 
@@ -114,7 +115,7 @@ and adverse outcomes, with explicitly unknown values when unmeasured:
 | Better semantic decisions | Label coverage, unavailable/refused answers, harmful error directions, per-family results, and abstention outcomes. Calibration claims name `ece` (expected calibration error) and `brier` on a labeled partition, and, for a decision that serves through thresholds, the operating points: precision and coverage above each serving threshold, the abstention or escalation rate, and the risk–coverage curve they lie on. |
 | Better context | Candidate retrieval recall and selected-evidence recall separately; missing mandatory constraints; stale inputs; expansion rate; decision overhead; resulting task outcomes. |
 | Better compression or representation | Source completeness, summary sufficiency failures, expansion/recovery, and downstream correctness alongside bytes/tokens. |
-| Better tool discovery | Eligible catalog and shortlist size, omitted needed operations, false activations, argument failures, schema/manual bytes, and full-task outcomes. |
+| Better operation discovery | Eligible catalog and shortlist size, omitted needed operations, false activations, argument failures, schema/manual bytes, and full-task outcomes. |
 | Better model routing | Entire matched task cost/time, observed versus estimated cache usage, context rebuilds, failed/escalated attempts, quality, and disclosure refusals. |
 | Better parallelism or reuse | Preparation/assimilation cost, duplicate work avoided, invalid reuse, contention, stale integration, unknown effects, and independent final verification. |
 | Better background assistance | Foreground latency, incremental compute/disclosure/spend, useful/noisy/stale findings, and accepted versus merely proposed outcomes. |
@@ -350,7 +351,8 @@ The report is `openagents.eval-report.v1` with these profile rules:
 
 - `subject.definition` is the subject's DefinitionRef, with `event`
   set to its release when published. The subject is one of five kinds: an
-  extension (a NIP-EXT `3184` release: tool, plugin, skill, or package), a
+  extension (a NIP-EXT `3184` release: a program, plugin, or skill in its
+  package), a
   knowledge entry (NIP-KB's own profile, on a `3190`), a decision service
   (a NIP-CAP `30180` head, with `configuration` pinning the question set
   as `name@digest`), a context-construction policy (a NIP-PRG `30182`
@@ -495,7 +497,7 @@ could not have tuned the artifact against it. A same-signer or
 earlier-suite result stays visible and validates nothing. A validation
 that came out other than **Better** validates nothing either. Readers show
 a result's validations beside its checks. Whether one validation makes a
-tool a candidate is the host's policy; Coder's asks for one beside three
+capability a candidate is the host's policy; Coder's asks for one beside three
 confirming checks.
 
 ### Hosted runs
@@ -527,7 +529,7 @@ named, sent by the same trainer). The runner answers `27020` `accepted`
 and `progress` with `meta.ext_eval: {completed, planned}` in case runs,
 and one `26920` whose `output` is `{v, action: "run", report, sealed,
 headline, verdict, notes}` or `{v, action: "publish", suite_release,
-result}`. It refuses `not_admitted` (not a catalog or chat-made tool, a
+result}`. It refuses `not_admitted` (not a catalog or chat-made capability, a
 suite asking for `exec` or `network`, a check of a result not on the
 relay, another trainer's report, or admission switched off),
 `over_quota` (the trainer's runs for the UTC day, or the day's turns),
