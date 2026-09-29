@@ -561,7 +561,7 @@ fn a_coder_only_host_serves_only_coder_chats_and_their_delegates_under_any_grant
     std::fs::write(
         tasks.join(format!("{task}.1.atif.jsonl")),
         concat!(
-            r#"{"record":"session","schema_version":"ATIF-v1.7","at":1,"session":{"id":"TASK-1"}}"#,
+            r#"{"record":"session","schema_version":"ATIF-v1.8","at":1,"session":{"id":"TASK-1"}}"#,
             "\n",
             r#"{"record":"step","step":{"at":2,"source":"User","message":"Synthetic Coder task"}}"#,
             "\n",
