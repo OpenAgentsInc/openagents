@@ -1191,7 +1191,7 @@ impl Gym {
             let id = format!("{base}-{n}");
             let view = match card {
                 // A run started from this card replaces it.
-                Card::Tool { .. } | Card::Check { .. } if started_here => continue,
+                Card::Tool { .. } | Card::Check { .. } | Card::Draft(_) if started_here => continue,
                 Card::Tool {
                     name,
                     summary,
@@ -1293,7 +1293,10 @@ impl Gym {
                     confirms,
                     ..
                 } => {
-                    let trainer = ui::trainer_name(&line.publication.pubkey);
+                    // The card names the result's signer, which for a
+                    // hosted run is the runner, not the trainer who asked:
+                    // the card says "a trainer" rather than a wrong name.
+                    let trainer = "A trainer".to_owned();
                     let claim = Claim::of(&line.headline, line.verdict);
                     let mine = line.publication.pubkey == self.standing.public_hex;
                     let start = starts.first().map(|body| {
@@ -1496,22 +1499,15 @@ impl Gym {
                 busy = true;
                 match (done, planned) {
                     (Some(done), Some(planned)) if *planned > 0 => {
-                        let per_side = run.cases.max(1);
-                        let sides = run.arms.max(1);
-                        // Each side's share of the tests done, in blocks.
-                        let each = planned / sides;
-                        for (n, label) in ["with the tool", "without it"]
-                            .into_iter()
-                            .take(sides as usize)
-                            .enumerate()
-                        {
-                            let side_done = done.saturating_sub(each * n as u64).min(each);
-                            progress.push(Progress {
-                                label: label.into(),
-                                done: side_done * per_side / each.max(1),
-                                total: per_side,
-                            });
-                        }
+                        // The runner counts runs across both sides, so one
+                        // row of blocks, a block per test, shows how far
+                        // it is; it never splits them by side.
+                        let tests = run.cases.max(1);
+                        progress.push(Progress {
+                            label: "with and without the tool".into(),
+                            done: (*done).min(*planned) * tests / planned,
+                            total: tests,
+                        });
                         lines.push(line(&format!("{done} of {planned} runs done"), Tone::Quiet));
                     }
                     _ => lines.push(line("Working", Tone::Quiet)),

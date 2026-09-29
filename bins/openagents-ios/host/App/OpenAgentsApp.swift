@@ -383,6 +383,11 @@ enum CoderLaunchTaps {
                 try? await Task.sleep(for: .seconds(Double(value) ?? 1))
                 continue
             }
+            if verb == "hide" {
+                // Put the keyboard away, as a tap outside the field does.
+                UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                continue
+            }
             for _ in 0..<120 {
                 try? await Task.sleep(for: .milliseconds(500))
                 if verb == "send" {

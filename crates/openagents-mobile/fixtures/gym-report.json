@@ -1,0 +1,302 @@
+{
+  "v": "openagents.eval-report.v1",
+  "requires": [],
+  "suite": {
+    "digest": "sha256:bf62347736c4932d273fbf1c28c15da9ba7bb7bc39ff5c95a585a48b33bc9ee3",
+    "size": 70,
+    "media_type": "application/json",
+    "schema": "openagents.eval-suite.v1",
+    "event": {
+      "id": "fefb471ab13859efb21c1024a99545de4bf27ebbd4f1207b737380bebdde11b2",
+      "pubkey": "c4cc10ead3be1ad06aec9f6d1e7e2094fb2d105bfb9f2655f5931e1e1c4f89a3",
+      "kind": 3184
+    }
+  },
+  "partition": {
+    "digest": "sha256:2df962d37ee229c547fb4ebef038a1eaecd0cd6f1c109746f4a9c1fa80329254",
+    "size": 9,
+    "media_type": "application/json"
+  },
+  "subject": {
+    "definition": {
+      "id": "c4cc10ead3be1ad06aec9f6d1e7e2094fb2d105bfb9f2655f5931e1e1c4f89a3:tool/main",
+      "artifact": {
+        "digest": "sha256:75316d2da999109b94b2b85900fafb83850a6b41f0603142bee39345f50159d8",
+        "size": 69,
+        "media_type": "application/json"
+      },
+      "event": {
+        "id": "f91196b13dade3c737ba1b5e7b450bef84e523f50c0856d4b59ecbdd400e9936",
+        "pubkey": "c4cc10ead3be1ad06aec9f6d1e7e2094fb2d105bfb9f2655f5931e1e1c4f89a3",
+        "kind": 3184
+      }
+    },
+    "lock": {
+      "digest": "sha256:80be0631f286fe7e12719ab399568f969c31d98f4bf6321666f58cc15e21ba4f",
+      "size": 6,
+      "media_type": "application/json"
+    },
+    "configuration": {
+      "digest": "sha256:b79606fb3afea5bd1609ed40b622142f1c98125abcfe89a76a661b0e8e343910",
+      "size": 6,
+      "media_type": "application/json"
+    }
+  },
+  "baseline": {
+    "definition": {
+      "id": "c4cc10ead3be1ad06aec9f6d1e7e2094fb2d105bfb9f2655f5931e1e1c4f89a3:coder-defaults/coder",
+      "artifact": {
+        "digest": "sha256:c84a9e3ad144b43da73995a5a12704f707fb34e7f30816b1a95c7b3c441fdc4a",
+        "size": 5,
+        "media_type": "application/json"
+      }
+    },
+    "lock": {
+      "digest": "sha256:b2d765e7aa39d196419620bc848174e89aa61b055a5ca1ca58ed926d895754a7",
+      "size": 9,
+      "media_type": "application/json"
+    },
+    "configuration": {
+      "digest": "sha256:b79606fb3afea5bd1609ed40b622142f1c98125abcfe89a76a661b0e8e343910",
+      "size": 6,
+      "media_type": "application/json"
+    }
+  },
+  "evaluator": "abababababababababababababababababababababababababababababababab",
+  "started_at": 1000,
+  "ended_at": 2000,
+  "runs": {
+    "digest": "sha256:1f64fff08d787e732e04559f4d241876b399d9d4251af79833bd22adbb2d331a",
+    "size": 4,
+    "media_type": "application/json"
+  },
+  "coverage": {
+    "subject": {
+      "planned": 2,
+      "attempted": 6,
+      "completed": 5,
+      "refused": 0,
+      "failed": 1,
+      "cancelled": 0,
+      "unknown": 0,
+      "excluded": 0
+    },
+    "baseline": {
+      "planned": 2,
+      "attempted": 6,
+      "completed": 4,
+      "refused": 0,
+      "failed": 2,
+      "cancelled": 0,
+      "unknown": 0,
+      "excluded": 0
+    }
+  },
+  "measurements": [
+    {
+      "arm": "subject",
+      "metric": "cases_passed",
+      "value": 7,
+      "denominator": 8,
+      "unknown_count": 0,
+      "uncertainty": null,
+      "evidence": []
+    },
+    {
+      "arm": "subject",
+      "metric": "case.find-login-handler.runs_passed",
+      "value": 3,
+      "denominator": 3,
+      "unknown_count": 0,
+      "uncertainty": null,
+      "evidence": []
+    },
+    {
+      "arm": "baseline",
+      "metric": "case.find-login-handler.runs_passed",
+      "value": 3,
+      "denominator": 3,
+      "unknown_count": 0,
+      "uncertainty": null,
+      "evidence": []
+    },
+    {
+      "arm": "subject",
+      "metric": "case.add-date-parser-test.runs_passed",
+      "value": 3,
+      "denominator": 3,
+      "unknown_count": 0,
+      "uncertainty": null,
+      "evidence": []
+    },
+    {
+      "arm": "baseline",
+      "metric": "case.add-date-parser-test.runs_passed",
+      "value": 0,
+      "denominator": 3,
+      "unknown_count": 0,
+      "uncertainty": null,
+      "evidence": []
+    },
+    {
+      "arm": "subject",
+      "metric": "case.explain-the-build.runs_passed",
+      "value": 3,
+      "denominator": 3,
+      "unknown_count": 0,
+      "uncertainty": null,
+      "evidence": []
+    },
+    {
+      "arm": "baseline",
+      "metric": "case.explain-the-build.runs_passed",
+      "value": 1,
+      "denominator": 3,
+      "unknown_count": 0,
+      "uncertainty": null,
+      "evidence": []
+    },
+    {
+      "arm": "subject",
+      "metric": "case.rename-a-module.runs_passed",
+      "value": 3,
+      "denominator": 3,
+      "unknown_count": 0,
+      "uncertainty": null,
+      "evidence": []
+    },
+    {
+      "arm": "baseline",
+      "metric": "case.rename-a-module.runs_passed",
+      "value": 3,
+      "denominator": 3,
+      "unknown_count": 0,
+      "uncertainty": null,
+      "evidence": []
+    },
+    {
+      "arm": "subject",
+      "metric": "case.fix-a-failing-test.runs_passed",
+      "value": 1,
+      "denominator": 3,
+      "unknown_count": 0,
+      "uncertainty": null,
+      "evidence": []
+    },
+    {
+      "arm": "baseline",
+      "metric": "case.fix-a-failing-test.runs_passed",
+      "value": 1,
+      "denominator": 3,
+      "unknown_count": 0,
+      "uncertainty": null,
+      "evidence": []
+    },
+    {
+      "arm": "subject",
+      "metric": "case.list-the-crates.runs_passed",
+      "value": 3,
+      "denominator": 3,
+      "unknown_count": 0,
+      "uncertainty": null,
+      "evidence": []
+    },
+    {
+      "arm": "baseline",
+      "metric": "case.list-the-crates.runs_passed",
+      "value": 3,
+      "denominator": 3,
+      "unknown_count": 0,
+      "uncertainty": null,
+      "evidence": []
+    },
+    {
+      "arm": "subject",
+      "metric": "case.leave-a-typo-fix-alone.runs_passed",
+      "value": 3,
+      "denominator": 3,
+      "unknown_count": 0,
+      "uncertainty": null,
+      "evidence": []
+    },
+    {
+      "arm": "baseline",
+      "metric": "case.leave-a-typo-fix-alone.runs_passed",
+      "value": 3,
+      "denominator": 3,
+      "unknown_count": 0,
+      "uncertainty": null,
+      "evidence": []
+    },
+    {
+      "arm": "subject",
+      "metric": "case.answer-a-question.runs_passed",
+      "value": 3,
+      "denominator": 3,
+      "unknown_count": 0,
+      "uncertainty": null,
+      "evidence": []
+    },
+    {
+      "arm": "baseline",
+      "metric": "case.answer-a-question.runs_passed",
+      "value": 3,
+      "denominator": 3,
+      "unknown_count": 0,
+      "uncertainty": null,
+      "evidence": []
+    }
+  ],
+  "verdict": "pass",
+  "limitations": {
+    "digest": "sha256:d457d71a9f4665d3398627751bdd96219291baa1f8ebe3b37c51ab5611cb9bc8",
+    "size": 11,
+    "media_type": "text/plain"
+  },
+  "meta": {
+    "ext_eval": {
+      "v": "openagents.ext-eval.v1",
+      "gate": "sha256:02e8b7d4c684fe5fb102947ce166e7b3ab13175ad11889a8fe6df6f1af1396b5",
+      "cases": [
+        {
+          "id": "find-login-handler",
+          "kind": "should-fire"
+        },
+        {
+          "id": "add-date-parser-test",
+          "kind": "should-fire"
+        },
+        {
+          "id": "explain-the-build",
+          "kind": "should-fire"
+        },
+        {
+          "id": "rename-a-module",
+          "kind": "should-fire"
+        },
+        {
+          "id": "fix-a-failing-test",
+          "kind": "should-fire"
+        },
+        {
+          "id": "list-the-crates",
+          "kind": "should-fire"
+        },
+        {
+          "id": "leave-a-typo-fix-alone",
+          "kind": "should-not-fire"
+        },
+        {
+          "id": "answer-a-question",
+          "kind": "should-not-fire"
+        }
+      ],
+      "headline": {
+        "subject_passed": 7,
+        "baseline_passed": 5,
+        "total": 8
+      },
+      "requester": null
+    }
+  }
+}

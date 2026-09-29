@@ -144,12 +144,13 @@ class MainActivity : ComponentActivity() {
         scanner = QRScanner(this)
         bridge = MobileBridge(applicationContext, BuildConfig.DEBUG && intent.getBooleanExtra("computers_fixture", false),
             BuildConfig.DEBUG && intent.getBooleanExtra("wallet_fixture", false),
-            BuildConfig.DEBUG && intent.getBooleanExtra("chat_fixture", false)) { render() }
+            BuildConfig.DEBUG && intent.getBooleanExtra("chat_fixture", false),
+            BuildConfig.DEBUG && intent.getBooleanExtra("gym_fixture", false)) { render() }
         gym = GymViews(this) { id -> bridge.gym(id) }
         coderRenderer = NativeRenderer(this, { view, node -> bridge.activate("coder", view, node) },
             { token, value -> bridge.submit("coder", token, value) }, surfaces = { resource ->
                 resource.removePrefix("gym-card:").takeIf { it != resource }?.let { id ->
-                    bridge.packet?.objectOrNull("gym")?.objectOrNull("cards")?.objectOrNull(id)?.let { gym.card(it) }
+                    bridge.packet?.objectOrNull("gym")?.objectOrNull("cards")?.objectOrNull(id)?.let { gym.cappedCard(it) }
                 }
             })
         computersRenderer = NativeRenderer(this, { view, node -> bridge.activate("computers", view, node) }, scrolling = true)

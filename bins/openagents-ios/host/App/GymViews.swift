@@ -498,11 +498,37 @@ struct GymCardSurface: View {
     var body: some View {
         let id = resource.hasPrefix("gym-card:") ? String(resource.dropFirst("gym-card:".count)) : ""
         if let card = bridge.packet?.gymPacket?.cards[id] {
-            GymCardView(card: card) { bridge.gym($0) }
+            GymScrollingCard(card: card) { bridge.gym($0) }
         } else {
             EmptyView()
         }
     }
+}
+
+/// A card at its own height up to a cap, scrolling inside past it, so a
+/// tall card never pushes the chat's header and composer off the screen.
+struct GymScrollingCard: View {
+    let card: GymCard
+    let tap: (String) -> Void
+    @State private var height: CGFloat = 0
+
+    var body: some View {
+        let cap = UIScreen.main.bounds.height * 0.5
+        ScrollView {
+            GymCardView(card: card, tap: tap)
+                .background(GeometryReader { geo in
+                    Color.clear.preference(key: GymCardHeight.self, value: geo.size.height)
+                })
+        }
+        .scrollBounceBehavior(.basedOnSize)
+        .frame(height: height == 0 ? nil : min(height, cap))
+        .onPreferenceChange(GymCardHeight.self) { height = $0 }
+    }
+}
+
+private struct GymCardHeight: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
 }
 
 // MARK: - Sheets
@@ -512,6 +538,8 @@ struct GymCardSurface: View {
 struct GymSheetView: View {
     let sheet: GymSheet
     let tap: (String) -> Void
+
+    private var footerChoices: Bool { sheet.kind == "publish" || sheet.kind == "stop" }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -552,6 +580,13 @@ struct GymSheetView: View {
                             ForEach(Array(section.lines.enumerated()), id: \.offset) { _, line in GymLineText(line: line) }
                         }
                     }
+                    // Only Add to the Gym and a stop keep their second
+                    // choice beside the primary; other sheets list theirs here.
+                    if !footerChoices {
+                        VStack(alignment: .leading, spacing: 4) {
+                            ForEach(sheet.secondary) { button in GymOutlined(button: button, tap: tap) }
+                        }
+                    }
                     if let bar = sheet.bar {
                         VStack(alignment: .leading, spacing: 6) {
                             GymXPBar(value: bar.value, max: bar.max)
@@ -568,7 +603,7 @@ struct GymSheetView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 if let primary = sheet.primary { GymPrimary(button: primary, busy: sheet.busy, tap: tap) }
-                ForEach(sheet.secondary) { button in
+                ForEach(footerChoices ? sheet.secondary : []) { button in
                     Button { tap(button.id) } label: {
                         HStack(spacing: 6) {
                             if let symbol = GymStyle.symbol(button.glyph) { Image(systemName: symbol) }

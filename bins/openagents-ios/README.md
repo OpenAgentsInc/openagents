@@ -13,7 +13,26 @@ The Android build, with the same tabs and the same Rust library, is in
 
 The app has four tabs, shown as icons:
 
-- **Chat** (the message icon) opens on a new chat with OpenAgents, ready
+- **Chat** (the message icon) opens on the main menu (wireframe revision
+  3, `SCR-01`): the trainer's name, level, and XP from the phone's own
+  ledger (a gray bar until it is read, never a 0), a **Next:** line from
+  the phone's state, **CHAT WITH OPENAGENTS**, the starter chips **Test a
+  tool**, **What's new**, and **Check a result** (each opens a chat with
+  that question sent), **PROFILE** (level, your results, and what you
+  made), and **THE GYM IN THE VERSE**. A new install first walks **Choose
+  your agent**, an end card with **LET'S GO**, and a first-run chat that
+  asks for Project map's test, so a test starts on the third tap; the step
+  reached survives a relaunch. In chat, the Gym's replies carry cards the
+  app draws with its own words (a tool with **Start the test**, a test-set
+  draft with **Looks good** and **Change it**, a run, a result with **Add
+  to the Gym**, news, a result to check, and your credit), and sheets for a
+  result's detail, **Add to the Gym** (exactly what becomes public, before
+  anything does), and a test set. Rust builds each card and sheet and mints
+  each button's ID (`crates/openagents-mobile/src/gym.rs`); this host
+  draws them (`GymViews.swift`) and sends back only the ID tapped.
+  `--gym-first-run choose|end_card|chat|done` starts the first run at a
+  step and `--gym-script "tap:ID|send:TEXT|sleep:N"` walks a flow, for
+  simulator checks. The chat itself opens on a new chat with OpenAgents, ready
   to type: the composer (**Message OpenAgents**) has the cursor, a selector
   beside the **OpenAgents** title says
   where the message goes, and suggested actions sit above the field as

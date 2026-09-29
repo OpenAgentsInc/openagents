@@ -513,7 +513,7 @@ fn every_worker_card_renders_in_the_phones_words() {
             .text
             .ends_with("says Project map made Coder pass 7 of 8 tests instead of 5.")
     );
-    assert!(check.lines[0].text.starts_with("Trainer "));
+    assert!(check.lines[0].text.starts_with("A trainer says"));
     assert_eq!(check.primary.as_ref().unwrap().label, "RUN THE CHECK");
     // No quest record states the checker's share yet: no number.
     assert_eq!(check.badge, None);
@@ -654,8 +654,13 @@ fn only_a_cards_button_sends_a_request() {
         live.done = Some(4);
     }
     let card = phone.card("run");
-    assert_eq!(card.progress.len(), 2);
-    assert_eq!(card.progress[0].label, "with the tool");
+    assert_eq!(card.progress.len(), 1);
+    assert_eq!(
+        (card.progress[0].done, card.progress[0].total),
+        (5, 8),
+        "4 of 6 runs of 8 tests"
+    );
+    assert!(card.lines.iter().any(|l| l.text == "4 of 6 runs done"));
     assert!(
         card.lines
             .iter()
@@ -1323,4 +1328,53 @@ fn no_label_uses_a_banned_word() {
     ] {
         assert_eq!(jargon(why), None, "{why}");
     }
+}
+
+/// Writes `fixtures/gym-report.json`, the report the debug-only screenshot
+/// runner returns, when `GYM_FIXTURE_WRITE=1`; always checks it parses.
+#[test]
+fn the_fixture_report_parses() {
+    if std::env::var("GYM_FIXTURE_WRITE").as_deref() == Ok("1") {
+        // Eight tests: five pass without the tool, seven with it.
+        let mut value: Value = serde_json::from_str(&report()).unwrap();
+        let cases = [
+            ("find-login-handler", "should-fire", 3, 3),
+            ("add-date-parser-test", "should-fire", 3, 0),
+            ("explain-the-build", "should-fire", 3, 1),
+            ("rename-a-module", "should-fire", 3, 3),
+            ("fix-a-failing-test", "should-fire", 1, 1),
+            ("list-the-crates", "should-fire", 3, 3),
+            ("leave-a-typo-fix-alone", "should-not-fire", 3, 3),
+            ("answer-a-question", "should-not-fire", 3, 3),
+        ];
+        value["meta"]["ext_eval"]["cases"] = json!(
+            cases
+                .iter()
+                .map(|(id, kind, _, _)| json!({"id": id, "kind": kind}))
+                .collect::<Vec<_>>()
+        );
+        value["meta"]["ext_eval"]["headline"] =
+            json!({"subject_passed": 7, "baseline_passed": 5, "total": 8});
+        let mut measurements = vec![json!({"arm": "subject", "metric": "cases_passed",
+            "value": 7, "denominator": 8, "unknown_count": 0, "uncertainty": null,
+            "evidence": []})];
+        for (id, _, with, without) in cases {
+            for (arm, passed) in [("subject", with), ("baseline", without)] {
+                measurements.push(
+                    json!({"arm": arm, "metric": format!("case.{id}.runs_passed"),
+                    "value": passed, "denominator": 3, "unknown_count": 0,
+                    "uncertainty": null, "evidence": []}),
+                );
+            }
+        }
+        value["measurements"] = json!(measurements);
+        std::fs::write(
+            concat!(env!("CARGO_MANIFEST_DIR"), "/fixtures/gym-report.json"),
+            serde_json::to_string_pretty(&value).unwrap() + "\n",
+        )
+        .unwrap();
+    }
+    let outcome = Outcome::from_report(crate::gym_fixture::REPORT.as_bytes()).unwrap();
+    assert_eq!((outcome.claim.without, outcome.claim.with), (Some(5), 7));
+    assert_eq!(outcome.claim.total, 8);
 }

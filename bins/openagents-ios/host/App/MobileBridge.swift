@@ -346,6 +346,9 @@ final class MobileBridge: ObservableObject {
             // `--gym-first-run choose|end_card|chat|done` starts the first
             // run at that step.
             if let step = AppTabLaunch.wallet("--gym-first-run") { options["gym_first_run"] = step }
+            // `--gym-fixture 1`: the chat router's recorded Gym cards and a
+            // recorded test run, offline, for screenshots (debug builds only).
+            if AppTabLaunch.wallet("--gym-fixture") != nil { options["gym_fixture"] = true }
             let configuration = try JSONSerialization.data(withJSONObject: options)
             handle = configuration.withUnsafeBytes { bytes in
                 openagents_mobile_create(bytes.bindMemory(to: UInt8.self).baseAddress, bytes.count)

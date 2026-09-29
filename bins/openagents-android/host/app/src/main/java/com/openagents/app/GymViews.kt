@@ -141,6 +141,14 @@ internal class GymViews(private val context: Context, private val tap: (String) 
         return outer
     }
 
+    /** A card at its own height up to half the screen, scrolling inside past it. */
+    fun cappedCard(value: JSONObject): View = object : ScrollView(context) {
+        override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+            val cap = resources.displayMetrics.heightPixels / 2
+            super.onMeasure(widthMeasureSpec, MeasureSpec.makeMeasureSpec(cap, MeasureSpec.AT_MOST))
+        }
+    }.apply { addView(card(value)) }
+
     // Sheets
 
     /** Shows Rust's sheet over the app, or closes it when Rust has none. */
@@ -194,6 +202,8 @@ internal class GymViews(private val context: Context, private val tap: (String) 
             section.optJSONArray("items")?.objects()?.forEach { list.gap(item(it), 6) }
             section.optJSONArray("lines")?.objects()?.forEach { list.gap(body(it.getString("text"), it.getString("tone")), 8) }
         }
+        val footerChoices = value.getString("kind") in setOf("publish", "stop")
+        if (!footerChoices) buttons(value.optJSONArray("secondary")) { outlined(it) }?.let { list.gap(it, 14) }
         value.objectOrNull("bar")?.let { level ->
             list.gap(xpBar(level.getInt("value"), level.getInt("max")), 16)
             list.gap(context.text(level.getString("label"), 12f, Palette.SECONDARY), 4)
@@ -202,7 +212,7 @@ internal class GymViews(private val context: Context, private val tap: (String) 
         val foot = context.column().apply { setPadding(context.dp(20), context.dp(8), context.dp(20), context.dp(20)) }
         value.textOrNull("next")?.let { foot.gap(body(it, "quiet"), 0) }
         value.objectOrNull("primary")?.let { foot.gap(primary(it, value.optBoolean("busy"))) }
-        value.optJSONArray("secondary")?.objects()?.forEach { button ->
+        if (footerChoices) value.optJSONArray("secondary")?.objects()?.forEach { button ->
             foot.gap(context.text(button.getString("label"), 16f, Palette.SECONDARY).apply {
                 gravity = Gravity.CENTER; minHeight = context.dp(44)
                 tag = button.getString("id")

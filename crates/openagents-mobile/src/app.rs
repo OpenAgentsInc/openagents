@@ -77,6 +77,11 @@ pub struct Launch {
     /// debug builds; it reaches no network.
     #[serde(default)]
     pub chat_fixture: bool,
+    /// Answer chats and run tests offline with the chat router's recorded
+    /// Gym cards and a recorded report (`gym_fixture`), for simulator
+    /// screenshots of states a live chat can't reach yet. Debug builds only.
+    #[serde(default)]
+    pub gym_fixture: bool,
     /// Messages the chat sends at launch, one reply at a time, with `!run`
     /// and `!wrong` steps, for simulator screenshots. Debug builds only.
     #[serde(default)]
@@ -103,6 +108,9 @@ fn basic_door(launch: &Launch, secret: SecretKey) -> Option<Arc<dyn crate::basic
     if launch.chat_fixture && debug {
         return Some(Arc::new(crate::chat_fixture::ChatFixture));
     }
+    if launch.gym_fixture && debug {
+        return Some(Arc::new(crate::gym_fixture::GymFixture));
+    }
     let relay = launch
         .chat_relay
         .as_deref()
@@ -121,7 +129,10 @@ fn basic_door(launch: &Launch, secret: SecretKey) -> Option<Arc<dyn crate::basic
 /// The hosted eval runner this build sends test runs to, when it has one
 /// (`crate::gym::Hosted`). None until the runner is deployed; runs then go
 /// to a ready computer, or the card says why they can't run yet.
-fn hosted_runner(_launch: &Launch, _secret: SecretKey) -> Option<Arc<dyn crate::gym::Hosted>> {
+fn hosted_runner(launch: &Launch, _secret: SecretKey) -> Option<Arc<dyn crate::gym::Hosted>> {
+    if launch.gym_fixture && cfg!(debug_assertions) {
+        return Some(Arc::new(crate::gym_fixture::FixtureRunner));
+    }
     None
 }
 

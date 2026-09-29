@@ -13,7 +13,14 @@ tabs, navigation, the camera, keyboards, the Keystore, and the Verse
 
 The app has four tabs, shown as white icons on black:
 
-- **Chat** (the message icon) opens on a new chat with OpenAgents, ready
+- **Chat** (the message icon) opens on the main menu, as on iOS: the
+  trainer's level from the phone's ledger, a **Next:** line, **CHAT WITH
+  OPENAGENTS**, the starter chips, **PROFILE**, and **THE GYM IN THE
+  VERSE**; a new install first walks Choose your agent, the end card, and
+  the first-run chat, with the tab bar hidden until the chat. Chat replies
+  carry the Gym's cards (drawn by `GymViews.kt` into the surfaces Rust
+  places) and its sheets (full-screen dialogs). Debug builds take `--es
+  gym_script "tap:ID|send:TEXT|sleep:N"`. The chat opens on a new chat with OpenAgents, ready
   to type: the composer (**Message OpenAgents**) has the cursor, a selector
   beside the **OpenAgents** title says
   where the message goes, and suggested actions sit above the field as
@@ -72,10 +79,13 @@ The app has four tabs, shown as white icons on black:
   starts, and the Gym connection, where you paste a `gym-connect:` code),
   and a tap on the RESULTS board opens **Results** (the boards, one board
   with its filters and caveats, one attempt, and the trace viewer with its
-  timeline, play, step, and the Jev, Briefing, Agent, and Verifier tabs).
+  timeline, play, step, and the Jev, Briefing, Agent, and Verifier tabs),
+  and a tap on the EVALS board opens **Evals** (published extension eval
+  results by test set and tool, and **Compare notes**, saved between
+  launches); a chat card's **See the board** walks the player there.
   Each panel hangs from a line to its board. TalkBack reads each row's
-  `accessibility` text from Rust and offers **Open Gym board** and **Open
-  results board** actions on the world when the player is in reach. The
+  `accessibility` text from Rust and offers **Open Gym board**, **Open
+  results board**, and **Open evals board** actions on the world when the player is in reach. The
   Gym connection code is kept encrypted under its own Keystore key; the
   verified results are cached in the app's cache directory.
 - **Wallet** runs Breez's Spark SDK on Bitcoin mainnet, as the iPhone

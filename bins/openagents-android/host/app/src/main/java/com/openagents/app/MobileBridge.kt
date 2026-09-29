@@ -17,7 +17,7 @@ import java.util.concurrent.Executors
  */
 class MobileBridge(private val context: Context, private val computersFixture: Boolean = false,
                    private val walletFixture: Boolean = false, private val chatFixture: Boolean = false,
-                   private val changed: () -> Unit) {
+                   private val gymFixture: Boolean = false, private val changed: () -> Unit) {
     companion object {
         // Rust keeps each app handle on the thread that created it, so one
         // process-wide worker owns every handle for its whole lifetime.
@@ -65,6 +65,8 @@ class MobileBridge(private val context: Context, private val computersFixture: B
                 if (walletFixture) config.put("wallet_fixture", true)
                 // Debug builds only: an offline chat worker that sends the chat router's fields.
                 if (chatFixture) config.put("chat_fixture", true)
+                // Debug builds only: the Gym's recorded cards and a recorded test run.
+                if (gymFixture) config.put("gym_fixture", true)
                 handle = OpenAgentsNative.create(config.toString())
                 check(handle != 0L) { "OpenAgents could not start." }
             }
