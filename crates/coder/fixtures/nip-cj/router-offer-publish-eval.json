@@ -1,0 +1,13 @@
+{
+  "v": 2,
+  "requires": [],
+  "type": "offer",
+  "offer": "publish_eval",
+  "report": {
+    "digest": "sha256:0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a",
+    "size": 4096,
+    "media_type": "application/json",
+    "schema": "openagents.eval-report.v1"
+  },
+  "label": "Add to the Gym"
+}

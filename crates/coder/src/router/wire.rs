@@ -56,7 +56,8 @@ pub fn line(routing: &Routing, tier: &Tier) -> String {
 /// `confidence`, `bank`, `answer`, `answer_p`, `needs_specifics`, and
 /// `tier` keep the meaning `coder-first-response-v2` gave them, so a
 /// reader from before the router still reads them; `route`, `route_p`,
-/// `lane_p`, `risk`, `risk_p`, and `cli_group` are the router's. In shadow
+/// `lane_p`, `risk`, `risk_p`, `cli_group`, and `tool` are the router's.
+/// `set` is `chat-router-v2` whichever set the request named. In shadow
 /// mode `tier` is what was served and `shadow` names what the router
 /// would have served.
 #[must_use]
@@ -91,6 +92,7 @@ pub fn judgment(
         "opener": opener,
         "confidence": routing.opener.as_ref().map_or(0.0, |(_, p)| *p),
         "cli_group": routing.cli_group.as_ref().map(|(group, _)| group.clone()),
+        "tool": routing.tool.as_ref().map(|(tool, _)| tool.clone()),
         "risk": routing.risk.word(),
         "risk_p": routing.risk_p,
         "tier": tier.word(),
@@ -107,6 +109,16 @@ pub struct Citation {
     pub id: String,
     pub title: String,
     pub source: String,
+}
+
+impl From<&super::gym::Item> for Citation {
+    fn from(item: &super::gym::Item) -> Self {
+        Self {
+            id: item.id(),
+            title: item.kind().to_string(),
+            source: item.source().cite(),
+        }
+    }
 }
 
 impl From<&Passage> for Citation {
@@ -184,6 +196,8 @@ pub struct Shadow {
     pub opener: Option<String>,
     pub opener_p: f64,
     pub cli_group: Option<String>,
+    /// The `tool` reading's argmax, a catalog id.
+    pub tool: Option<String>,
     pub risk: &'static str,
     pub risk_p: f64,
     /// What the router decided.
@@ -223,6 +237,7 @@ impl Shadow {
             opener: routing.opener.as_ref().map(|(opener, _)| opener.id.clone()),
             opener_p: routing.opener.as_ref().map_or(0.0, |(_, p)| *p),
             cli_group: routing.cli_group.as_ref().map(|(group, _)| group.clone()),
+            tool: routing.tool.as_ref().map(|(tool, _)| tool.clone()),
             risk: routing.risk.word(),
             risk_p: routing.risk_p,
             decided: decided.word(),
@@ -288,6 +303,7 @@ mod tests {
             opener: None,
             cli_group: None,
             cli_alternatives: Vec::new(),
+            tool: None,
             risk: Risk::Ok,
             risk_p: 0.99,
         }
@@ -299,7 +315,15 @@ mod tests {
     #[test]
     fn the_wire_matches_the_nip_cj_fixtures() {
         let request = fixture("router-request.json");
-        assert_eq!(request["router"], crate::router::SET);
+        assert_eq!(
+            request["router"],
+            crate::router::SET_V1,
+            "build 20's request"
+        );
+        assert!(crate::router::asks_router(&request["router"]));
+        let v2 = fixture("router-request-v2.json");
+        assert_eq!(v2["router"], crate::router::SET);
+        assert!(crate::router::card::draft(&v2["draft"]).is_ok());
         let context = Context::of(&request["context"]);
         assert_eq!(context.computer_ready, Some(false));
 
@@ -313,6 +337,7 @@ mod tests {
                 mode: Mode::Router,
                 context: &context,
                 personalize: false,
+                draft: false,
             },
         );
         assert_eq!(
@@ -343,7 +368,8 @@ mod tests {
             Offer::RunCoder {
                 label: "Run Coder".into()
             }
-            .feedback(2),
+            .feedback(2)
+            .unwrap(),
             fixture("router-offer-run-coder.json")
         );
         assert_eq!(
@@ -351,7 +377,8 @@ mod tests {
                 screen: Screen::AccountComputers,
                 label: "Connect a computer".into()
             }
-            .feedback(2),
+            .feedback(2)
+            .unwrap(),
             fixture("router-offer-open-screen.json")
         );
         assert_eq!(
@@ -360,9 +387,127 @@ mod tests {
                 effect: crate::router::Effect::ReadOnly,
                 runs_on: crate::router::RunsOn::ThisDevice,
             }
-            .feedback(2),
+            .feedback(2)
+            .unwrap(),
             fixture("router-offer-cli.json")
         );
+    }
+
+    /// The Gym and eval wire: each card and offer the router writes, built
+    /// from the test records, is its fixture, and NIP-CJ's parser reads it
+    /// back. `ROUTER_FIXTURES_WRITE=1` rewrites them.
+    #[test]
+    fn the_eval_wire_matches_its_fixtures() {
+        use crate::router::card::{Award, Card};
+        use crate::router::gym::Item;
+        use crate::router::gym::fixtures::{event, records, result, suite, tool};
+        use nostr::cj_conversation::{Size, SubjectSource, SuiteSource, Where};
+        let records = records();
+        let mut check = result(12, "project-map", 1);
+        check.checks = Some(event(10, 3189).id);
+        let draft: Value = serde_json::from_str(include_str!(
+            "../../../nostr/fixtures/eval-ext/eval-draft/valid/chat-made-tool.json"
+        ))
+        .unwrap();
+        let cards = [
+            (
+                "router-card-tool.json",
+                Card::Tool {
+                    tool: tool("project-map", "Project map"),
+                    latest: Some(result(10, "project-map", 1)),
+                    subject: Some(suite(20, "project-map", 8).subject),
+                },
+            ),
+            (
+                "router-card-result.json",
+                Card::Result {
+                    result: result(10, "project-map", 1),
+                },
+            ),
+            (
+                "router-card-check.json",
+                Card::Check {
+                    result: result(10, "project-map", 1),
+                },
+            ),
+            (
+                "router-card-news.json",
+                Card::News {
+                    items: vec![
+                        Item::Result(check),
+                        Item::TestSet(suite(20, "project-map", 8)),
+                        Item::Build(records.releases[0].clone()),
+                    ],
+                },
+            ),
+            ("router-card-draft.json", Card::Draft { draft }),
+            (
+                "router-card-credit.json",
+                Card::Credit {
+                    awards: vec![Award {
+                        role: "author".into(),
+                        xp: 25,
+                        title: "Your Project map test set was checked".into(),
+                        award: Some(event(30, 3193)),
+                    }],
+                },
+            ),
+        ];
+        let offers = [
+            (
+                "router-offer-start-eval.json",
+                Offer::StartEval {
+                    suite: SuiteSource::Published(event(20, 3184)),
+                    subject: SubjectSource::Definition(Box::new(
+                        suite(20, "project-map", 8).subject,
+                    )),
+                    size: Size {
+                        cases: 8,
+                        runs: 3,
+                        arms: 2,
+                    },
+                    at: Where::Hosted,
+                    label: "Start the test".into(),
+                },
+            ),
+            (
+                "router-offer-publish-eval.json",
+                Offer::PublishEval {
+                    report: result(10, "project-map", 1).report,
+                    label: "Add to the Gym".into(),
+                },
+            ),
+            (
+                "router-offer-open-gym-result.json",
+                Offer::OpenScreen {
+                    screen: Screen::GymResult,
+                    label: "See your result".into(),
+                },
+            ),
+        ];
+        let bodies = cards
+            .iter()
+            .map(|(name, card)| (*name, card.feedback(2).unwrap()))
+            .chain(
+                offers
+                    .iter()
+                    .map(|(name, offer)| (*name, offer.feedback(2).unwrap())),
+            );
+        for (name, body) in bodies {
+            if std::env::var_os("ROUTER_FIXTURES_WRITE").is_some() {
+                std::fs::write(
+                    format!("{FIXTURES}/{name}"),
+                    serde_json::to_string_pretty(&body).unwrap() + "\n",
+                )
+                .unwrap();
+            }
+            assert_eq!(body, fixture(name), "{name}");
+            if body["type"] == "card" {
+                nostr::cj_conversation::parse_card(&body).expect(name);
+            } else {
+                nostr::cj_conversation::parse_offer(&body).expect(name);
+            }
+        }
     }
 
     /// The shadow record holds ids, probabilities, tiers, and a duration:
@@ -379,6 +524,7 @@ mod tests {
                 mode: Mode::Router,
                 context: &Context::default(),
                 personalize: false,
+                draft: false,
             },
         );
         let record = Shadow::of(&routing, bank, Mode::Router, false, &tier, &tier, 180);
@@ -405,6 +551,7 @@ mod tests {
                 "opener",
                 "opener_p",
                 "cli_group",
+                "tool",
                 "risk",
                 "risk_p",
                 "decided",

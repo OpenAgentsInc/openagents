@@ -1,0 +1,31 @@
+{
+  "v": 2,
+  "requires": [],
+  "type": "card",
+  "card": "draft",
+  "draft": {
+    "v": "openagents.eval-draft.v1",
+    "tool": {
+      "name": "Tidy imports",
+      "summary": "Keeps Rust imports grouped and sorted.",
+      "catalog": null,
+      "skill": "Group std, external, then crate imports.",
+      "uses": [
+        "c5d77c5216669e9a39902f875d11224a4576a3b5f8f09c72e8c8771f839cc971:project-map/map"
+      ]
+    },
+    "cases": [
+      {
+        "id": "sort-imports",
+        "kind": "should-fire",
+        "prompt": "+++\nv = \"openagents.eval-case.v1\"\n+++\n\nClean up main.rs.\n",
+        "graders": [
+          {
+            "name": "criteria",
+            "text": "+++\ntype = \"decision\"\n+++\n\nSorted.\n"
+          }
+        ]
+      }
+    ]
+  }
+}

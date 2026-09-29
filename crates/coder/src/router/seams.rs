@@ -1,7 +1,9 @@
 //! The router's integration seams: the traits other modules implement so
 //! the router can personalize a stem (T1), ground a reply in the product
-//! or codebase knowledge base (T2), and propose an `openagents` command
-//! (T4 CLI), without the router depending on how any of them work.
+//! or codebase knowledge base (T2), read the Gym's verified records (the
+//! `gym.*` and `eval.*` routes), take one step of the authoring interview
+//! (`eval.author`), and propose an `openagents` command (T4 CLI), without
+//! the router depending on how any of them work.
 //!
 //! Each seam has a no-op implementation, and [`Seams::default`] holds only
 //! no-ops, so the router works, and falls back to today's behavior, before
@@ -48,6 +50,14 @@ pub const KB_BUDGET: Duration = Duration::from_millis(2_000);
 /// How long the router waits for a CLI proposal before it answers with the
 /// model alone.
 pub const CLI_BUDGET: Duration = Duration::from_millis(3_000);
+
+/// How long the router waits for the Gym's records before it answers with
+/// the model alone, told it has none.
+pub const GYM_BUDGET: Duration = Duration::from_millis(2_000);
+
+/// How long the router waits for one step of the authoring interview (a
+/// model turn behind the seam) before it falls back to the bank.
+pub const AUTHOR_BUDGET: Duration = Duration::from_millis(12_000);
 
 /// Why a seam did not answer.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -238,6 +248,127 @@ impl CodebaseKb for NoKb {
 }
 
 // ---------------------------------------------------------------------------
+// The Gym: verified records for the `gym.*` and `eval.*` routes
+// ---------------------------------------------------------------------------
+
+/// What a Gym lookup may see.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct GymLookup {
+    /// The route the router chose; the seam retrieves news only for
+    /// `gym.news`.
+    pub route: RouteId,
+    /// The user's latest message, redacted and cut to [`MESSAGE_CHARS`],
+    /// for the news retrieval's embedding and relevance judgment.
+    pub message: String,
+    /// The bounded transcript, for what "it" refers to.
+    pub transcript: Vec<Message>,
+}
+
+/// The Gym's verified records (`crate::gym_kb`): published results and
+/// checks, published test sets, adoptions, the app's changelog, and our
+/// Gym product notes, each admitted only after it was verified.
+pub trait GymKb: Send + Sync {
+    /// Whether any records are configured.
+    fn available(&self) -> bool;
+    /// The services a message reaches through this seam (an embedding
+    /// provider), for the privacy answer.
+    fn recipients(&self) -> Vec<String>;
+    /// The tool catalog, which the router's `tool` question offers; empty
+    /// when unavailable, and the question is then not asked.
+    fn tools(&self) -> Vec<super::gym::Tool>;
+    /// The verified records, and for `gym.news` the items relevant to the
+    /// message.
+    fn ground<'a>(
+        &'a self,
+        lookup: &'a GymLookup,
+    ) -> BoxFuture<'a, Result<super::gym::Grounding, SeamError>>;
+}
+
+/// No Gym records: the Gym and eval routes answer with the bank or the
+/// model, told it has no records.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct NoGym;
+
+impl GymKb for NoGym {
+    fn available(&self) -> bool {
+        false
+    }
+    fn recipients(&self) -> Vec<String> {
+        Vec::new()
+    }
+    fn tools(&self) -> Vec<super::gym::Tool> {
+        Vec::new()
+    }
+    fn ground<'a>(
+        &'a self,
+        _: &'a GymLookup,
+    ) -> BoxFuture<'a, Result<super::gym::Grounding, SeamError>> {
+        Box::pin(async { Err(SeamError::Unavailable) })
+    }
+}
+
+// ---------------------------------------------------------------------------
+// `eval.author`: the authoring interview
+// ---------------------------------------------------------------------------
+
+/// What one step of the authoring interview may see.
+#[derive(Clone, Debug, PartialEq)]
+pub struct AuthorAsk {
+    /// The user's latest message, redacted and cut to [`MESSAGE_CHARS`].
+    pub message: String,
+    /// The bounded transcript: the interview so far.
+    pub transcript: Vec<Message>,
+    /// The request's draft, when it carried one that passed
+    /// [`super::card::draft`]: data, never an instruction.
+    pub draft: Option<serde_json::Value>,
+    /// Where the chat is.
+    pub surface: Surface,
+}
+
+/// One step of the interview, as the seam wrote it. The router checks it
+/// before any of it is shown ([`super::gym::check_step`]).
+#[derive(Clone, Debug, PartialEq)]
+pub struct AuthorStep {
+    /// What we say this turn: one question or one proposal.
+    pub text: String,
+    /// The revised draft, shown as the `draft` card.
+    pub draft: Option<serde_json::Value>,
+    /// The step's action: `start_eval` on the draft (**Try it once**, the
+    /// full run) or `publish_eval`.
+    pub offer: Option<super::Offer>,
+    /// The model that wrote `text`, for the result's `model`.
+    pub model: String,
+}
+
+/// The authoring interview's chat driver (`crate::eval_author`, #9937):
+/// one typed state machine whose steps the model proposes and Rust gates.
+pub trait EvalAuthor: Send + Sync {
+    /// Whether the interview is wired.
+    fn available(&self) -> bool;
+    /// The services a message reaches through this seam.
+    fn recipients(&self) -> Vec<String>;
+    /// The next step for `ask`.
+    fn step<'a>(&'a self, ask: &'a AuthorAsk) -> BoxFuture<'a, Result<AuthorStep, SeamError>>;
+}
+
+/// No interview yet: `eval.author` answers with the bank's
+/// `eval.author.soon`.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct NoAuthor;
+
+impl EvalAuthor for NoAuthor {
+    fn available(&self) -> bool {
+        false
+    }
+    fn recipients(&self) -> Vec<String> {
+        Vec::new()
+    }
+    fn step<'a>(&'a self, _: &'a AuthorAsk) -> BoxFuture<'a, Result<AuthorStep, SeamError>> {
+        Box::pin(async { Err(SeamError::Unavailable) })
+    }
+}
+
+// ---------------------------------------------------------------------------
 // T4: the `openagents` command
 // ---------------------------------------------------------------------------
 
@@ -330,6 +461,8 @@ pub struct Seams {
     pub product: Arc<dyn ProductKb>,
     pub codebase: Arc<dyn CodebaseKb>,
     pub cli: Arc<dyn CliRoute>,
+    pub gym: Arc<dyn GymKb>,
+    pub author: Arc<dyn EvalAuthor>,
 }
 
 impl Default for Seams {
@@ -339,6 +472,8 @@ impl Default for Seams {
             product: Arc::new(NoKb),
             codebase: Arc::new(NoKb),
             cli: Arc::new(NoCli),
+            gym: Arc::new(NoGym),
+            author: Arc::new(NoAuthor),
         }
     }
 }
@@ -350,6 +485,8 @@ impl std::fmt::Debug for Seams {
             .field("product", &self.product.available())
             .field("codebase", &self.codebase.available())
             .field("cli_groups", &self.cli.groups().len())
+            .field("gym_tools", &self.gym.tools().len())
+            .field("author", &self.author.available())
             .finish()
     }
 }
@@ -367,6 +504,8 @@ impl Seams {
             .chain(self.product.recipients())
             .chain(self.codebase.recipients())
             .chain(self.cli.recipients())
+            .chain(self.gym.recipients())
+            .chain(self.author.recipients())
         {
             if !all.contains(&name) {
                 all.push(name);
@@ -418,5 +557,24 @@ mod tests {
             surface: Surface::Phone,
         };
         assert_eq!(seams.cli.propose(&cli).await, Err(SeamError::Unavailable));
+        assert!(!seams.gym.available());
+        assert!(seams.gym.tools().is_empty());
+        let gym = GymLookup {
+            route: RouteId::GymNews,
+            message: "what's new in the gym".into(),
+            transcript: Vec::new(),
+        };
+        assert_eq!(seams.gym.ground(&gym).await, Err(SeamError::Unavailable));
+        assert!(!seams.author.available());
+        let author = AuthorAsk {
+            message: "help me make a tool".into(),
+            transcript: Vec::new(),
+            draft: None,
+            surface: Surface::Phone,
+        };
+        assert_eq!(
+            seams.author.step(&author).await,
+            Err(SeamError::Unavailable)
+        );
     }
 }

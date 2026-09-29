@@ -10,13 +10,18 @@
 //! ```
 //!
 //! `ROUTER_EVAL_SPLIT` is `held_out` (the default), `tune`, or `all`.
+//! `ROUTER_EVAL_ROWS` is `all` (the default), `v1` (the rows of
+//! `routes-v1.json`, for comparing with the v1 measurements), or `gym` (the
+//! rows `routes-v2.json` added).
 //! Each system prints a Markdown report ([`coder::router_eval::Report`]) and
 //! writes its JSON to `ROUTER_EVAL_OUT` (default `target/router-eval/`).
 //!
 //! Systems:
 //!
-//! - `chat-router-v1` (`live_router`): the router's Jev question set and
-//!   policy table, in `Mode::Router`.
+//! - `chat-router-v2` (`live_router`): the router's Jev question set and
+//!   policy table, in `Mode::Router`, with the `tool` question over the
+//!   product corpus's tool catalog as the deployed worker asks it
+//!   (`ROUTER_EVAL_GYM=off` leaves it out).
 //! - `first-response-legacy`: the same judgment decided in `Mode::Legacy`,
 //!   which is what a turn that asks only for `opener` gets: today's
 //!   opener-and-prepared-answer path, the baseline the router must beat.
@@ -39,6 +44,25 @@ use knowledge::search::{Embed, cosine};
 
 fn split() -> String {
     std::env::var("ROUTER_EVAL_SPLIT").unwrap_or_else(|_| "held_out".to_string())
+}
+
+/// The rows of `split` that `ROUTER_EVAL_ROWS` keeps, and the label the
+/// report's split carries.
+fn rows<'a>(set: &'a Set, split: &str) -> (Vec<&'a Row>, String) {
+    let which = std::env::var("ROUTER_EVAL_ROWS").unwrap_or_else(|_| "all".to_string());
+    let rows = set.rows(split);
+    let gym = |row: &Row| row.tags.iter().any(|tag| tag == "gym");
+    match which.as_str() {
+        "v1" => (
+            rows.into_iter().filter(|r| !gym(r)).collect(),
+            format!("{split}-v1-rows"),
+        ),
+        "gym" => (
+            rows.into_iter().filter(|r| gym(r)).collect(),
+            format!("{split}-gym-rows"),
+        ),
+        _ => (rows, split.to_string()),
+    }
 }
 
 fn transcript(row: &Row) -> Vec<Message> {
@@ -93,15 +117,24 @@ async fn run_router(name: &str, mode: router::Mode) {
         Some((6, 40)),
         &seams,
     );
+    let tools = if std::env::var("ROUTER_EVAL_GYM").as_deref() == Ok("off") {
+        Vec::new()
+    } else {
+        let root = knowledge::product::repository();
+        let corpus =
+            knowledge::product::Corpus::load(&knowledge::product::default_dir(), Some(&root))
+                .expect("the product corpus loads");
+        coder::gym_kb::tools(&corpus)
+    };
     let context = router::Context::default();
     let situation = router::Situation {
         mode,
         context: &context,
         personalize: true,
+        draft: false,
     };
     let set = Set::fixture();
-    let split = split();
-    let rows = set.rows(&split);
+    let (rows, split_label) = rows(&set, &split());
     let mut readings = Vec::new();
     let mut traces = Vec::new();
     for row in &rows {
@@ -113,6 +146,7 @@ async fn run_router(name: &str, mode: router::Mode) {
                 bank,
                 &facts,
                 &seams.cli.groups(),
+                &tools,
             ))
             .await;
         let ms = started.elapsed().as_millis();
@@ -131,8 +165,8 @@ async fn run_router(name: &str, mode: router::Mode) {
             },
         });
     }
-    publish(&Report::of(name, &split, &rows, &readings));
-    write_traces(name, &split, &traces);
+    publish(&Report::of(name, &split_label, &rows, &readings));
+    write_traces(name, &split_label, &traces);
 }
 
 /// One row's reading in full, for tuning on the tune split: ids and
@@ -151,6 +185,7 @@ fn trace(row: &Row, routing: &router::Routing, tier: &router::Tier) -> serde_jso
         "lane": format!("{:?}", routing.lane),
         "lane_p": routing.lane_p,
         "cli_group": routing.cli_group,
+        "tool": routing.tool,
         "risk": routing.risk.word(),
         "risk_p": routing.risk_p,
         "tier": tier.word(),
@@ -173,7 +208,7 @@ fn write_traces(name: &str, split: &str, traces: &[serde_json::Value]) {
 #[tokio::test]
 #[ignore = "calls the live judge"]
 async fn live_router() {
-    run_router("chat-router-v1", router::Mode::Router).await;
+    run_router("chat-router-v2", router::Mode::Router).await;
 }
 
 #[tokio::test]
@@ -237,8 +272,7 @@ async fn live_embedding_baseline() {
     let tune = set.rows("tune");
     let threshold = fit_threshold(&tune, &scored, CANNED_TARGET);
     println!("embedding baseline: canned threshold {threshold:.2}, fit on the tune split");
-    let split = split();
-    let rows = set.rows(&split);
+    let (rows, split) = rows(&set, &split());
     let readings: Vec<Reading> = rows
         .iter()
         .map(|row| {

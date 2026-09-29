@@ -1,0 +1,43 @@
+---
+id: openagents.tool-project-map
+version: 1
+kind: product
+title: "Project map"
+summary: >-
+  Shows Coder how a project is laid out before it starts: its files,
+  languages, build files, and tests.
+tags: [gym, tool, project-map, repo-map, extension]
+applies_when: >-
+  The user asks what Project map is or does, or whether it helps Coder.
+answer: >-
+  Project map shows Coder how a project is laid out before it starts: how many
+  files and bytes it has, its languages, its top folders, its largest files,
+  its build files, and its test files. It reads file sizes, not their
+  contents. In the Gym, a test set for it measures whether Coder does better
+  with it than without it.
+status: admitted
+author: openagents
+provenance:
+  written_from: [reference]
+  cites:
+    - crates/plugin-repo-map/Cargo.toml
+    - docs/extensions/plugins.md
+    - docs/product/2026-09-28-app-wireframe.md
+evidence:
+  - "2026-09-28: written from the cited documents and checked against them (#9936); the answer text awaits the owner's copy review."
+---
+
+## Answer
+
+Project map shows Coder how a project is laid out before it starts: how many files and bytes it has, its languages, its top folders, its largest files, its build files, and its test files. It reads file sizes, not their contents. In the Gym, a test set for it measures whether Coder does better with it than without it.
+
+## Details
+
+- Its engineering name is the `repo_map` evidence guest, operation `map`.
+- It is the Gym's default tool to test first.
+
+## Sources
+
+- `crates/plugin-repo-map/Cargo.toml`
+- `docs/extensions/plugins.md`
+- `docs/product/2026-09-28-app-wireframe.md`

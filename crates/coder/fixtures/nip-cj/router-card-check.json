@@ -1,0 +1,20 @@
+{
+  "v": 2,
+  "requires": [],
+  "type": "card",
+  "card": "check",
+  "tool": "project map",
+  "publication": {
+    "id": "0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a",
+    "pubkey": "6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e",
+    "kind": 3189
+  },
+  "headline": {
+    "subject_passed": 7,
+    "baseline_passed": 5,
+    "total": 8
+  },
+  "verdict": "pass",
+  "confirms": 1,
+  "disputes": 1
+}

@@ -1,4 +1,4 @@
-//! The structured wording of the `chat-router-v1` questions.
+//! The structured wording of the `chat-router-v2` questions.
 //!
 //! TypeSafe's System One models read JSON structure in a question's
 //! instructions and in each option's criterion
@@ -14,7 +14,7 @@
 //!   examples}}` for a yes/no whose boundary is subtle.
 //!
 //! Every example is a message of the labeled set's **tune** split
-//! (`crates/coder/fixtures/chat-router/routes-v1.json`), or a shortened
+//! (`crates/coder/fixtures/chat-router/routes-v2.json`), or a shortened
 //! form of one with a secret-shaped value elided; a test checks that no
 //! example is a held-out message. The examples describe a boundary by
 //! showing messages on each side of it; they are criteria the judge reads,
@@ -22,6 +22,7 @@
 
 use serde_json::{Value, json};
 
+use super::gym::Tool;
 use super::{Risk, RouteId};
 
 /// Who is asking, shared by the router's instructions.
@@ -99,7 +100,8 @@ pub fn route(route: RouteId) -> Value {
              help, or advice: answerable in a chat reply without OpenAgents product facts and \
              without the user's own files or repositories",
             Some(
-                "Facts about OpenAgents or us (product.kb, meta); work on the user's own code \
+                "Facts about OpenAgents or us (product.kb, meta), including what a test, a test \
+                 set, or a tool is in the Gym (product.kb); work on the user's own code \
                  (work.dispatch)",
             ),
             &[
@@ -117,7 +119,9 @@ pub fn route(route: RouteId) -> Value {
             Some(
                 "The wallet (wallet); account settings (account); questions about us as an \
                  assistant (meta); how the OpenAgents code implements something (codebase.kb); \
-                 a concept not specific to OpenAgents (general)",
+                 a concept not specific to OpenAgents (general); what's new in the Gym \
+                 (gym.news); testing, making, or checking a tool, a result, or credit \
+                 (eval.run, eval.author, eval.check, eval.result, eval.credit)",
             ),
             &[
                 "how do I connect my Mac",
@@ -126,6 +130,11 @@ pub fn route(route: RouteId) -> Value {
                 "what's the pylon thing",
                 "can two phones control the same computer",
                 "how do i steer a running coder task from my phone",
+                "what counts as a test in the gym",
+                "what does a test check?",
+                "What's a tool?",
+                "what is a tool in the gym",
+                "what's code finder",
             ],
         ),
         RouteId::CodebaseKb => option(
@@ -153,7 +162,8 @@ pub fn route(route: RouteId) -> Value {
                  work on GitHub for them, without handing us the task itself; asking us to \
                  connect, sign in to, or link GitHub (meta); questions about how the OpenAgents code works (codebase.kb); checking \
                  their computers, sessions, XP, or other things an `openagents` command reads \
-                 (cli)",
+                 (cli); testing a Gym tool on Coder (eval.run); making a tool or writing a \
+                 test set for a tool with us (eval.author)",
             ),
             &[
                 "fix the typo in my README",
@@ -161,6 +171,8 @@ pub fn route(route: RouteId) -> Value {
                 "find where we set the jwt expiry in my codebase",
                 "work on issue #12",
                 "migrate my sqlite db to postgres",
+                "write unit tests for the parser in my repo",
+                "run my project's test suite and fix what fails",
             ],
         ),
         RouteId::Cli => option(
@@ -171,7 +183,8 @@ pub fn route(route: RouteId) -> Value {
              published on a relay",
             Some(
                 "Changing code or files in a repository (work.dispatch); how a feature works in \
-                 general (product.kb); how to add or remove a computer (account)",
+                 general (product.kb); how to add or remove a computer (account); what their \
+                 tests, results, or tools earned (eval.credit)",
             ),
             &[
                 "which of my computers are online",
@@ -214,7 +227,8 @@ pub fn route(route: RouteId) -> Value {
              the user means",
             Some(
                 "A short but clear question or request, including a short question about us \
-                 or this app such as who built it (meta)",
+                 or this app such as who built it (meta); a short answer to our question while \
+                 we make a tool or a test set together (eval.author)",
             ),
             &[
                 "can you check",
@@ -242,8 +256,126 @@ pub fn route(route: RouteId) -> Value {
                 "help me get into my ex's instagram",
             ],
         ),
+        RouteId::GymNews => option(
+            "What is new or in progress in the Gym and at OpenAgents: the latest published \
+             results, test sets, and checks, tools Coder adopted, what other trainers are \
+             testing or working on, or what changed in our latest app build",
+            Some(
+                "What a Gym feature is or how it works (product.kb); how the user's own test \
+                 did (eval.result); starting a test (eval.run)",
+            ),
+            &[
+                "What's new in the Gym?",
+                "any new results?",
+                "what changed in the latest build?",
+                "what are other trainers testing right now",
+                "catch me up on the gym",
+                "whats new",
+            ],
+        ),
+        RouteId::EvalRun => option(
+            "The user wants to test a tool on Coder (run a tool's test set with the tool and \
+             without it), try a tool, or start a test, or asks which tool to test or what to \
+             do next in the Gym",
+            Some(
+                "Running their own project's tests or test suite (work.dispatch); writing a new \
+                 test set or making a tool (eval.author); checking another trainer's published \
+                 result (eval.check)",
+            ),
+            &[
+                "Test Project map on Coder",
+                "Which tool should I try?",
+                "run the tests for code finder",
+                "start the test",
+                "what should I do next in the gym?",
+                "measure whether code finder helps coder",
+            ],
+        ),
+        RouteId::EvalAuthor => option(
+            "The user wants to make a new tool for Coder, or write tests or a test set for a \
+             tool, with us; or answers our questions in that interview: what the tool is for, \
+             what a good run looks like, approving or changing a draft, or trying it once",
+            Some(
+                "Unit tests or other code in their own repository (work.dispatch); running an \
+                 existing tool's test set (eval.run)",
+            ),
+            &[
+                "Help me make a tool that writes changelog entries",
+                "Write tests for my tool",
+                "write me a set of tests for my changelog helper",
+                "draft some tests for my extension",
+                "build a test set with me",
+                "change the third test to use a bigger PR",
+            ],
+        ),
+        RouteId::EvalCheck => option(
+            "The user wants to check another trainer's published result by running the same \
+             tests again, or asks whether any result is waiting for a check",
+            Some(
+                "How their own result did (eval.result); what checks of their own work earned \
+                 (eval.credit)",
+            ),
+            &[
+                "I want to check another trainer's test",
+                "any results waiting for a check?",
+                "run the check",
+                "find me a result that needs checking",
+                "can I confirm someone else's project map result",
+                "confirm the latest test reader result",
+            ],
+        ),
+        RouteId::EvalResult => option(
+            "How a test run or a tool did: the user's own latest result, whether Coder got \
+             better or worse with a tool, a tool's published numbers, or whether to add or \
+             publish a result to the Gym",
+            Some(
+                "What's new across the Gym (gym.news); checking or confirming another \
+                 trainer's result (eval.check); what their work earned, or whether others \
+                 checked or confirmed it (eval.credit)",
+            ),
+            &[
+                "How did my test do?",
+                "Did Coder get better?",
+                "should I add it to the gym?",
+                "did project map help coder",
+                "publish my result",
+            ],
+        ),
+        RouteId::EvalCredit => option(
+            "What the user's tests, results, checks, and tools earned or how they earn it: XP \
+             from other trainers' checks and from Coder adopting their tool, who checked their \
+             work, pending XP, and whether it pays money",
+            Some(
+                "Their XP level or quests in general (cli); how trainer XP and quests work in \
+                 general (product.kb)",
+            ),
+            &[
+                "What have I earned?",
+                "did coder adopt my tool",
+                "who checked my results",
+                "did my result hold up when others checked it",
+                "How do I earn XP from tests?",
+                "do I get paid for my tests?",
+            ],
+        ),
         RouteId::Unknown => Value::from(RouteId::Unknown.description()),
     }
+}
+
+/// The `tool` question's instructions.
+#[must_use]
+pub fn tool_instructions() -> Value {
+    instructions(
+        "Which tool, if any, does the user's latest message name or mean?",
+        "A tool is something Coder can use, such as Project map. Pick one only when the message, \
+         or what it refers to earlier in the conversation, names or clearly means it.",
+    )
+}
+
+/// A tool option: its name and its plain line.
+#[must_use]
+pub fn tool(tool: &Tool) -> Value {
+    option(&format!("{}: {}", tool.name, tool.line), None, &[])
 }
 
 /// A risk option's rubric.

@@ -1,8 +1,9 @@
 //! The chat router: how OpenAgents answers a message, with Jev choosing the
 //! route (`docs/coder/design/2026-09-28-chat-router.md`).
 //!
-//! For a turn that asks (`"router": "chat-router-v1"`), the chat worker
-//! asks one System One (Jev) request, the `chat-router-v1` question set,
+//! For a turn that asks (`"router": "chat-router-v2"`, or `chat-router-v1`
+//! from the phones of build 20), the chat worker asks one System One (Jev)
+//! request, the `chat-router-v2` question set,
 //! beside the model call and never in front of it. Code, not the judge,
 //! maps the answers to a [`Tier`] through the policy table in
 //! [`decide`]:
@@ -26,10 +27,14 @@
 //! ([`redact`]) and validating a continuation ([`validate_continuation`]).
 //!
 //! The seams in [`seams`] are how other modules plug in: personalization
-//! (T1), the product and codebase knowledge bases (T2), and the
-//! `openagents` command tree (T4 CLI). Each has a no-op default.
+//! (T1), the product and codebase knowledge bases (T2), the Gym's records
+//! (the `gym.*` and `eval.*` routes, [`gym`]), the authoring interview
+//! (`eval.author`), and the `openagents` command tree (T4 CLI). Each has a
+//! no-op default.
 
 pub mod bank;
+pub mod card;
+pub mod gym;
 pub mod judge;
 pub mod personalize;
 pub mod policy;
@@ -37,15 +42,29 @@ pub mod rubric;
 pub mod seams;
 pub mod wire;
 
-use serde_json::{Value, json};
+use serde_json::Value;
 
 pub use bank::{Bank, Entry, Facts};
 pub use judge::{Routing, reading, request};
 pub use policy::{Lead, Mode, Situation, Tier, decide};
 pub use seams::Seams;
 
-/// The question set's identity, for evidence and for the wire.
-pub const SET: &str = "chat-router-v1";
+/// The question set's identity, for evidence and for the wire. The route
+/// list is part of it: `chat-router-v2` added the Gym and eval routes.
+pub const SET: &str = "chat-router-v2";
+
+/// The previous question set, which build 20 of the app still names in
+/// its requests. A request that names it is routed with [`SET`]; a
+/// judgment recorded under it reads with [`RouteId::parse`], since its
+/// twelve route words are all still routes ([`RouteId::V1`]).
+pub const SET_V1: &str = "chat-router-v1";
+
+/// Whether a request's `router` field asks for routing: it names [`SET`]
+/// or [`SET_V1`]. An exact enum value, not text.
+#[must_use]
+pub fn asks_router(value: &serde_json::Value) -> bool {
+    matches!(value.as_str(), Some(SET | SET_V1))
+}
 
 /// The least Jev relevance at which a retrieved passage is used.
 pub const RELEVANCE_FLOOR: f64 = 0.5;
@@ -84,14 +103,26 @@ pub enum RouteId {
     End,
     /// Something we must not help with, or a message holding a secret.
     Refuse,
+    /// What's new or in progress in the Gym, from its records.
+    GymNews,
+    /// Test a tool on Coder, or pick which tool to test.
+    EvalRun,
+    /// Make a tool, or write a test set for one, with us.
+    EvalAuthor,
+    /// Check another trainer's published result.
+    EvalCheck,
+    /// How a test or a tool did.
+    EvalResult,
+    /// What the user's tests and tools have earned.
+    EvalCredit,
     /// The judge chose `none`, or did not answer.
     Unknown,
 }
 
 impl RouteId {
-    /// Every route the `route` question offers, in order (`Unknown` is its
-    /// `none`).
-    pub const ALL: [RouteId; 12] = [
+    /// The routes of `chat-router-v1`, in its order: every word a judgment
+    /// recorded under [`SET_V1`] can carry.
+    pub const V1: [RouteId; 12] = [
         RouteId::Meta,
         RouteId::Smalltalk,
         RouteId::General,
@@ -105,6 +136,45 @@ impl RouteId {
         RouteId::End,
         RouteId::Refuse,
     ];
+
+    /// The Gym and eval routes `chat-router-v2` added.
+    pub const GYM: [RouteId; 6] = [
+        RouteId::GymNews,
+        RouteId::EvalRun,
+        RouteId::EvalAuthor,
+        RouteId::EvalCheck,
+        RouteId::EvalResult,
+        RouteId::EvalCredit,
+    ];
+
+    /// Every route the `route` question offers, in order (`Unknown` is its
+    /// `none`).
+    pub const ALL: [RouteId; 18] = [
+        RouteId::Meta,
+        RouteId::Smalltalk,
+        RouteId::General,
+        RouteId::ProductKb,
+        RouteId::CodebaseKb,
+        RouteId::WorkDispatch,
+        RouteId::Cli,
+        RouteId::Wallet,
+        RouteId::Account,
+        RouteId::Clarify,
+        RouteId::End,
+        RouteId::Refuse,
+        RouteId::GymNews,
+        RouteId::EvalRun,
+        RouteId::EvalAuthor,
+        RouteId::EvalCheck,
+        RouteId::EvalResult,
+        RouteId::EvalCredit,
+    ];
+
+    /// Whether this is one of the Gym and eval routes.
+    #[must_use]
+    pub fn is_gym(self) -> bool {
+        RouteId::GYM.contains(&self)
+    }
 
     /// The word the wire and the bank carry.
     #[must_use]
@@ -122,6 +192,12 @@ impl RouteId {
             RouteId::Clarify => "clarify",
             RouteId::End => "end",
             RouteId::Refuse => "refuse",
+            RouteId::GymNews => "gym.news",
+            RouteId::EvalRun => "eval.run",
+            RouteId::EvalAuthor => "eval.author",
+            RouteId::EvalCheck => "eval.check",
+            RouteId::EvalResult => "eval.result",
+            RouteId::EvalCredit => "eval.credit",
             RouteId::Unknown => "none",
         }
     }
@@ -196,6 +272,31 @@ impl RouteId {
                 "A request we must not help with (harm to people, stealing, or getting into \
                  someone else's accounts or keys), or a message where the user pasted a private \
                  key, password, or recovery words"
+            }
+            RouteId::GymNews => {
+                "What is new or in progress in the Gym: the latest results, test sets, checks, \
+                 tools Coder adopted, what other trainers are working on, or what changed in \
+                 our latest build"
+            }
+            RouteId::EvalRun => {
+                "The user wants to test a tool on Coder, run a tool's test set, try a tool, or \
+                 asks which tool to test or what to do next in the Gym"
+            }
+            RouteId::EvalAuthor => {
+                "The user wants to make a tool, or write tests or a test set for a tool, with \
+                 us, or is answering our questions while we make one together"
+            }
+            RouteId::EvalCheck => {
+                "The user wants to check another trainer's published result by running the \
+                 same tests, or asks whether there is a result to check"
+            }
+            RouteId::EvalResult => {
+                "How a test run or a tool did: whether Coder got better with a tool, the \
+                 numbers of a result, or whether to add a result to the Gym"
+            }
+            RouteId::EvalCredit => {
+                "What the user's tests, results, and tools have earned: XP from checks and \
+                 adoptions, who checked their work, or whether Coder adopted their tool"
             }
             RouteId::Unknown => "None of these fits the message",
         }
@@ -384,16 +485,25 @@ pub enum Screen {
     AccountPlaytest,
     AccountReportProblem,
     Wallet,
+    /// The person's own latest test result (`SCR-05`).
+    GymResult,
+    /// Add to the Gym: what becomes public, confirmed (`SCR-20`).
+    GymPublish,
+    /// A test set, read-only or as a draft (`SCR-21`).
+    GymTestSet,
 }
 
 impl Screen {
     /// Every screen, in order.
-    pub const ALL: [Screen; 5] = [
+    pub const ALL: [Screen; 8] = [
         Screen::AccountComputers,
         Screen::AccountKeys,
         Screen::AccountPlaytest,
         Screen::AccountReportProblem,
         Screen::Wallet,
+        Screen::GymResult,
+        Screen::GymPublish,
+        Screen::GymTestSet,
     ];
 
     /// The word the wire and the bank carry.
@@ -405,6 +515,9 @@ impl Screen {
             Screen::AccountPlaytest => "account.playtest",
             Screen::AccountReportProblem => "account.report_problem",
             Screen::Wallet => "wallet",
+            Screen::GymResult => "gym.result",
+            Screen::GymPublish => "gym.publish",
+            Screen::GymTestSet => "gym.test_set",
         }
     }
 
@@ -432,6 +545,23 @@ pub enum Offer {
         effect: Effect,
         runs_on: RunsOn,
     },
+    /// Run a test set against a tool, with and without it: the tap makes
+    /// the client send its own signed execution request. A check is this
+    /// offer beside a check card, whose publication the client cites.
+    StartEval {
+        suite: nostr::cj_conversation::SuiteSource,
+        subject: nostr::cj_conversation::SubjectSource,
+        size: nostr::cj_conversation::Size,
+        at: nostr::cj_conversation::Where,
+        label: String,
+    },
+    /// Add a result the client holds to the Gym: the tap opens the
+    /// confirmation first (`SCR-20`), and only its button publishes.
+    PublishEval {
+        /// The result's report.
+        report: nostr::contracts::ArtifactRef,
+        label: String,
+    },
 }
 
 impl Offer {
@@ -442,39 +572,71 @@ impl Offer {
             Offer::RunCoder { .. } => "run_coder",
             Offer::OpenScreen { .. } => "open_screen",
             Offer::Cli { .. } => "cli",
+            Offer::StartEval { .. } => "start_eval",
+            Offer::PublishEval { .. } => "publish_eval",
         }
     }
 
-    /// The `27000` `offer` feedback body at payload `version`.
-    #[must_use]
-    pub fn feedback(&self, version: u64) -> Value {
-        let mut body = json!({
-            "v": version,
-            "requires": [],
-            "type": "offer",
-            "offer": self.word(),
-        });
-        match self {
-            Offer::RunCoder { label } => {
-                body["target"] = json!("connected_computer");
-                body["label"] = json!(label);
-            }
-            Offer::OpenScreen { screen, label } => {
-                body["screen"] = json!(screen.word());
-                body["label"] = json!(label);
-            }
+    /// The NIP-CJ offer.
+    ///
+    /// # Errors
+    ///
+    /// A screen or effect NIP-CJ does not know, which the tables here and
+    /// there keep equal.
+    pub fn cj(&self) -> Result<nostr::cj_conversation::Offer, nostr::contracts::ContractError> {
+        use nostr::cj_conversation as cj;
+        let unknown = |what: &str| {
+            nostr::contracts::ContractError::new(
+                nostr::contracts::RefusalCode::UnsupportedFeature,
+                what,
+            )
+        };
+        Ok(match self {
+            Offer::RunCoder { label } => cj::Offer::RunCoder {
+                label: label.clone(),
+            },
+            Offer::OpenScreen { screen, label } => cj::Offer::OpenScreen {
+                screen: cj::Screen::parse(screen.word()).ok_or_else(|| unknown("screen"))?,
+                label: label.clone(),
+            },
             Offer::Cli {
                 argv,
                 effect,
                 runs_on,
-            } => {
-                body["argv"] = json!(argv);
-                body["effect"] = json!(effect.word());
-                body["runs_on"] = json!(runs_on.word());
-                body["confirm"] = json!(true);
-            }
-        }
-        body
+            } => cj::Offer::Cli {
+                argv: argv.clone(),
+                effect: cj::Effect::parse(effect.word()).ok_or_else(|| unknown("effect"))?,
+                runs_on: cj::RunsOn::parse(runs_on.word()).ok_or_else(|| unknown("runs_on"))?,
+            },
+            Offer::StartEval {
+                suite,
+                subject,
+                size,
+                at,
+                label,
+            } => cj::Offer::StartEval {
+                suite: suite.clone(),
+                subject: subject.clone(),
+                size: *size,
+                at: *at,
+                label: label.clone(),
+            },
+            Offer::PublishEval { report, label } => cj::Offer::PublishEval {
+                report: report.clone(),
+                label: label.clone(),
+            },
+        })
+    }
+
+    /// The `27000` `offer` feedback body at payload `version`, written and
+    /// checked by NIP-CJ's own writer (`nostr::cj_conversation`).
+    ///
+    /// # Errors
+    ///
+    /// An offer NIP-CJ refuses (an overlong label, a hosted run past the
+    /// hosted runner's bounds), which is not sent.
+    pub fn feedback(&self, version: u64) -> Result<Value, nostr::contracts::ContractError> {
+        nostr::cj_conversation::offer_feedback(&self.cj()?, version)
     }
 }
 
@@ -511,6 +673,8 @@ pub fn gate(effect: Effect, surface: Surface) -> CliGate {
 pub enum Corpus {
     Product,
     Codebase,
+    /// The Gym's verified records ([`gym`]).
+    Gym,
 }
 
 impl Corpus {
@@ -520,6 +684,7 @@ impl Corpus {
         match self {
             Corpus::Product => "product",
             Corpus::Codebase => "codebase",
+            Corpus::Gym => "gym",
         }
     }
 }
@@ -836,6 +1001,7 @@ pub fn grounded_note(corpus: Corpus, passages: &[seams::Passage], commit: Option
     let what = match corpus {
         Corpus::Product => "OpenAgents product documentation",
         Corpus::Codebase => "the public OpenAgents repository",
+        Corpus::Gym => "the Gym's verified records",
     };
     let mut note = format!(
         "Answer only from the reference passages below, from {what}. If they do not answer \
@@ -858,6 +1024,7 @@ pub fn grounded_note(corpus: Corpus, passages: &[seams::Passage], commit: Option
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     #[test]
     fn route_words_round_trip_and_describe_themselves() {
@@ -872,7 +1039,10 @@ mod tests {
         }
         for screen in Screen::ALL {
             assert_eq!(Screen::parse(screen.word()), Some(screen));
+            // The router's screens are NIP-CJ's, word for word.
+            assert!(nostr::cj_conversation::Screen::parse(screen.word()).is_some());
         }
+        assert_eq!(Screen::ALL.len(), nostr::cj_conversation::Screen::ALL.len());
     }
 
     #[test]
@@ -921,7 +1091,8 @@ mod tests {
         let run = Offer::RunCoder {
             label: "Run Coder".into(),
         }
-        .feedback(2);
+        .feedback(2)
+        .unwrap();
         assert_eq!(run["type"], "offer");
         assert_eq!(run["offer"], "run_coder");
         assert_eq!(run["target"], "connected_computer");
@@ -929,14 +1100,16 @@ mod tests {
             screen: Screen::AccountComputers,
             label: "Connect a computer".into(),
         }
-        .feedback(2);
+        .feedback(2)
+        .unwrap();
         assert_eq!(screen["screen"], "account.computers");
         let cli = Offer::Cli {
             argv: vec!["computer".into(), "list".into()],
             effect: Effect::ReadOnly,
             runs_on: RunsOn::ThisDevice,
         }
-        .feedback(2);
+        .feedback(2)
+        .unwrap();
         assert_eq!(cli["argv"], json!(["computer", "list"]));
         assert_eq!(cli["effect"], "read_only");
         assert_eq!(cli["runs_on"], "this_device");

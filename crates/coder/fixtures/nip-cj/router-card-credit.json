@@ -1,0 +1,20 @@
+{
+  "v": 2,
+  "requires": [],
+  "type": "card",
+  "card": "credit",
+  "total": 25,
+  "awards": [
+    {
+      "status": "confirmed",
+      "role": "author",
+      "xp": 25,
+      "title": "Your Project map test set was checked",
+      "award": {
+        "id": "1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e",
+        "pubkey": "8282828282828282828282828282828282828282828282828282828282828282",
+        "kind": 3193
+      }
+    }
+  ]
+}

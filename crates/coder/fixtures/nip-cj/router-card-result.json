@@ -1,0 +1,23 @@
+{
+  "v": 2,
+  "requires": [],
+  "type": "card",
+  "card": "result",
+  "headline": {
+    "subject_passed": 7,
+    "baseline_passed": 5,
+    "total": 8
+  },
+  "verdict": "pass",
+  "report": {
+    "digest": "sha256:0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a",
+    "size": 4096,
+    "media_type": "application/json",
+    "schema": "openagents.eval-report.v1"
+  },
+  "publication": {
+    "id": "0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a",
+    "pubkey": "6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e",
+    "kind": 3189
+  }
+}

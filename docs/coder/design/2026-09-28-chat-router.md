@@ -6,6 +6,9 @@ personalization, the product and codebase knowledge routes, the CLI route,
 and the phone's offers), with every question asked as structured entries
 and the policy tuned on the labeled set's tune split
 ([Structured questions and tuning](#structured-questions-and-tuning-2026-09-28)).
+On 2026-09-29 the question set became `chat-router-v2`, with the Gym and
+eval routes, the Gym's records, cards, and eval offers
+([Gym and eval routes](#gym-and-eval-routes-2026-09-29)).
 It extends the first response that shipped in `95c7eda2e3` (`crates/coder/src/first.rs`,
 [the first-reply measurement](../measurements/2026-09-28-first-reply.md)) and
 the product change in `820bc02ce4` (the first tab is **Chat**, the assistant
@@ -47,6 +50,7 @@ the owner can answer.
 - [Evaluation and training data](#evaluation-and-training-data)
 - [Metrics](#metrics)
 - [Rollout](#rollout)
+- [Gym and eval routes (2026-09-29)](#gym-and-eval-routes-2026-09-29)
 - [Open questions for the owner](#open-questions-for-the-owner)
 
 ## What exists today
@@ -312,7 +316,10 @@ core as `crates/coder/src/router/`:
 | `router/bank.rs` | The bank file's parser, its digest, `Facts`, and the lint |
 | `router/wire.rs` | The judgment feedback, the result fields, and the `router` log record |
 | `router/rubric.rs` | The structured wording of the questions: instructions, rubrics, and examples from the tune split |
-| `answers/chat-answers-v1.toml` | The bank: 41 entries and 6 openers |
+| `router/gym.rs` | The Gym's records, the reply for each Gym and eval route, the grounded news instructions, and the interview step's checks ([Gym and eval routes](#gym-and-eval-routes-2026-09-29)) |
+| `router/card.rs` | NIP-CJ `card` feedback built from records, and the request draft's check |
+| `gym_kb.rs` | The Gym seam: verified records, the changelog, the tool catalog, and news retrieval |
+| `answers/chat-answers-v1.toml` | The bank: 41 entries and 6 openers (53 entries with the Gym's, on 2026-09-29) |
 
 `coder::first` keeps only what the router and the suggestion ranking share.
 Where the code settles something this design left open:
@@ -1152,20 +1159,135 @@ the embedding baseline on canned precision to justify its questions.
 Each phase is its own issue under #9920's umbrella, with its invariant rows
 and tests in the same change.
 
-## Planned: Gym and eval routes
+## Gym and eval routes (2026-09-29)
 
-Planned on 2026-09-28 ([#9936](https://github.com/OpenAgentsInc/openagents/issues/9936),
-epic [#9931](https://github.com/OpenAgentsInc/openagents/issues/9931)):
-the Gym and extension evals are used through this router. Six routes join
-the catalog (`gym.news`, `eval.run`, `eval.author`, `eval.check`,
-`eval.result`, `eval.credit`) as a new question set, `chat-router-v2`,
-with a grounded Gym knowledge source built only from verified records
-(published results and checks, published test sets, adoptions, the app's
-changelog, and product notes), typed cards (NIP-CJ `card` feedback), and
-the offers `start_eval` and `publish_eval`. Selection stays Jev's typed
-route question; nothing matches words. See
-[extension evaluation](../../extensions/evaluation.md#chat-the-product-path)
-and [wireframe revision 3](../../product/2026-09-28-app-wireframe.md#chat-in-the-loop).
+Implemented in [#9936](https://github.com/OpenAgentsInc/openagents/issues/9936)
+(epic [#9931](https://github.com/OpenAgentsInc/openagents/issues/9931)): people
+use the Gym and extension evals through this router
+([extension evaluation](../../extensions/evaluation.md#chat-the-product-path),
+[wireframe revision 3](../../product/2026-09-28-app-wireframe.md#chat-in-the-loop)).
+Selection stays Jev's typed questions; nothing matches words. Measured in
+[the chat-router-v2 measurement](../measurements/2026-09-29-chat-router-v2.md).
+
+### The question set: `chat-router-v2`
+
+The route list is part of the set's identity, so it is a new set.
+`route` offers 18 routes, the 12 of `chat-router-v1` (`RouteId::V1`, so a
+judgment recorded under v1 still reads) and six more, each with a
+`{what, not_for, examples}` rubric from the tune split:
+
+| Route | What it covers | What the turn shows |
+| --- | --- | --- |
+| `gym.news` | What's new or in progress in the Gym: results, test sets, checks, adoptions, other trainers' work, our latest build (`CHAT-9`) | The model, grounded in the Gym's records, and the `news` card (`CARD-05`) |
+| `eval.run` | Test a tool on Coder, try a tool, which tool to test (`CHAT-2`, `CHAT-4`) | A bank line, the `tool` card (`CARD-01`), and `start_eval` when the tool has a published test set |
+| `eval.author` | Make a tool or a test set with us, and the interview's replies (`CHAT-10`) | One interview step from the author seam, with the `draft` card (`CARD-02`) and its offer |
+| `eval.check` | Check another trainer's result (`CHAT-13`) | A bank line, the `check` card (`CARD-06`), and `start_eval` on its test set |
+| `eval.result` | How a test or a tool did (`CHAT-5`) | A named tool's published result as the `result` card (`CARD-04`), or **See your result** (`open_screen gym.result`): the person's own results stay on the phone |
+| `eval.credit` | What their work earned, how XP from tests works (`CHAT-14`) | A bank answer (`eval.credit.how`, `eval.credit.mine`); the phone draws `CARD-07` from its own ledger |
+
+One more question joins the request when the Gym seam lists a tool
+catalog: `tool`, a Choice over the tool notes (`knowledge/openagents/openagents.tool-*.md`:
+Project map, Code finder, Test reader) plus `none`, each option the tool's
+name and plain line. A request may name `chat-router-v1` (build 20) or
+`chat-router-v2`; both are routed with v2, and the judgment says
+`chat-router-v2`.
+
+### Policy
+
+`router::policy::decide` gained three rules:
+
+- **An open interview continues** (rule 0). A request whose `draft`
+  passes NIP-CJ's `parse_draft` continues the interview (`Tier::Author`)
+  unless the route is sure (0.80) of a route outside `AUTHOR_CONTINUES`
+  (the interview's own, `eval.run`, `eval.result`, and the short replies
+  that read `smalltalk`, `clarify`, `general`, or `none`); a refusal still
+  comes first.
+- **Gym and eval** (rule 9, after the knowledge routes). `gym.news` at
+  0.60 (`GROUNDED_ROUTE`) or another eval route at 0.70 (`EVAL_ROUTE`,
+  like a dispatch offer): `eval.author` is `Tier::Author`, `eval.credit`
+  the bank (a sure credit `answer` reading picks the entry, else
+  `eval.credit.mine`), and the rest `Tier::Gym { route, tool }`, with the
+  `tool` reading at 0.60 (`TOOL_CONFIDENCE`).
+- **No records, no numbers** (rule 12). The model gets
+  `gym::NO_RECORDS_NOTE` whenever the route or a close runner-up is a Gym
+  or eval route, so an unsure Gym turn never states a result.
+
+`Tier::Gym` keeps the model running as its fallback until the Gym seam
+answers (2 s, `GYM_BUDGET`); `Tier::Author` drops it at once, since the
+interview's words come from its seam or the bank.
+
+### The Gym's records (`coder::gym_kb`)
+
+The Gym seam (`router::seams::GymKb`, implemented by
+`gym_kb::GymKnowledge`) holds only verified records:
+
+| Record | Where it comes from | How it is verified |
+| --- | --- | --- |
+| Published results and checks | `3189` with `oa:ext-eval:v1`, read from the relay every 10 minutes | `nostr::eval_ext::parse_publication`: signature, markers, the inline report against its digest and `x` tag, the profile; checks counted by `nostr::eval_ext::linkage` |
+| Published test sets | `eval-suite` releases (NIP-EXT `3184`), or the test set a verified result ran | A release reader over the manifest's bytes (`ReleaseReader`; `PendingReleases` until an artifact fetcher is wired); a result's suite release and case count otherwise |
+| Adoptions | `coder-defaults` releases | The same release reader |
+| App builds | `CHANGELOG` in `crates/openagents-mobile/src/account.rs`, compiled in, newest three | Read for its fixed shape (`gym_kb::changelog`) |
+| Notes and the tool catalog | `knowledge/openagents/` entries tagged `gym` or `tool` | The product corpus's own checks (sources exist, plural, short) |
+
+A published subject is matched to a catalog tool by its DefinitionRef's
+package or component slug against the tool note's tags (`repo-map`,
+`project-map`), else named by its package. For `gym.news`, candidates are
+the 8 items nearest the message by embedding similarity and the 4 newest
+dated records; one Jev request asks a `relevant_N` Noul for each, and at
+most 5 at 0.5 or more are kept. The model is restarted with
+`gym::instructions`: answer only from these items, cite each by its
+`gym:` id, plain words; `gym::check_reply` reports any other cited id as
+invented. The seam's embedder is the product knowledge base's, so it adds
+no recipient to the privacy answer.
+
+### The reply for each route (`router::gym::reply`)
+
+A pure function of the route, the `tool` reading, the records, the bank,
+and the facts. The bank's Gym entries that say what the records hold
+carry `records = true`: the `answer` question never offers them, and
+their `{tool}` and `{tests}` slots are filled only from a verified
+record. With no catalog at all, `eval.run` is the model told it has no
+records; with no Gym seam (`Unavailable`), each route answers from empty
+records ("No published result is waiting for a check right now").
+
+### Cards and offers on the wire
+
+Every card and offer body is written and checked by NIP-CJ's own writer
+(`nostr::cj_conversation::card_feedback`, `offer_feedback`,
+[#9932](https://github.com/OpenAgentsInc/openagents/issues/9932)); one it
+refuses is not sent. `router::card::Card` builds the NIP-CJ card from
+records, so its numbers are the records' fields. The fixtures in
+`crates/coder/fixtures/nip-cj/` are the exact bodies:
+`router-card-{tool,result,news,check,draft,credit}.json`,
+`router-offer-{start-eval,publish-eval,open-gym-result}.json`, and
+`router-request-v2.json` (a request with a draft). A check's `start_eval`
+rides beside the `check` card, whose `publication` the client cites when
+it sends the check. The result names `tier: "gym"` or `"author"`, the
+route, the bank entry, and, for news, the cited items.
+
+### The authoring interview
+
+`router::seams::EvalAuthor` is the chat driver's seam; #9937 implements it
+in `coder::eval_author` and wires it in `coder-worker` (one line, marked
+there). The router passes it an `AuthorAsk` (the redacted message, the
+transcript, the request's checked draft, the surface) and checks the
+`AuthorStep` it returns (`gym::check_step`: plural, at most 1,200
+characters, the draft through `parse_draft`, only draft-scoped offers).
+Until then, `eval.author` answers `eval.author.soon`.
+
+### Not in this change
+
+- **Releases.** Test sets and adoptions are read from their NIP-EXT
+  releases only once an artifact fetcher gives the release reader the
+  manifests' bytes; until then a test set is read from the results that
+  ran it, and no adoption is listed.
+- **The `credit` card from the worker.** Awards are NIP-XP records of the
+  trainer's world key, which a chat request does not carry; the phone
+  draws `CARD-07` from its own ledger (`xp_ledger::eval`, #9938) on an
+  `eval.credit` route, and `router::card::Card::Credit` is ready for a
+  worker that is given the trainer.
+- **The interview** (#9937) and **the hosted runner** (#9935): `start_eval`
+  offers name the hosted runner when the test set fits its bounds.
 
 ## Open questions for the owner
 

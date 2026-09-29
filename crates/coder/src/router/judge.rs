@@ -1,4 +1,4 @@
-//! The `chat-router-v1` question set and what its answer reads as.
+//! The `chat-router-v2` question set and what its answer reads as.
 //!
 //! One System One request, independent questions over the same state
 //! (the bounded transcript and latest message, as `coder::first` builds
@@ -7,12 +7,13 @@
 //! | Id | Type | Reads |
 //! | --- | --- | --- |
 //! | `action` | Choice | Classify's measured `coder-turns-v2` wording, unchanged |
-//! | `route` | Choice | the [`RouteId`] catalog, each with its description, plus `none` |
-//! | `answer` | Choice | every eligible bank entry with its `when`, plus `none` |
+//! | `route` | Choice | the [`RouteId`] catalog (18 routes in `chat-router-v2`), each with its rubric, plus `none` |
+//! | `answer` | Choice | every selectable bank entry with its `when`, plus `none` |
 //! | `needs_specifics` | Noul | whether a good reply must refer to the user's particulars |
 //! | `lane` | Choice | `coder::first`'s wording: chat, computer, or none |
 //! | `opener` | Choice | the bank's openers, plus `none` |
 //! | `cli_group` | Choice | the command groups a [`CliRoute`](super::seams::CliRoute) lists, plus `none`; asked only when it lists any |
+//! | `tool` | Choice | the tool catalog a [`GymKb`](super::seams::GymKb) lists, plus `none`; asked only when it lists any |
 //! | `risk` | Choice | ok, secret shared, asks for a secret, harmful, money movement, none |
 //!
 //! No question consumes another's answer, so they cost one round trip.
@@ -22,6 +23,7 @@ use jev::{Answer, Choice, ChoiceAnswer, Entry as Criterion, Noul, NoulCriteria, 
 use serde_json::Value;
 
 use super::bank::{Bank, Entry, Facts, Opener};
+use super::gym::Tool;
 use super::seams::CliGroup;
 use super::{Risk, RouteId};
 use crate::classify::Route;
@@ -30,7 +32,7 @@ use crate::generate::Message;
 
 /// The `route` question: the [`RouteId`] catalog, each option with its
 /// rubric, plus `none`. It reads no bank or facts, so the Gym suite
-/// `chat-router-v1` asks exactly this question
+/// `chat-router-v2` asks exactly this question
 /// ([`crate::router_eval::route_question`]).
 #[must_use]
 pub fn route() -> Choice {
@@ -50,10 +52,11 @@ pub fn route() -> Choice {
     Choice::new(super::rubric::route_instructions(), routes)
 }
 
-/// The eight questions, from one state. Only entries eligible under
-/// `facts` are offered, and `cli_group` only when `groups` is not empty.
+/// The questions, from one state. Only entries selectable under `facts`
+/// are offered, `cli_group` only when `groups` is not empty, and `tool`
+/// only when `tools` is not empty.
 #[must_use]
-pub fn questions(bank: &Bank, facts: &Facts, groups: &[CliGroup]) -> Questions {
+pub fn questions(bank: &Bank, facts: &Facts, groups: &[CliGroup], tools: &[Tool]) -> Questions {
     let action = crate::classify::questions()
         .get("action")
         .cloned()
@@ -65,7 +68,7 @@ pub fn questions(bank: &Bank, facts: &Facts, groups: &[CliGroup]) -> Questions {
     let answers = with_none(
         bank.answers
             .iter()
-            .filter(|entry| entry.eligible(facts))
+            .filter(|entry| entry.selectable(facts))
             .map(|entry| (entry.id.clone(), Some(Criterion::from(entry.criterion()))))
             .collect(),
         "No prepared answer fully answers the message as asked",
@@ -165,6 +168,24 @@ pub fn questions(bank: &Bank, facts: &Facts, groups: &[CliGroup]) -> Questions {
             ),
         );
     }
+    if !tools.is_empty() {
+        let options = with_none(
+            tools
+                .iter()
+                .map(|tool| {
+                    (
+                        tool.id.clone(),
+                        Some(Criterion::from(super::rubric::tool(tool))),
+                    )
+                })
+                .collect(),
+            "The message names or means none of these tools",
+        );
+        questions = questions.with(
+            "tool",
+            Choice::new(super::rubric::tool_instructions(), options),
+        );
+    }
     questions.with(
         "risk",
         Choice::new(super::rubric::risk_instructions(), risks),
@@ -192,10 +213,14 @@ pub fn request(
     bank: &Bank,
     facts: &Facts,
     groups: &[CliGroup],
+    tools: &[Tool],
 ) -> jev::SystemOneRequest {
-    jev::SystemOneRequest::new(state(task, transcript), questions(bank, facts, groups))
-        .retry(crate::first::retry())
-        .timeout(crate::first::BUDGET)
+    jev::SystemOneRequest::new(
+        state(task, transcript),
+        questions(bank, facts, groups, tools),
+    )
+    .retry(crate::first::retry())
+    .timeout(crate::first::BUDGET)
 }
 
 /// The router's reading of one turn: each answer's argmax and probability,
@@ -227,6 +252,8 @@ pub struct Routing {
     /// [`CLI_BEAM`] of them: the CLI route descends these too when the
     /// argmax is not sure.
     pub cli_alternatives: Vec<(String, f64)>,
+    /// The argmax tool from the catalog, or `None` for `none` or not asked.
+    pub tool: Option<(String, f64)>,
     pub risk: Risk,
     pub risk_p: f64,
 }
@@ -273,7 +300,7 @@ pub fn reading(response: &jev::SystemOneResponse, bank: &Bank, facts: &Facts) ->
     let answer = choice(response, "answer").and_then(|answer| {
         let entry = bank.entry(&answer.choice)?;
         entry
-            .eligible(facts)
+            .selectable(facts)
             .then(|| (entry.clone(), finite(answer.confidence)))
     });
     let needs_specifics = match response.answers.get("needs_specifics") {
@@ -307,6 +334,9 @@ pub fn reading(response: &jev::SystemOneResponse, bank: &Bank, facts: &Facts) ->
         .unwrap_or_default();
     cli_alternatives.sort_by(|a, b| b.1.total_cmp(&a.1).then(a.0.cmp(&b.0)));
     cli_alternatives.truncate(CLI_BEAM);
+    let tool = choice(response, "tool")
+        .filter(|tool| tool.choice != "none")
+        .map(|tool| (tool.choice.clone(), finite(tool.confidence)));
     let risk_answer = choice(response, "risk");
     Routing {
         action: crate::classify::route(&judgment),
@@ -321,6 +351,7 @@ pub fn reading(response: &jev::SystemOneResponse, bank: &Bank, facts: &Facts) ->
         opener,
         cli_group,
         cli_alternatives,
+        tool,
         risk: risk_answer.map_or(Risk::Unknown, |risk| Risk::parse(&risk.choice)),
         risk_p: risk_answer.map_or(0.0, |risk| finite(risk.confidence)),
     }
@@ -345,7 +376,7 @@ mod tests {
     #[test]
     fn the_set_asks_independent_typed_questions_and_validates() {
         let bank = Bank::builtin();
-        let questions = questions(bank, &facts(), &[]);
+        let questions = questions(bank, &facts(), &[], &[]);
         questions.validate().expect("a valid set");
         let asked: Vec<&str> = questions.iter().map(|(id, _)| id).collect();
         assert_eq!(
@@ -373,9 +404,10 @@ mod tests {
         let answer = serde_json::to_value(questions.get("answer")).unwrap();
         assert_eq!(
             answer["criteria"].as_object().unwrap().len(),
-            bank.answers.len() + 1,
-            "every entry is eligible on a metered gateway worker"
+            bank.answers.iter().filter(|entry| !entry.records).count() + 1,
+            "every entry but the Gym's records entries is selectable on a metered gateway worker"
         );
+        assert!(answer["criteria"].get("eval.check.none").is_none());
         // An entry whose slot the worker cannot fill is not offered.
         let bare = serde_json::to_value(questions_without_quota().get("answer")).unwrap();
         assert!(bare["criteria"].get("meta.pricing").is_none());
@@ -386,10 +418,24 @@ mod tests {
             summary: "List, check, and manage your computers".into(),
             tree: None,
         }];
-        let with_cli = super::questions(bank, &facts(), &groups);
+        let with_cli = super::questions(bank, &facts(), &groups, &[]);
         with_cli.validate().expect("a valid set");
         let cli = serde_json::to_value(with_cli.get("cli_group")).unwrap();
         assert_eq!(cli["criteria"].as_object().unwrap().len(), 2);
+
+        let tools = [super::super::gym::fixtures::tool(
+            "project-map",
+            "Project map",
+        )];
+        let with_tools = super::questions(bank, &facts(), &[], &tools);
+        with_tools.validate().expect("a valid set");
+        let tool = serde_json::to_value(with_tools.get("tool")).unwrap();
+        assert_eq!(tool["criteria"].as_object().unwrap().len(), 2);
+        assert!(
+            tool["criteria"]
+                .get("openagents.tool-project-map")
+                .is_some()
+        );
     }
 
     fn questions_without_quota() -> Questions {
@@ -399,7 +445,7 @@ mod tests {
             None,
             &crate::router::Seams::default(),
         );
-        questions(Bank::builtin(), &facts, &[])
+        questions(Bank::builtin(), &facts, &[], &[])
     }
 
     fn response(answers: serde_json::Value) -> jev::SystemOneResponse {
@@ -426,9 +472,16 @@ mod tests {
                     "probabilities": { "meta.pricing": 0.9, "none": 0.1 } },
                 "risk": { "type": "choice", "choice": "ok", "confidence": 0.97,
                     "probabilities": { "ok": 0.97, "harmful": 0.03 } },
+                "tool": { "type": "choice", "choice": "openagents.tool-project-map",
+                    "confidence": 0.83, "probabilities": { "openagents.tool-project-map": 0.83,
+                    "none": 0.17 } },
             })),
             bank,
             &facts(),
+        );
+        assert_eq!(
+            routing.tool,
+            Some(("openagents.tool-project-map".to_string(), 0.83))
         );
         assert_eq!(routing.route, RouteId::Meta);
         assert_eq!(routing.runner_up, Some((RouteId::Clarify, 0.3)));
@@ -582,7 +635,7 @@ mod tests {
             }];
             let started = std::time::Instant::now();
             let response = judge
-                .system_one(request(message, &transcript, bank, &facts, &groups))
+                .system_one(request(message, &transcript, bank, &facts, &groups, &[]))
                 .await
                 .expect("the judge answers");
             let ms = started.elapsed().as_millis();
@@ -596,6 +649,7 @@ mod tests {
                     mode: Mode::Router,
                     context: &context,
                     personalize: true,
+                    draft: false,
                 },
             );
             if routing.route.word() == *expected {

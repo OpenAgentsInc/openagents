@@ -3,10 +3,14 @@
 //! [`decide`] maps a [`Routing`] and the turn's situation to a [`Tier`].
 //! Changing a threshold here never reruns inference and never changes a
 //! question's meaning. The thresholds are the design's starting values;
-//! the labeled `chat-router-v1` set is what moves them.
+//! the labeled `chat-router-v2` set is what moves them.
 //!
 //! The rules, in the order they apply:
 //!
+//! 0. **An open interview.** A request that carries the authoring
+//!    interview's draft continues it ([`Tier::Author`]) unless the route
+//!    reading is sure of a route in no way part of it
+//!    ([`AUTHOR_CONTINUES`]); risk is still read first.
 //! 1. **Risk.** `secret_shared`, `asks_for_secret`, or `harmful` at
 //!    [`RISK_REFUSE`], or at [`RISK_WARN`] when `route` is also `refuse` at
 //!    [`ROUTE_CONFIDENCE`], answers with the bank's refusal and nothing
@@ -39,18 +43,26 @@
 //!    the CLI seam proposes, and the gate decides.
 //! 8. **T2 grounded.** `route` = `product.kb` or `codebase.kb` at
 //!    [`GROUNDED_ROUTE`].
-//! 9. **T4 dispatch by lane.** `lane` = computer at [`DISPATCH_LANE`],
-//!    after the CLI and knowledge routes, which read such a message more
-//!    precisely, and only on a route in [`LANE_ROUTES`]: an offer loses to
-//!    a route with its own answer.
-//! 10. **Clarify.** `route` = `clarify` at [`CLARIFY_ROUTE`]: the
+//! 9. **Gym and eval.** `gym.news` at [`GROUNDED_ROUTE`], or another
+//!    `eval.*` route at [`EVAL_ROUTE`]: `eval.author` is a step of the
+//!    interview ([`Tier::Author`]), `eval.credit` the bank's
+//!    `eval.credit.mine`, and the rest read the Gym's verified records
+//!    ([`Tier::Gym`]), which [`super::gym::reply`] turns into a bank line,
+//!    a card, and an offer, or a grounded reply for news.
+//! 10. **T4 dispatch by lane.** `lane` = computer at [`DISPATCH_LANE`],
+//!     after the CLI and knowledge routes, which read such a message more
+//!     precisely, and only on a route in [`LANE_ROUTES`]: an offer loses to
+//!     a route with its own answer.
+//! 11. **Clarify.** `route` = `clarify` at [`CLARIFY_ROUTE`]: the
 //!     `clarify.generic` stem when personalization is available, else the
 //!     model told to ask one question.
-//! 11. **T3 model**, led by the argmax opener at [`OPENER_CONFIDENCE`].
+//! 12. **T3 model**, led by the argmax opener at [`OPENER_CONFIDENCE`];
+//!     when the route or the runner-up is a Gym or eval route, the model is
+//!     told it has no verified records ([`super::gym::NO_RECORDS_NOTE`]).
 //!
 //! A request that asks only for `opener` or `judge` (the phones before the
 //! router) is decided in [`Mode::Legacy`]: rule 3 for entries with no
-//! offer, then rule 11, which is what `coder-first-response-v2` showed.
+//! offer, then rule 12, which is what `coder-first-response-v2` showed.
 
 use super::bank::{Bank, Entry, Facts};
 use super::judge::Routing;
@@ -103,6 +115,25 @@ pub const CLOSE_MARGIN: f64 = 0.15;
 pub const CLARIFY_WINS: f64 = 0.40;
 /// The least `clarify` probability, as the argmax, to ask a question.
 pub const CLARIFY_ROUTE: f64 = 0.60;
+/// The least `eval.*` route probability for a card, an offer, or an
+/// interview step: like a dispatch offer, a wrong one costs an ignored
+/// card.
+pub const EVAL_ROUTE: f64 = 0.70;
+/// The least `tool` probability at which the reading names the tool a
+/// Gym reply is about.
+pub const TOOL_CONFIDENCE: f64 = 0.60;
+/// The routes a message may take and still continue an open authoring
+/// interview: the interview's own, running or reading its pilot, and the
+/// short replies ("looks good", "change it") that answer its questions.
+pub const AUTHOR_CONTINUES: [RouteId; 7] = [
+    RouteId::EvalAuthor,
+    RouteId::EvalRun,
+    RouteId::EvalResult,
+    RouteId::Smalltalk,
+    RouteId::Clarify,
+    RouteId::General,
+    RouteId::Unknown,
+];
 
 /// The instruction the model gets when the router wants one question.
 pub const CLARIFY_NOTE: &str = "The user's message is ambiguous. Reply with one short question \
@@ -111,7 +142,7 @@ that would let us answer or act, and nothing else.";
 /// How a turn asked for its first response.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Mode {
-    /// `"router": "chat-router-v1"`: every tier.
+    /// `"router": "chat-router-v2"` (or `chat-router-v1`): every tier.
     Router,
     /// `opener` or `judge` only: a whole prepared answer with no offer, an
     /// opener, or nothing, as `coder-first-response-v2` did.
@@ -125,6 +156,9 @@ pub struct Situation<'a> {
     pub context: &'a Context,
     /// Whether a personalization provider is configured.
     pub personalize: bool,
+    /// Whether the request carries an authoring interview's draft that
+    /// passed [`super::card::draft`]: a bounded field, never text.
+    pub draft: bool,
 }
 
 /// A line above the model's reply.
@@ -176,6 +210,20 @@ pub enum Tier {
     },
     /// T0: a bank refusal; never model text.
     Refuse { answer: Entry, text: String },
+    /// A Gym or eval route: read the Gym's verified records, then
+    /// [`super::gym::reply`] decides; falls back to T3 told it has no
+    /// records.
+    Gym {
+        route: RouteId,
+        /// The tool the `tool` reading named at [`TOOL_CONFIDENCE`].
+        tool: Option<String>,
+        lead: Option<Lead>,
+    },
+    /// `eval.author`: one step of the authoring interview through the
+    /// author seam; falls back to the bank's `eval.author.soon`. The model
+    /// call is dropped: the interview's words come from the seam, checked
+    /// ([`super::gym::check_step`]), or from the bank.
+    Author,
 }
 
 impl Tier {
@@ -195,6 +243,8 @@ impl Tier {
             Tier::Model { lead: None, .. } => "model",
             Tier::Cli { .. } => "cli",
             Tier::Refuse { .. } => "refuse",
+            Tier::Gym { .. } => "gym",
+            Tier::Author => "author",
         }
     }
 
@@ -211,7 +261,11 @@ impl Tier {
             Tier::CannedStem { .. } => 1,
             Tier::Grounded { .. } => 2,
             Tier::Model { .. } => 3,
-            Tier::Cli { .. } => 4,
+            Tier::Gym {
+                route: RouteId::GymNews,
+                ..
+            } => 2,
+            Tier::Cli { .. } | Tier::Gym { .. } | Tier::Author => 4,
         }
     }
 
@@ -220,7 +274,7 @@ impl Tier {
     pub fn keeps_model(&self) -> bool {
         matches!(
             self,
-            Tier::Model { .. } | Tier::Grounded { .. } | Tier::Cli { .. }
+            Tier::Model { .. } | Tier::Grounded { .. } | Tier::Cli { .. } | Tier::Gym { .. }
         )
     }
 
@@ -279,10 +333,51 @@ fn opener_lead(routing: &Routing) -> Option<Lead> {
         })
 }
 
+/// T3: the model, led by the opener; told it has no Gym records when the
+/// route or the runner-up is a Gym or eval route, so it states no result.
 fn model(routing: &Routing) -> Tier {
+    let gym = routing.route.is_gym()
+        || routing
+            .runner_up
+            .is_some_and(|(route, p)| route.is_gym() && routing.route_p - p < CLOSE_MARGIN);
     Tier::Model {
         lead: opener_lead(routing),
-        note: None,
+        note: gym.then_some(super::gym::NO_RECORDS_NOTE),
+    }
+}
+
+/// Rule 8b: the Gym and eval routes.
+fn gym(routing: &Routing, bank: &Bank, facts: &Facts) -> Option<Tier> {
+    let floor = if routing.route == RouteId::GymNews {
+        GROUNDED_ROUTE
+    } else {
+        EVAL_ROUTE
+    };
+    if !routing.route.is_gym() || routing.route_p < floor {
+        return None;
+    }
+    match routing.route {
+        RouteId::EvalAuthor => Some(Tier::Author),
+        // Credit answers are general ("how XP from tests works", "where
+        // yours shows"), so a sure `answer` reading of one serves it even
+        // when the message names specifics; otherwise where credit shows.
+        RouteId::EvalCredit => {
+            let id = routing
+                .answer
+                .as_ref()
+                .filter(|(entry, p)| entry.answers(RouteId::EvalCredit) && *p >= STEM_CONFIDENCE)
+                .map_or("eval.credit.mine", |(entry, _)| entry.id.as_str());
+            final_of(bank, facts, id)
+        }
+        route => Some(Tier::Gym {
+            route,
+            tool: routing
+                .tool
+                .as_ref()
+                .filter(|(_, p)| *p >= TOOL_CONFIDENCE)
+                .map(|(tool, _)| tool.clone()),
+            lead: opener_lead(routing),
+        }),
     }
 }
 
@@ -344,6 +439,14 @@ pub fn decide(routing: &Routing, bank: &Bank, facts: &Facts, situation: &Situati
         if let Some(tier) = refuse_of(bank, facts, id) {
             return tier;
         }
+    }
+    // 0. An open interview continues, unless the reading is sure of a
+    // route that is no part of it. Refusals above still come first.
+    if situation.draft
+        && (AUTHOR_CONTINUES.contains(&routing.route) || routing.route_p < ROUTE_CONFIDENCE)
+        && !(risky && routing.risk_p >= RISK_WARN)
+    {
+        return Tier::Author;
     }
     if risky && routing.risk_p >= RISK_WARN {
         let lead = (routing.risk == Risk::SecretShared)
@@ -463,7 +566,12 @@ pub fn decide(routing: &Routing, bank: &Bank, facts: &Facts, situation: &Situati
         }
     }
 
-    // 9. T4 dispatch, by lane: work the route did not name, when the lane is sure it
+    // 9. Gym and eval.
+    if let Some(tier) = gym(routing, bank, facts) {
+        return tier;
+    }
+
+    // 10. T4 dispatch, by lane: work the route did not name, when the lane is sure it
     // needs a computer. It comes after the CLI and knowledge routes, which
     // read a computer question more precisely, and only when the route is
     // not one with its own answer: an offer loses to an answer.
@@ -475,12 +583,12 @@ pub fn decide(routing: &Routing, bank: &Bank, facts: &Facts, situation: &Situati
         return tier;
     }
 
-    // 10. Clarify.
+    // 11. Clarify.
     if routing.route == RouteId::Clarify && routing.route_p >= CLARIFY_ROUTE {
         return clarify(bank, facts, situation);
     }
 
-    // 11. T3.
+    // 12. T3.
     model(routing)
 }
 
@@ -542,6 +650,7 @@ mod tests {
             opener: None,
             cli_group: None,
             cli_alternatives: Vec::new(),
+            tool: None,
             risk: Risk::Ok,
             risk_p: 0.95,
         }
@@ -556,6 +665,7 @@ mod tests {
                 mode: Mode::Router,
                 context,
                 personalize,
+                draft: false,
             },
         )
     }
@@ -836,6 +946,7 @@ mod tests {
                     mode: Mode::Legacy,
                     context: &Context::default(),
                     personalize: true,
+                    draft: false,
                 },
             )
         };
@@ -846,6 +957,108 @@ mod tests {
         let mut work = routed(RouteId::WorkDispatch, 0.9, "dispatch.stem", 0.9, 0.9);
         work.opener = Bank::builtin().opener("plan").map(|o| (o.clone(), 0.8));
         assert_eq!(legacy(&work).word(), "opener");
+    }
+
+    /// The Gym and eval routes: news and the eval routes read the records,
+    /// the interview is its own tier, credit is the bank's, and an unsure
+    /// reading is the model told it has no records.
+    #[test]
+    fn gym_and_eval_routes_read_records_or_say_they_have_none() {
+        let mut news = routed(RouteId::GymNews, 0.65, "none", 0.0, 0.5);
+        assert_eq!(
+            router(&news),
+            Tier::Gym {
+                route: RouteId::GymNews,
+                tool: None,
+                lead: None
+            }
+        );
+        assert_eq!(router(&news).number(), 2);
+        news.route_p = 0.55;
+        news.runner_up = Some((RouteId::General, 0.3));
+        assert_eq!(
+            router(&news),
+            Tier::Model {
+                lead: None,
+                note: Some(crate::router::gym::NO_RECORDS_NOTE)
+            }
+        );
+
+        let mut run = routed(RouteId::EvalRun, 0.8, "none", 0.0, 0.5);
+        run.tool = Some(("openagents.tool-project-map".into(), 0.7));
+        let tier = router(&run);
+        assert_eq!(
+            tier,
+            Tier::Gym {
+                route: RouteId::EvalRun,
+                tool: Some("openagents.tool-project-map".into()),
+                lead: None
+            }
+        );
+        assert_eq!((tier.word(), tier.number()), ("gym", 4));
+        assert!(
+            tier.keeps_model(),
+            "the model is the fallback until the records answer"
+        );
+        run.tool = Some(("openagents.tool-project-map".into(), 0.5));
+        assert!(matches!(router(&run), Tier::Gym { tool: None, .. }));
+        run.route_p = 0.65;
+        assert!(matches!(router(&run), Tier::Model { note: Some(_), .. }));
+
+        let author = routed(RouteId::EvalAuthor, 0.8, "none", 0.0, 0.9);
+        assert_eq!(router(&author), Tier::Author);
+        let credit = routed(RouteId::EvalCredit, 0.8, "none", 0.0, 0.2);
+        assert!(
+            matches!(router(&credit), Tier::CannedFinal { answer, .. } if answer.id == "eval.credit.mine")
+        );
+        // A sure credit answer at the specifics ceiling is still that answer.
+        let how = routed(RouteId::EvalCredit, 0.9, "eval.credit.how", 0.95, 0.3);
+        assert!(
+            matches!(router(&how), Tier::CannedFinal { answer, .. } if answer.id == "eval.credit.how")
+        );
+        // A close call with a Gym route tells the model it has no records.
+        let mut close = routed(RouteId::General, 0.5, "none", 0.0, 0.5);
+        close.runner_up = Some((RouteId::EvalResult, 0.45));
+        assert!(
+            matches!(router(&close), Tier::Model { note: Some(note), .. }
+            if note == crate::router::gym::NO_RECORDS_NOTE)
+        );
+    }
+
+    /// With a draft open, the interview continues through short answers
+    /// and runs, but not through a sure other route or a risk.
+    #[test]
+    fn an_open_draft_continues_the_interview() {
+        let drafting = |routing: &Routing| {
+            decide(
+                routing,
+                Bank::builtin(),
+                &facts(),
+                &Situation {
+                    mode: Mode::Router,
+                    context: &Context::default(),
+                    personalize: false,
+                    draft: true,
+                },
+            )
+        };
+        let looks_good = routed(RouteId::Smalltalk, 0.9, "smalltalk.thanks", 0.9, 0.1);
+        assert_eq!(drafting(&looks_good), Tier::Author);
+        assert_eq!(
+            router(&looks_good).word(),
+            "canned",
+            "no draft: the bank answers"
+        );
+        let pilot = routed(RouteId::EvalRun, 0.9, "none", 0.0, 0.5);
+        assert_eq!(drafting(&pilot), Tier::Author);
+        let unsure = routed(RouteId::Wallet, 0.6, "none", 0.0, 0.5);
+        assert_eq!(drafting(&unsure), Tier::Author);
+        let wallet = routed(RouteId::Wallet, 0.9, "wallet.what", 0.9, 0.1);
+        assert_eq!(drafting(&wallet).word(), "canned");
+        let mut secret = routed(RouteId::Smalltalk, 0.9, "none", 0.0, 0.5);
+        secret.risk = Risk::SecretShared;
+        secret.risk_p = 0.9;
+        assert_eq!(drafting(&secret).word(), "refuse");
     }
 
     /// Every phone surface keeps money, secrets, and grants off the CLI.

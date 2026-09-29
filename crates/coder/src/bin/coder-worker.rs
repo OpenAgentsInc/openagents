@@ -104,7 +104,10 @@ use coder::relay::{
     DEFAULT_RELAY_URL, FEEDBACK_KIND, Identity, PAYLOAD_VERSION, REQUEST_KIND, RESULT_KIND, Socket,
     connect, parse_pubkey, partial_payload, payload_version, send,
 };
-use coder::router::seams::{Ask, CliAnswer, CliAsk, Continuation, Grounding, Lookup, SeamError};
+use coder::router::seams::{
+    Ask, AuthorAsk, AuthorStep, CliAnswer, CliAsk, Continuation, Grounding, GymLookup, Lookup,
+    SeamError,
+};
 use coder::router::wire::{Served, Shadow};
 use coder::router::{self, Bank, Mode, Seams, Tier};
 use futures_util::StreamExt;
@@ -205,7 +208,7 @@ how many jobs run at once; the rest are refused busy. The first-response
 judge answers a turn that asks for it (opener or judge in the request)
 through the decision profile the agent resolves (TYPESAFE_API_KEY or
 ~/.openagents/jev.json); CODER_WORKER_JUDGE=off turns it off. A turn that
-names the chat router (\"router\": \"chat-router-v1\") gets every tier;
+names the chat router (\"router\": \"chat-router-v2\", or v1) gets every tier;
 CODER_WORKER_ROUTER=shadow logs the router's decision but serves what the
 first response alone would, and =off ignores the router. CODER_PERSONALIZE
 (openrouter[:MODEL], gateway[:LANE], or off) picks the model that writes
@@ -489,6 +492,54 @@ async fn serve(options: &Options) -> Result<(), String> {
         },
         None => eprintln!("product kb off: no judge"),
     }
+    // The Gym's records answer the Gym and eval routes when the product
+    // corpus (its tool catalog and Gym notes), an embeddings key, and the
+    // judge are here. Published results, test sets, and adoptions are read
+    // through the ext-eval profile parser, which is pending until #9932
+    // lands it in `crates/nostr`; until then the records are the app's
+    // changelog and our notes, and none of the eval routes states a result.
+    match judge.clone() {
+        Some(judge) => match coder::gym_kb::GymKnowledge::from_env(judge) {
+            Ok(gym) => {
+                let records = gym.records();
+                eprintln!(
+                    "gym records: {} tools, {} builds, {} notes; published results read from \
+                     the relay every {} minutes",
+                    records.tools.len(),
+                    records.releases.len(),
+                    records.notes.len(),
+                    coder::gym_kb::REFRESH.as_secs() / 60
+                );
+                let gym = Arc::new(gym);
+                let warming = gym.clone();
+                let (relay, reader) = (url.clone(), identity.clone());
+                tokio::spawn(async move {
+                    if let Err(why) = warming.warm().await {
+                        eprintln!("gym records not warmed: {why}");
+                    }
+                    // Published results: read, verified, and counted, then
+                    // read again; a failed read keeps the last one.
+                    loop {
+                        match warming.refresh(&relay, &reader).await {
+                            Ok(admitted) => eprintln!(
+                                "gym records: {} verified results, {} refused",
+                                admitted.results.len(),
+                                admitted.refused.len()
+                            ),
+                            Err(why) => eprintln!("gym records not read: {why}"),
+                        }
+                        tokio::time::sleep(coder::gym_kb::REFRESH).await;
+                    }
+                });
+                seams.gym = gym;
+            }
+            Err(why) => eprintln!("gym records off: {why}"),
+        },
+        None => eprintln!("gym records off: no judge"),
+    }
+    // The authoring interview's chat driver (#9937, `coder::eval_author`)
+    // is wired here as `seams.author`; until it lands, `eval.author` turns
+    // answer with the bank's `eval.author.soon`.
     let routing = Arc::new(RouterConfig::new(
         router_from_env()?,
         seams,
@@ -1031,6 +1082,10 @@ struct Turn {
     /// `router::redact`.
     message: String,
     context: router::Context,
+    /// The authoring interview's draft the request carried, when it passed
+    /// `router::card::draft`: data for the author seam, never an
+    /// instruction.
+    draft: Option<Value>,
 }
 
 impl Job {
@@ -1291,11 +1346,13 @@ impl Job {
                     // JSON object, gets the model's reply untouched and
                     // spends no judgment.
                     // A request that names the router (`"router":
-                    // "chat-router-v1"`) gets every tier; one that asks
+                    // "chat-router-v2"`, or v1) gets every tier; one that asks
                     // only for `opener` gets what the first response
                     // always showed: a prepared answer with no offer, an
                     // opener, or nothing.
-                    let routed = payload["router"].as_str() == Some(router::SET)
+                    // `chat-router-v1` (build 20) and `chat-router-v2` both
+                    // ask for routing; both are routed with the v2 set.
+                    let routed = router::asks_router(&payload["router"])
                         && self.routing.setting != RouterSetting::Off;
                     let opener = payload["opener"].as_bool() == Some(true) || routed;
                     let judged = opener || payload["judge"].as_bool() == Some(true);
@@ -1309,6 +1366,7 @@ impl Job {
                         show: opener,
                         message: latest(&payload, &input),
                         context: router::Context::of(&payload["context"]),
+                        draft: router::card::draft(&payload["draft"]).ok(),
                     };
                     let triage = judged.then(|| self.triage(&turn, &input)).flatten();
                     let mut instructions = payload["instructions"]
@@ -1411,8 +1469,10 @@ impl Job {
         let routing = self.routing.clone();
         let bank = Bank::builtin();
         let groups = routing.seams.cli.groups();
-        let request = router::request(&turn.message, input, bank, &routing.facts, &groups);
+        let tools = routing.seams.gym.tools();
+        let request = router::request(&turn.message, input, bank, &routing.facts, &groups, &tools);
         let (mode, shadow, context) = (turn.mode, turn.shadow, turn.context.clone());
+        let draft = turn.draft.is_some();
         Some(Box::pin(async move {
             let started = Instant::now();
             let answered = tokio::time::timeout(first::BUDGET, judge.system_one(request)).await;
@@ -1430,6 +1490,7 @@ impl Job {
                                 mode,
                                 context: &context,
                                 personalize,
+                                draft,
                             },
                         )
                     };
@@ -1576,8 +1637,21 @@ impl Job {
             publish(FEEDBACK_KIND, partial_payload(version, seq, text))
                 .map_err(GenerateError::Stream)
         };
-        let offer = |offer: &router::Offer| {
-            publish(FEEDBACK_KIND, offer.feedback(version)).map_err(GenerateError::Stream)
+        // An offer or card NIP-CJ's own writer refuses is not sent; the
+        // reply stands without it.
+        let offer = |offer: &router::Offer| match offer.feedback(version) {
+            Ok(body) => publish(FEEDBACK_KIND, body).map_err(GenerateError::Stream),
+            Err(why) => {
+                eprintln!("router offer {} not sent: {why}", offer.word());
+                Ok(())
+            }
+        };
+        let card = |card: &router::card::Card| match card.feedback(version) {
+            Ok(body) => publish(FEEDBACK_KIND, body).map_err(GenerateError::Stream),
+            Err(why) => {
+                eprintln!("router card {} not sent: {why}", card.word());
+                Ok(())
+            }
         };
         loop {
             tokio::select! {
@@ -1645,6 +1719,33 @@ impl Job {
                             seam_waiting = true;
                             pending = Some((routing, tier.clone()));
                         }
+                        Tier::Gym { route, .. } => {
+                            let lookup = GymLookup {
+                                route: *route,
+                                message: router::redact(&turn.message),
+                                transcript: input.to_vec(),
+                            };
+                            seam = gym_records(seams, lookup);
+                            seam_waiting = true;
+                            pending = Some((routing, tier.clone()));
+                        }
+                        // The interview's words come from the seam, or the
+                        // bank: drop the model call.
+                        Tier::Author => {
+                            generating = Box::pin(std::future::pending());
+                            draining = false;
+                            let ask = AuthorAsk {
+                                message: router::redact(&turn.message),
+                                transcript: input.to_vec(),
+                                draft: turn.draft.clone(),
+                                surface: turn.context.surface(),
+                            };
+                            seam = author_step(seams, ask);
+                            seam_waiting = true;
+                            pending = Some((routing, tier.clone()));
+                            served = Some(record);
+                            continue;
+                        }
                         Tier::Cli { group, also, .. } => {
                             let ask = CliAsk {
                                 group: group.clone(),
@@ -1696,8 +1797,110 @@ impl Job {
                             }
                             return Ok((format!("{stem}{end}"), None, Some(record)));
                         }
+                        (SeamOutcome::Author(stepped), Tier::Author) => {
+                            let checked = stepped
+                                .ok()
+                                .and_then(|step| router::gym::check_step(&step).ok());
+                            if let Some(step) = checked {
+                                send(0, &step.text)?;
+                                if let Some(draft) = &step.draft {
+                                    card(&router::card::Card::Draft { draft: draft.clone() })?;
+                                }
+                                if let Some(shown) = &step.offer {
+                                    offer(shown)?;
+                                }
+                                let record = Served {
+                                    tier: "author",
+                                    route: routing.route.word(),
+                                    model: Some(step.model.clone()),
+                                    ..Served::default()
+                                };
+                                return Ok((step.text, None, Some(record)));
+                            }
+                            // No interview wired, or its step failed its
+                            // checks: the bank says so.
+                            if let Some(entry) = bank.entry("eval.author.soon")
+                                && let Some(text) = entry.render(facts)
+                            {
+                                send(0, &text)?;
+                                let record = Served {
+                                    tier: "author",
+                                    route: routing.route.word(),
+                                    answer: Some(entry.tag()),
+                                    model: Some(format!("bank:{}", bank.name)),
+                                    followups: bank.followups(entry, facts),
+                                    ..Served::default()
+                                };
+                                return Ok((text, None, Some(record)));
+                            }
+                            return Err(GenerateError::Stream(
+                                "the bank has no eval.author.soon".to_string(),
+                            ));
+                        }
                         // The model has spoken meanwhile: its reply stands.
                         _ if partial_seq != 0 => {}
+                        (SeamOutcome::Gym(found), Tier::Gym { route, tool, lead: shown }) => {
+                            let reply = match &found {
+                                Ok(found) => router::gym::reply(*route, tool.as_deref(), found, bank, facts),
+                                Err(SeamError::Failed(why)) => {
+                                    eprintln!("router gym seam failed: {why}");
+                                    router::gym::Reply::Model
+                                }
+                                Err(SeamError::Unavailable) => {
+                                    router::gym::reply(*route, tool.as_deref(), &Default::default(), bank, facts)
+                                }
+                            };
+                            match reply {
+                                router::gym::Reply::Bank { answer, text, card: shown_card, offer: shown_offer } => {
+                                    send(0, &text)?;
+                                    if let Some(shown) = &shown_card {
+                                        card(shown)?;
+                                    }
+                                    if let Some(shown) = &shown_offer {
+                                        offer(shown)?;
+                                    }
+                                    let record = Served {
+                                        tier: "gym",
+                                        route: routing.route.word(),
+                                        answer: Some(answer.tag()),
+                                        model: Some(format!("bank:{}", bank.name)),
+                                        followups: bank.followups(&answer, facts),
+                                        ..Served::default()
+                                    };
+                                    return Ok((text, None, Some(record)));
+                                }
+                                router::gym::Reply::Grounded { items, card: shown_card } => {
+                                    card(&shown_card)?;
+                                    (generating, incoming) = start_model(
+                                        self.door.clone(),
+                                        format!("{instructions}\n\n{}", router::gym::instructions(&items)),
+                                        input.to_vec(),
+                                    );
+                                    draining = true;
+                                    buffer.clear();
+                                    if let Some(record) = &mut served {
+                                        record.citations = items.iter().map(Into::into).collect();
+                                    }
+                                }
+                                router::gym::Reply::Model => {
+                                    (generating, incoming) = start_model(
+                                        self.door.clone(),
+                                        format!("{instructions}\n\n{}", router::gym::NO_RECORDS_NOTE),
+                                        input.to_vec(),
+                                    );
+                                    draining = true;
+                                    buffer.clear();
+                                    if let Some(record) = &mut served {
+                                        record.tier = "model";
+                                    }
+                                }
+                            }
+                            if let Some(shown) = shown {
+                                lead = format!("{}\n\n", shown.text);
+                                send(partial_seq, &lead)?;
+                                partial_seq += 1;
+                            }
+                        }
                         (SeamOutcome::Grounded(Ok(found)), Tier::Grounded { corpus, lead: shown }) => {
                             match router::grounded(&found, routing.needs_specifics) {
                                 router::Grounded::Answer(passage) => {
@@ -1964,6 +2167,8 @@ enum SeamOutcome {
     Continued(Option<Continuation>),
     Grounded(Result<Grounding, SeamError>),
     Cli(Result<CliAnswer, SeamError>),
+    Gym(Result<router::gym::Grounding, SeamError>),
+    Author(Result<AuthorStep, SeamError>),
 }
 
 /// A seam call, running.
@@ -2002,10 +2207,37 @@ fn grounding(seams: &Seams, corpus: router::Corpus, lookup: Lookup) -> SeamCall 
             router::Corpus::Codebase => {
                 tokio::time::timeout(router::seams::KB_BUDGET, codebase.ground(&lookup)).await
             }
+            // The Gym's records are read through `gym_records`, never as a
+            // grounded corpus.
+            router::Corpus::Gym => Ok(Err(SeamError::Unavailable)),
         };
         SeamOutcome::Grounded(
             found.unwrap_or_else(|_| Err(SeamError::Failed("ran past its budget".to_string()))),
         )
+    })
+}
+
+fn gym_records(seams: &Seams, lookup: GymLookup) -> SeamCall {
+    let gym = seams.gym.clone();
+    Box::pin(async move {
+        SeamOutcome::Gym(
+            tokio::time::timeout(router::seams::GYM_BUDGET, gym.ground(&lookup))
+                .await
+                .unwrap_or_else(|_| Err(SeamError::Failed("ran past its budget".to_string()))),
+        )
+    })
+}
+
+fn author_step(seams: &Seams, ask: AuthorAsk) -> SeamCall {
+    let author = seams.author.clone();
+    Box::pin(async move {
+        let stepped = tokio::time::timeout(router::seams::AUTHOR_BUDGET, author.step(&ask))
+            .await
+            .unwrap_or_else(|_| Err(SeamError::Failed("ran past its budget".to_string())));
+        if let Err(SeamError::Failed(why)) = &stepped {
+            eprintln!("router author seam failed: {why}");
+        }
+        SeamOutcome::Author(stepped)
     })
 }
 
@@ -2715,7 +2947,7 @@ mod tests {
         let answers: Vec<&str> = bank
             .answers
             .iter()
-            .filter(|entry| entry.eligible(&facts))
+            .filter(|entry| entry.selectable(&facts))
             .map(|entry| entry.id.as_str())
             .chain(["none"])
             .collect();
@@ -3106,7 +3338,8 @@ mod tests {
         )
         .await;
         let judgment = of_type(&frames, "judgment")[0];
-        assert_eq!(judgment["set"], "chat-router-v1");
+        // Build 20 names `chat-router-v1`; it is routed with the v2 set.
+        assert_eq!(judgment["set"], "chat-router-v2");
         assert_eq!(judgment["route"], "work.dispatch");
         assert_eq!(judgment["tier"], "offer");
         let partials = of_type(&frames, "partial");
@@ -3435,5 +3668,335 @@ mod tests {
         assert_eq!(offers[0]["offer"], "open_screen");
         assert_eq!(offers[0]["screen"], "wallet");
         assert_eq!(paying.last().unwrap().1["answer"], "wallet.send@1");
+    }
+
+    /// A Gym seam for tests: fixed records, and fixed news.
+    struct Gym(router::gym::Grounding);
+
+    impl router::seams::GymKb for Gym {
+        fn available(&self) -> bool {
+            true
+        }
+        fn recipients(&self) -> Vec<String> {
+            vec!["an embedding provider".into()]
+        }
+        fn tools(&self) -> Vec<router::gym::Tool> {
+            self.0.records.tools.clone()
+        }
+        fn ground<'a>(
+            &'a self,
+            _: &'a GymLookup,
+        ) -> futures_util::future::BoxFuture<'a, Result<router::gym::Grounding, SeamError>>
+        {
+            Box::pin(async move { Ok(self.0.clone()) })
+        }
+    }
+
+    /// The Gym's test records: Project map with a published test set and a
+    /// Better result, Code finder with neither, and one build.
+    fn gym_records() -> router::gym::Grounding {
+        use router::gym::*;
+        let event = |n: u8, kind: u16| EventPointer {
+            id: format!("{n:02x}").repeat(32),
+            pubkey: format!("{:02x}", n + 100).repeat(32),
+            kind,
+        };
+        let artifact = |n: u8, schema: Option<&str>| ArtifactRef {
+            digest: format!("sha256:{}", format!("{n:02x}").repeat(32)),
+            size: 4096,
+            media_type: "application/json".into(),
+            schema: schema.map(str::to_string),
+            event: None,
+            sources: Vec::new(),
+        };
+        let tool = |id: &str, name: &str| Tool {
+            id: format!("openagents.tool-{id}"),
+            name: name.into(),
+            line: format!("What {name} does."),
+            source: format!("knowledge/openagents/openagents.tool-{id}.md"),
+            slugs: vec![id.into()],
+        };
+        let subject = DefinitionRef {
+            id: format!("{}:project-map/map", "ab".repeat(32)),
+            artifact: artifact(1, None),
+            event: None,
+        };
+        router::gym::Grounding {
+            records: Records {
+                tools: vec![
+                    tool("project-map", "Project map"),
+                    tool("code-finder", "Code finder"),
+                ],
+                results: vec![ResultRecord {
+                    publication: event(10, 3189),
+                    tool: Some("openagents.tool-project-map".into()),
+                    tool_name: "Project map".into(),
+                    trainer: "3e".repeat(32),
+                    suite: event(20, 3184),
+                    cases: 8,
+                    subject: subject.clone(),
+                    headline: Headline {
+                        subject_passed: 7,
+                        baseline_passed: Some(5),
+                        total: 8,
+                    },
+                    verdict: Verdict::Pass,
+                    report: artifact(2, Some(nostr::kb::REPORT_SCHEMA)),
+                    checks: None,
+                    checked: Checks {
+                        confirmed: 1,
+                        disputed: 0,
+                    },
+                    at: 1_790_000_010,
+                }],
+                suites: vec![SuiteRecord {
+                    release: event(20, 3184),
+                    tool: Some("openagents.tool-project-map".into()),
+                    tool_name: "Project map".into(),
+                    author: "50".repeat(32),
+                    subject,
+                    cases: 8,
+                    at: 1_790_000_000,
+                    source: event(20, 3184),
+                }],
+                adoptions: Vec::new(),
+                releases: vec![Release {
+                    version: "1.0.0".into(),
+                    build: "20".into(),
+                    title: "Smarter chat and a simpler Wallet".into(),
+                    items: vec!["Instant answers".into()],
+                    source: "crates/openagents-mobile/src/account.rs".into(),
+                }],
+                notes: Vec::new(),
+            },
+            news: Vec::new(),
+        }
+    }
+
+    /// The router's answers with the route and the `tool` reading.
+    fn routed_tool(route: &str, tool: &str) -> Value {
+        let mut answers = routed(route, "none", 0.5, "none");
+        answers["tool"] = sure(
+            tool,
+            &[
+                "openagents.tool-project-map",
+                "openagents.tool-code-finder",
+                "none",
+            ],
+        );
+        answers
+    }
+
+    fn v2_turn(task: &str) -> Value {
+        json!({
+            "v": 2, "requires": [], "task": task,
+            "transcript": [{ "role": "user", "content": task }],
+            "opener": true, "router": "chat-router-v2",
+            "context": { "surface": "phone", "computer_ready": false },
+        })
+    }
+
+    /// `eval.run`: the bank's sentence names the tool and its tests from
+    /// the records, the tool card and the `start_eval` offer ride as
+    /// feedback, and the model call is dropped.
+    #[tokio::test]
+    async fn a_tool_test_is_offered_from_the_records_with_its_card() {
+        let frames = frames_routed(
+            slow_door(Duration::from_millis(1_500)),
+            Some(judge(
+                Duration::ZERO,
+                routed_tool("eval.run", "openagents.tool-project-map"),
+            )),
+            v2_turn("Test Project map on Coder"),
+            Seams {
+                gym: Arc::new(Gym(gym_records())),
+                ..Seams::default()
+            },
+            RouterSetting::Live,
+        )
+        .await;
+        let judgment = of_type(&frames, "judgment")[0];
+        assert_eq!(judgment["set"], "chat-router-v2");
+        assert_eq!(judgment["route"], "eval.run");
+        assert_eq!(judgment["tool"], "openagents.tool-project-map");
+        let cards = of_type(&frames, "card");
+        assert_eq!(cards.len(), 1);
+        assert_eq!(cards[0]["card"], "tool");
+        assert_eq!(
+            cards[0]["latest"]["headline"],
+            json!({ "subject_passed": 7, "baseline_passed": 5, "total": 8 })
+        );
+        let offers = of_type(&frames, "offer");
+        assert_eq!(offers[0]["offer"], "start_eval");
+        assert_eq!(
+            offers[0]["size"],
+            json!({ "cases": 8, "runs": 3, "arms": 2 })
+        );
+        assert_eq!(offers[0]["where"], "hosted");
+        let result = &frames.last().unwrap().1;
+        assert!(
+            result["text"]
+                .as_str()
+                .unwrap()
+                .starts_with("We'd test Project map with its published test set: 8 tests"),
+            "{result}"
+        );
+        assert_eq!(result["tier"], "gym");
+        assert_eq!(result["answer"], "eval.run.offer@1");
+        assert!(result["model"].as_str().unwrap().starts_with("bank:"));
+        assert!(
+            frames.last().unwrap().0 < Duration::from_millis(1_400),
+            "the model call was dropped"
+        );
+    }
+
+    /// `gym.news`: the news card from the kept items goes out, and the
+    /// model is restarted told to answer from them; the result cites them.
+    #[tokio::test]
+    async fn news_is_grounded_in_the_gyms_records() {
+        let mut grounding = gym_records();
+        grounding.news = grounding
+            .records
+            .items()
+            .into_iter()
+            .map(|item| (item, 0.9))
+            .collect();
+        let stream = include_str!("../../fixtures/gateway/google-gemini-3.8-flash.sse");
+        let url = serve_times(
+            2,
+            Duration::from_millis(200),
+            "text/event-stream",
+            stream.to_string(),
+        );
+        let door = Door::Live(coder::generate::ResponsesDoor::new(url, GEMINI, "test"));
+        let frames = frames_routed(
+            door,
+            Some(judge(Duration::ZERO, routed_tool("gym.news", "none"))),
+            v2_turn("What's new in the Gym?"),
+            Seams {
+                gym: Arc::new(Gym(grounding)),
+                ..Seams::default()
+            },
+            RouterSetting::Live,
+        )
+        .await;
+        let cards = of_type(&frames, "card");
+        assert_eq!(cards[0]["card"], "news");
+        assert_eq!(cards[0]["items"].as_array().unwrap().len(), 3);
+        nostr::cj_conversation::parse_card(cards[0]).expect("a card NIP-CJ reads");
+        let result = &frames.last().unwrap().1;
+        assert_eq!(result["tier"], "gym");
+        assert_eq!(result["route"], "gym.news");
+        assert_eq!(result["citations"].as_array().unwrap().len(), 3);
+        assert_eq!(result["model"], GEMINI);
+    }
+
+    /// With no Gym records configured, an `eval.check` turn says no result
+    /// is waiting, from the bank, and states no number.
+    #[tokio::test]
+    async fn without_records_a_check_turn_says_nothing_is_waiting() {
+        let frames = frames_routed(
+            slow_door(Duration::from_millis(1_500)),
+            Some(judge(
+                Duration::ZERO,
+                routed("eval.check", "none", 0.5, "none"),
+            )),
+            v2_turn("Is there a result I can check?"),
+            Seams::default(),
+            RouterSetting::Live,
+        )
+        .await;
+        let result = &frames.last().unwrap().1;
+        assert_eq!(result["answer"], "eval.check.none@1");
+        assert!(of_type(&frames, "card").is_empty());
+        assert!(of_type(&frames, "offer").is_empty());
+    }
+
+    /// An interview step for tests: fixed text, a draft, and an offer.
+    struct Interviews;
+
+    impl router::seams::EvalAuthor for Interviews {
+        fn available(&self) -> bool {
+            true
+        }
+        fn recipients(&self) -> Vec<String> {
+            Vec::new()
+        }
+        fn step<'a>(
+            &'a self,
+            ask: &'a AuthorAsk,
+        ) -> futures_util::future::BoxFuture<'a, Result<AuthorStep, SeamError>> {
+            let seen = ask.draft.clone();
+            Box::pin(async move {
+                use nostr::cj_conversation::{Size, SubjectSource, SuiteSource, Where};
+                Ok(AuthorStep {
+                    text: if seen.is_some() {
+                        "Good. Should we try it once?".into()
+                    } else {
+                        "What should a good run look like?".into()
+                    },
+                    draft: seen,
+                    offer: Some(router::Offer::StartEval {
+                        suite: SuiteSource::Draft,
+                        subject: SubjectSource::Draft,
+                        size: Size {
+                            cases: 1,
+                            runs: 1,
+                            arms: 2,
+                        },
+                        at: Where::Hosted,
+                        label: "Try it once".into(),
+                    }),
+                    model: "interview-test".into(),
+                })
+            })
+        }
+    }
+
+    /// `eval.author` without the interview wired says it is coming, from
+    /// the bank; with a draft open, a short reply continues the interview
+    /// through the seam, and its draft card and offer ride as feedback.
+    #[tokio::test]
+    async fn the_interview_is_the_seams_or_the_banks_never_the_models() {
+        let soon = frames_routed(
+            slow_door(Duration::from_millis(1_500)),
+            Some(judge(
+                Duration::ZERO,
+                routed("eval.author", "none", 0.9, "none"),
+            )),
+            v2_turn("Help me make a tool"),
+            Seams::default(),
+            RouterSetting::Live,
+        )
+        .await;
+        let result = &soon.last().unwrap().1;
+        assert_eq!(result["answer"], "eval.author.soon@1");
+        assert_eq!(result["tier"], "author");
+        assert!(soon.last().unwrap().0 < Duration::from_millis(1_400));
+
+        let mut turn = v2_turn("looks good");
+        turn["draft"] = serde_json::from_str(include_str!(
+            "../../../nostr/fixtures/eval-ext/eval-draft/valid/chat-made-tool.json"
+        ))
+        .unwrap();
+        let frames = frames_routed(
+            slow_door(Duration::from_millis(1_500)),
+            Some(judge(
+                Duration::ZERO,
+                routed("smalltalk", "smalltalk.thanks", 0.1, "none"),
+            )),
+            turn,
+            Seams {
+                author: Arc::new(Interviews),
+                ..Seams::default()
+            },
+            RouterSetting::Live,
+        )
+        .await;
+        let result = &frames.last().unwrap().1;
+        assert_eq!(result["text"], "Good. Should we try it once?");
+        assert_eq!(result["model"], "interview-test");
+        assert_eq!(of_type(&frames, "card")[0]["card"], "draft");
+        assert_eq!(of_type(&frames, "offer")[0]["suite"], "draft");
     }
 }

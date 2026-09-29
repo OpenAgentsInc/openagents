@@ -31,18 +31,33 @@ pub const PATH: &str = "crates/coder/answers/chat-answers-v1.toml";
 /// The longest text an entry shows, in characters.
 pub const MAX_TEXT_CHARS: usize = 600;
 
-/// The fact keys a slot may name, each filled by the worker from its own
-/// configuration (see [`Facts::set`]).
+/// The fact keys a slot may name. `worker.*` keys are filled by the worker
+/// from its own configuration (see [`Facts::set`]); `gym.*` keys only by
+/// [`super::gym::reply`], from a record the Gym seam verified, for an
+/// entry that sets [`Entry::records`].
 pub const FACT_KEYS: &[&str] = &[
     "worker.lane.display",
     "worker.door.display",
     "worker.quota.day",
     "worker.quota.minute",
     "worker.recipients",
+    "gym.tool",
+    "gym.tests",
 ];
 
 /// The routes whose entries must cite sources: every factual answer.
-const SOURCED: &[RouteId] = &[RouteId::Meta, RouteId::Wallet, RouteId::Account];
+const SOURCED: &[RouteId] = &[
+    RouteId::Meta,
+    RouteId::Wallet,
+    RouteId::Account,
+    RouteId::ProductKb,
+    RouteId::GymNews,
+    RouteId::EvalRun,
+    RouteId::EvalAuthor,
+    RouteId::EvalCheck,
+    RouteId::EvalResult,
+    RouteId::EvalCredit,
+];
 
 /// An entry's offer, as the file writes it.
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
@@ -116,6 +131,12 @@ pub struct Entry {
     pub offer: Option<EntryOffer>,
     /// The NIP-CJ verdict when this entry answers (`end_conversation`).
     pub verdict: Option<String>,
+    /// The entry says something about what the Gym's records hold ("no
+    /// result is waiting for a check"), so [`super::gym::reply`] picks it
+    /// from the verified records, and the `answer` question never offers
+    /// it.
+    #[serde(default)]
+    pub records: bool,
 }
 
 impl Entry {
@@ -163,6 +184,13 @@ impl Entry {
     #[must_use]
     pub fn eligible(&self, facts: &Facts) -> bool {
         self.render(facts).is_some() || self.stem(facts).is_some()
+    }
+
+    /// Whether the `answer` question may offer it: eligible, and not an
+    /// entry the Gym's records pick.
+    #[must_use]
+    pub fn selectable(&self, facts: &Facts) -> bool {
+        !self.records && self.eligible(facts)
     }
 
     /// The typed offer, when the entry has one.
@@ -448,6 +476,18 @@ pub fn lint(bank: &Bank, root: Option<&Path>) -> Vec<String> {
             && verdict != "end_conversation"
         {
             push(id, format!("the verdict {verdict} is not end_conversation"));
+        }
+        if entry.records && !routes.iter().all(|route| route.is_gym()) {
+            push(
+                id,
+                "a records entry answers Gym and eval routes only".into(),
+            );
+        }
+        if !entry.records && entry.facts.values().any(|key| key.starts_with("gym.")) {
+            push(
+                id,
+                "only a records entry fills a slot from the Gym's records".into(),
+            );
         }
     }
     for opener in &bank.openers {

@@ -1,8 +1,9 @@
 //! The chat router's labeled route set and the numbers a run over it
 //! reports.
 //!
-//! The set (`crates/coder/fixtures/chat-router/routes-v1.json`) holds
-//! realistic first messages across the 12 routes of
+//! The set (`crates/coder/fixtures/chat-router/routes-v2.json`, the
+//! `routes-v1.json` rows with the same ids and splits plus rows for the Gym
+//! and eval routes) holds realistic first messages across the 18 routes of
 //! `docs/coder/design/2026-09-28-chat-router.md`, each labeled with the
 //! route, the prepared answer a correct router serves (or none), other
 //! acceptable answers, the tier, the risk, and the `openagents` command
@@ -21,6 +22,8 @@
 //!   share served one, right or wrong;
 //! - **dispatch precision**: of the turns given a Coder offer, the share
 //!   whose row is `work.dispatch`. Target at least 90 %.
+//! - **Gym precision**: of the turns given a Gym or interview tier (`gym`,
+//!   `author`), the share whose row is on that route.
 //! - refusal precision and recall, secret recall, and latency.
 //!
 //! This module is pure: the live runs are the ignored tests in
@@ -37,7 +40,7 @@ use serde_json::{Value, json};
 pub const SCHEMA: &str = "openagents.chat-router.labeled.v1";
 
 /// The routes, in the design's catalog order.
-pub const ROUTES: [&str; 12] = [
+pub const ROUTES: [&str; 18] = [
     "meta",
     "smalltalk",
     "general",
@@ -50,10 +53,20 @@ pub const ROUTES: [&str; 12] = [
     "clarify",
     "end",
     "refuse",
+    "gym.news",
+    "eval.run",
+    "eval.author",
+    "eval.check",
+    "eval.result",
+    "eval.credit",
 ];
 
-/// The tiers a row can expect: the design's `Tier` enum, by word.
-pub const TIERS: [&str; 6] = ["canned", "stem", "grounded", "model", "offer", "refuse"];
+/// The tiers a row can expect: the design's `Tier` enum, by word. `gym` is
+/// a reply decided from the Gym's verified records, `author` a step of the
+/// authoring interview.
+pub const TIERS: [&str; 8] = [
+    "canned", "stem", "grounded", "model", "offer", "refuse", "gym", "author",
+];
 
 /// The risk readings.
 pub const RISKS: [&str; 5] = [
@@ -74,7 +87,10 @@ pub const DISPATCH_TARGET: f64 = 0.90;
 pub const HELD_OUT_PERCENT: u32 = 30;
 
 /// The checked-in set.
-pub const FIXTURE: &str = include_str!("../fixtures/chat-router/routes-v1.json");
+pub const FIXTURE: &str = include_str!("../fixtures/chat-router/routes-v2.json");
+
+/// The `chat-router-v1` set, kept for the Gym suite recorded under it.
+pub const FIXTURE_V1: &str = include_str!("../fixtures/chat-router/routes-v1.json");
 
 /// One message of a row's conversation.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -141,6 +157,16 @@ impl Set {
     #[must_use]
     pub fn fixture() -> Self {
         serde_json::from_str(FIXTURE).expect("the route set parses")
+    }
+
+    /// The `chat-router-v1` set.
+    ///
+    /// # Panics
+    ///
+    /// The fixture does not parse, which its tests rule out.
+    #[must_use]
+    pub fn v1() -> Self {
+        serde_json::from_str(FIXTURE_V1).expect("the v1 route set parses")
     }
 
     /// The rows of `split` (`tune`, `held_out`, or `all`).
@@ -237,6 +263,9 @@ pub struct Report {
     pub dispatch: Counts,
     /// Refusals: to `refuse` rows; refusals; `refuse` rows.
     pub refuse: Counts,
+    /// Gym and interview tiers: to rows of the route read; readings with
+    /// tier `gym` or `author`; rows expecting one.
+    pub gym: Counts,
     /// Rows with a secret (`secret_shared` or `asks_for_secret`) that the
     /// system refused or read as that risk.
     pub secret: Counts,
@@ -246,6 +275,9 @@ pub struct Report {
     pub wrong_canned: Vec<(String, String, String)>,
     /// Every wrong dispatch offer: row id and the row's route.
     pub wrong_dispatch: Vec<(String, String)>,
+    /// Every Gym or interview tier on another route's row: row id, the
+    /// route read, the row's route.
+    pub wrong_gym: Vec<(String, String, String)>,
     /// The owner-reported rows: id, message, tier, answer.
     pub owner: Vec<(String, String, String, String)>,
 }
@@ -276,6 +308,7 @@ impl Report {
             report.canned.labeled += usize::from(row.tier == "canned");
             report.dispatch.labeled += usize::from(row.route == "work.dispatch");
             report.refuse.labeled += usize::from(row.route == "refuse");
+            report.gym.labeled += usize::from(matches!(row.tier.as_str(), "gym" | "author"));
             report.secret.labeled += usize::from(is_secret);
             let Some(reading) = by_id.get(row.id.as_str()) else {
                 report.errors += 1;
@@ -326,6 +359,18 @@ impl Report {
                     report
                         .wrong_dispatch
                         .push((row.id.clone(), row.route.clone()));
+                }
+            }
+            if matches!(reading.tier.as_str(), "gym" | "author") {
+                report.gym.predicted += 1;
+                if reading.route.as_deref() == Some(row.route.as_str()) {
+                    report.gym.hit += 1;
+                } else {
+                    report.wrong_gym.push((
+                        row.id.clone(),
+                        reading.route.clone().unwrap_or_default(),
+                        row.route.clone(),
+                    ));
                 }
             }
             if reading.tier == "refuse" {
@@ -410,6 +455,16 @@ impl Report {
         );
         let _ = writeln!(
             out,
+            "| Gym and interview precision / recall | {} / {} | {}/{}, {}/{} |",
+            pct(self.gym.precision()),
+            pct(self.gym.recall()),
+            self.gym.hit,
+            self.gym.predicted,
+            self.gym.hit,
+            self.gym.labeled
+        );
+        let _ = writeln!(
+            out,
             "| Refusal precision / recall | {} / {} | {}/{}, {}/{} |",
             pct(self.refuse.precision()),
             pct(self.refuse.recall()),
@@ -460,6 +515,15 @@ impl Report {
                 let _ = writeln!(out, "- `{id}`: {route}");
             }
         }
+        if !self.wrong_gym.is_empty() {
+            let _ = writeln!(
+                out,
+                "\nWrong Gym or interview tiers (row, route read, labeled route):"
+            );
+            for (id, read, route) in &self.wrong_gym {
+                let _ = writeln!(out, "- `{id}`: {read} for {route}");
+            }
+        }
         if !self.owner.is_empty() {
             let _ = writeln!(out, "\nOwner-reported messages:");
             for (id, message, tier, answer) in &self.owner {
@@ -477,6 +541,7 @@ impl Report {
             "report": self,
             "canned_precision": self.canned.precision(),
             "dispatch_precision": self.dispatch.precision(),
+            "gym_precision": self.gym.precision(),
         })
     }
 }
@@ -562,10 +627,17 @@ pub fn route_descriptions() -> Vec<(&'static str, &'static str)> {
 }
 
 /// The Gym suite the set is exported as, and its question set.
-pub const SUITE: &str = "chat-router-v1";
+pub const SUITE: &str = "chat-router-v2";
 
 /// The question set the Gym suite names: the router's `route` Choice.
-pub const SUITE_QUESTIONS: &str = "chat-router-route-v2";
+pub const SUITE_QUESTIONS: &str = "chat-router-route-v3";
+
+/// The Gym suite exported from the `chat-router-v1` set, and the question
+/// set it was scored with; both are kept as recorded.
+pub const SUITE_V1: &str = "chat-router-v1";
+
+/// The `chat-router-v1` suite's question set: the twelve-route question.
+pub const SUITE_QUESTIONS_V1: &str = "chat-router-route-v2";
 
 /// The `route` question the Gym suite asks: the production router's own
 /// ([`crate::router::judge::route`]), structured instructions and option
@@ -675,6 +747,10 @@ mod tests {
         "refuse.asks_for_secret",
         "refuse.harmful",
         "clarify.generic",
+        "gym.what_test",
+        "gym.what_tool",
+        "eval.credit.how",
+        "eval.credit.mine",
     ];
 
     #[test]
@@ -709,6 +785,27 @@ mod tests {
         for route in ROUTES {
             let n = set.rows.iter().filter(|r| r.route == route).count();
             assert!(n >= 20, "{route} has {n} rows");
+        }
+    }
+
+    /// The v2 set keeps every v1 row as it was, so their split and labels
+    /// still mean what the v1 measurements said.
+    #[test]
+    fn the_v2_set_keeps_every_v1_row() {
+        let v1 = Set::v1();
+        let v2 = Set::fixture();
+        assert_eq!(v1.rows.len(), 457);
+        for row in &v1.rows {
+            let kept = v2.rows.iter().find(|r| r.id == row.id).expect("kept");
+            assert_eq!(kept, row, "{} changed", row.id);
+        }
+        for route in crate::router::RouteId::GYM {
+            let held = v2
+                .rows("held_out")
+                .iter()
+                .filter(|r| r.route == route.word())
+                .count();
+            assert!(held >= 6, "{} has {held} held-out rows", route.word());
         }
     }
 

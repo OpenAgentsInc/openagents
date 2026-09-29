@@ -1,7 +1,7 @@
 //! The first response's shared pieces, and the suggestion ranking.
 //!
 //! The chat worker's first response is now the chat router
-//! ([`crate::router`], the `chat-router-v1` question set and the
+//! ([`crate::router`], the `chat-router-v2` question set and the
 //! `chat-answers-v1` bank as a data file). What stays here is what the
 //! router and the ranking share: the judgment's [`BUDGET`] and
 //! [`retry`] policy, the [`state`] it reads, the [`Lane`] reading, the

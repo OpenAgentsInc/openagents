@@ -33,7 +33,7 @@ phone <--27000 partials, 26900 result------- relay.openagents.com <-- chat worke
 - **First response and the chat router.** The worker acknowledges every
   admitted turn with `status: processing` at once. With `TYPESAFE_API_KEY`
   set, a turn that asks gets one Jev (System One) judgment run beside the
-  model call, the `chat-router-v1` question set (`crates/coder/src/router/`):
+  model call, the `chat-router-v2` question set (`crates/coder/src/router/`):
   route, prepared answer, whether the reply needs the user's specifics,
   lane, opener, risk, and a command group when a command tree is wired.
   Code decides what is shown. A turn that sends `"router":
@@ -95,6 +95,19 @@ phone <--27000 partials, 26900 result------- relay.openagents.com <-- chat worke
   `scripts/build-codebase-kb.sh <COMMIT> <OUT>` (the door key embeds it
   through the gateway; a refresh re-embeds only changed chunks) and copy it
   beside the release. The worker keeps the embedder's connection warm.
+- **Gym records.** The `gym.news` and `eval.*` routes answer from the
+  Gym's verified records (`coder::gym_kb`) when the judge, the product
+  corpus, and the product knowledge base's embeddings are all present; it
+  needs no variable of its own. Its tool catalog and Gym notes are the
+  product corpus's entries tagged `tool` and `gym`, its builds come from
+  the app's changelog compiled into the binary, and published results are
+  read from the worker's own relay every 10 minutes and admitted only when
+  `nostr::eval_ext` verifies them. The log says `gym records: 3 tools, 3
+  builds, … notes` and then `gym records: N verified results, M refused`
+  after each read, or `gym records off:` and why. A request may name
+  `chat-router-v1` (build 20) or `chat-router-v2`; both are routed with
+  v2. The authoring interview (`eval.author`) answers with the bank's
+  `eval.author.soon` until #9937 wires it.
 - **CLI route.** With a judge, the worker holds `coder::cli_route`'s
   `CommandRoute` as its CLI seam, filling free text through its own door;
   `CODER_WORKER_CLI=off` turns it off. On the phone it proposes only the

@@ -1,0 +1,29 @@
+{
+  "v": 2,
+  "requires": [],
+  "type": "card",
+  "card": "tool",
+  "name": "Project map",
+  "summary": "What Project map does.",
+  "definition": {
+    "id": "1414141414141414141414141414141414141414141414141414141414141414:project-map/project-map",
+    "artifact": {
+      "digest": "sha256:1414141414141414141414141414141414141414141414141414141414141414",
+      "size": 4096,
+      "media_type": "application/json"
+    }
+  },
+  "latest": {
+    "publication": {
+      "id": "0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a",
+      "pubkey": "6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e",
+      "kind": 3189
+    },
+    "headline": {
+      "subject_passed": 7,
+      "baseline_passed": 5,
+      "total": 8
+    },
+    "verdict": "pass"
+  }
+}

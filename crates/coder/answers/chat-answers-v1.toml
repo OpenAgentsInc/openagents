@@ -421,6 +421,139 @@ offer = { screen = "account.report_problem", label = "Report a problem" }
 sources = ["docs/game/playtesting.md"]
 
 # ---------------------------------------------------------------------------
+# The Gym and evals (#9936): definitions, credit, and the entries the Gym's
+# records pick. An entry with `records = true` says something about what
+# the Gym's verified records hold, so crates/coder/src/router/gym.rs picks
+# it from those records and the `answer` question never offers it; its
+# {tool} and {tests} slots are filled only from a verified record.
+# ---------------------------------------------------------------------------
+
+[[answer]]
+id = "gym.what_test"
+version = 1
+routes = ["product.kb", "general"]
+when = "The user asks what a test or a test set is in the Gym, or what a test checks; not how their own test did, how to run one, or how XP from tests works"
+examples = ["what does a test check?", "what counts as a test in the gym"]
+text = "A test is one task we give Coder, with checks on how it went: its last message, the files it made, or the steps it took. A test set is the tests for one tool, and we run each test with the tool and without it to see whether Coder does better."
+chip = "What's a test?"
+sources = ["docs/extensions/evaluation.md", "knowledge/openagents/openagents.tests.md"]
+followups = ["gym.what_tool", "eval.credit.how"]
+
+[[answer]]
+id = "gym.what_tool"
+version = 1
+routes = ["product.kb", "general"]
+when = "The user asks what a tool is in the Gym or for Coder, or which kinds of tools there are; not what one named tool does"
+not_for = "What one named tool such as Project map does, which our notes answer"
+examples = ["what is a tool in the gym", "What's a tool?"]
+text = "A tool is something Coder, our coding agent, can use while it works, such as Project map, Code finder, or Test reader. In the Gym we test a tool by running the same tests with it and without it, so you can see whether it makes Coder better."
+chip = "What's a tool?"
+sources = ["docs/extensions/evaluation.md", "knowledge/openagents/openagents.tools.md"]
+followups = ["gym.what_test"]
+
+[[answer]]
+id = "eval.credit.how"
+version = 1
+routes = ["eval.credit"]
+when = "The user asks how they earn XP or credit from tests, test sets, checks, or tools, or whether that credit pays money; not what they have earned so far"
+examples = ["How do I earn XP from tests?", "do I get paid for my tests?", "what earns xp in the gym", "what do I get when someone checks my result", "what happens when coder adopts my tool"]
+text = "With tests in chat, which are on their way, you earn XP when your work is used: when another trainer checks a result you added to the Gym and gets the same verdict, or when Coder adopts your tool for everyone. A run or a publish earns nothing by itself, and XP can't be spent: it isn't money."
+chip = "How do I earn XP from tests?"
+sources = ["docs/extensions/evaluation.md", "nips/openagents/NIP-XP.md", "knowledge/openagents/openagents.credit.md"]
+followups = ["eval.credit.mine", "gym.what_test"]
+
+[[answer]]
+id = "eval.credit.mine"
+version = 1
+routes = ["eval.credit"]
+when = "The user asks what their tests, results, checks, or tools have earned so far, who checked their work, or whether Coder adopted their tool"
+not_for = "What they would get, or how XP from tests works in general (eval.credit.how)"
+examples = ["What have I earned?", "did coder adopt my tool", "who checked my results"]
+text = "Your XP from tests comes when another trainer's check confirms a result you added to the Gym, or when Coder adopts your tool. Your trainer card under Account shows your XP and level, and XP can't be spent."
+chip = "What have I earned?"
+sources = ["docs/extensions/evaluation.md", "docs/product/2026-09-28-app-wireframe.md"]
+followups = ["eval.credit.how"]
+
+[[answer]]
+id = "eval.author.soon"
+version = 1
+routes = ["eval.author"]
+records = true
+when = "Picked by code when the authoring interview is not wired: the user wants to make a tool or a test set with us"
+text = "Making a tool and its test set with you here in chat is coming in our next build. Until then, we can tell you what a test is, what's new in the Gym, or how tools help Coder."
+sources = ["docs/extensions/evaluation.md"]
+followups = ["gym.what_test", "gym.what_tool"]
+
+[[answer]]
+id = "eval.run.offer"
+version = 1
+routes = ["eval.run"]
+records = true
+when = "Picked from the Gym's records: the user wants to test a tool that has a published test set"
+text = "We'd test {tool} with its published test set: {tests} tests, each run with {tool} and without it, so you can see whether Coder does better. Nothing runs until you start it."
+facts = { tool = "gym.tool", tests = "gym.tests" }
+sources = ["docs/extensions/evaluation.md", "crates/coder/src/router/gym.rs"]
+
+[[answer]]
+id = "eval.run.no_tests"
+version = 1
+routes = ["eval.run"]
+records = true
+when = "Picked from the Gym's records: the user wants to test a tool that has no published test set yet"
+text = "{tool} doesn't have a published test set yet, so there's nothing to run. When one is added to the Gym, we'll offer to run it here."
+facts = { tool = "gym.tool" }
+sources = ["docs/extensions/evaluation.md", "crates/coder/src/router/gym.rs"]
+followups = ["gym.what_test"]
+
+[[answer]]
+id = "eval.check.one"
+version = 1
+routes = ["eval.check"]
+records = true
+when = "Picked from the Gym's records: a published result is waiting for checks"
+text = "Here's a result another trainer added to the Gym. Running the same tests again checks whether it holds up."
+sources = ["docs/extensions/evaluation.md", "crates/coder/src/router/gym.rs"]
+
+[[answer]]
+id = "eval.check.none"
+version = 1
+routes = ["eval.check"]
+records = true
+when = "Picked from the Gym's records: no published result is waiting for a check"
+text = "No published result is waiting for a check right now. When another trainer adds one to the Gym, we'll show it here so you can check it."
+sources = ["docs/extensions/evaluation.md", "crates/coder/src/router/gym.rs"]
+followups = ["gym.what_test"]
+
+[[answer]]
+id = "eval.result.tool"
+version = 1
+routes = ["eval.result"]
+records = true
+when = "Picked from the Gym's records: the latest published result for the tool the user named"
+text = "Here's the latest published result for {tool}, from the Gym's records."
+facts = { tool = "gym.tool" }
+sources = ["docs/extensions/evaluation.md", "crates/coder/src/router/gym.rs"]
+
+[[answer]]
+id = "eval.result.mine"
+version = 1
+routes = ["eval.result"]
+records = true
+when = "Picked by code: the user asks about their own test result, which only their phone holds"
+text = "Results of your own tests stay on your phone until you add one to the Gym, so we can't see them from this chat."
+sources = ["docs/extensions/evaluation.md", "nips/openagents/NIP-EVAL.md"]
+
+[[answer]]
+id = "gym.news_empty"
+version = 1
+routes = ["gym.news"]
+records = true
+when = "Picked from the Gym's records: nothing in them is relevant to what the user asked about"
+text = "We don't have anything new in the Gym's records about that yet. Once trainers publish results and test sets, they'll show up here with their sources."
+sources = ["docs/extensions/evaluation.md", "crates/coder/src/gym_kb.rs"]
+followups = ["gym.what_test"]
+
+# ---------------------------------------------------------------------------
 # refuse, warn, and clarify
 # ---------------------------------------------------------------------------
 
