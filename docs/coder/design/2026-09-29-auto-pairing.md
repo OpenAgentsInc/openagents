@@ -256,8 +256,8 @@ and expiry (8 each, big-endian seconds); iroh relay URL length (1) and UTF-8
 bytes (0–128; empty means none); count of direct addresses (1, at most 8),
 each a family byte (4 or 6), the address (4 or 16), and a port (2); label
 length (1) and UTF-8 bytes (0–48, the computer's name for display, never an
-identity). It is at most about 560 characters, well inside a QR code a phone
-reads from a laptop screen. The invitation ID, capability, times, and rights
+identity). It is at most 654 characters (476 bytes before encoding), well
+inside a QR code a phone reads from a laptop screen. The invitation ID, capability, times, and rights
 record are exactly NIP-HOST's host invitation; only the carriage is new, and
 the Nostr relay is not in the payload because the grant names it.
 
@@ -630,12 +630,15 @@ pairing needs the click on the computer and refuses a wrong code.
 
 Each has the default this plan assumes.
 
-- **Which model runs a repository task on a fresh Mac?** Repository runs do
-  not use the OpenAgents cloud route (`docs/coder/runtime/host-autostart.md`),
-  so the milestone Mac needs Codex or Claude Code signed in, which today
-  means a terminal. Default: the milestone Mac has one signed in, and `DSK-02`
-  says so plainly; the owner decides separately whether a repository run may
-  use the cloud route inside the filesystem boundary.
+- **Which model runs a repository task on a fresh Mac?** Resolved by the
+  owner on 2026-09-29: "You can assume the user has already authed at the
+  terminal (Codex/Claude Code signed in), but I don't want them to have to do
+  terminal tasks to do pairing." So a local coding agent, Codex or Claude
+  Code, already signed in on the Mac is a prerequisite of the milestone, and
+  repository runs do not fall back to the OpenAgents cloud route
+  (`docs/coder/runtime/host-autostart.md`). Pairing itself (install, QR,
+  scan, connected, **Run Coder**) needs no terminal step. `DSK-02` shows
+  which agents are signed in, and says in one line when neither is.
 - **Rights change without re-pairing.** Default: **Remove** and scan again.
   A local "allow terminal" that issues a replacement grant needs a NIP-HOST
   origin for it; decide after the milestone.

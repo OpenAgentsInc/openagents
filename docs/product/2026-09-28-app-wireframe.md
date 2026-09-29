@@ -20,6 +20,16 @@ place to review results, and becomes a social place later
 Revision 2 made **Chat** a first-class part of the loop and the main menu
 ([what changed](#revision-2-what-changed)).
 
+Added 2026-09-29: pairing a computer by scanning a QR code
+([#9965](https://github.com/OpenAgentsInc/openagents/issues/9965),
+[design](../coder/design/2026-09-29-auto-pairing.md)). The phone gains
+**Connect a computer** (`SCR-22`) and **Connected** (`SCR-23`); the companion
+desktop app's screens are `DSK-01` to `DSK-05`
+([Desktop app screens](#desktop-app-screens)). The desktop app installs,
+shows a code, and pairs with no terminal step. Coder's work on a project
+there uses Codex or Claude Code, which the milestone assumes the person
+already signed in to on that Mac (owner decision, 2026-09-29).
+
 > **IDIOT PROOF.** Every screen must be usable by someone who has never
 > heard of agents, Nostr, Bitcoin, benchmarks, evals, or plugins. A
 > first-time playtester completes the whole loop with zero explanation.
@@ -45,6 +55,8 @@ Revision 2 made **Chat** a first-class part of the loop and the main menu
 - [Screens](#screens)
 - [Chat screens](#chat-screens)
 - [Chat cards and sheets](#chat-cards-and-sheets)
+- [Connect a computer](#connect-a-computer)
+- [Desktop app screens](#desktop-app-screens)
 - [Intro cinematic](#cin-01-intro-cinematic)
 - [User flows](#user-flows)
 - [Navigation map](#nav-01-navigation-map)
@@ -216,6 +228,8 @@ next free number, and a removed element's ID is retired, never reused.
 | `FLOW-nn` | An end-to-end user flow | `FLOW-01` First-time playtester |
 | `NAV-nn` | A navigation map | `NAV-01` Navigation map |
 | `PAT-nn` | A shared pattern used by many screens | `PAT-01` Offline, error, and empty states |
+| `DSK-nn` | A screen of the companion desktop app | `DSK-01` Connect a phone |
+| `DSK-nn.Enn` | An element on a desktop app screen | `DSK-01.E01` The QR code |
 | `CHK-nn` | An IDIOT PROOF checklist item | `CHK-01` One primary action |
 
 | ID | Name | v1 |
@@ -244,6 +258,13 @@ next free number, and a removed element's ID is retired, never reused.
 | `SCR-19` | Chat: Coder on a computer | Yes (as it exists) |
 | `SCR-20` | Add to the Gym (sheet) | Yes |
 | `SCR-21` | Test set (sheet) | Yes |
+| `SCR-22` | Connect a computer (the scanner) | Milestone of #9965 |
+| `SCR-23` | Connected | Milestone of #9965 |
+| `DSK-01` | Desktop: Connect a phone | Milestone of #9965 |
+| `DSK-02` | Desktop: Connected | Milestone of #9965 |
+| `DSK-03` | Desktop: Home | Milestone of #9965 |
+| `DSK-04` | Desktop: A phone nearby wants to connect | After the milestone |
+| `DSK-05` | Desktop: Menu bar | After the milestone |
 | `CARD-01` | Tool card | Yes |
 | `CARD-02` | Test set draft card | Yes |
 | `CARD-03` | Run card | Yes |
@@ -391,7 +412,14 @@ docs, and the Advanced section of Profile.
 | **OpenAgents** ("we") | The chat worker answering a NIP-CJ job | The app and the chat are one voice. |
 | **Chat with OpenAgents**, **Message OpenAgents** | The chat | Says who you're talking to. |
 | **Run Coder on Studio Mac** | NIP-HOST `task.create` with the conversation | Names the agent and the computer. |
-| **Connect a computer** | Enroll a host (Account > Computers) | Says what you do. |
+| **Connect a computer** | Enroll a host by scanning its NIP-HOST connect code (`SCR-22`, from a chat chip or Account > Computers) | Says what you do. |
+| **Scan with the OpenAgents app on your phone** | The desktop app's QR code, an `openagents-connect:` host invitation | Names the one app and the one action. |
+| **Copy a code**, **Paste a code** | The connect code's text form, a bearer secret for up to two minutes | A code is something you copy; nothing more is said. |
+| **Phone**, **Kai's iPhone** | A device key holding a host grant, with its label | Says what it is. |
+| **Project** | A workspace label on a computer | "Workspace" is jargon on the desktop app. |
+| **Let this phone open a terminal on this Mac** | The `terminal` right in the invitation | Says exactly what it allows. |
+| **Remove** | `device.revoke` | Says what happens to the phone's access. |
+| **OpenAgents** (the Mac app) | The companion desktop app, which runs the resident host | The same name as the phone app, so "the OpenAgents app" names one thing on each device. |
 | **Cloud** | No computer: the chat worker and the hosted runner | The one place a message goes with no setup. |
 | **Prepared answer** | A T0 bank answer (`bank:chat-answers-v1`) | Honest about where the words came from. |
 | **Wrong answer** | A wrong-answer playtest report | Says what you're telling us. |
@@ -451,6 +479,8 @@ Text is at least 17 pt; buttons are at least 56 pt tall and full width.
 | `SCR-19` | Chat: Coder on a computer | `CHAT-7` | `SCR-17.E05`, `SCR-16`, `SCR-15` with a computer chosen | Send a follow-up |
 | `SCR-20` | Add to the Gym | `LOOP-5` | `CARD-04.E05`, `SCR-05.E07` | **ADD TO THE GYM** |
 | `SCR-21` | Test set | `LOOP-2` | `CARD-02.E04`, `CARD-01.E06`, `CARD-04.E06` | **DONE** (read) or **LOOKS GOOD** (a draft) |
+| `SCR-22` | Connect a computer | `CHAT-7` | `SCR-17.E05`, `SCR-17.E06`, `SCR-15.E04`, `SCR-14.E05`, Account > Computers | Point the camera at the code |
+| `SCR-23` | Connected | `CHAT-7` | `SCR-22` after a scan | **DONE** |
 | `CARD-01` … `CARD-07` | Chat cards | `LOOP-1` to `LOOP-6` | A reply in `SCR-17` | The card's one button |
 | `PAT-01` | Offline, error, and empty states | All | Any screen | **TRY AGAIN** or the named next step |
 
@@ -930,7 +960,7 @@ yet. Your first test takes about 5 minutes." Offline shows cached numbers marked
 | `SCR-11.E04` | Your results | Each tool you tested: tests passed without and with it, and the verdict. Tapping one opens its `SCR-05`. | `LOOP-4` | EXISTS |
 | `SCR-11.E05` | **Show my level to others** | A plain switch for the trainer profile. Confirms "Show your level to everyone?" once. | `LOOP-5` | EXISTS (Account > Trainer; not on the minimal Profile) |
 | `SCR-11.E06` | **Report a problem** | Opens `SCR-13`. | Playtest | EXISTS (Account; not on the minimal Profile) |
-| `SCR-11.E07` | **Advanced** | Later: the player's key, linking keys, and export, in technical words, behind one screen; also **Your computers** and the **Wallet**, the screens a chat offer can open (`CHAT-8`). | — | EXISTS (Identity keys, Link a key, Export card, Computers, Wallet; today as Account rows and the Wallet tab) |
+| `SCR-11.E07` | **Advanced** | Later: the player's key, linking keys, and export, in technical words, behind one screen; also **Your computers** and the **Wallet**, the screens a chat offer can open (`CHAT-8`). Computers keeps listing and removing computers, and its **Connect a computer** row opens `SCR-22`. | — | EXISTS (Identity keys, Link a key, Export card, Computers, Wallet; today as Account rows and the Wallet tab); the Computers row to `SCR-22` is NEW |
 | `SCR-11.E08` | Next-step line | One line. | — | EXISTS |
 | `SCR-11.E09` | **CHAT WITH OPENAGENTS** | Opens chat. Before revision 3, it opened `SCR-03`. | `LOOP-1` | EXISTS |
 | `SCR-11.E10` | **What you made** | Your tools and test sets, with the checks and adoptions that earned XP; the same as `CARD-07`. | `LOOP-6` | NEW |
@@ -1023,7 +1053,7 @@ sentence of why and one action. Never shown before the first win.
 | ID | Trigger | One sentence | Primary | Status |
 | --- | --- | --- | --- | --- |
 | `SCR-14.E04` | Reaching level 3 | "Save your progress so you can get it back on a new phone." | **SAVE MY PROGRESS** (backs up the key; words shown behind one warning) | PARTIAL (Reveal nsec exists; a guided backup is NEW) |
-| `SCR-14.E05` | Asking chat for work on your own code, or choosing to train Coder on it (later) | "To work on your own code, connect your computer." | **CONNECT MY COMPUTER** | PARTIAL (chat already does this just in time: the **Connect a computer** chip shows only when the router says a message needs a computer, and opens Computers; the sheet form is NEW) |
+| `SCR-14.E05` | Asking chat for work on your own code, or choosing to train Coder on it (later) | "To work on your own code, connect your computer." | **CONNECT MY COMPUTER** | PARTIAL (chat already does this just in time: the **Connect a computer** chip shows only when the router says a message needs a computer, and opens Computers today and `SCR-22` once #9971 lands; the sheet form is NEW) |
 | `SCR-14.E06` | First reward paid in bitcoin (later) | "You earned a reward. Open your wallet to keep it." | **OPEN MY WALLET** | PARTIAL (the Wallet exists) |
 
 **Not now** always returns to where the player was, and the prompt returns
@@ -1135,7 +1165,7 @@ States:
 | `SCR-15.E01` | **☰** Previous chats | Opens `SCR-16`. | — | EXISTS |
 | `SCR-15.E02` | Title **OpenAgents** | Says who you're talking to. | `CHAT-1` | EXISTS |
 | `SCR-15.E03` | Target selector | Where the first message goes: **Cloud** (the default, always) or a computer and workspace the player picked. | `CHAT-7` | EXISTS |
-| `SCR-15.E04` | Target choices | Each computer this phone may use, **Cloud**, and **Connect a computer**, with a check on the current one. | `CHAT-7` | EXISTS |
+| `SCR-15.E04` | Target choices | Each computer this phone may use, **Cloud**, and **Connect a computer** (opens `SCR-22`), with a check on the current one. | `CHAT-7` | EXISTS (opens Computers today; `SCR-22` is NEW) |
 | `SCR-15.E05` | Welcome lines | Two plain lines that say what chat is for, shown only while the chat is empty. The empty screen's "Next:" answer (`CHK-03`). | `CHAT-1` | EXISTS (one line) |
 | `SCR-15.E06` | Suggestion chips | Up to four questions to send, on every new chat, from the ordered list above, never one already used on this phone; the worker may rank them once each time the tab shows. | `CHAT-1`, `CHAT-2`, `CHAT-9`, `CHAT-13` | EXISTS |
 | `SCR-15.E07` | Composer **Message OpenAgents** | Focused on open; grows to six lines. A tap outside any text field puts the keyboard away. | All chat | EXISTS |
@@ -1147,7 +1177,7 @@ States:
 
 Transitions: in from `SCR-01.E12`, `SCR-01.E13`, `SCR-02.E06`, `CIN-01`
 (first run), `SCR-16` (New chat). Out to `SCR-17` (Send on Cloud), `SCR-19` (Send on a computer,
-or a recent Coder chat chip), `SCR-16`, Computers (**Connect a computer**),
+or a recent Coder chat chip), `SCR-16`, `SCR-22` (**Connect a computer**),
 or back.
 
 IDIOT PROOF check: **pass with a note.** One primary (the composer), no
@@ -1238,8 +1268,8 @@ States:
 | `SCR-17.E02` | Your message | — | — | EXISTS |
 | `SCR-17.E03` | The reply | A prepared answer, an opener then the model's streamed reply, or a product answer from the sourced notes. Speaks as "we". | `CHAT-1`, `CHAT-3`, `CHAT-6` | EXISTS |
 | `SCR-17.E04` | **Prepared answer** note | Quiet gray note under a bank answer, so the player knows it's reviewed text. | `CHAT-1` | EXISTS |
-| `SCR-17.E05` | Coder offer | **Run Coder on Studio Mac** with a computer ready (a chip when the router says the message needs a computer, a plain button otherwise); **Connect a computer** with none, only when the message needs one; then **Open Coder on Studio Mac**. | `CHAT-7` | EXISTS |
-| `SCR-17.E06` | Screen chips | **Open Wallet**, **Your computers** (or **Connect a computer**), **Identity keys**, **Playtest**, **Report a problem**; the label is the app's, never the model's. | `CHAT-8` | EXISTS |
+| `SCR-17.E05` | Coder offer | **Run Coder on Studio Mac** with a computer ready (a chip when the router says the message needs a computer, a plain button otherwise); **Connect a computer** with none, only when the message needs one, which opens `SCR-22` and returns here through `SCR-23`; then **Open Coder on Studio Mac**. | `CHAT-7` | EXISTS (**Connect a computer** opens Computers today; the `SCR-22` target is NEW) |
+| `SCR-17.E06` | Screen chips | **Open Wallet**, **Your computers** (or **Connect a computer**, which opens `SCR-22`), **Identity keys**, **Playtest**, **Report a problem**; the label is the app's, never the model's. | `CHAT-8` | EXISTS (the `SCR-22` target is NEW) |
 | `SCR-17.E07` | Command card | A read-only `openagents` command, where it runs, and **Run**; then its output and **Run again**. The phone answers `computer list`, `show`, and `workspaces` itself. | `CHAT-8` | PARTIAL (the phone's card exists; the CLI route is built in `coder::cli_route` but not yet wired into the chat worker, so no live reply offers one yet) |
 | `SCR-17.E08` | Follow-up chips | The next likely questions under a prepared answer; a tap sends it. | `CHAT-1` | EXISTS |
 | `SCR-17.E09` | **Wrong answer** | Under a prepared answer only. Opens `SCR-18`. | `CHAT-1` | EXISTS |
@@ -1248,8 +1278,8 @@ States:
 | `SCR-17.E12` | ~~Result line~~ | Retired in revision 3; `CARD-04` shows the player's result. | — | Retired |
 | `SCR-17.E13` | **Try again** | After a failed reply; resends the same message. | — | EXISTS |
 
-Transitions: in from `SCR-15`, `SCR-16`, `SCR-05.E11`, `SCR-09.E06`. Out to
-`SCR-16`, `SCR-15`, `SCR-18`, `SCR-19`, the screens a chip names, and the
+Transitions: in from `SCR-15`, `SCR-16`, `SCR-05.E11`, `SCR-09.E06`, `SCR-23`. Out to
+`SCR-16`, `SCR-15`, `SCR-18`, `SCR-19`, `SCR-22`, the screens a chip names, and the
 cards and sheets (`CARD-01` to `CARD-07`, `SCR-05`, `SCR-20`, `SCR-21`) through `E11`.
 
 IDIOT PROOF check: **pass with a note.** Every reply that implies an action
@@ -1631,6 +1661,284 @@ editable in words for a draft.
 
 IDIOT PROOF check: **pass.** A read-only list with one action.
 
+## Connect a computer
+
+Pairing a computer by scanning the code on its screen. Specified in the
+[QR pairing design](../coder/design/2026-09-29-auto-pairing.md); the wire is
+NIP-HOST's [connect codes](../../nips/openagents/NIP-HOST.md#connect-codes)
+and [enrollment over iroh](../../nips/openagents/NIP-HOST.md#enrollment-over-iroh).
+Both screens are NEW
+([#9971](https://github.com/OpenAgentsInc/openagents/issues/9971)); the
+scanner itself exists (`QRScanner.swift`, `QRScanner.kt`).
+
+### SCR-22 Connect a computer
+
+Opened by **Connect a computer** in chat (`SCR-17.E05`, `SCR-17.E06`,
+`SCR-15.E04`, `SCR-14.E05`) and by the row in Account > Computers. The camera
+is the screen; pointing it at the code is the one action.
+
+```
++------------------------------------------+
+| [<]   CONNECT A COMPUTER                 |  E01
+|------------------------------------------|
+| NEARBY  (after the milestone)            |  E02
+|  (computer) Studio Mac              >    |
+|+----------------------------------------+|
+||                                        ||
+||             [ camera view ]            ||  E03 (primary)
+||                                        ||
+|+----------------------------------------+|
+| Point at the code on your computer.      |  E04
+| [ Paste a code ]                         |  E05
+| No code on your computer? Get OpenAgents |  E06
+| for Mac at openagents.com/desktop.       |
++------------------------------------------+
+```
+
+States:
+
+- **Connecting:** after a scan, the camera freezes and one line reads
+  "Connecting to Studio Mac…" (the label from the code). Nothing else to
+  tap.
+- **Camera not allowed:** "Allow the camera for OpenAgents in Settings, or
+  paste a code." with **Open Settings** and **Paste a code**.
+- **Not a computer's code:** "That isn't a code from OpenAgents for Mac.",
+  and the camera keeps looking. An older `coder-host:` code from a computer
+  set up the old way is accepted and pairs as before.
+- **Code expired or already used:** "This code has expired. Your computer
+  shows a new one; scan that." (`expired`, `revoked`), or "Another phone
+  already used this code. Scan the new one on your computer." (`forbidden`).
+- **Phone clock off:** "Your phone's clock is off by 4 minutes. Set it to
+  automatic in Settings, then scan again." Shown when the computer's time
+  differs from the phone's by more than a minute.
+- **Can't reach the computer:** "We couldn't reach Studio Mac. Check that
+  OpenAgents is open on it, then scan again." with **Try again**
+  (`PAT-01`).
+- **Local network not allowed (iOS):** pairing still completes, more slowly;
+  one quiet line reads "Allow Local Network for OpenAgents in Settings to
+  connect faster on Wi-Fi."
+
+| ID | Element | What it does | Loop | Status |
+| --- | --- | --- | --- | --- |
+| `SCR-22.E01` | **<** and title **CONNECT A COMPUTER** | Back to where the player came from; nothing changes. | — | NEW |
+| `SCR-22.E02` | **Nearby** list | After the milestone: computers on the same Wi-Fi. A tap asks the computer to connect and shows the six-digit code the computer also shows (`DSK-04`). Hidden until nearby pairing ships. | `CHAT-7` | NEW (later) |
+| `SCR-22.E03` | Camera view | Reads an `openagents-connect:` (or older `coder-host:`) code, then connects and pairs. The primary action. | `CHAT-7` | PARTIAL (the scanner exists behind Add a computer > Scan invitation) |
+| `SCR-22.E04` | **Point at the code on your computer.** | The one-line "what do I do next?". | — | NEW |
+| `SCR-22.E05` | **Paste a code** | Reads a code the person copied on the computer with **Can't scan? Copy a code instead** (`DSK-01.E04`). | `CHAT-7` | PARTIAL (Paste invitation exists) |
+| `SCR-22.E06` | Get the Mac app line | For a player with nothing to scan: where to get OpenAgents for Mac. | — | NEW |
+
+Transitions: in from `SCR-17.E05`, `SCR-17.E06`, `SCR-15.E04`, `SCR-14.E05`,
+and Account > Computers. Out to `SCR-23` after a pairing, or back.
+
+IDIOT PROOF check: **pass.** One action (point the camera), a fallback for a
+phone that can't scan, a line for a player with no computer set up, and
+every failure names its own next step.
+
+### SCR-23 Connected
+
+Shown once a scan pairs. It confirms and sends the player back.
+
+```
++------------------------------------------+
+|                                          |
+|              (check)                     |  E01
+|         Studio Mac is connected.         |  E02
+|  You can send Coder work on this Mac     |  E03
+|  from any chat.                          |
+|##########################################|
+|#                DONE                    #|  E04 (primary)
+|##########################################|
++------------------------------------------+
+```
+
+| ID | Element | What it does | Loop | Status |
+| --- | --- | --- | --- | --- |
+| `SCR-23.E01` | Check mark | Success at a glance. | — | NEW |
+| `SCR-23.E02` | **Studio Mac is connected.** | The computer's name from the code's label, else from the computer. | `CHAT-7` | NEW |
+| `SCR-23.E03` | What's next | One line: Coder can work on this Mac from chat. When the computer allowed a terminal, a second line: "This phone can also open a terminal on it." | — | NEW |
+| `SCR-23.E04` | **DONE** | Returns to the chat the chip came from, where the reply's offer now reads **Run Coder on Studio Mac** and dispatches through `task.create`; from Account > Computers, returns to Computers with the new row. | `CHAT-7` | NEW |
+
+Transitions: in from `SCR-22`. Out to `SCR-17` (the same conversation, with
+the offer updated) or Computers.
+
+IDIOT PROOF check: **pass.** One sentence, one button, back to where the
+player was.
+
+## Desktop app screens
+
+The companion desktop app, **OpenAgents** for Mac (`crates/openagents-desktop`,
+[#9970](https://github.com/OpenAgentsInc/openagents/issues/9970)). Installing
+it and opening it runs the computer's side of Coder; nothing on these
+screens needs a terminal. They follow the same [words on
+screen](#words-on-screen): no key, host, relay, grant, workspace, tailnet,
+Tailscale, npub, or nsec. "Project" names a workspace and "phone" names a
+device. Every element is NEW. Coder's work on a project needs Codex or
+Claude Code signed in on the Mac; the milestone assumes the person already
+did that, and pairing never asks them to.
+
+### DSK-01 Connect a phone
+
+The first-run window, and the window **Connect another phone** opens.
+
+```
++----------------------------------------------+
+|  OpenAgents                                  |
+|----------------------------------------------|
+|                                              |
+|               +----------------+             |
+|               |                |             |
+|               |   [ QR code ]  |             |  E01
+|               |                |             |
+|               +----------------+             |
+|   Scan with the OpenAgents app on your       |  E02
+|   phone.                                     |
+|                                              |
+|   [ ] Let this phone open a terminal on      |  E03
+|       this Mac                               |
+|                                              |
+|   Can't scan? Copy a code instead            |  E04
++----------------------------------------------+
+```
+
+| ID | Element | What it does | Status |
+| --- | --- | --- | --- |
+| `DSK-01.E01` | The QR code | A connect code for one phone, drawn locally. It changes quietly every minute; a replaced code stops working a minute later, and every code stops when the window hides, the screen locks, after ten idle minutes, or once a phone connects. | NEW |
+| `DSK-01.E02` | **Scan with the OpenAgents app on your phone.** | The one instruction. | NEW |
+| `DSK-01.E03` | **Let this phone open a terminal on this Mac** | Off by default. Changing it shows a new code at once, and the old one stops working. The phone gets the terminal only if this was set before it scanned. | NEW |
+| `DSK-01.E04` | **Can't scan? Copy a code instead** | Copies the same code's text once, for **Paste a code** (`SCR-22.E05`); says "Copied. It works for two minutes." | NEW |
+
+States: while the phone connects, the code gives way to "Connecting to
+Kai's iPhone…". If the computer can't reach our connection service, one line
+reads "Phones on this Wi-Fi can still connect." and the code stays.
+
+IDIOT PROOF check: **pass.** One code, one sentence, one optional choice.
+
+### DSK-02 Connected
+
+Shown when a phone pairs.
+
+```
++----------------------------------------------+
+|  OpenAgents                                  |
+|----------------------------------------------|
+|  (check) Kai's iPhone is connected.          |  E01
+|                                              |
+|  Pick a project for Coder                    |  E02
+|  ~/code/website              [ Choose folder… ]
+|                                              |
+|  Coder uses Codex or Claude Code on this Mac |  E03
+|   (check) Codex      signed in               |
+|   ( )     Claude Code  not signed in         |
+|                                              |
+|  [ on ] Let my phone start Coder here        |  E04
+|                                              |
+|##############################################|
+|#                  DONE                      #|  E05 (primary)
+|##############################################|
++----------------------------------------------+
+```
+
+| ID | Element | What it does | Status |
+| --- | --- | --- | --- |
+| `DSK-02.E01` | **Kai's iPhone is connected.** | The phone's label. | NEW |
+| `DSK-02.E02` | **Pick a project for Coder** | **Choose folder…** picks a Git checkout; it becomes a project the phone can send work to. | NEW |
+| `DSK-02.E03` | **Coder uses Codex or Claude Code on this Mac** | A check beside each one that is signed in. With neither, one line: "Sign in to Codex or Claude Code on this Mac so Coder can work here." It never offers a command. | NEW |
+| `DSK-02.E04` | **Let my phone start Coder here** | Turns on once a project is picked; lets a phone's **Run Coder** start work in that project. | NEW |
+| `DSK-02.E05` | **DONE** | Opens `DSK-03`. | NEW |
+
+IDIOT PROOF check: **pass with a note.** Two setup choices, both preset
+where they can be. The note: an agent sign-in is the person's to do, before
+or after pairing; the screen says what is missing in one line.
+
+### DSK-03 Home
+
+```
++----------------------------------------------+
+|  OpenAgents                                  |
+|----------------------------------------------|
+|  Online. Your phone can reach this Mac.      |  E01
+|                                              |
+|  PHONES                                      |  E02
+|   Kai's iPhone · seen 2 min ago · terminal   |
+|                                   [ Remove ] |
+|                                              |
+|  CODER                                       |  E03
+|   Fix the login test · Working               |
+|   Update the README · Done                   |
+|                                              |
+|  [ Connect another phone ]                   |  E04
++----------------------------------------------+
+```
+
+| ID | Element | What it does | Status |
+| --- | --- | --- | --- |
+| `DSK-03.E01` | Status line | **Online. Your phone can reach this Mac.** or **Offline.** | NEW |
+| `DSK-03.E02` | **Phones** | Each phone: name, last seen, and whether it may open a terminal. **Remove** confirms "Remove Kai's iPhone? It can't reach this Mac until it connects again." and cuts it off at once, open terminals included. | NEW |
+| `DSK-03.E03` | **Coder** | Running and recent tasks, by title and phase. | NEW |
+| `DSK-03.E04` | **Connect another phone** | Opens `DSK-01`. | NEW |
+
+IDIOT PROOF check: **pass.** Status first; the one destructive action
+confirms in plain words (`CHK-09`).
+
+### DSK-04 A phone nearby wants to connect
+
+After the milestone
+([#9975](https://github.com/OpenAgentsInc/openagents/issues/9975)).
+
+```
++----------------------------------------------+
+|  Kai's iPhone wants to connect.              |  E01
+|  Check that your phone shows 482 913.        |  E02
+|  [ ] Let this phone open a terminal on       |  E03
+|      this Mac                                |
+|##############################################|
+|#                 CONNECT                    #|  E04 (primary)
+|##############################################|
+|  [ Don't connect ]                           |  E05
++----------------------------------------------+
+```
+
+| ID | Element | What it does | Status |
+| --- | --- | --- | --- |
+| `DSK-04.E01` | **Kai's iPhone wants to connect.** | The phone's label; display only. | NEW (later) |
+| `DSK-04.E02` | The six-digit code | The same code the phone shows; the person compares them. | NEW (later) |
+| `DSK-04.E03` | Terminal checkbox | As `DSK-01.E03`. | NEW (later) |
+| `DSK-04.E04` | **Connect** | The only way a nearby phone is admitted. | NEW (later) |
+| `DSK-04.E05` | **Don't connect** | Closes; nothing is granted. The request also ends by itself after two minutes. | NEW (later) |
+
+IDIOT PROOF check: **pass.** One comparison, one click.
+
+### DSK-05 Menu bar
+
+After the milestone
+([#9976](https://github.com/OpenAgentsInc/openagents/issues/9976)).
+
+```
++------------------------------------+
+| Online. Your phone can reach this  |  E01
+| Mac.                               |
+|------------------------------------|
+| Open OpenAgents                    |  E02
+| Connect a phone…                   |  E03
+| Pause Coder                        |  E04
+|------------------------------------|
+| Quit OpenAgents                    |  E05
+| Stop Coder on this Mac             |  E06
++------------------------------------+
+```
+
+| ID | Element | What it does | Status |
+| --- | --- | --- | --- |
+| `DSK-05.E01` | Status line | As `DSK-03.E01`. | NEW (later) |
+| `DSK-05.E02` | **Open OpenAgents** | Opens `DSK-03`. | NEW (later) |
+| `DSK-05.E03` | **Connect a phone…** | Opens `DSK-01`. | NEW (later) |
+| `DSK-05.E04` | **Pause Coder** | No new tasks start; running ones finish. | NEW (later) |
+| `DSK-05.E05` | **Quit OpenAgents** | Closes the window; Coder keeps running for the phones. | NEW (later) |
+| `DSK-05.E06` | **Stop Coder on this Mac** | Confirms, then stops Coder from starting at login; phones show this Mac as offline. | NEW (later) |
+
+IDIOT PROOF check: **pass.** Quitting the window and stopping Coder are two
+named items, so neither surprises.
+
 ## CIN-01 Intro cinematic
 
 Plays once, in `FLOW-01`, right after the player chooses their agent on
@@ -1889,11 +2197,18 @@ needed.
    +-- no computer ----->  [Connect a computer]
                               | tap
                               v
-                           Computers (Add a computer); the conversation is
-                           kept, and Run Coder appears once it's ready
+                           SCR-22 Connect a computer: point the camera at
+                              |   the code in OpenAgents for Mac (DSK-01)
+                              v
+                           SCR-23 Studio Mac is connected.  [DONE]
+                              |
+                              v
+                           SCR-17, the same conversation, now offering
+                           [Run Coder on Studio Mac]
 ```
 
-Status: EXISTS (`CHAT-7`).
+Status: EXISTS (`CHAT-7`) with **Connect a computer** opening Computers
+(Add a computer); the scan path through `SCR-22` and `SCR-23` is NEW.
 
 ### FLOW-06 Wrong answer and Share this chat
 
@@ -2034,12 +2349,17 @@ result, with chat as its main spoke.
                                     +--> SCR-20 Add to the Gym
                                     +--> SCR-21 Test set
                                     +--> SCR-19 Coder on a computer
+                                    +--> SCR-22 Connect a computer
+                                    |      --> SCR-23 Connected --> back
                                     +--> SCR-18 Wrong answer (inline)
                                     +--> screen chips: Wallet, Your
                                          computers, Identity keys,
                                          Playtest, Report a problem
 
   SCR-14 setup prompts open over any screen when triggered (later).
+  Account > Computers also opens SCR-22.
+  On the Mac: DSK-01 Connect a phone --> DSK-02 Connected --> DSK-03 Home;
+  DSK-04 (nearby) and DSK-05 (menu bar) come after the milestone.
   PAT-01 replaces a screen's or card's body on failure.
 ```
 
@@ -2092,6 +2412,13 @@ Results for every screen and card. "n/a" means the check doesn't apply.
 | `SCR-19` Coder on a computer | ✓ (the composer) | ~ (queue, long press) | ✓ (phase line) | ✓ | n/a (only after connecting) | n/a | n/a | ✓ | ✓ (Approve, Deny) | n/a | ✓ | n/a | n/a | Pass with note |
 | `SCR-20` Add to the Gym | ✓ | ✓ | ✓ | ✓ (Not now) | ✓ | n/a | n/a | ✓ | ✓ (says what becomes public) | n/a | ✓ | ✓ | ✓ | Pass |
 | `SCR-21` Test set | ✓ | ✓ | ✓ | ✓ | ✓ | n/a | n/a | ✓ | n/a | n/a | n/a | ✓ | ✓ | Pass |
+| `SCR-22` Connect a computer | ✓ (the camera) | ✓ | ✓ (`E04`) | ✓ (each failure names its step; `E06` with no computer) | ✓ (only when a job needs a computer) | n/a | ✓ (terminal off unless the Mac allowed it) | n/a | n/a | n/a | ✓ | n/a | n/a | Pass |
+| `SCR-23` Connected | ✓ | ✓ | ✓ | ✓ | n/a | n/a | n/a | ✓ | n/a | n/a | ✓ (Run Coder in the chat) | n/a | n/a | Pass |
+| `DSK-01` Connect a phone | ✓ (scan) | ✓ | ✓ | ✓ | ✓ (no terminal step) | n/a | ✓ (terminal off) | n/a | n/a | ✓ | n/a | n/a | n/a | Pass |
+| `DSK-02` Connected | ✓ | ✓ | ✓ | ✓ (says what is missing) | ~ (an agent sign-in, assumed done) | n/a | ✓ | ✓ | n/a | n/a | n/a | n/a | n/a | Pass with note |
+| `DSK-03` Home | ~ (status page) | ✓ | ✓ | ✓ | n/a | n/a | n/a | ✓ | ✓ (Remove confirms) | n/a | n/a | n/a | n/a | Pass |
+| `DSK-04` Nearby | ✓ | ✓ | ✓ | ✓ (Don't connect) | ✓ | n/a | ✓ (terminal off) | n/a | ✓ (compare the code) | n/a | n/a | n/a | n/a | Pass |
+| `DSK-05` Menu bar | ~ (a menu) | ✓ | ✓ | ✓ | n/a | n/a | n/a | ✓ (status line) | ✓ (Stop confirms) | n/a | n/a | n/a | n/a | Pass with note |
 | `CARD-01` Tool | ✓ | ✓ | ✓ (time, cost, runs left) | ✓ (no runs left: tomorrow, or a check) | ✓ | ✓ | ✓ (preselected) | ✓ | n/a | n/a | ✓ | n/a | ✓ (latest result sourced) | Pass |
 | `CARD-02` Draft | ✓ | ✓ | ✓ | ✓ (Change it) | ✓ | n/a | ✓ (drafted for you) | ✓ | n/a | n/a | ✓ | ✓ | n/a | Pass |
 | `CARD-03` Run | ~ (no primary while running) | ✓ | ✓ | ✓ | ✓ | n/a | n/a | ✓ | ✓ (Stop confirms) | ✓ | ✓ | n/a | ✓ | Pass with note |

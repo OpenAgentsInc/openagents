@@ -1,7 +1,10 @@
 # NIP-REACH — Host directory, presence, reachability, and direct channels
 
-`draft` `optional` — v1, 2026-09-26. The [shared contracts](contracts.md)
-are normative. This profile lets a client find every host its owner runs,
+`draft` `optional` — v1, 2026-09-26; amended 2026-09-29 with
+[iroh hints](#iroh-hints) and the [iroh mapping](#iroh-mapping) of the direct
+channel, for the
+[QR pairing design](../../docs/coder/design/2026-09-29-auto-pairing.md). The
+[shared contracts](contracts.md) are normative. This profile lets a client find every host its owner runs,
 judge which hosts are online and compatible, try routes in a safe order, and
 open a direct channel that authenticates both Nostr keys before any data
 flows. It also defines a pure placement rule for new work. It introduces no
@@ -196,7 +199,7 @@ Each hint is `{class, transport, address, status, observed_at}`:
 | Field | Values |
 | --- | --- |
 | `class` | `loopback`, `lan`, `tailnet`, `public`, or `relay`. |
-| `transport` | `tcp` (address `host:port`), `websocket` (a `ws` or `wss` URL), or `nostr` (a relay URL). The `relay` class uses exactly the `nostr` transport. |
+| `transport` | `tcp` (address `host:port`), `websocket` (a `ws` or `wss` URL), or `nostr` (a relay URL). The `relay` class uses exactly the `nostr` transport. The v2 record adds `iroh` ([iroh hints](#iroh-hints)). |
 | `status` | `reachable`, `unreachable`, or `unknown`: what the host last observed. |
 | `observed_at` | When the host observed that status, no later than `issued_at`. |
 
@@ -211,6 +214,43 @@ A hint is a claim, not a grant or a proof. The address rules are:
 - A relay hint uses `wss`, except that a loopback test relay may use `ws`.
 - Tailnet addresses are ordinary hints. No class requires software from a
   particular network provider.
+
+### iroh hints
+
+A host with an iroh endpoint also describes it as a hint with transport
+`iroh`. A v1 reader refuses an unknown transport, and with it the whole
+record, so iroh hints travel only in `openagents.reach-hints.v2`. Its body
+is the v1 body under the new version, and it adds the `iroh` transport. A
+host that publishes iroh hints publishes both records to each enrolled
+device for the same generation: v1 without iroh hints, for older readers,
+and v2 with them. A reader that understands v2 uses the v2 record of the
+current generation and ignores v1 for it; with no v2 record, it uses v1.
+
+An `iroh` hint is
+`{class, transport: "iroh", address, relay, direct, status, observed_at}`:
+
+| Field | Values |
+| --- | --- |
+| `class` | `public`. iroh chooses between a direct path and its relay itself, so the hint names no narrower class. |
+| `address` | The host's `EndpointId`: 64 lowercase hex characters, the iroh Ed25519 public key. |
+| `relay` | `null`, or the iroh relay URL the host keeps its home connection on: an `https` URL of at most 128 bytes without user information, query, or fragment. |
+| `direct` | Up to 8 unique socket addresses the host observed, each `ip:port` with an IPv6 address in brackets and a nonzero port. |
+| `status`, `observed_at` | As for every hint. |
+
+A record carries at most one `iroh` hint. The address rules above apply to
+each `direct` entry: unspecified, multicast, and broadcast addresses refuse
+the record. A reader on another machine drops loopback `direct` entries
+before dialing. An `iroh` hint with neither a `relay` nor a `direct` entry
+refuses. A reader dials the `EndpointId` with only the hint's relay and
+direct addresses, plus the ones it saved at enrollment, as address sources.
+
+The `EndpointId` is a route, never an identity. It proves nothing about the
+host key, and it admits nothing: the [handshake](#handshake) proves the host
+key and the grant check admits the channel, as over every other transport.
+
+Selection with v2 hints tries the `iroh` hint first, then the v1 order below.
+An iroh connection that fails, or that completes but whose handshake fails,
+moves on to the next hint.
 
 ### Selection
 
@@ -244,8 +284,9 @@ the rules above.
 
 ## Direct channel
 
-A direct channel carries host traffic over TCP or WebSocket without a relay.
-Relay-carried control stays the fallback when no direct route works.
+A direct channel carries host traffic over TCP, WebSocket, or an iroh
+connection without a Nostr relay. Relay-carried control stays the fallback
+when no direct route works.
 
 ### Frame format
 
@@ -323,6 +364,37 @@ frames differs:
   close frame before it closes the WebSocket connection.
 - The host's handshake time limit covers the WebSocket upgrade as well as the
   channel handshake.
+
+### iroh mapping
+
+An `iroh` hint carries the same direct channel over an iroh QUIC connection.
+The handshake, transcript, encryption, sequence numbers, frame kinds, and
+bounds are the ones TCP uses:
+
+- The client connects to the hint's `EndpointId` with the ALPN
+  `openagents/reach/1`, and opens one bidirectional stream. The frames run on
+  that stream exactly as on a TCP connection, length prefix included, in
+  both directions. A connection carries exactly one channel on exactly one
+  stream; the host resets any other stream.
+- iroh's TLS proves only that the far end holds the `EndpointId`. The client
+  still verifies the host proof against the host key it expected, and a
+  wrong key refuses as `identity_mismatch`. The host still verifies the client
+  proof and checks the grant. Neither side treats the other's `EndpointId`
+  as an identity, keys a grant, epoch, or replay entry by it, or records it
+  as a device.
+- The channel keeps its own NIP-44 encryption inside QUIC's. The double
+  encryption is deliberate: it keeps one channel construction for every
+  transport.
+- Finishing the stream ends the transport, as end of stream does over TCP.
+  Only an encrypted close frame (kind 17) shows that the peer closed the
+  channel; a stream reset, a connection close, or an idle timeout without one
+  is a transport failure.
+- A host that closes a channel because its grant stopped admitting it sends
+  the close frame, finishes the stream, and then closes the connection.
+- The host's handshake time limit covers the QUIC handshake as well as the
+  channel handshake. Hosts accept `openagents/reach/1` only on the endpoint
+  whose `EndpointId` they publish, and bound concurrent handshakes as for
+  every transport.
 
 ### Handshake
 
@@ -439,6 +511,11 @@ mapping, and placement. The same handshake and frame tests run over TCP and
 over WebSocket. Grant checks go through a trait, so the crate does not depend
 on a grant store. It also splits an open channel into a reader and a writer.
 
+[iroh hints](#iroh-hints) and the [iroh mapping](#iroh-mapping) are designed,
+not implemented. The
+[epic](https://github.com/OpenAgentsInc/openagents/issues/9965) builds them in
+`crates/openagents-connect` and the resident host.
+
 [`crates/coder-host`](../../crates/coder-host/README.md) is the resident host
 and its client. The host seals presence and hints to each enrolled device,
 serves TCP direct channels and, when configured, WebSocket direct channels,
@@ -480,7 +557,12 @@ edge cases, and handshakes with a wrong host key, an impersonating host, a
 replayed nonce, a revoked grant, a wrong epoch, a stale host generation, a
 stale hello time, and an oversized frame. A WebSocket implementation runs
 the handshake cases over WebSocket too, and adds a message that carries two
-frames, a message cut short, and a message over the message bound.
+frames, a message cut short, and a message over the message bound. An iroh
+implementation runs the handshake cases over an iroh stream, and adds a
+v2 record with two `iroh` hints, an `iroh` hint with an uppercase or short
+`EndpointId`, a relay URL over the bound or with a query, more than eight
+`direct` entries, a second stream on one connection, and a connection
+closed without a close frame.
 
 The wire fixtures in
 [`crates/coder-reach/fixtures/nip-reach.json`](../../crates/coder-reach/fixtures/nip-reach.json)

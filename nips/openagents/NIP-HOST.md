@@ -1,6 +1,11 @@
 # NIP-HOST — Host-wide device enrollment and scoped access
 
-`draft` `optional` — v1, 2026-09-26. The [shared contracts](contracts.md)
+`draft` `optional` — v1, 2026-09-26; amended 2026-09-29 with
+[connect codes](#connect-codes), [enrollment over iroh](#enrollment-over-iroh),
+the [local operator socket](#local-operator-socket), and
+[nearby approval](#nearby-approval-planned) for the
+[QR pairing design](../../docs/coder/design/2026-09-29-auto-pairing.md). The
+[shared contracts](contracts.md)
 are normative. This profile lets one host admit a device with host-wide,
 scoped rights. It defines enrollment by host invitation, reverse enrollment
 for a headless host, grants with revocation epochs, delegation, device
@@ -21,7 +26,7 @@ login, or network membership can introduce a device; none of them is a login.
 | [CAP](NIP-CAP.md) | A host describes the HOST operations as CAP operation roles. Discovery never admits an operation. CAP forbids public local presence; HOST publishes no presence. |
 | [CJ](NIP-CJ.md) | The CAP binding below invokes HOST operations through CJ execution v1. A CJ `completed` result means the HOST operation answered; the embedded reply states whether it was admitted. |
 | [POL](NIP-POL.md) | Disclosure, action approvals, spending, and publication stay POL decisions. No HOST right approves a POL action, and `operate` does not raise a budget. |
-| [REACH](NIP-REACH.md) | Owner host directory, presence, reachability hints, and direct channels. A direct channel binds to one HOST grant ID and epoch. A route, address, or tailnet membership never grants access. The opt-in [tailnet admission](#tailnet-admission) uses Tailscale identity to hand out an invitation, never a grant. |
+| [REACH](NIP-REACH.md) | Owner host directory, presence, reachability hints, and direct channels. A direct channel binds to one HOST grant ID and epoch. A route, address, iroh `EndpointId`, or tailnet membership never grants access. The opt-in [tailnet admission](#tailnet-admission) uses Tailscale identity to hand out an invitation, never a grant. [Enrollment over iroh](#enrollment-over-iroh) carries a redemption on an iroh connection; the host's grant check still decides. |
 | [TERM](NIP-TERM.md) | Terminal sessions, streams, and replay. TERM requires the HOST `terminal` right and defines no grant of its own. |
 | [RUN](NIP-RUN.md) and [ENV](NIP-ENV.md) | A task admitted through `task.create` is recorded and executed under the host's task owner, RUN, and ENV. HOST admission is not execution evidence. |
 | Official [NIP-46](../official/46.md) | A remote signer can hold the owner key. A permission to sign is not a HOST right; the host still checks the signer against its locally established owner. |
@@ -40,8 +45,11 @@ There are three principals:
 
 - The **owner** is the key whose authority the host serves. The host
   establishes the owner relationship locally, for example with an operator
-  command on that machine. An invitation, approval, relay event, or display
-  name cannot establish or change it. The owner holds every right at its host
+  command on that machine, a request on its
+  [local operator socket](#local-operator-socket), or a desktop app that
+  creates an owner key in the machine's keychain on first run. An
+  invitation, approval, relay event, scan, network route, or display name
+  cannot establish or change it. The owner holds every right at its host
   without a grant. The host refuses a request signed by any other key without
   a grant.
 - The **host** key signs grants, replies, and enrollment requests. It is
@@ -95,6 +103,104 @@ This is the SESS observer layout under a distinct prefix. A `coder-pair:`
 string is never a host invitation, and a `coder-host:` string is never an
 observer invitation.
 
+### Connect codes
+
+A **connect code** is a second carriage of the same host invitation, for a
+host that serves [enrollment over iroh](#enrollment-over-iroh). The
+companion desktop app shows it as a QR code. The string is
+`openagents-connect:` followed by unpadded base64url (RFC 4648, section 5,
+no `=`) of these bytes, in order:
+
+| Bytes | Field | Bound |
+| --- | --- | --- |
+| 1 | Version | Exactly `1`. Any other value refuses the code. |
+| 32 | Host x-only public key | The host's Nostr key. |
+| 32 | Host `EndpointId` | The host's iroh Ed25519 public key. |
+| 32 | Invitation ID | Random. |
+| 32 | Capability | Independently random. |
+| 8 | Issue time | Unsigned big-endian Unix seconds. |
+| 8 | Expiry | Unsigned big-endian Unix seconds; exactly issue time plus 300. |
+| 1 | iroh relay URL length | 0–128. Zero means no relay. |
+| 0–128 | iroh relay URL | UTF-8 `https` URL without user information, query, or fragment. |
+| 1 | Direct address count | 0–8. |
+| 7 or 19 each | Direct address | A family byte (`4` or `6`), the address (4 or 16 bytes), and a nonzero port (2 bytes, big-endian). |
+| 1 | Label length | 0–48. |
+| 0–48 | Label | UTF-8 without control characters: the computer's name, for display only. |
+
+No trailing bytes are allowed. The decoded payload is at most 476 bytes, so
+the string is at most 654 bytes. A reader refuses the whole code, before it
+dials anything, when the version is unknown, a length exceeds its bound, the
+bytes end early or run past the end, the expiry is not exactly 300 seconds
+after issue, a family byte is not `4` or `6`, a port is zero, two direct
+addresses are equal, an address is unspecified, multicast, or broadcast, the
+relay URL is not a valid `https` URL under the rules above, or the label is
+not valid UTF-8 or has a control character. A reader on another machine
+skips loopback direct addresses, as [REACH selection](NIP-REACH.md#selection)
+does. The host key and the `EndpointId` are never the all-zero value.
+
+The invitation ID, capability, times, rights, grant expiry, and issuer are
+exactly the [host records](#host-records) of one invitation, and the
+capability rules above apply unchanged. Only the carriage is new. The code
+does not name a Nostr relay; the device learns it during
+[enrollment over iroh](#enrollment-over-iroh), and the grant names it. The
+`EndpointId`, relay URL, direct addresses, and label are routing and display
+hints: none of them is an identity or a right.
+
+A device does not refuse a connect code by its own clock. The host decides
+expiry at redemption (see [Enrollment over iroh](#enrollment-over-iroh) for
+clock skew).
+
+Compatibility with `coder-host:` strings:
+
+- An `openagents-connect:` string is never a `coder-host:` or `coder-pair:`
+  string, and the reverse holds too. A scanner that accepts host invitations
+  accepts both prefixes and parses each strictly by its own layout.
+- A `coder-host:` string keeps its layout, its relay, and its redemption over
+  the [bindings](#bindings) below. Hosts that predate this amendment are
+  unchanged.
+- A host that serves enrollment over iroh accepts `enroll.redeem` there for
+  any current invitation, whichever carriage showed it.
+- When iroh cannot connect, a device may redeem a connect code over the
+  direct artifact binding on its configured default relay. That succeeds only
+  when the invitation's relay is that relay; otherwise the host earns no
+  signed reply, and the device reports that it could not reach the computer.
+  A desktop app host records the default relay the phone app uses,
+  `wss://relay.openagents.com/`, as its invitations' relay unless its
+  operator chose another.
+
+### Showing a connect code
+
+A connect code is a bearer secret until it is redeemed. A host that shows
+one follows these rules, in addition to those for the capability above:
+
+- It shows the code only inside its own visible window, on an unlocked
+  screen, and generates the QR image locally.
+- It shows a new code every 60 seconds and cancels the code it replaced 60
+  seconds after the replacement, with `invite.cancel` semantics. So no code
+  is redeemable more than 120 seconds after it left the screen, and the
+  300-second invitation life is only ever shortened.
+- Hiding the window, locking the screen, ten idle minutes, or a successful
+  redemption cancels every outstanding connect code.
+- It copies the text form to the clipboard only on an explicit tap, and marks
+  the clipboard entry to expire after 60 seconds where the platform allows.
+- It never writes the string, the capability, or the QR image to a log, a
+  file, a URL, or telemetry.
+
+Rights for a connect code are fixed:
+
+- The invitation's rights are `observe` and `operate`, plus `terminal` only
+  when the person set **Let this phone open a terminal on this Mac** before
+  the code was shown. Changing the checkbox cancels the shown code and shows
+  a new one. A connect code never carries `review`, `access_read`, or
+  `access_admin`.
+- The grant expiry is 30 days after issue, the most a grant allows.
+- The issuer is the host itself, as a local operator action.
+
+A host refuses to show a connect code for any other rights list. A device
+that receives a grant whose rights differ from these refuses it and keeps no
+access record. To change rights, the person removes the device and pairs
+again; a rights change in place is not defined.
+
 The capability is a temporary bearer secret until redemption. Show it only
 to the enrolling device. It must not appear in a public event, URL, log,
 telemetry, or remote QR-generation service. The relay URL follows the shared
@@ -136,6 +242,72 @@ return the same grant without extending it. Revoking that grant also stops
 retries from disclosing it. The host bounds admitted replies to 32 per
 invitation. Uncertain persistence returns no reply. An unused invitation can
 be cancelled; a redeemed one needs device revocation.
+
+## Enrollment over iroh
+
+A host with an iroh endpoint accepts redemption on the ALPN
+`openagents/enroll/1`. iroh is transport: its TLS handshake proves that the
+far end holds the `EndpointId` the device dialed, and nothing more. An
+`EndpointId`, the device's or the host's, never admits a request, never
+names a principal, and is never recorded as a device's identity.
+
+The host's iroh secret key is generated independently of every Nostr key and
+kept in the same protected store as the host key. The host uses a relay only
+from its own configuration; it uses no third-party relay or address lookup
+unless its operator configures one.
+
+The device dials the `EndpointId` from the connect code, with the code's
+relay URL and direct addresses as its only address sources, and opens one
+bidirectional stream. A connection carries exactly that one stream; the
+host resets any other. Each message on the stream is a 4-byte unsigned
+big-endian length followed by that many bytes of strict JSON, at most 65,536
+bytes. In order:
+
+1. The device sends `openagents.connect-enroll-open.v1`:
+   `{v, requires: [], invitation}`, the invitation ID from the code.
+2. The host answers `openagents.connect-enroll-info.v1`:
+   `{v, requires: [], host, relay, now}`, its host key, the invitation's
+   relay, and its current Unix time. For an invitation ID it does not retain,
+   it finishes the stream with no answer.
+3. The device refuses, and sends nothing more, when `host` differs from the
+   code's host key. When `now` differs from its own clock by more than 60
+   seconds, it sends nothing more and tells the person how far off the
+   phone's clock is, so a clock problem names itself instead of reading as
+   `expired`.
+4. The device sends `{v: "openagents.host-call.v1", event}`, whose `event` is
+   the exact signed `enroll.redeem` request of the
+   [direct artifact binding](#bindings), naming that relay.
+5. The host answers `{v: "openagents.host-answer.v1", event}` with the exact
+   signed reply, or finishes the stream with no answer when the direct
+   artifact binding would send none.
+6. Both sides finish the stream, and the device closes the connection.
+
+In these messages, `invitation` and `host` are lowercase 64-hex values,
+`relay` follows the invitation's relay rules (1–256 bytes), and `now` is an
+unsigned integer of Unix seconds no greater than 2^53 − 1.
+
+The host admits the call exactly as in [Redemption](#redemption), under the
+same lock and records: the original signature, the capability digest, the
+time window, and the refusals listed there. The relay check compares the
+request's `relay` with the invitation's relay, although the request did not
+travel over that relay. An unknown field, enum value, or version, a
+nonempty `requires`, a message over the bound, or messages out of this order
+end the stream with no answer. The host bounds concurrent enroll
+connections, 16 in the reference, and each connection's life, 30 seconds in
+the reference.
+
+The device accepts the answer only when the reply is signed by the code's
+host key, correlates with its request, and carries a grant that names that
+host key, the device's own key, the relay from step 2, and the
+[connect code rights](#showing-a-connect-code). Only then does it store its
+access record, with the host's `EndpointId`, relay URL, and last direct
+addresses beside it. Retries, including after a lost answer, resend the same
+signed request on a new stream and return the same grant, as the direct
+artifact binding does.
+
+Clock rules are unchanged. A reader accepts an `issued_at` up to 60 seconds
+ahead of its clock and holds `expires_at` strictly; the host's clock decides
+invitation and request expiry.
 
 ## Reverse enrollment for a headless host
 
@@ -204,6 +376,54 @@ refuses as `conflict`. Denial is terminal: later approvals refuse as
 `denied`. Only the host's own records decide the outcome; the request's
 public tags reveal a relationship between keys, not its state.
 
+## Nearby approval (planned)
+
+Planned; not part of v1 conformance. A device on the same network as a host
+can ask to enroll without a code on the screen. The person approves on the
+host after comparing a six-digit confirmation code shown on both screens.
+
+The host publishes its `EndpointId` and addresses through multicast DNS under
+the service name `openagents` (`_openagents._udp`); the record carries
+nothing else. The exchange runs on `openagents/enroll/1`, with the same
+message framing as [enrollment over iroh](#enrollment-over-iroh):
+
+1. The device sends `openagents.connect-nearby-request.v1`:
+   `{v, requires: [], device, label, commitment}`: its device key, a display
+   label of 0–48 bytes without control characters, and
+   `commitment = SHA-256(nonce_d)` in lowercase hex, where `nonce_d` is 32
+   random bytes.
+2. The host answers `openagents.connect-nearby-offer.v1`:
+   `{v, requires: [], host, nonce, now}` with its host key and a random
+   64-hex `nonce_h`.
+3. The device sends `openagents.connect-nearby-reveal.v1`:
+   `{v, requires: [], nonce}` with `nonce_d`, and the host checks it against
+   the commitment.
+4. Each side computes the code: the first 8 bytes, as an unsigned big-endian
+   integer, of SHA-256 of `openagents.connect-sas.v1`, a zero byte, the host
+   `EndpointId`, the device `EndpointId`, the host key, the device key,
+   `nonce_h`, and `nonce_d` (keys and nonces as raw bytes), modulo 1,000,000,
+   shown as six digits in two groups of three.
+5. The host shows the device's label and the code with **Connect** and
+   **Don't connect**, and the connect-code terminal checkbox. It admits the
+   device only after the person clicks **Connect**.
+6. On **Connect**, the host signs a grant with origin `approval`, a random
+   enrollment ID, the host as issuer, and the
+   [connect code rights](#showing-a-connect-code), and sends the grant
+   envelope, encrypted to the device key, on the same stream, as an approval
+   reply does. The grant is useless to anyone who lacks that device key,
+   because every later request needs the device's signature.
+
+In these messages, `device`, `host`, `commitment`, and both nonces are
+lowercase 64-hex values, and `now` is bounded as in enrollment over iroh.
+Each message is at most 4,096 bytes.
+
+The commitment keeps either side from choosing its nonce after seeing the
+other's, so a device in the middle gets one guess in a million per attempt.
+The host keeps one nearby request pending at a time, accepts at most five per
+ten minutes, and drops a request the person has not answered within 120
+seconds. **Don't connect**, a mismatch, or a timeout grants nothing and
+earns no signed reply.
+
 ## Tailnet admission
 
 Tailnet admission lets a device on the operator's own tailnet enroll
@@ -262,6 +482,36 @@ invitations; it does not revoke grants already issued.
 `crates/coder-host/src/tailnet.rs` implements the listener and the client
 request; `crates/openagents-mobile` probes each device on the tailnet and
 redeems what it receives.
+
+Tailnet admission is planned for deprecation once
+[nearby approval](#nearby-approval-planned) ships; see the
+[QR pairing design](../../docs/coder/design/2026-09-29-auto-pairing.md#names-one-surface).
+
+## Local operator socket
+
+A host may serve a local control socket for the owner's actions on that
+machine. A caller the socket admits is the host's local operator: its
+requests are commands on the host, with the same authority as an operator
+command, and the host records itself as the issuer of what they create.
+
+- On macOS the socket is
+  `~/Library/Application Support/OpenAgents/control.sock`; on Linux,
+  `$XDG_RUNTIME_DIR/openagents/control.sock`. Its directory has mode `0700`
+  and the socket `0600`. On Windows it is a named pipe whose security
+  descriptor admits only the current user.
+- On every accepted connection the host reads the peer's user ID
+  (`getpeereid` on macOS, `SO_PEERCRED` on Linux) and closes the connection,
+  before reading a message, when it differs from the host's own.
+- The socket is never bound to a network address, forwarded, or reachable
+  through a relay, iroh, or a direct channel.
+- Over it, the operator creates and cancels invitations (connect codes
+  included), lists and revokes devices, gets and sets the auto-start policy
+  and projects, and reads status. The message types belong to the
+  implementation; this profile fixes only who may use the socket and what
+  it can change.
+
+A device never gains operator authority: no grant, right, or channel opens
+the socket, and a device request cannot turn auto-start on or widen it.
 
 ## Grants, epochs, and revocation
 
@@ -646,6 +896,15 @@ commands again.
   records. A self-signed grant from another host does not replace it.
 - Private envelopes cannot be recalled. Revocation stops future disclosure
   and admission only.
+- A connect code is read off the host's own screen, which makes the screen
+  the trusted channel: it gives the device both host public keys and a
+  secret only the host knows. A fake computer on the path needs the host's
+  iroh secret, its Nostr secret, and the capability. A person who
+  photographs the screen gets one redemption race inside two minutes, and
+  the real device then receives `forbidden` and says so.
+- An iroh connection proves only the `EndpointId`. The host key's signature
+  on the reply and grant, checked against the code, is what the device
+  trusts.
 
 ## Worked wire flow
 
@@ -668,6 +927,19 @@ wire values.
    refuses as `revoked`, and a request carrying the old epoch refuses as
    `stale`.
 
+With a desktop app and a connect code:
+
+1. On first run the desktop app's host creates its host key, iroh secret key,
+   and owner key in the keychain and establishes that owner locally.
+2. The window shows `openagents-connect:<payload>` as a QR code for an
+   invitation with rights `observe, operate`, and replaces it every minute.
+3. The phone scans it, dials `<endpoint-id>` on `openagents/enroll/1`, sends
+   the open message, checks the host key in the info message, and sends its
+   signed `enroll.redeem`. The host commits the grant and answers. The phone
+   checks both keys against the code, then saves its access record.
+4. The phone opens a [REACH](NIP-REACH.md) direct channel on
+   `openagents/reach/1` and signs `task.create` as in step 4 above.
+
 ## Conformance
 
 Fixtures cover: redemption; same-device retry after restart; another
@@ -678,7 +950,11 @@ delegated invitation after its issuer's revocation; revocation while a
 request is in flight; a stale epoch; a copied grant; a crash between
 consumption and reply; exact retries and a reused request ID; and per-right
 refusal, including that an `observe`-only device cannot create a task or
-open a terminal.
+open a terminal. Connect codes add: a round trip of the byte layout; each
+malformed case listed under [Connect codes](#connect-codes); a redemption
+over iroh; a code whose host key differs from the info message or the reply;
+rights other than the connect code rights; a clock more than 60 seconds off;
+and a connection that opens a second stream.
 
 Advertise `nip-host-v1` only for a configured host or client role with these
 behaviors tested, in NIP-11 `supported_extensions`, not a numeric
@@ -717,3 +993,11 @@ is a reference definition that the NIP-CAP validator accepts.
 `crates/coder-host/tests/cj.rs` shows, over a synthetic relay, that both
 bindings give the same outcome for a granted operation, a missing right, a
 revoked grant, a stale epoch, and a reused request ID.
+
+[Connect codes](#connect-codes), [enrollment over iroh](#enrollment-over-iroh),
+and the [local operator socket](#local-operator-socket) are designed, not
+implemented. The
+[epic](https://github.com/OpenAgentsInc/openagents/issues/9965) builds them:
+`crates/openagents-connect` owns the connect code parser and its fixtures,
+and the host step serves the ALPN and the socket.
+[Nearby approval](#nearby-approval-planned) comes after that milestone.
