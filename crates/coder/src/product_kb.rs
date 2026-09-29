@@ -196,6 +196,12 @@ impl<E: Embed> ProductKnowledge<E> {
         &self.corpus
     }
 
+    /// The embedding provider, named for a person.
+    #[must_use]
+    pub fn recipient(&self) -> &str {
+        &self.recipient
+    }
+
     /// The entries' vectors, made once.
     async fn index(&self) -> Result<Arc<Index>, SeamError> {
         if let Some(index) = self.index.lock().ok().and_then(|i| i.clone()) {

@@ -72,6 +72,19 @@ phone <--27000 partials, 26900 result------- relay.openagents.com <-- chat worke
     characters) to that provider, so the privacy answer and the Basic chat
     rows in `INVARIANTS.md` must name it as a recipient (the seam's
     `recipients()`) in the change that turns it on.
+- **Product knowledge.** The router's `product.kb` turns answer from
+  `knowledge/openagents/` through `coder::product_kb` when three things are
+  present at startup: the judge, the corpus, and an embeddings key. The
+  corpus is read from `OPENAGENTS_PRODUCT_KNOWLEDGE`, or from the checkout
+  the binary was built in, which does not exist on the VM, so copy
+  `knowledge/openagents/` beside the release and set the variable. The
+  embeddings key is `OPENAI_API_KEY` (or `~/.openagents/openai.json`), else
+  OpenRouter's; `OPENAGENTS_PRODUCT_KB_EMBEDDINGS=vertex` uses Vertex AI
+  instead. The log says `product kb openagents-product@… (52 entries),
+  embeddings through OpenAI`, or `product kb off:` and why. With it on, a
+  product turn's latest message also reaches that embeddings provider,
+  which the seam names in `recipients()`. See
+  [the measurement](../coder/measurements/2026-09-28-product-kb.md).
 - **Streaming.** The worker sends its first delta at once and then about 160
   bytes at a time; the phone checks each answer's signer, recipient, request
   binding, and sequence, draws the reply with Rust Native's incremental

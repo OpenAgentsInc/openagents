@@ -458,10 +458,35 @@ async fn serve(options: &Options) -> Result<(), String> {
     }
     // Each seam comes from its own module's configuration; one that is
     // not configured stays the no-op, and the router falls back past it.
-    let seams = Seams {
+    let mut seams = Seams {
         personalize: router::personalize::seam_from_env()?,
         ..Seams::default()
     };
+    // The product knowledge base answers `product.kb` turns when its corpus,
+    // an embeddings key, and the judge are all here; otherwise the route is
+    // answered by the model alone, as with no knowledge base.
+    match judge.clone() {
+        Some(judge) => match coder::product_kb::ProductKnowledge::from_env(judge) {
+            Ok(kb) => {
+                eprintln!(
+                    "product kb {} ({} entries), embeddings through {}",
+                    kb.corpus().tag(),
+                    kb.corpus().base.entries.len(),
+                    kb.recipient()
+                );
+                let kb = Arc::new(kb);
+                let warming = kb.clone();
+                tokio::spawn(async move {
+                    if let Err(why) = warming.warm().await {
+                        eprintln!("product kb not warmed: {why}");
+                    }
+                });
+                seams.product = kb;
+            }
+            Err(why) => eprintln!("product kb off: {why}"),
+        },
+        None => eprintln!("product kb off: no judge"),
+    }
     let routing = Arc::new(RouterConfig::new(
         router_from_env()?,
         seams,
