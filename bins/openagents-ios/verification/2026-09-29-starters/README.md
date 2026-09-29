@@ -68,3 +68,13 @@ emulator (API 35, app uninstalled first), both on the live chat worker.
 `a_typed_question_hides_the_same_suggestion`,
 `a_used_followup_chip_never_shows_again`, `every_suggestion_used_shows_none`,
 `the_suggestions_are_plain_and_unique`.
+
+## Build 30
+
+Archived from `9c474bbb4f` (clean, rebased on `origin/main`) with
+`build.sh archive`; `com.openagents.app` 1.0.0 (30). Uploaded with
+`build.sh upload`, finished 22:02 UTC ("Upload succeeded", "EXPORT
+SUCCEEDED"). App Store Connect, filtered by pre-release version 1.0.0 and
+build 30, shows it uploaded at 2026-09-29T15:02:46-07:00, processing state
+`VALID`, internal beta state `IN_BETA_TESTING`. The chat worker's answer
+bank did not change, so it was not redeployed.
