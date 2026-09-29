@@ -60,14 +60,18 @@ What it does, in order:
      Resources/AppIcon.icns
    ```
 
-   `Info.plist`, `com.openagents.desktop.host.plist`, `AppIcon.icns`, and the
-   entitlements files come from `bins/openagents-desktop-macos/` when they
-   exist there; otherwise the script writes defaults (the host plist runs
-   `Contents/MacOS/coder host serve`, the icon is scaled from the iOS app
-   icon).
+   `Info.plist`, `com.openagents.desktop.host.plist`, and the entitlements
+   files come from `bins/openagents-desktop-macos/`, the same files the quick
+   local build (`bins/openagents-desktop-macos/bundle.sh`) uses; the
+   version is the crate's and the build number is the commit count, as
+   there. The icon is `AppIcon.icns` from that folder if present, otherwise
+   scaled from the iOS app icon. Missing files fall back to defaults
+   written by the script.
 3. **Sign**, inner code first and never with `--deep`: every other Mach-O in
    the bundle (`coder`, `microcoder`, any dylib or framework) and then the
-   app, each with `--options runtime --timestamp` and the Developer ID.
+   app, each with `--options runtime --timestamp` and the Developer ID. A
+   helper's code-signing identifier is `<bundle id>.<name>`
+   (`com.openagents.desktop.coder`), as `bundle.sh` signs it.
 4. **Notarize the app**: `ditto` zip, `xcrun notarytool submit --wait`, then
    `xcrun stapler staple` so the app carries its ticket after it is copied
    out of the `.dmg` and opened offline.
@@ -146,8 +150,16 @@ Both should print `accepted` / `source=Notarized Developer ID` and
 
 ## Record of the first runs (2026-09-29)
 
-The desktop app was still being built, so the pipeline was run end to end
-with stand-ins, each with the Developer ID and the App Store Connect key:
+On the desktop app itself (`30d22ea758`, the first commit with
+`crates/openagents-desktop`): universal `OpenAgents`, `coder`, and
+`microcoder`, both notarization submissions `Accepted`,
+`OpenAgents-0.1.0.dmg` accepted by `spctl` with a browser quarantine flag
+set, the app inside it accepted, `stapler validate` passing on both, and
+the helpers signed as `com.openagents.desktop.coder` and
+`com.openagents.desktop.microcoder` with the hardened runtime. The second
+Mac check is an owner step in the workspace `NEEDS_OWNER.md`.
+
+Before the desktop app landed, the pipeline was run with stand-ins:
 
 - `--app` on the deck (`scripts/bundle-openagents-deck.sh`) with
   `microcoder` added to `Contents/MacOS`: both submissions `Accepted`;

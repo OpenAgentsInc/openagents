@@ -224,6 +224,11 @@ assemble_app() {
     cp "$macos_dir/Info.plist" "$app/Contents/Info.plist"
     /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $version" "$app/Contents/Info.plist" 2>/dev/null ||
       /usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string $version" "$app/Contents/Info.plist"
+    # The build number, as bins/openagents-desktop-macos/bundle.sh sets it.
+    local build
+    build="$(git -C "$root" rev-list --count HEAD 2>/dev/null || echo 1)"
+    /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $build" "$app/Contents/Info.plist" 2>/dev/null ||
+      /usr/libexec/PlistBuddy -c "Add :CFBundleVersion string $build" "$app/Contents/Info.plist"
   else
     cat >"$app/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -311,9 +316,11 @@ dmg_base="$(echo "$app_name" | tr ' ' '-')-$version"
 dmg="$out/$dmg_base.dmg"
 
 # -------------------------------------------------------------------- sign
-sign() { # $1 path, $2 entitlements (optional)
+bundle_id="$(plist_get "$app/Contents/Info.plist" CFBundleIdentifier)"
+sign() { # $1 path, $2 entitlements (optional), $3 identifier (optional)
   local args=(--force --options runtime "${timestamp[@]}" --sign "$identity")
   [[ -n "${2:-}" ]] && args+=(--entitlements "$2")
+  [[ -n "${3:-}" ]] && args+=(--identifier "$3")
   codesign "${args[@]}" "$1"
 }
 
@@ -327,7 +334,9 @@ while IFS= read -r f; do
   if file -b "$f" | grep -q "Mach-O"; then
     case "$f" in
       *.dylib) sign "$f" ;;
-      *) sign "$f" "$host_entitlements" ;;
+      # A helper's identifier is <bundle id>.<name> (com.openagents.desktop.coder),
+      # as bundle.sh signs it: the host's keychain items are bound to it.
+      *) sign "$f" "$host_entitlements" "${bundle_id:+$bundle_id.$(basename "$f")}" ;;
     esac
   fi
 done < <(find "$app/Contents" -type f -perm -u+x -o -type f -name '*.dylib' | awk '{ print length, $0 }' | sort -rn | cut -d' ' -f2-)
