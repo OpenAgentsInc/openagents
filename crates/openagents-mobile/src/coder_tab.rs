@@ -209,6 +209,9 @@ pub enum Go {
     /// File the wrong-answer report the person confirmed: the host sends
     /// `report_wrong_answer` with the Verse world key and device facts.
     WrongAnswer,
+    /// The Verse tab, walked into the Gym before its EVALS board: the host
+    /// sends the world `go_evals`.
+    VerseGym,
 }
 
 impl Go {
@@ -219,6 +222,7 @@ impl Go {
             Screen::Keys => Go::Keys,
             Screen::Playtest => Go::Playtest,
             Screen::Report => Go::Report,
+            Screen::VerseGym => Go::VerseGym,
         }
     }
 }
@@ -3024,6 +3028,7 @@ fn screen_chip(screen: Screen, connecting: bool) -> (&'static str, Glyph) {
         Screen::Keys => ("Identity keys", Glyph::Key),
         Screen::Playtest => ("Playtest", Glyph::Flag),
         Screen::Report => ("Report a problem", Glyph::Flag),
+        Screen::VerseGym => ("See the board", Glyph::Check),
     }
 }
 

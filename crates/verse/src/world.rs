@@ -44,6 +44,17 @@ pub const GYM_RESULTS_BOARD: Vec3 = Vec3::new(58.8, 2.8, 5.7);
 pub const GYM_RESULTS_SCREEN: Vec3 = Vec3::new(58.788, 2.8, 5.7);
 /// Half width along Z and half height of the RESULTS board, in meters.
 pub const GYM_RESULTS_HALF: [f32; 2] = [2.3, 1.55];
+/// Center of the Grid's EVALS board: the left-hand plot panel beside the
+/// central board, which the Grid letters and opens for published eval
+/// results and the agents' notes.
+pub const GYM_EVALS_BOARD: Vec3 = Vec3::new(58.8, 2.8, -5.7);
+/// The EVALS board's readable front, in line with the central board's.
+pub const GYM_EVALS_SCREEN: Vec3 = Vec3::new(58.788, 2.8, -5.7);
+/// Half width along Z and half height of the EVALS board, in meters.
+pub const GYM_EVALS_HALF: [f32; 2] = GYM_RESULTS_HALF;
+/// Where a player stands to read the EVALS board: inside the hall, within
+/// reach, a little to the side so the avatar doesn't cover its middle.
+pub const GYM_EVALS_STAND: Vec3 = Vec3::new(54.0, 0.0, -4.6);
 /// How far ahead of the spawn the Grid's Gym doorway stands, m. The hall
 /// lies beyond it along the spawn's heading, past the ball, the stack, and
 /// the dominoes, with the doorway facing the spawn between the stack and the
@@ -423,6 +434,17 @@ fn display_text(
     }
 }
 
+/// Every label the Gym's boards draw.
+#[cfg(test)]
+pub(crate) const GYM_BOARD_LABELS: [&str; 5] =
+    ["GYM", "RESULTS", "EVALS", "TAP TO OPEN", "WALK CLOSER"];
+
+/// Whether the board lettering can draw `letter`.
+#[cfg(test)]
+pub(crate) fn has_glyph(letter: u8) -> bool {
+    !computer_glyph(letter).is_empty()
+}
+
 fn computer_glyph(letter: u8) -> &'static [&'static [(f32, f32)]] {
     match letter {
         b'A' => &[
@@ -465,6 +487,7 @@ fn computer_glyph(letter: u8) -> &'static [&'static [(f32, f32)]] {
         ]],
         b'T' => &[&[(0.0, 1.0), (1.0, 1.0)], &[(0.5, 1.0), (0.5, 0.0)]],
         b'U' => &[&[(0.0, 1.0), (0.0, 0.0), (1.0, 0.0), (1.0, 1.0)]],
+        b'V' => &[&[(0.0, 1.0), (0.5, 0.0), (1.0, 1.0)]],
         b'W' => &[&[(0.0, 1.0), (0.0, 0.0), (0.5, 0.45), (1.0, 0.0), (1.0, 1.0)]],
         b'Y' => &[
             &[(0.0, 1.0), (0.5, 0.5), (1.0, 1.0)],
@@ -510,25 +533,28 @@ pub(crate) fn gym_display(site: GymSite, interaction: Option<bool>) -> Mesh {
 /// tap cue for a host that opens its panel. Coder's plaza has no RESULTS
 /// board.
 pub(crate) fn results_display(site: GymSite, interaction: Option<bool>) -> Mesh {
+    side_display(site, "RESULTS", GYM_RESULTS_SCREEN, interaction)
+}
+
+/// Depth-tested lettering on the Grid's EVALS board at `site`, with the tap
+/// cue for a host that opens its panel. Coder's plaza has no EVALS board.
+pub(crate) fn evals_display(site: GymSite, interaction: Option<bool>) -> Mesh {
+    side_display(site, "EVALS", GYM_EVALS_SCREEN, interaction)
+}
+
+fn side_display(site: GymSite, label: &str, screen: Vec3, interaction: Option<bool>) -> Mesh {
     let mut mesh = Mesh::default();
     let step = if interaction == Some(true) {
         Intensity::Full
     } else {
         Intensity::Half
     };
-    display_text(
-        &mut mesh,
-        "RESULTS",
-        GYM_RESULTS_SCREEN + Vec3::Y * 1.1,
-        Vec3::Z,
-        0.3,
-        step,
-    );
+    display_text(&mut mesh, label, screen + Vec3::Y * 1.1, Vec3::Z, 0.3, step);
     if let Some(near) = interaction {
         display_text(
             &mut mesh,
             if near { "TAP TO OPEN" } else { "WALK CLOSER" },
-            GYM_RESULTS_SCREEN - Vec3::Y * 0.2,
+            screen - Vec3::Y * 0.2,
             Vec3::Z,
             0.36,
             step,
@@ -539,7 +565,7 @@ pub(crate) fn results_display(site: GymSite, interaction: Option<bool>) -> Mesh 
 }
 
 /// Builds the Gym in its own frame and stands it at `site`. With
-/// `results`, its right-hand plot panel is the RESULTS board instead.
+/// `results`, its plot panels are the EVALS and RESULTS boards instead.
 fn gym(world: &mut World, site: GymSite, results: bool) {
     let mut mesh = Mesh::default();
     // Low solid walls keep the third-person camera usable. Upper posts and
@@ -665,10 +691,11 @@ fn gym_boards(mesh: &mut Mesh, results: bool) {
     // A central bulletin and two plot panels. Empty axes denote
     // surfaces awaiting admitted data; they do not depict invented results.
     panel(mesh, 0.0, GYM_BOARD_HALF[0]);
-    for center in [-5.7, GYM_RESULTS_BOARD.z] {
+    for center in [GYM_EVALS_BOARD.z, GYM_RESULTS_BOARD.z] {
         panel(mesh, center, GYM_RESULTS_HALF[0]);
-        // The RESULTS board is lettered by its display, without axes.
-        if results && center == GYM_RESULTS_BOARD.z {
+        // The Grid's EVALS and RESULTS boards are lettered by their
+        // displays, without axes.
+        if results {
             continue;
         }
         mesh.line(

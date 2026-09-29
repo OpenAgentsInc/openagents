@@ -672,7 +672,7 @@ final class MobileBridge: ObservableObject {
             self.packet = packet
             switch packet.coder_go {
             case "computers": self.computersRequested += 1
-            case let screen? where ["wallet", "keys", "playtest", "report"].contains(screen):
+            case let screen? where ["wallet", "keys", "playtest", "report", "verse_gym"].contains(screen):
                 self.screenRequest = ScreenRequest(screen: screen, serial: self.screenRequest.serial + 1)
             // The person confirmed Wrong answer in the chat: file it.
             case "wrong_answer": self.reportWrongAnswer()

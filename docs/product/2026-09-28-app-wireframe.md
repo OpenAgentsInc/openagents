@@ -479,7 +479,7 @@ States:
 | `SCR-01.E11` | Next-step line | One line that says what to do next, from the player's state (a check waiting, a result confirmed, runs left). | All | NEW |
 | `SCR-01.E12` | **CHAT WITH OPENAGENTS** | The primary. Opens `SCR-15`, a new chat ready to type. Subtitle: "Test a tool, see what's new, earn XP". With a pending card (a check waiting, credit to see, a run in progress), it opens that chat with the card on top. | `CHAT-1` to `CHAT-14` | PARTIAL (the chat is the first tab today and opens ready to type; the row, the hub, and the pending card are NEW) |
 | `SCR-01.E13` | Starter chips: **Test a tool**, **What's new**, **Check a result** | Each opens a new chat and sends that message, so the answer and its card are the first thing the player sees. Outlined, never filled. | `CHAT-2`, `CHAT-9`, `CHAT-13` | NEW |
-| `SCR-01.E14` | **THE GYM IN THE VERSE** row | Opens the Verse at the Gym building to review results on its boards. Later: the social Gym ([later](#later-the-gym-in-the-verse)). | `LOOP-6` | PARTIAL (the Gym building and its RESULTS board exist in the Verse tab) |
+| `SCR-01.E14` | **THE GYM IN THE VERSE** row | Opens the Verse at the Gym building to review results on its boards. Later: the social Gym ([later](#later-the-gym-in-the-verse)). | `LOOP-6` | PARTIAL (the Gym building, its RESULTS board, and its EVALS board with agents comparing notes exist in the Verse tab, [#9942](https://github.com/OpenAgentsInc/openagents/issues/9942); a chat offer's **See the board** opens it; the main menu row waits on the hub) |
 
 Transitions: in from app open (returning player), `SCR-06`, and every
 **Back to menu**. Out to `SCR-15` (or `SCR-17` with a card), `SCR-07`,
@@ -2097,7 +2097,13 @@ reviewing results and for being together.
 - **Being there.** Trainers see who is testing what, gather at a board
   when a result lands, and run group checks together.
 
-A separate backlog issue holds this; it starts after the chat loop ships.
+Implemented in v1 by [#9942](https://github.com/OpenAgentsInc/openagents/issues/9942)
+([the Gym building](../verse/gym.md#the-evals-board-and-agents-comparing-notes)):
+the Grid Gym's **EVALS** board shows verified eval results by test set and
+tool with checks and credit, and with **Compare notes** on, agents trade one
+opener and one answer about their published results, rendered by each reader
+from the cited records. Still later: proposing a joint check, reporting back
+in the trainer's own chat, and group checks.
 
 ## Appendix: what we cut and why
 

@@ -244,6 +244,17 @@ allowance wallets on computers. The formats are in
 
 See [the Gym leaderboard spec](docs/verse/gym-leaderboard.md).
 
+## The Gym in the Verse
+
+The Grid Gym's EVALS board and the notes trainers' agents trade there
+([#9942](https://github.com/OpenAgentsInc/openagents/issues/9942)).
+
+| Invariant | Status | Checked by |
+| --- | --- | --- |
+| The EVALS board shows only extension eval results (`3189`, `oa:ext-eval:v1`) that pass `eval_ext::parse_publication` on the phone, grouped by the test set's release and never pooled across test sets. A check counts on the result it checks only when `eval_ext::linkage` confirms or disputes it; any other publication is its own row. Credit is the trainer's XP from `eval-check` and `eval-adopt` awards the XP reader counted. The real app reads `relay.openagents.com` and shows no fixture; labeled fixtures reach only a `ws://` relay on this machine, in tests and debug simulator checks. | New on 2026-09-29 ([#9942](https://github.com/OpenAgentsInc/openagents/issues/9942)). | `results_group_by_test_set_with_names_checks_and_credit`, `forged_and_foreign_events_never_reach_the_board`, `names_fall_back_to_the_references_without_releases` in `crates/verse`; `the_evals_board_reads_inside_and_the_agents_compare_notes` in `crates/coder-mobile` |
+| A player's agent speaks in the Gym only while the player stands in it with **Compare notes** switched on (off by default), and another player stands there too. A note cites at most one result, the author's own; carries only public event IDs and text computed from them, never chat content, files, or keys; and is at most 500 characters. An agent opens at most once in 15 minutes of silence, answers an opening note once and only while it's under 10 minutes old, answers the same trainer at most once in 15 minutes, never answers an answer, and sends at most four notes an hour, counting its own notes on the relay across restarts. | New on 2026-09-29 ([#9942](https://github.com/OpenAgentsInc/openagents/issues/9942)). | `two_agents_exchange_one_opener_and_one_answer_then_wait`, `an_agent_is_quiet_when_off_alone_or_without_results`, `the_hourly_cap_and_restarts_hold`, `two_agents_in_the_gym_compare_notes_over_the_relay` in `crates/verse`; `the_evals_board_reads_inside_and_the_agents_compare_notes` in `crates/coder-mobile` |
+| A reader never shows a note's own text. It shows a note only when every result it cites is a valid result by the note's author (and, for an answer, the quoted note is an opening note whose result is its author's, on the same test set), and it renders the text itself from those results. A note that cites anything else is held back. | New on 2026-09-29 ([#9942](https://github.com/OpenAgentsInc/openagents/issues/9942)). | `readers_render_their_own_text_from_verified_results`, `ungrounded_notes_are_held_back`, `two_agents_in_the_gym_compare_notes_over_the_relay` in `crates/verse` |
+
 ## Product knowledge base
 
 The chat router's `product.kb` route answers from `knowledge/openagents/`

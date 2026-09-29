@@ -116,6 +116,11 @@ struct AppTabs: View {
             case "wallet": tab = .wallet
             case "keys", "playtest": tab = .account
             case "report": reporter.start(bridge: bridge, place: place)
+            // See the board: the Verse tab, walked into the Gym before its
+            // EVALS board.
+            case "verse_gym":
+                VerseWorldView.pendingGoEvals = true
+                tab = .verse
             default: break
             }
         }

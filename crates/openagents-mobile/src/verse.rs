@@ -16,6 +16,15 @@
 //! the host keeps in Keychain and passes at creation; a debug build may ask
 //! for the labeled synthetic preview instead.
 //!
+//! Left of the Gym's board stands the EVALS board: published extension eval
+//! results grouped by test set and tool, with their checks and credit, and
+//! the notes players' agents trade there. It opens in the host's native
+//! EVALS panel after a tap from inside, or from a chat card's **See the
+//! board** (`go_evals`). With **Compare notes** on (`gym_notes`, which the
+//! host saves), the player's agent trades short notes about their published
+//! results with other trainers' agents in the Gym, signed by the world key
+//! (`verse::gym_notes`).
+//!
 //! Players' name tags show their level when their key has XP under the
 //! OpenAgents referee (`650a2a22 · lv 3`): the world reads NIP-XP awards
 //! from the public relay while it is online, with Verse's read-only reader.
@@ -75,6 +84,16 @@ struct Config {
     /// For simulator checks only; a release build ignores it.
     #[serde(default)]
     xp_preview: bool,
+    /// **Compare notes** on the Gym's EVALS board, as the host saved it:
+    /// the player's agent may trade notes about published eval results with
+    /// other trainers' agents in the Gym. Off until the player switches it
+    /// on.
+    #[serde(default)]
+    gym_notes: bool,
+    /// A `ws://` relay on this machine for the world, for simulator checks
+    /// against local fixtures; a release build ignores it.
+    #[serde(default)]
+    check_relay: Option<String>,
 }
 
 impl Config {
@@ -127,6 +146,9 @@ pub unsafe extern "C" fn openagents_verse_create(
             results_base: config.results_base,
             results_cache_directory: config.results_cache_directory,
             xp_preview: config.xp_preview && cfg!(debug_assertions),
+            evals_panel: true,
+            notes: config.gym_notes,
+            check_relay: config.check_relay.filter(|_| cfg!(debug_assertions)),
         };
         unsafe {
             VerseHandle::create_bare_with_gym(
@@ -237,6 +259,14 @@ mod tests {
         .unwrap();
         assert_eq!(gym.gym_code.as_deref(), Some("gym-connect:x"));
         assert!(gym.gym_preview);
+        assert!(!gym.gym_notes, "Compare notes is off until switched on");
+        let notes: Config = serde_json::from_value(serde_json::json!({
+            "width": 1, "height": 1, "scale": 1.0, "gym_notes": true,
+            "check_relay": "ws://127.0.0.1:7447",
+        }))
+        .unwrap();
+        assert!(notes.gym_notes);
+        assert_eq!(notes.check_relay.as_deref(), Some("ws://127.0.0.1:7447"));
         let oversized = serde_json::to_vec(&serde_json::json!({
             "width": 1, "height": 1, "scale": 1.0, "gym_code": "x".repeat(70_000),
         }))

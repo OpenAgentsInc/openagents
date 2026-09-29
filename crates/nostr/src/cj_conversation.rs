@@ -62,11 +62,14 @@ pub enum Screen {
     GymPublish,
     /// A test set's tests.
     GymTestSet,
+    /// The Gym in the Verse, at its EVALS board: published results and the
+    /// agents' notes (**See the board**).
+    VerseGym,
 }
 
 impl Screen {
     /// Every screen, in order.
-    pub const ALL: [Screen; 8] = [
+    pub const ALL: [Screen; 9] = [
         Screen::AccountComputers,
         Screen::AccountKeys,
         Screen::AccountPlaytest,
@@ -75,6 +78,7 @@ impl Screen {
         Screen::GymResult,
         Screen::GymPublish,
         Screen::GymTestSet,
+        Screen::VerseGym,
     ];
 
     /// The word the wire carries.
@@ -89,6 +93,7 @@ impl Screen {
             Screen::GymResult => "gym.result",
             Screen::GymPublish => "gym.publish",
             Screen::GymTestSet => "gym.test_set",
+            Screen::VerseGym => "verse.gym",
         }
     }
 

@@ -638,7 +638,11 @@ pub fn reply(
                 Some(Card::Result {
                     result: result.clone(),
                 }),
-                None,
+                // A published result is on the Gym's EVALS board too.
+                Some(Offer::OpenScreen {
+                    screen: Screen::VerseGym,
+                    label: "See the board".to_string(),
+                }),
             ),
             // The person's own results stay on their phone until they add
             // one to the Gym; the phone opens its latest.

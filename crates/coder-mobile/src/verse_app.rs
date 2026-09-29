@@ -66,6 +66,11 @@ pub(crate) struct Config {
     /// ([`verse::xp::fixture::tutorial_events`]), for simulator checks.
     #[serde(default)]
     pub xp_preview: bool,
+    /// The player switched on **Compare notes** on the Grid's EVALS board:
+    /// their agent may trade notes about published results with other
+    /// trainers' agents in the Gym. Off by default.
+    #[serde(default)]
+    pub gym_notes: bool,
 }
 
 #[derive(Deserialize)]
@@ -192,6 +197,19 @@ pub(crate) enum Request {
     Results {
         command: verse::gym_results::Action,
     },
+    /// Open the Grid's EVALS board, as VoiceOver does: the same reach and
+    /// line-of-sight checks as a tap on it.
+    InteractEvals,
+    CloseEvals,
+    /// Read the EVALS panel's current screen.
+    EvalsView,
+    /// A choice on the EVALS board.
+    Evals {
+        command: verse::gym_hall::Action,
+    },
+    /// Walk into the Grid's Gym, face the EVALS board, and open it: a
+    /// chat card's **See the board**.
+    GoEvals,
 }
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Serialize)]
@@ -271,6 +289,16 @@ pub(crate) struct Packet {
     results_active: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub results_view: Option<verse::gym_results::ResultsView>,
+    /// The Grid's EVALS board: where it is, and whether its panel is open.
+    /// The panel's screen comes only in answer to the EVALS requests.
+    evals: Gym,
+    evals_open: bool,
+    evals_revision: u64,
+    evals_active: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub evals_view: Option<verse::gym_hall::View>,
+    /// **Compare notes** is on, for the host to remember.
+    gym_notes: bool,
     view: View<()>,
 }
 
@@ -546,6 +574,19 @@ fn packet(
         results_revision: 0,
         results_active: false,
         results_view: None,
+        evals: Gym {
+            inside: false,
+            near: false,
+            visible: false,
+            screen_x: 0.5,
+            screen_y: 0.5,
+            distance: 60.0,
+        },
+        evals_open: false,
+        evals_revision: 0,
+        evals_active: false,
+        evals_view: None,
+        gym_notes: false,
         view,
     }
 }
@@ -555,6 +596,7 @@ enum WorldTarget {
     Computer,
     Gym,
     Results,
+    Evals,
     Companion,
     Door(DoorId),
     Portal,
@@ -711,7 +753,7 @@ pub(crate) struct Scene {
     pub presented_entities: verse::mesh::Mesh,
     secret: secp256k1::SecretKey,
     public_key: String,
-    relay: Option<String>,
+    pub(crate) relay: Option<String>,
     restore_spawn: bool,
     synthetic: bool,
     spawn_pending: bool,
@@ -742,6 +784,18 @@ pub(crate) struct Scene {
     /// The host shows the native results panel, so a tap on the RESULTS
     /// board may open it and the board shows its tap cue.
     pub(crate) results_panel: bool,
+    /// The Grid's EVALS board: published eval results and the agents'
+    /// notes, read while the player is in the Gym. It exists while the
+    /// bare world has a relay.
+    hall: Option<verse::gym_hall::Hall>,
+    evals_open: bool,
+    /// The host shows the native EVALS panel, so a tap on the EVALS board
+    /// may open it and the board shows its tap cue.
+    pub(crate) evals_panel: bool,
+    /// **Compare notes**, kept across relay changes.
+    gym_notes: bool,
+    /// The eval credit last passed to the hall.
+    eval_credit_from: Option<usize>,
     /// The read-only NIP-XP reader, while the world is online. It trusts
     /// the OpenAgents referee alone and reads the public relay.
     xp: Option<verse::xp::Board>,
@@ -924,6 +978,11 @@ impl Scene {
             }),
             results_open: false,
             results_panel: false,
+            hall: None,
+            evals_open: false,
+            evals_panel: false,
+            gym_notes: config.gym_notes,
+            eval_credit_from: None,
             xp: None,
             xp_snapshot: if config.xp_preview {
                 Some(xp_preview(secret)?)
@@ -979,6 +1038,7 @@ impl Scene {
     pub fn connect(&mut self, relay: String) -> Result<(), String> {
         let relay = validated_world_relay(&relay)?;
         self.session = None;
+        self.hall = None;
         self.presented_entities = verse::mesh::Mesh::default();
         self.relay = Some(relay);
         // Joining from the computer must keep the current pose and panel. Only
@@ -1021,6 +1081,17 @@ impl Scene {
         self.gym_board.set_active(false);
         self.results.set_active(false);
         self.session = Some(session);
+        if self.world.is_bare() && self.hall.is_none() {
+            self.hall = Some(verse::gym_hall::Hall::new(
+                verse::gym_hall::Config {
+                    relay: self.relay.clone().ok_or("No Verse relay selected")?,
+                    world: verse::session::BARE_WORLD.to_owned(),
+                    signer: verse::identity::Identity::from_secret("phone", self.secret)?.signer,
+                },
+                self.gym_notes,
+            ));
+            self.eval_credit_from = None;
+        }
         if self.world.is_bare() && self.xp.is_none() {
             let signer = verse::identity::Identity::from_secret("phone", self.secret)?.signer;
             self.xp = Some(verse::xp::Board::start_with(
@@ -1047,6 +1118,8 @@ impl Scene {
     pub fn disconnect(&mut self) {
         self.presented_entities = verse::mesh::Mesh::default();
         self.session = None;
+        self.hall = None;
+        self.evals_open = false;
         self.xp = None;
         self.playtest = None;
         self.relay = None;
@@ -1228,6 +1301,7 @@ impl Scene {
                     Some(WorldTarget::Computer) => self.open_computer(),
                     Some(WorldTarget::Gym) => self.open_gym(),
                     Some(WorldTarget::Results) => self.open_results(),
+                    Some(WorldTarget::Evals) => self.open_evals(),
                     Some(WorldTarget::Companion) => {
                         self.world.pet_companion();
                     }
@@ -1741,6 +1815,9 @@ impl Scene {
         if self.spawn_pending {
             self.gym_board.set_active(false);
             self.results.set_active(false);
+            if let Some(hall) = &mut self.hall {
+                hall.set_active(false);
+            }
             if let Some(session) = &mut self.session {
                 if let Some(spawn) =
                     session.poll_spawn(&self.world.world.blockers, self.world.zone_half())
@@ -1796,6 +1873,7 @@ impl Scene {
         if !self.gym().inside {
             self.gym_open = false;
             self.results_open = false;
+            self.evals_open = false;
         }
         if panel_was_open != self.panel_open() {
             self.reset_motion();
@@ -1815,6 +1893,7 @@ impl Scene {
                 self.playtest_snapshot = Some(snapshot);
             }
         }
+        self.poll_hall(now);
         if self.results_open {
             self.results.tick(f64::from(dt));
         }
@@ -2066,6 +2145,33 @@ impl Scene {
                 self.require_results_panel()?;
                 self.results.act(command)
             }
+            Request::InteractEvals => {
+                let evals = self.world.evals(self.aspect());
+                let size = self.lifecycle.viewport().logical_size();
+                if !self.lifecycle.active()
+                    || !self.evals_hit(evals.screen_x * size[0], evals.screen_y * size[1])
+                {
+                    return Err(
+                        "Walk inside the Gym and approach its EVALS board to open it".into(),
+                    );
+                }
+                self.open_evals();
+                Ok(())
+            }
+            Request::CloseEvals => {
+                self.reset_motion();
+                self.evals_open = false;
+                Ok(())
+            }
+            Request::EvalsView => Ok(()),
+            Request::Evals { command } => {
+                self.require_evals_panel()?;
+                let hall = self.hall.as_mut().ok_or("The Gym is offline")?;
+                hall.act(&command);
+                self.gym_notes = hall.opted_in();
+                Ok(())
+            }
+            Request::GoEvals => self.go_evals(),
             Request::Snapshot | Request::ZoneCredits => Ok(()),
             Request::Frame { .. } | Request::Resize { .. } => {
                 Err("Request requires a native renderer".into())
@@ -2200,6 +2306,14 @@ impl Scene {
         packet.results_open = self.results_open;
         packet.results_revision = self.results.revision();
         packet.results_active = self.results_panel && packet.gym_active;
+        packet.evals = self.world.evals(self.aspect()).into();
+        packet.evals_open = self.evals_open;
+        packet.evals_revision = self
+            .hall
+            .as_ref()
+            .map_or(0, verse::gym_hall::Hall::revision);
+        packet.evals_active = self.evals_panel && self.hall.is_some() && packet.gym_active;
+        packet.gym_notes = self.gym_notes;
         packet
     }
 
@@ -2329,6 +2443,7 @@ impl Scene {
                 && !self.computer_open
                 && !self.gym_open
                 && !self.results_open
+                && !self.evals_open
                 && !self.map.expanded,
         )
     }
@@ -2370,6 +2485,7 @@ impl Scene {
         self.computer_open = false;
         self.gym_open = false;
         self.results_open = false;
+        self.evals_open = false;
         self.reset_motion();
         self.restore_spawn = false;
         self.spawn_pending = false;
@@ -2405,6 +2521,7 @@ impl Scene {
             || self.computer_open
             || self.gym_open
             || self.results_open
+            || self.evals_open
             || self.map.expanded
         {
             return Err("Return to the world to use the portal".into());
@@ -2620,7 +2737,11 @@ impl Scene {
     }
 
     fn panel_open(&self) -> bool {
-        self.computer_open || self.gym_open || self.results_open || self.world.zone_loading()
+        self.computer_open
+            || self.gym_open
+            || self.results_open
+            || self.evals_open
+            || self.world.zone_loading()
     }
 
     fn require_gym_panel(&self) -> Result<(), String> {
@@ -2645,6 +2766,102 @@ impl Scene {
         // Entering the Gym starts the results load; leaving cancels it. It
         // needs no Gym connection.
         self.results.set_active(inside && self.results_panel);
+        // The EVALS board reads, and the agent may speak, only while the
+        // player stands in the Gym.
+        if let Some(hall) = &mut self.hall {
+            hall.set_active(inside && self.evals_panel);
+        }
+    }
+
+    fn require_evals_panel(&self) -> Result<(), String> {
+        if self.evals_panel
+            && self.hall.is_some()
+            && self.lifecycle.active()
+            && self.plaza_online_allowed()
+            && !self.spawn_pending
+            && self.evals_open
+            && self.gym().inside
+        {
+            Ok(())
+        } else {
+            Err("Open the EVALS board while inside to use it".into())
+        }
+    }
+
+    /// The EVALS panel's current screen, while it is open.
+    pub fn evals_view(&self) -> Option<verse::gym_hall::View> {
+        self.require_evals_panel()
+            .ok()
+            .and(self.hall.as_ref())
+            .map(verse::gym_hall::Hall::view)
+    }
+
+    /// Called only after pointer or accessibility picking validates the
+    /// board, or after [`Self::go_evals`] placed the player before it.
+    fn open_evals(&mut self) {
+        self.open_gym();
+        self.gym_open = false;
+        self.evals_open = true;
+    }
+
+    /// Walks the player into the Grid's Gym before the EVALS board and
+    /// opens it.
+    fn go_evals(&mut self) -> Result<(), String> {
+        if !self.evals_panel || !self.world.is_bare() {
+            return Err("This world has no EVALS board".into());
+        }
+        let site = self
+            .world
+            .gym_site()
+            .filter(|_| self.plaza_online_allowed())
+            .ok_or("Return to the Grid to visit the Gym")?;
+        if !self.lifecycle.active() {
+            return Err("Open the Verse to visit the Gym".into());
+        }
+        if self.computer_open {
+            self.close_computer();
+        }
+        self.spawn_pending = false;
+        self.restore_spawn = false;
+        self.world.cancel_navigation();
+        self.world.set_spawn(
+            site.point(verse::world::GYM_EVALS_STAND),
+            site.yaw_of(std::f32::consts::FRAC_PI_2),
+        )?;
+        self.reset_motion();
+        self.sync_gym_interest();
+        self.open_evals();
+        Ok(())
+    }
+
+    /// Passes the hall who else stands in the Gym and each trainer's eval
+    /// credit, and takes what its reader derived.
+    fn poll_hall(&mut self, now: Instant) {
+        let Some(hall) = &mut self.hall else {
+            return;
+        };
+        if hall.active() {
+            let peers = match (&self.session, self.world.gym_site()) {
+                (Some(session), Some(site)) => {
+                    verse::gym_hall::peers_inside(site, &session.crowd.shown(now))
+                }
+                _ => std::collections::BTreeSet::new(),
+            };
+            hall.set_peers(peers);
+            if let Some(snapshot) = &self.xp_snapshot {
+                let stamp = snapshot.credits.len();
+                if self.eval_credit_from != Some(stamp) {
+                    self.eval_credit_from = Some(stamp);
+                    hall.set_credit(verse::gym_evals::eval_credit(
+                        snapshot
+                            .credits
+                            .iter()
+                            .map(|c| (c.rule.as_str(), c.pubkey.as_str(), c.xp)),
+                    ));
+                }
+            }
+        }
+        hall.poll();
     }
 
     fn require_results_panel(&self) -> Result<(), String> {
@@ -2693,6 +2910,7 @@ impl Scene {
         self.computer_hud.open();
         self.gym_open = false;
         self.results_open = false;
+        self.evals_open = false;
         self.touches.clear();
         self.jump = false;
         self.sprint = false;
@@ -2723,6 +2941,7 @@ impl Scene {
         self.zone_hud.clear_contacts();
         self.gym_open = true;
         self.results_open = false;
+        self.evals_open = false;
         self.computer_open = false;
         self.touches.clear();
         self.jump = false;
@@ -2743,6 +2962,8 @@ impl Scene {
             Some(WorldTarget::Gym)
         } else if self.results_hit(x, y) {
             Some(WorldTarget::Results)
+        } else if self.evals_hit(x, y) {
+            Some(WorldTarget::Evals)
         } else if self.portal_hit(x, y) {
             Some(WorldTarget::Portal)
         } else {
@@ -2825,6 +3046,22 @@ impl Scene {
             )
     }
 
+    fn evals_hit(&self, x: f32, y: f32) -> bool {
+        let size = self.lifecycle.viewport().logical_size();
+        self.evals_panel
+            && self.hall.is_some()
+            && self.world.is_plaza()
+            && !self.spawn_pending
+            && size[0] > 0.0
+            && size[1] > 0.0
+            && self.world.evals_hit_with_entities(
+                size[0] / size[1],
+                x / size[0],
+                y / size[1],
+                &self.presented_entities,
+            )
+    }
+
     fn computer_hit(&self, x: f32, y: f32) -> bool {
         let size = self.lifecycle.viewport().logical_size();
         self.world.is_plaza()
@@ -2853,6 +3090,9 @@ impl Scene {
 #[cfg(test)]
 #[path = "bare_bodies_tests.rs"]
 mod bare_bodies_tests;
+#[cfg(test)]
+#[path = "bare_evals_tests.rs"]
+mod bare_evals_tests;
 #[cfg(test)]
 #[path = "bare_gym_tests.rs"]
 mod bare_gym_tests;
@@ -2885,6 +3125,7 @@ mod tests {
             hdr: false,
             bare: false,
             xp_preview: false,
+            gym_notes: false,
         })
         .unwrap()
     }
@@ -3115,6 +3356,7 @@ mod tests {
             hdr: false,
             bare: false,
             xp_preview: false,
+            gym_notes: false,
         })
         .unwrap()
     }
@@ -3192,6 +3434,7 @@ mod tests {
             hdr: false,
             bare: false,
             xp_preview: false,
+            gym_notes: false,
         })
         .unwrap();
         restored.activate(true).unwrap();
@@ -4084,6 +4327,7 @@ mod tests {
             hdr: false,
             bare: true,
             xp_preview: false,
+            gym_notes: false,
         };
         // Online, it selects the public relay unless another is named.
         let online = Scene::new(config(None, false)).unwrap();
@@ -4188,6 +4432,7 @@ mod tests {
             hdr: false,
             bare: true,
             xp_preview: false,
+            gym_notes: false,
         }
     }
 
@@ -4210,6 +4455,7 @@ mod tests {
             hdr: false,
             bare: true,
             xp_preview: false,
+            gym_notes: false,
         })
         .unwrap();
         scene.activate(true).unwrap();

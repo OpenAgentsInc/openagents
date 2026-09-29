@@ -680,6 +680,9 @@ These are specified in outline and deliberately not in v1:
   suites and results, proposes a joint check, or explains why a tool
   helped one repository and not another, with every claim sourced to
   published records. Chat stays the place where work is started.
+  The board and a first version of the notes shipped with
+  [#9942](https://github.com/OpenAgentsInc/openagents/issues/9942); see
+  [the Gym building](../verse/gym.md#the-evals-board-and-agents-comparing-notes).
 - **Stand-ins for host entries and decision doors**, including
   model-backed responders and recorded replays, once extensions can
   declare host entries.

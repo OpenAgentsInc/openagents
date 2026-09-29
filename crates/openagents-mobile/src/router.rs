@@ -81,6 +81,8 @@ pub(crate) enum Screen {
     Playtest,
     /// Report a problem.
     Report,
+    /// The Gym in the Verse, at its EVALS board: **See the board**.
+    VerseGym,
 }
 
 impl Screen {
@@ -92,6 +94,7 @@ impl Screen {
             "account.keys" => Screen::Keys,
             "account.playtest" => Screen::Playtest,
             "account.report_problem" => Screen::Report,
+            "verse.gym" => Screen::VerseGym,
             _ => return None,
         })
     }
@@ -404,9 +407,17 @@ mod tests {
             "account.playtest",
             "account.report_problem",
             "wallet",
+            "verse.gym",
         ] {
             assert!(Screen::parse(word).is_some(), "{word}");
         }
+        // NIP-CJ's `verse.gym`: See the board.
+        assert_eq!(
+            read(json!({"offer": "open_screen", "screen": "verse.gym", "label": "See the board"})),
+            Some(Offer::OpenScreen {
+                screen: Screen::VerseGym
+            })
+        );
         assert_eq!(
             read(json!({"offer": "open_screen", "screen": "settings.danger"})),
             None

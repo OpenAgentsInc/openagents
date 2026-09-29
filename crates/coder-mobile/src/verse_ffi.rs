@@ -49,6 +49,18 @@ pub struct BareGym {
     /// relay: six throwaway reproductions credited to this player. For
     /// simulator checks only; the world stays offline.
     pub xp_preview: bool,
+    /// The host shows the native EVALS panel for the Gym's EVALS board:
+    /// published eval results and the agents' notes. Without it the board
+    /// stands with its lettering but no tap cue, never opens, and reads
+    /// nothing.
+    pub evals_panel: bool,
+    /// **Compare notes** is on: the player's agent may trade notes about
+    /// published results with other trainers' agents in the Gym.
+    pub notes: bool,
+    /// A `ws://` relay on this machine for the world, for simulator checks
+    /// against local fixtures. Honored only in debug builds, and only with
+    /// a world identity.
+    pub check_relay: Option<String>,
 }
 
 #[cfg(test)]
@@ -100,6 +112,7 @@ pub(crate) fn bare_config_with_gym(
         hdr,
         bare: true,
         xp_preview: gym.xp_preview,
+        gym_notes: gym.notes,
     }
 }
 
@@ -345,12 +358,25 @@ impl VerseHandle {
         if layer.is_null() {
             return Err("No native layer to draw in".into());
         }
-        let (panel, results_panel) = (gym.panel, gym.results_panel);
+        let (panel, results_panel, evals_panel) = (gym.panel, gym.results_panel, gym.evals_panel);
+        let check_relay = match gym.check_relay.clone().filter(|_| cfg!(debug_assertions)) {
+            Some(relay) if presence.is_some() => {
+                coder_connect::RelayPolicy::LoopbackTest
+                    .validate(&relay)
+                    .map_err(|_| "Use a ws:// relay on this machine for checks".to_owned())?;
+                Some(relay)
+            }
+            _ => None,
+        };
         let mut scene = Scene::new(bare_config_with_gym(
             width, height, scale, hdr, presence, gym,
         ))?;
         scene.gym_panel = panel;
         scene.results_panel = results_panel;
+        scene.evals_panel = evals_panel;
+        if check_relay.is_some() {
+            scene.relay = check_relay;
+        }
         create_renderer(layer, scene)
     }
 
@@ -397,6 +423,10 @@ impl VerseHandle {
             &request,
             Request::ResultsView | Request::InteractResults | Request::Results { .. }
         );
+        let include_evals = matches!(
+            &request,
+            Request::EvalsView | Request::InteractEvals | Request::Evals { .. } | Request::GoEvals
+        );
         let clear_error = !matches!(
             &request,
             Request::Frame { .. }
@@ -404,6 +434,7 @@ impl VerseHandle {
                 | Request::Snapshot
                 | Request::GymView
                 | Request::ResultsView
+                | Request::EvalsView
         );
         match self.call(request) {
             Err(error) => self.scene.error = Some(error),
@@ -422,10 +453,13 @@ impl VerseHandle {
         if include_results {
             packet.results_view = self.scene.results_view();
         }
+        if include_evals {
+            packet.evals_view = self.scene.evals_view();
+        }
         let bytes = serde_json::to_vec(&packet)
             .map_err(|_| "Cannot encode native Verse state".to_owned())?;
         if bytes.len()
-            > if include_gym || include_results {
+            > if include_gym || include_results || include_evals {
                 1024 * 1024
             } else {
                 64 * 1024
@@ -452,10 +486,11 @@ impl VerseHandle {
                         renderer.set_atmosphere(self.scene.world.atmosphere())?;
                         self.rendered_zone_revision = self.scene.world.zone_revision;
                     }
-                    let mut mesh = self.scene.world.dynamic_mesh_with_panels(
+                    let mut mesh = self.scene.world.dynamic_mesh_with_boards(
                         true,
                         self.scene.gym_panel,
                         self.scene.results_panel,
+                        self.scene.evals_panel,
                     );
                     let entities = self
                         .scene
@@ -556,6 +591,7 @@ mod tests {
             hdr: false,
             bare: false,
             xp_preview: false,
+            gym_notes: false,
         })
         .unwrap();
         let mut handle = VerseHandle {

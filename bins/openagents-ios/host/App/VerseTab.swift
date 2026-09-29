@@ -3,7 +3,8 @@
 // the Metal layer, the display clock, touches, the motion sensor, and the
 // world key and Gym connection in Keychain; Rust owns the world, the player,
 // the camera, the movement and look sticks, world presence on the relay, the Gym board,
-// the Gym's published results, and every frame.
+// the Gym's published results, its EVALS board and the agents' notes, and every
+// frame.
 import QuartzCore
 import SwiftUI
 import UIKit
@@ -51,6 +52,16 @@ struct WorldPacket: Decodable {
     let results_active: Bool?
     let results_revision: UInt64?
     let results_view: ResultsView?
+    /// The Gym's EVALS board, on the other side of the live board: where it
+    /// is, and whether its panel is open. The panel's screen comes only in
+    /// answer to `evals_view` and the EVALS requests.
+    let evals: GymPacket?
+    let evals_open: Bool?
+    let evals_active: Bool?
+    let evals_revision: UInt64?
+    let evals_view: EvalsView?
+    /// Compare notes is on, for the host to remember.
+    let gym_notes: Bool?
 
     struct GymPacket: Decodable {
         let inside: Bool
@@ -78,6 +89,7 @@ struct WorldPacket: Decodable {
             && ["touch", "motion"].contains(camera_mode) && camera_yaw.isFinite
             && camera_pitch.isFinite && camera_distance.isFinite && camera_distance > 0
             && (gym?.valid ?? true) && (gym_board?.valid ?? true) && (results?.valid ?? true)
+            && (evals?.valid ?? true)
     }
 }
 
@@ -104,6 +116,13 @@ final class VerseWorld: ObservableObject {
     @Published private(set) var resultsAnchor = CGPoint(x: 0.5, y: 0.5)
     @Published private(set) var resultsView: ResultsView?
     private var resultsRequestedRevision: UInt64?
+    /// The EVALS board's panel is open, with the board's anchor on screen.
+    @Published private(set) var evalsOpen = false
+    @Published private(set) var evalsAnchor = CGPoint(x: 0.5, y: 0.5)
+    @Published private(set) var evalsView: EvalsView?
+    private var evalsRequestedRevision: UInt64?
+    /// Where the Compare notes switch is saved between launches.
+    static let gymNotesKey = "verse.gymNotes"
     let motionDriver = DeviceMotionDriver(source: CoreMotionSource())
     var motionAvailable: Bool { motionDriver.available }
     fileprivate weak var surface: VerseWorldView?
@@ -133,6 +152,14 @@ final class VerseWorld: ObservableObject {
     func results(_ command: [String: Any]) {
         send(["action": "results", "command": command])
     }
+
+    /// Sends a choice on the EVALS board to Rust.
+    func evals(_ command: [String: Any]) {
+        send(["action": "evals", "command": command])
+    }
+
+    /// Walks into the Gym before the EVALS board and opens it.
+    func goToEvals() { send(["action": "go_evals"]) }
 
     /// The saved Gym connection for this world key, if any.
     func storedGymCode() -> String? {
@@ -204,6 +231,30 @@ final class VerseWorld: ObservableObject {
                 self.send(["action": "results_view"])
             }
         }
+        let evalsOpen = packet.evals_open == true
+        if self.evalsOpen != evalsOpen { self.evalsOpen = evalsOpen }
+        if evalsOpen, let evals = packet.evals {
+            let anchor = CGPoint(x: evals.screen_x, y: evals.screen_y)
+            if evalsAnchor != anchor { evalsAnchor = anchor }
+        }
+        if !(packet.evals_active == true && evalsOpen) {
+            if evalsView != nil { evalsView = nil }
+            evalsRequestedRevision = nil
+        } else if let view = packet.evals_view {
+            evalsView = view
+            evalsRequestedRevision = view.revision
+        }
+        if evalsOpen, packet.evals_active == true, let revision = packet.evals_revision,
+           evalsView?.revision != revision, evalsRequestedRevision != revision {
+            evalsRequestedRevision = revision
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.evalsOpen else { return }
+                self.send(["action": "evals_view"])
+            }
+        }
+        if let notes = packet.gym_notes, UserDefaults.standard.bool(forKey: Self.gymNotesKey) != notes {
+            UserDefaults.standard.set(notes, forKey: Self.gymNotesKey)
+        }
     }
 
     fileprivate func fail(_ message: String) {
@@ -246,18 +297,24 @@ struct VerseTab: View {
                                     VerseResultsPanel(world: world) { world.send(["action": "close_results"]) }
                                 }
                             }.ignoresSafeArea()
+                        } else if world.evalsOpen {
+                            GeometryReader { full in
+                                anchoredPanel(size: full.size, safe: safe, anchor: world.evalsAnchor) {
+                                    VerseEvalsPanel(world: world) { world.send(["action": "close_evals"]) }
+                                }
+                            }.ignoresSafeArea()
                         }
                     }
                 // Bottom center, between the movement stick at the bottom
                 // left and the look stick at the bottom right.
-                if !world.gymOpen && !world.resultsOpen {
+                if !world.gymOpen && !world.resultsOpen && !world.evalsOpen {
                     controls
                         .padding(.bottom, 12)
                 }
             }
             .overlay(alignment: .top) {
-                // The Gym and results panels show their own errors.
-                if let error = world.error, !world.gymOpen, !world.resultsOpen {
+                // The Gym, results, and EVALS panels show their own errors.
+                if let error = world.error, !world.gymOpen, !world.resultsOpen, !world.evalsOpen {
                     VStack(spacing: 8) {
                         Text(error).font(.callout).textSelection(.enabled)
                             .accessibilityIdentifier("verse-error")
@@ -321,6 +378,14 @@ struct VerseTab: View {
                 .disabled(!active)
                 .accessibilityLabel("Recenter camera")
                 .accessibilityIdentifier("verse-motion-recenter")
+                // Straight to the Gym's EVALS board, without steering there.
+                Button { world.goToEvals() } label: {
+                    Image(systemName: "checklist").frame(width: 44, height: 44)
+                }
+                .disabled(!active)
+                .accessibilityLabel("Gym results board")
+                .accessibilityHint("Walks you into the Gym and opens its EVALS board.")
+                .accessibilityIdentifier("verse-go-evals")
             }
         }
     }
@@ -373,8 +438,14 @@ final class VerseWorldView: UIView {
     fileprivate private(set) var latestGym: WorldPacket.GymPacket?
     /// The RESULTS board's place on screen in the last packet.
     fileprivate private(set) var latestResults: WorldPacket.GymPacket?
+    /// The EVALS board's place on screen in the last packet.
+    fileprivate private(set) var latestEvals: WorldPacket.GymPacket?
     private var gymAccessible = false
     private var resultsAccessible = false
+    private var evalsAccessible = false
+    /// A chat card's See the board asked for the EVALS board; it opens on
+    /// the next running frame.
+    static var pendingGoEvals = false
 
     init(world: VerseWorld) {
         self.world = world
@@ -467,6 +538,10 @@ final class VerseWorldView: UIView {
             if let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first {
                 configuration["results_cache_directory"] = caches.path
             }
+            // Compare notes, as the player last left it; off until switched on.
+            configuration["gym_notes"] = UserDefaults.standard.bool(forKey: VerseWorld.gymNotesKey)
+                || Self.launchGymNotes
+            if let relay = Self.checkRelay { configuration["check_relay"] = relay }
             guard let data = try? JSONSerialization.data(withJSONObject: configuration) else { return }
             handle = data.withUnsafeBytes {
                 openagents_verse_create(Unmanaged.passUnretained(metal).toOpaque(),
@@ -530,9 +605,35 @@ final class VerseWorldView: UIView {
         guard running, window != nil else { return }
         autoreleasepool {
             pollMotion(now: CACurrentMediaTime())
+            if Self.pendingGoEvals, send(["action": "go_evals"])?.evals_open == true {
+                Self.pendingGoEvals = false
+            }
             script?.step(self, bounds: bounds.size, insets: insets)
             send(["action": "frame", "timestamp": link.timestamp, "headroom": currentHeadroom()])
         }
+    }
+
+    /// `--check-relay ws://127.0.0.1:<port>`: the world on a relay on this
+    /// machine, for simulator checks against local fixtures.
+    private static var checkRelay: String? {
+        #if DEBUG || targetEnvironment(simulator)
+        let arguments = ProcessInfo.processInfo.arguments
+        guard let index = arguments.firstIndex(of: "--check-relay"), index + 1 < arguments.count else {
+            return nil
+        }
+        return arguments[index + 1]
+        #else
+        return nil
+        #endif
+    }
+
+    /// `--gym-notes`: start with Compare notes on, for simulator checks.
+    private static var launchGymNotes: Bool {
+        #if DEBUG || targetEnvironment(simulator)
+        ProcessInfo.processInfo.arguments.contains("--gym-notes")
+        #else
+        false
+        #endif
     }
 
     private static var gymPreview: Bool {
@@ -572,6 +673,7 @@ final class VerseWorldView: UIView {
         syncMotion(packet)
         latestGym = packet.gym
         latestResults = packet.results
+        latestEvals = packet.evals
         updateGymAccessibility(packet)
         observe(packet)
         return packet
@@ -602,14 +704,18 @@ final class VerseWorldView: UIView {
     /// VoiceOver opens the Gym board and the RESULTS board with the same
     /// checks as a tap on them.
     private func updateGymAccessibility(_ packet: WorldPacket) {
-        let panelOpen = packet.gym_open == true || packet.results_open == true
+        let panelOpen = packet.gym_open == true || packet.results_open == true || packet.evals_open == true
         let available = running && packet.gym_active == true && packet.gym?.inside == true
             && packet.gym?.near == true && packet.gym?.visible == true && !panelOpen
         let results = running && packet.results_active == true && packet.results?.inside == true
             && packet.results?.near == true && packet.results?.visible == true && !panelOpen
-        guard available != gymAccessible || results != resultsAccessible else { return }
+        let evals = running && packet.evals_active == true && packet.evals?.inside == true
+            && packet.evals?.near == true && packet.evals?.visible == true && !panelOpen
+        guard available != gymAccessible || results != resultsAccessible || evals != evalsAccessible
+        else { return }
         gymAccessible = available
         resultsAccessible = results
+        evalsAccessible = evals
         var actions: [UIAccessibilityCustomAction] = []
         if available {
             actions.append(UIAccessibilityCustomAction(name: "Open Gym board", target: self,
@@ -619,7 +725,16 @@ final class VerseWorldView: UIView {
             actions.append(UIAccessibilityCustomAction(name: "Open results board", target: self,
                                                        selector: #selector(openResultsAccessibly)))
         }
+        if evals {
+            actions.append(UIAccessibilityCustomAction(name: "Open evals board", target: self,
+                                                       selector: #selector(openEvalsAccessibly)))
+        }
         accessibilityCustomActions = actions
+    }
+
+    @objc private func openEvalsAccessibly() -> Bool {
+        guard running, evalsAccessible else { return false }
+        return send(["action": "interact_evals"])?.evals_open == true
     }
 
     @objc private func openResultsAccessibly() -> Bool {
@@ -784,7 +899,9 @@ final class VerseWorldView: UIView {
 /// `results` taps the RESULTS board beside it (`walk,walk,walk,right`
 /// first), `r=do:value` sends a results choice (`r=board:<id>`,
 /// `r=attempt:<id>`, `r=filter:beats`, `r=caveats`, `r=trace`,
-/// `r=tab:agent`, `r=step`, `r=seek:0.5`, `r=play`, `r=back`), and `wait`
+/// `r=tab:agent`, `r=step`, `r=seek:0.5`, `r=play`, `r=back`), `evals` taps
+/// the EVALS board (`walk,walk,walk,left` first), `goevals` walks straight to
+/// it as See the board does, `e=notes:on` switches Compare notes, and `wait`
 /// does nothing for a step.
 /// Debug and simulator builds only.
 @MainActor
@@ -861,6 +978,18 @@ private final class VerseWorldScript {
                 let at = CGPoint(x: results.screen_x * bounds.width, y: results.screen_y * bounds.height)
                 view.pointer(pointer, phase: t == 0 ? "down" : "up", at: at)
             }
+        case ("left", 0): view.pointer(pointer, phase: "down", at: stick)
+        case ("left", 1): view.pointer(pointer, phase: "move", at: CGPoint(x: stick.x - 56, y: stick.y))
+        case ("left", 40): view.pointer(pointer, phase: "up", at: CGPoint(x: stick.x - 56, y: stick.y))
+        case ("evals", 0), ("evals", 2):
+            if let evals = view.latestEvals {
+                let at = CGPoint(x: evals.screen_x * bounds.width, y: evals.screen_y * bounds.height)
+                view.pointer(pointer, phase: t == 0 ? "down" : "up", at: at)
+            }
+        case ("goevals", 0): view.send(["action": "go_evals"])
+        case ("closeevals", 0): view.send(["action": "close_evals"])
+        case (let choice, 0) where choice.hasPrefix("e=notes:"):
+            view.send(["action": "evals", "command": ["do": "notes", "on": choice.hasSuffix(":on")]])
         case (let choice, 0) where choice.hasPrefix("r="):
             view.send(["action": "results", "command": Self.resultsCommand(String(choice.dropFirst(2)))])
         case ("board", 0), ("board", 2):

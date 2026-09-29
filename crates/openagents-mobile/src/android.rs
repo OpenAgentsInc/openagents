@@ -198,6 +198,11 @@ impl SurfaceConfig {
             results_base: self.results_base.clone(),
             results_cache_directory: self.results_cache_directory.clone(),
             xp_preview: self.xp_preview && cfg!(debug_assertions),
+            // The Android host has no native EVALS panel yet: the board
+            // stands lettered, never opens, and reads nothing.
+            evals_panel: false,
+            notes: false,
+            check_relay: None,
         })
     }
 }

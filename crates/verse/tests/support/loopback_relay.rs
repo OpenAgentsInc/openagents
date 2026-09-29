@@ -108,7 +108,7 @@ fn matches(event: &Event, filter: &Value) -> bool {
     listed("ids", json!(event.id))
         && listed("authors", json!(event.pubkey))
         && listed("kinds", json!(event.kind))
-        && ["w", "c", "d", "p", "h"].iter().all(|key| {
+        && ["w", "c", "d", "p", "h", "t", "z", "e"].iter().all(|key| {
             filter[format!("#{key}")].as_array().is_none_or(|wanted| {
                 event
                     .tag_values(key)

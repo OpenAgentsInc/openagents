@@ -786,6 +786,13 @@ impl WorldRuntime {
         self.board_state(aspect, self.results_site(), world::GYM_RESULTS_BOARD)
     }
 
+    /// As [`Self::results`], for the Grid's EVALS board on the other side of
+    /// the central board.
+    #[must_use]
+    pub fn evals(&self, aspect: f32) -> Gym {
+        self.board_state(aspect, self.results_site(), world::GYM_EVALS_BOARD)
+    }
+
     fn board_state(&self, aspect: f32, site: Option<world::GymSite>, local: Vec3) -> Gym {
         let position = self.player.pos;
         let inside = site.is_some_and(|site| site.inside(position));
@@ -845,6 +852,21 @@ impl WorldRuntime {
                 self.results_site(),
                 world::GYM_RESULTS_SCREEN,
                 world::GYM_RESULTS_HALF,
+                entities,
+            )
+    }
+
+    /// Pick the Grid's EVALS board front from inside its reach, with the
+    /// same unobstructed-view rule as the central board.
+    #[must_use]
+    pub fn evals_hit_with_entities(&self, aspect: f32, x: f32, y: f32, entities: &Mesh) -> bool {
+        self.evals(aspect).near
+            && self.board_hit(
+                aspect,
+                [x, y],
+                self.results_site(),
+                world::GYM_EVALS_SCREEN,
+                world::GYM_EVALS_HALF,
                 entities,
             )
     }
@@ -915,6 +937,19 @@ impl WorldRuntime {
     /// board's tap cue for a host that opens its panel.
     #[must_use]
     pub fn dynamic_mesh_with_panels(&self, computer: bool, gym: bool, results: bool) -> Mesh {
+        self.dynamic_mesh_with_boards(computer, gym, results, false)
+    }
+
+    /// As [`Self::dynamic_mesh_with_panels`], with the Grid's EVALS board's
+    /// tap cue for a host that opens its panel.
+    #[must_use]
+    pub fn dynamic_mesh_with_boards(
+        &self,
+        computer: bool,
+        gym: bool,
+        results: bool,
+        evals: bool,
+    ) -> Mesh {
         if self.bare && self.is_plaza() {
             // The player, the ball and blocks, and the portal to Lagrange 1
             // (hidden for now; see `zones::gate::GRID_PORTAL_OPEN`), on the
@@ -938,6 +973,10 @@ impl WorldRuntime {
             display.extend(&world::results_display(
                 world::GymSite::GRID,
                 results.then_some(self.results(1.0).near),
+            ));
+            display.extend(&world::evals_display(
+                world::GymSite::GRID,
+                evals.then_some(self.evals(1.0).near),
             ));
             display.neutralize();
             player.extend(&display);
@@ -1269,6 +1308,7 @@ mod tests {
                 + world::results_display(world::GymSite::GRID, None)
                     .faces
                     .len()
+                + world::evals_display(world::GymSite::GRID, None).faces.len()
         );
         assert!(!mesh.lit.is_empty());
         // Walking keeps the eye on the head.
@@ -1871,6 +1911,73 @@ mod tests {
         assert!(!plaza.results(1.0).inside);
         let [x, y] = projected(&plaza, 1.0, world::GYM_RESULTS_SCREEN);
         assert!(!plaza.results_hit_with_entities(1.0, x, y, &Mesh::default()));
+    }
+
+    #[test]
+    fn the_grids_evals_board_picks_apart_from_the_other_boards_and_only_in_the_grid() {
+        let mut runtime = WorldRuntime::bare();
+        let site = world::GymSite::GRID;
+        // Inside the hall, facing the boards from the EVALS side.
+        let stand = site.point(Vec3::new(54.0, 0.0, -2.8));
+        runtime
+            .set_spawn(stand, site.yaw_of(std::f32::consts::FRAC_PI_2))
+            .unwrap();
+        let screen = site.point(world::GYM_EVALS_SCREEN);
+        let mut picked = 0;
+        for aspect in [0.46, 1.0, 2.2] {
+            let evals = runtime.evals(aspect);
+            assert!(evals.inside && evals.near, "{evals:?}");
+            let [x, y] = projected(&runtime, aspect, screen);
+            if !((0.0..=1.0).contains(&x) && (0.0..=1.0).contains(&y)) {
+                continue;
+            }
+            picked += 1;
+            assert!(runtime.evals_hit_with_entities(aspect, x, y, &Mesh::default()));
+            assert!(
+                !runtime.gym_hit(aspect, x, y),
+                "the EVALS board isn't the live board"
+            );
+            assert!(!runtime.results_hit_with_entities(aspect, x, y, &Mesh::default()));
+            let [x, y] = projected(&runtime, aspect, site.point(world::GYM_BOARD_SCREEN));
+            assert!(!runtime.evals_hit_with_entities(aspect, x, y, &Mesh::default()));
+        }
+        assert!(picked > 0, "the board is on screen in some aspect");
+        // Its lettering and cue stand on its face, and the tap cue shows
+        // only for a host that opens it.
+        let display = world::evals_display(site, Some(true));
+        assert!(!display.faces.is_empty());
+        // Every letter of its label draws: EVALS once missed its V.
+        for letter in world::GYM_BOARD_LABELS.iter().flat_map(|l| l.bytes()) {
+            assert!(
+                letter == b' ' || world::has_glyph(letter),
+                "{}",
+                letter as char
+            );
+        }
+        for vertex in &display.faces {
+            let local = site.local(Vec3::from(vertex.pos)) - world::GYM_EVALS_SCREEN;
+            assert!(local.x.abs() < 1e-3 && local.z.abs() < world::GYM_EVALS_HALF[0]);
+            assert!(local.y.abs() < world::GYM_EVALS_HALF[1]);
+        }
+        assert!(
+            runtime
+                .dynamic_mesh_with_boards(false, false, false, true)
+                .faces
+                .len()
+                > runtime
+                    .dynamic_mesh_with_panels(false, false, false)
+                    .faces
+                    .len()
+        );
+        runtime.set_spawn(world::SPAWN, 0.0).unwrap();
+        assert!(!runtime.evals(1.0).near);
+        let mut plaza = WorldRuntime::new();
+        plaza
+            .set_spawn(Vec3::new(54.0, 0.0, -2.8), std::f32::consts::FRAC_PI_2)
+            .unwrap();
+        assert!(!plaza.evals(1.0).inside);
+        let [x, y] = projected(&plaza, 1.0, world::GYM_EVALS_SCREEN);
+        assert!(!plaza.evals_hit_with_entities(1.0, x, y, &Mesh::default()));
     }
 
     #[test]

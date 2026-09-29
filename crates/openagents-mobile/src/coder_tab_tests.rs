@@ -1523,6 +1523,23 @@ fn offers_become_the_phones_own_controls() {
     assert_eq!(chip["icon"]["glyph"], "wallet");
     fixture.tap("coder-screen-0");
     assert_eq!(fixture.coder.take_go(), Some(crate::coder_tab::Go::Wallet));
+
+    // A result card's See the board opens the Gym in the Verse, in the
+    // phone's own words.
+    fixture.say("Who else tested Code finder?");
+    hand.route(&[
+        json!({"v": 2, "type": "offer", "offer": "open_screen", "screen": "verse.gym",
+        "label": "Walk to the Gym"}),
+    ]);
+    hand.say("Two trainers published results on that test set.", true);
+    let chat = fixture.render();
+    let chip = &node(&chat, "coder-screen-0").expect("board chip")["element"]["props"];
+    assert_eq!(chip["label"], "See the board");
+    fixture.tap("coder-screen-0");
+    assert_eq!(
+        fixture.coder.take_go(),
+        Some(crate::coder_tab::Go::VerseGym)
+    );
 }
 
 #[test]
