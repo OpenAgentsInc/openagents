@@ -1,8 +1,12 @@
 # Test-time compute, and the capabilities we can add at test time
 
-Essay, 2026-09-29. It states a thesis and proposes vocabulary. Every claim
-about our system links the code or the dated record behind it. Where
-something is a plan or a hypothesis, the text says so.
+Essay, 2026-09-29. It states a thesis and proposes vocabulary. It has three
+parts. [Part I](#part-i-the-concept) states the concept in general terms,
+for anyone building agents; it names no product of ours. [Part II](#part-ii-our-implementation)
+says how OpenAgents implements it and what we've measured; every claim
+there links the code or the dated record behind it. [Part III](#part-iii-what-well-measure-next)
+lists our own open problems. Where something is a plan or a hypothesis, the
+text says so.
 
 ## TL;DR
 
@@ -10,47 +14,49 @@ something is a plan or a hypothesis, the text says so.
   answers, not when it's trained: longer reasoning, many samples with a
   checker picking the best, or search. The published work is clear that
   this helps, often a lot.
-- **Our claim goes one step further.** An agent can also *gain abilities*
-  while it runs, without anyone retraining its weights: we admit a tool, a
-  plugin, a skill, a knowledge entry, or another agent into the run. We call
-  what it gains a **test-time capability**.
-- **We only call something a test-time capability after a
-  with-and-without test shows Coder does better with it.** We run the same
-  tests with the tool and without it. That result is what the Gym's gate
-  rates **Better** ([`ext-eval-v2`](../../crates/gym/gates/ext-eval-v2.json),
-  [NIP-EVAL](../../nips/openagents/NIP-EVAL.md#extension-evaluation-profile)),
-  what another trainer's [check](../../nips/openagents/NIP-EVAL.md#checks)
-  confirms before XP is paid
-  ([NIP-XP `eval-check`](../../nips/openagents/NIP-XP.md#eval-check)), and
-  what [adoption](../../nips/openagents/NIP-EVAL.md#adoption) into every
-  Coder's defaults requires (**Better** plus three confirming checks by
-  distinct trainers). Installing a tool, describing it, or demoing it
-  doesn't do any of those.
-- **Cheap judgments come before expensive thinking.** A typed judgment from
-  Jev takes about 0.15 to 0.26 seconds. It decides whether a turn needs a
-  full model at all. A prepared answer reaches the phone in 0.62 to 0.70
-  seconds; a full model answer takes 3 to 5 seconds.
-- **Proven capabilities can be shared.** When a tool's result is confirmed
-  by other trainers, it becomes a candidate for Coder's defaults, and every
-  Coder would then start with it. That is how we intend network effects to
-  make Coder better. It is a hypothesis we are measuring, not a result yet.
-- **The words we propose** are in [a short lexicon](#a-lexicon-of-test-time-capabilities)
-  below, and in the [glossary](../glossary.md#test-time-capabilities).
+- **Test-time capabilities go one step further.** An agent can also *gain
+  abilities* while it runs, without anyone retraining its weights, when a
+  tool, a plugin, a skill, a knowledge entry, or another agent is admitted
+  into the run.
+- **Something is a test-time capability only if a controlled comparison
+  shows it.** The same tests are run with and without it, and the agent
+  does measurably better with it. Having it installed, described, or
+  demonstrated is not evidence.
+- **Cheap judgments should come before expensive thinking,** and results
+  others have reproduced can be shared, so that capabilities compound across
+  a network of people and agents. Both are stated as hypotheses to measure.
+- **We built an implementation** in OpenAgents, with first measurements and
+  no adoption yet; Part II has it, term by term. The words are also in the
+  [glossary](../glossary.md#test-time-capabilities).
 
 ## Contents
 
-- [What test-time compute is](#what-test-time-compute-is)
-- [Why it matters](#why-it-matters)
-- [The thesis: capability is something you can acquire at test time](#the-thesis-capability-is-something-you-can-acquire-at-test-time)
-- [A lexicon of test-time capabilities](#a-lexicon-of-test-time-capabilities)
-- [Evals are the unit of account](#evals-are-the-unit-of-account)
-- [The economics: cheap judgments before expensive thinking](#the-economics-cheap-judgments-before-expensive-thinking)
-- [The collective: how capabilities compound](#the-collective-how-capabilities-compound)
-- [How the protocol carries test-time capabilities](#how-the-protocol-carries-test-time-capabilities)
-- [Open problems and what we measure next](#open-problems-and-what-we-measure-next)
+- [Part I: The concept](#part-i-the-concept)
+  - [What test-time compute is](#what-test-time-compute-is)
+  - [Why it matters](#why-it-matters)
+  - [The thesis: capability is something you can acquire at test time](#the-thesis-capability-is-something-you-can-acquire-at-test-time)
+  - [A lexicon of test-time capabilities](#a-lexicon-of-test-time-capabilities)
+  - [Evals as the unit of account](#evals-as-the-unit-of-account)
+  - [Cheap judgments before expensive thinking](#cheap-judgments-before-expensive-thinking)
+  - [How capabilities compound across a network](#how-capabilities-compound-across-a-network)
+  - [Open questions for the field](#open-questions-for-the-field)
+- [Part II: Our implementation](#part-ii-our-implementation)
+  - [Where each term lives in OpenAgents](#where-each-term-lives-in-openagents)
+  - [What "is a capability" means in our system](#what-is-a-capability-means-in-our-system)
+  - [Each term in OpenAgents](#each-term-in-openagents)
+  - [Our evals in practice](#our-evals-in-practice)
+  - [Our numbers: judgments before thinking](#our-numbers-judgments-before-thinking)
+  - [Our collective: Coder, the Gym, and Verse](#our-collective-coder-the-gym-and-verse)
+  - [How the protocol carries test-time capabilities](#how-the-protocol-carries-test-time-capabilities)
+- [Part III: What we'll measure next](#part-iii-what-well-measure-next)
 - [References](#references)
 
-## What test-time compute is
+## Part I: The concept
+
+This part is vendor-neutral. It uses no product names, and none of our
+numbers; Part II has those.
+
+### What test-time compute is
 
 A language model's quality used to be discussed almost entirely in terms of
 training: more parameters, more data, more training compute. *Test-time
@@ -95,7 +101,7 @@ question. The literature has converged on a few families.
   it improved accuracy up to sixfold over the base fine-tuned model
   ([Akyürek et al., 2024](https://arxiv.org/abs/2411.07279)).
 
-## Why it matters
+### Why it matters
 
 Test-time compute changes what "a better model" means. A fixed set of
 weights can answer better if the system around it spends more, and more
@@ -108,34 +114,369 @@ wisely, per question. Two lessons from that work shape everything below.
    long chain of thought; hard ones do. The allocation decision is itself a
    judgment, and it should cost far less than the work it allocates.
 
-Both lessons generalize past tokens. Most of the work in this repository is
-about the *system* around a model: what it's allowed to use, who decides
-what to use, and how we know it helped.
+Both lessons generalize past tokens, to the *system* around a model: what
+it's allowed to use, who decides what to use, and how anyone knows it
+helped.
 
-## The thesis: capability is something you can acquire at test time
+### The thesis: capability is something you can acquire at test time
 
 The test-time compute literature mostly asks how to get more out of one
-model by letting it think more. We ask a second question: **what can an
+model by letting it think more. A second question follows: **what can an
 agent become able to do, at the moment it runs, without anyone retraining
 it?**
 
 A coding agent that can't see a repository can't answer "what's the largest
 file here?" no matter how long it thinks. Give it a tool that maps the
 repository, and it can. The weights didn't change; the agent's capability
-did. The same is true of a checked-in guide it reads before a task, a
+did. The same is true of a written guide it reads before a task, a
 knowledge entry about a recurring mistake, or a stronger agent it hands a
 well-prepared briefing to. Tool use as a learned behavior is well studied
 ([Schick et al., 2023](https://arxiv.org/abs/2302.04761)), as are skill
 libraries an agent grows as it works
 ([Wang et al., 2023](https://arxiv.org/abs/2305.16291)) and retrieval that
 brings documents into generation
-([Lewis et al., 2020](https://arxiv.org/abs/2005.11401)). What we add is a
-discipline for treating each of these as a measured, shareable unit.
+([Lewis et al., 2020](https://arxiv.org/abs/2005.11401)). What this essay
+adds is a discipline for treating each of these as a measured, shareable
+unit.
 
-We define a **test-time capability** as an ability an agent gains at
-inference time, without a weight update, by admitting something into the
-run, and whose effect is shown by a test with and without it. We have five
-ways to acquire one, all built:
+A **test-time capability** is an ability an agent gains at inference time,
+without a weight update, by admitting something into the run. Something is
+a test-time capability only if a controlled comparison, the same tests run
+with and without it, shows the agent does measurably better with it.
+Having it installed, described, or demonstrated is not evidence. There are
+five general sources:
+
+| Source | What gets admitted |
+| --- | --- |
+| Tools and plugins | Code with typed operations and bounded access to the host, or a program that runs it |
+| Skills | A written guide the agent reads before a task |
+| Knowledge | Cited entries (methods, edge cases, known mistakes) retrieved and filtered for the task |
+| Delegation | Another agent, briefed with selected evidence |
+| Typed judgment | A fast, cheap decision that picks which of the above to use, and when |
+
+The last row is the one that makes the others usable. An agent with fifty
+tools and no good way to decide which to use is worse than an agent with
+none. A typed judgment answers a typed question (yes or no, a choice among
+options, an ordered score) with probabilities, and ordinary code decides
+what those probabilities cause; the judge writes no text and grants no
+authority. The idea borrows the fast, automatic "System 1" of Kahneman's
+*Thinking, Fast and Slow* (2011); the slow, effortful work is left to the
+generator.
+
+### A lexicon of test-time capabilities
+
+We propose ten terms. Each has a way to be wrong. We tried to keep the list
+short; a term earns a place only if it changes what someone building or
+evaluating an agent does. Each entry says what the term is, why it
+matters, and how anyone would measure it.
+
+#### 1. Test-time capability (TTCap)
+
+**Definition:** an ability an agent gains or loses at inference time,
+without updating weights, because a component was admitted to the run, and
+whose effect a controlled comparison shows: the same tests, run with the
+component and without it.
+
+**Why it matters:** it separates what a component *is* from what it
+*does* for a particular agent. A component with no such comparison yet is a
+*candidate* capability, not a capability.
+
+**How to measure it:** a with-and-without evaluation on tests written for
+what the component claims to help with.
+
+#### 2. Capability admission
+
+**Definition:** the host's decision that a specific, locked version of a
+component may take part in a run.
+
+**Why it matters:** a result is only meaningful about the exact bytes it
+measured. Discovering, installing, enabling, granting access to, and
+admitting a component are separate decisions; installing one should grant
+nothing.
+
+**How to measure it:** record a digest of the locked component set in every
+result, so a result names exactly what it measured.
+
+#### 3. Capability delta
+
+**Definition:** the difference in outcome between the *with* arm (the
+component admitted) and the *without* arm (nothing admitted), on the same
+tests, repeated enough times to see the spread.
+
+**Why it matters:** it is the size of the capability. It holds only for
+the baseline it was measured against: a tool can add a lot to an agent that
+otherwise can't see the files, and little to one that can.
+
+**How to measure it:** run both arms on the same tests several times, and
+let a written rule decide the verdict, for example "better only if more
+tests pass and the gain clears the spread between repeats, with cost and
+time within a stated bound."
+
+#### 4. Reach and restraint
+
+**Definition:** *reach* is how often the agent actually uses a capability
+when a test says it should; *restraint* is how often it leaves the
+capability alone when a test says it shouldn't.
+
+**Why it matters:** an installed capability the agent never invokes
+changes no outcome, so it measures as no capability at all. One it invokes
+everywhere can make unrelated work worse.
+
+**How to measure it:** mark each test should-use or should-not-use, and
+report outcomes per test in both arms.
+
+#### 5. Judgment budget
+
+**Definition:** the time and money a system spends deciding *how* to answer
+before it spends anything on answering. The judgment must be much cheaper
+than the work it can avoid.
+
+**Why it matters:** it is the per-question allocation lesson of test-time
+compute, applied one level up: before allocating thinking, decide whether
+the turn needs a large model at all, and which capability should handle it.
+
+**How to measure it:** the judgment's latency and cost, and the precision of
+whatever it serves without calling the large model.
+
+#### 6. Test-time delegation
+
+**Definition:** acquiring another agent's capability for one task by
+handing it a prepared briefing, then recording what it did as part of the
+same task.
+
+**Why it matters:** the strongest capability available for a task is
+sometimes another agent. Treating it as a capability means its
+contribution is measured, not assumed.
+
+**How to measure it:** the same outcome, cost, and time as any attempt,
+compared with the attempt made without delegating.
+
+#### 7. Verified capability
+
+**Definition:** a capability whose favorable verdict was reproduced by
+someone other than the person who first ran it: a different evaluator, the
+same test set version, the same component version.
+
+**Why it matters:** confidence should come from reproduction by someone
+else, not from the author's report. Reproduction is the verifier that
+decides which claims deserve to spread.
+
+**How to measure it:** an independent rerun that publishes its own result,
+citing the original, and confirms on a matching verdict or disputes
+otherwise, with both kept visible.
+
+#### 8. Capability adoption
+
+**Definition:** making a verified capability part of the agent everyone
+starts with.
+
+**Why it matters:** adoption is how one person's reproduced result becomes
+every user's default, without a training run.
+
+**How to measure it:** whether the adopted capability keeps its delta on
+tests its author didn't write, and whether the whole default set still
+performs as well together.
+
+#### 9. Capability credit
+
+**Definition:** recognition that goes to the people whose work made a
+capability real, and only for the events that show it was used.
+
+**Why it matters:** credit for activity (runs, publishes, downloads)
+rewards components that exist; credit for independent confirmation and
+adoption rewards components that help.
+
+**How to measure it:** credit records that anyone can recompute from the
+public confirmation and adoption events.
+
+#### 10. The capability flywheel
+
+**Definition:** the loop in which people add capabilities, tests prove
+them, others confirm them, and adoption hands them to every agent, which
+then takes on harder tasks that reveal the next missing capability.
+
+**Why it matters:** it is the mechanism by which a network of contributors
+could improve an agent faster than one team can.
+
+**How to measure it:** not participant counts, but *incremental
+out-of-sample verified passes per adopted contribution*, with cost,
+latency, and harmful regressions reported alongside.
+
+### Evals as the unit of account
+
+If capabilities are acquired and shared, something has to decide which ones
+actually improve an agent's results. The proposal is that a
+per-component, with-and-without evaluation plays that role, and three of
+its properties do most of the work.
+
+- **Two arms, not one score.** A benchmark score tells you how an agent did.
+  A with-and-without result tells you what one component changed. That is
+  the thing you'd want to share, adopt, or pay attention to.
+- **A written rule gives the verdict.** The rule is a versioned file, and
+  every result carries the digest of the rule that judged it. Rules have
+  bugs too; when one is replaced, old results keep their old digest and stay
+  readable.
+- **Others can rerun it.** A published test set, a published result, and
+  the exact component versions let someone else rerun the evaluation and
+  confirm or dispute it.
+
+Why this is more useful than chasing a leaderboard: a leaderboard rewards
+one system on one fixed task set, and it rewards fitting that set. A
+per-component eval asks a narrower question with a clearer answer: *does
+this thing help, where, and at what cost?* Benchmarks remain how an agent
+is checked as a whole; evals are how to decide what goes into it.
+
+Evals also have failure modes. A grader is a piece of software and can be
+wrong, which can flip a verdict by chance. It deserves the same scrutiny,
+and the same versioning, as the component under test.
+
+### Cheap judgments before expensive thinking
+
+Test-time compute costs money and time. The literature's answer is to
+allocate it per question. The same idea applies one level up: before
+allocating *thinking*, decide whether the turn needs a large model at all,
+and which capability should handle it. A system can offer a ladder of
+answers at rising cost: a prepared answer, a prepared answer finished by a
+small model, an answer grounded in a knowledge base, the full model, and a
+hand-off to an agent with a computer.
+
+Three principles follow. They are design principles, and the third is a
+hypothesis to test.
+
+1. **Never wrong fast.** A prepared answer should be served only when the
+   judgment clears thresholds tuned for precision. A fast answer to the
+   wrong question is worse than a slow right one, so a cheap tier is gated
+   on measured precision, not on confidence alone.
+2. **Spend the big model where it adds something.** Identity questions,
+   small talk, and questions with reviewed answers don't need it. Requests
+   for work need a computer, not a model's guess at doing the work in
+   chat.
+3. **Capability can substitute for compute.** A tool that answers directly
+   can beat a model that must search for the answer, on both time and
+   correctness. Time and cost belong in the report as notes, never as the
+   verdict, because a faster wrong answer isn't a capability.
+
+### How capabilities compound across a network
+
+Test-time capabilities make network effects possible in principle. Weights
+improve when a lab trains them, on the lab's schedule. A test-time
+capability can come from anyone, be tested by anyone, and, once adopted,
+reach every agent that uses the same defaults without a training run. The
+unit that compounds is not a longer prompt or a count of packages. It is a
+**reusable improvement with independent evidence**: an exact component
+version, a with-and-without result, and confirming reruns by people who
+didn't write it.
+
+What a network would add:
+
+- **More sources of capability.** Different people bring different task
+  families, libraries, and environments, and write tools and tests for the
+  work they know.
+- **More verification.** Reruns by other evaluators turn one person's claim
+  into a reproduced result. That is the verifier the test-time compute
+  literature says extra effort depends on, supplied by people instead of a
+  reward model.
+- **Inheritance.** Adoption turns one confirmed result into a default for
+  everyone, and inspectable run traces let anyone see what happened.
+- **Credit that tracks use.** Recognition for confirmations and adoptions,
+  the two events that show someone else's work was used, keeps the
+  incentive on components that help rather than components that exist.
+
+This is a hypothesis. Whether adding participants makes an agent
+measurably better has to be shown, measured the way the lexicon says.
+
+### Open questions for the field
+
+- **Durability of adoption.** Does an adopted capability keep its delta on
+  tests its author didn't write?
+- **Reach.** How should capabilities be described to the judgment that
+  picks them, so the agent reaches for them when it should? This may be the
+  cheapest gain available.
+- **Deltas depend on the baseline.** A capability measured against a weak
+  baseline can shrink against a strong one. Which baseline should a shared
+  result be measured against?
+- **Interaction effects.** Two capabilities that each help alone can
+  interfere together. Adoption needs a regression check across the whole
+  default set, not only a check of the newcomer.
+- **Cost.** Every result should carry a price for both arms, not a guess.
+- **Statistical power.** A handful of tests and repeats is enough to see a
+  large change and too few to see a small one. Test sets need to grow as the
+  deltas people care about shrink.
+- **Grader quality.** Graders are code and make mistakes. How should they
+  be checked the way results are?
+- **Compute and capability together.** How do test-time capabilities
+  interact with more thinking? Can a tool let a cheaper model with less
+  reasoning match a stronger one, and when does extra reasoning still pay on
+  top of a tool?
+- **Network evidence.** Does the flywheel turn? Its measure, incremental
+  out-of-sample verified passes per adopted contribution, should be reported
+  even when it's zero.
+
+## Part II: Our implementation
+
+This part is about OpenAgents. It says how we implement each term in Part
+I, what we've measured, and what "is a capability" concretely decides in
+our system. Every claim links the code or the dated record behind it.
+
+### Where each term lives in OpenAgents
+
+Status is the mechanism's, as the
+[glossary](../glossary.md#test-time-capabilities) records it.
+
+| Concept | Our component, crate, or doc | NIP and kinds | Status |
+| --- | --- | --- | --- |
+| [Test-time capability](#1-test-time-capability-ttcap) | Extensions (tool, plugin, skill, package) admitted to a Coder turn; [Wasm plugins](../extensions/plugins.md), `crates/plugin`; [extension eval](../extensions/evaluation.md) | [NIP-EXT](../../nips/openagents/NIP-EXT.md) `3184`, [NIP-EVAL](../../nips/openagents/NIP-EVAL.md#extension-evaluation-profile) `3189` | Implemented |
+| [Capability admission](#2-capability-admission) | [Extension architecture](../extensions/architecture.md); eval run locks | [NIP-EXT](../../nips/openagents/NIP-EXT.md#listings-updates-and-installation), [NIP-CAP](../../nips/openagents/NIP-CAP.md#description-binding-and-grant), [NIP-RUN](../../nips/openagents/NIP-RUN.md#record-types) `3187` | Partial |
+| [Capability delta](#3-capability-delta) | `openagents ext eval`, the hosted runner, the [`ext-eval-v2` gate](../../crates/gym/gates/ext-eval-v2.json) | [NIP-EVAL reports](../../nips/openagents/NIP-EVAL.md#reports) | Implemented |
+| [Reach and restraint](#4-reach-and-restraint) | Should-fire and should-not-fire cases in every [suite](../extensions/evaluation.md) | [NIP-EVAL suites](../../nips/openagents/NIP-EVAL.md#suites) | Implemented |
+| [Judgment budget](#5-judgment-budget) | Jev and the [chat router](../coder/design/2026-09-28-chat-router.md), tiers T0 to T4 | [NIP-CJ](../../nips/openagents/NIP-CJ.md#conversation-jobs) `25900`, `25910`/`26910` | Implemented |
+| [Test-time delegation](#6-test-time-delegation) | Coder's [delegate door](../coder/runtime/delegate-door.md); delegate sessions | [NIP-PRG](../../nips/openagents/NIP-PRG.md#step-kinds), [NIP-SESS](../../nips/openagents/NIP-SESS.md#steering-capability), [NIP-ATIF](../../nips/openagents/NIP-ATIF.md#delegated-sub-agents) `3198`/`3199` | Implemented |
+| [Verified capability](#7-verified-capability) | [Eval checks](../extensions/evaluation.md#checks-adoption-and-credit) | [NIP-EVAL checks](../../nips/openagents/NIP-EVAL.md#checks) `3189` | Implemented |
+| [Capability adoption](#8-capability-adoption) | [`openagents:coder-defaults`](../../packages/coder-defaults/) releases | [NIP-EVAL adoption](../../nips/openagents/NIP-EVAL.md#adoption), [NIP-EXT](../../nips/openagents/NIP-EXT.md) `3184` | Partial |
+| [Capability credit](#9-capability-credit) | XP referee, `crates/xp-ledger` | [NIP-XP](../../nips/openagents/NIP-XP.md#eval-check) `3193`, `3194` | Implemented |
+| [Capability flywheel](#10-the-capability-flywheel) | Chat, Gym, and Verse; [how the network compounds](../coder/design/networked-coder-plan.md#how-the-network-compounds) | No single carrier | Defined |
+
+The full protocol mapping, stage by stage and field by field, is
+[below](#how-the-protocol-carries-test-time-capabilities).
+
+### What "is a capability" means in our system
+
+Part I's test, a controlled with-and-without comparison, decides three
+concrete things in OpenAgents. Installing a tool, describing it, or demoing
+it decides none of them.
+
+1. **The Gym's gate rates it Better.** `openagents ext eval` and the hosted
+   runner run every test in both arms, and the
+   [`ext-eval-v2` gate](../../crates/gym/gates/ext-eval-v2.json) reads
+   **Better** only when more tests pass with the tool, the score gain clears
+   the spread between repeats, and cost and time stay within 1.5 times plus
+   the spread. The result is a
+   [NIP-EVAL extension evaluation](../../nips/openagents/NIP-EVAL.md#extension-evaluation-profile)
+   report.
+2. **A different trainer's check confirms it, and XP is paid.** An
+   [eval check](../extensions/evaluation.md#checks-adoption-and-credit)
+   reruns the published suite and publishes its own
+   [NIP-EVAL check](../../nips/openagents/NIP-EVAL.md#checks). Only a
+   confirming check earns
+   [NIP-XP `eval-check`](../../nips/openagents/NIP-XP.md#eval-check) credit.
+3. **It can be adopted into every Coder's defaults.** A tool becomes an
+   adoption candidate only when its result is **Better** and at least three
+   distinct trainers' checks confirmed it
+   ([operator policy](../extensions/evaluation.md#checks-adoption-and-credit));
+   adoption itself is an operator's
+   [NIP-EVAL adoption](../../nips/openagents/NIP-EVAL.md#adoption) decision
+   and a new [`coder-defaults`](../../packages/coder-defaults/) release, and
+   pays [NIP-XP `eval-adopt`](../../nips/openagents/NIP-XP.md#eval-adopt)
+   credit.
+
+A component with no such result is a candidate: the gate hasn't rated it
+**Better**, no check can confirm it, and it can't be adopted.
+
+### Each term in OpenAgents
+
+#### Test-time capability in OpenAgents
+
+We have five ways to acquire one, all built:
 
 | Source | What gets admitted | Where it lives |
 | --- | --- | --- |
@@ -145,64 +486,28 @@ ways to acquire one, all built:
 | Delegation | Another agent, briefed with evidence Jev chose | [The delegate door](../coder/runtime/delegate-door.md) |
 | Typed judgment | A System One answer that picks which of the above to use, and when | [The chat router](../coder/design/2026-09-28-chat-router.md) |
 
-The last row is the one that makes the others usable. An agent with fifty
-tools and no good way to decide which to use is worse than an agent with
-none. [Jev](../glossary.md#decision-models-and-runtimes), TypeSafe's System
-One model, answers typed questions (yes or no, a choice among options, an
-ordered score) with probabilities, and code decides what those
-probabilities cause. The model writes no text and grants no authority. The
-name borrows the fast, automatic "System 1" of Kahneman's *Thinking, Fast
-and Slow* (2011); the slow, effortful work is left to the generator.
+Concretely: an extension (tool, plugin, skill, or package) admitted to a
+Coder turn; a knowledge entry retrieved into a Microcoder step; a delegate
+briefed by Coder One. Each is measured by an
+[extension eval](../extensions/evaluation.md).
+[Jev](../glossary.md#decision-models-and-runtimes) is TypeSafe's System
+One model: it answers typed questions with probabilities, and code decides
+what those probabilities cause. It writes no text and grants no authority.
 
-## A lexicon of test-time capabilities
+#### Capability admission in OpenAgents
 
-We propose ten terms. Each names something we already build or measure,
-and each has a way to be wrong. We tried to keep the list short; a term
-earns a place only if it changes what someone does.
+Discovery, installation, enablement, grants, and admission are separate
+decisions in our [extension architecture](../extensions/architecture.md).
+An eval run holds the exact extension and Coder's question sets in its run
+locks, and every report records the lock digest. Installing a package
+grants nothing.
 
-### 1. Test-time capability (TTCap)
+#### Capability delta in OpenAgents
 
-**Definition:** an ability an agent gains or loses at inference time,
-without updating weights, because a component was admitted to the run, and
-whose effect is shown by a test with the component and without it.
-
-**How we build it:** an extension (tool, plugin, skill, or package)
-admitted to a Coder turn; a knowledge entry retrieved into a Microcoder
-step; a delegate briefed by Coder One.
-
-**How it's measured:** an [extension eval](../extensions/evaluation.md). A
-component that has no test yet is a *candidate* capability, not a
-capability.
-
-### 2. Capability admission
-
-**Definition:** the host's decision that a specific, locked version of a
-component may take part in a run.
-
-**How we build it:** discovery, installation, enablement, grants, and
-admission are separate decisions in our
-[extension architecture](../extensions/architecture.md). An eval run holds
-the exact extension and Coder's question sets in its run locks. Installing
-a package grants nothing.
-
-**How it's measured:** the lock digest recorded in every report, so a
-result names exactly which bytes it measured.
-
-### 3. Capability delta
-
-**Definition:** the difference in outcome between the *with* arm (the
-component admitted) and the *without* arm (nothing admitted), on the same
-tests, repeated enough times to see the spread.
-
-**How we build it:** `openagents ext eval` and the hosted runner run every
-test in both arms as confined `coder -p` turns with an ATIF trajectory
-each. The [`ext-eval-v2` gate](../../crates/gym/gates/ext-eval-v2.json)
-reads **Better** only when more tests pass with the tool, the score gain
-clears the spread between repeats, and cost and time stay within 1.5 times
-plus the spread.
-
-**How it's measured:** our first hosted runs, three runs per arm, six tests
-per tool
+`openagents ext eval` and the hosted runner run every test in both arms as
+confined `coder -p` turns with an ATIF trajectory each, judged by the
+[`ext-eval-v2` gate](#what-is-a-capability-means-in-our-system). Our first
+hosted runs, three runs per arm, six tests per tool
 ([record](../extensions/measurements/2026-09-29-hosted-runner-live.md)):
 
 | Tool | With the tool | Without it | Verdict |
@@ -216,173 +521,115 @@ shell, so without the tool Coder can't look at the files at all. The delta
 measures what the tool adds *under that grant*, not what it adds to a Coder
 that already has a shell.
 
-### 4. Reach and restraint
+#### Reach and restraint in OpenAgents
 
-**Definition:** *reach* is how often the agent actually uses a capability
-when a test says it should; *restraint* is how often it leaves the
-capability alone when a test says it shouldn't.
+Every suite marks each test should-fire or should-not-fire. Each starter
+suite has four of the first kind and two of the second. In the same
+record, restraint held: every should-not-fire test passed with the tool as
+often as without it, except one run of Code finder's `explain-idempotent`.
+Reach did not always hold: `where-tests`, `known-bugs`, `workarounds`, and
+`ci-failures` failed in both arms because Jev didn't choose the tool's
+program for that wording, so for those tests the tool changed nothing.
+Those tests are now the work list for each tool.
 
-**How we build it:** every suite marks each test should-fire or
-should-not-fire. Each starter suite has four of the first kind and two of
-the second.
+#### Judgment budget in OpenAgents
 
-**How it's measured:** per test, in the same record. Restraint held: every
-should-not-fire test passed with the tool as often as without it, except
-one run of Code finder's `explain-idempotent`. Reach did not always hold:
-`where-tests`, `known-bugs`, `workarounds`, and `ci-failures` failed in both
-arms because Jev didn't choose the tool's program for that wording. A
-capability the router doesn't reach for is a capability the agent doesn't
-have. Those tests are now the work list for each tool.
-
-### 5. Judgment budget
-
-**Definition:** the time and money a system spends deciding *how* to answer
-before it spends anything on answering. The rule is that the judgment must
-be much cheaper than the work it can avoid.
-
-**How we build it:** the [chat router](../coder/design/2026-09-28-chat-router.md)
-asks Jev one request of independent questions (route, prepared answer,
-whether the reply needs specifics, risk, lane, opener) and a policy table in
-code chooses a tier: T0 a whole prepared answer, T1 a prepared stem finished
-by a cheap model, T2 an answer grounded in a knowledge base, T3 the full
-model, T4 a dispatch or command offer. A slow or failed judge falls back to
-the model's reply, so the judgment can only save time.
-
-**How it's measured:** judgment latency (170 ms median, 235 ms p95 on the
-held-out set) and the precision of what it serves (100 % canned precision,
-36 of 36, on 138 held-out messages)
+The [chat router](../coder/design/2026-09-28-chat-router.md) asks Jev one
+request of independent questions (route, prepared answer, whether the reply
+needs specifics, risk, lane, opener) and a policy table in code chooses a
+tier: T0 a whole prepared answer, T1 a prepared stem finished by a cheap
+model, T2 an answer grounded in a knowledge base, T3 the full model, T4 a
+dispatch or command offer. A slow or failed judge falls back to the model's
+reply, so the judgment can only save time. Judgment latency is 170 ms
+median, 235 ms p95 on the held-out set, and the precision of what it serves
+is 100 % canned precision, 36 of 36, on 138 held-out messages
 ([router evaluation](../coder/measurements/2026-09-28-chat-router-eval.md)).
 
-### 6. Test-time delegation
+#### Test-time delegation in OpenAgents
 
-**Definition:** acquiring another agent's capability for one task by
-handing it a prepared briefing, then recording what it did as part of the
-same task.
-
-**How we build it:** Coder's [delegate door](../coder/runtime/delegate-door.md)
-runs Microcoder through the first connected provider with capacity (a Codex
-login, then a Claude Code login, then our cloud fallback) and fails over on
-usage or rate limits. When Microcoder can't run, Claude Code or Codex CLI
-takes the turn, briefed with what Jev chose from the workspace. OpenCode and
-Devin routes run as [delegate sessions](../glossary.md#the-openagents-app-and-chat)
+Coder's [delegate door](../coder/runtime/delegate-door.md) runs Microcoder
+through the first connected provider with capacity (a Codex login, then a
+Claude Code login, then our cloud fallback) and fails over on usage or rate
+limits. When Microcoder can't run, Claude Code or Codex CLI takes the turn,
+briefed with what Jev chose from the workspace. OpenCode and Devin routes
+run as [delegate sessions](../glossary.md#the-openagents-app-and-chat)
 copied into the task's history.
 
-**How it's measured:** the same outcome, cost, and time as any attempt. In
-one declared Terminal-Bench 4.0 attempt, Coder One with Jev's briefing
-passed `fin-saccr-rwa` for $0.9429 in 149.5 s, below Fable 5.1 low's cheapest
-($1.2246) and fastest (222.5 s) wins. That attempt was in-sample and tuned,
-and across 7 series only 2 of 13 attempts beat the bar
+In one declared Terminal-Bench 4.0 attempt, Coder One with Jev's briefing
+passed `fin-saccr-rwa` for $0.9429 in 149.5 s, below Fable 5.1 low's
+cheapest ($1.2246) and fastest (222.5 s) wins. That attempt was in-sample
+and tuned, and across 7 series only 2 of 13 attempts beat the bar
 ([record](../terminal-bench/2026-09-27-fable-delegate.md)). Delegation is a
 capability to measure, not a guaranteed win.
 
-### 7. Verified capability
+#### Verified capability in OpenAgents
 
-**Definition:** a capability whose **Better** verdict was reproduced by
-someone other than the person who first ran it: a different trainer, the
-same test set release, the same tool release.
-
-**How we build it:** an [eval check](../extensions/evaluation.md#checks-adoption-and-credit)
+An [eval check](../extensions/evaluation.md#checks-adoption-and-credit)
 reruns a published suite and publishes its own NIP-EVAL `3189` that cites
-the original. It confirms on a matching verdict and disputes otherwise;
-both stay visible.
+the original: a different trainer, the same test set release, the same
+tool release. It confirms on a matching verdict and disputes otherwise;
+both stay visible. In the hosted record, a second trainer checked each of
+the three results and all three confirmed.
 
-**How it's measured:** in the hosted record, a second trainer checked each
-of the three results and all three confirmed.
+#### Capability adoption in OpenAgents
 
-### 8. Capability adoption
-
-**Definition:** making a verified capability part of the agent everyone
-starts with.
-
-**How we build it:** an operator issues an `openagents.eval-admission.v1`
-decision citing the reports and publishes a release of the
+An operator issues an `openagents.eval-admission.v1` decision citing the
+reports and publishes a release of the
 [`openagents:coder-defaults`](../../packages/coder-defaults/) package that
 depends on the tool. A tool becomes a candidate when its result is
 **Better** and at least three distinct trainers' checks confirmed it.
-Adoption is an operator decision, never automatic.
+Adoption is an operator decision, never automatic. The mechanism exists; no
+adoption has been made yet.
 
-**How it's measured:** the tool exists; no adoption has been made yet. The
-first adoption, and whether the adopted tool keeps its delta on new tests,
-is the next result to report.
+#### Capability credit in OpenAgents
 
-### 9. Capability credit
+Two [NIP-XP](../../nips/openagents/NIP-XP.md#eval-check) rules.
+`eval-check` credits the checker, the original evaluator, and the suite's
+author when a check confirms a result. `eval-adopt` credits the tool's
+author, the suite's author, and the evaluators of cited results when Coder
+adopts the tool. A run, a publish, a view, or a download earns nothing.
+Credit is XP and your name. It is never money, and no payout exists. The XP
+referee on `coderos-4080` signed the first nine awards from the hosted
+checks, and any reader can recompute them with `crates/xp-ledger`.
 
-**Definition:** recognition that goes to the people whose work made a
-capability real, and only for the events that show it was used.
+#### The capability flywheel in OpenAgents
 
-**How we build it:** two [NIP-XP](../../nips/openagents/NIP-XP.md#eval-check)
-rules. `eval-check` credits the checker, the original evaluator, and the
-suite's author when a check confirms a result. `eval-adopt` credits the
-tool's author, the suite's author, and the evaluators of cited results when
-Coder adopts the tool. A run, a publish, a view, or a download earns
-nothing. Credit is XP and your name. It is never money, and no payout
-exists.
-
-**How it's measured:** the XP referee on `coderos-4080` signed the first
-nine awards from the hosted checks, and any reader can recompute them with
-`crates/xp-ledger`.
-
-### 10. The capability flywheel
-
-**Definition:** the loop in which people add capabilities, tests prove
-them, others confirm them, and adoption hands them to every agent, which
-then takes on harder tasks that reveal the next missing capability.
-
-**How we build it:** the chat is the front door. A person asks OpenAgents
-what to test or makes a tool by chatting, runs the tests on our computers,
-adds the result to the Gym, and earns credit when others check it or Coder
-adopts it. The [README's loop](../../README.md#the-loop) draws it.
-
-**How it's measured:** the network plan's test, not participant counts:
-*incremental out-of-sample verified passes per adopted contribution*, with
-cost, latency, and harmful regressions
+The chat is the front door. A person asks OpenAgents what to test or makes
+a tool by chatting, runs the tests on our computers, adds the result to the
+Gym, and earns credit when others check it or Coder adopts it. The
+[README's loop](../../README.md#the-loop) draws it. Its test is the network
+plan's
 ([how the network compounds](../coder/design/networked-coder-plan.md#how-the-network-compounds)).
 We have not shown the flywheel turning yet; we have built each part of it.
 
-## Evals are the unit of account
+### Our evals in practice
 
-If capabilities are acquired and shared, something has to say which ones
-are real. For us that is the extension eval, and three of its properties do
-most of the work.
+Two lessons from running our evals:
 
-- **Two arms, not one score.** A benchmark score tells you how an agent did.
-  A with-and-without result tells you what one component changed. That is
-  the thing you'd want to share, adopt, or pay attention to.
-- **A written rule gives the verdict.** The gate is a versioned file, and
-  every report carries the digest of the gate that judged it. The gate
-  already taught us something: under `ext-eval-v1`, a tool that made Coder
-  *faster* but no more correct read **Better**. We found that in a
-  [live run](../extensions/measurements/2026-09-29-ext-eval-runner-live.md)
-  where both arms passed the same tests, and replaced the rule the same day:
-  under `ext-eval-v2`, faster or cheaper alone is **No clear change** with a
-  note. The old result keeps its old digest and stays readable.
-- **Others can rerun it.** A published suite is a NIP-EXT release, a
-  published result carries its trainer's signed request, and a check
-  verifies every file against the release before rerunning it. Confidence
-  comes from reproduction by someone else, not from the author's report.
+- **The v1 gate was wrong, and we replaced it.** Under `ext-eval-v1`, a tool
+  that made Coder *faster* but no more correct read **Better**. We found
+  that in a [live run](../extensions/measurements/2026-09-29-ext-eval-runner-live.md)
+  where both arms passed the same tests, and replaced the rule the same
+  day: under `ext-eval-v2`, faster or cheaper alone is **No clear change**
+  with a note. The old result keeps its old digest and stays readable.
+- **A grader bug flipped a result.** A grader looked for "not found" and
+  missed "the server cannot find the requested resource", turning one run's
+  result to **Worse** by chance. We fixed the pattern and released a new
+  test set version; the old one stays readable.
 
-Why this beats chasing a leaderboard: a leaderboard rewards one system on
-one fixed task set, and it rewards fitting that set. We've been careful
-about this in our own [Terminal-Bench](../terminal-bench/README.md) work,
-which separates in-sample development wins from out-of-sample results (for
-example, 30 confirmed out-of-sample wins on 65 TB2.1 tasks, measured on
-cost against Fable 5 xhigh, on an older and easier benchmark than TB4). A
-per-component eval asks a narrower question with a clearer answer: *does
-this thing help, where, and at what cost?* Benchmarks remain how we check
-Coder as a whole; evals are how we decide what goes into it.
+Reruns by others rest on publication: a published suite is a NIP-EXT
+release, a published result carries its trainer's signed request, and a
+check verifies every file against the release before rerunning it.
 
-Evals also have failure modes, and we've hit them. A grader looked for "not
-found" and missed "the server cannot find the requested resource", turning
-one run's result to **Worse** by chance. We fixed the pattern and released a
-new test set version; the old one stays readable. An eval is a piece of
-software and gets the same scrutiny.
+On benchmarks, we've kept the same distinction in our own
+[Terminal-Bench](../terminal-bench/README.md) work, which separates
+in-sample development wins from out-of-sample results (for example, 30
+confirmed out-of-sample wins on 65 TB2.1 tasks, measured on cost against
+Fable 5 xhigh, on an older and easier benchmark than TB4). Benchmarks
+remain how we check Coder as a whole; evals are how we decide what goes
+into it.
 
-## The economics: cheap judgments before expensive thinking
-
-Test-time compute costs money and time. The literature's answer is to
-allocate it per question. Ours is the same idea one level up: before
-allocating *thinking*, decide whether the turn needs a model at all, and
-which capability should handle it.
+### Our numbers: judgments before thinking
 
 These are the numbers from our chat, measured from Send on the phone:
 
@@ -402,28 +649,22 @@ call
 ([measurement](../coder/design/2026-09-28-chat-router.md#implemented-and-measured-2026-09-28)).
 A turn answered at T0 costs a Jev call and no generation at all.
 
-Three principles follow.
+How Part I's three principles show up here:
 
 1. **Never wrong fast.** A prepared answer is served only when the route,
    the answer, and the "needs specifics" readings all clear thresholds tuned
-   for precision. A fast answer to the wrong question is worse than a slow
-   right one, so the canned tier is gated on measured precision, not on
-   confidence alone.
+   for precision.
 2. **Spend the big model where it adds something.** Identity questions,
    small talk, and product questions with reviewed answers don't need it.
-   Requests for work need a computer, and get a one-tap offer to run Coder
-   instead of a model's guess at doing the work in chat.
+   Requests for work get a one-tap offer to run Coder.
 3. **Capability can substitute for compute.** In the hosted runs, a Project
    map run took 10.7 s with the tool against 24.9 s without it, and passed
-   more tests. A tool that answers directly can beat a model that must
-   search for the answer, on both time and correctness. We report time and
-   cost as notes, never as the verdict, because a faster wrong answer isn't
-   a capability.
+   more tests. We report time and cost as notes, never as the verdict.
 
 We don't yet price every lane: Coder doesn't price gateway lanes, so the
-eval records list cost as unknown. That gap is on the list below.
+eval records list cost as unknown.
 
-## The collective: how capabilities compound
+### Our collective: Coder, the Gym, and Verse
 
 We are building the best coding agent in the world by using network
 effects: an agent collective. Coder is the first agent. The Gym is where
@@ -431,39 +672,20 @@ people help agents get better, through the plugin system and the evals
 that measure it. Verse is where agents and people meet, and where the Gym's
 results and evals boards live.
 
-Test-time capabilities are what makes that compounding possible in
-principle. Weights improve when a lab trains them, on the lab's schedule. A
-test-time capability can come from anyone, be tested by anyone, and, once
-adopted, reach every Coder without a training run. The unit that compounds
-is not a longer prompt or a count of packages. It is a **reusable
-improvement with independent evidence**: an exact component version, a
-with-and-without result, and confirming checks by people who didn't write
-it.
+Part I's network effects, as we build them:
 
-What the network adds, concretely:
-
-- **More sources of capability.** Different people bring different task
-  families, libraries, and environments, and write tools and tests for the
-  work they know.
-- **More verification.** Checks by other trainers turn one person's claim
-  into a reproduced result. That is the verifier the test-time compute
-  literature says extra effort depends on, supplied by people instead of a
-  reward model.
-- **Inheritance.** Adoption into `coder-defaults` turns one confirmed
-  result into a default for everyone. Traces in
+- **More verification** comes from checks by other trainers.
+- **Inheritance** is adoption into `coder-defaults`. Traces in
   [ATIF v1.8](../coder/runtime/traces.md) make each run inspectable, and
   NIP-ATIF, still designed and not yet published by any component, is how
   they're meant to travel.
-- **Credit that tracks use.** XP goes to checks and adoptions, the two
-  events that show someone else's work was used. That keeps the incentive
-  on tools that help rather than tools that exist.
+- **Credit that tracks use** is XP for checks and adoptions.
 
-This section describes a design and a hypothesis. The parts are built and
-the first runs, checks, and awards are live. Whether adding participants
-makes Coder measurably better is the claim we still have to earn, measured
-the way the lexicon says.
+This is a design and a hypothesis. The parts are built and the first runs,
+checks, and awards are live. Whether adding participants makes Coder
+measurably better is the claim we still have to earn.
 
-## How the protocol carries test-time capabilities
+### How the protocol carries test-time capabilities
 
 The lexicon is ours; the wire formats that carry it are the
 [OpenAgents NIPs](../../nips/openagents/README.md). This section says which
@@ -478,7 +700,7 @@ labels it; the shared contracts, which the glossary doesn't label, are
 Partial by the report's own account. A profile inside a NIP can be further
 along than the NIP as a whole; the notes say where.
 
-### Which NIP is for what
+#### Which NIP is for what
 
 | NIP | Status | What it's for in this lifecycle | Kinds it owns |
 | --- | --- | --- | --- |
@@ -508,7 +730,7 @@ ENV, WS, AUTO, LIVE, COORD, MKT, LAB, X402, and SOV carry the computers,
 access, control, and payment a run needs, not the capability or its
 evidence, so they don't appear below.
 
-### The lifecycle, stage by stage
+#### The lifecycle, stage by stage
 
 | Stage | Carrier | Kinds and fields |
 | --- | --- | --- |
@@ -524,7 +746,7 @@ evidence, so they don't appear below.
 | Adopt | [EVAL](../../nips/openagents/NIP-EVAL.md#adoption), [POL](../../nips/openagents/NIP-POL.md#optimization-authority-and-adoption), [EXT](../../nips/openagents/NIP-EXT.md#release-and-package-manifest) | An `openagents.eval-admission.v1` decision citing the reports and checks, then a `coder-defaults` `3184` release whose `dependencies` include the tool's release and whose `provenance.receipts` cite the admission. POL keeps activation an operator decision; active runs keep their lock. |
 | Share (Verse) | [MV](../../nips/openagents/NIP-MV.md#gym-notes), [CJ](../../nips/openagents/NIP-CJ.md#conversation-jobs), [EVAL](../../nips/openagents/NIP-EVAL.md#gym-results-publication), [XP](../../nips/openagents/NIP-XP.md#trainer-cards-30194) | Gym notes: kind `9` world chat with `L`/`l` `openagents.gym` and an `e … source` citing the trainer's `3189`. CJ `open_screen` `verse.gym`. Gym leaderboards `3195`. Trainer cards `30194`. |
 
-### The terms and their carriers
+#### The terms and their carriers
 
 | Term | Canonical carrier | What carries it, and what doesn't yet |
 | --- | --- | --- |
@@ -543,7 +765,11 @@ The NIPs above each point back here in a "Test-time capabilities" line, and
 the [NIP index](../../nips/openagents/README.md#test-time-capabilities)
 lists the same mapping from the protocol side.
 
-## Open problems and what we measure next
+## Part III: What we'll measure next
+
+These are our open problems, for the OpenAgents implementation in Part II.
+Part I's [open questions](#open-questions-for-the-field) are the general
+versions.
 
 - **The first adoption.** No tool has been adopted into `coder-defaults`.
   After the first, we need to show it keeps its delta on tests its author
@@ -555,14 +781,14 @@ lists the same mapping from the protocol side.
 - **Deltas under a full grant.** The hosted starter results are measured
   without a shell. We need the same tools measured against a Coder that can
   already run commands, where the baseline is much stronger.
-- **Interaction effects.** Two capabilities that each help alone can
-  interfere together. Adoption needs a regression check across the whole
-  default set, not only a check of the newcomer.
+- **Interaction effects.** Adoption into `coder-defaults` needs a
+  regression check across the whole default set, not only a check of the
+  newcomer.
 - **Cost.** Every eval record should carry a price for both arms. Until
   Coder prices gateway lanes, cost is a blank we don't fill with guesses.
 - **Statistical power.** Six tests and three runs per arm are enough to see
-  a large change and too few to see a small one. Suites need to grow as the
-  deltas we care about shrink.
+  a large change and too few to see a small one. Our suites need to grow as
+  the deltas we care about shrink.
 - **Grader quality.** Graders are code and make mistakes, as the "not found"
   case showed. We want graders checked the way results are.
 - **Compute and capability together.** We haven't yet measured how

@@ -191,10 +191,14 @@ read protected confirmation labels, or give itself new permissions.
 ## Test-time capabilities
 
 A *test-time capability* is an ability an agent gains while it runs, without
-a weight update, because a component was admitted to the run, and whose
-effect a with-and-without test shows. The
+a weight update, because a component was admitted to the run. It is one only
+if a controlled comparison, the same tests run with and without it, shows
+the agent does measurably better with it. The
 [essay that proposes the term](../../docs/essays/2026-09-29-test-time-capabilities.md)
-has the full [mapping of terms and lifecycle stages to kinds and fields](../../docs/essays/2026-09-29-test-time-capabilities.md#how-the-protocol-carries-test-time-capabilities).
+states the concept in Part I; its
+[Part II](../../docs/essays/2026-09-29-test-time-capabilities.md#part-ii-our-implementation)
+covers the OpenAgents implementation, including the full
+[mapping of terms and lifecycle stages to kinds and fields](../../docs/essays/2026-09-29-test-time-capabilities.md#how-the-protocol-carries-test-time-capabilities).
 In short, which NIP is for what:
 
 | Stage | NIP | For |
