@@ -14,10 +14,18 @@ something is a plan or a hypothesis, the text says so.
   while it runs, without anyone retraining its weights: we admit a tool, a
   plugin, a skill, a knowledge entry, or another agent into the run. We call
   what it gains a **test-time capability**.
-- **A capability only counts if a test shows it.** We run the same tests
-  with the tool and without it, and a fixed rule gives the verdict. Other
-  people rerun those tests to confirm the result. That record, not a claim
-  in a README, is what makes something a capability.
+- **We only call something a test-time capability after a
+  with-and-without test shows Coder does better with it.** We run the same
+  tests with the tool and without it. That result is what the Gym's gate
+  rates **Better** ([`ext-eval-v2`](../../crates/gym/gates/ext-eval-v2.json),
+  [NIP-EVAL](../../nips/openagents/NIP-EVAL.md#extension-evaluation-profile)),
+  what another trainer's [check](../../nips/openagents/NIP-EVAL.md#checks)
+  confirms before XP is paid
+  ([NIP-XP `eval-check`](../../nips/openagents/NIP-XP.md#eval-check)), and
+  what [adoption](../../nips/openagents/NIP-EVAL.md#adoption) into every
+  Coder's defaults requires (**Better** plus three confirming checks by
+  distinct trainers). Installing a tool, describing it, or demoing it
+  doesn't do any of those.
 - **Cheap judgments come before expensive thinking.** A typed judgment from
   Jev takes about 0.15 to 0.26 seconds. It decides whether a turn needs a
   full model at all. A prepared answer reaches the phone in 0.62 to 0.70
