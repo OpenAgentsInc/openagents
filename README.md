@@ -93,7 +93,7 @@ A phone ran one of these tests end to end, from chat to +25 XP
 
 | Platform | Status |
 | --- | --- |
-| iOS | OpenAgents (`com.openagents.app`) 1.0.0 on TestFlight. Builds 1 to 19 are uploaded; build 19 sends every new chat to OpenAgents. Build 20, next, brings the chat router's prepared answers and offers. See [OpenAgents for iOS](bins/openagents-ios/README.md). |
+| iOS | OpenAgents (`com.openagents.app`) 1.0.0 on TestFlight. Builds 1 to 21 are uploaded: build 19 sends every new chat to OpenAgents, build 20 brings the chat router's prepared answers and offers, and build 21 puts the Gym in chat (test a tool, make your own by chatting, Add to the Gym, check others' results for XP, Gym news, and the Gym board in the Verse). See [OpenAgents for iOS](bins/openagents-ios/README.md). |
 | Android | The same app and Rust library. Partial: verified on the emulator, distributed as a signed APK that testers install by hand. See [OpenAgents for Android](bins/openagents-android/README.md). |
 | Computer | Install Coder and link the computer so the phone can dispatch work to it. See [Coder](#coder). |
 
