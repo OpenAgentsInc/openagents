@@ -35,6 +35,7 @@
 //! keywords.
 
 pub mod artifact;
+pub mod author;
 pub mod case;
 pub mod discover;
 pub mod door;

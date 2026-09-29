@@ -560,6 +560,16 @@ least one should-not-fire test, at least one outcome grader per test,
 prompt that names the operation to call. `--bare` skips the interview and
 writes the template.
 
+Built ([#9937](https://github.com/OpenAgentsInc/openagents/issues/9937)):
+the machine is `crates/ext-eval/src/author/`, the chat driver is
+`coder::eval_author` (one step per turn: the reply, the draft, its card,
+and at most one offer), and the terminal driver is `openagents ext eval
+init`. A chat turn recovers its step from the fixed line our last reply
+ended with and the draft the phone resent; Jev decides the tool and each
+approval. Every test gets the `read` and `write` grant, because a run
+starts in an empty folder and a task makes its own files. See
+[the live run](measurements/2026-09-29-authoring-interview-live.md).
+
 ## Iterate on an extension against its suite
 
 1. Work on the development cases. A held-out set, when a suite has one, is

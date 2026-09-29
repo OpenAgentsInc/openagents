@@ -537,9 +537,15 @@ async fn serve(options: &Options) -> Result<(), String> {
         },
         None => eprintln!("gym records off: no judge"),
     }
-    // The authoring interview's chat driver (#9937, `coder::eval_author`)
-    // is wired here as `seams.author`; until it lands, `eval.author` turns
-    // answer with the bank's `eval.author.soon`.
+    // The authoring interview's chat driver (#9937): the worker's door and
+    // judge; without both, `eval.author` answers with the bank's
+    // `eval.author.soon`.
+    seams.author = coder::eval_author::seam(
+        &door,
+        judge
+            .clone()
+            .map(|j| j as Arc<dyn coder::product_kb::Judge>),
+    );
     let routing = Arc::new(RouterConfig::new(
         router_from_env()?,
         seams,

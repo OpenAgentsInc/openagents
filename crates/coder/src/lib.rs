@@ -58,6 +58,7 @@ pub mod decision;
 pub mod delegate;
 pub mod delegate_door;
 pub mod doctor;
+pub mod eval_author;
 pub mod evidence;
 pub mod execution;
 pub mod executor_door;

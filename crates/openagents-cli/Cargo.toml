@@ -25,6 +25,8 @@ coder-reach = { path = "../coder-reach" }
 coder-service = { path = "../coder-service" }
 coder-ssh = { path = "../coder-ssh" }
 discovery = { path = "../discovery" }
+# `ext eval init`: the authoring interview's machine and case files.
+ext-eval = { path = "../ext-eval" }
 glam = "0.30.10"
 gym = { path = "../gym" }
 gym-bridge = { path = "../gym-bridge", default-features = false }

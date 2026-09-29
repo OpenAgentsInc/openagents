@@ -458,6 +458,7 @@ fn client() -> reqwest::Client {
 }
 
 /// A `Generate` backed by an Open Responses endpoint.
+#[derive(Clone)]
 pub struct ResponsesDoor {
     http: reqwest::Client,
     /// The door's base URL; the route is `/v1/responses` under it.

@@ -134,6 +134,12 @@ fn run(group: Group, output: &Output, words: &[String]) -> u8 {
         println!("{usage}");
         return 0;
     }
+    // `ext eval init`: the authoring interview (#9937). #9934's
+    // `ext_eval.rs` owns the rest of `ext eval`.
+    if matches!(group, Group::Ext) && command == "eval" && rest.first().is_some_and(|w| w == "init")
+    {
+        return crate::ext_eval_init::run(output, &rest[1..]);
+    }
     let args = match Args::parse(rest, &[]) {
         Ok(args) => args,
         Err(message) => return output.usage(name, &message, usage),
