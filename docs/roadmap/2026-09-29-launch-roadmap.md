@@ -178,6 +178,7 @@ and owner steps never hold them open.
 | [M7. Agent spending phase 1](#m7-agent-spending-phase-1) | 2026-09-28 | Done | #9863 (closed) |
 | [M8. x402 receive on mainnet](#m8-x402-receive-on-mainnet) | None | Not planned for now | #9832 (closed) |
 | [M9. Agent spending, later phases](#m9-agent-spending-later-phases) | None | Deferred (won't do for now) | #9864, #9911, #9912, #9913 (closed, not planned) |
+| [M10. Evals in chat, build 21](#m10-evals-in-chat-build-21) | Build 21 | Planned | [#9931](https://github.com/OpenAgentsInc/openagents/issues/9931) (epic), #9932–#9941; later [#9942](https://github.com/OpenAgentsInc/openagents/issues/9942) |
 | Microcoder replaces Microluna | Not dated | In progress | [#9878](https://github.com/OpenAgentsInc/openagents/issues/9878), [#9880](https://github.com/OpenAgentsInc/openagents/issues/9880), [#9889](https://github.com/OpenAgentsInc/openagents/issues/9889), [#9890](https://github.com/OpenAgentsInc/openagents/issues/9890) |
 | Host store fixes | Not dated | In progress | [#9908](https://github.com/OpenAgentsInc/openagents/issues/9908), [#9909](https://github.com/OpenAgentsInc/openagents/issues/9909) |
 | CoderOS (owned by another agent) | Not scheduled here | See [CoderOS](../os/README.md) | Reference only |
@@ -254,6 +255,25 @@ as won't do for now. Two slices had already landed and stay on `main`: phone
 wakes for spend requests with spend ops over CAP/CJ (`cf43ac7dff`), and
 standing grants that pay a payee without a tap only after the owner chooses
 **Approve and trust this payee** (`1d5d9cd7bf`; opt-in, off until then).
+
+### M10. Evals in chat, build 21
+
+Planned (owner, 2026-09-28): the Gym loop is about **evals**, not
+benchmark scores, and it happens in the one routed OpenAgents chat. A
+person asks what's new in the Gym, picks a tool or makes one with us in
+chat, and we run its test set with and without the tool on our computers.
+They see the change ("5 of 8 → 7 of 8 tests"), add the result to the Gym,
+and earn XP when another trainer's check confirms it or Coder adopts the
+tool. XP is never money. Specs:
+[extension evaluation](../extensions/evaluation.md) (revision 2),
+[wireframe revision 3](../product/2026-09-28-app-wireframe.md#revision-3-what-changed),
+and the NIP-EVAL, NIP-EXT, NIP-XP, and NIP-CJ drafts. The epic
+[#9931](https://github.com/OpenAgentsInc/openagents/issues/9931) runs in
+three waves: wire formats, the engine, chat routes, and the mockup first;
+then the runner and CLI, the authoring interview, credit, and the hosted
+runner; then the phone and an end-to-end test on devices. Build 21 ships
+it. The Gym in the Verse as a social place is later
+([#9942](https://github.com/OpenAgentsInc/openagents/issues/9942)).
 
 ## Maintaining this page
 

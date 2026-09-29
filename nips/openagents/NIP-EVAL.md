@@ -236,6 +236,111 @@ nothing. `crates/nostr` (`gym_results`) builds and checks the event,
 `gym-leaderboard sign` signs and writes it, and the client in
 `gym_leaderboard::client` verifies it (`docs/verse/gym-leaderboard.md`).
 
+## Extension evaluation profile
+
+`draft` — added 2026-09-28. **Designed**; no implementation yet. This
+profile carries the results of `openagents ext eval`
+([extension evaluation](../../docs/extensions/evaluation.md)): a suite of
+cases run against an agent with one extension admitted (the `subject`
+arm) and with it absent (the `baseline` arm). It allocates no kinds. It
+uses this NIP's report and `3189` publication, NIP-EXT releases for
+suites and subjects, NIP-XP for credit, and NIP-CJ for hosted runs.
+
+### Suites
+
+An extension suite is an `openagents.eval-suite.v1` with `purpose:
+"operation"`. Its `cases` artifact lists, in lexicographic order, one
+entry per case: `{id, kind, runs, prompt, graders, fixtures}`, where
+`kind` is `should-fire` or `should-not-fire`, `prompt` and each grader are
+ArtifactRefs to the exact case files (`prompt.md`, `graders/<name>.md`,
+optional `case.toml`) with schema `openagents.eval-case.v1`, and
+`fixtures` is an ArtifactRef list. `acceptance` is the DefinitionRef of
+the Gym gate that decides the verdict (`ext-eval-v1`). `labels` names the
+suite author as the label source; a suite written by the extension's
+publisher says so, and a reader weighs it as the publisher's own claim.
+
+A public suite travels as a NIP-EXT release: a package whose manifest has
+one component of kind `eval-suite`, whose definition is the suite
+artifact, and whose files are the case files. The release signer (the
+package root) is the suite author. A suite shipped inside the extension's
+own package is an `eval-suite` component of that package. Revoking the
+release withdraws the suite from new checks and quests; reports already
+published keep their meaning.
+
+### Reports
+
+The report is `openagents.eval-report.v1` with these profile rules:
+
+- `subject.definition` is the extension's DefinitionRef, with `event`
+  set to its NIP-EXT release EventRef when published. `subject.lock` is
+  the run lock the subject arm held. `baseline` has the same shape with no
+  extension components in its lock; a report without a baseline can't
+  claim a change and has verdict `inconclusive`.
+- `runs` entries carry `{arm, case, attempt, outcome, receipts,
+  artifacts}` where `artifacts` includes the run's ATIF log ArtifactRef
+  (schema `ATIF-v1.8`, [NIP-ATIF](NIP-ATIF.md)) and the grader answers.
+- `measurements` include, per arm, `cases_passed` (denominator: cases
+  scored), `mean_score`, `cost_usd` and `seconds` (with `unknown_count`),
+  and, for the `comparison` arm, `change` (subject minus baseline).
+- `verdict` is the gate's decision; the gate's digest is in `acceptance`
+  and repeated in `meta.ext_eval.gate`.
+- `meta.ext_eval` is `{v: "openagents.ext-eval.v1", gate, cases:
+  [{id, kind}], headline: {subject_passed, baseline_passed, total},
+  requester}`. `requester` is null, or the EventRef of the signed NIP-CJ
+  execution request a hosted runner served.
+
+### Publication
+
+A result is a `3189` publication as above, with these additions:
+
+- Tags: `t: oa:eval:v1` and `t: oa:ext-eval:v1`; `x` equal to the report
+  digest; one `e` tag for the suite's release, one for the subject's
+  release (when published), and, for a check, one for the publication it
+  checks, with the marker `check`. A hosted result also carries one `p`
+  tag for the requesting trainer and an `e` tag for the request.
+- `meta.ext_eval_report`: the report's exact bytes, at most 64 KiB, which
+  a reader checks against `report.digest` before reading.
+- The signer is the evaluator, as for every `3189`. A hosted runner signs
+  its own results; the trainer who asked is named by `requester`, and a
+  reader verifies that request's signature before crediting them.
+
+A reader lists results with `{"kinds": [3189], "#t": ["oa:ext-eval:v1"]}`
+and groups them by subject. It never ranks results from different suites
+against each other.
+
+### Checks
+
+A check is a publication whose report has the same suite ArtifactRef and
+the same subject DefinitionRef as the publication it cites with the
+`check` marker, and a different evaluator. A check **confirms** when its
+verdict equals the original's and **disputes** otherwise; readers show
+both counts beside the original. A check with a different lock for the
+subject arm is not a check of that result; readers show it as a separate
+result.
+
+### Hosted runs
+
+A hosted runner is a NIP-CJ execution worker. The request's `target` is
+the DefinitionRef of the `ext-eval` program, `input` is `{suite, subject,
+runs, baseline: true}` with ArtifactRefs (or a chat draft artifact of at
+most 64 KiB), and `requirements` names the read-only and sandbox-write
+effects only. The worker admits only subjects its operator lists (the
+catalog and `coder-defaults`) and suites within its published bounds, and
+refuses others as `not_admitted`. Its result's body carries the report
+ArtifactRef; the report stays private (the `3188` envelope to the
+requester) until the requester sends a publish control naming it.
+
+### Adoption
+
+Adopting an extension into a host's defaults is an
+`openagents.eval-admission.v1` decision (above) whose `reports` cite the
+extension's published reports and their confirming checks. For Coder's
+defaults, the admitted change is then published as a NIP-EXT release of
+the `coder-defaults` package that depends on the extension's release, and
+whose manifest `provenance` cites the admission's ArtifactRef. The
+release is the public, checkable record of adoption; the admission itself
+stays with its issuer. NIP-XP's `eval-adopt` rule reads the release.
+
 ## Promotion and learning
 
 A promotion decision has `v: "openagents.eval-admission.v1"`, `subject`

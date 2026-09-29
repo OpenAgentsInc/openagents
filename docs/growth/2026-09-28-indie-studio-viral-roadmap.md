@@ -48,13 +48,13 @@ to join.
    a TestFlight   a build card,  one link: iOS,   players chat,     |
    build and APK  a clip, a      Android, and     walk the Grid,    |
    several times  scoreboard     the community    report problems,  |
-   a day                                          and (soon) train  |
-                                                  Coder in the Gym  |
+   a day                                          and (soon) test   |
+                                                  tools in chat     |
                                                         |           |
                                                         v           |
    6 SHIP <------------------ 5 CELEBRATE PLAYERS' RESULTS          |
-   the fix or the tool        "Coder went 6 → 8 of 10 with          |
-   they found, credited       Trainer 7KQ's tool", "Trainer 3FA      |
+   the fix or the tool        "Coder passed 7 of 8 tests with       |
+   they found, credited       Trainer 7KQ's tool, 5 without", "3FA  |
    by trainer name            found the bug fixed in build 22"      |
       |                                                             |
       +-------------------------------------------------------------+
@@ -101,8 +101,9 @@ Zukowski splits a pitch into the **hook** (what only your game does) and the
 
 - **Hook:** *You make an AI agent measurably better, and everyone's agent
   gets the upgrade, with your name on it.* No other coding agent lets a
-  player see a score go from 6 of 10 to 8 of 10 because of the tool they
-  chose, and ship that tool to everyone.
+  player test a tool on it, see it pass 7 of 8 tests with the tool
+  instead of 5 without, and ship that tool to everyone, all by chatting.
+  When other trainers check your result, you earn XP.
 - **Anchors:** a game (levels, XP, titles, a season, raids, a main menu that
   says **ENTER THE GYM**), a coding agent (Coder, like the ones people
   already use), and a chat you can try with no setup (**CHAT WITH
@@ -114,9 +115,11 @@ Zukowski splits a pitch into the **hook** (what only your game does) and the
 
 ## What we can show today, honestly
 
-The hook's full form, a player's run in the Gym moving Coder's score, isn't
-built yet: the hosted runner, the **Result** screen, and player
-publication are marked **NEW** in the [wireframe](../product/2026-09-28-app-wireframe.md#scr-05-result).
+The hook's full form, a player testing a tool from chat and seeing Coder
+pass more tests with it, isn't built yet: the hosted runner, the result
+card, and player publication are marked **NEW** in the
+[wireframe](../product/2026-09-28-app-wireframe.md#card-04-result-card)
+and planned for build 21 (milestone M10).
 We don't show a player result that didn't happen. What we can show this week:
 
 | Asset | Status | Where it comes from |
@@ -130,9 +133,11 @@ We don't show a player result that didn't happen. What we can show this week:
 | Builds shipping several times a day | True: builds 1 to 15 in two days, then 16 to 19 | [Launch roadmap](../roadmap/2026-09-29-launch-roadmap.md) |
 | The intro cinematic `CIN-01` | Specified, not built (no scripted camera path yet) | [Wireframe](../product/2026-09-28-app-wireframe.md#cin-01-intro-cinematic) |
 
-The scoreboard line from the owner's brief, "Coder went 6 → 8 of 10 because
-Trainer 7KQ's tool", is the format we post as soon as the first real player
-run lands. Until then, scoreboards use our published boards, and spotlights
+The scoreboard line, "Coder passed 7 of 8 tests with Trainer 7KQ's tool,
+5 without, checked by 3 trainers", is the format we post as soon as the
+first real eval result is checked (the Gym moved from benchmark scores to
+evals on 2026-09-28; see [extension evaluation](../extensions/evaluation.md)
+and milestone M10 in the launch roadmap). Until then, scoreboards use our published boards, and spotlights
 use accepted playtest contributions.
 
 ## Formats and cadences
@@ -236,20 +241,25 @@ pin and show.
 | **Coder from your phone** | A phone starts a task, the computer on the desk runs it | Now |
 | **Title unlocked** | **PLAYTESTER** appearing under a real player's name tag | When the playtest referee key exists and the first award is signed |
 | **The cinematic** | `CIN-01.S05`: many lights stream into one emblem | Animatic now (Grid footage, subtitles, the narration script); the real cinematic when built |
-| **Player's run** | "Coder: 6 of 10 → 8 of 10 with Project map. Trainer 7KQ." | When the Gym's hosted runs ship |
+| **Player's result** | "Coder: 5 of 8 → 7 of 8 tests with Project map. Test set by Trainer 7KQ." | When the hosted runner ships (build 21) |
+| **Made in chat** | A screen recording: "Help me make a tool that…", the draft card, **Try it once**, the result card | When the chat's eval routes ship (build 21) |
 | **Shipped in an hour** | A player's report on the left, the build card with their name on the right | Every time it happens |
 
 ### Scoreboards
 
-A scoreboard post shows one agent, one before, one after, and who made the
-difference. It follows the [Gym leaderboard](../verse/gym-leaderboard.md)'s
-rule that no screenshot separates a number from its caveats.
+A scoreboard post shows one agent, one tool, the tests passed without and
+with it, and who made the difference. It follows the
+[Gym leaderboard](../verse/gym-leaderboard.md)'s rule that no screenshot
+separates a number from its caveats, and the eval rule that results from
+different test sets are never compared.
 
-- **Format:** `CODER · 0 OF 10 → 4 OF 4` in white, the task in gray, the
-  label (`IN-SAMPLE · ONE SHARED FACT`) under it, and the credit line.
-- **Player version (when runs ship):** `CODER · 6 OF 10 → 8 OF 10 · PROJECT
-  MAP · TRAINER 7KQ · CONFIRMED BY 3 TRAINERS`. Post only after other
-  trainers confirm it; a pending result is labeled **PENDING**.
+- **Format until evals ship:** `CODER · 0 OF 10 → 4 OF 4` in white, the
+  task in gray, the label (`IN-SAMPLE · ONE SHARED FACT`) under it, and the
+  credit line.
+- **Eval version (build 21 on):** `CODER · 5 OF 8 → 7 OF 8 TESTS · PROJECT
+  MAP · TEST SET BY TRAINER 7KQ · CHECKED BY 3 TRAINERS`. Post only after
+  other trainers' checks confirm it; an unchecked result is labeled
+  **PENDING**, and a disputed one is not posted.
 - **Cadence:** Wednesdays, plus any day a confirmed result lands.
 - **Honesty line:** negative results get posted too ("Code finder: no clear
   change. Now everyone knows."), because the wireframe's **Result** screen
@@ -400,12 +410,13 @@ new players hit, and post its card with "for everyone who joined today".
 
 ### Day 60 (to 2026-11-27): the Gym opens, the real scoreboard
 
-- The hook becomes real when the Gym's hosted runs and the **Result** screen
-  ship: the first confirmed player result gets a launch-sized beat (thread,
-  video, stream, creator wave).
-- Scoreboards switch to player results: "Coder 6 → 8 of 10 with Project map,
-  Trainer 7KQ, confirmed by 3 trainers."
-- **Share outside the app** on the Result screen sends an image card and the
+- The hook becomes real when evals in chat ship (build 21): the first
+  checked player result gets a launch-sized beat (thread, video, stream,
+  creator wave).
+- Scoreboards switch to eval results: "Coder passed 7 of 8 tests with
+  Project map, 5 without. Test set by Trainer 7KQ, checked by 3 trainers."
+- **Share outside the app** on the Result screen and **Share what you
+  made** on the credit card send an image card and the
   join link, with the trainer's name on it (the k-factor engine).
 - The intro cinematic `CIN-01` ships; its 37-second cut becomes the trailer.
 - Season 2 announced with its own title and a new cosmetic.
@@ -450,7 +461,7 @@ are cited for context only: playtesters self-select, so we aim above them.
 | Activation | Distinct keys that get a reply from the OpenAgents chat worker (a count, no content) | 60 percent of installs | 70 percent | 80 percent | IDIOT PROOF: no setup before the first win |
 | D1 return | TestFlight sessions per tester, and distinct keys chatting again the next day | 35 percent | 40 percent | 45 percent | GameAnalytics: top-quartile mobile games reach about 30 to 33 percent D1 |
 | D7 return | As above, on day 7 | n/a | 20 percent | 30 percent | Top-quartile mobile games sit around 6 to 7 percent D7 |
-| Runs per player | Chats per active player per day now; Gym runs per player per week once runs ship | 3 chats | 5 chats | 3 Gym runs a week | |
+| Runs per player | Chats per active player per day now; test runs and checks per player per week once evals ship | 3 chats | 5 chats | 3 test runs or checks a week | |
 | Accepted playtest issues | The triage log | 15 | 30 | 80 | Season-1 target from the playtesting program |
 | Report to build | Median time from an accepted P0 or P1 to a public build with the fix | 2 days | 2 days | 1 day | Playtesting program target |
 | Share rate | Shares from **Share outside the app** and trainer card exports, per result or card shown | n/a | 10 percent | 20 percent | Needs `SCR-05.E09` |
@@ -507,8 +518,8 @@ description, a black and white thumbnail with one number, and captions on.
 
 - **No number without its label.** In-sample stays in-sample. A pending
   result says **PENDING**.
-- **No player result we didn't measure.** The 6 → 8 format waits for real
-  runs.
+- **No player result we didn't measure.** The "7 of 8 with, 5 without"
+  format waits for real, checked eval results.
 - **No promised money.** Nothing pays testers or creators in season 1, and
   we don't narrate a bitcoin reward the app can't give (the same rule as
   `CIN-01.S06`).

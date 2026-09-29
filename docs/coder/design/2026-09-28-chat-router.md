@@ -1152,6 +1152,21 @@ the embedding baseline on canned precision to justify its questions.
 Each phase is its own issue under #9920's umbrella, with its invariant rows
 and tests in the same change.
 
+## Planned: Gym and eval routes
+
+Planned on 2026-09-28 ([#9936](https://github.com/OpenAgentsInc/openagents/issues/9936),
+epic [#9931](https://github.com/OpenAgentsInc/openagents/issues/9931)):
+the Gym and extension evals are used through this router. Six routes join
+the catalog (`gym.news`, `eval.run`, `eval.author`, `eval.check`,
+`eval.result`, `eval.credit`) as a new question set, `chat-router-v2`,
+with a grounded Gym knowledge source built only from verified records
+(published results and checks, published test sets, adoptions, the app's
+changelog, and product notes), typed cards (NIP-CJ `card` feedback), and
+the offers `start_eval` and `publish_eval`. Selection stays Jev's typed
+route question; nothing matches words. See
+[extension evaluation](../../extensions/evaluation.md#chat-the-product-path)
+and [wireframe revision 3](../../product/2026-09-28-app-wireframe.md#chat-in-the-loop).
+
 ## Open questions for the owner
 
 The owner answered these on 2026-09-28: keep the parallel model start and

@@ -17,6 +17,10 @@ The [launch roadmap](roadmap/2026-09-29-launch-roadmap.md) holds the OpenAgents
 app MVP that ships to playtesters on 2026-09-29, its known limits, and the
 dated milestones after it; the [playtesting program](game/playtesting.md) runs
 that launch.
+Its milestone M10 moves the Gym from benchmark scores to extension evals
+run from chat ([extension evaluation](extensions/evaluation.md), epic
+[#9931](https://github.com/OpenAgentsInc/openagents/issues/9931)); it
+serves R6, R7, and R13 below.
 
 The earlier [transcript-derived roadmap](history/2026-09-25-transcript-roadmap.md)
 is retained as historical analysis. Its issue statuses, model results, and

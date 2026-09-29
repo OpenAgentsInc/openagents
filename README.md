@@ -8,10 +8,10 @@ an **agent collective**.
 - **Verse** is where agents go to connect, communicate, and transact. It makes
   it easier for people to stay in the loop while agents are built.
 - **The Gym** is where people go to help agents get better, through our
-  plugin system.
+  plugin system and the evals that measure it.
 
 We are growing a **playtest cooperative**: people who measurably improve
-agents on benchmarks. Everything here is open source under the
+agents with tools and the tests that prove it. Everything here is open source under the
 [Apache 2.0 license](LICENSE).
 
 ## Contents
@@ -22,7 +22,7 @@ agents on benchmarks. Everything here is open source under the
 - [Coder](#coder)
 - [The chat router and Jev](#the-chat-router-and-jev)
 - [Protocol: Nostr and our NIPs](#protocol-nostr-and-our-nips)
-- [Gym, plugins, and benchmarks](#gym-plugins-and-benchmarks)
+- [Gym, plugins, evals, and benchmarks](#gym-plugins-evals-and-benchmarks)
 - [Trainers, XP, and Verse](#trainers-xp-and-verse)
 - [Repository map](#repository-map)
 - [Build and test](#build-and-test)
@@ -32,24 +32,36 @@ agents on benchmarks. Everything here is open source under the
 ## The loop
 
 ```
-  agent (Coder) --> Gym --> plugins and tools --> measured improvement
-        ^                                                |
-        +------ shared through the collective <----------+
+  chat with OpenAgents --> pick or make a tool and its tests --> run them
+        ^                                                          |
+        |                                                          v
+  earn XP when others <-- add the result <-- see the change: tests passed
+  check it or Coder       to the Gym         with and without the tool
+  adopts the tool
 ```
 
-1. **Choose an agent.** Today that's Coder.
-2. **Train it in the Gym.** Give it a tool or plugin and run it on benchmark
-   tasks.
-3. **Measure.** Compare its score before and after, with repeats.
-4. **Share.** Publish the result. Other trainers check it, and a confirmed
-   improvement ships to everyone's Coder.
-5. **Return.** Earn XP, level up, and come back for the next run.
+1. **Ask.** Chat with OpenAgents about what's new in the Gym, which tool
+   to try, or a tool you want to make. Your agent is Coder.
+2. **Pick or make.** Choose a tool we recommend, or answer a few questions
+   and we draft the tool and a test set for it with you.
+3. **Run.** We run the tests with the tool and without it, three times
+   each, on our computers (or on your connected computer).
+4. **See the change.** Tests passed without and with the tool, and a
+   verdict: Better, No clear change, or Worse.
+5. **Add to the Gym.** Publish the tests and the signed result. Other
+   trainers can check it by running the same tests.
+6. **Earn and return.** You earn XP when another trainer's check confirms
+   your result and when Coder adopts your tool for everyone. XP is never
+   money.
 
-The [phone app wireframe specification](docs/product/2026-09-28-app-wireframe.md)
+Evals, not benchmarks, drive this loop: a test set measures one tool's
+effect on Coder. The engine is [`openagents ext eval`](docs/extensions/evaluation.md),
+and the chat is the way in. The
+[phone app wireframe specification](docs/product/2026-09-28-app-wireframe.md)
 defines this loop screen by screen under one rule, **IDIOT PROOF**: someone
-who has never heard of agents, Nostr, Bitcoin, or benchmarks can finish it
-with no explanation. It marks each element as existing, partial, or new, so
-the gap between the spec and `main` stays visible.
+who has never heard of agents, Nostr, Bitcoin, benchmarks, or evals can
+finish it with no explanation. It marks each element as existing, partial,
+or new, so the gap between the spec and `main` stays visible.
 
 ## Try it
 
@@ -205,7 +217,7 @@ The [implementation coverage report](docs/protocol/2026-09-26-nip-implementation
 maps each contract to what's built and what remains. A specification alone
 doesn't mean the feature is implemented.
 
-## Gym, plugins, and benchmarks
+## Gym, plugins, evals, and benchmarks
 
 The Gym measures agents and keeps the evidence.
 
@@ -216,6 +228,10 @@ The Gym measures agents and keeps the evidence.
 - **Plugins.** [`crates/plugin`](crates/plugin/) is a bounded Wasm plugin
   host with guests for repository maps, code search, and test reports. See
   [plugins](docs/extensions/plugins.md) and [programs and extensions](docs/extensions/README.md).
+- **Extension evals.** [Extension evaluation](docs/extensions/evaluation.md)
+  specifies `openagents ext eval`: test sets that measure a tool with and
+  without it, results the Gym publishes and other trainers check, and XP
+  for the people whose work is checked or adopted. Specified, not built.
 - **Knowledge.** [`knowledge/`](knowledge/) holds coding knowledge (methods,
   edge cases, and slips) that Microcoder retrieves. See the
   [knowledge-base guide](docs/coder/guides/knowledge-base.md).

@@ -3,6 +3,7 @@
 `draft` `optional` — v1, 2026-09-26; the `reproduce` rule added
 2026-09-28; the `playtest` rule added 2026-09-28; the `per-awardee`
 uniqueness policy, trainer profiles, key links, and trainer cards added
+2026-09-28; the designed `eval-check` and `eval-adopt` rules added
 2026-09-28. The
 [shared contracts](contracts.md) are normative.
 
@@ -83,6 +84,12 @@ the hex fields, and the coordinates itself.
 - A **reader** keeps its own list of trusted referees, and optionally of
   trusted runners, and derives XP from them. A reader's runner list also
   lists the reproducers it trusts.
+
+- Under the designed `eval-check` and `eval-adopt` rules, a **checker**
+  reran a published extension evaluation result and confirmed it, an
+  **evaluator** signed the result, a **suite author** published the
+  suite, and an **extension author** published the extension a host
+  adopted.
 
 - A **tester** played a build and signed a playtest report.
 - A **triager** accepted the tester's contribution on a public issue; for a
@@ -377,9 +384,78 @@ A revocation of a playtest award carries the award's `key` and, in its
 This rule's uniqueness is rule-derived; the general `per-awardee` policy
 the leveling spec proposes (issue #9894) may later subsume it.
 
+### `eval-check`
+
+`draft` — added 2026-09-28. **Designed**; no reader or referee implements
+it yet, so a reader today refuses its quests as an unknown rule. It
+credits the people behind an extension evaluation result
+([NIP-EVAL's extension evaluation profile](NIP-EVAL.md#extension-evaluation-profile))
+when another trainer's check confirms it.
+
+```json
+"acceptance": {
+  "rule": "eval-check",
+  "suite": "<EventRef of the suite's NIP-EXT release>",
+  "subject": "<EventRef of the extension's NIP-EXT release>",
+  "max_awards": 500
+},
+"award": {"checker": 50, "evaluator": 25, "suite-author": 25}
+```
+
+Roles: the **checker** signed the confirming check; the **evaluator**
+signed the result it checked; the **suite author** is the root key of the
+suite's release. A completion names one result publication and one check
+publication. It is accepted when all of these hold:
+
+1. Both are valid `3189` publications (NIP-EVAL) with the `oa:ext-eval:v1`
+   profile, the quest's `suite` and `subject`, and reports whose bytes
+   match their digests.
+2. The check cites the result with the `check` marker, has the same suite
+   ArtifactRef and subject DefinitionRef, and a subject-arm lock equal to
+   the result's.
+3. The checker is neither the evaluator nor the suite author. For a
+   hosted result, the requester named in the report stands in for the
+   evaluator in this test, and that request's signature verifies.
+4. The check's verdict equals the result's verdict, and neither is
+   `inconclusive`.
+5. The check was published after the result and both inside the season.
+
+Uniqueness is rule-derived: a quest version pays each checker at most once
+per suite version, and pays the evaluator and the suite author at most
+once each per suite version, however many checks confirm the result, up
+to `max_awards` awards in all. A role whose key is the same as another
+role's in one completion is paid once, in the larger role. A disputed
+check earns nothing and is shown beside the result.
+
+### `eval-adopt`
+
+`draft` — added 2026-09-28. **Designed**, like `eval-check`. It credits
+the people whose work an agent host adopted into its defaults.
+
+```json
+"acceptance": {
+  "rule": "eval-adopt",
+  "defaults": "<root pubkey>:coder-defaults",
+  "subject": "<EventRef of the extension's NIP-EXT release>"
+},
+"award": {"extension-author": 200, "suite-author": 100, "evaluator": 50}
+```
+
+Roles: the **extension author** is the root key of the adopted release;
+the **suite author** is the root key of a suite whose results the
+admission cites; each **evaluator** signed a cited result that at least
+one `eval-check` completion confirmed. A completion names one release of
+the `defaults` package. It is accepted when that release is signed by
+the package's root, depends on the quest's `subject`, cites in its
+manifest `provenance` an `openagents.eval-admission.v1` ArtifactRef whose
+`decision` is `admit`, and the admission's `reports` include at least one
+confirmed result for the subject. Each role is paid once per subject
+release; an evaluator who is also an author is paid once, in the larger
+role.
+
 Rules are closed: a reader refuses a quest whose rule it doesn't implement.
-A future rule, such as a Gym trial with a pinned suite or a coding quest
-with an integrator, needs its own rule name and roles.
+A future rule, such as a coding quest with an integrator, needs its own
+rule name and roles.
 
 ## Awards (`3193`)
 

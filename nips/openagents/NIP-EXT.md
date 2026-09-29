@@ -75,14 +75,21 @@ execution pin by itself.
 
 Kinds are `program`, `plugin`, `capability`, `decision-function`, `skill`,
 `source`, `checker`, `operation`, `ai-signature`, `ai-implementation`,
-`guidance`, and `schema`. Executable native
+`guidance`, `schema`, and `eval-suite`. Executable native
 bindings remain host-owned; their declarations cannot self-install adapters.
 Program/plugin/capability definitions follow their NIPs. Source, checker, and
 operation definitions have `v: "openagents.binding.v1"`, `requires`, `id`,
 `kind`, `capability: DefinitionRef`, `operation` (slug), input/output
 SchemaRefs, `effects`, and `minimum`. They resolve only to host-supported
 bindings and pinned schemas. Guidance is an inert text artifact; schema assets
-follow the shared SchemaRef dialect. Unknown definition kinds refuse.
+follow the shared SchemaRef dialect. An `eval-suite` definition is a
+NIP-EVAL `openagents.eval-suite.v1` in its
+[extension evaluation profile](NIP-EVAL.md#extension-evaluation-profile)
+(added 2026-09-28, designed): its case files are the package's listed
+files, it is inert data, and installing it grants nothing; a host runs it
+only through an evaluation runner. A package may hold only an
+`eval-suite`, which is how a person other than an extension's publisher
+publishes tests for it. Unknown definition kinds refuse.
 
 An operation descriptor contains `v: "openagents.operation.v1"`, `requires`,
 `id`, `kind`, `definition` (ArtifactRef), `summary`, `input`, `output`,

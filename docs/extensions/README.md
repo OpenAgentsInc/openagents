@@ -2,6 +2,8 @@
 
 Status: target specification, partly implemented. The Wasm plugin host
 core and the program `program` and `module` steps are built;
+[extension evaluation](evaluation.md) is specified (revision 2) and
+planned in epic [#9931](https://github.com/OpenAgentsInc/openagents/issues/9931);
 [What is built](plugins.md#what-is-built) lists the plugin parts.
 OpenAgents defines general agent infrastructure; Coder is its first
 specialization. Programs compose typed work. Extensions
@@ -38,7 +40,7 @@ component or grant a provider access.
 | [Packages and distribution](packages.md) | Immutable contents, identity, installation, publication, revocation, and adoption. |
 | [TypeSafe opportunities](opportunities.md) | Concrete applications of explicit state and economical semantic operations. |
 | [Delivery and evaluation](delivery.md) | Implementation sequence and acceptance requirements. |
-| [Extension evaluation](evaluation.md) | `openagents ext eval`: suites, graders, stand-ins, the run sandbox, and publishing results to the Gym. |
+| [Extension evaluation](evaluation.md) | `openagents ext eval` and the chat product path: suites, graders, the run sandbox, hosted runs, publishing results to the Gym, checks, adoption, and XP credit. |
 | [Optimization architecture](../optimization/architecture.md) | Stable semantic contracts and replaceable inference implementations. |
 
 The [OpenAgents NIPs](../../nips/openagents/README.md) are standalone v1

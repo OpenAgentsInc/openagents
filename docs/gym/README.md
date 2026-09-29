@@ -22,6 +22,16 @@ files and missing costs remain unavailable; selecting an indexed attempt does
 not establish that all its artifacts are present. A replay does not execute
 the recorded commands.
 
+## Evaluate an extension
+
+| Need | Guide |
+| --- | --- |
+| Measure whether a tool changes what Coder does, with and without it, and publish the result for others to check | [Extension evaluation](../extensions/evaluation.md) (specified; epic [#9931](https://github.com/OpenAgentsInc/openagents/issues/9931)) |
+
+An extension eval compares one extension's effect on Coder over a test
+set; it is not a benchmark of Coder. Its verdict comes from the
+`ext-eval-v1` gate, recorded like every gate.
+
 ## Measure decision doors
 
 | Need | Guide |

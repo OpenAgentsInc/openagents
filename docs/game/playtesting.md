@@ -55,14 +55,18 @@ no money.
 The lo-fi playtest tests the
 [minimal v1 cut](../product/2026-09-28-app-wireframe.md#minimal-v1-cut-and-later-additions)
 of the [phone app wireframe](../product/2026-09-28-app-wireframe.md)
-(revision 2) with what we can put in a tester's hands today. It has two
-parts:
+(revision 3: the eval loop, inside chat) with what we can put in a
+tester's hands today. It has two parts:
 
 - **Part A, the mockup.** **OpenAgents Mockup**
   ([`bins/openagents-mockup-ios`](../../bins/openagents-mockup-ios/README.md)),
   a screens-only app with fake data, draws the whole v1 loop: the main
-  menu, the guided first run, the Gym, a training run, the result, level
-  up, and chat. It tests flow, comprehension, and the look.
+  menu, the guided first run in chat, a tool card, a test run, the result
+  with and without the tool, **Add to the Gym**, level up, making a test
+  set in chat, what's new, a check, and credit. It tests flow,
+  comprehension, and the look. Until the mockup draws revision 3
+  ([#9940](https://github.com/OpenAgentsInc/openagents/issues/9940)), use its revision 2 screens and skip `LF-A11` to
+  `LF-A13`.
 - **Part B, the real app.** The OpenAgents app, build 20, tests the
   lo-fi surfaces that exist now: Chat with OpenAgents with prepared answers
   and dispatch offers, the simple Wallet, the Grid, playtest logging,
@@ -70,35 +74,38 @@ parts:
 
 The rule for both parts is the spec's first principle,
 [IDIOT PROOF](../product/2026-09-28-app-wireframe.md#idiot-proof-checklist):
-someone who has never heard of agents, Bitcoin, or benchmarks finishes the
-loop with zero explanation. Every hint a facilitator gives is a finding.
+someone who has never heard of agents, Bitcoin, benchmarks, or evals
+finishes the loop with zero explanation. Every hint a facilitator gives is a finding.
 
 ### Lo-fi goals
 
 | ID | Question | Part | Spec IDs |
 | --- | --- | --- | --- |
-| `LF-G1` | Can a first-timer complete `FLOW-01` (Choose Coder, the cinematic, the Gym, Training, Result, Level up, the main menu) with zero explanation? | A | `FLOW-01`, `CHK-10` |
-| `LF-G2` | How long and how many taps from app open to the first Gym run starting? The spec's limit is 3 taps. | A | `CHK-06`, `SCR-03.E09` |
-| `LF-G3` | Do they understand **Make Coder better**, the score before and after ("6 of 10 → 8 of 10"), the verdict, and XP? | A | `SCR-01.E03`, `SCR-05.E02` to `E04`, `SCR-06`, `CHK-08` |
+| `LF-G1` | Can a first-timer complete `FLOW-01` (Choose Coder, the cinematic, the first-run chat, the test, the result, **Add to the Gym**, Level up, the main menu) with zero explanation? | A | `FLOW-01`, `CHK-10` |
+| `LF-G2` | How long and how many taps from app open to the first test run starting? The spec's limit is 3 taps. | A | `CHK-06`, `CARD-01.E05` |
+| `LF-G3` | Do they understand the result: tests passed without and with the tool ("5 of 8 → 7 of 8"), the verdict, and when XP comes? | A | `CARD-04`, `SCR-05.E02` to `E04`, `SCR-06`, `CHK-08` |
 | `LF-G4` | Does chat answer the tire-kicking questions ("Who are you?", "What does it cost?") at once and correctly? | A (finding chat), B (speed and correctness) | `CHAT-1`, `FLOW-03`, `SCR-17.E04`, `E08` |
 | `LF-G5` | Do the dispatch offers (**Run Coder on** a computer, **Connect a computer**) make sense before the tap, and does the tester know nothing happens until they tap? | A and B | `CHAT-7`, `FLOW-05`, `SCR-17.E05`, `CHK-11` |
 | `LF-G6` | Can they receive and send a small amount in the Wallet without help? | B | Wallet (outside the v1 menu) |
 | `LF-G7` | Can they tell us something went wrong: **Report a problem**, **Wrong answer**, and **Share this chat**? | A (finding it), B (sending it) | `FLOW-06`, `SCR-13`, `SCR-18` |
 | `LF-G8` | Which words didn't they understand? Any word from the spec's banned list on a v1 screen is a bug. | A and B | `CHK-02` |
+| `LF-G9` | Can they make a tool and its test set by chatting, approve each step, and say what becomes public before adding it? | A | `FLOW-07`, `CARD-02`, `SCR-20`, `CHK-12` |
+| `LF-G10` | Can they find what's new in the Gym, run a check of someone else's result, and say what XP they (and the other trainer) earn and why? | A | `FLOW-08` to `FLOW-10`, `CARD-05` to `CARD-07`, `CHK-13` |
 
 Not tested in the lo-fi round, because nothing real exists to test yet: a
-real training run and its score (the mockup fakes both with a timer and
-fixed numbers), real XP and levels from a run, Rankings, Updates, the Coder
-screen, setup prompts, and chat's loop offers such as **Go to the Gym**
-(`SCR-07`, `SCR-10`, `SCR-12`, `SCR-14`, `CHAT-2` to `CHAT-6`, `FLOW-04`).
-The mockup draws some of these; skip them in scoring.
+real test run and its result (the mockup fakes both with a timer and fixed
+numbers), real XP from a check, Rankings, Updates, the Coder screen, and
+setup prompts (`SCR-07`, `SCR-10`, `SCR-12`, `SCR-14`). The mockup draws
+some of these; skip them in scoring. In the real app, chat's Gym and eval
+routes (`CHAT-2` to `CHAT-5`, `CHAT-9` to `CHAT-14`) arrive with build 21;
+on build 20, part B covers chat's existing surfaces only.
 
 ### Which build to use
 
 | Part | App | How to get it | Use it for | It can't tell us |
 | --- | --- | --- | --- | --- |
-| A | **OpenAgents Mockup** 0.1.0 (`com.openagents.mockup`), installed next to the real app | Its own TestFlight app once the App Store Connect record exists (an owner step in the workspace's `NEEDS_OWNER.md`). Until then, the facilitator's phone or simulator: `bins/openagents-mockup-ios/build.sh sim`. | `FLOW-01`, `FLOW-02`, `FLOW-03`, `FLOW-05`, and `FLOW-06` as click-throughs; comprehension; the look | Speed or correctness of chat. The mockup chat doesn't read what you type: a typed message gets one generic reply, and only the suggestion chips lead to prepared answers. Training is a 12-second timer. Its **Report a problem** sends nothing. |
-| B | **OpenAgents** 1.0.0 build 20 (`com.openagents.app`). Build 19 has prepared answers but no offers or **Wrong answer**: on 19, skip `LF-B3`, `LF-B4`, and `LF-B10`. | The public TestFlight link on iOS; the APK on Android | Chat with OpenAgents, offers, the Wallet, the Grid, and real reports | The main menu, the guided first run, and a Gym run: the real app still opens on four tabs (Chat, Verse, Wallet, Account). |
+| A | **OpenAgents Mockup** 0.1.0 (`com.openagents.mockup`), installed next to the real app | Its own TestFlight app once the App Store Connect record exists (an owner step in the workspace's `NEEDS_OWNER.md`). Until then, the facilitator's phone or simulator: `bins/openagents-mockup-ios/build.sh sim`. | `FLOW-01` to `FLOW-10` as click-throughs; comprehension; the look | Speed or correctness of chat. The mockup chat doesn't read what you type: a typed message gets one generic reply, and only the suggestion chips and cards lead anywhere. A test run is a 12-second timer. Its **Report a problem** sends nothing. |
+| B | **OpenAgents** 1.0.0 build 20 (`com.openagents.app`). Build 19 has prepared answers but no offers or **Wrong answer**: on 19, skip `LF-B3`, `LF-B4`, and `LF-B10`. | The public TestFlight link on iOS; the APK on Android | Chat with OpenAgents, offers, the Wallet, the Grid, and real reports | The main menu, the guided first run, and a test run: the real app still opens on four tabs (Chat, Verse, Wallet, Account). |
 
 Mockup settings for a playtest copy, in `App/MockData.swift`: turn
 `showLaterFeatures` off (the v1 menu has no bell, **CODER**, or
@@ -173,15 +180,18 @@ unaided: no intervention.
 | Task | Read aloud | Spec IDs | Success when | Then ask |
 | --- | --- | --- | --- | --- |
 | `LF-A1` | **"Here's an app. Before you tap anything, what do you think it's for?"** | `SCR-02.E02`, `E03` | They mention an AI, coding, or helping something get better. | — |
-| `LF-A2` | **"Do whatever the app asks you to do, until you think you're done."** | `FLOW-01`: `SCR-02`, `CIN-01`, `SCR-03`, `SCR-04`, `SCR-05`, `SCR-06`, `SCR-01` | They reach the main menu with no intervention. | On the Result screen, before they add it: **"What just happened? What do the two numbers mean? What is XP?"** |
-| `LF-A3` | (Same run; don't read anything.) Count taps from app open to **START TRAINING**, and time it. | `CHK-06`, `SCR-02.E04`, `CIN-01` end card, `SCR-03.E09` | 3 taps. | — |
-| `LF-A4` | On the main menu: **"What do you think this screen wants you to do next?"** | `SCR-01.E03`, `E11`, `CHK-03` | They point at **ENTER THE GYM** or read the next-step line. | **"What does 'Make Coder better' mean?"** |
-| `LF-A5` | **"Start another run with a different tool."** | `FLOW-02`, `SCR-03.E05` | 2 taps from the main menu to the run starting, with a tool that isn't Project map. | — |
+| `LF-A2` | **"Do whatever the app asks you to do, until you think you're done."** | `FLOW-01`: `SCR-02`, `CIN-01`, `SCR-15.E12`, `CARD-01`, `CARD-03`, `CARD-04`, `SCR-20`, `SCR-06`, `SCR-01` | They reach the main menu with no intervention. | On the result card, before they add it: **"What just happened? What do the two numbers mean? When do you get XP?"** On **Add to the Gym**: **"What will other people see?"** |
+| `LF-A3` | (Same run; don't read anything.) Count taps from app open to **START THE TEST**, and time it. | `CHK-06`, `SCR-02.E04`, `CIN-01` end card, `CARD-01.E05` | 3 taps. | — |
+| `LF-A4` | On the main menu: **"What do you think this screen wants you to do next?"** | `SCR-01.E12`, `E11`, `E13`, `CHK-03` | They point at **CHAT WITH OPENAGENTS**, a starter chip, or read the next-step line. | **"What would you use the chat for?"** |
+| `LF-A5` | **"Test a different tool on Coder."** | `FLOW-02`, `FLOW-04`, `CARD-01.E07` | 2 taps from the main menu to the run starting, with a tool that isn't Project map. | — |
 | `LF-A6` | **"You want to know who makes this and what it costs. Find out."** | `FLOW-03`, `SCR-01.E12`, `SCR-15`, `SCR-17` | They open chat and get both answers. Write down anything they type: typed questions show which first questions the answer bank must cover. | **"Where did that answer come from?"** (Did they notice **Prepared answer**?) |
 | `LF-A7` | **"Ask what it can do for you."** Then, without pointing: **"What would happen if you tapped the buttons under the answer?"** | `FLOW-05`, `SCR-17.E05`, `E06`, `CHK-11` | They say **Run Coder on Studio Mac** would start work on that computer, and that nothing has happened yet. | **"What's Coder?"** |
 | `LF-A8` | **"Suppose that answer was wrong. Tell the app."** | `FLOW-06`, `SCR-17.E09`, `SCR-18` | They find **Wrong answer** and see what it sends. | — |
 | `LF-A9` | **"Something about this chat confused you. Report it, and include the chat."** | `SCR-13.E05`, `SCR-11.E06` | They open **Report a problem** and turn on **Share this chat**. | **"What will we see when you send that?"** |
 | `LF-A10` | **"Find out what level you are and how much XP you have."** | `SCR-01.E04`, `SCR-11.E02` | They find it on the player card or Profile. | — |
+| `LF-A11` | **"You have an idea for a tool that helps Coder write changelog entries. Make it with the app, and test it."** (Use the mockup's scripted answers.) | `FLOW-07`, `CARD-02`, `SCR-21`, `CARD-04` "first try", `SCR-20` | They approve the draft, try it once, run the full test set, and stop at **Add to the Gym** knowing what becomes public. | **"What's a test here? Why is there a test where the tool should stay out of the way?"** |
+| `LF-A12` | **"Find out what's new in the Gym, and help check someone else's result."** | `FLOW-09`, `FLOW-08`, `CARD-05`, `CARD-06` | They open **What's new**, tap the check, and finish it. | **"What does checking do? Who gets XP?"** |
+| `LF-A13` | **"Find out whether anything you made has earned you anything."** | `FLOW-10`, `CARD-07`, `SCR-11.E10` | They reach the credit card or **What you made**. | **"Can you spend XP?"** (The answer should be no.) |
 
 **Part B: the real app, build 20**
 
@@ -216,8 +226,11 @@ The banned list from the spec's
 npub, nsec, key, relay, Nostr, NIP, ATIF, tailnet, Tailscale, Wasm, plugin,
 benchmark, Terminal-Bench, TB, Jev, Luna, Microcoder, verifier, trace,
 recipe, grant, sats, BTC, ₿, Lightning, invoice, host, workspace, pubkey,
-hex. A banned word on a v1 screen (`SCR-01` to `SCR-06`, `SCR-11`,
-`SCR-13`, `SCR-15` to `SCR-18`) is a `CHK-02` bug. The exceptions: a chat
+hex, and eval, evaluation, suite, case, grader, rubric, judge, baseline,
+arm, harness, stand-in, mock, pilot, and extension. A banned word on a v1
+screen or card (`SCR-01`, `SCR-02`, `SCR-05`, `SCR-06`, `SCR-11`,
+`SCR-13`, `SCR-15` to `SCR-18`, `SCR-20`, `SCR-21`, `CARD-01` to
+`CARD-07`) is a `CHK-02` bug. The exceptions: a chat
 answer may name Gemini, the AI Gateway, Jev, or Nostr when the tester asks
 what powers the chat, and "workspace" may appear in a chat on a connected
 computer. The Wallet and the Grid are outside the v1 menu and use ₿ and
@@ -235,9 +248,9 @@ it.
 | `LF-G1` `FLOW-01` unaided | 4 of 5 reach the main menu with no intervention. |
 | `LF-G2` Taps to the first run | 3 taps for every tester (`CHK-06`). |
 | `LF-G2` Time to the first run | Median under 2 minutes from app open to **START TRAINING**, with the cinematic at full length. |
-| `LF-G3` Before and after | 4 of 5 explain the two scores in their own words ("Coder got 8 right instead of 6"). |
-| `LF-G3` Make Coder better | 4 of 5 say what the Gym does and why they'd come back. |
-| `LF-G3` XP | 3 of 5 say what XP is for. |
+| `LF-G3` Without and with | 4 of 5 explain the two numbers in their own words ("Coder passed 7 tests with the tool instead of 5"). |
+| `LF-G3` The Gym | 4 of 5 say what the Gym does and why they'd come back. |
+| `LF-G3` XP | 3 of 5 say what XP is for and that it comes when someone checks their result. |
 | `FLOW-02` Returning run | 2 taps from the main menu, 5 of 5. |
 | `LF-G4` Finding chat | 4 of 5 open chat without help (`LF-A6`). |
 | `LF-G4` Speed | Every prepared answer shows in under 1 second; the first words of any other answer in under 2 seconds. |
@@ -245,7 +258,9 @@ it.
 | `LF-G5` Offers | 4 of 5 say what an offer will do before tapping; no tester thinks something ran without a tap. |
 | `LF-G6` Wallet | 4 of 5 receive and send unaided; no wrong amount; no bitcoin lost to an app error. |
 | `LF-G7` Reporting | 4 of 5 send a **Wrong answer** and a report with **Share this chat** unaided. |
-| `LF-G8` Words | No banned word on a v1 screen; every word two or more testers didn't understand gets an issue. |
+| `LF-G8` Words | No banned word on a v1 screen or card; every word two or more testers didn't understand gets an issue. |
+| `LF-G9` Making a test set | 3 of 5 finish `LF-A11` unaided; 4 of 5 say what becomes public before tapping **Add to the Gym**. |
+| `LF-G10` News, checks, credit | 4 of 5 finish `LF-A12`; 4 of 5 say XP can't be spent. |
 | Dead ends | None: every screen a tester reached had a clear next step (`CHK-04`). |
 
 ### How to report
@@ -307,6 +322,9 @@ payment requests.
 | LF-A8 | | | | | |
 | LF-A9 | | | | | |
 | LF-A10 | | | | | |
+| LF-A11 | | | | | What a test is: |
+| LF-A12 | | | | | What checking does: |
+| LF-A13 | | | | | Can XP be spent: |
 | LF-B1 | | | | | |
 | LF-B2 | | | | | |
 | LF-B3 | | | | | computer: yes / no |
@@ -320,8 +338,8 @@ payment requests.
 
 ## Comprehension answers (verbatim)
 
-- Result screen (the two numbers, XP):
-- Make Coder better:
+- Result card (the two numbers, when XP comes):
+- What becomes public on Add to the Gym:
 - What Run Coder would do:
 
 ## Chat log
@@ -1345,6 +1363,12 @@ Tracked in epic [#9888](https://github.com/OpenAgentsInc/openagents/issues/9888)
    public APK, the brief, the known issues list, the `playtest` label and
    GitHub issue template, the playtest email, the scripts, the triage log,
    and the weekly note. Owner steps are in the workspace's `NEEDS_OWNER.md`.
+
+The eval loop that the lo-fi round's revision 3 tasks test is its own epic,
+[#9931](https://github.com/OpenAgentsInc/openagents/issues/9931): the
+mockup's update is [#9940](https://github.com/OpenAgentsInc/openagents/issues/9940),
+and the lo-fi round on the mockup and on build 21 is part of
+[#9941](https://github.com/OpenAgentsInc/openagents/issues/9941).
 
 ## Open questions
 
