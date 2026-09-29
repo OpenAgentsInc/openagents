@@ -1,0 +1,909 @@
+# The chat router: how OpenAgents answers a message, with Jev choosing the route
+
+Status: proposal, 2026-09-28. Nothing here is implemented. It extends the
+first response that shipped in `95c7eda2e3` (`crates/coder/src/first.rs`,
+[the first-reply measurement](../measurements/2026-09-28-first-reply.md)) and
+the product change in `820bc02ce4` (the first tab is **Chat**, the assistant
+speaks as OpenAgents in the plural, and Coder is what gets dispatched).
+Tracking: [#9920](https://github.com/OpenAgentsInc/openagents/issues/9920).
+
+The owner's request, in short: much of what a new user does first is kick the
+tires (what model is this, who are you, what does it cost, what can you do).
+Those questions deserve prebuilt answers that Jev selects and the phone shows
+almost at once. Requests for code changes or for looking around a repository
+should be answered with "we'll dispatch Coder" and a way to do it. Canned
+answers can be personalized by a free or cheap fast model when the user's own
+words matter. Other routes should cover the `openagents` command (descending
+its command tree level by level, then generating parameters), the OpenAgents
+product knowledge base, and knowledge of the OpenAgents codebase.
+
+This document proposes the router's shape, its typed route schema, the answer
+bank, the personalization contract, the wire behavior, the initial route
+catalog, and how it is measured and rolled out. It ends with questions only
+the owner can answer.
+
+## Contents
+
+- [What exists today](#what-exists-today)
+- [Goals and latency budgets](#goals-and-latency-budgets)
+- [Architecture](#architecture)
+- [The typed route schema](#the-typed-route-schema)
+- [Confidence, thresholds, and fallbacks](#confidence-thresholds-and-fallbacks)
+- [The answer bank](#the-answer-bank)
+- [Personalization with a cheap model](#personalization-with-a-cheap-model)
+- [On the wire](#on-the-wire)
+- [The initial route catalog](#the-initial-route-catalog)
+- [The CLI route: descending the command tree](#the-cli-route-descending-the-command-tree)
+- [Knowledge routes: product and codebase](#knowledge-routes-product-and-codebase)
+- [Dispatching Coder](#dispatching-coder)
+- [Safety and invariants](#safety-and-invariants)
+- [Evaluation and training data](#evaluation-and-training-data)
+- [Metrics](#metrics)
+- [Rollout](#rollout)
+- [Open questions for the owner](#open-questions-for-the-owner)
+
+## What exists today
+
+| Piece | Where | What it does |
+| --- | --- | --- |
+| Chat wire | [NIP-CJ](../../../nips/openagents/NIP-CJ.md) | Phone sends a kind `25900` job, NIP-44 encrypted to the chat worker; the worker answers with `27000` feedback (`status`, `judgment`, `partial`) and one `26900` result. All ephemeral; the relay sees ciphertext. |
+| Chat worker | `crates/coder/src/bin/coder-worker.rs`, `crates/coder/src/relay/quota.rs` | Open under a quota (6 jobs a minute and 40 a day per key; a global day total), admits, then calls the model. Its log lines carry configuration and errors; this review found none that print message text. |
+| Model door | `crates/coder/src/generate.rs` | Vercel AI Gateway, lane `gemini` = `google/gemini-3.8-flash` (also `glm` = `zai/glm-5.3-flash`). 3.0 to 4.3 s to first token. |
+| First response | `crates/coder/src/first.rs` | One Jev request beside the model call, three questions over the same state: `action` (Classify's `coder-turns-v2` wording: respond, clarify, end), `lane` (chat or computer), `opener` (21 short openers or `none`). The argmax opener goes out as partial `seq` 0, about 0.6 s after Send; Jev itself answers in 150 to 190 ms. Opt-in (`"opener": true`) so Microcoder's cloud steps keep JSON-only replies. |
+| Rank | `crates/coder/src/first.rs` | A `rank` job orders up to 16 candidate repos or actions by one Choice. Metered as a turn. |
+| Phone | `crates/openagents-mobile/src/basic_coder.rs` | Sends the `INSTRUCTIONS` ("We are OpenAgents … tap Run Coder"), the bounded transcript, `client`, and `opener: true`. No credential, model, or grant. |
+| Jev client | `crates/jev` | `SystemOneRequest` with `Noul` (probability of yes), `Choice` (up to 255 options, with `confidence` and full `probabilities`), `Score` (2 to 10 ordered levels). Questions in one request are answered independently and in parallel. |
+| Decision profile | `crates/coder/src/decision.rs`, `crates/coder/src/profiles.rs` | Resolves the one `jev::Client` every call site uses (hosted `jev-latest`, or local Kev/Lev). |
+| Knowledge base | `crates/knowledge`, `knowledge/`, [the KB design](knowledge-base.md), [NIP-KB](../../../nips/openagents/NIP-KB.md) | 211 entries of coding knowledge (methods, edge cases, slips). Retrieval is embeddings (`text-embedding-3-small` via OpenAI or OpenRouter, or Vertex) plus BM25, then a Jev Noul relevance filter. No product entries yet. |
+| Code search | `crates/plugin-code-search` | Literal and `*` pattern search over a granted snapshot, ranked by distinct patterns matched. |
+| `openagents` command | `crates/openagents-cli`, [its guide](../../cli/README.md) | About 30 groups; each group's syntax is a `USAGE` string. `openagents mcp serve` already parses the top-level help table into tools (`mcp::groups`). |
+| OpenRouter client | `crates/openrouter` | Chat completions with a JSON-schema response, usage and cost, embeddings. No streaming. |
+
+The rule that constrains every choice below, from `AGENTS.md`: no keyword
+matching for intent or tool routing. Routing is a typed semantic selector
+(Jev), embedding search, a structured planner, or a modeled parser;
+deterministic parsing only after the route is chosen, and only for bounded
+fields such as IDs, amounts, and enum values.
+
+## Goals and latency budgets
+
+Goals, in priority order:
+
+1. **Never wrong fast.** A canned answer that answers the wrong question is
+   worse than a slow right one. The canned tier is gated on measured
+   precision, not on confidence alone.
+2. **Something true on screen in well under a second, for every message.**
+   Today that is the opener. The router makes it a complete answer for the
+   questions that have one.
+3. **Say what will happen, then make it one tap.** Work that needs a
+   computer gets a plain sentence and an action (Run Coder, connect a
+   computer, open a screen), never a model's guess at doing the work in chat.
+4. **Spend the full model only where it adds something.** A turn answered from
+   the bank costs a Jev call, not a Gemini call.
+5. **Every factual claim in a canned answer is sourced.** The model name,
+   limits, and privacy statements come from configuration and tested
+   invariants, not from prose someone typed once.
+
+Budgets, measured from Send on the phone. Today's relay setup is about 300 ms
+of every number (a fresh connection per turn); a kept connection, already
+recommended in the measurement, would take that off.
+
+| Tier | First visible words | Complete | Today's equivalent |
+| --- | --- | --- | --- |
+| T0 canned final | ≤ 700 ms (≤ 400 ms with a kept connection) | same event | opener at 0.6 to 0.75 s, answer at 3.2 to 5.2 s |
+| T1 canned stem + personalization | ≤ 700 ms (the stem) | ≤ 1.8 s | same |
+| T2 retrieval-grounded model (KB, codebase) | ≤ 700 ms (opener or stem) | first grounded token ≤ 3.5 s | same |
+| T3 full model | ≤ 700 ms (opener) | model's own time, 3 to 5 s to first token | unchanged |
+| T4 dispatch or CLI proposal | ≤ 700 ms (the sentence) | action card ≤ 1.2 s; CLI parameters ≤ 3 s | Run Coder button only |
+
+## Architecture
+
+The router is a pure module in `crates/coder` (proposed `coder::router`, the
+same shape as `coder::first`: a state in, a request out; an answer in, a
+reading out), consumed by `coder-worker`. It runs only for a turn that asks
+for it, the way `opener` does today.
+
+```mermaid
+flowchart TD
+    A[25900 turn admitted<br/>allowlist, quota, staleness, capacity] --> B[status: processing]
+    A --> J[Jev: one request, independent questions<br/>route, answer, needs_specifics, lane, opener, cli_group, risk]
+    A --> M[Model call starts speculatively<br/>Gemini Flash, as today]
+    J --> P{Policy table in code<br/>thresholds per route}
+    P -->|T0 canned final| C[Answer bank text + fact slots<br/>partial seq 0 = whole answer, result]
+    P -->|T1 stem + personal| S[Stem as partial seq 0] --> R[Cheap model writes the continuation only<br/>validated, appended as partials]
+    P -->|T2 grounded| K[Retrieve: product KB or codebase docs<br/>Jev relevance filter] --> G[Model answers from retrieved entries]
+    P -->|T3 full model| F[Opener seq 0, model partials follow]
+    P -->|T4 dispatch| D[Sentence + offer: Run Coder / connect a computer]
+    P -->|T4 CLI| L[Descend CLI tree with Jev<br/>model fills parameters<br/>validate, classify effect, offer with confirm]
+    C -.cancel.-> M
+    D -.cancel.-> M
+    L -.cancel.-> M
+    K -.replaces instructions.-> M
+```
+
+The same thing as a timeline for a canned turn:
+
+```text
+t=0     Send
+~300    relay connected, REQ/EOSE (0 with a kept connection)
+~430    worker: status processing; Jev request and model request both in flight
+~600    Jev answers: route=meta.model p=.93, answer=meta.model p=.88, needs_specifics=.07
+~620    partial seq 0: "Our chat runs on Gemini 3.8 Flash from Google, …"  (T0)
+~630    result 26900: same text, tier=canned, answer=meta.model@3
+        model request cancelled (its tokens so far are the only waste)
+```
+
+Four decisions carry the design:
+
+- **One Jev request per turn for routing.** All questions read the same
+  state and are answered independently, so asking `answer` and `cli_group`
+  speculatively alongside `route` costs tokens but no round trip (the
+  TypeSafe guidance: ask independent questions together, consume only the
+  applicable answers). A second Jev request happens only when an earlier
+  answer is needed to build new state: retrieval candidates for relevance,
+  the next CLI level's options.
+- **The model call still starts beside the judgment, never behind it.** That
+  keeps the current invariant (a slow or failed judge never delays the
+  model) and makes every fallback free: the model is already running. When
+  the policy picks a tier that does not use the model, the worker cancels the
+  stream. The cost is the tokens the model emitted in the ~200 ms before
+  cancellation, which is usually none (first token is at 3 s). See
+  [question 1](#open-questions-for-the-owner) for the alternative of holding
+  the model call for known-canned routes.
+- **Code owns policy.** Jev returns probabilities; a table in code maps
+  `(route, answer, needs_specifics, lane)` plus thresholds to a tier. Changing
+  a threshold never reruns inference and never changes a question's meaning.
+- **Text the user sees comes from three places only**: the answer bank
+  (reviewed, versioned), a model continuation (bounded and validated), or the
+  full model (as today). Jev writes no text.
+
+## The typed route schema
+
+### The Jev question set: `chat-router-v1`
+
+One request, seven questions, over the state `coder::first::state` already
+builds (the bounded transcript and latest message) plus a small `context`
+object the phone may send (see [On the wire](#on-the-wire)).
+
+| Id | Type | Question (abridged) | Options |
+| --- | --- | --- | --- |
+| `route` | Choice | "Which kind of reply does the user's latest message call for?" | the route ids in the [catalog](#the-initial-route-catalog), each with its semantic description, plus `none` |
+| `answer` | Choice | "Which prepared answer, if any, fully answers the user's latest message as asked?" | every bank entry's id with its `when` text, plus `none` |
+| `needs_specifics` | Noul | "Would a good reply need to repeat or refer to specific things the user named (a file, repository, error, feature, or goal), beyond a fixed prepared answer?" | probability of yes |
+| `lane` | Choice | `coder::first`'s wording, unchanged | `chat`, `computer`, `none` |
+| `opener` | Choice | `coder::first`'s wording (openers reworded in the plural, see below) | 21 openers plus `none` |
+| `cli_group` | Choice | "If the user wants something done with the `openagents` command, which command group does it?" | the top-level groups from the help table (about 30), each with its summary, plus `none` |
+| `risk` | Choice | "Does the message ask for something we must not do or should warn about?" | `ok`, `secret_shared` (the user pasted a key, recovery words, or password), `asks_for_secret`, `harmful`, `money_movement`, `none` |
+
+Why these are separate questions and not one big Choice: `route` and
+`answer` are different judgments (a message can be `meta` without any
+prepared answer fitting it exactly), `needs_specifics` is the
+personalization switch and is useful on every route, and `risk` must stay
+independent so a harmful message is caught whichever route wins. `action`
+(respond, clarify, end) is kept as it is for Classify's measured baseline,
+and folds into `route` as `clarify` and `end`; the doc proposes measuring
+whether `action` can then be retired.
+
+A bank of 40 to 80 entries fits one Choice comfortably (Jev allows 255). If
+the bank grows past about 150, `answer` becomes hierarchical: `route` picks
+the family, a second question lists only that family's entries.
+
+### What the router returns in code
+
+```rust
+/// The router's reading of one turn. Pure data; the worker acts on it.
+pub struct Routing {
+    pub set: &'static str,            // "chat-router-v1"
+    pub bank: BankId,                 // e.g. "chat-answers-v1@<digest>"
+    pub route: RouteId,               // the argmax route, or Unknown
+    pub route_p: f64,
+    pub answer: Option<(AnswerId, f64)>,
+    pub needs_specifics: f64,
+    pub lane: Lane,                   // coder::first::Lane
+    pub opener: Option<OpenerId>,
+    pub cli_group: Option<(CliGroup, f64)>,
+    pub risk: Risk,
+    pub tier: Tier,                   // decided by the policy table
+}
+
+pub enum Tier {
+    CannedFinal { answer: AnswerId },
+    CannedStem { answer: AnswerId },          // stem now, cheap-model continuation next
+    Grounded { corpus: Corpus },              // product KB or codebase docs
+    Model,                                    // today's path
+    Offer { offer: Offer },                   // dispatch, CLI, open a screen
+    Refuse { answer: AnswerId },              // a bank refusal, never model text
+}
+```
+
+## Confidence, thresholds, and fallbacks
+
+Starting thresholds. They are placeholders until the labeled set (see
+[Evaluation](#evaluation-and-training-data)) sets them to meet the precision
+targets; Choice `confidence` measures how concentrated the distribution is,
+not whether the workflow is right, so a threshold is only as good as its
+measurement.
+
+| Decision | Condition (initial) | Precision target on the labeled set |
+| --- | --- | --- |
+| T0 canned final | `route` p ≥ 0.80, `answer` p ≥ 0.80, the answer belongs to the route, `needs_specifics` < 0.30, `risk` = ok | ≥ 98 % (wrong canned answers are the failure the user remembers) |
+| T1 stem + continuation | `answer` p ≥ 0.70 on an entry with a `stem`, `needs_specifics` ≥ 0.30 | ≥ 95 % that the stem is true for this message |
+| Offer: dispatch | `route` = `work.dispatch` p ≥ 0.70, or `lane` = computer p ≥ 0.75 | ≥ 90 %; a false offer costs one ignored card |
+| Offer: CLI | `route` = `cli` p ≥ 0.75 and `cli_group` p ≥ 0.60 | ≥ 95 % that the group is right; the command still needs confirmation |
+| Refuse or warn | `risk` ∈ {secret_shared, asks_for_secret, harmful} with p ≥ 0.60 | recall matters more: warn when unsure, refuse only at p ≥ 0.85 |
+| T2 grounded | `route` ∈ {product.kb, codebase.kb} p ≥ 0.60 | measured on answer quality, not routing |
+
+Fallbacks, all toward today's behavior:
+
+- **Judge absent, erring, or later than 2.5 s** (the existing `BUDGET`): the
+  turn is T3, the model's reply as today. The judge being down never makes a
+  reply worse than today's.
+- **Below every threshold, or `route` = `none`**: T3 with the argmax opener
+  (today's behavior), plus any offer whose own threshold was met.
+- **Two routes close** (top two within 0.15): prefer the one that does less.
+  An offer loses to an answer; a canned final loses to a stem; a stem loses
+  to the model. A clarify route with p ≥ 0.4 wins over a low-confidence
+  anything.
+- **Cheap model fails, is slow (> 1.2 s), or its continuation fails
+  validation**: the stem's generic ending from the bank ("… what you asked
+  about.") closes the sentence. The stem is never retracted.
+- **Retrieval finds nothing relevant** (no entry at Jev relevance ≥ 0.5): T3
+  with a note in the model instructions that we have no documented answer, so
+  the model says what it does not know rather than inventing product facts.
+
+## The answer bank
+
+A reviewed, versioned file of short answers in the OpenAgents voice. Proposed
+home: `crates/coder/answers/chat-answers-v1.toml`, compiled into the worker
+and digested; the digest is the bank's identity in every judgment and result.
+
+```toml
+[[answer]]
+id        = "meta.model"
+version   = 3
+route     = "meta"
+when      = "The user asks what model or AI powers this chat, or who made the model"
+text      = """
+Our chat runs on {chat_model} through {chat_model_host}. A small, fast model, \
+Jev from TypeSafe, reads each message first to choose how we answer. When we \
+dispatch Coder to your computer, it works through the coding agents signed in \
+there, such as Codex or Claude Code, or through our own Microcoder."""
+facts     = { chat_model = "worker.lane.display", chat_model_host = "worker.door.display" }
+sources   = ["crates/coder/src/generate.rs", "docs/deployment/chat-worker.md"]
+followups = ["meta.privacy", "meta.pricing", "meta.coder"]
+owner     = "chat"
+```
+
+Rules for every entry:
+
+- **Plural voice.** "We", "us", "our"; never "I" or "me". A lint refuses a
+  first-person singular pronoun in `text` or `stem`. (The 21 current
+  openers use "I'll"; they should be reworded to "We'll look into that now."
+  and so on in the same change.)
+- **Facts are slots, filled by code.** Anything that can change with
+  configuration (the model, the limits, the relay, the worker's key) is a
+  `{slot}` resolved from the worker's own settings at answer time. A slot the
+  worker cannot fill makes the entry ineligible for this turn, never a blank.
+- **Every factual claim names its source**: a config key, an `INVARIANTS.md`
+  row, or a doc, in `sources`. The lint checks the paths exist. A privacy
+  claim must cite an invariant row with a test, or it does not ship.
+- **Short.** At most 600 characters; one to three sentences on a phone.
+- **True before any work happens.** A canned answer never claims work was
+  done or started; offers carry their own action.
+- **`when` is written for Jev**, as a description of the messages it answers,
+  not a list of keywords. Each `when` includes what the entry does not cover
+  when a neighbor is close ("… not how much Coder costs on the user's own
+  provider accounts").
+- **Stems** (`stem = "We'll dispatch Coder to"`) are entries whose text ends
+  in a continuation written by the cheap model; each has a `generic_end`
+  used when personalization is off or fails.
+- **Versioned.** A text change bumps `version`; ids are never reused. Old
+  versions stay in the file's history so a logged `meta.model@2` can be
+  explained.
+- **Followups** are bank ids shown as suggestion chips under the answer, so
+  a kick-the-tires session can continue at T0 speed.
+
+Initial bank, about 40 entries (full text in the catalog below for the most
+common): `meta.who`, `meta.model`, `meta.jev`, `meta.coder`,
+`meta.capabilities`, `meta.limits_chat` (what this chat cannot do),
+`meta.pricing`, `meta.quota`, `meta.privacy`, `meta.data_retention`,
+`meta.open_source`, `meta.computers`, `meta.offline`, `meta.languages`,
+`meta.web_access`, `meta.memory` (does it remember me), `meta.team` (who
+built this), `smalltalk.hello`, `smalltalk.thanks`, `smalltalk.bye`,
+`smalltalk.how_are_you`, `smalltalk.test` ("test", "is this working"),
+`dispatch.stem`, `dispatch.no_computer`, `dispatch.explore_stem`,
+`dispatch.github_stem`, `wallet.what`, `wallet.receive`, `wallet.send`,
+`wallet.units` (BIP 177 amounts), `wallet.backup`, `wallet.never_share`,
+`account.computers`, `account.keys`, `account.playtest`,
+`account.report_problem`, `refuse.secret_shared`, `refuse.asks_for_secret`,
+`refuse.harmful`, `clarify.generic`.
+
+## Personalization with a cheap model
+
+When `needs_specifics` says the user's own words matter, the bank supplies a
+stem that is true for every message on that route, and a fast, cheap model
+writes only the rest of the sentence.
+
+```text
+stem  (bank, shown at ~600 ms): "We'll dispatch Coder to"
+ask   (cheap model):  continue the sentence with what the user asked for,
+                      in at most 20 words, as a verb phrase
+continuation (≤ 1.8 s): " find where the relay's retry timeout is set in OpenAgentsInc/openagents and make it configurable."
+```
+
+**Continuation only.** The model never rewrites the stem. That keeps NIP-CJ's
+rule that the result's text begins with partial `seq` 0, and it bounds what
+the model can say: it can name the user's object, not change our promise.
+
+**Model.** Proposed: a free or cheap fast model through `crates/openrouter`
+with a JSON-schema answer (`{ "continuation": string }`), for example a flash
+tier model with `require_parameters`. The existing gateway door's `glm` lane
+(`zai/glm-5.3-flash`) is the alternative with no new credential on the
+worker. The choice is measured, not assumed: time to complete answer for a
+20-word continuation, cost per turn, and validation pass rate
+([question 3](#open-questions-for-the-owner)).
+
+**What may be passed** (the whole prompt, nothing else):
+
+- the route id and the stem;
+- the user's latest message, trimmed to 600 characters;
+- nothing from earlier turns, no device or worker key, no computer names,
+  host keys, or workspace labels the user did not type in this message, no
+  wallet data, no `context` fields.
+
+Before sending, a deterministic redaction replaces bounded secret shapes in
+the message: Nostr `nsec`, 64-hex keys, BOLT11 invoices, Lightning and
+on-chain addresses, and anything the `risk` question flagged as
+`secret_shared` stops personalization altogether. This is redaction of
+bounded fields after the route is chosen, which `AGENTS.md` allows, not
+routing.
+
+**Validation of the continuation**, in code, before it is shown: at most 160
+characters, one sentence, no URL, no first-person singular pronoun, no
+claim of completion ("done", "fixed", "I have"), no digits that are not in
+the user's message. A failure uses the stem's `generic_end`. A Jev Noul
+check ("Does the continuation promise anything the stem does not?") is a
+candidate for phase 2, measured against the cost of one more call.
+
+**Disclosure.** Personalization sends the latest message to one more
+provider. `meta.privacy` must name it, and the worker's privacy invariant row
+must list every recipient: the model door, TypeSafe (Jev), and the
+personalization provider.
+
+## On the wire
+
+All additive to NIP-CJ, like `opener` and `judge` were; a reader that knows
+none of it still renders the reply correctly.
+
+**Request (`25900`)** gains:
+
+```json
+{"v": 2, "type": "conversation", "transcript": ["…"], "instructions": "…",
+ "client": "openagents-mobile", "opener": true,
+ "router": "chat-router-v1",
+ "context": {"surface": "phone", "computer_ready": false, "app_build": "1.0.0 (17)"}}
+```
+
+`router` asks for routing and implies `opener`. `context` is bounded,
+optional, and carries no credential, key, host name, or amount: `surface`
+(`phone`, `desktop`, `terminal`), `computer_ready` (whether the device has a
+ready computer, so the dispatch answer can say "connect one first"), and the
+build (for the bank's version-specific entries). The worker still chooses
+its own model; the request never names one.
+
+**Judgment feedback (`27000`)** gains typed fields beside today's `set`,
+`lane`, `opener`, and `confidence`:
+
+```json
+{"v": 2, "type": "judgment", "verdict": "respond", "line": "…",
+ "set": "chat-router-v1", "bank": "chat-answers-v1@9f2c…",
+ "route": "meta", "route_p": 0.93, "answer": "meta.model@3", "answer_p": 0.88,
+ "tier": "canned", "lane": "chat", "opener": null}
+```
+
+**Offer feedback (`27000`, new type `offer`)**, an observation, never
+permission, that the phone renders as a card with a button:
+
+```json
+{"v": 2, "type": "offer", "offer": "run_coder",
+ "target": "connected_computer", "label": "Run Coder"}
+{"v": 2, "type": "offer", "offer": "open_screen", "screen": "account.computers",
+ "label": "Connect a computer"}
+{"v": 2, "type": "offer", "offer": "cli", "argv": ["computer", "list"],
+ "effect": "read_only", "runs_on": "this_device", "confirm": true}
+```
+
+**Partials.** The streaming rule stays: partials are contiguous deltas from
+`seq` 0, and the result replaces them.
+
+| Tier | `seq` 0 | later partials | result `text` |
+| --- | --- | --- | --- |
+| T0 canned final | the whole answer | none | the same answer |
+| T1 stem | the stem | the validated continuation, or the generic end | stem + continuation |
+| T2 grounded | the opener or a bank stem ("Here's what our docs say:") | the model's grounded text | all of it |
+| T3 model | the opener (as today) | the model's deltas | opener + model text |
+| T4 offer | the sentence (bank) | none, or a continuation (T1) | the sentence; the offer rides as feedback |
+
+**Result (`26900`)** gains `tier`, `answer` (id@version, when the bank
+supplied text), `route`, and `bank`. `model` stays honest: for T0 it is
+`"bank:chat-answers-v1"`, not the chat model, because no model wrote the
+text; for T1 it names the continuation model.
+
+**Metering.** A routed turn is admitted and counted exactly like today's
+turn: routing happens after admission, and the quota does not change by tier.
+Whether T0 turns should count less is [question 4](#open-questions-for-the-owner).
+
+## The initial route catalog
+
+Each route is described semantically (the text Jev reads), not by words to
+look for. Examples are messages the labeled set should contain; they are
+evaluation data, not triggers.
+
+### 1. `meta`: kicking the tires
+
+- **Description for Jev:** questions about us, the assistant itself: what
+  model or AI this is, who we are, who built us, what we can and cannot do,
+  what it costs, limits, privacy, whether we remember things, whether we are
+  open source.
+- **Examples:** "what model are you", "are you ChatGPT?", "who made you",
+  "what can you do", "is this free", "how many messages do I get", "do you
+  store my chats", "can you browse the web", "are you open source".
+- **Tier:** T0 (bank), T1 when the user attaches specifics ("can you work on
+  my Rails app?" → `meta.capabilities` stem + continuation).
+- **Data:** answer bank with fact slots from worker configuration.
+- **Latency:** ≤ 700 ms complete.
+- **Safety:** privacy and pricing claims cite tested invariants; no slot, no
+  answer.
+
+Sample answers:
+
+> **meta.who** — We are OpenAgents. In this chat we answer questions, explain
+> things, and help you plan. When something needs a computer, like reading or
+> changing a repository or running commands, we dispatch Coder, our coding
+> agent, to a computer you've connected.
+
+> **meta.pricing** — Chatting with us is free right now, up to {day_quota}
+> messages a day. Coder runs on your own computer with the coding agents you
+> already use there, so it doesn't bill you through us.
+
+> **meta.privacy** — Your messages travel encrypted from your phone to our
+> chat worker through our relay, which sees only ciphertext and keeps nothing.
+> To answer, we send the conversation to {chat_model_host} for {chat_model}
+> and to TypeSafe's Jev, which chooses how we reply. Our worker doesn't keep
+> your message text.
+
+> **meta.limits_chat** — In this chat we can't run code, read files, or reach
+> your computer. For that we dispatch Coder, which works on a computer you've
+> connected.
+
+> **meta.open_source** — We're open source. Everything behind this chat,
+> including the worker that answers you, is at
+> github.com/OpenAgentsInc/openagents.
+
+### 2. `smalltalk`
+
+- **Description:** greetings, thanks, goodbyes, "is this working", with no
+  request in them.
+- **Examples:** "hey", "hello?", "thanks!", "test", "good night".
+- **Tier:** T0. `smalltalk.bye` also sets `verdict: end_conversation`.
+- **Latency:** ≤ 700 ms.
+
+> **smalltalk.hello** — Hi! We're OpenAgents. Ask us anything, or tell us
+> about some code you want changed and we'll dispatch Coder.
+
+### 3. `general`: general knowledge and help
+
+- **Description:** questions about the world, programming concepts,
+  explanations, writing help, advice: anything answerable in a chat reply
+  without our product facts or the user's files.
+- **Examples:** "what's a closure in Rust", "explain CRDTs simply", "write a
+  regex for emails", "should I use Postgres or SQLite for this".
+- **Tier:** T3 with the opener, exactly today's path.
+- **Latency:** opener ≤ 700 ms; model's own time after.
+- **Safety:** `risk` still applies.
+
+### 4. `product.kb`: OpenAgents product knowledge
+
+- **Description:** how to do something in the OpenAgents app or with
+  OpenAgents services: connecting a computer, what the Grid or Verse is, how
+  XP works, what NIP-CJ is, how the wallet's amounts work, what a playtest
+  report is.
+- **Examples:** "how do I connect my Mac", "what's the Grid", "how do I earn
+  XP", "why does the wallet say ₿10,000".
+- **Tier:** T0 when a bank entry fully answers it; otherwise T2 grounded on
+  the product corpus ([below](#knowledge-routes-product-and-codebase)).
+- **Latency:** stem ≤ 700 ms; grounded first token ≤ 3.5 s.
+- **Safety:** only public, admitted entries; answers cite the entry or doc.
+
+### 5. `codebase.kb`: OpenAgents codebase knowledge
+
+- **Description:** questions about how the OpenAgents software is built:
+  where something lives in the repository, how a crate works, what a protocol
+  message looks like, why a design choice was made.
+- **Examples:** "where is the chat worker's quota implemented", "how does
+  Coder pick a provider", "what does kind 25900 carry".
+- **Tier:** T2 grounded on docs and a code index of the public repository;
+  escalate to a dispatch offer when the answer needs running or reading more
+  code than the index holds ("run Coder on the openagents repo to trace it").
+- **Latency:** stem ≤ 700 ms; grounded first token ≤ 3.5 s.
+- **Safety:** public repository only, at a pinned commit that the answer
+  names.
+
+### 6. `work.dispatch`: code changes and repository exploration
+
+- **Description:** the user wants work done on code, a repository, files, or
+  a machine: change, fix, build, test, refactor, review a PR, look around a
+  repo, find where something is, run a command.
+- **Examples:** "fix the flaky test in crates/coder and open a PR", "look
+  through my repo and tell me how auth works", "what's in the README of
+  OpenAgentsInc/psionic", "bump the version and tag a release".
+- **Tier:** T4 offer, with a T1 sentence: stem "We'll dispatch Coder to" +
+  continuation, then the `run_coder` offer (computer ready) or
+  `dispatch.no_computer` + `open_screen: account.computers` (none ready).
+- **Data:** `context.computer_ready`; the transcript becomes the task prompt
+  when the user taps, as **Run Coder** does today.
+- **Latency:** sentence ≤ 700 ms, continuation ≤ 1.8 s, card ≤ 1.2 s.
+- **Safety:** the router never dispatches. The existing invariant stands: a
+  task starts only from a tap, and the target comes from the screen's
+  controls, never from reading the message. The model call is cancelled so
+  Gemini does not attempt the work in text (the measurement found it tries a
+  function call on such prompts).
+
+> **dispatch.no_computer** — That needs a computer. Connect one and we'll
+> dispatch Coder there with this conversation.
+
+### 7. `cli`: the `openagents` command
+
+- **Description:** the user wants something that an `openagents` command
+  does: list their computers, check a host, read a relay, look up XP, search
+  the knowledge base, check wallet status, publish something to the Verse.
+- **Examples:** "which of my computers are online", "show my XP", "what
+  quests are on the board", "search the knowledge base for docker cp",
+  "what capabilities are published on the relay".
+- **Tier:** T4 CLI offer; detailed in
+  [the CLI route](#the-cli-route-descending-the-command-tree).
+- **Latency:** sentence ≤ 700 ms; proposed command ≤ 3 s.
+- **Safety:** every command is shown with its effect class and needs a tap;
+  money, keys, and grants are never proposed from the phone chat.
+
+### 8. `wallet`: payments and the wallet
+
+- **Description:** questions about the OpenAgents wallet, bitcoin amounts,
+  receiving, sending, backup, and fees.
+- **Examples:** "how do I get paid", "how do I send bitcoin", "what's ₿",
+  "how do I back up my wallet".
+- **Tier:** T0 how-to answers with an `open_screen` offer (the Wallet tab);
+  T2 grounded on `docs/breez/` for anything the bank lacks.
+- **Safety:** chat never moves money, never asks for or shows recovery words,
+  and never repeats an amount the user did not type. `risk` =
+  `money_movement` turns a request like "send 5,000 to this address" into
+  `wallet.send` (how to do it in the Wallet tab) with no amount carried.
+
+> **wallet.never_share** — We'll never ask for your recovery words, and no
+> one from OpenAgents will. Keep them offline; anyone who has them has your
+> bitcoin.
+
+### 9. `account`: account, settings, and reporting a problem
+
+- **Description:** how to change settings, find identity keys, manage
+  computers, turn on a playtest session, or report a problem.
+- **Examples:** "where are my keys", "how do I remove a computer", "the app
+  crashed, how do I report it".
+- **Tier:** T0 with `open_screen` offers (Account > Computers, Identity keys,
+  Report a problem).
+- **Safety:** `account.keys` never displays a key in chat.
+
+### 10. `clarify`
+
+- **Description:** the message is too ambiguous to act on or answer well.
+- **Tier:** T3 with an instruction to ask one question, or T1 with
+  `clarify.generic` stem ("To make sure we get this right:") plus a
+  continuation that asks the question. Measured against each other.
+
+### 11. `end`
+
+- **Description:** the user is done. Same as Classify's `end_conversation`.
+- **Tier:** T0 `smalltalk.bye`; no model call.
+
+### 12. `refuse`: out of scope, harmful, or secrets
+
+- **Description:** requests we must not help with; messages containing a
+  secret; requests for someone's key or recovery words.
+- **Tier:** T0 bank refusals only; never model text. `secret_shared` answers
+  `refuse.secret_shared` ("That looks like a private key or recovery words.
+  We won't use it, and we suggest moving those funds or rotating that key.")
+  and disables personalization and the offer paths for the turn.
+- **Safety:** the full model still answers `harmful` messages that fall below
+  the refusal threshold, under its own safety behavior; the bank refusal is a
+  floor, not the only guard.
+
+## The CLI route: descending the command tree
+
+The `openagents` command is a tree: about 30 groups, each with 1 to 20
+subcommands, a few with a third level (`wallet channel open`, `x402 policy
+set`, `reach directory add`, `sov profile new`, `verse control ENTITY move`),
+then positional arguments and `--options`. Every level is already described
+in text: the top-level `USAGE` table and each group's `USAGE` string. The
+route turns that text into typed choices, one level at a time, then fills
+parameters.
+
+### The tree is generated from the help text, never hand-copied
+
+A build step (proposed `openagents-cli` feature `tree`) parses the same
+`USAGE` strings `mcp::groups` already parses into a `CommandTree`: each node
+has a name, its summary line, its children, and, at a leaf, its usage line
+(positionals, options, switches). The router consumes that tree, so a
+new or renamed command appears in routing when it appears in `--help`, and a
+test fails if a leaf's usage line does not parse.
+
+Each leaf also carries two fields the help text does not have, declared next
+to the `USAGE` string in the owning module:
+
+- `effect`: `read_only`, `local_write` (writes this device's stores),
+  `publishes` (signs and sends an event), `grants` (changes who may do what:
+  `computer approve`, `invite`, `revoke`), `spends` (moves money: `wallet
+  pay`, `send`, `x402 buy`), `secret` (`wallet export`), `long_running`
+  (`serve`, `tail`, `shell`).
+- `runs_on`: where the command can run for this surface: `this_device`
+  (the phone's Rust core carries the same client, as `coder_computers::live`
+  does for `computer`), `connected_computer` (through `computer exec HOST --
+  openagents …`), or `screen` (the phone has a screen that does this better:
+  `verse who` is the Grid, `wallet info` is the Wallet tab).
+
+### Descent
+
+```text
+level 0  (in the main routing request, free):  route = cli ?   cli_group = computer (p .81)
+level 1  (second Jev request, ~200 ms):         which `computer` subcommand?
+         options: list, show, link, approve, deny, invite, devices, revoke, forget,
+                  enable, disable, retry, workspaces, task, steer, cancel, exec,
+                  shell, watch, tail, alias, journal, client-only, none
+         → list (p .88)
+level 2  only where the leaf has children (e.g. wallet → channel → open)
+params   leaf's usage line → JSON schema → fill (below)
+gate     validate → classify effect → offer with confirm
+```
+
+At each level `none` ends the descent and the turn falls back to T3 with the
+opener; a descent never guesses past a `none`. Speculative fan-out is
+possible: the main request can also ask the level-1 question for the one or
+two most likely groups (their premises stated in the question: "If the user
+wants the `computer` group, which subcommand?"), trading tokens for the
+second round trip. Measure both.
+
+### Parameters: select where possible, generate only free text
+
+For each positional and option of the chosen leaf:
+
+1. **Enumerable from the device's own state** (a HOST from the device's host
+   list, a workspace label from `computer workspaces`, a profile from `key
+   list`, an enum from the usage line such as `--rights standard|admin|all`):
+   Jev selects among the candidates code supplies ("select instead of
+   generate"). The candidates exist only on the device, so on the phone this
+   selection runs on the device's request with those candidates included,
+   never by sending the host list to the personalization model.
+2. **Bounded values the user typed** (a number of lines, a duration, an
+   issue number): deterministic parsing of the user's message, allowed now
+   that the route is chosen.
+3. **Free text** (a task TITLE or PROMPT, a `verse say` line, a KB search
+   string): the chat model (or the cheap model) fills a JSON schema derived
+   from the leaf, with the transcript as input.
+
+Then the proposal is validated by the same parser the command uses
+(`Args::parse` with the leaf's switches) and a dry `--help`-level check that
+required positionals are present. A failure asks the user for the missing
+piece (T1 `clarify` stem), never runs a guessed default.
+
+### Gates
+
+| Effect | Phone chat | Desktop or terminal chat |
+| --- | --- | --- |
+| `read_only` | offer, one tap; result rendered as a card | offer, one tap (or auto-run if the owner opts in) |
+| `local_write`, `publishes` | offer, one tap, the exact argv shown | offer, one tap |
+| `grants` | open the screen that does it (Account > Computers) | offer with the full argv and a second confirm |
+| `spends`, `secret` | never proposed; `open_screen` to the Wallet tab | never proposed from chat |
+| `long_running` | not offered on the phone | offer, shown as a session |
+
+The proposal is an offer, not permission: the tap runs it under the device's
+own authority and the command's own checks, exactly as if the user typed it.
+
+## Knowledge routes: product and codebase
+
+### Product knowledge base
+
+The existing `crates/knowledge` format is the right container, with a new
+corpus and kind, not a new system:
+
+- **Corpus:** `knowledge/openagents/` entries of a new kind `product`, same
+  YAML front matter (`id`, `version`, `title`, `summary`, `applies_when`,
+  `status`, `provenance`), written from the public docs: the launch
+  roadmap, `docs/breez/amounts.md`, `docs/game/playtesting.md`, the CLI
+  guide, the NIPs' plain-language summaries, the Verse and Grid docs. Only
+  `admitted` entries are served, and admission here is operator review (a
+  product fact cannot be "measured to help" the way a coding method can).
+- **Answer fields:** a `product` entry may carry `answer` (a bank-quality
+  short answer in the plural voice). When Jev's relevance for that entry is
+  ≥ 0.8 and `needs_specifics` is low, the entry's answer is served at T0.
+  This is how the answer bank and the KB meet: the bank is for questions
+  about the chat itself; the KB is for everything else we document.
+- **Retrieval:** the KB's existing path: embeddings plus BM25 for 20
+  candidates, a Jev Noul relevance question per candidate, at most 6 kept.
+  Two requests after routing (embedding, then Jev), so T2 starts at about
+  1 s. The embedding of the user's message can start speculatively beside
+  the routing request.
+- **Generation:** the chat model, with the kept entries as reference
+  material and an instruction to answer only from them and cite entry ids;
+  the phone renders citations as links to the docs.
+- **Publishing:** NIP-KB already signs and syncs entries, so the same corpus
+  can later serve Coder on the user's computer and third-party agents.
+
+### Codebase knowledge
+
+Three depths, chosen by the router's `route` and a second Noul ("Can this be
+answered from documentation, without reading source code?"):
+
+1. **Docs.** `docs/` (505 documents in the catalog), crate READMEs, and
+   `INVARIANTS.md`, chunked by heading and embedded at a pinned commit of the
+   public repository. Same retrieval and relevance filter as the product KB.
+2. **Code index.** Symbol and module doc comments (`//!` and `///` blocks,
+   which in this repository are unusually complete), plus literal search
+   through `plugin-code-search` over a snapshot at the same pinned commit. The
+   worker holds the snapshot; nothing reaches the user's machine.
+3. **Dispatch.** Anything that needs tracing, running, or reading more than a
+   few files becomes a `work.dispatch` offer with the openagents repository
+   named as the workspace, on the user's computer if connected.
+
+Answers name the commit they read ("as of `820bc02`").
+
+Private material never enters either index: only this public repository,
+never `alpha` or other private repositories, which `AGENTS.md` keeps behind a
+private/public boundary.
+
+## Dispatching Coder
+
+The router's job at dispatch is to say what will happen and put one tap in
+front of it; the dispatch itself uses the paths that exist.
+
+| Target | When offered | What the tap does | Status |
+| --- | --- | --- | --- |
+| Connected computer | `context.computer_ready` | NIP-HOST `task.create` with the conversation as the prompt, as **Run Coder** does | exists |
+| No computer yet | not ready | opens Account > Computers; the conversation is kept for the task | exists |
+| OpenAgents cloud | no computer, and the task is repository exploration of a public repo | a cloud workroom task (Cloud crates, `docs/cloud/`) | future; [question 6](#open-questions-for-the-owner) |
+| GitHub | the user names a GitHub issue or PR and wants it worked | a task on the connected computer whose prompt carries the issue, then a PR | via the computer today; a GitHub-native path is future |
+
+The dispatch sentence varies by `route` stem: `dispatch.stem` ("We'll
+dispatch Coder to …") for changes, `dispatch.explore_stem` ("We'll have
+Coder look through …") for exploration, `dispatch.github_stem` ("We'll have
+Coder pick up …") for issue work.
+
+The host-side first response noted in the measurement (the host asking the
+same judgment at `task.create`) should adopt this router's set, so a chat
+that moves from the worker to a computer keeps one route vocabulary.
+
+## Safety and invariants
+
+Proposed `INVARIANTS.md` changes, each with its test, in the change that
+implements it:
+
+1. **Routing is typed.** Every route, answer, group, and subcommand choice
+   is a Choice or Noul argmax over options code lists; no routing reads
+   message text by keyword. Deterministic parsing only for bounded fields
+   after the route is chosen, and for secret redaction. (Extends the
+   `coder::first` row.)
+2. **The judge never delays the model.** Unchanged; the router keeps the
+   model call beside the judgment. A tier that does not use the model may
+   cancel it.
+3. **A canned answer is bank text with code-filled slots**, from a bank whose
+   digest the result names; an unfillable slot makes the entry ineligible.
+4. **A personalization prompt carries only the route, the stem, and the
+   latest message (redacted, 600 characters)**; its continuation is
+   validated and appended after the stem, never replacing it.
+5. **An offer is not permission.** Dispatch, CLI, and screen offers act only
+   on a tap; CLI offers never include `spends` or `secret` commands, and on
+   the phone never `grants` (those open the screen).
+6. **Privacy disclosure matches recipients.** The privacy answer and the
+   worker's row name every service a message reaches (model door, TypeSafe,
+   personalization provider, embedding provider for T2).
+7. **The router is opt-in per request** (`router`), so Microcoder's cloud
+   steps keep JSON-only results, as `opener` is today.
+
+## Evaluation and training data
+
+**The labeled set: `chat-router-v1` in the Gym.** A JSON suite beside
+`crates/gym/questions/coder-turns-v1.json`, each row a transcript and the
+expected `route`, `answer` (or `none`), `needs_specifics`, `cli_group`, and
+`risk`. Sources:
+
+1. **Seed, by hand:** about 400 rows written to cover every route and every
+   bank entry, with deliberate near-misses between neighbors (`meta.pricing`
+   versus "how much does Codex cost", `product.kb` versus `codebase.kb`,
+   `wallet.send` versus a request to send), and paraphrases in several
+   languages.
+2. **Owner and team transcripts:** the owner's own chats, exported with
+   consent, labeled.
+3. **Playtest reports:** the playtest session log deliberately never records
+   message text ([playtesting](../../game/playtesting.md)). So router data
+   from testers needs an explicit, per-report opt-in: a **Share this chat**
+   control on **Report a problem**, previewed in full like the screenshot,
+   plus a lightweight "wrong answer" action on a canned reply that sends the
+   message, the chosen `answer@version`, and the judgment. Both need their own
+   invariant rows.
+4. **Shadow judgments:** in phase 0 the worker asks the router set on real
+   turns but serves today's reply; the judgment feedback and the result are
+   both on the phone, so the phone (not the worker, which keeps no text) can
+   hold them for a tester who shares.
+
+**Held out:** 30 % of rows, never used to pick thresholds or tune `when`
+text. Wording changes to the bank's `when` fields or the route descriptions
+are optimization candidates measured on the tuning split, then checked once
+on the held-out split, as the [optimization design](../../optimization/README.md)
+requires for any semantic contract.
+
+**Baselines:** the constant (always T3), the current opener-only path, and
+an embedding nearest-neighbor over bank `when` texts. The router has to beat
+the embedding baseline on canned precision to justify its questions.
+
+## Metrics
+
+| Metric | Target at phase 1 exit |
+| --- | --- |
+| Canned precision (T0 answers judged correct, held-out) | ≥ 98 % |
+| Canned coverage (share of real turns served at T0) | reported; expected 25 to 40 % in the first week of a user's use |
+| Time to first visible words, p50 / p95 | ≤ 650 / 900 ms (≤ 400 / 600 ms with a kept connection) |
+| Time to complete answer at T0, p50 | ≤ 700 ms |
+| Model spend per 100 turns | down by at least the T0 share |
+| Dispatch offer precision; tap-through rate | ≥ 90 %; reported |
+| CLI group precision; proposal validity (parses, required args present) | ≥ 95 %; ≥ 90 % |
+| Wrong-answer reports per 1,000 canned answers | < 5 |
+| Fallback rate (judge absent or late) | < 2 % |
+| Personalization validation failure rate | < 10 % |
+
+## Rollout
+
+| Phase | Ships | Exit condition |
+| --- | --- | --- |
+| 0. Shadow | `chat-router-v1` question set, the bank file with lint, routing asked beside today's reply, judgment fields on the wire; openers reworded in the plural | labeled set built; router beats the embedding baseline on held-out canned precision |
+| 1. Canned tier | T0 for `meta`, `smalltalk`, `end`; followup chips; cancel the model on T0 | canned precision ≥ 98 % live on the owner's and testers' shared chats |
+| 2. Offers and stems | `work.dispatch` offers with `dispatch.*` stems, `open_screen` offers for account and wallet, T1 personalization | dispatch precision ≥ 90 %; personalization latency and failure rate in budget |
+| 3. Product KB | `knowledge/openagents/` corpus, T2 grounded answers, entry answers at T0 | answer quality review on 100 held-out product questions |
+| 4. CLI route | `CommandTree` from `USAGE`, effect and `runs_on` per leaf, descent and parameter filling; desktop and terminal first, then phone `this_device` read-only commands | proposal validity ≥ 90 %; zero `spends`/`secret` offers in the logs |
+| 5. Codebase knowledge | docs and code index at a pinned commit, escalation to dispatch | answer quality review; citation accuracy |
+
+Each phase is its own issue under #9920's umbrella, with its invariant rows
+and tests in the same change.
+
+## Open questions for the owner
+
+1. **Hold the model for known-canned routes?** The design starts the model on
+   every turn and cancels it when the bank answers. The alternative holds the
+   model up to about 250 ms for the judgment, which saves the cancelled
+   calls but changes the "never in front of the model" invariant and adds
+   250 ms to every non-canned turn when the judge is slow. Proposed: keep
+   the parallel start, measure the waste.
+2. **Voice for dispatch.** The request phrased it "I'll dispatch a Coder
+   agent"; the product voice is plural. Proposed: "We'll dispatch Coder to
+   …". Confirm, and confirm that the current openers should all move to "we".
+3. **Personalization provider.** OpenRouter (a free or cheap flash-tier
+   model, new key on the worker, JSON-schema answer, no streaming in our
+   client) or the gateway door's existing `glm` lane (no new key, streams)?
+   Proposed: measure both on the 20-word continuation, pick the faster at
+   equal validation rate.
+4. **Do canned turns count against the 40-a-day quota?** They cost a Jev
+   call, not a model call. Counting them keeps the limit simple and the abuse
+   surface small; not counting them makes kicking the tires free.
+5. **What may we say about the model?** `meta.model` names Gemini 3.8 Flash,
+   Vercel AI Gateway, and Jev. Is naming vendors in-app the stance you want,
+   and should we name the coding agents Coder uses on the user's computer?
+6. **Cloud dispatch with no computer.** Should a user with no computer be
+   offered Coder in an OpenAgents cloud workroom for public-repo exploration,
+   or is "connect a computer" the only path at launch?
+7. **Which CLI groups belong in phone chat at all?** Proposed for phone:
+   read-only `computer list/show/workspaces`, `verse who/quests/board/xp`,
+   `kb search`, `cap/prg/ext list`, `session list`; everything else opens a
+   screen or is desktop-only.
+8. **Shared-chat data for evaluation.** Is a per-report **Share this chat**
+   control and a "wrong answer" action on canned replies acceptable, given
+   the playtest program's no-message-text position?
+9. **Who owns the bank's text?** Proposed: the bank file is reviewed like
+   user-facing copy (the owner or a named delegate approves text changes),
+   since `AGENTS.md` protects user-facing copy from drive-by edits.
