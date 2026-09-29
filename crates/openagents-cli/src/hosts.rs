@@ -15,7 +15,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
-use crate::args::Args;
+use crate::Args;
 use crate::terminal::Run;
 
 const ALIASES: &str = "aliases.json";

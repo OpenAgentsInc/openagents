@@ -14,8 +14,10 @@ use verse::mv::{self, EntityPose, Frame, Gesture, Received, State};
 
 use crate::relay::{Client, DEFAULT_WAIT, identity_for, relay_url, unix_now};
 use crate::{Args, Output, out};
+#[cfg(test)]
+use coder::cli_route::tree::{Declared, Effect};
 
-const USAGE: &str = "usage: openagents verse COMMAND [OPTIONS]
+pub(crate) const USAGE: &str = "usage: openagents verse COMMAND [OPTIONS]
   who                       Every entity with a state in the world, nearest first.
   look [--at X,Y,Z] [--radius CELLS] [--wait SECONDS]
                             Listen for live poses around a point (default: where
@@ -50,6 +52,29 @@ Options for every command: --as PROFILE (key), --relay URL, --world ID
 (default verse-plaza), --entity ID (default avatar). Quest commands also take
 --xp-relay URL (default VERSE_XP_RELAY, then the world relay) and
 --referee KEY to trust another referee for this reading.";
+
+/// What each command above does and where the phone runs it, for the
+/// chat router's command tree (`coder::cli_route::tree`).
+#[cfg(test)]
+pub(crate) const EFFECTS: &[Declared] = &[
+    Declared::computer("who", Effect::ReadOnly),
+    Declared::computer("look", Effect::ReadOnly),
+    Declared::computer("chat", Effect::ReadOnly),
+    Declared::computer("tail", Effect::LongRunning),
+    Declared::computer("me", Effect::ReadOnly),
+    Declared::computer("move", Effect::Publishes),
+    Declared::computer("say", Effect::Publishes),
+    Declared::computer("gesture", Effect::Publishes),
+    Declared::computer("name", Effect::Publishes),
+    Declared::computer("leave", Effect::Publishes),
+    Declared::computer("control move", Effect::Publishes),
+    Declared::computer("control gesture", Effect::Publishes),
+    Declared::computer("control leave", Effect::Publishes),
+    Declared::computer("quests", Effect::ReadOnly),
+    Declared::computer("xp", Effect::ReadOnly),
+    Declared::computer("xp verify-card", Effect::ReadOnly),
+    Declared::computer("board", Effect::ReadOnly),
+];
 
 /// Every entity the world knows about, by publisher and entity id.
 #[derive(Default)]

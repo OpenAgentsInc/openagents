@@ -3,8 +3,10 @@
 use serde_json::Value;
 
 use crate::{EXIT_USAGE, Output, runtime};
+#[cfg(test)]
+use coder::cli_route::tree::{Declared, Effect};
 
-const USAGE: &str = "usage: openagents kb COMMAND [OPTIONS]
+pub(crate) const USAGE: &str = "usage: openagents kb COMMAND [OPTIONS]
   search TEXT [--dir DIR] [--lexical] [--limit N]
         Search local and trusted cached entries.
   show ID [--dir DIR]        Show an entry and its digest.
@@ -17,6 +19,18 @@ const USAGE: &str = "usage: openagents kb COMMAND [OPTIONS]
   head ID --relay URL --timeout SECONDS [--author KEY] [--key-file FILE]
         Read the latest verified head for an author and entry.
 --json returns one JSON document; errors return 1, and invalid usage returns 64.";
+
+/// What each command above does and where the phone runs it, for the
+/// chat router's command tree (`coder::cli_route::tree`).
+#[cfg(test)]
+pub(crate) const EFFECTS: &[Declared] = &[
+    Declared::computer("search", Effect::ReadOnly),
+    Declared::computer("show", Effect::ReadOnly),
+    Declared::computer("withdraw", Effect::LocalWrite),
+    Declared::computer("publish", Effect::Publishes),
+    Declared::computer("sync", Effect::LocalWrite),
+    Declared::computer("head", Effect::ReadOnly),
+];
 
 pub fn run(output: &Output, words: &[String]) -> u8 {
     let Some((command, _)) = words.split_first() else {

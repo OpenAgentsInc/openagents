@@ -19,8 +19,10 @@ use coder_connect::{Client, ConnectionCode, Observation, Query, RelayPolicy};
 use serde_json::{Value, json};
 
 use crate::{Args, EXIT_FAILURE, Output};
+#[cfg(test)]
+use coder::cli_route::tree::{Declared, Effect};
 
-const USAGE: &str = "usage: openagents session COMMAND [OPTIONS]
+pub(crate) const USAGE: &str = "usage: openagents session COMMAND [OPTIONS]
   pair INVITATION [--relay URL] [--timeout SECONDS] [--as PROFILE]
         Redeem a `coder-pair:` invitation from `openagents pair` or `coder
         pair` and keep the connection. --relay must match the invitation.
@@ -43,6 +45,20 @@ SESSION is a chat ID from `list`, or its source ID. --as names the profile
 key that redeemed the invitation (default: default). --timeout defaults to
 20 seconds for a request and bounds the whole command. Connections live in
 ~/.openagents/session/ (OPENAGENTS_SESSION_HOME overrides the directory).";
+
+/// What each command above does and where the phone runs it, for the
+/// chat router's command tree (`coder::cli_route::tree`).
+#[cfg(test)]
+pub(crate) const EFFECTS: &[Declared] = &[
+    Declared::screen("pair", Effect::Grants, "account.computers"),
+    Declared::computer("list", Effect::ReadOnly),
+    Declared::computer("read", Effect::ReadOnly),
+    Declared::computer("tail", Effect::LongRunning),
+    Declared::computer("steer", Effect::Publishes),
+    Declared::computer("interrupt", Effect::Publishes),
+    Declared::computer("connections", Effect::ReadOnly),
+    Declared::computer("forget", Effect::LocalWrite),
+];
 
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(20);
 const DEFAULT_TAIL: Duration = Duration::from_secs(30);

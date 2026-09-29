@@ -20,8 +20,10 @@ use jev::{Client, Config, Questions, RetryPolicy, SystemOneRequest};
 use serde_json::{Value, json};
 
 use crate::{Args, Output};
+#[cfg(test)]
+use coder::cli_route::tree::{Declared, Effect};
 
-const USAGE: &str = "usage: openagents eval COMMAND [OPTIONS]
+pub(crate) const USAGE: &str = "usage: openagents eval COMMAND [OPTIONS]
   run --door NAME=URL... --timeout SECONDS [--suite FILE] [--gate ID]
       [--questions ID] [--partition calibration|development] [--record FILE]
                           Ask each door every open item and score the rows.
@@ -40,6 +42,15 @@ Options:
   --baseline SIDE         The side compare judges the others against; default the first.
 The locked partition is never scored by a flag. A door that fails to answer
 leaves no row; the lost items are listed beside the rows and the run exits 1.";
+
+/// What each command above does and where the phone runs it, for the
+/// chat router's command tree (`coder::cli_route::tree`).
+#[cfg(test)]
+pub(crate) const EFFECTS: &[Declared] = &[
+    Declared::computer("run", Effect::LongRunning),
+    Declared::computer("report", Effect::ReadOnly),
+    Declared::computer("compare", Effect::ReadOnly),
+];
 
 const DEFAULT_GATE: &str = "probability-v2";
 

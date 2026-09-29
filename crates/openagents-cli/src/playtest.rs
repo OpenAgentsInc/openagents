@@ -24,8 +24,10 @@ use secp256k1::{Secp256k1, SecretKey};
 use serde_json::{Value, json};
 
 use crate::{Args, Output};
+#[cfg(test)]
+use coder::cli_route::tree::{Declared, Effect};
 
-const USAGE: &str = "usage: openagents playtest COMMAND [OPTIONS]
+pub(crate) const USAGE: &str = "usage: openagents playtest COMMAND [OPTIONS]
   keygen --out PATH             Create a triage key file (0600); print only its npub.
   inbox --triage-key PATH       Read new reports and draft an issue for each.
         [--relay URL] [--since UNIX] [--timeout SECONDS]
@@ -56,6 +58,21 @@ const USAGE: &str = "usage: openagents playtest COMMAND [OPTIONS]
 Files live in ~/.openagents/playtest (OPENAGENTS_PLAYTEST_HOME overrides):
 log.jsonl, and drafts/CODE.md (edit it before filing), .json, .report.json,
 and .jpg (private; never published).";
+
+/// What each command above does and where the phone runs it, for the
+/// chat router's command tree (`coder::cli_route::tree`).
+#[cfg(test)]
+pub(crate) const EFFECTS: &[Declared] = &[
+    Declared::computer("keygen", Effect::LocalWrite),
+    Declared::computer("inbox", Effect::LocalWrite),
+    Declared::computer("file", Effect::Publishes),
+    Declared::computer("decide", Effect::LocalWrite),
+    Declared::computer("verify", Effect::LocalWrite),
+    Declared::computer("session", Effect::LocalWrite),
+    Declared::computer("log", Effect::ReadOnly),
+    Declared::computer("award", Effect::Publishes),
+    Declared::computer("testflight", Effect::LocalWrite),
+];
 
 const DEFAULT_REPO: &str = "OpenAgentsInc/openagents";
 /// Gift wraps backdate their timestamps by up to two days.

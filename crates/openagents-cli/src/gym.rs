@@ -15,8 +15,10 @@ use gym_bridge::{Client, Connection, Grant, Recipe, RelayPolicy};
 use serde_json::{Value, json};
 
 use crate::{Args, Output};
+#[cfg(test)]
+use coder::cli_route::tree::{Declared, Effect};
 
-const USAGE: &str = "usage: openagents gym COMMAND [OPTIONS]
+pub(crate) const USAGE: &str = "usage: openagents gym COMMAND [OPTIONS]
   connect --file FILE | --code CODE [--as PROFILE] [--relay URL]
                           Verify a gym-connect: code for this profile and keep it.
   observe --relay URL --timeout SECONDS [--as PROFILE]
@@ -34,6 +36,17 @@ Options:
   --request-id ID         Retry an earlier launch whose reply was lost.
 The connection code is never printed. Recipes outside the grant are refused
 before anything reaches the relay.";
+
+/// What each command above does and where the phone runs it, for the
+/// chat router's command tree (`coder::cli_route::tree`).
+#[cfg(test)]
+pub(crate) const EFFECTS: &[Declared] = &[
+    Declared::computer("connect", Effect::LocalWrite),
+    Declared::computer("observe", Effect::ReadOnly),
+    Declared::computer("launch", Effect::Publishes),
+    Declared::computer("status", Effect::ReadOnly),
+    Declared::computer("forget", Effect::LocalWrite),
+];
 
 pub fn run(output: &Output, words: &[String]) -> u8 {
     let Some((command, rest)) = words.split_first() else {

@@ -11,6 +11,8 @@ use serde_json::{Value, json};
 
 use crate::relay::DEFAULT_WAIT;
 use crate::{Args, Output};
+#[cfg(test)]
+use coder::cli_route::tree::{Declared, Effect};
 
 /// The origin the documents are rendered for when none is named.
 pub const DEFAULT_ORIGIN: &str = "https://openagents.com";
@@ -18,7 +20,7 @@ pub const DEFAULT_ORIGIN: &str = "https://openagents.com";
 const AGENT_CARD_PATH: &str = "/.well-known/agent-card.json";
 const SKILLS_INDEX_PATH: &str = "/.well-known/agent-skills/index.json";
 
-const USAGE: &str = "usage: openagents discover [OPTIONS]
+pub(crate) const USAGE: &str = "usage: openagents discover [OPTIONS]
   Print the well-known agent card and agent-skills index for an origin.
   --origin URL        Origin to describe (default https://openagents.com).
   --fetch             Also GET both documents from the origin and report
@@ -26,6 +28,11 @@ const USAGE: &str = "usage: openagents discover [OPTIONS]
   --timeout SECONDS   How long to wait for the origin under --fetch
                       (default 8).
 Without --fetch nothing leaves this machine.";
+
+/// What each command above does and where the phone runs it, for the
+/// chat router's command tree (`coder::cli_route::tree`).
+#[cfg(test)]
+pub(crate) const EFFECTS: &[Declared] = &[Declared::computer("", Effect::ReadOnly)];
 
 pub fn run(output: &Output, words: &[String]) -> u8 {
     if let Some(first) = words.first()

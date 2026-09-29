@@ -13,8 +13,10 @@ use openagents_wallet::{
 use serde_json::{Value, json};
 
 use crate::{Args, Output};
+#[cfg(test)]
+use coder::cli_route::tree::{Declared, Effect};
 
-const USAGE: &str = "usage: openagents wallet COMMAND [OPTIONS]
+pub(crate) const USAGE: &str = "usage: openagents wallet COMMAND [OPTIONS]
   init [--network NET] [--esplora URL] [--listen HOST:PORT]
        [--lsp NODE_ID@HOST:PORT|olympus|mdk [--lsp-protocol lsps1|lsps2|lsps4]
         [--lsp-token TOKEN] [--lsp-min-msat N]] [--trust NODE_ID]...
@@ -89,6 +91,32 @@ Amounts: --sats and --*-sats take whole base units (one BIP 177 bitcoin,
 100,000,000 per BTC); --msat and --*-msat take millisatoshis, Lightning's
 wire unit. Text output shows base units as ₿12,345, or as 0.00012345 BTC
 with OPENAGENTS_AMOUNT_FORMAT=btc; JSON fields keep their _sats/_msat names.";
+
+/// What each command above does and where the phone runs it, for the
+/// chat router's command tree (`coder::cli_route::tree`).
+#[cfg(test)]
+pub(crate) const EFFECTS: &[Declared] = &[
+    Declared::screen("init", Effect::LocalWrite, "wallet"),
+    Declared::screen("info", Effect::ReadOnly, "wallet"),
+    Declared::screen("export", Effect::Secret, "wallet"),
+    Declared::screen("backup", Effect::Secret, "wallet"),
+    Declared::screen("restore", Effect::Secret, "wallet"),
+    Declared::screen("status", Effect::ReadOnly, "wallet"),
+    Declared::screen("fund", Effect::LocalWrite, "wallet"),
+    Declared::screen("channel open", Effect::Spends, "wallet"),
+    Declared::screen("channel list", Effect::ReadOnly, "wallet"),
+    Declared::screen("channel close", Effect::Spends, "wallet"),
+    Declared::screen("channel buy", Effect::Spends, "wallet"),
+    Declared::screen("channel order", Effect::ReadOnly, "wallet"),
+    Declared::screen("send", Effect::Spends, "wallet"),
+    Declared::screen("invoice", Effect::LocalWrite, "wallet"),
+    Declared::screen("pay", Effect::Spends, "wallet"),
+    Declared::screen("lookup", Effect::ReadOnly, "wallet"),
+    Declared::screen("serve", Effect::LongRunning, "wallet"),
+    Declared::screen("service install", Effect::LocalWrite, "wallet"),
+    Declared::screen("service uninstall", Effect::LocalWrite, "wallet"),
+    Declared::screen("service status", Effect::ReadOnly, "wallet"),
+];
 
 const SWITCHES: &[&str] = &["announce", "reveal", "force"];
 

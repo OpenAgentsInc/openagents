@@ -13,7 +13,6 @@
 use std::path::Path;
 use std::process::ExitCode;
 
-mod args;
 mod catalog;
 mod computer;
 mod discover;
@@ -36,6 +35,8 @@ mod sov_host;
 mod ssh;
 mod study;
 mod terminal;
+#[cfg(test)]
+mod tree;
 mod wallet;
 mod world;
 mod x402;
@@ -43,7 +44,7 @@ mod x402_native;
 mod x402_phone;
 mod zone;
 
-pub use args::Args;
+pub use coder::argv::Args;
 pub use out::{EXIT_FAILURE, EXIT_USAGE, Output};
 
 pub const USAGE: &str = "usage: openagents [--json] COMMAND [ARGS]

@@ -16,8 +16,10 @@ use serde_json::{Value, json};
 
 use crate::computer::store_dir;
 use crate::{Args, Output, out};
+#[cfg(test)]
+use coder::cli_route::tree::{Declared, Effect};
 
-const USAGE: &str = "usage: openagents reach COMMAND [OPTIONS]
+pub(crate) const USAGE: &str = "usage: openagents reach COMMAND [OPTIONS]
   directory list                  Read the owner directory this device trusts.
   directory add HOST [--label TEXT]
                                   Publish the next directory revision with HOST listed.
@@ -39,6 +41,17 @@ HOST is a host key, a unique key prefix, or an alias set with
 `openagents computer alias`. Directory edits need the owner key on this
 device; `openagents computer` imports it. Nothing here prints a key or an
 invitation.";
+
+/// What each command above does and where the phone runs it, for the
+/// chat router's command tree (`coder::cli_route::tree`).
+#[cfg(test)]
+pub(crate) const EFFECTS: &[Declared] = &[
+    Declared::computer("directory list", Effect::ReadOnly),
+    Declared::computer("directory add", Effect::Grants),
+    Declared::computer("directory remove", Effect::Grants),
+    Declared::computer("presence", Effect::ReadOnly),
+    Declared::computer("probe", Effect::ReadOnly),
+];
 
 pub fn run(output: &Output, words: &[String]) -> u8 {
     let Some((command, rest)) = words.split_first() else {

@@ -8,7 +8,7 @@ use serde_json::{Value, json};
 
 const EXIT_USAGE: u8 = 64;
 
-const USAGE: &str = "\
+pub const USAGE: &str = "\
 Usage:
   coder task submit --file COMMAND.json [--store DIRECTORY]
   coder task cancel --file COMMAND.json [--store DIRECTORY]

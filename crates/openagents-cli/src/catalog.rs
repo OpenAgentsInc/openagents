@@ -16,8 +16,10 @@ use serde_json::{Value, json};
 
 use crate::relay::{Client, DEFAULT_WAIT, relay_url, signer_for, unix_now};
 use crate::{Args, Output, out};
+#[cfg(test)]
+use coder::cli_route::tree::{Declared, Effect};
 
-const CAP_USAGE: &str = "usage: openagents cap COMMAND [OPTIONS]
+pub(crate) const CAP_USAGE: &str = "usage: openagents cap COMMAND [OPTIONS]
   list [--author PUBKEY] [--profile PROFILE] [--limit N]
         List published capability heads (kind 30180, oa:cap:v1), newest
         first, one row per signer and slug.
@@ -29,7 +31,13 @@ Options for every command:
   --as PROFILE        Verse profile key that answers a NIP-42 challenge.
 Reading a head runs no probe, installs nothing, and grants nothing.";
 
-const PRG_USAGE: &str = "usage: openagents prg COMMAND [OPTIONS]
+#[cfg(test)]
+pub(crate) const CAP_EFFECTS: &[Declared] = &[
+    Declared::computer("list", Effect::ReadOnly),
+    Declared::computer("describe", Effect::ReadOnly),
+];
+
+pub(crate) const PRG_USAGE: &str = "usage: openagents prg COMMAND [OPTIONS]
   list [--author PUBKEY] [--step KIND] [--limit N]
         List published program heads (kind 30182, oa:program:v1), newest
         first, one row per signer and slug.
@@ -41,7 +49,13 @@ Options for every command:
   --as PROFILE        Verse profile key that answers a NIP-42 challenge.
 Reading a head pins nothing and admits nothing.";
 
-const EXT_USAGE: &str = "usage: openagents ext COMMAND [OPTIONS]
+#[cfg(test)]
+pub(crate) const PRG_EFFECTS: &[Declared] = &[
+    Declared::computer("list", Effect::ReadOnly),
+    Declared::computer("describe", Effect::ReadOnly),
+];
+
+pub(crate) const EXT_USAGE: &str = "usage: openagents ext COMMAND [OPTIONS]
   list [--type TYPE] [--author PUBKEY] [--package ID] [--limit N]
         List published extension records. TYPE is listing (default),
         release, revocation, migration, or checkpoint.
@@ -50,6 +64,9 @@ Options for every command:
   --timeout SECONDS   How long to wait for the relay (default 8).
   --as PROFILE        Verse profile key that answers a NIP-42 challenge.
 Listing a record installs nothing; a listing is discovery, not a pin.";
+
+#[cfg(test)]
+pub(crate) const EXT_EFFECTS: &[Declared] = &[Declared::computer("list", Effect::ReadOnly)];
 
 const DEFAULT_LIMIT: u64 = 100;
 

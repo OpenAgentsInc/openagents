@@ -20,8 +20,10 @@ use serde_json::{Value, json};
 use sha2::{Digest as _, Sha256};
 
 use crate::{Args, Output};
+#[cfg(test)]
+use coder::cli_route::tree::{Declared, Effect};
 
-const USAGE: &str = "usage: openagents ssh COMMAND [OPTIONS]
+pub(crate) const USAGE: &str = "usage: openagents ssh COMMAND [OPTIONS]
   add USER@HOST --owner PUBKEY --archive OS/ARCH=PATH... [--relay URL]
       [--timeout SECONDS] [--rights LIST]
         Install the pinned coder release over ssh, start or adopt the host,
@@ -38,6 +40,15 @@ wss://relay.openagents.com. --timeout bounds the whole command (default 300
 for add, 60 otherwise). --rights is the invitation's rights (default all).
 Options: --ssh PROGRAM (default ssh on PATH), --store DIR (default
 ~/.openagents/coder-computers), --same-machine, --loopback-test.";
+
+/// What each command above does and where the phone runs it, for the
+/// chat router's command tree (`coder::cli_route::tree`).
+#[cfg(test)]
+pub(crate) const EFFECTS: &[Declared] = &[
+    Declared::computer("add", Effect::Grants),
+    Declared::computer("tunnel", Effect::LongRunning),
+    Declared::computer("remove", Effect::LocalWrite),
+];
 
 /// The schema of the file that records each destination `add` set up.
 const RECORD_SCHEMA: &str = "openagents.cli.ssh-hosts.v1";

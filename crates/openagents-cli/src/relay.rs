@@ -12,6 +12,8 @@ use serde_json::{Value, json};
 use verse::net::{In, Link, Out};
 
 use crate::{Args, Output};
+#[cfg(test)]
+use coder::cli_route::tree::{Declared, Effect};
 
 /// How long a one-shot command waits for a relay to answer.
 pub const DEFAULT_WAIT: Duration = Duration::from_secs(8);
@@ -21,7 +23,7 @@ const POLL: Duration = Duration::from_millis(15);
 /// taken as complete when its end-of-stored-events marker never arrives.
 const SETTLE: Duration = Duration::from_millis(1500);
 
-const USAGE: &str = "usage: openagents relay COMMAND [OPTIONS]
+pub(crate) const USAGE: &str = "usage: openagents relay COMMAND [OPTIONS]
   req FILTER_JSON [--relay URL] [--wait SECONDS] [--as PROFILE]
         Print stored events matching one NIP-01 filter, then stop.
   tail FILTER_JSON [--relay URL] [--wait SECONDS] [--as PROFILE]
@@ -33,6 +35,16 @@ const USAGE: &str = "usage: openagents relay COMMAND [OPTIONS]
         Sign an event with PROFILE's key and publish it.
 --relay defaults to wss://relay.openagents.com. --as names the Verse
 profile key used to answer a NIP-42 challenge (default: default).";
+
+/// What each command above does and where the phone runs it, for the
+/// chat router's command tree (`coder::cli_route::tree`).
+#[cfg(test)]
+pub(crate) const EFFECTS: &[Declared] = &[
+    Declared::computer("req", Effect::ReadOnly),
+    Declared::computer("tail", Effect::LongRunning),
+    Declared::computer("publish", Effect::Publishes),
+    Declared::computer("sign", Effect::Publishes),
+];
 
 pub fn run(output: &Output, words: &[String]) -> u8 {
     let Some((command, rest)) = words.split_first() else {

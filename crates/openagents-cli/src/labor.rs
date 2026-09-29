@@ -16,8 +16,10 @@ use nostr::domain::Event;
 use serde_json::{Value, json};
 
 use crate::{Args, EXIT_FAILURE, Output};
+#[cfg(test)]
+use coder::cli_route::tree::{Declared, Effect};
 
-const USAGE: &str = "usage: openagents labor COMMAND [OPTIONS]
+pub(crate) const USAGE: &str = "usage: openagents labor COMMAND [OPTIONS]
   offer NAME SETUP_FILE [--relay URL] [--timeout SECONDS] [--as PROFILE]
         Admit an operator setup (market, offering, encrypted terms, and the
         pinned closure) as book NAME and open its private journal. With
@@ -41,6 +43,19 @@ EVENT is a file, inline JSON, - for stdin, or a 64-hex event ID fetched from
 adds one exact JSON artifact the record references. --as names the profile key
 that opens the encrypted records (default: default). Books live in
 ~/.openagents/labor/ (LABOR_HOME overrides).";
+
+/// What each command above does and where the phone runs it, for the
+/// chat router's command tree (`coder::cli_route::tree`).
+#[cfg(test)]
+pub(crate) const EFFECTS: &[Declared] = &[
+    Declared::computer("offer", Effect::Publishes),
+    Declared::computer("order", Effect::Publishes),
+    Declared::computer("deliver", Effect::Publishes),
+    Declared::computer("accept", Effect::Publishes),
+    Declared::computer("execute", Effect::Publishes),
+    Declared::computer("check", Effect::ReadOnly),
+    Declared::computer("list", Effect::ReadOnly),
+];
 
 const DEFAULT_TIMEOUT: u64 = 10;
 const MKT_SCHEMAS: &[&str] = &[nostr::market_contracts::RECORD_SCHEMA];

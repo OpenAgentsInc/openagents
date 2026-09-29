@@ -14,8 +14,10 @@ use coder_service::service::{self, Platform, SystemRunner};
 use serde_json::{Value, json};
 
 use crate::{Args, Output, out};
+#[cfg(test)]
+use coder::cli_route::tree::{Declared, Effect};
 
-const USAGE: &str = "usage: openagents service COMMAND [OPTIONS]
+pub(crate) const USAGE: &str = "usage: openagents service COMMAND [OPTIONS]
   install --host-key HEX [--launcher PATH] [--version SHA256]
           [--bundle-root DIR] [--state DIR]... [--label LABEL]
           [--listen ADDR] [--ready-timeout SECONDS] [--stop-grace SECONDS]
@@ -34,6 +36,18 @@ Every command takes --root DIR (default ~/.openagents/host). --launcher is
 the coder-service binary the service runs; it defaults to coder-service in
 the directory that holds this openagents binary. HOST_ARGS default to
 `host serve`.";
+
+/// What each command above does and where the phone runs it, for the
+/// chat router's command tree (`coder::cli_route::tree`).
+#[cfg(test)]
+pub(crate) const EFFECTS: &[Declared] = &[
+    Declared::computer("install", Effect::LocalWrite),
+    Declared::computer("status", Effect::ReadOnly),
+    Declared::computer("restart", Effect::LocalWrite),
+    Declared::computer("uninstall", Effect::LocalWrite),
+    Declared::computer("update", Effect::LocalWrite),
+    Declared::computer("descriptor", Effect::ReadOnly),
+];
 
 pub fn run(output: &Output, words: &[String]) -> u8 {
     let Some((command, rest)) = words.split_first() else {

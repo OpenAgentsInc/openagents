@@ -16,8 +16,10 @@ use coder_reach::hints::Locality;
 use serde_json::{Value, json};
 
 use crate::{Args, Output, out};
+#[cfg(test)]
+use coder::cli_route::tree::{Declared, Effect};
 
-const USAGE: &str = "usage: openagents computer COMMAND [OPTIONS]
+pub(crate) const USAGE: &str = "usage: openagents computer COMMAND [OPTIONS]
   list [--wait SECONDS]     Every host this device knows, with its link and grant.
   show HOST                 One host: grant, devices, pending enrollments, workspaces.
   link INVITATION           Redeem a coder-host: invitation (QR text or paste).
@@ -53,6 +55,35 @@ const USAGE: &str = "usage: openagents computer COMMAND [OPTIONS]
 Options: --store DIR (default ~/.openagents/coder-computers), --wait SECONDS
 (how long to wait for the host's link; default 15), --same-machine
 (hosts run on this computer; allows loopback routes), --loopback-test.";
+
+/// What each command above does and where the phone runs it, for the
+/// chat router's command tree (`coder::cli_route::tree`).
+#[cfg(test)]
+pub(crate) const EFFECTS: &[Declared] = &[
+    Declared::device("list", Effect::ReadOnly),
+    Declared::device("show", Effect::ReadOnly),
+    Declared::screen("link", Effect::Grants, "account.computers"),
+    Declared::screen("approve", Effect::Grants, "account.computers"),
+    Declared::screen("deny", Effect::Grants, "account.computers"),
+    Declared::screen("invite", Effect::Grants, "account.computers"),
+    Declared::device("devices", Effect::ReadOnly),
+    Declared::screen("revoke", Effect::Grants, "account.computers"),
+    Declared::screen("forget", Effect::LocalWrite, "account.computers"),
+    Declared::screen("enable", Effect::LocalWrite, "account.computers"),
+    Declared::screen("disable", Effect::LocalWrite, "account.computers"),
+    Declared::screen("retry", Effect::LocalWrite, "account.computers"),
+    Declared::device("workspaces", Effect::ReadOnly),
+    Declared::device("task", Effect::Publishes),
+    Declared::device("steer", Effect::Publishes),
+    Declared::device("cancel", Effect::Publishes),
+    Declared::device("exec", Effect::Publishes),
+    Declared::device("shell", Effect::LongRunning),
+    Declared::device("watch", Effect::LongRunning),
+    Declared::device("tail", Effect::ReadOnly),
+    Declared::device("alias", Effect::LocalWrite),
+    Declared::device("journal", Effect::ReadOnly),
+    Declared::device("client-only", Effect::LocalWrite),
+];
 
 fn now() -> u64 {
     std::time::SystemTime::now()

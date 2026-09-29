@@ -9,11 +9,13 @@
 
 use serde_json::{Value, json};
 
-use crate::args::Args;
+use crate::Args;
 use crate::out;
 use crate::{Output, computer};
+#[cfg(test)]
+use coder::cli_route::tree::{Declared, Effect};
 
-const USAGE: &str = "usage: openagents study COMMAND HOST DIR [OPTIONS]
+pub(crate) const USAGE: &str = "usage: openagents study COMMAND HOST DIR [OPTIONS]
   run HOST DIR TASK ARM N [--runner SCRIPT]
                             Start `SCRIPT TASK ARM N` in DIR on the host, detached;
                             prints its pid. SCRIPT defaults to ./one.sh.
@@ -28,6 +30,16 @@ const USAGE: &str = "usage: openagents study COMMAND HOST DIR [OPTIONS]
   faults HOST DIR           Steps whose model call failed, from each run's events.jsonl.
 HOST is an alias, key, or key prefix (see `openagents computer alias`).
 Options: --store DIR, --wait SECONDS, --timeout SECONDS.";
+
+/// What each command above does and where the phone runs it, for the
+/// chat router's command tree (`coder::cli_route::tree`).
+#[cfg(test)]
+pub(crate) const EFFECTS: &[Declared] = &[
+    Declared::computer("run", Effect::Publishes),
+    Declared::computer("status", Effect::ReadOnly),
+    Declared::computer("outcomes", Effect::ReadOnly),
+    Declared::computer("faults", Effect::ReadOnly),
+];
 
 pub fn run(output: &Output, words: &[String]) -> u8 {
     let Some((command, rest)) = words.split_first() else {

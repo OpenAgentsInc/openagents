@@ -12,8 +12,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use crate::{Args, Output};
+#[cfg(test)]
+use coder::cli_route::tree::{Declared, Effect};
 
-const USAGE: &str = "usage: openagents sov COMMAND [OPTIONS]
+pub(crate) const USAGE: &str = "usage: openagents sov COMMAND [OPTIONS]
   profile new NAME --agent PUBKEY --authority PUBKEY --policy REF --custody-adapter ID --custody-adapter-artifact REF --custody-policy REF --state-schema REF --disclosure REF [--guardian REF] [--treasury REF] [--evidence REF]...
                             Draft revision 0 of a sovereign profile.
   profile validate FILE     Check a profile body against the SOV rules.
@@ -38,6 +40,21 @@ in ~/.openagents/sov/ (SOV_HOME overrides). The only custody adapter this
 host enforces is openagents.local-key.v1: the agent key in a local key
 profile (openagents key show --as NAME). Treasury and guardians are
 unsupported; a profile that names them is refused at admission.";
+
+/// What each command above does and where the phone runs it, for the
+/// chat router's command tree (`coder::cli_route::tree`).
+#[cfg(test)]
+pub(crate) const EFFECTS: &[Declared] = &[
+    Declared::computer("profile new", Effect::LocalWrite),
+    Declared::computer("profile validate", Effect::ReadOnly),
+    Declared::computer("profile show", Effect::ReadOnly),
+    Declared::computer("profile list", Effect::ReadOnly),
+    Declared::computer("admit", Effect::Grants),
+    Declared::computer("spawn", Effect::LongRunning),
+    Declared::computer("status", Effect::ReadOnly),
+    Declared::computer("stop", Effect::Publishes),
+    Declared::computer("list", Effect::ReadOnly),
+];
 
 pub const PROFILE_VERSION: &str = "openagents.sovereign-profile.v1";
 const MAX_EVIDENCE: usize = 64;

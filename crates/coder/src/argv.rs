@@ -1,5 +1,9 @@
-//! A small argument reader: `--flag VALUE` options, `--switch` toggles, and
-//! the positional words that remain, in order.
+//! The `openagents` command's argument reader: `--flag VALUE` options,
+//! `--switch` toggles, and the positional words that remain, in order.
+//!
+//! It lives here rather than in `openagents-cli` so the chat router's CLI
+//! route ([`crate::cli_route`]) validates a proposed command with the same
+//! parser the command itself runs.
 
 use std::collections::BTreeMap;
 
@@ -78,6 +82,16 @@ impl Args {
             .get(name)
             .map(|values| values.iter().map(String::as_str).collect())
             .unwrap_or_default()
+    }
+
+    /// The names of every option given, each once, in name order.
+    pub fn option_names(&self) -> Vec<&str> {
+        self.options.keys().map(String::as_str).collect()
+    }
+
+    /// The switches given, in order.
+    pub fn switches(&self) -> &[String] {
+        &self.switches
     }
 
     pub fn switch(&self, name: &str) -> bool {

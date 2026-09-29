@@ -31,8 +31,10 @@ use sha2::{Digest, Sha256};
 use crate::mcp::{Server, Toll};
 use crate::relay::{Client, relay_url, signer_for};
 use crate::{Args, Output};
+#[cfg(test)]
+use coder::cli_route::tree::{Declared, Effect};
 
-const USAGE: &str = "usage: openagents x402 COMMAND [OPTIONS]
+pub(crate) const USAGE: &str = "usage: openagents x402 COMMAND [OPTIONS]
   serve --url PUBLIC_URL --msat N [--listen HOST:PORT] [--expiry SECONDS]
         [--mime TYPE] [--seconds N] -- CMD [ARGS...]
                           Sell CMD at PUBLIC_URL for exactly N msat per call
@@ -152,6 +154,25 @@ Replay records live in ~/.openagents/x402/replay, native purchases in
 ~/.openagents/x402/native, the policy in ~/.openagents/x402/policy.json, and
 the ledger in ~/.openagents/x402/ledger.ndjson. The preimage is printed only
 with --show-proof. Add --json before `x402` for one JSON document.";
+
+/// What each command above does and where the phone runs it, for the
+/// chat router's command tree (`coder::cli_route::tree`).
+#[cfg(test)]
+pub(crate) const EFFECTS: &[Declared] = &[
+    Declared::screen("serve", Effect::LongRunning, "wallet"),
+    Declared::screen("fetch", Effect::Spends, "wallet"),
+    Declared::screen("mcp-serve", Effect::LongRunning, "wallet"),
+    Declared::screen("call", Effect::Spends, "wallet"),
+    Declared::screen("native-serve", Effect::LongRunning, "wallet"),
+    Declared::screen("buy", Effect::Spends, "wallet"),
+    Declared::screen("status", Effect::Publishes, "wallet"),
+    Declared::screen("advertise", Effect::Publishes, "wallet"),
+    Declared::screen("policy show", Effect::ReadOnly, "wallet"),
+    Declared::screen("policy set", Effect::Spends, "wallet"),
+    Declared::screen("policy allow", Effect::Spends, "wallet"),
+    Declared::screen("policy deny", Effect::Spends, "wallet"),
+    Declared::screen("ledger", Effect::ReadOnly, "wallet"),
+];
 
 const SWITCHES: &[&str] = &["show-proof", "dry-run"];
 

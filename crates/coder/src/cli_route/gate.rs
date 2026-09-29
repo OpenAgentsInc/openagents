@@ -1,0 +1,101 @@
+//! Which commands a chat may offer, on which surface.
+//!
+//! The router's effect gate ([`crate::router::gate`]) decides by effect:
+//! money and secrets are never proposed from chat, grants open a screen on
+//! the phone, and the desktop and terminal take the rest with a confirm.
+//! On top of it the owner decided on 2026-09-28 that the phone's chat
+//! offers only the read-only commands in [`PHONE_COMMANDS`]; every other
+//! command is not proposed there. The CLI route proposes a command only
+//! when [`offered`] says so, and the router applies its own gate again to
+//! whatever comes back.
+
+use super::tree::{Leaf, RunsOn};
+use crate::router::{CliGate, Surface, gate};
+
+/// The commands the phone's chat offers: read-only, by the owner's
+/// decision of 2026-09-28. A test checks each is in the tree and
+/// declared read-only there.
+pub const PHONE_COMMANDS: &[&str] = &[
+    "computer list",
+    "computer show",
+    "computer workspaces",
+    "verse who",
+    "verse quests",
+    "verse board",
+    "verse xp",
+    "kb search",
+    "cap list",
+    "prg list",
+    "ext list",
+    "session list",
+];
+
+/// Whether `leaf` may be proposed on `surface`: the router's effect gate
+/// offers it, and on the phone it is one of [`PHONE_COMMANDS`].
+#[must_use]
+pub fn offered(leaf: &Leaf, surface: Surface) -> bool {
+    gate(leaf.effect, surface) == CliGate::Offer
+        && (surface != Surface::Phone || PHONE_COMMANDS.contains(&leaf.path.join(" ").as_str()))
+}
+
+/// Where the command runs for `surface`: the declared place on the phone,
+/// this device (where the program is) on the desktop and in the terminal.
+#[must_use]
+pub fn runs_on(leaf: &Leaf, surface: Surface) -> RunsOn {
+    match surface {
+        Surface::Phone => leaf.runs_on,
+        Surface::Desktop | Surface::Terminal => RunsOn::ThisDevice,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cli_route::tree::{Effect, bundled};
+
+    fn words(path: &str) -> Vec<String> {
+        path.split(' ').map(str::to_owned).collect()
+    }
+
+    #[test]
+    fn the_phone_list_is_read_only_commands_in_the_tree() {
+        for path in PHONE_COMMANDS {
+            let leaf = bundled()
+                .leaf(&words(path))
+                .unwrap_or_else(|| panic!("{path} is not in the tree"));
+            assert_eq!(leaf.effect, Effect::ReadOnly, "{path}");
+            assert!(offered(leaf, Surface::Phone), "{path}");
+        }
+    }
+
+    #[test]
+    fn no_surface_offers_money_or_secrets() {
+        for leaf in bundled().leaves() {
+            if matches!(leaf.effect, Effect::Spends | Effect::Secret) {
+                for surface in [Surface::Phone, Surface::Desktop, Surface::Terminal] {
+                    assert!(!offered(leaf, surface), "{} on {surface:?}", leaf.command());
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn the_phone_offers_nothing_but_its_list() {
+        let mut offered_on_phone = 0;
+        for leaf in bundled().leaves() {
+            if offered(leaf, Surface::Phone) {
+                offered_on_phone += 1;
+                assert!(PHONE_COMMANDS.contains(&leaf.path.join(" ").as_str()));
+            }
+        }
+        assert_eq!(offered_on_phone, PHONE_COMMANDS.len());
+        let approve = bundled().leaf(&words("computer approve")).unwrap();
+        assert!(!offered(approve, Surface::Phone));
+        assert!(offered(approve, Surface::Desktop));
+        let who = bundled().leaf(&words("verse who")).unwrap();
+        assert_eq!(runs_on(who, Surface::Phone), RunsOn::ConnectedComputer);
+        assert_eq!(runs_on(who, Surface::Terminal), RunsOn::ThisDevice);
+        let list = bundled().leaf(&words("computer list")).unwrap();
+        assert_eq!(runs_on(list, Surface::Phone), RunsOn::ThisDevice);
+    }
+}

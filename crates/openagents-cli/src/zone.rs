@@ -14,8 +14,10 @@ use verse_lagrange::{Command, PartKind, PartState, Station};
 
 use crate::relay::{DEFAULT_WAIT, unix_now};
 use crate::{Args, Output, out};
+#[cfg(test)]
+use coder::cli_route::tree::{Declared, Effect};
 
-const USAGE: &str = "usage: openagents zone COMMAND [OPTIONS]
+pub(crate) const USAGE: &str = "usage: openagents zone COMMAND [OPTIONS]
   info                      The Lagrange zone: landmarks, parts, slots, limits.
   run VERB... [--dt SECONDS] [--timeout SECONDS] [--trace]
                             Simulate the zone headlessly and apply verbs in
@@ -29,6 +31,17 @@ Verbs: fly X,Y,Z | fly depot|jig|airlock|spawn|PART | grab | install | release |
        unclip | clip | stop | wait SECONDS | status | parts
   install                   Carry the held part to its jig slot and latch it.
 Options for send/listen: --as PROFILE, --relay URL, --world ID.";
+
+/// What each command above does and where the phone runs it, for the
+/// chat router's command tree (`coder::cli_route::tree`).
+#[cfg(test)]
+pub(crate) const EFFECTS: &[Declared] = &[
+    Declared::computer("info", Effect::ReadOnly),
+    Declared::computer("run", Effect::LocalWrite),
+    Declared::computer("build", Effect::LocalWrite),
+    Declared::computer("send", Effect::Publishes),
+    Declared::computer("listen", Effect::LongRunning),
+];
 
 const VERBS: &[&str] = &[
     "fly", "grab", "install", "release", "unclip", "clip", "stop", "wait", "status", "parts",

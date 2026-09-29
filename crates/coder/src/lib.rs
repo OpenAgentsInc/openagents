@@ -47,9 +47,11 @@
 pub mod about;
 pub mod activity;
 pub mod agent;
+pub mod argv;
 pub mod capability;
 pub mod child;
 pub mod classify;
+pub mod cli_route;
 pub mod cloud;
 pub mod decision;
 pub mod delegate;

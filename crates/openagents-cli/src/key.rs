@@ -5,12 +5,22 @@
 use serde_json::json;
 
 use crate::{Args, Output};
+#[cfg(test)]
+use coder::cli_route::tree::{Declared, Effect};
 
-const USAGE: &str = "usage: openagents key COMMAND [OPTIONS]
+pub(crate) const USAGE: &str = "usage: openagents key COMMAND [OPTIONS]
   show [--as PROFILE]     Print the profile's public key, creating the key if absent.
   list                    List the profiles that hold a key.
 Keys live in ~/.openagents/verse/PROFILE.key (VERSE_HOME overrides the
 directory). The secret is never printed.";
+
+/// What each command above does and where the phone runs it, for the
+/// chat router's command tree (`coder::cli_route::tree`).
+#[cfg(test)]
+pub(crate) const EFFECTS: &[Declared] = &[
+    Declared::screen("show", Effect::LocalWrite, "account.keys"),
+    Declared::screen("list", Effect::ReadOnly, "account.keys"),
+];
 
 pub fn run(output: &Output, words: &[String]) -> u8 {
     let Some((command, rest)) = words.split_first() else {
