@@ -39,6 +39,7 @@ mod direct;
 mod dispatch;
 pub(crate) mod iroh;
 pub mod keys;
+pub(crate) mod nearby;
 mod relay;
 mod standing;
 mod terminal;

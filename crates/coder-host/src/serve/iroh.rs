@@ -13,6 +13,9 @@
 //!   QUIC stream, with the grant store behind its grant check, and then the
 //!   same session as a TCP or WebSocket channel: NIP-HOST calls, NIP-TERM
 //!   terminals, rechecks before every message, and closing on revocation.
+//! - Nearby approval shares the enroll ALPN: the endpoint advertises itself
+//!   over mDNS, and a nearby request goes to the gate in [`super::nearby`],
+//!   which grants only after a click on the computer.
 
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -25,11 +28,13 @@ use openagents_connect::endpoint::{ConnectEndpoint, EndpointConfig, Relay};
 use openagents_connect::enroll::{EnrollCall, EnrollProtocol, EnrollReply};
 use openagents_connect::iroh::protocol::Router;
 use openagents_connect::iroh::{EndpointId, RelayUrl, SecretKey};
+use openagents_connect::nearby::{HostKeys, NearbyCall};
 use openagents_connect::reach::{ReachProtocol, ReachSession};
 use openagents_connect::{ENROLL_ALPN, REACH_ALPN};
 use tokio::sync::{Semaphore, mpsc};
 use tokio::task::JoinHandle;
 
+use super::nearby::NearbyGate;
 use super::{Shared, direct};
 use crate::authority::Grants;
 use crate::config::Iroh as IrohConfig;
@@ -44,6 +49,8 @@ pub(crate) struct Listener {
     router: Router,
     /// The configured relay URL, as the operator spelled it.
     relay: Option<String>,
+    /// Nearby requests and the click that answers one.
+    pub(crate) nearby: NearbyGate,
 }
 
 impl Listener {
@@ -139,19 +146,34 @@ pub(super) async fn start(
     .map_err(|_| Error::Config("the iroh endpoint cannot bind".into()))?;
     let (calls, call_queue) = mpsc::channel::<EnrollCall>(ENROLL_CONCURRENCY);
     let (sessions, session_queue) = mpsc::channel::<ReachSession>(64);
+    let (nearby_calls, nearby_queue) = mpsc::channel::<NearbyCall>(ENROLL_CONCURRENCY);
     let router = Router::builder(endpoint.endpoint.clone())
-        .accept(ENROLL_ALPN, EnrollProtocol::new(calls))
+        .accept(
+            ENROLL_ALPN,
+            EnrollProtocol::new(calls).with_nearby(nearby_calls),
+        )
         .accept(REACH_ALPN, ReachProtocol::new(acceptor, sessions))
         .spawn();
+    let gate = NearbyGate::new(nearby_mint(shared));
+    let host = HostKeys {
+        endpoint: *endpoint.endpoint.id().as_bytes(),
+        nostr: openagents_connect::nearby::parse_key(&shared.host_key)
+            .map_err(|_| Error::Config("the host key is not 64 hex characters".into()))?,
+    };
+    // Phones on this network list the computer by its label. A network
+    // without multicast only loses the nearby list; codes still work.
+    let _ = openagents_connect::nearby::advertise(&endpoint, &shared.config.label);
     let tasks = vec![
         tokio::spawn(enroll(shared.clone(), call_queue)),
         tokio::spawn(reach(shared.clone(), session_queue)),
+        tokio::spawn(nearby(gate.clone(), host, nearby_queue)),
     ];
     Ok((
         Listener {
             endpoint,
             router,
             relay: relay_text,
+            nearby: gate,
         },
         tasks,
     ))
@@ -194,6 +216,49 @@ pub(super) async fn redeem(shared: &Arc<Shared>, request: &str) -> Option<String
         .ok()?
         .ok()?;
     serde_json::to_string(&reply).ok()
+}
+
+/// Signs a nearby device's grant after the click: an approval grant on the
+/// host's relay with the connect-code rights (NIP-HOST, nearby approval).
+fn nearby_mint(shared: &Arc<Shared>) -> super::nearby::Mint {
+    let shared = Arc::downgrade(shared);
+    Arc::new(move |device: &str, rights: coder_access::Rights| {
+        let shared = shared.upgrade().ok_or("the host stopped")?;
+        let relay = shared
+            .config
+            .primary()
+            .map_err(|_| "the host serves no relay")?
+            .to_owned();
+        let envelope = shared
+            .authority
+            .local(|host, now| host.approve_nearby(device, &relay, rights.clone(), now))
+            .map_err(|error| error.message.clone())?;
+        serde_json::to_value(envelope).map_err(|error| error.to_string())
+    })
+}
+
+/// Run each nearby exchange; the gate admits one at a time.
+async fn nearby(gate: NearbyGate, host: HostKeys, mut calls: mpsc::Receiver<NearbyCall>) {
+    let limit = Arc::new(Semaphore::new(ENROLL_CONCURRENCY));
+    while let Some(call) = calls.recv().await {
+        let Ok(permit) = limit.clone().acquire_owned().await else {
+            return;
+        };
+        let gate = gate.clone();
+        tokio::spawn(async move {
+            let NearbyCall {
+                remote,
+                request,
+                stream,
+                done,
+            } = call;
+            let (reader, writer) = tokio::io::split(stream);
+            let _ = super::nearby::serve(request, reader, writer, host, *remote.as_bytes(), &gate)
+                .await;
+            drop(done);
+            drop(permit);
+        });
+    }
 }
 
 /// Serve each admitted channel like any other direct channel.

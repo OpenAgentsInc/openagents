@@ -95,6 +95,10 @@ name = "iroh"
 required-features = ["host"]
 
 [[test]]
+name = "nearby"
+required-features = ["host"]
+
+[[test]]
 name = "control"
 required-features = ["host"]
 

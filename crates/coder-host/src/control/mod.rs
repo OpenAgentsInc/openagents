@@ -110,6 +110,14 @@ async fn handle(shared: &Arc<Shared>, request: Request) -> Response {
     Response::new(id, reply)
 }
 
+fn prompt(pending: crate::serve::nearby::Pending) -> control::NearbyPrompt {
+    control::NearbyPrompt {
+        id: pending.id,
+        label: pending.label,
+        code: pending.code.digits(),
+    }
+}
+
 fn refused(code: &str, message: impl Into<String>) -> Reply {
     Reply::Refused {
         code: code.into(),
@@ -185,8 +193,31 @@ fn answer(shared: &Shared, op: Op) -> Reply {
             Err(error) => host_refused(&error),
         },
         Op::ProjectAdd { path } => change_projects(shared, |settings| add_project(settings, &path)),
-        Op::NearbyPending {} | Op::NearbyDecide { .. } => {
-            refused("unavailable", "this host does not serve nearby pairing")
+        Op::NearbyPending {} => match shared.iroh.get() {
+            Some(iroh) => Reply::Nearby {
+                pending: iroh.nearby.pending().map(prompt),
+            },
+            None => refused("unavailable", "this host does not serve nearby pairing"),
+        },
+        Op::NearbyDecide {
+            id,
+            connect,
+            terminal,
+        } => {
+            let Some(iroh) = shared.iroh.get() else {
+                return refused("unavailable", "this host does not serve nearby pairing");
+            };
+            let choice = if connect {
+                crate::serve::nearby::Choice::Connect { terminal }
+            } else {
+                crate::serve::nearby::Choice::Decline
+            };
+            match iroh.nearby.decide(id, choice) {
+                Ok(()) => Reply::Nearby {
+                    pending: iroh.nearby.pending().map(prompt),
+                },
+                Err(_) => refused("not_pending", "no nearby request with that ID is waiting"),
+            }
         }
         Op::OwnerImport { secret } => owner_import(shared, &secret),
         Op::ProjectRemove { label } => change_projects(shared, |settings| {
