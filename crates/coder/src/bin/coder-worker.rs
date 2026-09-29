@@ -1724,7 +1724,18 @@ impl Job {
         let bank = Bank::builtin();
         let groups = routing.seams.cli.groups();
         let tools = routing.seams.gym.tools();
-        let request = router::request(&turn.message, input, bank, &routing.facts, &groups, &tools);
+        // The admitted-capability set for the turn: the built-ins, the
+        // catalog, and Coder's adoptions (#9960).
+        let admitted = router::Admitted::of(&tools, &routing.seams.gym.adoptions());
+        let request = router::request(
+            &turn.message,
+            input,
+            bank,
+            &routing.facts,
+            &groups,
+            &tools,
+            &admitted,
+        );
         let (mode, shadow, context) = (turn.mode, turn.shadow, turn.context.clone());
         let draft = turn.draft.is_some();
         Some(Box::pin(async move {
@@ -1733,7 +1744,7 @@ impl Job {
             let milliseconds = started.elapsed().as_millis();
             match answered {
                 Ok(Ok(response)) => {
-                    let mut reading = router::reading(&response, bank, &routing.facts);
+                    let mut reading = router::reading(&response, bank, &routing.facts, &admitted);
                     if let Some(map) = &routing.calibration {
                         map.apply(&mut reading);
                     }
@@ -1947,6 +1958,30 @@ impl Job {
                             send(0, text)?;
                             if let Tier::CannedFinal { offer: Some(shown), .. } = &tier {
                                 offer(shown)?;
+                            }
+                            return Ok((text.clone(), None, Some(record)));
+                        }
+                        // A missing capability (#9960): the bank's line,
+                        // the card that names the closest admitted one and
+                        // how to add one (the interview when it is wired,
+                        // else the Gym), and the Gym offer; the model call
+                        // is dropped.
+                        Tier::Capability { text, closest, .. } => {
+                            send(0, text)?;
+                            let add = if seams.author.available() {
+                                nostr::cj_conversation::Add::Author
+                            } else {
+                                nostr::cj_conversation::Add::Gym
+                            };
+                            card(&router::card::Card::Capability {
+                                closest: closest.clone(),
+                                add,
+                            })?;
+                            if add == nostr::cj_conversation::Add::Gym {
+                                offer(&router::Offer::OpenScreen {
+                                    screen: router::Screen::VerseGym,
+                                    label: "See the Gym".to_string(),
+                                })?;
                             }
                             return Ok((text.clone(), None, Some(record)));
                         }
@@ -2605,9 +2640,18 @@ fn served_of(routing: &router::Routing, tier: &Tier, bank: &Bank, facts: &router
         tier: tier.word(),
         route: routing.route.word(),
         answer: answer.map(router::Entry::tag),
+        // The admitted capability that answered, when the reading named
+        // one at the policy's confidence: a typed id, never text.
+        capability: routing
+            .capability
+            .as_ref()
+            .filter(|(_, p)| *p >= router::policy::CAPABILITY_CONFIDENCE)
+            .map(|(entry, _)| entry.id.clone()),
         model: answer.map(|_| format!("bank:{}", bank.name)),
         followups: match tier {
-            Tier::CannedFinal { answer, .. } => bank.followups(answer, facts),
+            Tier::CannedFinal { answer, .. } | Tier::Capability { answer, .. } => {
+                bank.followups(answer, facts)
+            }
             _ => Vec::new(),
         },
         ..Served::default()
@@ -3324,8 +3368,24 @@ mod tests {
             "answer": sure(answer, &answers),
             "needs_specifics": { "type": "noul", "noul": specifics },
             "opener": sure(opener, &openers),
+            "capability": capability("not-a-capability-request", &[]),
             "risk": sure("ok", &["ok", "secret_shared", "asks_for_secret", "harmful", "money_movement", "none"]),
         })
+    }
+
+    /// The `capability` answer over the built-in admitted set, `extra`
+    /// catalog ids, `none`, and `not-a-capability-request`, sure of
+    /// `choice`.
+    fn capability(choice: &str, extra: &[&str]) -> Value {
+        let admitted = router::Admitted::builtin();
+        let options: Vec<&str> = admitted
+            .entries
+            .iter()
+            .map(|entry| entry.id.as_str())
+            .chain(extra.iter().copied())
+            .chain(["none", "not-a-capability-request"])
+            .collect();
+        sure(choice, &options)
     }
 
     /// Every answer to one turn, in publication order, up to the result
@@ -3699,7 +3759,7 @@ mod tests {
         )
         .await;
         let judgment = of_type(&frames, "judgment")[0];
-        // Build 20 names `chat-router-v1`; it is routed with the v2 set,
+        // Build 20 names `chat-router-v1`; it is routed with the v3 set,
         // named with its digest.
         assert_eq!(judgment["set"], router::set_id());
         assert_eq!(judgment["route"], "work.dispatch");
@@ -3776,6 +3836,104 @@ mod tests {
                 .unwrap()
                 .starts_with("That needs a computer.")
         );
+    }
+
+    /// A request that calls for a capability none of the admitted ones
+    /// covers (#9960): the bank's line naming the closest admitted
+    /// capability from the typed set, the `capability` card with how to
+    /// add one (the Gym, since no interview is wired), the Gym offer, and
+    /// the model call dropped. Nothing on the wire is the message.
+    #[tokio::test]
+    async fn a_missing_capability_gets_the_bank_line_the_card_and_the_gym_offer() {
+        let mut answers = routed("capability.missing", "none", 0.9, "none");
+        let mut none = capability("none", &[]);
+        none["confidence"] = json!(0.7);
+        none["probabilities"]["none"] = json!(0.7);
+        none["probabilities"]["chat.coder"] = json!(0.25);
+        none["probabilities"]["not-a-capability-request"] = json!(0.05);
+        answers["capability"] = none;
+        let frames = frames_routed(
+            slow_door(Duration::from_millis(1_500)),
+            Some(judge(Duration::ZERO, answers)),
+            v2_turn("Book me a flight to Denver next Friday"),
+            Seams::default(),
+            RouterSetting::Live,
+        )
+        .await;
+        let judgment = of_type(&frames, "judgment")[0];
+        assert_eq!(judgment["set"], router::set_id());
+        assert_eq!(judgment["route"], "capability.missing");
+        assert_eq!(judgment["capability"], Value::Null);
+        assert_eq!(judgment["capability_missing_p"], 0.7);
+        let cards = of_type(&frames, "card");
+        assert_eq!(cards.len(), 1);
+        assert_eq!(cards[0]["card"], "capability");
+        assert_eq!(cards[0]["status"], "missing");
+        assert_eq!(cards[0]["closest"]["name"], "Coder");
+        assert_eq!(cards[0]["closest"]["reach"], "chat");
+        assert_eq!(cards[0]["add"], "gym");
+        nostr::cj_conversation::parse_card(cards[0]).expect("a card NIP-CJ reads");
+        let offers = of_type(&frames, "offer");
+        assert_eq!(offers.len(), 1);
+        assert_eq!(offers[0]["offer"], "open_screen");
+        assert_eq!(offers[0]["screen"], "verse.gym");
+        let result = &frames.last().unwrap().1;
+        let text = result["text"].as_str().unwrap();
+        assert!(
+            text.starts_with(
+                "There's no capability for that yet. The closest one we have is Coder:"
+            ),
+            "{text}"
+        );
+        assert_eq!(result["tier"], "canned");
+        assert_eq!(result["answer"], "capability.missing_near@1");
+        assert!(result["model"].as_str().unwrap().starts_with("bank:"));
+        assert_eq!(result["capability"], Value::Null);
+        for (_, body) in &frames {
+            assert!(!body.to_string().contains("Denver"), "{body}");
+        }
+        assert!(
+            frames.last().unwrap().0 < Duration::from_millis(1_400),
+            "the model call was dropped"
+        );
+
+        // A named Coder-run capability on a work request is the stem that
+        // names it, and the result names the capability.
+        let tools = gym_records().records.tools;
+        let mut work = routed("work.dispatch", "dispatch.stem", 0.9, "none");
+        work["tool"] = sure(
+            "openagents.tool-project-map",
+            &[
+                "openagents.tool-project-map",
+                "openagents.tool-code-finder",
+                "none",
+            ],
+        );
+        work["capability"] = capability(
+            "openagents.tool-project-map",
+            &["openagents.tool-project-map", "openagents.tool-code-finder"],
+        );
+        let frames = frames_routed(
+            slow_door(Duration::from_millis(1_500)),
+            Some(judge(Duration::ZERO, work)),
+            v2_turn("use Project map on my repo before you refactor the auth module"),
+            Seams {
+                gym: Arc::new(Gym(router::gym::Grounding {
+                    records: router::gym::Records {
+                        tools,
+                        ..router::gym::Records::default()
+                    },
+                    news: Vec::new(),
+                })),
+                ..Seams::default()
+            },
+            RouterSetting::Live,
+        )
+        .await;
+        let result = &frames.last().unwrap().1;
+        // No computer is connected in `v2_turn`: the no-computer answer.
+        assert_eq!(result["answer"], "dispatch.no_computer@1");
+        assert_eq!(result["capability"], "openagents.tool-project-map");
     }
 
     /// A canned answer carries its followup chips, only for entries the
@@ -4146,6 +4304,10 @@ mod tests {
                 "openagents.tool-code-finder",
                 "none",
             ],
+        );
+        answers["capability"] = capability(
+            "not-a-capability-request",
+            &["openagents.tool-project-map", "openagents.tool-code-finder"],
         );
         answers
     }

@@ -9,7 +9,10 @@ and the policy tuned on the labeled set's tune split
 On 2026-09-29 the question set became `chat-router-v2`, with the Gym and
 eval routes, the Gym's records, cards, and eval offers; it is deployed on
 the chat worker (release `0546032e17`) and serves build 21's Gym in chat
-([Gym and eval routes](#gym-and-eval-routes-2026-09-29)).
+([Gym and eval routes](#gym-and-eval-routes-2026-09-29)). Later that day it
+became `chat-router-v3`, with the `capability.missing` route and the
+`capability` question over the admitted-capability set
+([The admitted-capability set and `capability.missing`](#the-admitted-capability-set-and-capabilitymissing-2026-09-29)).
 It extends the first response that shipped in `95c7eda2e3` (`crates/coder/src/first.rs`,
 [the first-reply measurement](../measurements/2026-09-28-first-reply.md)) and
 the product change in `820bc02ce4` (the first tab is **Chat**, the assistant
@@ -870,6 +873,25 @@ Sample answers:
   the refusal threshold, under its own safety behavior; the bank refusal is a
   floor, not the only guard.
 
+### 13. `capability.missing`: a capability that isn't there yet (2026-09-29)
+
+- **Description for Jev:** the user asks us to do or reach something now
+  that would take a capability: book, buy, or order something, send or
+  read their email or messages, use their calendar or another account or
+  service, browse or open a site, control a device, or fetch live data;
+  not a question about whether we can (`meta`), and not work on their own
+  code or computer (`work.dispatch`).
+- **Examples:** "Book me a flight to Denver next Friday", "read my email
+  and tell me what's urgent", "turn off the lights in my living room",
+  "what's the current price of bitcoin".
+- **Tier:** T0, and only when the `capability` reading agrees: the bank's
+  `capability.missing` line (or `capability.missing_near`, naming the
+  closest admitted capability) with the `capability` card. See
+  [the admitted-capability set](#the-admitted-capability-set-and-capabilitymissing-2026-09-29).
+- **Data:** the admitted-capability set, a typed list code builds.
+- **Safety:** two independent readings must agree, and the card carries
+  nothing of the message; a refusal still comes first.
+
 ## The CLI route: descending the command tree
 
 The `openagents` command is a tree: about 30 groups, each with 1 to 20
@@ -1347,6 +1369,100 @@ drops it; `gym::Grounding::skipping` takes them out).
   worker that is given the trainer.
 - **The hosted runner** (#9935), since shipped: `start_eval` offers name
   the hosted runner when the test set fits its bounds.
+
+## The admitted-capability set and `capability.missing` (2026-09-29)
+
+Implemented in [#9960](https://github.com/OpenAgentsInc/openagents/issues/9960)
+under the vocabulary of [#9957](https://github.com/OpenAgentsInc/openagents/issues/9957):
+on screen the word is **capability**, and people add capabilities of four
+kinds (a program, a plugin, a skill, or a knowledge entry). The owner's
+direction: chat is pure chat plus the capabilities present, and when a
+person asks for something a capability could do but none does, a Jev
+classification triggers a special message: here's where there might be a
+capability, but there isn't. Measured in
+[the missing-capability measurement](../measurements/2026-09-29-missing-capability.md).
+
+### The admitted-capability set
+
+`router::capability::Admitted` is what the chat can do on a turn, built by
+code from three lists and deduplicated by id:
+
+| Source | Entries | Reach |
+| --- | --- | --- |
+| Built-ins (`capability::builtin`) | `chat.knowledge` (the product and codebase knowledge bases), `chat.coder` (Coder dispatch), `chat.cli` (command offers), `chat.wallet`, `chat.account`, `chat.gym` (test, make, check, credit), each with the route that serves it | Chat |
+| The catalog (`capability::of_tool`) | The Gym seam's tool notes (`knowledge/openagents/openagents.tool-*.md`): Project map, Code finder, Test reader; the kind from the note's tags, else a plugin | Coder run |
+| Adoptions (`capability::of_adoption`) | What the newest `coder-defaults` release admitted: `gym_kb::adoption_records` reads the `3184` the package root signed (`packages/coder-defaults/package.json`), its manifest, and each `openagents.eval-admission.v1` admission the manifest's provenance cites, fetched from `packages/coder-defaults/documents/` by digest and checked against it and its issuer; one record per `admit`, matched to a catalog tool by slug. The worker asks the relay for the root's releases beside the results and starter test sets (`gym_kb::defaults_filter`), and `CODER_DEFAULTS_DOCUMENTS=off` reads none | Coder run |
+
+Each entry has an id, a kind (`program`, `plugin`, `skill`, `knowledge`),
+one plain line, and a reach (`chat` or `coder`). Jev reads each as
+`{what, kind, usable_from}` with the tune split's examples.
+
+### The question set: `chat-router-v3`
+
+The route list is part of the set's identity, so it is a new set;
+requests naming `chat-router-v1` (build 20) or `chat-router-v2` (build 21)
+are routed with it, and the judgment says `chat-router-v3`. It adds:
+
+- `capability.missing` to `route` (19 routes), with a `{what, not_for,
+  examples}` rubric and `not_for` lines on `meta`, `general`, and
+  `work.dispatch` that send a request to do something now to it;
+- `capability`, a Choice over the admitted set plus `none` (a request none
+  covers) and `not-a-capability-request`, asked on every turn. The reading
+  keeps the argmax entry, the probability of `none`, and, beside a `none`
+  or `not-a-capability-request` argmax, the most likely admitted entry as
+  the closest one.
+
+### Policy
+
+Rule 10 of `router::policy::decide`, after the Gym and eval routes and
+before dispatch by lane:
+
+- **Missing.** `route` = `capability.missing` at 0.70 (`CAPABILITY_ROUTE`,
+  the eval floor) and, independently, the `capability` reading names no
+  admitted entry and reads `none` at 0.60 (`CAPABILITY_MISSING`):
+  `Tier::Capability`, the bank's `capability.missing` line, or
+  `capability.missing_near` naming the closest entry when the reading puts
+  one at 0.20 or more (`CAPABILITY_CLOSEST`), filled only from the set.
+  Two readings agree before the card shows; a lone route reading is the
+  model.
+- **The admitted capability answers.** When `route` reads missing but the
+  reading names an entry usable only in a Coder run at 0.60
+  (`CAPABILITY_CONFIDENCE`) and the lane says computer, the turn is a
+  dispatch offer; and every dispatch offer (rules 2, 6, 10, 11) names such
+  an entry in its stem: `dispatch.capability_stem`, "We'll dispatch Coder,
+  with Project map, to …". An entry usable from chat takes its own route
+  (the routes that were there), and the result's `capability` field names
+  it.
+- Work on code with no computer connected stays `dispatch.no_computer`:
+  Coder is an admitted capability, and what is missing is the computer.
+
+### The card and the offer
+
+The worker sends the bank line as partial `seq` 0, then the `capability`
+card (`nostr::cj_conversation::Card::Capability`: `status: missing`,
+`closest` `{name, summary, reach}` or null, `add`), then, when `add` is
+`gym`, an `open_screen verse.gym` offer. `add` is `author` when the
+authoring interview seam is wired, else `gym`. The card carries nothing of
+the message; its fixture is `crates/coder/fixtures/nip-cj/router-card-capability.json`.
+The phone (`eval_cards::capability_card`) draws **NO CAPABILITY FOR THAT
+YET**, the closest capability's name and line from the card, and **ADD A
+CAPABILITY**, whose tap sends "Help me make a capability for that" as the
+person's own message (the `eval.author` route reads it with the turn
+before it), or **SEE THE GYM** for the Gym offer. The judgment, the
+shadow log line, and the result carry `capability`, `capability_p`, and
+`capability_missing_p`: ids and probabilities, never text.
+
+### The labeled set
+
+`routes-v3.json` keeps every `routes-v2.json` row and adds 40
+`capability.missing` rows (bookings, email, calendars, sites, devices,
+live data, one in French) and 27 near misses an admitted capability
+answers (questions about what we can do, Coder work naming a tool,
+commands, the wallet, the account, the Gym, making a capability, and the
+card's own follow-up message with its turn before it), split by the id's
+hash as before; the Gym suite `chat-router-v3` and its question set
+`chat-router-route-v4` are generated from it, and the v2 files are kept
+as recorded.
 
 ## Open questions for the owner
 

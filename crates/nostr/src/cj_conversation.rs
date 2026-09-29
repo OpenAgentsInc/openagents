@@ -683,10 +683,83 @@ pub struct CreditItem {
     pub award: Option<EventPointer>,
 }
 
+/// Where a capability can be used from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Reach {
+    /// From the chat itself.
+    Chat,
+    /// Only in a Coder run on a computer.
+    Coder,
+}
+
+impl Reach {
+    /// The word the wire carries.
+    #[must_use]
+    pub fn word(self) -> &'static str {
+        match self {
+            Reach::Chat => "chat",
+            Reach::Coder => "coder",
+        }
+    }
+
+    /// The reach a word names.
+    #[must_use]
+    pub fn parse(word: &str) -> Option<Self> {
+        match word {
+            "chat" => Some(Reach::Chat),
+            "coder" => Some(Reach::Coder),
+            _ => None,
+        }
+    }
+}
+
+/// The admitted capability nearest a request that none covers.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Closest {
+    pub name: String,
+    pub summary: String,
+    pub reach: Reach,
+}
+
+/// How a person can add the capability a `capability` card says is
+/// missing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Add {
+    /// Make one in the chat's authoring interview.
+    Author,
+    /// Open the Gym.
+    Gym,
+}
+
+impl Add {
+    /// The word the wire carries.
+    #[must_use]
+    pub fn word(self) -> &'static str {
+        match self {
+            Add::Author => "author",
+            Add::Gym => "gym",
+        }
+    }
+
+    /// The way a word names.
+    #[must_use]
+    pub fn parse(word: &str) -> Option<Self> {
+        match word {
+            "author" => Some(Add::Author),
+            "gym" => Some(Add::Gym),
+            _ => None,
+        }
+    }
+}
+
 /// A closed display record. Every number comes from a record the worker
 /// verified, and the card cites it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Card {
+    /// A request calls for a capability that isn't admitted yet: the
+    /// closest admitted one, if any, and how to add one. It carries
+    /// nothing of the message.
+    Capability { closest: Option<Closest>, add: Add },
     /// A tool, its plain description, and its latest verified result.
     Tool {
         name: String,
@@ -735,12 +808,22 @@ impl Card {
             Card::News(_) => "news",
             Card::Check { .. } => "check",
             Card::Credit { .. } => "credit",
+            Card::Capability { .. } => "capability",
         }
     }
 }
 
 /// The card types this version renders.
-pub const CARDS: &[&str] = &["tool", "draft", "run", "result", "news", "check", "credit"];
+pub const CARDS: &[&str] = &[
+    "tool",
+    "draft",
+    "run",
+    "result",
+    "news",
+    "check",
+    "credit",
+    "capability",
+];
 
 fn headline(value: &Value) -> Result<Headline, ContractError> {
     let object = value.as_object().ok_or_else(|| malformed("headline"))?;
@@ -996,6 +1079,29 @@ pub fn parse_card(value: &Value) -> Result<(u64, Card), ContractError> {
             }
             Card::Credit { total, awards }
         }
+        "capability" => {
+            allow(&["status", "closest", "add"])?;
+            if text(object, "status")? != "missing" {
+                return Err(unsupported("capability.status"));
+            }
+            let closest = match require(object, "closest")? {
+                Value::Null => None,
+                value => {
+                    let item = value.as_object().ok_or_else(|| malformed("closest"))?;
+                    reject(item, &["name", "summary", "reach"])?;
+                    Some(Closest {
+                        name: short(item, "name", 80)?,
+                        summary: short(item, "summary", 400)?,
+                        reach: Reach::parse(&text(item, "reach")?)
+                            .ok_or_else(|| unsupported("closest.reach"))?,
+                    })
+                }
+            };
+            Card::Capability {
+                closest,
+                add: Add::parse(&text(object, "add")?).ok_or_else(|| unsupported("add"))?,
+            }
+        }
         other => return Err(unsupported(format!("card {other}"))),
     };
     Ok((version, card))
@@ -1177,6 +1283,17 @@ pub fn card_feedback(card: &Card, version: u64) -> Result<Value, ContractError> 
                     })
                 })
                 .collect();
+        }
+        Card::Capability { closest, add } => {
+            value["status"] = json!("missing");
+            value["closest"] = closest.as_ref().map_or(Value::Null, |closest| {
+                json!({
+                    "name": closest.name,
+                    "summary": closest.summary,
+                    "reach": closest.reach.word(),
+                })
+            });
+            value["add"] = json!(add.word());
         }
     }
     parse_card(&value)?;

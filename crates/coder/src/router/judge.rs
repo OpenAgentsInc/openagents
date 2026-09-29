@@ -1,4 +1,4 @@
-//! The `chat-router-v2` question set and what its answer reads as.
+//! The `chat-router-v3` question set and what its answer reads as.
 //!
 //! One System One request, independent questions over the same state
 //! (the bounded transcript and latest message, as `coder::first` builds
@@ -7,13 +7,14 @@
 //! | Id | Type | Reads |
 //! | --- | --- | --- |
 //! | `action` | Choice | Classify's measured `coder-turns-v2` wording, unchanged |
-//! | `route` | Choice | the [`RouteId`] catalog (18 routes in `chat-router-v2`), each with its rubric, plus `none` |
+//! | `route` | Choice | the [`RouteId`] catalog (19 routes in `chat-router-v3`), each with its rubric, plus `none` |
 //! | `answer` | Choice | every selectable bank entry with its `when`, plus `none` |
 //! | `needs_specifics` | Noul | whether a good reply must refer to the user's particulars |
 //! | `lane` | Choice | `coder::first`'s wording: chat, computer, or none |
 //! | `opener` | Choice | the bank's openers, plus `none` |
 //! | `cli_group` | Choice | the command groups a [`CliRoute`](super::seams::CliRoute) lists, plus `none`; asked only when it lists any |
 //! | `tool` | Choice | the tool catalog a [`GymKb`](super::seams::GymKb) lists, plus `none`; asked only when it lists any |
+//! | `capability` | Choice | the admitted-capability set ([`Admitted`]), plus `none` (a request none covers) and `not-a-capability-request`; asked on every turn |
 //! | `risk` | Choice | ok, secret shared, asks for a secret, harmful, money movement, none |
 //!
 //! No question consumes another's answer, so they cost one round trip.
@@ -23,6 +24,7 @@ use jev::{Answer, Choice, ChoiceAnswer, Entry as Criterion, Noul, NoulCriteria, 
 use serde_json::Value;
 
 use super::bank::{Bank, Entry, Facts, Opener};
+use super::capability::{Admitted, Capability, NONE, NOT_A_REQUEST};
 use super::gym::Tool;
 use super::seams::CliGroup;
 use super::{Risk, RouteId};
@@ -52,11 +54,43 @@ pub fn route() -> Choice {
     Choice::new(super::rubric::route_instructions(), routes)
 }
 
-/// The questions, from one state. Only entries selectable under `facts`
-/// are offered, `cli_group` only when `groups` is not empty, and `tool`
-/// only when `tools` is not empty.
+/// The `capability` question: every admitted entry with its rubric, then
+/// `none` and `not-a-capability-request`.
 #[must_use]
-pub fn questions(bank: &Bank, facts: &Facts, groups: &[CliGroup], tools: &[Tool]) -> Questions {
+pub fn capability(admitted: &Admitted) -> Choice {
+    let mut options: IndexMap<String, Option<Criterion>> = admitted
+        .entries
+        .iter()
+        .map(|entry| {
+            (
+                entry.id.clone(),
+                Some(Criterion::from(super::rubric::capability(entry))),
+            )
+        })
+        .collect();
+    options.insert(
+        NONE.to_string(),
+        Some(Criterion::from(super::rubric::capability_none())),
+    );
+    options.insert(
+        NOT_A_REQUEST.to_string(),
+        Some(Criterion::from(super::rubric::capability_not_a_request())),
+    );
+    Choice::new(super::rubric::capability_instructions(), options)
+}
+
+/// The questions, from one state. Only entries selectable under `facts`
+/// are offered, `cli_group` only when `groups` is not empty, `tool` only
+/// when `tools` is not empty, and `capability` only when `admitted` has
+/// an entry (it always has the built-ins).
+#[must_use]
+pub fn questions(
+    bank: &Bank,
+    facts: &Facts,
+    groups: &[CliGroup],
+    tools: &[Tool],
+    admitted: &Admitted,
+) -> Questions {
     let action = crate::classify::questions()
         .get("action")
         .cloned()
@@ -186,6 +220,9 @@ pub fn questions(bank: &Bank, facts: &Facts, groups: &[CliGroup], tools: &[Tool]
             Choice::new(super::rubric::tool_instructions(), options),
         );
     }
+    if !admitted.is_empty() {
+        questions = questions.with("capability", capability(admitted));
+    }
     questions.with(
         "risk",
         Choice::new(super::rubric::risk_instructions(), risks),
@@ -214,10 +251,11 @@ pub fn request(
     facts: &Facts,
     groups: &[CliGroup],
     tools: &[Tool],
+    admitted: &Admitted,
 ) -> jev::SystemOneRequest {
     jev::SystemOneRequest::new(
         state(task, transcript),
-        questions(bank, facts, groups, tools),
+        questions(bank, facts, groups, tools, admitted),
     )
     .retry(crate::first::retry())
     .timeout(crate::first::BUDGET)
@@ -254,6 +292,17 @@ pub struct Routing {
     pub cli_alternatives: Vec<(String, f64)>,
     /// The argmax tool from the catalog, or `None` for `none` or not asked.
     pub tool: Option<(String, f64)>,
+    /// The admitted capability the `capability` reading named, with its
+    /// probability; `None` for `none`, `not-a-capability-request`, an id
+    /// outside the set, or not asked.
+    pub capability: Option<(Capability, f64)>,
+    /// The `capability` reading's probability of `none`: a request none
+    /// of the admitted capabilities covers. 0 when not asked.
+    pub capability_missing_p: f64,
+    /// When the argmax is `none` or `not-a-capability-request`, the most
+    /// likely admitted entry and its probability: the closest capability
+    /// the missing-capability card may name.
+    pub capability_closest: Option<(Capability, f64)>,
     pub risk: Risk,
     pub risk_p: f64,
 }
@@ -273,9 +322,15 @@ fn finite(p: f64) -> f64 {
     }
 }
 
-/// Reads a response into a [`Routing`].
+/// Reads a response into a [`Routing`]; the `capability` answer is read
+/// against `admitted`, the set the question was asked over.
 #[must_use]
-pub fn reading(response: &jev::SystemOneResponse, bank: &Bank, facts: &Facts) -> Routing {
+pub fn reading(
+    response: &jev::SystemOneResponse,
+    bank: &Bank,
+    facts: &Facts,
+    admitted: &Admitted,
+) -> Routing {
     let judgment = crate::classify::Judgment {
         action: choice(response, "action").cloned(),
     };
@@ -337,6 +392,26 @@ pub fn reading(response: &jev::SystemOneResponse, bank: &Bank, facts: &Facts) ->
     let tool = choice(response, "tool")
         .filter(|tool| tool.choice != "none")
         .map(|tool| (tool.choice.clone(), finite(tool.confidence)));
+    let capability_answer = choice(response, "capability");
+    let capability = capability_answer.and_then(|answer| {
+        admitted
+            .get(&answer.choice)
+            .map(|entry| (entry.clone(), finite(answer.confidence)))
+    });
+    let capability_missing_p = capability_answer
+        .and_then(|answer| answer.probabilities.get(NONE))
+        .copied()
+        .map_or(0.0, finite);
+    let capability_closest =
+        capability_answer
+            .filter(|_| capability.is_none())
+            .and_then(|answer| {
+                answer
+                    .probabilities
+                    .iter()
+                    .filter_map(|(id, p)| admitted.get(id).map(|entry| (entry.clone(), finite(*p))))
+                    .max_by(|a, b| a.1.total_cmp(&b.1).then(b.0.id.cmp(&a.0.id)))
+            });
     let risk_answer = choice(response, "risk");
     Routing {
         action: crate::classify::route(&judgment),
@@ -352,6 +427,9 @@ pub fn reading(response: &jev::SystemOneResponse, bank: &Bank, facts: &Facts) ->
         cli_group,
         cli_alternatives,
         tool,
+        capability,
+        capability_missing_p,
+        capability_closest,
         risk: risk_answer.map_or(Risk::Unknown, |risk| Risk::parse(&risk.choice)),
         risk_p: risk_answer.map_or(0.0, |risk| finite(risk.confidence)),
     }
@@ -376,7 +454,8 @@ mod tests {
     #[test]
     fn the_set_asks_independent_typed_questions_and_validates() {
         let bank = Bank::builtin();
-        let questions = questions(bank, &facts(), &[], &[]);
+        let admitted = Admitted::builtin();
+        let questions = questions(bank, &facts(), &[], &[], &admitted);
         questions.validate().expect("a valid set");
         let asked: Vec<&str> = questions.iter().map(|(id, _)| id).collect();
         assert_eq!(
@@ -388,9 +467,25 @@ mod tests {
                 "needs_specifics",
                 "lane",
                 "opener",
+                "capability",
                 "risk"
             ]
         );
+        // The capability question offers every admitted entry, then `none`
+        // and `not-a-capability-request`, and nothing else.
+        let capability = serde_json::to_value(questions.get("capability")).unwrap();
+        let options: Vec<&str> = capability["criteria"]
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect();
+        let mut expected: Vec<&str> = admitted.entries.iter().map(|e| e.id.as_str()).collect();
+        expected.extend([NONE, NOT_A_REQUEST]);
+        assert_eq!(options, expected);
+        // Without any admitted entry the question is not asked.
+        let bare = super::questions(bank, &facts(), &[], &[], &Admitted::default());
+        assert!(bare.get("capability").is_none());
         // The action wording is Classify's, so its answer means the same.
         assert_eq!(
             serde_json::to_value(questions.get("action")).unwrap(),
@@ -418,7 +513,7 @@ mod tests {
             summary: "List, check, and manage your computers".into(),
             tree: None,
         }];
-        let with_cli = super::questions(bank, &facts(), &groups, &[]);
+        let with_cli = super::questions(bank, &facts(), &groups, &[], &admitted);
         with_cli.validate().expect("a valid set");
         let cli = serde_json::to_value(with_cli.get("cli_group")).unwrap();
         assert_eq!(cli["criteria"].as_object().unwrap().len(), 2);
@@ -427,7 +522,7 @@ mod tests {
             "project-map",
             "Project map",
         )];
-        let with_tools = super::questions(bank, &facts(), &[], &tools);
+        let with_tools = super::questions(bank, &facts(), &[], &tools, &admitted);
         with_tools.validate().expect("a valid set");
         let tool = serde_json::to_value(with_tools.get("tool")).unwrap();
         assert_eq!(tool["criteria"].as_object().unwrap().len(), 2);
@@ -445,7 +540,7 @@ mod tests {
             None,
             &crate::router::Seams::default(),
         );
-        questions(Bank::builtin(), &facts, &[], &[])
+        questions(Bank::builtin(), &facts, &[], &[], &Admitted::builtin())
     }
 
     fn response(answers: serde_json::Value) -> jev::SystemOneResponse {
@@ -475,13 +570,28 @@ mod tests {
                 "tool": { "type": "choice", "choice": "openagents.tool-project-map",
                     "confidence": 0.83, "probabilities": { "openagents.tool-project-map": 0.83,
                     "none": 0.17 } },
+                "capability": { "type": "choice", "choice": "none", "confidence": 0.7,
+                    "probabilities": { "none": 0.7, "chat.coder": 0.2, "chat.wallet": 0.05,
+                    "not-a-capability-request": 0.05 } },
             })),
             bank,
             &facts(),
+            &Admitted::builtin(),
         );
         assert_eq!(
             routing.tool,
             Some(("openagents.tool-project-map".to_string(), 0.83))
+        );
+        // A `none` reading names no capability, keeps its probability, and
+        // the most likely admitted entry as the closest.
+        assert!(routing.capability.is_none());
+        assert_eq!(routing.capability_missing_p, 0.7);
+        assert_eq!(
+            routing
+                .capability_closest
+                .as_ref()
+                .map(|(c, p)| (c.id.as_str(), *p)),
+            Some((super::super::capability::CODER, 0.2))
         );
         assert_eq!(routing.route, RouteId::Meta);
         assert_eq!(routing.runner_up, Some((RouteId::Clarify, 0.3)));
@@ -497,12 +607,33 @@ mod tests {
             &response(json!({
                 "answer": { "type": "choice", "choice": "meta.pricing", "confidence": 0.9,
                     "probabilities": { "meta.pricing": 0.9, "none": 0.1 } },
+                "capability": { "type": "choice", "choice": "chat.wallet", "confidence": 0.8,
+                    "probabilities": { "chat.wallet": 0.8, "none": 0.1,
+                    "not-a-capability-request": 0.1 } },
             })),
             bank,
             &Facts::default(),
+            &Admitted::builtin(),
         );
         assert!(unfilled.answer.is_none());
         assert_eq!(unfilled.route, RouteId::Unknown);
+        // An admitted entry reads as itself, with no closest.
+        let (wallet, p) = unfilled.capability.as_ref().unwrap();
+        assert_eq!((wallet.id.as_str(), *p), ("chat.wallet", 0.8));
+        assert_eq!(unfilled.capability_missing_p, 0.1);
+        assert!(unfilled.capability_closest.is_none());
+        // An id outside the set, or no answer, reads as nothing.
+        let outside = reading(
+            &response(json!({
+                "capability": { "type": "choice", "choice": "chat.wallet", "confidence": 0.8,
+                    "probabilities": { "chat.wallet": 0.8, "none": 0.2 } },
+            })),
+            bank,
+            &Facts::default(),
+            &Admitted::default(),
+        );
+        assert!(outside.capability.is_none() && outside.capability_closest.is_none());
+        assert_eq!(outside.capability_missing_p, 0.2);
     }
 
     /// The router against the live judge over ~50 realistic messages across
@@ -635,12 +766,20 @@ mod tests {
             }];
             let started = std::time::Instant::now();
             let response = judge
-                .system_one(request(message, &transcript, bank, &facts, &groups, &[]))
+                .system_one(request(
+                    message,
+                    &transcript,
+                    bank,
+                    &facts,
+                    &groups,
+                    &[],
+                    &Admitted::builtin(),
+                ))
                 .await
                 .expect("the judge answers");
             let ms = started.elapsed().as_millis();
             millis.push(ms);
-            let routing = reading(&response, bank, &facts);
+            let routing = reading(&response, bank, &facts, &Admitted::builtin());
             let tier = decide(
                 &routing,
                 bank,

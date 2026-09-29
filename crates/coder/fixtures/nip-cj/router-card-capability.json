@@ -1,0 +1,13 @@
+{
+  "v": 2,
+  "requires": [],
+  "type": "card",
+  "card": "capability",
+  "status": "missing",
+  "closest": {
+    "name": "Project map",
+    "summary": "What Project map does.",
+    "reach": "coder"
+  },
+  "add": "author"
+}

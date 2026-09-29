@@ -11,8 +11,9 @@
 //!
 //! `ROUTER_EVAL_SPLIT` is `held_out` (the default), `tune`, or `all`.
 //! `ROUTER_EVAL_ROWS` is `all` (the default), `v1` (the rows of
-//! `routes-v1.json`, for comparing with the v1 measurements), or `gym` (the
-//! rows `routes-v2.json` added).
+//! `routes-v1.json`, for comparing with the v1 measurements), `gym` (the
+//! rows `routes-v2.json` added), or `capability` (the rows `routes-v3.json`
+//! added).
 //! Each system prints a Markdown report ([`coder::router_eval::Report`]) and
 //! writes its JSON to `ROUTER_EVAL_OUT` (default `target/router-eval/`).
 //!
@@ -28,10 +29,12 @@
 //!
 //! Systems:
 //!
-//! - `chat-router-v2` (`live_router`): the router's Jev question set and
+//! - `chat-router-v3` (`live_router`): the router's Jev question set and
 //!   policy table, in `Mode::Router`, with the `tool` question over the
 //!   product corpus's tool catalog as the deployed worker asks it
-//!   (`ROUTER_EVAL_GYM=off` leaves it out).
+//!   (`ROUTER_EVAL_GYM=off` leaves it out) and the `capability` question
+//!   over the admitted set (the built-ins and that catalog; no adoption
+//!   is read offline).
 //! - `first-response-legacy`: the same judgment decided in `Mode::Legacy`,
 //!   which is what a turn that asks only for `opener` gets: today's
 //!   opener-and-prepared-answer path, the baseline the router must beat.
@@ -81,14 +84,21 @@ fn rows<'a>(set: &'a Set, split: &str) -> (Vec<&'a Row>, String) {
     let which = std::env::var("ROUTER_EVAL_ROWS").unwrap_or_else(|_| "all".to_string());
     let rows = set.rows(split);
     let gym = |row: &Row| row.tags.iter().any(|tag| tag == "gym");
+    let capability = |row: &Row| row.tags.iter().any(|tag| tag == "capability");
     match which.as_str() {
         "v1" => (
-            rows.into_iter().filter(|r| !gym(r)).collect(),
+            rows.into_iter()
+                .filter(|r| !gym(r) && !capability(r))
+                .collect(),
             format!("{split}-v1-rows"),
         ),
         "gym" => (
             rows.into_iter().filter(|r| gym(r)).collect(),
             format!("{split}-gym-rows"),
+        ),
+        "capability" => (
+            rows.into_iter().filter(|r| capability(r)).collect(),
+            format!("{split}-capability-rows"),
         ),
         _ => (rows, split.to_string()),
     }
@@ -152,6 +162,7 @@ async fn run_router(name: &str, mode: router::Mode) {
                 .expect("the product corpus loads");
         coder::gym_kb::tools(&corpus)
     };
+    let admitted = router::Admitted::of(&tools, &[]);
     let context = router::Context::default();
     let situation = router::Situation {
         mode,
@@ -190,12 +201,13 @@ async fn run_router(name: &str, mode: router::Mode) {
                 &facts,
                 &seams.cli.groups(),
                 &tools,
+                &admitted,
             ))
             .await;
         let ms = started.elapsed().as_millis();
         readings.push(match asked {
             Ok(response) => {
-                let routing = router::reading(&response, bank, &facts);
+                let routing = router::reading(&response, bank, &facts, &admitted);
                 let tier = router::decide(&routing, bank, &facts, &situation);
                 let offered = offers.count(row, &tier, &starter, bank, &facts);
                 let mut traced = trace(row, &routing, &tier);
@@ -224,7 +236,9 @@ async fn run_router(name: &str, mode: router::Mode) {
         let profile = coder::decision::profile_from_env()
             .ok()
             .flatten()
-            .map_or("unknown".to_string(), |profile| format!("{}:jev", profile.name()));
+            .map_or("unknown".to_string(), |profile| {
+                format!("{}:jev", profile.name())
+            });
         record(&set, &rows, &readings, &profile, started_at, ended_at);
     }
 }
@@ -232,7 +246,14 @@ async fn run_router(name: &str, mode: router::Mode) {
 /// The published eval's evidence record (#9959): the held-out report as
 /// an `openagents.eval-report.v1`, with the calibration maps fitted on the
 /// calibration partition and scored on the held-out split.
-fn record(set: &Set, rows: &[&Row], readings: &[Reading], judge: &str, started_at: u64, ended_at: u64) {
+fn record(
+    set: &Set,
+    rows: &[&Row],
+    readings: &[Reading],
+    judge: &str,
+    started_at: u64,
+    ended_at: u64,
+) {
     use coder::router::calibration::{Calibration, Question, SCHEMA};
     use coder::router_claim::{Claim, GATE};
     use coder::router_eval::observations;
@@ -257,9 +278,9 @@ fn record(set: &Set, rows: &[&Row], readings: &[Reading], judge: &str, started_a
         .filter(|r| fit.iter().any(|row| row.id == r.id))
         .cloned()
         .collect();
-    let report = Report::of("chat-router-v2", "held_out", &held, &held_readings);
+    let report = Report::of(router::SET, "held_out", &held, &held_readings);
     publish(&report);
-    publish(&Report::of("chat-router-v2", "calibration", &fit, &fit_readings));
+    publish(&Report::of(router::SET, "calibration", &fit, &fit_readings));
 
     let probability = gym::gate::load("probability-v2").expect("probability-v2 loads");
     let (fit_route, fit_answer) = observations(&fit, &fit_readings);
@@ -276,7 +297,10 @@ fn record(set: &Set, rows: &[&Row], readings: &[Reading], judge: &str, started_a
         route: Question::fit(&fit_route, &held_route, &probability),
         answer: Question::fit(&fit_answer, &held_answer, &probability),
     };
-    for (name, question) in [("route", &calibration.route), ("answer", &calibration.answer)] {
+    for (name, question) in [
+        ("route", &calibration.route),
+        ("answer", &calibration.answer),
+    ] {
         println!(
             "calibration {name}: fitted on {} rows, {} bins; held out {} rows: ECE {:.3} -> {:.3}, Brier {:.3} -> {:.3}, NLL {:.3} -> {:.3}, confident errors {} -> {}; probability-v2 {}",
             question.map.fitted_on,
@@ -326,9 +350,15 @@ fn record(set: &Set, rows: &[&Row], readings: &[Reading], judge: &str, started_a
     let bytes = record.bytes();
     nostr::eval_ext::parse_report(&bytes).expect("the record is a NIP-EVAL report");
     let outcome = gate.judge_router(&claim.comparison());
-    println!("gate {} ({}): {}", outcome.gate_id, outcome.gate_digest, outcome.verdict);
+    println!(
+        "gate {} ({}): {}",
+        outcome.gate_id, outcome.gate_digest, outcome.verdict
+    );
     for criterion in &outcome.criteria {
-        println!("  {} {}: {}", criterion.name, criterion.verdict, criterion.detail);
+        println!(
+            "  {} {}: {}",
+            criterion.name, criterion.verdict, criterion.detail
+        );
     }
     let dir = out_dir().join(&date);
     record.write(&dir).expect("the record is written");
@@ -453,6 +483,9 @@ fn trace(row: &Row, routing: &router::Routing, tier: &router::Tier) -> serde_jso
         "lane_p": routing.lane_p,
         "cli_group": routing.cli_group,
         "tool": routing.tool,
+        "capability": routing.capability.as_ref().map(|(c, p)| (c.id.clone(), *p)),
+        "capability_missing_p": routing.capability_missing_p,
+        "capability_closest": routing.capability_closest.as_ref().map(|(c, p)| (c.id.clone(), *p)),
         "risk": routing.risk.word(),
         "risk_p": routing.risk_p,
         "tier": tier.word(),
@@ -475,7 +508,7 @@ fn write_traces(name: &str, split: &str, traces: &[serde_json::Value]) {
 #[tokio::test]
 #[ignore = "calls the live judge"]
 async fn live_router() {
-    run_router("chat-router-v2", router::Mode::Router).await;
+    run_router("chat-router-v3", router::Mode::Router).await;
 }
 
 #[tokio::test]

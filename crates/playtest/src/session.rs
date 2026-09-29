@@ -131,6 +131,8 @@ pub enum Code {
     NewsCard,
     CheckCard,
     CreditCard,
+    /// Chat said a capability the person asked for isn't there yet.
+    CapabilityCard,
     /// A test run started from a card's button.
     RunStarted,
     /// A result was added to the Gym from Add to the Gym's button.

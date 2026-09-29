@@ -1,9 +1,11 @@
 //! The chat router's labeled route set and the numbers a run over it
 //! reports.
 //!
-//! The set (`crates/coder/fixtures/chat-router/routes-v2.json`, the
-//! `routes-v1.json` rows with the same ids and splits plus rows for the Gym
-//! and eval routes) holds realistic first messages across the 18 routes of
+//! The set (`crates/coder/fixtures/chat-router/routes-v3.json`, the
+//! `routes-v2.json` rows with the same ids and splits, themselves the
+//! `routes-v1.json` rows plus the Gym and eval routes, plus rows for
+//! `capability.missing` and its near misses) holds realistic first
+//! messages across the 19 routes of
 //! `docs/coder/design/2026-09-28-chat-router.md`, each labeled with the
 //! route, the prepared answer a correct router serves (or none), other
 //! acceptable answers, the tier, the risk, and the `openagents` command
@@ -40,7 +42,7 @@ use serde_json::{Value, json};
 pub const SCHEMA: &str = "openagents.chat-router.labeled.v1";
 
 /// The routes, in the design's catalog order.
-pub const ROUTES: [&str; 18] = [
+pub const ROUTES: [&str; 19] = [
     "meta",
     "smalltalk",
     "general",
@@ -59,6 +61,7 @@ pub const ROUTES: [&str; 18] = [
     "eval.check",
     "eval.result",
     "eval.credit",
+    "capability.missing",
 ];
 
 /// The tiers a row can expect: the design's `Tier` enum, by word. `gym` is
@@ -87,7 +90,10 @@ pub const DISPATCH_TARGET: f64 = 0.90;
 pub const HELD_OUT_PERCENT: u32 = 30;
 
 /// The checked-in set.
-pub const FIXTURE: &str = include_str!("../fixtures/chat-router/routes-v2.json");
+pub const FIXTURE: &str = include_str!("../fixtures/chat-router/routes-v3.json");
+
+/// The `chat-router-v2` set, kept for the Gym suite recorded under it.
+pub const FIXTURE_V2: &str = include_str!("../fixtures/chat-router/routes-v2.json");
 
 /// The `chat-router-v1` set, kept for the Gym suite recorded under it.
 pub const FIXTURE_V1: &str = include_str!("../fixtures/chat-router/routes-v1.json");
@@ -171,6 +177,16 @@ impl Set {
     #[must_use]
     pub fn v1() -> Self {
         serde_json::from_str(FIXTURE_V1).expect("the v1 route set parses")
+    }
+
+    /// The `chat-router-v2` set.
+    ///
+    /// # Panics
+    ///
+    /// Never for the checked-in file; a test checks it.
+    #[must_use]
+    pub fn v2() -> Self {
+        serde_json::from_str(FIXTURE_V2).expect("the v2 route set parses")
     }
 
     /// The rows of `split` (`tune`, `held_out`, or `all`).
@@ -626,7 +642,10 @@ pub const THRESHOLDS: [f64; 9] = [0.5, 0.6, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95, 0.9
 pub fn observations(
     rows: &[&Row],
     readings: &[Reading],
-) -> (Vec<gym::calibrate::Observation>, Vec<gym::calibrate::Observation>) {
+) -> (
+    Vec<gym::calibrate::Observation>,
+    Vec<gym::calibrate::Observation>,
+) {
     let by_id: BTreeMap<&str, &Reading> = readings.iter().map(|r| (r.id.as_str(), r)).collect();
     let mut route = Vec::new();
     let mut answer = Vec::new();
@@ -660,10 +679,7 @@ pub fn operating_points(observations: &[gym::calibrate::Observation]) -> Vec<Ope
     THRESHOLDS
         .iter()
         .map(|&threshold| {
-            let served: Vec<_> = observations
-                .iter()
-                .filter(|o| o.raw >= threshold)
-                .collect();
+            let served: Vec<_> = observations.iter().filter(|o| o.raw >= threshold).collect();
             OperatingPoint {
                 threshold,
                 served: served.len(),
@@ -756,10 +772,17 @@ pub fn route_descriptions() -> Vec<(&'static str, &'static str)> {
 }
 
 /// The Gym suite the set is exported as, and its question set.
-pub const SUITE: &str = "chat-router-v2";
+pub const SUITE: &str = "chat-router-v3";
 
 /// The question set the Gym suite names: the router's `route` Choice.
-pub const SUITE_QUESTIONS: &str = "chat-router-route-v3";
+pub const SUITE_QUESTIONS: &str = "chat-router-route-v4";
+
+/// The `chat-router-v2` suite, kept as recorded with the eighteen-route
+/// question it was scored with.
+pub const SUITE_V2: &str = "chat-router-v2";
+
+/// The `chat-router-v2` suite's question set.
+pub const SUITE_QUESTIONS_V2: &str = "chat-router-route-v3";
 
 /// The Gym suite exported from the `chat-router-v1` set, and the question
 /// set it was scored with; both are kept as recorded.
@@ -882,6 +905,9 @@ mod tests {
         "gym.what_tool",
         "eval.credit.how",
         "eval.credit.mine",
+        "capability.missing",
+        "capability.missing_near",
+        "dispatch.capability_stem",
     ];
 
     /// An `eval.run` row's tool is a tool of the product corpus's catalog
@@ -946,24 +972,57 @@ mod tests {
         }
     }
 
-    /// The v2 set keeps every v1 row as it was, so their split and labels
-    /// still mean what the v1 measurements said.
+    /// Each set keeps every row of the one before as it was, so their
+    /// splits and labels still mean what the earlier measurements said.
     #[test]
-    fn the_v2_set_keeps_every_v1_row() {
+    fn each_set_keeps_every_earlier_row() {
         let v1 = Set::v1();
-        let v2 = Set::fixture();
+        let v2 = Set::v2();
+        let v3 = Set::fixture();
         assert_eq!(v1.rows.len(), 457);
+        assert!(v2.rows.len() >= 641, "{}", v2.rows.len());
         for row in &v1.rows {
             let kept = v2.rows.iter().find(|r| r.id == row.id).expect("kept");
             assert_eq!(kept, row, "{} changed", row.id);
         }
-        for route in crate::router::RouteId::GYM {
-            let held = v2
+        for row in &v2.rows {
+            let kept = v3.rows.iter().find(|r| r.id == row.id).expect("kept");
+            assert_eq!(kept, row, "{} changed", row.id);
+        }
+        for route in crate::router::RouteId::GYM
+            .into_iter()
+            .chain([crate::router::RouteId::CapabilityMissing])
+        {
+            let held = v3
                 .rows("held_out")
                 .iter()
                 .filter(|r| r.route == route.word())
                 .count();
             assert!(held >= 6, "{} has {held} held-out rows", route.word());
+        }
+        // The missing-capability rows and their admitted near misses (#9960).
+        let missing = v3
+            .rows
+            .iter()
+            .filter(|r| r.route == "capability.missing")
+            .count();
+        assert!(missing >= 30, "{missing}");
+        let near = v3
+            .rows
+            .iter()
+            .filter(|r| {
+                r.tags.iter().any(|t| t == "near-miss") && r.tags.iter().any(|t| t == "capability")
+            })
+            .count();
+        assert!(near >= 20, "{near}");
+        for row in v3.rows.iter().filter(|r| r.route == "capability.missing") {
+            assert_eq!(row.tier, "canned", "{}", row.id);
+            assert_eq!(
+                row.answer.as_deref(),
+                Some("capability.missing"),
+                "{}",
+                row.id
+            );
         }
     }
 
@@ -1089,7 +1148,12 @@ mod tests {
         assert!(answer[0].correct && !answer[1].correct);
         let points = operating_points(&route);
         assert_eq!(points.len(), THRESHOLDS.len());
-        let at = |t: f64| points.iter().find(|p| (p.threshold - t).abs() < 1e-9).unwrap();
+        let at = |t: f64| {
+            points
+                .iter()
+                .find(|p| (p.threshold - t).abs() < 1e-9)
+                .unwrap()
+        };
         assert_eq!((at(0.8).served, at(0.8).right), (2, 2));
         assert_eq!(at(0.8).coverage(), Some(2.0 / 3.0));
         assert_eq!(at(0.8).precision(), Some(1.0));

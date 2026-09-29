@@ -49,22 +49,39 @@
 //!    `eval.credit.mine`, and the rest read the Gym's verified records
 //!    ([`Tier::Gym`]), which [`super::gym::reply`] turns into a bank line,
 //!    a card, and an offer, or a grounded reply for news.
-//! 10. **T4 dispatch by lane.** `lane` = computer at [`DISPATCH_LANE`],
+//! 10. **Missing capability** (#9960). `route` = `capability.missing` at
+//!     [`CAPABILITY_ROUTE`] and, independently, the `capability` reading
+//!     names no admitted entry and reads `none` at [`CAPABILITY_MISSING`]:
+//!     the bank's `capability.missing` line ([`Tier::Capability`]), or
+//!     `capability.missing_near` naming the closest admitted capability
+//!     when the reading puts one at [`CAPABILITY_CLOSEST`] or more. Two
+//!     readings agree before the card shows, so a lone route reading never
+//!     says a capability is missing. When the route reads missing but the
+//!     `capability` reading names an admitted entry usable only in a Coder
+//!     run at [`CAPABILITY_CONFIDENCE`], and the lane says computer, that
+//!     entry answers: a dispatch offer naming it (rule 6's stem).
+//! 11. **T4 dispatch by lane.** `lane` = computer at [`DISPATCH_LANE`],
 //!     after the CLI and knowledge routes, which read such a message more
 //!     precisely, and only on a route in [`LANE_ROUTES`]: an offer loses to
 //!     a route with its own answer.
-//! 11. **Clarify.** `route` = `clarify` at [`CLARIFY_ROUTE`]: the
+//! 12. **Clarify.** `route` = `clarify` at [`CLARIFY_ROUTE`]: the
 //!     `clarify.generic` stem when personalization is available, else the
 //!     model told to ask one question.
-//! 12. **T3 model**, led by the argmax opener at [`OPENER_CONFIDENCE`];
+//! 13. **T3 model**, led by the argmax opener at [`OPENER_CONFIDENCE`];
 //!     when the route or the runner-up is a Gym or eval route, the model is
 //!     told it has no verified records ([`super::gym::NO_RECORDS_NOTE`]).
 //!
+//! A dispatch offer (rules 2, 6, 10, and 11) names the capability the
+//! `capability` reading found at [`CAPABILITY_CONFIDENCE`] when it is one
+//! usable only in a Coder run (a catalog tool or an adoption): the
+//! `dispatch.capability_stem` stem, with the entry's name as its slot.
+//!
 //! A request that asks only for `opener` or `judge` (the phones before the
 //! router) is decided in [`Mode::Legacy`]: rule 3 for entries with no
-//! offer, then rule 12, which is what `coder-first-response-v2` showed.
+//! offer, then rule 13, which is what `coder-first-response-v2` showed.
 
 use super::bank::{Bank, Entry, Facts};
+use super::capability::{Capability, Reach};
 use super::judge::Routing;
 use super::{Context, Corpus, Offer, Risk, RouteId};
 use crate::first::Lane;
@@ -122,6 +139,19 @@ pub const EVAL_ROUTE: f64 = 0.70;
 /// The least `tool` probability at which the reading names the tool a
 /// Gym reply is about.
 pub const TOOL_CONFIDENCE: f64 = 0.60;
+/// The least `capability.missing` route probability for the
+/// missing-capability card: like an eval card, a wrong one costs an
+/// ignored card, so it sits with [`EVAL_ROUTE`].
+pub const CAPABILITY_ROUTE: f64 = 0.70;
+/// The least `capability` = `none` probability for the card, read
+/// independently of the route: the second reading that has to agree.
+pub const CAPABILITY_MISSING: f64 = 0.60;
+/// The least `capability` probability at which the reading names the
+/// admitted capability a reply is about, or a dispatch offer names.
+pub const CAPABILITY_CONFIDENCE: f64 = 0.60;
+/// The least probability of an admitted entry, beside a `none` argmax,
+/// for the missing-capability line to name it as the closest one.
+pub const CAPABILITY_CLOSEST: f64 = 0.20;
 /// The routes a message may take and still continue an open authoring
 /// interview: the interview's own, running or reading its pilot, and the
 /// short replies ("looks good", "change it") that answer its questions.
@@ -224,6 +254,18 @@ pub enum Tier {
     /// call is dropped: the interview's words come from the seam, checked
     /// ([`super::gym::check_step`]), or from the bank.
     Author,
+    /// T0 (#9960): a request that calls for a capability none of the
+    /// admitted ones covers. The bank's `capability.missing` line (or
+    /// `capability.missing_near`, naming `closest`), with the
+    /// `capability` card beside it; the worker adds how to add one and
+    /// the Gym offer. The model call is cancelled.
+    Capability {
+        answer: Entry,
+        text: String,
+        /// The closest admitted capability, when the reading put one at
+        /// [`CAPABILITY_CLOSEST`] or more.
+        closest: Option<Capability>,
+    },
 }
 
 impl Tier {
@@ -236,7 +278,7 @@ impl Tier {
             {
                 "offer"
             }
-            Tier::CannedFinal { .. } => "canned",
+            Tier::CannedFinal { .. } | Tier::Capability { .. } => "canned",
             Tier::CannedStem { .. } => "stem",
             Tier::Grounded { .. } => "grounded",
             Tier::Model { lead: Some(_), .. } => "opener",
@@ -257,7 +299,7 @@ impl Tier {
             {
                 4
             }
-            Tier::CannedFinal { .. } | Tier::Refuse { .. } => 0,
+            Tier::CannedFinal { .. } | Tier::Refuse { .. } | Tier::Capability { .. } => 0,
             Tier::CannedStem { .. } => 1,
             Tier::Grounded { .. } => 2,
             Tier::Model { .. } => 3,
@@ -284,10 +326,22 @@ impl Tier {
         match self {
             Tier::CannedFinal { answer, .. }
             | Tier::CannedStem { answer, .. }
-            | Tier::Refuse { answer, .. } => Some(answer),
+            | Tier::Refuse { answer, .. }
+            | Tier::Capability { answer, .. } => Some(answer),
             _ => None,
         }
     }
+}
+
+/// The admitted capability a dispatch offer names: one the `capability`
+/// reading found at [`CAPABILITY_CONFIDENCE`] that is usable only in a
+/// Coder run (a catalog tool or an adoption, never Coder itself).
+fn named_capability(routing: &Routing) -> Option<&Capability> {
+    routing
+        .capability
+        .as_ref()
+        .filter(|(entry, p)| *p >= CAPABILITY_CONFIDENCE && entry.reach == Reach::Coder)
+        .map(|(entry, _)| entry)
 }
 
 fn dispatches(entry: &Entry) -> bool {
@@ -402,9 +456,23 @@ fn canned(routing: &Routing, facts: &Facts, offers: bool) -> Option<Tier> {
 }
 
 /// Rule 6: the dispatch offer, or `None` when no dispatch entry renders.
+/// A capability the reading named that is usable only in a Coder run
+/// is named in the stem ([`named_capability`]).
 fn dispatch(routing: &Routing, bank: &Bank, facts: &Facts, situation: &Situation) -> Option<Tier> {
     if situation.context.computer_ready == Some(false) {
         return final_of(bank, facts, "dispatch.no_computer");
+    }
+    if let Some(capability) = named_capability(routing)
+        && let Some(entry) = bank.entry("dispatch.capability_stem")
+        && let Some(tier) = stem_of(
+            entry,
+            &facts
+                .clone()
+                .set("capability.name", capability.name.clone()),
+            situation.personalize,
+        )
+    {
+        return Some(tier);
     }
     let chosen = routing
         .answer
@@ -413,6 +481,39 @@ fn dispatch(routing: &Routing, bank: &Bank, facts: &Facts, situation: &Situation
         .filter(|entry| entry.answers(RouteId::WorkDispatch) && entry.stem.is_some());
     let entry = chosen.or_else(|| bank.entry("dispatch.stem"))?;
     stem_of(entry, facts, situation.personalize)
+}
+
+/// Rule 10: the missing-capability line, when both readings agree that
+/// the request calls for a capability none of the admitted ones covers.
+fn missing(routing: &Routing, bank: &Bank, facts: &Facts) -> Option<Tier> {
+    if routing.route != RouteId::CapabilityMissing
+        || routing.route_p < CAPABILITY_ROUTE
+        || routing.capability.is_some()
+        || routing.capability_missing_p < CAPABILITY_MISSING
+    {
+        return None;
+    }
+    let closest = routing
+        .capability_closest
+        .as_ref()
+        .filter(|(_, p)| *p >= CAPABILITY_CLOSEST)
+        .map(|(entry, _)| entry.clone());
+    let (id, facts) = match &closest {
+        Some(entry) => (
+            "capability.missing_near",
+            facts
+                .clone()
+                .set("capability.name", entry.name.clone())
+                .set("capability.line", entry.line.clone()),
+        ),
+        None => ("capability.missing", facts.clone()),
+    };
+    let entry = bank.entry(id)?;
+    Some(Tier::Capability {
+        text: entry.render(&facts)?,
+        answer: entry.clone(),
+        closest,
+    })
 }
 
 /// The tier for `routing`. See the module documentation for the rules.
@@ -571,7 +672,22 @@ pub fn decide(routing: &Routing, bank: &Bank, facts: &Facts, situation: &Situati
         return tier;
     }
 
-    // 10. T4 dispatch, by lane: work the route did not name, when the lane is sure it
+    // 10. A missing capability, when the route and the capability reading
+    // agree; or the admitted Coder-run capability the route missed.
+    if let Some(tier) = missing(routing, bank, facts) {
+        return tier;
+    }
+    if routing.route == RouteId::CapabilityMissing
+        && routing.route_p >= CAPABILITY_ROUTE
+        && named_capability(routing).is_some()
+        && routing.lane == Lane::Computer
+        && routing.lane_p >= DISPATCH_LANE
+        && let Some(tier) = dispatch(routing, bank, facts, situation)
+    {
+        return tier;
+    }
+
+    // 11. T4 dispatch, by lane: work the route did not name, when the lane is sure it
     // needs a computer. It comes after the CLI and knowledge routes, which
     // read a computer question more precisely, and only when the route is
     // not one with its own answer: an offer loses to an answer.
@@ -583,12 +699,12 @@ pub fn decide(routing: &Routing, bank: &Bank, facts: &Facts, situation: &Situati
         return tier;
     }
 
-    // 11. Clarify.
+    // 12. Clarify.
     if routing.route == RouteId::Clarify && routing.route_p >= CLARIFY_ROUTE {
         return clarify(bank, facts, situation);
     }
 
-    // 12. T3.
+    // 13. T3.
     model(routing)
 }
 
@@ -651,6 +767,9 @@ mod tests {
             cli_group: None,
             cli_alternatives: Vec::new(),
             tool: None,
+            capability: None,
+            capability_missing_p: 0.0,
+            capability_closest: None,
             risk: Risk::Ok,
             risk_p: 0.95,
         }
@@ -1059,6 +1178,150 @@ mod tests {
         secret.risk = Risk::SecretShared;
         secret.risk_p = 0.9;
         assert_eq!(drafting(&secret).word(), "refuse");
+    }
+
+    /// A missing capability shows only when the route and the capability
+    /// reading agree: the bank's line, naming the closest admitted
+    /// capability when one is close; a lone reading is the model.
+    #[test]
+    fn a_missing_capability_needs_both_readings_to_agree() {
+        use crate::router::capability::{Admitted, CODER};
+        let admitted = Admitted::of(
+            &[crate::router::gym::fixtures::tool(
+                "project-map",
+                "Project map",
+            )],
+            &[],
+        );
+        let coder = admitted.get(CODER).unwrap().clone();
+        let mut flight = routed(RouteId::CapabilityMissing, 0.85, "none", 0.0, 0.9);
+        flight.capability_missing_p = 0.8;
+        let tier = router(&flight);
+        let Tier::Capability {
+            answer,
+            text,
+            closest,
+        } = &tier
+        else {
+            panic!("{tier:?}");
+        };
+        assert_eq!(answer.id, "capability.missing");
+        assert!(
+            text.starts_with("There's no capability for that yet."),
+            "{text}"
+        );
+        assert_eq!(closest, &None);
+        assert_eq!((tier.word(), tier.number()), ("canned", 0));
+        assert!(!tier.keeps_model());
+        assert_eq!(
+            tier.answer().map(|entry| entry.id.as_str()),
+            Some("capability.missing")
+        );
+
+        // A close admitted entry is named from the set, never the message.
+        flight.capability_closest = Some((coder.clone(), 0.25));
+        let Tier::Capability {
+            answer,
+            text,
+            closest,
+        } = router(&flight)
+        else {
+            panic!("{:?}", router(&flight));
+        };
+        assert_eq!(answer.id, "capability.missing_near");
+        assert!(text.contains("The closest one we have is Coder:"), "{text}");
+        assert_eq!(closest.map(|entry| entry.id), Some(CODER.to_string()));
+        flight.capability_closest = Some((coder.clone(), 0.15));
+        assert!(
+            matches!(router(&flight), Tier::Capability { closest: None, .. }),
+            "under the closest floor, no name"
+        );
+
+        // Each reading alone is not enough.
+        let mut unsure_route = flight.clone();
+        unsure_route.route_p = 0.65;
+        unsure_route.runner_up = Some((RouteId::General, 0.3));
+        assert!(matches!(router(&unsure_route), Tier::Model { .. }));
+        let mut unsure_none = flight.clone();
+        unsure_none.capability_missing_p = 0.5;
+        assert!(matches!(router(&unsure_none), Tier::Model { .. }));
+        let mut general = flight.clone();
+        general.route = RouteId::General;
+        general.runner_up = Some((RouteId::Meta, 0.1));
+        assert!(matches!(router(&general), Tier::Model { .. }));
+        // An admitted entry named at confidence is never "missing".
+        let mut named = flight.clone();
+        named.capability = Some((coder.clone(), 0.9));
+        named.capability_closest = None;
+        assert!(matches!(router(&named), Tier::Model { .. }));
+        // A refusal still comes first.
+        let mut risky = flight.clone();
+        risky.risk = Risk::Harmful;
+        risky.risk_p = 0.9;
+        assert!(matches!(router(&risky), Tier::Refuse { .. }));
+    }
+
+    /// A dispatch offer names the Coder-run capability the reading found
+    /// (a catalog tool), and a `capability.missing` route that names one
+    /// with the lane at computer is that offer, not the card.
+    #[test]
+    fn a_dispatch_names_the_capability_it_would_use() {
+        use crate::router::capability::{Admitted, CODER};
+        let admitted = Admitted::of(
+            &[crate::router::gym::fixtures::tool(
+                "project-map",
+                "Project map",
+            )],
+            &[],
+        );
+        let map = admitted.get("openagents.tool-project-map").unwrap().clone();
+        let mut work = routed(RouteId::WorkDispatch, 0.9, "dispatch.stem", 0.8, 0.9);
+        work.capability = Some((map.clone(), 0.8));
+        let tier = decided(&work, &Context::default(), true);
+        let Tier::CannedStem {
+            answer,
+            stem,
+            offer,
+            ..
+        } = &tier
+        else {
+            panic!("{tier:?}");
+        };
+        assert_eq!(answer.id, "dispatch.capability_stem");
+        assert_eq!(stem, "We'll dispatch Coder, with Project map, to");
+        assert!(matches!(offer, Some(Offer::RunCoder { .. })));
+        assert_eq!(tier.word(), "offer");
+        // Coder itself, or an unsure reading, is the plain stem.
+        work.capability = Some((admitted.get(CODER).unwrap().clone(), 0.9));
+        assert!(
+            matches!(router(&work), Tier::CannedStem { answer, .. } if answer.id == "dispatch.stem")
+        );
+        work.capability = Some((map.clone(), 0.5));
+        assert!(
+            matches!(router(&work), Tier::CannedStem { answer, .. } if answer.id == "dispatch.stem")
+        );
+        // With no computer, the no-computer answer as before.
+        work.capability = Some((map.clone(), 0.8));
+        let none = Context {
+            computer_ready: Some(false),
+            ..Context::default()
+        };
+        assert!(matches!(
+            decided(&work, &none, true),
+            Tier::CannedFinal { answer, .. } if answer.id == "dispatch.no_computer"
+        ));
+        // The route read missing, the reading named a Coder-run capability,
+        // and the lane says computer: the admitted capability answers.
+        let mut missed = routed(RouteId::CapabilityMissing, 0.8, "none", 0.0, 0.9);
+        missed.capability = Some((map, 0.8));
+        missed.capability_missing_p = 0.1;
+        missed.lane = Lane::Computer;
+        missed.lane_p = 0.9;
+        assert!(
+            matches!(router(&missed), Tier::CannedStem { answer, .. } if answer.id == "dispatch.capability_stem")
+        );
+        missed.lane = Lane::Chat;
+        assert!(matches!(router(&missed), Tier::Model { .. }));
     }
 
     /// Every phone surface keeps money, secrets, and grants off the CLI.

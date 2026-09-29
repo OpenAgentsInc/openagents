@@ -1,11 +1,11 @@
-//! The labeled route sets as Gym suites (#9925, #9936).
+//! The labeled route sets as Gym suites (#9925, #9936, #9960).
 //!
-//! `crates/gym/suites/chat-router-v2.json` is generated from
-//! `crates/coder/fixtures/chat-router/routes-v2.json`: one `route` item per
+//! `crates/gym/suites/chat-router-v3.json` is generated from
+//! `crates/coder/fixtures/chat-router/routes-v3.json`: one `route` item per
 //! row, its state the one the router's judgment reads, its truth the
 //! labeled route. Held-out rows are the locked partition, so the Gym's
 //! ledger records the one read of them. The question text,
-//! `crates/gym/questions/chat-router-route-v3.json`, is
+//! `crates/gym/questions/chat-router-route-v4.json`, is
 //! [`coder::router_eval::route_question`], which is the production router's
 //! structured `route` question ([`coder::router::judge::route`]), so Gym
 //! scores measure what production asks. These tests fail when the fixture
@@ -16,15 +16,18 @@
 //! ROUTER_SUITE_WRITE=1 cargo test -p coder --test router_suite -- --ignored
 //! ```
 //!
-//! `chat-router-v1.json` and its question set `chat-router-route-v2.json`
-//! are kept as they were recorded: the twelve-route question the v1 scores
-//! were measured with, and the suite generated from `routes-v1.json`.
+//! `chat-router-v1.json` and its question set `chat-router-route-v2.json`,
+//! and `chat-router-v2.json` with `chat-router-route-v3.json`, are kept as
+//! they were recorded: the twelve- and eighteen-route questions those
+//! scores were measured with, and the suites generated from
+//! `routes-v1.json` and `routes-v2.json`.
 
 use std::path::{Path, PathBuf};
 
 use coder::generate::{Message, Role};
 use coder::router_eval::{
-    SUITE, SUITE_QUESTIONS, SUITE_QUESTIONS_V1, SUITE_V1, Set, partition_of, route_question,
+    SUITE, SUITE_QUESTIONS, SUITE_QUESTIONS_V1, SUITE_QUESTIONS_V2, SUITE_V1, SUITE_V2, Set,
+    partition_of, route_question,
 };
 use gym::suite::{Item, Partition, Suite};
 use serde_json::{Value, json};
@@ -105,9 +108,9 @@ fn v1() -> Suite {
 
 fn v2() -> Suite {
     suite(
-        &Set::fixture(),
-        SUITE,
-        SUITE_QUESTIONS,
+        &Set::v2(),
+        SUITE_V2,
+        SUITE_QUESTIONS_V2,
         coder::router_claim::GATE,
         "The chat router's labeled route set for chat-router-v2 (#9936), from \
          crates/coder/fixtures/chat-router/routes-v2.json: the v1 rows and rows for \
@@ -115,6 +118,20 @@ fn v2() -> Suite {
          router takes. The fixture's held-out rows are the locked partition. Judged \
          by the router-v1 gate (#9959): canned precision primary, route accuracy, \
          canned recall, dispatch precision, and ECE held non-inferior.",
+    )
+}
+
+fn v3() -> Suite {
+    suite(
+        &Set::fixture(),
+        SUITE,
+        SUITE_QUESTIONS,
+        coder::router_claim::GATE,
+        "The chat router's labeled route set for chat-router-v3 (#9960), from \
+         crates/coder/fixtures/chat-router/routes-v3.json: the v2 rows and rows for \
+         the capability.missing route and its admitted near misses, across 19 routes, \
+         labeled with the route a correct router takes. The fixture's held-out rows \
+         are the locked partition.",
     )
 }
 
@@ -139,16 +156,20 @@ fn committed(name: &str) -> Suite {
 
 #[test]
 fn the_gym_suites_are_the_labeled_sets() {
-    let v2_committed = committed(SUITE);
-    assert_eq!(v2_committed.digest, v2().digest, "regenerate the suite");
-    assert_eq!(v2_committed.questions.as_deref(), Some(SUITE_QUESTIONS));
+    let v3_committed = committed(SUITE);
+    assert_eq!(v3_committed.digest, v3().digest, "regenerate the suite");
+    assert_eq!(v3_committed.questions.as_deref(), Some(SUITE_QUESTIONS));
     assert_eq!(
-        v2_committed.gate.as_deref(),
+        v3_committed.gate.as_deref(),
         Some(coder::router_claim::GATE),
         "regenerate the suite"
     );
     gym::gate::load(coder::router_claim::GATE).expect("the named gate is a committed rule");
-    // The v1 suite is kept as recorded.
+    // The v1 and v2 suites are kept as recorded.
+    let v2_committed = committed(SUITE_V2);
+    assert_eq!(v2_committed.digest, v2().digest);
+    assert_eq!(v2_committed.questions.as_deref(), Some(SUITE_QUESTIONS_V2));
+    gym::questions::load(SUITE_QUESTIONS_V2).expect("the v2 question set still reads");
     let v1_committed = committed(SUITE_V1);
     assert_eq!(v1_committed.digest, v1().digest);
     assert_eq!(v1_committed.questions.as_deref(), Some(SUITE_QUESTIONS_V1));
@@ -200,8 +221,13 @@ fn the_gym_question_is_the_production_route_question() {
         Some((6, 40)),
         &coder::router::Seams::default(),
     );
-    let production =
-        coder::router::judge::questions(coder::router::Bank::builtin(), &facts, &[], &[]);
+    let production = coder::router::judge::questions(
+        coder::router::Bank::builtin(),
+        &facts,
+        &[],
+        &[],
+        &coder::router::Admitted::builtin(),
+    );
     let production = serde_json::to_value(production.get("route")).expect("serializes");
     let served = gym::questions::load(SUITE_QUESTIONS).expect("the Gym reads it");
     for item in &committed(SUITE).items {
@@ -222,7 +248,7 @@ fn write_the_gym_suite() {
     }
     std::fs::write(
         gym(&format!("suites/{SUITE}.json")),
-        serde_json::to_string_pretty(&v2()).expect("serializes") + "\n",
+        serde_json::to_string_pretty(&v3()).expect("serializes") + "\n",
     )
     .expect("writes the suite");
     std::fs::write(

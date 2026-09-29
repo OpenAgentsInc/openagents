@@ -15,7 +15,7 @@
 
 use std::collections::BTreeMap;
 
-use nostr::cj_conversation::{Draft, NewsItem, ResultLine, Size, Source};
+use nostr::cj_conversation::{Add, Closest, Draft, NewsItem, Reach, ResultLine, Size, Source};
 use nostr::eval_ext::{CaseKind, Headline, Verdict};
 use serde::Serialize;
 use serde_json::Value;
@@ -315,7 +315,8 @@ pub struct Progress {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct CardView {
     pub id: String,
-    /// `tool`, `draft`, `run`, `result`, `news`, `check`, or `credit`.
+    /// `tool`, `draft`, `run`, `result`, `news`, `check`, `credit`, or
+    /// `capability`.
     pub kind: &'static str,
     /// "STEP 2 OF 3" on the first run.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -829,6 +830,89 @@ pub(crate) fn news_card(
     }
 }
 
+/// The message a tap on the missing-capability card's button sends: it
+/// starts the chat's authoring interview.
+pub(crate) const ADD_CAPABILITY_MESSAGE: &str = "Help me make a capability for that";
+
+/// The missing-capability card (#9960): the worker's `capability` card,
+/// which names the closest admitted capability, if any, and how to add
+/// one. `gym` is the tap for the worker's Gym offer, when it sent one.
+/// Nothing on the card is the person's message.
+pub(crate) fn capability_card(
+    actions: &mut Actions,
+    id: &str,
+    closest: Option<&Closest>,
+    add: Add,
+    gym: Option<Action>,
+) -> CardView {
+    let mut lines = vec![Line {
+        text: "There's no capability for that yet.".into(),
+        tone: Tone::Strong,
+    }];
+    match closest {
+        Some(closest) => {
+            lines.push(Line {
+                text: format!(
+                    "The closest one we have is {}: {}",
+                    closest.name, closest.summary
+                ),
+                tone: Tone::Body,
+            });
+            lines.push(Line {
+                text: match closest.reach {
+                    Reach::Chat => "It works right here in chat.".into(),
+                    Reach::Coder => "Coder uses it on a computer you connect.".into(),
+                },
+                tone: Tone::Quiet,
+            });
+        }
+        None => lines.push(Line {
+            text: "Nothing we have comes close.".into(),
+            tone: Tone::Body,
+        }),
+    }
+    lines.push(Line {
+        text: "Anyone can add one and test it in the Gym, so everyone can see whether it helps."
+            .into(),
+        tone: Tone::Quiet,
+    });
+    let mut secondary = vec![];
+    let primary = match add {
+        Add::Author => {
+            if let Some(gym) = gym {
+                secondary.push(actions.button(format!("{id}.gym"), "See the Gym", None, gym));
+            }
+            Some(actions.button(
+                format!("{id}.add"),
+                "ADD A CAPABILITY",
+                Some("add"),
+                Action::Say {
+                    text: ADD_CAPABILITY_MESSAGE.into(),
+                    fresh: false,
+                },
+            ))
+        }
+        Add::Gym => gym.map(|gym| actions.button(format!("{id}.gym"), "SEE THE GYM", None, gym)),
+    };
+    CardView {
+        id: id.to_owned(),
+        kind: "capability",
+        step: None,
+        icon: Some("add"),
+        title: "NO CAPABILITY FOR THAT YET".into(),
+        badge: None,
+        compare: None,
+        lines,
+        items: vec![],
+        progress: vec![],
+        primary,
+        secondary,
+        chips: vec![],
+        source: closest.map(|_| "From the capabilities Coder and this chat have now.".to_owned()),
+        busy: false,
+    }
+}
+
 /// `CARD-06` Check card. `xp` is the checker's share when the quest
 /// record says it; `credited` when the ledger already paid this trainer
 /// for checking the test set, so the check promises no XP (#9948).
@@ -999,6 +1083,67 @@ mod tests {
         assert_eq!(
             line(5, 2),
             "A trainer says Project map made Coder pass 5 of 6 tests instead of 2."
+        );
+    }
+
+    /// The missing-capability card names the closest admitted capability
+    /// from the worker's typed card, never the message, says how to add
+    /// one, and its words are the phone's plain ones.
+    #[test]
+    fn a_missing_capability_card_offers_to_add_one() {
+        let closest = Closest {
+            name: "Project map".into(),
+            summary: "Shows Coder how a project is laid out.".into(),
+            reach: Reach::Coder,
+        };
+        let mut actions = Actions(BTreeMap::new());
+        let card = capability_card(
+            &mut actions,
+            "c",
+            Some(&closest),
+            Add::Author,
+            Some(Action::VerseGym),
+        );
+        assert_eq!(card.kind, "capability");
+        assert_eq!(card.title, "NO CAPABILITY FOR THAT YET");
+        assert_eq!(card.lines[0].text, "There's no capability for that yet.");
+        assert_eq!(
+            card.lines[1].text,
+            "The closest one we have is Project map: Shows Coder how a project is laid out."
+        );
+        assert_eq!(
+            card.lines[2].text,
+            "Coder uses it on a computer you connect."
+        );
+        let primary = card.primary.as_ref().unwrap();
+        assert_eq!(primary.label, "ADD A CAPABILITY");
+        assert_eq!(
+            actions.get(&primary.id),
+            Some(&Action::Say {
+                text: ADD_CAPABILITY_MESSAGE.into(),
+                fresh: false
+            })
+        );
+        assert_eq!(card.secondary[0].label, "See the Gym");
+        assert_eq!(actions.get(&card.secondary[0].id), Some(&Action::VerseGym));
+        for line in &card.lines {
+            assert_eq!(jargon(&line.text), None, "{}", line.text);
+        }
+        assert_eq!(jargon(&card.title), None);
+
+        // Without the interview, the Gym is the one way; without a Gym
+        // offer, the card has no button and still says what to do.
+        let gym_only = capability_card(&mut actions, "g", None, Add::Gym, Some(Action::VerseGym));
+        assert_eq!(gym_only.primary.as_ref().unwrap().label, "SEE THE GYM");
+        assert!(gym_only.secondary.is_empty());
+        assert_eq!(gym_only.lines[1].text, "Nothing we have comes close.");
+        assert_eq!(gym_only.source, None);
+        let bare = capability_card(&mut actions, "b", None, Add::Gym, None);
+        assert!(bare.primary.is_none());
+        assert!(
+            bare.lines
+                .iter()
+                .any(|line| line.text.starts_with("Anyone can add one"))
         );
     }
 

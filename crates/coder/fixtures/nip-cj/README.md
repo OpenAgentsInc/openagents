@@ -25,6 +25,7 @@ it `chat-answers-v1@DIGEST`.
 | `router-card-check.json` | `card` feedback: a result waiting for a check (`CARD-06`). |
 | `router-card-draft.json` | `card` feedback: the interview's draft (`CARD-02`). |
 | `router-card-credit.json` | `card` feedback: awards from the XP ledger (`CARD-07`). |
+| `router-card-capability.json` | `card` feedback: a capability the request calls for that isn't admitted yet, the closest admitted one, and how to add one (#9960). |
 
 `the_eval_wire_matches_its_fixtures` checks the eval bodies, which NIP-CJ's
 own writer produces and its parser reads back

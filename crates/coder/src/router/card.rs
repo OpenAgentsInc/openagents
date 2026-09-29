@@ -59,6 +59,12 @@ pub enum Card {
     Check { result: ResultRecord },
     /// `CARD-07`: awards from the XP ledger.
     Credit { awards: Vec<Award> },
+    /// A missing capability (#9960): the closest admitted one, from the
+    /// typed set, and how to add one. Nothing of the message.
+    Capability {
+        closest: Option<super::capability::Capability>,
+        add: cj::Add,
+    },
 }
 
 fn line(result: &ResultRecord) -> ResultLine {
@@ -80,6 +86,7 @@ impl Card {
             Card::News { .. } => "news",
             Card::Check { .. } => "check",
             Card::Credit { .. } => "credit",
+            Card::Capability { .. } => "capability",
         }
     }
 
@@ -115,6 +122,14 @@ impl Card {
                 line: line(result),
                 confirms: result.checked.confirmed,
                 disputes: result.checked.disputed,
+            },
+            Card::Capability { closest, add } => cj::Card::Capability {
+                closest: closest.as_ref().map(|closest| cj::Closest {
+                    name: closest.name.clone(),
+                    summary: closest.line.clone(),
+                    reach: closest.reach.cj(),
+                }),
+                add: *add,
             },
             Card::Credit { awards } => cj::Card::Credit {
                 total: awards

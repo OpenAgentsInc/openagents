@@ -182,7 +182,42 @@ fn cards() -> Vec<Card> {
                 },
             ],
         },
+        Card::Capability {
+            closest: Some(Closest {
+                name: "Project map".into(),
+                summary: "Maps a repository before Coder edits it.".into(),
+                reach: Reach::Coder,
+            }),
+            add: Add::Author,
+        },
     ]
+}
+
+/// A missing-capability card names no message text: only an admitted
+/// capability's name and line, and how to add one; a status or way it
+/// doesn't know refuses.
+#[test]
+fn a_capability_card_is_closed_and_names_nothing_of_the_message() {
+    let none = Card::Capability {
+        closest: None,
+        add: Add::Gym,
+    };
+    let body = card_feedback(&none, 2).unwrap();
+    assert_eq!(body["closest"], Value::Null);
+    assert_eq!(body["add"], "gym");
+    assert_eq!(parse_card(&body).unwrap(), (2, none));
+    let mut asked = body.clone();
+    asked["asked"] = json!("book me a flight");
+    assert_eq!(code(parse_card(&asked)), RefusalCode::UnsupportedFeature);
+    let mut found = body.clone();
+    found["status"] = json!("found");
+    assert_eq!(code(parse_card(&found)), RefusalCode::UnsupportedFeature);
+    let mut elsewhere = body;
+    elsewhere["add"] = json!("store");
+    assert_eq!(
+        code(parse_card(&elsewhere)),
+        RefusalCode::UnsupportedFeature
+    );
 }
 
 #[test]

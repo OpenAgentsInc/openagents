@@ -24,6 +24,9 @@
     },
     {
       "$ref": "#/$defs/credit"
+    },
+    {
+      "$ref": "#/$defs/capability"
     }
   ],
   "$defs": {
@@ -779,6 +782,80 @@
               }
             ]
           }
+        }
+      }
+    },
+    "capability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "type",
+        "card",
+        "status",
+        "closest",
+        "add"
+      ],
+      "properties": {
+        "v": {
+          "enum": [
+            1,
+            2
+          ]
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "type": {
+          "const": "card"
+        },
+        "card": {
+          "const": "capability"
+        },
+        "status": {
+          "const": "missing"
+        },
+        "closest": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "name",
+                "summary",
+                "reach"
+              ],
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80
+                },
+                "summary": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 400
+                },
+                "reach": {
+                  "enum": [
+                    "chat",
+                    "coder"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        "add": {
+          "enum": [
+            "author",
+            "gym"
+          ]
         }
       }
     }

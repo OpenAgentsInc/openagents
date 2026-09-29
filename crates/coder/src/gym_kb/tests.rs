@@ -475,7 +475,167 @@ fn starter_files() -> Fetched {
         .into_iter()
         .map(|bytes| (digest_bytes(bytes), Arc::new(bytes.to_vec())))
         .collect();
-    Fetched { files }
+    Fetched {
+        files,
+        ..Fetched::default()
+    }
+}
+
+/// A signed `coder-defaults` release by `root` with one manifest whose
+/// provenance cites `admissions`, and the documents by digest.
+fn defaults_release(root: &str, admissions: &[Vec<u8>]) -> (Event, HashMap<String, Arc<Vec<u8>>>) {
+    let package = defaults_package(&pubkey(root));
+    let receipts: Vec<Value> = admissions
+        .iter()
+        .map(|bytes| {
+            art(
+                bytes,
+                "application/json",
+                Some(nostr::eval_ext::ADMISSION_SCHEMA),
+            )
+        })
+        .collect();
+    let manifest = jcs(&json!({
+        "v": "openagents.package.v1",
+        "requires": [],
+        "package": package,
+        "version": "1",
+        "license": "CC0-1.0",
+        "provenance": {
+            "source": "local",
+            "receipts": receipts,
+            "unknowns": ["An admission records an operator's decision; it is not a security review."],
+        },
+        "components": [],
+        "files": [],
+        "dependencies": [],
+    }))
+    .unwrap();
+    let content = json!({
+        "v": 1, "requires": [], "type": "release",
+        "package": package,
+        "version": "1",
+        "manifest": art(&manifest, "application/json", Some("openagents.package.v1")),
+    });
+    let release = signer(root).sign(
+        AT + 10,
+        nostr::ext::RELEASE_KIND,
+        vec![nostr::domain::Tag::new(vec![
+            "t".into(),
+            "oa:ext:release:v1".into(),
+        ])],
+        content.to_string(),
+    );
+    let mut files = HashMap::new();
+    files.insert(digest_bytes(&manifest), Arc::new(manifest));
+    for bytes in admissions {
+        files.insert(digest_bytes(bytes), Arc::new(bytes.clone()));
+    }
+    (release, files)
+}
+
+/// An `openagents.eval-admission.v1` document by `root` deciding
+/// `decision` on the subject `<key>:project-map/repo-map`.
+fn admission(root: &str, decision: &str) -> Vec<u8> {
+    let issuer = pubkey(root);
+    let report = art(
+        b"report",
+        "application/json",
+        Some(nostr::kb::REPORT_SCHEMA),
+    );
+    jcs(&json!({
+        "v": nostr::eval_ext::ADMISSION_SCHEMA,
+        "requires": [],
+        "subject": {
+            "id": format!("{}:project-map/repo-map", pubkey("author")),
+            "artifact": art(b"definition", "application/json", None),
+        },
+        "reports": [report.clone(), report.clone()],
+        "validation": [report],
+        "policy": {
+            "id": format!("{issuer}:coder-defaults/policy"),
+            "artifact": art(b"policy", "text/markdown", None),
+        },
+        "scope": art(b"scope", "application/json", None),
+        "decision": decision,
+        "issuer": issuer,
+        "expires_at": AT + 1_000_000,
+    }))
+    .unwrap()
+}
+
+/// The newest coder-defaults release reads as one adoption per admit
+/// decision, its subject matched to the catalog tool by slug; a release
+/// another key signed, a rejecting admission, or a document not at hand is
+/// refused, skipped, or asked for.
+#[test]
+fn an_adoption_is_read_from_the_defaults_release_and_its_admissions() {
+    let tools = tools(&corpus());
+    let root = pubkey("defaults-root");
+    let (release, files) = defaults_release(
+        "defaults-root",
+        &[
+            admission("defaults-root", "admit"),
+            admission("defaults-root", "reject"),
+        ],
+    );
+    let fetched = Fetched {
+        files: files.clone(),
+        root: root.clone(),
+    };
+    let records = Fetched::adoptions(&fetched, &release, &tools).expect("the release reads");
+    assert_eq!(records.len(), 1, "{records:?}");
+    assert_eq!(records[0].tool.as_deref(), Some(DEFAULT_TOOL));
+    assert_eq!(records[0].tool_name, "Project map");
+    assert_eq!(records[0].release.id, release.id);
+    assert_eq!(records[0].release.kind, 3184);
+    assert_eq!(records[0].at, release.created_at);
+    assert!(is_defaults_release(&release, &root));
+    assert!(!is_defaults_release(&release, &pubkey("someone")));
+
+    // Through `admit`, the adoptions join the records.
+    let admitted = admit(&tools, &[], &fetched, &[], std::slice::from_ref(&release));
+    assert!(admitted.refused.is_empty(), "{:?}", admitted.refused);
+    assert_eq!(admitted.adoptions, records);
+
+    // The admitted set names it as the tool's own entry.
+    let set = crate::router::capability::Admitted::of(&tools, &admitted.adoptions);
+    assert_eq!(
+        set.entries
+            .iter()
+            .filter(|entry| entry.id == DEFAULT_TOOL)
+            .count(),
+        1
+    );
+
+    // Another root: refused, and nothing it says is read.
+    let other = Fetched {
+        files: files.clone(),
+        root: pubkey("someone"),
+    };
+    assert!(Fetched::adoptions(&other, &release, &tools).is_err());
+    let (forged, forged_files) = defaults_release("someone", &[admission("someone", "admit")]);
+    let forged_fetched = Fetched {
+        files: forged_files,
+        root: root.clone(),
+    };
+    assert!(Fetched::adoptions(&forged_fetched, &forged, &tools).is_err());
+
+    // A document not at hand is asked for by digest, the manifest first.
+    let asked = std::cell::RefCell::new(Vec::new());
+    let result = adoption_records(&release, &tools, &root, &|digest| {
+        asked.borrow_mut().push(digest.to_string());
+        None
+    });
+    assert!(
+        matches!(result, Err(ReleaseError::Missing(_))),
+        "{result:?}"
+    );
+    assert_eq!(asked.borrow().len(), 1);
+
+    // The checked-in package record names a root the reader uses.
+    assert_eq!(defaults_root().len(), 64);
+    assert_eq!(Fetched::default().root, defaults_root());
 }
 
 fn starter_release() -> Event {

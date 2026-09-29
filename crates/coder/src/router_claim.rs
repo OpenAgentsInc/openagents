@@ -8,7 +8,7 @@
 //! as a decision service: its `configuration` pins the question set as
 //! [`crate::router::set_id`] and the bank as [`crate::router::Bank::id`],
 //! its suite is the labeled route set as the Gym holds it
-//! (`crates/gym/suites/chat-router-v2.json`), its partition is the locked
+//! (`crates/gym/suites/chat-router-v3.json`), its partition is the locked
 //! (held-out) rows, and its policy is the `router-v1` gate
 //! (`crates/gym/gates/router-v1.json`). The measurements are the ones
 //! NIP-EVAL asks of a "better semantic decisions" claim: per-route
@@ -44,9 +44,7 @@ use serde_json::{Value, json};
 
 use crate::router::calibration::Calibration;
 use crate::router::{Bank, SET, set_digest, set_id};
-use crate::router_eval::{
-    Reading, Report, Row, Set, observations, operating_points, partition_of,
-};
+use crate::router_eval::{Reading, Report, Row, Set, observations, operating_points, partition_of};
 
 /// The gate a router record is judged by.
 pub const GATE: &str = "router-v1";
@@ -191,14 +189,25 @@ fn evaluator() -> String {
         .to_string()
 }
 
-fn put(files: &mut BTreeMap<String, Vec<u8>>, name: &str, value: &Value, schema: &str) -> ArtifactRef {
+fn put(
+    files: &mut BTreeMap<String, Vec<u8>>,
+    name: &str,
+    value: &Value,
+    schema: &str,
+) -> ArtifactRef {
     let bytes = json_bytes(value);
     let reference = ArtifactRef::of(&bytes, JSON, Some(schema));
     files.insert(name.to_string(), bytes);
     reference
 }
 
-fn measurement(metric: String, value: Option<f64>, denominator: usize, unknown: usize, evidence: &[Value]) -> Value {
+fn measurement(
+    metric: String,
+    value: Option<f64>,
+    denominator: usize,
+    unknown: usize,
+    evidence: &[Value],
+) -> Value {
     json!({
         "arm": "subject",
         "metric": metric,
@@ -502,9 +511,27 @@ impl Claim<'_> {
         let read = report.read();
         let routed: usize = report.routes.values().map(|c| c.predicted).sum();
         let mut measurements = vec![
-            measurement("rows_read".into(), count(read), report.rows, report.errors, &evidence),
-            measurement("cases_passed".into(), count(passed), read, report.errors, &evidence),
-            measurement("route_accuracy".into(), report.route_accuracy, routed, report.errors, &evidence),
+            measurement(
+                "rows_read".into(),
+                count(read),
+                report.rows,
+                report.errors,
+                &evidence,
+            ),
+            measurement(
+                "cases_passed".into(),
+                count(passed),
+                read,
+                report.errors,
+                &evidence,
+            ),
+            measurement(
+                "route_accuracy".into(),
+                report.route_accuracy,
+                routed,
+                report.errors,
+                &evidence,
+            ),
         ];
         for (route, counts) in &report.routes {
             measurements.push(measurement(
@@ -523,8 +550,16 @@ impl Claim<'_> {
             ));
         }
         let ratios: [(&str, Option<f64>, usize); 12] = [
-            ("canned_precision", report.canned.precision(), report.canned.predicted),
-            ("canned_recall", report.canned.recall(), report.canned.labeled),
+            (
+                "canned_precision",
+                report.canned.precision(),
+                report.canned.predicted,
+            ),
+            (
+                "canned_recall",
+                report.canned.recall(),
+                report.canned.labeled,
+            ),
             (
                 "canned_coverage",
                 (report.canned.labeled > 0).then(|| {
@@ -534,14 +569,42 @@ impl Claim<'_> {
                 }),
                 report.canned.labeled,
             ),
-            ("canned_over_stem", count(report.canned_over_stem), report.canned.predicted),
-            ("dispatch_precision", report.dispatch.precision(), report.dispatch.predicted),
-            ("dispatch_recall", report.dispatch.recall(), report.dispatch.labeled),
-            ("gym_precision", report.gym.precision(), report.gym.predicted),
+            (
+                "canned_over_stem",
+                count(report.canned_over_stem),
+                report.canned.predicted,
+            ),
+            (
+                "dispatch_precision",
+                report.dispatch.precision(),
+                report.dispatch.predicted,
+            ),
+            (
+                "dispatch_recall",
+                report.dispatch.recall(),
+                report.dispatch.labeled,
+            ),
+            (
+                "gym_precision",
+                report.gym.precision(),
+                report.gym.predicted,
+            ),
             ("gym_recall", report.gym.recall(), report.gym.labeled),
-            ("refuse_precision", report.refuse.precision(), report.refuse.predicted),
-            ("refuse_recall", report.refuse.recall(), report.refuse.labeled),
-            ("secret_recall", report.secret.recall(), report.secret.labeled),
+            (
+                "refuse_precision",
+                report.refuse.precision(),
+                report.refuse.predicted,
+            ),
+            (
+                "refuse_recall",
+                report.refuse.recall(),
+                report.refuse.labeled,
+            ),
+            (
+                "secret_recall",
+                report.secret.recall(),
+                report.secret.labeled,
+            ),
             ("abstention_rate", report.abstention_rate(), read),
         ];
         for (name, value, denominator) in ratios {
@@ -622,7 +685,10 @@ impl Claim<'_> {
             ),
         ];
         limitations.extend(outcome.criteria.iter().map(|c| {
-            format!("gate {} {}: {} ({})", outcome.gate_id, c.name, c.verdict, c.detail)
+            format!(
+                "gate {} {}: {} ({})",
+                outcome.gate_id, c.name, c.verdict, c.detail
+            )
         }));
         let limitations = put(
             &mut files,
@@ -752,17 +818,70 @@ mod tests {
     #[test]
     fn a_case_passes_on_the_route_the_tier_and_no_harm() {
         let canned = row("meta/001", "meta", Some("meta.who"), "canned");
-        assert!(passes(&canned, &reading("meta/001", "meta", Some("meta.who"), "canned", false)));
-        assert!(!passes(&canned, &reading("meta/001", "meta", None, "model", false)), "not covered");
-        assert!(!passes(&canned, &reading("meta/001", "meta", Some("meta.model"), "canned", false)), "wrong answer");
-        assert!(!passes(&canned, &reading("meta/001", "general", Some("meta.who"), "canned", false)), "wrong route");
+        assert!(passes(
+            &canned,
+            &reading("meta/001", "meta", Some("meta.who"), "canned", false)
+        ));
+        assert!(
+            !passes(&canned, &reading("meta/001", "meta", None, "model", false)),
+            "not covered"
+        );
+        assert!(
+            !passes(
+                &canned,
+                &reading("meta/001", "meta", Some("meta.model"), "canned", false)
+            ),
+            "wrong answer"
+        );
+        assert!(
+            !passes(
+                &canned,
+                &reading("meta/001", "general", Some("meta.who"), "canned", false)
+            ),
+            "wrong route"
+        );
         let model = row("general/001", "general", None, "model");
-        assert!(passes(&model, &reading("general/001", "general", None, "model", false)));
-        assert!(!passes(&model, &reading("general/001", "general", Some("meta.who"), "canned", false)), "fired");
-        assert!(!passes(&model, &reading("general/001", "general", None, "offer", true)), "offered Coder");
-        let stem = row("dispatch/001", "work.dispatch", Some("dispatch.stem"), "offer");
-        assert!(passes(&stem, &reading("dispatch/001", "work.dispatch", Some("dispatch.stem"), "offer", true)));
-        assert!(passes(&stem, &reading("dispatch/001", "work.dispatch", None, "model", false)), "a miss on a stem row is not harm");
+        assert!(passes(
+            &model,
+            &reading("general/001", "general", None, "model", false)
+        ));
+        assert!(
+            !passes(
+                &model,
+                &reading("general/001", "general", Some("meta.who"), "canned", false)
+            ),
+            "fired"
+        );
+        assert!(
+            !passes(
+                &model,
+                &reading("general/001", "general", None, "offer", true)
+            ),
+            "offered Coder"
+        );
+        let stem = row(
+            "dispatch/001",
+            "work.dispatch",
+            Some("dispatch.stem"),
+            "offer",
+        );
+        assert!(passes(
+            &stem,
+            &reading(
+                "dispatch/001",
+                "work.dispatch",
+                Some("dispatch.stem"),
+                "offer",
+                true
+            )
+        ));
+        assert!(
+            passes(
+                &stem,
+                &reading("dispatch/001", "work.dispatch", None, "model", false)
+            ),
+            "a miss on a stem row is not harm"
+        );
         let mut failed = reading("meta/001", "meta", None, "model", false);
         failed.error = Some("timeout".into());
         assert!(!passes(&canned, &failed));
@@ -780,7 +899,12 @@ mod tests {
             row("meta/001", "meta", Some("meta.who"), "canned"),
             row("meta/002", "meta", Some("meta.model"), "canned"),
             row("general/001", "general", None, "model"),
-            row("dispatch/001", "work.dispatch", Some("dispatch.stem"), "offer"),
+            row(
+                "dispatch/001",
+                "work.dispatch",
+                Some("dispatch.stem"),
+                "offer",
+            ),
             row("refuse/001", "refuse", Some("refuse.harmful"), "refuse"),
         ];
         let refs: Vec<&Row> = rows.iter().collect();
@@ -788,7 +912,13 @@ mod tests {
             reading("meta/001", "meta", Some("meta.who"), "canned", false),
             reading("meta/002", "meta", Some("meta.who"), "canned", false),
             reading("general/001", "general", None, "model", false),
-            reading("dispatch/001", "work.dispatch", Some("dispatch.stem"), "offer", true),
+            reading(
+                "dispatch/001",
+                "work.dispatch",
+                Some("dispatch.stem"),
+                "offer",
+                true,
+            ),
         ];
         readings.push(Reading {
             id: "refuse/001".into(),
@@ -830,8 +960,14 @@ mod tests {
         assert_eq!(parsed.verdict, nostr::eval_ext::Verdict::Inconclusive);
         assert!(parsed.baseline.is_none());
         assert_eq!(parsed.profile.headline.total, 5);
-        assert_eq!(parsed.profile.headline.subject_passed, 3, "meta/002 served the wrong answer and refuse/001 failed");
-        assert_eq!(parsed.profile.identity, Some(nostr::eval_ext::IdentityStrength::Version));
+        assert_eq!(
+            parsed.profile.headline.subject_passed, 3,
+            "meta/002 served the wrong answer and refuse/001 failed"
+        );
+        assert_eq!(
+            parsed.profile.identity,
+            Some(nostr::eval_ext::IdentityStrength::Version)
+        );
         assert_eq!(parsed.profile.distribution.as_deref(), Some(DISTRIBUTION));
         assert_eq!(
             parsed.subject.configuration.schema.as_deref(),
@@ -843,7 +979,11 @@ mod tests {
         // Every cited artifact is in the record, byte for byte.
         let mut cited = Vec::new();
         collect_refs(&record.report, &mut cited);
-        assert_eq!(cited.len(), 7, "suite, partition, definition, lock, configuration, runs, limitations");
+        assert_eq!(
+            cited.len(),
+            7,
+            "suite, partition, definition, lock, configuration, runs, limitations"
+        );
         for (digest, size) in cited {
             let found = record.files.values().any(|bytes| {
                 nostr::contracts::digest_bytes(bytes) == digest && bytes.len() as u64 == size
@@ -859,9 +999,13 @@ mod tests {
         // A held-out split of 256 rows (NIP-EVAL's most cases) stays under
         // the report's 64 KiB with these measurements: each row adds its
         // case and one run entry, and the measurements are fixed in number.
-        let per_case = 64 + serde_json::to_vec(&json!({"id": "eval.author-000", "kind": "should-not-fire"})).unwrap().len();
+        let per_case = 64
+            + serde_json::to_vec(&json!({"id": "eval.author-000", "kind": "should-not-fire"}))
+                .unwrap()
+                .len();
         assert!(
-            bytes.len() + (nostr::eval_ext::MAX_CASES - 5) * per_case < nostr::eval_ext::MAX_REPORT_BYTES,
+            bytes.len() + (nostr::eval_ext::MAX_CASES - 5) * per_case
+                < nostr::eval_ext::MAX_REPORT_BYTES,
             "{} bytes for 5 rows",
             bytes.len()
         );
@@ -885,8 +1029,16 @@ mod tests {
         let limitations: Value =
             serde_json::from_slice(record.files.get("limitations.json").unwrap()).unwrap();
         let lines = limitations["limitations"].as_array().unwrap();
-        assert!(lines.iter().any(|l| l.as_str().unwrap().contains("scored_rows>=30: unverifiable")));
-        assert!(lines.iter().any(|l| l.as_str().unwrap().contains("canned_precision_at_or_above_floor: unverifiable")));
+        assert!(lines.iter().any(|l| {
+            l.as_str()
+                .unwrap()
+                .contains("scored_rows>=30: unverifiable")
+        }));
+        assert!(lines.iter().any(|l| {
+            l.as_str()
+                .unwrap()
+                .contains("canned_precision_at_or_above_floor: unverifiable")
+        }));
         assert_eq!(limitations["gate_outcome"]["verdict"], "unverifiable");
         assert_eq!(claim.comparison().subject.items, 4);
         assert_eq!(claim.comparison().subject.canned_precision, Some(0.5));
@@ -894,7 +1046,10 @@ mod tests {
         // Nothing carries a message: the rows' texts are their ids here,
         // and no file names the messages field.
         for (name, bytes) in &record.files {
-            assert!(!String::from_utf8_lossy(bytes).contains("\"messages\""), "{name}");
+            assert!(
+                !String::from_utf8_lossy(bytes).contains("\"messages\""),
+                "{name}"
+            );
         }
         let dir = tempfile::tempdir().unwrap();
         record.write(dir.path()).unwrap();

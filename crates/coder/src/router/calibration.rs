@@ -219,7 +219,10 @@ mod tests {
     use crate::router::Bank;
 
     fn fit(pairs: &[(f64, bool)]) -> Vec<Observation> {
-        pairs.iter().map(|(p, c)| Observation::new(*p, *c)).collect()
+        pairs
+            .iter()
+            .map(|(p, c)| Observation::new(*p, *c))
+            .collect()
     }
 
     /// The committed record parses, names this build's question set, and
@@ -298,6 +301,9 @@ mod tests {
             cli_group: None,
             cli_alternatives: Vec::new(),
             tool: None,
+            capability: None,
+            capability_missing_p: 0.0,
+            capability_closest: None,
             risk: crate::router::Risk::Ok,
             risk_p: 0.99,
         };

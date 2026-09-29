@@ -33,8 +33,10 @@ pub const MAX_TEXT_CHARS: usize = 600;
 
 /// The fact keys a slot may name. `worker.*` keys are filled by the worker
 /// from its own configuration (see [`Facts::set`]); `gym.*` keys only by
-/// [`super::gym::reply`], from a record the Gym seam verified, for an
-/// entry that sets [`Entry::records`].
+/// [`super::gym::reply`], from a record the Gym seam verified, and
+/// `capability.*` keys only by [`super::policy::decide`], from an entry
+/// of the admitted-capability set, each for an entry that sets
+/// [`Entry::records`].
 pub const FACT_KEYS: &[&str] = &[
     "worker.lane.display",
     "worker.door.display",
@@ -43,6 +45,8 @@ pub const FACT_KEYS: &[&str] = &[
     "worker.recipients",
     "gym.tool",
     "gym.tests",
+    "capability.name",
+    "capability.line",
 ];
 
 /// The routes whose entries must cite sources: every factual answer.
@@ -477,16 +481,34 @@ pub fn lint(bank: &Bank, root: Option<&Path>) -> Vec<String> {
         {
             push(id, format!("the verdict {verdict} is not end_conversation"));
         }
-        if entry.records && !routes.iter().all(|route| route.is_gym()) {
+        // A records entry is picked by code: from the Gym's records on a
+        // Gym or eval route, or from the admitted-capability set on
+        // `capability.missing` or a dispatch stem that names a capability.
+        let capability_slot = entry
+            .facts
+            .values()
+            .any(|key| key.starts_with("capability."));
+        let picked_by_code = routes.iter().all(|route| {
+            route.is_gym()
+                || *route == RouteId::CapabilityMissing
+                || (*route == RouteId::WorkDispatch && capability_slot)
+        });
+        if entry.records && !picked_by_code {
             push(
                 id,
-                "a records entry answers Gym and eval routes only".into(),
+                "a records entry answers Gym and eval routes, capability.missing, or a \
+                 dispatch stem with a capability slot only"
+                    .into(),
             );
         }
-        if !entry.records && entry.facts.values().any(|key| key.starts_with("gym.")) {
+        if !entry.records
+            && (capability_slot || entry.facts.values().any(|key| key.starts_with("gym.")))
+        {
             push(
                 id,
-                "only a records entry fills a slot from the Gym's records".into(),
+                "only a records entry fills a slot from the Gym's records or the admitted \
+                 capabilities"
+                    .into(),
             );
         }
     }

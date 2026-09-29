@@ -280,6 +280,18 @@ offer = { run_coder = true, label = "Run Coder" }
 sources = ["crates/openagents-mobile/src/basic_coder.rs"]
 
 [[answer]]
+id = "dispatch.capability_stem"
+version = 1
+routes = ["work.dispatch"]
+records = true
+when = "Picked by code from the admitted-capability set: the user hands us work on their code that a named capability usable in a Coder run, such as Project map, would do"
+stem = "We'll dispatch Coder, with {capability}, to"
+generic_end = " take this on, with this conversation as its task."
+facts = { capability = "capability.name" }
+offer = { run_coder = true, label = "Run Coder" }
+sources = ["crates/coder/src/router/capability.rs", "crates/openagents-mobile/src/basic_coder.rs"]
+
+[[answer]]
 id = "dispatch.no_computer"
 version = 1
 routes = ["work.dispatch"]
@@ -573,6 +585,34 @@ records = true
 when = "Picked from the Gym's records: the line a grounded news reply opens with, above the news card, when records relevant to what the user asked are found"
 text = "Here's what's new in the Gym."
 sources = ["crates/coder/src/router/gym.rs", "crates/coder/src/gym_kb.rs"]
+
+# ---------------------------------------------------------------------------
+# capability.missing (#9960): the user asked for something a capability
+# could do, and none of the admitted ones does it. Picked by code from the
+# `capability` reading; the {capability} and {capability_line} slots come
+# from an entry of the admitted-capability set, never from the message.
+# ---------------------------------------------------------------------------
+
+[[answer]]
+id = "capability.missing"
+version = 1
+routes = ["capability.missing"]
+records = true
+when = "Picked by code: the user asks us to do or reach something that would take a capability none of ours covers, and none is close"
+text = "There's no capability for that yet. Anyone can add one and test it in the Gym, so everyone can see whether it helps."
+sources = ["crates/coder/src/router/capability.rs", "docs/essays/2026-09-29-test-time-capabilities.md"]
+followups = ["gym.what", "eval.credit.how"]
+
+[[answer]]
+id = "capability.missing_near"
+version = 1
+routes = ["capability.missing"]
+records = true
+when = "Picked by code: the user asks us to do or reach something that would take a capability none of ours covers, and one admitted capability is close to it"
+text = "There's no capability for that yet. The closest one we have is {capability}: {capability_line} Anyone can add one and test it in the Gym, so everyone can see whether it helps."
+facts = { capability = "capability.name", capability_line = "capability.line" }
+sources = ["crates/coder/src/router/capability.rs", "docs/essays/2026-09-29-test-time-capabilities.md"]
+followups = ["gym.what", "eval.credit.how"]
 
 # ---------------------------------------------------------------------------
 # refuse, warn, and clarify

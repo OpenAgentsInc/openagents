@@ -23,6 +23,9 @@ fn wire(name: &str) -> Value {
         "card-check" => include_str!("../../../coder/fixtures/nip-cj/router-card-check.json"),
         "card-draft" => include_str!("../../../coder/fixtures/nip-cj/router-card-draft.json"),
         "card-credit" => include_str!("../../../coder/fixtures/nip-cj/router-card-credit.json"),
+        "card-capability" => {
+            include_str!("../../../coder/fixtures/nip-cj/router-card-capability.json")
+        }
         "start-eval" => include_str!("../../../coder/fixtures/nip-cj/router-offer-start-eval.json"),
         "publish-eval" => {
             include_str!("../../../coder/fixtures/nip-cj/router-offer-publish-eval.json")
@@ -474,6 +477,55 @@ fn asked(phone: &mut Phone, worker: &Worker, text: &str, reply: &str, feedback: 
     phone.say(text);
     worker.answer(reply, feedback);
     phone.render();
+}
+
+/// The missing-capability card (#9960): the worker's `capability` card
+/// draws in the phone's words, names the closest capability from the card
+/// and nothing of the message, and its button sends the message that
+/// starts making one.
+#[test]
+fn a_missing_capability_card_offers_to_add_one() {
+    let worker = Worker::default();
+    let runner = Runner::default();
+    let mut phone = Phone::new(&worker, Some(&runner)).returning();
+    phone.tap("menu.chat");
+    asked(
+        &mut phone,
+        &worker,
+        "Book me a flight to Denver",
+        "There's no capability for that yet.",
+        &[
+            json!({"v": 2, "requires": [], "type": "judgment", "verdict": "respond",
+                "line": "There's no capability for that yet.", "set": "chat-router-v3",
+                "route": "capability.missing", "tier": "canned"}),
+            wire("card-capability"),
+            json!({"v": 2, "type": "result", "model": "bank:chat-answers-v1", "tier": "canned",
+                "route": "capability.missing", "answer": "capability.missing_near@1"}),
+        ],
+    );
+    let card = phone.card("capability");
+    assert_eq!(card.title, "NO CAPABILITY FOR THAT YET");
+    assert_eq!(card.lines[0].text, "There's no capability for that yet.");
+    assert_eq!(
+        card.lines[1].text,
+        "The closest one we have is Project map: What Project map does."
+    );
+    assert_eq!(card.primary.as_ref().unwrap().label, "ADD A CAPABILITY");
+    assert_plain(&phone.gym());
+    assert!(
+        !words_of(&phone.gym())
+            .iter()
+            .any(|word| word.contains("Denver") || word.contains("flight")),
+        "the card carries nothing of the message"
+    );
+    // The button sends the make-a-capability message as the person's own.
+    let add = card.primary.unwrap().id;
+    phone.tap(&add);
+    let sent = worker.asked.lock().unwrap();
+    assert_eq!(
+        sent.last().map(|(turns, _, _)| turns.last().cloned()),
+        Some(Some(crate::eval_cards::ADD_CAPABILITY_MESSAGE.to_string()))
+    );
 }
 
 #[test]

@@ -23,8 +23,16 @@
 //!   publisher), with their bytes fetched from [`SUITE_BLOBS`] and checked
 //!   against every digest ([`suite_record`]). So the first run can start a
 //!   test before anyone has published a result. A tool's test set is also
-//!   read from the verified results that ran it. **Adoptions**
-//!   (`coder-defaults` releases) are not read yet.
+//!   read from the verified results that ran it.
+//! - **Adoptions** (#9960): the newest `coder-defaults` release, the
+//!   `3184` the package's root key ([`defaults_root`], from
+//!   `packages/coder-defaults/package.json`) signed, with its manifest and
+//!   each `openagents.eval-admission.v1` admission the manifest's
+//!   provenance cites fetched from [`DEFAULTS_DOCUMENTS`] by digest and
+//!   checked ([`adoption_records`]): one [`AdoptionRecord`] per `admit`
+//!   decision, its subject matched to a catalog tool by slug. They are the
+//!   admitted-capability set's adoptions
+//!   ([`crate::router::capability::Admitted::of`]).
 //! - **The app's changelog**, `CHANGELOG` in
 //!   `crates/openagents-mobile/src/account.rs`, compiled in and read by
 //!   [`changelog`].
@@ -75,6 +83,46 @@ pub const NEWEST: usize = 4;
 
 /// How many of the newest app builds the corpus holds.
 pub const BUILDS: usize = 3;
+
+/// The `coder-defaults` package record, `packages/coder-defaults/package.json`,
+/// which names the root key that signs its releases.
+pub const DEFAULTS_PACKAGE_RECORD: &str =
+    include_str!("../../../packages/coder-defaults/package.json");
+
+/// Where a `coder-defaults` document (a manifest or an admission) is
+/// fetched by its digest, as `<base>/<hex>.json`: the repository's
+/// `packages/coder-defaults/documents/`, where the operator's command keeps
+/// each published document.
+pub const DEFAULTS_DOCUMENTS: &str = "https://raw.githubusercontent.com/OpenAgentsInc/openagents/main/packages/coder-defaults/documents";
+
+/// How many `coder-defaults` releases the relay read asks for; only the
+/// newest is admitted.
+pub const MAX_DEFAULTS: usize = 8;
+
+/// The most admissions one `coder-defaults` release's documents are
+/// fetched for.
+pub const MAX_DEFAULT_ADMISSIONS: usize = 32;
+
+/// The `coder-defaults` root key, hex, from the package record.
+///
+/// # Panics
+///
+/// Never for the checked-in record; a test checks it.
+#[must_use]
+pub fn defaults_root() -> String {
+    let record: Value =
+        serde_json::from_str(DEFAULTS_PACKAGE_RECORD).expect("the package record is JSON");
+    record["root"]
+        .as_str()
+        .expect("the package record names its root")
+        .to_owned()
+}
+
+/// `<root>:coder-defaults`, the package a defaults release names.
+#[must_use]
+pub fn defaults_package(root: &str) -> String {
+    format!("{root}:coder-defaults")
+}
 
 /// The earlier turns Jev reads besides the latest message.
 pub const EARLIER_TURNS: usize = 4;
@@ -304,12 +352,13 @@ pub trait ReleaseReader: Send + Sync {
     ///
     /// Why it is not one.
     fn suite(&self, event: &Event, tools: &[Tool]) -> Result<SuiteRecord, String>;
-    /// An adoption.
+    /// The adoptions a `coder-defaults` release carries: one per `admit`
+    /// decision its manifest cites.
     ///
     /// # Errors
     ///
-    /// Why it is not one.
-    fn adoption(&self, event: &Event, tools: &[Tool]) -> Result<AdoptionRecord, String>;
+    /// Why the release is not read.
+    fn adoptions(&self, event: &Event, tools: &[Tool]) -> Result<Vec<AdoptionRecord>, String>;
 }
 
 /// No artifact fetcher yet: releases are not read, and a test set is read
@@ -324,7 +373,7 @@ impl ReleaseReader for PendingReleases {
     fn suite(&self, _: &Event, _: &[Tool]) -> Result<SuiteRecord, String> {
         Err(PENDING.to_string())
     }
-    fn adoption(&self, _: &Event, _: &[Tool]) -> Result<AdoptionRecord, String> {
+    fn adoptions(&self, _: &Event, _: &[Tool]) -> Result<Vec<AdoptionRecord>, String> {
         Err(PENDING.to_string())
     }
 }
@@ -455,10 +504,89 @@ pub fn is_test_set_release(release: &Event) -> bool {
         .is_some_and(|package| package.ends_with("-tests"))
 }
 
+/// Reads the adoptions of a `coder-defaults` release from its signed
+/// `3184` `release` and the documents `fetch` returns by digest: the
+/// release's signature and marker (`nostr::ext::parse_record`), its
+/// manifest against the release's digest (`nostr::eval_ext::parse_release`),
+/// and each admission the manifest's provenance cites against its digest
+/// (`nostr::eval_ext::parse_admission`). The signer must be `root` and the
+/// package `<root>:coder-defaults`; each `admit` decision is one record,
+/// its subject matched to the catalog by slug ([`tool_of`]). A `reject` or
+/// `inconclusive` decision adopts nothing.
+///
+/// # Errors
+///
+/// [`ReleaseError::Missing`] names a document `fetch` does not have yet;
+/// [`ReleaseError::Refused`] names the check that failed.
+pub fn adoption_records(
+    release: &Event,
+    tools: &[Tool],
+    root: &str,
+    fetch: &dyn Fn(&str) -> Option<Vec<u8>>,
+) -> Result<Vec<AdoptionRecord>, ReleaseError> {
+    if release.pubkey != root {
+        return Err(refused("the release is not the coder-defaults root's"));
+    }
+    let get = |digest: &str| fetch(digest).ok_or_else(|| ReleaseError::Missing(digest.to_string()));
+    let body = nostr::ext::parse_record(release).map_err(refused)?;
+    let manifest_ref =
+        nostr::contracts::parse_artifact(body.get("manifest").unwrap_or(&Value::Null))
+            .map_err(refused)?;
+    let manifest_bytes = get(&manifest_ref.digest)?;
+    let parsed = eval_ext::parse_release(release, &manifest_bytes).map_err(refused)?;
+    if parsed.package != defaults_package(root) {
+        return Err(refused("the package is not coder-defaults"));
+    }
+    let at = pointer(release);
+    let mut records = Vec::new();
+    for artifact in &parsed.admissions {
+        let bytes = get(&artifact.digest)?;
+        if nostr::contracts::digest_bytes(&bytes) != artifact.digest
+            || bytes.len() as u64 != artifact.size
+        {
+            return Err(refused("an admission's bytes do not match its digest"));
+        }
+        let admission = eval_ext::parse_admission(&bytes).map_err(refused)?;
+        if admission.issuer != root {
+            return Err(refused("an admission is not the root's decision"));
+        }
+        if admission.decision != "admit" {
+            continue;
+        }
+        let (tool, tool_name) = tool_of(tools, &admission.subject);
+        records.push(AdoptionRecord {
+            release: at.clone(),
+            tool,
+            tool_name,
+            at: release.created_at,
+        });
+    }
+    Ok(records)
+}
+
+/// Whether `release` is signed by the `coder-defaults` root: the newest
+/// such release is read for adoptions ([`adoption_records`] checks the
+/// rest).
+#[must_use]
+pub fn is_defaults_release(release: &Event, root: &str) -> bool {
+    release.kind == nostr::ext::RELEASE_KIND && release.pubkey == root
+}
+
 /// Releases read from files already fetched, by digest.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct Fetched {
     pub files: HashMap<String, Arc<Vec<u8>>>,
+    /// The `coder-defaults` root, whose releases carry adoptions.
+    pub root: String,
+}
+
+impl Default for Fetched {
+    fn default() -> Self {
+        Self {
+            files: HashMap::new(),
+            root: defaults_root(),
+        }
+    }
 }
 
 impl ReleaseReader for Fetched {
@@ -468,8 +596,11 @@ impl ReleaseReader for Fetched {
         })
         .map_err(|error| error.to_string())
     }
-    fn adoption(&self, _: &Event, _: &[Tool]) -> Result<AdoptionRecord, String> {
-        Err("adoptions are not read yet".to_string())
+    fn adoptions(&self, event: &Event, tools: &[Tool]) -> Result<Vec<AdoptionRecord>, String> {
+        adoption_records(event, tools, &self.root, &|digest| {
+            self.files.get(digest).map(|bytes| bytes.as_ref().clone())
+        })
+        .map_err(|error| error.to_string())
     }
 }
 
@@ -566,8 +697,8 @@ pub fn admit(
         }
     }
     for event in adoptions {
-        match releases.adoption(event, tools) {
-            Ok(adoption) => admitted.adoptions.push(adoption),
+        match releases.adoptions(event, tools) {
+            Ok(records) => admitted.adoptions.extend(records),
             Err(why) => admitted.refused.push((event.id.clone(), why)),
         }
     }
@@ -605,9 +736,22 @@ pub fn suite_filter() -> Value {
     })
 }
 
-/// Reads the published results and the starter test sets from the relay
-/// at `url`, as `identity`: one subscription with [`filter`] and
-/// [`suite_filter`], until the relay's end of stored events or
+/// The relay filter for the `coder-defaults` releases: the `3184` releases
+/// `root` signed, newest first.
+#[must_use]
+pub fn defaults_filter(root: &str) -> Value {
+    json!({
+        "kinds": [nostr::ext::RELEASE_KIND],
+        "authors": [root],
+        "#t": ["oa:ext:release:v1"],
+        "limit": MAX_DEFAULTS,
+    })
+}
+
+/// Reads the published results, the starter test sets, and the
+/// `coder-defaults` releases from the relay at `url`, as `identity`: one
+/// subscription with [`filter`], [`suite_filter`], and
+/// [`defaults_filter`], until the relay's end of stored events or
 /// [`FETCH_BUDGET`]. The events are unverified here; [`admit`] checks each
 /// one.
 ///
@@ -623,9 +767,18 @@ pub async fn fetch_results(
         .await
         .map_err(|error| error.to_string())?;
     let id = "gym-results";
-    crate::relay::send(&mut socket, json!(["REQ", id, filter(), suite_filter()]))
-        .await
-        .map_err(|error| error.to_string())?;
+    crate::relay::send(
+        &mut socket,
+        json!([
+            "REQ",
+            id,
+            filter(),
+            suite_filter(),
+            defaults_filter(&defaults_root())
+        ]),
+    )
+    .await
+    .map_err(|error| error.to_string())?;
     let mut events = Vec::new();
     let reading = async {
         while let Some(frame) = socket.next().await {
@@ -639,7 +792,7 @@ pub async fn fetch_results(
                 (Some("EVENT"), Some(sub)) if sub == id => {
                     if let Ok(event) = serde_json::from_value::<Event>(value[2].clone()) {
                         events.push(event);
-                        if events.len() >= MAX_RESULTS + MAX_SUITES {
+                        if events.len() >= MAX_RESULTS + MAX_SUITES + MAX_DEFAULTS {
                             break;
                         }
                     }
@@ -669,6 +822,9 @@ pub struct GymKnowledge<E: Embed = Embedder> {
     /// Where the starter test sets' files are fetched, or `None` to read
     /// no releases.
     blobs: Option<String>,
+    /// Where the `coder-defaults` documents are fetched, or `None` to read
+    /// no adoptions.
+    documents: Option<String>,
     /// Release files fetched, by digest; content-addressed, so kept.
     files: Mutex<HashMap<String, Arc<Vec<u8>>>>,
     http: reqwest::Client,
@@ -696,9 +852,12 @@ impl GymKnowledge<Embedder> {
             Ok(value) if !value.trim().is_empty() => Some(value.trim().to_string()),
             _ => Some(SUITE_BLOBS.to_string()),
         };
-        Ok(GymKnowledge::new(
-            &corpus, embedder, recipient, judge, blobs,
-        ))
+        let documents = match std::env::var("CODER_DEFAULTS_DOCUMENTS") {
+            Ok(value) if value.trim() == "off" => None,
+            Ok(value) if !value.trim().is_empty() => Some(value.trim().to_string()),
+            _ => blobs.as_ref().map(|_| DEFAULTS_DOCUMENTS.to_string()),
+        };
+        Ok(GymKnowledge::new(&corpus, embedder, recipient, judge, blobs).with_documents(documents))
     }
 }
 
@@ -724,6 +883,7 @@ impl<E: Embed> GymKnowledge<E> {
             embedder,
             recipient: recipient.into(),
             judge,
+            documents: blobs.as_ref().map(|_| DEFAULTS_DOCUMENTS.to_string()),
             blobs: blobs.map(|base| base.trim_end_matches('/').to_string()),
             files: Mutex::new(HashMap::new()),
             http: reqwest::Client::builder()
@@ -732,6 +892,14 @@ impl<E: Embed> GymKnowledge<E> {
                 .unwrap_or_default(),
             vectors: Mutex::new(HashMap::new()),
         }
+    }
+
+    /// The same seam fetching `coder-defaults` documents from `documents`
+    /// (`None`: adoptions are not read).
+    #[must_use]
+    pub fn with_documents(mut self, documents: Option<String>) -> Self {
+        self.documents = documents.map(|base| base.trim_end_matches('/').to_string());
+        self
     }
 
     /// The records as of now.
@@ -757,13 +925,24 @@ impl<E: Embed> GymKnowledge<E> {
     ) -> Result<Admitted, String> {
         let events = fetch_results(url, identity).await?;
         let tools = self.records().tools;
-        let (suites, results): (Vec<Event>, Vec<Event>) = events
+        let root = defaults_root();
+        let (releases, results): (Vec<Event>, Vec<Event>) = events
             .into_iter()
             .partition(|event| event.kind == nostr::ext::RELEASE_KIND);
+        // The newest coder-defaults release carries every adoption.
+        let defaults: Vec<Event> = releases
+            .iter()
+            .filter(|event| is_defaults_release(event, &root))
+            .max_by_key(|event| (event.created_at, event.id.clone()))
+            .filter(|_| self.documents.is_some())
+            .cloned()
+            .into_iter()
+            .collect();
         // The runner also releases its catalog tools under the same
         // marker; a test set's package is `<slug>-tests`.
-        let suites: Vec<Event> = suites
+        let suites: Vec<Event> = releases
             .into_iter()
+            .filter(|event| !is_defaults_release(event, &root))
             .filter(is_test_set_release)
             .take(MAX_SUITES)
             .collect();
@@ -771,19 +950,58 @@ impl<E: Embed> GymKnowledge<E> {
             for release in &suites {
                 self.fetch_release(release, &tools).await;
             }
+            for release in &defaults {
+                self.fetch_defaults(release, &tools, &root).await;
+            }
             let fetched = Fetched {
                 files: self
                     .files
                     .lock()
                     .map(|files| files.clone())
                     .unwrap_or_default(),
+                root,
             };
-            admit(&tools, &results, &fetched, &suites, &[])
+            admit(&tools, &results, &fetched, &suites, &defaults)
         } else {
             admit(&tools, &results, &PendingReleases, &suites, &[])
         };
         self.publish(&admitted);
         Ok(admitted)
+    }
+
+    /// Fetches the documents a `coder-defaults` `release` needs, one digest
+    /// at a time as [`adoption_records`] asks for them, each checked
+    /// against its digest and kept. A failure leaves the document missing,
+    /// which [`admit`] reports.
+    async fn fetch_defaults(&self, release: &Event, tools: &[Tool], root: &str) {
+        let Some(base) = self.documents.clone() else {
+            return;
+        };
+        // A manifest and at most a bounded number of admissions.
+        for _ in 0..=MAX_DEFAULT_ADMISSIONS {
+            let missing = {
+                let Ok(files) = self.files.lock() else {
+                    return;
+                };
+                match adoption_records(release, tools, root, &|digest| {
+                    files.get(digest).map(|bytes| bytes.as_ref().clone())
+                }) {
+                    Err(ReleaseError::Missing(digest)) => digest,
+                    _ => return,
+                }
+            };
+            match self.fetch_file_from(&base, &missing, ".json").await {
+                Ok(bytes) => {
+                    if let Ok(mut files) = self.files.lock() {
+                        files.insert(missing, Arc::new(bytes));
+                    }
+                }
+                Err(why) => {
+                    eprintln!("gym records: a coder-defaults document was not fetched: {why}");
+                    return;
+                }
+            }
+        }
     }
 
     /// Fetches the files `release` needs, one digest at a time as
@@ -819,14 +1037,25 @@ impl<E: Embed> GymKnowledge<E> {
 
     /// One file from the blob store, by its `sha256:` digest, checked.
     async fn fetch_file(&self, digest: &str) -> Result<Vec<u8>, String> {
-        let base = self.blobs.as_deref().ok_or("no blob store")?;
+        let base = self.blobs.clone().ok_or("no blob store")?;
+        self.fetch_file_from(&base, digest, "").await
+    }
+
+    /// One file at `<base>/<hex><suffix>`, by its `sha256:` digest, checked
+    /// against it.
+    async fn fetch_file_from(
+        &self,
+        base: &str,
+        digest: &str,
+        suffix: &str,
+    ) -> Result<Vec<u8>, String> {
         let hex = digest
             .strip_prefix("sha256:")
             .filter(|hex| hex.len() == 64 && hex.chars().all(|c| c.is_ascii_hexdigit()))
             .ok_or_else(|| format!("{digest} is not a sha256 digest"))?;
         let response = self
             .http
-            .get(format!("{base}/{hex}"))
+            .get(format!("{base}/{hex}{suffix}"))
             .send()
             .await
             .map_err(|error| format!("{hex}: {error}"))?;
@@ -1095,6 +1324,10 @@ impl GymKb for GymKnowledge<Embedder> {
 
     fn tools(&self) -> Vec<Tool> {
         self.records().tools
+    }
+
+    fn adoptions(&self) -> Vec<AdoptionRecord> {
+        self.records().adoptions
     }
 
     fn ground<'a>(&'a self, lookup: &'a GymLookup) -> BoxFuture<'a, Result<Grounding, SeamError>> {

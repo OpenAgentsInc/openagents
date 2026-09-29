@@ -31,9 +31,16 @@
 //! (the `gym.*` and `eval.*` routes, [`gym`]), the authoring interview
 //! (`eval.author`), and the `openagents` command tree (T4 CLI). Each has a
 //! no-op default.
+//!
+//! The admitted-capability set ([`capability`]) is what the chat can do
+//! on the turn: the built-ins, the catalog, and Coder's adoptions. The
+//! `capability` question is asked over it, and a request that calls for
+//! a capability none of them covers (`capability.missing`) gets a bank
+//! line and a card that says so and how to add one ([`Tier::Capability`]).
 
 pub mod bank;
 pub mod calibration;
+pub mod capability;
 pub mod card;
 pub mod gym;
 pub mod judge;
@@ -46,20 +53,23 @@ pub mod wire;
 use serde_json::Value;
 
 pub use bank::{Bank, Entry, Facts};
+pub use capability::{Admitted, Capability};
 pub use judge::{Routing, reading, request};
 pub use policy::{Lead, Mode, Situation, Tier, decide};
 pub use seams::Seams;
 
 /// The question set's name, for evidence and for the wire. The route
-/// list is part of it: `chat-router-v2` added the Gym and eval routes. Its
-/// identity on the wire is [`set_id`], the name with the digest of the
-/// `route` question it asks.
-pub const SET: &str = "chat-router-v2";
+/// list is part of it: `chat-router-v2` added the Gym and eval routes, and
+/// `chat-router-v3` the `capability.missing` route and the `capability`
+/// question over the admitted set ([`capability`]). Its identity on the
+/// wire is [`set_id`], the name with the digest of the `route` question it
+/// asks.
+pub const SET: &str = "chat-router-v3";
 
 /// The digest of the question set: SHA-256, in hex, of the canonical JSON
 /// of the `route` question ([`judge::route`]), computed the way the Gym
 /// digests a question set (`gym::questions::QuestionSet::digest`), so the
-/// committed `crates/gym/questions/chat-router-route-v3.json` and a
+/// committed `crates/gym/questions/chat-router-route-v4.json` and a
 /// running worker name the same digest for the same question, and a
 /// changed route list or rubric is a changed set. The bank, the facts,
 /// the command groups, and the tools are outside it: the route question
@@ -87,17 +97,22 @@ pub fn set_id() -> String {
     format!("{SET}@{}", &set_digest()[..12])
 }
 
-/// The previous question set, which build 20 of the app still names in
-/// its requests. A request that names it is routed with [`SET`]; a
-/// judgment recorded under it reads with [`RouteId::parse`], since its
-/// twelve route words are all still routes ([`RouteId::V1`]).
+/// The question set build 21 names in its requests. A request that names
+/// it is routed with [`SET`]; a judgment recorded under it reads with
+/// [`RouteId::parse`], since its eighteen route words are all still routes.
+pub const SET_V2: &str = "chat-router-v2";
+
+/// The first question set, which build 20 of the app still names in its
+/// requests. A request that names it is routed with [`SET`]; a judgment
+/// recorded under it reads with [`RouteId::parse`], since its twelve
+/// route words are all still routes ([`RouteId::V1`]).
 pub const SET_V1: &str = "chat-router-v1";
 
-/// Whether a request's `router` field asks for routing: it names [`SET`]
-/// or [`SET_V1`]. An exact enum value, not text.
+/// Whether a request's `router` field asks for routing: it names [`SET`],
+/// [`SET_V2`], or [`SET_V1`]. An exact enum value, not text.
 #[must_use]
 pub fn asks_router(value: &serde_json::Value) -> bool {
-    matches!(value.as_str(), Some(SET | SET_V1))
+    matches!(value.as_str(), Some(SET | SET_V2 | SET_V1))
 }
 
 /// The least Jev relevance at which a retrieved passage is used.
@@ -149,6 +164,9 @@ pub enum RouteId {
     EvalResult,
     /// What the user's tests and tools have earned.
     EvalCredit,
+    /// The user asks for something a capability could do, and none of
+    /// the admitted ones does it (#9960).
+    CapabilityMissing,
     /// The judge chose `none`, or did not answer.
     Unknown,
 }
@@ -182,8 +200,8 @@ impl RouteId {
     ];
 
     /// Every route the `route` question offers, in order (`Unknown` is its
-    /// `none`).
-    pub const ALL: [RouteId; 18] = [
+    /// `none`). `chat-router-v3` added the last.
+    pub const ALL: [RouteId; 19] = [
         RouteId::Meta,
         RouteId::Smalltalk,
         RouteId::General,
@@ -202,6 +220,7 @@ impl RouteId {
         RouteId::EvalCheck,
         RouteId::EvalResult,
         RouteId::EvalCredit,
+        RouteId::CapabilityMissing,
     ];
 
     /// Whether this is one of the Gym and eval routes.
@@ -232,6 +251,7 @@ impl RouteId {
             RouteId::EvalCheck => "eval.check",
             RouteId::EvalResult => "eval.result",
             RouteId::EvalCredit => "eval.credit",
+            RouteId::CapabilityMissing => "capability.missing",
             RouteId::Unknown => "none",
         }
     }
@@ -331,6 +351,13 @@ impl RouteId {
             RouteId::EvalCredit => {
                 "What the user's tests, results, and tools have earned: XP from checks and \
                  adoptions, who checked their work, or whether Coder adopted their tool"
+            }
+            RouteId::CapabilityMissing => {
+                "The user asks us to do or reach something now that would take a capability we \
+                 don't have: book, buy, or order something, send or read their email or \
+                 messages, use their calendar or another account or service, browse or open a \
+                 site, control a device, or fetch live data; not a question about whether we \
+                 can, and not work on their code, which Coder does"
             }
             RouteId::Unknown => "None of these fits the message",
         }

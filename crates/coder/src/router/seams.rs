@@ -276,6 +276,13 @@ pub trait GymKb: Send + Sync {
     /// The tool catalog, which the router's `tool` question offers; empty
     /// when unavailable, and the question is then not asked.
     fn tools(&self) -> Vec<super::gym::Tool>;
+    /// Coder's adoptions, read from the latest `coder-defaults` release;
+    /// with the catalog, the admitted-capability set's non-built-in
+    /// entries ([`super::capability::Admitted::of`]). Empty when none is
+    /// read.
+    fn adoptions(&self) -> Vec<super::gym::AdoptionRecord> {
+        Vec::new()
+    }
     /// The verified records, and for `gym.news` the items relevant to the
     /// message.
     fn ground<'a>(

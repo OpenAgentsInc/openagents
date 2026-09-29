@@ -13,10 +13,10 @@ use serde::Serialize;
 use serde_json::{Value, json};
 
 use super::bank::Bank;
-use super::set_id;
 use super::judge::Routing;
 use super::policy::{Mode, Tier};
 use super::seams::Passage;
+use super::set_id;
 use crate::classify::Route;
 
 /// The NIP-CJ verdict for a routed turn.
@@ -56,8 +56,10 @@ pub fn line(routing: &Routing, tier: &Tier) -> String {
 /// `confidence`, `bank`, `answer`, `answer_p`, `needs_specifics`, and
 /// `tier` keep the meaning `coder-first-response-v2` gave them, so a
 /// reader from before the router still reads them; `route`, `route_p`,
-/// `lane_p`, `risk`, `risk_p`, `cli_group`, and `tool` are the router's.
-/// `set` is the question set's identity, `chat-router-v2@<digest>`
+/// `lane_p`, `risk`, `risk_p`, `cli_group`, `tool`, `capability` (the
+/// admitted capability the turn calls for, an id from the typed set, or
+/// null), `capability_p`, and `capability_missing_p` are the router's.
+/// `set` is the question set's identity, `chat-router-v3@<digest>`
 /// ([`set_id`]), whichever set the request named, and `bank` the bank's,
 /// so a judgment names the exact question and answers it was decided
 /// with, as an eval report pins them (#9959). In shadow mode `tier` is
@@ -95,6 +97,9 @@ pub fn judgment(
         "confidence": routing.opener.as_ref().map_or(0.0, |(_, p)| *p),
         "cli_group": routing.cli_group.as_ref().map(|(group, _)| group.clone()),
         "tool": routing.tool.as_ref().map(|(tool, _)| tool.clone()),
+        "capability": routing.capability.as_ref().map(|(entry, _)| entry.id.clone()),
+        "capability_p": routing.capability.as_ref().map_or(0.0, |(_, p)| *p),
+        "capability_missing_p": routing.capability_missing_p,
         "risk": routing.risk.word(),
         "risk_p": routing.risk_p,
         "tier": tier.word(),
@@ -142,6 +147,9 @@ pub struct Served {
     pub route: &'static str,
     /// `id@version` of the bank entry that supplied text, when one did.
     pub answer: Option<String>,
+    /// The admitted capability that answered, by its id in the typed
+    /// set, when the reading named one at the policy's confidence.
+    pub capability: Option<String>,
     /// The model that wrote any of the text: `bank:<name>` when none did,
     /// the continuation's model for a personalized stem, `None` to keep
     /// the door's.
@@ -162,6 +170,9 @@ pub fn annotate(result: &mut Value, served: &Served, bank: &Bank) {
     if let Some(answer) = &served.answer {
         result["answer"] = json!(answer);
     }
+    if let Some(capability) = &served.capability {
+        result["capability"] = json!(capability);
+    }
     if let Some(model) = &served.model {
         result["model"] = json!(model);
     }
@@ -181,8 +192,9 @@ pub fn annotate(result: &mut Value, served: &Served, bank: &Bank) {
 }
 
 /// One routed turn in the worker's log. Every field is an id from the
-/// bank, the route catalog, or the CLI group list, a probability, a tier
-/// word, or a duration: there is no field that could hold message text.
+/// bank, the route catalog, the CLI group list, the tool catalog, or the
+/// admitted-capability set, a probability, a tier word, or a duration:
+/// there is no field that could hold message text.
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct Shadow {
     /// The question set, `chat-router-v2@<digest>`.
@@ -204,6 +216,11 @@ pub struct Shadow {
     pub cli_group: Option<String>,
     /// The `tool` reading's argmax, a catalog id.
     pub tool: Option<String>,
+    /// The `capability` reading's argmax when it is an admitted entry, by
+    /// its id in the typed set.
+    pub capability: Option<String>,
+    pub capability_p: f64,
+    pub capability_missing_p: f64,
     pub risk: &'static str,
     pub risk_p: f64,
     /// What the router decided.
@@ -245,6 +262,12 @@ impl Shadow {
             opener_p: routing.opener.as_ref().map_or(0.0, |(_, p)| *p),
             cli_group: routing.cli_group.as_ref().map(|(group, _)| group.clone()),
             tool: routing.tool.as_ref().map(|(tool, _)| tool.clone()),
+            capability: routing
+                .capability
+                .as_ref()
+                .map(|(entry, _)| entry.id.clone()),
+            capability_p: routing.capability.as_ref().map_or(0.0, |(_, p)| *p),
+            capability_missing_p: routing.capability_missing_p,
             risk: routing.risk.word(),
             risk_p: routing.risk_p,
             decided: decided.word(),
@@ -287,14 +310,14 @@ mod tests {
 
     /// The bank's digest moves with every reviewed text change and the
     /// set's with every change to the route question, so the fixtures name
-    /// them as `chat-answers-v1@DIGEST` and `chat-router-v2@DIGEST`.
+    /// them as `chat-answers-v1@DIGEST` and `chat-router-v3@DIGEST`.
     fn undigested(mut body: Value) -> Value {
         if body["bank"].is_string() {
             body["bank"] = json!("chat-answers-v1@DIGEST");
         }
         if body["set"].is_string() {
             assert_eq!(body["set"], set_id());
-            body["set"] = json!("chat-router-v2@DIGEST");
+            body["set"] = json!("chat-router-v3@DIGEST");
         }
         body
     }
@@ -305,9 +328,9 @@ mod tests {
     #[test]
     fn the_set_is_named_with_its_digest() {
         let id = set_id();
-        assert!(id.starts_with("chat-router-v2@"), "{id}");
-        assert_eq!(id.len(), "chat-router-v2@".len() + 12);
-        assert!(crate::router::set_digest().starts_with(&id["chat-router-v2@".len()..]));
+        assert!(id.starts_with("chat-router-v3@"), "{id}");
+        assert_eq!(id.len(), "chat-router-v3@".len() + 12);
+        assert!(crate::router::set_digest().starts_with(&id["chat-router-v3@".len()..]));
         let committed = ::gym::questions::load(crate::router_eval::SUITE_QUESTIONS)
             .expect("the committed question set reads");
         assert_eq!(committed.digest(), crate::router::set_digest());
@@ -338,6 +361,9 @@ mod tests {
             cli_group: None,
             cli_alternatives: Vec::new(),
             tool: None,
+            capability: None,
+            capability_missing_p: 0.02,
+            capability_closest: None,
             risk: Risk::Ok,
             risk_p: 0.99,
         }
@@ -356,7 +382,9 @@ mod tests {
         );
         assert!(crate::router::asks_router(&request["router"]));
         let v2 = fixture("router-request-v2.json");
-        assert_eq!(v2["router"], crate::router::SET);
+        assert_eq!(v2["router"], crate::router::SET_V2, "build 21's request");
+        assert!(crate::router::asks_router(&v2["router"]));
+        assert!(crate::router::asks_router(&json!(crate::router::SET)));
         assert!(crate::router::card::draft(&v2["draft"]).is_ok());
         let context = Context::of(&request["context"]);
         assert_eq!(context.computer_ready, Some(false));
@@ -476,6 +504,16 @@ mod tests {
             ),
             ("router-card-draft.json", Card::Draft { draft }),
             (
+                "router-card-capability.json",
+                Card::Capability {
+                    closest: Some(crate::router::capability::of_tool(&tool(
+                        "project-map",
+                        "Project map",
+                    ))),
+                    add: nostr::cj_conversation::Add::Author,
+                },
+            ),
+            (
                 "router-card-credit.json",
                 Card::Credit {
                     awards: vec![Award {
@@ -587,6 +625,9 @@ mod tests {
                 "opener_p",
                 "cli_group",
                 "tool",
+                "capability",
+                "capability_p",
+                "capability_missing_p",
                 "risk",
                 "risk_p",
                 "decided",

@@ -74,7 +74,9 @@ pub fn route(route: RouteId) -> Value {
              link GitHub, or asking whether we can do a kind of work for them",
             Some(
                 "Handing us a concrete task in the user's own repository (work.dispatch); how to \
-                 use one app feature step by step (product.kb or account)",
+                 use one app feature step by step (product.kb or account); asking us to do \
+                 something now, such as book, send, or read their accounts, rather than whether \
+                 we can (capability.missing)",
             ),
             &[
                 "who r u",
@@ -102,7 +104,8 @@ pub fn route(route: RouteId) -> Value {
             Some(
                 "Facts about OpenAgents or us (product.kb, meta), including what a test, a test \
                  set, or a tool is in the Gym (product.kb); work on the user's own code \
-                 (work.dispatch)",
+                 (work.dispatch); asking us to do, fetch, or reach something now, such as a \
+                 booking, their email, a site, a device, or live data (capability.missing)",
             ),
             &[
                 "explain CRDTs simply",
@@ -166,7 +169,9 @@ pub fn route(route: RouteId) -> Value {
                  (cli); testing a Gym tool on Coder (eval.run); making a tool or writing a \
                  test set for a tool with us (eval.author), including tests for a Gym tool \
                  such as Project map, Code finder, or Test reader, which are Coder's tools, \
-                 not the user's code",
+                 not the user's code; reaching a service, site, account, or device outside \
+                 their code and computer, such as email, a calendar, or a booking \
+                 (capability.missing)",
             ),
             &[
                 "fix the typo in my README",
@@ -362,8 +367,110 @@ pub fn route(route: RouteId) -> Value {
                 "do I get paid for my tests?",
             ],
         ),
+        RouteId::CapabilityMissing => option(
+            "The user asks us to do or reach something now that would take a capability: \
+             book, buy, or order something, send or read their email, texts, or messages, \
+             use their calendar, a service, or an account of theirs, browse or open a site, \
+             control a device, play or set something on their phone, or fetch live data such \
+             as prices, weather, or traffic",
+            Some(
+                "Asking whether we can do such a thing, or what we can do (meta); work on their \
+                 own code, repository, files, or a computer they connected, which Coder does \
+                 (work.dispatch); an openagents command for their own account or devices \
+                 (cli); the wallet (wallet); advice or an explanation with nothing to do now \
+                 (general); making a new capability with us (eval.author)",
+            ),
+            &[
+                "Book me a flight to Denver next Friday",
+                "read my email and tell me what's urgent",
+                "Browse example.com and tell me what they charge",
+                "turn off the lights in my living room",
+                "what's the current price of bitcoin",
+                "join my zoom meeting and take notes",
+            ],
+        ),
         RouteId::Unknown => Value::from(RouteId::Unknown.description()),
     }
+}
+
+/// The `capability` question's instructions.
+#[must_use]
+pub fn capability_instructions() -> Value {
+    instructions(
+        "Which of our admitted capabilities, if any, does the user's latest message call for?",
+        "A capability is something we can do or reach on this turn, listed with where it can \
+         be used from. Pick the one the request needs when one covers it, wherever it is \
+         usable from. Pick `none` when the message asks us to do or reach something now that \
+         none of them covers. Pick `not-a-capability-request` when the message asks for no \
+         capability at all: a question we can answer from what we know, an explanation, \
+         writing help, small talk, a goodbye, or a question about what we can do.",
+    )
+}
+
+/// An admitted capability's option: its name, line, kind, and reach, with
+/// the tune-split messages it fits when it has any.
+#[must_use]
+pub fn capability(capability: &super::capability::Capability) -> Value {
+    let mut rubric = capability.criterion();
+    let examples: &[&str] = match capability.id.as_str() {
+        "chat.knowledge" => &["how do I connect my Mac", "what's the Grid"],
+        super::capability::CODER => &[
+            "fix the typo in my README",
+            "run my project's test suite and fix what fails",
+            "use Project map on my repo before you refactor the auth module",
+        ],
+        "chat.cli" => &["which of my computers are online", "show me my quests"],
+        "chat.wallet" => &["how do I get paid", "how do I receive bitcoin here"],
+        "chat.account" => &[
+            "how do I remove a computer",
+            "how do I add another computer",
+        ],
+        "chat.gym" => &[
+            "Test Project map on Coder",
+            "help me make a capability that books flights",
+            "What's new in the Gym?",
+        ],
+        _ => &[],
+    };
+    if !examples.is_empty() {
+        rubric["examples"] = json!(examples);
+    }
+    rubric
+}
+
+/// The `capability` question's `none`: a capability request none of the
+/// admitted ones covers.
+#[must_use]
+pub fn capability_none() -> Value {
+    option(
+        "The message asks us to do or reach something now that none of the listed \
+         capabilities covers: another service, site, device, account, or data source",
+        Some("Asking whether we could do it (not-a-capability-request)"),
+        &[
+            "Book me a flight to Denver next Friday",
+            "read my email and tell me what's urgent",
+            "turn off the lights in my living room",
+            "what's the current price of bitcoin",
+        ],
+    )
+}
+
+/// The `capability` question's `not-a-capability-request`.
+#[must_use]
+pub fn capability_not_a_request() -> Value {
+    option(
+        "The message asks for no capability: a question we can answer from what we know, an \
+         explanation, writing help, advice, small talk, thanks, a goodbye, or a question \
+         about us and what we can or cannot do",
+        None,
+        &[
+            "explain CRDTs simply",
+            "who r u",
+            "hey",
+            "could you book flights if I asked you to?",
+            "what's a good way to find cheap flights",
+        ],
+    )
 }
 
 /// The `tool` question's instructions.
@@ -397,12 +504,14 @@ pub fn risk(risk: Risk) -> Value {
     match risk {
         Risk::Ok => option(
             "Nothing to refuse or warn about: an ordinary question or request, including how \
-             to back up or find the user's own keys, or asking us to sign in to their own GitHub",
+             to back up or find the user's own keys, asking us to sign in to their own GitHub, \
+             or asking us to buy or book something somewhere else",
             None,
             &[
                 "where are my recovery words",
                 "where can I find my npub",
                 "can you sign in to github for me",
+                "buy 100 shares of AAPL",
             ],
         ),
         Risk::SecretShared => option(
@@ -437,8 +546,12 @@ pub fn risk(risk: Risk) -> Value {
             ],
         ),
         Risk::MoneyMovement => option(
-            "The user asks us to send, pay, or move money or bitcoin",
-            Some("Asking how sending or paying works"),
+            "The user asks us to send, pay, or move money or bitcoin from their wallet",
+            Some(
+                "Asking how sending or paying works; buying goods, shares, tickets, or a service \
+                 somewhere else, which is a request for a capability we may not have, not a \
+                 payment from the wallet",
+            ),
             &["send 5000 sats to …", "pay this invoice lnbc…"],
         ),
         Risk::Unknown => Value::from("None of these describes the message"),
@@ -544,6 +657,14 @@ pub fn examples() -> Vec<String> {
     values.extend(["chat", "computer"].into_iter().map(lane));
     values.push(specifics(true));
     values.push(specifics(false));
+    values.extend(
+        super::capability::Admitted::builtin()
+            .entries
+            .iter()
+            .map(capability),
+    );
+    values.push(capability_none());
+    values.push(capability_not_a_request());
     let mut examples: Vec<String> = values
         .iter()
         .filter_map(|value| value.get("examples")?.as_array().cloned())

@@ -600,6 +600,7 @@ impl Gym {
             "result" => Code::ResultCard,
             "news" => Code::NewsCard,
             "check" => Code::CheckCard,
+            "capability" => Code::CapabilityCard,
             _ => Code::CreditCard,
         });
     }
@@ -1488,6 +1489,17 @@ impl Gym {
                 Card::Run {
                     completed, planned, ..
                 } => run_card_plain(&id, completed, planned),
+                // No capability for what was asked (#9960): the closest
+                // admitted one, and the way to add one the worker named.
+                Card::Capability { closest, add } => {
+                    let gym = meta.offers.iter().find_map(|offer| match offer {
+                        Offer::OpenScreen {
+                            screen: Screen::VerseGym,
+                        } => Some(Action::VerseGym),
+                        _ => None,
+                    });
+                    ui::capability_card(&mut self.actions, &id, closest.as_ref(), add, gym)
+                }
             };
             self.shown(&id, view.kind);
             self.cards.insert(id.clone(), view);
