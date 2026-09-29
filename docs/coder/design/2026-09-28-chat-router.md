@@ -7,7 +7,8 @@ and the phone's offers), with every question asked as structured entries
 and the policy tuned on the labeled set's tune split
 ([Structured questions and tuning](#structured-questions-and-tuning-2026-09-28)).
 On 2026-09-29 the question set became `chat-router-v2`, with the Gym and
-eval routes, the Gym's records, cards, and eval offers
+eval routes, the Gym's records, cards, and eval offers; it is deployed on
+the chat worker (release `0546032e17`) and serves build 21's Gym in chat
 ([Gym and eval routes](#gym-and-eval-routes-2026-09-29)).
 It extends the first response that shipped in `95c7eda2e3` (`crates/coder/src/first.rs`,
 [the first-reply measurement](../measurements/2026-09-28-first-reply.md)) and
@@ -1169,6 +1170,36 @@ use the Gym and extension evals through this router
 Selection stays Jev's typed questions; nothing matches words. Measured in
 [the chat-router-v2 measurement](../measurements/2026-09-29-chat-router-v2.md).
 
+**Status, as shipped and measured (2026-09-29).** Every route below is
+implemented and live on the chat worker. The worker's releases:
+`17c7484f9f` (the routes, #9936), `ebaa2af04a` (skill-shaped tools stay in
+the interview, #9945, with the subscription probe for #9946), and
+`0546032e17` (the starter test sets offered, #9943, and news without ids
+or banned words, #9944).
+
+| Route | Status | Held-out precision | Live check |
+| --- | --- | --- | --- |
+| `gym.news` | Live | 100 % | "What's new in the Gym?" answered from five records in 7.6 s, with no id or banned word (#9944) |
+| `eval.run` | Live | 100 %; the right tool on 6 of 6 offers (#9943) | "Test Project map on Coder" answered in 0.60 s with the tool card and `start_eval` for the starter test set; a phone ran it to a result (#9939) |
+| `eval.author` | Live | 100 % (7 of 7 after #9945) | 11 of 11 make-a-tool requests went the right way: skills to a draft, tools that need new code to a Coder offer (#9945) |
+| `eval.check` | Live | 100 % | The check card and **RUN THE CHECK**; see the known miss below |
+| `eval.result` | Live | 87.5 % | A named tool's published result, or **See your result** |
+| `eval.credit` | Live | 87.5 % | The bank's answers; the phone draws `CARD-07` from its ledger |
+
+Across the held-out set, canned precision stayed 100 % and dispatch 94.7 %
+over two runs; the v1 rows stayed inside their recorded spread. Known
+misses:
+
+- A bare "What's a test?" reads `general` with `gym.what_test` at 0.40 to
+  0.54, so the model answers it.
+- "Is there a result I can check?", the **Check a result** chip's first
+  message, reads `eval.check` at only 0.46 to 0.54 and falls to the model,
+  which has no records. The chip's message changes to "Find me a result to
+  check", which reads `eval.check` at 0.99 live.
+- "What's the Gym?" reads `product.kb` and answered from the Gym note
+  before it was reworded for evals; the reworded note ships with the next
+  worker deploy.
+
 ### The question set: `chat-router-v2`
 
 The route list is part of the set's identity, so it is a new set.
@@ -1298,8 +1329,8 @@ hosted runner (#9935) fill it from the runner's report.
   draws `CARD-07` from its own ledger (`xp_ledger::eval`, #9938) on an
   `eval.credit` route, and `router::card::Card::Credit` is ready for a
   worker that is given the trainer.
-- **The hosted runner** (#9935): `start_eval` offers name the hosted
-  runner when the test set fits its bounds.
+- **The hosted runner** (#9935), since shipped: `start_eval` offers name
+  the hosted runner when the test set fits its bounds.
 
 ## Open questions for the owner
 
