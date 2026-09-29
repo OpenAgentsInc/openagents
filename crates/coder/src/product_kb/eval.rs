@@ -30,11 +30,17 @@ use crate::router::seams::Lookup;
 /// The questions file.
 const QUESTIONS: &str = include_str!("../../fixtures/product-kb/questions-v1.json");
 
-/// The grounded model: the chat worker's model, as Google names it.
-const MODEL: &str = "gemini-3.8-flash";
+/// The grounded model: the chat worker's model, as the gateway and
+/// OpenRouter name it.
+const MODEL: &str = crate::generate::Lane::Gemini.model();
+
+/// The same model as Google names it, without the vendor prefix.
+fn google_model() -> &'static str {
+    MODEL.strip_prefix("google/").unwrap_or(MODEL)
+}
 
 /// Its list price in dollars per million input and output tokens, as
-/// OpenRouter lists `google/gemini-3.8-flash` (retrieved 2026-09-28).
+/// OpenRouter lists [`MODEL`] (retrieved 2026-09-28).
 const USD_PER_MILLION: (f64, f64) = (0.75, 3.75);
 
 /// An OpenAI-compatible chat endpoint for [`MODEL`]: its URL, the model
@@ -52,14 +58,14 @@ impl Door {
         if let Ok(key) = std::env::var("GEMINI_API_KEY") {
             return Door {
                 url: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
-                model: MODEL.to_string(),
+                model: google_model().to_string(),
                 key,
                 http,
             };
         }
         Door {
             url: "https://openrouter.ai/api/v1/chat/completions",
-            model: format!("google/{MODEL}"),
+            model: MODEL.to_string(),
             key: std::env::var("OPENROUTER_API_KEY").expect("GEMINI_API_KEY or OPENROUTER_API_KEY"),
             http,
         }
@@ -407,7 +413,7 @@ async fn live_product_kb_eval() {
         "corpus": kb.corpus().tag(),
         "entries": kb.corpus().base.entries.len(),
         "relevance_set": SET,
-        "model": MODEL,
+        "model": google_model(),
         "embedding_model": kb.embedder.model(),
         "errors": errors,
         "retrieval": {

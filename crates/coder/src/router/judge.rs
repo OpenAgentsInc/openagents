@@ -326,7 +326,7 @@ mod tests {
 
     fn facts() -> Facts {
         crate::router::worker_facts(
-            "google/gemini-3.8-flash",
+            crate::generate::Lane::Gemini.model(),
             Some(crate::generate::DEFAULT_DOOR_URL),
             Some((6, 40)),
             &crate::router::Seams::default(),
@@ -387,7 +387,7 @@ mod tests {
 
     fn questions_without_quota() -> Questions {
         let facts = crate::router::worker_facts(
-            "google/gemini-3.8-flash",
+            crate::generate::Lane::Gemini.model(),
             Some(crate::generate::DEFAULT_DOOR_URL),
             None,
             &crate::router::Seams::default(),
@@ -531,7 +531,7 @@ mod tests {
         ];
         let bank = Bank::builtin();
         let facts = crate::router::worker_facts(
-            "google/gemini-3.8-flash",
+            crate::generate::Lane::Gemini.model(),
             Some(crate::generate::DEFAULT_DOOR_URL),
             Some((6, 40)),
             &crate::router::Seams::default(),

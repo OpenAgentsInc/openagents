@@ -253,7 +253,7 @@ mod tests {
     /// The door's facts name the configured model and gateway, or nothing.
     #[test]
     fn door_facts_name_the_configured_model_or_nothing() {
-        let gateway = Facts::of("google/gemini-3.8-flash", Some(DEFAULT_DOOR_URL));
+        let gateway = Facts::of(ModelLane::Gemini.model(), Some(DEFAULT_DOOR_URL));
         assert_eq!(
             gateway.chat_model.as_deref(),
             Some("Google's Gemini 3.8 Flash")
@@ -262,7 +262,7 @@ mod tests {
             gateway.chat_model_host.as_deref(),
             Some("the Vercel AI Gateway")
         );
-        let elsewhere = Facts::of("google/gemini-3.8-flash", Some("http://127.0.0.1:9"));
+        let elsewhere = Facts::of(ModelLane::Gemini.model(), Some("http://127.0.0.1:9"));
         assert_eq!(elsewhere.chat_model_host, None);
         assert_eq!(Facts::of("some/other-model", None), Facts::default());
     }

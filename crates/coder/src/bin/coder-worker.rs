@@ -2132,6 +2132,9 @@ mod tests {
     use coder::generate::StubGenerate;
     use secp256k1::SecretKey;
 
+    /// The model the recorded Gemini stream answers as.
+    const GEMINI: &str = coder::generate::Lane::Gemini.model();
+
     // Exercise the worker's response path in process. The stub door needs
     // no credentials and never makes a model request.
     async fn response(payload: Value, decline: Option<&str>) -> Value {
@@ -2660,11 +2663,7 @@ mod tests {
     fn slow_door(delay: Duration) -> Door {
         let stream = include_str!("../../fixtures/gateway/google-gemini-3.8-flash.sse");
         let url = serve_once(delay, "text/event-stream", stream.to_string());
-        Door::Live(coder::generate::ResponsesDoor::new(
-            url,
-            "google/gemini-3.8-flash",
-            "test",
-        ))
+        Door::Live(coder::generate::ResponsesDoor::new(url, GEMINI, "test"))
     }
 
     /// A judge on loopback that answers `answers` after `delay`.
@@ -2712,7 +2711,7 @@ mod tests {
         // The loopback door is no gateway and the test worker has no
         // quota, so the answers that need either are not offered, and the
         // judge answers only the rest.
-        let facts = router::worker_facts("google/gemini-3.8-flash", None, None, &Seams::default());
+        let facts = router::worker_facts(GEMINI, None, None, &Seams::default());
         let answers: Vec<&str> = bank
             .answers
             .iter()
@@ -2875,7 +2874,7 @@ mod tests {
         let text = result["text"].as_str().unwrap();
         assert!(text.starts_with("Here's how that works.\n\n"), "{text}");
         assert!(text.len() > "Here's how that works.\n\n".len());
-        assert_eq!(result["model"], "google/gemini-3.8-flash");
+        assert_eq!(result["model"], GEMINI);
     }
 
     /// A sure prepared answer is the whole reply in the judge's time: one
@@ -2927,7 +2926,7 @@ mod tests {
         assert_eq!(bodies[1]["tier"], "model");
         assert!(bodies[1]["opener"].is_null());
         let result = bodies.last().unwrap();
-        assert_eq!(result["model"], "google/gemini-3.8-flash");
+        assert_eq!(result["model"], GEMINI);
         assert!(result["answer"].is_null());
         // Any partial is the model's own start of the result.
         let text = result["text"].as_str().unwrap();
@@ -3254,7 +3253,7 @@ mod tests {
         assert_eq!(judgment["shadow"], "offer");
         assert!(of_type(&frames, "offer").is_empty());
         let result = &frames.last().unwrap().1;
-        assert_eq!(result["model"], "google/gemini-3.8-flash");
+        assert_eq!(result["model"], GEMINI);
         assert!(
             result["text"]
                 .as_str()
@@ -3278,7 +3277,7 @@ mod tests {
         .await;
         assert!(of_type(&frames, "offer").is_empty());
         assert_eq!(of_type(&frames, "judgment")[0]["tier"], "model");
-        assert_eq!(frames.last().unwrap().1["model"], "google/gemini-3.8-flash");
+        assert_eq!(frames.last().unwrap().1["model"], GEMINI);
     }
 
     /// A product knowledge seam for tests.
@@ -3344,11 +3343,7 @@ mod tests {
             "text/event-stream",
             stream.to_string(),
         );
-        let door = Door::Live(coder::generate::ResponsesDoor::new(
-            url,
-            "google/gemini-3.8-flash",
-            "test",
-        ));
+        let door = Door::Live(coder::generate::ResponsesDoor::new(url, GEMINI, "test"));
         let grounded = frames_routed(
             door,
             Some(judge(Duration::ZERO, answers)),
@@ -3366,7 +3361,7 @@ mod tests {
         let result = &grounded.last().unwrap().1;
         assert_eq!(result["type"], "result", "{result}");
         assert_eq!(result["tier"], "grounded");
-        assert_eq!(result["model"], "google/gemini-3.8-flash");
+        assert_eq!(result["model"], GEMINI);
         assert_eq!(result["citations"].as_array().unwrap().len(), 1);
     }
 

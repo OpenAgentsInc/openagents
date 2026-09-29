@@ -16,8 +16,8 @@
 //! the configured decision profile (`TYPESAFE_API_KEY`). Answers are written
 //! by the gateway door when `CODER_DOOR_KEY` or `CODER_AI_GATEWAY_KEY` is
 //! set, else by `CODEBASE_KB_MODEL` on OpenAI when `OPENAI_API_KEY` is set
-//! (default `gpt-4.1-mini`), else on OpenRouter (default
-//! `google/gemini-3.8-flash`). Read `docs/coder/design/codebase-kb.md`.
+//! (default `gpt-4.1-mini`), else on OpenRouter (default: the Gemini
+//! lane's model). Read `docs/coder/design/codebase-kb.md`.
 
 use std::path::PathBuf;
 use std::time::Instant;
@@ -36,7 +36,7 @@ const USAGE: &str = "usage:
 
 /// The OpenRouter model that answers when no gateway door or OpenAI key is
 /// configured.
-const DEFAULT_MODEL: &str = "google/gemini-3.8-flash";
+const DEFAULT_MODEL: &str = coder::generate::Lane::Gemini.model();
 
 /// The OpenAI model that answers when `OPENAI_API_KEY` is set and no
 /// gateway door is.
