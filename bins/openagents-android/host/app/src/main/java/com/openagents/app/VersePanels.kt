@@ -36,9 +36,11 @@ class VersePanels(private val context: Context, private val world: VerseSurface)
     private val close = context.text("✕", 18f).apply { gravity = Gravity.CENTER; contentDescription = "Back to world" }
     private val scroll = ScrollView(context).apply { isFillViewport = false }
     private val fixed = context.column()
+    /** Train Coder on the EVALS board: the activity sends Rust `gym_train`. */
+    var onTrain: (() -> Unit)? = null
     private val gym = GymPanel(context, world)
     private val results = ResultsPanel(context, world) { mounted = null; refresh() }
-    private val evals = EvalsPanel(context, world)
+    private val evals = EvalsPanel(context, world) { onTrain?.invoke() }
     private var evalsView: JSONObject? = null
     private var evalsRequested = -1L
     private var insetTop = 0

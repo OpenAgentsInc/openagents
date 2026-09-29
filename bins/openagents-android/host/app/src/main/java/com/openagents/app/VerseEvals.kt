@@ -13,13 +13,25 @@ import android.widget.LinearLayout
 import android.widget.Switch
 import org.json.JSONObject
 
-internal class EvalsPanel(private val context: Context, private val world: VerseSurface) {
+internal class EvalsPanel(
+    private val context: Context,
+    private val world: VerseSurface,
+    /** Train Coder: opt into the Gym; Rust opens its intro on the Chat tab. */
+    private val train: () -> Unit,
+) {
     /** The `evals_view` Rust sent, or a line while it reads. */
     fun build(view: JSONObject?): View = context.column().apply {
         if (view == null) {
             add(context.label("Reading results…", 14f, Palette.SECONDARY, key = "evals-loading"))
             return@apply
         }
+        // The way into the Gym's loop: test a capability on Coder, in chat.
+        add(context.label("Train Coder", 16f, bold = true, key = "evals-train").apply {
+            isClickable = true; isFocusable = true
+            setPadding(0, context.dp(8), 0, context.dp(8))
+            setOnClickListener { train() }
+        })
+        addDivider(12)
         // Compare notes: agents in the Gym.
         val toggle = context.row().apply {
             addView(context.column().apply {

@@ -23,7 +23,9 @@ use serde_json::Value;
 #[cfg(test)]
 /// Words that never appear on a label, button, chip, card, or sheet
 /// (`Words on screen` in the wireframe). Answers may differ; the phone's
-/// own words may not.
+/// own words may not. "Tool" is banned as an umbrella word (the word is
+/// "capability", decided 2026-09-29); a model's tool call in a transcript
+/// is the model's text, not a label.
 pub(crate) const BANNED: &[&str] = &[
     "npub",
     "nsec",
@@ -37,6 +39,7 @@ pub(crate) const BANNED: &[&str] = &[
     "wasm",
     "plugin",
     "extension",
+    "tool",
     "benchmark",
     "terminal-bench",
     "tb",
@@ -137,13 +140,13 @@ pub(crate) enum Action {
     Profile,
     /// The main menu's Gym in the Verse row.
     VerseGym,
-    /// First run, step 1: **CHOOSE CODER**.
+    /// The Gym intro, step 1: **CHOOSE CODER**.
     ChooseCoder,
-    /// First run, the end card's **LET'S GO**.
+    /// The Gym intro, the end card's **LET'S GO**.
     LetsGo,
-    /// First run: **Ask OpenAgents a question first**.
-    AskFirst,
-    /// Leave the guided path when a run can't start.
+    /// The Gym intro's **Not now**: back to the chat, opted out.
+    NotNow,
+    /// Leave the intro when a run can't start.
     SkipFirstRun,
     /// Close the level-up overlay.
     Nice,
@@ -497,14 +500,14 @@ pub(crate) fn verdict_headline(verdict: Verdict3, check: Option<Verdict3>, pilot
     match verdict {
         Verdict3::Pass => "CODER GOT BETTER".into(),
         Verdict3::Inconclusive => "NO CLEAR CHANGE".into(),
-        Verdict3::Fail => "CODER DID WORSE WITH THIS TOOL".into(),
+        Verdict3::Fail => "CODER DID WORSE WITH THIS CAPABILITY".into(),
     }
 }
 
 /// The tests passed without and with the tool.
 pub(crate) fn compare(claim: &Claim, tool: &str) -> Compare {
     Compare {
-        without_label: "without the tool".into(),
+        without_label: "without the capability".into(),
         without: claim.without.map(|w| format!("{w} of {}", claim.total)),
         with_label: format!("with {tool}"),
         with: format!("{} of {}", claim.with, claim.total),
@@ -512,7 +515,7 @@ pub(crate) fn compare(claim: &Claim, tool: &str) -> Compare {
 }
 
 /// What a start_eval offer will run, in one line: "8 tests, with and
-/// without the tool."
+/// without the capability."
 pub(crate) fn size_line(size: &Size) -> String {
     let tests = if size.cases == 1 {
         "1 test".to_owned()
@@ -520,9 +523,9 @@ pub(crate) fn size_line(size: &Size) -> String {
         format!("{} tests", size.cases)
     };
     if size.arms >= 2 {
-        format!("{tests}, with and without the tool.")
+        format!("{tests}, with and without the capability.")
     } else {
-        format!("{tests}, with the tool.")
+        format!("{tests}, with the capability.")
     }
 }
 
@@ -587,7 +590,7 @@ pub(crate) fn tool_card(
         }
         None => {
             lines.push(Line {
-                text: "There's no test set for this tool yet.".into(),
+                text: "There's no test set for this capability yet.".into(),
                 tone: Tone::Quiet,
             });
             chips.push(actions.button(
@@ -654,14 +657,14 @@ pub(crate) fn draft_items(draft: &Draft, detail: bool) -> Vec<Item> {
             let detail_text = if detail {
                 let mut parts = vec![];
                 if stays_out {
-                    parts.push("The tool should stay out of the way.".to_owned());
+                    parts.push("The capability should stay out of the way.".to_owned());
                 }
                 if !checked.is_empty() {
                     parts.push(format!("Checked: {}", checked.join(" ")));
                 }
                 (!parts.is_empty()).then(|| parts.join(" "))
             } else {
-                stays_out.then(|| "(tool should stay out of the way)".to_owned())
+                stays_out.then(|| "(capability should stay out of the way)".to_owned())
             };
             Item {
                 marks: vec![],
@@ -689,7 +692,7 @@ pub(crate) fn draft_card(
         format!("{} (yours)", draft.tool.name)
     };
     let mut lines = vec![Line {
-        text: format!("Tool: {tool}"),
+        text: format!("Capability: {tool}"),
         tone: Tone::Strong,
     }];
     let items = draft_items(draft, false);
@@ -779,7 +782,7 @@ pub(crate) fn news_card(
         });
         chips.push(actions.button(
             format!("{id}.test"),
-            "Test a tool",
+            "Test a capability",
             Some("test"),
             Action::Say {
                 text: "Which tool should I try?".into(),
@@ -917,7 +920,7 @@ pub(crate) fn check_card(
 
 /// `CARD-04` for a published result the worker sent (a named tool's).
 pub(crate) fn published_result_card(id: &str, claim: &Claim, tool: Option<&str>) -> CardView {
-    let tool = tool.unwrap_or("the tool");
+    let tool = tool.unwrap_or("the capability");
     CardView {
         id: id.to_owned(),
         kind: "result",

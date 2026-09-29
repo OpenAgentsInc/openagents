@@ -148,6 +148,7 @@ struct NativeIcon: Decodable, Equatable {
         case "terminal": "terminal"
         case "wallet": "creditcard"
         case "key": "key"
+        case "person": "person"
         default: nil
         }
     }

@@ -92,7 +92,7 @@ struct AppTabs: View {
         TabView(selection: $tab) {
             CoderTab(bridge: bridge)
                 .tabIcon(.coder)
-            VerseTab(selected: tab == .verse)
+            VerseTab(selected: tab == .verse) { bridge.gymTrain() }
                 .tabIcon(.verse)
             WalletTab(bridge: bridge)
                 .tabIcon(.wallet)
@@ -116,6 +116,9 @@ struct AppTabs: View {
             case "wallet": tab = .wallet
             case "keys", "playtest": tab = .account
             case "report": reporter.start(bridge: bridge, place: place)
+            // Train Coder from the Verse or Account: the Chat tab, on the
+            // Gym intro.
+            case "chat": tab = .coder
             // See the board: the Verse tab, walked into the Gym before its
             // EVALS board.
             case "verse_gym":
@@ -170,6 +173,14 @@ struct AccountTab: View {
                         Label("Trainer", systemImage: "star.circle")
                     }
                     .accessibilityIdentifier("account-trainer")
+                    // Opt into the Gym: Rust opens its intro on the Chat tab.
+                    Button {
+                        bridge.gymTrain()
+                    } label: {
+                        Label("Train Coder", systemImage: "dumbbell")
+                    }
+                    .foregroundStyle(.white)
+                    .accessibilityIdentifier("account-train")
                 }
                 Section {
                     NavigationLink(value: AccountRoute.playtest) {

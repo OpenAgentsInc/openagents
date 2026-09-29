@@ -303,6 +303,26 @@ impl Phone {
         self.runtime.block_on(tokio::task::yield_now());
     }
 
+    /// Tap the chat's own node `key` (a header button, say) in the current
+    /// view.
+    fn press(&mut self, key: &str) {
+        let (coder, _) = self.render();
+        assert!(
+            find(&coder, |n| n["key"] == key).is_some(),
+            "no {key} in the chat view"
+        );
+        self.tab.activate(
+            &rust_native::Activation {
+                instance: coder["instance"].as_str().expect("instance").into(),
+                revision: coder["revision"].as_u64().expect("revision"),
+                node: key.into(),
+            },
+            None,
+            &mut self.chats,
+        );
+        self.runtime.block_on(tokio::task::yield_now());
+    }
+
     /// The card of `kind` the chat shows now.
     fn card(&mut self, kind: &str) -> CardView {
         let (coder, gym) = self.render();
@@ -487,7 +507,7 @@ fn every_worker_card_renders_in_the_phones_words() {
     assert!(
         tool.lines
             .iter()
-            .any(|l| l.text == "8 tests, with and without the tool.")
+            .any(|l| l.text == "8 tests, with and without the capability.")
     );
     assert_eq!(tool.primary.as_ref().unwrap().label, "START THE TEST");
     let others: Vec<&str> = tool.chips.iter().map(|c| c.label.as_str()).collect();
@@ -579,7 +599,7 @@ fn every_worker_card_renders_in_the_phones_words() {
     );
     let draft = phone.card("draft");
     assert_eq!(draft.title, "YOUR TEST SET · DRAFT");
-    assert_eq!(draft.lines[0].text, "Tool: Tidy imports (yours)");
+    assert_eq!(draft.lines[0].text, "Capability: Tidy imports (yours)");
     assert_eq!(draft.items[0].text, "1 Clean up main.rs.");
     assert_eq!(draft.primary.as_ref().unwrap().label, "LOOKS GOOD");
     let secondary: Vec<&str> = draft.secondary.iter().map(|b| b.label.as_str()).collect();
@@ -981,14 +1001,86 @@ fn a_computer_run_follows_its_coder_task() {
     assert_eq!(effect, Effect::None);
 }
 
-/// FLOW-01: three taps from a new install to a test starting, and a
-/// relaunch at every step reopens the furthest one.
+/// Chat first: a fresh install opens on the chat with the tab bar, and
+/// nothing of the Gym is volunteered (no intro, no card, no Gym starter,
+/// no menu) until **Train Coder**. Profile and the previous chats stay in
+/// the chat's header.
 #[test]
-fn the_first_run_starts_a_test_in_three_taps_and_resumes() {
+fn a_fresh_install_opens_on_the_chat_with_nothing_of_the_gym() {
     let worker = Worker::default();
     let runner = Runner::default();
     let mut phone = Phone::new(&worker, Some(&runner));
     let dir = phone.dir.clone();
+    let (coder, view) = phone.render();
+    assert_eq!(view.screen, "chat");
+    assert!(view.first_run.is_none());
+    assert!(view.cards.is_empty(), "{:?}", view.cards.keys());
+    assert!(view.sheet.is_none());
+    assert!(!phone.tab.gym.opted_in());
+    // The chat's header: Profile and the previous chats, no Menu.
+    assert!(find(&coder, |n| n["key"] == "coder-profile").is_some());
+    assert!(find(&coder, |n| n["key"] == "coder-menu").is_some());
+    assert!(find(&coder, |n| n["key"] == "coder-back").is_none());
+    // First-time questions, and no Gym starter.
+    assert!(find(&coder, |n| n["key"] == "coder-first-0").is_some());
+    for id in ["test", "news", "check"] {
+        let key = format!("coder-starter-{id}");
+        assert!(find(&coder, |n| n["key"] == key).is_none(), "{key}");
+    }
+    // Profile opens from the header.
+    phone.tab.activate(
+        &rust_native::Activation {
+            instance: coder["instance"].as_str().expect("instance").into(),
+            revision: coder["revision"].as_u64().expect("revision"),
+            node: "coder-profile".into(),
+        },
+        None,
+        &mut phone.chats,
+    );
+    assert_eq!(
+        phone.gym().sheet.map(|sheet| sheet.kind),
+        Some("profile"),
+        "Profile opens as a sheet"
+    );
+    phone.tab.gym.sheet = None;
+    // A relaunch is the chat again.
+    drop(phone);
+    let mut phone = Phone::in_dir(&worker, Some(&runner), dir);
+    let (coder, view) = phone.render();
+    assert_eq!(view.screen, "chat");
+    assert!(find(&coder, |n| n["key"] == "coder-starter-test").is_none());
+
+    // Train Coder: the intro at step 1, with Not now back to the chat.
+    phone.tab.train_coder();
+    assert_eq!(phone.tab.take_go(), Some(crate::coder_tab::Go::Chat));
+    let view = phone.gym();
+    assert_eq!(view.screen, "first_run");
+    assert_eq!(view.first_run.as_ref().unwrap().step, "choose");
+    assert_plain(&view);
+    let view = phone.tap("first.later");
+    assert_eq!(view.screen, "chat");
+    assert!(view.first_run.is_none());
+    let (coder, _) = phone.render();
+    assert!(find(&coder, |n| n["key"] == "coder-starter-test").is_none());
+    // Opted in and past the intro, the Gym's starters join a new chat's
+    // suggestions, and the header's Menu leads to the Gym menu.
+    phone.tab.gym.set_start("done");
+    let (coder, view) = phone.render();
+    assert_eq!(view.screen, "chat");
+    assert!(find(&coder, |n| n["key"] == "coder-starter-test").is_some());
+    phone.press("coder-back");
+    assert_eq!(phone.gym().screen, "menu");
+}
+
+/// FLOW-01: three taps from **Train Coder** to a test starting, and a
+/// relaunch at every step reopens the furthest one.
+#[test]
+fn the_gym_intro_starts_a_test_in_three_taps_and_resumes() {
+    let worker = Worker::default();
+    let runner = Runner::default();
+    let mut phone = Phone::new(&worker, Some(&runner));
+    let dir = phone.dir.clone();
+    phone.tab.train_coder();
     let view = phone.gym();
     assert_eq!(view.screen, "first_run");
     assert_eq!(view.first_run.as_ref().unwrap().step, "choose");
@@ -1001,7 +1093,7 @@ fn the_first_run_starts_a_test_in_three_taps_and_resumes() {
     let mut phone = Phone::in_dir(&worker, Some(&runner), dir.clone());
     assert_eq!(phone.gym().first_run.unwrap().step, "end_card");
 
-    // Tap 2: the first-run chat asks for Project map's card.
+    // Tap 2: the intro's chat asks for Project map's card.
     let view = phone.tap("first.go");
     assert_eq!(view.screen, "chat");
     assert_eq!(
@@ -1046,10 +1138,13 @@ fn the_first_run_starts_a_test_in_three_taps_and_resumes() {
     assert_eq!(view.menu.next, "Next: add your result to the Gym.");
     assert_plain(&view);
 
-    // A relaunch opens on the menu, and its CHAT goes back to the result
-    // the next step names.
+    // A relaunch opens on the chat (chat first, even opted in); the
+    // header's Menu opens the Gym menu, and its CHAT goes back to the
+    // result the next step names.
     drop(phone);
     let mut phone = Phone::in_dir(&worker, Some(&runner), dir);
+    assert_eq!(phone.gym().screen, "chat");
+    phone.press("coder-back");
     assert_eq!(phone.gym().screen, "menu");
     let view = phone.tap("menu.chat");
     assert_eq!(view.screen, "chat");
@@ -1063,6 +1158,7 @@ fn adding_the_first_result_names_the_menu() {
     let worker = Worker::default();
     let runner = Runner::default();
     let mut phone = Phone::new(&worker, Some(&runner));
+    phone.tab.train_coder();
     phone.tap("first.choose");
     phone.tap("first.go");
     worker.answer(
@@ -1220,7 +1316,7 @@ fn credit_comes_from_the_phones_own_ledger() {
         card.lines[0].text,
         "Nothing yet. When another trainer checks a result you added, you earn XP here."
     );
-    assert_eq!(card.chips[0].label, "Test a tool");
+    assert_eq!(card.chips[0].label, "Test a capability");
     gym.standing.results = vec![
         MadeRow {
             id: "a".into(),
@@ -1373,9 +1469,11 @@ fn the_gate_lines_are_the_interviews() {
 #[test]
 fn no_label_uses_a_banned_word() {
     let mut gym = Gym::empty();
+    gym.opt_in();
     let view = crate::first_run::first_run(&mut gym).unwrap();
     for text in [view.title, view.next, view.primary.label]
         .into_iter()
+        .chain(view.secondary.map(|b| b.label))
         .chain(view.lines)
     {
         assert_eq!(jargon(&text), None, "{text}");

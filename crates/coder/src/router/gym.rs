@@ -256,17 +256,17 @@ fn cut(text: String, chars: usize) -> String {
     out
 }
 
-/// Tests passed without and with the tool, in words; every number is the
-/// headline's.
+/// Tests passed without and with the capability, in words; every number
+/// is the headline's.
 fn passes(headline: &Headline) -> String {
     match headline.baseline_passed {
         Some(without) => format!(
-            "Without the tool Coder passed {without} of {total} tests; with it, {with} of {total}.",
+            "Without the capability Coder passed {without} of {total} tests; with it, {with} of {total}.",
             total = headline.total,
             with = headline.subject_passed
         ),
         None => format!(
-            "With the tool Coder passed {} of {} tests; there was no run without it.",
+            "With the capability Coder passed {} of {} tests; there was no run without it.",
             headline.subject_passed, headline.total
         ),
     }
@@ -355,12 +355,12 @@ impl Item {
             Item::TestSet(suite) => (
                 format!("A test set for {}", suite.tool_name),
                 format!(
-                    "{} tests, each run with the tool and without it.",
+                    "{} tests, each run with the capability and without it.",
                     suite.cases
                 ),
             ),
             Item::Adoption(adoption) => (
-                format!("Coder now uses {}", adoption.tool_name),
+                format!("Coder has {} now", adoption.tool_name),
                 "Adopted into Coder's defaults, for everyone.".to_string(),
             ),
             Item::Build(release) => (
@@ -552,9 +552,9 @@ pub enum Reply {
 
 /// The instruction a model gets on a Gym or eval turn it answers without
 /// records, so it never states a result it was not given.
-pub const NO_RECORDS_NOTE: &str = "This message is about the OpenAgents Gym or testing tools on \
+pub const NO_RECORDS_NOTE: &str = "This message is about the OpenAgents Gym or testing capabilities on \
 Coder, and we have no verified Gym records in front of us for it. Do not state any result, \
-score, count of tests or trainers, XP amount, date, or tool name as a fact. Say plainly that we \
+score, count of tests or trainers, XP amount, date, or capability name as a fact. Say plainly that we \
 don't have that record, and answer only what the conversation already establishes.";
 
 /// The offer that runs `suite` against its subject: on the hosted runner
@@ -740,14 +740,14 @@ records below, so do not repeat that line or greet; go straight to the news.\n",
     }
     out.push_str(
         "We are OpenAgents, answering in the OpenAgents app's chat about what's new in the Gym, \
-where people test tools on Coder. Always speak as \"we\", never \"I\". Answer the user's latest \
+where people test capabilities on Coder. Always speak as \"we\", never \"I\". Answer the user's latest \
 message using only the Gym records below, which we verified. After each sentence that uses a \
 record, cite it by its id in square brackets, such as [gym:build:build-20]; we take the brackets \
 out before the reply is shown, so never write an id, a file path, an event, or a \"source\" line \
-anywhere else. Every result, count, verdict, tool name, and build you mention must come from a \
+anywhere else. Every result, count, verdict, capability name, and build you mention must come from a \
 record below; state no other result, score, count, XP, or date. Use the app's plain words: a \
-tool, a test, a test set, with and without the tool, Better, No clear change, Worse, results, \
-attempts. Never use these words, even when a record does: benchmark, Terminal-Bench, trace, \
+capability, a test, a test set, with and without the capability, Better, No clear change, Worse, \
+results, attempts. Never use these words, even when a record does: tool, benchmark, Terminal-Bench, trace, \
 eval, evaluation, suite, case, grader, rubric, judge, baseline, arm, harness, extension, plugin, \
 Wasm, relay, Nostr, key, host, workspace. If the records don't answer what the user asked, say \
 we don't have a record of that yet. Keep it short for a phone screen.\n",
@@ -874,7 +874,9 @@ pub fn check_reply(reply: &str, items: &[Item]) -> Cited {
 /// Words the app never shows on a card, a label, or a Gym reply: the
 /// wireframe's banned list (`docs/product/2026-09-28-app-wireframe.md`,
 /// Words on screen; `CHK-02`), lowercased. The phone keeps the same list
-/// (`crates/openagents-mobile/src/eval_cards.rs`).
+/// (`crates/openagents-mobile/src/eval_cards.rs`). "Tool" is banned as an
+/// umbrella word since 2026-09-29: the word is "capability". A model's
+/// tool call in a transcript is the model's text, not ours.
 pub const BANNED: &[&str] = &[
     "npub",
     "nsec",
@@ -888,6 +890,7 @@ pub const BANNED: &[&str] = &[
     "wasm",
     "plugin",
     "extension",
+    "tool",
     "benchmark",
     "terminal-bench",
     "tb",
@@ -1590,10 +1593,10 @@ mod tests {
         let ids: Vec<String> = items.iter().map(Item::id).collect();
         let replies = [
             (
-                "In the Gym you can test tools on Coder, check results, and see your credit \
+                "In the Gym you can test capabilities on Coder, check results, and see your credit \
                  [gym:note:gym-news]."
                     .to_string(),
-                "In the Gym you can test tools on Coder, check results, and see your credit.",
+                "In the Gym you can test capabilities on Coder, check results, and see your credit.",
             ),
             (
                 format!(
@@ -1611,8 +1614,8 @@ mod tests {
                 "A new test set for Project map",
             ),
             (
-                "We measure with and without the tool (see the card) [1] and [a link](x).".into(),
-                "We measure with and without the tool (see the card) [1] and [a link](x).",
+                "We measure with and without the capability (see the card) [1] and [a link](x).".into(),
+                "We measure with and without the capability (see the card) [1] and [a link](x).",
             ),
             (
                 "Two items:\n- Better [gym:result:0a0a0a0a]\n- Build 20 [gym:build:build-20]\n"
@@ -1621,10 +1624,10 @@ mod tests {
             ),
             (
                 format!(
-                    "You can test a tool from chat [{}] and make your own.",
+                    "You can test a capability from chat [{}] and make your own.",
                     ids[0]
                 ),
-                "You can test a tool from chat and make your own.",
+                "You can test a capability from chat and make your own.",
             ),
         ];
         for (reply, want) in &replies {
@@ -1715,12 +1718,14 @@ mod tests {
         assert_eq!(title, "project map: Better");
         assert_eq!(
             line,
-            "Without the tool Coder passed 4 of 9 tests; with it, 6 of 9. Confirmed by 2 checks, \
-             disputed by 1."
+            "Without the capability Coder passed 4 of 9 tests; with it, 6 of 9. Confirmed by 2 \
+             checks, disputed by 1."
         );
         result.headline.baseline_passed = None;
         let (_, line) = Item::Result(result).title_and_line();
-        assert!(line.starts_with("With the tool Coder passed 6 of 9 tests; there was no run"));
+        assert!(
+            line.starts_with("With the capability Coder passed 6 of 9 tests; there was no run")
+        );
     }
 
     /// An interview step is shown only in the plural and bounded; a bad

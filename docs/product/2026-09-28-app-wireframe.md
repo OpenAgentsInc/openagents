@@ -33,6 +33,7 @@ Revision 2 made **Chat** a first-class part of the loop and the main menu
 ## Contents
 
 - [Build 21: what shipped](#build-21-what-shipped)
+- [Build 25: chat first](#build-25-chat-first)
 - [Revision 3: what changed](#revision-3-what-changed)
 - [Revision 2: what changed](#revision-2-what-changed)
 - [Spec ID index](#spec-id-index)
@@ -68,8 +69,8 @@ the menu and Profile ([simulator record](../../bins/openagents-ios/verification/
 
 | ID | Build 21 |
 | --- | --- |
-| `SCR-01` | Shipped: player card, **GYM OPEN** pill, next-step line, **CHAT WITH OPENAGENTS**, starter chips, **PROFILE**, **THE GYM IN THE VERSE**, footer. Not built: the updates bell (`E02`), the season card (`E09`), and the "testing now" count (`E05`). The tab bar stays, with the menu as the Chat tab's first screen. |
-| `SCR-02`, `CIN-01`, `SCR-15.E12` | Shipped: three taps to a test (`CHOOSE CODER`, `LET'S GO`, `START THE TEST`), resuming at the furthest step. `CIN-01` is only its end card; the shots before it (`S01` to `S07`) are not built. |
+| `SCR-01` | Shipped: player card, **GYM OPEN** pill, next-step line, **CHAT WITH OPENAGENTS**, starter chips, **PROFILE**, **THE GYM IN THE VERSE**, footer. Not built: the updates bell (`E02`), the season card (`E09`), and the "testing now" count (`E05`). The tab bar stays. Build 21 opened the Chat tab on the menu; build 25 opens it on the chat ([chat first](#build-25-chat-first)). |
+| `SCR-02`, `CIN-01`, `SCR-15.E12` | Shipped: three taps to a test (`CHOOSE CODER`, `LET'S GO`, `START THE TEST`), resuming at the furthest step. `CIN-01` is only its end card; the shots before it (`S01` to `S07`) are not built. Build 25 moves the three taps behind **Train Coder**. |
 | `CARD-01` to `CARD-07` | Shipped, with the gaps marked PARTIAL or NEW in each card's table. |
 | `SCR-05`, `SCR-06`, `SCR-11`, `SCR-20`, `SCR-21` | Shipped; `SCR-11` is the minimal Profile. |
 | `FLOW-01` | Shipped, and passes `CHK-06` live. |
@@ -79,6 +80,31 @@ the menu and Profile ([simulator record](../../bins/openagents-ios/verification/
 | `FLOW-09` | Shipped: news from the Gym's records and our changelog, without ids or banned words ([#9944](https://github.com/OpenAgentsInc/openagents/issues/9944)). Tapping a news item opens nothing yet. |
 | `FLOW-10` | Shipped for `eval-check`: the referee's award reached the menu and Profile live. `eval-adopt` works in tests; no adoption has been made. |
 | `CHK-01` to `CHK-13` | Re-checked against build 21 in the [simulator record](../../bins/openagents-ios/verification/2026-09-29-evals-in-chat/README.md#idiot-proof-re-checked-against-this-build). |
+
+## Build 25: chat first
+
+The owner's direction on 2026-09-29
+([#9958](https://github.com/OpenAgentsInc/openagents/issues/9958)): drop
+people immediately into talking with OpenAgents, the auto-upgradable agent.
+Chat is pure chat plus the capabilities that are present. The Gym's loop is
+a separate flow a person opts into.
+
+- **A new install lands in chat**, with the tab bar. No `SCR-02`, no step
+  counter, no "Test Project map on Coder" sent for the player, no Gym
+  starter chips, cards, or menu until the person asks. The `eval.*` routes
+  still answer a question about the Gym.
+- **The Gym is opt-in: Train Coder**, on the Verse's Gym board (where
+  **See the board** and **THE GYM IN THE VERSE** lead) and under Account.
+  It opens the intro (`FLOW-01`'s three taps) on the Chat tab; **Not now**
+  on step 1 returns to the chat, opted out. The opt-in and the intro's
+  furthest step persist with the phone's Gym state.
+- **`SCR-01` is the Gym menu**, behind the chat header's **Menu** after the
+  intro's first result. **PROFILE** is a button in every chat's header;
+  previous chats stay where they were.
+- **The word is capability** ([#9957](https://github.com/OpenAgentsInc/openagents/issues/9957)):
+  Test a capability, with and without the capability, Coder has this
+  capability now. "Tool" joins the banned list as an umbrella word; Project
+  map, Code finder, and Test reader keep their names.
 
 ## Revision 3: what changed
 
@@ -347,17 +373,18 @@ docs, and the Advanced section of Profile.
 | On screen | Internal term | Why |
 | --- | --- | --- |
 | **Coder** ("an AI that writes code") | Coder, the agent | A name plus one plain line. |
-| **Tool** | An extension: a Wasm guest, a program, or a skill | Everyone knows what a tool is. "Plugin" and "extension" are jargon. |
-| **Project map**, **Code finder**, **Test reader** | `repo_map`, `code_search`, `test_report` evidence guests | Says what the tool does. |
+| **Capability** | What a person adds to Coder: a program, a plugin (a Wasm guest), a skill, or a knowledge entry, shipped in an extension package ([#9957](https://github.com/OpenAgentsInc/openagents/issues/9957), decided 2026-09-29) | The video's word and the app's word are the same word: a capability is what a claim establishes Coder can do. "Tool" is retired as the umbrella (it survives only for a model's own tool call in a transcript); "plugin" and "extension" are jargon. |
+| **Project map**, **Code finder**, **Test reader** | `repo_map`, `code_search`, `test_report` evidence guests | Says what the capability does. Names stay names: Project map is a capability, never "a tool". |
 | **Test** | A case in an extension eval suite | Everyone knows what a test is. "Eval" and "case" are jargon. |
 | **Test set** | A suite | A set of tests. |
-| **With the tool**, **without it** | The subject and baseline arms | Says what's being compared. |
+| **With the capability**, **without it** | The subject and baseline arms | Says what's being compared. |
 | **Passes 7 of 8 tests** | Cases passed in the subject arm | Whole numbers, whole denominator. |
 | **Better**, **No clear change**, **Worse** | The `ext-eval-v2` gate: keep (more tests passed, beyond the spread between repeats, at a cost and time not materially worse), inconclusive, reject. Faster or cheaper is a note beside the verdict, never Better on its own | Plain verdict. |
 | **Try it once** | A one-run pilot | Says it's a quick try. |
 | **Check a result** | A rerun of a published test set by another trainer | Says what you do. |
 | **Add to the Gym** | Publish the suite and the signed result (NIP-EXT, NIP-EVAL) | Says where it goes. |
-| **Coder now uses your tool** | Adoption into Coder defaults | Says what happened. |
+| **Coder has this capability now** | Adoption into Coder defaults | Says what happened. |
+| **Train Coder** | Opt into the Gym: the intro (`FLOW-01`), then the Gym's starters, cards, and menu | Says what you're signing up for. Until it's tapped, the chat volunteers nothing of the Gym. |
 | **Trainer 7KQ** | The Verse world key's public key | A name, not a key. |
 | **XP**, **Level 2** | NIP-XP awards on `trainer-curve-v1` | Game words most people know. |
 | **Save your progress** | Back up the secret key | Says why, not how. |
@@ -370,7 +397,9 @@ docs, and the Advanced section of Profile.
 | **Wrong answer** | A wrong-answer playtest report | Says what you're telling us. |
 
 Banned on primary surfaces: npub, nsec, key, relay, Nostr, NIP, ATIF,
-tailnet, Tailscale, Wasm, plugin, extension, benchmark, Terminal-Bench, TB,
+tailnet, Tailscale, Wasm, plugin, extension, tool (as the umbrella word;
+a model's tool call in a transcript keeps its name), benchmark,
+Terminal-Bench, TB,
 eval, evaluation, suite, case, grader, rubric, judge, baseline, arm,
 harness, stand-in, mock, pilot, Jev, Luna, Microcoder, verifier, trace,
 recipe, grant, sats, BTC, ₿, Lightning, invoice, host, workspace, pubkey,
@@ -432,10 +461,14 @@ element table, transitions, and an IDIOT PROOF check line. The wireframe
 shows the primary action as `[#### LABEL ####]` and secondary actions as
 `[ label ]`. Examples such as `38` or `7KQ` are sample data.
 
-### SCR-01 Main menu
+### SCR-01 The Gym menu
 
-The hub the player returns to. Its one primary action is chat, because the
-loop happens in chat.
+The Gym's hub, for a player who opted in with **Train Coder**. Its one
+primary action is chat, because the loop happens in chat. Since build 25
+(chat first, [#9958](https://github.com/OpenAgentsInc/openagents/issues/9958))
+it is not the Chat tab's first screen: the tab opens on the chat, and the
+menu is behind the chat header's **Menu** once the intro's first result is
+in. **PROFILE** is also a button in every chat's header.
 
 ```
 +------------------------------------------+
@@ -479,10 +512,10 @@ States:
 
 - **Loading:** the layout draws at once from the phone's cache; numbers that
   are still loading show a gray bar, never `0`.
-- **Empty (no results yet):** cannot happen for a first-time player,
-  because `FLOW-01` ends here only after the first result. If the first run
-  was never finished, `SCR-01` is not shown; the app reopens the first-run
-  chat instead.
+- **Empty (no results yet):** cannot happen, because `FLOW-01` ends here
+  only after the intro's first result. Before **Train Coder**, and while the
+  intro is unfinished, `SCR-01` is not shown; the Chat tab is the chat (or
+  the intro's step).
 - **A check is waiting:** `E11` reads "Next: a check is waiting for you
   (+50 XP)." and the **Check a result** chip is first.
 - **Your result was checked, or Coder adopted your tool:** `E11` says so
@@ -519,7 +552,8 @@ visible on the card.
 
 ### SCR-02 Choose your agent
 
-First run, step 1 of 3. Shown once, on the first app open.
+The Gym intro, step 1 of 3. Shown after **Train Coder** (build 25); before
+that, a new install opens on the chat.
 
 ```
 +------------------------------------------+
@@ -1679,24 +1713,48 @@ narrate a reward the app can't give.
 
 ## User flows
 
-### FLOW-01 First-time playtester
+### FLOW-01 First-time playtester, and the Gym intro
 
-A guided path of three steps that can't be skipped into a broken state. At
-most 3 taps from app open to the first test run starting. Steps 2 and 3
-happen in chat.
+Chat first (the owner's direction, 2026-09-29,
+[#9958](https://github.com/OpenAgentsInc/openagents/issues/9958)): a new
+install lands in a chat with OpenAgents, the auto-upgradable agent, with the
+tab bar. Chat is pure chat plus the capabilities that are present. There is
+no Choose Coder screen, no step counter, and no message sent for the
+player; the Gym's starters, cards, and menu are not volunteered. The Gym's
+loop (test, check, add to the Gym, XP) is a separate flow the player opts
+into with **Train Coder**, on the Verse's Gym board (`SCR-01.E14`, **See
+the board**) or under Account.
 
 ```
  App open (first time)
    |
    v
- SCR-02 Choose your agent   STEP 1 OF 3
+ SCR-15 Chat with OpenAgents   the tab bar stays; Profile and previous
+   |                           chats in the header; first-time chips
+   |  (any message; eval.* routes answer if asked)
+   |
+   |  Train Coder  (the Verse's Gym board, or Account)
+   v
+ the Gym intro, three taps to a test starting:
+```
+
+The intro is the guided path below. It can't be skipped into a broken
+state, it's at most 3 taps from **Train Coder** to the first test run
+starting, and steps 2 and 3 happen in chat. **Not now** on step 1 returns
+to the chat, opted out, until the next **Train Coder**.
+
+```
+ Train Coder
+   |
+   v
+ SCR-02 Choose your agent   STEP 1 OF 3     (Not now: back to chat)
    |  tap 1: CHOOSE CODER   (identity created silently)
    v
  CIN-01 Intro cinematic     (~60 s, plays through the first time)
    |  tap 2: LET'S GO
    v
- SCR-15.E12 First-run chat  STEP 2 OF 3
-   |  "Hi, we're OpenAgents. Let's see if a tool makes Coder better."
+ SCR-15.E12 Intro chat      STEP 2 OF 3
+   |  "Hi, we're OpenAgents. Let's see if a capability makes Coder better."
    |  CARD-01 Project map, preselected
    |  tap 3: START THE TEST  <-- the first run starts here
    v
@@ -1712,14 +1770,16 @@ happen in chat.
  SCR-06 Level up (if a level was crossed)
    |  NICE
    v
- SCR-01 Main menu           guided path complete
+ SCR-01 The Gym menu        intro complete
 ```
 
 Rules that keep the path unbreakable:
 
-1. The app records the furthest step reached. On any reopen, it resumes at
-   that step: `SCR-02`, the `CIN-01` end card, or the first-run chat with
-   its newest card on top. `SCR-01` appears only after the result.
+1. The app records the furthest step reached. On any reopen after **Train
+   Coder**, the Chat tab resumes at that step: `SCR-02`, the `CIN-01` end
+   card, or the intro chat with its newest card on top. `SCR-01` appears
+   only after the result, and after that the app reopens on the chat, with
+   the header's **Menu** leading to `SCR-01`.
 2. In the first-run chat, the composer works: the player can ask anything,
    and the answers come under the first-run card without replacing it. The
    card's button stays the primary until the run starts.
@@ -1941,12 +2001,13 @@ spent; nothing pays money. Status: EXISTS for `eval-check` (live on
 
 ## NAV-01 Navigation map
 
-Hub and spoke, with chat as the main spoke. The main menu is the hub; there
-is no tab bar in this experience.
+Chat first: the Chat tab opens on `SCR-15`, with the tab bar. The Gym menu
+is the Gym's hub, reached after **Train Coder** and the intro's first
+result, with chat as its main spoke.
 
 ```
-                  [first open only]
-            SCR-02 --> CIN-01 --> first-run chat (SCR-15.E12, step 2)
+                  [after Train Coder, from the Verse's Gym board or Account]
+            SCR-02 --> CIN-01 --> intro chat (SCR-15.E12, step 2)
                                       |  CARD-01 -> CARD-03 -> CARD-04
                                       v
   SCR-12 Updates <--bell--+       SCR-20 --> SCR-06 --> SCR-01
@@ -1978,10 +2039,11 @@ is no tab bar in this experience.
   PAT-01 replaces a screen's or card's body on failure.
 ```
 
-Every screen reaches chat in at most one tap and `SCR-01` in one. From
-`SCR-01`, a run starts in two taps (`FLOW-02`). Today the app is still four
-tabs (Chat, Verse, Wallet, Account) with Chat first; the hub replaces the
-tab bar, and chat is its primary action.
+Every screen reaches chat in at most one tap, and `SCR-01` in one for a
+player who opted in. From `SCR-01`, a run starts in two taps (`FLOW-02`).
+The app is four tabs (Chat, Verse, Wallet, Account) with Chat first, and
+the tab bar stays: chat is the app's first screen, and the Gym menu is the
+Gym's hub inside it.
 
 ## IDIOT PROOF checklist
 

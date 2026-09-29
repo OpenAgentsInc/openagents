@@ -6,7 +6,7 @@
   "items": [
     {
       "title": "A check of a project map result",
-      "line": "Without the tool Coder passed 5 of 8 tests; with it, 7 of 8. The check's verdict: Better.",
+      "line": "Without the capability Coder passed 5 of 8 tests; with it, 7 of 8. The check's verdict: Better.",
       "event": {
         "id": "0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
         "pubkey": "7070707070707070707070707070707070707070707070707070707070707070",
@@ -16,7 +16,7 @@
     },
     {
       "title": "A test set for project map",
-      "line": "8 tests, each run with the tool and without it.",
+      "line": "8 tests, each run with the capability and without it.",
       "event": {
         "id": "1414141414141414141414141414141414141414141414141414141414141414",
         "pubkey": "7878787878787878787878787878787878787878787878787878787878787878",

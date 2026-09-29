@@ -212,6 +212,8 @@ pub enum Glyph {
     Wallet,
     /// A key, such as identity keys.
     Key,
+    /// A person, such as the trainer's profile.
+    Person,
 }
 
 /// The control that loads older rows at a transcript's top.

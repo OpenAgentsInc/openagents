@@ -1,20 +1,20 @@
 ---
 id: openagents.tools
-version: 1
+version: 2
 kind: product
-title: "Tools for Coder"
+title: "Capabilities for Coder"
 summary: >-
-  A tool is something Coder can use while it works, such as Project map; the
-  Gym tests whether a tool makes Coder better.
+  A capability is something Coder can use while it works, such as Project
+  map; the Gym tests whether a capability makes Coder better.
 tags: [gym, tools, extensions, plugins]
 applies_when: >-
-  The user asks what a tool is, which tools there are, or how tools relate to
-  Coder and the Gym.
+  The user asks what a capability (or a tool) is, which capabilities there
+  are, or how capabilities relate to Coder and the Gym.
 answer: >-
-  A tool is something Coder, our coding agent, can use while it works, such as
-  Project map, Code finder, or Test reader. In the Gym we test a tool by
-  running the same tests with the tool and without it, so you can see whether
-  Coder does better with it.
+  A capability is something Coder, our coding agent, can use while it works,
+  such as Project map, Code finder, or Test reader. In the Gym we test a
+  capability by running the same tests with it and without it, so you can
+  see whether Coder does better with it.
 status: admitted
 author: openagents
 provenance:
@@ -25,16 +25,17 @@ provenance:
     - docs/extensions/plugins.md
 evidence:
   - "2026-09-28: written from the cited documents and checked against them (#9936); the answer text awaits the owner's copy review."
+  - "2026-09-29: version 2 (#9958) says capability, the on-screen word decided in #9957; the note's id and tags stay."
 ---
 
 ## Answer
 
-A tool is something Coder, our coding agent, can use while it works, such as Project map, Code finder, or Test reader. In the Gym we test a tool by running the same tests with the tool and without it, so you can see whether Coder does better with it.
+A capability is something Coder, our coding agent, can use while it works, such as Project map, Code finder, or Test reader. In the Gym we test a capability by running the same tests with it and without it, so you can see whether Coder does better with it.
 
 ## Details
 
-- Engineering docs call a tool an extension; the app says tool.
-- A tool made in chat is a set of plain instructions Coder follows, which may turn on tools such as Project map; tools with new code are made with Coder on a connected computer.
+- Engineering docs call a capability an extension, shipped as a program, a plugin, a skill, or a knowledge entry; the app says capability. "Tool" is retired as the umbrella word on screen, though a model's own tool call in a transcript keeps its name.
+- A capability made in chat is a set of plain instructions Coder follows, which may turn on capabilities such as Project map; capabilities with new code are made with Coder on a connected computer.
 
 ## Sources
 

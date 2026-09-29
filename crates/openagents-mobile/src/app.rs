@@ -91,8 +91,9 @@ pub struct Launch {
     /// context names it, so the worker can answer for this build.
     #[serde(default)]
     pub app_build: Option<String>,
-    /// Where the first run starts, for simulator screenshots: `choose`,
-    /// `end_card`, `chat`, or `done` (the main menu). Debug builds only.
+    /// Where the Gym intro starts, for simulator screenshots: `choose`,
+    /// `end_card`, `chat`, or `done`; each opts into the Gym. Debug builds
+    /// only.
     #[serde(default)]
     pub gym_first_run: Option<String>,
     /// Push wakes through a relay's NIP-PL executor and a push gateway, so
@@ -421,12 +422,16 @@ pub enum Request {
     WalletRestoreCheck {
         words: String,
     },
-    /// A tap on a Gym button: a chat card's, a sheet's, the main menu's, or
-    /// the first run's, by the ID the last packet gave it. An ID the last
+    /// A tap on a Gym button: a chat card's, a sheet's, the Gym menu's, or
+    /// the Gym intro's, by the ID the last packet gave it. An ID the last
     /// packet didn't carry does nothing.
     Gym {
         id: String,
     },
+    /// **Train Coder**, from the Verse's Gym board or Account: opt into
+    /// the Gym. The Chat tab shows the Gym intro, and `coder_go` is `chat`
+    /// so the host switches to it.
+    GymTrain,
     /// The trainer's Verse world key (64 hex characters from the platform's
     /// protected store): it names the trainer on the menu, reads their XP,
     /// and signs their hosted test requests. Kept in memory only.
@@ -1423,6 +1428,7 @@ impl App {
                 self.coder
                     .gym_tap(&id, self.computers.as_mut(), &mut self.chats);
             }
+            Request::GymTrain => self.coder.train_coder(),
             Request::GymWorld { world_secret_hex } => {
                 if let Ok(world) = SecretKey::from_str(&world_secret_hex) {
                     self.world = Some(world);

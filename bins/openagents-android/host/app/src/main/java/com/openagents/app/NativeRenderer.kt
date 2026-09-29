@@ -298,6 +298,7 @@ class NativeRenderer(
         "terminal" -> R.drawable.ic_glyph_terminal
         "wallet" -> R.drawable.ic_glyph_wallet
         "key" -> R.drawable.ic_glyph_key
+        "person" -> R.drawable.ic_glyph_person
         else -> null
     }
 

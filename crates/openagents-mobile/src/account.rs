@@ -36,9 +36,33 @@ pub struct Item {
 pub const CHANGELOG: &[Release] = &[
     Release {
         version: "1.0.0",
+        build: "25",
+        title: "Chat first",
+        what_to_test: "Delete the app and install this build: it should open on a chat with OpenAgents, with the tab bar, and no Choose Coder screen, step counter, or Gym card. Ask anything. Tap the person icon in the chat header and check Profile opens. Open the Verse, walk into the Gym, open its board, and tap Train Coder: the Chat tab should show Choose Coder, then Let's go, then Start the test. Tap Not now on that first screen and check the chat comes back with no Gym chips; Account, then Train Coder, should bring the intro back.",
+        items: &[
+            Item {
+                title: "You land in chat",
+                detail: "A new install opens on a chat with OpenAgents. There is no guided path, no step counter, and no test sent for you. The Gym's starters, cards, and menu wait until you ask for them.",
+            },
+            Item {
+                title: "Train Coder is opt-in",
+                detail: "The Gym's intro (Choose Coder, Let's go, Start the test) opens from Train Coder on the Verse's Gym board or under Account. Not now takes you back to chat. What you reached is kept, so a later Train Coder picks up where you left off.",
+            },
+            Item {
+                title: "Profile from the chat",
+                detail: "The chat header has a Profile button, and Previous chats is where it was. After your first result, a Menu button leads to the Gym's menu.",
+            },
+            Item {
+                title: "The word is capability",
+                detail: "The app says capability where it used to say tool: Test a capability, with and without the capability, Coder has this capability now. Project map, Code finder, and Test reader keep their names.",
+            },
+        ],
+    },
+    Release {
+        version: "1.0.0",
         build: "24",
         title: "Checks pay either way",
-        what_to_test: "From the menu, tap Check a result and read the card: it says a check earns XP whether it confirms the result or not. Run one, add it to the Gym, and check the sheet says the same before and after you publish. Open Profile and check a checked result reads as checked, not confirmed. Ask what it takes for Coder to adopt a tool, and check the answer names a second test set someone else wrote.",
+        what_to_test: "From the menu, tap Check a result and read the card: it says a check earns XP whether it confirms the result or not. Run one, add it to the Gym, and check the sheet says the same before and after you publish. Open Profile and check a checked result reads as checked, not confirmed. Ask what it takes for Coder to adopt a capability, and check the answer names a second test set someone else wrote.",
         items: &[
             Item {
                 title: "A check earns XP either way",
@@ -46,11 +70,11 @@ pub const CHANGELOG: &[Release] = &[
             },
             Item {
                 title: "Adoption needs a second test set",
-                detail: "Coder adopts a tool only after three trainers' checks confirm its result and it holds up on a test set someone other than its author wrote. No tool has such a test set yet.",
+                detail: "Coder adopts a capability only after three trainers' checks confirm its result and it holds up on a test set someone other than its author wrote. No capability has such a test set yet.",
             },
             Item {
                 title: "The numbers beside the verdict",
-                detail: "A check's card shows how many tests passed with the tool and without it, the same way the result does, so you can see whether two runs agree on the size of the change and not only on the verdict.",
+                detail: "A check's card shows how many tests passed with the capability and without it, the same way the result does, so you can see whether two runs agree on the size of the change and not only on the verdict.",
             },
         ],
     },
@@ -459,12 +483,20 @@ mod tests {
 
     #[test]
     fn every_build_has_a_changelog_entry_with_what_to_test() {
-        // The newest entry is the build the iOS project makes.
+        // The newest entry is the build the iOS project makes, or the next
+        // one: an entry lands with its change, and the release step bumps
+        // the project to it.
         let project = include_str!("../../../bins/openagents-ios/host/project.yml");
         let newest = &CHANGELOG[0];
+        let built: u32 = project
+            .lines()
+            .find_map(|line| line.trim().strip_prefix("CURRENT_PROJECT_VERSION: "))
+            .and_then(|build| build.trim().parse().ok())
+            .expect("the iOS project's build number");
+        let entry: u32 = newest.build.parse().expect("the newest entry's build");
         assert!(
-            project.contains(&format!("CURRENT_PROJECT_VERSION: {}\n", newest.build)),
-            "add a Changelog entry for the build in project.yml"
+            entry == built || entry == built + 1,
+            "the newest Changelog entry is build {entry}; project.yml builds {built}"
         );
         for release in CHANGELOG {
             assert!(!release.what_to_test.trim().is_empty(), "{}", release.build);

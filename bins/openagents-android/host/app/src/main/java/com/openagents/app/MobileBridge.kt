@@ -94,6 +94,9 @@ class MobileBridge(private val context: Context, private val computersFixture: B
     /** A tap on a Gym button, by the ID Rust gave it. */
     fun gym(id: String) = send(json("op" to "gym", "id" to id))
 
+    /** Train Coder, from the Verse's Gym board or Account: Rust opts into the Gym and asks for the Chat tab (`coder_go` is `chat`). */
+    fun gymTrain() = send(json("op" to "gym_train"))
+
     /** Text Rust asked the system share sheet to open, until it shows. */
     var gymShare: String? = null
 
@@ -354,7 +357,7 @@ class MobileBridge(private val context: Context, private val computersFixture: B
             next.objectOrNull("gym")?.textOrNull("share")?.let { gymShare = it }
             when (val go = next.textOrNull("coder_go")) {
                 "computers" -> computersRequested += 1
-                "wallet", "keys", "playtest", "report", "verse_gym" -> { screenRequested = go; screenRequests += 1 }
+                "wallet", "keys", "playtest", "report", "verse_gym", "chat" -> { screenRequested = go; screenRequests += 1 }
                 // The person confirmed Wrong answer in the chat: file it.
                 "wrong_answer" -> reportWrongAnswer()
             }

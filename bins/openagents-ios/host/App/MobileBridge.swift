@@ -374,6 +374,10 @@ final class MobileBridge: ObservableObject {
     /// A tap on a Gym button, by the ID Rust gave it.
     func gym(_ id: String) { send(["op": "gym", "id": id]) }
 
+    /// Train Coder, from the Verse's Gym board or Account: Rust opts into
+    /// the Gym and asks for the Chat tab (`coder_go` is `chat`).
+    func gymTrain() { send(["op": "gym_train"]) }
+
     /// Text for the system share sheet, which Rust asked to open.
     @Published var gymShare: String?
 
@@ -700,7 +704,7 @@ final class MobileBridge: ObservableObject {
             if let share = packet.gymPacket?.share { self.gymShare = share }
             switch packet.coder_go {
             case "computers": self.computersRequested += 1
-            case let screen? where ["wallet", "keys", "playtest", "report", "verse_gym"].contains(screen):
+            case let screen? where ["wallet", "keys", "playtest", "report", "verse_gym", "chat"].contains(screen):
                 self.screenRequest = ScreenRequest(screen: screen, serial: self.screenRequest.serial + 1)
             // The person confirmed Wrong answer in the chat: file it.
             case "wrong_answer": self.reportWrongAnswer()

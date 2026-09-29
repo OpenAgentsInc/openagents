@@ -263,11 +263,11 @@ private struct ComputerRow: View {
     }
 }
 
-/// The Chat tab: the main menu (`SCR-01`), whose primary is Chat with
-/// OpenAgents; the first run (`SCR-02`, the end card) on a new install; and
-/// the chat, which Rust opens on a new chat ready to type, with previous
-/// Coder chats behind the menu button and the Gym's cards under replies.
-/// Rust says which one shows (`gym.screen`).
+/// The Chat tab: the chat, which Rust opens on a new chat ready to type
+/// (chat first, on a new install too), with previous Coder chats behind the
+/// menu button, Profile in the header, and the Gym's cards under replies;
+/// after **Train Coder**, the Gym intro (`SCR-02`, the end card) and the
+/// Gym menu (`SCR-01`). Rust says which one shows (`gym.screen`).
 struct CoderTab: View {
     @ObservedObject var bridge: MobileBridge
     /// The sheet this host is showing, to tell a swipe from Rust closing it.

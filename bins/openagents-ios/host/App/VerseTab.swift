@@ -271,6 +271,8 @@ final class VerseWorld: ObservableObject {
 struct VerseTab: View {
     /// The Verse tab is selected.
     let selected: Bool
+    /// Train Coder on the Gym's board: opt into the Gym on the Chat tab.
+    let train: () -> Void
     @StateObject private var world = VerseWorld()
     @Environment(\.scenePhase) private var phase
 
@@ -300,7 +302,7 @@ struct VerseTab: View {
                         } else if world.evalsOpen {
                             GeometryReader { full in
                                 anchoredPanel(size: full.size, safe: safe, anchor: world.evalsAnchor) {
-                                    VerseEvalsPanel(world: world) { world.send(["action": "close_evals"]) }
+                                    VerseEvalsPanel(world: world, train: train) { world.send(["action": "close_evals"]) }
                                 }
                             }.ignoresSafeArea()
                         }

@@ -65,6 +65,8 @@ struct EvalsView: Decodable {
 /// The EVALS panel over the world.
 struct VerseEvalsPanel: View {
     @ObservedObject var world: VerseWorld
+    /// Train Coder: opt into the Gym; Rust opens its intro on the Chat tab.
+    let train: () -> Void
     let close: () -> Void
     private var view: EvalsView? { world.evalsView }
 
@@ -92,6 +94,10 @@ struct VerseEvalsPanel: View {
 
     private func content(_ view: EvalsView) -> some View {
         VStack(alignment: .leading, spacing: 14) {
+            // The way into the Gym's loop: test a capability on Coder, in chat.
+            Button("Train Coder", systemImage: "dumbbell", action: train)
+                .accessibilityIdentifier("evals-train")
+            Divider().overlay(.white.opacity(0.3))
             notes(view)
             Divider().overlay(.white.opacity(0.3))
             Text("Published results").font(.headline)

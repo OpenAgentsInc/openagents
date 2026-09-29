@@ -189,8 +189,10 @@ pub enum Intent {
     /// Send the wrong-answer report the chat showed.
     SendWrongAnswer,
     CancelWrongAnswer,
-    /// Back to the main menu, or to step 1 of the first run.
+    /// Back to the Gym menu, for a person who opted into the Gym.
     Hub,
+    /// The chat header's **Profile** (`SCR-11`).
+    Profile,
     /// Start a new chat with a starter's words.
     Starter {
         text: String,
@@ -218,8 +220,10 @@ pub enum Go {
     /// The Verse tab, walked into the Gym before its EVALS board: the host
     /// sends the world `go_evals`.
     VerseGym,
-    /// The chat tab's own screens changed (menu, chat, or first run): the
-    /// host shows the one `gym.screen` names.
+    /// The Chat tab, after **Train Coder** from another tab.
+    Chat,
+    /// The chat tab's own screens changed (menu, chat, or the Gym intro):
+    /// the host shows the one `gym.screen` names.
     Gym,
 }
 
@@ -1191,6 +1195,10 @@ impl CoderTab {
             }
             Intent::CancelWrongAnswer => self.flag = None,
             Intent::Hub => self.hub(),
+            Intent::Profile => {
+                self.gym.sheet = Some(crate::gym::Sheet::Profile);
+                self.notice = None;
+            }
             Intent::Starter { text } => self.start_talk(&text, computers.as_deref()),
             Intent::SendWrongAnswer => {
                 let Some((id, Flag::Confirm)) = self.flag.clone() else {
@@ -1296,18 +1304,21 @@ impl CoderTab {
         }
     }
 
-    /// Back to the main menu, or, before Coder is chosen, to step 1. The
-    /// first-run chat has no way back until its first result.
+    /// Back to the Gym menu, for a person who opted into the Gym. The
+    /// intro's chat has no way back until its first result; before the
+    /// opt-in there is no menu.
     fn hub(&mut self) {
         use crate::gym::FirstRun;
+        if !self.gym.opted_in() {
+            return;
+        }
         match self.gym.first_run() {
-            FirstRun::Choose => self.gym.set_asked_first(false),
+            FirstRun::Choose | FirstRun::EndCard => return,
             FirstRun::Chat if self.gym.first_result().is_none() => return,
             FirstRun::Chat => {
                 self.gym.set_first_run(FirstRun::Done);
                 self.gym.on_menu = true;
             }
-            FirstRun::EndCard => return,
             FirstRun::Done => self.gym.on_menu = true,
         }
         self.keep(true);
@@ -1334,24 +1345,51 @@ impl CoderTab {
         }
     }
 
-    /// The back button an open chat's header starts with: to the menu, or
-    /// to step 1 before Coder is chosen. None in the first-run chat before
-    /// its first result.
+    /// The back button an open chat's header starts with: to the Gym menu,
+    /// for a person who opted in. None before the opt-in, and none in the
+    /// intro's chat before its first result.
     fn back_button(&self) -> Option<Node<Intent>> {
         use crate::gym::FirstRun;
-        let label = match self.gym.first_run() {
-            FirstRun::Choose => "Back",
+        if !self.gym.opted_in() {
+            return None;
+        }
+        match self.gym.first_run() {
+            FirstRun::Choose | FirstRun::EndCard => return None,
             FirstRun::Chat if self.gym.first_result().is_none() => return None,
-            FirstRun::EndCard => return None,
-            FirstRun::Chat | FirstRun::Done => "Menu",
-        };
+            FirstRun::Chat | FirstRun::Done => {}
+        }
         Some(icon_button(
             "coder-back",
-            label,
+            "Menu",
             Glyph::Back,
             true,
             Intent::Hub,
         ))
+    }
+
+    /// The chat header's **Profile**: `SCR-11` as a sheet, reachable from
+    /// every chat.
+    fn profile_button() -> Node<Intent> {
+        icon_button(
+            "coder-profile",
+            "Profile",
+            Glyph::Person,
+            true,
+            Intent::Profile,
+        )
+    }
+
+    /// **Train Coder**, from the Verse's Gym board or Account: opt into the
+    /// Gym and show its intro on the Chat tab.
+    pub(crate) fn train_coder(&mut self) {
+        self.gym.opt_in();
+        self.gym.sheet = None;
+        self.keep(true);
+        self.open = None;
+        self.talk = None;
+        self.drawer = false;
+        self.notice = None;
+        self.go = Some(Go::Chat);
     }
 
     /// A ready computer's name, where a run may go.
@@ -1484,8 +1522,8 @@ impl CoderTab {
                     text: crate::first_run::FIRST_MESSAGE.into(),
                 }
             }
-            Action::AskFirst => {
-                self.gym.set_asked_first(true);
+            Action::NotNow => {
+                self.gym.opt_out();
                 Effect::None
             }
             Action::SkipFirstRun => {
@@ -1610,7 +1648,7 @@ impl CoderTab {
         self.list
             .list
             .titles
-            .insert(task.clone(), "Testing a tool".into());
+            .insert(task.clone(), "Testing a capability".into());
         self.list.list.sent.insert(task.clone(), now);
         self.list.save();
         Ok((host, label, task))
@@ -2415,6 +2453,7 @@ impl CoderTab {
                 Intent::Menu,
             ),
             heading("coder-title", "OpenAgents"),
+            Self::profile_button(),
             selector,
         ]);
         let mut children = vec![header("coder-header", top)];
@@ -2630,8 +2669,13 @@ impl CoderTab {
                     ));
                 }
             }
-            // The Gym's starters: each opens a chat with its question sent.
-            for (id, label, message) in crate::first_run::STARTERS {
+            // The Gym's starters, once the person opted into the Gym: each
+            // opens a chat with its question sent. Before that the chat
+            // volunteers nothing of the Gym.
+            for (id, label, message) in crate::first_run::STARTERS
+                .iter()
+                .filter(|_| self.gym.opted_in())
+            {
                 chips.push((
                     format!("starter:{id}"),
                     pill(
@@ -2683,10 +2727,13 @@ impl CoderTab {
         let tail = self.basic.tail(id);
         let limit = self.talk_turns;
         let mut header = chat_header(status("coder-chat-place", "OpenAgents"));
-        if let Some(back) = self.back_button()
-            && let Element::Stack { children, .. } = &mut header.element
-        {
-            children.insert(0, back);
+        if let Element::Stack { children, .. } = &mut header.element {
+            // Profile before the new-chat button, which stays last.
+            let at = children.len().saturating_sub(1);
+            children.insert(at, Self::profile_button());
+            if let Some(back) = self.back_button() {
+                children.insert(0, back);
+            }
         }
         let turns = self.basic.turns(id);
         let mut children = vec![header];

@@ -1,28 +1,33 @@
-//! The main menu (`SCR-01`) and the guided first run (`FLOW-01`: `SCR-02`
-//! Choose your agent, the intro's end card, then the first-run chat).
+//! The Gym menu (`SCR-01`) and the Gym intro (`FLOW-01`: `SCR-02` Choose
+//! your agent, the intro's end card, then the intro's chat).
 //!
-//! Chat with OpenAgents is the menu's one primary action; the starter chips
-//! each open a new chat with a question sent. The next-step line comes from
-//! the phone's own state: a run in progress, a result not yet added, a
-//! check that confirmed your result, or the first step to take.
+//! Chat first: a new install opens on a chat with OpenAgents, with the tab
+//! bar, and nothing of the Gym is volunteered. The Gym is opt-in: **Train
+//! Coder**, from the Verse's Gym board or from Account, opens the intro.
+//! The intro is three taps to a test starting: **CHOOSE CODER**, **LET'S
+//! GO**, and the intro chat's **START THE TEST**. The furthest step reached
+//! is kept, so a relaunch reopens there, and the Gym menu is reachable from
+//! the chat's header after the first result.
 //!
-//! The first run is three taps from a new install to a test starting:
-//! **CHOOSE CODER**, **LET'S GO**, and the first-run chat's **START THE
-//! TEST**. The furthest step reached is kept, so a relaunch reopens there,
-//! and the menu shows only after the first result.
+//! Chat with OpenAgents is the menu's one primary action; the starter
+//! chips each open a new chat with a question sent. The next-step line
+//! comes from the phone's own state: a run in progress, a result not yet
+//! added, a check that confirmed your result, or the first step to take.
 
 use serde::Serialize;
 
 use crate::eval_cards::{Action, Button};
 use crate::gym::{FirstRun, Gym, level_line, next_step};
 
-/// The first-run chat's opening message: sent for the player, as a starter
-/// chip would, so the tool card and its test come from the Gym's records.
+/// The intro chat's opening message: sent for the player, as a starter
+/// chip would, so the capability card and its test come from the Gym's
+/// records.
 pub(crate) const FIRST_MESSAGE: &str = "Test Project map on Coder";
 
-/// The starter chips on the menu and on a new chat: `(id, label, message)`.
+/// The Gym's starter chips on the menu and, once opted in, on a new chat:
+/// `(id, label, message)`.
 pub(crate) const STARTERS: &[(&str, &str, &str)] = &[
-    ("test", "Test a tool", "Which tool should I try?"),
+    ("test", "Test a capability", "Which tool should I try?"),
     ("news", "What's new", "What's new in the Gym?"),
     ("check", "Check a result", "Find me a result to check"),
 ];
@@ -57,7 +62,7 @@ pub struct Row {
     pub glyph: &'static str,
 }
 
-/// `SCR-01` Main menu.
+/// `SCR-01` The Gym menu.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct MenuView {
     pub player: Player,
@@ -75,7 +80,7 @@ pub struct MenuView {
     pub footer: String,
 }
 
-/// A step of the first run before its chat.
+/// A step of the Gym intro before its chat.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct FirstRunView {
     /// `choose` or `end_card`.
@@ -95,21 +100,28 @@ pub struct FirstRunView {
     pub secondary: Option<Button>,
 }
 
-/// Which screen the Chat tab shows now.
+/// Which screen the Chat tab shows now: the chat until the person opts
+/// into the Gym; then the intro's steps, and the menu when the person
+/// opened it.
 pub(crate) fn screen(gym: &Gym) -> &'static str {
+    if !gym.opted_in() {
+        return "chat";
+    }
     match gym.first_run() {
-        FirstRun::Choose if !gym.asked_first() => "first_run",
-        FirstRun::EndCard => "first_run",
-        FirstRun::Choose | FirstRun::Chat => "chat",
+        FirstRun::Choose | FirstRun::EndCard => "first_run",
+        FirstRun::Chat => "chat",
         FirstRun::Done if gym.on_menu => "menu",
         FirstRun::Done => "chat",
     }
 }
 
-/// The first run's screen, when it shows one.
+/// The intro's screen, when it shows one.
 pub(crate) fn first_run(gym: &mut Gym) -> Option<FirstRunView> {
+    if !gym.opted_in() {
+        return None;
+    }
     match gym.first_run() {
-        FirstRun::Choose if !gym.asked_first() => Some(FirstRunView {
+        FirstRun::Choose => Some(FirstRunView {
             step: "choose",
             indicator: Some("STEP 1 OF 3".into()),
             dot: 1,
@@ -123,12 +135,10 @@ pub(crate) fn first_run(gym: &mut Gym) -> Option<FirstRunView> {
             primary: gym
                 .actions
                 .button("first.choose", "CHOOSE CODER", None, Action::ChooseCoder),
-            secondary: Some(gym.actions.button(
-                "first.ask",
-                "Ask OpenAgents a question first",
-                None,
-                Action::AskFirst,
-            )),
+            secondary: Some(
+                gym.actions
+                    .button("first.later", "Not now", None, Action::NotNow),
+            ),
         }),
         FirstRun::EndCard => Some(FirstRunView {
             step: "end_card",
@@ -136,11 +146,11 @@ pub(crate) fn first_run(gym: &mut Gym) -> Option<FirstRunView> {
             dot: 1,
             title: "Coder is ready.".into(),
             lines: vec![
-                "Tools can make Coder better. Tests show whether they do.".into(),
-                "Let's see if a tool makes Coder better.".into(),
+                "Capabilities can make Coder better. Tests show whether they do.".into(),
+                "Let's see if a capability makes Coder better.".into(),
             ],
             agent: None,
-            next: "Next: we'll test a tool together in chat.".into(),
+            next: "Next: we'll test a capability together in chat.".into(),
             primary: gym
                 .actions
                 .button("first.go", "LET'S GO", None, Action::LetsGo),
@@ -150,7 +160,7 @@ pub(crate) fn first_run(gym: &mut Gym) -> Option<FirstRunView> {
     }
 }
 
-/// `SCR-01` Main menu, from the phone's state.
+/// `SCR-01` The Gym menu, from the phone's state.
 pub(crate) fn menu(gym: &mut Gym, app_build: Option<&str>) -> MenuView {
     let standing = gym.standing.clone();
     let player = Player {
@@ -225,7 +235,7 @@ pub(crate) fn menu(gym: &mut Gym, app_build: Option<&str>) -> MenuView {
         status: "GYM OPEN".into(),
         next,
         primary,
-        primary_subtitle: "Test a tool, see what's new, earn XP".into(),
+        primary_subtitle: "Test a capability, see what's new, earn XP".into(),
         chips,
         rows,
         footer: match app_build {
@@ -240,35 +250,52 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_new_install_opens_on_step_one() {
+    fn a_new_install_opens_on_the_chat_and_train_coder_opens_the_intro() {
         let mut gym = Gym::empty();
+        assert_eq!(screen(&gym), "chat");
+        assert!(first_run(&mut gym).is_none());
+        // Train Coder: the intro, at step 1.
+        gym.opt_in();
         assert_eq!(screen(&gym), "first_run");
         let view = first_run(&mut gym).expect("step 1");
         assert_eq!(view.step, "choose");
         assert_eq!(view.primary.label, "CHOOSE CODER");
+        assert_eq!(
+            view.secondary.as_ref().map(|b| b.label.as_str()),
+            Some("Not now")
+        );
         assert_eq!(view.indicator.as_deref(), Some("STEP 1 OF 3"));
-        // Asking first shows the chat; step 1 is still the step.
-        gym.set_asked_first(true);
+        // Not now: the chat again, and no intro until the next Train Coder.
+        gym.opt_out();
         assert_eq!(screen(&gym), "chat");
-        gym.set_asked_first(false);
-        assert_eq!(screen(&gym), "first_run");
+        assert!(first_run(&mut gym).is_none());
+        // The intro keeps its furthest step across an opt-out.
+        gym.opt_in();
+        gym.set_first_run(FirstRun::EndCard);
+        gym.opt_out();
+        gym.opt_in();
+        assert_eq!(first_run(&mut gym).expect("end card").step, "end_card");
     }
 
     #[test]
     fn the_menu_shows_no_number_it_hasnt_read() {
         let mut gym = Gym::empty();
-        gym.set_first_run(FirstRun::Done);
+        gym.set_start("done");
         gym.on_menu = true;
+        assert_eq!(screen(&gym), "menu");
         let menu = menu(&mut gym, Some("1.0.0 (21)"));
         assert_eq!(menu.player.level, None);
         assert_eq!(menu.player.xp_label, None);
         assert_eq!(menu.primary.label, "CHAT WITH OPENAGENTS");
         assert_eq!(
             menu.next,
-            "Next: test a tool to see if it makes Coder better."
+            "Next: test a capability to see if it makes Coder better."
         );
         let labels: Vec<&str> = menu.chips.iter().map(|c| c.label.as_str()).collect();
-        assert_eq!(labels, ["Test a tool", "What's new", "Check a result"]);
+        assert_eq!(
+            labels,
+            ["Test a capability", "What's new", "Check a result"]
+        );
         assert_eq!(menu.footer, "Gym open · v1.0.0 (21) · Playtest");
     }
 }

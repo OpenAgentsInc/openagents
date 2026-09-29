@@ -69,8 +69,10 @@ const MAX_RUNS_KEPT: usize = 40;
 /// The most bytes of one report the phone keeps, NIP-EVAL's bound.
 const MAX_REPORT_BYTES: usize = eval_ext::MAX_REPORT_BYTES;
 
-/// Where the first-run path stands (`FLOW-01`). The phone records the
-/// furthest step and reopens there.
+/// Where the Gym intro stands (`FLOW-01`), once a person opts into the
+/// Gym with **Train Coder**. The phone records the furthest step and
+/// reopens there. Before the opt-in, the Chat tab is the chat and none of
+/// these steps shows.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum FirstRun {
@@ -79,9 +81,9 @@ pub(crate) enum FirstRun {
     Choose,
     /// The intro's end card, with **LET'S GO**.
     EndCard,
-    /// Steps 2 and 3: the first-run chat, with its tool card and run.
+    /// Steps 2 and 3: the intro's chat, with its capability card and run.
     Chat,
-    /// The guided path is over; the main menu shows.
+    /// The intro is over; the Gym menu is reachable from the chat.
     Done,
 }
 
@@ -485,9 +487,14 @@ pub(crate) enum Effect {
 /// What the Gym keeps across launches.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 struct Saved {
+    /// The person opted into the Gym (**Train Coder**, from the Verse's
+    /// Gym board or Account). Until then the chat volunteers no Gym
+    /// starter, card, or intro.
+    #[serde(default)]
+    gym: bool,
     #[serde(default)]
     first_run: FirstRun,
-    /// The first-run chat.
+    /// The intro's chat.
     #[serde(default)]
     first_talk: Option<String>,
     #[serde(default)]
@@ -498,9 +505,6 @@ struct Saved {
     /// The eval XP this phone has shown, for the menu's credit line.
     #[serde(default)]
     eval_xp_seen: Option<u64>,
-    /// The person asked a question before choosing Coder.
-    #[serde(default)]
-    asked_first: bool,
 }
 
 /// Facts the tab passes when it draws a chat's cards.
@@ -528,7 +532,8 @@ pub(crate) struct Gym {
     pub(crate) standing: Standing,
     /// A plain line under a card whose button couldn't act.
     pub(crate) notice: Option<String>,
-    /// The main menu, the chat, or the first run.
+    /// The Gym menu is on screen instead of the chat. Never at launch: the
+    /// Chat tab opens on the chat.
     pub(crate) on_menu: bool,
     /// Cards already shown, so the playtest log records each once.
     seen: std::collections::BTreeSet<String>,
@@ -558,7 +563,6 @@ impl Gym {
             .as_ref()
             .and_then(|store| store.read("gym").ok().flatten())
             .unwrap_or_default();
-        let on_menu = saved.first_run == FirstRun::Done;
         Self {
             store,
             saved,
@@ -572,7 +576,7 @@ impl Gym {
             world: None,
             standing: Standing::default(),
             notice: None,
-            on_menu,
+            on_menu: false,
             seen: std::collections::BTreeSet::new(),
             logged: Vec::new(),
         }
@@ -626,7 +630,29 @@ impl Gym {
         }
     }
 
-    /// Start the first run at a named step, for simulator screenshots.
+    /// The person opted into the Gym with **Train Coder**.
+    pub(crate) fn opted_in(&self) -> bool {
+        self.saved.gym
+    }
+
+    /// **Train Coder**: opt into the Gym. The intro opens at its furthest
+    /// step (step 1 on the first opt-in); the menu waits behind the chat.
+    pub(crate) fn opt_in(&mut self) {
+        self.saved.gym = true;
+        self.on_menu = false;
+        self.save();
+    }
+
+    /// **Not now** on the intro: back to the chat, with nothing of the
+    /// Gym volunteered until the next **Train Coder**.
+    pub(crate) fn opt_out(&mut self) {
+        self.saved.gym = false;
+        self.on_menu = false;
+        self.save();
+    }
+
+    /// Start the Gym intro at a named step, for simulator screenshots;
+    /// every step opts in.
     pub(crate) fn set_start(&mut self, step: &str) {
         let step = match step {
             "choose" => FirstRun::Choose,
@@ -635,23 +661,14 @@ impl Gym {
             "done" => FirstRun::Done,
             _ => return,
         };
+        self.saved.gym = true;
         self.saved.first_run = step;
-        self.saved.asked_first = false;
-        self.on_menu = step == FirstRun::Done;
+        self.on_menu = false;
         self.save();
     }
 
     pub(crate) fn set_first_talk(&mut self, talk: &str) {
         self.saved.first_talk = Some(talk.to_owned());
-        self.save();
-    }
-
-    pub(crate) fn asked_first(&self) -> bool {
-        self.saved.asked_first
-    }
-
-    pub(crate) fn set_asked_first(&mut self, asked: bool) {
-        self.saved.asked_first = asked;
         self.save();
     }
 
@@ -1494,7 +1511,7 @@ impl Gym {
                         talk: talk.to_owned(),
                         turn,
                         offer: body.clone(),
-                        tool: "the tool".into(),
+                        tool: "the capability".into(),
                         purpose: Purpose::Test,
                     },
                     &size.unwrap_or(cj::Size {
@@ -1561,7 +1578,7 @@ impl Gym {
                 secondary: vec![],
                 chips: vec![self.actions.button(
                     format!("{id}.test"),
-                    "Test a tool",
+                    "Test a capability",
                     Some("test"),
                     Action::Say {
                         text: "Which tool should I try?".into(),
@@ -1632,7 +1649,7 @@ impl Gym {
                         // it is; it never splits them by side.
                         let tests = run.cases.max(1);
                         progress.push(Progress {
-                            label: "with and without the tool".into(),
+                            label: "with and without the capability".into(),
                             done: (*done).min(*planned) * tests / planned,
                             total: tests,
                         });
@@ -1939,7 +1956,7 @@ impl Gym {
             ));
             chips.push(self.actions.button(
                 format!("{id}.test"),
-                "Test a tool",
+                "Test a capability",
                 Some("test"),
                 Action::Say {
                     text: "Which tool should I try?".into(),
@@ -2047,13 +2064,13 @@ impl Gym {
                 marks: vec![mark(case.without), mark(case.with)],
                 text: ui::humane(&case.id),
                 detail: (case.kind == CaseKind::ShouldNotFire.word())
-                    .then(|| "The tool should stay out of the way.".to_owned()),
+                    .then(|| "The capability should stay out of the way.".to_owned()),
                 trailing: None,
             })
             .collect();
         sections.push(Section {
             heading: Some("TESTS".into()),
-            lines: vec![line("Without the tool, then with it.", Tone::Quiet)],
+            lines: vec![line("Without the capability, then with it.", Tone::Quiet)],
             items,
         });
         let why = match (run.pilot(), outcome.claim.verdict, run.check()) {
@@ -2064,12 +2081,14 @@ impl Gym {
                 "A check shows whether a result holds up when someone else runs the same tests."
             }
             (false, Verdict3::Pass, None) => {
-                "When other trainers confirm it and it holds up on a test set someone else wrote, Coder can use this tool for everyone."
+                "When other trainers confirm it and it holds up on a test set someone else wrote, Coder can use this capability for everyone."
             }
             (false, Verdict3::Inconclusive, None) => {
-                "That's useful too. Now everyone knows this tool doesn't help on these tests."
+                "That's useful too. Now everyone knows this capability doesn't help on these tests."
             }
-            (false, Verdict3::Fail, None) => "That's useful too. We won't give Coder this tool.",
+            (false, Verdict3::Fail, None) => {
+                "That's useful too. We won't give Coder this capability."
+            }
         };
         sections.push(Section {
             heading: None,
@@ -2135,7 +2154,7 @@ impl Gym {
             ),
             self.actions.button(
                 "sheet.another",
-                "Test another tool",
+                "Test another capability",
                 Some("test"),
                 Action::Say {
                     text: "Which tool should I try?".into(),
@@ -2369,8 +2388,9 @@ impl Gym {
                             .map(|(n, case)| Item {
                                 marks: vec![],
                                 text: format!("{} {}", n + 1, ui::humane(&case.id)),
-                                detail: (case.kind == CaseKind::ShouldNotFire.word())
-                                    .then(|| "The tool should stay out of the way.".to_owned()),
+                                detail: (case.kind == CaseKind::ShouldNotFire.word()).then(|| {
+                                    "The capability should stay out of the way.".to_owned()
+                                }),
                                 trailing: None,
                             })
                             .collect(),
@@ -2628,7 +2648,7 @@ pub(crate) fn next_step(gym: &Gym) -> &'static str {
     if gym.latest_result().is_some() {
         return "Next: check someone else's result for more XP.";
     }
-    "Next: test a tool to see if it makes Coder better."
+    "Next: test a capability to see if it makes Coder better."
 }
 
 fn line(text: &str, tone: Tone) -> Line {
@@ -2725,7 +2745,10 @@ fn made_items(s: &Standing) -> Vec<Item> {
     for row in &s.results {
         let (mark, text) = match (row.check, row.standing.as_str()) {
             (true, "awarded") => ("check", "Your check earned XP".to_owned()),
-            (true, "pending") => ("wait", "Your check followed the rules. XP is on its way".to_owned()),
+            (true, "pending") => (
+                "wait",
+                "Your check followed the rules. XP is on its way".to_owned(),
+            ),
             (true, "disputed") => ("cross", "Your check disagreed with the result".to_owned()),
             (true, _) => ("dot", "A check you added".to_owned()),
             (false, "awarded" | "pending") => (
@@ -2773,7 +2796,7 @@ fn made_items(s: &Standing) -> Vec<Item> {
 /// the ledger.
 fn share_text(s: &Standing) -> String {
     format!(
-        "I'm {} on OpenAgents: level {}, {} XP from testing tools for Coder. https://openagents.com",
+        "I'm {} on OpenAgents: level {}, {} XP from testing capabilities for Coder. https://openagents.com",
         s.name, s.level, s.xp
     )
 }

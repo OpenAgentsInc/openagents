@@ -342,6 +342,7 @@ class MainActivity : ComponentActivity() {
         if (BuildConfig.DEBUG) intent.getStringExtra("verse_script")?.let { world.script = VerseScript.parse(it) }
         page.addView(world, FrameLayout.LayoutParams(-1, -1))
         panels = VersePanels(this, world)
+        panels.onTrain = { bridge.gymTrain() }
         // Bottom center, between the movement and look sticks Rust draws.
         val controls = column().apply { gravity = Gravity.CENTER_HORIZONTAL }
         cameraButton = iconButton(R.drawable.ic_touch_look, "Touch look", "verse-camera-mode") { world.toggleMotion() }
@@ -500,7 +501,11 @@ class MainActivity : ComponentActivity() {
         addView(column().apply {
             setPadding(dp(16), dp(12), dp(16), dp(24))
             addView(text("Account", 32f).bold(), LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(16) })
-            addView(group(listOf(AccountRoute.TRAINER).map { "★  ${it.title}" to "account-trainer" to { open(it) } }))
+            addView(group(listOf(
+                "★  ${AccountRoute.TRAINER.title}" to "account-trainer" to { open(AccountRoute.TRAINER) },
+                // Opt into the Gym: Rust opens its intro on the Chat tab.
+                "Train Coder" to "account-train" to { bridge.gymTrain() },
+            )))
             addView(group(listOf(
                 "Playtest" to "account-playtest" to { open(AccountRoute.PLAYTEST) },
                 "Report a problem" to "account-report" to { report() },
@@ -648,6 +653,9 @@ class MainActivity : ComponentActivity() {
                 "report" -> report()
                 // See the board: the Verse tab, at the Gym's EVALS board.
                 "verse_gym" -> { select(AppTab.VERSE); panels.openEvals() }
+                // Train Coder from the Verse or Account: the Chat tab, on
+                // the Gym intro.
+                "chat" -> select(AppTab.CODER)
             }
         }
         val packet = bridge.packet
