@@ -56,7 +56,7 @@ those is a place a normal person stops.
 | Identity | Owner key in `~/.openagents/coder-owner/owner.key`; host key and grants in `~/.openagents/coder-access/`; the phone's device key in Keychain `com.openagents.app.device` ([INVARIANTS, Device identity key](../../../INVARIANTS.md#device-identity-key)). | The desktop app keeps the owner and host secrets in the OS keychain. |
 | Enrollment | A `coder-host:` invitation (host key, invitation ID, 32-byte capability, 300-second life, relay URL) redeemed as `enroll.redeem` over the relay ([NIP-HOST, Host invitations](../../../nips/openagents/NIP-HOST.md#host-invitations)). | Same redemption, also carried over iroh; a new QR payload adds the computer's iroh address. |
 | Clock | `issued_at` may sit up to 60 s ahead of the reader (`CLOCK_SKEW`, `crates/coder-connect/src/protocol.rs:359`, used for host access by `crates/coder-access/src/protocol.rs:843`); the channel hello allows 120 s (`MAX_CLOCK_SKEW`, `crates/coder-reach/src/channel.rs:42`). | Kept. |
-| Same-network shortcut | [Tailnet admission](../../../nips/openagents/NIP-HOST.md#tailnet-admission): an invitation for a caller whose Tailscale user owns the host, port 47109 (`crates/coder-host/src/tailnet.rs:41`). | Deprecated; replaced by nearby pairing with a confirmation code. |
+| Same-network shortcut | [Tailnet admission](../../../nips/openagents/NIP-HOST.md#tailnet-admission): an invitation for a caller whose Tailscale user owns the host, port 47109 (`crates/coder-host/src/tailnet.rs:41`). | Kept as an optional path for owners who use Tailscale. Nearby pairing with a confirmation code is the default same-network path. |
 | Local operator | CLI commands (`coder host revoke`, `coder host autostart on`) open the host's on-disk store directly (`crates/coder-host/src/cli.rs`). No host process exposes a local socket today. | A local control socket, same-user only, used by the desktop app and `openagents connect`. |
 | Phone scanner | `bins/coder-ios/host/App/QRScanner.swift` (compiled into the OpenAgents iOS host, `bins/openagents-ios/host/project.yml`) and `bins/openagents-android/host/app/src/main/java/com/openagents/app/QRScanner.kt`. Camera permission is already declared on both. | Reused. |
 | Chat tie-in | **Connect a computer** is the chat chip shown when a message needs a computer and none is ready; it opens Account > Computers ([wireframe](../../product/2026-09-28-app-wireframe.md) `SCR-17.E05`, `SCR-17.E06`, `SCR-14.E05`). | The chip opens the scanner directly. |
@@ -452,7 +452,7 @@ same.
 | `openagents connect` (`invite`, `devices`, `remove`, `status`, `owner import`) | The power-user and headless path; talks to the same local socket. |
 | `coder link *`, `scripts/link-device.sh` | Deprecated when the migration step lands: they print the replacement and still work for one release, then go. |
 | `coder pair` and `./pair` (the chat-history observer's pairing) | Deprecated the same way; a QR-paired phone reads chats through its NIP-HOST grant's `observe`. |
-| Tailnet admission (`--tailnet-admission`, port 47109) and the phone's Tailscale device list (`crates/openagents-mobile/src/tailnet.rs`) | Deprecated; removed one release after nearby pairing ships. |
+| Tailnet admission (`--tailnet-admission`, port 47109) and the phone's Tailscale device list (`crates/openagents-mobile/src/tailnet.rs`) | Kept as an optional path, not deprecated, alongside QR pairing and iroh. |
 | Phone: **Add a computer > Scan invitation / Paste invitation**, **Enter owner key** | Replaced by **Connect a computer** (scanner, nearby list, **Paste a code**). The owner directory moves under Advanced. |
 
 ### Chat on the phone
@@ -516,7 +516,6 @@ Each lands in `INVARIANTS.md` in the same PR as the code it describes.
 | "Only the host's owner, with a command on the host, turns auto-start on or widens it" | Reinterpreted: a request over the local control socket (the desktop app's switch or `openagents connect`) is a command on the host; a device still cannot. | 4 |
 | New, Linking devices | Nearby pairing admits a device only after the person clicks **Connect** on the computer while both screens show the same six-digit code; one pending request, five per ten minutes. | 10 |
 | Device identity key | The phone's iroh secret key is kept in the same this-device-only store as its device key. | 6 |
-| Tailnet admission rows | Marked deprecated, then removed with the listener. | 13 |
 
 ## Plan
 
@@ -598,7 +597,9 @@ steps own disjoint files; the shared `Cargo.toml` members list and
 12. **Linux and Windows desktop builds.** ([#9977](https://github.com/OpenAgentsInc/openagents/issues/9977))
 13. **Deprecate and remove the old path.** ([#9978](https://github.com/OpenAgentsInc/openagents/issues/9978)) Aliases and notices for the names
     above, the rewritten [Link your devices](../guides/link-devices.md) with
-    Tailscale moved to an "If you already use Tailscale" note, then removal.
+    Tailscale under "Using Tailscale (optional)", then removal of the old
+    setup commands. Tailnet admission and the chat-over-tailnet listener are
+    out of scope: they stay as an option.
 14. **`openagents connect --ssh`** ([#9979](https://github.com/OpenAgentsInc/openagents/issues/9979)) for a headless box: install, start the
     host, and redeem over the SSH channel.
 

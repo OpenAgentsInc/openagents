@@ -29,7 +29,7 @@ manage it.
 > phone, and `openagents connect` are being built under
 > [#9965](https://github.com/OpenAgentsInc/openagents/issues/9965)
 > ([design](../design/2026-09-29-auto-pairing.md)). Until they reach you, use
-> [If you already use Tailscale](#if-you-already-use-tailscale) below.
+> [Using Tailscale (optional)](#using-tailscale-optional) below.
 
 ## How authority works
 
@@ -54,16 +54,23 @@ The desktop app finds a computer already set up with `coder link` and asks
 grants, projects, and tasks, so phones you already enrolled keep working
 without scanning again.
 
-## If you already use Tailscale
+## Using Tailscale (optional)
 
-`coder link`, `scripts/link-device.sh`, `coder pair` and `./pair`, and tailnet
-admission (`coder host serve --tailnet-admission`) are **deprecated**
-([#9978](https://github.com/OpenAgentsInc/openagents/issues/9978)).
-`coder link`, `scripts/link-device.sh`, `./pair`, and the admission listener
-print a notice naming the replacement. Each keeps working for one release
-after the desktop app and nearby pairing ship; then they are removed. Until
-then, this is how to link computers over Tailscale, with
+Tailscale is a supported alternative to the desktop app. If your devices
+already share a tailnet, they can reach each other directly over it, with
 `wss://relay.openagents.com/` as the fallback when no direct route works.
+
+Tailnet admission (`coder host serve --tailnet-admission RIGHTS`) stays
+available: a phone signed in as the same Tailscale user as the computer gets
+a one-use invitation from the host, with the rights you chose, and can read
+chat history directly over the tailnet.
+
+The setup commands below, `coder link`, `scripts/link-device.sh`, `coder pair`
+and `./pair`, are **deprecated**
+([#9978](https://github.com/OpenAgentsInc/openagents/issues/9978)) and print a
+notice naming the replacement. Each keeps working for one release after the
+desktop app and nearby pairing ship; then they are removed. Until then, this
+is how to set up computers over Tailscale.
 
 In this path your **owner key** is the Nostr key every host serves. It lives
 in one private file on one computer, and hosts receive only its public half.

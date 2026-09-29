@@ -483,8 +483,8 @@ invitations; it does not revoke grants already issued.
 request; `crates/openagents-mobile` probes each device on the tailnet and
 redeems what it receives.
 
-Tailnet admission is planned for deprecation once
-[nearby approval](#nearby-approval-planned) ships; see the
+Tailnet admission is kept as an optional admission path alongside
+[nearby approval](#nearby-approval-planned) and QR pairing; see the
 [QR pairing design](../../docs/coder/design/2026-09-29-auto-pairing.md#names-one-surface).
 
 ## Local operator socket
