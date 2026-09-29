@@ -380,14 +380,6 @@ struct VerseTab: View {
                 .disabled(!active)
                 .accessibilityLabel("Recenter camera")
                 .accessibilityIdentifier("verse-motion-recenter")
-                // Straight to the Gym's EVALS board, without steering there.
-                Button { world.goToEvals() } label: {
-                    Image(systemName: "checklist").frame(width: 44, height: 44)
-                }
-                .disabled(!active)
-                .accessibilityLabel("Gym results board")
-                .accessibilityHint("Walks you into the Gym and opens its EVALS board.")
-                .accessibilityIdentifier("verse-go-evals")
             }
         }
     }

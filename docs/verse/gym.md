@@ -137,12 +137,11 @@ same way the other boards load, and every record is checked on the phone
 before it counts (`verse::gym_evals`). Until someone publishes a result, the
 board says so; it never shows sample data.
 
-Three ways to reach it, all secondary to chat:
+Two ways to reach it, both secondary to chat:
 
 - A chat card's **See the board** (the NIP-CJ `open_screen` offer with
   `screen: "verse.gym"`) opens the Verse tab, walks you into the Gym before
   the board, and opens it.
-- The checklist button beside **Recenter** in the Verse tab does the same.
 - Walk in and tap the board, or use VoiceOver's **Open evals board**.
 
 ### Compare notes
