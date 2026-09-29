@@ -779,6 +779,12 @@ impl crate::router::seams::CodebaseKb for Seam {
         true
     }
 
+    fn warm(&self) -> futures_util::future::BoxFuture<'_, ()> {
+        Box::pin(async move {
+            let _ = self.kb.embedder.embed(vec!["warm".to_string()]).await;
+        })
+    }
+
     fn recipients(&self) -> Vec<String> {
         vec![embedding_recipient(self.kb.embedder.provider).to_string()]
     }

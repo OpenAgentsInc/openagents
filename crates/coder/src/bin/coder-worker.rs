@@ -535,9 +535,15 @@ async fn serve(options: &Options) -> Result<(), String> {
         return Ok(());
     }
 
-    // Keep the door's and the judge's HTTPS connections open, so a turn
-    // does not start with a handshake. Both calls are unbilled reads.
-    tokio::spawn(warm(door.clone(), judge.clone()));
+    // Keep the door's, the judge's, and the codebase embedder's HTTPS
+    // connections open, so a turn does not start with a handshake. The
+    // door and judge calls are unbilled reads; the embedder's is one fixed
+    // word (a fraction of a millionth of a dollar), and carries no message.
+    tokio::spawn(warm(
+        door.clone(),
+        judge.clone(),
+        routing.seams.codebase.clone(),
+    ));
 
     let (outgoing, frames) = mpsc::unbounded_channel::<Value>();
     let mut worker = Worker {
@@ -595,14 +601,18 @@ async fn serve(options: &Options) -> Result<(), String> {
 const WARM_EVERY: Duration = Duration::from_secs(45);
 
 /// Warm the door and the judge now and every [`WARM_EVERY`].
-async fn warm(door: Arc<Door>, judge: Option<Arc<jev::Client>>) {
+async fn warm(
+    door: Arc<Door>,
+    judge: Option<Arc<jev::Client>>,
+    codebase: Arc<dyn coder::router::seams::CodebaseKb>,
+) {
     loop {
         let judging = async {
             if let Some(judge) = &judge {
                 let _ = judge.models().list(jev::ListOptions::default()).await;
             }
         };
-        tokio::join!(door.warm(), judging);
+        tokio::join!(door.warm(), judging, codebase.warm());
         tokio::time::sleep(WARM_EVERY).await;
     }
 }

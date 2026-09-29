@@ -202,6 +202,11 @@ pub trait CodebaseKb: Send + Sync {
     fn recipients(&self) -> Vec<String>;
     /// The passages relevant to `lookup`, with the commit they were read at.
     fn ground<'a>(&'a self, lookup: &'a Lookup) -> BoxFuture<'a, Result<Grounding, SeamError>>;
+    /// Keep the connections a lookup uses open, with a fixed text and no
+    /// message, so the first question after a quiet spell fits the budget.
+    fn warm(&self) -> BoxFuture<'_, ()> {
+        Box::pin(async {})
+    }
 }
 
 /// No knowledge base: the router answers such routes with the model alone.
