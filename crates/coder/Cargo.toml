@@ -20,6 +20,8 @@ coder-setup = { path = "../coder-setup" }
 coder-terminal = { path = "../coder-terminal" }
 jev = { path = "../jev" }
 knowledge = { path = "../knowledge" }
+# T1 personalization's OpenRouter lane (`coder::router::personalize`).
+openrouter = { path = "../openrouter" }
 microcoder-loop = { path = "../microcoder-loop" }
 codex-transport = { path = "../codex-transport" }
 crossterm = { version = "0.29", features = ["event-stream"] }

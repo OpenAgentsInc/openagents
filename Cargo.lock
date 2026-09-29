@@ -1055,6 +1055,7 @@ dependencies = [
  "microcoder-loop",
  "nostr",
  "nostr-transport",
+ "openrouter",
  "plugin",
  "ratatui",
  "receipts",

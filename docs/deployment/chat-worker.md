@@ -41,6 +41,29 @@ phone <--27000 partials, 26900 result------- relay.openagents.com <-- chat worke
   model's reply; otherwise the model's own words come first. Every canned
   line speaks as OpenAgents in the plural. See `crates/coder/src/first.rs`
   and [`docs/coder/measurements/2026-09-28-first-reply.md`](../coder/measurements/2026-09-28-first-reply.md).
+- **Personalization (T1, not wired yet).** The chat router's stems ("We'll
+  dispatch Coder to …") are finished by a cheap model through
+  `coder::router::personalize` once the router's integration wires
+  `personalize::seam_from_env()` into the worker. It is off unless the
+  worker's environment sets it:
+  - `CODER_PERSONALIZE=openrouter` turns it on with OpenRouter's
+    `google/gemini-2.5-flash-lite`, the measured choice
+    ([the chat router design](../coder/design/2026-09-28-chat-router.md#implemented-and-measured-2026-09-28));
+    `openrouter:<model>` names another model. `gateway` (or
+    `gateway:<lane>`) uses the door key and URL the worker already has and
+    the `glm` lane, about twice as slow. `off` or unset turns it off.
+  - With `openrouter`, `OPENROUTER_API_KEY` is required in the chat
+    environment file (`/etc/coder-worker/coder-worker-chat.env`), beside the
+    gateway key: the owner's OpenRouter key, which the worker never logs.
+    The OpenRouter account must have credits: on 2026-09-28 it answered HTTP
+    402, and every personalized stem would then close with its generic
+    ending. `seam_from_env()` refuses to start without a key rather than
+    run without it.
+  - With it on, each personalized turn sends the route, the stem, and the
+    user's latest message (redacted of secret shapes, at most 600
+    characters) to that provider, so the privacy answer and the Basic chat
+    rows in `INVARIANTS.md` must name it as a recipient (the seam's
+    `recipients()`) in the change that turns it on.
 - **Streaming.** The worker sends its first delta at once and then about 160
   bytes at a time; the phone checks each answer's signer, recipient, request
   binding, and sequence, draws the reply with Rust Native's incremental

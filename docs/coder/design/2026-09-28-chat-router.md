@@ -58,7 +58,7 @@ the owner can answer.
 | Knowledge base | `crates/knowledge`, `knowledge/`, [the KB design](knowledge-base.md), [NIP-KB](../../../nips/openagents/NIP-KB.md) | 211 entries of coding knowledge (methods, edge cases, slips). Retrieval is embeddings (`text-embedding-3-small` via OpenAI or OpenRouter, or Vertex) plus BM25, then a Jev Noul relevance filter. No product entries yet. |
 | Code search | `crates/plugin-code-search` | Literal and `*` pattern search over a granted snapshot, ranked by distinct patterns matched. |
 | `openagents` command | `crates/openagents-cli`, [its guide](../../cli/README.md) | About 30 groups; each group's syntax is a `USAGE` string. `openagents mcp serve` already parses the top-level help table into tools (`mcp::groups`). |
-| OpenRouter client | `crates/openrouter` | Chat completions with a JSON-schema response, usage and cost, embeddings. No streaming. |
+| OpenRouter client | `crates/openrouter` | Chat completions with a JSON-schema response, usage and cost, embeddings, and a streamed reply (`Client::stream`, added for personalization). |
 
 The rule that constrains every choice below, from `AGENTS.md`: no keyword
 matching for intent or tool routing. Routing is a typed semantic selector
@@ -437,6 +437,76 @@ candidate for phase 2, measured against the cost of one more call.
 provider. `meta.privacy` must name it, and the worker's privacy invariant row
 must list every recipient: the model door, TypeSafe (Jev), and the
 personalization provider.
+
+### Implemented and measured (2026-09-28)
+
+[#9927](https://github.com/OpenAgentsInc/openagents/issues/9927) implements
+the `Personalize` seam as `coder::router::personalize`
+(`crates/coder/src/router/personalize.rs`). The router still owns what the
+seam section above gives it (the redacted `Ask`, the 1.2 s
+`PERSONALIZE_BUDGET`, `validate_continuation`, and the generic ending); the
+module adds the prompt (the `Ask`'s route, stem, and message, nothing
+else), two streamed providers, and `check`, which tidies the reply (quotes,
+a repeated stem, a missing period) and refuses what the prompt forbids and
+the router's validator does not look for: "we", a button, a time, price, or
+guarantee the user did not write, a question, and a reply cut off by the
+60-token bound. Streaming only ends the call sooner: the continuation is
+shown after all of it passes. `crates/openrouter` gained `Client::stream`.
+The worker holds `personalize::seam_from_env()`, which is `NoPersonalize`
+unless `CODER_PERSONALIZE` names a provider (see
+[the chat worker](../../deployment/chat-worker.md)).
+
+Measured with `cargo run -p coder --example personalize_bench`: 20 dispatch,
+exploration, and issue requests under the three `dispatch.*` stems, three
+rounds (60 calls per provider), from a development Mac after one unmeasured
+warm-up call, with no budget applied so the tail shows. "Complete" is the
+time from the call to the provider's last byte, when the continuation is
+shown if it passes.
+
+| Provider | Model | First delta p50 | Complete p50 | Complete p90 | Max | Valid | Valid within 1.2 s |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| OpenRouter | `google/gemini-2.5-flash-lite` | 405 ms | 496 ms | 622 ms | 774 ms | 57/60 | 57/60 |
+| OpenRouter | `mistralai/ministral-8b-2512` | 384 ms | 548 ms | 765 ms | 1,502 ms | 50/60 | 48/60 |
+| Gateway `glm` lane, run 1 | `zai/glm-5.3-flash` | 996 ms | 1,052 ms | 1,701 ms | 2,858 ms | 40/60 | 36/60 |
+| Gateway `glm` lane, run 2 | `zai/glm-5.3-flash` | 962 ms | 1,003 ms | 1,182 ms | 1,628 ms | 57/60 | 51/60 |
+
+The OpenRouter rows and `glm` run 1 were measured before the module moved
+onto the router's seam; their validity is counted here under the final
+checks (the router's validator refuses `#`, `*`, and backticks, which the
+first checks allowed). `glm` run 2 ran under the final checks. OpenRouter
+could not be rerun: the account's credits ran out (HTTP 402) between the
+runs. Every provider's three refusals in the final checks are the same
+message, "work on issue #9920", whose continuation repeats "#9920": the
+router's markup rule refuses a `#` even when the user typed it, which the
+router should relax for a `#` followed by digits from the message.
+
+An earlier single round also tried `google/gemini-3.1-flash-lite` (736 ms
+p50, 19/20, one timeout), `openai/gpt-4.1-nano` (662 ms p50, 20/20, one
+repeated "pick up pick up"), and the free `google/gemma-4-26b-a4b-it:free`
+(0/20: every call refused). The `glm` lane runs with the Open Responses
+`reasoning` effort `none` and Z.ai's `thinking` switch off through the
+gateway's provider options. It still sometimes reasons first and spends the
+60-token bound before any text (17 of run 1's 20 refusals, none of run
+2's), and a larger bound only makes it slower (1.2 to 5 s in hand tests).
+
+**Decision: OpenRouter with `google/gemini-2.5-flash-lite`**, the default
+of `CODER_PERSONALIZE=openrouter`. At an equal validation rate (57/60 each
+under the final checks) it completes in half the `glm` lane's time at the
+median (496 ms against 1,003 to 1,052 ms) and has no call past the 1.2 s
+budget, where `glm` has 6 to 9 in 60. At its list price ($0.10 per million
+input tokens, $0.40 per million output) a call of about 400 input and 20
+output tokens costs about $0.00005. With the stem shown about 600 ms after
+Send, its p90 puts a personalized sentence complete at about 1.2 s, inside
+the 1.8 s budget; the 1.2 s call budget ends any call that would not be.
+Turning it on needs the OpenRouter account funded again (see
+[the chat worker](../../deployment/chat-worker.md)); until then
+`CODER_PERSONALIZE=gateway` works with the door key the worker already has,
+at the `glm` numbers above.
+
+The checks do not judge grammar: in the last round 2 of 20 flash-lite
+continuations passed but read awkwardly after their stem ("look through
+where the chat worker's quota is implemented"), which the `dispatch.*` stem
+choice and the labeled set should measure.
 
 ## On the wire
 
@@ -955,7 +1025,10 @@ and tests in the same change.
    model, new key on the worker, JSON-schema answer, no streaming in our
    client) or the gateway door's existing `glm` lane (no new key, streams)?
    Proposed: measure both on the 20-word continuation, pick the faster at
-   equal validation rate.
+   equal validation rate. Answered on 2026-09-28: measured, and OpenRouter's
+   `google/gemini-2.5-flash-lite` won (496 ms against 1,003 to 1,052 ms at
+   the median, 57/60 valid each under the final checks); see
+   [the measurement](#implemented-and-measured-2026-09-28).
 4. **Do canned turns count against the 40-a-day quota?** They cost a Jev
    call, not a model call. Counting them keeps the limit simple and the abuse
    surface small; not counting them makes kicking the tires free.

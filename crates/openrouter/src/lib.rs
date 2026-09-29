@@ -6,8 +6,9 @@
 //! this needs: the chat request, the `json_schema` response format
 //! (`ChatFormatJsonSchemaConfig` and `ChatJsonSchemaConfig` there), the
 //! result's usage and cost, provider routing's `require_parameters`, the
-//! `response-healing` plugin, the SDK's error classes, and the embeddings
-//! call. Streaming, tools, and every other endpoint are left out.
+//! `response-healing` plugin, the SDK's error classes, the embeddings
+//! call, and a streamed chat reply ([`Client::stream`]). Tools and every
+//! other endpoint are left out.
 //!
 //! ```no_run
 //! # async fn run() -> Result<(), openrouter::Error> {
@@ -262,6 +263,13 @@ impl ChatRequest {
         self.reasoning = Some(Reasoning {
             effort: effort.to_string(),
         });
+        self
+    }
+
+    /// The same request with a sampling temperature.
+    #[must_use]
+    pub fn temperature(mut self, temperature: f64) -> Self {
+        self.temperature = Some(temperature);
         self
     }
 
@@ -834,6 +842,195 @@ impl Client {
     }
 }
 
+/// A streamed reply: its text and what it cost.
+#[derive(Clone, Debug, Default)]
+pub struct Streamed {
+    /// The reply's text, every delta joined.
+    pub text: String,
+    /// The model OpenRouter used.
+    pub model: String,
+    pub finish_reason: Option<String>,
+    /// The usage the last chunk carried, or zeros when none did.
+    pub usage: Usage,
+    /// Milliseconds from sending the request to the first text delta.
+    pub first_text_ms: Option<u64>,
+    /// Milliseconds the call took.
+    pub milliseconds: u64,
+}
+
+/// The Server-Sent Events reader for a streamed chat completion: bytes in,
+/// text deltas and the final chunk's fields out. Lines are split at LF (a
+/// CR before it is dropped) and decoded whole, so a character split across
+/// two network chunks arrives intact; comment lines (`: OPENROUTER
+/// PROCESSING`) and `data: [DONE]` carry nothing.
+#[derive(Default)]
+struct StreamReader {
+    buffer: Vec<u8>,
+    reply: Streamed,
+    done: bool,
+}
+
+impl StreamReader {
+    /// Reads one network chunk, handing each text delta to `sink`.
+    fn push(&mut self, chunk: &[u8], sink: &mut (dyn FnMut(&str) + Send)) -> Result<(), Error> {
+        self.buffer.extend_from_slice(chunk);
+        while let Some(end) = self.buffer.iter().position(|byte| *byte == b'\n') {
+            let line: Vec<u8> = self.buffer.drain(..=end).collect();
+            let line = std::str::from_utf8(&line[..end]).map_err(|_| Error::Decode {
+                detail: "a stream line was not UTF-8".to_string(),
+                excerpt: String::new(),
+            })?;
+            self.line(line.trim_end_matches('\r'), sink)?;
+        }
+        if self.buffer.len() > ERROR_BODY_LIMIT * 64 {
+            return Err(Error::Decode {
+                detail: "a stream line ran on without ending".to_string(),
+                excerpt: String::new(),
+            });
+        }
+        Ok(())
+    }
+
+    fn line(&mut self, line: &str, sink: &mut (dyn FnMut(&str) + Send)) -> Result<(), Error> {
+        let Some(data) = line.strip_prefix("data:") else {
+            return Ok(());
+        };
+        let data = data.trim();
+        if data == "[DONE]" {
+            self.done = true;
+            return Ok(());
+        }
+        if data.is_empty() {
+            return Ok(());
+        }
+        let chunk: Value = serde_json::from_str(data).map_err(|error| Error::Decode {
+            detail: error.to_string(),
+            excerpt: excerpt(data, 400),
+        })?;
+        // A provider's failure mid-stream arrives as a chunk with `error`.
+        if let Some(message) = chunk["error"]["message"].as_str() {
+            let status = chunk["error"]["code"]
+                .as_u64()
+                .and_then(|code| u16::try_from(code).ok())
+                .unwrap_or(502);
+            return Err(Error::Api {
+                kind: ApiErrorKind::of(status),
+                status,
+                message: message.to_string(),
+                retry_after: None,
+                body: bounded_body(data),
+            });
+        }
+        if let Some(model) = chunk["model"].as_str() {
+            self.reply.model = model.to_string();
+        }
+        let choice = &chunk["choices"][0];
+        if let Some(delta) = choice["delta"]["content"].as_str()
+            && !delta.is_empty()
+        {
+            self.reply.text.push_str(delta);
+            sink(delta);
+        }
+        if let Some(reason) = choice["finish_reason"].as_str() {
+            self.reply.finish_reason = Some(reason.to_string());
+        }
+        if chunk["usage"].is_object()
+            && let Ok(usage) = serde_json::from_value::<Usage>(chunk["usage"].clone())
+        {
+            self.reply.usage = usage;
+        }
+        Ok(())
+    }
+}
+
+impl Client {
+    /// Sends `request` as a streamed chat completion and hands each text
+    /// delta to `sink` as it arrives.
+    ///
+    /// One attempt only: a stream that has shown text cannot be taken back,
+    /// so a caller that wants another try decides for itself. The client's
+    /// timeout bounds the whole call.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::Api`] for an error status or an error chunk,
+    /// [`Error::Connection`] and [`Error::Timeout`] as for
+    /// [`Client::chat`], and [`Error::Decode`] when a chunk is not JSON or
+    /// the stream ends before `[DONE]` or a finish reason.
+    pub async fn stream(
+        &self,
+        request: &ChatRequest,
+        sink: &mut (dyn FnMut(&str) + Send),
+    ) -> Result<Streamed, Error> {
+        let mut request = request.clone();
+        request.stream = true;
+        let started = std::time::Instant::now();
+        let mut builder = self
+            .http
+            .post(format!("{}/chat/completions", self.config.base_url))
+            .bearer_auth(self.config.api_key.expose())
+            .json(&request);
+        if let Some(referer) = &self.config.referer {
+            builder = builder.header("HTTP-Referer", referer);
+        }
+        if let Some(title) = &self.config.title {
+            builder = builder.header("X-Title", title);
+        }
+        let broken = |error: reqwest::Error| {
+            if error.is_timeout() {
+                Error::Timeout
+            } else {
+                Error::Connection(error.without_url().to_string())
+            }
+        };
+        let mut response = builder.send().await.map_err(broken)?;
+        let status = response.status().as_u16();
+        if !(200..300).contains(&status) {
+            let retry_after = response
+                .headers()
+                .get("retry-after")
+                .and_then(|value| value.to_str().ok())
+                .and_then(|value| value.trim().parse::<u64>().ok());
+            let text = response.text().await.map_err(broken)?;
+            let message = serde_json::from_str::<Value>(&text)
+                .ok()
+                .and_then(|value| value["error"]["message"].as_str().map(str::to_string))
+                .unwrap_or_else(|| excerpt(&text, 400));
+            return Err(Error::Api {
+                kind: ApiErrorKind::of(status),
+                status,
+                message,
+                retry_after,
+                body: bounded_body(&text),
+            });
+        }
+        let mut reader = StreamReader::default();
+        let mut first: Option<u64> = None;
+        while let Some(chunk) = response.chunk().await.map_err(broken)? {
+            let mut timed = |delta: &str| {
+                if first.is_none() {
+                    first = Some(u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX));
+                }
+                sink(delta);
+            };
+            reader.push(&chunk, &mut timed)?;
+            if reader.done {
+                break;
+            }
+        }
+        if !reader.done && reader.reply.finish_reason.is_none() {
+            return Err(Error::Decode {
+                detail: "the stream ended before [DONE]".to_string(),
+                excerpt: excerpt(&reader.reply.text, 400),
+            });
+        }
+        let mut reply = reader.reply;
+        reply.first_text_ms = first;
+        reply.milliseconds = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
+        Ok(reply)
+    }
+}
+
 /// The JSON inside a Markdown code fence, when a model wraps its reply in
 /// one; otherwise the text itself.
 fn strip_fence(text: &str) -> &str {
@@ -893,5 +1090,96 @@ mod tests {
     fn a_fenced_reply_is_unwrapped() {
         assert_eq!(strip_fence("```json\n{\"a\":1}\n```"), "{\"a\":1}");
         assert_eq!(strip_fence(" {\"a\":1} "), "{\"a\":1}");
+    }
+
+    #[test]
+    fn a_stream_is_read_across_split_chunks() {
+        let body = concat!(
+            ": OPENROUTER PROCESSING\n\n",
+            "data: {\"model\":\"m/x\",\"choices\":[{\"delta\":{\"content\":\"café \"}}]}\r\n\r\n",
+            "data: {\"choices\":[{\"delta\":{\"content\":\"ok\"},\"finish_reason\":\"stop\"}]}\n\n",
+            "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":3,\"completion_tokens\":2,\"total_tokens\":5,\"cost\":0.0001}}\n\n",
+            "data: [DONE]\n\n",
+        )
+        .as_bytes();
+        let mut reader = StreamReader::default();
+        let mut seen = Vec::new();
+        // One byte at a time, so a line and the two-byte "é" both split.
+        for byte in body {
+            reader
+                .push(std::slice::from_ref(byte), &mut |delta: &str| {
+                    seen.push(delta.to_string());
+                })
+                .unwrap();
+        }
+        assert!(reader.done);
+        assert_eq!(seen, vec!["café ", "ok"]);
+        assert_eq!(reader.reply.text, "café ok");
+        assert_eq!(reader.reply.model, "m/x");
+        assert_eq!(reader.reply.finish_reason.as_deref(), Some("stop"));
+        assert_eq!(reader.reply.usage.total_tokens, 5);
+    }
+
+    #[test]
+    fn an_error_chunk_ends_the_stream_with_its_class() {
+        let mut reader = StreamReader::default();
+        let error = reader
+            .push(
+                b"data: {\"error\":{\"code\":429,\"message\":\"slow down\"}}\n",
+                &mut |_: &str| {},
+            )
+            .unwrap_err();
+        assert!(
+            matches!(
+                error,
+                Error::Api {
+                    kind: ApiErrorKind::TooManyRequests,
+                    ..
+                }
+            ),
+            "{error:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_streamed_request_asks_for_a_stream_and_returns_its_text() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut request = Vec::new();
+            let mut buffer = [0u8; 4096];
+            // Read until the JSON body closes.
+            loop {
+                let read = socket.read(&mut buffer).await.unwrap();
+                request.extend_from_slice(&buffer[..read]);
+                if read == 0 || request.ends_with(b"}") {
+                    break;
+                }
+            }
+            let body = "data: {\"choices\":[{\"delta\":{\"content\":\"hello\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n";
+            let response = format!(
+                "HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            socket.write_all(response.as_bytes()).await.unwrap();
+            String::from_utf8_lossy(&request).to_string()
+        });
+        let client =
+            Client::new(Config::new(ApiKey::new("k")).base_url(&format!("http://{address}")))
+                .unwrap();
+        let request = ChatRequest::new("m/x", vec![Message::user("hi")]).max_tokens(8);
+        let mut seen = String::new();
+        let reply = client
+            .stream(&request, &mut |delta: &str| seen.push_str(delta))
+            .await
+            .unwrap();
+        assert_eq!(reply.text, "hello");
+        assert_eq!(seen, "hello");
+        assert!(reply.first_text_ms.is_some());
+        let sent = server.await.unwrap();
+        assert!(sent.contains("\"stream\":true"), "{sent}");
+        assert!(sent.contains("\"max_tokens\":8"), "{sent}");
     }
 }

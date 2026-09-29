@@ -29,6 +29,7 @@
 //! (T1), the product and codebase knowledge bases (T2), and the
 //! `openagents` command tree (T4 CLI). Each has a no-op default.
 
+pub mod personalize;
 pub mod seams;
 
 use serde_json::{Value, json};

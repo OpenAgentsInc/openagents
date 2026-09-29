@@ -466,6 +466,9 @@ pub struct ResponsesDoor {
     pub model: String,
     key: String,
     patience: Patience,
+    /// Top-level request fields added to every body, such as a reasoning
+    /// setting for one lane. `None` for the chat door.
+    options: Option<serde_json::Map<String, Value>>,
 }
 
 impl ResponsesDoor {
@@ -477,7 +480,18 @@ impl ResponsesDoor {
             model: model.into(),
             key: key.into(),
             patience: Patience::default(),
+            options: None,
         }
+    }
+
+    /// The same door adding `options`' fields to every request body, over
+    /// any field of the same name. The personalization lane uses it to turn
+    /// a model's reasoning off (`crate::personalize`); the chat door sets
+    /// none.
+    #[must_use]
+    pub fn with_options(mut self, options: serde_json::Map<String, Value>) -> Self {
+        self.options = Some(options);
+        self
     }
 
     /// A door from the environment: `CODER_DOOR_URL` or the public gateway,
@@ -548,7 +562,7 @@ impl ResponsesDoor {
                 })
             })
             .collect();
-        json!({
+        let mut body = json!({
             "model": self.model,
             "instructions": instructions,
             "input": items,
@@ -561,7 +575,13 @@ impl ResponsesDoor {
             // differ on which one they translate.
             "tools": [],
             "tool_choice": "none",
-        })
+        });
+        if let (Some(options), Some(fields)) = (&self.options, body.as_object_mut()) {
+            for (name, value) in options {
+                fields.insert(name.clone(), value.clone());
+            }
+        }
+        body
     }
 }
 
