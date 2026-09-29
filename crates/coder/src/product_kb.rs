@@ -64,7 +64,8 @@ pub const EARLIER_TURNS: usize = 4;
 pub const TURN_CHARS: usize = 400;
 
 /// The variable that picks the embedding provider: unset for
-/// [`Embedder::from_env`] (OpenAI, else OpenRouter), or `vertex`.
+/// [`Embedder::from_env`] (OpenAI, else OpenRouter), `vertex`, or
+/// `gateway` (the Vercel AI Gateway, the chat worker's own door).
 pub const EMBEDDINGS_VAR: &str = "OPENAGENTS_PRODUCT_KB_EMBEDDINGS";
 
 /// The embedder [`EMBEDDINGS_VAR`] picks.
@@ -168,7 +169,9 @@ impl ProductKnowledge<Embedder> {
         let root = product::repository();
         let corpus = Corpus::load(&dir, root.join("knowledge").exists().then_some(&*root))?;
         let embedder = embedder_from_env()?;
-        let recipient = provider_name(embedder.provider).to_string();
+        // Named as the codebase seam names the same provider, so the
+        // privacy answer lists a service once.
+        let recipient = crate::codebase::embedding_recipient(embedder.provider).to_string();
         Ok(ProductKnowledge::new(corpus, embedder, recipient, judge))
     }
 }

@@ -249,7 +249,7 @@ enum Transport {
 }
 
 /// The embedding providers `--embeddings` and `--kb-embeddings` accept.
-pub const EMBEDDINGS_CHOICES: &str = "vertex";
+pub const EMBEDDINGS_CHOICES: &str = "vertex or gateway";
 
 /// An OpenAI key from `OPENAI_API_KEY`, or else from `api_key` in
 /// `~/.openagents/openai.json`, which is refused when its group or others
@@ -331,7 +331,8 @@ impl Embedder {
     }
 
     /// The embedder a command asked for: `None` for the default
-    /// ([`Embedder::from_env`]), or `vertex`.
+    /// ([`Embedder::from_env`]), `vertex`, or `gateway` (the Vercel AI
+    /// Gateway with the chat worker's own door key).
     ///
     /// # Errors
     ///
@@ -340,6 +341,7 @@ impl Embedder {
         match choice {
             None => Embedder::from_env(),
             Some("vertex") => Embedder::vertex(),
+            Some("gateway") => Embedder::gateway(),
             Some(other) => Err(format!(
                 "the embeddings provider can be {EMBEDDINGS_CHOICES}, not {other}"
             )),

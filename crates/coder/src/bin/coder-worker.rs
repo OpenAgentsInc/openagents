@@ -461,6 +461,7 @@ async fn serve(options: &Options) -> Result<(), String> {
     let mut seams = Seams {
         personalize: router::personalize::seam_from_env()?,
         codebase: coder::codebase::seam_from_env(judge.clone())?,
+        cli: cli_seam(judge.as_ref(), &door)?,
         ..Seams::default()
     };
     // The product knowledge base answers `product.kb` turns when its corpus,
@@ -941,6 +942,60 @@ enum RouterSetting {
 
 /// The environment variable that sets [`RouterSetting`].
 const ROUTER_VAR: &str = "CODER_WORKER_ROUTER";
+
+/// The environment variable that turns the chat router's CLI route off
+/// (`off`); unset or `on` wires it whenever a judge is configured.
+const CLI_VAR: &str = "CODER_WORKER_CLI";
+
+/// Whether the CLI route is wired: `on` (the default) or `off`.
+fn cli_from_env() -> Result<bool, String> {
+    match env::var(CLI_VAR).as_deref() {
+        Ok("on") | Ok("") | Err(_) => Ok(true),
+        Ok("off") => Ok(false),
+        Ok(other) => Err(format!("{CLI_VAR} is on or off, not `{other}`")),
+    }
+}
+
+/// The CLI route's free-text fill through the worker's own door. It names
+/// no recipient: the door is already named as the chat model.
+struct DoorFill(Arc<Door>);
+
+impl coder::cli_route::Fill for DoorFill {
+    fn fill<'a>(
+        &'a self,
+        instructions: &'a str,
+        input: &'a [Message],
+    ) -> futures_util::future::BoxFuture<'a, Result<String, String>> {
+        Box::pin(async move {
+            let mut sink = |_: &str| {};
+            let mut meta = |_: coder::generate::Meta| {};
+            self.0
+                .generate(instructions, input, &mut sink, &mut meta)
+                .await
+                .map(|(text, _)| text)
+                .map_err(|error| error.cause().to_string())
+        })
+    }
+
+    fn recipients(&self) -> Vec<String> {
+        Vec::new()
+    }
+}
+
+/// The CLI route when [`CLI_VAR`] allows it and a judge descends the tree,
+/// else the no-op.
+fn cli_seam(
+    judge: Option<&Arc<jev::Client>>,
+    door: &Arc<Door>,
+) -> Result<Arc<dyn coder::router::seams::CliRoute>, String> {
+    Ok(match (cli_from_env()?, judge) {
+        (true, Some(judge)) => Arc::new(coder::cli_route::CommandRoute::new(
+            (**judge).clone(),
+            Arc::new(DoorFill(door.clone())),
+        )),
+        _ => Arc::new(coder::router::seams::NoCli),
+    })
+}
 
 fn router_from_env() -> Result<RouterSetting, String> {
     match env::var(ROUTER_VAR).as_deref() {
@@ -1580,9 +1635,10 @@ impl Job {
                             seam_waiting = true;
                             pending = Some((routing, tier.clone()));
                         }
-                        Tier::Cli { group, .. } => {
+                        Tier::Cli { group, also, .. } => {
                             let ask = CliAsk {
                                 group: group.clone(),
+                                also: also.clone(),
                                 message: router::redact(&turn.message),
                                 transcript: input.to_vec(),
                                 surface: turn.context.surface(),
@@ -3312,6 +3368,7 @@ mod tests {
             vec![router::seams::CliGroup {
                 id: "computer".into(),
                 summary: "Your computers".into(),
+                tree: None,
             }]
         }
         fn recipients(&self) -> Vec<String> {
