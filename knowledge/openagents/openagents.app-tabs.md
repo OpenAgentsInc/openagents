@@ -1,6 +1,6 @@
 ---
 id: openagents.app-tabs
-version: 1
+version: 2
 kind: product
 title: "The app's four tabs"
 summary: >-
@@ -24,6 +24,7 @@ provenance:
     - crates/openagents-mobile/src/account.rs
 evidence:
   - "2026-09-28: written from the cited documents and checked against them (#9923); the answer text awaits the owner's copy review."
+  - "2026-09-29: version 2 (#9941) says the Chat tab opens on the menu from build 21 (crates/openagents-mobile/src/account.rs); the answer is unchanged."
 ---
 
 ## Answer
@@ -32,7 +33,7 @@ The app has four tabs. Chat (the message icon) is where you talk with us and sta
 
 ## Details
 
-- Chat opens on a new chat with the cursor in the composer.
+- From build 21, Chat opens on a menu: your trainer name, level, and next step, with **Chat with OpenAgents** first, starter questions, **Profile**, and the Gym in the Verse.
 - Verse shows the Grid, Verse's bare world, with other players and shared physics objects.
 - Wallet runs on Breez's Spark SDK on Bitcoin mainnet.
 - Account holds Computers, Tailnet, Identity keys, Trainer, Playtest, Report a problem, **My reports**, About this device, and Changelog, and links to the source code and to OpenAgents on X.

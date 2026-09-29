@@ -4313,7 +4313,7 @@ mod tests {
         }
     }
 
-    /// `eval.author` without the interview wired says it is coming, from
+    /// `eval.author` without the interview wired says so, from
     /// the bank; with a draft open, a short reply continues the interview
     /// through the seam, and its draft card and offer ride as feedback.
     #[tokio::test]
@@ -4330,7 +4330,7 @@ mod tests {
         )
         .await;
         let result = &soon.last().unwrap().1;
-        assert_eq!(result["answer"], "eval.author.soon@1");
+        assert_eq!(result["answer"], "eval.author.soon@2");
         assert_eq!(result["tier"], "author");
         assert!(soon.last().unwrap().0 < Duration::from_millis(1_400));
 

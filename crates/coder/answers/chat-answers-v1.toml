@@ -453,34 +453,34 @@ followups = ["gym.what_test"]
 
 [[answer]]
 id = "eval.credit.how"
-version = 1
+version = 2
 routes = ["eval.credit"]
 when = "The user asks how they earn XP or credit from tests, test sets, checks, or tools, or whether that credit pays money; not what they have earned so far"
 examples = ["How do I earn XP from tests?", "do I get paid for my tests?", "what earns xp in the gym", "what do I get when someone checks my result", "what happens when coder adopts my tool"]
-text = "With tests in chat, which are on their way, you earn XP when your work is used: when another trainer checks a result you added to the Gym and gets the same verdict, or when Coder adopts your tool for everyone. A run or a publish earns nothing by itself, and XP can't be spent: it isn't money."
+text = "You can test a tool here in chat, make your own tool and its tests with us, and add your results to the Gym. You earn XP when your work is used: when another trainer checks a result you added and gets the same verdict, when you check someone else's result, or when Coder adopts your tool for everyone. A run or a publish earns nothing by itself, and XP can't be spent: it isn't money."
 chip = "How do I earn XP from tests?"
 sources = ["docs/extensions/evaluation.md", "nips/openagents/NIP-XP.md", "knowledge/openagents/openagents.credit.md"]
 followups = ["eval.credit.mine", "gym.what_test"]
 
 [[answer]]
 id = "eval.credit.mine"
-version = 1
+version = 2
 routes = ["eval.credit"]
 when = "The user asks what their tests, results, checks, or tools have earned so far, who checked their work, or whether Coder adopted their tool"
 not_for = "What they would get, or how XP from tests works in general (eval.credit.how)"
 examples = ["What have I earned?", "did coder adopt my tool", "who checked my results"]
-text = "Your XP from tests comes when another trainer's check confirms a result you added to the Gym, or when Coder adopts your tool. Your trainer card under Account shows your XP and level, and XP can't be spent."
+text = "Your XP from tests comes when another trainer's check confirms a result you added to the Gym, when you check someone else's result, or when Coder adopts your tool. The menu's Profile shows what you made and what it earned, and your trainer card under Account shows your XP and level. XP can't be spent."
 chip = "What have I earned?"
 sources = ["docs/extensions/evaluation.md", "docs/product/2026-09-28-app-wireframe.md"]
 followups = ["eval.credit.how"]
 
 [[answer]]
 id = "eval.author.soon"
-version = 1
+version = 2
 routes = ["eval.author"]
 records = true
-when = "Picked by code when the authoring interview is not wired: the user wants to make a tool or a test set with us"
-text = "Making a tool and its test set with you here in chat is coming in our next build. Until then, we can tell you what a test is, what's new in the Gym, or how tools help Coder."
+when = "Picked by code when the authoring interview is not wired or its step failed its checks: the user wants to make a tool or a test set with us"
+text = "We couldn't start making a tool with you this time. Ask us again in a moment. Meanwhile, we can tell you what a test is, what's new in the Gym, or how tools help Coder."
 sources = ["docs/extensions/evaluation.md"]
 followups = ["gym.what_test", "gym.what_tool"]
 
