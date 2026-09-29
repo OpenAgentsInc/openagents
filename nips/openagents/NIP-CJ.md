@@ -51,7 +51,7 @@ Feedback has `v: 1`, `requires`, `type`, and fields for that type:
 
 | Type | Fields |
 | --- | --- |
-| `judgment` | `verdict`: `respond`, `clarify`, `end_conversation`, or `unrouted`; `line`: bounded display string. Optional typed additions: `set` (the question set's identity), `lane` (`chat`, `computer`, or `unknown`), `opener` (the chosen opener's ID or null), and `confidence` (the opener choice's probability). It is an optional observation, not permission. |
+| `judgment` | `verdict`: `respond`, `clarify`, `end_conversation`, or `unrouted`; `line`: bounded display string. Optional typed additions: `set` (the question set's identity), `lane` (`chat`, `computer`, or `unknown`), `opener` (the ID of the opener shown, or null), `confidence` (the opener choice's probability), `bank` (the prepared-answer bank's identity), `answer` (the argmax prepared answer as `id@version`, or null), `answer_p` (its probability), `needs_specifics` (the probability that a reply needs particulars the user named), and `tier` (`canned`, `opener`, or `model`: what the worker decided to show first). It is an optional observation, not permission. |
 | `partial` | `seq`: nonnegative integer starting at zero; `delta`: string. |
 | `status` | `status`: `queued`, `processing`, or `error`; error requires `code` and `message`, with optional nonnegative `retry_after_ms`. |
 
@@ -62,7 +62,13 @@ MAY ask for a first response: `judge: true` asks for `judgment` feedback, and
 beside its model call MAY then send the chosen opener as partial `seq` 0 when
 the judgment arrives before the model's first delta; the result's `text` then
 begins with that same opener, so a client that replaces partials with the
-result shows the same words. A request that asks for neither gets the model's
+result shows the same words. A worker MAY instead, under the same timing,
+answer the turn with a prepared answer it holds (a reviewed text, not model
+output): partial `seq` 0 carries the whole answer, the result's `text` is
+exactly that answer, and the result names it with `model: "bank:<bank id>"`,
+`tier: "canned"`, and `answer: "<id>@<version>"`; the worker then drops its
+model call. A worker shows nothing before the model's own words when its
+judgment is not sure enough of either. A request that asks for neither gets the model's
 text unchanged, which a caller that parses the result as structured output
 relies on. A judgment never delays generation, and one that arrives after the
 model has started adds feedback only.

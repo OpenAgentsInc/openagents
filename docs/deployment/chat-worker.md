@@ -31,12 +31,16 @@ phone <--27000 partials, 26900 result------- relay.openagents.com <-- chat worke
   else. No model API key ships in the app.
 - **First response.** The worker acknowledges every admitted turn with
   `status: processing` at once. With `TYPESAFE_API_KEY` set, a turn that asks
-  with `"opener": true` also gets, before the model's first token, one Jev
-  (System One) judgment run beside the model call — the turn's route, whether it needs a computer (`lane`), and which of
-  21 openers to show — and the chosen opener as the first partial. The opener
-  reaches the phone about 0.6 s after Send, where the model's first words took
-  3.4 to 4.7 s. See `crates/coder/src/first.rs` and
-  [`docs/coder/measurements/2026-09-28-first-reply.md`](../coder/measurements/2026-09-28-first-reply.md).
+  with `"opener": true` also gets one Jev (System One) judgment run beside the
+  model call (`coder-first-response-v2`): the turn's route, whether it needs a
+  computer (`lane`), which prepared answer from the `chat-answers-v1` bank
+  fits, whether the reply needs the user's specifics, and which opener fits.
+  A sure prepared answer ("Who are you?", "What model are you?", "hi",
+  "thanks") is the whole reply in about half a second and the model call is
+  dropped; otherwise a sure opener ("Here's how that works.") leads the
+  model's reply; otherwise the model's own words come first. Every canned
+  line speaks as OpenAgents in the plural. See `crates/coder/src/first.rs`
+  and [`docs/coder/measurements/2026-09-28-first-reply.md`](../coder/measurements/2026-09-28-first-reply.md).
 - **Streaming.** The worker sends its first delta at once and then about 160
   bytes at a time; the phone checks each answer's signer, recipient, request
   binding, and sequence, draws the reply with Rust Native's incremental

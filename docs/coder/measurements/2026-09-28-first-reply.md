@@ -108,6 +108,75 @@ drops the opener; a turn that asks for neither gets no judgment and the
 model's text unchanged; and `rank` orders candidates, refuses `unavailable` with no judge
 and `malformed` with bad candidates.
 
+### v2: prepared answers, and no filler
+
+The first set chose "Sure." for "Who are you?", which answered nothing. The
+set is now `coder-first-response-v2` (`crates/coder/src/first.rs`):
+
+- The assistant speaks as OpenAgents, in the plural. Every canned line is
+  tested for first-person singular pronouns, and the model gets the same rule
+  in `MODEL_NOTE`.
+- A new `answer` question picks from the `chat-answers-v1` bank (the ids and
+  rules of [the chat router design](../design/2026-09-28-chat-router.md)):
+  `meta.who`, `meta.model` (its model and host slots come from the worker's
+  door, and it is not offered when the worker cannot name them),
+  `meta.capabilities`, `meta.limits_chat`, `meta.coder`, `meta.open_source`,
+  and `smalltalk.hello`, `.how_are_you`, `.test`, `.thanks`, `.bye`. There
+  is no pricing or privacy answer until a tested invariant backs one.
+- A Noul, `needs_specifics`, asks whether a good reply must refer to what the
+  user named.
+- Code decides: an answer at p ≥ 0.80 with `needs_specifics` < 0.30 is the
+  whole reply (partial `seq` 0, the same text as the result, `model:
+  "bank:chat-answers-v1"`, and the model call dropped); otherwise an opener
+  at p ≥ 0.70; otherwise nothing before the model's words.
+- Openers are six lines that say what kind of answer is coming: "Here's how
+  that works.", "Here's how the options compare.", "Here's a plan.", "Here's a
+  draft.", "Here's the short version.", "Sorry about that." "Sure.", "On it.",
+  "Hi!", "Good question.", and the "I'll …" and "Let me …" lines are gone.
+
+The live judge (`jev-latest`) on 32 first messages, from
+`cargo test -p coder --lib first::tests::live_first_response_eval -- --ignored --nocapture`
+with `TYPESAFE_API_KEY` set, 2026-09-28:
+
+| Message | Tier | Shown first | answer (p) | specifics | opener (p) | ms |
+| --- | --- | --- | --- | --- | --- | --- |
+| Who are you? | canned | meta.who (whole reply) | meta.who (0.99) | 0.06 | none (0.99) | 267 |
+| what are you | canned | meta.who (whole reply) | meta.who (0.99) | 0.06 | none (0.96) | 165 |
+| What model are you? | canned | meta.model (whole reply) | meta.model (0.93) | 0.06 | none (0.99) | 170 |
+| Are you ChatGPT? | canned | meta.model (whole reply) | meta.model (0.99) | 0.08 | none (0.99) | 178 |
+| which LLM is this | canned | meta.model (whole reply) | meta.model (0.95) | 0.12 | none (0.91) | 183 |
+| What can you do? | canned | meta.capabilities (whole reply) | meta.capabilities (0.99) | 0.07 | none (0.93) | 225 |
+| Can you code? | canned | meta.capabilities (whole reply) | meta.capabilities (0.99) | 0.07 | none (0.95) | 174 |
+| can you see my files? | canned | meta.limits_chat (whole reply) | meta.limits_chat (0.98) | 0.14 | none (0.79) | 157 |
+| What is Coder? | canned | meta.coder (whole reply) | meta.coder (0.98) | 0.11 | explain (0.78) | 154 |
+| Are you open source? | canned | meta.open_source (whole reply) | meta.open_source (0.97) | 0.09 | none (0.95) | 149 |
+| hi | canned | smalltalk.hello (whole reply) | smalltalk.hello (0.99) | 0.06 | none (1.00) | 146 |
+| Hello! | canned | smalltalk.hello (whole reply) | smalltalk.hello (1.00) | 0.06 | none (1.00) | 210 |
+| hey how are you | canned | smalltalk.how_are_you (whole reply) | smalltalk.how_are_you (1.00) | 0.06 | none (1.00) | 167 |
+| test | canned | smalltalk.test (whole reply) | smalltalk.test (0.99) | 0.09 | none (1.00) | 185 |
+| thanks! | canned | smalltalk.thanks (whole reply) | smalltalk.thanks (0.99) | 0.07 | none (1.00) | 249 |
+| Thank you, that helped | canned | smalltalk.thanks (whole reply) | smalltalk.thanks (0.99) | 0.10 | none (1.00) | 189 |
+| bye | canned | smalltalk.bye (whole reply) | smalltalk.bye (1.00) | 0.06 | none (1.00) | 150 |
+| Fix my repo | model | nothing | none (0.96) | 0.73 | none (0.94) | 137 |
+| Fix the failing test in crates/coder and open a PR | model | nothing | none (0.99) | 0.96 | none (0.80) | 149 |
+| Explain how Nostr relays work | opener | "Here's how that works." | none (1.00) | 0.08 | explain (1.00) | 170 |
+| What's a closure in Rust? | opener | "Here's how that works." | none (0.99) | 0.06 | explain (0.96) | 190 |
+| Should I use Postgres or SQLite for a small app? | opener | "Here's how the options compare." | none (1.00) | 0.18 | compare (0.99) | 142 |
+| Write a commit message for a change that adds retries to the relay client | opener | "Here's a draft." | none (0.99) | 0.82 | draft (0.99) | 155 |
+| Plan a migration from REST to gRPC for our API | opener | "Here's a plan." | none (1.00) | 0.32 | plan (0.99) | 178 |
+| How much does this cost? | model | nothing | none (1.00) | 0.46 | none (0.99) | 184 |
+| Is this free? | model | nothing | none (0.99) | 0.22 | none (0.96) | 187 |
+| Do you store my chats? | model | nothing | none (0.97) | 0.10 | explain (0.48) | 141 |
+| That answer was wrong | opener | "Sorry about that." | none (1.00) | 0.53 | sorry (0.98) | 185 |
+| Why does my build fail on CI but not locally? | model | nothing | none (1.00) | 0.31 | none (0.74) | 168 |
+| Can you work on my Rails app? | model | nothing | meta.limits_chat (0.32) | 0.31 | none (0.94) | 123 |
+| summarize this: Rust ownership means each value has one owner, and when the owner goes out of scope the value is dropped. | opener | "Here's the short version." | none (1.00) | 0.29 | summary (0.98) | 153 |
+| who made you | canned | meta.who (whole reply) | meta.who (0.94) | 0.07 | none (0.97) | 193 |
+
+Every identity, model, capability, and small-talk message got the right
+prepared answer at 0.93 or more; every request for work, pricing, privacy, or
+a specific project got no prepared answer, so the model answers them.
+
 ### What is left on the phone's side
 
 About 300 of the remaining 600 ms is the app opening a new relay connection

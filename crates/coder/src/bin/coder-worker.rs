@@ -1047,7 +1047,7 @@ impl Job {
                     executor
                         .delegate(prompt, writes, minutes)
                         .await
-                        .map(|text| (text, None))
+                        .map(|text| (text, None, None))
                 }
                 (Value::Object(delegation), _) if delegation["writes"].as_bool() == Some(true) => {
                     Err(GenerateError::Refused {
@@ -1131,20 +1131,25 @@ impl Job {
         };
 
         match answered {
-            Ok((text, usage)) => {
-                publish(
-                    RESULT_KIND,
-                    json!({
-                        "v": version,
-                        "type": "result",
-                        "text": text,
-                        "usage": usage.map(|usage| json!({
-                            "input": usage.input_tokens,
-                            "output": usage.output_tokens,
-                        })),
-                        "model": self.door.model(),
-                    }),
-                )?;
+            Ok((text, usage, canned)) => {
+                let mut result = json!({
+                    "v": version,
+                    "type": "result",
+                    "text": text,
+                    "usage": usage.map(|usage| json!({
+                        "input": usage.input_tokens,
+                        "output": usage.output_tokens,
+                    })),
+                    "model": self.door.model(),
+                });
+                // No model wrote a prepared answer, so the result names
+                // the bank and the entry instead.
+                if let Some(answer) = canned {
+                    result["model"] = json!(format!("bank:{}", first::BANK));
+                    result["tier"] = json!("canned");
+                    result["answer"] = json!(answer.tag());
+                }
+                publish(RESULT_KIND, result)?;
                 eprintln!(
                     "job {label} answered in {} ms, {} chars",
                     started.elapsed().as_millis(),
@@ -1186,19 +1191,29 @@ impl Job {
                     .map(|message| message.text.clone())
             })
             .unwrap_or_default();
-        let request = first::request(&task, input);
+        let facts = match &*self.door {
+            Door::Live(door) => first::Facts::of(&door.model, Some(&door.url)),
+            door => first::Facts::of(door.model(), None),
+        };
+        let request = first::request(&task, input, &facts);
         Some(Box::pin(async move {
             let started = Instant::now();
             let answered = tokio::time::timeout(first::BUDGET, judge.system_one(request)).await;
             let milliseconds = started.elapsed().as_millis();
             match answered {
                 Ok(Ok(response)) => {
-                    let triage = first::triage_of(&response);
+                    let triage = first::triage_of(&response, &facts);
+                    // The tier and the chosen ids, never message text.
                     eprintln!(
-                        "judged in {milliseconds} ms: {} {} \"{}\"",
+                        "judged in {milliseconds} ms: {} {} {} answer={} opener={}",
                         triage.verdict(),
                         triage.lane.word(),
-                        triage.line()
+                        triage.tier().word(),
+                        triage
+                            .answer
+                            .as_ref()
+                            .map_or_else(|| "none".to_string(), |(canned, _, _)| canned.tag()),
+                        triage.opener.map_or("none", |(id, _)| id),
                     );
                     Some(triage)
                 }
@@ -1279,11 +1294,13 @@ impl Job {
     /// Generates through the door, publishing partials as text collects.
     ///
     /// `triage` races the generation. When it answers before the model's
-    /// first words and `opener` is on, its chosen opener goes out as the
-    /// first partial and leads the result, so the caller sees a reply in
-    /// the judge's time rather than the model's. Either way its typed
-    /// judgment goes out as `judgment` feedback. A judgment that arrives
-    /// after the model has started adds the feedback only.
+    /// first words and `opener` is on, what its tier shows goes out as the
+    /// first partial: a prepared answer is the whole reply, and the model
+    /// call is dropped; an opener leads the model's result; below the
+    /// thresholds nothing is shown. Either way its typed judgment goes out
+    /// as `judgment` feedback. A judgment that arrives after the model has
+    /// started adds the feedback only. The third value is the prepared
+    /// answer, when one was the reply.
     async fn generate(
         &self,
         version: u64,
@@ -1292,7 +1309,7 @@ impl Job {
         publish: &(dyn Fn(u16, Value) -> Result<(), String> + Sync),
         triage: Option<Judging>,
         opener: bool,
-    ) -> Result<(String, Option<Usage>), GenerateError> {
+    ) -> Result<(String, Option<Usage>, Option<&'static first::Canned>), GenerateError> {
         // The `Generate` sink is synchronous and publishing wants the
         // version and a sequence, so deltas go down a channel and the
         // loop below drains it while the generation runs. Dropping the
@@ -1327,11 +1344,23 @@ impl Job {
                     let Some(judged) = judged else { continue };
                     publish(FEEDBACK_KIND, first::feedback(version, &judged))
                         .map_err(GenerateError::Stream)?;
-                    if let (true, 0, Some((_, text))) = (opener, partial_seq, judged.opener) {
-                        lead = format!("{text}\n\n");
-                        publish(FEEDBACK_KIND, partial_payload(version, partial_seq, &lead))
-                            .map_err(GenerateError::Stream)?;
-                        partial_seq += 1;
+                    if !opener || partial_seq != 0 {
+                        continue;
+                    }
+                    match judged.tier() {
+                        // The whole reply: returning drops the model call.
+                        first::Tier::Canned { answer, text } => {
+                            publish(FEEDBACK_KIND, partial_payload(version, 0, &text))
+                                .map_err(GenerateError::Stream)?;
+                            return Ok((text, None, Some(answer)));
+                        }
+                        first::Tier::Opener { text, .. } => {
+                            lead = format!("{text}\n\n");
+                            publish(FEEDBACK_KIND, partial_payload(version, partial_seq, &lead))
+                                .map_err(GenerateError::Stream)?;
+                            partial_seq += 1;
+                        }
+                        first::Tier::Model => {}
                     }
                 }
                 delta = incoming.recv(), if draining => match delta {
@@ -1356,7 +1385,7 @@ impl Job {
                     None => draining = false,
                 },
                 answered = &mut generating => {
-                    return answered.map(|(text, usage)| (format!("{lead}{text}"), usage));
+                    return answered.map(|(text, usage)| (format!("{lead}{text}"), usage, None));
                 }
             }
         }
@@ -1954,16 +1983,34 @@ mod tests {
         json!({ "type": "choice", "choice": choice, "confidence": 1.0, "probabilities": probabilities })
     }
 
-    /// The first-response answers: respond, a computer task, `opener`.
+    /// The first-response answers: respond, a computer task, no prepared
+    /// answer, `opener`.
     fn triaged(opener: &str) -> Value {
+        judged("none", 0.9, opener)
+    }
+
+    /// The first-response answers: respond in the chat, the prepared
+    /// `answer`, the specifics probability, and `opener`.
+    fn judged(answer: &str, specifics: f64, opener: &str) -> Value {
         let openers: Vec<&str> = first::OPENERS
             .iter()
             .map(|(id, _, _)| *id)
             .chain(["none"])
             .collect();
+        // The loopback door is no gateway, so the answers that name the
+        // gateway are not offered, and the judge answers only the rest.
+        let facts = first::Facts::of("google/gemini-3.8-flash", None);
+        let answers: Vec<&str> = first::ANSWERS
+            .iter()
+            .filter(|canned| canned.render(&facts).is_some())
+            .map(|canned| canned.id)
+            .chain(["none"])
+            .collect();
         json!({
             "action": sure("respond", &["respond", "clarify", "end_conversation", "none"]),
-            "lane": sure("computer", &["chat", "computer", "none"]),
+            "lane": sure(if answer == "none" { "computer" } else { "chat" }, &["chat", "computer", "none"]),
+            "answer": sure(answer, &answers),
+            "needs_specifics": { "type": "noul", "noul": specifics },
             "opener": sure(opener, &openers),
         })
     }
@@ -2035,7 +2082,7 @@ mod tests {
         payload.as_object_mut().unwrap().remove("opener");
         let frames = frames_through(
             slow_door(Duration::from_millis(300)),
-            Some(judge(Duration::ZERO, triaged("look_into"))),
+            Some(judge(Duration::ZERO, triaged("explain"))),
             payload,
         )
         .await;
@@ -2043,11 +2090,11 @@ mod tests {
         assert!(
             frames
                 .iter()
-                .all(|(_, body)| body["delta"] != "I'll look into that now.\n\n")
+                .all(|(_, body)| body["delta"] != "Here's how that works.\n\n")
         );
         let result = &frames.last().unwrap().1;
         assert_eq!(result["type"], "result");
-        assert!(!result["text"].as_str().unwrap().starts_with("I'll look"));
+        assert!(!result["text"].as_str().unwrap().starts_with("Here's how"));
     }
 
     /// The judge answers in its own time, before the model: the caller
@@ -2058,8 +2105,8 @@ mod tests {
     async fn the_judge_answers_first_and_the_model_follows_its_opener() {
         let frames = frames_through(
             slow_door(Duration::from_millis(600)),
-            Some(judge(Duration::ZERO, triaged("look_into"))),
-            turn("Why does my build fail on CI but not locally?"),
+            Some(judge(Duration::ZERO, triaged("explain"))),
+            turn("How do Nostr relays work?"),
         )
         .await;
         let bodies: Vec<&Value> = frames.iter().map(|(_, body)| body).collect();
@@ -2067,11 +2114,12 @@ mod tests {
         assert_eq!(bodies[1]["type"], "judgment");
         assert_eq!(bodies[1]["verdict"], "respond");
         assert_eq!(bodies[1]["lane"], "computer");
-        assert_eq!(bodies[1]["opener"], "look_into");
-        assert_eq!(bodies[1]["line"], "I'll look into that now.");
+        assert_eq!(bodies[1]["opener"], "explain");
+        assert_eq!(bodies[1]["tier"], "opener");
+        assert_eq!(bodies[1]["line"], "Here's how that works.");
         assert_eq!(bodies[2]["type"], "partial");
         assert_eq!(bodies[2]["seq"], 0);
-        assert_eq!(bodies[2]["delta"], "I'll look into that now.\n\n");
+        assert_eq!(bodies[2]["delta"], "Here's how that works.\n\n");
         // The opener arrived well before the model's first word could.
         assert!(
             frames[2].0 < Duration::from_millis(500),
@@ -2091,8 +2139,68 @@ mod tests {
         let result = bodies.last().unwrap();
         assert_eq!(result["type"], "result");
         let text = result["text"].as_str().unwrap();
-        assert!(text.starts_with("I'll look into that now.\n\n"), "{text}");
-        assert!(text.len() > "I'll look into that now.\n\n".len());
+        assert!(text.starts_with("Here's how that works.\n\n"), "{text}");
+        assert!(text.len() > "Here's how that works.\n\n".len());
+        assert_eq!(result["model"], "google/gemini-3.8-flash");
+    }
+
+    /// A sure prepared answer is the whole reply in the judge's time: one
+    /// partial with all of it, then the result with the same text, named
+    /// as the bank's rather than the model's, and no model words at all.
+    #[tokio::test]
+    async fn a_sure_prepared_answer_is_the_whole_reply() {
+        let frames = frames_through(
+            slow_door(Duration::from_millis(1_500)),
+            Some(judge(Duration::ZERO, judged("meta.who", 0.05, "none"))),
+            turn("Who are you?"),
+        )
+        .await;
+        let bodies: Vec<&Value> = frames.iter().map(|(_, body)| body).collect();
+        assert_eq!(bodies[0]["status"], "processing");
+        assert_eq!(bodies[1]["type"], "judgment");
+        assert_eq!(bodies[1]["tier"], "canned");
+        assert_eq!(bodies[1]["answer"], "meta.who@1");
+        assert!(bodies[1]["opener"].is_null());
+        assert_eq!(bodies[2]["type"], "partial");
+        assert_eq!(bodies[2]["seq"], 0);
+        let text = bodies[2]["delta"].as_str().unwrap();
+        assert!(text.starts_with("We are OpenAgents."), "{text}");
+        assert_eq!(bodies.len(), 4, "{bodies:?}");
+        let (at, result) = frames.last().unwrap();
+        assert_eq!(result["type"], "result");
+        assert_eq!(result["text"], text);
+        assert_eq!(result["model"], format!("bank:{}", first::BANK));
+        assert_eq!(result["answer"], "meta.who@1");
+        assert_eq!(result["tier"], "canned");
+        // The reply is done long before the model would have begun.
+        assert!(*at < Duration::from_millis(1_000), "{at:?}");
+    }
+
+    /// Below every threshold nothing is shown before the model: the
+    /// judgment goes out, and the reply is the model's, unprefixed.
+    #[tokio::test]
+    async fn an_unsure_judgment_shows_nothing_before_the_model() {
+        let mut answers = judged("meta.capabilities", 0.8, "explain");
+        answers["opener"]["confidence"] = json!(0.4);
+        let frames = frames_through(
+            slow_door(Duration::from_millis(300)),
+            Some(judge(Duration::ZERO, answers)),
+            turn("Can you work on my Rails app?"),
+        )
+        .await;
+        let bodies: Vec<&Value> = frames.iter().map(|(_, body)| body).collect();
+        assert_eq!(bodies[1]["type"], "judgment");
+        assert_eq!(bodies[1]["tier"], "model");
+        assert!(bodies[1]["opener"].is_null());
+        let result = bodies.last().unwrap();
+        assert_eq!(result["model"], "google/gemini-3.8-flash");
+        assert!(result["answer"].is_null());
+        // Any partial is the model's own start of the result.
+        let text = result["text"].as_str().unwrap();
+        if let Some(partial) = bodies.iter().find(|body| body["type"] == "partial") {
+            assert!(text.starts_with(partial["delta"].as_str().unwrap()));
+        }
+        assert!(!text.starts_with("Here's how") && !text.starts_with("In this chat"));
     }
 
     /// A caller that asks for the judgment alone gets it, and its reply is
@@ -2104,17 +2212,22 @@ mod tests {
         payload["judge"] = json!(true);
         let frames = frames_through(
             slow_door(Duration::from_millis(300)),
-            Some(judge(Duration::ZERO, triaged("welcome"))),
+            Some(judge(
+                Duration::ZERO,
+                judged("smalltalk.thanks", 0.05, "none"),
+            )),
             payload,
         )
         .await;
         let bodies: Vec<&Value> = frames.iter().map(|(_, body)| body).collect();
         assert!(bodies.iter().any(|body| body["type"] == "judgment"));
-        assert!(
-            bodies
-                .iter()
-                .all(|body| body["delta"] != "You're welcome!\n\n")
-        );
+        assert!(bodies.iter().all(|body| {
+            body["type"] != "partial"
+                || !body["delta"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .starts_with("You're welcome!")
+        }));
         assert!(
             !bodies.last().unwrap()["text"]
                 .as_str()
@@ -2130,14 +2243,17 @@ mod tests {
     async fn a_slow_judge_never_delays_the_model() {
         let frames = frames_through(
             slow_door(Duration::ZERO),
-            Some(judge(Duration::from_millis(1_500), triaged("sure"))),
+            Some(judge(
+                Duration::from_millis(1_500),
+                judged("none", 0.1, "explain"),
+            )),
             turn("what is 2 + 2?"),
         )
         .await;
         let (at, result) = frames.last().unwrap();
         assert_eq!(result["type"], "result");
         assert!(*at < Duration::from_millis(1_000), "{at:?}");
-        assert!(!result["text"].as_str().unwrap().starts_with("Sure."));
+        assert!(!result["text"].as_str().unwrap().starts_with("Here's how"));
         assert!(frames.iter().all(|(_, body)| body["type"] != "judgment"));
     }
 
