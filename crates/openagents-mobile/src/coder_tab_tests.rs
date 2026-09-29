@@ -1006,6 +1006,21 @@ impl Fixture {
         self
     }
 
+    /// The fixture with a basic Coder answered by `hand`, its chats and
+    /// used suggestions kept in `dir` as the app's encrypted store keeps
+    /// them, so a second fixture on the same `dir` is a relaunch.
+    fn answered_and_kept(mut self, hand: &Hand, dir: &std::path::Path) -> Self {
+        let secret = secp256k1::SecretKey::from_byte_array([0x11; 32]).expect("key");
+        let basic = crate::basic_chats::BasicChats::new(
+            Some(self._runtime.handle().clone()),
+            Some(std::sync::Arc::new(hand.clone())),
+            Cache::open(dir, &secret).ok(),
+        );
+        self.coder = std::mem::replace(&mut self.coder, CoderTab::new("coder:test".into()))
+            .with_basic(basic);
+        self
+    }
+
     /// Send `text` from the current view's composer.
     fn say(&mut self, text: &str) -> Value {
         let view = self.render();
@@ -1113,8 +1128,8 @@ fn a_first_chat_needs_no_computer_and_streams_its_reply() {
     assert!(node(&screen, "coder-profile").is_none());
     assert!(node(&screen, "coder-continue-0").is_none());
     assert!(node(&screen, "coder-connect").is_none());
-    // A first chat's starter questions are the only suggestions.
-    assert!(node(&screen, "coder-first-0").is_some());
+    // Suggested questions are the only chips above the field.
+    assert!(node(&screen, "coder-suggest-meta.who").is_some());
     assert_eq!(composer_of(&screen)["enabled"], true);
     assert_eq!(composer_of(&screen)["placeholder"], "Message OpenAgents");
 
@@ -1597,4 +1612,219 @@ fn a_computer_command_runs_there_after_the_tap() {
     assert_eq!(asked.len(), 1);
     assert_eq!(asked[0].1, ["openagents", "--json", "verse", "xp"]);
     assert!(!fixture.coder.live(Some(&fixture.computers)));
+}
+
+/// The suggestion chips above a new chat's field, as `(key, label)`.
+fn suggestions(view: &Value) -> Vec<(String, String)> {
+    nodes(view)
+        .into_iter()
+        .filter_map(|node| {
+            let key = node["key"].as_str()?;
+            key.starts_with("coder-suggest-").then(|| {
+                (
+                    key.to_owned(),
+                    node["element"]["props"]["label"]
+                        .as_str()
+                        .unwrap_or_default()
+                        .to_owned(),
+                )
+            })
+        })
+        .collect()
+}
+
+/// Every new chat shows suggested questions, not only a first chat ever:
+/// with chats already kept and the Gym never opted into, a new chat still
+/// offers "Who are you?" and the rest of the first four.
+#[test]
+fn a_fresh_new_chat_always_shows_suggestions() {
+    let hand = Hand::default();
+    let mut fixture =
+        Fixture::new(NoComputers(Synthetic::fixture(Platform::Phone, now))).answered_by(&hand);
+    let screen = fixture.render();
+    assert_eq!(
+        suggestions(&screen),
+        [
+            ("coder-suggest-meta.who", "Who are you?"),
+            ("coder-suggest-meta.capabilities", "What can you do?"),
+            ("coder-suggest-gym.news", "What's new in the Gym?"),
+            ("coder-suggest-gym.test", "Test a capability"),
+        ]
+        .map(|(key, label)| (key.to_owned(), label.to_owned()))
+    );
+    // A chat exists now; a new chat still has its suggestions.
+    fixture.say("Tell us a joke");
+    hand.say("Why did the relay cross the road?", true);
+    let screen = fixture.tap("coder-new");
+    assert_eq!(suggestions(&screen).len(), 4, "{:?}", keys(&screen));
+    assert!(node(&screen, "coder-suggest-meta.who").is_some());
+}
+
+/// A tapped suggestion sends its words and never shows again, on the next
+/// new chat and after a relaunch; the next unused one takes its place.
+#[test]
+fn a_tapped_suggestion_never_shows_again_even_after_a_relaunch() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let kept = dir.path().join("basic");
+    let hand = Hand::default();
+    let mut fixture = Fixture::new(NoComputers(Synthetic::fixture(Platform::Phone, now)))
+        .answered_and_kept(&hand, &kept);
+    fixture.tap("coder-suggest-meta.who");
+    assert_eq!(hand.asked(), vec![vec!["Who are you?".to_owned()]]);
+    hand.say("We are OpenAgents.", true);
+    let screen = fixture.tap("coder-new");
+    let shown = suggestions(&screen);
+    assert!(
+        node(&screen, "coder-suggest-meta.who").is_none(),
+        "{shown:?}"
+    );
+    assert_eq!(shown.len(), 4);
+    assert_eq!(shown[3].1, "What model is this?");
+    // "Test a capability" sends its question, and neither shows again.
+    fixture.tap("coder-suggest-gym.test");
+    assert_eq!(hand.asked()[1], ["Which tool should I try?"]);
+    hand.say("Try Project map.", true);
+    drop(fixture);
+
+    let hand = Hand::default();
+    let mut fixture = Fixture::new(NoComputers(Synthetic::fixture(Platform::Phone, now)))
+        .answered_and_kept(&hand, &kept);
+    let screen = fixture.render();
+    let shown = suggestions(&screen);
+    assert!(
+        node(&screen, "coder-suggest-meta.who").is_none(),
+        "{shown:?}"
+    );
+    assert!(
+        node(&screen, "coder-suggest-gym.test").is_none(),
+        "{shown:?}"
+    );
+    assert_eq!(
+        shown
+            .iter()
+            .map(|(_, label)| label.as_str())
+            .collect::<Vec<_>>(),
+        [
+            "What can you do?",
+            "What's new in the Gym?",
+            "What model is this?",
+            "How do I earn XP?"
+        ]
+    );
+}
+
+/// Typing a suggestion's words counts as using it, whatever the case,
+/// spacing, or punctuation.
+#[test]
+fn a_typed_question_hides_the_same_suggestion() {
+    let hand = Hand::default();
+    let mut fixture =
+        Fixture::new(NoComputers(Synthetic::fixture(Platform::Phone, now))).answered_by(&hand);
+    fixture.say("  what can you DO ");
+    hand.say("In this chat we can answer questions.", true);
+    let screen = fixture.tap("coder-new");
+    assert!(
+        node(&screen, "coder-suggest-meta.capabilities").is_none(),
+        "{:?}",
+        suggestions(&screen)
+    );
+    // "whats new in the gym" is the words of "What's new in the Gym?".
+    fixture.say("whats new in the gym");
+    hand.say("Nothing new yet.", true);
+    let screen = fixture.tap("coder-new");
+    assert!(node(&screen, "coder-suggest-gym.news").is_none());
+    assert!(node(&screen, "coder-suggest-meta.who").is_some());
+}
+
+/// A follow-up chip once used never shows again: tapped, typed, or its
+/// prepared answer already shown.
+#[test]
+fn a_used_followup_chip_never_shows_again() {
+    let hand = Hand::default();
+    let mut fixture =
+        Fixture::new(NoComputers(Synthetic::fixture(Platform::Phone, now))).answered_by(&hand);
+    fixture.say("What model are you?");
+    canned(&hand, "Our chat runs on Gemini 3.8 Flash.");
+    // Tap "Is this chat private?" (meta.privacy).
+    fixture.tap("coder-followup-0");
+    hand.say("It is encrypted.", true);
+    // Another answer offering the same follow-ups shows only the unused
+    // one, at its own index.
+    fixture.say("Which model again?");
+    canned(&hand, "Our chat runs on Gemini 3.8 Flash.");
+    let chat = fixture.render();
+    assert!(
+        node(&chat, "coder-followup-0").is_none(),
+        "{:?}",
+        keys(&chat)
+    );
+    assert_eq!(
+        node(&chat, "coder-followup-1").expect("unused")["element"]["props"]["label"],
+        "What is Coder?"
+    );
+    // Typed words count too.
+    fixture.say("what is coder?");
+    canned(&hand, "Our chat runs on Gemini 3.8 Flash.");
+    let chat = fixture.render();
+    assert!(node(&chat, "coder-followup-0").is_none());
+    assert!(node(&chat, "coder-followup-1").is_none());
+    // The prepared answer shown (meta.model) is used: its suggestion is
+    // gone from a new chat.
+    let screen = fixture.tap("coder-new");
+    let shown = suggestions(&screen);
+    assert!(
+        !shown
+            .iter()
+            .any(|(_, label)| label == "What model is this?"),
+        "{shown:?}"
+    );
+}
+
+/// Once every suggestion is used, a new chat shows none.
+#[test]
+fn every_suggestion_used_shows_none() {
+    let hand = Hand::default();
+    let mut fixture =
+        Fixture::new(NoComputers(Synthetic::fixture(Platform::Phone, now))).answered_by(&hand);
+    for round in 0..crate::first_run::SUGGESTIONS.len() {
+        let screen = fixture.render();
+        let shown = suggestions(&screen);
+        let left = crate::first_run::SUGGESTIONS.len() - round;
+        assert_eq!(shown.len(), left.min(4), "round {round}: {shown:?}");
+        fixture.tap(&shown[0].0);
+        hand.say("An answer.", true);
+        fixture.tap("coder-new");
+    }
+    let screen = fixture.render();
+    assert!(
+        suggestions(&screen).is_empty(),
+        "{:?}",
+        suggestions(&screen)
+    );
+    assert!(node(&screen, "coder-suggestions").is_none());
+    assert_eq!(kinds(&screen, "composer"), 1);
+}
+
+/// Every suggestion reads plainly: a short label with no banned word, and
+/// an ID unique in the list.
+#[test]
+fn the_suggestions_are_plain_and_unique() {
+    let list = crate::first_run::SUGGESTIONS;
+    assert_eq!(list.len(), 10);
+    let mut ids = std::collections::BTreeSet::new();
+    for suggestion in list {
+        assert!(ids.insert(suggestion.id), "{} twice", suggestion.id);
+        assert!(
+            suggestion.label.chars().count() <= 30,
+            "{}",
+            suggestion.label
+        );
+        assert_eq!(
+            crate::eval_cards::jargon(suggestion.label),
+            None,
+            "{}",
+            suggestion.label
+        );
+        assert!(!suggestion.message.is_empty());
+    }
 }

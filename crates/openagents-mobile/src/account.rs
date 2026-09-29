@@ -36,6 +36,22 @@ pub struct Item {
 pub const CHANGELOG: &[Release] = &[
     Release {
         version: "1.0.0",
+        build: "30",
+        title: "Suggestions on every new chat",
+        what_to_test: "Open the Chat tab: four suggestions such as Who are you? sit above the box. Tap Who are you? and read the answer. Tap the new-chat button at the top right: Who are you? is gone and another question takes its place. Close the app and open it again: Who are you? is still gone. Type What can you do? yourself, then start a new chat: that one is gone too.",
+        items: &[
+            Item {
+                title: "Suggestions on every new chat",
+                detail: "Every new chat shows a few questions to start with, like Who are you? and What's new in the Gym?, not only your very first chat.",
+            },
+            Item {
+                title: "Never the same suggestion twice",
+                detail: "Once you tap a suggestion, or type the same question, it doesn't show again, above a new chat or under a reply, even after you close the app. The next one on the list takes its place, and when you've used them all, none show.",
+            },
+        ],
+    },
+    Release {
+        version: "1.0.0",
         build: "29",
         title: "A simpler chat",
         what_to_test: "Open the Chat tab: there should be no Cloud button at the top and no old chats or Run Coder buttons above the box. Ask \"describe your plugin system\": a spinner and Working… should stay under the reply until it is all there. Then open a long chat from ☰ and scroll it from top to bottom.",

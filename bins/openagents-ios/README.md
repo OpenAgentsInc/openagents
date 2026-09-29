@@ -37,8 +37,9 @@ The app has four tabs, shown as icons:
   header with the previous-chats button and the **OpenAgents** title.
   Every chat goes to OpenAgents, even while a computer is ready; nothing on
   the screen picks where (build 29 removed the **Cloud** selector). Above
-  the field sit only questions to send: the first-time questions before
-  any chat, and the Gym's starters after the opt-in. Previous chats stay
+  the field sit only questions to send, on every new chat: up to four not
+  yet used on this phone, from an ordered list of ten; one tapped or typed
+  never shows again (build 30). Previous chats stay
   behind the menu button, and Coder on a computer comes only from an offer
   under a reply. The chat worker's `rank` job may order the questions once
   each time the tab shows; the phone's own order stands
@@ -325,13 +326,13 @@ uses only its control-plane client.
 | Bundle identifier | `com.openagents.app` |
 | App Store Connect app | `6748620735` (**OpenAgents**) |
 | Development team | `HQWSG26L43` |
-| Marketing version and build | `1.0.0` / `29` |
+| Marketing version and build | `1.0.0` / `30` |
 | Minimum OS and device family | iOS 17 / iPhone |
 | Archive signing | Manual, Apple Distribution, `OpenAgents App Store` profile |
 
 The App Store Connect record also holds `0.x` builds from an earlier app on
 this bundle identifier. Build numbers only need to be unique within one
-version, so `1.0.0` started at build `1`. Builds `1` to `29` are on TestFlight. Raise the build number for every
+version, so `1.0.0` started at build `1`. Builds `1` to `30` are on TestFlight. Raise the build number for every
 upload; set it in `host/project.yml` or with `OPENAGENTS_IOS_BUILD_NUMBER`.
 
 The `OpenAgents App Store` profile uses the same Apple Distribution

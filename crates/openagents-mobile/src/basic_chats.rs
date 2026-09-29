@@ -89,6 +89,54 @@ pub(crate) struct BasicChats {
     rank_allowed: bool,
     /// What the next turn tells the worker about the phone.
     context: Context,
+    /// The suggestions used on this device, oldest first: `id:<id>` for a
+    /// suggestion tapped or a prepared answer shown, and `words:<digest>`
+    /// for the words of a message sent. Kept in the store, so a used
+    /// suggestion stays hidden after a relaunch.
+    used: Vec<String>,
+}
+
+/// The most used-suggestion marks kept; the oldest go first.
+const MAX_USED: usize = 512;
+/// A message longer than this is never a suggestion's words, so its words
+/// are not kept.
+const MAX_SUGGESTION_CHARS: usize = 120;
+/// The store key of the used suggestions.
+const USED_KEY: &str = "used-suggestions";
+
+/// The mark of a suggestion's ID: a bank ID without its `@version`, so a
+/// new version of an answer is the same suggestion.
+fn id_mark(id: &str) -> String {
+    format!("id:{}", id.split('@').next().unwrap_or(id))
+}
+
+/// The mark of a message's words: a digest of them lowercased, without
+/// apostrophes, and with every run of other punctuation or spaces as one
+/// space, so "who are you" is the words of "Who are you?". None for
+/// nothing to say or a message too long to be a suggestion.
+pub(crate) fn words_mark(text: &str) -> Option<String> {
+    use sha2::{Digest, Sha256};
+    if text.chars().count() > MAX_SUGGESTION_CHARS {
+        return None;
+    }
+    let mut plain = String::new();
+    for c in text.chars().flat_map(char::to_lowercase) {
+        if c == '\'' || c == '\u{2019}' {
+            continue;
+        }
+        if c.is_alphanumeric() {
+            plain.push(c);
+        } else if !plain.is_empty() && !plain.ends_with(' ') {
+            plain.push(' ');
+        }
+    }
+    let plain = plain.trim_end();
+    if plain.is_empty() {
+        return None;
+    }
+    let digest = Sha256::digest(plain.as_bytes());
+    let hex: String = digest[..8].iter().map(|b| format!("{b:02x}")).collect();
+    Some(format!("words:{hex}"))
 }
 
 /// A new chat's suggestions this few are shown as they are, unranked.
@@ -105,6 +153,10 @@ impl BasicChats {
             .as_ref()
             .and_then(|store| store.read("basic-index").ok().flatten())
             .unwrap_or_default();
+        let used: Vec<String> = store
+            .as_ref()
+            .and_then(|store| store.read(USED_KEY).ok().flatten())
+            .unwrap_or_default();
         Self {
             runtime,
             door,
@@ -117,6 +169,35 @@ impl BasicChats {
             ranking: None,
             rank_allowed: false,
             context: Context::default(),
+            used,
+        }
+    }
+
+    /// Whether the suggestion `id`, or one whose chip reads or sends any of
+    /// `words`, was used on this device.
+    pub(crate) fn used(&self, id: Option<&str>, words: &[&str]) -> bool {
+        id.is_some_and(|id| self.used.contains(&id_mark(id)))
+            || words
+                .iter()
+                .filter_map(|text| words_mark(text))
+                .any(|mark| self.used.contains(&mark))
+    }
+
+    /// Mark the suggestion `id` used: it never shows again on this device.
+    pub(crate) fn use_suggestion(&mut self, id: &str) {
+        self.mark(id_mark(id));
+    }
+
+    fn mark(&mut self, mark: String) {
+        if self.used.contains(&mark) {
+            return;
+        }
+        self.used.push(mark);
+        while self.used.len() > MAX_USED {
+            self.used.remove(0);
+        }
+        if let Some(store) = &self.store {
+            let _ = store.write(USED_KEY, &self.used);
         }
     }
 
@@ -312,6 +393,10 @@ impl BasicChats {
         if let Some(turns) = self.turns.get_mut(id) {
             turns.push(Turn::user(text));
         }
+        // Words sent are a suggestion used, tapped or typed.
+        if let Some(mark) = words_mark(text) {
+            self.mark(mark);
+        }
         self.touch(id, now);
         self.save(id);
         self.ask(id);
@@ -408,6 +493,11 @@ impl BasicChats {
     }
 
     fn answer(&mut self, id: &str, text: String, meta: Meta, now: u64) {
+        // A prepared answer shown is its suggestion used: the chip for it
+        // would only show the same answer again.
+        if let Some(answer) = meta.answer.as_deref() {
+            self.use_suggestion(answer);
+        }
         self.turns(id);
         if let Some(turns) = self.turns.get_mut(id) {
             turns.push(Turn::assistant(text, (!meta.is_empty()).then_some(meta)));

@@ -2,8 +2,8 @@
 //! computers.
 //!
 //! The tab opens on a new chat, ready to type: a composer with the cursor
-//! in it, and, above the field, only starter questions for a first chat
-//! (and the Gym's starters once the person opted in). Every new chat goes
+//! in it, and, above the field, a few suggested questions the person has
+//! not used yet (tapped, or sent the same words). Every new chat goes
 //! to OpenAgents; there is no target to pick. Coder runs on a computer only
 //! from a router offer under the reply that warrants it (**Run Coder**, or
 //! **Connect a computer** with none), never from a control above the field.
@@ -163,9 +163,10 @@ pub enum Intent {
     },
     /// Back to the Gym menu, for a person who opted into the Gym.
     Hub,
-    /// Start a new chat with a starter's words.
+    /// Start a new chat with the suggestion `id`'s words
+    /// ([`crate::first_run::SUGGESTIONS`]).
     Starter {
-        text: String,
+        id: String,
     },
 }
 
@@ -1026,6 +1027,9 @@ impl CoderTab {
                 else {
                     return;
                 };
+                if let Some(answer) = &followup.answer {
+                    self.basic.use_suggestion(answer);
+                }
                 let context = self.router_context(computers.as_deref());
                 self.basic.set_context(context);
                 if self.basic.send(&id, &followup.label, unix_now()) {
@@ -1044,7 +1048,17 @@ impl CoderTab {
                 self.run_offer(id, argv, runs_on, computers.as_deref());
             }
             Intent::Hub => self.hub(),
-            Intent::Starter { text } => self.start_talk(&text, computers.as_deref()),
+            Intent::Starter { id } => {
+                let Some(suggestion) = crate::first_run::SUGGESTIONS
+                    .iter()
+                    .find(|suggestion| suggestion.id == id)
+                else {
+                    return;
+                };
+                // Tapped once, it never shows again on this device.
+                self.basic.use_suggestion(suggestion.id);
+                self.start_talk(suggestion.message, computers.as_deref());
+            }
             Intent::RunCoder => {
                 let Some(computers) = computers else {
                     self.go = Some(Go::Computers);
@@ -2195,7 +2209,7 @@ impl CoderTab {
     /// A new chat, where the tab opens: the header with the previous chats
     /// behind the menu button, and a composer ready to type. Every new chat
     /// goes to OpenAgents; nothing on screen picks where. Above the field
-    /// sit only starter questions (see [`CoderTab::candidates`]); previous
+    /// sit only suggested questions (see [`CoderTab::candidates`]); previous
     /// chats stay behind the menu, and Coder on a computer comes only from
     /// an offer under a reply.
     fn landing(&self) -> Node<Intent> {
@@ -2263,48 +2277,34 @@ impl CoderTab {
     }
 
     /// The suggestions in the phone's order, each with the ID a rank job
-    /// knows it by: the first-time questions before any chat, and the
-    /// Gym's starters once the person opted in. Each is a question to send,
-    /// never a previous chat (those are behind the menu) and never a way to
-    /// run Coder on a computer (that is an offer under a reply).
+    /// knows it by: the first few of [`crate::first_run::SUGGESTIONS`] not
+    /// used on this device (tapped, or their words sent), on every new
+    /// chat; none once all are used. Each is a question to send, never a
+    /// previous chat (those are behind the menu) and never a way to run
+    /// Coder on a computer (that is an offer under a reply).
     fn candidates(&self) -> Vec<(String, Node<Intent>)> {
-        let mut chips: Vec<(String, Node<Intent>)> = vec![];
-        // A first chat ever: first-time questions, each answered at once.
-        if self.basic.list().is_empty() {
-            for (n, question) in crate::first_run::FIRST_QUESTIONS.iter().enumerate() {
-                chips.push((
-                    format!("first:{n}"),
+        crate::first_run::SUGGESTIONS
+            .iter()
+            .filter(|suggestion| {
+                !self
+                    .basic
+                    .used(Some(suggestion.id), &[suggestion.label, suggestion.message])
+            })
+            .take(crate::first_run::SUGGESTIONS_SHOWN)
+            .map(|suggestion| {
+                (
+                    suggestion.id.to_owned(),
                     pill(
-                        &format!("coder-first-{n}"),
-                        question,
+                        &format!("coder-suggest-{}", suggestion.id),
+                        suggestion.label,
                         Glyph::Ask,
                         Intent::Starter {
-                            text: (*question).to_owned(),
+                            id: suggestion.id.to_owned(),
                         },
                     ),
-                ));
-            }
-        }
-        // The Gym's starters, once the person opted into the Gym: each
-        // opens a chat with its question sent. Before that the chat
-        // volunteers nothing of the Gym.
-        for (id, label, message) in crate::first_run::STARTERS
-            .iter()
-            .filter(|_| self.gym.opted_in())
-        {
-            chips.push((
-                format!("starter:{id}"),
-                pill(
-                    &format!("coder-starter-{id}"),
-                    label,
-                    Glyph::Ask,
-                    Intent::Starter {
-                        text: (*message).to_owned(),
-                    },
-                ),
-            ));
-        }
-        chips
+                )
+            })
+            .collect()
     }
 
     /// An open basic conversation: its turns, the reply as it streams, and
@@ -2478,11 +2478,17 @@ impl CoderTab {
             }
         }
         if let Some(meta) = meta.as_ref() {
-            // Suggested next questions under a prepared answer.
+            // Suggested next questions under a prepared answer, but none
+            // already used on this device: tapped, typed, or answered.
             let chips: Vec<Node<Intent>> = meta
                 .followups
                 .iter()
                 .enumerate()
+                .filter(|(_, followup)| {
+                    !self
+                        .basic
+                        .used(followup.answer.as_deref(), &[&followup.label])
+                })
                 .map(|(index, followup)| {
                     pill(
                         &format!("coder-followup-{index}"),

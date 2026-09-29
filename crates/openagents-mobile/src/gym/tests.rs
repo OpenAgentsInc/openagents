@@ -1076,12 +1076,9 @@ fn a_fresh_install_opens_on_the_chat_with_nothing_of_the_gym() {
     assert!(find(&coder, |n| n["key"] == "coder-welcome").is_none());
     assert!(find(&coder, |n| n["key"] == "coder-menu").is_some());
     assert!(find(&coder, |n| n["key"] == "coder-back").is_none());
-    // First-time questions, and no Gym starter.
-    assert!(find(&coder, |n| n["key"] == "coder-first-0").is_some());
-    for id in ["test", "news", "check"] {
-        let key = format!("coder-starter-{id}");
-        assert!(find(&coder, |n| n["key"] == key).is_none(), "{key}");
-    }
+    // Suggested questions, as on every new chat: questions to send, no
+    // card and no menu.
+    assert!(find(&coder, |n| n["key"] == "coder-suggest-meta.who").is_some());
     // Profile opens from Account, as a sheet on the Chat tab.
     phone.tab.show_profile();
     assert_eq!(
@@ -1095,7 +1092,7 @@ fn a_fresh_install_opens_on_the_chat_with_nothing_of_the_gym() {
     let mut phone = Phone::in_dir(&worker, Some(&runner), dir);
     let (coder, view) = phone.render();
     assert_eq!(view.screen, "chat");
-    assert!(find(&coder, |n| n["key"] == "coder-starter-test").is_none());
+    assert!(find(&coder, |n| n["key"] == "coder-suggest-meta.who").is_some());
 
     // Train Coder: the intro at step 1, with Not now back to the chat.
     phone.tab.train_coder();
@@ -1107,14 +1104,12 @@ fn a_fresh_install_opens_on_the_chat_with_nothing_of_the_gym() {
     let view = phone.tap("first.later");
     assert_eq!(view.screen, "chat");
     assert!(view.first_run.is_none());
-    let (coder, _) = phone.render();
-    assert!(find(&coder, |n| n["key"] == "coder-starter-test").is_none());
-    // Opted in and past the intro, the Gym's starters join a new chat's
-    // suggestions, and the header's Menu leads to the Gym menu.
+    // Opted in and past the intro, the header's Menu leads to the Gym
+    // menu; a new chat's suggestions are the same as before.
     phone.tab.gym.set_start("done");
     let (coder, view) = phone.render();
     assert_eq!(view.screen, "chat");
-    assert!(find(&coder, |n| n["key"] == "coder-starter-test").is_some());
+    assert!(find(&coder, |n| n["key"] == "coder-suggest-gym.test").is_some());
     phone.press("coder-back");
     assert_eq!(phone.gym().screen, "menu");
 }

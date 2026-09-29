@@ -91,8 +91,8 @@ a separate flow a person opts into.
 
 - **A new install lands in chat**, with the tab bar. No `SCR-02`, no step
   counter, no "Test Project map on Coder" sent for the player, no Gym
-  starter chips, cards, or menu until the person asks. The `eval.*` routes
-  still answer a question about the Gym.
+  cards or menu until the person asks. A new chat's suggested questions
+  include a few about the Gym (#9963); the `eval.*` routes answer them.
 - **The Gym is opt-in: Train Coder**, on the Verse's Gym board (where
   **See the board** and **THE GYM IN THE VERSE** lead) and under Account.
   It opens the intro (`FLOW-01`'s three taps) on the Chat tab; **Not now**
@@ -1107,11 +1107,15 @@ With the selector open, the chips give way to the targets:
 
 States:
 
-- **First chat ever:** the chips are first-time questions from the answer
-  bank ("Who are you?", "What can you do?", "What does it cost?", "What's
-  the Gym?"), each answered at once.
-- **Returning:** the chips continue the newest chats (clock glyph); with a
-  computer chosen, they also offer its other workspaces (folder glyph).
+- **Every new chat:** up to four suggested questions, the first of an
+  ordered list of ten not yet used on this phone: "Who are you?", "What
+  can you do?", "What's new in the Gym?", "Test a capability", "What model
+  is this?", "How do I earn XP?", "Check a result", "How do I connect a
+  computer?", "Are you open source?", "What does it cost?". Each is
+  answered at once. A suggestion tapped, or the same words typed, never
+  shows again, nor does a follow-up chip once used; with all ten used,
+  no chips show (owner direction, 2026-09-29,
+  [#9963](https://github.com/OpenAgentsInc/openagents/issues/9963)).
 - **No computer added:** the target is **Cloud**; **Connect a computer** is
   the last chip. Nothing about computers blocks sending.
 - **A computer chosen and ready:** the selector reads **Studio Mac ·
@@ -1133,7 +1137,7 @@ States:
 | `SCR-15.E03` | Target selector | Where the first message goes: **Cloud** (the default, always) or a computer and workspace the player picked. | `CHAT-7` | EXISTS |
 | `SCR-15.E04` | Target choices | Each computer this phone may use, **Cloud**, and **Connect a computer**, with a check on the current one. | `CHAT-7` | EXISTS |
 | `SCR-15.E05` | Welcome lines | Two plain lines that say what chat is for, shown only while the chat is empty. The empty screen's "Next:" answer (`CHK-03`). | `CHAT-1` | EXISTS (one line) |
-| `SCR-15.E06` | Suggestion chips | Recent chats, workspaces, and **Connect a computer** today; the worker may rank them once each time the tab shows. First-time question chips on a first chat, and **Test a tool**, **What's new**, and **Check a result** chips. | `CHAT-1`, `CHAT-2`, `CHAT-9`, `CHAT-13` | EXISTS |
+| `SCR-15.E06` | Suggestion chips | Up to four questions to send, on every new chat, from the ordered list above, never one already used on this phone; the worker may rank them once each time the tab shows. | `CHAT-1`, `CHAT-2`, `CHAT-9`, `CHAT-13` | EXISTS |
 | `SCR-15.E07` | Composer **Message OpenAgents** | Focused on open; grows to six lines. A tap outside any text field puts the keyboard away. | All chat | EXISTS |
 | `SCR-15.E08` | Send | Sends a NIP-CJ job to the chat worker (or a Coder task to the chosen computer) and opens `SCR-17`. | All chat | EXISTS |
 | `SCR-15.E09` | Wait and limit lines | Plain lines for a busy or used-up chat, spoken as "we" (rule 3 of [Chat in the loop](#chat-in-the-loop)): "We've answered all the messages we can for you today…" | — | EXISTS |
