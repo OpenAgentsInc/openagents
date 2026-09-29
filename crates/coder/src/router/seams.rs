@@ -1,0 +1,410 @@
+//! The router's integration seams: the traits other modules implement so
+//! the router can personalize a stem (T1), ground a reply in the product
+//! or codebase knowledge base (T2), and propose an `openagents` command
+//! (T4 CLI), without the router depending on how any of them work.
+//!
+//! Each seam has a no-op implementation, and [`Seams::default`] holds only
+//! no-ops, so the router works, and falls back to today's behavior, before
+//! any real implementation lands.
+//!
+//! The router, not the implementation, owns the invariants around a seam:
+//!
+//! - It decides whether a seam is called at all (the policy table).
+//! - It builds the input. A [`Ask`] carries only the route, the answer
+//!   id, the stem, and the latest message, already redacted and bounded to
+//!   [`MESSAGE_CHARS`] characters; nothing from earlier turns, no device
+//!   or worker key, and no `context` field.
+//! - It bounds the call with the seam's budget ([`PERSONALIZE_BUDGET`],
+//!   [`KB_BUDGET`], [`CLI_BUDGET`]) and treats a late answer as a failure.
+//! - It validates what comes back before any of it is shown: a
+//!   continuation must pass [`super::validate_continuation`], a passage
+//!   below [`super::RELEVANCE_FLOOR`] is dropped, and a CLI proposal passes
+//!   [`super::gate`] for the surface or is not offered.
+//! - It names every service a message reaches in the privacy answer, from
+//!   each seam's [`Personalize::recipients`] (and the others').
+//!
+//! Every method returns a boxed future so a seam can be held as
+//! `Arc<dyn …>` by the worker.
+
+use std::sync::Arc;
+use std::time::Duration;
+
+use futures_util::future::BoxFuture;
+
+use super::{Effect, RouteId, RunsOn, Surface};
+use crate::generate::Message;
+
+/// The longest latest message, in characters, a seam receives.
+pub const MESSAGE_CHARS: usize = 600;
+
+/// How long the router waits for a continuation before it closes the stem
+/// with the entry's `generic_end`.
+pub const PERSONALIZE_BUDGET: Duration = Duration::from_millis(1_200);
+
+/// How long the router waits for retrieval before it answers with the
+/// model alone.
+pub const KB_BUDGET: Duration = Duration::from_millis(2_000);
+
+/// How long the router waits for a CLI proposal before it answers with the
+/// model alone.
+pub const CLI_BUDGET: Duration = Duration::from_millis(3_000);
+
+/// Why a seam did not answer.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SeamError {
+    /// Nothing is configured behind the seam. The router falls back
+    /// silently, as if the tier did not exist.
+    Unavailable,
+    /// The seam tried and failed; the text is for the worker's log and must
+    /// not contain message text.
+    Failed(String),
+}
+
+impl std::fmt::Display for SeamError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SeamError::Unavailable => f.write_str("unavailable"),
+            SeamError::Failed(why) => write!(f, "failed: {why}"),
+        }
+    }
+}
+
+impl std::error::Error for SeamError {}
+
+// ---------------------------------------------------------------------------
+// T1: personalization
+// ---------------------------------------------------------------------------
+
+/// What a personalization call may see: the whole prompt, nothing else.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Ask {
+    /// The route the router chose.
+    pub route: RouteId,
+    /// The bank entry whose stem is being continued, as `id` (no version).
+    pub answer: String,
+    /// The stem, exactly as shown to the user. The continuation follows it.
+    pub stem: String,
+    /// The user's latest message, redacted of bounded secret shapes and
+    /// cut to [`MESSAGE_CHARS`] characters.
+    pub message: String,
+}
+
+/// A continuation of a stem, as the provider wrote it. The router
+/// validates it before it is shown.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Continuation {
+    /// The words that follow the stem, starting with the space or
+    /// punctuation that joins them.
+    pub text: String,
+    /// The model that wrote them, for the result's `model` field.
+    pub model: String,
+}
+
+/// Writes the rest of a stem's sentence from the user's latest message.
+pub trait Personalize: Send + Sync {
+    /// Whether a provider is configured. When `false` the router never
+    /// calls [`Personalize::continuation`] and closes stems with their
+    /// `generic_end`.
+    fn available(&self) -> bool;
+
+    /// The services a message reaches through this seam, named for a
+    /// person ("OpenRouter"), for the privacy answer. Empty when
+    /// unavailable.
+    fn recipients(&self) -> Vec<String>;
+
+    /// The continuation of `ask.stem`.
+    fn continuation<'a>(&'a self, ask: &'a Ask) -> BoxFuture<'a, Result<Continuation, SeamError>>;
+}
+
+/// No personalization: every stem closes with its `generic_end`.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct NoPersonalize;
+
+impl Personalize for NoPersonalize {
+    fn available(&self) -> bool {
+        false
+    }
+
+    fn recipients(&self) -> Vec<String> {
+        Vec::new()
+    }
+
+    fn continuation<'a>(&'a self, _: &'a Ask) -> BoxFuture<'a, Result<Continuation, SeamError>> {
+        Box::pin(async { Err(SeamError::Unavailable) })
+    }
+}
+
+// ---------------------------------------------------------------------------
+// T2: product and codebase knowledge
+// ---------------------------------------------------------------------------
+
+/// What a retrieval may see.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Lookup {
+    /// The user's latest message, redacted and cut to [`MESSAGE_CHARS`].
+    pub message: String,
+    /// The bounded transcript the turn carried, oldest first, for
+    /// resolving what "it" refers to. An implementation that sends text to
+    /// an embedding provider must name that provider in `recipients`.
+    pub transcript: Vec<Message>,
+}
+
+/// One retrieved passage.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Passage {
+    /// The entry's stable id, with its version when it has one
+    /// (`product.connect-a-mac@2`); cited in the reply.
+    pub id: String,
+    /// A short title for the citation.
+    pub title: String,
+    /// The passage the model may answer from.
+    pub text: String,
+    /// Where it comes from: a repository path or a public URL.
+    pub source: String,
+    /// Jev's relevance for this message, in `[0, 1]`. The router drops a
+    /// passage below [`super::RELEVANCE_FLOOR`].
+    pub relevance: f64,
+    /// A reviewed short answer in the plural voice, when the entry has one.
+    /// The router may serve it whole (T0) at relevance at least
+    /// [`super::KB_ANSWER_CONFIDENCE`] when the message needs no specifics.
+    pub answer: Option<String>,
+}
+
+/// What a retrieval found.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Grounding {
+    /// The passages, most relevant first; at most six are used.
+    pub passages: Vec<Passage>,
+    /// The commit the corpus was read at, named in the reply ("as of
+    /// `820bc02`"); required for the codebase corpus.
+    pub commit: Option<String>,
+    /// The corpus cannot answer this without running or reading more code
+    /// than it holds: the router offers to dispatch Coder instead.
+    pub needs_dispatch: bool,
+}
+
+/// The OpenAgents product knowledge base (`knowledge/openagents/`).
+pub trait ProductKb: Send + Sync {
+    /// Whether a corpus is configured.
+    fn available(&self) -> bool;
+    /// The services a message reaches through this seam (an embedding
+    /// provider, for example), for the privacy answer.
+    fn recipients(&self) -> Vec<String>;
+    /// The admitted passages relevant to `lookup`.
+    fn ground<'a>(&'a self, lookup: &'a Lookup) -> BoxFuture<'a, Result<Grounding, SeamError>>;
+}
+
+/// Knowledge of the public OpenAgents codebase at a pinned commit.
+pub trait CodebaseKb: Send + Sync {
+    /// Whether an index is configured.
+    fn available(&self) -> bool;
+    /// The services a message reaches through this seam.
+    fn recipients(&self) -> Vec<String>;
+    /// The passages relevant to `lookup`, with the commit they were read at.
+    fn ground<'a>(&'a self, lookup: &'a Lookup) -> BoxFuture<'a, Result<Grounding, SeamError>>;
+}
+
+/// No knowledge base: the router answers such routes with the model alone.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct NoKb;
+
+impl ProductKb for NoKb {
+    fn available(&self) -> bool {
+        false
+    }
+    fn recipients(&self) -> Vec<String> {
+        Vec::new()
+    }
+    fn ground<'a>(&'a self, _: &'a Lookup) -> BoxFuture<'a, Result<Grounding, SeamError>> {
+        Box::pin(async { Err(SeamError::Unavailable) })
+    }
+}
+
+impl CodebaseKb for NoKb {
+    fn available(&self) -> bool {
+        false
+    }
+    fn recipients(&self) -> Vec<String> {
+        Vec::new()
+    }
+    fn ground<'a>(&'a self, _: &'a Lookup) -> BoxFuture<'a, Result<Grounding, SeamError>> {
+        Box::pin(async { Err(SeamError::Unavailable) })
+    }
+}
+
+// ---------------------------------------------------------------------------
+// T4: the `openagents` command
+// ---------------------------------------------------------------------------
+
+/// One top-level command group, as the `cli_group` question lists it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CliGroup {
+    /// The group's name as typed (`computer`, `verse`, `kb`).
+    pub id: String,
+    /// Its one-line summary from the help table, which Jev reads.
+    pub summary: String,
+}
+
+/// What a CLI proposal may see.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CliAsk {
+    /// The group the router's `cli_group` question chose.
+    pub group: String,
+    /// The user's latest message, redacted and cut to [`MESSAGE_CHARS`].
+    pub message: String,
+    /// The bounded transcript, for free-text parameters.
+    pub transcript: Vec<Message>,
+    /// Where the chat is, which bounds what may be proposed.
+    pub surface: Surface,
+}
+
+/// A proposed command. It is an offer, not permission: it runs only on a
+/// tap, under the device's own authority and the command's own checks.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CliProposal {
+    /// The arguments after `openagents`, validated by the command's own
+    /// parser.
+    pub argv: Vec<String>,
+    /// The leaf's declared effect class.
+    pub effect: Effect,
+    /// Where the leaf can run for this surface.
+    pub runs_on: RunsOn,
+}
+
+/// What the descent found.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum CliAnswer {
+    /// A complete, validated command.
+    Proposal(CliProposal),
+    /// A required parameter the message does not supply, named for a
+    /// person ("which computer"); the router asks for it.
+    Missing(String),
+    /// No command fits (a `none` at some level of the descent).
+    NoCommand,
+}
+
+/// Descends the `openagents` command tree and fills a leaf's parameters.
+pub trait CliRoute: Send + Sync {
+    /// The top-level groups the `cli_group` question offers, from the help
+    /// table. Empty when unavailable, and the question is then not asked.
+    fn groups(&self) -> Vec<CliGroup>;
+    /// The services a message reaches through this seam.
+    fn recipients(&self) -> Vec<String>;
+    /// A command for `ask`, or why there is none.
+    fn propose<'a>(&'a self, ask: &'a CliAsk) -> BoxFuture<'a, Result<CliAnswer, SeamError>>;
+}
+
+/// No command tree: the `cli` route answers with the model alone.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct NoCli;
+
+impl CliRoute for NoCli {
+    fn groups(&self) -> Vec<CliGroup> {
+        Vec::new()
+    }
+    fn recipients(&self) -> Vec<String> {
+        Vec::new()
+    }
+    fn propose<'a>(&'a self, _: &'a CliAsk) -> BoxFuture<'a, Result<CliAnswer, SeamError>> {
+        Box::pin(async { Err(SeamError::Unavailable) })
+    }
+}
+
+// ---------------------------------------------------------------------------
+
+/// The seams the worker holds, one of each.
+#[derive(Clone)]
+pub struct Seams {
+    pub personalize: Arc<dyn Personalize>,
+    pub product: Arc<dyn ProductKb>,
+    pub codebase: Arc<dyn CodebaseKb>,
+    pub cli: Arc<dyn CliRoute>,
+}
+
+impl Default for Seams {
+    fn default() -> Self {
+        Self {
+            personalize: Arc::new(NoPersonalize),
+            product: Arc::new(NoKb),
+            codebase: Arc::new(NoKb),
+            cli: Arc::new(NoCli),
+        }
+    }
+}
+
+impl std::fmt::Debug for Seams {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Seams")
+            .field("personalize", &self.personalize.available())
+            .field("product", &self.product.available())
+            .field("codebase", &self.codebase.available())
+            .field("cli_groups", &self.cli.groups().len())
+            .finish()
+    }
+}
+
+impl Seams {
+    /// Every service beyond the model door and Jev that a message may
+    /// reach through these seams, deduplicated, in seam order.
+    #[must_use]
+    pub fn recipients(&self) -> Vec<String> {
+        let mut all: Vec<String> = Vec::new();
+        for name in self
+            .personalize
+            .recipients()
+            .into_iter()
+            .chain(self.product.recipients())
+            .chain(self.codebase.recipients())
+            .chain(self.cli.recipients())
+        {
+            if !all.contains(&name) {
+                all.push(name);
+            }
+        }
+        all
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn the_default_seams_are_all_unavailable() {
+        let seams = Seams::default();
+        assert!(!seams.personalize.available());
+        assert!(!seams.product.available());
+        assert!(!seams.codebase.available());
+        assert!(seams.cli.groups().is_empty());
+        assert!(seams.recipients().is_empty());
+        let ask = Ask {
+            route: RouteId::WorkDispatch,
+            answer: "dispatch.stem".into(),
+            stem: "We'll dispatch Coder to".into(),
+            message: "fix it".into(),
+        };
+        assert_eq!(
+            seams.personalize.continuation(&ask).await,
+            Err(SeamError::Unavailable)
+        );
+        let lookup = Lookup {
+            message: "how do I connect my Mac".into(),
+            transcript: Vec::new(),
+        };
+        assert_eq!(
+            seams.product.ground(&lookup).await,
+            Err(SeamError::Unavailable)
+        );
+        assert_eq!(
+            seams.codebase.ground(&lookup).await,
+            Err(SeamError::Unavailable)
+        );
+        let cli = CliAsk {
+            group: "computer".into(),
+            message: "list my computers".into(),
+            transcript: Vec::new(),
+            surface: Surface::Phone,
+        };
+        assert_eq!(seams.cli.propose(&cli).await, Err(SeamError::Unavailable));
+    }
+}

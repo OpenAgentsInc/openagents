@@ -73,6 +73,7 @@ pub mod relay;
 pub mod repo;
 pub mod resolve;
 pub mod review;
+pub mod router;
 pub mod runstate;
 pub mod runtime;
 pub mod select;

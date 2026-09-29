@@ -28,6 +28,7 @@ the owner can answer.
 - [Goals and latency budgets](#goals-and-latency-budgets)
 - [Architecture](#architecture)
 - [The typed route schema](#the-typed-route-schema)
+- [The code: `coder::router` and its seams](#the-code-coderrouter-and-its-seams)
 - [Confidence, thresholds, and fallbacks](#confidence-thresholds-and-fallbacks)
 - [The answer bank](#the-answer-bank)
 - [Personalization with a cheap model](#personalization-with-a-cheap-model)
@@ -215,6 +216,73 @@ pub enum Tier {
     Refuse { answer: AnswerId },              // a bank refusal, never model text
 }
 ```
+
+## The code: `coder::router` and its seams
+
+Implementation: [#9922](https://github.com/OpenAgentsInc/openagents/issues/9922).
+The router lives in `crates/coder/src/router.rs`; the traits other modules
+implement live in `crates/coder/src/router/seams.rs`. Each seam has a no-op
+implementation, and `Seams::default()` holds only no-ops, so the router
+works, and falls back to today's behavior, before any real implementation
+lands. Every method returns a `futures_util::future::BoxFuture`, so the
+worker holds each seam as `Arc<dyn …>`.
+
+```rust
+// T1: writes the rest of a stem's sentence (crates/coder/src/router/personalize*).
+pub trait Personalize: Send + Sync {
+    fn available(&self) -> bool;               // false: stems close with generic_end
+    fn recipients(&self) -> Vec<String>;       // named in the privacy answer
+    fn continuation<'a>(&'a self, ask: &'a Ask)
+        -> BoxFuture<'a, Result<Continuation, SeamError>>;
+}
+pub struct Ask { pub route: RouteId, pub answer: String, pub stem: String,
+                 pub message: String }         // message: redacted, <= 600 chars
+pub struct Continuation { pub text: String, pub model: String }
+
+// T2: product knowledge (knowledge/openagents/) and codebase knowledge.
+pub trait ProductKb: Send + Sync {
+    fn available(&self) -> bool;
+    fn recipients(&self) -> Vec<String>;       // e.g. the embedding provider
+    fn ground<'a>(&'a self, lookup: &'a Lookup)
+        -> BoxFuture<'a, Result<Grounding, SeamError>>;
+}
+pub trait CodebaseKb: Send + Sync { /* the same three methods */ }
+pub struct Lookup { pub message: String, pub transcript: Vec<Message> }
+pub struct Grounding { pub passages: Vec<Passage>, pub commit: Option<String>,
+                       pub needs_dispatch: bool }
+pub struct Passage { pub id: String, pub title: String, pub text: String,
+                     pub source: String, pub relevance: f64,
+                     pub answer: Option<String> }   // reviewed short answer, T0 at relevance >= 0.8
+
+// T4 CLI: descends the `openagents` command tree and fills parameters.
+pub trait CliRoute: Send + Sync {
+    fn groups(&self) -> Vec<CliGroup>;         // the cli_group options; empty: not asked
+    fn recipients(&self) -> Vec<String>;
+    fn propose<'a>(&'a self, ask: &'a CliAsk)
+        -> BoxFuture<'a, Result<CliAnswer, SeamError>>;
+}
+pub struct CliGroup { pub id: String, pub summary: String }
+pub struct CliAsk { pub group: String, pub message: String,
+                    pub transcript: Vec<Message>, pub surface: Surface }
+pub enum CliAnswer { Proposal(CliProposal), Missing(String), NoCommand }
+pub struct CliProposal { pub argv: Vec<String>, pub effect: Effect, pub runs_on: RunsOn }
+
+pub enum SeamError { Unavailable, Failed(String) }   // Failed text: never message text
+pub struct Seams { pub personalize: Arc<dyn Personalize>, pub product: Arc<dyn ProductKb>,
+                   pub codebase: Arc<dyn CodebaseKb>, pub cli: Arc<dyn CliRoute> }
+```
+
+The router, not the implementation, owns the invariants around a seam. It
+decides whether a seam is called (the policy table), builds the input (the
+latest message passes `router::redact` first, and nothing else from the
+turn is included beyond what each input type names), bounds the call
+(`PERSONALIZE_BUDGET` 1.2 s, `KB_BUDGET` 2 s, `CLI_BUDGET` 3 s), and checks
+what comes back: a continuation passes `router::validate_continuation`, a
+passage below `RELEVANCE_FLOOR` (0.5) is dropped, and a CLI proposal passes
+`router::gate(effect, surface)` or is not offered (never `spends` or
+`secret`; on the phone only `read_only`, and `grants` opens Account >
+Computers). `Seams::recipients` feeds the privacy answer, so adding a seam
+that sends text somewhere changes what that answer says.
 
 ## Confidence, thresholds, and fallbacks
 
