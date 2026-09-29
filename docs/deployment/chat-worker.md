@@ -393,6 +393,21 @@ new in the Gym?" answered from five records in 7.6 s (first words 6.9 s)
 with no citation id and no banned word, and the worker logged `router gym
 reply: 3 cited, 0 invented, banned [], 0 raw ids`.
 
+Releases `c975123ca2`, `8fdad245cc`, and `a9ba87d828` (2026-09-29, the
+build 22 verification) change which results Check a result offers: only
+our catalog tools' results
+([#9951](https://github.com/OpenAgentsInc/openagents/issues/9951)), and
+only those run under the newest subject lock read for their test set, so a
+check of one still earns XP after a runner redeploy
+([#9952](https://github.com/OpenAgentsInc/openagents/issues/9952));
+`a9ba87d828` also carries build 22's changelog for Gym news. Each was built
+and installed as above with `knowledge/` and `codebase-kb.gz` copied from
+`dbad257c51`, checked with `--check`, and put live by moving the `chat`
+symlink; the environment file and unit did not change.
+`live_basic_coder_streams_a_reply` passed on `a9ba87d828` (first words
+0.68 s). See
+[the build 22 verification](../extensions/measurements/2026-09-29-build-22-verification.md).
+
 Release `dbad257c51` (2026-09-29) makes Gym news answer at once (#9950),
 on top of `d0a053650d` and `69587cc286` (phone only). It was built as
 above, installed as `/opt/coder-worker/releases/dbad257c51` with the
