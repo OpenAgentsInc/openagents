@@ -96,6 +96,25 @@ pub fn documents<I: IntoIterator<Item = Vec<u8>>>(items: I) -> Documents {
         .collect()
 }
 
+/// The report digests the admissions among `documents` cite, as the hex
+/// a publication's `x` tag carries: a reader that gathers events by an
+/// award's evidence alone never sees the validation an admission cites
+/// (an `eval-adopt` award names the release, the result, and one check),
+/// so it fetches these `3189`s by `#x` before it can check the adoption.
+#[must_use]
+pub fn cited_report_hexes(documents: &Documents) -> Vec<String> {
+    let mut out = BTreeSet::new();
+    for bytes in documents.values() {
+        let Ok(admission) = eval_ext::parse_admission(bytes) else {
+            continue;
+        };
+        for digest in admission.reports.iter().chain(&admission.validation) {
+            out.insert(digest.trim_start_matches("sha256:").to_owned());
+        }
+    }
+    out.into_iter().collect()
+}
+
 /// The valid extension evaluation publications (`3189` with the
 /// `oa:ext-eval:v1` marker) among `events`, each once, by event ID.
 #[must_use]

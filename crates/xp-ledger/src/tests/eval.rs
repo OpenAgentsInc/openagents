@@ -879,6 +879,23 @@ fn the_defaults_admit_a_dependency_only_under_a_live_admission_and_the_lock_roun
         vec![now.manifest.clone(), now.admitted[0].admission.clone()]
     );
 
+    // A reader that gathered only the awards' evidence still needs the
+    // validation the admission cites; the admission says which reports.
+    let (suite2, validation) = validation_of(&a.w);
+    let _ = suite2;
+    let cited = eval::cited_report_hexes(&a.documents);
+    let hex = |e: &Event| {
+        nostr::eval_ext::parse_publication(e)
+            .unwrap()
+            .report_ref
+            .digest
+            .trim_start_matches("sha256:")
+            .to_string()
+    };
+    assert!(cited.contains(&hex(&a.w.result)));
+    assert!(cited.contains(&hex(&validation)));
+    assert_eq!(cited.len(), 2);
+
     // Without the manifest there are no defaults to read, and another
     // package's releases aren't these defaults.
     assert!(defaults::current(&events, &package, &eval::Documents::new(), AT + 1_000).is_none());

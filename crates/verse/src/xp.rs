@@ -665,6 +665,7 @@ fn run(
     // the digests already asked about.
     let mut documents = Documents::new();
     let mut asked_documents: BTreeSet<String> = BTreeSet::new();
+    let mut asked_reports: BTreeSet<String> = BTreeSet::new();
     while !stop.load(Ordering::Acquire) {
         for message in link.drain() {
             match message {
@@ -767,6 +768,23 @@ fn run(
                 link.send(Out::Subscribe {
                     id: format!("{SUB}-docs-{fetches}"),
                     filters: vec![json!({"kinds": [nostr::ext::LOCATOR_KIND], "#x": hexes,
+                        "limit": LIMIT})],
+                    live: false,
+                });
+            }
+            // An `eval-adopt` award's evidence names the release, the
+            // result, and one check; the validation an admission cites is
+            // named only by its report digest, so the publications the held
+            // admissions cite are fetched by `#x` too.
+            let reports: Vec<String> = xp_ledger::eval::cited_report_hexes(&documents)
+                .into_iter()
+                .filter(|hex| asked_reports.insert(hex.clone()))
+                .collect();
+            for chunk in reports.chunks(50) {
+                fetches += 1;
+                link.send(Out::Subscribe {
+                    id: format!("{SUB}-cited-{fetches}"),
+                    filters: vec![json!({"kinds": [nostr::kb::EVIDENCE_KIND], "#x": chunk,
                         "limit": LIMIT})],
                     live: false,
                 });

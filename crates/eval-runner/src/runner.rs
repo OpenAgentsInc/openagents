@@ -74,8 +74,9 @@ pub struct Runner {
     /// Each catalog tool's NIP-EXT release, by its definition ID, once
     /// known.
     tool_releases: tokio::sync::Mutex<BTreeMap<String, Value>>,
-    /// The defaults release last logged, so a change is logged once.
-    defaults_seen: Mutex<Option<String>>,
+    /// The defaults release last logged, so a change is logged once;
+    /// `None` until the first read, which is always logged.
+    defaults_seen: Mutex<Option<Option<String>>>,
 }
 
 /// What an admitted run will run.
@@ -209,8 +210,8 @@ impl Runner {
         let id = read.defaults.as_ref().map(|d| d.release.id.clone());
         let changed = {
             let mut seen = self.defaults_seen.lock().expect("the defaults log");
-            let changed = *seen != id;
-            *seen = id;
+            let changed = seen.as_ref() != Some(&id);
+            *seen = Some(id);
             changed
         };
         if changed {

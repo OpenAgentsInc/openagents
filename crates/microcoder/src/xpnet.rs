@@ -1104,6 +1104,21 @@ pub async fn ledger(o: &XpOptions, key: &Path, trust: &XpTrust) -> Result<u8, St
         o.documents.clone().or_else(eval::documents_dir).as_deref(),
     )
     .await;
+    // An `eval-adopt` award's evidence names the release, the result, and
+    // one check; the validation the admission cites is named only by its
+    // report digest, so the publications the admissions cite are fetched
+    // by `#x` before the adoption can be checked.
+    let hexes = ledger_xp::eval::cited_report_hexes(&documents);
+    for chunk in hexes.chunks(LIMIT) {
+        let held: BTreeSet<String> = events.iter().map(|e| e.id.clone()).collect();
+        events.extend(
+            relay
+                .query(json!({"kinds": [kb::EVIDENCE_KIND], "#x": chunk, "limit": LIMIT}))
+                .await?
+                .into_iter()
+                .filter(|e| !held.contains(&e.id)),
+        );
+    }
     let derived = ledger_xp::derive_with(&events, &documents, trust);
     if o.json {
         println!(

@@ -1492,8 +1492,8 @@ Status is the mechanism's, as the
 | [Judgment budget](#5-judgment-budget) | Jev and the [chat router](../coder/design/2026-09-28-chat-router.md), tiers T0 to T4 | [NIP-CJ](../../nips/openagents/NIP-CJ.md#conversation-jobs) `25900`, `25910`/`26910` | Implemented |
 | [Test-time delegation](#6-test-time-delegation) | Coder's [delegate door](../coder/runtime/delegate-door.md); delegate sessions | [NIP-PRG](../../nips/openagents/NIP-PRG.md#step-kinds), [NIP-SESS](../../nips/openagents/NIP-SESS.md#steering-capability), [NIP-ATIF](../../nips/openagents/NIP-ATIF.md#delegated-sub-agents) `3198`/`3199` | Implemented |
 | [Reproduced capability claim](#7-reproduced-capability-claim) | [Eval checks](../extensions/evaluation.md#checks-adoption-and-credit) | [NIP-EVAL checks](../../nips/openagents/NIP-EVAL.md#checks) `3189` | Implemented |
-| [Externally validated capability claim](#8-externally-validated-capability-claim) | A `validates` result on a second suite, read for independence by `eval_ext::validation`; required by the [candidate policy](../../packages/coder-defaults/policy.md); none published yet | [NIP-EVAL validations](../../nips/openagents/NIP-EVAL.md#validations) `3189` with the `validates` or `transfer` marker | Partial |
-| [Capability adoption](#9-capability-adoption) | [`openagents:coder-defaults`](../../packages/coder-defaults/) releases; the admission cites validations, and may cite a marginal report, regression, reliability, authority, and stakes; no marginal baseline arm in the runner yet | [NIP-EVAL adoption](../../nips/openagents/NIP-EVAL.md#adoption), [NIP-EXT](../../nips/openagents/NIP-EXT.md) `3184` | Partial |
+| [Externally validated capability claim](#8-externally-validated-capability-claim) | A `validates` result on a second suite, read for independence by `eval_ext::validation`; required by the [candidate policy](../../packages/coder-defaults/policy.md); the first was published on 2026-09-29 ([record](../extensions/measurements/2026-09-29-first-adoption.md)) | [NIP-EVAL validations](../../nips/openagents/NIP-EVAL.md#validations) `3189` with the `validates` or `transfer` marker | Implemented |
+| [Capability adoption](#9-capability-adoption) | [`openagents:coder-defaults`](../../packages/coder-defaults/) releases, consumed by the hosted runner (both arms, a marginal report) and by Coder on a computer (`openagents ext defaults sync`); the admission cites validations, and may cite a marginal report, regression, reliability, authority, and stakes; the first adoption was made on 2026-09-29 | [NIP-EVAL adoption](../../nips/openagents/NIP-EVAL.md#adoption), [NIP-EXT](../../nips/openagents/NIP-EXT.md) `3184` | Implemented |
 | [Capability credit](#10-capability-credit) | XP referee, `crates/xp-ledger` | [NIP-XP](../../nips/openagents/NIP-XP.md#eval-check) `3193`, `3194` | Implemented |
 | [Capability flywheel](#11-the-capability-flywheel) | Chat, Gym, and Verse; [how the network compounds](../coder/design/networked-coder-plan.md#how-the-network-compounds) | No single carrier | Defined |
 
@@ -1798,7 +1798,7 @@ results the sentence above is the record.
 
 #### Externally validated capability claim in OpenAgents
 
-The wire is built and no validation has been published. A result on a
+The wire is built and the first validation is published. A result on a
 second suite for the same tool cites the original with the `validates`
 marker (or `transfer`, for another distribution), and a reader decides
 from the two publications and the two releases whether it counts:
@@ -1814,12 +1814,16 @@ shows that two key holders didn't collaborate or that the tests weren't
 leaked, which Part I's open questions leave open. The
 [candidate policy](../../packages/coder-defaults/policy.md) requires at
 least one beside the three confirming checks; an admission that admits
-without one doesn't parse. What's still true of the record: the runner
-releases each catalog tool and is the author of each starter suite, so
-the tool and its tests share a signer, the checks reran those same tests,
-and nothing in the hosted record is externally validated. Hidden suites
-don't exist. The first validation needs a second suite that someone
-else writes.
+without one doesn't parse. The first one exists: a second Project map
+test set (`crates/plugin-repo-map/evals-validation`, with its sampling
+story) released under a second key after the tool's release, run through
+the hosted runner citing a confirmed result with `validates`, and read
+**Better** at 4 of 6 against 2 of 6, smaller than the original's 5
+against 2 ([the record](../extensions/measurements/2026-09-29-first-adoption.md)).
+What the record still can't show: the second key was made on the same
+machine by the same operator's agent that sent every check, so the two
+observable conditions hold and social independence is unmeasured, as
+Part I says it is. Hidden suites don't exist.
 
 #### Capability adoption in OpenAgents
 
@@ -1830,8 +1834,16 @@ depends on the tool. A tool becomes a candidate when its result is
 **Better**, at least three distinct trainers' checks confirmed it, and at
 least one **Better** result on an independent second suite validates it,
 and the admission cites that validation. Adoption is an operator
-decision, never automatic. The mechanism exists; no adoption has been
-made yet.
+decision, never automatic. The first was made on 2026-09-29: Project map,
+release `7af8bd08bbff…`, admitted by admission `sha256:be6127d5…` in
+`coder-defaults` release `680720dd100f…` for 365 days, after three
+confirming checks and one validation
+([the record](../extensions/measurements/2026-09-29-first-adoption.md)).
+A release reaches runtimes under the checks a ledger makes
+([policy](../../packages/coder-defaults/policy.md#how-a-release-reaches-runtimes)):
+the hosted runner admitted it in both arms of its next run without a
+restart, and a computer admits it after `openagents ext defaults sync`,
+recording the defaults lock in each run.
 
 Part I's tail, revalidation and revocation, has carriers and one clock.
 A NIP-EXT revocation (`3185`) withdraws a tool or suite release from new
@@ -1852,12 +1864,13 @@ rerun; it reinterprets the records, and every report keeps the digest of
 the gate that read it.
 
 The marginal question in Part I has a plain answer today and a harder one
-soon. The baseline arm is Coder with nothing admitted. While
-`coder-defaults` lists no extensions, that is also the current default
-set, so the first adoption's marginal delta is its standalone delta. From
-the second adoption on, a candidate has to be measured as current defaults
-plus the candidate against current defaults alone, and the runner has no
-such arm yet.
+soon. The first adoption's marginal delta was its standalone delta,
+because the defaults were empty when it was measured. Since it, the
+hosted runner admits the current defaults in both arms and names the
+release in `meta.ext_eval.defaults`, so every report is marginal; the
+first such report was the adopted tool's own suite reading **No clear
+change** at 5 of 6 in both arms, which is what a default should do. From
+the second adoption on, that arm is what a candidate is measured on.
 
 #### Capability credit in OpenAgents
 
@@ -1868,11 +1881,16 @@ disputes it; a dispute is paid like a confirmation, stays visible as a
 dispute, and counts toward no candidate. `eval-adopt` credits the tool's
 author, the suite's author, and the evaluators of cited results when Coder
 adopts the tool. A run, a publish, a view, or a download earns nothing.
-The first nine awards were all for confirmations; no dispute has been
-published yet.
+Every award so far was for a confirmation or an adoption; no dispute has
+been published yet.
 Credit is XP and your name. It is never money, and no payout exists. The XP
 referee on `coderos-4080` signed the first nine awards from the hosted
-checks, and any reader can recompute them with `crates/xp-ledger`.
+checks, and on 2026-09-29 the first two `eval-adopt` awards (200 XP to
+the tool's author, 50 to the result's trainer; the author held the
+suite-author role too and is paid once in the larger); any reader can
+recompute them with `crates/xp-ledger`, once it holds the publications
+the admission cites, which the first recomputation showed a reader that
+follows only the awards' evidence doesn't.
 
 #### The capability flywheel in OpenAgents
 
@@ -1882,7 +1900,10 @@ Gym, and earns credit when others check it or Coder adopts it. The
 [README's loop](../../README.md#the-loop) draws it. Its test is the network
 plan's
 ([how the network compounds](../coder/design/networked-coder-plan.md#how-the-network-compounds)).
-We have not shown the flywheel turning yet; we have built each part of it.
+It has turned once, by hand: one claim went from result to checks to
+validation to adoption to a Coder that admits it, with every step a
+signed event ([the record](../extensions/measurements/2026-09-29-first-adoption.md));
+every hand on the wheel was one operator's.
 
 ### Our evals in practice
 
@@ -2263,14 +2284,13 @@ These are our open problems, for the OpenAgents implementation in Part II.
 Part I's [open questions](#open-questions-for-the-field) are the general
 versions.
 
-- **The first validation.** No tool has been adopted into
-  `coder-defaults`, and none can be until a **Better** result on a second
-  suite validates it: the policy, the admission, and the referee's queue
-  all require one now. What's missing is the suite. Someone other than the
-  runner has to write tests for the Project map, Code finder, or Test
-  reader tool, release them after the tool's release, and run them; the
-  runner cannot validate its own catalog. Hidden or challenge suites,
-  which would make chronology unnecessary, don't exist yet.
+- **A validation by someone else.** The first validation and adoption
+  happened, and every key in them was one operator's
+  ([the record](../extensions/measurements/2026-09-29-first-adoption.md)).
+  The next one should be a second suite written by a person the runner's
+  operator can't reach, run from a machine they don't hold; hidden or
+  challenge suites, which would make chronology unnecessary, don't exist
+  yet.
 - **Revalidate after adoption.** Nothing reopens a claim when its key
   moves. After the first adoption we need a job that reruns the whole
   default set's regression on every defaults release, reopens an adopted
@@ -2296,15 +2316,16 @@ versions.
   exploratory run from a confirmatory one, and nothing counts how many
   variants a tool's author tried before publishing. The partition
   artifact has the fields; the runner and the Gym should use them.
-- **Package Jev-probe as a subject.** The strongest claim we hold lives
-  in the Terminal-Bench harness, not the Gym. The context-construction
-  policy should become a release with a cost-primary suite, so a check
-  can cite it and a second suite can validate it.
-- **A cost-primary run.** `ext-eval-cost-v1` exists and the runner can
-  load it, but no suite names it in its acceptance and the CLI has no way
-  to choose it. The router's cheap tiers are claims of that shape, the
-  same correctness at a fraction of the cost, and should be the first
-  suite to use it.
+- **Run Jev-probe as a subject somewhere it can run.** The policy is
+  packaged ([`packages/jev-probe`](../../packages/jev-probe/README.md)) as
+  a NIP-PRG program with a cost-primary suite that names
+  `ext-eval-cost-v1`, and `openagents ext eval run --gate` chooses the
+  gate. Its first local run read inconclusive for two reasons the record
+  names: the sandboxed child holds neither the child program nor the
+  executor the policy delegates to, and no door prices its lane, so
+  `cost_usd` is unknown in both arms. The strongest claim we hold still
+  lives in the Terminal-Bench record until a priced door and an executor
+  the sandbox can reach exist.
 - **Pin what can be pinned in B.** The report records the door and model
   name but not the weights behind them or Jev's version, so
   `reliance.model` is null. We should record what the door reports about
