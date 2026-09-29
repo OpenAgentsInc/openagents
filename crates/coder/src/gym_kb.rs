@@ -506,7 +506,32 @@ pub fn admit(
             Err(why) => admitted.refused.push((event.id.clone(), why.to_string())),
         }
     }
+    // The newest subject lock per test set and subject, over every result
+    // and check: what the hosted runner runs now, as far as the relay
+    // shows. A check confirms only a result with the same lock.
+    let mut locks: std::collections::BTreeMap<(&str, &str), (u64, &str)> =
+        std::collections::BTreeMap::new();
+    for (publication, _) in &read {
+        let key = (
+            publication.suite_release.id.as_str(),
+            publication.report.subject.definition.id.as_str(),
+        );
+        let lock = (
+            publication.created_at,
+            publication.report.subject.lock.digest.as_str(),
+        );
+        let newest = locks.entry(key).or_insert(lock);
+        if lock.0 > newest.0 {
+            *newest = lock;
+        }
+    }
     for (publication, event) in &read {
+        let current = locks
+            .get(&(
+                publication.suite_release.id.as_str(),
+                publication.report.subject.definition.id.as_str(),
+            ))
+            .is_none_or(|(_, lock)| *lock == publication.report.subject.lock.digest);
         let mut checked = Checks::default();
         for (check, _) in &read {
             match eval_ext::linkage(publication, check) {
@@ -530,6 +555,7 @@ pub fn admit(
             report: publication.report_ref.clone(),
             checks: publication.checks.clone(),
             checked,
+            current,
             at: publication.created_at,
         });
     }

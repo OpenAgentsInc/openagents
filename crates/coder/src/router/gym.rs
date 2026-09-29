@@ -174,6 +174,12 @@ pub struct ResultRecord {
     pub checks: Option<String>,
     /// The checks of this result.
     pub checked: Checks,
+    /// Whether it ran under the newest subject lock read for its test set
+    /// and tool (the hosted runner's binary and the tool's pins). A check
+    /// confirms only a result with the same lock (`eval_ext::linkage`), so
+    /// once the runner is redeployed an older result can't be checked for
+    /// credit.
+    pub current: bool,
     /// `created_at`, in Unix seconds.
     pub at: u64,
 }
@@ -477,10 +483,13 @@ impl Records {
     }
 
     /// The newest published result (not a check) of a tool in our
-    /// catalog with fewer than [`CHECKS_FOR_ADOPTION`] confirming checks,
-    /// for `tool` when given. A chat-made tool's result isn't offered: its
-    /// skill stays on its maker's phone, so the hosted runner can't rerun
-    /// it and refuses the check `not_admitted`.
+    /// catalog, run under the current subject lock, with fewer than
+    /// [`CHECKS_FOR_ADOPTION`] confirming checks, for `tool` when given. A
+    /// chat-made tool's result isn't offered: its skill stays on its
+    /// maker's phone, so the hosted runner can't rerun it and refuses the
+    /// check `not_admitted`. Nor is one from before the runner's last
+    /// redeploy: a check of it runs under another lock, which the referee
+    /// refuses as not a check.
     #[must_use]
     pub fn checkable(&self, tool: Option<&str>) -> Option<&ResultRecord> {
         self.results
@@ -488,6 +497,7 @@ impl Records {
             .filter(|result| {
                 result.checks.is_none()
                     && result.tool.is_some()
+                    && result.current
                     && result.checked.confirmed < CHECKS_FOR_ADOPTION
                     && tool.is_none_or(|tool| result.tool.as_deref() == Some(tool))
             })
@@ -1206,6 +1216,7 @@ pub(crate) mod fixtures {
                 confirmed,
                 disputed: 1,
             },
+            current: true,
             at: 1_790_000_000 + u64::from(n),
         }
     }
@@ -1457,6 +1468,14 @@ mod tests {
         chat_made.tool_name = "changelog-writer".into();
         made.results.push(chat_made);
         assert_eq!(offered(&grounded(made)), Some(event(10, 3189).id));
+
+        // A result from before the runner's redeploy (another subject
+        // lock) is never offered: a check of it earns nothing.
+        let mut stale = records();
+        let mut old = fixtures::result(16, "code-finder", 0);
+        old.current = false;
+        stale.results.push(old);
+        assert_eq!(offered(&grounded(stale)), Some(event(10, 3189).id));
     }
 
     /// `eval.result`: a named tool's published result as a card; otherwise

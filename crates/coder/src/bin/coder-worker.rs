@@ -4077,6 +4077,7 @@ mod tests {
                         confirmed: 1,
                         disputed: 0,
                     },
+                    current: true,
                     at: 1_790_000_010,
                 }],
                 suites: vec![SuiteRecord {

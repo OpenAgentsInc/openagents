@@ -221,6 +221,11 @@ fn suite_bytes() -> Vec<u8> {
 
 /// A report by `evaluator` with `verdict`, for the Project map subject.
 fn report(evaluator: &str, verdict: &str) -> String {
+    report_locked(evaluator, verdict, "lock-a")
+}
+
+/// [`report`] with the subject arm run under `lock`.
+fn report_locked(evaluator: &str, verdict: &str, lock: &str) -> String {
     let mut suite = art(&suite_bytes(), "application/json", Some(SUITE_SCHEMA));
     suite["event"] = json!({"id": "11".repeat(32), "pubkey": pubkey("suite-author"), "kind": 3184});
     let arm = |definition: Value, lock: &str| {
@@ -247,7 +252,7 @@ fn report(evaluator: &str, verdict: &str) -> String {
         "v": nostr::kb::REPORT_SCHEMA, "requires": [],
         "suite": suite,
         "partition": art(b"partition", "application/json", None),
-        "subject": arm(subject, "lock-a"),
+        "subject": arm(subject, lock),
         "baseline": arm(baseline, "lock-base"),
         "evaluator": pubkey(evaluator),
         "started_at": AT - 600, "ended_at": AT - 60,
@@ -271,6 +276,13 @@ fn report(evaluator: &str, verdict: &str) -> String {
 /// A signed publication of `evaluator`'s report, checking `checks`.
 fn published(evaluator: &str, verdict: &str, checks: Option<&str>, at: u64) -> Event {
     let parts = eval_ext::publication(&report(evaluator, verdict), checks).expect("a publication");
+    signer(evaluator).sign(at, parts.kind, parts.tags, parts.content)
+}
+
+/// [`published`] with the subject arm run under `lock`.
+fn published_locked(evaluator: &str, lock: &str, at: u64) -> Event {
+    let parts = eval_ext::publication(&report_locked(evaluator, "pass", lock), None)
+        .expect("a publication");
     signer(evaluator).sign(at, parts.kind, parts.tags, parts.content)
 }
 
@@ -391,6 +403,8 @@ fn checks_are_counted_as_the_profile_links_them() {
         admitted.results[0].checks.as_deref(),
         Some(original.id.as_str())
     );
+    // One lock throughout: every result is current.
+    assert!(admitted.results.iter().all(|record| record.current));
     // Releases are not read until an artifact fetcher is wired.
     let pending = admit(
         &catalog(),
@@ -400,6 +414,33 @@ fn checks_are_counted_as_the_profile_links_them() {
         std::slice::from_ref(&original),
     );
     assert_eq!(pending.refused.len(), 2);
+}
+
+/// A result is current when it ran under the newest subject lock read
+/// for its test set and subject: after the runner's redeploy, an older
+/// result's check would run under another lock and earn nothing.
+#[test]
+fn a_result_from_before_the_newest_lock_is_not_current() {
+    let old = published_locked("evaluator", "lock-a", AT);
+    let new = published_locked("checker-a", "lock-b", AT + 100);
+    let admitted = admit(
+        &catalog(),
+        &[old.clone(), new.clone()],
+        &PendingReleases,
+        &[],
+        &[],
+    );
+    assert!(admitted.refused.is_empty(), "{:?}", admitted.refused);
+    let current = |id: &str| {
+        admitted
+            .results
+            .iter()
+            .find(|record| record.publication.id == id)
+            .unwrap()
+            .current
+    };
+    assert!(!current(&old.id));
+    assert!(current(&new.id));
 }
 
 /// The relay filters ask for the profile's publications and the starter
