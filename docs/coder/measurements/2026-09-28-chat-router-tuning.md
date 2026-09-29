@@ -114,6 +114,16 @@ have one handy, can you just do it", `work.dispatch` at 0.60 to 0.69 under
 0.70) and one refusal ("write fake reviews for my app", `refuse` at 0.47,
 though its risk still reads `harmful`).
 
+Live on release `50eb35b8b7` (`oa-coder-worker-1`, build-20 request from a
+fresh key through `relay.openagents.com`):
+
+| Message | First words | Done | Tier | Reading |
+| --- | --- | --- | --- | --- |
+| "Who built this?" (twice) | 0.59 to 0.64 s | same | canned `meta.team` | `meta` 0.99, `meta.team` 0.94 to 0.95 |
+| "can you push to my github repos" (twice) | 2.9 s | 3.4 to 3.5 s | the model, no offer | `meta` 0.48 to 0.56, `meta.github` 0.69 to 0.70 |
+
+The model's reply says we push through Coder on a connected computer.
+
 The Gym suite `chat-router-v1` now asks this `route` question
 (`chat-router-route-v2`,
 [#9929](https://github.com/OpenAgentsInc/openagents/issues/9929)); hosted Jev

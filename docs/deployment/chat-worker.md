@@ -254,3 +254,12 @@ the Vercel AI Gateway (OpenAI embeddings)` and `seams Seams { personalize:
 true, product: true, codebase: true, cli_groups: 29 }`. Live timings and
 tiers, including a build-19 request (`OPENAGENTS_TEST_CHAT_LEGACY=1`), are in
 [the tuning measurement](../coder/measurements/2026-09-28-chat-router-tuning.md#live-on-the-deployed-worker).
+
+Release `50eb35b8b7` (2026-09-28) carries the #9928 retune (bank
+`chat-answers-v1@ab93b7cdda51`). It was built and checked as above,
+installed as `/opt/coder-worker/releases/50eb35b8b7` with `knowledge/` and
+`codebase-kb.gz` copied from `b8dc0057fb`, and put live by moving the `chat`
+symlink and restarting `coder-worker-chat`; `coder-worker.service` and
+`/opt/coder-worker/current` were not touched, and `b8dc0057fb` stays in
+`releases/` for rollback. The live check is in
+[the tuning measurement](../coder/measurements/2026-09-28-chat-router-tuning.md#retune-for-9928-capability-questions-and-who-built-this).
