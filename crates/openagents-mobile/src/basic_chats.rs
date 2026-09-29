@@ -512,6 +512,25 @@ fn item(id: &str) -> String {
     format!("basic-{id}")
 }
 
+/// The line every handoff prompt carries after its title, which the phone
+/// recognizes to show the prompt as one line instead of the whole
+/// conversation again.
+pub(crate) const HANDOFF_MARK: &str =
+    "Continue this conversation from the OpenAgents app on this computer.";
+
+/// How the phone shows a handoff prompt, wherever it appears (the echo of
+/// what was sent, and the computer's transcript's first message): one line
+/// naming the chat, never the conversation pasted back at the person. A
+/// message that is not a handoff reads as `None`.
+pub(crate) fn handoff_summary(text: &str) -> Option<String> {
+    if !text.contains(HANDOFF_MARK) {
+        return None;
+    }
+    let title = text.lines().next().unwrap_or("Chat").trim();
+    let title = if title.is_empty() { "Chat" } else { title };
+    Some(format!("Continued from the OpenAgents app: {title}"))
+}
+
 /// The context a computer's Coder starts with when the person runs Coder
 /// from a conversation: its title as the first line (the task's title), then
 /// the conversation so far, newest turns kept, within `limit` bytes.
@@ -523,10 +542,7 @@ pub(crate) fn handoff(title: &str, turns: &[Turn], limit: usize) -> String {
         .chars()
         .take(80)
         .collect();
-    let head = format!(
-        "{title}\n\nContinue this conversation from the OpenAgents app on this \
-         computer. The conversation so far:\n\n"
-    );
+    let head = format!("{title}\n\n{HANDOFF_MARK} The conversation so far:\n\n");
     let mut parts: Vec<String> = vec![];
     let mut bytes = head.len();
     for turn in turns.iter().rev() {
@@ -664,5 +680,18 @@ mod tests {
         assert!(text.len() <= 300);
         let alone = handoff("Tests", &turns[..1], 200);
         assert!(alone.len() <= 200 && alone.contains("User: xx"), "{alone}");
+    }
+
+    /// A handoff prompt shows as one line on the phone, wherever it
+    /// appears; an ordinary message does not.
+    #[test]
+    fn a_handoff_reads_as_one_line_on_the_phone() {
+        let turns = vec![Turn::user("x".repeat(5_000))];
+        let text = handoff("Run the tests", &turns, 16 * 1024);
+        assert_eq!(
+            handoff_summary(&text).as_deref(),
+            Some("Continued from the OpenAgents app: Run the tests")
+        );
+        assert!(handoff_summary("Run the tests in my repo").is_none());
     }
 }

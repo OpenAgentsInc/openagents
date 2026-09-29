@@ -1220,7 +1220,11 @@ fn sent<I>(pending: &Pending<'_>) -> Node<I> {
                     ..Style::default()
                 },
                 element: Element::Markdown {
-                    blocks: markdown::parse(pending.text),
+                    blocks: markdown::parse(
+                        crate::basic_chats::handoff_summary(pending.text)
+                            .as_deref()
+                            .unwrap_or(pending.text),
+                    ),
                 },
             }],
         },
@@ -1302,7 +1306,7 @@ fn draw<I>(
             role: MessageRole::System,
             text,
         } => system(&key, text),
-        Entry::Message { role, .. } => node(
+        Entry::Message { role, text } => node(
             &key,
             Element::Message {
                 role: *role,
@@ -1314,7 +1318,14 @@ fn draw<I>(
                         ..Style::default()
                     },
                     element: Element::Markdown {
-                        blocks: row.blocks.clone(),
+                        // A handoff from the phone is one line, not the
+                        // conversation pasted back as a wall of text.
+                        blocks: match crate::basic_chats::handoff_summary(text) {
+                            Some(summary) if *role == MessageRole::User => {
+                                markdown::parse(&summary)
+                            }
+                            _ => row.blocks.clone(),
+                        },
                     },
                 }],
             },

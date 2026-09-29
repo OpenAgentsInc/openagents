@@ -36,6 +36,16 @@ pub struct Item {
 pub const CHANGELOG: &[Release] = &[
     Release {
         version: "1.0.0",
+        build: "28",
+        title: "Run Coder without the wall of text",
+        what_to_test: "With a computer connected, chat a few turns, then tap Run Coder on it. The task's chat should show one line, \"Continued from the OpenAgents app: \" and the chat's title, not the whole conversation pasted back, and it should scroll as Coder works.",
+        items: &[Item {
+            title: "One line for a handoff",
+            detail: "Running Coder on a computer from a chat used to paste the whole conversation back into the task's chat as one huge message, which could not be scrolled. It now shows one line naming the chat, both while the computer starts and once its transcript arrives.",
+        }],
+    },
+    Release {
+        version: "1.0.0",
         build: "27",
         title: "A plain chat",
         what_to_test: "Open the app: the chat header has only the previous-chats button and the OpenAgents title, with no person icon and no Cloud pill, and no line under it. Ask \"Who are you?\": the reply has no \"Prepared answer\" note and no Wrong answer button. Open Account and tap Profile: the Chat tab shows your Profile sheet. Connect a computer and check a Cloud pill appears under the header for choosing where a chat runs.",

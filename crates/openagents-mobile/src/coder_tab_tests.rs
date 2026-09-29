@@ -1304,10 +1304,15 @@ fn run_coder_starts_a_task_with_the_conversation() {
         fixture.computers.snapshot().host(&host).unwrap().label,
         "Studio Mac"
     );
-    // The chat shows what was sent until the computer's transcript does.
+    // The chat shows what was sent until the computer's transcript does:
+    // one line naming the chat, never the conversation pasted back.
     let sent = serde_json::to_string(&node(&opened, "coder-transcript").unwrap()).unwrap();
-    assert!(sent.contains("User: Run the tests in my repo"), "{sent}");
-    assert!(sent.contains("Coder: That needs a computer"), "{sent}");
+    assert!(
+        sent.contains("Continued from the OpenAgents app: Run the tests in my repo"),
+        "{sent}"
+    );
+    assert!(!sent.contains("Continue this conversation"), "{sent}");
+    assert!(!sent.contains("Coder: That needs a computer"), "{sent}");
     // In the previous chats, the task's row carries the conversation's
     // title, and the conversation says where Coder runs.
     let list = fixture.list();
