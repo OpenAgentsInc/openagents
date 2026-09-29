@@ -1,0 +1,68 @@
+[Unit]
+Description=iroh-relay for iroh.openagents.com (encrypted relay and QUIC address discovery)
+Documentation=https://github.com/OpenAgentsInc/openagents/tree/main/docs/deployment/iroh-relay.md
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=iroh-relay
+Group=iroh-relay
+Environment=RUST_LOG=info
+Environment=NO_COLOR=1
+ExecStartPre=/usr/bin/test -x /opt/iroh-relay/current/iroh-relay
+ExecStart=/opt/iroh-relay/current/iroh-relay --config-path /etc/iroh-relay/iroh-relay.toml
+WorkingDirectory=/var/lib/iroh-relay
+Restart=on-failure
+RestartSec=2
+TimeoutStopSec=15
+KillSignal=SIGTERM
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=iroh-relay
+
+# The relay binds 80, 443, and UDP 7842 publicly and 9090 on loopback, and
+# reaches Let's Encrypt over the internet for its certificate.
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+SocketBindDeny=any
+SocketBindAllow=tcp:80
+SocketBindAllow=tcp:443
+SocketBindAllow=udp:7842
+SocketBindAllow=tcp:9090
+LimitNOFILE=65536
+
+StateDirectory=iroh-relay iroh-relay/certs
+StateDirectoryMode=0700
+ReadWritePaths=/var/lib/iroh-relay
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+DevicePolicy=closed
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+ProtectProc=invisible
+ProcSubset=pid
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+KeyringMode=private
+RemoveIPC=true
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

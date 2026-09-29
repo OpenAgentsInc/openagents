@@ -1,0 +1,47 @@
+# iroh-relay configuration for iroh.openagents.com.
+# Installed at /etc/iroh-relay/iroh-relay.toml by install.sh.
+# Runbook: docs/deployment/iroh-relay.md. Schema: iroh-relay 1.3.0 src/main.rs.
+
+enable_relay = true
+
+# Plain HTTP listener. It serves the relay and /healthz on port 80; clients
+# use HTTPS.
+http_bind_addr = "[::]:80"
+
+# QUIC address discovery (QAD) on UDP 7842, so endpoints learn their public
+# address without n0's infrastructure. It needs the TLS section below.
+enable_quic_addr_discovery = true
+
+# Prometheus metrics stay on loopback. Read them over SSH:
+#   curl -s http://127.0.0.1:9090/metrics
+enable_metrics = true
+metrics_bind_addr = "127.0.0.1:9090"
+
+# Anyone may relay; the relay only ever sees end-to-end encrypted QUIC
+# packets between EndpointIds. The limits below bound what one client or a
+# connection flood can cost the VM.
+access = "everyone"
+
+[tls]
+https_bind_addr = "[::]:443"
+quic_bind_addr = "[::]:7842"
+hostname = "iroh.openagents.com"
+cert_mode = "LetsEncrypt"
+prod_tls = true
+# The relay refuses LetsEncrypt mode without an ACME account contact. It is
+# a role address on our own domain; Let's Encrypt no longer sends expiry
+# mail, and the relay renews by itself.
+contact = "hostmaster@openagents.com"
+# ACME account and certificate cache. Keep it across upgrades so a restart
+# does not request a new certificate.
+cert_dir = "/var/lib/iroh-relay/certs"
+
+[limits]
+# New connections per second across the server, and the burst above it.
+accept_conn_limit = 50.0
+accept_conn_burst = 200
+
+[limits.client.rx]
+# Bytes per second one client may send through the relay, and its burst.
+bytes_per_second = 4194304
+max_burst_bytes = 8388608

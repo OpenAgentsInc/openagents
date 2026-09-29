@@ -1,0 +1,21 @@
+# Live checks for the deployed iroh-relay at iroh.openagents.com.
+# Standalone: its own workspace, outside the root workspace's `crates/*`,
+# so the root build never pulls iroh in through it. The tests are #[ignore]d
+# because they reach the public internet; run them with
+#   cargo test --manifest-path deploy/iroh-relay/live-test/Cargo.toml -- --ignored --nocapture
+# See docs/deployment/iroh-relay.md.
+[package]
+name = "iroh-relay-live-test"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+
+[dev-dependencies]
+# Same version as the deployed relay (deploy/iroh-relay/install.sh).
+# `unstable-net-report` exposes the QUIC address discovery result.
+iroh = { version = "=1.3.0", features = ["unstable-net-report"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"] }
