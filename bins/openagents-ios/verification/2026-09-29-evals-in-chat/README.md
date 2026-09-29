@@ -79,3 +79,30 @@ files are fixture data:
 
 The Android record of the same flows is in
 [`bins/openagents-android/verification/2026-09-29-evals-in-chat/`](../../../openagents-android/verification/2026-09-29-evals-in-chat/).
+
+## IDIOT PROOF, re-checked against this build
+
+The wireframe's checklist (`CHK-01` to `CHK-13`) against what these builds
+do, live and recorded:
+
+| Check | Result |
+| --- | --- |
+| `CHK-01` One primary | Pass: each card, sheet, the menu, and each first-run step has one white button; a run card has none while it runs (as the table notes). |
+| `CHK-02` No jargon | Pass on every label the phone draws (`no_label_uses_a_banned_word`). Fails in one worker news line, "Terminal-Bench" ([#9944](https://github.com/OpenAgentsInc/openagents/issues/9944)). |
+| `CHK-03` Next line | Pass: the menu, SCR-02, the end card, SCR-05, SCR-06, and SCR-11. |
+| `CHK-04` No dead ends | Pass: a card that can't run says why and offers Try again, Connect a computer, or, on the first run, Skip for now. |
+| `CHK-05` No setup first | Pass: no sign-in, computer, wallet, or key before a first test. |
+| `CHK-06` Three taps to a run | Pass on the phone (`the_first_run_starts_a_test_in_three_taps_and_resumes`; the recorded Gym on iOS and Android). Live, the third tap waits on the router offering the starter test set ([#9943](https://github.com/OpenAgentsInc/openagents/issues/9943)). |
+| `CHK-07` Defaults chosen | Pass: Coder preselected, Project map asked for first. |
+| `CHK-08` Progress visible | Pass: the run card's blocks, the result's counts, the menu's level bar. |
+| `CHK-09` Confirm before publishing | Pass: SCR-20 before any publish; Stop asks first. |
+| `CHK-10` Guided first run | Pass: resumes at the furthest step; no menu until the first result or Skip for now. |
+| `CHK-11` Talk leads to a tap | Pass: nothing runs or publishes without its button (`only_a_cards_button_sends_a_request`). |
+| `CHK-12` Chat drafts, you decide | Pass on the phone (recorded Gym and tests). Live, the interview hands chat-made tools to Coder ([#9945](https://github.com/OpenAgentsInc/openagents/issues/9945)). |
+| `CHK-13` Numbers are real | Pass: every number is a worker card's, a run's report, or the ledger's; the menu shows a gray bar until the ledger is read, the runs-left count and "people testing now" are left out (no record says them), and a check card says "a trainer" rather than the runner's name. |
+
+Not built in this change, as the wireframe's v1 cut allows or for want of a
+record: the updates bell (`SCR-01.E02`), the season card (`E09`), the
+"testing now" count, and the cinematic's shots before its end card. The
+tab bar stays (Chat, Verse, Wallet, Account) with the menu as the Chat
+tab's first screen; it hides during the first run.

@@ -20,3 +20,9 @@ for what each screen is.
   [`fixture-SCR-20-added.png`](fixture-SCR-20-added.png)), and the main menu
   the guided path ends on
   ([`fixture-SCR-01-after-first-run.png`](fixture-SCR-01-after-first-run.png)).
+- [`SCR-01-main-menu.png`](SCR-01-main-menu.png): the main menu after
+  the recorded first run (its next step follows the added result).
+- [`verse-evals-board.png`](verse-evals-board.png): **THE GYM IN THE
+  VERSE** walks into the Gym and opens the EVALS board in its native panel
+  (new on Android in this change), reading the live relay: no eval result
+  is published yet, and Compare notes is off.

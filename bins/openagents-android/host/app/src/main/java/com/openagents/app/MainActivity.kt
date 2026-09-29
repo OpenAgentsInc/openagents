@@ -299,6 +299,11 @@ class MainActivity : ComponentActivity() {
     // Tabs
 
     private fun select(value: AppTab) {
+        if (value != tab) currentFocus?.let { focus ->
+            // Another tab: the chat's keyboard goes away with it.
+            getSystemService(InputMethodManager::class.java)?.hideSoftInputFromWindow(focus.windowToken, 0)
+            focus.clearFocus()
+        }
         tab = value
         for ((key, page) in pages) page.visibility = if (key == value) View.VISIBLE else View.GONE
         for ((key, button) in tabButtons) {
@@ -709,6 +714,10 @@ class MainActivity : ComponentActivity() {
                 focus.clearFocus()
             }
         }
+        // The chat under the menu can't take focus, so its composer never
+        // raises a keyboard over the menu.
+        coderContent.descendantFocusability =
+            if (drawn != null) android.view.ViewGroup.FOCUS_BLOCK_DESCENDANTS else android.view.ViewGroup.FOCUS_AFTER_DESCENDANTS
         gymContent.visibility = if (drawn != null) View.VISIBLE else View.GONE
         coderContent.visibility = if (drawn != null) View.GONE else View.VISIBLE
         // The first run is a guided path: no tabs until it reaches the chat.

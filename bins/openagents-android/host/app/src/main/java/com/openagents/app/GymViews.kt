@@ -231,7 +231,7 @@ internal class GymViews(private val context: Context, private val tap: (String) 
             val width = ((r - l) * (value.toFloat() / maxOf(max, 1)).coerceIn(0.03f, 1f)).toInt()
             if (fill.layoutParams.width != width) v.post { fill.layoutParams = FrameLayout.LayoutParams(width, -1) }
         }
-        layoutParams = LinearLayout.LayoutParams(-1, context.dp(8))
+        minimumHeight = context.dp(8)
     }
 
     /** Opens the system share sheet with Rust's text. */
