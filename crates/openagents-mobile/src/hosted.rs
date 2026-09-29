@@ -614,3 +614,49 @@ mod tests {
         }
     }
 }
+
+/// The phone's hosted path against the deployed runner, from a fresh key:
+/// a request for a test set the runner doesn't run, which it refuses
+/// before anything runs (so it spends no quota). It shows the request is
+/// signed, sent, answered, and bound the way the runner speaks. Run it
+/// with the runner up:
+///
+/// ```sh
+/// cargo test --manifest-path crates/openagents-mobile/Cargo.toml \
+///   live_the_runner_answers_the_phone -- --ignored --nocapture
+/// ```
+#[cfg(test)]
+#[test]
+#[ignore = "network: needs the hosted eval runner on its relay"]
+fn live_the_runner_answers_the_phone() {
+    let _ = rustls::crypto::ring::default_provider().install_default();
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let world = SecretKey::new(&mut secp256k1::rand::rng());
+    let live = Arc::new(Mutex::new(Live::default()));
+    let offer: Value = serde_json::from_str(include_str!(
+        "../../coder/fixtures/nip-cj/router-offer-start-eval.json"
+    ))
+    .unwrap();
+    let started = std::time::Instant::now();
+    runtime.block_on(HostedRelay::new(None, None).start(
+        world,
+        HostedRun {
+            offer,
+            draft: None,
+            runs: 1,
+            check: None,
+        },
+        live.clone(),
+    ));
+    let live = lock(&live).clone();
+    eprintln!(
+        "after {:?}: request {:?}, queued {}, outcome {:?}",
+        started.elapsed(),
+        live.request,
+        live.queued,
+        live.outcome.as_ref().map(|o| o.as_ref().err())
+    );
+    let (why, ours) = live.outcome.expect("an answer").expect_err("a refusal");
+    assert!(!ours, "{why}");
+    assert_eq!(why, refused(hosted::NOT_ADMITTED).0);
+}

@@ -33,8 +33,17 @@ The real app against `relay.openagents.com` and the deployed chat worker
   interview hands the tool to Coder on a computer, so no draft card yet; the
   phone shows **Connect a computer**.
 
-The live worker has no published eval result, test set, or hosted runner
-yet (#9935), so a run, a result, a check, and a draft can't be reached live.
+The live worker has no published eval result or test set yet, so it offers
+no `start_eval` and a run, a result, and a check can't be reached from a
+live chat ([#9943](https://github.com/OpenAgentsInc/openagents/issues/9943));
+the interview hands chat-made tools to Coder, so the draft can't either
+([#9945](https://github.com/OpenAgentsInc/openagents/issues/9945)). The
+phone's hosted path itself is live: `live_the_runner_answers_the_phone` in
+`crates/openagents-mobile/src/hosted.rs` sent the phone's signed request
+from a fresh key to the deployed runner, which answered in 0.7 s
+(`not_admitted` for a test set it doesn't run, before anything ran), and
+the phone bound the answer and showed "Our test computers don't run this
+tool or test set."
 
 ## From the recorded Gym (`fixture-…`)
 
