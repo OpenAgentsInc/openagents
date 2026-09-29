@@ -325,10 +325,13 @@ Where the code settles something this design left open:
 A live check against Jev over 50 messages across every route (the ignored
 test `live_router_eval` in `router/judge.rs`, not the labeled set) chose the
 expected route for 47, served 20 whole answers, all correct, and answered in
-175 ms at the median and 228 ms at p90. The three misses were "How does
-Coder pick a provider?" (read as `meta`, answered by the model with an
-opener), "What does kind 25900 carry?" (read as `clarify`), and "That answer
-was wrong" (read as `clarify`, where `general` was expected).
+175 ms at the median and 228 ms at p90. The three misses were "What does
+kind 25900 carry?" (read as `clarify`, where `codebase.kb` was expected),
+"That answer was wrong" (read as `clarify`, where `general` was expected),
+and "Can you work on my Rails app?" (read as `work.dispatch` and offered to
+Coder, where `meta` was expected). "How does Coder pick a provider?" chose
+`codebase.kb` at only 0.22, below the grounded threshold, so the model
+answered it with an opener.
 
 ## Confidence, thresholds, and fallbacks
 
