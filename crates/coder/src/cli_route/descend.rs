@@ -114,7 +114,10 @@ pub fn subtree(node: &Node) -> serde_json::Value {
     let large = node.leaves().len() > SUBTREE_COMMANDS;
     let mut commands = serde_json::Map::new();
     if let Some(leaf) = node.leaf.as_ref() {
-        commands.insert(SELF.to_string(), serde_json::Value::from(leaf.summary.clone()));
+        commands.insert(
+            SELF.to_string(),
+            serde_json::Value::from(leaf.summary.clone()),
+        );
     }
     for child in &node.children {
         let value = if large {
@@ -143,7 +146,10 @@ pub fn group_tree(group: &Node) -> serde_json::Value {
         }
         let mut commands = serde_json::Map::new();
         if let Some(leaf) = node.leaf.as_ref() {
-            commands.insert(SELF.to_string(), serde_json::Value::from(brief(&leaf.summary)));
+            commands.insert(
+                SELF.to_string(),
+                serde_json::Value::from(brief(&leaf.summary)),
+            );
         }
         for child in &node.children {
             commands.insert(child.name.clone(), briefs(child));
@@ -155,7 +161,10 @@ pub fn group_tree(group: &Node) -> serde_json::Value {
         "command".into(),
         serde_json::Value::from(format!("openagents {}", group.name)),
     );
-    value.insert("summary".into(), serde_json::Value::from(group.summary.clone()));
+    value.insert(
+        "summary".into(),
+        serde_json::Value::from(group.summary.clone()),
+    );
     if !group.children.is_empty() {
         value.insert("commands".into(), briefs(group));
     }
@@ -192,9 +201,7 @@ pub fn group_question(tree: &CommandTree) -> Choice {
     let mut criteria: IndexMap<String, Option<Entry>> = tree
         .groups
         .iter()
-        .map(|group| {
-            (group.name.clone(), Some(Entry::from(group_tree(group))))
-        })
+        .map(|group| (group.name.clone(), Some(Entry::from(group_tree(group)))))
         .collect();
     criteria.insert(
         "none".to_string(),

@@ -768,7 +768,10 @@ mod tests {
             message: String::new(),
             retry_after_ms: None,
         };
-        assert_eq!(busy.describe(), "We're busy right now. Try again in a moment.");
+        assert_eq!(
+            busy.describe(),
+            "We're busy right now. Try again in a moment."
+        );
     }
 
     #[test]

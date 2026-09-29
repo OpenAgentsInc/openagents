@@ -509,8 +509,9 @@ impl CommandRoute {
         );
         let mut done: Vec<Path<'_>> = Vec::new();
         while !open.is_empty() {
-            let (ready, asking): (Vec<Path<'_>>, Vec<Path<'_>>) =
-                open.into_iter().partition(|path| path.node.children.is_empty());
+            let (ready, asking): (Vec<Path<'_>>, Vec<Path<'_>>) = open
+                .into_iter()
+                .partition(|path| path.node.children.is_empty());
             done.extend(ready);
             if asking.is_empty() {
                 break;
@@ -588,7 +589,11 @@ impl CommandRoute {
         match (offered, found.first()) {
             (Some(at), _) => {
                 let path = found.swap_remove(at);
-                let leaf = path.node.leaf.as_ref().expect("a found path ends at a command");
+                let leaf = path
+                    .node
+                    .leaf
+                    .as_ref()
+                    .expect("a found path ends at a command");
                 Ok(Descent::Found {
                     group: path.group,
                     leaf,
@@ -596,7 +601,11 @@ impl CommandRoute {
                 })
             }
             (None, Some(path)) => Ok(Descent::NotOffered {
-                leaf: path.node.leaf.as_ref().expect("a found path ends at a command"),
+                leaf: path
+                    .node
+                    .leaf
+                    .as_ref()
+                    .expect("a found path ends at a command"),
                 trail: path.trail.clone(),
             }),
             (None, None) => Ok(Descent::Nothing { trail }),

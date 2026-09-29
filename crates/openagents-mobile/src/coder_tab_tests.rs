@@ -1639,13 +1639,16 @@ fn a_computer_command_runs_there_after_the_tap() {
         .unwrap()
         .to_owned();
     assert!(place.starts_with("Reads only. Runs on "), "{place}");
-    assert!(asked.lock().unwrap().is_empty(), "nothing runs before the tap");
+    assert!(
+        asked.lock().unwrap().is_empty(),
+        "nothing runs before the tap"
+    );
     let running = fixture.tap("coder-cli-0-run");
-    let label = node(&running, "coder-cli-0-running").expect("running")["element"]["props"]
-        ["value"]
-        .as_str()
-        .unwrap()
-        .to_owned();
+    let label =
+        node(&running, "coder-cli-0-running").expect("running")["element"]["props"]["value"]
+            .as_str()
+            .unwrap()
+            .to_owned();
     assert!(label.starts_with("Running on "), "{label}");
     assert!(fixture.coder.live(Some(&fixture.computers)));
     // A second tap while it runs starts nothing more.

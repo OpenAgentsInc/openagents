@@ -623,7 +623,12 @@ mod tests {
         let body = &gate[start..start + gate[start..].find("];").expect("its end")];
         let mut worker: Vec<String> = body
             .lines()
-            .filter_map(|line| line.trim().strip_prefix('"')?.strip_suffix("\",").map(str::to_owned))
+            .filter_map(|line| {
+                line.trim()
+                    .strip_prefix('"')?
+                    .strip_suffix("\",")
+                    .map(str::to_owned)
+            })
             .collect();
         worker.sort();
         let mut phone: Vec<String> = READ_ONLY

@@ -801,8 +801,10 @@ impl App {
                 as Arc<dyn crate::spend::Transport>
         });
         let remote_cli = terminals.clone().map(|terminals| {
-            Arc::new(crate::cli_run::Live::new(terminals, runtime.handle().clone()))
-                as Arc<dyn crate::cli_run::RemoteCli>
+            Arc::new(crate::cli_run::Live::new(
+                terminals,
+                runtime.handle().clone(),
+            )) as Arc<dyn crate::cli_run::RemoteCli>
         });
         let spend = crate::spend::Spending::new(
             device.clone(),

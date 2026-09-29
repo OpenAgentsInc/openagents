@@ -9,10 +9,10 @@
 //! its output. The host checks the `terminal` right on every request; this
 //! screen only avoids offering a control that cannot work.
 
-pub mod model;
-pub mod project;
 #[cfg(feature = "live")]
 pub mod exec;
+pub mod model;
+pub mod project;
 #[cfg(feature = "live")]
 pub mod screen;
 #[cfg(feature = "live")]

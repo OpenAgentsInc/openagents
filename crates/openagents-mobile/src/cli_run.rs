@@ -224,7 +224,9 @@ mod tests {
         }
         assert_eq!(
             target(&words("verse who"), None, None),
-            Err(CliOutcome::Refused("Connect a computer to run this.".into()))
+            Err(CliOutcome::Refused(
+                "Connect a computer to run this.".into()
+            ))
         );
     }
 

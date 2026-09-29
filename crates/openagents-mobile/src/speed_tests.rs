@@ -382,16 +382,33 @@ fn live_computer_coder_speed() {
         let label = nodes_of(&coder, "button")
             .into_iter()
             .find(|node| node["key"] == "coder-target")
-            .and_then(|node| node["element"]["props"]["label"].as_str().map(str::to_owned))
+            .and_then(|node| {
+                node["element"]["props"]["label"]
+                    .as_str()
+                    .map(str::to_owned)
+            })
             .unwrap_or_default();
         if label.contains(" · ") && !nodes_of(&coder, "composer").is_empty() {
             break coder;
         }
         if started.elapsed() > Duration::from_secs(40) {
-            let texts: Vec<String> = nodes_of(&coder, "text").iter().filter_map(|n| n["element"]["props"]["value"].as_str().map(str::to_owned)).collect();
-            let buttons: Vec<String> = nodes_of(&coder, "button").iter().map(|n| format!("{}={}", n["key"], n["element"]["props"]["label"])).collect();
+            let texts: Vec<String> = nodes_of(&coder, "text")
+                .iter()
+                .filter_map(|n| n["element"]["props"]["value"].as_str().map(str::to_owned))
+                .collect();
+            let buttons: Vec<String> = nodes_of(&coder, "button")
+                .iter()
+                .map(|n| format!("{}={}", n["key"], n["element"]["props"]["label"]))
+                .collect();
             let account = app.call(Request::ComputersRefresh);
-            panic!("DIAG label {label} texts {texts:?} buttons {buttons:?} computers {}", serde_json::to_string(&account.computers).unwrap_or_default().chars().take(1500).collect::<String>());
+            panic!(
+                "DIAG label {label} texts {texts:?} buttons {buttons:?} computers {}",
+                serde_json::to_string(&account.computers)
+                    .unwrap_or_default()
+                    .chars()
+                    .take(1500)
+                    .collect::<String>()
+            );
         }
         if label == "Cloud" {
             let picking = tap(&mut app, &coder, "coder-target");
