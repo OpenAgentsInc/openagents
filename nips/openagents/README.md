@@ -190,10 +190,13 @@ read protected confirmation labels, or give itself new permissions.
 
 ## Test-time capabilities
 
-A *test-time capability* is an ability an agent gains while it runs, without
-a weight update, because a component was admitted to the run. It is one only
-if a controlled comparison, the same tests run with and without it, shows
-the agent does measurably better with it. The
+A *test-time capability* is an ability an agent gains, or loses, while it
+runs, without a weight update, because a component was admitted to the run.
+It is stated only as a *capability claim*: a controlled comparison, the same
+tests run with and without the exact component, against a stated baseline
+under a stated grant and rule. A component with no such claim is a
+candidate; a claim reproduced by another trainer and shown to hold on tests
+its author didn't write is what adoption decides on. The
 [essay that proposes the term](../../docs/essays/2026-09-29-test-time-capabilities.md)
 states the concept in Part I; its
 [Part II](../../docs/essays/2026-09-29-test-time-capabilities.md#part-ii-our-implementation)
