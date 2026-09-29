@@ -352,57 +352,57 @@ fn the_tab_opens_on_a_new_chat_ready_to_type() {
     assert_eq!(composer["enabled"], true);
     // The screen exists to write: it opens with the cursor in the field.
     assert_eq!(composer["focus"], true);
-    assert_eq!(composer["placeholder"], "Message OpenAgents on Studio Mac");
+    // Even with a computer ready, a new chat goes to OpenAgents.
+    assert_eq!(composer["placeholder"], "Message OpenAgents");
     let text = texts(&screen);
     assert!(text.contains(&"OpenAgents".to_owned()), "{text:?}");
     let target = &node(&screen, "coder-target").expect("target")["element"]["props"];
-    assert_eq!(target["label"], "Studio Mac · openagents");
-    assert_eq!(target["icon"]["glyph"], "computer");
+    assert_eq!(target["label"], "Cloud");
+    assert_eq!(target["icon"]["glyph"], "cloud");
     assert_eq!(target["icon"]["pill"], true);
     assert!(node(&screen, "coder-chats").is_none());
     assert!(!keys(&screen).iter().any(|key| key.starts_with("task-")));
     let menu = node(&screen, "coder-menu").expect("menu");
     assert_eq!(menu["element"]["props"]["icon"]["glyph"], "menu");
-    // Suggested actions: the newest chats to continue, and the computer's
-    // other workspace.
+    // Suggested actions: the newest chats to continue. Workspaces show once
+    // the person points the chat at a computer.
     let suggestions = node(&screen, "coder-suggestions").expect("suggestions");
     assert_eq!(suggestions["element"]["props"]["axis"], "wrap");
     let continued = &node(&screen, "coder-continue-0").expect("continue")["element"]["props"];
     assert_eq!(continued["icon"]["glyph"], "history");
     assert_eq!(continued["icon"]["pill"], true);
-    let repo = &node(&screen, "coder-repo-0").expect("another workspace")["element"]["props"];
-    assert_eq!(repo["label"], "scratch");
-    assert_eq!(repo["icon"]["glyph"], "folder");
+    assert!(node(&screen, "coder-repo-0").is_none());
     // The selector offers the computers, the cloud, and connecting one; the
-    // current one is checked, and the choices replace the suggestions.
+    // choices replace the suggestions.
     let token = composer["token"].clone();
     let picking = fixture.tap("coder-target");
-    assert_eq!(
-        node(&picking, "coder-target-0").unwrap()["element"]["props"]["icon"]["glyph"],
-        "check"
-    );
     assert_eq!(
         node(&picking, "coder-target-cloud").unwrap()["element"]["props"]["label"],
         "Cloud"
     );
     assert!(node(&picking, "coder-connect").is_some());
     assert!(node(&picking, "coder-suggestions").is_none());
-    // The basic Coder instead, and back; each switch puts the cursor in a
-    // new field.
-    let screen = fixture.tap("coder-target-cloud");
+    // The computer instead; the switch puts the cursor in a new field.
+    let screen = fixture.tap("coder-target-0");
     let target = &node(&screen, "coder-target").unwrap()["element"]["props"];
-    assert_eq!(target["label"], "Cloud");
-    assert_eq!(target["icon"]["glyph"], "cloud");
+    assert_eq!(target["label"], "Studio Mac · openagents");
+    assert_eq!(target["icon"]["glyph"], "computer");
     assert!(node(&screen, "coder-targets").is_none());
-    assert!(node(&screen, "coder-repo-0").is_none());
-    assert_eq!(composer_of(&screen)["placeholder"], "Message OpenAgents");
+    assert_eq!(
+        composer_of(&screen)["placeholder"],
+        "Message OpenAgents on Studio Mac"
+    );
     assert_ne!(composer_of(&screen)["token"], token);
     assert_eq!(composer_of(&screen)["focus"], true);
+    let repo = &node(&screen, "coder-repo-0").expect("another workspace")["element"]["props"];
+    assert_eq!(repo["label"], "scratch");
+    assert_eq!(repo["icon"]["glyph"], "folder");
+    // And back to the cloud.
     fixture.tap("coder-target");
-    let screen = fixture.tap("coder-target-0");
+    let screen = fixture.tap("coder-target-cloud");
     assert_eq!(
         node(&screen, "coder-target").unwrap()["element"]["props"]["label"],
-        "Studio Mac · openagents"
+        "Cloud"
     );
     // The previous chats: a list with a New chat button and no field.
     let list = fixture.tap("coder-menu");
@@ -421,6 +421,8 @@ fn the_tab_opens_on_a_new_chat_ready_to_type() {
 #[test]
 fn a_chosen_workspace_starts_the_chat_and_is_remembered() {
     let mut fixture = Fixture::hosts();
+    fixture.tap("coder-target");
+    fixture.tap("coder-target-0");
     let screen = fixture.tap("coder-repo-0");
     assert_eq!(
         node(&screen, "coder-target").unwrap()["element"]["props"]["label"],
@@ -438,7 +440,8 @@ fn a_chosen_workspace_starts_the_chat_and_is_remembered() {
         &mut fixture.chats,
     );
     assert!(fixture.coder.open_task().is_some());
-    // A later new chat, even after a relaunch, starts where this one did.
+    // A later new chat, even after a relaunch, goes to OpenAgents; pointing
+    // it at the computer again starts where this one did.
     fixture.coder = CoderTab::new("coder:again".into()).with_list(Store::open(
         Cache::open(
             &fixture._dir.path().join("coder-list"),
@@ -447,6 +450,12 @@ fn a_chosen_workspace_starts_the_chat_and_is_remembered() {
         .ok(),
     ));
     let screen = fixture.render();
+    assert_eq!(
+        node(&screen, "coder-target").unwrap()["element"]["props"]["label"],
+        "Cloud"
+    );
+    fixture.tap("coder-target");
+    let screen = fixture.tap("coder-target-0");
     assert_eq!(
         node(&screen, "coder-target").unwrap()["element"]["props"]["label"],
         "Studio Mac · scratch"

@@ -732,12 +732,12 @@ impl CoderTab {
         self.list.list.used.get(&used_key(host, workspace)).copied()
     }
 
-    /// Whether a new chat starts on a computer: as the person chose, else
-    /// when one is ready. With no computer added, never.
+    /// Whether a new chat starts on a computer: only as the person chose.
+    /// By default every chat goes to OpenAgents, which dispatches Coder.
     fn on_computer(&self, computers: Option<&Computers>) -> bool {
         match self.availability(computers) {
             Availability::NotConfigured => false,
-            Availability::Ready(_) => self.target.unwrap_or(true),
+            Availability::Ready(_) => self.target.unwrap_or(false),
             Availability::Connecting(_) | Availability::Offline(_) => self.target.unwrap_or(false),
         }
     }
@@ -817,9 +817,11 @@ impl CoderTab {
                 self.talk_turns = TALK_TURNS;
                 self.talk = Some(id);
             }
+            // Picking a workspace is choosing to run Coder there.
             Intent::Workspace { label } => {
                 self.notice = None;
                 self.workspace = Some(label);
+                self.target = Some(true);
             }
             Intent::Retry => {
                 if let Some(id) = &self.talk {
