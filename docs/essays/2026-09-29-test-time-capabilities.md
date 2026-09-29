@@ -169,7 +169,23 @@ Two corollaries. First, *test-time capability is about runtime ability,
 not development throughput.* An agent that writes conventional code
 faster makes software cheaper to produce; it establishes no new runtime
 capability until the artifact it produces changes what a running system
-can measurably do ([Almeida, 2026c](https://www.youtube.com/watch?v=Ut3LOjKNJaE)).
+can measurably do. The boundary is worth stating exactly: **code
+generation changes the cost of constructing a program; a test-time
+capability changes the set of behaviors the running program can
+express.** Typed probabilistic judgment is one proposed example. Ordinary
+code keeps the state machine, the effects, and the invariants, and a
+learned decision supplies judgment at the points where deterministic
+rules were too brittle or too expensive to write. That is the exchange
+near the end of the a16z conversation: the hosts contrast coding agents,
+which produce the same kind of software faster and sometimes with less
+oversight, with a primitive that reasons over natural language and
+marries the result to a state machine, and Almeida calls that reading
+the greatest compliment to what TypeSafe is building, a "little brain"
+inside otherwise ordinary logic, while declining to promise it. The
+hosts' next question is the right caveat: how deep such judgment can
+safely go into systems that need state consistency and durability is an
+open question, not a settled one
+([Almeida, 2026c](https://www.youtube.com/watch?v=Ut3LOjKNJaE)).
 Second, *a capability useful once is not necessarily a capability other
 software can build on.* Prose output has a human as its natural consumer,
 which is why so much software that embeds a model ends up handing the
@@ -318,9 +334,13 @@ evidence into a typed decision that deterministic software can compose
 around. It answers a typed question (yes or no, a choice among options,
 an ordered score) with probabilities, and ordinary code decides what those
 probabilities cause; the judge writes no text and grants no authority.
-That makes it a **machine-consumable intelligence primitive**: natural
-language and program state go in, a typed decision with a confidence
-comes out, and a state machine takes it from there. Almeida describes
+That makes it a **machine-consumable intelligence primitive**: ambiguous
+evidence or intent goes in, a typed probabilistic judgment comes out, and
+a deterministic state transition follows. It is closer to a probabilistic
+branch instruction than to a chatbot: the surrounding code owns the state
+machine, the effects, and the invariants, and the primitive supplies the
+one thing deterministic code could not express economically, the
+judgment at the branch. Almeida describes
 a model built for exactly this, trained for calibrated decision-making
 rather than for human preference or for pure correctness, and argues the
 difference reaches all the way to the shape of the API
@@ -1213,7 +1233,10 @@ corrections to any cell.
 - **Composition depth.** How many decisions deep does a judgment stay
   useful, how should a workflow's end-to-end reliability be reported
   beside its components' single-call numbers, and which recovery designs
-  break the multiplication?
+  break the multiplication? And where does judgment stop: a probabilistic
+  branch can sit inside code that keeps its own invariants, but how far
+  it can go into state consistency, durability, and the rest of systems
+  machinery that needs hard guarantees is unsettled.
 - **Evidence scaled to stakes.** How should the evidence adoption demands
   grow with the severity, authority, and irreversibility of what a
   component can do?
@@ -1370,8 +1393,14 @@ decision model: it answers typed questions with probabilities, and code
 decides what those probabilities cause. It writes no text and grants no
 authority. Part I's typed judgment source is Almeida's primitive, taken
 from his talks ([transcripts](../research/typesafe/)), and Jev is our
-instance of it. It is also a candidate capability under the same rules
-as everything else: its claim is measured on the router's held-out set
+instance of it. TypeSafe's thesis is that typed probabilistic judgment
+can expand what running software can express. This essay's addition is
+that the alleged expansion is itself a capability claim: which
+capability, against what baseline, by how much, how reliably, under what
+authority, and whether it still helps when composed. A new primitive is
+not exempt from the framework because it is new; it is one of the best
+reasons the framework exists. So Jev is a candidate capability under the
+same rules as everything else: its claim is measured on the router's held-out set
 and nowhere else yet, its version is unpinned in every report, and it
 sits in every other claim's reliance set.
 
