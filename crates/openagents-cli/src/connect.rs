@@ -16,6 +16,8 @@ use tokio::net::UnixStream;
 
 use crate::out::{Output, table};
 
+mod ssh;
+
 pub const USAGE: &str = "usage: openagents connect COMMAND [--socket PATH]
   invite [--terminal] [--text]   show a QR code for the OpenAgents app on a
                                  phone; waits until a phone connects or the
@@ -43,6 +45,9 @@ pub fn run(output: &Output, args: &[String]) -> u8 {
     if matches!(command.as_str(), "help" | "--help" | "-h") {
         println!("{USAGE}");
         return 0;
+    }
+    if let Some(code) = ssh::dispatch(output, command, rest) {
+        return code;
     }
     let Some(socket) = socket else {
         return output.fail(
