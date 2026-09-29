@@ -382,8 +382,9 @@ pub enum Standing {
     /// A check that disputes its result, or a result only disputed.
     /// Both stay visible; neither earns anything.
     Disputed,
-    /// It earns nothing: a self-check, another suite or subject, or an
-    /// inconclusive verdict.
+    /// It earns nothing: a self-check, another suite or subject, an
+    /// inconclusive verdict, or the same role on a test set already paid
+    /// for another.
     NoCredit,
 }
 
@@ -556,6 +557,22 @@ pub fn made(events: &[Event], ledger: &Ledger, keys: &[String]) -> Made {
             Standing::Waiting
         };
         made.results.push(row);
+    }
+    // NIP-XP pays a key once per role per test set version
+    // (`eval-check:<season>:<suite release>:<role>:<pubkey>`): once a
+    // result or check on a test set is awarded, another of the same kind
+    // on it waits for nothing.
+    for rows in [&mut made.results, &mut made.checks] {
+        let paid: BTreeSet<String> = rows
+            .iter()
+            .filter(|r| r.xp > 0)
+            .map(|r| r.suite.clone())
+            .collect();
+        for row in rows.iter_mut() {
+            if row.standing == Standing::Pending && paid.contains(&row.suite) {
+                row.standing = Standing::NoCredit;
+            }
+        }
     }
     made.suites = suites.into_values().collect();
     made.pending = made

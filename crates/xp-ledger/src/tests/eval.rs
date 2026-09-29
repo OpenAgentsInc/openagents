@@ -560,6 +560,31 @@ fn what_you_made_shows_pending_and_awarded_credit() {
     assert_eq!(made.results[0].standing, Standing::Waiting);
 }
 
+/// The referee pays a checker once per test set version, so Bob's second
+/// confirming check on the same test set, after his first was awarded,
+/// waits for nothing: it earns no credit and isn't pending (#9948).
+#[test]
+fn a_second_check_on_a_paid_test_set_is_not_pending() {
+    let w = World::new();
+    let carol = published(&signer("carol"), &w.run(), None, AT + 10);
+    let again = published(&signer("bob"), &w.run(), Some(&carol.id), AT + 20);
+    let events = w.events(&[w.awards_for(&w.check), vec![carol, again.clone()]].concat());
+    let ledger = derive(&events, &w.trust());
+    let made = eval::made(&events, &ledger, &[pk("bob")]);
+    assert_eq!(made.checks.len(), 2);
+    let second = made.checks.iter().find(|c| c.id == again.id).unwrap();
+    assert_eq!(second.standing, Standing::NoCredit);
+    assert_eq!(second.xp, 0);
+    assert!(made.checks.iter().any(|c| c.standing == Standing::Awarded));
+    assert_eq!(made.pending, 0);
+
+    // Before the first award both checks wait for one.
+    let events = w.events(&[published(&signer("carol"), &w.run(), None, AT + 10)]);
+    let ledger = derive(&events, &w.trust());
+    let made = eval::made(&events, &ledger, &[pk("bob")]);
+    assert_eq!(made.checks[0].standing, Standing::Pending);
+}
+
 #[test]
 fn playtest_xp_stays_off_a_reader_that_trusts_only_the_trainer_referee() {
     let w = World::new();
