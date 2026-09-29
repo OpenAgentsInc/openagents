@@ -1,6 +1,7 @@
 # Connect a computer by scanning a QR code
 
-Status: design, 2026-09-29. Nothing here is implemented yet. It replaces the
+Status: design, 2026-09-29. Nothing here is implemented yet; the epic is
+[#9965](https://github.com/OpenAgentsInc/openagents/issues/9965). It replaces the
 first draft of this file (`13935bde84`), which made a command on the
 computer the primary path. The [Plan](#plan) lists the issues that build it.
 
@@ -519,15 +520,20 @@ Each lands in `INVARIANTS.md` in the same PR as the code it describes.
 
 ## Plan
 
-Issues are filed from this list; the epic tracks them. Waves are ordered so
-the milestone (step 9) comes first; steps 10–14 follow it. Within a wave,
+The epic is [#9965](https://github.com/OpenAgentsInc/openagents/issues/9965); each step below links its issue. Waves are ordered so
+the milestone (step 9) comes first; steps 10–14 follow it. The relay
+(step 3) is in the milestone, because the milestone must work with the
+phone on mobile data; if iroh cannot connect, the Nostr relay transports
+still carry pairing, Run Coder, and terminals, only more slowly. Adopting
+an old-style host (step 8) is in the milestone because the owner's own Mac
+runs one. Within a wave,
 steps own disjoint files; the shared `Cargo.toml` members list and
 `Cargo.lock` are the only common files, resolved by rebasing.
 
 **Wave 1** (no dependencies)
 
 1. **`crates/openagents-connect`: endpoint, ALPNs, QR payload, control
-   protocol.** iroh pinned as above with default features off; the
+   protocol.** ([#9966](https://github.com/OpenAgentsInc/openagents/issues/9966)) iroh pinned as above with default features off; the
    `openagents/enroll/1` and `openagents/reach/1` ALPNs; NIP-REACH channel
    over a QUIC bidirectional stream (the `coder-reach` channel over the
    stream's reader and writer); the `openagents-connect:` payload with
@@ -535,19 +541,19 @@ steps own disjoint files; the shared `Cargo.toml` members list and
    implementation. `deny.toml` exceptions and `docs/dependencies.md`. Tests:
    two endpoints on loopback with relays disabled complete the handshake and
    exchange frames; payload round-trip and every malformed case.
-2. **NIP updates.** NIP-HOST: the `openagents-connect:` carriage of a host
+2. **NIP updates.** ([#9967](https://github.com/OpenAgentsInc/openagents/issues/9967)) NIP-HOST: the `openagents-connect:` carriage of a host
    invitation, redemption on the enroll ALPN (every check but the relay
    binding), the local control socket as the operator, and approval with a
    confirmation code. NIP-REACH: the `iroh` hint transport and the channel
    over an iroh stream.
-3. **Relay.** `deploy/iroh-relay/` (config, systemd unit, firewall and
+3. **Relay.** ([#9968](https://github.com/OpenAgentsInc/openagents/issues/9968)) `deploy/iroh-relay/` (config, systemd unit, firewall and
    VM commands) and `docs/deployment/iroh-relay.md`; the VM running at
    `iroh.openagents.com` with QAD on. Test: two endpoints on different
    networks with direct paths blocked exchange data through it.
 
 **Wave 2** (after 1)
 
-4. **Host listener and local control socket.** `coder host serve` binds the
+4. **Host listener and local control socket.** ([#9969](https://github.com/OpenAgentsInc/openagents/issues/9969)) `coder host serve` binds the
    iroh endpoint with its key from the key source, serves both ALPNs through
    the existing redemption and direct-channel dispatch (NIP-TERM included),
    publishes the `iroh` hint, and serves the control socket with the peer
@@ -555,13 +561,13 @@ steps own disjoint files; the shared `Cargo.toml` members list and
    import` in `crates/openagents-cli`. Tests: a device redeems over iroh and
    opens a terminal; a peer with another user ID is refused; revocation
    closes an iroh channel.
-5. **Desktop app shell.** `crates/openagents-desktop`: `DSK-01` to `DSK-03`,
+5. **Desktop app shell.** ([#9970](https://github.com/OpenAgentsInc/openagents/issues/9970)) `crates/openagents-desktop`: `DSK-01` to `DSK-03`,
    the rotating code, the terminal checkbox, keychain key source, agent
    registration with `SMAppService`, project picker and auto-start switch
    over the control socket, a bundle layout script. Tests: the code screen's
    rotation and cancellation against a fake socket; snapshot tests of each
    screen's cells.
-6. **Phone: scanner and pairing.** The chip and Computers open `SCR-22`;
+6. **Phone: scanner and pairing.** ([#9971](https://github.com/OpenAgentsInc/openagents/issues/9971)) The chip and Computers open `SCR-22`;
    parse the payload; an iroh endpoint in `crates/openagents-mobile` with its
    key beside the device key; redeem over iroh with relay fallback; `SCR-23`;
    route the channel over iroh; `NSLocalNetworkUsageDescription`; the
@@ -570,30 +576,30 @@ steps own disjoint files; the shared `Cargo.toml` members list and
 
 **Wave 3** (after 4, 5, 6)
 
-7. **Signed, notarized macOS package.** `scripts/desktop/package-macos.sh`:
+7. **Signed, notarized macOS package.** ([#9972](https://github.com/OpenAgentsInc/openagents/issues/9972)) `scripts/desktop/package-macos.sh`:
    build universal binaries, assemble the bundle, sign with the Developer ID
    and hardened runtime, notarize with `notarytool`, staple, and produce the
    `.dmg`; `docs/desktop/release.md`. Manual, no GitHub automation. The
    Developer ID certificate is an owner step.
-8. **Adopt an existing host.** The first-launch migration above, so the
+8. **Adopt an existing host.** ([#9973](https://github.com/OpenAgentsInc/openagents/issues/9973)) The first-launch migration above, so the
    owner's own Mac and `coderos-4080` move over without re-pairing their
    phones.
-9. **Milestone: TestFlight build.** A person with a Mac and an iPhone, no
+9. **Milestone: TestFlight build.** ([#9974](https://github.com/OpenAgentsInc/openagents/issues/9974)) A person with a Mac and an iPhone, no
    Tailscale, installs the app from the `.dmg`, scans, and sends a Coder task
    from chat in under two minutes with no terminal.
 
 **Wave 4** (after the milestone)
 
-10. **Nearby pairing with a confirmation code**, including the iOS multicast
+10. **Nearby pairing with a confirmation code** ([#9975](https://github.com/OpenAgentsInc/openagents/issues/9975)), including the iOS multicast
     entitlement and Android permissions.
-11. **Auto-update and menu bar.** A Rust updater that checks a signed
+11. **Auto-update and menu bar.** ([#9976](https://github.com/OpenAgentsInc/openagents/issues/9976)) A Rust updater that checks a signed
     manifest, downloads the new notarized build, verifies its signature and
     code signature, swaps the bundle, and restarts the agent; `DSK-05`.
-12. **Linux and Windows desktop builds.**
-13. **Deprecate and remove the old path.** Aliases and notices for the names
+12. **Linux and Windows desktop builds.** ([#9977](https://github.com/OpenAgentsInc/openagents/issues/9977))
+13. **Deprecate and remove the old path.** ([#9978](https://github.com/OpenAgentsInc/openagents/issues/9978)) Aliases and notices for the names
     above, the rewritten [Link your devices](../guides/link-devices.md) with
     Tailscale moved to an "If you already use Tailscale" note, then removal.
-14. **`openagents connect --ssh`** for a headless box: install, start the
+14. **`openagents connect --ssh`** ([#9979](https://github.com/OpenAgentsInc/openagents/issues/9979)) for a headless box: install, start the
     host, and redeem over the SSH channel.
 
 ## Acceptance
