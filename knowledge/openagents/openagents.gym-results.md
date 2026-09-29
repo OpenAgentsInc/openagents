@@ -2,23 +2,21 @@
 id: openagents.gym-results
 version: 4
 kind: product
-title: "The Gym and its RESULTS board"
+title: "The Gym and its boards"
 summary: >-
-  The Gym stands straight ahead of where you start in the Grid; its RESULTS
-  board shows our published coding results, each attempt step by step, with
-  no connection needed.
-tags: [gym, results, leaderboard, terminal-bench, verse]
+  The Gym is where we test Coder's tools, with and without each tool, from
+  chat; in the Verse, the Gym building shows the results on its boards.
+tags: [gym, results, verse, tests, checks]
 applies_when: >-
-  The user asks what the Gym is, what the RESULTS board shows, how to see
-  benchmark results or traces, or how to open the Gym board; not what's new in
-  the Gym or how a tool did on its tests, which chat answers from the Gym's
-  records.
+  The user asks what the Gym is, what its boards show, or how to open them;
+  not what's new in the Gym or how a tool did on its tests, which chat
+  answers from the Gym's records.
 answer: >-
-  The Gym stands straight ahead of where you start in the Grid. Inside, the
-  RESULTS board shows our published Terminal-Bench results: tap it to open the
-  boards, an attempt, and its trace, which you can play, pause, and step
-  through. It needs no connection. The central Gym board opens only with a Gym
-  connection code granted to your world key.
+  The Gym is where we test the tools Coder, our coding agent, uses. Here in
+  chat you can test a tool: we run the same tests with it and without it and
+  show how many Coder passed each way. Add your result to the Gym, and other
+  trainers check it; you earn XP when it holds up. In the Verse, the Gym
+  building straight ahead of where you start shows the results on its boards.
 status: admitted
 author: openagents
 provenance:
@@ -33,20 +31,18 @@ evidence:
   - "2026-09-28: written from the cited documents and checked against them (#9923); the answer text awaits the owner's copy review."
   - "2026-09-28: version 2 (#9936) adds that tool test results and the Gym's news come to chat, from docs/extensions/evaluation.md; the answer is unchanged."
   - "2026-09-29: version 3 (#9944) words the summary, which the Gym's news card shows as a line, in the app's plain words (no Terminal-Bench or traces, CHK-02); the answer is unchanged."
-  - "2026-09-29: version 4 (#9941) adds the EVALS board beside the central board (docs/verse/gym.md, #9942); the answer is unchanged."
+  - "2026-09-29: version 4 (#9941) answers what the Gym is now, where Coder's tools are tested from chat (docs/extensions/evaluation.md), adds the board of tool results beside the central board (docs/verse/gym.md, #9942), and keeps the app's plain words (CHK-02) in the answer and details."
 ---
 
 ## Answer
 
-The Gym stands straight ahead of where you start in the Grid. Inside, the RESULTS board shows our published Terminal-Bench results: tap it to open the boards, an attempt, and its trace, which you can play, pause, and step through. It needs no connection. The central Gym board opens only with a Gym connection code granted to your world key.
+The Gym is where we test the tools Coder, our coding agent, uses. Here in chat you can test a tool: we run the same tests with it and without it and show how many Coder passed each way. Add your result to the Gym, and other trainers check it; you earn XP when it holds up. In the Verse, the Gym building straight ahead of where you start shows the results on its boards.
 
 ## Details
 
-- The board reads TAP TO OPEN from within 6 meters.
-- Results publications are signed with NIP-EVAL kind 3195.
-- The results aren't shown as signed by OpenAgents until a publisher key is created and pinned.
-- Results of tools tested on Coder, and the Gym's news, come to chat: ask us what's new in the Gym, or how a tool did.
-- On iPhone, the EVALS board to the left of the central board shows tools' published test results, grouped by test set, with the checks each one got; in chat, **See the board** under a tool's result walks you there. On Android the board is lettered but doesn't open yet.
+- In the Gym building, the board to the left of the central one shows each tool's published test results, grouped by test set, with the checks each one got. In chat, **See the board** under a tool's result walks you there. On Android that board is lettered but doesn't open yet.
+- The central board shows our earlier coding results, each attempt step by step, and needs no connection. It reads TAP TO OPEN from within 6 meters.
+- Ask us what's new in the Gym, or how a tool did, and we answer from the Gym's records.
 
 ## Sources
 

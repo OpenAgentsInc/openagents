@@ -36,7 +36,7 @@ You can test a tool in chat, make your own tool and its tests with us, and add y
 
 ## Details
 
-- In the first quests a confirmed check is worth 50 XP to the checker and 25 each to the evaluator and the test set's author; an adoption is worth 200, 100, and 50.
+- In the first quests a confirmed check is worth 50 XP to the checker and 25 each to the trainer who ran the result and the test set's author; an adoption is worth 200, 100, and 50.
 - Each role earns at most once per test set version per season.
 - The menu's **Profile** shows what you made and what each item earned, read from the XP ledger on your phone.
 
