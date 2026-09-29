@@ -6,6 +6,7 @@ Recorded measurements and task-selection studies, with supporting evidence.
 
 | Document | Topic |
 | --- | --- |
+| [2026-09-28-product-kb](2026-09-28-product-kb.md) | The product knowledge base on 110 held-out questions: retrieval, T0 answers, and grounded replies |
 | [2026-09-23-delegate-vs-gemini](2026-09-23-delegate-vs-gemini.md) | The delegate door against the Gemini fallback on eight terminal prompts |
 | [2026-09-22-consumer-conformance](2026-09-22-consumer-conformance.md) | The consumer conformance suite and the deterministic baseline |
 | [2026-09-22-terminal-bench-chat-fit](2026-09-22-terminal-bench-chat-fit.md) | Terminal-Bench tasks ranked against recent local chat requests |

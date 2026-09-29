@@ -62,6 +62,7 @@ pub mod first;
 pub mod generate;
 pub mod identity;
 pub mod package;
+pub mod product_kb;
 pub mod permit;
 pub mod profiles;
 pub mod program;

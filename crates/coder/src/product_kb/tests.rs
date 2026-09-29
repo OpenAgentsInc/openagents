@@ -1,0 +1,325 @@
+use super::*;
+use knowledge::search::EmbedError;
+
+/// Bag-of-words vectors: deterministic, offline, and enough to rank the
+/// fixtures. Only tests use it; production ranks with a real embedding
+/// model.
+pub(super) struct Words;
+
+impl Embed for Words {
+    fn model(&self) -> &str {
+        "words-64"
+    }
+
+    async fn embed(&self, inputs: Vec<String>) -> Result<(Vec<Vec<f32>>, Option<f64>), EmbedError> {
+        let vectors = inputs
+            .iter()
+            .map(|text| {
+                let mut vector = vec![0.0_f32; 64];
+                for word in knowledge::search::words(text) {
+                    let bucket = word
+                        .bytes()
+                        .fold(7_usize, |h, b| h.wrapping_mul(31).wrapping_add(b.into()));
+                    vector[bucket % 64] += 1.0;
+                }
+                vector
+            })
+            .collect();
+        Ok((vectors, Some(0.0)))
+    }
+}
+
+impl ProductKb for ProductKnowledge<Words> {
+    fn available(&self) -> bool {
+        !self.corpus.base.entries.is_empty()
+    }
+    fn recipients(&self) -> Vec<String> {
+        vec![self.recipient.clone()]
+    }
+    fn ground<'a>(&'a self, lookup: &'a Lookup) -> BoxFuture<'a, Result<Grounding, SeamError>> {
+        Box::pin(async move { self.find(lookup).await.map(|found| found.grounding) })
+    }
+}
+
+/// A judge that finds the entry titled `title` relevant at `relevance`,
+/// every other entry at 0.1, and picks its answer at `pick`.
+struct Sure {
+    title: String,
+    relevance: f64,
+    pick: f64,
+}
+
+impl Judge for Sure {
+    fn judge(
+        &self,
+        request: jev::SystemOneRequest,
+    ) -> BoxFuture<'_, Result<jev::SystemOneResponse, String>> {
+        let state = request.state.to_value();
+        let entries = state["entries"].as_object().cloned().unwrap_or_default();
+        let target = entries
+            .iter()
+            .find(|(_, e)| e["title"] == self.title.as_str())
+            .map(|(k, _)| k.clone());
+        let mut answers = serde_json::Map::new();
+        for key in entries.keys() {
+            let n = key.trim_start_matches("entry_");
+            let p = if Some(key) == target.as_ref() {
+                self.relevance
+            } else {
+                0.1
+            };
+            answers.insert(format!("relevant_{n}"), json!({"type": "noul", "noul": p}));
+        }
+        if let Some(jev::Question::Choice(choice)) = request.questions.get("answer") {
+            let chosen = target.clone().unwrap_or_else(|| "none".to_string());
+            let options: Vec<String> = choice.criteria.keys().cloned().collect();
+            let probabilities: serde_json::Map<String, Value> = options
+                .iter()
+                .map(|o| {
+                    let p = if *o == chosen {
+                        self.pick
+                    } else {
+                        (1.0 - self.pick) / (options.len() - 1) as f64
+                    };
+                    (o.clone(), json!(p))
+                })
+                .collect();
+            answers.insert(
+                "answer".to_string(),
+                json!({"type": "choice", "choice": chosen, "confidence": self.pick, "probabilities": probabilities}),
+            );
+        }
+        let bytes = json!({"model": "jev-test", "answers": answers})
+            .to_string()
+            .into_bytes();
+        Box::pin(async move {
+            jev::SystemOneResponse::decode(jev::RawResponse {
+                status: 200,
+                headers: Default::default(),
+                bytes,
+            })
+            .map_err(|e| e.to_string())
+        })
+    }
+}
+
+/// A judge that always fails.
+struct Down;
+
+impl Judge for Down {
+    fn judge(
+        &self,
+        _: jev::SystemOneRequest,
+    ) -> BoxFuture<'_, Result<jev::SystemOneResponse, String>> {
+        Box::pin(async { Err("connection refused".to_string()) })
+    }
+}
+
+pub(super) fn committed() -> Corpus {
+    Corpus::load(&product::default_dir(), Some(&product::repository())).expect("the corpus loads")
+}
+
+fn kb(judge: impl Judge + 'static) -> ProductKnowledge<Words> {
+    ProductKnowledge::new(committed(), Words, "Test embeddings", Arc::new(judge))
+}
+
+fn lookup(message: &str) -> Lookup {
+    Lookup {
+        message: message.to_string(),
+        transcript: vec![Message {
+            role: Role::User,
+            text: message.to_string(),
+        }],
+    }
+}
+
+#[tokio::test]
+async fn a_sure_entry_carries_its_reviewed_answer() {
+    let kb = kb(Sure {
+        title: "Why amounts show as whole ₿ numbers".into(),
+        relevance: 0.95,
+        pick: 0.9,
+    });
+    assert!(kb.available());
+    assert_eq!(kb.recipients(), ["Test embeddings"]);
+    let grounding = kb
+        .ground(&lookup(
+            "why does the wallet show amounts like ₿10,000 instead of BTC",
+        ))
+        .await
+        .expect("a grounding");
+    let first = &grounding.passages[0];
+    assert_eq!(first.id, "openagents.wallet-amounts@1");
+    assert!(first.relevance >= KB_ANSWER_CONFIDENCE);
+    assert!(
+        first
+            .answer
+            .as_deref()
+            .is_some_and(|a| a.contains("BIP 177"))
+    );
+    assert_eq!(first.source, "docs/breez/amounts.md");
+    assert!(
+        grounding
+            .passages
+            .iter()
+            .skip(1)
+            .all(|p| p.answer.is_none())
+    );
+    assert!(grounding.passages.len() <= KEEP);
+}
+
+#[tokio::test]
+async fn an_unsure_pick_grounds_the_model_instead_of_answering() {
+    let kb = kb(Sure {
+        title: "Why amounts show as whole ₿ numbers".into(),
+        relevance: 0.95,
+        pick: 0.6,
+    });
+    let found = kb
+        .find(&lookup(
+            "why does the wallet show amounts like ₿10,000 instead of BTC",
+        ))
+        .await
+        .expect("found");
+    assert_eq!(
+        found.grounding.passages[0].id,
+        "openagents.wallet-amounts@1"
+    );
+    assert!(found.grounding.passages[0].answer.is_none());
+    assert_eq!(
+        found.answer.as_ref().map(|(id, _)| id.as_str()),
+        Some("openagents.wallet-amounts")
+    );
+    assert_eq!(found.candidates.len(), CANDIDATES);
+}
+
+#[tokio::test]
+async fn nothing_relevant_keeps_nothing() {
+    let kb = kb(Sure {
+        title: "no such entry".into(),
+        relevance: 0.9,
+        pick: 0.9,
+    });
+    let grounding = kb
+        .ground(&lookup("how do I turn on dark mode"))
+        .await
+        .expect("a grounding");
+    assert!(grounding.passages.is_empty());
+    assert_eq!(
+        instructions(&grounding),
+        knowledge::product::NO_DOCUMENTED_ANSWER
+    );
+}
+
+#[tokio::test]
+async fn a_failed_judge_is_a_failure_that_names_no_message_text() {
+    let kb = kb(Down);
+    let error = kb
+        .ground(&lookup("my secret project name is bluebird"))
+        .await
+        .expect_err("the judge is down");
+    let SeamError::Failed(why) = error else {
+        panic!("a failure, not unavailable");
+    };
+    assert!(!why.contains("bluebird"), "{why}");
+}
+
+#[test]
+fn the_questions_ask_relevance_for_each_candidate_and_one_answer_choice() {
+    let corpus = committed();
+    let entries: Vec<&knowledge::Entry> = corpus.base.entries.iter().take(3).collect();
+    let questions = questions(&entries);
+    assert_eq!(questions.len(), 4);
+    for n in 1..=3 {
+        assert!(matches!(
+            questions.get(&format!("relevant_{n}")),
+            Some(jev::Question::Noul(_))
+        ));
+    }
+    let Some(jev::Question::Choice(choice)) = questions.get("answer") else {
+        panic!("an answer choice");
+    };
+    assert_eq!(
+        choice.criteria.keys().collect::<Vec<_>>(),
+        ["entry_1", "entry_2", "entry_3", "none"]
+    );
+    questions.validate().expect("valid questions");
+}
+
+#[test]
+fn the_state_carries_the_latest_message_earlier_turns_and_the_candidates() {
+    let corpus = committed();
+    let entries: Vec<&knowledge::Entry> = corpus.base.entries.iter().take(2).collect();
+    let lookup = Lookup {
+        message: "and on Android?".into(),
+        transcript: vec![
+            Message {
+                role: Role::User,
+                text: "how do I back up my wallet".into(),
+            },
+            Message {
+                role: Role::Assistant,
+                text: "x".repeat(1_000),
+            },
+            Message {
+                role: Role::User,
+                text: "and on Android?".into(),
+            },
+        ],
+    };
+    let state = state(&lookup, &entries);
+    assert_eq!(state["latest_message"], "and on Android?");
+    let earlier = state["earlier_turns"].as_array().expect("earlier turns");
+    assert_eq!(earlier.len(), 2);
+    assert_eq!(earlier[0]["text"], "how do I back up my wallet");
+    assert_eq!(
+        earlier[1]["text"].as_str().map(|t| t.chars().count()),
+        Some(TURN_CHARS)
+    );
+    assert_eq!(
+        state["entries"]["entry_1"]["title"],
+        entries[0].title.as_str()
+    );
+    assert!(state["entries"]["entry_2"]["answer"].is_string());
+}
+
+#[test]
+fn a_grounded_reply_is_checked_against_the_passages_it_was_given() {
+    let grounding = Grounding {
+        passages: vec![Passage {
+            id: "openagents.wallet-send@1".into(),
+            title: "Sending bitcoin".into(),
+            text: "Send takes an invoice.".into(),
+            source: "bins/openagents-ios/README.md".into(),
+            relevance: 0.9,
+            answer: None,
+        }],
+        commit: None,
+        needs_dispatch: false,
+    };
+    let text = instructions(&grounding);
+    assert!(text.contains("<entry id=\"openagents.wallet-send\""));
+    assert!(text.contains("Send takes an invoice."));
+    let checked = cited(
+        "Choose Send [openagents.wallet-send]. Fees are zero [openagents.fees].",
+        &grounding,
+    );
+    assert_eq!(checked.known, ["openagents.wallet-send"]);
+    assert_eq!(checked.unknown, ["openagents.fees"]);
+}
+
+#[test]
+fn the_held_out_questions_name_only_committed_entries() {
+    let corpus = committed();
+    let questions = eval::questions();
+    assert_eq!(
+        questions.iter().filter(|q| !q.expect.is_empty()).count(),
+        100
+    );
+    assert!(questions.iter().any(|q| q.expect.is_empty()));
+    for question in &questions {
+        for id in &question.expect {
+            assert!(corpus.get(id).is_some(), "{}: {id}", question.id);
+        }
+    }
+}

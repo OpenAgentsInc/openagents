@@ -46,6 +46,7 @@ pub fn template(id: &str, kind: Kind, title: &str, author: &str) -> Result<Strin
         written_from: vec!["reference".to_string()],
         cites: Vec::new(),
         evidence: Vec::new(),
+        answer: None,
         body: format!(
             "## Details\n\n{PLACEHOLDER} the definitions, formulas, and a worked example.\n\n## How to check\n\n{PLACEHOLDER} a property that tells the right form from the wrong one, with a runnable snippet."
         ),

@@ -24,6 +24,10 @@ pub enum Kind {
     Environment,
     /// How to use a command or library correctly.
     Tool,
+    /// A fact about the OpenAgents product, written from its public
+    /// documents, for the chat's product knowledge base
+    /// (`knowledge/openagents/`).
+    Product,
 }
 
 impl Kind {
@@ -36,6 +40,7 @@ impl Kind {
             "slip" => Kind::Slip,
             "environment" => Kind::Environment,
             "tool" => Kind::Tool,
+            "product" => Kind::Product,
             _ => return None,
         })
     }
@@ -49,6 +54,7 @@ impl fmt::Display for Kind {
             Kind::Slip => "slip",
             Kind::Environment => "environment",
             Kind::Tool => "tool",
+            Kind::Product => "product",
         })
     }
 }
@@ -119,6 +125,10 @@ pub struct Entry {
     /// Admission records, one line each: reviews, measurements, demotions,
     /// and withdrawals.
     pub evidence: Vec<String>,
+    /// A short, complete answer in the OpenAgents voice, which a `product`
+    /// entry may carry so the chat can show it as it is. `None` for every
+    /// other kind of entry, and for a product entry without one.
+    pub answer: Option<String>,
     /// The Markdown after the front matter.
     pub body: String,
     /// `sha256:` and the hex SHA-256 of the whole file.
@@ -138,6 +148,7 @@ const KEYS: &[&str] = &[
     "author",
     "provenance",
     "evidence",
+    "answer",
 ];
 
 /// `sha256:` and the hex SHA-256 of `bytes`.
@@ -198,7 +209,7 @@ impl Entry {
             .map_err(|_| "`version` must be a whole number".to_string())?;
         let kind = text_of("kind")?;
         let kind = Kind::parse(&kind).ok_or(format!(
-            "unknown kind `{kind}`: use method, edge-case, slip, environment, or tool"
+            "unknown kind `{kind}`: use method, edge-case, slip, environment, tool, or product"
         ))?;
         let status = text_of("status")?;
         let status = Status::parse(&status).ok_or(format!(
@@ -232,6 +243,11 @@ impl Entry {
             written_from,
             cites,
             evidence: list_of(get("evidence"), "evidence")?,
+            answer: get("answer")
+                .and_then(Value::text)
+                .map(str::trim)
+                .filter(|a| !a.is_empty())
+                .map(str::to_string),
             body,
             digest: digest(text.as_bytes()),
         })
@@ -288,6 +304,9 @@ impl Entry {
             "applies_when: >-\n{}\n",
             folded(&self.applies_when)
         ));
+        if let Some(answer) = &self.answer {
+            out.push_str(&format!("answer: >-\n{}\n", folded(answer)));
+        }
         out.push_str(&format!("status: {}\n", self.status));
         out.push_str(&format!("author: {}\n", inline(&self.author)));
         out.push_str("provenance:\n");

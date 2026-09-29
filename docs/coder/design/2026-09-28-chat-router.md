@@ -875,6 +875,24 @@ corpus and kind, not a new system:
 - **Publishing:** NIP-KB already signs and syncs entries, so the same corpus
   can later serve Coder on the user's computer and third-party agents.
 
+**Status (2026-09-28, [#9923](https://github.com/OpenAgentsInc/openagents/issues/9923)):
+implemented.** `knowledge/openagents/` holds 52 admitted entries;
+`knowledge::product` loads and checks them (sources exist and are public,
+plural voice, answers at most 600 characters), and `coder::product_kb`
+implements `router::seams::ProductKb`. It differs from the proposal above in
+three ways. Candidates are the 8 nearest by embedding cosine similarity
+alone, with no BM25 and no word-matching fallback, because the corpus is
+small and the workspace rule prefers embedding search. Jev's request adds
+one `answer` Choice over the candidates' reviewed answers beside the
+per-candidate relevance Nouls, and a passage carries its answer only when
+that Choice picked it at 0.8 or more, so T0 needs both judgments. And the
+grounded instructions and the citation check live in `knowledge::product`
+for the router's T2 call. On 110 held-out questions, all 82 answers it
+would serve at T0 were correct, and grounded replies cited no entry they
+were not given ([measurement](../measurements/2026-09-28-product-kb.md)).
+The corpus loads at run time from `OPENAGENTS_PRODUCT_KNOWLEDGE` or the
+checkout; a worker deployed without the checkout needs that variable.
+
 ### Codebase knowledge
 
 Three depths, chosen by the router's `route` and a second Noul ("Can this be

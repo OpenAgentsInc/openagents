@@ -1,0 +1,4592 @@
+{
+  "summary": {
+    "set": "product-kb-questions-v1",
+    "corpus": "openagents-product@78f0a55a1782",
+    "entries": 52,
+    "relevance_set": "product-kb-relevance-v1",
+    "model": "gemini-3.8-flash",
+    "embedding_model": "vertex/text-embedding-005",
+    "errors": 1,
+    "retrieval": {
+      "recall_at_1": "73/100 (73%)",
+      "recall_at_3": "90/100 (90%)",
+      "recall_at_8": "98/100 (98%)"
+    },
+    "relevance": {
+      "expected_kept": "97/100 (97%)",
+      "expected_first": "97/100 (97%)",
+      "kept_that_were_expected": "104/123 (85%)",
+      "unanswerable_kept_nothing": "7/10 (70%)"
+    },
+    "t0": {
+      "served": 82,
+      "precision": "82/82 (100%)",
+      "coverage_of_t0_questions": "80/94 (85%)",
+      "served_where_specifics_needed": 2,
+      "served_on_unanswerable": 0
+    },
+    "t2": {
+      "replies": 29,
+      "no_invented_citation": "29/29 (100%)",
+      "cites_an_expected_entry": "17/19 (89%)",
+      "jev_supported": "23/29 (79%)",
+      "jev_answers": "18/19 (95%)",
+      "unanswerable_admitted": "10/10 (100%)",
+      "usd": 0.014576250000000002
+    },
+    "latency_ms": {
+      "embed_p50": 356,
+      "embed_p95": 673,
+      "judge_p50": 185,
+      "judge_p95": 272,
+      "generate_p50": 2545,
+      "generate_p95": 4987
+    }
+  },
+  "rows": [
+    {
+      "id": "q001",
+      "question": "what is openagents exactly?",
+      "expect": [
+        "openagents.overview"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.overview",
+        "openagents.open-source",
+        "openagents.cli",
+        "openagents.android",
+        "openagents.pricing",
+        "openagents.chat-limits",
+        "openagents.nostr-and-relay",
+        "openagents.jev"
+      ],
+      "rank": 1,
+      "kept": [
+        [
+          "openagents.overview",
+          0.97
+        ]
+      ],
+      "answer": [
+        "openagents.overview",
+        0.99
+      ],
+      "served": "openagents.overview",
+      "reply": null,
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": null,
+      "admits": null,
+      "answers": null,
+      "embed_ms": 379,
+      "judge_ms": 372,
+      "generate_ms": 0,
+      "generate_usd": null,
+      "error": null
+    },
+    {
+      "id": "q002",
+      "question": "What's this app for",
+      "expect": [
+        "openagents.overview"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.get-the-app",
+        "openagents.version-and-changelog",
+        "openagents.report-a-problem",
+        "openagents.overview",
+        "openagents.nostr-and-relay",
+        "openagents.chat-limits",
+        "openagents.app-tabs",
+        "openagents.chat-features-later"
+      ],
+      "rank": 4,
+      "kept": [
+        [
+          "openagents.overview",
+          0.97
+        ]
+      ],
+      "answer": [
+        "openagents.overview",
+        1.0
+      ],
+      "served": "openagents.overview",
+      "reply": null,
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": null,
+      "admits": null,
+      "answers": null,
+      "embed_ms": 363,
+      "judge_ms": 410,
+      "generate_ms": 0,
+      "generate_usd": null,
+      "error": null
+    },
+    {
+      "id": "q003",
+      "question": "What are the tabs at the bottom of the screen?",
+      "expect": [
+        "openagents.app-tabs"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.report-a-problem",
+        "openagents.get-the-app",
+        "openagents.app-tabs",
+        "openagents.chat-target",
+        "openagents.previous-chats",
+        "openagents.computers-screen",
+        "openagents.verse-controls",
+        "openagents.version-and-changelog"
+      ],
+      "rank": 3,
+      "kept": [
+        [
+          "openagents.app-tabs",
+          0.97
+        ]
+      ],
+      "answer": [
+        "openagents.app-tabs",
+        0.99
+      ],
+      "served": "openagents.app-tabs",
+      "reply": null,
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": null,
+      "admits": null,
+      "answers": null,
+      "embed_ms": 353,
+      "judge_ms": 470,
+      "generate_ms": 0,
+      "generate_usd": null,
+      "error": null
+    },
+    {
+      "id": "q004",
+      "question": "what does the globe icon do",
+      "expect": [
+        "openagents.app-tabs",
+        "openagents.verse-grid"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.verse-controls",
+        "openagents.chat-target",
+        "openagents.get-the-app",
+        "openagents.report-a-problem",
+        "openagents.verse-grid",
+        "openagents.world-key",
+        "openagents.verse-presence",
+        "openagents.version-and-changelog"
+      ],
+      "rank": 5,
+      "kept": [],
+      "answer": null,
+      "served": null,
+      "reply": "We don't have that documented yet.",
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": 0.6,
+      "admits": 0.98,
+      "answers": 0.21,
+      "embed_ms": 401,
+      "judge_ms": 351,
+      "generate_ms": 1770,
+      "generate_usd": 0.000087,
+      "error": null
+    },
+    {
+      "id": "q005",
+      "question": "What's the difference between talking to you and Coder?",
+      "expect": [
+        "openagents.chat-and-coder"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.chat-and-coder",
+        "openagents.chat-features-later",
+        "openagents.coder-engines",
+        "openagents.coder-chat-controls",
+        "openagents.computer-requirements",
+        "openagents.computer-offline",
+        "openagents.install-coder",
+        "openagents.microcoder"
+      ],
+      "rank": 1,
+      "kept": [
+        [
+          "openagents.chat-and-coder",
+          0.97
+        ]
+      ],
+      "answer": [
+        "openagents.chat-and-coder",
+        0.99
+      ],
+      "served": "openagents.chat-and-coder",
+      "reply": null,
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": null,
+      "admits": null,
+      "answers": null,
+      "embed_ms": 362,
+      "judge_ms": 171,
+      "generate_ms": 0,
+      "generate_usd": null,
+      "error": null
+    },
+    {
+      "id": "q006",
+      "question": "how do I connect my Mac",
+      "expect": [
+        "openagents.connect-computer"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.get-the-app",
+        "openagents.connect-computer",
+        "openagents.computers-screen",
+        "openagents.tailnet",
+        "openagents.report-a-problem",
+        "openagents.chat-target",
+        "openagents.wallet-receive",
+        "openagents.coder-engines"
+      ],
+      "rank": 2,
+      "kept": [
+        [
+          "openagents.connect-computer",
+          0.97
+        ],
+        [
+          "openagents.tailnet",
+          0.52
+        ]
+      ],
+      "answer": [
+        "openagents.connect-computer",
+        1.0
+      ],
+      "served": "openagents.connect-computer",
+      "reply": null,
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": null,
+      "admits": null,
+      "answers": null,
+      "embed_ms": 356,
+      "judge_ms": 191,
+      "generate_ms": 0,
+      "generate_usd": null,
+      "error": null
+    },
+    {
+      "id": "q007",
+      "question": "Can I link my linux box so the agent can work on it?",
+      "expect": [
+        "openagents.connect-computer"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.computers-screen",
+        "openagents.computer-requirements",
+        "openagents.connect-computer",
+        "openagents.auto-start",
+        "openagents.cli",
+        "openagents.get-the-app",
+        "openagents.install-coder",
+        "openagents.link-computer-key"
+      ],
+      "rank": 3,
+      "kept": [
+        [
+          "openagents.connect-computer",
+          0.95
+        ],
+        [
+          "openagents.install-coder",
+          0.71
+        ],
+        [
+          "openagents.computer-requirements",
+          0.59
+        ]
+      ],
+      "answer": [
+        "openagents.connect-computer",
+        0.99
+      ],
+      "served": "openagents.connect-computer",
+      "reply": null,
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": null,
+      "admits": null,
+      "answers": null,
+      "embed_ms": 292,
+      "judge_ms": 192,
+      "generate_ms": 0,
+      "generate_usd": null,
+      "error": null
+    },
+    {
+      "id": "q008",
+      "question": "I ran coder host serve --tailnet-admission standard but my Mac never shows up on the phone. What should I check?",
+      "expect": [
+        "openagents.connect-computer",
+        "openagents.tailnet"
+      ],
+      "t0_expected": false,
+      "nearest": [
+        "openagents.connect-computer",
+        "openagents.computer-requirements",
+        "openagents.install-coder",
+        "openagents.auto-start",
+        "openagents.tailnet",
+        "openagents.coder-engines",
+        "openagents.chat-and-coder",
+        "openagents.coder-chat-controls"
+      ],
+      "rank": 1,
+      "kept": [
+        [
+          "openagents.connect-computer",
+          0.93
+        ],
+        [
+          "openagents.tailnet",
+          0.68
+        ]
+      ],
+      "answer": null,
+      "served": null,
+      "reply": "Here is what you should check:\n\n- **Tailscale connection:** Make sure your phone is connected to Tailscale through the Tailscale app, and that both your phone and Mac are on the same tailnet [openagents.connect-computer, openagents.tailnet].\n- **Tailnet sign-in:** Confirm that you have signed in on the Tailnet screen under Account in the OpenAgents app [openagents.connect-computer].\n- **Same Tailscale user:** Tailnet admission only works if both devices belong to the same Tailscale user, because the host will only answer a device that `tailscale whois` identifies as its own user [openagents.connect-computer, openagents.tailnet].\n\nIf it still does not appear, you can add it manually in **Account > Computers > Add a computer** using an invitation or an 8-character code [openagents.connect-computer].",
+      "cited_known": [
+        "openagents.connect-computer",
+        "openagents.tailnet"
+      ],
+      "cited_unknown": [],
+      "supported": 0.89,
+      "admits": 0.02,
+      "answers": 0.9,
+      "embed_ms": 391,
+      "judge_ms": 181,
+      "generate_ms": 3532,
+      "generate_usd": 0.00131175,
+      "error": null
+    },
+    {
+      "id": "q009",
+      "question": "how do I install coder on my laptop",
+      "expect": [
+        "openagents.install-coder"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.install-coder",
+        "openagents.computer-requirements",
+        "openagents.coder-engines",
+        "openagents.connect-computer",
+        "openagents.chat-and-coder",
+        "openagents.get-the-app",
+        "openagents.chat-features-later",
+        "openagents.computer-offline"
+      ],
+      "rank": 1,
+      "kept": [
+        [
+          "openagents.install-coder",
+          0.74
+        ]
+      ],
+      "answer": [
+        "openagents.install-coder",
+        0.88
+      ],
+      "served": null,
+      "reply": "To install Coder on your computer, run `./scripts/install-coder.sh` from a checkout of our open-source repository [openagents.install-coder]. This builds `crates/coder` in release mode with the pinned toolchain and links `~/.openagents/bin/coder` to the new build [openagents.install-coder]. \n\nMake sure `~/.openagents/bin` is on your `PATH` [openagents.install-coder]. \n\nAfter installation, run `coder host serve --tailnet-admission standard` so your phone can reach the computer over your tailnet [openagents.install-coder]. You can verify the installation with `coder --version` or `coder doctor` [openagents.install-coder].",
+      "cited_known": [
+        "openagents.install-coder"
+      ],
+      "cited_unknown": [],
+      "supported": 0.93,
+      "admits": 0.01,
+      "answers": 0.77,
+      "embed_ms": 401,
+      "judge_ms": 195,
+      "generate_ms": 3023,
+      "generate_usd": 0.0009045,
+      "error": null
+    },
+    {
+      "id": "q010",
+      "question": "Do I need Tailscale?",
+      "expect": [
+        "openagents.tailnet",
+        "openagents.connect-computer"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.tailnet",
+        "openagents.get-the-app",
+        "openagents.computer-requirements",
+        "openagents.connect-computer",
+        "openagents.playtest-logging",
+        "openagents.computers-screen",
+        "openagents.wallet-exit-backup",
+        "openagents.cli"
+      ],
+      "rank": 1,
+      "kept": [
+        [
+          "openagents.tailnet",
+          0.94
+        ],
+        [
+          "openagents.connect-computer",
+          0.54
+        ]
+      ],
+      "answer": [
+        "openagents.tailnet",
+        0.91
+      ],
+      "served": "openagents.tailnet",
+      "reply": null,
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": null,
+      "admits": null,
+      "answers": null,
+      "embed_ms": 387,
+      "judge_ms": 186,
+      "generate_ms": 0,
+      "generate_usd": null,
+      "error": null
+    },
+    {
+      "id": "q011",
+      "question": "If I sign into tailscale in the app can it get into all my machines?",
+      "expect": [
+        "openagents.tailnet"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.tailnet",
+        "openagents.connect-computer",
+        "openagents.computers-screen",
+        "openagents.get-the-app",
+        "openagents.computer-requirements",
+        "openagents.auto-start",
+        "openagents.android",
+        "openagents.playtest-logging"
+      ],
+      "rank": 1,
+      "kept": [
+        [
+          "openagents.tailnet",
+          0.97
+        ]
+      ],
+      "answer": [
+        "openagents.tailnet",
+        1.0
+      ],
+      "served": "openagents.tailnet",
+      "reply": null,
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": null,
+      "admits": null,
+      "answers": null,
+      "embed_ms": 395,
+      "judge_ms": 212,
+      "generate_ms": 0,
+      "generate_usd": null,
+      "error": null
+    },
+    {
+      "id": "q012",
+      "question": "Can I use Coder without owning a computer?",
+      "expect": [
+        "openagents.computer-requirements"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.computer-requirements",
+        "openagents.install-coder",
+        "openagents.coder-engines",
+        "openagents.connect-computer",
+        "openagents.chat-and-coder",
+        "openagents.computer-offline",
+        "openagents.pricing",
+        "openagents.chat-features-later"
+      ],
+      "rank": 1,
+      "kept": [
+        [
+          "openagents.computer-requirements",
+          0.91
+        ],
+        [
+          "openagents.connect-computer",
+          0.54
+        ]
+      ],
+      "answer": [
+        "openagents.computer-requirements",
+        0.98
+      ],
+      "served": "openagents.computer-requirements",
+      "reply": null,
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": null,
+      "admits": null,
+      "answers": null,
+      "embed_ms": 345,
+      "judge_ms": 141,
+      "generate_ms": 0,
+      "generate_usd": null,
+      "error": null
+    },
+    {
+      "id": "q013",
+      "question": "do you have hosted machines I can rent",
+      "expect": [
+        "openagents.computer-requirements"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.computers-screen",
+        "openagents.computer-requirements",
+        "openagents.get-the-app",
+        "openagents.install-coder",
+        "openagents.playtesting",
+        "openagents.coder-engines",
+        "openagents.pricing",
+        "openagents.overview"
+      ],
+      "rank": 2,
+      "kept": [
+        [
+          "openagents.computer-requirements",
+          0.95
+        ]
+      ],
+      "answer": [
+        "openagents.computer-requirements",
+        0.99
+      ],
+      "served": "openagents.computer-requirements",
+      "reply": null,
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": null,
+      "admits": null,
+      "answers": null,
+      "embed_ms": 352,
+      "judge_ms": 241,
+      "generate_ms": 0,
+      "generate_usd": null,
+      "error": null
+    },
+    {
+      "id": "q014",
+      "question": "Does Coder work with Windows?",
+      "expect": [
+        "openagents.computer-requirements",
+        "openagents.connect-computer"
+      ],
+      "t0_expected": false,
+      "nearest": [
+        "openagents.computer-requirements",
+        "openagents.install-coder",
+        "openagents.coder-engines",
+        "openagents.chat-and-coder",
+        "openagents.connect-computer",
+        "openagents.computer-offline",
+        "openagents.chat-features-later",
+        "openagents.get-the-app"
+      ],
+      "rank": 1,
+      "kept": [
+        [
+          "openagents.computer-requirements",
+          0.89
+        ],
+        [
+          "openagents.connect-computer",
+          0.56
+        ]
+      ],
+      "answer": [
+        "openagents.computer-requirements",
+        0.78
+      ],
+      "served": null,
+      "reply": "We do not have Windows support documented yet [openagents.computer-requirements]. \n\nTo run Coder, you need your own Mac or Linux computer on the same tailnet as your phone, running the Coder host [openagents.computer-requirements].",
+      "cited_known": [
+        "openagents.computer-requirements"
+      ],
+      "cited_unknown": [],
+      "supported": 0.6,
+      "admits": 0.72,
+      "answers": 0.88,
+      "embed_ms": 388,
+      "judge_ms": 191,
+      "generate_ms": 2899,
+      "generate_usd": 0.0007335,
+      "error": null
+    },
+    {
+      "id": "q015",
+      "question": "How do I stop Coder in the middle of a run?",
+      "expect": [
+        "openagents.coder-chat-controls"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.coder-chat-controls",
+        "openagents.coder-engines",
+        "openagents.install-coder",
+        "openagents.computer-requirements",
+        "openagents.computer-offline",
+        "openagents.leaving-playtest",
+        "openagents.chat-and-coder",
+        "openagents.chat-features-later"
+      ],
+      "rank": 1,
+      "kept": [
+        [
+          "openagents.coder-chat-controls",
+          0.96
+        ]
+      ],
+      "answer": [
+        "openagents.coder-chat-controls",
+        1.0
+      ],
+      "served": "openagents.coder-chat-controls",
+      "reply": null,
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": null,
+      "admits": null,
+      "answers": null,
+      "embed_ms": 356,
+      "judge_ms": 177,
+      "generate_ms": 0,
+      "generate_usd": null,
+      "error": null
+    },
+    {
+      "id": "q016",
+      "question": "can I give coder new instructions while it's still working",
+      "expect": [
+        "openagents.coder-chat-controls"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.coder-chat-controls",
+        "openagents.coder-engines",
+        "openagents.chat-features-later",
+        "openagents.computer-offline",
+        "openagents.chat-and-coder",
+        "openagents.computer-requirements",
+        "openagents.microcoder",
+        "openagents.install-coder"
+      ],
+      "rank": 1,
+      "kept": [
+        [
+          "openagents.coder-chat-controls",
+          0.85
+        ]
+      ],
+      "answer": [
+        "openagents.coder-chat-controls",
+        0.96
+      ],
+      "served": "openagents.coder-chat-controls",
+      "reply": null,
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": null,
+      "admits": null,
+      "answers": null,
+      "embed_ms": 344,
+      "judge_ms": 155,
+      "generate_ms": 0,
+      "generate_usd": null,
+      "error": null
+    },
+    {
+      "id": "q017",
+      "question": "Coder asked me a question, where do I answer it?",
+      "expect": [
+        "openagents.coder-chat-controls"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.coder-chat-controls",
+        "openagents.report-a-problem",
+        "openagents.chat-and-coder",
+        "openagents.previous-chats",
+        "openagents.get-the-app",
+        "openagents.install-coder",
+        "openagents.coder-engines",
+        "openagents.microcoder"
+      ],
+      "rank": 1,
+      "kept": [
+        [
+          "openagents.coder-chat-controls",
+          0.9
+        ]
+      ],
+      "answer": [
+        "openagents.coder-chat-controls",
+        0.98
+      ],
+      "served": "openagents.coder-chat-controls",
+      "reply": null,
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": null,
+      "admits": null,
+      "answers": null,
+      "embed_ms": 404,
+      "judge_ms": 148,
+      "generate_ms": 0,
+      "generate_usd": null,
+      "error": null
+    },
+    {
+      "id": "q018",
+      "question": "Where did my old conversations go?",
+      "expect": [
+        "openagents.previous-chats"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.previous-chats",
+        "openagents.report-a-problem",
+        "openagents.chat-privacy",
+        "openagents.leaving-playtest",
+        "openagents.get-the-app",
+        "openagents.chat-limits",
+        "openagents.version-and-changelog",
+        "openagents.computer-offline"
+      ],
+      "rank": 1,
+      "kept": [
+        [
+          "openagents.previous-chats",
+          0.97
+        ]
+      ],
+      "answer": [
+        "openagents.previous-chats",
+        0.99
+      ],
+      "served": "openagents.previous-chats",
+      "reply": null,
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": null,
+      "admits": null,
+      "answers": null,
+      "embed_ms": 293,
+      "judge_ms": 184,
+      "generate_ms": 0,
+      "generate_usd": null,
+      "error": null
+    },
+    {
+      "id": "q019",
+      "question": "why don't my claude code sessions show up anymore",
+      "expect": [
+        "openagents.previous-chats"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.previous-chats",
+        "openagents.report-a-problem",
+        "openagents.chat-features-later",
+        "openagents.coder-engines",
+        "openagents.computer-offline",
+        "openagents.chat-and-coder",
+        "openagents.leaving-playtest",
+        "openagents.trainer-card"
+      ],
+      "rank": 1,
+      "kept": [
+        [
+          "openagents.previous-chats",
+          0.95
+        ]
+      ],
+      "answer": [
+        "openagents.previous-chats",
+        0.98
+      ],
+      "served": "openagents.previous-chats",
+      "reply": null,
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": null,
+      "admits": null,
+      "answers": null,
+      "embed_ms": 366,
+      "judge_ms": 157,
+      "generate_ms": 0,
+      "generate_usd": null,
+      "error": null
+    },
+    {
+      "id": "q020",
+      "question": "which model does coder use on my computer",
+      "expect": [
+        "openagents.coder-engines"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.coder-engines",
+        "openagents.install-coder",
+        "openagents.computer-requirements",
+        "openagents.chat-and-coder",
+        "openagents.connect-computer",
+        "openagents.computer-offline",
+        "openagents.chat-features-later",
+        "openagents.microcoder"
+      ],
+      "rank": 1,
+      "kept": [
+        [
+          "openagents.coder-engines",
+          0.84
+        ]
+      ],
+      "answer": [
+        "openagents.coder-engines",
+        0.71
+      ],
+      "served": null,
+      "reply": "Coder uses the engine and model configured by your computer's owner on the host [openagents.coder-engines]. \n\nThe host sends each task to a connected model provider with capacity, failing over to another when one runs out [openagents.coder-engines]. The model cannot be chosen from your phone, and there is no model picker in the app yet [openagents.coder-engines].",
+      "cited_known": [
+        "openagents.coder-engines"
+      ],
+      "cited_unknown": [],
+      "supported": 0.94,
+      "admits": 0.03,
+      "answers": 0.9,
+      "embed_ms": 363,
+      "judge_ms": 197,
+      "generate_ms": 2950,
+      "generate_usd": 0.0006255,
+      "error": null
+    },
+    {
+      "id": "q021",
+      "question": "Can I pick GPT or Claude for Coder from my phone?",
+      "expect": [
+        "openagents.coder-engines",
+        "openagents.chat-features-later"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.coder-engines",
+        "openagents.chat-features-later",
+        "openagents.chat-and-coder",
+        "openagents.previous-chats",
+        "openagents.get-the-app",
+        "openagents.computer-requirements",
+        "openagents.coder-chat-controls",
+        "openagents.install-coder"
+      ],
+      "rank": 1,
+      "kept": [
+        [
+          "openagents.coder-engines",
+          0.94
+        ],
+        [
+          "openagents.chat-features-later",
+          0.89
+        ]
+      ],
+      "answer": [
+        "openagents.coder-engines",
+        0.8
+      ],
+      "served": "openagents.coder-engines",
+      "reply": null,
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": null,
+      "admits": null,
+      "answers": null,
+      "embed_ms": 324,
+      "judge_ms": 184,
+      "generate_ms": 0,
+      "generate_usd": null,
+      "error": null
+    },
+    {
+      "id": "q022",
+      "question": "I sent a task to my computer and nothing happened, it just sits there",
+      "expect": [
+        "openagents.auto-start",
+        "openagents.computer-offline"
+      ],
+      "t0_expected": false,
+      "nearest": [
+        "openagents.auto-start",
+        "openagents.computer-offline",
+        "openagents.computers-screen",
+        "openagents.chat-and-coder",
+        "openagents.agent-payments",
+        "openagents.report-a-problem",
+        "openagents.chat-features-later",
+        "openagents.coder-chat-controls"
+      ],
+      "rank": 1,
+      "kept": [
+        [
+          "openagents.auto-start",
+          0.88
+        ]
+      ],
+      "answer": [
+        "openagents.auto-start",
+        0.61
+      ],
+      "served": null,
+      "reply": "A task sent from your phone runs right away only if the computer's owner has turned on the host's auto-start policy using a command on the computer [openagents.auto-start]. \n\nWithout that policy enabled, the task is simply recorded and will not run by itself [openagents.auto-start]. Once auto-start is turned on, Coder runs at once in the workspaces listed by the policy [openagents.auto-start].",
+      "cited_known": [
+        "openagents.auto-start"
+      ],
+      "cited_unknown": [],
+      "supported": 0.94,
+      "admits": 0.03,
+      "answers": 0.88,
+      "embed_ms": 337,
+      "judge_ms": 162,
+      "generate_ms": 2545,
+      "generate_usd": 0.00068325,
+      "error": null
+    },
+    {
+      "id": "q023",
+      "question": "What does full access host mean?",
+      "expect": [
+        "openagents.auto-start"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.auto-start",
+        "openagents.tailnet",
+        "openagents.get-the-app",
+        "openagents.computers-screen",
+        "openagents.playtesting",
+        "openagents.chat-limits",
+        "openagents.computer-requirements",
+        "openagents.nostr-and-relay"
+      ],
+      "rank": 1,
+      "kept": [
+        [
+          "openagents.auto-start",
+          0.91
+        ]
+      ],
+      "answer": [
+        "openagents.auto-start",
+        0.84
+      ],
+      "served": "openagents.auto-start",
+      "reply": null,
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": null,
+      "admits": null,
+      "answers": null,
+      "embed_ms": 331,
+      "judge_ms": 168,
+      "generate_ms": 0,
+      "generate_usd": null,
+      "error": null
+    },
+    {
+      "id": "q024",
+      "question": "can I attach a screenshot to my message",
+      "expect": [
+        "openagents.chat-features-later"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.report-a-problem",
+        "openagents.get-the-app",
+        "openagents.version-and-changelog",
+        "openagents.chat-target",
+        "openagents.chat-features-later",
+        "openagents.coder-chat-controls",
+        "openagents.leaving-playtest",
+        "openagents.wallet-send"
+      ],
+      "rank": 5,
+      "kept": [
+        [
+          "openagents.chat-features-later",
+          0.95
+        ]
+      ],
+      "answer": [
+        "openagents.chat-features-later",
+        0.97
+      ],
+      "served": "openagents.chat-features-later",
+      "reply": null,
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": null,
+      "admits": null,
+      "answers": null,
+      "embed_ms": 317,
+      "judge_ms": 204,
+      "generate_ms": 0,
+      "generate_usd": null,
+      "error": null
+    },
+    {
+      "id": "q025",
+      "question": "Is there voice input?",
+      "expect": [
+        "openagents.chat-features-later"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.get-the-app",
+        "openagents.verse-controls",
+        "openagents.report-a-problem",
+        "openagents.chat-features-later",
+        "openagents.playtesting",
+        "openagents.version-and-changelog",
+        "openagents.verse-presence",
+        "openagents.coder-engines"
+      ],
+      "rank": 4,
+      "kept": [
+        [
+          "openagents.chat-features-later",
+          0.97
+        ]
+      ],
+      "answer": [
+        "openagents.chat-features-later",
+        1.0
+      ],
+      "served": "openagents.chat-features-later",
+      "reply": null,
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": null,
+      "admits": null,
+      "answers": null,
+      "embed_ms": 343,
+      "judge_ms": 187,
+      "generate_ms": 0,
+      "generate_usd": null,
+      "error": null
+    },
+    {
+      "id": "q026",
+      "question": "will I get a notification when coder is done",
+      "expect": [
+        "openagents.chat-features-later"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.chat-features-later",
+        "openagents.coder-chat-controls",
+        "openagents.computer-offline",
+        "openagents.coder-engines",
+        "openagents.chat-and-coder",
+        "openagents.computer-requirements",
+        "openagents.get-the-app",
+        "openagents.auto-start"
+      ],
+      "rank": 1,
+      "kept": [
+        [
+          "openagents.chat-features-later",
+          0.96
+        ]
+      ],
+      "answer": [
+        "openagents.chat-features-later",
+        0.98
+      ],
+      "served": "openagents.chat-features-later",
+      "reply": null,
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": null,
+      "admits": null,
+      "answers": null,
+      "embed_ms": 362,
+      "judge_ms": 130,
+      "generate_ms": 0,
+      "generate_usd": null,
+      "error": null
+    },
+    {
+      "id": "q027",
+      "question": "How many messages can I send per day?",
+      "expect": [
+        "openagents.chat-limits"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.chat-limits",
+        "openagents.get-the-app",
+        "openagents.coder-chat-controls",
+        "openagents.report-a-problem",
+        "openagents.chat-privacy",
+        "openagents.pricing",
+        "openagents.wallet-send",
+        "openagents.chat-features-later"
+      ],
+      "rank": 1,
+      "kept": [
+        [
+          "openagents.chat-limits",
+          0.98
+        ]
+      ],
+      "answer": [
+        "openagents.chat-limits",
+        0.98
+      ],
+      "served": "openagents.chat-limits",
+      "reply": null,
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": null,
+      "admits": null,
+      "answers": null,
+      "embed_ms": 1564,
+      "judge_ms": 199,
+      "generate_ms": 0,
+      "generate_usd": null,
+      "error": null
+    },
+    {
+      "id": "q028",
+      "question": "it says I'm sending messages too quickly, what's the limit",
+      "expect": [
+        "openagents.chat-limits"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.chat-limits",
+        "openagents.report-a-problem",
+        "openagents.coder-chat-controls",
+        "openagents.wallet-send",
+        "openagents.chat-features-later",
+        "openagents.instant-answers",
+        "openagents.get-the-app",
+        "openagents.chat-privacy"
+      ],
+      "rank": 1,
+      "kept": [
+        [
+          "openagents.chat-limits",
+          0.97
+        ]
+      ],
+      "answer": [
+        "openagents.chat-limits",
+        1.0
+      ],
+      "served": "openagents.chat-limits",
+      "reply": null,
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": null,
+      "admits": null,
+      "answers": null,
+      "embed_ms": 342,
+      "judge_ms": 198,
+      "generate_ms": 0,
+      "generate_usd": null,
+      "error": null
+    },
+    {
+      "id": "q029",
+      "question": "Are my chats encrypted?",
+      "expect": [
+        "openagents.chat-privacy"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.chat-privacy",
+        "openagents.chat-limits",
+        "openagents.get-the-app",
+        "openagents.identity-keys",
+        "openagents.previous-chats",
+        "openagents.computer-offline",
+        "openagents.nostr-and-relay",
+        "openagents.verse-presence"
+      ],
+      "rank": 1,
+      "kept": [
+        [
+          "openagents.chat-privacy",
+          0.97
+        ],
+        [
+          "openagents.nostr-and-relay",
+          0.6
+        ]
+      ],
+      "answer": [
+        "openagents.chat-privacy",
+        0.92
+      ],
+      "served": "openagents.chat-privacy",
+      "reply": null,
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": null,
+      "admits": null,
+      "answers": null,
+      "embed_ms": 282,
+      "judge_ms": 163,
+      "generate_ms": 0,
+      "generate_usd": null,
+      "error": null
+    },
+    {
+      "id": "q030",
+      "question": "Who can read what I type here",
+      "expect": [
+        "openagents.chat-privacy"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.verse-presence",
+        "openagents.identity-keys",
+        "openagents.world-key",
+        "openagents.chat-privacy",
+        "openagents.get-the-app",
+        "openagents.auto-start",
+        "openagents.nostr-and-relay",
+        "openagents.report-a-problem"
+      ],
+      "rank": 4,
+      "kept": [
+        [
+          "openagents.chat-privacy",
+          0.95
+        ]
+      ],
+      "answer": [
+        "openagents.chat-privacy",
+        0.98
+      ],
+      "served": "openagents.chat-privacy",
+      "reply": null,
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": null,
+      "admits": null,
+      "answers": null,
+      "embed_ms": 327,
+      "judge_ms": 170,
+      "generate_ms": 0,
+      "generate_usd": null,
+      "error": null
+    },
+    {
+      "id": "q031",
+      "question": "Do you store my messages on your servers?",
+      "expect": [
+        "openagents.chat-privacy"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.chat-privacy",
+        "openagents.chat-limits",
+        "openagents.playtest-logging",
+        "openagents.leaving-playtest",
+        "openagents.computer-offline",
+        "openagents.report-a-problem",
+        "openagents.get-the-app",
+        "openagents.nostr-and-relay"
+      ],
+      "rank": 1,
+      "kept": [
+        [
+          "openagents.chat-privacy",
+          0.97
+        ]
+      ],
+      "answer": [
+        "openagents.chat-privacy",
+        0.9
+      ],
+      "served": "openagents.chat-privacy",
+      "reply": null,
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": null,
+      "admits": null,
+      "answers": null,
+      "embed_ms": 348,
+      "judge_ms": 175,
+      "generate_ms": 0,
+      "generate_usd": null,
+      "error": null
+    },
+    {
+      "id": "q032",
+      "question": "why did that last answer show up so fast",
+      "expect": [
+        "openagents.instant-answers"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.get-the-app",
+        "openagents.report-a-problem",
+        "openagents.playtesting",
+        "openagents.verse-presence",
+        "openagents.wallet-recovery",
+        "openagents.verse-controls",
+        "openagents.leaving-playtest",
+        "openagents.nostr-and-relay"
+      ],
+      "rank": null,
+      "kept": [],
+      "answer": null,
+      "served": null,
+      "reply": "Responses usually appear quickly for a few main reasons:\n\n1. **Streaming:** The text is sent to your screen word-by-word (token-by-token) as it is generated, rather than waiting for the entire message to be finished.\n2. **Specialized Hardware:** AI models run on powerful hardware (like GPUs or TPUs) optimized specifically for high-speed text processing and generation.\n3. **Prompt Complexity:** Shorter, more straightforward prompts require less computation and generate fewer tokens, making the turnaround time noticeably faster.",
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": 0.32,
+      "admits": 0.02,
+      "answers": 0.89,
+      "embed_ms": 413,
+      "judge_ms": 203,
+      "generate_ms": 2724,
+      "generate_usd": 0.00047175,
+      "error": null
+    },
+    {
+      "id": "q033",
+      "question": "How do I remove a computer I don't use anymore?",
+      "expect": [
+        "openagents.computers-screen"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.computers-screen",
+        "openagents.leaving-playtest",
+        "openagents.tailnet",
+        "openagents.agent-payments",
+        "openagents.report-a-problem",
+        "openagents.chat-target",
+        "openagents.auto-start",
+        "openagents.connect-computer"
+      ],
+      "rank": 1,
+      "kept": [
+        [
+          "openagents.computers-screen",
+          0.97
+        ]
+      ],
+      "answer": [
+        "openagents.computers-screen",
+        0.98
+      ],
+      "served": "openagents.computers-screen",
+      "reply": null,
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": null,
+      "admits": null,
+      "answers": null,
+      "embed_ms": 370,
+      "judge_ms": 146,
+      "generate_ms": 0,
+      "generate_usd": null,
+      "error": null
+    },
+    {
+      "id": "q034",
+      "question": "can I open a terminal on my mac from the phone",
+      "expect": [
+        "openagents.computers-screen"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.get-the-app",
+        "openagents.install-coder",
+        "openagents.computers-screen",
+        "openagents.auto-start",
+        "openagents.cli",
+        "openagents.android",
+        "openagents.version-and-changelog",
+        "openagents.connect-computer"
+      ],
+      "rank": 3,
+      "kept": [
+        [
+          "openagents.computers-screen",
+          0.94
+        ]
+      ],
+      "answer": [
+        "openagents.computers-screen",
+        0.9
+      ],
+      "served": "openagents.computers-screen",
+      "reply": null,
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": null,
+      "admits": null,
+      "answers": null,
+      "embed_ms": 402,
+      "judge_ms": 212,
+      "generate_ms": 0,
+      "generate_usd": null,
+      "error": null
+    },
+    {
+      "id": "q035",
+      "question": "where's my nsec",
+      "expect": [
+        "openagents.identity-keys"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.identity-keys",
+        "openagents.nip-cj",
+        "openagents.get-the-app",
+        "openagents.report-a-problem",
+        "openagents.microcoder",
+        "openagents.trainer-card",
+        "openagents.auto-start",
+        "openagents.nostr-and-relay"
+      ],
+      "rank": 1,
+      "kept": [
+        [
+          "openagents.identity-keys",
+          0.97
+        ]
+      ],
+      "answer": [
+        "openagents.identity-keys",
+        0.91
+      ],
+      "served": "openagents.identity-keys",
+      "reply": null,
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": null,
+      "admits": null,
+      "answers": null,
+      "embed_ms": 354,
+      "judge_ms": 150,
+      "generate_ms": 0,
+      "generate_usd": null,
+      "error": null
+    },
+    {
+      "id": "q036",
+      "question": "Is it safe to send my nsec to someone helping me debug?",
+      "expect": [
+        "openagents.identity-keys"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.identity-keys",
+        "openagents.wallet-send",
+        "openagents.report-a-problem",
+        "openagents.wallet-exit-backup",
+        "openagents.wallet-recovery",
+        "openagents.leaving-playtest",
+        "openagents.chat-privacy",
+        "openagents.wallet-receive"
+      ],
+      "rank": 1,
+      "kept": [
+        [
+          "openagents.identity-keys",
+          0.97
+        ]
+      ],
+      "answer": [
+        "openagents.identity-keys",
+        0.98
+      ],
+      "served": "openagents.identity-keys",
+      "reply": null,
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": null,
+      "admits": null,
+      "answers": null,
+      "embed_ms": 375,
+      "judge_ms": 219,
+      "generate_ms": 0,
+      "generate_usd": null,
+      "error": null
+    },
+    {
+      "id": "q037",
+      "question": "How do I back up my device key?",
+      "expect": [
+        "openagents.identity-keys"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.identity-keys",
+        "openagents.wallet-recovery",
+        "openagents.wallet-exit-backup",
+        "openagents.world-key",
+        "openagents.report-a-problem",
+        "openagents.get-the-app",
+        "openagents.computers-screen",
+        "openagents.leaving-playtest"
+      ],
+      "rank": 1,
+      "kept": [
+        [
+          "openagents.identity-keys",
+          0.96
+        ]
+      ],
+      "answer": [
+        "openagents.identity-keys",
+        0.91
+      ],
+      "served": "openagents.identity-keys",
+      "reply": null,
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": null,
+      "admits": null,
+      "answers": null,
+      "embed_ms": 265,
+      "judge_ms": 157,
+      "generate_ms": 0,
+      "generate_usd": null,
+      "error": null
+    },
+    {
+      "id": "q038",
+      "question": "what's the code floating over my character's head",
+      "expect": [
+        "openagents.world-key",
+        "openagents.verse-presence"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.verse-presence",
+        "openagents.world-key",
+        "openagents.verse-controls",
+        "openagents.trainer-card",
+        "openagents.report-a-problem",
+        "openagents.microcoder",
+        "openagents.get-the-app",
+        "openagents.playtesting"
+      ],
+      "rank": 1,
+      "kept": [
+        [
+          "openagents.world-key",
+          0.97
+        ]
+      ],
+      "answer": [
+        "openagents.world-key",
+        0.99
+      ],
+      "served": "openagents.world-key",
+      "reply": null,
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": null,
+      "admits": null,
+      "answers": null,
+      "embed_ms": 338,
+      "judge_ms": 160,
+      "generate_ms": 0,
+      "generate_usd": null,
+      "error": null
+    },
+    {
+      "id": "q039",
+      "question": "Why do I have two different keys?",
+      "expect": [
+        "openagents.world-key"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.world-key",
+        "openagents.identity-keys",
+        "openagents.get-the-app",
+        "openagents.report-a-problem",
+        "openagents.link-computer-key",
+        "openagents.wallet-recovery",
+        "openagents.verse-presence",
+        "openagents.trainer-card"
+      ],
+      "rank": 1,
+      "kept": [
+        [
+          "openagents.world-key",
+          0.91
+        ],
+        [
+          "openagents.identity-keys",
+          0.73
+        ]
+      ],
+      "answer": [
+        "openagents.world-key",
+        0.85
+      ],
+      "served": "openagents.world-key",
+      "reply": null,
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": null,
+      "admits": null,
+      "answers": null,
+      "embed_ms": 410,
+      "judge_ms": 170,
+      "generate_ms": 0,
+      "generate_usd": null,
+      "error": null
+    },
+    {
+      "id": "q040",
+      "question": "What is the Grid?",
+      "expect": [
+        "openagents.verse-grid"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.verse-grid",
+        "openagents.trainer-card",
+        "openagents.verse-controls",
+        "openagents.gym-results",
+        "openagents.verse-presence",
+        "openagents.get-the-app",
+        "openagents.world-key",
+        "openagents.lagrange-1"
+      ],
+      "rank": 1,
+      "kept": [
+        [
+          "openagents.verse-grid",
+          0.96
+        ]
+      ],
+      "answer": [
+        "openagents.verse-grid",
+        0.99
+      ],
+      "served": "openagents.verse-grid",
+      "reply": null,
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": null,
+      "admits": null,
+      "answers": null,
+      "embed_ms": 342,
+      "judge_ms": 197,
+      "generate_ms": 0,
+      "generate_usd": null,
+      "error": null
+    },
+    {
+      "id": "q041",
+      "question": "what am I supposed to do in verse",
+      "expect": [
+        "openagents.verse-grid"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.verse-grid",
+        "openagents.verse-controls",
+        "openagents.verse-presence",
+        "openagents.playtesting",
+        "openagents.get-the-app",
+        "openagents.playtest-xp",
+        "openagents.app-tabs",
+        "openagents.report-a-problem"
+      ],
+      "rank": 1,
+      "kept": [
+        [
+          "openagents.verse-grid",
+          0.93
+        ]
+      ],
+      "answer": [
+        "openagents.verse-grid",
+        0.82
+      ],
+      "served": "openagents.verse-grid",
+      "reply": null,
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": null,
+      "admits": null,
+      "answers": null,
+      "embed_ms": 240,
+      "judge_ms": 212,
+      "generate_ms": 0,
+      "generate_usd": null,
+      "error": null
+    },
+    {
+      "id": "q042",
+      "question": "I knocked the dominoes over, how do I put them back?",
+      "expect": [
+        "openagents.verse-grid"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.verse-controls",
+        "openagents.report-a-problem",
+        "openagents.verse-grid",
+        "openagents.get-the-app",
+        "openagents.leaving-playtest",
+        "openagents.computers-screen",
+        "openagents.wallet-recovery",
+        "openagents.trainer-card"
+      ],
+      "rank": 3,
+      "kept": [
+        [
+          "openagents.verse-grid",
+          0.95
+        ]
+      ],
+      "answer": [
+        "openagents.verse-grid",
+        0.95
+      ],
+      "served": "openagents.verse-grid",
+      "reply": null,
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": null,
+      "admits": null,
+      "answers": null,
+      "embed_ms": 349,
+      "judge_ms": 147,
+      "generate_ms": 0,
+      "generate_usd": null,
+      "error": null
+    },
+    {
+      "id": "q043",
+      "question": "Can I chat with other players in the Grid?",
+      "expect": [
+        "openagents.verse-grid",
+        "openagents.verse-presence"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.verse-presence",
+        "openagents.verse-controls",
+        "openagents.verse-grid",
+        "openagents.report-a-problem",
+        "openagents.trainer-card",
+        "openagents.nostr-and-relay",
+        "openagents.playtesting",
+        "openagents.get-the-app"
+      ],
+      "rank": 1,
+      "kept": [
+        [
+          "openagents.verse-grid",
+          0.92
+        ]
+      ],
+      "answer": [
+        "openagents.verse-grid",
+        0.84
+      ],
+      "served": "openagents.verse-grid",
+      "reply": null,
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": null,
+      "admits": null,
+      "answers": null,
+      "embed_ms": 320,
+      "judge_ms": 164,
+      "generate_ms": 0,
+      "generate_usd": null,
+      "error": null
+    },
+    {
+      "id": "q044",
+      "question": "how do I jump",
+      "expect": [
+        "openagents.verse-controls"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.verse-controls",
+        "openagents.get-the-app",
+        "openagents.report-a-problem",
+        "openagents.verse-grid",
+        "openagents.trainer-card",
+        "openagents.earn-xp",
+        "openagents.leaving-playtest",
+        "openagents.playtesting"
+      ],
+      "rank": 1,
+      "kept": [
+        [
+          "openagents.verse-controls",
+          0.87
+        ]
+      ],
+      "answer": [
+        "openagents.verse-controls",
+        0.9
+      ],
+      "served": "openagents.verse-controls",
+      "reply": null,
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": null,
+      "admits": null,
+      "answers": null,
+      "embed_ms": 348,
+      "judge_ms": 177,
+      "generate_ms": 0,
+      "generate_usd": null,
+      "error": null
+    },
+    {
+      "id": "q045",
+      "question": "How do I look around without moving my phone?",
+      "expect": [
+        "openagents.verse-controls"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.verse-controls",
+        "openagents.get-the-app",
+        "openagents.report-a-problem",
+        "openagents.verse-presence",
+        "openagents.version-and-changelog",
+        "openagents.verse-grid",
+        "openagents.trainer-card",
+        "openagents.nostr-and-relay"
+      ],
+      "rank": 1,
+      "kept": [
+        [
+          "openagents.verse-controls",
+          0.9
+        ]
+      ],
+      "answer": [
+        "openagents.verse-controls",
+        0.94
+      ],
+      "served": "openagents.verse-controls",
+      "reply": null,
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": null,
+      "admits": null,
+      "answers": null,
+      "embed_ms": 277,
+      "judge_ms": 185,
+      "generate_ms": 0,
+      "generate_usd": null,
+      "error": null
+    },
+    {
+      "id": "q046",
+      "question": "What's the RESULTS board?",
+      "expect": [
+        "openagents.gym-results"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.gym-results",
+        "openagents.get-the-app",
+        "openagents.trainer-card",
+        "openagents.report-a-problem",
+        "openagents.playtesting",
+        "openagents.playtest-xp",
+        "openagents.leaving-playtest",
+        "openagents.playtest-logging"
+      ],
+      "rank": 1,
+      "kept": [
+        [
+          "openagents.gym-results",
+          0.94
+        ]
+      ],
+      "answer": [
+        "openagents.gym-results",
+        0.99
+      ],
+      "served": "openagents.gym-results",
+      "reply": null,
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": null,
+      "admits": null,
+      "answers": null,
+      "embed_ms": 346,
+      "judge_ms": 163,
+      "generate_ms": 0,
+      "generate_usd": null,
+      "error": null
+    },
+    {
+      "id": "q047",
+      "question": "Where can I see the benchmark traces?",
+      "expect": [
+        "openagents.gym-results"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.gym-results",
+        "openagents.get-the-app",
+        "openagents.playtest-logging",
+        "openagents.report-a-problem",
+        "openagents.chat-privacy",
+        "openagents.leaving-playtest",
+        "openagents.version-and-changelog",
+        "openagents.trainer-card"
+      ],
+      "rank": 1,
+      "kept": [
+        [
+          "openagents.gym-results",
+          0.96
+        ]
+      ],
+      "answer": [
+        "openagents.gym-results",
+        0.98
+      ],
+      "served": "openagents.gym-results",
+      "reply": null,
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": null,
+      "admits": null,
+      "answers": null,
+      "embed_ms": 291,
+      "judge_ms": 162,
+      "generate_ms": 0,
+      "generate_usd": null,
+      "error": null
+    },
+    {
+      "id": "q048",
+      "question": "The gym board won't open when I tap it",
+      "expect": [
+        "openagents.gym-results"
+      ],
+      "t0_expected": false,
+      "nearest": [
+        "openagents.report-a-problem",
+        "openagents.get-the-app",
+        "openagents.gym-results",
+        "openagents.trainer-card",
+        "openagents.verse-grid",
+        "openagents.verse-controls",
+        "openagents.version-and-changelog",
+        "openagents.playtesting"
+      ],
+      "rank": 3,
+      "kept": [
+        [
+          "openagents.gym-results",
+          0.87
+        ]
+      ],
+      "answer": null,
+      "served": null,
+      "reply": "Which board you are tapping makes a difference:\n\n- If you are trying to open the central Gym board, it opens only with a Gym connection code granted to your world key [openagents.gym-results].\n- If you are tapping the RESULTS board, make sure you are standing within 6 meters, where the prompt reads \"TAP TO OPEN\" [openagents.gym-results]. The RESULTS board needs no connection to view [openagents.gym-results].",
+      "cited_known": [
+        "openagents.gym-results"
+      ],
+      "cited_unknown": [],
+      "supported": 0.94,
+      "admits": 0.03,
+      "answers": 0.84,
+      "embed_ms": 296,
+      "judge_ms": 196,
+      "generate_ms": 2560,
+      "generate_usd": 0.000672,
+      "error": null
+    },
+    {
+      "id": "q049",
+      "question": "how do I get to lagrange 1",
+      "expect": [
+        "openagents.lagrange-1"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.lagrange-1",
+        "openagents.verse-controls",
+        "openagents.playtesting",
+        "openagents.trainer-card",
+        "openagents.get-the-app",
+        "openagents.verse-presence",
+        "openagents.report-a-problem",
+        "openagents.gym-results"
+      ],
+      "rank": 1,
+      "kept": [
+        [
+          "openagents.lagrange-1",
+          0.97
+        ]
+      ],
+      "answer": [
+        "openagents.lagrange-1",
+        0.95
+      ],
+      "served": "openagents.lagrange-1",
+      "reply": null,
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": null,
+      "admits": null,
+      "answers": null,
+      "embed_ms": 381,
+      "judge_ms": 157,
+      "generate_ms": 0,
+      "generate_usd": null,
+      "error": null
+    },
+    {
+      "id": "q050",
+      "question": "Are the other people walking around real players?",
+      "expect": [
+        "openagents.verse-presence"
+      ],
+      "t0_expected": true,
+      "nearest": [],
+      "rank": null,
+      "kept": [],
+      "answer": null,
+      "served": null,
+      "reply": null,
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": null,
+      "admits": null,
+      "answers": null,
+      "embed_ms": 0,
+      "judge_ms": 0,
+      "generate_ms": 0,
+      "generate_usd": null,
+      "error": "failed: the relevance judgment failed: the request timed out after 1499ms"
+    },
+    {
+      "id": "q051",
+      "question": "Does the Verse tab share my location?",
+      "expect": [
+        "openagents.verse-presence"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.verse-presence",
+        "openagents.get-the-app",
+        "openagents.verse-grid",
+        "openagents.playtest-logging",
+        "openagents.app-tabs",
+        "openagents.verse-controls",
+        "openagents.report-a-problem",
+        "openagents.version-and-changelog"
+      ],
+      "rank": 1,
+      "kept": [
+        [
+          "openagents.verse-presence",
+          0.85
+        ]
+      ],
+      "answer": [
+        "openagents.verse-presence",
+        0.86
+      ],
+      "served": "openagents.verse-presence",
+      "reply": null,
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": null,
+      "admits": null,
+      "answers": null,
+      "embed_ms": 375,
+      "judge_ms": 180,
+      "generate_ms": 0,
+      "generate_usd": null,
+      "error": null
+    },
+    {
+      "id": "q052",
+      "question": "is the wallet real bitcoin or testnet",
+      "expect": [
+        "openagents.wallet"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.wallet",
+        "openagents.wallet-buy",
+        "openagents.wallet-amounts",
+        "openagents.wallet-recovery",
+        "openagents.wallet-receive",
+        "openagents.wallet-send",
+        "openagents.wallet-exit-backup",
+        "openagents.wallet-trust"
+      ],
+      "rank": 1,
+      "kept": [
+        [
+          "openagents.wallet",
+          0.98
+        ]
+      ],
+      "answer": [
+        "openagents.wallet",
+        1.0
+      ],
+      "served": "openagents.wallet",
+      "reply": null,
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": null,
+      "admits": null,
+      "answers": null,
+      "embed_ms": 541,
+      "judge_ms": 195,
+      "generate_ms": 0,
+      "generate_usd": null,
+      "error": null
+    },
+    {
+      "id": "q053",
+      "question": "What can the Wallet do?",
+      "expect": [
+        "openagents.wallet"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.wallet",
+        "openagents.get-the-app",
+        "openagents.wallet-receive",
+        "openagents.wallet-recovery",
+        "openagents.wallet-exit-backup",
+        "openagents.wallet-send",
+        "openagents.agent-payments",
+        "openagents.wallet-trust"
+      ],
+      "rank": 1,
+      "kept": [
+        [
+          "openagents.wallet",
+          0.97
+        ],
+        [
+          "openagents.wallet-send",
+          0.54
+        ]
+      ],
+      "answer": [
+        "openagents.wallet",
+        0.99
+      ],
+      "served": "openagents.wallet",
+      "reply": null,
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": null,
+      "admits": null,
+      "answers": null,
+      "embed_ms": 388,
+      "judge_ms": 207,
+      "generate_ms": 0,
+      "generate_usd": null,
+      "error": null
+    },
+    {
+      "id": "q054",
+      "question": "how do I get paid in bitcoin",
+      "expect": [
+        "openagents.wallet-receive"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.wallet-receive",
+        "openagents.wallet-send",
+        "openagents.wallet-buy",
+        "openagents.get-the-app",
+        "openagents.wallet",
+        "openagents.playtest-xp",
+        "openagents.playtesting",
+        "openagents.wallet-amounts"
+      ],
+      "rank": 1,
+      "kept": [
+        [
+          "openagents.wallet-receive",
+          0.97
+        ],
+        [
+          "openagents.wallet",
+          0.7
+        ]
+      ],
+      "answer": [
+        "openagents.wallet-receive",
+        0.98
+      ],
+      "served": "openagents.wallet-receive",
+      "reply": null,
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": null,
+      "admits": null,
+      "answers": null,
+      "embed_ms": 343,
+      "judge_ms": 191,
+      "generate_ms": 0,
+      "generate_usd": null,
+      "error": null
+    },
+    {
+      "id": "q055",
+      "question": "Do I have a lightning address I can give people?",
+      "expect": [
+        "openagents.wallet-receive"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.wallet-receive",
+        "openagents.wallet-send",
+        "openagents.get-the-app",
+        "openagents.wallet",
+        "openagents.trainer-card",
+        "openagents.wallet-buy",
+        "openagents.wallet-trust",
+        "openagents.wallet-exit-backup"
+      ],
+      "rank": 1,
+      "kept": [
+        [
+          "openagents.wallet-receive",
+          0.97
+        ],
+        [
+          "openagents.wallet",
+          0.54
+        ]
+      ],
+      "answer": [
+        "openagents.wallet-receive",
+        0.98
+      ],
+      "served": "openagents.wallet-receive",
+      "reply": null,
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": null,
+      "admits": null,
+      "answers": null,
+      "embed_ms": 241,
+      "judge_ms": 195,
+      "generate_ms": 0,
+      "generate_usd": null,
+      "error": null
+    },
+    {
+      "id": "q056",
+      "question": "How do I create an invoice for 5000?",
+      "expect": [
+        "openagents.wallet-receive"
+      ],
+      "t0_expected": false,
+      "nearest": [
+        "openagents.wallet-send",
+        "openagents.wallet-receive",
+        "openagents.agent-payments",
+        "openagents.chat-limits",
+        "openagents.wallet-amounts",
+        "openagents.report-a-problem",
+        "openagents.get-the-app",
+        "openagents.wallet-buy"
+      ],
+      "rank": 2,
+      "kept": [
+        [
+          "openagents.wallet-receive",
+          0.87
+        ]
+      ],
+      "answer": [
+        "openagents.wallet-receive",
+        0.84
+      ],
+      "served": "openagents.wallet-receive",
+      "reply": "In the Wallet, tap **Receive** and select a Lightning invoice, where you can set an amount [openagents.wallet-receive]. This will generate your invoice along with a QR code to receive the payment [openagents.wallet-receive].",
+      "cited_known": [
+        "openagents.wallet-receive"
+      ],
+      "cited_unknown": [],
+      "supported": 0.91,
+      "admits": 0.02,
+      "answers": 0.81,
+      "embed_ms": 349,
+      "judge_ms": 188,
+      "generate_ms": 2581,
+      "generate_usd": 0.000501,
+      "error": null
+    },
+    {
+      "id": "q057",
+      "question": "how do I send bitcoin to a friend",
+      "expect": [
+        "openagents.wallet-send"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.wallet-send",
+        "openagents.wallet-buy",
+        "openagents.wallet-receive",
+        "openagents.wallet",
+        "openagents.wallet-recovery",
+        "openagents.wallet-amounts",
+        "openagents.wallet-exit-backup",
+        "openagents.wallet-trust"
+      ],
+      "rank": 1,
+      "kept": [
+        [
+          "openagents.wallet-send",
+          0.97
+        ],
+        [
+          "openagents.wallet",
+          0.51
+        ]
+      ],
+      "answer": [
+        "openagents.wallet-send",
+        0.99
+      ],
+      "served": "openagents.wallet-send",
+      "reply": null,
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": null,
+      "admits": null,
+      "answers": null,
+      "embed_ms": 326,
+      "judge_ms": 157,
+      "generate_ms": 0,
+      "generate_usd": null,
+      "error": null
+    },
+    {
+      "id": "q058",
+      "question": "Can I pay a Lightning address?",
+      "expect": [
+        "openagents.wallet-send"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.wallet-send",
+        "openagents.wallet-receive",
+        "openagents.wallet-buy",
+        "openagents.wallet",
+        "openagents.agent-payments",
+        "openagents.wallet-exit-backup",
+        "openagents.wallet-trust",
+        "openagents.get-the-app"
+      ],
+      "rank": 1,
+      "kept": [
+        [
+          "openagents.wallet-send",
+          0.96
+        ],
+        [
+          "openagents.wallet",
+          0.55
+        ]
+      ],
+      "answer": [
+        "openagents.wallet-send",
+        0.94
+      ],
+      "served": "openagents.wallet-send",
+      "reply": null,
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": null,
+      "admits": null,
+      "answers": null,
+      "embed_ms": 373,
+      "judge_ms": 271,
+      "generate_ms": 0,
+      "generate_usd": null,
+      "error": null
+    },
+    {
+      "id": "q059",
+      "question": "how do I pay someone using their npub",
+      "expect": [
+        "openagents.wallet-send"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.wallet-send",
+        "openagents.wallet-receive",
+        "openagents.agent-payments",
+        "openagents.wallet-buy",
+        "openagents.identity-keys",
+        "openagents.nip-cj",
+        "openagents.nostr-and-relay",
+        "openagents.trainer-card"
+      ],
+      "rank": 1,
+      "kept": [
+        [
+          "openagents.wallet-send",
+          0.97
+        ]
+      ],
+      "answer": [
+        "openagents.wallet-send",
+        0.99
+      ],
+      "served": "openagents.wallet-send",
+      "reply": null,
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": null,
+      "admits": null,
+      "answers": null,
+      "embed_ms": 333,
+      "judge_ms": 166,
+      "generate_ms": 0,
+      "generate_usd": null,
+      "error": null
+    },
+    {
+      "id": "q060",
+      "question": "Can I buy bitcoin with my debit card?",
+      "expect": [
+        "openagents.wallet-buy"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.wallet-buy",
+        "openagents.wallet-send",
+        "openagents.wallet-receive",
+        "openagents.wallet",
+        "openagents.wallet-amounts",
+        "openagents.agent-payments",
+        "openagents.wallet-trust",
+        "openagents.wallet-exit-backup"
+      ],
+      "rank": 1,
+      "kept": [
+        [
+          "openagents.wallet-buy",
+          0.91
+        ],
+        [
+          "openagents.wallet",
+          0.8
+        ]
+      ],
+      "answer": [
+        "openagents.wallet-buy",
+        0.8
+      ],
+      "served": "openagents.wallet-buy",
+      "reply": null,
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": null,
+      "admits": null,
+      "answers": null,
+      "embed_ms": 446,
+      "judge_ms": 198,
+      "generate_ms": 0,
+      "generate_usd": null,
+      "error": null
+    },
+    {
+      "id": "q061",
+      "question": "does it work with cash app",
+      "expect": [
+        "openagents.wallet-buy"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.get-the-app",
+        "openagents.wallet-buy",
+        "openagents.wallet-send",
+        "openagents.wallet-receive",
+        "openagents.wallet",
+        "openagents.agent-payments",
+        "openagents.wallet-exit-backup",
+        "openagents.report-a-problem"
+      ],
+      "rank": 2,
+      "kept": [
+        [
+          "openagents.wallet-buy",
+          0.74
+        ],
+        [
+          "openagents.wallet",
+          0.59
+        ]
+      ],
+      "answer": [
+        "openagents.wallet-buy",
+        0.65
+      ],
+      "served": null,
+      "reply": "Yes, you can buy bitcoin with dollars through Cash App in the Wallet [openagents.wallet-buy]. When you choose Buy and enter how much bitcoin you want, paying through Cash App opens their page [openagents.wallet-buy]. On-chain deposits are then claimed into your balance automatically when they mature [openagents.wallet-buy].",
+      "cited_known": [
+        "openagents.wallet-buy"
+      ],
+      "cited_unknown": [],
+      "supported": 0.96,
+      "admits": 0.02,
+      "answers": 0.95,
+      "embed_ms": 432,
+      "judge_ms": 182,
+      "generate_ms": 1890,
+      "generate_usd": 0.00072675,
+      "error": null
+    },
+    {
+      "id": "q062",
+      "question": "why does the wallet say ₿10,000",
+      "expect": [
+        "openagents.wallet-amounts"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.wallet-amounts",
+        "openagents.agent-payments",
+        "openagents.wallet-send",
+        "openagents.wallet",
+        "openagents.wallet-recovery",
+        "openagents.wallet-buy",
+        "openagents.wallet-receive",
+        "openagents.get-the-app"
+      ],
+      "rank": 1,
+      "kept": [
+        [
+          "openagents.wallet-amounts",
+          0.98
+        ]
+      ],
+      "answer": [
+        "openagents.wallet-amounts",
+        0.97
+      ],
+      "served": "openagents.wallet-amounts",
+      "reply": null,
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": null,
+      "admits": null,
+      "answers": null,
+      "embed_ms": 323,
+      "judge_ms": 213,
+      "generate_ms": 0,
+      "generate_usd": null,
+      "error": null
+    },
+    {
+      "id": "q063",
+      "question": "How do I switch the amounts back to BTC?",
+      "expect": [
+        "openagents.wallet-amounts"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.wallet-amounts",
+        "openagents.wallet-send",
+        "openagents.wallet-buy",
+        "openagents.wallet-receive",
+        "openagents.wallet-exit-backup",
+        "openagents.wallet-recovery",
+        "openagents.get-the-app",
+        "openagents.wallet"
+      ],
+      "rank": 1,
+      "kept": [
+        [
+          "openagents.wallet-amounts",
+          0.93
+        ]
+      ],
+      "answer": [
+        "openagents.wallet-amounts",
+        0.58
+      ],
+      "served": null,
+      "reply": "You can switch back to legacy BTC using **Show amounts as** in the Wallet [openagents.wallet-amounts]. We apply this choice across every screen at once [openagents.wallet-amounts].",
+      "cited_known": [
+        "openagents.wallet-amounts"
+      ],
+      "cited_unknown": [],
+      "supported": 0.91,
+      "admits": 0.02,
+      "answers": 0.91,
+      "embed_ms": 1483,
+      "judge_ms": 172,
+      "generate_ms": 3762,
+      "generate_usd": 0.0004725,
+      "error": null
+    },
+    {
+      "id": "q064",
+      "question": "Where are my recovery words?",
+      "expect": [
+        "openagents.wallet-recovery"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.wallet-recovery",
+        "openagents.wallet-exit-backup",
+        "openagents.identity-keys",
+        "openagents.report-a-problem",
+        "openagents.get-the-app",
+        "openagents.computers-screen",
+        "openagents.trainer-card",
+        "openagents.leaving-playtest"
+      ],
+      "rank": 1,
+      "kept": [
+        [
+          "openagents.wallet-recovery",
+          0.96
+        ]
+      ],
+      "answer": [
+        "openagents.wallet-recovery",
+        0.98
+      ],
+      "served": "openagents.wallet-recovery",
+      "reply": null,
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": null,
+      "admits": null,
+      "answers": null,
+      "embed_ms": 319,
+      "judge_ms": 187,
+      "generate_ms": 0,
+      "generate_usd": null,
+      "error": null
+    },
+    {
+      "id": "q065",
+      "question": "I got a new phone, how do I restore my wallet",
+      "expect": [
+        "openagents.wallet-recovery"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.wallet-recovery",
+        "openagents.wallet-exit-backup",
+        "openagents.get-the-app",
+        "openagents.identity-keys",
+        "openagents.wallet-receive",
+        "openagents.wallet",
+        "openagents.report-a-problem",
+        "openagents.wallet-send"
+      ],
+      "rank": 1,
+      "kept": [
+        [
+          "openagents.wallet-recovery",
+          0.96
+        ]
+      ],
+      "answer": [
+        "openagents.wallet-recovery",
+        0.88
+      ],
+      "served": "openagents.wallet-recovery",
+      "reply": null,
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": null,
+      "admits": null,
+      "answers": null,
+      "embed_ms": 367,
+      "judge_ms": 206,
+      "generate_ms": 0,
+      "generate_usd": null,
+      "error": null
+    },
+    {
+      "id": "q066",
+      "question": "Someone in a Discord says they're OpenAgents support and needs my seed phrase to fix my wallet",
+      "expect": [
+        "openagents.wallet-recovery"
+      ],
+      "t0_expected": false,
+      "nearest": [
+        "openagents.wallet-recovery",
+        "openagents.wallet",
+        "openagents.overview",
+        "openagents.wallet-exit-backup",
+        "openagents.nostr-and-relay",
+        "openagents.pricing",
+        "openagents.app-tabs",
+        "openagents.agent-payments"
+      ],
+      "rank": 1,
+      "kept": [
+        [
+          "openagents.wallet-recovery",
+          0.96
+        ]
+      ],
+      "answer": [
+        "openagents.wallet-recovery",
+        0.88
+      ],
+      "served": "openagents.wallet-recovery",
+      "reply": "Do not share your recovery words with them. We will never ask for your recovery words, and no one from OpenAgents will [openagents.wallet-recovery]. Anyone who has them has your bitcoin [openagents.wallet-recovery].",
+      "cited_known": [
+        "openagents.wallet-recovery"
+      ],
+      "cited_unknown": [],
+      "supported": 0.95,
+      "admits": 0.02,
+      "answers": 0.95,
+      "embed_ms": 370,
+      "judge_ms": 216,
+      "generate_ms": 4211,
+      "generate_usd": 0.00052275,
+      "error": null
+    },
+    {
+      "id": "q067",
+      "question": "Is the wallet custodial?",
+      "expect": [
+        "openagents.wallet-trust"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.wallet-trust",
+        "openagents.wallet-recovery",
+        "openagents.wallet-exit-backup",
+        "openagents.wallet",
+        "openagents.wallet-receive",
+        "openagents.wallet-send",
+        "openagents.wallet-buy",
+        "openagents.get-the-app"
+      ],
+      "rank": 1,
+      "kept": [
+        [
+          "openagents.wallet-trust",
+          0.91
+        ],
+        [
+          "openagents.wallet",
+          0.61
+        ]
+      ],
+      "answer": [
+        "openagents.wallet-trust",
+        0.93
+      ],
+      "served": "openagents.wallet-trust",
+      "reply": null,
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": null,
+      "admits": null,
+      "answers": null,
+      "embed_ms": 319,
+      "judge_ms": 162,
+      "generate_ms": 0,
+      "generate_usd": null,
+      "error": null
+    },
+    {
+      "id": "q068",
+      "question": "What happens to my funds if Breez goes out of business?",
+      "expect": [
+        "openagents.wallet-trust",
+        "openagents.wallet-exit-backup"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.wallet-trust",
+        "openagents.wallet",
+        "openagents.wallet-exit-backup",
+        "openagents.leaving-playtest",
+        "openagents.wallet-buy",
+        "openagents.get-the-app",
+        "openagents.wallet-recovery",
+        "openagents.wallet-receive"
+      ],
+      "rank": 1,
+      "kept": [
+        [
+          "openagents.wallet-trust",
+          0.94
+        ],
+        [
+          "openagents.wallet-exit-backup",
+          0.72
+        ]
+      ],
+      "answer": [
+        "openagents.wallet-trust",
+        0.96
+      ],
+      "served": "openagents.wallet-trust",
+      "reply": null,
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": null,
+      "admits": null,
+      "answers": null,
+      "embed_ms": 333,
+      "judge_ms": 198,
+      "generate_ms": 0,
+      "generate_usd": null,
+      "error": null
+    },
+    {
+      "id": "q069",
+      "question": "what is spark",
+      "expect": [
+        "openagents.wallet-trust"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.wallet-exit-backup",
+        "openagents.wallet-trust",
+        "openagents.wallet",
+        "openagents.get-the-app",
+        "openagents.wallet-receive",
+        "openagents.trainer-card",
+        "openagents.gym-results",
+        "openagents.playtesting"
+      ],
+      "rank": 2,
+      "kept": [
+        [
+          "openagents.wallet-trust",
+          0.86
+        ]
+      ],
+      "answer": [
+        "openagents.wallet-trust",
+        0.79
+      ],
+      "served": null,
+      "reply": "Spark is the system our Wallet runs on instead of running a Lightning node of your own, while your keys stay on your phone [openagents.wallet-trust]. \n\nIts operators are run by three companies—Lightspark, Breez, and Flashnet—and two must cooperate for off-chain payments [openagents.wallet-trust]. If the operators ever stop, you can still withdraw your funds on-chain yourself [openagents.wallet-trust].",
+      "cited_known": [
+        "openagents.wallet-trust"
+      ],
+      "cited_unknown": [],
+      "supported": 0.93,
+      "admits": 0.02,
+      "answers": 0.92,
+      "embed_ms": 375,
+      "judge_ms": 181,
+      "generate_ms": 3108,
+      "generate_usd": 0.00066825,
+      "error": null
+    },
+    {
+      "id": "q070",
+      "question": "What's the exit backup for?",
+      "expect": [
+        "openagents.wallet-exit-backup"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.wallet-exit-backup",
+        "openagents.wallet-recovery",
+        "openagents.get-the-app",
+        "openagents.leaving-playtest",
+        "openagents.report-a-problem",
+        "openagents.computers-screen",
+        "openagents.computer-offline",
+        "openagents.coder-engines"
+      ],
+      "rank": 1,
+      "kept": [
+        [
+          "openagents.wallet-exit-backup",
+          0.96
+        ]
+      ],
+      "answer": [
+        "openagents.wallet-exit-backup",
+        0.99
+      ],
+      "served": "openagents.wallet-exit-backup",
+      "reply": null,
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": null,
+      "admits": null,
+      "answers": null,
+      "embed_ms": 340,
+      "judge_ms": 152,
+      "generate_ms": 0,
+      "generate_usd": null,
+      "error": null
+    },
+    {
+      "id": "q071",
+      "question": "An agent on my computer wants to pay for something, how do I allow it?",
+      "expect": [
+        "openagents.agent-payments"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.agent-payments",
+        "openagents.computers-screen",
+        "openagents.auto-start",
+        "openagents.wallet-send",
+        "openagents.wallet-recovery",
+        "openagents.get-the-app",
+        "openagents.wallet-buy",
+        "openagents.wallet-receive"
+      ],
+      "rank": 1,
+      "kept": [
+        [
+          "openagents.agent-payments",
+          0.97
+        ]
+      ],
+      "answer": [
+        "openagents.agent-payments",
+        0.99
+      ],
+      "served": "openagents.agent-payments",
+      "reply": null,
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": null,
+      "admits": null,
+      "answers": null,
+      "embed_ms": 379,
+      "judge_ms": 189,
+      "generate_ms": 0,
+      "generate_usd": null,
+      "error": null
+    },
+    {
+      "id": "q072",
+      "question": "how do I make my computer stop asking me for payments",
+      "expect": [
+        "openagents.agent-payments"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.agent-payments",
+        "openagents.computers-screen",
+        "openagents.get-the-app",
+        "openagents.wallet-buy",
+        "openagents.wallet-send",
+        "openagents.leaving-playtest",
+        "openagents.auto-start",
+        "openagents.report-a-problem"
+      ],
+      "rank": 1,
+      "kept": [
+        [
+          "openagents.agent-payments",
+          0.94
+        ]
+      ],
+      "answer": [
+        "openagents.agent-payments",
+        0.89
+      ],
+      "served": "openagents.agent-payments",
+      "reply": null,
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": null,
+      "admits": null,
+      "answers": null,
+      "embed_ms": 236,
+      "judge_ms": 282,
+      "generate_ms": 0,
+      "generate_usd": null,
+      "error": null
+    },
+    {
+      "id": "q073",
+      "question": "do I need an account or password",
+      "expect": [
+        "openagents.nostr-and-relay"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.get-the-app",
+        "openagents.report-a-problem",
+        "openagents.playtesting",
+        "openagents.nostr-and-relay",
+        "openagents.computers-screen",
+        "openagents.leaving-playtest",
+        "openagents.wallet-send",
+        "openagents.wallet-receive"
+      ],
+      "rank": 4,
+      "kept": [
+        [
+          "openagents.nostr-and-relay",
+          0.98
+        ]
+      ],
+      "answer": [
+        "openagents.nostr-and-relay",
+        1.0
+      ],
+      "served": "openagents.nostr-and-relay",
+      "reply": null,
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": null,
+      "admits": null,
+      "answers": null,
+      "embed_ms": 795,
+      "judge_ms": 248,
+      "generate_ms": 0,
+      "generate_usd": null,
+      "error": null
+    },
+    {
+      "id": "q074",
+      "question": "what is relay.openagents.com",
+      "expect": [
+        "openagents.nostr-and-relay"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.nostr-and-relay",
+        "openagents.overview",
+        "openagents.chat-limits",
+        "openagents.open-source",
+        "openagents.cli",
+        "openagents.pricing",
+        "openagents.wallet",
+        "openagents.chat-privacy"
+      ],
+      "rank": 1,
+      "kept": [
+        [
+          "openagents.nostr-and-relay",
+          0.98
+        ],
+        [
+          "openagents.chat-privacy",
+          0.62
+        ]
+      ],
+      "answer": [
+        "openagents.nostr-and-relay",
+        1.0
+      ],
+      "served": "openagents.nostr-and-relay",
+      "reply": null,
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": null,
+      "admits": null,
+      "answers": null,
+      "embed_ms": 388,
+      "judge_ms": 178,
+      "generate_ms": 0,
+      "generate_usd": null,
+      "error": null
+    },
+    {
+      "id": "q075",
+      "question": "What is NIP-CJ?",
+      "expect": [
+        "openagents.nip-cj"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.nip-cj",
+        "openagents.get-the-app",
+        "openagents.cli",
+        "openagents.nostr-and-relay",
+        "openagents.jev",
+        "openagents.identity-keys",
+        "openagents.wallet-send",
+        "openagents.coder-engines"
+      ],
+      "rank": 1,
+      "kept": [
+        [
+          "openagents.nip-cj",
+          0.97
+        ]
+      ],
+      "answer": [
+        "openagents.nip-cj",
+        0.99
+      ],
+      "served": "openagents.nip-cj",
+      "reply": null,
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": null,
+      "admits": null,
+      "answers": null,
+      "embed_ms": 430,
+      "judge_ms": 172,
+      "generate_ms": 0,
+      "generate_usd": null,
+      "error": null
+    },
+    {
+      "id": "q076",
+      "question": "what does kind 25900 carry",
+      "expect": [
+        "openagents.nip-cj"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.nip-cj",
+        "openagents.coder-engines",
+        "openagents.world-key",
+        "openagents.get-the-app",
+        "openagents.jev",
+        "openagents.microcoder",
+        "openagents.nostr-and-relay",
+        "openagents.identity-keys"
+      ],
+      "rank": 1,
+      "kept": [
+        [
+          "openagents.nip-cj",
+          0.96
+        ]
+      ],
+      "answer": [
+        "openagents.nip-cj",
+        0.88
+      ],
+      "served": "openagents.nip-cj",
+      "reply": null,
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": null,
+      "admits": null,
+      "answers": null,
+      "embed_ms": 864,
+      "judge_ms": 176,
+      "generate_ms": 0,
+      "generate_usd": null,
+      "error": null
+    },
+    {
+      "id": "q077",
+      "question": "How do I join the beta?",
+      "expect": [
+        "openagents.playtesting",
+        "openagents.get-the-app"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.get-the-app",
+        "openagents.playtesting",
+        "openagents.report-a-problem",
+        "openagents.leaving-playtest",
+        "openagents.playtest-xp",
+        "openagents.trainer-card",
+        "openagents.playtest-logging",
+        "openagents.version-and-changelog"
+      ],
+      "rank": 1,
+      "kept": [
+        [
+          "openagents.playtesting",
+          0.95
+        ],
+        [
+          "openagents.get-the-app",
+          0.75
+        ]
+      ],
+      "answer": [
+        "openagents.playtesting",
+        0.94
+      ],
+      "served": "openagents.playtesting",
+      "reply": null,
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": null,
+      "admits": null,
+      "answers": null,
+      "embed_ms": 293,
+      "judge_ms": 210,
+      "generate_ms": 0,
+      "generate_usd": null,
+      "error": null
+    },
+    {
+      "id": "q078",
+      "question": "Do playtesters get paid?",
+      "expect": [
+        "openagents.playtesting",
+        "openagents.playtest-xp"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.playtest-xp",
+        "openagents.playtesting",
+        "openagents.get-the-app",
+        "openagents.report-a-problem",
+        "openagents.leaving-playtest",
+        "openagents.playtest-logging",
+        "openagents.earn-xp",
+        "openagents.trainer-card"
+      ],
+      "rank": 1,
+      "kept": [
+        [
+          "openagents.playtest-xp",
+          0.95
+        ],
+        [
+          "openagents.playtesting",
+          0.89
+        ]
+      ],
+      "answer": [
+        "openagents.playtest-xp",
+        0.9
+      ],
+      "served": "openagents.playtest-xp",
+      "reply": null,
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": null,
+      "admits": null,
+      "answers": null,
+      "embed_ms": 413,
+      "judge_ms": 189,
+      "generate_ms": 0,
+      "generate_usd": null,
+      "error": null
+    },
+    {
+      "id": "q079",
+      "question": "Where can I download the Android app?",
+      "expect": [
+        "openagents.get-the-app",
+        "openagents.android"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.get-the-app",
+        "openagents.report-a-problem",
+        "openagents.android",
+        "openagents.version-and-changelog",
+        "openagents.nostr-and-relay",
+        "openagents.playtesting",
+        "openagents.verse-controls",
+        "openagents.wallet-receive"
+      ],
+      "rank": 1,
+      "kept": [
+        [
+          "openagents.get-the-app",
+          0.98
+        ],
+        [
+          "openagents.playtesting",
+          0.58
+        ]
+      ],
+      "answer": [
+        "openagents.get-the-app",
+        0.73
+      ],
+      "served": null,
+      "reply": "On Android, our app is available as a signed APK from a GitHub release [openagents.get-the-app].",
+      "cited_known": [
+        "openagents.get-the-app"
+      ],
+      "cited_unknown": [],
+      "supported": 0.96,
+      "admits": 0.02,
+      "answers": 0.91,
+      "embed_ms": 385,
+      "judge_ms": 226,
+      "generate_ms": 1990,
+      "generate_usd": 0.000528,
+      "error": null
+    },
+    {
+      "id": "q080",
+      "question": "is openagents on the app store",
+      "expect": [
+        "openagents.get-the-app"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.overview",
+        "openagents.android",
+        "openagents.open-source",
+        "openagents.cli",
+        "openagents.nostr-and-relay",
+        "openagents.pricing",
+        "openagents.chat-limits",
+        "openagents.get-the-app"
+      ],
+      "rank": 8,
+      "kept": [
+        [
+          "openagents.get-the-app",
+          0.95
+        ]
+      ],
+      "answer": [
+        "openagents.get-the-app",
+        0.94
+      ],
+      "served": "openagents.get-the-app",
+      "reply": null,
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": null,
+      "admits": null,
+      "answers": null,
+      "embed_ms": 403,
+      "judge_ms": 169,
+      "generate_ms": 0,
+      "generate_usd": null,
+      "error": null
+    },
+    {
+      "id": "q081",
+      "question": "The app crashed, how do I report it",
+      "expect": [
+        "openagents.report-a-problem"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.get-the-app",
+        "openagents.report-a-problem",
+        "openagents.version-and-changelog",
+        "openagents.leaving-playtest",
+        "openagents.playtest-logging",
+        "openagents.playtesting",
+        "openagents.wallet-exit-backup",
+        "openagents.nostr-and-relay"
+      ],
+      "rank": 2,
+      "kept": [
+        [
+          "openagents.report-a-problem",
+          0.97
+        ]
+      ],
+      "answer": [
+        "openagents.report-a-problem",
+        1.0
+      ],
+      "served": "openagents.report-a-problem",
+      "reply": null,
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": null,
+      "admits": null,
+      "answers": null,
+      "embed_ms": 260,
+      "judge_ms": 247,
+      "generate_ms": 0,
+      "generate_usd": null,
+      "error": null
+    },
+    {
+      "id": "q082",
+      "question": "where can I see the bug reports I sent",
+      "expect": [
+        "openagents.report-a-problem"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.report-a-problem",
+        "openagents.get-the-app",
+        "openagents.version-and-changelog",
+        "openagents.playtest-logging",
+        "openagents.leaving-playtest",
+        "openagents.playtesting",
+        "openagents.previous-chats",
+        "openagents.trainer-card"
+      ],
+      "rank": 1,
+      "kept": [
+        [
+          "openagents.report-a-problem",
+          0.97
+        ]
+      ],
+      "answer": [
+        "openagents.report-a-problem",
+        0.99
+      ],
+      "served": "openagents.report-a-problem",
+      "reply": null,
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": null,
+      "admits": null,
+      "answers": null,
+      "embed_ms": 357,
+      "judge_ms": 193,
+      "generate_ms": 0,
+      "generate_usd": null,
+      "error": null
+    },
+    {
+      "id": "q083",
+      "question": "Does this app track me or send analytics?",
+      "expect": [
+        "openagents.playtest-logging"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.get-the-app",
+        "openagents.playtest-logging",
+        "openagents.report-a-problem",
+        "openagents.version-and-changelog",
+        "openagents.verse-presence",
+        "openagents.chat-privacy",
+        "openagents.leaving-playtest",
+        "openagents.playtesting"
+      ],
+      "rank": 2,
+      "kept": [
+        [
+          "openagents.playtest-logging",
+          0.97
+        ]
+      ],
+      "answer": [
+        "openagents.playtest-logging",
+        0.99
+      ],
+      "served": "openagents.playtest-logging",
+      "reply": null,
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": null,
+      "admits": null,
+      "answers": null,
+      "embed_ms": 929,
+      "judge_ms": 165,
+      "generate_ms": 0,
+      "generate_usd": null,
+      "error": null
+    },
+    {
+      "id": "q084",
+      "question": "what's in the playtest log",
+      "expect": [
+        "openagents.playtest-logging"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.playtesting",
+        "openagents.report-a-problem",
+        "openagents.playtest-logging",
+        "openagents.playtest-xp",
+        "openagents.get-the-app",
+        "openagents.leaving-playtest",
+        "openagents.trainer-card",
+        "openagents.version-and-changelog"
+      ],
+      "rank": 3,
+      "kept": [
+        [
+          "openagents.playtest-logging",
+          0.93
+        ]
+      ],
+      "answer": [
+        "openagents.playtest-logging",
+        0.92
+      ],
+      "served": "openagents.playtest-logging",
+      "reply": null,
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": null,
+      "admits": null,
+      "answers": null,
+      "embed_ms": 269,
+      "judge_ms": 153,
+      "generate_ms": 0,
+      "generate_usd": null,
+      "error": null
+    },
+    {
+      "id": "q085",
+      "question": "How much XP do I get for a bug report?",
+      "expect": [
+        "openagents.playtest-xp"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.report-a-problem",
+        "openagents.playtest-xp",
+        "openagents.playtesting",
+        "openagents.earn-xp",
+        "openagents.trainer-card",
+        "openagents.link-computer-key",
+        "openagents.leaving-playtest",
+        "openagents.get-the-app"
+      ],
+      "rank": 2,
+      "kept": [
+        [
+          "openagents.playtest-xp",
+          0.93
+        ]
+      ],
+      "answer": [
+        "openagents.playtest-xp",
+        0.97
+      ],
+      "served": "openagents.playtest-xp",
+      "reply": null,
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": null,
+      "admits": null,
+      "answers": null,
+      "embed_ms": 344,
+      "judge_ms": 218,
+      "generate_ms": 0,
+      "generate_usd": null,
+      "error": null
+    },
+    {
+      "id": "q086",
+      "question": "What level am I and how do levels work?",
+      "expect": [
+        "openagents.trainer-card"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.trainer-card",
+        "openagents.playtesting",
+        "openagents.earn-xp",
+        "openagents.playtest-xp",
+        "openagents.report-a-problem",
+        "openagents.get-the-app",
+        "openagents.verse-presence",
+        "openagents.link-computer-key"
+      ],
+      "rank": 1,
+      "kept": [
+        [
+          "openagents.trainer-card",
+          0.95
+        ],
+        [
+          "openagents.earn-xp",
+          0.69
+        ]
+      ],
+      "answer": [
+        "openagents.trainer-card",
+        0.72
+      ],
+      "served": null,
+      "reply": "You can check your current level by going to **Account > Trainer**, which displays your trainer card with your level, XP, and progress to the next level [openagents.trainer-card]. \n\nHere is how levels work:\n- Everyone starts at level 1 [openagents.trainer-card].\n- Level 2 is unlocked at 100 XP, level 3 at 283 XP, and level 4 at 520 XP [openagents.trainer-card].\n- Levels follow `trainer-curve-v1`, and anyone can recompute them from signed events on our relay [openagents.trainer-card].\n- Turning on **Show my level** lets other players see your level over your head in the Grid [openagents.trainer-card].\n- Right now, you earn 50 XP per completed tutorial quest, and XP serves as a record, not money [openagents.earn-xp].",
+      "cited_known": [
+        "openagents.trainer-card",
+        "openagents.earn-xp"
+      ],
+      "cited_unknown": [],
+      "supported": 0.93,
+      "admits": 0.02,
+      "answers": 0.68,
+      "embed_ms": 369,
+      "judge_ms": 196,
+      "generate_ms": 4987,
+      "generate_usd": 0.00125325,
+      "error": null
+    },
+    {
+      "id": "q087",
+      "question": "how do I hide my level from other players",
+      "expect": [
+        "openagents.trainer-card"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.trainer-card",
+        "openagents.verse-presence",
+        "openagents.leaving-playtest",
+        "openagents.report-a-problem",
+        "openagents.playtesting",
+        "openagents.link-computer-key",
+        "openagents.earn-xp",
+        "openagents.playtest-logging"
+      ],
+      "rank": 1,
+      "kept": [
+        [
+          "openagents.trainer-card",
+          0.94
+        ],
+        [
+          "openagents.verse-presence",
+          0.6
+        ]
+      ],
+      "answer": null,
+      "served": null,
+      "reply": "You can hide your level by going to **Account > Trainer** and choosing **Hide my level**, which replaces your published trainer profile [openagents.trainer-card]. This keeps other players in the Grid from seeing your level displayed over your head [openagents.trainer-card, openagents.verse-presence].",
+      "cited_known": [
+        "openagents.trainer-card",
+        "openagents.verse-presence"
+      ],
+      "cited_unknown": [],
+      "supported": 0.82,
+      "admits": 0.01,
+      "answers": 0.89,
+      "embed_ms": 339,
+      "judge_ms": 172,
+      "generate_ms": 2215,
+      "generate_usd": 0.00073875,
+      "error": null
+    },
+    {
+      "id": "q088",
+      "question": "How do I earn XP?",
+      "expect": [
+        "openagents.earn-xp",
+        "openagents.playtest-xp"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.earn-xp",
+        "openagents.playtesting",
+        "openagents.playtest-xp",
+        "openagents.trainer-card",
+        "openagents.link-computer-key",
+        "openagents.get-the-app",
+        "openagents.report-a-problem",
+        "openagents.verse-controls"
+      ],
+      "rank": 1,
+      "kept": [
+        [
+          "openagents.earn-xp",
+          0.94
+        ]
+      ],
+      "answer": [
+        "openagents.earn-xp",
+        0.85
+      ],
+      "served": "openagents.earn-xp",
+      "reply": null,
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": null,
+      "admits": null,
+      "answers": null,
+      "embed_ms": 345,
+      "judge_ms": 204,
+      "generate_ms": 0,
+      "generate_usd": null,
+      "error": null
+    },
+    {
+      "id": "q089",
+      "question": "Is XP worth any money?",
+      "expect": [
+        "openagents.earn-xp",
+        "openagents.playtest-xp"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.earn-xp",
+        "openagents.playtest-xp",
+        "openagents.playtesting",
+        "openagents.link-computer-key",
+        "openagents.trainer-card",
+        "openagents.get-the-app",
+        "openagents.world-key",
+        "openagents.report-a-problem"
+      ],
+      "rank": 1,
+      "kept": [
+        [
+          "openagents.earn-xp",
+          0.91
+        ]
+      ],
+      "answer": [
+        "openagents.earn-xp",
+        0.89
+      ],
+      "served": "openagents.earn-xp",
+      "reply": null,
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": null,
+      "admits": null,
+      "answers": null,
+      "embed_ms": 285,
+      "judge_ms": 156,
+      "generate_ms": 0,
+      "generate_usd": null,
+      "error": null
+    },
+    {
+      "id": "q090",
+      "question": "I want my desktop's reproductions to count toward my phone's level without copying keys around",
+      "expect": [
+        "openagents.link-computer-key"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.link-computer-key",
+        "openagents.get-the-app",
+        "openagents.report-a-problem",
+        "openagents.trainer-card",
+        "openagents.world-key",
+        "openagents.verse-presence",
+        "openagents.verse-controls",
+        "openagents.playtesting"
+      ],
+      "rank": 1,
+      "kept": [
+        [
+          "openagents.link-computer-key",
+          0.95
+        ]
+      ],
+      "answer": [
+        "openagents.link-computer-key",
+        0.95
+      ],
+      "served": "openagents.link-computer-key",
+      "reply": null,
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": null,
+      "admits": null,
+      "answers": null,
+      "embed_ms": 356,
+      "judge_ms": 156,
+      "generate_ms": 0,
+      "generate_usd": null,
+      "error": null
+    },
+    {
+      "id": "q091",
+      "question": "Is this open source?",
+      "expect": [
+        "openagents.open-source"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.get-the-app",
+        "openagents.open-source",
+        "openagents.report-a-problem",
+        "openagents.playtesting",
+        "openagents.android",
+        "openagents.chat-features-later",
+        "openagents.overview",
+        "openagents.playtest-logging"
+      ],
+      "rank": 2,
+      "kept": [
+        [
+          "openagents.open-source",
+          0.98
+        ]
+      ],
+      "answer": [
+        "openagents.open-source",
+        1.0
+      ],
+      "served": "openagents.open-source",
+      "reply": null,
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": null,
+      "admits": null,
+      "answers": null,
+      "embed_ms": 398,
+      "judge_ms": 157,
+      "generate_ms": 0,
+      "generate_usd": null,
+      "error": null
+    },
+    {
+      "id": "q092",
+      "question": "what license is the code under",
+      "expect": [
+        "openagents.open-source"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.get-the-app",
+        "openagents.open-source",
+        "openagents.report-a-problem",
+        "openagents.coder-engines",
+        "openagents.auto-start",
+        "openagents.install-coder",
+        "openagents.leaving-playtest",
+        "openagents.chat-features-later"
+      ],
+      "rank": 2,
+      "kept": [
+        [
+          "openagents.open-source",
+          0.98
+        ]
+      ],
+      "answer": [
+        "openagents.open-source",
+        1.0
+      ],
+      "served": "openagents.open-source",
+      "reply": null,
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": null,
+      "admits": null,
+      "answers": null,
+      "embed_ms": 398,
+      "judge_ms": 185,
+      "generate_ms": 0,
+      "generate_usd": null,
+      "error": null
+    },
+    {
+      "id": "q093",
+      "question": "What's the openagents CLI?",
+      "expect": [
+        "openagents.cli"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.cli",
+        "openagents.open-source",
+        "openagents.overview",
+        "openagents.android",
+        "openagents.chat-limits",
+        "openagents.pricing",
+        "openagents.nostr-and-relay",
+        "openagents.wallet-recovery"
+      ],
+      "rank": 1,
+      "kept": [
+        [
+          "openagents.cli",
+          0.97
+        ]
+      ],
+      "answer": [
+        "openagents.cli",
+        0.99
+      ],
+      "served": "openagents.cli",
+      "reply": null,
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": null,
+      "admits": null,
+      "answers": null,
+      "embed_ms": 397,
+      "judge_ms": 232,
+      "generate_ms": 0,
+      "generate_usd": null,
+      "error": null
+    },
+    {
+      "id": "q094",
+      "question": "how much does openagents cost",
+      "expect": [
+        "openagents.pricing"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.pricing",
+        "openagents.chat-limits",
+        "openagents.open-source",
+        "openagents.overview",
+        "openagents.cli",
+        "openagents.android",
+        "openagents.computer-requirements",
+        "openagents.app-tabs"
+      ],
+      "rank": 1,
+      "kept": [
+        [
+          "openagents.pricing",
+          0.96
+        ]
+      ],
+      "answer": [
+        "openagents.pricing",
+        0.77
+      ],
+      "served": null,
+      "reply": "We haven't published pricing yet [openagents.pricing]. \n\nCurrently, our documentation notes that the chat has daily message limits per device, and Coder runs on your own computer with model providers connected there [openagents.pricing]. Additionally, wallet payments carry network and routing fees, which are shown on the confirm screen before you send [openagents.pricing].",
+      "cited_known": [
+        "openagents.pricing"
+      ],
+      "cited_unknown": [],
+      "supported": 0.96,
+      "admits": 0.92,
+      "answers": 0.9,
+      "embed_ms": 449,
+      "judge_ms": 181,
+      "generate_ms": 2294,
+      "generate_usd": 0.00055275,
+      "error": null
+    },
+    {
+      "id": "q095",
+      "question": "Is there a pro plan?",
+      "expect": [
+        "openagents.pricing"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.get-the-app",
+        "openagents.playtesting",
+        "openagents.pricing",
+        "openagents.report-a-problem",
+        "openagents.chat-features-later",
+        "openagents.chat-limits",
+        "openagents.trainer-card",
+        "openagents.playtest-xp"
+      ],
+      "rank": 3,
+      "kept": [
+        [
+          "openagents.pricing",
+          0.95
+        ]
+      ],
+      "answer": [
+        "openagents.pricing",
+        0.83
+      ],
+      "served": "openagents.pricing",
+      "reply": null,
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": null,
+      "admits": null,
+      "answers": null,
+      "embed_ms": 407,
+      "judge_ms": 173,
+      "generate_ms": 0,
+      "generate_usd": null,
+      "error": null
+    },
+    {
+      "id": "q096",
+      "question": "what build am I on",
+      "expect": [
+        "openagents.version-and-changelog"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.report-a-problem",
+        "openagents.get-the-app",
+        "openagents.playtesting",
+        "openagents.version-and-changelog",
+        "openagents.trainer-card",
+        "openagents.leaving-playtest",
+        "openagents.verse-controls",
+        "openagents.microcoder"
+      ],
+      "rank": 4,
+      "kept": [
+        [
+          "openagents.version-and-changelog",
+          0.96
+        ]
+      ],
+      "answer": [
+        "openagents.version-and-changelog",
+        0.6900000000000001
+      ],
+      "served": null,
+      "reply": "You can check your current version and build by going to Account > About this device [openagents.version-and-changelog].",
+      "cited_known": [
+        "openagents.version-and-changelog"
+      ],
+      "cited_unknown": [],
+      "supported": 0.94,
+      "admits": 0.03,
+      "answers": 0.6,
+      "embed_ms": 487,
+      "judge_ms": 272,
+      "generate_ms": 2406,
+      "generate_usd": 0.0003435,
+      "error": null
+    },
+    {
+      "id": "q097",
+      "question": "What's Microcoder?",
+      "expect": [
+        "openagents.microcoder"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.microcoder",
+        "openagents.coder-engines",
+        "openagents.computer-requirements",
+        "openagents.install-coder",
+        "openagents.chat-and-coder",
+        "openagents.get-the-app",
+        "openagents.computer-offline",
+        "openagents.chat-features-later"
+      ],
+      "rank": 1,
+      "kept": [
+        [
+          "openagents.microcoder",
+          0.71
+        ]
+      ],
+      "answer": [
+        "openagents.microcoder",
+        0.99
+      ],
+      "served": null,
+      "reply": "Microcoder is our experimental coding loop that combines Jev's typed judgments, a model, and a shared knowledge base [openagents.microcoder]. It replaced our earlier Microluna loop, and its retained Terminal-Bench passes are what the tutorial quests ask you to reproduce [openagents.microcoder]. In addition, its XP commands (`microcoder xp`) publish reproductions and link computer keys [openagents.microcoder].",
+      "cited_known": [
+        "openagents.microcoder"
+      ],
+      "cited_unknown": [],
+      "supported": 0.95,
+      "admits": 0.01,
+      "answers": 0.96,
+      "embed_ms": 428,
+      "judge_ms": 188,
+      "generate_ms": 2525,
+      "generate_usd": 0.00056925,
+      "error": null
+    },
+    {
+      "id": "q098",
+      "question": "who is jev",
+      "expect": [
+        "openagents.jev"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.jev",
+        "openagents.instant-answers",
+        "openagents.microcoder",
+        "openagents.chat-privacy",
+        "openagents.get-the-app",
+        "openagents.nip-cj",
+        "openagents.gym-results",
+        "openagents.verse-presence"
+      ],
+      "rank": 1,
+      "kept": [
+        [
+          "openagents.jev",
+          0.91
+        ]
+      ],
+      "answer": [
+        "openagents.jev",
+        0.94
+      ],
+      "served": "openagents.jev",
+      "reply": null,
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": null,
+      "admits": null,
+      "answers": null,
+      "embed_ms": 334,
+      "judge_ms": 175,
+      "generate_ms": 0,
+      "generate_usd": null,
+      "error": null
+    },
+    {
+      "id": "q099",
+      "question": "How do I delete my data if I quit testing?",
+      "expect": [
+        "openagents.leaving-playtest"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.leaving-playtest",
+        "openagents.report-a-problem",
+        "openagents.playtest-logging",
+        "openagents.get-the-app",
+        "openagents.playtesting",
+        "openagents.computers-screen",
+        "openagents.wallet-exit-backup",
+        "openagents.trainer-card"
+      ],
+      "rank": 1,
+      "kept": [
+        [
+          "openagents.leaving-playtest",
+          0.85
+        ],
+        [
+          "openagents.playtest-logging",
+          0.53
+        ]
+      ],
+      "answer": [
+        "openagents.leaving-playtest",
+        0.9
+      ],
+      "served": "openagents.leaving-playtest",
+      "reply": null,
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": null,
+      "admits": null,
+      "answers": null,
+      "embed_ms": 238,
+      "judge_ms": 189,
+      "generate_ms": 0,
+      "generate_usd": null,
+      "error": null
+    },
+    {
+      "id": "q100",
+      "question": "my mac was asleep when I sent a message to coder, will it get lost?",
+      "expect": [
+        "openagents.computer-offline"
+      ],
+      "t0_expected": true,
+      "nearest": [
+        "openagents.computer-offline",
+        "openagents.coder-chat-controls",
+        "openagents.chat-features-later",
+        "openagents.chat-and-coder",
+        "openagents.report-a-problem",
+        "openagents.chat-privacy",
+        "openagents.previous-chats",
+        "openagents.computer-requirements"
+      ],
+      "rank": 1,
+      "kept": [
+        [
+          "openagents.computer-offline",
+          0.97
+        ]
+      ],
+      "answer": [
+        "openagents.computer-offline",
+        1.0
+      ],
+      "served": "openagents.computer-offline",
+      "reply": null,
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": null,
+      "admits": null,
+      "answers": null,
+      "embed_ms": 349,
+      "judge_ms": 222,
+      "generate_ms": 0,
+      "generate_usd": null,
+      "error": null
+    },
+    {
+      "id": "q101",
+      "question": "Can I change my username in the app?",
+      "expect": [],
+      "t0_expected": false,
+      "nearest": [
+        "openagents.get-the-app",
+        "openagents.report-a-problem",
+        "openagents.leaving-playtest",
+        "openagents.version-and-changelog",
+        "openagents.verse-presence",
+        "openagents.trainer-card",
+        "openagents.nostr-and-relay",
+        "openagents.computers-screen"
+      ],
+      "rank": null,
+      "kept": [],
+      "answer": null,
+      "served": null,
+      "reply": "We don't have that documented yet.",
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": 0.28,
+      "admits": 0.97,
+      "answers": 0.42,
+      "embed_ms": 313,
+      "judge_ms": 192,
+      "generate_ms": 1349,
+      "generate_usd": 0.00008925,
+      "error": null
+    },
+    {
+      "id": "q102",
+      "question": "Does OpenAgents have a web version I can use in my browser?",
+      "expect": [],
+      "t0_expected": false,
+      "nearest": [
+        "openagents.cli",
+        "openagents.overview",
+        "openagents.open-source",
+        "openagents.android",
+        "openagents.pricing",
+        "openagents.chat-limits",
+        "openagents.computer-requirements",
+        "openagents.app-tabs"
+      ],
+      "rank": null,
+      "kept": [
+        [
+          "openagents.overview",
+          0.66
+        ]
+      ],
+      "answer": null,
+      "served": null,
+      "reply": "We don't have a web or browser version documented yet. What we can share is that OpenAgents is an app for your phone, on iPhone and Android [openagents.overview].",
+      "cited_known": [
+        "openagents.overview"
+      ],
+      "cited_unknown": [],
+      "supported": 0.7,
+      "admits": 0.81,
+      "answers": 0.9,
+      "embed_ms": 370,
+      "judge_ms": 185,
+      "generate_ms": 3939,
+      "generate_usd": 0.00051075,
+      "error": null
+    },
+    {
+      "id": "q103",
+      "question": "How do I turn on dark mode?",
+      "expect": [],
+      "t0_expected": false,
+      "nearest": [
+        "openagents.get-the-app",
+        "openagents.report-a-problem",
+        "openagents.verse-controls",
+        "openagents.version-and-changelog",
+        "openagents.computers-screen",
+        "openagents.previous-chats",
+        "openagents.chat-target",
+        "openagents.leaving-playtest"
+      ],
+      "rank": null,
+      "kept": [],
+      "answer": null,
+      "served": null,
+      "reply": "We don't have that documented yet.",
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": 0.43,
+      "admits": 0.98,
+      "answers": 0.14,
+      "embed_ms": 343,
+      "judge_ms": 173,
+      "generate_ms": 1590,
+      "generate_usd": 0.0000885,
+      "error": null
+    },
+    {
+      "id": "q104",
+      "question": "Can I invite teammates to share my computers?",
+      "expect": [],
+      "t0_expected": false,
+      "nearest": [
+        "openagents.computers-screen",
+        "openagents.chat-target",
+        "openagents.report-a-problem",
+        "openagents.tailnet",
+        "openagents.auto-start",
+        "openagents.link-computer-key",
+        "openagents.connect-computer",
+        "openagents.get-the-app"
+      ],
+      "rank": null,
+      "kept": [
+        [
+          "openagents.tailnet",
+          0.7
+        ]
+      ],
+      "answer": null,
+      "served": null,
+      "reply": "We don't have teammate sharing documented yet. \n\nWhat our notes do state is that access to a computer comes from the computer's own invitation, and a computer answers only a device that Tailscale says belongs to its own user [openagents.tailnet].",
+      "cited_known": [
+        "openagents.tailnet"
+      ],
+      "cited_unknown": [],
+      "supported": 0.44,
+      "admits": 0.85,
+      "answers": 0.66,
+      "embed_ms": 363,
+      "judge_ms": 167,
+      "generate_ms": 3216,
+      "generate_usd": 0.0005415,
+      "error": null
+    },
+    {
+      "id": "q105",
+      "question": "Is there an OpenAgents token or coin I can buy?",
+      "expect": [],
+      "t0_expected": false,
+      "nearest": [
+        "openagents.overview",
+        "openagents.pricing",
+        "openagents.open-source",
+        "openagents.wallet",
+        "openagents.android",
+        "openagents.cli",
+        "openagents.wallet-recovery",
+        "openagents.chat-limits"
+      ],
+      "rank": null,
+      "kept": [],
+      "answer": null,
+      "served": null,
+      "reply": "We don't have that documented yet.",
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": 0.52,
+      "admits": 0.97,
+      "answers": 0.69,
+      "embed_ms": 673,
+      "judge_ms": 193,
+      "generate_ms": 15601,
+      "generate_usd": 0.0000915,
+      "error": null
+    },
+    {
+      "id": "q106",
+      "question": "Can the wallet hold USDT?",
+      "expect": [],
+      "t0_expected": false,
+      "nearest": [
+        "openagents.wallet",
+        "openagents.wallet-buy",
+        "openagents.wallet-receive",
+        "openagents.wallet-send",
+        "openagents.wallet-recovery",
+        "openagents.wallet-exit-backup",
+        "openagents.wallet-amounts",
+        "openagents.get-the-app"
+      ],
+      "rank": null,
+      "kept": [
+        [
+          "openagents.wallet",
+          0.85
+        ]
+      ],
+      "answer": null,
+      "served": null,
+      "reply": "We don't have that documented yet. \n\nOur notes state that the Wallet is strictly a Bitcoin mainnet wallet that receives, sends, and buys bitcoin [openagents.wallet]. The network is fixed to Bitcoin mainnet in the app's code [openagents.wallet].",
+      "cited_known": [
+        "openagents.wallet"
+      ],
+      "cited_unknown": [],
+      "supported": 0.73,
+      "admits": 0.75,
+      "answers": 0.85,
+      "embed_ms": 288,
+      "judge_ms": 175,
+      "generate_ms": 2480,
+      "generate_usd": 0.00053325,
+      "error": null
+    },
+    {
+      "id": "q107",
+      "question": "What languages does the app support besides English?",
+      "expect": [],
+      "t0_expected": false,
+      "nearest": [
+        "openagents.get-the-app",
+        "openagents.version-and-changelog",
+        "openagents.report-a-problem",
+        "openagents.chat-limits",
+        "openagents.verse-controls",
+        "openagents.chat-features-later",
+        "openagents.nostr-and-relay",
+        "openagents.android"
+      ],
+      "rank": null,
+      "kept": [],
+      "answer": null,
+      "served": null,
+      "reply": "We don't have that documented yet.",
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": 0.39,
+      "admits": 0.98,
+      "answers": 0.43,
+      "embed_ms": 347,
+      "judge_ms": 204,
+      "generate_ms": 1464,
+      "generate_usd": 0.00008925,
+      "error": null
+    },
+    {
+      "id": "q108",
+      "question": "Can I sell my GPU time through OpenAgents?",
+      "expect": [],
+      "t0_expected": false,
+      "nearest": [
+        "openagents.pricing",
+        "openagents.overview",
+        "openagents.chat-limits",
+        "openagents.open-source",
+        "openagents.cli",
+        "openagents.android",
+        "openagents.agent-payments",
+        "openagents.wallet"
+      ],
+      "rank": null,
+      "kept": [],
+      "answer": null,
+      "served": null,
+      "reply": "We don't have that documented yet.",
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": 0.5,
+      "admits": 0.97,
+      "answers": 0.71,
+      "embed_ms": 327,
+      "judge_ms": 144,
+      "generate_ms": 1248,
+      "generate_usd": 0.00009,
+      "error": null
+    },
+    {
+      "id": "q109",
+      "question": "Who is the CEO of OpenAgents?",
+      "expect": [],
+      "t0_expected": false,
+      "nearest": [
+        "openagents.overview",
+        "openagents.open-source",
+        "openagents.pricing",
+        "openagents.chat-limits",
+        "openagents.cli",
+        "openagents.android",
+        "openagents.wallet",
+        "openagents.app-tabs"
+      ],
+      "rank": null,
+      "kept": [],
+      "answer": null,
+      "served": null,
+      "reply": "We don't have that documented yet.",
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": 0.71,
+      "admits": 0.98,
+      "answers": 0.57,
+      "embed_ms": 358,
+      "judge_ms": 174,
+      "generate_ms": 1150,
+      "generate_usd": 0.0000885,
+      "error": null
+    },
+    {
+      "id": "q110",
+      "question": "Does the app work on iPad?",
+      "expect": [],
+      "t0_expected": false,
+      "nearest": [
+        "openagents.get-the-app",
+        "openagents.report-a-problem",
+        "openagents.verse-controls",
+        "openagents.version-and-changelog",
+        "openagents.android",
+        "openagents.playtesting",
+        "openagents.tailnet",
+        "openagents.nostr-and-relay"
+      ],
+      "rank": null,
+      "kept": [],
+      "answer": null,
+      "served": null,
+      "reply": "We don't have that documented yet.",
+      "cited_known": [],
+      "cited_unknown": [],
+      "supported": 0.38,
+      "admits": 0.97,
+      "answers": 0.61,
+      "embed_ms": 332,
+      "judge_ms": 151,
+      "generate_ms": 1558,
+      "generate_usd": 0.00008775,
+      "error": null
+    }
+  ]
+}

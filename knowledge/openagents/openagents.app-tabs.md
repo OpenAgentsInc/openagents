@@ -1,0 +1,43 @@
+---
+id: openagents.app-tabs
+version: 1
+kind: product
+title: "The app's four tabs"
+summary: >-
+  The OpenAgents app has four tabs: Chat, Verse, Wallet, and Account.
+tags: [tabs, navigation, chat, verse, wallet, account]
+applies_when: >-
+  The user asks what the app's tabs or sections are, where something is in the
+  app in general, or what each tab does.
+answer: >-
+  The app has four tabs. Chat (the message icon) is where you talk with us and
+  start work on your computers. Verse (the globe) is the Grid, a shared world
+  you walk around in. Wallet is a bitcoin wallet. Account holds your
+  computers, the Tailnet screen, identity keys, your trainer card, playtest
+  tools, and the changelog.
+status: admitted
+author: openagents
+provenance:
+  written_from: [reference]
+  cites:
+    - bins/openagents-ios/README.md
+    - crates/openagents-mobile/src/account.rs
+evidence:
+  - "2026-09-28: written from the cited documents and checked against them (#9923); the answer text awaits the owner's copy review."
+---
+
+## Answer
+
+The app has four tabs. Chat (the message icon) is where you talk with us and start work on your computers. Verse (the globe) is the Grid, a shared world you walk around in. Wallet is a bitcoin wallet. Account holds your computers, the Tailnet screen, identity keys, your trainer card, playtest tools, and the changelog.
+
+## Details
+
+- Chat opens on a new chat with the cursor in the composer.
+- Verse shows the Grid, Verse's bare world, with other players and shared physics objects.
+- Wallet runs on Breez's Spark SDK on Bitcoin mainnet.
+- Account holds Computers, Tailnet, Identity keys, Trainer, Playtest, Report a problem, **My reports**, About this device, and Changelog, and links to the source code and to OpenAgents on X.
+
+## Sources
+
+- `bins/openagents-ios/README.md`
+- `crates/openagents-mobile/src/account.rs`
