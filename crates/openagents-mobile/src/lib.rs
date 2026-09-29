@@ -23,6 +23,7 @@ mod app;
 mod basic_chats;
 mod basic_coder;
 mod basic_link;
+mod chat_fixture;
 mod chats;
 mod coder_list;
 mod coder_tab;

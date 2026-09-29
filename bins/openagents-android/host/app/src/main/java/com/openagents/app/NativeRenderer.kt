@@ -279,6 +279,11 @@ class NativeRenderer(
         "cloud" -> R.drawable.ic_glyph_cloud
         "add" -> R.drawable.ic_glyph_add
         "check" -> R.drawable.ic_glyph_check
+        "ask" -> R.drawable.ic_glyph_ask
+        "flag" -> R.drawable.ic_glyph_flag
+        "terminal" -> R.drawable.ic_glyph_terminal
+        "wallet" -> R.drawable.ic_glyph_wallet
+        "key" -> R.drawable.ic_glyph_key
         else -> null
     }
 

@@ -406,6 +406,10 @@ pub struct CoderTab {
     flag: Option<(String, Flag)>,
     /// The wrong-answer report the host is to file, taken once.
     flagged: Option<playtest::report::SharedChat>,
+    /// Debug builds' screenshot script: messages to send one reply at a
+    /// time, and `!run` (the first offered command) or `!wrong` (Wrong
+    /// answer) steps.
+    script: std::collections::VecDeque<String>,
 }
 
 /// The most turns an open basic conversation shows at first.
@@ -441,6 +445,54 @@ impl CoderTab {
             cli: None,
             flag: None,
             flagged: None,
+            script: std::collections::VecDeque::new(),
+        }
+    }
+
+    /// Play `steps` in the chat at launch, for simulator screenshots.
+    /// Honored only in debug builds.
+    pub fn with_script(mut self, steps: Vec<String>) -> Self {
+        if cfg!(debug_assertions) {
+            self.script = steps.into();
+        }
+        self
+    }
+
+    /// The next screenshot-script step, once the last reply ended.
+    fn play(&mut self, computers: Option<&Computers>) {
+        if self.talk.as_ref().is_some_and(|id| self.basic.busy(id)) {
+            return;
+        }
+        let Some(step) = self.script.pop_front() else {
+            return;
+        };
+        let now = unix_now();
+        match (step.as_str(), self.talk.clone()) {
+            ("!wrong", Some(id)) => {
+                if self.basic.wrong_answer(&id).is_some() {
+                    self.flag = Some((id, Flag::Confirm));
+                }
+            }
+            ("!run", Some(id)) => {
+                let offer = self.basic.last_meta(&id).and_then(|meta| {
+                    meta.offers
+                        .into_iter()
+                        .find(|offer| matches!(offer, Offer::Cli { .. }))
+                });
+                if let Some(Offer::Cli { argv, runs_on }) = offer {
+                    let outcome = run_cli(&argv, runs_on, computers, self.selected.as_deref());
+                    self.cli = Some((id, argv, outcome));
+                }
+            }
+            (text, talk) => {
+                self.basic.set_context(self.router_context(computers));
+                match talk {
+                    Some(id) => {
+                        self.basic.send(&id, text, now);
+                    }
+                    None => self.talk = self.basic.start(text, now),
+                }
+            }
         }
     }
 
@@ -522,7 +574,8 @@ impl CoderTab {
     }
 
     pub fn streaming(&self) -> bool {
-        self.basic.streaming()
+        // A screenshot script waiting for its next step keeps packets coming.
+        self.basic.streaming() || !self.script.is_empty()
     }
 
     /// Whether a chat, basic or on a computer, is open.
@@ -1551,6 +1604,7 @@ impl CoderTab {
             self.remember(computers, chats);
         }
         self.basic.settle(unix_now());
+        self.play(computers);
         self.follow(computers, chats);
         self.settle_echoes(computers.map_or_else(unix_now, |c| c.snapshot().now));
         let ended = self

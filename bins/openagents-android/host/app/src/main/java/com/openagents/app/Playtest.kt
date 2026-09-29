@@ -133,6 +133,7 @@ internal class Playtest(private val activity: MainActivity, private val bridge: 
         private var includeTask = false
         private var includeShot = false
         private var includeLog = draft.optBoolean("logging")
+        private var includeChat = false
         private var cropTop = 0.0
         private var cropBottom = 0.0
         private var sending = false
@@ -233,6 +234,15 @@ internal class Playtest(private val activity: MainActivity, private val bridge: 
                 body.card(task) { add(toggle("Attach this chat's task ID", includeTask, "report-task") { includeTask = it }) }
             }
             screenshotSection(body)
+            val chatLines = draft.optJSONArray("chat_lines").strings()
+            if (chatLines.isNotEmpty()) {
+                body.card("Off by default. Helps us improve our answers: exactly these messages, sent only to the triage team.") {
+                    add(toggle("Share this chat (${chatLines.size} messages)", includeChat, "report-share-chat") { includeChat = it })
+                    addView(activity.divider(), LinearLayout.LayoutParams(-1, 1))
+                    add(activity.label(chatLines.joinToString("\n"), 12f, Palette.SECONDARY, key = "report-chat-lines")
+                        .apply { setPadding(0, activity.dp(8), 0, activity.dp(8)) })
+                }
+            }
             if (draft.optBoolean("logging")) {
                 val lines = draft.optJSONArray("log_lines").strings()
                 body.card("Tab, screen, event, and time only: exactly these lines.") {
@@ -304,7 +314,9 @@ internal class Playtest(private val activity: MainActivity, private val bridge: 
                 "tab" to draft.optString("tab"), "route" to draft.optString("route"), "kind" to kind,
                 "happened" to happened.text.toString(), "expected" to expected.text.toString(), "steps" to steps.text.toString(),
                 "quote" to quote, "include_task" to includeTask, "include_log" to (includeLog && draft.optBoolean("logging")),
-                "log_digest" to draft.optString("log_digest"))
+                "log_digest" to draft.optString("log_digest"),
+                "include_chat" to (includeChat && draft.optJSONArray("chat_lines").strings().isNotEmpty()),
+                "chat_digest" to draft.optString("chat_digest"))
             if (draft.optBoolean("screenshot_allowed")) shot()?.let(ReportImage::jpeg)?.let { (bytes, w, h) ->
                 form.put("screenshot", json("jpeg_base64" to Base64.encodeToString(bytes, Base64.NO_WRAP), "width" to w, "height" to h))
             }
@@ -315,8 +327,8 @@ internal class Playtest(private val activity: MainActivity, private val bridge: 
                 val row = packet.objectOrNull("sent")
                 if (row != null) { receipt(row); return@sendReport }
                 error = packet.textOrNull("error") ?: "The report couldn't be filed."
-                // The log moved on: show the current one before sending.
-                if (error?.contains("log changed") == true) {
+                // The log or the chat moved on: show the current one before sending.
+                if (error?.contains("log changed") == true || error?.contains("chat changed") == true) {
                     bridge.reportDraft(draft.optString("tab"), draft.optString("route")) { draft = it; form() }
                 } else form()
             }

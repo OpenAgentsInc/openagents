@@ -78,6 +78,7 @@ class MainActivity : ComponentActivity() {
     private var ticks = 0
     /** The Coder tab's requests to open Account > Computers, as last handled. */
     private var computersShown = 0
+    private var screensShown = 0
     private var statusTop = 0
 
     private val pages = mutableMapOf<AppTab, FrameLayout>()
@@ -139,7 +140,8 @@ class MainActivity : ComponentActivity() {
         WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightStatusBars = false
         scanner = QRScanner(this)
         bridge = MobileBridge(applicationContext, BuildConfig.DEBUG && intent.getBooleanExtra("computers_fixture", false),
-            BuildConfig.DEBUG && intent.getBooleanExtra("wallet_fixture", false)) { render() }
+            BuildConfig.DEBUG && intent.getBooleanExtra("wallet_fixture", false),
+            BuildConfig.DEBUG && intent.getBooleanExtra("chat_fixture", false)) { render() }
         coderRenderer = NativeRenderer(this, { view, node -> bridge.activate("coder", view, node) },
             { token, value -> bridge.submit("coder", token, value) })
         computersRenderer = NativeRenderer(this, { view, node -> bridge.activate("computers", view, node) }, scrolling = true)
@@ -578,6 +580,16 @@ class MainActivity : ComponentActivity() {
             computersShown = bridge.computersRequested
             select(AppTab.ACCOUNT)
             open(AccountRoute.COMPUTERS)
+        }
+        // An offer under a chat reply opened another screen.
+        if (bridge.screenRequests != screensShown) {
+            screensShown = bridge.screenRequests
+            when (bridge.screenRequested) {
+                "wallet" -> select(AppTab.WALLET)
+                "keys" -> { select(AppTab.ACCOUNT); open(AccountRoute.IDENTITY) }
+                "playtest" -> { select(AppTab.ACCOUNT); open(AccountRoute.PLAYTEST) }
+                "report" -> report()
+            }
         }
         val packet = bridge.packet
         mount(coderRenderer, coderContent, fixture ?: packet?.objectOrNull("coder"))

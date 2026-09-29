@@ -143,6 +143,11 @@ struct NativeIcon: Decodable, Equatable {
         case "cloud": "cloud"
         case "add": "plus"
         case "check": "checkmark"
+        case "ask": "text.bubble"
+        case "flag": "flag"
+        case "terminal": "terminal"
+        case "wallet": "creditcard"
+        case "key": "key"
         default: nil
         }
     }

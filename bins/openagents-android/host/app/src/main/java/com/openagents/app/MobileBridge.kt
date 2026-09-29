@@ -16,7 +16,8 @@ import java.util.concurrent.Executors
  * this bridge only opens URLs Rust names and collects values Rust asks for.
  */
 class MobileBridge(private val context: Context, private val computersFixture: Boolean = false,
-                   private val walletFixture: Boolean = false, private val changed: () -> Unit) {
+                   private val walletFixture: Boolean = false, private val chatFixture: Boolean = false,
+                   private val changed: () -> Unit) {
     companion object {
         // Rust keeps each app handle on the thread that created it, so one
         // process-wide worker owns every handle for its whole lifetime.
@@ -41,6 +42,9 @@ class MobileBridge(private val context: Context, private val computersFixture: B
     val busy get() = pending > 0
     /** Counts the Coder tab's requests to open Account > Computers. */
     var computersRequested = 0; private set
+    /** The Coder tab's last request to open another screen (wallet, keys, playtest, report), and how many so far. */
+    var screenRequested: String? = null; private set
+    var screenRequests = 0; private set
 
     init {
         pending += 1
@@ -51,12 +55,16 @@ class MobileBridge(private val context: Context, private val computersFixture: B
                     // This host draws the Computers list and its navigation.
                     "native_computers" to true,
                     // Its transcript painter reads chat rows from Rust.
-                    "pulled_transcripts" to true)
+                    "pulled_transcripts" to true,
+                    // The chat router's context names the build.
+                    "app_build" to "${ReportDevice.version} (${ReportDevice.build})")
                 // Debug builds only: Coder's offline Computers fixture, which
                 // contacts no host or relay.
                 if (computersFixture) config.put("computers_fixture", true)
                 // Debug builds only: an offline wallet with no money.
                 if (walletFixture) config.put("wallet_fixture", true)
+                // Debug builds only: an offline chat worker that sends the chat router's fields.
+                if (chatFixture) config.put("chat_fixture", true)
                 handle = OpenAgentsNative.create(config.toString())
                 check(handle != 0L) { "OpenAgents could not start." }
             }
@@ -215,6 +223,14 @@ class MobileBridge(private val context: Context, private val computersFixture: B
         call(json("op" to "report_send", "world_secret_hex" to secret, "form" to form)) { reply(it, "openagents.reports.v1")?.let(received) }
     }
 
+    /** Files the wrong-answer report the person confirmed in the chat, signed by the Verse world key; the chat shows what came of it. */
+    fun reportWrongAnswer() {
+        val secret = try { DeviceKey.loadOrCreate(context, DeviceKey.Purpose.WORLD) } catch (_: Exception) { "" }
+        val device = json("app_version" to ReportDevice.version, "build" to ReportDevice.build,
+            "device" to ReportDevice.model, "os_version" to ReportDevice.os)
+        call(json("op" to "report_wrong_answer", "world_secret_hex" to secret, "device" to device)) { snapshot() }
+    }
+
     /** My reports; with the world key, reports that wait or failed are sent again. */
     fun reports(received: (JSONObject) -> Unit) {
         val secret = try { DeviceKey.loadOrCreate(context, DeviceKey.Purpose.WORLD) } catch (_: Exception) { "" }
@@ -316,7 +332,12 @@ class MobileBridge(private val context: Context, private val computersFixture: B
             }
             packet = next
             failure = null
-            if (next.textOrNull("coder_go") == "computers") computersRequested += 1
+            when (val go = next.textOrNull("coder_go")) {
+                "computers" -> computersRequested += 1
+                "wallet", "keys", "playtest", "report" -> { screenRequested = go; screenRequests += 1 }
+                // The person confirmed Wrong answer in the chat: file it.
+                "wrong_answer" -> reportWrongAnswer()
+            }
             if (!next.optBoolean("terminal")) { terminalView = null; terminalRevision = 0 }
             next.textOrNull("open_url")?.let { link -> open(link) }
             next.textOrNull("wallet_open_url")?.let { link -> browse(link) }

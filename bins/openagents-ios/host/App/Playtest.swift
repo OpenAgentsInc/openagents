@@ -120,6 +120,7 @@ struct ReportSheet: View {
     @State private var includeTask = false
     @State private var includeShot = false
     @State private var includeLog = true
+    @State private var includeChat = false
     @State private var cropTop = 0.0
     @State private var cropBottom = 0.0
     @State private var sending = false
@@ -172,6 +173,19 @@ struct ReportSheet: View {
                 }
             }
             screenshotSection
+            if let lines = draft.chat_lines, !lines.isEmpty {
+                Section {
+                    Toggle("Share this chat (\(lines.count) messages)", isOn: $includeChat)
+                        .accessibilityIdentifier("report-share-chat")
+                    DisclosureGroup("Show the whole chat") {
+                        ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
+                            Text(line).font(.caption)
+                        }
+                    }
+                } footer: {
+                    Text("Off by default. Helps us improve our answers: exactly these messages, sent only to the triage team.")
+                }
+            }
             if draft.logging {
                 Section {
                     Toggle("Attach the playtest log (\(draft.log_lines.count) events)", isOn: $includeLog)
@@ -281,6 +295,8 @@ struct ReportSheet: View {
             "happened": happened, "expected": expected, "steps": steps, "quote": quote,
             "include_task": includeTask, "include_log": includeLog && draft.logging,
             "log_digest": draft.log_digest,
+            "include_chat": includeChat && !(draft.chat_lines ?? []).isEmpty,
+            "chat_digest": draft.chat_digest ?? "",
         ]
         if draft.screenshot_allowed, let shot, let jpeg = ReportImage.jpeg(shot) {
             form["screenshot"] = ["jpeg_base64": jpeg.data.base64EncodedString(),
@@ -294,8 +310,8 @@ struct ReportSheet: View {
                 sent = row
             } else {
                 error = packet.error ?? "The report couldn't be filed."
-                // The log moved on: show the current one before sending.
-                if error?.contains("log changed") == true {
+                // The log or the chat moved on: show the current one before sending.
+                if error?.contains("log changed") == true || error?.contains("chat changed") == true {
                     bridge.reportDraft(tab: draft.tab, route: draft.route) { session.draft = $0 }
                 }
             }

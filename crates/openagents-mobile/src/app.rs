@@ -72,6 +72,15 @@ pub struct Launch {
     pub chat_relay: Option<String>,
     #[serde(default)]
     pub chat_worker: Option<String>,
+    /// Answer chats from an offline worker that sends the chat router's
+    /// fields (`chat_fixture`), for simulator screenshots. Honored only in
+    /// debug builds; it reaches no network.
+    #[serde(default)]
+    pub chat_fixture: bool,
+    /// Messages the chat sends at launch, one reply at a time, with `!run`
+    /// and `!wrong` steps, for simulator screenshots. Debug builds only.
+    #[serde(default)]
+    pub chat_script: Vec<String>,
     /// The app's version and build, as `1.0.0 (19)`: the chat router's
     /// context names it, so the worker can answer for this build.
     #[serde(default)]
@@ -87,6 +96,9 @@ pub struct Launch {
 /// a debug build, the relay and worker the launch names.
 fn basic_door(launch: &Launch, secret: SecretKey) -> Option<Arc<dyn crate::basic_coder::Door>> {
     let debug = cfg!(debug_assertions);
+    if launch.chat_fixture && debug {
+        return Some(Arc::new(crate::chat_fixture::ChatFixture));
+    }
     let relay = launch
         .chat_relay
         .as_deref()
@@ -781,6 +793,7 @@ impl App {
             chats,
             coder: CoderTab::new(format!("coder:{}", id()))
                 .with_app_build(launch.app_build.clone())
+                .with_script(launch.chat_script.clone())
                 .with_pulled_transcripts(launch.pulled_transcripts)
                 .with_basic(basic)
                 .with_list(crate::coder_list::Store::open(

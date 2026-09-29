@@ -31,7 +31,16 @@ The app has four tabs, shown as white icons on black:
   incremental Markdown. The app holds no model key; the worker meters each
   caller key (see `INVARIANTS.md`). From a conversation, **Run Coder on** a
   computer starts Coder on it with the conversation so
-  far. The menu button at the top left opens the previous chats, newest
+  far. Each job also asks for the chat router (`router`) with a bounded
+  `context` (the surface, whether a computer is ready, and the build; no
+  computer's name). The router's offers show as the phone's own controls,
+  acting only on a tap: Run Coder or **Connect a computer**, a screen
+  (Wallet, Account > Computers, Identity keys, Playtest, Report a problem),
+  or a read-only `openagents` command as a card with a **Run** button. A
+  prepared answer carries a quiet "Prepared answer" note, follow-up chips,
+  and **Wrong answer**, which sends that question and answer to the triage
+  team after the tester confirms; Report a problem offers **Share this chat**,
+  off by default. The menu button at the top left opens the previous chats, newest
   first: basic conversations and Coder's tasks on your computers, painted
   from what the phone kept while the computers are read again. Only Coder's
   chats show; the phone does not list Claude Code, Codex, OpenCode, or

@@ -228,6 +228,10 @@ struct ReportDraft: Decodable {
     let logging: Bool
     let log_lines: [String]
     let log_digest: String
+    /// The open chat with OpenAgents, one line per message, as Share this
+    /// chat would send it; empty when none is open.
+    let chat_lines: [String]?
+    let chat_digest: String?
     let kinds: [ReportKind]
     let privacy: String
     let fallback: String
@@ -281,6 +285,12 @@ struct TerminalPacket: Decodable {
     let paste: Bool
 }
 
+/// A request from the Coder tab to show another screen.
+struct ScreenRequest: Equatable {
+    let screen: String
+    let serial: Int
+}
+
 @MainActor
 final class MobileBridge: ObservableObject {
     @Published private(set) var packet: AppPacket?
@@ -289,6 +299,9 @@ final class MobileBridge: ObservableObject {
     @Published private(set) var pending = 0
     /// Counts the Coder tab's requests to open Account > Computers.
     @Published private(set) var computersRequested = 0
+    /// The Coder tab's last request to open another screen (`wallet`,
+    /// `keys`, `playtest`, or `report`), numbered so a repeat still shows.
+    @Published private(set) var screenRequest = ScreenRequest(screen: "", serial: 0)
     private let queue = DispatchQueue(label: "com.openagents.app.rust")
     private nonisolated(unsafe) let handle: UnsafeMutableRawPointer?
     private var terminalRevision: UInt64 = 0
@@ -310,11 +323,20 @@ final class MobileBridge: ObservableObject {
                 "native_computers": true,
                 // Its transcript layout reads chat rows from Rust.
                 "pulled_transcripts": true,
+                // The chat router's context names the build.
+                "app_build": "\(ReportDevice.version) (\(ReportDevice.build))",
             ]
             // Push stays off unless this build names a relay and a gateway.
             if let push = PushSettings.configured { options["push"] = push.rust }
             // Simulator screenshots: an offline wallet with no money.
             if AppTabLaunch.wallet("--wallet-fixture") != nil { options["wallet_fixture"] = true }
+            // Simulator screenshots: an offline chat worker that sends the
+            // chat router's offers and follow-ups (`--chat-fixture 1`).
+            if AppTabLaunch.wallet("--chat-fixture") != nil { options["chat_fixture"] = true }
+            // `--chat-script "Who are you?|!wrong"` plays those steps in a new chat.
+            if let script = AppTabLaunch.wallet("--chat-script") {
+                options["chat_script"] = script.split(separator: "|").map(String.init)
+            }
             let configuration = try JSONSerialization.data(withJSONObject: options)
             handle = configuration.withUnsafeBytes { bytes in
                 openagents_mobile_create(bytes.bindMemory(to: UInt8.self).baseAddress, bytes.count)
@@ -567,6 +589,20 @@ final class MobileBridge: ObservableObject {
         }
     }
 
+    /// File the wrong-answer report the person confirmed in the chat, signed
+    /// by the Verse world key. Rust chose what it carries; the chat shows
+    /// what came of it.
+    func reportWrongAnswer() {
+        let hex = (try? DeviceKey.loadOrCreateVerse())?.map { String(format: "%02x", $0) }.joined() ?? ""
+        let device: [String: Any] = [
+            "app_version": ReportDevice.version, "build": ReportDevice.build,
+            "device": ReportDevice.model, "os_version": ReportDevice.os,
+        ]
+        call(["op": "report_wrong_answer", "world_secret_hex": hex, "device": device]) { _ in
+            self.send(["op": "snapshot"])
+        }
+    }
+
     /// My reports; reports that wait or failed are sent again.
     func reports(received: @escaping (ReportsPacket) -> Void) {
         let hex = (try? DeviceKey.loadOrCreateVerse())?.map { String(format: "%02x", $0) }.joined() ?? ""
@@ -634,7 +670,14 @@ final class MobileBridge: ObservableObject {
                 return
             }
             self.packet = packet
-            if packet.coder_go == "computers" { self.computersRequested += 1 }
+            switch packet.coder_go {
+            case "computers": self.computersRequested += 1
+            case let screen? where ["wallet", "keys", "playtest", "report"].contains(screen):
+                self.screenRequest = ScreenRequest(screen: screen, serial: self.screenRequest.serial + 1)
+            // The person confirmed Wrong answer in the chat: file it.
+            case "wrong_answer": self.reportWrongAnswer()
+            default: break
+            }
             if !packet.terminal { self.terminalView = nil; self.terminalRevision = 0 }
             if let link = packet.open_url, let url = URL(string: link), url.scheme == "https" {
                 UIApplication.shared.open(url)

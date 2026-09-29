@@ -110,6 +110,15 @@ struct AppTabs: View {
         }
         // Coder asked to connect a computer: Account > Computers.
         .onChange(of: bridge.computersRequested) { _, _ in tab = .account }
+        // An offer under a chat reply opened another screen.
+        .onChange(of: bridge.screenRequest) { _, request in
+            switch request.screen {
+            case "wallet": tab = .wallet
+            case "keys", "playtest": tab = .account
+            case "report": reporter.start(bridge: bridge, place: place)
+            default: break
+            }
+        }
         .onAppear {
             #if targetEnvironment(simulator)
             // `--report` opens Report a problem for the first screen.
@@ -211,6 +220,13 @@ struct AccountTab: View {
             }
         }
         .onChange(of: bridge.computersRequested) { _, _ in path = [.computers] }
+        .onChange(of: bridge.screenRequest) { _, request in
+            switch request.screen {
+            case "keys": path = [.identity]
+            case "playtest": path = [.playtest]
+            default: break
+            }
+        }
         .onChange(of: path, initial: true) { _, path in
             place.accountRoute = path.last
             if place.tab == .account {

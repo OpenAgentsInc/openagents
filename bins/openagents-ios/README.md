@@ -40,7 +40,16 @@ The app has four tabs, shown as icons:
   worker meters each caller key (see `INVARIANTS.md`). From a
   conversation, **Run Coder on** a computer starts Coder on it with the
   conversation so far; when the worker's judgment places the message on a
-  computer, it shows as a chip.
+  computer, it shows as a chip. Each job also asks for the chat router (`router`) with a bounded
+  `context` (the surface, whether a computer is ready, and the build; no
+  computer's name). The router's offers show as the phone's own controls,
+  acting only on a tap: Run Coder or **Connect a computer**, a screen
+  (Wallet, Account > Computers, Identity keys, Playtest, Report a problem),
+  or a read-only `openagents` command as a card with a **Run** button. A
+  prepared answer carries a quiet "Prepared answer" note, follow-up chips,
+  and **Wrong answer**, which sends that question and answer to the triage
+  team after the tester confirms; Report a problem offers **Share this chat**,
+  off by default.
   The menu button at the top left opens the previous chats, newest first:
   basic conversations and Coder's tasks on your computers, painted from
   what the phone kept while the computers are read again. Only Coder's
@@ -218,7 +227,13 @@ without taps. Launching with
 `SIMCTL_CHILD_OPENAGENTS_COMPUTERS_FIXTURE=1` draws Computers from Coder's
 offline fixture (`coder_computers::synthetic`), which contacts no host, and
 `--computers-script open|add|activity` opens its first computer, adding a
-computer, or activity.
+computer, or activity. `--chat-fixture 1`
+answers chats from an offline worker that sends the chat router's fields in
+turn (a prepared answer with follow-ups, a dispatch offer, a read-only
+command, and a Wallet offer), for screenshots, and `--chat-script
+"Who are you?|!wrong"` plays messages in a new chat one reply at a time, with
+`!run` (run the first offered command) and `!wrong` (Wrong answer) steps;
+debug builds only.
 
 ## Automatic setup over the tailnet
 
