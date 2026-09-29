@@ -1,8 +1,6 @@
 layout: banner
 id: title
-title: Test-time
-lead: Test-time compute, and the capabilities an agent gains while it runs
-note: OpenAgents · 2026-09-29
+title: Test-Time Capabilities
 source: docs/essays/2026-09-29-test-time-capabilities.md
 notes: Three parts, as the essay has them. Part I is the concept in general terms: no product names, none of our numbers. Part II is how OpenAgents builds it and what we measured. Part III is what we will measure next.
 notes: Every number in the deck comes from a dated record in the repository; the source line of each slide names it.

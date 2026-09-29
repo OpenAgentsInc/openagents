@@ -9,30 +9,20 @@ use crate::canvas::{Canvas, PAD_COLS, PAD_ROWS};
 use crate::grid::{Grid, PressId, Style};
 use crate::layouts;
 use crate::prose;
-use crate::reveal::{glyphs, reveal};
 use crate::slide::{Deck, Layout};
 use coder_ui::theme::Intensity;
 
 /// The cells between the progress rule and the slide's number.
 const FOOT_GAP: usize = 1;
 
-/// The slide at `index` of `deck`, laid out on `canvas`.
-///
-/// `arrival` is how much of the slide has typed itself in, from zero to
-/// one. An `arrival` of one draws the slide whole, which is what the
-/// snapshots and the text export take.
-pub fn slide_grid(deck: &Deck, index: usize, canvas: Canvas, arrival: f32) -> Grid {
+/// The slide at `index` of `deck`, laid out whole on `canvas`: the grid
+/// the window paints, the snapshots hold, and the text export prints.
+pub fn slide_grid(deck: &Deck, index: usize, canvas: Canvas) -> Grid {
     let mut grid = Grid::new(canvas.cells, canvas.rows);
     let Some(slide) = deck.slide(index) else {
         return grid;
     };
     let body = layouts::body(slide, canvas);
-    let body = if arrival >= 1.0 {
-        body
-    } else {
-        let shown = (glyphs(&body) as f32 * arrival.max(0.0)).ceil() as usize;
-        reveal(&body, shown)
-    };
     let note = slide.note.clone().unwrap_or_default();
     let width = canvas.body_cells();
     // A banner centers its wordmark and its lead, so its note centers too,
@@ -190,7 +180,7 @@ mod tests {
     /// carries its place in the foot.
     #[test]
     fn a_slide_fills_the_canvas_and_names_its_place() {
-        let grid = slide_grid(&deck(), 0, Canvas::DEFAULT, 1.0);
+        let grid = slide_grid(&deck(), 0, Canvas::DEFAULT);
         assert_eq!(grid.width(), Canvas::DEFAULT.cells);
         assert_eq!(grid.height(), Canvas::DEFAULT.rows);
         let foot: String = grid
@@ -199,15 +189,6 @@ mod tests {
             .map(|run| run.text.clone())
             .collect();
         assert!(foot.contains("1 / 2"), "the foot reads {foot}");
-    }
-
-    /// An arrival part way through draws less than the whole slide.
-    #[test]
-    fn an_arriving_slide_draws_less_than_the_whole() {
-        let deck = deck();
-        let whole = slide_grid(&deck, 0, Canvas::DEFAULT, 1.0);
-        let part = slide_grid(&deck, 0, Canvas::DEFAULT, 0.25);
-        assert!(glyphs(&part) < glyphs(&whole));
     }
 
     /// The overview draws a card a slide, and a press inside a card opens

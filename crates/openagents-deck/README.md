@@ -8,7 +8,8 @@ same cells.
 The crate is a port of the Coder repository's `coder-deck` (the layout
 engine, the snapshots, the text export, and the window). It carries the
 cell grid from Coder's component core in [`src/grid.rs`](src/grid.rs) and
-reuses [`coder-ui`](../coder-ui/)'s amber intensity ladder and
+reuses [`coder-ui`](../coder-ui/)'s four-step intensity ladder, painted
+in the deck's own white palette ([`src/palette.rs`](src/palette.rs)), and
 [`rust-native`](../rust-native/)'s bundled JetBrains Mono. The Coder
 window drew through GPUI; this one paints each frame in software
 ([`src/paint.rs`](src/paint.rs)) and copies it into a `winit` window's
@@ -22,8 +23,10 @@ cargo run -p openagents-deck -- --deck test-time-capabilities
 ```
 
 The default deck is `test-time-capabilities`, so `cargo run -p
-openagents-deck` opens it too. Build the release binary for presenting;
-the debug build paints the arrival animation slowly.
+openagents-deck` opens it too. A slide appears whole the moment it is
+opened, in the debug build and the release build alike: there is no
+per-slide animation, and the window paints only on a key, a click, or a
+resize.
 
 | Option | What it does |
 | --- | --- |
@@ -32,7 +35,6 @@ the debug build paints the arrival animation slowly.
 | `--slide N` | Opens on slide N, counting from 1 |
 | `--fullscreen` | Opens fullscreen |
 | `--notes` | Opens with the presenter's notes showing |
-| `--still` | Turns the arrival animation off |
 | `--text` | Prints every slide as the text of its grid |
 | `--check` | Lists the slides still waiting on facts; exits 1 while any do |
 | `--capture DIR` | Paints every slide, and the overview, to PNG files in `DIR` |
@@ -55,14 +57,13 @@ notarized. Double-click it, or drag it to `/Applications`.
 
 | Key | What it does |
 | --- | --- |
-| Right, Space, Page Down, `n`, `j`, or a click | The next slide, or the rest of this one while it arrives |
+| Right, Space, Page Down, `n`, `j`, or a click | The next slide |
 | Left, Page Up, `p`, `k` | The slide before |
 | Home, End | The first slide, the last slide |
 | A number, then Enter | Jump to that slide |
 | `o` | The overview: one card a slide; a click opens one |
 | `t` | The presenter's notes, under the slide |
 | `.` or `b` | Black the screen, and back |
-| `s` | Motion off, and on |
 | `f` | Fullscreen, and back |
 | Command or Control with `=`, `-`, `0` | Zoom in, zoom out, and fit |
 | Escape | Close the overview, the notes, or the black screen; then leave fullscreen |
@@ -101,7 +102,10 @@ Coder's own product screens and was not carried over.
 
 ## The rules the deck keeps
 
-- **One full-intensity element a slide.** Full amber marks the one thing
+- **White on black.** The deck paints white and gradations of white on a
+  black field, from its own palette; `coder-ui`'s shared amber theme is
+  left to the other apps.
+- **One full-intensity element a slide.** Full white marks the one thing
   a slide says; prose draws at three quarters, labels at half, and rules at
   a quarter. A titled slide whose body holds its full element drops the
   title to three quarters. A test enforces it.

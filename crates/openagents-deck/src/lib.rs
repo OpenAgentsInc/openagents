@@ -17,7 +17,7 @@
 //! - [`banner`]: the block face the title slide and big numbers draw in.
 //! - [`layouts`]: one body grid per layout.
 //! - [`frame`]: the chrome around a body, the overview, and the notes.
-//! - [`reveal`]: the arrival, as a transform over a finished grid.
+//! - [`palette`]: white, and gradations of white, on black.
 //! - [`paint`]: the grid in pixels, for the window and the PNG capture.
 //! - [`snapshot`]: the golden-snapshot check this crate's tests run.
 
@@ -27,8 +27,8 @@ pub mod frame;
 pub mod grid;
 pub mod layouts;
 pub mod paint;
+pub mod palette;
 pub mod prose;
-pub mod reveal;
 pub mod script;
 pub mod slide;
 pub mod snapshot;
@@ -36,7 +36,6 @@ pub mod snapshot;
 pub use canvas::Canvas;
 pub use frame::{notes_grid, overview, overview_press, slide_grid};
 pub use grid::Grid;
-pub use reveal::{glyphs, reveal};
 pub use slide::{Deck, Layout, Metric, Slide};
 
 #[cfg(test)]
@@ -49,7 +48,7 @@ mod tests {
         (0..deck.len())
             .map(|index| {
                 let id = deck.slide(index).expect("the slide").id.clone();
-                (id, slide_grid(deck, index, Canvas::DEFAULT, 1.0))
+                (id, slide_grid(deck, index, Canvas::DEFAULT))
             })
             .collect()
     }

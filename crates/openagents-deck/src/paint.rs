@@ -9,11 +9,13 @@
 //! [`Cell::arms`] returns, so frames and rules join across cells whatever
 //! the font's box-drawing metrics.
 //!
-//! Colors are the amber ladder over the near-black field from
-//! `coder_ui::theme`, blended in sRGB.
+//! Colors are the deck's white ladder over the black field from
+//! [`crate::palette`], blended in sRGB.
 
 use crate::grid::{Cell, Grid};
-use coder_ui::theme::{Intensity, NEAR_BLACK};
+use crate::palette;
+#[cfg(test)]
+use coder_ui::theme::Intensity;
 use std::collections::HashMap;
 use swash::FontRef;
 use swash::scale::{Render, ScaleContext, Source};
@@ -180,19 +182,7 @@ impl Painter {
 
     /// Paints one cell into its pixel box.
     fn cell(&mut self, frame: &mut Frame, cell: &Cell, [x0, y0, x1, y1]: [i64; 4]) {
-        let color = cell.style.intensity.color();
-        if cell.style.caret {
-            // The caret spans the font's ascent to its descent.
-            let baseline = self.baseline(y0, y1);
-            frame.fill(
-                x0,
-                baseline - self.ascent.round() as i64,
-                x1,
-                baseline + self.descent.round() as i64,
-                color,
-            );
-            return;
-        }
+        let color = palette::color(cell.style.intensity);
         if cell.glyph == '█' {
             frame.fill(x0, y0, x1, y1, color);
             return;
@@ -304,20 +294,17 @@ pub fn fitting_size(width: f32, height: f32, cells: usize, rows: usize) -> f32 {
 }
 
 /// The field color every slide sits on.
-pub const FIELD: u32 = NEAR_BLACK;
-
-/// The brightest color a cell paints, for tests.
-pub const BRIGHTEST: u32 = Intensity::Full.color();
+pub const FIELD: u32 = palette::FIELD;
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::grid::Style;
 
-    /// A painted block glyph fills its cell with full amber, and text
+    /// A painted block glyph fills its cell with full white, and text
     /// leaves some of its cell on the field.
     #[test]
-    fn a_block_fills_its_cell_and_text_draws_amber() {
+    fn a_block_fills_its_cell_and_text_draws_white() {
         let mut painter = Painter::new(20.0);
         let mut grid = Grid::new(3, 1);
         grid.put(0, 0, Cell::new('█', Style::at(Intensity::Full)));
@@ -330,12 +317,20 @@ mod tests {
                 | u32::from(frame.pixels[at + 1]) << 8
                 | u32::from(frame.pixels[at + 2])
         };
-        assert_eq!(pixel(5, 10), BRIGHTEST);
-        let amber = (13..24)
+        assert_eq!(pixel(5, 10), 0xffffff);
+        let lit = (13..24)
             .flat_map(|x| (0..26).map(move |y| (x, y)))
             .filter(|(x, y)| pixel(*x, *y) != FIELD)
             .count();
-        assert!(amber > 10, "the letter drew {amber} pixels");
+        assert!(lit > 10, "the letter drew {lit} pixels");
+        // Every painted pixel is a gray: nothing tints the white.
+        for y in 0..frame.height {
+            for x in 0..frame.width {
+                let at = (y * frame.width + x) * 4;
+                let [r, g, b] = [frame.pixels[at], frame.pixels[at + 1], frame.pixels[at + 2]];
+                assert!(r == g && g == b, "the pixel at {x},{y} is tinted");
+            }
+        }
     }
 
     /// The fitting size keeps the canvas inside the frame on both axes.

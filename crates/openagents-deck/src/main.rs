@@ -20,7 +20,6 @@ pub struct Options {
     pub deck: Option<String>,
     pub slide: usize,
     pub notes: bool,
-    pub still: bool,
     pub fullscreen: bool,
     text: bool,
     check: bool,
@@ -39,7 +38,6 @@ Usage: openagents-deck [options]
   --decks           list the decks
   --slide N         open on slide N (from 1)
   --notes           open with the presenter's notes showing
-  --still           no arrival animation
   --fullscreen      open fullscreen
   --text            print every slide as the text of its grid
   --check           list the slides still waiting on facts; exits 1 while any do
@@ -48,7 +46,7 @@ Usage: openagents-deck [options]
   --help            this text
 
 Keys: right, space, n, j: next · left, p, k: back · home, end · a number then
-enter: jump · o: overview · t: notes · .: black · s: motion · f: fullscreen ·
+enter: jump · o: overview · t: notes · .: black · f: fullscreen ·
 cmd or ctrl with =, -, 0: zoom · escape: close what is open · q: quit";
 
 fn parse(args: impl Iterator<Item = String>) -> Result<Options, String> {
@@ -69,7 +67,6 @@ fn parse(args: impl Iterator<Item = String>) -> Result<Options, String> {
                 options.slide = number.saturating_sub(1);
             }
             "--notes" => options.notes = true,
-            "--still" => options.still = true,
             "--fullscreen" => options.fullscreen = true,
             "--text" => options.text = true,
             "--check" => options.check = true,
@@ -129,10 +126,7 @@ fn main() -> ExitCode {
         for index in 0..deck.len() {
             let slide = deck.slide(index).expect("the slide");
             println!("── {} / {} · {} ──", index + 1, deck.len(), slide.id);
-            print!(
-                "{}",
-                slide_grid(&deck, index, Canvas::DEFAULT, 1.0).to_text()
-            );
+            print!("{}", slide_grid(&deck, index, Canvas::DEFAULT).to_text());
         }
         return ExitCode::SUCCESS;
     }
@@ -195,7 +189,7 @@ fn capture(
     };
     for index in 0..deck.len() {
         let slide = deck.slide(index).expect("the slide");
-        let grid = slide_grid(deck, index, canvas, 1.0);
+        let grid = slide_grid(deck, index, canvas);
         write(format!("{:02}-{}.png", index + 1, slide.id), &grid)?;
     }
     write("overview.png".to_string(), &overview(deck, 0, canvas))?;

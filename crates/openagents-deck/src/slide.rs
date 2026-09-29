@@ -212,6 +212,15 @@ impl Deck {
     }
 
     /// How many slides there are.
+    /// The deck's title: the first slide's title, or the deck's name when
+    /// that slide carries none. The window takes it as its title.
+    pub fn title(&self) -> String {
+        self.slides
+            .first()
+            .and_then(|slide| slide.title.clone())
+            .unwrap_or_else(|| self.name.clone())
+    }
+
     pub fn len(&self) -> usize {
         self.slides.len()
     }

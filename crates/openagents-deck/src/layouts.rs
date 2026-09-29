@@ -63,7 +63,7 @@ fn centered_lines(grid: &mut Grid, left: usize, row: usize, width: usize, laid: 
 /// The wordmark in the block face over one line, both centered.
 fn banner_body(slide: &Slide, width: usize) -> Grid {
     let name = slide.title.clone().unwrap_or_default().to_uppercase();
-    let face = banner::banner(&name);
+    let face = banner_lines(&name, width);
     let lead = slide.lead.clone().unwrap_or_default();
     let kicker = slide.kicker.clone().unwrap_or_default();
     let top = if kicker.is_empty() { 0 } else { 2 };
@@ -80,6 +80,32 @@ fn banner_body(slide: &Slide, width: usize) -> Grid {
             &lead,
             Style::at(Intensity::ThreeQuarters),
         );
+    }
+    grid
+}
+
+/// `name` in the block face, broken between words onto as many lines as
+/// it needs to fit `width` cells, each line centered, one blank row
+/// between lines.
+fn banner_lines(name: &str, width: usize) -> Grid {
+    let mut lines: Vec<String> = Vec::new();
+    for word in name.split_whitespace() {
+        match lines.last_mut() {
+            Some(line) if banner::width(&format!("{line} {word}")) <= width => {
+                line.push(' ');
+                line.push_str(word);
+            }
+            _ => lines.push(word.to_string()),
+        }
+    }
+    let faces: Vec<Grid> = lines.iter().map(|line| banner::banner(line)).collect();
+    let face_width = faces.iter().map(Grid::width).max().unwrap_or(0);
+    let height = faces.iter().map(Grid::height).sum::<usize>() + faces.len().saturating_sub(1);
+    let mut grid = Grid::new(face_width, height);
+    let mut top = 0;
+    for face in &faces {
+        grid.blit(center(face_width, face.width()), top, face);
+        top += face.height() + 1;
     }
     grid
 }
@@ -419,6 +445,17 @@ mod tests {
         let grid = body(&slide, Canvas::DEFAULT);
         assert!(grid.height() > banner::GLYPH_ROWS);
         assert!(grid.to_text().contains("while it runs"));
+    }
+
+    /// A banner name too wide for one line breaks between words, each line
+    /// inside the body.
+    #[test]
+    fn a_wide_banner_breaks_between_words() {
+        let mut slide = slide(Layout::Banner);
+        slide.title = Some("Test-Time Capabilities".to_string());
+        let grid = body(&slide, Canvas::DEFAULT);
+        assert_eq!(grid.height(), 2 * banner::GLYPH_ROWS + 1);
+        assert!(grid.width() <= Canvas::DEFAULT.body_cells());
     }
 
     /// A statement sets no wider than the measure, whatever the canvas.

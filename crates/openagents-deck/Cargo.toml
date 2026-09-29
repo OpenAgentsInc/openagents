@@ -11,7 +11,8 @@ publish.workspace = true
 description = "The OpenAgents presentation deck: cell-grid slides, text snapshots, and a native window."
 
 [dependencies]
-# The amber intensity ladder and the near-black field.
+# The intensity ladder the layouts are written against (painted white by
+# the deck's own palette).
 coder-ui = { path = "../coder-ui" }
 # Glyph rasterization from the font `rust-native` bundles.
 swash = "0.2.10"

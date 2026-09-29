@@ -2,24 +2,21 @@
 //!
 //! One `winit` window over a `wgpu` surface. Each frame is painted in
 //! software by [`Painter`], the same painter `--capture` writes PNG files
-//! with, and copied into the surface texture; there is no shader. A frame
-//! is painted only when something changed: a key, a resize, or a slide
-//! still typing itself in.
+//! with, and copied into the surface texture; there is no shader. A slide
+//! appears whole the moment it is opened, with no animation, and a frame
+//! is painted only when something changed: a key, a click, or a resize.
+//! Idle, the event loop waits and paints nothing.
 
 use crate::Options;
 use openagents_deck::paint::{FIELD, Frame, Painter, fitting_size};
 use openagents_deck::{Canvas, Deck, Grid, notes_grid, overview, overview_press, slide_grid};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
 use winit::application::ApplicationHandler;
 use winit::dpi::{LogicalSize, PhysicalPosition};
 use winit::event::{ElementState, MouseButton, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::keyboard::{Key, ModifiersState, NamedKey};
 use winit::window::{Fullscreen, Window, WindowId};
-
-/// How long a slide takes to type itself in.
-const ARRIVAL: Duration = Duration::from_millis(280);
 
 /// The most rows of presenter's note the notes band shows.
 const NOTE_ROWS: usize = 6;
@@ -32,13 +29,11 @@ pub fn run(deck: Deck, options: &Options) -> Result<(), String> {
         index: options.slide.min(deck.len().saturating_sub(1)),
         deck,
         notes: options.notes,
-        motion: !options.still,
         fullscreen: options.fullscreen,
         overview: false,
         black: false,
         zoom: 1.0,
         typed: String::new(),
-        arrived: Instant::now(),
         modifiers: ModifiersState::empty(),
         cursor: PhysicalPosition::new(0.0, 0.0),
         placement: None,
@@ -80,15 +75,12 @@ struct Show {
     deck: Deck,
     index: usize,
     notes: bool,
-    motion: bool,
     fullscreen: bool,
     overview: bool,
     black: bool,
     zoom: f32,
     /// Digits typed toward a jump, waiting for enter.
     typed: String,
-    /// When the current slide started to arrive.
-    arrived: Instant,
     modifiers: ModifiersState,
     cursor: PhysicalPosition<f64>,
     placement: Option<Placement>,
@@ -99,24 +91,12 @@ struct Show {
 }
 
 impl Show {
-    /// Opens slide `index`, clamped to the deck, and starts its arrival.
+    /// Opens slide `index`, clamped to the deck.
     fn go(&mut self, index: usize) {
         let last = self.deck.len().saturating_sub(1);
-        let index = index.min(last);
-        if index != self.index {
-            self.index = index;
-            self.arrived = Instant::now();
-        }
+        self.index = index.min(last);
         self.overview = false;
         self.black = false;
-    }
-
-    /// How much of the current slide has arrived, from zero to one.
-    fn arrival(&self) -> f32 {
-        if !self.motion {
-            return 1.0;
-        }
-        (self.arrived.elapsed().as_secs_f32() / ARRIVAL.as_secs_f32()).min(1.0)
     }
 
     fn redraw(&self) {
@@ -144,7 +124,9 @@ impl Show {
                 "q" | "w" => return false,
                 _ => {}
             },
-            Key::Named(NamedKey::ArrowRight | NamedKey::Space | NamedKey::PageDown) => self.next(),
+            Key::Named(NamedKey::ArrowRight | NamedKey::Space | NamedKey::PageDown) => {
+                self.go(self.index + 1)
+            }
             Key::Named(NamedKey::ArrowLeft | NamedKey::PageUp) => {
                 self.go(self.index.saturating_sub(1))
             }
@@ -171,12 +153,11 @@ impl Show {
                 }
             }
             Key::Character(text) => match text.as_str() {
-                "n" | "j" => self.next(),
+                "n" | "j" => self.go(self.index + 1),
                 "p" | "k" => self.go(self.index.saturating_sub(1)),
                 "o" => self.overview = !self.overview,
                 "t" => self.notes = !self.notes,
                 "." | "b" => self.black = !self.black,
-                "s" => self.motion = !self.motion,
                 "f" => self.set_fullscreen(!self.fullscreen),
                 "q" => return false,
                 digit if digit.chars().all(|c| c.is_ascii_digit()) => self.typed.push_str(digit),
@@ -187,20 +168,11 @@ impl Show {
         true
     }
 
-    /// The next slide, or the rest of this one while it arrives.
-    fn next(&mut self) {
-        if self.arrival() < 1.0 {
-            self.arrived = Instant::now() - ARRIVAL;
-            return;
-        }
-        self.go(self.index + 1);
-    }
-
     /// A click: on the overview, open the card under the pointer; on a
     /// slide, go on.
     fn click(&mut self) {
         if !self.overview {
-            self.next();
+            self.go(self.index + 1);
             return;
         }
         let Some(placement) = self.placement else {
@@ -239,7 +211,7 @@ impl Show {
         let grid: Grid = if self.overview {
             overview(&self.deck, self.index, canvas)
         } else {
-            slide_grid(&self.deck, self.index, canvas, self.arrival())
+            slide_grid(&self.deck, self.index, canvas)
         };
         let painter = match &mut self.painter {
             Some(painter) if (painter.size() - size).abs() < 0.01 => painter,
@@ -258,7 +230,7 @@ impl Show {
                 rule_y as i64,
                 (x + w) as i64,
                 rule_y as i64 + weight,
-                coder_ui::theme::Intensity::Quarter.color(),
+                openagents_deck::palette::color(coder_ui::theme::Intensity::Quarter),
             );
             let left = x + openagents_deck::canvas::PAD_COLS as f32 * painter.cell_width();
             painter.paint(&mut frame, &notes, left, top);
@@ -306,7 +278,11 @@ impl Show {
                 self.redraw();
                 return Ok(());
             }
-            wgpu::CurrentSurfaceTexture::Timeout | wgpu::CurrentSurfaceTexture::Occluded => {
+            // A hidden window paints again when it is shown (the
+            // `Occluded(false)` event); a timeout tries once more.
+            wgpu::CurrentSurfaceTexture::Occluded => return Ok(()),
+            wgpu::CurrentSurfaceTexture::Timeout => {
+                self.redraw();
                 return Ok(());
             }
             wgpu::CurrentSurfaceTexture::Validation => {
@@ -410,7 +386,7 @@ impl ApplicationHandler for Show {
             return;
         }
         let attributes = Window::default_attributes()
-            .with_title(format!("OpenAgents Deck · {}", self.deck.name))
+            .with_title(self.deck.title())
             .with_inner_size(LogicalSize::new(1280.0, 720.0))
             .with_min_inner_size(LogicalSize::new(480.0, 270.0));
         let window = match event_loop.create_window(attributes) {
@@ -434,7 +410,6 @@ impl ApplicationHandler for Show {
             self.set_fullscreen(true);
         }
         window.focus_window();
-        self.arrived = Instant::now();
         window.request_redraw();
     }
 
@@ -442,7 +417,12 @@ impl ApplicationHandler for Show {
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::Resized(size) => self.resize(size.width, size.height),
-            WindowEvent::ScaleFactorChanged { .. } => self.redraw(),
+            // A change of scale, a window shown again, and the end of a move
+            // into or out of a fullscreen space all want a fresh frame.
+            WindowEvent::ScaleFactorChanged { .. }
+            | WindowEvent::Occluded(false)
+            | WindowEvent::Focused(true)
+            | WindowEvent::Moved(_) => self.redraw(),
             WindowEvent::ModifiersChanged(modifiers) => self.modifiers = modifiers.state(),
             WindowEvent::KeyboardInput { event, .. } => {
                 if event.state == ElementState::Pressed {
@@ -463,17 +443,9 @@ impl ApplicationHandler for Show {
                 self.redraw();
             }
             WindowEvent::RedrawRequested => {
-                // Read the arrival before painting: a frame painted part way
-                // through asks for another, so the last frame is the whole
-                // slide even when the arrival ends while this one paints.
-                let partial = self.arrival() < 1.0 && !self.overview;
                 if let Err(error) = self.render() {
                     self.error = Some(error);
                     event_loop.exit();
-                    return;
-                }
-                if partial {
-                    self.redraw();
                 }
             }
             _ => {}
