@@ -238,4 +238,18 @@ impl TransportError {
 pub trait Transport {
     /// Sends one request and waits for the whole reply.
     fn respond(&self, request: &Request) -> impl Future<Output = Result<Reply, TransportError>>;
+
+    /// Sends one request and waits for the whole reply, handing `text`
+    /// each piece of the reply's message text and function-call arguments
+    /// as the provider streams it. The reply is exactly what
+    /// [`Transport::respond`] returns; a transport that does not stream
+    /// hands nothing over.
+    fn respond_streaming(
+        &self,
+        request: &Request,
+        text: &mut dyn FnMut(&str),
+    ) -> impl Future<Output = Result<Reply, TransportError>> {
+        let _ = text;
+        self.respond(request)
+    }
 }

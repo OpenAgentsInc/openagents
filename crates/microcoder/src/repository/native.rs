@@ -3,6 +3,8 @@ use super::*;
 
 struct Transport<'a, T> {
     host: &'a Host,
+    /// Where the reply goes as the model writes it.
+    replies: Option<&'a Replies<'a>>,
     inner: T,
     /// The model this route admits.
     model: String,
@@ -17,7 +19,15 @@ impl<T: codex_transport::Transport> codex_transport::Transport for Transport<'_,
         let sequence=self.host.effect("codex_request",json!({"model":request.model,"instructions":request.instructions,
             "input":request.input,"tools":request.tools,"effort":request.effort,"cache_key":request.cache_key,
             "parallel_tools":request.parallel_tools})).map_err(|error|codex_transport::TransportError::Failed(error.to_string()))?;
-        let response = self.inner.respond(request).await;
+        let response = match self.replies {
+            Some(replies) => {
+                replies.begin();
+                self.inner
+                    .respond_streaming(request, &mut |text| replies.feed(text))
+                    .await
+            }
+            None => self.inner.respond(request).await,
+        };
         if let Err(codex_transport::TransportError::Http { status, body }) = &response
             && let Some(refusal) = Refusal::codex(*status, body, task::autostart::unix_now())
         {
@@ -136,6 +146,8 @@ impl Judge for NativeJudge<'_> {
 /// the binary was asked, what it printed, and how it exited.
 struct Claude<'a> {
     host: &'a Host,
+    /// Where the reply goes as the model writes it.
+    replies: &'a Replies<'a>,
     inner: crate::claude::ClaudeGenerator,
     /// A usage or rate-limit refusal the last call met.
     refusal: RefCell<Option<Refusal>>,
@@ -150,14 +162,23 @@ impl Generate for Claude<'_> {
             Ok(sequence) => sequence,
             Err(error) => return refused_generation(&self.inner.model, false, &error.to_string()),
         };
-        let invocation = self.inner.invoke(system, prompt).await;
+        self.replies.begin();
+        let invocation = self
+            .inner
+            .invoke_streaming(system, prompt, &mut |text| self.replies.feed(text))
+            .await;
         *self.refusal.borrow_mut() = invocation.refusal(task::autostart::unix_now());
         let observation = json!({"status":invocation.status,"stdout":invocation.stdout,"stderr":invocation.stderr,
+            "stream_events":invocation.stream_events,
             "model":invocation.generated.model,"usd":invocation.generated.usd,"billing":"provider-reported-list-price"});
         if let Err(error) = self.host.result(sequence, "claude_request", observation) {
             return refused_generation(&self.inner.model, true, &error.to_string());
         }
         invocation.generated
+    }
+
+    fn warm(&self, system: &str) {
+        self.inner.warm(system);
     }
 }
 
@@ -175,6 +196,12 @@ impl<T: codex_transport::Transport> Generate for Native<'_, T> {
                 generator.generate(system, prompt).await
             }
             Native::Claude(generator) => generator.generate(system, prompt).await,
+        }
+    }
+
+    fn warm(&self, system: &str) {
+        if let Native::Claude(generator) = self {
+            generator.warm(system);
         }
     }
 }
@@ -197,6 +224,8 @@ pub(super) async fn run_stage<T: codex_transport::Transport>(
     client: jev::Client,
     session: &str,
 ) -> Result<(State, crate::run::Outcome), task::Error> {
+    let replies = Replies::new(host);
+    let replies = &replies;
     let lanes = clients
         .into_iter()
         .map(|(route, client)| {
@@ -204,6 +233,7 @@ pub(super) async fn run_stage<T: codex_transport::Transport>(
                 Client::Codex(transport) => Native::Codex(crate::models::CodexGenerator {
                     transport: Transport {
                         host,
+                        replies: Some(replies),
                         inner: transport,
                         model: route.model.clone(),
                         refusal: RefCell::new(None),
@@ -214,6 +244,7 @@ pub(super) async fn run_stage<T: codex_transport::Transport>(
                 }),
                 Client::Claude(generator) => Native::Claude(Claude {
                     host,
+                    replies,
                     inner: generator,
                     refusal: RefCell::new(None),
                 }),
@@ -225,7 +256,7 @@ pub(super) async fn run_stage<T: codex_transport::Transport>(
     let generator = failover(host, &journal, book, lanes, task::autostart::unix_now);
     generator.record_start();
     let judge = NativeJudge { host, client };
-    run_loop(host, &generator, &judge).await
+    run_loop(host, &generator, &judge, replies).await
 }
 
 #[cfg(test)]
@@ -247,6 +278,7 @@ mod tests {
             });
             let transport = Transport {
                 host: &host,
+                replies: None,
                 inner: scripted,
                 model: "fixture-model".into(),
                 refusal: RefCell::new(None),
@@ -270,6 +302,121 @@ mod tests {
             assert!(trace.contains("unaccepted-fixture"));
             assert!(!trace.contains("Supervised command started"));
         }
+    }
+
+    /// A transport that streams `text` in `pieces` before its reply.
+    struct Streaming {
+        pieces: Vec<&'static str>,
+    }
+
+    impl codex_transport::Transport for Streaming {
+        async fn respond(
+            &self,
+            request: &codex_transport::Request,
+        ) -> Result<codex_transport::Reply, codex_transport::TransportError> {
+            self.respond_streaming(request, &mut |_| {}).await
+        }
+
+        async fn respond_streaming(
+            &self,
+            _request: &codex_transport::Request,
+            text: &mut dyn FnMut(&str),
+        ) -> Result<codex_transport::Reply, codex_transport::TransportError> {
+            for piece in &self.pieces {
+                text(piece);
+            }
+            Ok(codex_transport::Reply {
+                id: Some("streamed-fixture".into()),
+                model: "fixture-model".into(),
+                items: vec![
+                    json!({"type":"message","content":[{"type":"output_text","text":self.pieces.concat()}]}),
+                ],
+                usage: codex_transport::TokenUsage::default(),
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn a_streamed_reply_is_shown_a_paragraph_at_a_time_and_once() {
+        let (_root, store, grant) = super::super::tests::fixture();
+        let host = Host::admit(&store, &grant).await.unwrap();
+        let replies = Replies::new(&host);
+        let reply = "First paragraph.\n\n```\na\n\nb\n```\n\nLast line.";
+        let transport = Transport {
+            host: &host,
+            replies: Some(&replies),
+            inner: Streaming {
+                pieces: vec![
+                    "{\"reply\": \"First para",
+                    "graph.\\n\\n```\\na\\n",
+                    "\\nb\\n```\\n\\nLast",
+                    " line.\", \"ask\": \"none\", \"rationale\": \"not shown\", \"commands\": [], ",
+                    "\"view\": [], \"freeze_tests\": false, \"expand\": [], \"finished\": true}",
+                ],
+            },
+            model: "fixture-model".into(),
+            refusal: RefCell::new(None),
+        };
+        let request = codex_transport::Request {
+            text_format: None,
+            model: "fixture-model".into(),
+            instructions: String::new(),
+            input: Vec::new(),
+            tools: Vec::new(),
+            effort: None,
+            cache_key: "fixture".into(),
+            parallel_tools: false,
+        };
+        transport.respond(&request).await.unwrap();
+        let action: crate::models::NextAction = serde_json::from_str(
+            &[
+                "{\"reply\": ",
+                &serde_json::to_string(reply).unwrap(),
+                ", \"ask\": \"none\", \"rationale\": \"not shown\", \"commands\": [], \"view\": [], \"freeze_tests\": false, \"expand\": [], \"finished\": true}",
+            ]
+            .concat(),
+        )
+        .unwrap();
+        let generated = crate::models::Generated {
+            action: Ok(action),
+            model: "fixture-model".into(),
+            prompt_tokens: 0,
+            completion_tokens: 0,
+            usd: Some(0.0),
+            known_usd: 0.0,
+            cost_unknown: None,
+            usd_upper: Some(0.0),
+            cost_basis: crate::models::Basis::ListPrice,
+            milliseconds: 1,
+        };
+        let mut events = RecordedEvents {
+            host: &host,
+            replies: &replies,
+        };
+        events.event(
+            1.0,
+            &Event::Generated {
+                step: 1,
+                prompt_chars: 1,
+                generated,
+            },
+        );
+        drop(transport);
+        host.finish("fixture_complete", true, json!({})).unwrap();
+        let trace = std::fs::read_to_string(store.join("fixture.1.atif.jsonl")).unwrap();
+        let shown: Vec<String> = trace
+            .lines()
+            .filter_map(|line| coder_history::readable_record_full(line.as_bytes()))
+            .filter(|readable| readable.role.as_deref() == Some("assistant"))
+            .map(|readable| readable.text)
+            .collect();
+        // Each whole paragraph once, the fence kept whole, and the step's
+        // own record adds nothing the parts did not show.
+        assert_eq!(
+            shown,
+            ["First paragraph.", "```\na\n\nb\n```", "Last line."]
+        );
+        assert!(trace.contains("\"reply_streamed\":"));
     }
 
     #[tokio::test]
@@ -297,6 +444,7 @@ mod tests {
         });
         let transport = Transport {
             host: &host,
+            replies: None,
             inner: scripted,
             model: "fixture-model".into(),
             refusal: RefCell::new(None),

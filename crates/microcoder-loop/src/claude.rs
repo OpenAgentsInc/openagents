@@ -14,6 +14,21 @@
 //! carries when the limit resets (`resetsAt`), which the capacity book
 //! records instead of a flat hold ([`crate::capacity::Refusal::claude`]).
 //!
+//! The call streams too: with `--include-partial-messages` the binary
+//! prints each piece of the `StructuredOutput` tool's input as it is
+//! written, and [`ClaudeGenerator::invoke_streaming`] hands those pieces
+//! to its caller, so a host can show the step's reply
+//! ([`crate::reply::Tap`]) before the call ends. The call returns as soon
+//! as the `result` event is read, without waiting for the binary to exit.
+//! The retained stdout leaves out those partial `stream_event` lines, which
+//! repeat the complete `assistant` messages it keeps, and counts them.
+//!
+//! The binary reads its prompt as one `stream-json` user message, so it can
+//! be started before the prompt exists ([`ClaudeGenerator::warm`]): it
+//! loads while the host prepares the step and sends nothing to the model
+//! until the prompt arrives. A warm process that is never used is killed
+//! when the generator is dropped.
+//!
 //! Claude Code reports the request's list-price cost (`total_cost_usd`) and
 //! its tokens, so a step's cost basis is [`Basis::ListPrice`]. A call that
 //! fails before a request is sent cost nothing; one that fails after may
@@ -81,6 +96,15 @@ pub struct ClaudeGenerator {
     /// runs nothing itself either way; the flag keeps a permission prompt
     /// from ever holding a headless call.
     pub bypass_permissions: bool,
+    /// A process started ahead of its prompt ([`ClaudeGenerator::warm`]).
+    warm: std::sync::Mutex<Option<Box<Warm>>>,
+}
+
+/// A started binary waiting for its prompt, and the system text it was
+/// started with.
+struct Warm {
+    system: String,
+    child: tokio::process::Child,
 }
 
 impl ClaudeGenerator {
@@ -90,12 +114,19 @@ impl ClaudeGenerator {
     ///
     /// When no `claude` binary can be found.
     pub fn from_env(model: &str, effort: Option<String>) -> Result<Self, String> {
-        Ok(ClaudeGenerator {
-            model: alias(model),
+        Ok(Self::new(alias(model), effort, find_binary()?))
+    }
+
+    /// A generator for `model` (passed as given) on `binary`.
+    #[must_use]
+    pub fn new(model: String, effort: Option<String>, binary: PathBuf) -> Self {
+        ClaudeGenerator {
+            model,
             effort,
-            binary: find_binary()?,
+            binary,
             bypass_permissions: false,
-        })
+            warm: std::sync::Mutex::new(None),
+        }
     }
 
     /// This generator, passing `--permission-mode bypassPermissions` when
@@ -111,9 +142,12 @@ impl ClaudeGenerator {
     pub fn args(&self, system: &str) -> Vec<String> {
         let mut args = vec![
             "-p".to_string(),
+            "--input-format".to_string(),
+            "stream-json".to_string(),
             "--output-format".to_string(),
             "stream-json".to_string(),
             "--verbose".to_string(),
+            "--include-partial-messages".to_string(),
             "--no-session-persistence".to_string(),
             "--tools".to_string(),
             String::new(),
@@ -364,7 +398,8 @@ impl Report {
 #[derive(Debug)]
 pub struct Invocation {
     pub generated: Generated,
-    /// The binary's exit status, or `None` when it did not run or was killed.
+    /// The binary's exit status, or `None` when it did not run, was
+    /// killed, or had not exited yet when its result was read.
     pub status: Option<i32>,
     /// The API status of an error result, such as 429 for a usage or rate
     /// limit; `None` for a success or a call with no report.
@@ -373,8 +408,11 @@ pub struct Invocation {
     pub rate_limit: Option<RateLimit>,
     /// Whether the binary reported an error result.
     pub is_error: bool,
+    /// What the binary printed, less its partial `stream_event` lines.
     pub stdout: String,
     pub stderr: String,
+    /// How many partial `stream_event` lines the binary printed.
+    pub stream_events: usize,
 }
 
 impl Invocation {
@@ -395,11 +433,69 @@ impl Generate for ClaudeGenerator {
     async fn generate(&self, system: &str, prompt: &str) -> Generated {
         self.invoke(system, prompt).await.generated
     }
+
+    fn warm(&self, system: &str) {
+        ClaudeGenerator::warm(self, system);
+    }
 }
 
 impl ClaudeGenerator {
+    /// Starts the binary for a step under `system`, to wait for its prompt,
+    /// unless one is already waiting with that system text. It sends
+    /// nothing to the model. A start that fails is left to the step, which
+    /// starts the binary again and reports why.
+    pub fn warm(&self, system: &str) {
+        let Ok(mut warm) = self.warm.lock() else {
+            return;
+        };
+        if let Some(ready) = warm.as_mut()
+            && ready.system == system
+            && matches!(ready.child.try_wait(), Ok(None))
+        {
+            return;
+        }
+        *warm = self.spawn(system).ok().map(|child| {
+            Box::new(Warm {
+                system: system.to_owned(),
+                child,
+            })
+        });
+    }
+
+    /// The waiting process for `system`, if one is still running.
+    fn take_warm(&self, system: &str) -> Option<tokio::process::Child> {
+        let mut ready = self.warm.lock().ok()?.take()?;
+        (ready.system == system && matches!(ready.child.try_wait(), Ok(None)))
+            .then_some(ready.child)
+    }
+
+    fn spawn(&self, system: &str) -> std::io::Result<tokio::process::Child> {
+        tokio::process::Command::new(&self.binary)
+            .args(self.args(system))
+            .current_dir(std::env::temp_dir())
+            .env(NO_CONNECTORS.0, NO_CONNECTORS.1)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .kill_on_drop(true)
+            .spawn()
+    }
+
     /// Runs the binary once for this step.
     pub async fn invoke(&self, system: &str, prompt: &str) -> Invocation {
+        self.invoke_streaming(system, prompt, &mut |_| {}).await
+    }
+
+    /// Runs the binary once for this step, handing `partial` each piece of
+    /// the next action's JSON text as the model writes it. The pieces, in
+    /// order, are the text of the action the call returns, when it returns
+    /// one; a call that fails may have handed over part of an action.
+    pub async fn invoke_streaming(
+        &self,
+        system: &str,
+        prompt: &str,
+        partial: &mut dyn FnMut(&str),
+    ) -> Invocation {
         let started = Instant::now();
         let milliseconds = || u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
         let failed = |why: String, usd: Option<f64>| Invocation {
@@ -421,36 +517,55 @@ impl ClaudeGenerator {
             is_error: false,
             stdout: String::new(),
             stderr: String::new(),
+            stream_events: 0,
         };
         let args = self.args(system);
-        let mut child = match tokio::process::Command::new(&self.binary)
-            .args(&args)
-            .current_dir(std::env::temp_dir())
-            .env(NO_CONNECTORS.0, NO_CONNECTORS.1)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .kill_on_drop(true)
-            .spawn()
-        {
-            Ok(child) => child,
-            Err(error) => {
-                return failed(
-                    format!("can't start {}: {error}", self.binary.display()),
-                    Some(0.0),
-                );
-            }
+        let mut child = match self.take_warm(system) {
+            Some(child) => child,
+            None => match self.spawn(system) {
+                Ok(child) => child,
+                Err(error) => {
+                    return failed(
+                        format!("can't start {}: {error}", self.binary.display()),
+                        Some(0.0),
+                    );
+                }
+            },
         };
         if let Some(mut stdin) = child.stdin.take() {
-            let written = stdin.write_all(prompt.as_bytes()).await;
+            let mut line =
+                json!({"type":"user","message":{"role":"user","content":prompt}}).to_string();
+            line.push('\n');
+            let written = stdin.write_all(line.as_bytes()).await;
             drop(stdin);
             if let Err(error) = written {
                 return failed(format!("can't write the prompt to claude: {error}"), None);
             }
         }
-        let output = match tokio::time::timeout(TIMEOUT, child.wait_with_output()).await {
-            Ok(Ok(output)) => output,
-            Ok(Err(error)) => return failed(format!("claude didn't finish: {error}"), None),
+        // Stderr is read beside stdout, so a full pipe never holds the
+        // binary; what it printed by the result is what the call keeps.
+        let errors = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        if let Some(mut stderr) = child.stderr.take() {
+            let errors = errors.clone();
+            tokio::spawn(async move {
+                use tokio::io::AsyncReadExt;
+                let mut chunk = [0u8; 8192];
+                while let Ok(read) = stderr.read(&mut chunk).await {
+                    if read == 0 {
+                        break;
+                    }
+                    if let Ok(mut errors) = errors.lock() {
+                        errors.extend_from_slice(&chunk[..read]);
+                    }
+                }
+            });
+        }
+        let Some(stdout) = child.stdout.take() else {
+            return failed("claude's output was not captured".into(), None);
+        };
+        let read = tokio::time::timeout(TIMEOUT, read_stream(stdout, partial)).await;
+        let stream = match read {
+            Ok(stream) => stream,
             Err(_) => {
                 return failed(
                     format!(
@@ -461,14 +576,32 @@ impl ClaudeGenerator {
                 );
             }
         };
-        let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
-        let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+        // A stream that ended without a result is the binary exiting: its
+        // status says how. After a result the call returns at once, and the
+        // binary is left to exit on its own.
+        let status = if stream.result {
+            let status = child.try_wait().ok().flatten().and_then(|s| s.code());
+            tokio::spawn(async move {
+                let _ = child.wait().await;
+            });
+            status
+        } else {
+            match tokio::time::timeout(Duration::from_secs(5), child.wait()).await {
+                Ok(Ok(status)) => status.code(),
+                _ => None,
+            }
+        };
+        let stdout = stream.kept;
+        let stderr = errors
+            .lock()
+            .map(|errors| String::from_utf8_lossy(&errors).into_owned())
+            .unwrap_or_default();
         let report = Report::parse(&stdout);
         dump_request(
             "claude",
             &json!({ "binary": self.binary, "args": args, "prompt": prompt }),
             json!({
-                "status": output.status.code(),
+                "status": status,
                 "stdout": stdout,
                 "stderr": stderr,
                 "error": report.as_ref().err(),
@@ -479,13 +612,11 @@ impl ClaudeGenerator {
             Err(why) => {
                 let excerpt: String = stderr.trim().chars().take(300).collect();
                 return Invocation {
-                    status: output.status.code(),
+                    status,
                     stdout,
                     stderr,
-                    ..failed(
-                        format!("{why} (exit {:?}; stderr: {excerpt})", output.status.code()),
-                        None,
-                    )
+                    stream_events: stream.events,
+                    ..failed(format!("{why} (exit {status:?}; stderr: {excerpt})"), None)
                 };
             }
         };
@@ -515,15 +646,82 @@ impl ClaudeGenerator {
                 cost_basis: Basis::ListPrice,
                 milliseconds: milliseconds(),
             },
-            status: output.status.code(),
+            status,
             api_error_status: report.is_error.then_some(report.api_error_status).flatten(),
             rate_limit: report.rate_limit,
             is_error: report.is_error,
             stdout,
             stderr,
+            stream_events: stream.events,
         }
     }
 }
+
+/// What one call printed on stdout, read until its `result` event.
+struct Stream {
+    /// Every line but the partial `stream_event`s.
+    kept: String,
+    /// How many `stream_event` lines were read and left out of `kept`.
+    events: usize,
+    /// Whether the `result` event was read.
+    result: bool,
+}
+
+/// Reads the binary's stream until its `result` event or its end, handing
+/// `partial` the `StructuredOutput` tool's input as it streams.
+async fn read_stream(stdout: tokio::process::ChildStdout, partial: &mut dyn FnMut(&str)) -> Stream {
+    use tokio::io::AsyncBufReadExt;
+    let mut lines = tokio::io::BufReader::new(stdout).lines();
+    let mut stream = Stream {
+        kept: String::new(),
+        events: 0,
+        result: false,
+    };
+    // The content block that holds the structured output.
+    let mut block: Option<u64> = None;
+    while let Ok(Some(line)) = lines.next_line().await {
+        let value = line
+            .trim_start()
+            .starts_with('{')
+            .then(|| serde_json::from_str::<Value>(&line).ok())
+            .flatten();
+        let kind = value.as_ref().and_then(|v| v["type"].as_str());
+        if kind == Some("stream_event") {
+            stream.events += 1;
+            let event = &value.as_ref().map_or(&Value::Null, |v| &v["event"]);
+            match event["type"].as_str() {
+                Some("content_block_start") => {
+                    let content = &event["content_block"];
+                    if content["type"] == "tool_use" && content["name"] == STRUCTURED_OUTPUT {
+                        block = event["index"].as_u64();
+                    }
+                }
+                Some("content_block_delta")
+                    if block.is_some() && event["index"].as_u64() == block =>
+                {
+                    if let Some(text) = event["delta"]["partial_json"]
+                        .as_str()
+                        .filter(|_| event["delta"]["type"] == "input_json_delta")
+                    {
+                        partial(text);
+                    }
+                }
+                _ => {}
+            }
+            continue;
+        }
+        stream.kept.push_str(&line);
+        stream.kept.push('\n');
+        if kind == Some("result") {
+            stream.result = true;
+            break;
+        }
+    }
+    stream
+}
+
+/// The tool Claude Code answers a `--json-schema` call through.
+const STRUCTURED_OUTPUT: &str = "StructuredOutput";
 
 #[cfg(test)]
 mod tests {
@@ -549,12 +747,7 @@ mod tests {
         .unwrap();
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(&binary, std::fs::Permissions::from_mode(0o755)).unwrap();
-        let generator = ClaudeGenerator {
-            model: "haiku".into(),
-            effort: None,
-            binary,
-            bypass_permissions: false,
-        };
+        let generator = ClaudeGenerator::new("haiku".into(), None, binary);
         let generated = generator.generate("SYS", "hello").await;
         let action = generated
             .action
@@ -562,14 +755,113 @@ mod tests {
         assert_eq!(action.reply, NO_CONNECTORS.1);
     }
 
+    /// A stand-in `claude` binary running `script`.
+    fn stand_in(dir: &Path, script: &str) -> PathBuf {
+        use std::os::unix::fs::PermissionsExt;
+        let binary = dir.join("claude");
+        std::fs::write(&binary, format!("#!/bin/sh\n{script}")).unwrap();
+        std::fs::set_permissions(&binary, std::fs::Permissions::from_mode(0o755)).unwrap();
+        binary
+    }
+
+    #[tokio::test]
+    async fn the_structured_output_streams_and_the_call_returns_at_its_result() {
+        let dir = tempfile::tempdir().unwrap();
+        let binary = stand_in(
+            dir.path(),
+            r#"read line
+printf '%s\n' '{"type":"system","subtype":"init"}'
+printf '%s\n' '{"type":"stream_event","event":{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}}'
+printf '%s\n' '{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"prose"}}}'
+printf '%s\n' '{"type":"stream_event","event":{"type":"content_block_start","index":1,"content_block":{"type":"tool_use","name":"StructuredOutput","input":{}}}}'
+printf '%s\n' '{"type":"stream_event","event":{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"reply\": \"hi"}}}'
+printf '%s\n' '{"type":"stream_event","event":{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"\", \"finished\": true}"}}}'
+printf '%s\n' '{"type":"result","is_error":false,"result":"","structured_output":{"reply":"hi","ask":"none","rationale":"r","commands":[],"view":[],"freeze_tests":false,"expand":[],"finished":true},"total_cost_usd":0.001}'
+sleep 20
+"#,
+        );
+        let generator = ClaudeGenerator::new("haiku".into(), None, binary);
+        let started = Instant::now();
+        let mut pieces = Vec::new();
+        let invocation = generator
+            .invoke_streaming("SYS", "hello", &mut |text| pieces.push(text.to_owned()))
+            .await;
+        // The call ends at the result, not when the binary exits.
+        assert!(started.elapsed() < Duration::from_secs(10));
+        assert_eq!(invocation.generated.action.unwrap().reply, "hi");
+        // Only the structured output's pieces, in order.
+        assert_eq!(pieces.concat(), r#"{"reply": "hi", "finished": true}"#);
+        let mut tap = crate::reply::Tap::new();
+        for piece in &pieces {
+            tap.feed(piece);
+        }
+        assert_eq!((tap.reply(), tap.complete()), ("hi", true));
+        // The partial lines are counted, not kept.
+        assert_eq!(invocation.stream_events, 5);
+        assert!(!invocation.stdout.contains("stream_event"));
+        assert!(invocation.stdout.contains(r#""type":"result""#));
+        assert_eq!(invocation.status, None);
+    }
+
+    #[tokio::test]
+    async fn a_warm_binary_waits_for_its_prompt_and_answers_the_step() {
+        let dir = tempfile::tempdir().unwrap();
+        let started = dir.path().join("started");
+        let prompt = dir.path().join("prompt");
+        let binary = stand_in(
+            dir.path(),
+            &format!(
+                r#"echo $$ > '{}'
+read -r line
+printf '%s' "$line" > '{}'
+printf '{{"type":"result","is_error":false,"result":"","structured_output":{{"reply":"%s","ask":"none","rationale":"r","commands":[],"view":[],"freeze_tests":false,"expand":[],"finished":true}}}}\n' $$
+"#,
+                started.display(),
+                prompt.display()
+            ),
+        );
+        let generator = ClaudeGenerator::new("haiku".into(), None, binary);
+        generator.warm("SYS");
+        // The warm binary starts before any prompt exists.
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while !started.exists() {
+            assert!(Instant::now() < deadline, "the warm binary never started");
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        assert!(!prompt.exists());
+        // A second warm with the same system text keeps it.
+        generator.warm("SYS");
+        let pid = std::fs::read_to_string(&started).unwrap().trim().to_owned();
+        let reply = generator
+            .invoke("SYS", "the \"prompt\"")
+            .await
+            .generated
+            .action
+            .unwrap()
+            .reply;
+        assert_eq!(reply, pid, "the step ran on the warm binary");
+        // The prompt arrived as one stream-json user message.
+        let line: Value = serde_json::from_str(&std::fs::read_to_string(&prompt).unwrap()).unwrap();
+        assert_eq!(
+            line,
+            json!({"type":"user","message":{"role":"user","content":"the \"prompt\""}})
+        );
+        // A step under other system text starts its own binary.
+        generator.warm("OTHER");
+        let other = generator
+            .invoke("SYS", "x")
+            .await
+            .generated
+            .action
+            .unwrap()
+            .reply;
+        assert_ne!(other, pid);
+    }
+
     #[test]
     fn args_turn_every_tool_off_and_carry_the_schema() {
-        let generator = ClaudeGenerator {
-            model: "opus".into(),
-            effort: Some("xhigh".into()),
-            binary: PathBuf::from("claude"),
-            bypass_permissions: false,
-        };
+        let generator =
+            ClaudeGenerator::new("opus".into(), Some("xhigh".into()), PathBuf::from("claude"));
         let args = generator.args("SYS");
         let at = |flag: &str| {
             args.iter()
@@ -579,6 +871,8 @@ mod tests {
         assert_eq!(at("--tools"), Some(String::new()));
         assert_eq!(at("--max-turns"), Some("1".into()));
         assert_eq!(at("--output-format"), Some("stream-json".into()));
+        assert_eq!(at("--input-format"), Some("stream-json".into()));
+        assert!(args.contains(&"--include-partial-messages".to_string()));
         assert!(args.contains(&"--verbose".to_string()));
         assert_eq!(at("--setting-sources"), Some(String::new()));
         assert_eq!(at("--model"), Some("opus".into()));
@@ -592,13 +886,9 @@ mod tests {
 
     #[test]
     fn a_full_access_call_bypasses_permissions_and_still_runs_no_tool() {
-        let generator = ClaudeGenerator {
-            model: "claude-opus-5-5".into(),
-            effort: None,
-            binary: PathBuf::from("claude"),
-            bypass_permissions: false,
-        }
-        .bypassing_permissions(true);
+        let generator =
+            ClaudeGenerator::new("claude-opus-5-5".into(), None, PathBuf::from("claude"))
+                .bypassing_permissions(true);
         let args = generator.args("SYS");
         let at = |flag: &str| {
             args.iter()

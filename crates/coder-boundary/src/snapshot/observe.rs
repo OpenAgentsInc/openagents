@@ -29,6 +29,11 @@
 //! write moves the status-change time, which no unprivileged process can
 //! set back, so a reused digest is the digest of the same bytes; a file
 //! written moments before an observation is always read again.
+//!
+//! A caller may keep those digests between processes ([`remember`] and
+//! [`recall`]) in a file only it can write. A recalled digest is reused
+//! under exactly the same rule: only for a file whose whole stamp still
+//! matches the one it was hashed under, so a changed file is read again.
 
 use std::collections::{BTreeMap, HashMap};
 use std::ffi::{CStr, CString, OsStr, OsString};
@@ -501,6 +506,89 @@ fn reuse() -> &'static Mutex<HashMap<Stamp, [u8; 32]>> {
     REUSE.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
+/// The first bytes of a digest file.
+const DIGESTS_MAGIC: &[u8; 16] = b"oa-digests-v1\n\0\0";
+
+/// Bytes of one kept digest: its stamp, then the SHA-256.
+const DIGEST_RECORD: usize = 8 * 3 + 4 + 8 * 4 + 32;
+
+/// Adds the digests `path` holds to this process's reuse, and returns how
+/// many it read. A missing, unreadable, or malformed file adds none.
+pub(super) fn recall(path: &Path) -> usize {
+    let Ok(bytes) = std::fs::read(path) else {
+        return 0;
+    };
+    let Some(records) = bytes.strip_prefix(DIGESTS_MAGIC.as_slice()) else {
+        return 0;
+    };
+    if records.len() % DIGEST_RECORD != 0 || records.len() / DIGEST_RECORD > REUSED_MAX {
+        return 0;
+    }
+    let Ok(mut map) = reuse().lock() else {
+        return 0;
+    };
+    if map.len() + records.len() / DIGEST_RECORD > REUSED_MAX {
+        map.clear();
+    }
+    let mut read = 0;
+    for record in records.chunks_exact(DIGEST_RECORD) {
+        let u64_at =
+            |at: usize| u64::from_le_bytes(record[at..at + 8].try_into().unwrap_or_default());
+        let i64_at =
+            |at: usize| i64::from_le_bytes(record[at..at + 8].try_into().unwrap_or_default());
+        let stamp = Stamp {
+            dev: u64_at(0),
+            ino: u64_at(8),
+            len: u64_at(16),
+            mode: u32::from_le_bytes(record[24..28].try_into().unwrap_or_default()),
+            modified: (i64_at(28), i64_at(36)),
+            changed: (i64_at(44), i64_at(52)),
+        };
+        let mut digest = [0u8; 32];
+        digest.copy_from_slice(&record[60..92]);
+        map.insert(stamp, digest);
+        read += 1;
+    }
+    read
+}
+
+/// Writes every digest this process may reuse to `path`, readable and
+/// writable only by this user, replacing the file whole.
+pub(super) fn remember(path: &Path) -> std::io::Result<()> {
+    use std::io::Write as _;
+    use std::os::unix::fs::OpenOptionsExt as _;
+    let mut bytes = DIGESTS_MAGIC.to_vec();
+    {
+        let map = reuse()
+            .lock()
+            .map_err(|_| std::io::Error::other("the digest store is poisoned"))?;
+        bytes.reserve(map.len() * DIGEST_RECORD);
+        for (stamp, digest) in map.iter() {
+            bytes.extend_from_slice(&stamp.dev.to_le_bytes());
+            bytes.extend_from_slice(&stamp.ino.to_le_bytes());
+            bytes.extend_from_slice(&stamp.len.to_le_bytes());
+            bytes.extend_from_slice(&stamp.mode.to_le_bytes());
+            for time in [stamp.modified, stamp.changed] {
+                bytes.extend_from_slice(&time.0.to_le_bytes());
+                bytes.extend_from_slice(&time.1.to_le_bytes());
+            }
+            bytes.extend_from_slice(digest);
+        }
+    }
+    let temporary = path.with_extension(format!("tmp-{}", std::process::id()));
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .mode(0o600)
+        .open(&temporary)?;
+    file.write_all(&bytes)?;
+    drop(file);
+    std::fs::rename(&temporary, path).inspect_err(|_| {
+        let _ = std::fs::remove_file(&temporary);
+    })
+}
+
 fn reused(stamp: &Stamp) -> Option<[u8; 32]> {
     reuse().lock().ok()?.get(stamp).copied()
 }
@@ -864,6 +952,61 @@ mod tests {
         assert!(rewritten.is_complete());
         assert_ne!(first.digest(), rewritten.digest());
         assert!(rewritten.matches_file(Path::new("file"), b"other"));
+    }
+
+    /// Digests kept in a file are reused by a later process only while the
+    /// file's whole stamp is unchanged: a forged digest for an unchanged
+    /// file is what the snapshot then reports, which shows it was reused,
+    /// and once the file changes it is read again.
+    #[test]
+    fn remembered_digests_are_reused_only_for_an_unchanged_file() {
+        use std::os::unix::fs::PermissionsExt as _;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().canonicalize().unwrap();
+        let tree = path.join("tree");
+        std::fs::create_dir(&tree).unwrap();
+        let target = tree.join("file");
+        std::fs::write(&target, b"bytes").unwrap();
+        let old = SystemTime::now() - Duration::from_secs(3600);
+        File::options()
+            .write(true)
+            .open(&target)
+            .unwrap()
+            .set_modified(old)
+            .unwrap();
+        std::thread::sleep(SETTLED + Duration::from_millis(200));
+        assert!(crate::Snapshot::observe(&tree).matches_file(Path::new("file"), b"bytes"));
+        let kept = path.join("digests");
+        remember(&kept).unwrap();
+        assert_eq!(
+            std::fs::metadata(&kept).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+        // Forge the file's digest, as a later process would read it.
+        let ino = std::fs::metadata(&target).unwrap().ino();
+        let mut bytes = std::fs::read(&kept).unwrap();
+        let forged: [u8; 32] = Sha256::digest(b"fake!").into();
+        let mut found = false;
+        for record in bytes[DIGESTS_MAGIC.len()..].chunks_exact_mut(DIGEST_RECORD) {
+            if u64::from_le_bytes(record[8..16].try_into().unwrap()) == ino {
+                record[60..92].copy_from_slice(&forged);
+                found = true;
+            }
+        }
+        assert!(found);
+        std::fs::write(&kept, &bytes).unwrap();
+        reuse().lock().unwrap().clear();
+        assert!(recall(&kept) >= 1);
+        assert!(crate::Snapshot::observe(&tree).matches_file(Path::new("file"), b"fake!"));
+        // A change moves the stamp, so the file is read again.
+        std::fs::write(&target, b"other").unwrap();
+        assert!(crate::Snapshot::observe(&tree).matches_file(Path::new("file"), b"other"));
+        // A missing or malformed file adds nothing.
+        assert_eq!(recall(&path.join("missing")), 0);
+        std::fs::write(&kept, b"oa-digests-v1\n\0\0short").unwrap();
+        assert_eq!(recall(&kept), 0);
+        std::fs::write(&kept, b"not a digest file").unwrap();
+        assert_eq!(recall(&kept), 0);
     }
 
     #[test]

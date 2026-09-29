@@ -1006,6 +1006,53 @@ fn coder_loop_events_project_as_replies_commands_and_endings() {
             false
         )
     );
+    // A reply shown as the model wrote it: each `replying` part is a
+    // message, and the step's `generated` shows only what they did not.
+    assert_eq!(
+        view(&event(
+            serde_json::json!({"event": "replying", "text": "First paragraph.\n\n"})
+        )),
+        (
+            "message".into(),
+            s("assistant"),
+            None,
+            "First paragraph.".into(),
+            false
+        )
+    );
+    let streamed = |bytes: u64, reply: &str| {
+        let mut value = generated(serde_json::json!({"Ok": {
+            "reply": reply, "ask": "none", "rationale": "Answered.", "commands": [],
+            "view": [], "freeze_tests": false, "expand": [], "finished": true
+        }}));
+        value["reply_streamed"] = serde_json::json!(bytes);
+        view(&event(value))
+    };
+    let whole = "First paragraph.\n\nSecond.";
+    assert_eq!(
+        streamed(whole.len() as u64, whole),
+        ("reasoning".into(), None, None, "Answered.".into(), false)
+    );
+    assert_eq!(
+        streamed("First paragraph.\n\n".len() as u64, whole),
+        (
+            "message".into(),
+            s("assistant"),
+            None,
+            "Second.".into(),
+            false
+        )
+    );
+    // A count outside the reply, or inside a character, shows it whole.
+    for bytes in [whole.len() as u64 + 1, 1_000_000] {
+        assert_eq!(streamed(bytes, whole).3, whole);
+    }
+    assert_eq!(streamed(1, "é and more").3, "é and more");
+    // A reader that does not know `replying` hides it: it has no text.
+    assert_eq!(
+        view(&event(serde_json::json!({"event": "replying"}))).0,
+        "adapter"
+    );
     // A finishing step recorded before replies existed shows its rationale,
     // still without a marker.
     assert_eq!(

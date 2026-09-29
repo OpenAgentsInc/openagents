@@ -423,8 +423,8 @@ fn devin_database(variables: &[(String, String)]) -> Option<PathBuf> {
 
 /// The agent process's environment: the owner's login environment under
 /// full access, else this process's, less credential variables either way.
-pub(super) fn environment(host: &Host) -> Vec<(String, String)> {
-    let variables: Vec<(OsString, OsString)> = match host.login_environment() {
+pub(super) async fn environment(host: &Host) -> Vec<(String, String)> {
+    let variables: Vec<(OsString, OsString)> = match host.login_environment().await {
         Some(login) => login.variables.clone(),
         None => std::env::vars_os().collect(),
     };
@@ -462,7 +462,7 @@ pub(crate) async fn turn(host: &Host, route: &GrantRoute, program: PathBuf) -> T
             program: program.clone(),
             arguments: arguments.clone(),
             cwd: host.workspace().to_path_buf(),
-            environment: environment(host),
+            environment: environment(host).await,
         },
         resume: resume.clone(),
         meta: Some(acp_client::devin::engine_meta(coder_history_mark())),

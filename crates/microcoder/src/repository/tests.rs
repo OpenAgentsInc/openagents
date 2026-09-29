@@ -1262,6 +1262,27 @@ async fn full_access_runs_as_the_owner_with_no_sandbox() {
     assert_eq!(std::fs::read(&outside).unwrap(), b"written");
     let trace = std::fs::read_to_string(store.join("fixture.1.atif.jsonl")).unwrap();
     assert!(trace.contains("\"access\":\"full\"") && trace.contains("host_network"));
+    // The login shell is read beside admission: the admission record says
+    // so, and what was read is recorded once, before the first command.
+    let lines: Vec<&str> = trace.lines().collect();
+    let read_at = lines
+        .iter()
+        .position(|line| line.contains("login environment, read for the run's commands"))
+        .expect("the login environment is recorded");
+    let command_at = lines
+        .iter()
+        .position(|line| line.contains("\"kind\":\"command\""))
+        .unwrap();
+    assert!(read_at < command_at);
+    assert!(trace.contains("\"recorded\":\"before the first command\""));
+    assert_eq!(
+        trace
+            .matches("login environment, read for the run's commands")
+            .count(),
+        1
+    );
+    // The workspace digests are kept for the next owner.
+    assert!(store.join(coder::task::adapter::SNAPSHOT_DIGESTS).is_file());
     host.finish("fixture_complete", false, json!({})).unwrap();
 
     std::fs::remove_file(&outside).unwrap();

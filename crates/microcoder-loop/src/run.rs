@@ -142,7 +142,21 @@ pub struct Limits {
     /// [`ASK_SYSTEM`]). Off by default: in a run nobody answers, such as a
     /// benchmark, a step that asks is told so and the loop goes on.
     pub ask: bool,
+    /// Whether the first step's judgment runs beside its generation
+    /// instead of before it. Before anything has run, Jev's questions
+    /// (done, progress, repeating) have no command output to judge, so the
+    /// first prompt says so ([`FIRST_STEP_JEV`]) instead of carrying their
+    /// answers, and the model's call does not wait for them. The judgment
+    /// is still asked and recorded. Off by default, so benchmark runs keep
+    /// their prompts; a repository turn, which a person watches, turns it
+    /// on.
+    pub first_judgment_beside: bool,
 }
+
+/// What the first step's prompt says in place of Jev's judgments when they
+/// run beside it ([`Limits::first_judgment_beside`]).
+pub const FIRST_STEP_JEV: &str =
+    "None yet: this is the first step, and nothing has run for Jev to judge.";
 
 /// When the stronger model writes the acceptance tests.
 #[derive(Clone, Copy, Debug, Serialize, PartialEq)]
@@ -176,6 +190,7 @@ impl Default for Limits {
             strong_steps: 8,
             gates: Gates::default(),
             ask: false,
+            first_judgment_beside: false,
         }
     }
 }
@@ -556,6 +571,27 @@ pub fn prompt(
         }
     }
     out
+}
+
+/// What every generation of a run is told before its prompt: [`SYSTEM`],
+/// with [`KB_SYSTEM`] when the knowledge base is on, [`CREDIBLE_SYSTEM`]
+/// when the credibility gate is, and [`ASK_SYSTEM`] when a step may ask.
+/// A host that starts a model process before the loop runs
+/// ([`Generate::warm`]) starts it with this.
+#[must_use]
+pub fn system_prompt(knowledge: bool, limits: &Limits) -> String {
+    let mut system = if knowledge {
+        format!("{SYSTEM}{KB_SYSTEM}")
+    } else {
+        SYSTEM.to_string()
+    };
+    if limits.acceptance && limits.gates.credible {
+        system.push_str(CREDIBLE_SYSTEM);
+    }
+    if limits.ask {
+        system.push_str(ASK_SYSTEM);
+    }
+    system
 }
 
 /// The state Jev reads.
@@ -1064,17 +1100,10 @@ pub async fn run<E: Env, G: Generate, J: Judge, O: Observer>(
     let mut used: Vec<Used> = Vec::new();
     // Retrievals by query digest, so an unchanged state isn't searched again.
     let mut retrieved: HashMap<String, Retrieval> = HashMap::new();
-    let mut system = if models.knowledge.is_some() {
-        format!("{SYSTEM}{KB_SYSTEM}")
-    } else {
-        SYSTEM.to_string()
-    };
-    if limits.acceptance && limits.gates.credible {
-        system.push_str(CREDIBLE_SYSTEM);
-    }
-    if limits.ask {
-        system.push_str(ASK_SYSTEM);
-    }
+    let system = system_prompt(models.knowledge.is_some(), limits);
+    // Start the model's process, where it has one, while the rest of the
+    // first step is prepared.
+    models.generator.warm(&system);
     let mut gate_memory = GateState::default();
     if limits.acceptance && limits.gates.oracle {
         let oracle_limits = OracleLimits {
@@ -1180,7 +1209,30 @@ pub async fn run<E: Env, G: Generate, J: Judge, O: Observer>(
                 &Event::Retrieved { step, retrieval },
             );
         }
-        let judgment = models.judge.judge(models.set, &jev_state(&state)).await;
+        // The first step's judgment runs beside its generation when the
+        // limits ask for it: nothing has run yet for it to judge.
+        let beside =
+            limits.first_judgment_beside && step == 1 && state.actions.is_empty() && !strong_tests;
+        let (judgment, early) = if beside {
+            let text = prompt(
+                &state,
+                user_prompt,
+                FIRST_STEP_JEV,
+                knowledge_text.as_deref(),
+                limits.acceptance,
+            );
+            let jev_input = jev_state(&state);
+            let (judgment, generated) = tokio::join!(
+                models.judge.judge(models.set, &jev_input),
+                models.generator.generate(&system, &text)
+            );
+            (judgment, Some((text, generated)))
+        } else {
+            (
+                models.judge.judge(models.set, &jev_state(&state)).await,
+                None,
+            )
+        };
         jev.judged(&judgment, step);
         // Jev's answer to whether the last step made progress.
         let last_progress = judgment
@@ -1193,25 +1245,31 @@ pub async fn run<E: Env, G: Generate, J: Judge, O: Observer>(
             started.elapsed().as_secs_f64(),
             &Event::Judged { step, judgment },
         );
-        let text = prompt(
-            &state,
-            user_prompt,
-            &jev_text,
-            knowledge_text.as_deref(),
-            limits.acceptance,
-        );
-        let generator = match models.strong {
-            Some(strong)
-                if strong_tests
-                    && state.frozen_at.is_none()
-                    && strong_used < limits.strong_steps =>
-            {
-                strong_used += 1;
-                strong
+        let (text, generator, generated) = match early {
+            Some((text, generated)) => (text, models.generator, generated),
+            None => {
+                let text = prompt(
+                    &state,
+                    user_prompt,
+                    &jev_text,
+                    knowledge_text.as_deref(),
+                    limits.acceptance,
+                );
+                let generator = match models.strong {
+                    Some(strong)
+                        if strong_tests
+                            && state.frozen_at.is_none()
+                            && strong_used < limits.strong_steps =>
+                    {
+                        strong_used += 1;
+                        strong
+                    }
+                    _ => models.generator,
+                };
+                let generated = generator.generate(&system, &text).await;
+                (text, generator, generated)
             }
-            _ => models.generator,
         };
-        let generated = generator.generate(&system, &text).await;
         model.generated(&generated, &format!("step {step} model"));
         observer.event(
             started.elapsed().as_secs_f64(),
@@ -1323,6 +1381,9 @@ or set finished to true if the task is complete."
             continue;
         }
         idle = 0;
+        // The next step's generation follows these commands: start its
+        // process while they run.
+        models.generator.warm(&system);
         let mut results = Vec::new();
         let mut skipped = Vec::new();
         let mut failed = false;

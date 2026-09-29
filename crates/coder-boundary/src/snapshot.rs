@@ -250,6 +250,29 @@ impl Snapshot {
             if observed == target.as_os_str())
     }
 
+    /// Adds the file digests an earlier process kept at `path`
+    /// ([`Snapshot::remember_digests`]) to this process's reuse, and
+    /// returns how many. A digest is reused only for a file whose device,
+    /// inode, length, mode, and modification and status-change times all
+    /// still match those it was hashed under, as for a digest this process
+    /// took itself. Keep the file where only this user can write it. A
+    /// missing or malformed file adds none.
+    #[cfg(unix)]
+    pub fn recall_digests(path: &Path) -> usize {
+        observe::recall(path)
+    }
+
+    /// Writes the file digests this process may reuse to `path`, mode
+    /// `0600`, replacing it whole, for a later process to recall.
+    ///
+    /// # Errors
+    ///
+    /// When the file cannot be written.
+    #[cfg(unix)]
+    pub fn remember_digests(path: &Path) -> std::io::Result<()> {
+        observe::remember(path)
+    }
+
     /// Observes a tree, bounded by [`Limits::default`].
     pub fn observe(root: &Path) -> Snapshot {
         Self::observe_within(root, Limits::default())

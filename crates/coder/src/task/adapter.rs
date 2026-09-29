@@ -35,6 +35,11 @@ pub const STEERING: coder_delegate::steering::Steering = coder_delegate::steerin
     ],
 };
 pub const CONFIG_SCHEMA: &str = "openagents.microcoder.repository-config.v1";
+
+/// The file in the task store where task owners keep the workspace file
+/// digests their snapshots took, so the next owner's first snapshot reads
+/// only the files that changed ([`Snapshot::recall_digests`]).
+pub const SNAPSHOT_DIGESTS: &str = "snapshot-digests.bin";
 const TRACE_LIMIT: usize = 48 * 1024 * 1024;
 const STEP_LIMIT: usize = 8 * 1024 * 1024;
 
@@ -434,8 +439,13 @@ pub struct Host {
     admission: owner::Admission,
     before: Snapshot,
     boundary: Boundary,
-    /// The owner's login-shell environment, for a full-access run.
-    login: Option<login::Environment>,
+    /// The owner's login-shell environment, for a full-access run: read
+    /// beside admission, and waited for by the first command that runs
+    /// with it ([`Host::login_environment`]). Set to `None` at admission
+    /// under the boundary.
+    login: tokio::sync::OnceCell<Option<login::Environment>>,
+    /// The login shell still being read.
+    login_reading: RefCell<Option<tokio::task::JoinHandle<login::Environment>>>,
     earlier: Vec<EarlierTurn>,
     trace: RefCell<Log>,
     trace_bytes: Cell<usize>,
@@ -539,16 +549,26 @@ impl Host {
             )
             .await?,
         );
-        // The owner's login environment, for a full-access run, is read
-        // while the workspace is observed: both take a moment, and neither
-        // depends on the other.
+        // The owner's login environment, for a full-access run, is read in
+        // the background: nothing before the first command needs it, and
+        // the first command waits for it ([`Host::login_environment`]).
+        let login_reading = match configuration.access {
+            Access::Full => Some(tokio::spawn(login::capture())),
+            Access::Boundary => None,
+        };
+        // The workspace is observed with the digests earlier owners kept,
+        // so only files that changed since are read again.
+        let digests = owner.dir.join(SNAPSHOT_DIGESTS);
         let observing = {
             let workspace = workspace.clone();
-            tokio::task::spawn_blocking(move || Snapshot::observe(&workspace))
-        };
-        let login = match configuration.access {
-            Access::Full => Some(login::capture().await),
-            Access::Boundary => None,
+            tokio::task::spawn_blocking(move || {
+                Snapshot::recall_digests(&digests);
+                let before = Snapshot::observe(&workspace);
+                if let Err(error) = Snapshot::remember_digests(&digests) {
+                    eprintln!("coder: cannot keep the workspace digests: {error}");
+                }
+                before
+            })
         };
         let before = observing
             .await
@@ -655,10 +675,11 @@ impl Host {
             .noting("capabilities", configuration.capabilities())
             .noting(
                 "command_environment",
-                login.as_ref().map_or_else(
-                    || json!({"source":"cleared","path":owner::SYSTEM_PATH}),
-                    login::Environment::record,
-                ),
+                if login_reading.is_some() {
+                    json!({"source":"login_shell","recorded":"before the first command"})
+                } else {
+                    json!({"source":"cleared","path":owner::SYSTEM_PATH})
+                },
             ),
         )?;
         if Snapshot::observe(&workspace).digest() != before.digest() {
@@ -684,7 +705,12 @@ impl Host {
             admission,
             before,
             boundary,
-            login,
+            login: if login_reading.is_some() {
+                tokio::sync::OnceCell::new()
+            } else {
+                tokio::sync::OnceCell::new_with(Some(None))
+            },
+            login_reading: RefCell::new(login_reading),
             earlier,
             trace: RefCell::new(trace),
             trace_bytes: Cell::new(trace_bytes),
@@ -747,11 +773,33 @@ impl Host {
         }
     }
 
-    /// The owner's login-shell environment, read at admission for a
-    /// full-access run; `None` under the boundary. Credential variables are
-    /// already left out.
-    pub fn login_environment(&self) -> Option<&login::Environment> {
-        self.login.as_ref()
+    /// The owner's login-shell environment for a full-access run; `None`
+    /// under the boundary. Credential variables are already left out. The
+    /// shell is read beside admission; the first call waits for it and
+    /// records what it read (`command_environment`) before returning.
+    pub async fn login_environment(&self) -> Option<&login::Environment> {
+        self.login
+            .get_or_init(|| async {
+                let reading = self.login_reading.borrow_mut().take()?;
+                let environment = match reading.await {
+                    Ok(environment) => environment,
+                    // The reader failed; read the shell again here.
+                    Err(_) => login::capture().await,
+                };
+                let recorded = self.append(
+                    &Step::said(
+                        Source::System,
+                        "The owner's login environment, read for the run's commands.",
+                    )
+                    .noting("command_environment", environment.record()),
+                );
+                if let Err(error) = recorded {
+                    self.fail(error.to_string());
+                }
+                Some(environment)
+            })
+            .await
+            .as_ref()
     }
 
     /// The newest value an earlier turn of this task recorded under the
@@ -936,8 +984,9 @@ impl Host {
             self.fail("the admitted shell changed");
             return Err(Error::InvalidTransition);
         }
+        let login = self.login_environment().await;
         let sequence = self.effect("command", json!({"script":script}))?;
-        let command = match &self.login {
+        let command = match login {
             // Full access: the owner's own shell, with no sandbox, the
             // network, and the owner's login environment.
             Some(login) => {

@@ -437,6 +437,14 @@ impl CodexTransport {
 
 impl Transport for CodexTransport {
     async fn respond(&self, request: &Request) -> Result<Reply, TransportError> {
+        self.respond_streaming(request, &mut |_| {}).await
+    }
+
+    async fn respond_streaming(
+        &self,
+        request: &Request,
+        text: &mut dyn FnMut(&str),
+    ) -> Result<Reply, TransportError> {
         let login = self.login().map_err(TransportError::Login)?;
         let mut response = self
             .http
@@ -465,7 +473,7 @@ impl Transport for CodexTransport {
             .await
             .map_err(|error| TransportError::Stream(error.without_url().to_string()))?
         {
-            events.push(&chunk)?;
+            events.push_streaming(&chunk, text)?;
         }
         events.finish()
     }
@@ -486,6 +494,20 @@ impl Events {
     ///
     /// The provider's failure, when an event reports one.
     pub fn push(&mut self, bytes: &[u8]) -> Result<(), TransportError> {
+        self.push_streaming(bytes, &mut |_| {})
+    }
+
+    /// [`Events::push`], handing `text` each message-text and
+    /// function-call-arguments delta as its event is read.
+    ///
+    /// # Errors
+    ///
+    /// The provider's failure, when an event reports one.
+    pub fn push_streaming(
+        &mut self,
+        bytes: &[u8],
+        text: &mut dyn FnMut(&str),
+    ) -> Result<(), TransportError> {
         self.buffer.extend_from_slice(bytes);
         while let Some(end) = find(&self.buffer, b"\n\n") {
             let block: Vec<u8> = self.buffer.drain(..end + 2).collect();
@@ -501,13 +523,18 @@ impl Events {
             let Ok(event) = serde_json::from_str::<Value>(&data.join("\n")) else {
                 continue;
             };
-            self.read(&event)?;
+            self.read(&event, text)?;
         }
         Ok(())
     }
 
-    fn read(&mut self, event: &Value) -> Result<(), TransportError> {
+    fn read(&mut self, event: &Value, text: &mut dyn FnMut(&str)) -> Result<(), TransportError> {
         match event["type"].as_str().unwrap_or_default() {
+            "response.output_text.delta" | "response.function_call_arguments.delta" => {
+                if let Some(delta) = event["delta"].as_str() {
+                    text(delta);
+                }
+            }
             "response.output_item.done" => self.reply.items.push(event["item"].clone()),
             "response.completed" => {
                 let response = &event["response"];
@@ -873,6 +900,27 @@ mod tests {
                 reasoning: 2
             }
         );
+    }
+
+    #[test]
+    fn text_deltas_stream_in_order_and_the_reply_is_unchanged() {
+        let stream = concat!(
+            "data: {\"type\":\"response.reasoning_summary_text.delta\",\"delta\":\"thinking\"}\n\n",
+            "data: {\"type\":\"response.output_text.delta\",\"delta\":\"{\\\"reply\\\":\"}\n\n",
+            "data: {\"type\":\"response.output_text.delta\",\"delta\":\"\\\"hi\\\"}\"}\n\n",
+            "data: {\"type\":\"response.function_call_arguments.delta\",\"delta\":\"{}\"}\n\n",
+            "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"r1\",\"model\":\"gpt-6-luna\",",
+            "\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}}\n\n",
+        );
+        let mut events = Events::default();
+        let mut text = String::new();
+        for piece in stream.as_bytes().chunks(9) {
+            events
+                .push_streaming(piece, &mut |delta| text.push_str(delta))
+                .unwrap();
+        }
+        assert_eq!(text, "{\"reply\":\"hi\"}{}");
+        assert_eq!(events.finish().unwrap().id.as_deref(), Some("r1"));
     }
 
     #[test]

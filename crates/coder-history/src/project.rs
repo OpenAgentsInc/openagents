@@ -342,8 +342,12 @@ fn atif_step(step: &Value, text_limit: usize) -> Option<Readable> {
 /// Project one event of Coder's loop (`crates/microcoder`, `run::Event`) as
 /// `(kind, role, tool_name, text)`:
 ///
+/// - `replying`: an `assistant` message with the event's `text`, a part of
+///   the step's reply shown while the model was still writing the step.
 /// - `generated` with an `Ok` action: an `assistant` message with the
-///   action's `reply`, the text the engine addresses to the user. Without a
+///   action's `reply`, the text the engine addresses to the user, less its
+///   first `reply_streamed` bytes, which `replying` events already showed;
+///   when nothing is left, the step's rationale as `reasoning`. Without a
 ///   reply, a finishing step (recorded before replies existed) shows its
 ///   rationale as the message, and a working step's rationale is
 ///   `reasoning`, the loop's own note, which conversation readers hide. No
@@ -380,6 +384,10 @@ fn microcoder(
         }
     };
     match event.get("event")?.as_str()? {
+        "replying" => {
+            let text = event.get("text")?.as_str()?.trim();
+            (!text.is_empty()).then(|| ("message", Some("assistant"), None, text.to_owned()))
+        }
         "generated" => {
             let action = event.get("generated")?.get("action")?;
             if let Some(next) = action.get("Ok") {
@@ -390,8 +398,33 @@ fn microcoder(
                         .filter(|text| !text.is_empty())
                         .map(str::to_owned)
                 };
+                // The part of the reply `replying` events did not show.
+                let streamed = event
+                    .get("reply_streamed")
+                    .and_then(Value::as_u64)
+                    .and_then(|bytes| usize::try_from(bytes).ok())
+                    .unwrap_or(0);
+                // A count that does not fall inside the reply shows it whole.
+                let rest = next
+                    .get("reply")
+                    .and_then(Value::as_str)
+                    .filter(|_| streamed > 0)
+                    .and_then(|reply| reply.get(streamed..))
+                    .map(str::trim);
+                let reply = match rest {
+                    Some("") => {
+                        return Some((
+                            "reasoning",
+                            None,
+                            None,
+                            text("rationale").unwrap_or_default(),
+                        ));
+                    }
+                    Some(rest) => Some(rest.to_owned()),
+                    None => text("reply"),
+                };
                 let finished = next.get("finished").and_then(Value::as_bool) == Some(true);
-                match (text("reply"), text("rationale")) {
+                match (reply, text("rationale")) {
                     // The engine's reply to the user is the message.
                     (Some(reply), _) => Some(("message", Some("assistant"), None, reply)),
                     // A finishing step recorded before replies existed has

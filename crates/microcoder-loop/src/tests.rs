@@ -321,6 +321,106 @@ async fn the_loop_stops_when_the_model_finishes() {
     assert!(matches!(log.0.last(), Some(Event::Ended { .. })));
 }
 
+/// A generator that records when it is warmed and asked.
+struct Warmed {
+    script: Script,
+    calls: RefCell<Vec<String>>,
+}
+
+impl Generate for Warmed {
+    async fn generate(&self, system: &str, prompt: &str) -> Generated {
+        self.calls
+            .borrow_mut()
+            .push(format!("generate {}", system.len()));
+        self.script.generate(system, prompt).await
+    }
+
+    fn warm(&self, system: &str) {
+        self.calls
+            .borrow_mut()
+            .push(format!("warm {}", system.len()));
+    }
+}
+
+#[tokio::test]
+async fn the_first_judgment_can_run_beside_the_first_generation() {
+    let script = Script::new(vec![
+        Ok(act("look", &["ls"], false)),
+        Ok(act("done", &[], true)),
+    ]);
+    let beside = Limits {
+        first_judgment_beside: true,
+        ..plain()
+    };
+    let (_, outcome, ran, log) = go(&script, &beside).await;
+    assert_eq!(outcome.ending, Ending::Finished);
+    assert_eq!(ran, ["ls"]);
+    let prompts = script.prompts.borrow().clone();
+    // The first prompt says nothing has been judged; the second carries
+    // the judgment made after the first step's command ran.
+    assert!(prompts[0].contains(crate::run::FIRST_STEP_JEV));
+    assert!(!prompts[0].contains("- done: probability"));
+    assert!(prompts[1].contains("- done: probability 0.30"));
+    // Both judgments are still asked, recorded, and paid for.
+    let judged = log
+        .0
+        .iter()
+        .filter(|event| matches!(event, Event::Judged { .. }))
+        .count();
+    assert_eq!(judged, 2);
+    assert!((outcome.jev_usd.unwrap() - 0.002).abs() < 1e-9);
+    // Off by default: the first prompt carries the judgment.
+    let script = Script::new(vec![Ok(act("done", &[], true))]);
+    go(&script, &plain()).await;
+    assert!(script.prompts.borrow()[0].contains("- done: probability 0.30"));
+}
+
+#[tokio::test]
+async fn the_generator_is_warmed_before_the_first_step_and_while_commands_run() {
+    let generator = Warmed {
+        script: Script::new(vec![
+            Ok(act("look", &["ls"], false)),
+            Ok(act("done", &[], true)),
+        ]),
+        calls: RefCell::new(Vec::new()),
+    };
+    let env = Fake {
+        ran: RefCell::new(Vec::new()),
+    };
+    let set = question_set();
+    let route = route_set();
+    let judge = jev(0.1);
+    let models = Models {
+        generator: &generator,
+        judge: &judge,
+        set: &set,
+        route: &route,
+        strong: None,
+        knowledge: None,
+    };
+    let limits = plain();
+    let (_, outcome) = run(
+        state(),
+        "Solve this task.",
+        &env,
+        &models,
+        &limits,
+        &mut Log::default(),
+    )
+    .await;
+    assert_eq!(outcome.ending, Ending::Finished);
+    let system = crate::run::system_prompt(false, &limits).len();
+    assert_eq!(
+        *generator.calls.borrow(),
+        [
+            format!("warm {system}"),
+            format!("generate {system}"),
+            format!("warm {system}"),
+            format!("generate {system}"),
+        ]
+    );
+}
+
 #[tokio::test]
 async fn an_unpriced_reply_leaves_the_cost_unknown_not_zero() {
     let mut script = Script::new(vec![

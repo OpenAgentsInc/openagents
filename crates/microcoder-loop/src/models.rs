@@ -306,11 +306,24 @@ pub enum Ask {
 }
 
 /// The JSON schema of [`NextAction`].
+///
+/// `reply` comes first: models write an object's members in the schema's
+/// order, so the words the user reads are written, and can be streamed to
+/// them ([`crate::reply`]), before the loop's own rationale and commands.
 #[must_use]
 pub fn next_action_schema() -> Value {
     json!({
         "type": "object",
         "properties": {
+            "reply": {
+                "type": "string",
+                "description": "Your reply to the user, the only text they see. When finished is true: the answer to their message, or what you did and found, written to them directly in plain prose or Markdown. When ask is not none: your question, or the step you want approved and why. Never describe your process, the task, or being finished. Empty on every other step."
+            },
+            "ask": {
+                "type": "string",
+                "enum": ["none", "question", "approval"],
+                "description": "none on almost every step. question when you cannot go on without an answer only the user has, such as a choice between approaches they must make; approval when a step has consequences the user should approve first, such as deleting data or pushing. Asking ends your turn with no commands; the reply holds the question, and the user's answer starts your next turn."
+            },
             "rationale": {
                 "type": "string",
                 "description": "Why these commands, in one or two sentences: a note for the loop that the user never sees."
@@ -337,18 +350,9 @@ pub fn next_action_schema() -> Value {
             "finished": {
                 "type": "boolean",
                 "description": "True only when the task is complete and nothing is left to run. With acceptance tests on, the host accepts it only when every frozen test passes."
-            },
-            "reply": {
-                "type": "string",
-                "description": "Your reply to the user, the only text they see. When finished is true: the answer to their message, or what you did and found, written to them directly in plain prose or Markdown. When ask is not none: your question, or the step you want approved and why. Never describe your process, the task, or being finished. Empty on every other step."
-            },
-            "ask": {
-                "type": "string",
-                "enum": ["none", "question", "approval"],
-                "description": "none on almost every step. question when you cannot go on without an answer only the user has, such as a choice between approaches they must make; approval when a step has consequences the user should approve first, such as deleting data or pushing. Asking ends your turn with no commands; the reply holds the question, and the user's answer starts your next turn."
             }
         },
-        "required": ["rationale", "commands", "view", "freeze_tests", "expand", "finished", "reply", "ask"],
+        "required": ["reply", "ask", "rationale", "commands", "view", "freeze_tests", "expand", "finished"],
         "additionalProperties": false
     })
 }
@@ -389,6 +393,12 @@ pub trait Generate {
     fn out_of_capacity(&self) -> Option<Exhausted> {
         None
     }
+
+    /// Get ready for a generation under `system` that is about to be asked
+    /// for, such as by starting a model process that then waits for its
+    /// prompt. It sends no prompt and makes no model request. A generator
+    /// with nothing to start ignores it.
+    fn warm(&self, _system: &str) {}
 }
 
 /// Every admitted provider refused for a usage or rate limit.
@@ -651,6 +661,12 @@ impl Generate for AnyGenerator {
             AnyGenerator::Claude(g) => g.generate(system, prompt).await,
         }
     }
+
+    fn warm(&self, system: &str) {
+        if let AnyGenerator::Claude(g) = self {
+            g.warm(system);
+        }
+    }
 }
 
 /// Generation through `crates/openrouter`.
@@ -841,16 +857,31 @@ mod tests {
         assert_eq!(
             schema["required"],
             json!([
+                "reply",
+                "ask",
                 "rationale",
                 "commands",
                 "view",
                 "freeze_tests",
                 "expand",
-                "finished",
-                "reply",
-                "ask"
+                "finished"
             ])
         );
+        // The properties come in the same order, `reply` first, so a
+        // streamed step writes the user's words before anything else.
+        let properties: Vec<&str> = schema["properties"]
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect();
+        let required: Vec<&str> = schema["required"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(Value::as_str)
+            .collect();
+        assert_eq!(properties, required);
         // An action recorded before replies existed still parses.
         let old = parse_action(
             r#"{"rationale":"r","commands":[],"view":[],"freeze_tests":false,"expand":[],"finished":true}"#,

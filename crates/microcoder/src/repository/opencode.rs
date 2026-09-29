@@ -68,12 +68,12 @@ pub(crate) fn binary() -> Result<PathBuf, String> {
 /// The OpenCode process's environment: the owner's (see
 /// [`environment`]), less any inline configuration or database of the
 /// owner's, plus the engine's.
-fn opencode_environment(
+async fn opencode_environment(
     host: &Host,
     model: &Model,
     permission: Permission,
 ) -> Vec<(String, String)> {
-    let mut variables = environment(host);
+    let mut variables = environment(host).await;
     variables.retain(|(key, _)| {
         key != acp_client::opencode::CONFIG_VAR && key != acp_client::opencode::DATABASE_VAR
     });
@@ -116,7 +116,7 @@ pub(crate) async fn turn(host: &Host, route: &GrantRoute, program: PathBuf) -> T
         Access::Full => Permission::Full,
         Access::Boundary => Permission::Edits,
     };
-    let variables = opencode_environment(host, &model, permission);
+    let variables = opencode_environment(host, &model, permission).await;
     let database = engine_database(&variables);
     let arguments = acp_client::opencode::arguments();
     let resume = host.earlier_note(SESSION_NOTE).and_then(|note| {

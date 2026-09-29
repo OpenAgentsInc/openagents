@@ -16,6 +16,29 @@
 //! ends with [`Ending::NoCapacity`] and the earliest reset, and the task's
 //! result ending is `no_capacity`. The step's cost adds every attempt's cost,
 //! so failover keeps the known, unknown, and upper-bound figures honest.
+//!
+//! # A reply as it is written
+//!
+//! The model writes a step's `reply` first ([`crate::models::next_action_schema`]),
+//! and both native routes stream the action's JSON text as it is written.
+//! [`Replies`] reads the reply out of that text ([`microcoder_loop::reply`])
+//! and appends each paragraph to the transcript as soon as it is whole, and
+//! the rest the moment the reply's string closes, as a `replying` loop
+//! event, so a device reading the transcript shows the reply's first words
+//! long before the step ends. The step's `generated` event then names how
+//! many bytes of its reply were already shown (`reply_streamed`), and only
+//! when the final reply begins with exactly those bytes; a reader shows
+//! only the rest. A reader that does not know `replying` shows nothing for
+//! it and the whole reply at the end, as before.
+//!
+//! # A warm model process
+//!
+//! A `claude` route's binary loads before it can take a prompt. The loop
+//! starts it with the step's system text before the first step and while a
+//! step's commands run ([`microcoder_loop::claude::ClaudeGenerator::warm`]),
+//! so a later step's call begins with a loaded binary. A waiting binary has
+//! no prompt and makes no model request; one that is never used is killed
+//! when its route is dropped.
 
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
@@ -33,6 +56,7 @@ use crate::env::Env;
 use crate::models::{Generate, Generated, Judge, Judgment, QuestionSet};
 use crate::run::{Ending, Event, Limits, Models, Observer, Route};
 use crate::state::{CommandResult, State, cut};
+use microcoder_loop::reply::{Tap, settled};
 
 pub struct Repository<'a> {
     pub host: &'a Host,
@@ -77,6 +101,76 @@ impl Env for Repository<'_> {
             .ok()
             .flatten()
             .map(|bytes| cut(&String::from_utf8_lossy(&bytes), crate::env::FILE_MAX, 0))
+    }
+}
+
+/// The step's reply as the model writes it, appended to the transcript a
+/// paragraph at a time (see the module documentation).
+pub(crate) struct Replies<'a> {
+    host: &'a Host,
+    state: RefCell<Streaming>,
+}
+
+#[derive(Default)]
+struct Streaming {
+    tap: Tap,
+    /// Bytes of the reply the transcript already shows.
+    shown: usize,
+}
+
+impl<'a> Replies<'a> {
+    pub(crate) fn new(host: &'a Host) -> Self {
+        Replies {
+            host,
+            state: RefCell::new(Streaming::default()),
+        }
+    }
+
+    /// A new attempt at a step's action starts: its text starts over.
+    pub(crate) fn begin(&self) {
+        *self.state.borrow_mut() = Streaming::default();
+    }
+
+    /// Reads the next piece of the action's JSON text, and appends the part
+    /// of the reply that is ready to show.
+    pub(crate) fn feed(&self, text: &str) {
+        let segment = {
+            let mut state = self.state.borrow_mut();
+            if !state.tap.feed(text) {
+                return;
+            }
+            let end = settled(state.tap.reply(), state.shown, state.tap.complete());
+            if end <= state.shown {
+                return;
+            }
+            let segment = state.tap.reply()[state.shown..end].to_owned();
+            state.shown = end;
+            segment
+        };
+        if segment.trim().is_empty() {
+            return;
+        }
+        if let Err(error) = self.host.append(
+            &Step::said(Source::System, "Coder's reply, as the model writes it.").noting(
+                "microcoder",
+                json!({"event":{"event":"replying","text":segment}}),
+            ),
+        ) {
+            self.host.fail(error.to_string());
+        }
+    }
+
+    /// How many bytes at the start of `reply`, a step's final reply, the
+    /// transcript already shows: what was streamed when `reply` begins with
+    /// it, else none. The next step starts over.
+    pub(crate) fn streamed(&self, reply: &str) -> usize {
+        let state = std::mem::take(&mut *self.state.borrow_mut());
+        let shown = &state.tap.reply()[..state.shown];
+        if reply.starts_with(shown) {
+            state.shown
+        } else {
+            0
+        }
     }
 }
 
@@ -127,6 +221,10 @@ impl<G: Generate> Generate for RecordedGenerator<'_, G> {
         }
         generated
     }
+
+    fn warm(&self, system: &str) {
+        self.inner.warm(system);
+    }
 }
 
 /// A route's lane, whose generations the task owner records as effects
@@ -146,6 +244,10 @@ impl<L: Lane> Generate for Recorded<'_, L> {
         }
         .generate(system, prompt)
         .await
+    }
+
+    fn warm(&self, system: &str) {
+        self.inner.warm(system);
     }
 }
 
@@ -226,12 +328,21 @@ impl<J: Judge> Judge for RecordedJudge<'_, J> {
 
 struct RecordedEvents<'a> {
     host: &'a Host,
+    replies: &'a Replies<'a>,
 }
 impl Observer for RecordedEvents<'_> {
     fn event(&mut self, seconds: f64, event: &Event) {
+        let mut recorded = json!(event);
+        if let Event::Generated { generated, .. } = event {
+            let reply = generated.action.as_ref().map_or("", |action| &action.reply);
+            let streamed = self.replies.streamed(reply);
+            if streamed > 0 {
+                recorded["reply_streamed"] = json!(streamed);
+            }
+        }
         if let Err(error) = self.host.append(
             &Step::said(Source::System, "Microcoder loop observation.")
-                .noting("microcoder", json!({"seconds":seconds,"event":event})),
+                .noting("microcoder", json!({"seconds":seconds,"event":recorded})),
         ) {
             self.host.fail(error.to_string());
         }
@@ -270,33 +381,43 @@ pub async fn run_routes<L: Lane, J: Judge>(
         let journal = Transcript(&host);
         let generator = failover(&host, &journal, book, lanes, now);
         generator.record_start();
-        run_loop(&host, &generator, judge).await?
+        let replies = Replies::new(&host);
+        run_loop(&host, &generator, judge, &replies).await?
     };
     finish(host, state, outcome)
 }
 
-async fn run_loop<G: Generate, J: Judge>(
-    host: &Host,
-    generator: &G,
-    judge: &J,
-) -> Result<(State, crate::run::Outcome), task::Error> {
-    let configuration = host.configuration().clone();
-    let judge = RecordedJudge { host, inner: judge };
-    let env = Repository { host };
-    let mut observer = RecordedEvents { host };
-    let limits = Limits {
-        max_steps: Some(configuration.max_steps),
-        max_seconds: host.wall_seconds(),
+/// The loop's limits for a repository turn of at most `max_steps` steps
+/// and `wall_seconds` seconds.
+fn limits(max_steps: usize, wall_seconds: u64) -> Limits {
+    Limits {
+        max_steps: Some(max_steps),
+        max_seconds: wall_seconds,
         max_usd: f64::MAX,
-        command_seconds: host.wall_seconds().min(300),
+        command_seconds: wall_seconds.min(300),
         acceptance: false,
         route: Route::Never,
         gates: crate::gate::Gates::default(),
         // A device can answer: a question ends the turn and the task
         // waits (`coder::task::interaction`).
         ask: true,
+        // A person is waiting for the first words.
+        first_judgment_beside: true,
         ..Limits::default()
-    };
+    }
+}
+
+async fn run_loop<G: Generate, J: Judge>(
+    host: &Host,
+    generator: &G,
+    judge: &J,
+    replies: &Replies<'_>,
+) -> Result<(State, crate::run::Outcome), task::Error> {
+    let configuration = host.configuration().clone();
+    let judge = RecordedJudge { host, inner: judge };
+    let env = Repository { host };
+    let mut observer = RecordedEvents { host, replies };
+    let limits = limits(configuration.max_steps, host.wall_seconds());
     // A later turn carries the conversation's earlier turns.
     let prompt = host.engine_prompt();
     let state = State {

@@ -102,6 +102,10 @@ impl Generate for ClaudeLane {
         *self.refusal.borrow_mut() = invocation.refusal(unix_now());
         invocation.generated
     }
+
+    fn warm(&self, system: &str) {
+        self.inner.warm(system);
+    }
 }
 
 impl Lane for ClaudeLane {
@@ -116,6 +120,10 @@ pub struct Plain<'a, G>(pub &'a G);
 impl<G: Generate> Generate for Plain<'_, G> {
     async fn generate(&self, system: &str, prompt: &str) -> Generated {
         self.0.generate(system, prompt).await
+    }
+
+    fn warm(&self, system: &str) {
+        self.0.warm(system);
     }
 }
 
@@ -369,6 +377,13 @@ impl<R: Admitted, L: Lane, J: Journal + ?Sized> Generate for Failover<'_, R, L, 
 
     fn out_of_capacity(&self) -> Option<Exhausted> {
         self.exhausted.get()
+    }
+
+    /// Warms the lane the next generation starts on.
+    fn warm(&self, system: &str) {
+        if let Some(index) = self.current.get() {
+            self.lanes[index].1.warm(system);
+        }
     }
 }
 

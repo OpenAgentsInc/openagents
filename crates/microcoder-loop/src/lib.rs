@@ -30,6 +30,7 @@ pub mod env;
 pub mod failover;
 pub mod gate;
 pub mod models;
+pub mod reply;
 pub mod run;
 pub mod state;
 pub mod usage;
