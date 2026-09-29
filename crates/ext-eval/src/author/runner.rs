@@ -343,6 +343,7 @@ pub mod fake {
                 requester: None,
                 suite_release: None,
                 environment: None,
+                defaults: None,
                 partial: None,
             };
             let (gate, bytes) = load_gate().map_err(|error| error.to_string())?;

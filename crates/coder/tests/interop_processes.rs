@@ -1106,6 +1106,7 @@ async fn a_lost_job_recovers_by_journal_and_never_replays_unknown() {
                 program: "interop-demo",
                 questions: &[],
                 sources: &[],
+                defaults: None,
                 owner: 0,
             })
             .unwrap();
@@ -1200,6 +1201,7 @@ async fn a_lost_job_recovers_by_journal_and_never_replays_unknown() {
             program: "interop-demo",
             questions: &[],
             sources: &[],
+            defaults: None,
             owner: 0,
         }),
         Err(Refusal::Claimed { .. })
@@ -1419,6 +1421,7 @@ async fn filters_privacy_retention_and_forks_hold_on_the_wire() {
             program: "interop-demo",
             questions: &[],
             sources: &[],
+            defaults: None,
             owner: 0,
         })
         .unwrap();
@@ -1430,6 +1433,7 @@ async fn filters_privacy_retention_and_forks_hold_on_the_wire() {
             program: "interop-demo",
             questions: &[],
             sources: &[],
+            defaults: None,
             owner: 0,
         }),
         Err(Refusal::Claimed { .. })

@@ -22,6 +22,7 @@
 
 pub mod catalog;
 pub mod config;
+pub mod defaults;
 pub mod quota;
 pub mod runner;
 pub mod store;

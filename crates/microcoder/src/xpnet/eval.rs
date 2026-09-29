@@ -259,28 +259,6 @@ fn keep_document(dir: &Path, bytes: &[u8]) -> Result<(), String> {
     std::fs::write(&path, bytes).map_err(|e| format!("{}: {e}", path.display()))
 }
 
-/// The digests a release pins: its manifest, and once that's held, the
-/// admissions the manifest cites.
-fn wanted_digests(release: &Event, documents: &Documents) -> Vec<String> {
-    let Ok(body) = ext::parse_record(release) else {
-        return Vec::new();
-    };
-    let Ok(manifest) = contracts::parse_artifact(&body["manifest"]) else {
-        return Vec::new();
-    };
-    let mut out = vec![manifest.digest.clone()];
-    if let Some(bytes) = documents.get(&manifest.digest) {
-        out.extend(
-            adopt::receipts_of(bytes)
-                .unwrap_or_default()
-                .iter()
-                .filter_map(|r| contracts::parse_artifact(r).ok())
-                .map(|a| a.digest),
-        );
-    }
-    out
-}
-
 /// Fetches one document a NIP-94 locator names, checking its digest.
 async fn fetch(url: &str, digest: &str) -> Option<Vec<u8>> {
     if !url.starts_with("https://") {
@@ -310,7 +288,7 @@ pub(super) async fn documents_for(
     for _ in 0..2 {
         let missing: BTreeSet<String> = releases
             .iter()
-            .flat_map(|r| wanted_digests(r, &documents))
+            .flat_map(|r| knowledge::xp::defaults::wanted_digests(r, &documents))
             .filter(|d| !documents.contains_key(d))
             .collect();
         if missing.is_empty() {

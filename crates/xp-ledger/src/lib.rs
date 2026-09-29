@@ -24,6 +24,7 @@ use nostr::xp::{self, Award};
 use serde::Serialize;
 
 pub mod adopt;
+pub mod defaults;
 pub mod entry;
 pub mod eval;
 pub mod front;

@@ -859,7 +859,8 @@ fn a_report_may_name_a_decision_service_as_its_subject() {
     // A context-construction policy is a NIP-PRG program head: a program
     // that probes, selects, and orders the evidence another capability
     // receives is a candidate capability like any other.
-    spec.subject = Some(json!({"id": id("jev-probe"), "pubkey": pubkey("coder-one"), "kind": 30182}));
+    spec.subject =
+        Some(json!({"id": id("jev-probe"), "pubkey": pubkey("coder-one"), "kind": 30182}));
     let publication = parse_publication(&published("alice", &spec, None, AT)).unwrap();
     assert_eq!(
         publication.subject_release.as_ref().map(|s| s.kind),

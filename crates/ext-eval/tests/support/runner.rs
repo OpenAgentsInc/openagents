@@ -237,6 +237,8 @@ pub fn options(temp: &Path) -> Options {
         grants: BTreeSet::from([Grant::Read]),
         temp_root: temp.to_path_buf(),
         backend: None,
+        gate: None,
+        defaults: None,
     }
 }
 

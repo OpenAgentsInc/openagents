@@ -199,6 +199,9 @@ async fn serve() -> Result<ExitCode, String> {
         }
         Err(why) => eprintln!("tools   not released: {why}"),
     }
+    // Logged by the runner itself the first time it reads them, and again
+    // whenever the release changes.
+    let _ = runner.defaults().await;
     let mut backoff = RECONNECT.0;
     loop {
         let ended = eval_runner::runner::listen(&config.relay, &identity, &runner, liveness).await;

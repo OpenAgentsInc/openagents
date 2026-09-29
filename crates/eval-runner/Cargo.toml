@@ -26,11 +26,15 @@ serde_json = "1"
 tempfile = "3"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "time", "signal"] }
 tokio-tungstenite = { version = "0.30.0", features = ["rustls-tls-webpki-roots"] }
+# The defaults reader (`xp_ledger::defaults`) and the package record.
+xp-ledger = { path = "../xp-ledger" }
+# Fetches the documents a `coder-defaults` release pins from the NIP-94
+# locators the adopter published; built and used on a blocking thread.
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }
 
 [dev-dependencies]
 # `tests/hosted.rs` runs the whole path against a local relay.
 nostr-relay = { path = "../nostr-relay" }
-xp-ledger = { path = "../xp-ledger" }
 
 [lints]
 workspace = true

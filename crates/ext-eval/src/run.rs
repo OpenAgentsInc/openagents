@@ -29,7 +29,7 @@ use crate::case::{Case, Grant, RunFailure};
 use crate::child::{self, ChildSpec, Ended};
 use crate::discover::Suite;
 use crate::door::{DecisionDoor, Doors};
-use crate::evaluate::{EvalError, Evaluation, conclude, load_gate};
+use crate::evaluate::{EvalError, Evaluation, conclude, load_gate_named};
 use crate::live::OpenResponsesJudge;
 use crate::proxy::{Proxy, Secret, Upstream};
 use crate::record::{Arm, RunOutcome, RunRecord, run_path};
@@ -96,6 +96,14 @@ pub struct Options {
     /// host's; a path that isn't a file refuses every run as
     /// `unconfined_host`.
     pub backend: Option<PathBuf>,
+    /// The Gym gate the suite is judged by and names in its acceptance:
+    /// `None` is [`crate::evaluate::GATE_ID`] (`ext-eval-v2`, correctness
+    /// first); `ext-eval-cost-v1` reads cost first.
+    pub gate: Option<String>,
+    /// Coder's defaults, admitted in both arms so the report is marginal:
+    /// the candidate on top of the current defaults against the current
+    /// defaults alone. `None` runs the baseline with nothing admitted.
+    pub defaults: Option<arms::Defaults>,
 }
 
 impl Default for Options {
@@ -108,7 +116,17 @@ impl Default for Options {
             grants: BTreeSet::from([Grant::Read]),
             temp_root: std::env::temp_dir(),
             backend: None,
+            gate: None,
+            defaults: None,
         }
+    }
+}
+
+impl Options {
+    /// The gate ID the run is judged by.
+    #[must_use]
+    pub fn gate_id(&self) -> &str {
+        self.gate.as_deref().unwrap_or(crate::evaluate::GATE_ID)
     }
 }
 
@@ -353,7 +371,8 @@ fn one(setup: &Setup<'_>, case: &Case, arm: Arm, attempt: u32, cancel: &Cancel) 
     if std::fs::write(sandbox.root().join("prompt.md"), case.prompt.as_bytes()).is_err() {
         return refused(record);
     }
-    let guidance = arms::guidance(arm, setup.subject, case);
+    let defaults = setup.options.defaults.as_ref();
+    let guidance = arms::guidance_with(arm, setup.subject, defaults, case);
     let guidance_digest = match &guidance {
         Some(text) => {
             if std::fs::write(sandbox.guidance(), text.as_bytes()).is_err() {
@@ -373,11 +392,16 @@ fn one(setup: &Setup<'_>, case: &Case, arm: Arm, attempt: u32, cancel: &Cancel) 
             }
         }
     }
-    let programs = if arm == Arm::Subject && !setup.subject.programs.is_empty() {
+    // The defaults' programs are admitted in both arms; the subject's in
+    // the subject arm. A baseline with nothing admitted names no program.
+    let admitted = arms::admitted_programs(arm, setup.subject, defaults);
+    let programs = if admitted.is_empty() {
+        None
+    } else {
         if std::fs::create_dir_all(sandbox.programs()).is_err() {
             return refused(record);
         }
-        for program in &setup.subject.programs {
+        for program in &admitted {
             if std::fs::write(
                 sandbox.programs().join(format!("{}.json", program.slug)),
                 &program.bytes,
@@ -388,11 +412,9 @@ fn one(setup: &Setup<'_>, case: &Case, arm: Arm, attempt: u32, cancel: &Cancel) 
             }
         }
         Some((
-            setup.subject.program_grant(),
+            arms::program_grant_for(arm, setup.subject, defaults),
             arms::effects_ceiling(&grants),
         ))
-    } else {
-        None
     };
     let boundary = match sandbox.confine(&grants, std::slice::from_ref(&setup.agent.path)) {
         Ok(boundary) => boundary,
@@ -532,14 +554,17 @@ pub fn run_configuration(setup: &Setup<'_>, arm: Arm) -> Value {
         "baseline": setup.options.baseline,
         "concurrency": setup.options.concurrency,
         "classifier": setup.decision.is_some(),
+        "gate": setup.options.gate_id(),
+        "defaults": setup.options.defaults.as_ref().map(|d| d.release.clone()),
     })
 }
 
 /// The report's identity for `setup` and `runs`.
 #[must_use]
 pub fn identity(setup: &Setup<'_>, author: &Author, runs: &Runs) -> Identity {
-    let subject_lock = setup.subject.lock_document(setup.agent);
-    let baseline_lock = arms::baseline_lock(setup.agent);
+    let defaults = setup.options.defaults.as_ref();
+    let subject_lock = setup.subject.lock_document_with(setup.agent, defaults);
+    let baseline_lock = arms::baseline_lock_with(setup.agent, defaults);
     Identity {
         author: author.author.clone(),
         package: author.package.clone(),
@@ -562,6 +587,7 @@ pub fn identity(setup: &Setup<'_>, author: &Author, runs: &Runs) -> Identity {
         requester: author.requester.clone(),
         suite_release: author.suite_release.clone(),
         environment: None,
+        defaults: defaults.map(|d| d.release.clone()),
         partial: runs
             .cancelled
             .then(|| "the operator stopped the run".to_string()),
@@ -583,7 +609,7 @@ pub fn evaluate_runs(
     decision: Option<&dyn DecisionDoor>,
 ) -> Result<Evaluation, RunError> {
     let plan = setup.plan();
-    let (gate, gate_file) = load_gate()?;
+    let (gate, gate_file) = load_gate_named(setup.options.gate_id())?;
     let judge =
         OpenResponsesJudge::new(&setup.door.url, setup.door.key.clone(), &setup.door.model).ok();
     let mut replayer = ModuleReplayer::new(setup.subject);

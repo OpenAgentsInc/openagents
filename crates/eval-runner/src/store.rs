@@ -31,6 +31,10 @@ pub struct Job {
     pub status: String,
     /// The publication a run checks, when it's a check.
     pub check: Option<String>,
+    /// The publication a run externally validates on a second suite, when
+    /// it's a validation. Absent in jobs written before the field.
+    #[serde(default)]
+    pub validates: Option<String>,
     /// The results directory, once written.
     pub results: Option<PathBuf>,
     /// The report's ArtifactRef, as the run's result names it.

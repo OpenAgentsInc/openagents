@@ -4,7 +4,7 @@
 //! prints every answer.
 //!
 //! ```text
-//! trainer run SUITE_RELEASE_ID EXTENSION_DIR [--runs N] [--check RESULT_ID]
+//! trainer run SUITE_RELEASE_ID EXTENSION_DIR [--runs N] [--check RESULT_ID | --validates RESULT_ID]
 //! trainer publish REPORT_JSON     (the report ArtifactRef a run printed)
 //! trainer open SEALED_ID          (read a run's sealed report: each test's
 //!                                  runs passed per arm)
@@ -116,7 +116,14 @@ async fn main() {
             ))
             .unwrap();
             let runs = flag("--runs").map_or(3, |r| r.parse().unwrap());
-            hosted::run_input(
+            let check = flag("--check");
+            let validates = flag("--validates");
+            let cites = match (&check, &validates) {
+                (Some(id), _) => Some(nostr::eval_ext::Cites::Check(id)),
+                (None, Some(id)) => Some(nostr::eval_ext::Cites::Validates(id)),
+                (None, None) => None,
+            };
+            hosted::run_input_citing(
                 &SuiteSource::Published(EventPointer {
                     id: release.clone(),
                     pubkey: std::env::var("SUITE_AUTHOR").unwrap_or_else(|_| runner.clone()),
@@ -125,7 +132,7 @@ async fn main() {
                 &SubjectSource::Definition(Box::new(tool.definition)),
                 None,
                 runs,
-                flag("--check").as_deref(),
+                cites,
             )
             .unwrap()
         }
@@ -135,7 +142,7 @@ async fn main() {
         }
         _ => {
             eprintln!(
-                "usage: trainer run SUITE EXTENSION [--runs N] [--check ID] | publish REPORT"
+                "usage: trainer run SUITE EXTENSION [--runs N] [--check ID | --validates ID] | publish REPORT"
             );
             std::process::exit(64);
         }

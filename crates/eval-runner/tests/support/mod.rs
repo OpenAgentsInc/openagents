@@ -151,13 +151,25 @@ pub fn hex(secret: &SecretKey) -> String {
 /// The runner's configuration in `dir`, with the fixture extension as its
 /// catalog and the fake agent and door.
 pub fn config(dir: &Path, door: &FakeDoor, limits: Limits) -> Config {
+    config_with(dir, door, limits, vec![PathBuf::from(FIXTURE)], None)
+}
+
+/// [`config`] with another catalog and, for a defaults test, the
+/// operator root whose `coder-defaults` releases both arms admit.
+pub fn config_with(
+    dir: &Path,
+    door: &FakeDoor,
+    limits: Limits,
+    catalog: Vec<PathBuf>,
+    defaults_root: Option<&str>,
+) -> Config {
     Config {
         relay: "memory".into(),
         blossom: None,
         bucket: None,
         key_file: dir.join("runner-key"),
         state: dir.join("state"),
-        catalog: vec![PathBuf::from(FIXTURE)],
+        catalog,
         coder: fake_agent(),
         questions: Path::new(env!("CARGO_MANIFEST_DIR")).join("../../questions"),
         door: RunDoor {
@@ -173,6 +185,10 @@ pub fn config(dir: &Path, door: &FakeDoor, limits: Limits) -> Config {
             std::fs::create_dir_all(&tmp).unwrap();
             tmp
         },
+        defaults_root: defaults_root
+            .map(str::to_string)
+            .unwrap_or_else(xp_ledger::adopt::root),
+        defaults_documents: Some(dir.join("defaults-documents")),
     }
 }
 

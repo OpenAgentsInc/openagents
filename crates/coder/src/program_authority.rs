@@ -349,6 +349,24 @@ impl Grant {
         self.programs.authorizes(slug)
     }
 
+    /// This grant widened by the programs Coder's defaults admit
+    /// (`crate::defaults`): the union of program sets, under the same
+    /// effects ceiling. A default admits a program; it never raises what
+    /// the operator lets programs do.
+    #[must_use]
+    pub fn admitting(mut self, slugs: &[String]) -> Self {
+        if slugs.is_empty() {
+            return self;
+        }
+        let named = Programs::Named(slugs.iter().cloned().collect());
+        self.programs = std::mem::replace(&mut self.programs, Programs::None).union(named);
+        self.notes.push(format!(
+            "programs admitted by Coder's defaults: {}",
+            slugs.join(", ")
+        ));
+        self
+    }
+
     /// The ceiling a run under this grant runs beneath.
     #[must_use]
     pub fn effects(&self) -> Effects {

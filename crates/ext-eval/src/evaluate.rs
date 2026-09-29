@@ -131,7 +131,23 @@ pub fn suite_documents(
     package: &str,
     component: &str,
 ) -> Result<(Vec<u8>, Vec<u8>), EvalError> {
-    let (_, gate_file) = load_gate()?;
+    suite_documents_under(GATE_ID, suite, author, package, component)
+}
+
+/// [`suite_documents`] for a suite judged by the gate `gate_id`
+/// (`ext-eval-v2` or `ext-eval-cost-v1`), which its acceptance names.
+///
+/// # Errors
+///
+/// Returns [`EvalError::GateLoad`] when the gate does not load.
+pub fn suite_documents_under(
+    gate_id: &str,
+    suite: &Suite,
+    author: &str,
+    package: &str,
+    component: &str,
+) -> Result<(Vec<u8>, Vec<u8>), EvalError> {
+    let (_, gate_file) = load_gate_named(gate_id)?;
     let placeholder = crate::report::ArmSetup {
         definition: Value::Null,
         lock: ArtifactRef::of(b"", JSON, None),
@@ -150,6 +166,7 @@ pub fn suite_documents(
         requester: None,
         suite_release: None,
         environment: None,
+        defaults: None,
         partial: None,
     };
     let mut artifacts = Artifacts::new();

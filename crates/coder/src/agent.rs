@@ -296,6 +296,10 @@ pub struct Agent {
     /// Guidance appended to every generation's instructions, when the
     /// environment names some.
     guidance: Option<Guidance>,
+    /// Coder's defaults on this computer: programs granted to every
+    /// session and skills appended to its instructions, under the newest
+    /// `coder-defaults` release the sync read.
+    defaults: Option<crate::defaults::Admitted>,
 }
 
 impl Agent {
@@ -375,6 +379,23 @@ impl Agent {
             );
             trace.external(vec![step], "");
         }
+        // Coder's defaults: the programs and skills the newest
+        // `coder-defaults` release admits, as `openagents ext defaults
+        // sync` wrote them here. A lock that can't be read admits
+        // nothing, and the trace says so; a session with none runs as
+        // before.
+        let defaults = match crate::defaults::current() {
+            Ok(defaults) => defaults,
+            Err(error) => {
+                if let Some(trace) = &mut trace {
+                    trace.note(&format!("defaults not read: {error}"));
+                }
+                None
+            }
+        };
+        if let (Some(trace), Some(defaults)) = (&mut trace, &defaults) {
+            trace.note(&defaults.line());
+        }
         let decision_profile = crate::decision::profile_from_env()?;
         let classify = decision_profile
             .as_ref()
@@ -395,6 +416,7 @@ impl Agent {
             program_grant: None,
             door_reason,
             guidance,
+            defaults,
         })
     }
 
@@ -415,7 +437,16 @@ impl Agent {
             program_grant: None,
             door_reason: String::new(),
             guidance: None,
+            defaults: None,
         }
+    }
+
+    /// The same agent admitting `defaults` (`crate::defaults`), for tests
+    /// and for a caller that read the lock itself.
+    #[must_use]
+    pub fn with_defaults(mut self, defaults: Option<crate::defaults::Admitted>) -> Self {
+        self.defaults = defaults;
+        self
     }
 
     /// The same agent appending `guidance` to its instructions, for tests
@@ -535,6 +566,9 @@ impl Agent {
         if let Some(dir) = crate::runstate::directory() {
             runtime = runtime.with_runstate(dir);
         }
+        if let Some(defaults) = &self.defaults {
+            runtime = runtime.with_defaults(defaults.digest.clone());
+        }
         let slug = match runtime.select(&self.task, self.trace.as_mut()).await {
             Ok(Selected::Program(slug)) => slug,
             Ok(Selected::None) => return None,
@@ -549,8 +583,13 @@ impl Agent {
         // The grant is the operator's, read fresh from this session's
         // settings on every run: a selection is a proposal, and the grant
         // is the authority it is proposed under. Neither the selection
-        // nor any judgment the program records widens it.
-        let grant = Grant::operator(self.program_grant.as_deref());
+        // nor any judgment the program records widens it. Coder's
+        // defaults widen the program set, never the effects ceiling.
+        let grant = Grant::operator(self.program_grant.as_deref()).admitting(
+            self.defaults
+                .as_ref()
+                .map_or(&[][..], |defaults| defaults.programs.as_slice()),
+        );
         // A program the grant doesn't name never runs, and the turn is
         // answered the ordinary way instead of stopping on the refusal:
         // "how many open issues are there here" once ended with a sentence
@@ -1241,6 +1280,14 @@ impl Agent {
         instructions.push_str("\n\n");
         if let Some(guidance) = &self.guidance {
             instructions.push_str(guidance.text.trim_end());
+            instructions.push_str("\n\n");
+        }
+        if let Some(skills) = self
+            .defaults
+            .as_ref()
+            .and_then(crate::defaults::Admitted::guidance)
+        {
+            instructions.push_str(skills.trim_end());
             instructions.push_str("\n\n");
         }
         let mut context = self.about.context();

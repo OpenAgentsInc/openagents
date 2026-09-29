@@ -55,6 +55,7 @@ pub mod cli_route;
 pub mod cloud;
 pub mod codebase;
 pub mod decision;
+pub mod defaults;
 pub mod delegate;
 pub mod delegate_door;
 pub mod doctor;

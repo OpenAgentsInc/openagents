@@ -74,6 +74,7 @@ pub fn identity() -> Identity {
         requester: None,
         suite_release: None,
         environment: None,
+        defaults: None,
         partial: None,
     }
 }

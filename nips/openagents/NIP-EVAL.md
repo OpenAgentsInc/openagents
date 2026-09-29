@@ -552,9 +552,16 @@ are fixed documents (`requirements` names reads and sandbox writes only).
 `input` (`openagents.ext-eval-hosted.v1`) is one of two actions: `run`
 (`suite`, a `3184` EventRef or `"draft"`; `subject`, a DefinitionRef or
 `"draft"`; `draft`, the NIP-CJ draft exactly when a side is the draft;
-`runs`, 1 to 3; `baseline: true`; and `check`, the publication a rerun
-checks, or null) and `publish` (`report`, the ArtifactRef a run's result
-named, sent by the same trainer). The runner answers `27020` `accepted`
+`runs`, 1 to 3; `baseline: true`; `check`, the publication a rerun
+checks, or null; and, optionally, `validates`, the publication this run
+externally validates on a published second suite, never together with
+`check`, which the runner publishes with the `validates` marker after
+checking that the cited result is on the relay, tested the same tool,
+and ran another suite) and `publish` (`report`, the ArtifactRef a run's
+result named, sent by the same trainer). Once a `coder-defaults` release
+admits anything the runner holds, both arms of every run admit it and
+the report names the release in `meta.ext_eval.defaults` (a marginal
+report). The runner answers `27020` `accepted`
 and `progress` with `meta.ext_eval: {completed, planned}` in case runs,
 and one `26920` whose `output` is `{v, action: "run", report, sealed,
 headline, verdict, notes}` or `{v, action: "publish", suite_release,
@@ -616,7 +623,14 @@ whose manifest `provenance.receipts` cites the admission's ArtifactRef
 the extension's release ID. The admission's `subject` carries the
 extension's release as its `event`. The release is the public, checkable
 record of adoption; the admission itself
-stays with its issuer. NIP-XP's `eval-adopt` rule reads the release.
+stays with its issuer. NIP-XP's `eval-adopt` rule reads the release. A
+runtime that consumes the defaults reads the same release and admits a
+dependency only under a live admission it holds (its `decision` is
+`admit`, its `subject.event` is that dependency, and its `expires_at`
+hasn't passed); it records the defaults lock it admitted under in the
+run (`openagents.coder-defaults-lock.v1`, the `defaults` of a NIP-RUN
+`created` record's lock). A dependency without such an admission admits
+nothing.
 
 ## Promotion and learning
 

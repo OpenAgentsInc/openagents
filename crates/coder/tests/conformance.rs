@@ -796,6 +796,7 @@ async fn a_crash_leaves_unknown_and_the_restart_is_a_decision() {
                 program: &coder::child::digest(&program),
                 questions: &[],
                 sources: &[],
+                defaults: None,
                 owner: 0,
             })
             .unwrap();
@@ -902,6 +903,7 @@ async fn a_crash_leaves_unknown_and_the_restart_is_a_decision() {
                 program: "sha256:0000000000000000000000000000000000000000000000000000000000000000",
                 questions: &[],
                 sources: &[],
+                defaults: None,
                 owner: 0,
             })
             .unwrap();

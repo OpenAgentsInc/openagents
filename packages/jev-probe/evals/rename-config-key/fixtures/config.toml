@@ -1,0 +1,8 @@
+[server]
+host = "0.0.0.0"
+port = 8080
+timeout_secs = 30
+
+[client]
+retries = 3
+timeout_secs = 5

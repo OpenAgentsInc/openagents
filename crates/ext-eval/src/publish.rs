@@ -450,9 +450,23 @@ pub fn with_suite_release(report: &Value, release: &Value) -> Result<Vec<u8>, Pu
 /// Returns [`PublishError::Contract`] when the report can't be published:
 /// over 64 KiB, no suite release, or not valid under the profile.
 pub fn result_event(report: &[u8], checks: Option<&str>) -> Result<Unsigned, PublishError> {
+    result_event_citing(report, checks.map(nostr::eval_ext::Cites::Check))
+}
+
+/// [`result_event`] for a result that cites another as a check, an
+/// external validation (`validates`: a second suite on the same subject),
+/// or a transfer.
+///
+/// # Errors
+///
+/// As [`result_event`].
+pub fn result_event_citing(
+    report: &[u8],
+    cites: Option<nostr::eval_ext::Cites<'_>>,
+) -> Result<Unsigned, PublishError> {
     let text = std::str::from_utf8(report)
         .map_err(|_| PublishError::Mismatch("the report is not UTF-8".into()))?;
-    nostr::eval_ext::publication(text, checks).map_err(contract)
+    nostr::eval_ext::publication_citing(text, cites).map_err(contract)
 }
 
 /// What a publish left, recorded in `published.json` so a second publish

@@ -11,6 +11,8 @@
 //!   draft, against a catalog tool's DefinitionRef or the draft's tool,
 //!   with 1 to 3 runs per arm and the baseline arm on. `check` names the
 //!   result a rerun checks; checks don't count against the quota.
+//!   `validates` names the result this run externally validates on a
+//!   second suite ([`run_input_citing`]); a validation is a run.
 //! - **publish** ([`publish_input`]): the report of a run this trainer
 //!   asked for, which the runner then publishes: the suite's release
 //!   (once) and the `3189` it signs, naming the trainer.
@@ -198,6 +200,21 @@ pub struct RunInput {
     pub runs: u64,
     /// The publication this run checks, when it's a check.
     pub check: Option<String>,
+    /// The publication this run externally validates, when it runs a
+    /// second suite on the same subject; never together with `check`.
+    pub validates: Option<String>,
+}
+
+impl RunInput {
+    /// What the run's result cites, if anything.
+    #[must_use]
+    pub fn cites(&self) -> Option<super::Cites<'_>> {
+        match (&self.check, &self.validates) {
+            (Some(check), _) => Some(super::Cites::Check(check)),
+            (None, Some(validates)) => Some(super::Cites::Validates(validates)),
+            (None, None) => None,
+        }
+    }
 }
 
 /// A hosted request's input.
@@ -263,7 +280,34 @@ pub fn run_input(
     runs: u64,
     check: Option<&str>,
 ) -> Result<Value, ContractError> {
-    let value = json!({
+    run_input_citing(suite, subject, draft, runs, check.map(super::Cites::Check))
+}
+
+/// [`run_input`] for a run whose result cites another: a check (the same
+/// suite, rerun) or an external validation (`validates`: a second suite
+/// on the same subject, whose result the runner publishes with the
+/// `validates` marker). A `transfer` isn't a hosted request yet.
+///
+/// # Errors
+///
+/// When the result doesn't parse ([`parse_input`]), or `cites` is a
+/// transfer.
+pub fn run_input_citing(
+    suite: &SuiteSource,
+    subject: &SubjectSource,
+    draft: Option<&Value>,
+    runs: u64,
+    cites: Option<super::Cites<'_>>,
+) -> Result<Value, ContractError> {
+    let (check, validates) = match cites {
+        None => (None, None),
+        Some(super::Cites::Check(id)) => (Some(id), None),
+        Some(super::Cites::Validates(id)) => (None, Some(id)),
+        Some(super::Cites::Transfer(_)) => {
+            return Err(unsupported("input.transfer: not a hosted request"));
+        }
+    };
+    let mut value = json!({
         "v": SCHEMA,
         "action": "run",
         "suite": suite_value(suite),
@@ -273,6 +317,11 @@ pub fn run_input(
         "baseline": true,
         "check": check,
     });
+    // A request that validates nothing keeps the older shape, so a runner
+    // built before the field reads it as before.
+    if let Some(validates) = validates {
+        value["validates"] = json!(validates);
+    }
     parse_input(&value)?;
     Ok(value)
 }
@@ -318,7 +367,15 @@ fn parse_run(object: &Map<String, Value>) -> Result<RunInput, ContractError> {
     reject(
         object,
         &[
-            "v", "action", "suite", "subject", "draft", "runs", "baseline", "check",
+            "v",
+            "action",
+            "suite",
+            "subject",
+            "draft",
+            "runs",
+            "baseline",
+            "check",
+            "validates",
         ],
     )?;
     let suite = match require(object, "suite")? {
@@ -388,12 +445,28 @@ fn parse_run(object: &Map<String, Value>) -> Result<RunInput, ContractError> {
         Value::String(id) if is_hex(id) => Some(id.clone()),
         _ => return Err(malformed("input.check")),
     };
+    let validates = match object.get("validates") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(id)) if is_hex(id) => Some(id.clone()),
+        Some(_) => return Err(malformed("input.validates")),
+    };
+    if check.is_some() && validates.is_some() {
+        return Err(malformed(
+            "input.validates: a run checks a result or validates one, not both",
+        ));
+    }
+    if validates.is_some() && suite == SuiteSource::Draft {
+        return Err(malformed(
+            "input.validates: a validation runs a published second suite",
+        ));
+    }
     Ok(RunInput {
         suite,
         subject,
         draft,
         runs,
         check,
+        validates,
     })
 }
 
@@ -699,6 +772,70 @@ mod tests {
         assert!(run.draft.is_none() && run.check.is_none());
         let tags = request_tags(RUNNER, 1_000 + DEADLINE_SECONDS);
         assert_eq!(tags[0].value(), Some(RUNNER));
+    }
+
+    #[test]
+    fn a_validation_names_the_result_it_validates_and_never_a_check_too() {
+        let original = "0a".repeat(32);
+        let input = run_input_citing(
+            &SuiteSource::Published(release()),
+            &SubjectSource::Definition(Box::new(definition())),
+            None,
+            3,
+            Some(super::super::Cites::Validates(&original)),
+        )
+        .unwrap();
+        assert_eq!(input["validates"], original);
+        assert_eq!(input["check"], Value::Null);
+        let Input::Run(run) = parse_input(&input).unwrap() else {
+            panic!("a run")
+        };
+        assert_eq!(run.validates.as_deref(), Some(original.as_str()));
+        assert!(matches!(
+            run.cites(),
+            Some(super::super::Cites::Validates(id)) if id == original
+        ));
+
+        // A request that validates nothing carries no `validates` key, so
+        // an older runner reads it as before.
+        let plain = run_input(
+            &SuiteSource::Published(release()),
+            &SubjectSource::Definition(Box::new(definition())),
+            None,
+            3,
+            None,
+        )
+        .unwrap();
+        assert!(plain.get("validates").is_none());
+
+        // Both markers at once, a non-id, a draft suite, and a transfer are
+        // refused.
+        let mut both = input.clone();
+        both["check"] = json!("0b".repeat(32));
+        assert!(parse_input(&both).is_err());
+        let mut bad = input.clone();
+        bad["validates"] = json!("nope");
+        assert!(parse_input(&bad).is_err());
+        assert!(
+            run_input_citing(
+                &SuiteSource::Draft,
+                &SubjectSource::Definition(Box::new(definition())),
+                Some(&draft(1)),
+                3,
+                Some(super::super::Cites::Validates(&original)),
+            )
+            .is_err()
+        );
+        assert!(
+            run_input_citing(
+                &SuiteSource::Published(release()),
+                &SubjectSource::Definition(Box::new(definition())),
+                None,
+                3,
+                Some(super::super::Cites::Transfer(&original)),
+            )
+            .is_err()
+        );
     }
 
     #[test]

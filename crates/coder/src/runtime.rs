@@ -819,6 +819,9 @@ pub struct Runtime {
     verification: Option<(PathBuf, crate::verification::Plan, capability::Trust)>,
     review: Option<crate::review::Context>,
     runstate: Option<PathBuf>,
+    /// The digest of the Coder defaults lock this session admits programs
+    /// under, recorded in each run's claim.
+    defaults: Option<String>,
     budget: Option<Budget>,
     module_ceiling: plugin::Limits,
 }
@@ -866,6 +869,7 @@ impl Runtime {
             verification: None,
             review: None,
             runstate: None,
+            defaults: None,
             budget: None,
             module_ceiling: module_ceiling(),
             repository: repository.map(Path::to_path_buf),
@@ -894,6 +898,7 @@ impl Runtime {
             verification: None,
             review: None,
             runstate: None,
+            defaults: None,
             budget: None,
             module_ceiling: module_ceiling(),
             host,
@@ -935,6 +940,14 @@ impl Runtime {
     #[must_use]
     pub fn with_runstate(mut self, dir: impl Into<PathBuf>) -> Self {
         self.runstate = Some(dir.into());
+        self
+    }
+
+    /// The same runtime recording `digest`, the Coder defaults lock the
+    /// session admits programs under, in each run's claim.
+    #[must_use]
+    pub fn with_defaults(mut self, digest: impl Into<String>) -> Self {
+        self.defaults = Some(digest.into());
         self
     }
 
@@ -2875,6 +2888,7 @@ impl Runtime {
             program: &pin,
             questions: &questions,
             sources: &sources,
+            defaults: self.defaults.as_deref(),
             owner: std::process::id(),
         }) {
             Ok(_) => Some((store, id)),
@@ -5187,6 +5201,7 @@ mod tests {
             verification: None,
             review: None,
             runstate: None,
+            defaults: None,
             budget: None,
             module_ceiling: module_ceiling(),
             repository: None,
@@ -6364,6 +6379,7 @@ mod tests {
                     program: "burn-down",
                     questions: &[],
                     sources: &[],
+                    defaults: None,
                     owner: 0,
                 })
                 .unwrap();
@@ -6688,6 +6704,7 @@ mod tests {
                 program: "burn-down",
                 questions: &[],
                 sources: &[],
+                defaults: None,
                 owner: 0,
             })
             .unwrap();
@@ -6895,6 +6912,7 @@ mod tests {
             verification: None,
             review: None,
             runstate: Some(runstate.to_path_buf()),
+            defaults: None,
             budget: None,
             module_ceiling: module_ceiling(),
             repository: Some(repo.to_path_buf()),
@@ -7185,6 +7203,7 @@ mod tests {
                 program: "parent-program",
                 questions: &[],
                 sources: &[],
+                defaults: None,
                 owner: 0,
             })
             .unwrap();
@@ -7267,6 +7286,7 @@ mod tests {
                 program: &crate::child::digest(&program),
                 questions: &[],
                 sources: &["request".to_string()],
+                defaults: None,
                 owner: 0,
             })
             .unwrap();
@@ -7338,6 +7358,7 @@ mod tests {
                 program: "sha256:0000000000000000000000000000000000000000000000000000000000000000",
                 questions: &[],
                 sources: &[],
+                defaults: None,
                 owner: 0,
             })
             .unwrap();
@@ -7370,6 +7391,7 @@ mod tests {
                 program: &crate::child::digest(&program),
                 questions: &[],
                 sources: &[],
+                defaults: None,
                 owner: 0,
             })
             .unwrap();
@@ -8766,6 +8788,7 @@ mod tests {
                 program: "burn-down",
                 questions: &[],
                 sources: &[],
+                defaults: None,
                 owner: 0,
             })
             .unwrap();

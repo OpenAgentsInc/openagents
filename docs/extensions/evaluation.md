@@ -443,7 +443,7 @@ grader replays. See [the live run](measurements/2026-09-29-ext-eval-runner-live.
 | --- | --- | --- | --- |
 | The operator's computer, `openagents ext eval run` | The operator in a terminal | Any extension the operator trusts, with any grant they pass | The operator's Verse world key |
 | A connected computer, from chat | A tap on **Run on Studio Mac** in chat, which sends Coder a NIP-HOST task that runs `openagents ext eval run` | The same as the operator's computer; the grant is read and write in the sandbox only, never `exec` or `network`, unless the person approves it on the computer | The computer's world key |
-| The hosted runner, from chat | A tap on **Start the test** in chat, which sends a NIP-CJ execution job | Only catalog capabilities (those in the OpenAgents catalog or in Coder defaults) and chat-made capabilities whose components are skills and choices of catalog capabilities. No setup programs, no `exec` or `network`, at most 8 cases, 3 runs, and a daily quota per trainer. | The hosted runner's key, with the requesting trainer named |
+| The hosted runner, from chat | A tap on **Start the test** in chat, which sends a NIP-CJ execution job | Only catalog capabilities (those in the OpenAgents catalog or in Coder defaults) and chat-made capabilities whose components are skills and choices of catalog capabilities. No setup programs, no `exec` or `network`, at most 8 cases, 3 runs, and a daily quota per trainer. Both arms admit the current `coder-defaults`, so a report is marginal. | The hosted runner's key, with the requesting trainer named |
 
 Every path runs the same crate (`crates/ext-eval`), writes the same
 report, and publishes the same way. A chat request never runs anything
@@ -575,6 +575,13 @@ the same task distribution; a second suite on another distribution is a
 `transfer`, a new claim. A reader that doesn't hold both releases assumes
 no independence.
 
+A validation is published like any result: `openagents ext eval publish
+REPORT --validates RESULT` from a computer, or a hosted run whose request
+names the result with `validates` instead of `check` (the runner then
+publishes with the marker). Someone other than the capability's author
+releases the second suite first, without running it, with `openagents
+ext eval release CAPABILITY_DIR --eval-dir DIR --as PROFILE`.
+
 **Adoption** makes a capability part of Coder for everyone: an OpenAgents
 operator issues an `openagents.eval-admission.v1` decision (NIP-EVAL)
 citing the reports and at least one validation, then publishes a new
@@ -586,10 +593,20 @@ decision, never automatic. The admission lasts 365 days for a
 content-addressed capability, 90 for a version-addressed subject, and 14 for
 an endpoint; a subject with unresolved identity is never adopted; a gate
 change reinterprets the cited reports and reopens nothing. Once
-`coder-defaults` holds anything, a
-candidate's report should also be marginal: its baseline arm the current
-defaults rather than nothing admitted, named in `meta.ext_eval.defaults`;
-the runner has no such arm yet.
+`coder-defaults` holds anything, a candidate's report is marginal: the
+hosted runner admits the current defaults in both arms and names the
+release in `meta.ext_eval.defaults`, so the baseline is current defaults
+rather than nothing admitted.
+
+**Reaching Coder.** A release reaches runtimes under the same checks a
+ledger makes before crediting the adoption
+([policy](../../packages/coder-defaults/policy.md#how-a-release-reaches-runtimes)):
+the hosted runner reads the newest release and its documents at each
+admission and admits the adopted extensions it holds; a computer runs
+`openagents ext defaults sync`, which writes the lock, programs, and
+skills that `coder -p`, the terminal, and app-dispatched turns then admit
+on top of the operator's grant, recording the lock's digest in each run.
+An admission that lapsed admits nothing.
 
 **Credit is XP and your name, not money.** Under the two NIP-XP rules this
 revision adds (see [NIP-XP](../../nips/openagents/NIP-XP.md#eval-check)):

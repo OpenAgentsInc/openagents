@@ -171,12 +171,8 @@ impl Subject {
             .join(",")
     }
 
-    /// The subject arm's run lock: the package lock, every admitted
-    /// program's and skill's digest, and the agent binary.
-    #[must_use]
-    pub fn lock_document(&self, agent: &AgentPin) -> Vec<u8> {
-        let programs: Vec<Value> = self
-            .programs
+    fn programs_value(&self) -> Vec<Value> {
+        self.programs
             .iter()
             .map(|program| {
                 json!({
@@ -185,9 +181,11 @@ impl Subject {
                     "size": program.bytes.len(),
                 })
             })
-            .collect();
-        let skills: Vec<Value> = self
-            .skills
+            .collect()
+    }
+
+    fn skills_value(&self) -> Vec<Value> {
+        self.skills
             .iter()
             .map(|skill| {
                 json!({
@@ -196,17 +194,35 @@ impl Subject {
                     "size": skill.bytes.len(),
                 })
             })
-            .collect();
-        json_bytes(&json!({
+            .collect()
+    }
+
+    /// The subject arm's run lock: the package lock, every admitted
+    /// program's and skill's digest, and the agent binary.
+    #[must_use]
+    pub fn lock_document(&self, agent: &AgentPin) -> Vec<u8> {
+        self.lock_document_with(agent, None)
+    }
+
+    /// [`Subject::lock_document`] for a marginal run: the lock also names
+    /// the defaults both arms admitted, so a subject arm's lock differs
+    /// from a run without them.
+    #[must_use]
+    pub fn lock_document_with(&self, agent: &AgentPin, defaults: Option<&Defaults>) -> Vec<u8> {
+        let mut lock = json!({
             "v": LOCK_SCHEMA,
             "requires": [],
             "arm": "subject",
             "definition": self.definition,
             "package": self.package_lock,
-            "programs": programs,
-            "skills": skills,
+            "programs": self.programs_value(),
+            "skills": self.skills_value(),
             "agent": agent.value(),
-        }))
+        });
+        if let Some(defaults) = defaults {
+            lock["defaults"] = defaults.lock_value();
+        }
+        json_bytes(&lock)
     }
 
     /// The skills as the guidance block the subject arm appends.
@@ -292,14 +308,113 @@ fn baseline_identity(agent: &AgentPin) -> Vec<u8> {
 /// The baseline arm's run lock: the agent binary and nothing admitted.
 #[must_use]
 pub fn baseline_lock(agent: &AgentPin) -> Vec<u8> {
-    json_bytes(&json!({
+    baseline_lock_with(agent, None)
+}
+
+/// [`baseline_lock`] for a marginal run: the baseline is the agent with
+/// the defaults admitted, and the lock says which.
+#[must_use]
+pub fn baseline_lock_with(agent: &AgentPin, defaults: Option<&Defaults>) -> Vec<u8> {
+    let mut lock = json!({
         "v": LOCK_SCHEMA,
         "requires": [],
         "arm": "baseline",
         "programs": [],
         "skills": [],
         "agent": agent.value(),
-    }))
+    });
+    if let Some(defaults) = defaults {
+        lock["defaults"] = defaults.lock_value();
+    }
+    json_bytes(&lock)
+}
+
+/// Coder's defaults, admitted in both arms of a marginal run: the
+/// `coder-defaults` release they come from, the lock a reader of that
+/// release derived (`xp_ledger::defaults::lock_document`), and the
+/// extensions it admits that this runner holds, resolved like any
+/// subject. A default the runner doesn't hold isn't here, and the lock
+/// says so by naming it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Defaults {
+    /// The `coder-defaults` release, `{id, pubkey, kind}`.
+    pub release: Value,
+    /// The defaults lock's exact bytes.
+    pub lock: Vec<u8>,
+    /// The admitted extensions this runner holds.
+    pub subjects: Vec<Subject>,
+}
+
+impl Defaults {
+    /// What a run lock records of the defaults: the release, the defaults
+    /// lock's digest, and each admitted extension's programs and skills by
+    /// digest.
+    #[must_use]
+    pub fn lock_value(&self) -> Value {
+        json!({
+            "release": self.release,
+            "lock": ArtifactRef::of(&self.lock, JSON, Some(DEFAULTS_LOCK_SCHEMA)).value(),
+            "subjects": self.subjects.iter().map(|subject| json!({
+                "definition": subject.definition,
+                "programs": subject.programs_value(),
+                "skills": subject.skills_value(),
+            })).collect::<Vec<_>>(),
+        })
+    }
+
+    /// The skills every admitted extension supplies, as guidance.
+    #[must_use]
+    pub fn skills_guidance(&self) -> Option<String> {
+        let parts: Vec<String> = self
+            .subjects
+            .iter()
+            .filter_map(Subject::skills_guidance)
+            .collect();
+        (!parts.is_empty()).then(|| parts.join("\n"))
+    }
+}
+
+/// The schema of the defaults lock a run's lock references.
+pub const DEFAULTS_LOCK_SCHEMA: &str = "openagents.coder-defaults-lock.v1";
+
+/// The programs `arm` admits: the defaults' in both arms, then the
+/// subject's in the subject arm, each slug once (a subject that is
+/// already a default adds nothing).
+#[must_use]
+pub fn admitted_programs<'a>(
+    arm: Arm,
+    subject: &'a Subject,
+    defaults: Option<&'a Defaults>,
+) -> Vec<&'a Program> {
+    let mut out: Vec<&Program> = Vec::new();
+    let mut push = |program: &'a Program| {
+        if !out.iter().any(|known| known.slug == program.slug) {
+            out.push(program);
+        }
+    };
+    for program in defaults
+        .into_iter()
+        .flat_map(|d| d.subjects.iter())
+        .flat_map(|s| s.programs.iter())
+    {
+        push(program);
+    }
+    if arm == Arm::Subject {
+        for program in &subject.programs {
+            push(program);
+        }
+    }
+    out
+}
+
+/// The comma-separated program slugs `CODER_PROGRAMS` names in `arm`.
+#[must_use]
+pub fn program_grant_for(arm: Arm, subject: &Subject, defaults: Option<&Defaults>) -> String {
+    admitted_programs(arm, subject, defaults)
+        .iter()
+        .map(|program| program.slug.as_str())
+        .collect::<Vec<_>>()
+        .join(",")
 }
 
 /// The text appended to the child's instructions for `case` in `arm`:
@@ -307,7 +422,22 @@ pub fn baseline_lock(agent: &AgentPin) -> Vec<u8> {
 /// `append_instructions` in both. `None` when there is nothing to append.
 #[must_use]
 pub fn guidance(arm: Arm, subject: &Subject, case: &Case) -> Option<String> {
+    guidance_with(arm, subject, None, case)
+}
+
+/// [`guidance`] for a marginal run: the defaults' skills come first, in
+/// both arms.
+#[must_use]
+pub fn guidance_with(
+    arm: Arm,
+    subject: &Subject,
+    defaults: Option<&Defaults>,
+    case: &Case,
+) -> Option<String> {
     let mut parts = Vec::new();
+    if let Some(skills) = defaults.and_then(Defaults::skills_guidance) {
+        parts.push(skills);
+    }
     if arm == Arm::Subject
         && let Some(skills) = subject.skills_guidance()
     {

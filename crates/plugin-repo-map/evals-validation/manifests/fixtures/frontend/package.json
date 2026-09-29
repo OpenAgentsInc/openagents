@@ -1,0 +1,12 @@
+{
+  "name": "shop-frontend",
+  "version": "0.3.0",
+  "private": true,
+  "scripts": {
+    "build": "tsc -p .",
+    "start": "node dist/index.js"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0"
+  }
+}

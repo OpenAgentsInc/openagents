@@ -653,9 +653,18 @@ impl Registry {
 /// Where a host looks for programs, in order.
 ///
 /// `CODER_PROGRAM_DIR` first, then the repository's own `programs/`
-/// directory, then the operator's `~/.openagents/programs`.
+/// directory, then the operator's `~/.openagents/programs`, then the
+/// programs Coder's defaults admit (`crate::defaults`), when that
+/// directory exists.
 #[must_use]
 pub fn search(repository: Option<&Path>) -> Vec<PathBuf> {
+    search_with(repository, crate::defaults::programs_dir().as_deref())
+}
+
+/// [`search`] with the defaults' programs directory given, for a caller
+/// that holds it.
+#[must_use]
+pub fn search_with(repository: Option<&Path>, defaults: Option<&Path>) -> Vec<PathBuf> {
     let mut dirs = Vec::new();
     if let Some(dir) = env::var_os(DIR_ENV).filter(|dir| !dir.is_empty()) {
         dirs.push(PathBuf::from(dir));
@@ -665,6 +674,9 @@ pub fn search(repository: Option<&Path>) -> Vec<PathBuf> {
     }
     if let Some(home) = env::var_os("HOME").filter(|home| !home.is_empty()) {
         dirs.push(PathBuf::from(home).join(".openagents").join("programs"));
+    }
+    if let Some(defaults) = defaults {
+        dirs.push(defaults.to_path_buf());
     }
     dirs
 }

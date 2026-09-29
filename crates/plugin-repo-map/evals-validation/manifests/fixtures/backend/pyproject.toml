@@ -1,0 +1,7 @@
+[project]
+name = "shop-backend"
+version = "0.3.0"
+dependencies = ["fastapi>=0.115", "uvicorn>=0.30"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

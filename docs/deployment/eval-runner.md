@@ -67,6 +67,27 @@ phone <--26920 result, 3188 report----- relay.openagents.com <--
   test sets (`<runner>:project-map-tests`, `code-finder-tests`, and
   `test-reader-tests`), so `knowledge/quests/ext-eval.*.json` list it as
   their publisher.
+- **Validations.** A run request may name a published result with
+  `validates` instead of `check`: the run then executes a second,
+  published test set on the same catalog tool, and the runner publishes
+  the result with the `validates` marker. It refuses `not_admitted` a
+  validation of a result that isn't on the relay, that ran the same test
+  set (that would be a check), or that tested another tool. A validation
+  is a run for the quota. `crates/eval-runner/examples/trainer.rs` sends
+  one with `--validates RESULT_ID`, with `SUITE_AUTHOR` naming the second
+  test set's signer.
+- **Coder's defaults.** At each admitted run the runner reads the
+  `openagents:coder-defaults` releases of the package root
+  (`EVAL_RUNNER_DEFAULTS_ROOT` overrides it for a test), their documents
+  from `EVAL_RUNNER_DEFAULTS_DOCS` (default
+  `~/.openagents/coder-defaults/documents`, which `microcoder xp adopt`
+  writes on this host) and then from the adopter's NIP-94 locators, and
+  admits every adopted extension it holds in its catalog in **both**
+  arms, so reports are marginal (`meta.ext_eval.defaults` names the
+  release; each arm's lock names the defaults lock). It logs `defaults
+  release … admits …` once at start and again whenever the release
+  changes, naming what it doesn't hold and what lapsed. See
+  [the policy](../../packages/coder-defaults/policy.md#how-a-release-reaches-runtimes).
 
 - **Liveness.** The runner never trusts a quiet socket, the same way
   the chat worker doesn't
@@ -163,7 +184,11 @@ pins the Coder binary both arms ran, and a check counts only when its
 lock equals the original's. A redeploy that rebuilds `coder` with other
 bytes means earlier hosted results can no longer be checked on the
 hosted runner; checks of new results work as before. Deploy only when
-there's a reason to.
+there's a reason to. An adoption does the same: once a `coder-defaults`
+release admits a tool the runner holds, every lock names it, so results
+from before the adoption can't be checked or validated on the runner
+either, and an adopted tool's own suite reads inconclusive from then on
+(both arms hold it).
 
 ## Releasing the starter test sets
 

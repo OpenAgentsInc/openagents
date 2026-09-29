@@ -30,3 +30,50 @@ the defaults, the agent build, the grant, or the graders does.
 
 Adoption earns XP under NIP-XP's `eval-adopt` rule. XP is never spent,
 transferred, or converted, and adoption pays no money.
+
+## How a release reaches runtimes
+
+A release is a NIP-EXT `3184` signed by this package's root key. Its
+manifest (pinned by digest) lists the adopted tools' release IDs as
+`dependencies` and cites each admission in `provenance.receipts`; the
+manifest and each admission are kept in `documents/` here, named by
+digest, and the adopter publishes a NIP-94 locator for each so a runtime
+can fetch them from this repository. A runtime that consumes the defaults
+does what a ledger does before crediting an adoption
+(`xp_ledger::defaults::current`): it reads the root's releases, takes the
+newest whose manifest it holds, and admits a dependency only under a
+live admission it also holds: the admission's bytes are the ones the
+manifest cites, its decision is `admit`, its subject's release is that
+dependency, and its `expires_at` hasn't passed. A dependency with no
+such admission is named as lapsed and admits nothing; a release whose
+manifest a runtime can't get admits nothing at all. Every run records
+the defaults lock it admitted under (`openagents.coder-defaults-lock.v1`:
+the release, the manifest digest, and each admitted subject with its
+admission digest and expiry).
+
+Two runtimes consume it today:
+
+- **The hosted runner** (`crates/eval-runner`) reads the relay at each
+  admission, with the documents from its host's
+  `~/.openagents/coder-defaults/documents` (where `microcoder xp adopt`
+  keeps them on the referee host) and then from the locators. It admits
+  the adopted extensions it holds in its catalog in **both** arms, so a
+  report is marginal (`meta.ext_eval.defaults` names the release, and each
+  arm's lock names the defaults lock); an adopted extension outside its
+  catalog is logged as not held and admits nothing.
+- **Coder on a computer** (`coder -p`, the terminal, and the turns the
+  app dispatches to a connected computer) reads one directory
+  (`CODER_DEFAULTS`, else `~/.openagents/coder-defaults`) that
+  `openagents ext defaults sync` writes: `lock.json`, the admitted
+  extensions' programs, and their skills. The session grants the admitted
+  programs on top of the operator's `CODER_PROGRAMS` (never widening the
+  effects ceiling), appends the skills to its instructions, notes the
+  lock in its trace, and records the lock's digest in each program run's
+  run-state claim. The sync resolves an adopted release against the
+  `--catalog` directories it is given and the extensions installed under
+  `~/.openagents/extensions`, by the manifest digest the local bytes
+  would release as; a release it can't match is named and admits
+  nothing.
+
+Neither runtime widens what an operator allowed: a default admits a
+program, and the operator's effects ceiling still bounds what it may do.

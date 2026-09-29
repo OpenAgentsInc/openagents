@@ -1,0 +1,13 @@
+{
+  "v": 1,
+  "slug": "jev-probe",
+  "name": "Jev-probe",
+  "summary": "The Jev-probe context-construction policy as a program: probe the workspace with the read-only evidence guests, let Jev keep what the task needs, and delegate with that briefing and batch-checked directions.",
+  "version": "0.1.0",
+  "publisher": "63fe2f2178a4b2b9719ca4655d7db85036f0e156d197c1652ea13eb6b73bdabc",
+  "provenance": "packages/jev-probe: the essay's Jev-probe v3 policy (crates/coder-one/policies/jevprobe3-luna.json) re-expressed as a NIP-PRG program with its host binding",
+  "program": {
+    "name": "jev-probe",
+    "digest": "c5d0ebed0178ee44d1d0db580583c397789c6c83ba409baf6163636234fab877"
+  }
+}

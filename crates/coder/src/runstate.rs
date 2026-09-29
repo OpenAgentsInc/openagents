@@ -174,6 +174,9 @@ pub struct Claim<'a> {
     pub questions: &'a [String],
     /// The digests of the sources the run's `query` steps read.
     pub sources: &'a [String],
+    /// The digest of the Coder defaults lock the run admitted programs
+    /// under (`crate::defaults`), or `None` with no defaults.
+    pub defaults: Option<&'a str>,
     /// The process that claimed the run, `0` when the claimer does not
     /// say. Recovery asks the operating system whether the owner is
     /// still alive before it marks the run's records `unknown`, so a
@@ -437,6 +440,8 @@ struct Record {
     questions: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     sources: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    defaults: Option<String>,
     state: State,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     outcome: Option<Outcome>,
@@ -511,6 +516,7 @@ impl Store {
             program: Some(claim.program.to_string()),
             questions: claim.questions.to_vec(),
             sources: claim.sources.to_vec(),
+            defaults: claim.defaults.map(str::to_string),
             state: State::Pending,
             outcome: None,
             result: None,
@@ -610,6 +616,7 @@ impl Store {
             program: None,
             questions: Vec::new(),
             sources: Vec::new(),
+            defaults: None,
             state: mark.state,
             outcome: None,
             result: mark.result,
@@ -660,6 +667,7 @@ impl Store {
             program: None,
             questions: Vec::new(),
             sources: Vec::new(),
+            defaults: None,
             state: State::Settled,
             outcome: Some(outcome),
             result: Some(result.to_string()),
@@ -878,6 +886,7 @@ fn unknown_run(run: &str) -> Record {
         program: None,
         questions: Vec::new(),
         sources: Vec::new(),
+        defaults: None,
         state: State::Unknown,
         outcome: None,
         result: None,
@@ -902,6 +911,7 @@ fn unknown_mark(record: &Record) -> Record {
         program: None,
         questions: Vec::new(),
         sources: Vec::new(),
+        defaults: None,
         state: State::Unknown,
         outcome: None,
         result: record.result.clone(),
@@ -1041,6 +1051,7 @@ mod tests {
             program: "sha256:program",
             questions,
             sources,
+            defaults: None,
             owner: 0,
         }
     }

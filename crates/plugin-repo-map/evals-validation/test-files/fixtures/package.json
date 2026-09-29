@@ -1,0 +1,11 @@
+{
+  "name": "kv-lines",
+  "version": "1.2.0",
+  "main": "lib/parser.js",
+  "scripts": {
+    "test": "jest"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0"
+  }
+}

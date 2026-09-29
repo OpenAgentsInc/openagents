@@ -89,6 +89,10 @@ pub struct Identity {
     /// The runner, toolchain, and execution policy; a default names this
     /// crate when absent.
     pub environment: Option<Value>,
+    /// For a marginal run, the `coder-defaults` release (`{id, pubkey,
+    /// kind}`) whose admitted extensions both arms held, written as
+    /// `meta.ext_eval.defaults`.
+    pub defaults: Option<Value>,
     /// Why the suite couldn't finish, when the runner stopped it.
     pub partial: Option<String>,
 }
@@ -110,6 +114,16 @@ fn put(artifacts: &mut Artifacts, name: &str, value: &Value, schema: &str) -> Ar
     let reference = ArtifactRef::of(&bytes, JSON, Some(schema));
     artifacts.insert(name.to_string(), bytes);
     reference
+}
+
+/// The gate's ID as its file states it (`ext-eval-v2`, `ext-eval-cost-v1`),
+/// which the suite's acceptance names; the correctness gate when the file
+/// doesn't say.
+fn gate_id(gate_file: &[u8]) -> String {
+    serde_json::from_slice::<Value>(gate_file)
+        .ok()
+        .and_then(|gate| gate.get("id").and_then(Value::as_str).map(str::to_string))
+        .unwrap_or_else(|| crate::evaluate::GATE_ID.to_string())
 }
 
 /// The suite document and what it references, written into `artifacts`.
@@ -224,7 +238,7 @@ pub(crate) fn suite_artifacts(
             "labels": labels.value(),
             "metrics": metrics.value(),
             "acceptance": {
-                "id": format!("{}:gym-gates/ext-eval-v2", identity.author),
+                "id": format!("{}:gym-gates/{}", identity.author, gate_id(gate_file)),
                 "artifact": gate.value(),
             },
             "environment": environment.value(),
@@ -490,6 +504,23 @@ pub(crate) fn build(parts: &Parts<'_>, artifacts: &mut Artifacts) -> Value {
         "total": parts.suite.cases.len(),
     });
     let reliance = reliance(parts);
+    let mut profile = json!({
+        "v": PROFILE_SCHEMA,
+        "gate": wire_gate(parts.gate_digest),
+        "cases": parts.suite.cases.iter().map(|case| json!({
+            "id": case.name,
+            "kind": case.kind.word(),
+        })).collect::<Vec<_>>(),
+        "headline": headline,
+        "requester": parts.identity.requester,
+        "reliance": reliance,
+        "identity": "content",
+    });
+    // Written only for a marginal run, so a report without defaults keeps
+    // the bytes it had before the field existed.
+    if let Some(defaults) = &parts.identity.defaults {
+        profile["defaults"] = defaults.clone();
+    }
     json!({
         "v": REPORT_SCHEMA,
         "requires": [],
@@ -509,18 +540,7 @@ pub(crate) fn build(parts: &Parts<'_>, artifacts: &mut Artifacts) -> Value {
         "verdict": parts.verdict,
         "limitations": limitations.value(),
         "meta": {
-            "ext_eval": {
-                "v": PROFILE_SCHEMA,
-                "gate": wire_gate(parts.gate_digest),
-                "cases": parts.suite.cases.iter().map(|case| json!({
-                    "id": case.name,
-                    "kind": case.kind.word(),
-                })).collect::<Vec<_>>(),
-                "headline": headline,
-                "requester": parts.identity.requester,
-                "reliance": reliance,
-                "identity": "content",
-            }
+            "ext_eval": profile,
         },
     })
 }

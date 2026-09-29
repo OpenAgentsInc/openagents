@@ -397,14 +397,25 @@ fn the_admission_lifetime_follows_the_subjects_identity_and_the_record_agrees() 
     // The weaker the identity, the sooner the evidence expires; an
     // unresolved subject never becomes a shared default.
     assert_eq!(eval::expiry_days(None), Some(365));
-    assert_eq!(eval::expiry_days(Some(IdentityStrength::Content)), Some(365));
+    assert_eq!(
+        eval::expiry_days(Some(IdentityStrength::Content)),
+        Some(365)
+    );
     assert_eq!(eval::expiry_days(Some(IdentityStrength::Version)), Some(90));
-    assert_eq!(eval::expiry_days(Some(IdentityStrength::Endpoint)), Some(14));
+    assert_eq!(
+        eval::expiry_days(Some(IdentityStrength::Endpoint)),
+        Some(14)
+    );
     assert_eq!(eval::expiry_days(Some(IdentityStrength::Unresolved)), None);
     let record: serde_json::Value = serde_json::from_str(adopt::PACKAGE_RECORD).unwrap();
     let days = &record["candidate"]["expiry_days"];
     for (identity, expected) in eval::EXPIRY_DAYS {
-        assert_eq!(days[identity.word()].as_u64(), expected, "{}", identity.word());
+        assert_eq!(
+            days[identity.word()].as_u64(),
+            expected,
+            "{}",
+            identity.word()
+        );
     }
     assert_eq!(
         record["candidate"]["confirming_checks"].as_u64(),
@@ -814,4 +825,64 @@ fn no_code_path_converts_xp_and_no_copy_promises_money() {
             );
         }
     }
+}
+
+#[test]
+fn the_defaults_admit_a_dependency_only_under_a_live_admission_and_the_lock_round_trips() {
+    use crate::defaults;
+    let a = adopted();
+    let package = adopt::package_of(signer("operator").pubkey());
+    let events = a.events();
+
+    // Before the admission lapses, the tool is admitted under it.
+    let now = defaults::current(&events, &package, &a.documents, AT + 1_000).unwrap();
+    assert_eq!(now.release.id, a.release.id);
+    assert_eq!(now.version, "1");
+    assert_eq!(now.subjects(), vec![a.w.subject.id.clone()]);
+    assert_eq!(
+        now.admitted[0].definition,
+        format!("{}:tool/main", a.w.subject.pubkey)
+    );
+    assert_eq!(now.admitted[0].expires_at, AT + 50_000);
+    assert!(now.lapsed.is_empty());
+    assert!(
+        a.documents.contains_key(&now.admitted[0].admission),
+        "the lock names a held admission"
+    );
+
+    // The lock round-trips through its bytes.
+    let lock = defaults::lock_document(&now);
+    assert_eq!(defaults::parse_lock(&lock).unwrap(), now);
+    assert!(nostr::contracts::digest_bytes(&lock).starts_with("sha256:"));
+
+    // After it lapses, the dependency is named and admits nothing.
+    let later = defaults::current(&events, &package, &a.documents, AT + 50_000).unwrap();
+    assert!(later.admitted.is_empty());
+    assert_eq!(later.lapsed, vec![a.w.subject.id.clone()]);
+
+    // Without the admission's bytes, the same: not held is not admitted.
+    let manifest_only: eval::Documents = a
+        .documents
+        .iter()
+        .filter(|(d, _)| **d == now.manifest)
+        .map(|(d, b)| (d.clone(), b.clone()))
+        .collect();
+    let held = defaults::current(&events, &package, &manifest_only, AT + 1_000).unwrap();
+    assert!(held.admitted.is_empty());
+    assert_eq!(held.lapsed, vec![a.w.subject.id.clone()]);
+    assert_eq!(
+        defaults::wanted_digests(&a.release, &eval::Documents::new()),
+        vec![now.manifest.clone()]
+    );
+    assert_eq!(
+        defaults::wanted_digests(&a.release, &manifest_only),
+        vec![now.manifest.clone(), now.admitted[0].admission.clone()]
+    );
+
+    // Without the manifest there are no defaults to read, and another
+    // package's releases aren't these defaults.
+    assert!(defaults::current(&events, &package, &eval::Documents::new(), AT + 1_000).is_none());
+    assert!(
+        defaults::current(&events, &adopt::package_of(&pk("nobody")), &a.documents, AT).is_none()
+    );
 }

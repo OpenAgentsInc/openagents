@@ -61,6 +61,15 @@ pub struct Config {
     pub limits: Limits,
     /// Where run directories are made.
     pub temp_root: PathBuf,
+    /// The root key of the `coder-defaults` package whose releases both
+    /// arms admit: the package record's, unless `EVAL_RUNNER_DEFAULTS_ROOT`
+    /// names another (a test's operator).
+    pub defaults_root: String,
+    /// Where the documents a defaults release pins are read first
+    /// (`EVAL_RUNNER_DEFAULTS_DOCS`, default
+    /// `~/.openagents/coder-defaults/documents`); the relay's locators
+    /// fill in the rest.
+    pub defaults_documents: Option<PathBuf>,
 }
 
 fn var(name: &str) -> Option<String> {
@@ -151,6 +160,19 @@ impl Config {
             decision,
             limits,
             temp_root: var("EVAL_RUNNER_TMP").map_or_else(std::env::temp_dir, PathBuf::from),
+            defaults_root: match var("EVAL_RUNNER_DEFAULTS_ROOT") {
+                Some(root) if root.len() == 64 && root.bytes().all(|b| b.is_ascii_hexdigit()) => {
+                    root
+                }
+                Some(_) => {
+                    return Err("EVAL_RUNNER_DEFAULTS_ROOT must be a 64-hex public key".into());
+                }
+                None => xp_ledger::adopt::root(),
+            },
+            defaults_documents: Some(var("EVAL_RUNNER_DEFAULTS_DOCS").map_or_else(
+                || home().join(".openagents/coder-defaults/documents"),
+                PathBuf::from,
+            )),
         })
     }
 

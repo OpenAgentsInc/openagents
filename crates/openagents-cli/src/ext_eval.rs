@@ -31,17 +31,28 @@ pub(crate) const USAGE: &str = "usage: openagents ext eval COMMAND [OPTIONS]
   run TARGET [--runs N] [--case GLOB]... [--tag TAG]... [--baseline on|off]
       [--concurrency N] [--grant read|write|exec|network]... [--trust]
       [--door NAME] [--eval-dir DIR] [--output-dir DIR] [--keep-temp]
-      [--coder PATH] [--questions DIR]
+      [--coder PATH] [--questions DIR] [--gate ext-eval-v2|ext-eval-cost-v1]
         Run the suite for TARGET (an extension directory, a case directory
         in it, or an installed PUBKEY:SLUG@VERSION) with the extension and
-        without it, and write report.json and report.html.
+        without it, and write report.json and report.html. --gate names
+        the Gym gate the suite is judged by: ext-eval-v2 (correctness
+        first, the default) or ext-eval-cost-v1 (cost first, correctness
+        held non-inferior).
+  release TARGET [--eval-dir DIR] [--gate ID] [--relay URL] [--blossom URL]
+      [--blobs-dir DIR] [--as PROFILE]
+        Release TARGET's test set as a NIP-EXT release signed by your key
+        without running it: a second suite for someone else's tool, which
+        a hosted run can then cite. --blobs-dir writes the suite's files
+        by digest for an operator to upload instead of a Blossom server.
   init [TARGET] [--bare] [--out DIR] [--eval-dir DIR]
         Write a test set with the authoring interview for the extension at
         TARGET (default .), or with --bare a blank case named TARGET,
         evals/TARGET/, from the template.
-  publish REPORT [--relay URL] [--blossom URL] [--as PROFILE]
+  publish REPORT [--relay URL] [--blossom URL] [--as PROFILE] [--validates EVENT]
         Add a result to the Gym: release its suite (once) and publish the
-        3189 result signed by your world key.
+        3189 result signed by your world key. --validates names a
+        published result on the same tool that this result, on a second
+        test set, externally validates.
   check EVENT [TARGET] [--runs N] [--concurrency N] [--grant read|write|exec|network]...
       [--trust] [--output-dir DIR] [--coder PATH] [--questions DIR] [--relay URL]
       [--blossom URL] [--as PROFILE]
@@ -98,7 +109,20 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
         "init" => init(output, &args),
         "publish" => publish(output, &args),
         "check" => check(output, &args),
+        "release" => release(output, &args),
         other => output.usage(NAME, &format!("unknown command `{other}`"), USAGE),
+    }
+}
+
+/// The gate `--gate` names, checked against the gates the profile knows.
+fn gate_option(args: &Args) -> Result<Option<String>, UsageError> {
+    match args.option("gate") {
+        None => Ok(None),
+        Some(gate) if nostr::eval_ext::GATES.contains(&gate) => Ok(Some(gate.to_string())),
+        Some(other) => Err(UsageError(format!(
+            "--gate takes one of {}, not {other}",
+            nostr::eval_ext::GATES.join(", ")
+        ))),
     }
 }
 
@@ -153,11 +177,12 @@ fn options(args: &Args, check: bool) -> Result<Options, UsageError> {
         options.grants.insert(grant);
     }
     options.keep_temp = args.switch("keep-temp");
+    options.gate = gate_option(args)?;
     Ok(options)
 }
 
 /// The operator's `.openagents` directory.
-fn openagents_home() -> PathBuf {
+pub(crate) fn openagents_home() -> PathBuf {
     std::env::var_os("OPENAGENTS_HOME").map_or_else(
         || {
             std::env::var_os("HOME")
@@ -170,13 +195,13 @@ fn openagents_home() -> PathBuf {
 
 /// A resolved target: the extension's root, its package, the subject,
 /// and the case a case-directory target names.
-struct Target {
-    root: PathBuf,
-    package: Package,
-    subject: Subject,
-    lock: coder::package::Lock,
-    only_case: Option<String>,
-    installed: bool,
+pub(crate) struct Target {
+    pub(crate) root: PathBuf,
+    pub(crate) package: Package,
+    pub(crate) subject: Subject,
+    pub(crate) lock: coder::package::Lock,
+    pub(crate) only_case: Option<String>,
+    pub(crate) installed: bool,
 }
 
 fn is_hex64(text: &str) -> bool {
@@ -188,7 +213,7 @@ fn is_hex64(text: &str) -> bool {
 
 /// Resolves `target`: an installed identity, an extension directory, or a
 /// case directory inside one.
-fn resolve(target: &str) -> Result<Target, String> {
+pub(crate) fn resolve(target: &str) -> Result<Target, String> {
     let (root, only_case, installed) = if let Some((identity, version)) = target.split_once('@')
         && let Some((key, slug)) = identity.split_once(':')
         && is_hex64(key)
@@ -748,7 +773,7 @@ TODO: describe what a successful run looks like
 ";
 
 /// Fetches events matching `filter` from `client`.
-fn fetch(client: &mut Client, filter: Value) -> Result<Vec<Event>, String> {
+pub(crate) fn fetch(client: &mut Client, filter: Value) -> Result<Vec<Event>, String> {
     let mut events = Vec::new();
     client.subscribe(vec![filter], false, DEFAULT_WAIT, |event| {
         events.push(event.clone());
@@ -778,7 +803,18 @@ fn publish(output: &Output, args: &Args) -> u8 {
         Err(message) => return output.fail(NAME, &message),
     };
     let relay = relay_url(args.option("relay"));
-    match publish_results(Path::new(report), &signer, &relay, args, None) {
+    let validates = args.option("validates");
+    if let Some(id) = validates
+        && !is_hex64(id)
+    {
+        return output.usage(
+            NAME,
+            "--validates takes a result's event id: 64 lowercase hex digits",
+            USAGE,
+        );
+    }
+    let cites = validates.map(nostr::eval_ext::Cites::Validates);
+    match publish_results(Path::new(report), &signer, &relay, args, cites) {
         Ok(sent) => {
             output.emit(
                 &json!({
@@ -802,13 +838,14 @@ fn publish(output: &Output, args: &Args) -> u8 {
 }
 
 /// Publishes a results directory: the suite release (once) and the
-/// `3189` (once). `checks` names the publication a check checks.
+/// `3189` (once). `cites` names the publication a check checks or a
+/// validation validates.
 fn publish_results(
     report: &Path,
     signer: &nostr::domain::RelaySigner,
     relay: &str,
     args: &Args,
-    checks: Option<&str>,
+    cites: Option<nostr::eval_ext::Cites<'_>>,
 ) -> Result<Sent, String> {
     let results = ext_eval::publish::Results::open(report).map_err(|error| error.to_string())?;
     if results.evaluator() != signer.pubkey() {
@@ -880,7 +917,7 @@ fn publish_results(
             .map_err(|error| format!("report.json: {error}"))?;
         bytes
     };
-    let unsigned = ext_eval::publish::result_event(&report_bytes, checks)
+    let unsigned = ext_eval::publish::result_event_citing(&report_bytes, cites)
         .map_err(|error| error.to_string())?;
     let digest = nostr::contracts::digest_bytes(&report_bytes);
     let existing = fetch(
@@ -914,6 +951,157 @@ fn publish_results(
         suite_release,
         result,
     })
+}
+
+/// `release`: the suite of TARGET as a NIP-EXT release under the caller's
+/// key, without a run. The suite's files go to the Blossom server or, with
+/// `--blobs-dir`, to a directory by digest for an operator to upload.
+fn release(output: &Output, args: &Args) -> u8 {
+    let positional = args.positional();
+    let Some(target_word) = positional.first() else {
+        return output.usage(NAME, "release needs a TARGET", USAGE);
+    };
+    let gate = match gate_option(args) {
+        Ok(gate) => gate,
+        Err(error) => return usage(output, error),
+    };
+    let signer = match signer_for(args.option("as")) {
+        Ok(signer) => signer,
+        Err(message) => return output.fail(NAME, &message),
+    };
+    let target = match resolve(target_word) {
+        Ok(target) => target,
+        Err(message) => return output.fail(NAME, &message),
+    };
+    let eval_dir = match ext_eval::eval_dir(
+        &target.root,
+        args.option("eval-dir"),
+        target.package.eval_dir.as_deref(),
+    ) {
+        Ok(dir) => dir,
+        Err(error) => return output.usage(NAME, &error.to_string(), USAGE),
+    };
+    let suite = match Suite::load(&eval_dir, LoadOptions::default()) {
+        Ok(suite) => suite,
+        Err(error) => return output.fail(NAME, &error.to_string()),
+    };
+    if suite.cases.is_empty() {
+        return output.fail(NAME, "the test set has no tests");
+    }
+    let package = suite_package(&target.package.slug);
+    let documents = ext_eval::evaluate::suite_documents_under(
+        gate.as_deref().unwrap_or(ext_eval::GATE_ID),
+        &suite,
+        signer.pubkey(),
+        &package,
+        ext_eval::publish::SUITE_COMPONENT,
+    );
+    let (suite_bytes, cases_bytes) = match documents {
+        Ok(documents) => documents,
+        Err(error) => return output.fail(NAME, &error.to_string()),
+    };
+    let results = ext_eval::publish::Results::of_suite(suite, suite_bytes, cases_bytes);
+    let release = match ext_eval::publish::suite_release(&results) {
+        Ok(release) => release,
+        Err(error) => return output.fail(NAME, &error.to_string()),
+    };
+    let relay = relay_url(args.option("relay"));
+    let blobs = release.blobs();
+    let mut written = Vec::new();
+    match args.option("blobs-dir") {
+        Some(dir) => {
+            let dir = PathBuf::from(dir);
+            if let Err(error) = std::fs::create_dir_all(&dir) {
+                return output.fail(NAME, &format!("{}: {error}", dir.display()));
+            }
+            for (bytes, _) in &blobs {
+                let digest = nostr::contracts::digest_bytes(bytes);
+                let path = dir.join(digest.trim_start_matches("sha256:"));
+                if let Err(error) = std::fs::write(&path, bytes) {
+                    return output.fail(NAME, &format!("{}: {error}", path.display()));
+                }
+                written.push(path.display().to_string());
+            }
+        }
+        None => {
+            let store = match blossom(args, &relay) {
+                Ok(store) => store,
+                Err(message) => return output.fail(NAME, &message),
+            };
+            eprintln!(
+                "uploading the suite's {} files to {} …",
+                blobs.len(),
+                store.base()
+            );
+            for (bytes, media) in &blobs {
+                if let Err(message) = store.upload(&signer, bytes, media, unix_now()) {
+                    return output.fail(NAME, &message);
+                }
+            }
+        }
+    }
+    let unsigned = release.event();
+    let mut client = Client::connect(&relay, signer.clone());
+    let existing = match fetch(
+        &mut client,
+        json!({"kinds": [unsigned.kind], "authors": [signer.pubkey()], "#t": ["oa:ext:release:v1"]}),
+    ) {
+        Ok(found) => found
+            .into_iter()
+            .find(|event| event.content == unsigned.content),
+        Err(message) => return output.fail(NAME, &message),
+    };
+    let (event, reused) = match existing {
+        Some(event) => (event, true),
+        None => {
+            let event = signer.sign(unix_now(), unsigned.kind, unsigned.tags, unsigned.content);
+            match client.publish(event.clone(), Duration::from_secs(10)) {
+                Ok(published) if published.accepted => (event, false),
+                Ok(published) => {
+                    return output.fail(
+                        NAME,
+                        &format!("the relay refused the suite release: {}", published.message),
+                    );
+                }
+                Err(message) => return output.fail(NAME, &message),
+            }
+        }
+    };
+    client.close();
+    output.emit(
+        &json!({
+            "relay": relay,
+            "release": {"id": event.id, "pubkey": event.pubkey, "kind": event.kind},
+            "package": release.package,
+            "version": release.version,
+            "suite": results.suite_id(),
+            "suite_digest": nostr::contracts::digest_bytes(&results.suite),
+            "gate": gate.unwrap_or_else(|| ext_eval::GATE_ID.to_string()),
+            "reused": reused,
+            "blobs": blobs.iter().map(|(bytes, _)| nostr::contracts::digest_bytes(bytes)).collect::<Vec<_>>(),
+            "written": written,
+        }),
+        |value| {
+            format!(
+                "{} {} as release {} on {} ({} files{})",
+                if value["reused"].as_bool().unwrap_or(false) {
+                    "already released"
+                } else {
+                    "released"
+                },
+                value["suite"].as_str().unwrap_or_default(),
+                value["release"]["id"].as_str().unwrap_or_default(),
+                value["relay"].as_str().unwrap_or_default(),
+                value["blobs"].as_array().map_or(0, Vec::len),
+                if value["written"].as_array().is_some_and(|w| !w.is_empty()) {
+                    ", written to --blobs-dir for upload"
+                } else {
+                    ""
+                }
+            )
+        },
+    );
+    0
 }
 
 fn check(output: &Output, args: &Args) -> u8 {
@@ -1048,7 +1236,13 @@ fn check(output: &Output, args: &Args) -> u8 {
             "the rerun's suite is not byte-for-byte the published suite; nothing was published",
         );
     }
-    let sent = match publish_results(&results, &signer, &relay, args, Some(&original.id)) {
+    let sent = match publish_results(
+        &results,
+        &signer,
+        &relay,
+        args,
+        Some(nostr::eval_ext::Cites::Check(&original.id)),
+    ) {
         Ok(sent) => sent,
         Err(message) => return output.fail(NAME, &message),
     };

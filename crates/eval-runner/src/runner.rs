@@ -74,6 +74,8 @@ pub struct Runner {
     /// Each catalog tool's NIP-EXT release, by its definition ID, once
     /// known.
     tool_releases: tokio::sync::Mutex<BTreeMap<String, Value>>,
+    /// The defaults release last logged, so a change is logged once.
+    defaults_seen: Mutex<Option<String>>,
 }
 
 /// What an admitted run will run.
@@ -87,7 +89,10 @@ struct Plan {
     suite_release: Option<Value>,
     runs: u32,
     check: Option<String>,
+    validates: Option<String>,
     turns: u64,
+    /// Coder's defaults at admission, admitted in both arms.
+    defaults: Option<ext_eval::arms::Defaults>,
 }
 
 enum Admitted {
@@ -174,7 +179,55 @@ impl Runner {
             }),
             suites: tokio::sync::Semaphore::new(jobs),
             tool_releases: tokio::sync::Mutex::new(BTreeMap::new()),
+            defaults_seen: Mutex::new(None),
         }))
+    }
+
+    /// Coder's defaults as of now, read from the relay under the ledger's
+    /// checks and resolved against the catalog
+    /// ([`crate::defaults::read`]). A relay that can't be read, or a
+    /// package with no release, means nothing admitted, and the run says
+    /// so by naming no defaults. A change in the release is logged once.
+    pub async fn defaults(&self) -> crate::defaults::Read {
+        let releases = self.tool_releases.lock().await.clone();
+        let read = match crate::defaults::read(
+            self.wire.as_ref(),
+            &self.config.defaults_root,
+            self.config.defaults_documents.as_deref(),
+            &self.catalog,
+            &releases,
+            unix_now(),
+        )
+        .await
+        {
+            Ok(read) => read,
+            Err(why) => {
+                log(&format!("defaults not read: {why}"));
+                return crate::defaults::Read::default();
+            }
+        };
+        let id = read.defaults.as_ref().map(|d| d.release.id.clone());
+        let changed = {
+            let mut seen = self.defaults_seen.lock().expect("the defaults log");
+            let changed = *seen != id;
+            *seen = id;
+            changed
+        };
+        if changed {
+            let names: BTreeMap<String, String> = self
+                .catalog
+                .tools
+                .iter()
+                .filter_map(|tool| {
+                    releases
+                        .get(&tool.definition.id)
+                        .and_then(|r| r["id"].as_str())
+                        .map(|id| (id.to_string(), tool.name.clone()))
+                })
+                .collect();
+            log(&read.line(&names));
+        }
+        read
     }
 
     /// The runner's public key.
@@ -608,8 +661,19 @@ impl Runner {
             };
             self.checked(check, release).await?;
         }
+        if let Some(validates) = &run.validates {
+            let SuiteSource::Published(release) = &run.suite else {
+                return Err(Refusal::not_admitted(
+                    "a validation runs a published second test set",
+                ));
+            };
+            self.validated(validates, release, &subject).await?;
+        }
         let runs = u32::try_from(run.runs).unwrap_or(1);
         let turns = suite.cases.len() as u64 * u64::from(runs) * eval_ext::HOSTED_ARMS;
+        // The defaults both arms admit, read at admission so a run holds
+        // what was current when it was admitted.
+        let defaults = self.defaults().await.arms;
         Ok(Plan {
             _staging: staging,
             suite,
@@ -620,8 +684,45 @@ impl Runner {
             suite_release,
             runs,
             check: run.check,
+            validates: run.validates,
             turns,
+            defaults,
         })
+    }
+
+    /// Checks that `validates` is a published result on the same tool
+    /// and another test set than `release`: what a validation is. Whether
+    /// the second suite is independent (another signer, released after
+    /// the tool) is the reader's to decide from the two releases.
+    async fn validated(
+        &self,
+        validates: &str,
+        release: &EventPointer,
+        subject: &Subject,
+    ) -> Result<(), Refusal> {
+        let found = self
+            .wire
+            .query(json!({"ids": [validates], "kinds": [nostr::kb::EVIDENCE_KIND]}))
+            .await
+            .map_err(|error| Refusal::new("unavailable", error))?;
+        let original = found
+            .iter()
+            .find(|event| event.id == validates)
+            .ok_or_else(|| Refusal::not_admitted("the result to validate isn't on the relay"))?;
+        let publication = eval_ext::parse_publication(original).map_err(|error| {
+            Refusal::not_admitted(format!("the result to validate doesn't check: {error}"))
+        })?;
+        if publication.suite_release.id == release.id {
+            return Err(Refusal::not_admitted(
+                "a validation runs a second test set; rerunning the result's own is a check",
+            ));
+        }
+        if publication.report.subject.definition.id != subject.definition["id"] {
+            return Err(Refusal::not_admitted(
+                "the result to validate tested another tool",
+            ));
+        }
+        Ok(())
     }
 
     /// Checks that `check` is a published result of the suite `release`.
@@ -727,6 +828,7 @@ impl Runner {
             request: event.clone(),
             status: "running".into(),
             check: plan.check.clone(),
+            validates: plan.validates.clone(),
             results: None,
             report: None,
             sealed: None,
@@ -744,10 +846,11 @@ impl Runner {
             short(&principal),
             plan.suite.cases.len(),
             plan.runs,
-            if plan.check.is_some() {
-                ", a check"
-            } else {
-                ""
+            match (&plan.check, &plan.validates, &plan.defaults) {
+                (Some(_), _, _) => ", a check",
+                (None, Some(_), _) => ", a validation",
+                (None, None, Some(_)) => ", marginal over the defaults",
+                (None, None, None) => "",
             }
         ));
         let (sender, mut receiver) = tokio::sync::mpsc::unbounded_channel::<u64>();
@@ -861,6 +964,8 @@ impl Runner {
             grants: BTreeSet::from([Grant::Read, Grant::Write]),
             temp_root: self.config.temp_root.clone(),
             backend: None,
+            gate: None,
+            defaults: plan.defaults.clone(),
         };
         let setup = Setup {
             suite: &plan.suite,
@@ -1044,7 +1149,12 @@ impl Runner {
         };
         let text =
             String::from_utf8(report_bytes).map_err(|error| unavailable(error.to_string()))?;
-        let unsigned = eval_ext::hosted_publication(&text, run.check.as_deref(), &run.request)
+        let cites = match (&run.check, &run.validates) {
+            (Some(check), _) => Some(eval_ext::Cites::Check(check)),
+            (None, Some(validates)) => Some(eval_ext::Cites::Validates(validates)),
+            (None, None) => None,
+        };
+        let unsigned = eval_ext::hosted_publication_citing(&text, cites, &run.request)
             .map_err(|error| Refusal::contract(&error))?;
         let digest = digest_bytes(text.as_bytes());
         let existing = self

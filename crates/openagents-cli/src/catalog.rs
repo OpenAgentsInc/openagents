@@ -144,6 +144,9 @@ pub fn ext(output: &Output, words: &[String]) -> u8 {
     if words.first().is_some_and(|word| word == "eval") {
         return crate::ext_eval::run(output, &words[1..]);
     }
+    if words.first().is_some_and(|word| word == "defaults") {
+        return crate::ext_defaults::run(output, &words[1..]);
+    }
     run(Group::Ext, output, words)
 }
 
