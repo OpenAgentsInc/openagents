@@ -37,6 +37,7 @@ than an operating service.
 | Knowledge, method, component | Knowledge supplies cited guidance; a method registry supplies executable definition-based checks; a component is a reusable part of agent behavior. A source task is not independent evidence for its own contribution. |
 | Benchmark, extension eval | A benchmark (Terminal-Bench, CoderBench) measures Coder on a fixed task set; an extension eval measures one extension's effect on Coder with and without it over a suite written for that extension. The Gym's product loop runs extension evals. |
 | Signature | A cryptographic signature authenticates an event; a semantic AI signature defines an operation's meaning. An artifact signature identifies a particular served/trained artifact under its own contract. |
+| Test-time compute, test-time capability | Test-time compute is extra computation spent while a model answers (longer reasoning, sampling, search); a test-time capability is an ability gained by admitting a component to the run, shown by a with-and-without test. See [the essay](essays/2026-09-29-test-time-capabilities.md). |
 
 ## Find a term
 
@@ -70,6 +71,7 @@ than an operating service.
 - [Durable work and client contracts](#durable-work-and-client-contracts)
 - [Remote access and host reach](#remote-access-and-host-reach)
 - [Network effects and contribution value](#network-effects-and-contribution-value)
+- [Test-time capabilities](#test-time-capabilities)
 - [Agent labor and markets](#agent-labor-and-markets)
 - [Voyager](#voyager)
 - [Verse](#verse)
@@ -842,6 +844,26 @@ claim that adding participants necessarily increases quality or revenue.
 | Reed's law | Defined | The historical strategic argument that possible participant groups grow much faster than participant or pair counts. The episodes apply it to agent collaboration as a hypothesis, not a measured law of OpenAgents' quality, demand, or revenue. See [episode 230](transcripts/230.md#reeds-law-and-agent-networks) and [the transcript assessment](transcripts/README.md#collective-work-needs-more-than-a-larger-audience). |
 | Eval credit | Implemented | XP under NIP-XP's `eval-check` rule (another trainer's check confirms your result or test set) and `eval-adopt` rule (Coder adopts your tool into its defaults), with your trainer name on it. "Used" means exactly those two events. The XP referee on `coderos-4080` signs the awards, and `xp-ledger` re-checks each one; the first live awards are in [the hosted runner record](extensions/measurements/2026-09-29-hosted-runner-live.md). XP is never money; no payout exists. See [credit](extensions/evaluation.md#checks-adoption-and-credit). |
 | Contributor compensation | Designed | Payment under a declared agreement for the contribution actually purchased: accepted labor, component reuse, or licensed data. Those claims need separate terms, attribution, and rights. Displaying a retrieved entry neither proves it caused a win nor automatically creates a royalty. See [the labor plan](agents/market-infrastructure.md#build-a-market-that-has-useful-work-on-day-one) and [the Coder plan](coder/design/networked-coder-plan.md#agent-labor-makes-the-network-useful-now). |
+
+## Test-time capabilities
+
+[Test-time compute, and the capabilities we can add at test time](essays/2026-09-29-test-time-capabilities.md)
+proposes these terms. Each names a mechanism below or a measurement over
+it; the status is the mechanism's.
+
+| Term | Status | Definition |
+| --- | --- | --- |
+| Test-time compute | Defined | Computation spent when a model answers rather than when it's trained: longer reasoning, repeated sampling with a verifier, search, or brief test-time training. See [the essay](essays/2026-09-29-test-time-capabilities.md#what-test-time-compute-is). |
+| Test-time capability (TTCap) | Implemented | An ability an agent gains or loses at inference time, without a weight update, because a component (tool, plugin, skill, knowledge entry, or delegate) was admitted to the run, and whose effect is shown by a test with and without it. A component with no test yet is a candidate. See [the essay](essays/2026-09-29-test-time-capabilities.md#1-test-time-capability-ttcap). |
+| Capability admission | Partial | The host's decision that an exact, locked component version may take part in a run; separate from discovery, installation, enablement, and grants. Eval runs record the lock digest. See [the essay](essays/2026-09-29-test-time-capabilities.md#2-capability-admission) and [extensions](#extensions). |
+| Capability delta | Implemented | The difference between the with arm and the without arm on the same tests, repeated to show the spread, with the `ext-eval-v2` gate's verdict. It holds only for the grant and suite it was measured under. See [the essay](essays/2026-09-29-test-time-capabilities.md#3-capability-delta). |
+| Reach and restraint | Implemented | Reach: how often the agent uses a capability on should-fire tests. Restraint: how often it leaves it alone on should-not-fire tests. A capability the router doesn't reach for isn't one the agent has. See [the essay](essays/2026-09-29-test-time-capabilities.md#4-reach-and-restraint). |
+| Judgment budget | Implemented | The time and cost spent deciding how to answer before answering, kept far below the work it can avoid; in chat, one Jev request (about 170 ms median) picks tier T0 to T4. See [the essay](essays/2026-09-29-test-time-capabilities.md#5-judgment-budget) and [the chat router](#the-chat-router). |
+| Test-time delegation | Implemented | Acquiring another agent's capability for one task through a prepared briefing, recorded as part of the task: Microcoder's provider failover, Claude Code or Codex CLI through the delegate door, and OpenCode or Devin delegate sessions. See [the essay](essays/2026-09-29-test-time-capabilities.md#6-test-time-delegation). |
+| Verified capability | Implemented | A **Better** result reproduced by an [eval check](#extensions) from a different trainer on the same test set and tool releases. See [the essay](essays/2026-09-29-test-time-capabilities.md#7-verified-capability). |
+| Capability adoption | Partial | Making a verified capability a default for every Coder through an `openagents.eval-admission.v1` decision and a [`coder-defaults`](#extensions) release; a candidate needs **Better** and three distinct confirming checks. None has been made yet. See [the essay](essays/2026-09-29-test-time-capabilities.md#8-capability-adoption). |
+| Capability credit | Implemented | [Eval credit](#network-effects-and-contribution-value) described from the capability side: XP and a name for the confirmed checks and adoptions that show a capability was used. Never money. See [the essay](essays/2026-09-29-test-time-capabilities.md#9-capability-credit). |
+| Capability flywheel | Defined | The hypothesized loop in which people add capabilities, tests prove them, others confirm them, and adoption hands them to every agent. Measured as incremental out-of-sample verified passes per adopted contribution; not yet shown. See [the essay](essays/2026-09-29-test-time-capabilities.md#10-the-capability-flywheel). |
 
 ## Agent labor and markets
 

@@ -10,7 +10,7 @@ Start with the [documentation index](README.md), [master roadmap](roadmap.md), [
 [glossary](glossary.md), or [maintenance rules](documentation.md). The separate
 [transcript index](transcripts/README.md) owns the video archive.
 
-This catalog lists 507 documents plus itself as of September 28, 2026.
+This catalog lists 508 documents plus itself as of September 29, 2026.
 It retains historical and evidence paths rather than copying their content.
 
 Crate-owned documentation sits outside this inventory and its count. The
@@ -322,6 +322,12 @@ files are included below.
 | [deployment/runbook-cloud-run.md](deployment/runbook-cloud-run.md) | Operations | Runbook: production relay on Cloud Run |
 | [deployment/runbook-debian-vps.md](deployment/runbook-debian-vps.md) | Operations | Debian VPS relay deployment |
 | [deployment/runbook-local-dev.md](deployment/runbook-local-dev.md) | Operations | Local relay development |
+
+## essays
+
+| Document | Role | Topic |
+| --- | --- | --- |
+| [essays/2026-09-29-test-time-capabilities.md](essays/2026-09-29-test-time-capabilities.md) | Design / assessment | Test-time compute, and the capabilities we can add at test time |
 
 ## extensions
 
