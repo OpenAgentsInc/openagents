@@ -24,7 +24,7 @@ pub(crate) const FIRST_MESSAGE: &str = "Test Project map on Coder";
 pub(crate) const STARTERS: &[(&str, &str, &str)] = &[
     ("test", "Test a tool", "Which tool should I try?"),
     ("news", "What's new", "What's new in the Gym?"),
-    ("check", "Check a result", "Is there a result I can check?"),
+    ("check", "Check a result", "Find me a result to check"),
 ];
 
 /// First-time questions on a new chat, before any chat exists

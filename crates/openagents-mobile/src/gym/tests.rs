@@ -504,7 +504,7 @@ fn every_worker_card_renders_in_the_phones_words() {
     asked(
         &mut phone,
         &worker,
-        "Is there a result I can check?",
+        "Find me a result to check",
         "Here's one.",
         &[
             judgment("eval.check"),
@@ -724,6 +724,7 @@ fn only_a_cards_button_sends_a_request() {
         sheet.sections[2].lines[0].text,
         "Added to the Gym. You'll earn XP when another trainer checks it."
     );
+    assert_eq!(sheet.primary.as_ref().unwrap().label, "BACK TO CHAT");
     let card = phone.card("result");
     assert!(card.primary.is_none());
     assert!(card.lines.iter().any(|l| l.text == "✓ Added to the Gym"));
@@ -1053,6 +1054,107 @@ fn the_first_run_starts_a_test_in_three_taps_and_resumes() {
     let view = phone.tap("menu.chat");
     assert_eq!(view.screen, "chat");
     assert!(phone.card("result").primary.is_some());
+}
+
+/// Adding the first result ends the guided path at the menu, so the added
+/// sheet's button says where it goes (#9941).
+#[test]
+fn adding_the_first_result_names_the_menu() {
+    let worker = Worker::default();
+    let runner = Runner::default();
+    let mut phone = Phone::new(&worker, Some(&runner));
+    phone.tap("first.choose");
+    phone.tap("first.go");
+    worker.answer(
+        "We'd try Project map.",
+        &[
+            judgment("eval.run"),
+            wire("card-tool"),
+            wire("start-eval"),
+            result_fields("eval.run"),
+        ],
+    );
+    let start = phone.card("tool").primary.unwrap().id;
+    phone.tap(&start);
+    lock(&runner.live(0)).outcome = Some(Ok(Outcome::from_report(report().as_bytes()).unwrap()));
+    let add = phone.card("result").primary.unwrap().id;
+    phone.tap(&add);
+    phone.tap("sheet.publish");
+    let (_, _, live) = runner.published.lock().unwrap()[0].clone();
+    lock(&live).published = Some(Ok(Some("cd".repeat(32))));
+    let sheet = phone.gym().sheet.unwrap();
+    assert_eq!(sheet.primary.as_ref().unwrap().label, "TO THE MENU");
+    let view = phone.tap("sheet.done");
+    assert_eq!(view.screen, "menu");
+    assert_eq!(phone.tab.gym.first_run(), FirstRun::Done);
+    assert_plain(&view);
+    // A check is never offered this trainer's own result.
+    assert_eq!(phone.tab.gym.skip(), vec!["cd".repeat(32)]);
+}
+
+/// A check's Add to the Gym says what a check publishes and when its XP
+/// comes, in a sentence's own case (#9941).
+#[test]
+fn a_checks_add_to_the_gym_speaks_of_the_check() {
+    let worker = Worker::default();
+    let runner = Runner::default();
+    let mut phone = Phone::new(&worker, Some(&runner)).returning();
+    phone.tap("menu.chat");
+    asked(
+        &mut phone,
+        &worker,
+        "Find me a result to check",
+        "Here's one.",
+        &[
+            judgment("eval.check"),
+            wire("card-check"),
+            wire("start-eval"),
+            result_fields("eval.check"),
+        ],
+    );
+    let check = phone.card("check").primary.unwrap().id;
+    phone.tap(&check);
+    assert_eq!(runner.runs().len(), 1);
+    lock(&runner.live(0)).outcome = Some(Ok(Outcome::from_report(report().as_bytes()).unwrap()));
+    let add = phone.card("result").primary.unwrap().id;
+    let view = phone.tap(&add);
+    let sheet = view.sheet.unwrap();
+    assert_eq!(
+        sheet.sections[0].items[0].text,
+        "your check of a trainer's result"
+    );
+    assert_eq!(
+        sheet.sections[1].lines[1].text,
+        "If your check confirms the result, you and the trainer who added it earn XP."
+    );
+    phone.tap("sheet.publish");
+    let (_, _, live) = runner.published.lock().unwrap()[0].clone();
+    lock(&live).published = Some(Ok(Some("cd".repeat(32))));
+    let sheet = phone.gym().sheet.unwrap();
+    assert_eq!(
+        sheet.sections[2].lines[0].text,
+        "Added to the Gym. If your check confirms the result, XP comes once our referee signs it."
+    );
+    assert_eq!(sheet.primary.as_ref().unwrap().label, "BACK TO CHAT");
+    assert_plain(&phone.gym());
+
+    // The next turn names the checked result, so the worker, which has no
+    // trainer key, doesn't offer it again (#9941). A check is never offered
+    // for checking, so the phone's own check isn't named.
+    phone.tap("sheet.done");
+    let checked = wire("card-check")["publication"]["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    asked(
+        &mut phone,
+        &worker,
+        "Find me a result to check",
+        "Here's one.",
+        &[judgment("eval.check"), result_fields("eval.check")],
+    );
+    let skip = worker.contexts().last().unwrap().skip.clone();
+    assert_eq!(skip, vec![checked]);
 }
 
 /// A run survives a relaunch: its follower picks the request up again.

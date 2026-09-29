@@ -644,6 +644,7 @@ impl CoderTab {
             app_build: self.app_build.clone(),
             draft,
             tried,
+            skip: self.gym.skip(),
         }
     }
 

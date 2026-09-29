@@ -50,6 +50,9 @@ pub(crate) struct Context {
     /// The result of a try or a full run of that draft, as the request's
     /// `tried` (`{runs, with, without, total, verdict, report, cases}`).
     pub tried: Option<Value>,
+    /// Results a check must not be offered, as the request's `skip`: the
+    /// trainer's own and the ones it already checked (public `3189` IDs).
+    pub skip: Vec<String>,
 }
 
 impl Context {

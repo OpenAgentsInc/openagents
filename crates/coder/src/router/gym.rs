@@ -470,6 +470,21 @@ pub struct Grounding {
     pub news: Vec<(Item, f64)>,
 }
 
+impl Grounding {
+    /// The same grounding without the results `skip` names, so a check is
+    /// never offered a result the phone says is its trainer's own or one
+    /// it already checked (a request's `skip`, `router::card::skip`).
+    #[must_use]
+    pub fn skipping(&self, skip: &[String]) -> Grounding {
+        let mut grounding = self.clone();
+        grounding
+            .records
+            .results
+            .retain(|result| !skip.contains(&result.publication.id));
+        grounding
+    }
+}
+
 /// What a Gym or eval turn shows.
 #[derive(Clone, Debug, PartialEq)]
 #[allow(clippy::large_enum_variant)]
@@ -1356,6 +1371,36 @@ mod tests {
         assert!(
             matches!(&reply, Reply::Bank { answer, card: None, offer: None, .. } if answer.id == "eval.check.none")
         );
+
+        // The phone's `skip` takes its trainer's own results out: the
+        // check goes to the next one, or to none.
+        let mut two = records();
+        two.results.push(fixtures::result(12, "code-finder", 0));
+        let all = grounded(two);
+        let newest = event(12, 3189).id;
+        let skipped = all.skipping(std::slice::from_ref(&newest));
+        let offered = |grounding: &Grounding| match super::reply(
+            RouteId::EvalCheck,
+            None,
+            grounding,
+            Bank::builtin(),
+            &facts(),
+        ) {
+            Reply::Bank {
+                card: Some(Card::Check { result }),
+                ..
+            } => Some(result.publication.id),
+            _ => None,
+        };
+        assert_eq!(offered(&all), Some(newest.clone()));
+        assert_eq!(offered(&skipped), Some(event(10, 3189).id));
+        let every: Vec<String> = all
+            .records
+            .results
+            .iter()
+            .map(|r| r.publication.id.clone())
+            .collect();
+        assert_eq!(offered(&all.skipping(&every)), None);
     }
 
     /// `eval.result`: a named tool's published result as a card; otherwise

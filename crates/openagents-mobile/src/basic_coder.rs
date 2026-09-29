@@ -280,6 +280,11 @@ pub(crate) fn payload(turns: &[Turn], context: &Context) -> Value {
             body["tried"] = tried.clone();
         }
     }
+    // Results a check must not be offered: the worker has no trainer key,
+    // so the phone names its own (#9941).
+    if !context.skip.is_empty() {
+        body["skip"] = json!(context.skip);
+    }
     body
 }
 

@@ -265,6 +265,9 @@ pub(crate) enum PublishState {
     Failed { why: String },
 }
 
+/// The most result IDs a request's `skip` carries.
+pub(crate) const MAX_SKIP: usize = 32;
+
 /// One run the person started.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub(crate) struct Run {
@@ -735,6 +738,36 @@ impl Gym {
             .find(|card| card["card"].as_str() == Some("draft"))
             .map(|card| card["draft"].clone())
             .filter(|draft| cj::parse_draft(draft).is_ok())
+    }
+
+    /// The results a check must not be offered: the ones this trainer
+    /// published (from this phone, or read from the ledger after a
+    /// reinstall) and the ones it already checked, newest first, at most
+    /// [`MAX_SKIP`]. Public event IDs only; the request's `skip`.
+    pub(crate) fn skip(&self) -> Vec<String> {
+        let hex = |id: &str| id.len() == 64 && id.bytes().all(|b| b.is_ascii_hexdigit());
+        let mut skip: Vec<String> = vec![];
+        let mut add = |id: &str| {
+            let id = id.to_ascii_lowercase();
+            if hex(&id) && !skip.contains(&id) && skip.len() < MAX_SKIP {
+                skip.push(id);
+            }
+        };
+        for run in self.saved.runs.iter().rev() {
+            match (&run.purpose, &run.publish) {
+                (Purpose::Check { publication, .. }, _) => {
+                    if let Some(id) = publication["id"].as_str() {
+                        add(id);
+                    }
+                }
+                (_, PublishState::Published { event: Some(id) }) => add(id),
+                _ => {}
+            }
+        }
+        for row in self.standing.results.iter().filter(|row| !row.check) {
+            add(&row.id);
+        }
+        skip
     }
 
     /// What the next turn in `talk` carries: its draft, and the result of
@@ -2090,6 +2123,11 @@ impl Gym {
         };
         match &run.purpose {
             Purpose::Check { trainer, .. } => {
+                // "A trainer" starts a sentence elsewhere; here it's inside one.
+                let trainer = match trainer.strip_prefix("A trainer") {
+                    Some(rest) => format!("a trainer{rest}"),
+                    None => trainer.clone(),
+                };
                 public.push(format!("your check of {trainer}'s result"));
             }
             _ => public.push(tests),
@@ -2127,7 +2165,11 @@ impl Gym {
                 lines: vec![
                     line("Coder's full work on each test stays private.", Tone::Quiet),
                     line(
-                        "Other trainers can run these tests to check the result. You earn XP when they confirm it.",
+                        if run.check().is_some() {
+                            "If your check confirms the result, you and the trainer who added it earn XP."
+                        } else {
+                            "Other trainers can run these tests to check the result. You earn XP when they confirm it."
+                        },
                         Tone::Quiet,
                     ),
                 ],
@@ -2140,14 +2182,25 @@ impl Gym {
                 sections.push(Section {
                     heading: None,
                     lines: vec![line(
-                        "Added to the Gym. You'll earn XP when another trainer checks it.",
+                        if run.check().is_some() {
+                            "Added to the Gym. If your check confirms the result, XP comes once our referee signs it."
+                        } else {
+                            "Added to the Gym. You'll earn XP when another trainer checks it."
+                        },
                         Tone::Strong,
                     )],
                     items: vec![],
                 });
+                // FLOW-01: closing this sheet after the first result ends
+                // the guided path at the menu, so the button says so.
+                let label = if self.first_run() == FirstRun::Chat && self.first_result().is_some() {
+                    "TO THE MENU"
+                } else {
+                    "BACK TO CHAT"
+                };
                 Some(
                     self.actions
-                        .button("sheet.done", "BACK TO CHAT", None, Action::CloseSheet),
+                        .button("sheet.done", label, None, Action::CloseSheet),
                 )
             }
             PublishState::Failed { why } => {

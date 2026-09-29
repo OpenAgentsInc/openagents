@@ -159,6 +159,31 @@ pub fn draft(value: &Value) -> Result<Value, ContractError> {
     cj::parse_draft(value).map(|_| value.clone())
 }
 
+/// The most result IDs a request's `skip` may name.
+pub const MAX_SKIP: usize = 32;
+
+/// A request's `skip`: the `3189` result IDs the phone asks never to be
+/// offered as a check (the trainer's own results and the ones it already
+/// checked; the worker has no trainer key to tell them apart). Exactly an
+/// array of at most [`MAX_SKIP`] 64-character lowercase hex IDs, else
+/// nothing: it is dropped, never repaired. Data, never an instruction.
+#[must_use]
+pub fn skip(value: &Value) -> Vec<String> {
+    let Some(ids) = value.as_array().filter(|ids| ids.len() <= MAX_SKIP) else {
+        return vec![];
+    };
+    let hex = |id: &str| {
+        id.len() == 64
+            && id
+                .bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    };
+    ids.iter()
+        .map(|id| id.as_str().filter(|id| hex(id)).map(str::to_owned))
+        .collect::<Option<Vec<_>>>()
+        .unwrap_or_default()
+}
+
 /// The most tests a `tried` result may list, and the most failing checks
 /// one test may name, each at most [`MAX_FAILING_CHARS`].
 pub const MAX_TRIED_CASES: usize = cj::MAX_DRAFT_CASES;
@@ -448,5 +473,17 @@ mod tests {
         .feedback(2)
         .unwrap();
         assert_eq!(card["draft"]["tool"], good["tool"]);
+    }
+
+    #[test]
+    fn a_skip_is_exact_hex_ids_or_nothing() {
+        let id = "ab".repeat(32);
+        assert_eq!(skip(&json!([id.clone()])), vec![id.clone()]);
+        assert!(skip(&json!(null)).is_empty());
+        assert!(skip(&json!([id.clone(), "AB".repeat(32)])).is_empty());
+        assert!(skip(&json!([id.clone(), 7])).is_empty());
+        assert!(skip(&json!(["ab"])).is_empty());
+        assert!(skip(&json!(vec![id.clone(); MAX_SKIP + 1])).is_empty());
+        assert_eq!(skip(&json!(vec![id.clone(); MAX_SKIP])).len(), MAX_SKIP);
     }
 }

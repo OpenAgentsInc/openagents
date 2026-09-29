@@ -1418,6 +1418,9 @@ struct Turn {
     /// A try's or a full run's result for that draft, when it passed
     /// `router::card::tried`.
     tried: Option<ext_eval::author::runner::Tried>,
+    /// Results a check must not be offered (`router::card::skip`): the
+    /// phone's trainer's own and the ones it already checked.
+    skip: Vec<String>,
 }
 
 impl Job {
@@ -1700,6 +1703,7 @@ impl Job {
                         context: router::Context::of(&payload["context"]),
                         draft: router::card::draft(&payload["draft"]).ok(),
                         tried: router::card::tried(&payload["tried"]).ok(),
+                        skip: router::card::skip(&payload["skip"]),
                     };
                     let triage = judged.then(|| self.triage(&turn, &input)).flatten();
                     let mut instructions = payload["instructions"]
@@ -2178,6 +2182,11 @@ impl Job {
                         _ if partial_seq != 0 => {}
                         (SeamOutcome::Gym(found), Tier::Gym { route, tool, lead: shown }) => {
                             let reply = match &found {
+                                // A check skips what the phone names as its
+                                // trainer's own or already checked.
+                                Ok(found) if *route == router::RouteId::EvalCheck && !turn.skip.is_empty() => {
+                                    router::gym::reply(*route, tool.as_deref(), &found.skipping(&turn.skip), bank, facts)
+                                }
                                 Ok(found) => router::gym::reply(*route, tool.as_deref(), found, bank, facts),
                                 Err(SeamError::Failed(why)) => {
                                     eprintln!("router gym seam failed: {why}");

@@ -1312,7 +1312,12 @@ it (`coder::eval_author::seam`); without a live door and a judge,
 interview reads (`router::card::tried`: a closed object `{runs, with,
 without, total, verdict, report, cases}` whose counts fit together, each
 case `{id, kind, with, without, failing}`); the phone (#9939) and the
-hosted runner (#9935) fill it from the runner's report.
+hosted runner (#9935) fill it from the runner's report. A request may also
+carry `skip` (#9941): at most 32 `3189` result IDs that `eval.check` must
+not offer, the trainer's own results and the ones it already checked,
+because the worker holds no trainer key and would otherwise offer a new
+trainer their own newest result (`router::card::skip` reads it exactly or
+drops it; `gym::Grounding::skipping` takes them out).
 
 ### Not in this change
 
