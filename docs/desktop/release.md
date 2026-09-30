@@ -1,4 +1,4 @@
-# Releasing OpenAgents for Mac
+# Releasing OpenAgents for Mac (and Linux)
 
 How to turn the desktop app into the `.dmg` people download: signed with
 the OpenAgents Developer ID, hardened runtime, notarized by Apple, stapled,
@@ -213,6 +213,75 @@ Before the desktop app landed, the pipeline was run with stand-ins:
   (`x86_64 arm64`) `OpenAgents`, `coder`, and `microcoder` from Cargo,
   assembled, signed, notarized, stapled, and accepted by `spctl`; the
   x86_64 slice of `coder` ran under Rosetta.
+
+
+## Releasing for Linux
+
+The Linux release is an AppImage and a `.deb` for x86_64 (and a
+`.tar.gz`), at the same version as the Mac
+([#10025](https://github.com/OpenAgentsInc/openagents/issues/10025)).
+Two steps, on two computers:
+
+1. **Build**, on any x86_64 Linux computer with Docker, from a clean
+   checkout of the release commit:
+
+   ```sh
+   scripts/desktop/build-linux-release.sh --out /tmp/openagents-linux-1.0.0
+   ```
+
+   It compiles the window, `coder`, and `microcoder` inside the pinned
+   `rust:1.97.1-bullseye` image (glibc 2.31: Debian 11, Ubuntu 20.04, and
+   newer) and packages them with `package-linux.sh` and the pinned AppImage
+   type-2 runtime. Paths are fixed and remapped, and every packaged file
+   carries the commit's time, so a second run of the same commit writes the
+   same bytes. `BUILDINFO` records the commit, the image digest, and the
+   runtime's SHA-256.
+2. **Sign and publish**, on the computer that holds the update key (the
+   release Mac), with the build output copied over:
+
+   ```sh
+   CLOUDSDK_CONFIG=... scripts/desktop/sign-manifest-linux.sh \
+     --version 1.0.0 --dir /tmp/openagents-linux-1.0.0 --upload
+   ```
+
+   It checks `SHA256SUMS`, the AppImage's header, and the `.deb`'s
+   package, version, and architecture; writes the signed manifest (the
+   Mac's envelope, with `"platform": "linux"` and each artifact's
+   `format`); signs `SHA256SUMS` into `SHA256SUMS.sig`; and uploads
+   everything to `desktop/linux/<version>/`, then the manifest to
+   `desktop/linux/manifest.json`.
+
+The downloads are
+`https://storage.googleapis.com/openagentsgemini-oa-updates/desktop/linux/<version>/OpenAgents-<version>-x86_64.AppImage`
+and `.../openagents_<version>_amd64.deb`; the website's `LINUX_APPIMAGE`
+and `LINUX_DEB` (`crates/openagents-web/src/pages/install.rs`) point at
+them. To check one by hand, beside `SHA256SUMS`, `SHA256SUMS.sig`, and
+the public key:
+
+```sh
+openssl pkeyutl -verify -pubin -inkey openagents-desktop-update.pub.pem \
+  -rawin -in SHA256SUMS -sigfile SHA256SUMS.sig
+sha256sum --ignore-missing -c SHA256SUMS
+```
+
+The public key to trust is the one in `update.rs` (`TRUSTED_KEYS`, hex
+`b9c688e6f33b77f63f61ce46d1b520b2c5588b79ea4cccafc30b122f211a8b84`), not
+only the copy beside the files.
+
+**Updates on Linux.** An app running from an AppImage or the `.deb` checks
+`desktop/linux/manifest.json` at start and every six hours, and Settings
+shows the version. An AppImage downloads and verifies a newer build in
+the background; Settings then offers **Restart to update to VERSION**,
+which replaces the AppImage file in place (one rename, after the copy is
+checked against the signed SHA-256), restarts the host unit
+`com.openagents.desktop.host.service` (whose `ExecStart` is that file), and
+starts the new app. From a terminal, `OpenAgents-….AppImage --update` does
+the same without the window, and `--check-update` only reports. The
+`.deb` has no package repository, so Settings offers **Download VERSION**,
+which opens the new package in the browser. A build directory never
+checks. `OPENAGENTS_UPDATE_MANIFEST_URL` points the check at a test
+manifest (for example `desktop/linux-test/manifest.json`, signed with
+`--prefix desktop/linux-test`); the compiled key still has to verify it.
 
 ## Linux and Windows
 

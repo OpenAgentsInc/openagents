@@ -24,6 +24,7 @@ mod mac;
 mod menubar;
 mod platform;
 mod shell;
+mod updates;
 mod worker;
 
 use openagents_desktop::control::{HostControl, SocketControl};
@@ -54,6 +55,8 @@ Usage: openagents-desktop [options]
   --benchmark-scale N   render the benchmark at 1x or 2x
   --capture DIR        paint pairing and shell screens, against the in-process host, to
                        PNG files in DIR
+  --check-update       say whether a newer release is published (Linux)
+  --update             install a newer release now: an AppImage replaces itself (Linux)
   --help               this text";
 
 #[derive(Debug, Default)]
@@ -69,6 +72,8 @@ struct Options {
     chat_benchmark: Option<PathBuf>,
     benchmark_minimum: bool,
     benchmark_scale: Option<f32>,
+    check_update: bool,
+    update: bool,
 }
 
 fn parse(args: impl Iterator<Item = String>) -> Result<Options, String> {
@@ -116,6 +121,8 @@ fn parse(args: impl Iterator<Item = String>) -> Result<Options, String> {
                     args.next().ok_or("--capture takes a directory")?,
                 ))
             }
+            "--check-update" => options.check_update = true,
+            "--update" => options.update = true,
             "--help" | "-h" => options.help = true,
             // macOS passes a process serial number to an app opened from
             // the Finder on some versions.
@@ -151,6 +158,13 @@ fn main() -> ExitCode {
     if options.help {
         println!("{USAGE}");
         return ExitCode::SUCCESS;
+    }
+    if options.check_update || options.update {
+        return if updates::command(options.update) {
+            ExitCode::SUCCESS
+        } else {
+            ExitCode::FAILURE
+        };
     }
     if let Some(directory) = &options.chat_benchmark {
         return match benchmark::run(

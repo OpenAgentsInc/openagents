@@ -33,8 +33,18 @@
 #
 # DEB_MAINTAINER overrides the .deb's Maintainer field.
 #
-# Signing: Linux packages are not code-signed here. SHA256SUMS lists every
-# artifact; publish it beside them.
+# Reproducible: every file in the packages carries the time
+# SOURCE_DATE_EPOCH (default: the checkout's last commit time), archives
+# list files in name order with owner root, gzip leaves out its own time,
+# and the squashfs is built with SOURCE_DATE_EPOCH, so the same binaries
+# always make the same bytes. For the release, build the binaries the same
+# way too: scripts/desktop/build-linux-release.sh runs this script inside a
+# pinned container with fixed paths and a pinned AppImage runtime.
+#
+# Signing: Linux packages carry no code signature. SHA256SUMS lists every
+# artifact; scripts/desktop/sign-manifest-linux.sh signs it and the update
+# manifest with the Ed25519 update key and publishes them beside the
+# packages.
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -69,6 +79,27 @@ if [[ -z "$version" ]]; then
 fi
 [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.+~-][0-9A-Za-z.+~-]+)?$ ]] \
   || { echo "package-linux: bad version '$version'" >&2; exit 1; }
+# The desktop crate's version is the updater's running version; it must be
+# the one on the packages (INVARIANTS.md, App versions).
+crate_version="$(sed -n 's/^version = "\(.*\)"$/\1/p' "$root/crates/openagents-desktop/Cargo.toml" | head -1)"
+[[ "$crate_version" == "$version" ]] \
+  || { echo "package-linux: openagents-desktop is $crate_version but the package is $version; change crates/openagents-desktop/Cargo.toml to match" >&2; exit 1; }
+
+if [[ -z "${SOURCE_DATE_EPOCH:-}" ]]; then
+  SOURCE_DATE_EPOCH="$(git -C "$root" log -1 --format=%ct 2>/dev/null || echo 0)"
+fi
+[[ "$SOURCE_DATE_EPOCH" =~ ^[0-9]+$ ]] || { echo "package-linux: bad SOURCE_DATE_EPOCH" >&2; exit 1; }
+export SOURCE_DATE_EPOCH
+# Same bytes for the same files: fixed times, name order, root owner, and
+# no gzip timestamp.
+settle() { find "$1" -exec touch -h -d "@$SOURCE_DATE_EPOCH" {} +; }
+tgz() {
+  # $1: the archive, $2: the folder to run in, then what to archive
+  local archive="$1" dir="$2"
+  shift 2
+  ( cd "$dir" && tar --sort=name --mtime="@$SOURCE_DATE_EPOCH" --owner=0 --group=0 \
+      --numeric-owner --format=gnu -cf - "$@" ) | gzip -9n > "$archive"
+}
 
 machine="$(uname -m)"
 case "$machine" in
@@ -133,8 +164,9 @@ artifacts=()
 tar_root="$work/tar/openagents-$version"
 mkdir -p "$tar_root"
 cp -a "$lib/." "$tar_root/"
+settle "$work/tar"
 tarball="$out/openagents-$version-linux-$machine.tar.gz"
-tar -C "$work/tar" --owner=0 --group=0 --numeric-owner -czf "$tarball" "openagents-$version"
+tgz "$tarball" "$work/tar" "openagents-$version"
 artifacts+=("$tarball")
 
 # --- .deb ---------------------------------------------------------------------
@@ -166,14 +198,16 @@ EOF
   # package removal cannot reach every user's unit, so the app's own
   # "Stop Coder on this computer" removes it.
   deb="$out/${package}_${version}_${deb_arch}.deb"
+  settle "$deb_root"
   if command -v dpkg-deb >/dev/null; then
     dpkg-deb --root-owner-group -Zgzip --build "$deb_root" "$deb" >/dev/null
   else
     # The .deb format by hand: an ar archive of debian-binary,
     # control.tar.gz, and data.tar.gz, in that order.
-    ( cd "$deb_root/DEBIAN" && tar --owner=0 --group=0 --numeric-owner -czf "$work/control.tar.gz" ./control )
-    ( cd "$deb_root" && tar --owner=0 --group=0 --numeric-owner --exclude=./DEBIAN -czf "$work/data.tar.gz" . )
+    tgz "$work/control.tar.gz" "$deb_root/DEBIAN" ./control
+    tgz "$work/data.tar.gz" "$deb_root" --exclude=./DEBIAN .
     printf '2.0\n' > "$work/debian-binary"
+    settle "$work/debian-binary"; settle "$work/control.tar.gz"; settle "$work/data.tar.gz"
     rm -f "$deb"
     ( cd "$work" && ar rcD "$deb" debian-binary control.tar.gz data.tar.gz )
   fi
@@ -200,6 +234,7 @@ EOF
   desktop_entry "openagents-desktop" > "$appdir/$app_id.desktop"
   install -m 0644 "$icon_src" "$appdir/$app_id.png"
   ln -s "$app_id.png" "$appdir/.DirIcon"
+  settle "$appdir"
   appimage="$out/OpenAgents-$version-$machine.AppImage"
   rm -f "$appimage"
   if command -v appimagetool >/dev/null; then
@@ -208,7 +243,8 @@ EOF
     command -v mksquashfs >/dev/null \
       || { echo "package-linux: --appimage-runtime needs mksquashfs (nix shell nixpkgs#squashfsTools)" >&2; exit 1; }
     [[ -f "$runtime" ]] || { echo "package-linux: no runtime at $runtime" >&2; exit 1; }
-    mksquashfs "$appdir" "$work/app.squashfs" -root-owned -noappend -comp zstd -quiet >/dev/null
+    # mksquashfs takes its times from SOURCE_DATE_EPOCH.
+    mksquashfs "$appdir" "$work/app.squashfs" -root-owned -noappend -no-xattrs -comp zstd -quiet >/dev/null
     cat "$runtime" "$work/app.squashfs" > "$appimage"
     chmod 0755 "$appimage"
   else

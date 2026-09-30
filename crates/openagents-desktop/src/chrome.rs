@@ -61,13 +61,20 @@ impl Section {
 #[serde(tag = "action", rename_all = "snake_case")]
 pub enum Action {
     ToggleSidebar,
-    ToggleSection { section: Section },
-    SelectChat { id: u64 },
+    ToggleSection {
+        section: Section,
+    },
+    SelectChat {
+        id: u64,
+    },
     NewChat,
     Saved,
     Grid,
     Computers,
     Settings,
+    /// Settings' update button: restart into a waiting build, or open a
+    /// newer package's download.
+    Update,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -87,6 +94,16 @@ pub struct Chat {
     pub section: Section,
 }
 
+/// A newer release the window offers (on Linux; the Mac's menu bar offers
+/// its own).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Update {
+    pub version: String,
+    /// `true` when a checked build is waiting and the button restarts into
+    /// it; `false` when the button opens the package's download.
+    pub ready: bool,
+}
+
 /// Presentation state for the shell. Computer state remains in `Model`.
 #[derive(Clone, Debug)]
 pub struct State {
@@ -99,6 +116,8 @@ pub struct State {
     pub chats: Vec<Chat>,
     pub search: String,
     pub projects: std::collections::BTreeMap<u64, String>,
+    /// A newer release to offer on Settings.
+    pub update: Option<Update>,
     next_chat: u64,
 }
 
@@ -183,6 +202,7 @@ impl Default for State {
             live: false,
             search: String::new(),
             projects: std::collections::BTreeMap::new(),
+            update: None,
             page: Page::Chat(1),
             sidebar_width: SIDEBAR_DEFAULT,
             collapsed: false,
@@ -257,6 +277,8 @@ impl State {
             Action::Grid => self.page = Page::Grid,
             Action::Computers => self.page = Page::Computers,
             Action::Settings => self.page = Page::Settings,
+            // The shell runs it; the page stays.
+            Action::Update => {}
         }
     }
 
@@ -616,6 +638,38 @@ fn placeholder(state: &State) -> Node<Intent> {
     body
 }
 
+/// Settings' version line and, when a newer release is offered, its line
+/// and button.
+fn update_rows(update: Option<&Update>) -> Vec<Node<Intent>> {
+    let mut rows = vec![text(
+        "settings-version",
+        format!("Version {}", env!("CARGO_PKG_VERSION")),
+        TextRole::Status,
+    )];
+    if let Some(update) = update {
+        let (line, label) = if update.ready {
+            (
+                format!("OpenAgents {} is ready.", update.version),
+                format!("Restart to update to {}", update.version),
+            )
+        } else {
+            (
+                format!("OpenAgents {} is available.", update.version),
+                format!("Download {}", update.version),
+            )
+        };
+        rows.push(text("settings-update-line", line, TextRole::Body));
+        rows.push(action(
+            "settings-update",
+            label,
+            Action::Update,
+            None,
+            false,
+        ));
+    }
+    rows
+}
+
 /// The shell wraps the existing computer screens without changing their intents.
 pub fn root(state: &State, model: &Model, now: u64) -> Node<Intent> {
     let prompt = model.nearby().is_some();
@@ -761,7 +815,10 @@ pub fn root(state: &State, model: &Model, now: u64) -> Node<Intent> {
                         Some(Glyph::Computer),
                         false,
                     ),
-                ],
+                ]
+                .into_iter()
+                .chain(update_rows(state.update.as_ref()))
+                .collect(),
             ),
         }
     };
@@ -863,6 +920,54 @@ mod tests {
             rust_native::View::new("shell-test", 1, root)
                 .validate()
                 .expect("valid view");
+        }
+    }
+
+    #[test]
+    fn settings_offers_a_waiting_update() {
+        use crate::model::{Agent, Screen};
+        let model = Model::new(std::time::Instant::now(), Screen::Home, Agent::Enabled);
+        let mut state = State::default();
+        state.activate(Action::Settings);
+        let plain = root(&state, &model, 0);
+        assert!(contains(&plain, "settings-version"));
+        assert!(!contains(&plain, "settings-update"));
+        for (ready, label) in [
+            (true, "Restart to update to 1.1.0"),
+            (false, "Download 1.1.0"),
+        ] {
+            state.update = Some(Update {
+                version: "1.1.0".into(),
+                ready,
+            });
+            let view = root(&state, &model, 0);
+            let Some(Node {
+                element:
+                    Element::Button {
+                        label: shown,
+                        intent,
+                        ..
+                    },
+                ..
+            }) = find(&view, "settings-update")
+            else {
+                panic!("no update button")
+            };
+            assert_eq!(shown, label);
+            assert_eq!(
+                *intent,
+                Intent::Navigate {
+                    action: Action::Update
+                }
+            );
+            for value in crate::screens::words(&view) {
+                assert!(crate::words::banned_in(&value).is_empty(), "{value}");
+            }
+            rust_native::View::new("shell-test", 1, view)
+                .validate()
+                .expect("valid view");
+            state.activate(Action::Update);
+            assert_eq!(state.page, Page::Settings);
         }
     }
 

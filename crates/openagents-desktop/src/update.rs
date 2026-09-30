@@ -1,7 +1,8 @@
-//! Auto-update for OpenAgents for Mac.
+//! Auto-update for OpenAgents on Mac and Linux.
 //!
 //! The updater is Rust, not Sparkle. A release is described by a signed
-//! manifest at [`MANIFEST_URL`]: an envelope that carries the manifest's
+//! manifest at [`MANIFEST_URL`] (Mac) or [`LINUX_MANIFEST_URL`] (Linux,
+//! [`linux`]): an envelope that carries the manifest's
 //! exact bytes, the ID of the key that signed them, and an Ed25519
 //! signature. The app trusts only the public keys compiled into
 //! [`TRUSTED_KEYS`]; `scripts/desktop/sign-manifest.sh` makes the envelope
@@ -31,6 +32,15 @@
 //! and its grants in its state directory, never inside the bundle, and the
 //! new bundle is signed by the same Team ID, so the keychain items stay
 //! readable.
+//!
+//! On Linux there is no code signature to check, so the signed manifest's
+//! size and SHA-256 are the whole proof. A Linux manifest names
+//! `"platform": "linux"` and no Team ID, and each artifact names its
+//! `format` (`appimage` or `deb`); a Mac app refuses it, and a Linux app
+//! refuses a Mac manifest. An AppImage downloads, verifies, and replaces
+//! its own file ([`linux::replace_file`]); a `.deb` install is offered the
+//! download instead, since replacing files the package manager owns is the
+//! package manager's job.
 
 use std::fmt;
 use std::fs::{self, File, OpenOptions};
@@ -52,6 +62,11 @@ use serde::{Deserialize, Serialize};
 pub const MANIFEST_URL: &str =
     "https://storage.googleapis.com/openagentsgemini-oa-updates/desktop/macos/manifest.json";
 
+/// Where the signed manifest for the Linux builds is published, beside
+/// them (`desktop/linux/VERSION/`).
+pub const LINUX_MANIFEST_URL: &str =
+    "https://storage.googleapis.com/openagentsgemini-oa-updates/desktop/linux/manifest.json";
+
 /// The manifest payload's schema name.
 pub const MANIFEST_SCHEMA: &str = "openagents.desktop.update.v1";
 
@@ -65,6 +80,39 @@ pub const TEAM_ID: &str = "HQWSG26L43";
 /// The launchd label of the host agent the app registers with
 /// `SMAppService`, restarted after a swap so it runs the new `coder`.
 pub const HOST_AGENT_LABEL: &str = "com.openagents.desktop.host";
+
+/// The systemd user unit that runs the host on Linux, restarted after an
+/// AppImage replaces itself so it runs the new `coder`.
+pub const HOST_UNIT: &str = "com.openagents.desktop.host.service";
+
+/// Which build a manifest describes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Platform {
+    /// `OpenAgents.app` zips, signed by [`TEAM_ID`]. The manifest names no
+    /// platform, as the first ones did.
+    Mac,
+    /// AppImages and `.deb` packages; the manifest names `linux`.
+    Linux,
+}
+
+impl Platform {
+    /// The platform this app was built for.
+    pub const fn this() -> Platform {
+        if cfg!(target_os = "linux") {
+            Platform::Linux
+        } else {
+            Platform::Mac
+        }
+    }
+
+    /// Where its manifest is published.
+    pub const fn manifest_url(self) -> &'static str {
+        match self {
+            Platform::Mac => MANIFEST_URL,
+            Platform::Linux => LINUX_MANIFEST_URL,
+        }
+    }
+}
 
 /// How often a running app checks for an update.
 pub const CHECK_INTERVAL: Duration = Duration::from_secs(6 * 60 * 60);
@@ -105,7 +153,8 @@ pub enum UpdateError {
     BadSignature,
     /// The signed manifest names an older version than the running app.
     Downgrade { current: Version, offered: Version },
-    /// The manifest has no build for this Mac's architecture.
+    /// The manifest has no build for this computer's architecture (and
+    /// package format).
     NoArtifact(String),
     /// The download stopped early; the partial file is kept for resuming.
     Interrupted {
@@ -195,8 +244,13 @@ pub struct Manifest {
     pub bundle_id: String,
     /// The release's version, `CFBundleShortVersionString` of the bundle.
     pub version: String,
-    /// The Apple Developer Team ID that signed the bundle.
-    pub team_id: String,
+    /// The Apple Developer Team ID that signed the bundle; required on a
+    /// Mac manifest, absent on a Linux one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub team_id: Option<String>,
+    /// `linux` for the Linux builds; absent for the Mac.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub platform: Option<String>,
     /// When the release was signed, RFC 3339, for display.
     pub published: String,
     /// One build per architecture, or one `universal` build.
@@ -209,19 +263,36 @@ pub struct Manifest {
 pub struct Artifact {
     /// `universal`, `arm64`, or `x86_64`.
     pub arch: String,
-    /// An `https` URL of a `ditto` zip of `OpenAgents.app`.
+    /// An `https` URL of a `ditto` zip of `OpenAgents.app`, or on Linux of
+    /// the AppImage or `.deb`.
     pub url: String,
-    /// Lowercase hex SHA-256 of the zip.
+    /// Lowercase hex SHA-256 of the file.
     pub sha256: String,
-    /// The zip's length in bytes.
+    /// The file's length in bytes.
     pub size: u64,
+    /// On Linux, `appimage` or `deb`; absent for a Mac zip.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub format: Option<String>,
+}
+
+impl Artifact {
+    /// The file name the download is kept under in the cache.
+    fn file_name(&self, version: &Version) -> String {
+        let extension = match self.format.as_deref() {
+            Some("appimage") => "AppImage",
+            Some("deb") => "deb",
+            _ => "zip",
+        };
+        format!("OpenAgents-{version}-{}.{extension}", self.arch)
+    }
 }
 
 /// A release the running app may install.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Release {
     pub version: Version,
-    pub team_id: String,
+    /// The Mac manifest's Team ID; `None` on Linux.
+    pub team_id: Option<String>,
     pub artifact: Artifact,
 }
 
@@ -234,11 +305,16 @@ pub enum Check {
     Available(Release),
 }
 
-/// Verifies an envelope against `keys` and returns the manifest it signs.
+/// Verifies an envelope against `keys` and returns the manifest it signs,
+/// which must describe `platform`'s builds.
 ///
 /// The signature is checked over the payload's bytes before they are
 /// parsed, so a manifest that fails here was never interpreted.
-pub fn verify_envelope(bytes: &[u8], keys: &[TrustedKey]) -> Result<Manifest, UpdateError> {
+pub fn verify_envelope(
+    bytes: &[u8],
+    keys: &[TrustedKey],
+    platform: Platform,
+) -> Result<Manifest, UpdateError> {
     let envelope: Envelope = serde_json::from_slice(bytes)
         .map_err(|error| UpdateError::Malformed(format!("envelope: {error}")))?;
     let key = keys
@@ -259,11 +335,11 @@ pub fn verify_envelope(bytes: &[u8], keys: &[TrustedKey]) -> Result<Manifest, Up
         .map_err(|_| UpdateError::BadSignature)?;
     let manifest: Manifest = serde_json::from_slice(&payload)
         .map_err(|error| UpdateError::Malformed(format!("manifest: {error}")))?;
-    validate(&manifest)?;
+    validate(&manifest, platform)?;
     Ok(manifest)
 }
 
-fn validate(manifest: &Manifest) -> Result<(), UpdateError> {
+fn validate(manifest: &Manifest, platform: Platform) -> Result<(), UpdateError> {
     let bad = |why: String| Err(UpdateError::Malformed(why));
     if manifest.schema != MANIFEST_SCHEMA {
         return bad(format!("schema `{}`", manifest.schema));
@@ -274,15 +350,40 @@ fn validate(manifest: &Manifest) -> Result<(), UpdateError> {
     if let Err(error) = Version::parse(&manifest.version) {
         return bad(format!("version `{}`: {error}", manifest.version));
     }
-    if manifest.team_id != TEAM_ID {
-        return bad(format!("team ID `{}`", manifest.team_id));
+    match (
+        platform,
+        manifest.platform.as_deref(),
+        manifest.team_id.as_deref(),
+    ) {
+        (Platform::Mac, None, Some(TEAM_ID)) | (Platform::Linux, Some("linux"), None) => {}
+        (_, named, team) => {
+            return bad(format!(
+                "platform `{}` with team ID `{}` for {platform:?}",
+                named.unwrap_or("mac"),
+                team.unwrap_or("none")
+            ));
+        }
     }
     if manifest.artifacts.is_empty() {
         return bad("no artifacts".into());
     }
     for artifact in &manifest.artifacts {
-        if !matches!(artifact.arch.as_str(), "universal" | "arm64" | "x86_64") {
+        let arch_ok = match platform {
+            Platform::Mac => matches!(artifact.arch.as_str(), "universal" | "arm64" | "x86_64"),
+            Platform::Linux => matches!(artifact.arch.as_str(), "arm64" | "x86_64"),
+        };
+        if !arch_ok {
             return bad(format!("architecture `{}`", artifact.arch));
+        }
+        let format_ok = match platform {
+            Platform::Mac => artifact.format.is_none(),
+            Platform::Linux => matches!(artifact.format.as_deref(), Some("appimage" | "deb")),
+        };
+        if !format_ok {
+            return bad(format!(
+                "package format `{}`",
+                artifact.format.as_deref().unwrap_or("none")
+            ));
         }
         if !artifact.url.starts_with("https://") {
             return bad(format!("artifact URL `{}` is not https", artifact.url));
@@ -303,8 +404,14 @@ fn validate(manifest: &Manifest) -> Result<(), UpdateError> {
 }
 
 /// Decides what a verified manifest means for the running version `current`
-/// on architecture `arch` (`arm64` or `x86_64`).
-pub fn decide(manifest: &Manifest, current: &Version, arch: &str) -> Result<Check, UpdateError> {
+/// on architecture `arch` (`arm64` or `x86_64`), installed as `format`
+/// (`None` on a Mac; `appimage` or `deb` on Linux).
+pub fn decide(
+    manifest: &Manifest,
+    current: &Version,
+    arch: &str,
+    format: Option<&str>,
+) -> Result<Check, UpdateError> {
     let offered = Version::parse(&manifest.version)
         .map_err(|error| UpdateError::Malformed(format!("version: {error}")))?;
     if offered < *current {
@@ -316,17 +423,23 @@ pub fn decide(manifest: &Manifest, current: &Version, arch: &str) -> Result<Chec
     if offered == *current {
         return Ok(Check::UpToDate);
     }
+    let fits = |artifact: &&Artifact| artifact.format.as_deref() == format;
     let artifact = manifest
         .artifacts
         .iter()
+        .filter(fits)
         .find(|artifact| artifact.arch == arch)
         .or_else(|| {
             manifest
                 .artifacts
                 .iter()
+                .filter(fits)
                 .find(|artifact| artifact.arch == "universal")
         })
-        .ok_or_else(|| UpdateError::NoArtifact(arch.to_owned()))?;
+        .ok_or_else(|| match format {
+            Some(format) => UpdateError::NoArtifact(format!("{arch} {format}")),
+            None => UpdateError::NoArtifact(arch.to_owned()),
+        })?;
     Ok(Check::Available(Release {
         version: offered,
         team_id: manifest.team_id.clone(),
@@ -334,7 +447,7 @@ pub fn decide(manifest: &Manifest, current: &Version, arch: &str) -> Result<Chec
     }))
 }
 
-/// This Mac's architecture as the manifest names it.
+/// This computer's architecture as the manifest names it.
 pub fn this_arch() -> &'static str {
     if cfg!(target_arch = "aarch64") {
         "arm64"
@@ -407,14 +520,14 @@ pub fn download(
     dir: &Path,
 ) -> Result<PathBuf, UpdateError> {
     fs::create_dir_all(dir).map_err(|error| io_error("could not make the update cache", error))?;
-    let done = dir.join(format!("OpenAgents-{version}-{}.zip", artifact.arch));
+    let done = dir.join(artifact.file_name(version));
     if done.exists() {
         if sha256_file(&done)? == artifact.sha256 {
             return Ok(done);
         }
         let _ = fs::remove_file(&done);
     }
-    let part = done.with_extension("zip.part");
+    let part = dir.join(format!("{}.part", artifact.file_name(version)));
     let mut from = fs::metadata(&part).map(|meta| meta.len()).unwrap_or(0);
     if from > artifact.size {
         let _ = fs::remove_file(&part);
@@ -615,10 +728,11 @@ pub fn check_identity(
             identity.version, release.version
         )));
     }
-    if identity.team_id != release.team_id {
+    if release.team_id.as_deref() != Some(identity.team_id.as_str()) {
         return Err(UpdateError::CodeSignature(format!(
             "signed by Team ID {}, the manifest says {}",
-            identity.team_id, release.team_id
+            identity.team_id,
+            release.team_id.as_deref().unwrap_or("none")
         )));
     }
     if let Some(running) = running_team
@@ -632,12 +746,48 @@ pub fn check_identity(
     Ok(())
 }
 
-/// A downloaded, extracted, and checked bundle waiting to be installed.
+/// A downloaded and checked build waiting to be installed: an extracted
+/// bundle on a Mac, the verified AppImage file on Linux.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Staged {
     pub version: Version,
     pub app: PathBuf,
     release: Release,
+}
+
+/// How this app was installed, which decides what an update does.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Install {
+    /// `OpenAgents.app`: download, check, swap the bundle.
+    MacBundle,
+    /// An AppImage file: download, verify, replace the file.
+    AppImage(PathBuf),
+    /// The `.deb` in `/usr/lib/openagents`: offer the download.
+    Deb,
+}
+
+impl Install {
+    /// The package format a Linux manifest names for this install.
+    pub fn format(&self) -> Option<&'static str> {
+        match self {
+            Install::MacBundle => None,
+            Install::AppImage(_) => Some("appimage"),
+            Install::Deb => Some("deb"),
+        }
+    }
+
+    fn platform(&self) -> Platform {
+        match self {
+            Install::MacBundle => Platform::Mac,
+            Install::AppImage(_) | Install::Deb => Platform::Linux,
+        }
+    }
+
+    /// Whether the updater downloads and installs releases itself, rather
+    /// than offering the download.
+    pub fn installs_itself(&self) -> bool {
+        !matches!(self, Install::Deb)
+    }
 }
 
 /// The updater for one running app.
@@ -647,6 +797,9 @@ pub struct Updater {
     current: Version,
     arch: &'static str,
     cache: PathBuf,
+    install: Install,
+    /// Restarts the Linux host unit after a replacement; tests swap it.
+    restart_host: fn(),
     transport: Box<dyn Transport>,
     inspector: Box<dyn Inspector>,
 }
@@ -661,18 +814,42 @@ impl Updater {
             .join("Library/Caches")
             .join(BUNDLE_ID)
             .join("updates");
-        let current = Version::parse(env!("CARGO_PKG_VERSION"))
-            .map_err(|error| UpdateError::Malformed(format!("this app's version: {error}")))?;
         Ok(Self::new(
             MANIFEST_URL.into(),
             TRUSTED_KEYS,
-            current,
+            running_version()?,
             cache,
             Box::new(HttpTransport::new()?),
             Box::new(MacInspector),
         ))
     }
 
+    /// The updater for this Linux install ([`linux::detect`]): the Linux
+    /// manifest, the compiled keys, this crate's version, and
+    /// `$XDG_CACHE_HOME/com.openagents.desktop/updates`.
+    pub fn for_linux(install: Install) -> Result<Self, UpdateError> {
+        let home = std::env::var_os("HOME")
+            .map(PathBuf::from)
+            .filter(|home| home.is_absolute())
+            .ok_or_else(|| UpdateError::Io("HOME is not set".into()))?;
+        let cache = std::env::var_os("XDG_CACHE_HOME")
+            .map(PathBuf::from)
+            .filter(|dir| dir.is_absolute())
+            .unwrap_or_else(|| home.join(".cache"))
+            .join(BUNDLE_ID)
+            .join("updates");
+        Ok(Self::new(
+            LINUX_MANIFEST_URL.into(),
+            TRUSTED_KEYS,
+            running_version()?,
+            cache,
+            Box::new(HttpTransport::new()?),
+            Box::new(NoInspector),
+        )
+        .installed_as(install))
+    }
+
+    /// A Mac updater; [`Updater::installed_as`] makes it a Linux one.
     pub fn new(
         manifest_url: String,
         keys: &'static [TrustedKey],
@@ -687,14 +864,40 @@ impl Updater {
             current,
             arch: this_arch(),
             cache,
+            install: Install::MacBundle,
+            restart_host: linux::restart_host_unit,
             transport,
             inspector,
         }
     }
 
+    /// The same updater reading another manifest (a release under test).
+    /// Only the compiled keys still verify it.
+    pub fn with_manifest_url(mut self, url: String) -> Self {
+        self.manifest_url = url;
+        self
+    }
+
+    /// The same updater with another way to restart the Linux host unit.
+    pub fn restarting_host_with(mut self, restart: fn()) -> Self {
+        self.restart_host = restart;
+        self
+    }
+
+    /// The same updater for another kind of install.
+    pub fn installed_as(mut self, install: Install) -> Self {
+        self.install = install;
+        self
+    }
+
     /// The running version.
     pub fn current(&self) -> &Version {
         &self.current
+    }
+
+    /// How this app was installed.
+    pub fn install_kind(&self) -> &Install {
+        &self.install
     }
 
     /// Fetches and verifies the manifest and decides whether to update.
@@ -711,12 +914,13 @@ impl Updater {
         if bytes.len() as u64 > MAX_ENVELOPE_BYTES {
             return Err(UpdateError::Malformed("the envelope is too large".into()));
         }
-        let manifest = verify_envelope(&bytes, self.keys)?;
-        decide(&manifest, &self.current, self.arch)
+        let manifest = verify_envelope(&bytes, self.keys, self.install.platform())?;
+        decide(&manifest, &self.current, self.arch, self.install.format())
     }
 
-    /// Downloads, extracts, and checks `release`. Old downloads in the cache
-    /// are removed first.
+    /// Downloads and checks `release`: on a Mac, extracts the bundle and
+    /// checks its signature; on Linux, checks the AppImage's header. Old
+    /// downloads in the cache are removed first.
     pub fn fetch(&self, release: &Release) -> Result<Staged, UpdateError> {
         self.prune(&release.version);
         let archive = download(
@@ -725,6 +929,22 @@ impl Updater {
             &release.version,
             &self.cache,
         )?;
+        if let Install::AppImage(_) = &self.install {
+            if let Err(error) = linux::check_appimage(&archive) {
+                let _ = fs::remove_file(&archive);
+                return Err(error);
+            }
+            return Ok(Staged {
+                version: release.version.clone(),
+                app: archive,
+                release: release.clone(),
+            });
+        }
+        if self.install != Install::MacBundle {
+            return Err(UpdateError::Io(
+                "this install is updated by its package manager".into(),
+            ));
+        }
         let unpacked = self.cache.join(format!("OpenAgents-{}", release.version));
         let _ = fs::remove_dir_all(&unpacked);
         fs::create_dir_all(&unpacked)
@@ -755,9 +975,21 @@ impl Updater {
         })
     }
 
-    /// Replaces the running bundle with `staged` and restarts the host
-    /// agent. The caller then calls [`relaunch_after_exit`] and exits.
+    /// Replaces the running app with `staged` and restarts the host (the
+    /// launchd agent, or the systemd user unit). Returns what to relaunch:
+    /// the caller then calls [`relaunch_after_exit`] and exits.
     pub fn install(&self, staged: &Staged) -> Result<PathBuf, UpdateError> {
+        if let Install::AppImage(target) = &self.install {
+            linux::replace_file(target, &staged.app, &staged.release.artifact.sha256)?;
+            let _ = fs::remove_file(&staged.app);
+            (self.restart_host)();
+            return Ok(target.clone());
+        }
+        if self.install != Install::MacBundle {
+            return Err(UpdateError::Io(
+                "this install is updated by its package manager".into(),
+            ));
+        }
         let current = running_bundle()
             .ok_or_else(|| UpdateError::Io("this app is not running from a bundle".into()))?;
         swap_bundle(&current, &staged.app, |app| {
@@ -796,6 +1028,23 @@ impl Updater {
                 fs::remove_file(&path)
             };
         }
+    }
+}
+
+fn running_version() -> Result<Version, UpdateError> {
+    Version::parse(env!("CARGO_PKG_VERSION"))
+        .map_err(|error| UpdateError::Malformed(format!("this app's version: {error}")))
+}
+
+/// The inspector for Linux, which has no code signature to read: the
+/// signed manifest's digest is the check.
+pub struct NoInspector;
+
+impl Inspector for NoInspector {
+    fn inspect(&self, _app: &Path) -> Result<CodeIdentity, UpdateError> {
+        Err(UpdateError::CodeSignature(
+            "there is no code signature to check here".into(),
+        ))
     }
 }
 
@@ -906,6 +1155,9 @@ pub fn restart_host_agent() {
 
 /// Opens `app` once this process has exited. The caller exits right after.
 pub fn relaunch_after_exit(app: &Path) -> Result<(), UpdateError> {
+    if Platform::this() == Platform::Linux {
+        return linux::relaunch_after_exit(app);
+    }
     Command::new("/bin/sh")
         .args([
             "-c",
@@ -928,6 +1180,9 @@ pub enum UpdateState {
     Downloading(Version),
     /// A checked bundle is waiting; the menu offers to restart into it.
     Ready(Staged),
+    /// A newer release for an install the package manager updates (the
+    /// `.deb`): the window offers its download.
+    Available(Release),
     /// The last attempt failed; the next check retries.
     Failed(String),
 }
@@ -954,6 +1209,9 @@ pub fn run_once(updater: &Updater, report: &dyn Fn(UpdateState)) -> UpdateState 
     report(UpdateState::Checking);
     match updater.check() {
         Ok(Check::UpToDate) => UpdateState::UpToDate,
+        Ok(Check::Available(release)) if !updater.install_kind().installs_itself() => {
+            UpdateState::Available(release)
+        }
         Ok(Check::Available(release)) => {
             report(UpdateState::Downloading(release.version.clone()));
             match updater.fetch(&release) {
@@ -962,6 +1220,162 @@ pub fn run_once(updater: &Updater, report: &dyn Fn(UpdateState)) -> UpdateState 
             }
         }
         Err(error) => UpdateState::Failed(error.to_string()),
+    }
+}
+
+/// The Linux side: which install this is, the AppImage's own replacement,
+/// the host unit's restart, and the relaunch.
+pub mod linux {
+    use super::{Install, UpdateError, io_error, sha256_file};
+    use std::fs;
+    use std::io::Read;
+    use std::path::{Path, PathBuf};
+    use std::process::{Command, Stdio};
+
+    /// Where the `.deb` installs the app.
+    pub const DEB_DIR: &str = "/usr/lib/openagents";
+
+    /// How this process was installed, from its environment: an AppImage
+    /// when the AppImage runtime set `APPIMAGE` to a file and this
+    /// executable runs from inside its mount (`APPDIR`); the `.deb` when it
+    /// runs from [`DEB_DIR`]; `None` for a build directory or anything
+    /// else, which the updater leaves alone.
+    pub fn detect() -> Option<Install> {
+        let exe = std::env::current_exe().ok()?;
+        classify(
+            &exe,
+            std::env::var_os("APPIMAGE").map(PathBuf::from).as_deref(),
+            std::env::var_os("APPDIR").map(PathBuf::from).as_deref(),
+        )
+    }
+
+    /// [`detect`] over explicit values, for tests.
+    pub fn classify(exe: &Path, appimage: Option<&Path>, appdir: Option<&Path>) -> Option<Install> {
+        if let (Some(appimage), Some(appdir)) = (appimage, appdir)
+            && appimage.is_absolute()
+            && appimage.is_file()
+            && appdir.is_absolute()
+            && exe.starts_with(appdir)
+        {
+            return Some(Install::AppImage(appimage.to_path_buf()));
+        }
+        (exe.parent() == Some(Path::new(DEB_DIR))).then_some(Install::Deb)
+    }
+
+    /// Refuses a file that is not an x86-64 or AArch64 ELF carrying the
+    /// type-2 AppImage magic (`AI` and `2` at offset 8).
+    pub fn check_appimage(path: &Path) -> Result<(), UpdateError> {
+        let mut header = [0u8; 20];
+        fs::File::open(path)
+            .and_then(|mut file| file.read_exact(&mut header))
+            .map_err(|error| io_error("could not read the new AppImage", error))?;
+        let machine = u16::from_le_bytes([header[18], header[19]]);
+        if &header[..4] != b"\x7fELF"
+            || &header[8..11] != b"AI\x02"
+            || !matches!(machine, 0x3e | 0xb7)
+        {
+            return Err(UpdateError::Malformed(
+                "the download is not an AppImage".into(),
+            ));
+        }
+        Ok(())
+    }
+
+    /// Replaces `target` with `staged` by one rename in `target`'s folder:
+    /// the new file is copied beside it as `.NAME.incoming`, made
+    /// executable, flushed, and checked against the signed `sha256` again
+    /// before the rename. A running AppImage keeps the old file open, so
+    /// the running app and host carry on until they restart; a failure
+    /// leaves `target` as it was.
+    pub fn replace_file(target: &Path, staged: &Path, sha256: &str) -> Result<(), UpdateError> {
+        use std::os::unix::fs::PermissionsExt;
+        let parent = target
+            .parent()
+            .ok_or_else(|| UpdateError::Io("the AppImage has no folder".into()))?;
+        let name = target
+            .file_name()
+            .ok_or_else(|| UpdateError::Io("the AppImage has no name".into()))?
+            .to_string_lossy()
+            .into_owned();
+        let incoming = parent.join(format!(".{name}.incoming"));
+        let _ = fs::remove_file(&incoming);
+        let result = (|| {
+            fs::copy(staged, &incoming).map_err(|error| {
+                io_error(
+                    &format!(
+                        "could not copy the update into {}; the folder may need permission",
+                        parent.display()
+                    ),
+                    error,
+                )
+            })?;
+            fs::set_permissions(&incoming, fs::Permissions::from_mode(0o755))
+                .map_err(|error| io_error("could not make the update executable", error))?;
+            fs::File::open(&incoming)
+                .and_then(|file| file.sync_all())
+                .map_err(|error| io_error("could not flush the update", error))?;
+            let actual = sha256_file(&incoming)?;
+            if actual != sha256 {
+                return Err(UpdateError::DigestMismatch {
+                    expected: sha256.to_owned(),
+                    actual,
+                });
+            }
+            fs::rename(&incoming, target)
+                .map_err(|error| io_error("could not put the update in place", error))
+        })();
+        if result.is_err() {
+            let _ = fs::remove_file(&incoming);
+        }
+        result
+    }
+
+    /// Restarts the host's systemd user unit, when it runs, so it runs the
+    /// new file. Best effort, like the Mac's `launchctl kickstart`.
+    pub fn restart_host_unit() {
+        let _ = Command::new("systemctl")
+            .args(["--user", "try-restart", super::HOST_UNIT])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+    }
+
+    /// Starts `app` once this process has exited, outside the old
+    /// AppImage's mount and without its runtime's variables.
+    pub fn relaunch_after_exit(app: &Path) -> Result<(), UpdateError> {
+        Command::new("/bin/sh")
+            .args([
+                "-c",
+                "while kill -0 \"$1\" 2>/dev/null; do sleep 0.2; done; exec \"$2\"",
+                "openagents-relaunch",
+            ])
+            .arg(std::process::id().to_string())
+            .arg(app)
+            .current_dir("/")
+            .env_remove("APPIMAGE")
+            .env_remove("APPDIR")
+            .env_remove("ARGV0")
+            .env_remove("OWD")
+            .stdin(Stdio::null())
+            .spawn()
+            .map_err(|error| io_error("could not schedule the relaunch", error))?;
+        Ok(())
+    }
+
+    /// Opens `url` (the `.deb` download) in the person's browser.
+    pub fn open_download(url: &str) -> Result<(), UpdateError> {
+        if !url.starts_with("https://") {
+            return Err(UpdateError::Malformed(format!("`{url}` is not https")));
+        }
+        Command::new("xdg-open")
+            .arg(url)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .map(drop)
+            .map_err(|error| io_error("could not open the download", error))
     }
 }
 
@@ -990,13 +1404,15 @@ mod tests {
             schema: MANIFEST_SCHEMA.into(),
             bundle_id: BUNDLE_ID.into(),
             version: version.into(),
-            team_id: TEAM_ID.into(),
+            team_id: Some(TEAM_ID.into()),
+            platform: None,
             published: "2026-09-29T00:00:00Z".into(),
             artifacts: vec![Artifact {
                 arch: "universal".into(),
                 url: "https://example.invalid/OpenAgents.zip".into(),
                 sha256: sha256.into(),
                 size,
+                format: None,
             }],
         }
     }
@@ -1025,12 +1441,34 @@ mod tests {
 
     #[test]
     fn the_release_key_signs_what_the_app_accepts() {
-        let manifest = verify_envelope(RELEASE_KEY_FIXTURE.as_bytes(), TRUSTED_KEYS).unwrap();
+        let manifest =
+            verify_envelope(RELEASE_KEY_FIXTURE.as_bytes(), TRUSTED_KEYS, Platform::Mac).unwrap();
         assert_eq!(manifest.version, "0.0.1-fixture");
         // And a fixture version is older than any real release.
         let current = Version::parse("0.1.0").unwrap();
         assert!(matches!(
-            decide(&manifest, &current, "arm64"),
+            decide(&manifest, &current, "arm64", None),
+            Err(UpdateError::Downgrade { .. })
+        ));
+    }
+
+    /// A Linux manifest signed by the real release key with the commands
+    /// `scripts/desktop/sign-manifest-linux.sh` runs.
+    const LINUX_RELEASE_KEY_FIXTURE: &str = r#"{"key":"desktop-update-2026-09","payload":"eyJzY2hlbWEiOiJvcGVuYWdlbnRzLmRlc2t0b3AudXBkYXRlLnYxIiwiYnVuZGxlX2lkIjoiY29tLm9wZW5hZ2VudHMuZGVza3RvcCIsInZlcnNpb24iOiIwLjAuMS1maXh0dXJlIiwicGxhdGZvcm0iOiJsaW51eCIsInB1Ymxpc2hlZCI6IjIwMjYtMDktMzBUMDA6MDA6MDBaIiwiYXJ0aWZhY3RzIjpbeyJhcmNoIjoieDg2XzY0IiwidXJsIjoiaHR0cHM6Ly9zdG9yYWdlLmdvb2dsZWFwaXMuY29tL29wZW5hZ2VudHNnZW1pbmktb2EtdXBkYXRlcy9kZXNrdG9wL2xpbnV4LzAuMC4xLWZpeHR1cmUvT3BlbkFnZW50cy0wLjAuMS1maXh0dXJlLXg4Nl82NC5BcHBJbWFnZSIsInNoYTI1NiI6IjJkNzExNjQyYjcyNmIwNDQwMTYyN2NhOWZiYWMzMmY1Yzg1MzBmYjE5MDNjYzRkYjAyMjU4NzE3OTIxYTQ4ODEiLCJzaXplIjoxLCJmb3JtYXQiOiJhcHBpbWFnZSJ9XX0=","signature":"BmQMKUfzPnfVfN/xFBqypZ4nc91vfjsFSyBp0BKkwF/d+0yL9FPp6qkrRvPXcp0H6pMplYXe4WsRAK6fWBSOCQ=="}"#;
+
+    #[test]
+    fn the_release_key_signs_a_linux_manifest_the_linux_app_accepts() {
+        let bytes = LINUX_RELEASE_KEY_FIXTURE.as_bytes();
+        let manifest = verify_envelope(bytes, TRUSTED_KEYS, Platform::Linux).unwrap();
+        assert_eq!(manifest.platform.as_deref(), Some("linux"));
+        assert_eq!(manifest.artifacts[0].format.as_deref(), Some("appimage"));
+        assert!(matches!(
+            verify_envelope(bytes, TRUSTED_KEYS, Platform::Mac),
+            Err(UpdateError::Malformed(_))
+        ));
+        let current = Version::parse("1.0.0").unwrap();
+        assert!(matches!(
+            decide(&manifest, &current, "x86_64", Some("appimage")),
             Err(UpdateError::Downgrade { .. })
         ));
     }
@@ -1050,7 +1488,10 @@ mod tests {
         let pair = key_pair();
         let signed = manifest("1.2.0", &"a".repeat(64), 10);
         let bytes = seal(&pair, "test-key", &serde_json::to_vec(&signed).unwrap());
-        assert_eq!(verify_envelope(&bytes, trusted(&pair)).unwrap(), signed);
+        assert_eq!(
+            verify_envelope(&bytes, trusted(&pair), Platform::Mac).unwrap(),
+            signed
+        );
     }
 
     #[test]
@@ -1066,7 +1507,8 @@ mod tests {
             payload: BASE64.encode(&forged),
             ..good.clone()
         };
-        let error = verify_envelope(&serde_json::to_vec(&tampered).unwrap(), keys).unwrap_err();
+        let error = verify_envelope(&serde_json::to_vec(&tampered).unwrap(), keys, Platform::Mac)
+            .unwrap_err();
         assert!(matches!(error, UpdateError::BadSignature), "{error}");
 
         // One bit of the signature flipped.
@@ -1076,16 +1518,18 @@ mod tests {
             signature: BASE64.encode(&signature),
             ..good.clone()
         };
-        let error = verify_envelope(&serde_json::to_vec(&flipped).unwrap(), keys).unwrap_err();
+        let error = verify_envelope(&serde_json::to_vec(&flipped).unwrap(), keys, Platform::Mac)
+            .unwrap_err();
         assert!(matches!(error, UpdateError::BadSignature), "{error}");
 
         // Signed by a key the app does not trust, under the trusted ID.
         let stranger = seal(&key_pair(), "test-key", &payload);
-        let error = verify_envelope(&stranger, keys).unwrap_err();
+        let error = verify_envelope(&stranger, keys, Platform::Mac).unwrap_err();
         assert!(matches!(error, UpdateError::BadSignature), "{error}");
 
         // Naming an unknown key.
-        let error = verify_envelope(&seal(&pair, "other", &payload), keys).unwrap_err();
+        let error =
+            verify_envelope(&seal(&pair, "other", &payload), keys, Platform::Mac).unwrap_err();
         assert!(matches!(error, UpdateError::UnknownKey(_)), "{error}");
 
         // A short signature.
@@ -1093,12 +1537,13 @@ mod tests {
             signature: BASE64.encode([0u8; 12]),
             ..good
         };
-        let error = verify_envelope(&serde_json::to_vec(&short).unwrap(), keys).unwrap_err();
+        let error =
+            verify_envelope(&serde_json::to_vec(&short).unwrap(), keys, Platform::Mac).unwrap_err();
         assert!(matches!(error, UpdateError::BadSignature), "{error}");
 
         // Not JSON at all.
         assert!(matches!(
-            verify_envelope(b"nope", keys),
+            verify_envelope(b"nope", keys, Platform::Mac),
             Err(UpdateError::Malformed(_))
         ));
     }
@@ -1115,7 +1560,7 @@ mod tests {
         m.artifacts[0].url = "http://example.invalid/x.zip".into();
         cases.push(m);
         let mut m = manifest("1.2.0", &"a".repeat(64), 10);
-        m.team_id = "ZZZZZ99999".into();
+        m.team_id = Some("ZZZZZ99999".into());
         cases.push(m);
         cases.push(manifest("not-a-version", &"a".repeat(64), 10));
         cases.push(manifest("1.2.0", "ABC", 10));
@@ -1127,7 +1572,7 @@ mod tests {
             let bytes = seal(&pair, "test-key", &serde_json::to_vec(&case).unwrap());
             assert!(
                 matches!(
-                    verify_envelope(&bytes, keys),
+                    verify_envelope(&bytes, keys, Platform::Mac),
                     Err(UpdateError::Malformed(_))
                 ),
                 "{case:?}"
@@ -1138,7 +1583,7 @@ mod tests {
         value["channel"] = "beta".into();
         let bytes = seal(&pair, "test-key", &serde_json::to_vec(&value).unwrap());
         assert!(matches!(
-            verify_envelope(&bytes, keys),
+            verify_envelope(&bytes, keys, Platform::Mac),
             Err(UpdateError::Malformed(_))
         ));
     }
@@ -1148,22 +1593,32 @@ mod tests {
         let current = Version::parse("1.2.0").unwrap();
         let older = manifest("1.1.9", &"a".repeat(64), 10);
         assert!(matches!(
-            decide(&older, &current, "arm64"),
+            decide(&older, &current, "arm64", None),
             Err(UpdateError::Downgrade { .. })
         ));
         // A prerelease of the running version is older than it.
         let prerelease = manifest("1.2.0-rc.1", &"a".repeat(64), 10);
         assert!(matches!(
-            decide(&prerelease, &current, "arm64"),
+            decide(&prerelease, &current, "arm64", None),
             Err(UpdateError::Downgrade { .. })
         ));
         assert_eq!(
-            decide(&manifest("1.2.0", &"a".repeat(64), 10), &current, "arm64").unwrap(),
+            decide(
+                &manifest("1.2.0", &"a".repeat(64), 10),
+                &current,
+                "arm64",
+                None
+            )
+            .unwrap(),
             Check::UpToDate
         );
-        let Check::Available(release) =
-            decide(&manifest("1.3.0", &"a".repeat(64), 10), &current, "arm64").unwrap()
-        else {
+        let Check::Available(release) = decide(
+            &manifest("1.3.0", &"a".repeat(64), 10),
+            &current,
+            "arm64",
+            None,
+        )
+        .unwrap() else {
             panic!("expected an update");
         };
         assert_eq!(release.version, Version::parse("1.3.0").unwrap());
@@ -1175,16 +1630,25 @@ mod tests {
         // The first public build was 0.1.0; the desktop app then joined the
         // phone app's version, 1.0.0. Installed 0.1.0 apps must take it.
         let installed = Version::parse("0.1.0").unwrap();
-        let Check::Available(release) =
-            decide(&manifest("1.0.0", &"a".repeat(64), 10), &installed, "arm64").unwrap()
-        else {
+        let Check::Available(release) = decide(
+            &manifest("1.0.0", &"a".repeat(64), 10),
+            &installed,
+            "arm64",
+            None,
+        )
+        .unwrap() else {
             panic!("expected 0.1.0 to update to 1.0.0");
         };
         assert_eq!(release.version, Version::parse("1.0.0").unwrap());
         let running = Version::parse(env!("CARGO_PKG_VERSION")).unwrap();
         assert!(running >= Version::parse("1.0.0").unwrap());
         assert!(matches!(
-            decide(&manifest("0.1.0", &"a".repeat(64), 10), &running, "arm64"),
+            decide(
+                &manifest("0.1.0", &"a".repeat(64), 10),
+                &running,
+                "arm64",
+                None
+            ),
             Err(UpdateError::Downgrade { .. })
         ));
     }
@@ -1195,14 +1659,14 @@ mod tests {
         let mut m = manifest("1.1.0", &"a".repeat(64), 10);
         m.artifacts[0].arch = "x86_64".into();
         assert!(matches!(
-            decide(&m, &current, "arm64"),
+            decide(&m, &current, "arm64", None),
             Err(UpdateError::NoArtifact(_))
         ));
         let mut arm = m.artifacts[0].clone();
         arm.arch = "arm64".into();
         arm.url = "https://example.invalid/arm.zip".into();
         m.artifacts.push(arm);
-        let Check::Available(release) = decide(&m, &current, "arm64").unwrap() else {
+        let Check::Available(release) = decide(&m, &current, "arm64", None).unwrap() else {
             panic!()
         };
         assert_eq!(release.artifact.url, "https://example.invalid/arm.zip");
@@ -1269,6 +1733,7 @@ mod tests {
             url: "https://example.invalid/OpenAgents.zip".into(),
             sha256: digest(bytes),
             size: bytes.len() as u64,
+            format: None,
         }
     }
 
@@ -1363,7 +1828,7 @@ mod tests {
     fn release(version: &str) -> Release {
         Release {
             version: Version::parse(version).unwrap(),
-            team_id: TEAM_ID.into(),
+            team_id: Some(TEAM_ID.into()),
             artifact: artifact_for(b"x"),
         }
     }
@@ -1456,5 +1921,302 @@ mod tests {
             Box::new(MacInspector),
         );
         assert!(matches!(updater.check(), Err(UpdateError::UnknownKey(_))));
+    }
+
+    fn linux_manifest(version: &str, files: &[(&str, &[u8])]) -> Manifest {
+        Manifest {
+            schema: MANIFEST_SCHEMA.into(),
+            bundle_id: BUNDLE_ID.into(),
+            version: version.into(),
+            team_id: None,
+            platform: Some("linux".into()),
+            published: "2026-09-30T00:00:00Z".into(),
+            artifacts: files
+                .iter()
+                .map(|(format, bytes)| Artifact {
+                    arch: "x86_64".into(),
+                    url: format!("https://example.invalid/OpenAgents.{format}"),
+                    sha256: digest(bytes),
+                    size: bytes.len() as u64,
+                    format: Some((*format).into()),
+                })
+                .collect(),
+        }
+    }
+
+    fn for_this_arch(mut manifest: Manifest) -> Manifest {
+        for artifact in &mut manifest.artifacts {
+            artifact.arch = this_arch().into();
+        }
+        manifest
+    }
+
+    /// An ELF header with the type-2 AppImage magic, then a payload.
+    fn fake_appimage(tag: &str) -> Vec<u8> {
+        let mut bytes = vec![0u8; 64];
+        bytes[..4].copy_from_slice(b"\x7fELF");
+        bytes[8..11].copy_from_slice(b"AI\x02");
+        bytes[18..20].copy_from_slice(&0x3eu16.to_le_bytes());
+        bytes.extend_from_slice(tag.as_bytes());
+        bytes
+    }
+
+    #[test]
+    fn a_linux_manifest_is_only_for_linux() {
+        let pair = key_pair();
+        let keys = trusted(&pair);
+        let linux = linux_manifest("1.1.0", &[("appimage", b"a"), ("deb", b"b")]);
+        let bytes = seal(&pair, "test-key", &serde_json::to_vec(&linux).unwrap());
+        assert_eq!(
+            verify_envelope(&bytes, keys, Platform::Linux).unwrap(),
+            linux
+        );
+        assert!(matches!(
+            verify_envelope(&bytes, keys, Platform::Mac),
+            Err(UpdateError::Malformed(_))
+        ));
+        // A Mac manifest is refused on Linux.
+        let mac = manifest("1.1.0", &"a".repeat(64), 10);
+        let bytes = seal(&pair, "test-key", &serde_json::to_vec(&mac).unwrap());
+        assert!(matches!(
+            verify_envelope(&bytes, keys, Platform::Linux),
+            Err(UpdateError::Malformed(_))
+        ));
+        // A Linux manifest with a Team ID, a universal build, or an unknown
+        // format is refused.
+        let mut cases = Vec::new();
+        let mut m = linux.clone();
+        m.team_id = Some(TEAM_ID.into());
+        cases.push(m);
+        let mut m = linux.clone();
+        m.artifacts[0].arch = "universal".into();
+        cases.push(m);
+        let mut m = linux.clone();
+        m.artifacts[0].format = Some("rpm".into());
+        cases.push(m);
+        let mut m = linux.clone();
+        m.artifacts[0].format = None;
+        cases.push(m);
+        for case in cases {
+            let bytes = seal(&pair, "test-key", &serde_json::to_vec(&case).unwrap());
+            assert!(
+                matches!(
+                    verify_envelope(&bytes, keys, Platform::Linux),
+                    Err(UpdateError::Malformed(_))
+                ),
+                "{case:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_linux_install_takes_its_own_format() {
+        let current = Version::parse("1.0.0").unwrap();
+        let m = linux_manifest("1.1.0", &[("appimage", b"a"), ("deb", b"b")]);
+        for format in ["appimage", "deb"] {
+            let Check::Available(release) = decide(&m, &current, "x86_64", Some(format)).unwrap()
+            else {
+                panic!("expected an update")
+            };
+            assert_eq!(release.artifact.format.as_deref(), Some(format));
+            assert_eq!(release.team_id, None);
+        }
+        assert!(matches!(
+            decide(&m, &current, "arm64", Some("deb")),
+            Err(UpdateError::NoArtifact(_))
+        ));
+        let only_deb = linux_manifest("1.1.0", &[("deb", b"b")]);
+        assert!(matches!(
+            decide(&only_deb, &current, "x86_64", Some("appimage")),
+            Err(UpdateError::NoArtifact(_))
+        ));
+    }
+
+    #[test]
+    fn a_linux_install_is_recognized_by_where_it_runs() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("OpenAgents-1.0.0-x86_64.AppImage");
+        fs::write(&file, b"x").unwrap();
+        let mount = Path::new("/tmp/.mount_OpenAgXXXX");
+        let exe = mount.join("usr/lib/openagents/openagents-desktop");
+        assert_eq!(
+            linux::classify(&exe, Some(&file), Some(mount)),
+            Some(Install::AppImage(file.clone()))
+        );
+        // `APPIMAGE` left over from a parent AppImage does not count.
+        assert_eq!(
+            linux::classify(
+                Path::new("/home/me/src/target/release/openagents-desktop"),
+                Some(&file),
+                Some(mount)
+            ),
+            None
+        );
+        assert_eq!(
+            linux::classify(
+                Path::new("/usr/lib/openagents/openagents-desktop"),
+                None,
+                None
+            ),
+            Some(Install::Deb)
+        );
+        assert_eq!(
+            linux::classify(
+                Path::new("/home/me/src/target/release/openagents-desktop"),
+                None,
+                None
+            ),
+            None
+        );
+    }
+
+    fn no_restart() {}
+
+    #[cfg(unix)]
+    #[test]
+    fn an_appimage_replaces_itself_with_the_signed_build() {
+        let pair = key_pair();
+        let home = tempfile::tempdir().unwrap();
+        let running = home.path().join("Applications/OpenAgents.AppImage");
+        fs::create_dir_all(running.parent().unwrap()).unwrap();
+        fs::write(&running, fake_appimage("1.0.0")).unwrap();
+        let new = fake_appimage("1.1.0");
+        let m = for_this_arch(linux_manifest(
+            "1.1.0",
+            &[("appimage", &new), ("deb", b"deb")],
+        ));
+        let envelope = seal(&pair, "test-key", &serde_json::to_vec(&m).unwrap());
+
+        /// Serves the envelope, then the build.
+        struct Served {
+            envelope: Vec<u8>,
+            build: Vec<u8>,
+        }
+        impl Transport for Served {
+            fn open(&self, url: &str, _from: u64) -> io::Result<Body> {
+                let bytes = if url.ends_with("manifest.json") {
+                    self.envelope.clone()
+                } else {
+                    self.build.clone()
+                };
+                Ok(Body {
+                    partial: false,
+                    reader: Box::new(io::Cursor::new(bytes)),
+                })
+            }
+        }
+        let updater = |build: Vec<u8>| {
+            Updater::new(
+                "https://example.invalid/manifest.json".into(),
+                trusted(&pair),
+                Version::parse("1.0.0").unwrap(),
+                home.path().join("cache"),
+                Box::new(Served {
+                    envelope: envelope.clone(),
+                    build,
+                }),
+                Box::new(NoInspector),
+            )
+            .installed_as(Install::AppImage(running.clone()))
+            .restarting_host_with(no_restart)
+        };
+
+        // A build that is not what was signed never reaches the file.
+        let mut tampered = new.clone();
+        *tampered.last_mut().unwrap() ^= 1;
+        let state = run_once(&updater(tampered), &|_| {});
+        assert!(matches!(state, UpdateState::Failed(_)), "{state:?}");
+        assert_eq!(fs::read(&running).unwrap(), fake_appimage("1.0.0"));
+
+        let updater = updater(new.clone());
+        let UpdateState::Ready(staged) = run_once(&updater, &|_| {}) else {
+            panic!("expected a staged AppImage")
+        };
+        assert_eq!(staged.version, Version::parse("1.1.0").unwrap());
+        assert_eq!(updater.install(&staged).unwrap(), running);
+        assert_eq!(fs::read(&running).unwrap(), new);
+        use std::os::unix::fs::PermissionsExt;
+        assert_eq!(
+            fs::metadata(&running).unwrap().permissions().mode() & 0o777,
+            0o755
+        );
+        let leftovers: Vec<_> = fs::read_dir(running.parent().unwrap())
+            .unwrap()
+            .flatten()
+            .map(|entry| entry.file_name())
+            .collect();
+        assert_eq!(leftovers.len(), 1, "{leftovers:?}");
+    }
+
+    #[test]
+    fn a_deb_install_is_offered_the_download() {
+        let pair = key_pair();
+        let m = for_this_arch(linux_manifest(
+            "1.1.0",
+            &[("appimage", b"a"), ("deb", b"deb")],
+        ));
+        let envelope = seal(&pair, "test-key", &serde_json::to_vec(&m).unwrap());
+        let transport = fake(&envelope, None, true);
+        let updater = Updater::new(
+            "https://example.invalid/manifest.json".into(),
+            trusted(&pair),
+            Version::parse("1.0.0").unwrap(),
+            tempfile::tempdir().unwrap().keep(),
+            Box::new(transport),
+            Box::new(NoInspector),
+        )
+        .installed_as(Install::Deb)
+        .restarting_host_with(no_restart);
+        let UpdateState::Available(release) = run_once(&updater, &|_| {}) else {
+            panic!("expected the download to be offered")
+        };
+        assert_eq!(
+            release.artifact.url,
+            "https://example.invalid/OpenAgents.deb"
+        );
+        assert!(
+            updater
+                .install(&Staged {
+                    version: release.version.clone(),
+                    app: PathBuf::from("/nonexistent"),
+                    release,
+                })
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn only_an_appimage_header_is_accepted() {
+        let dir = tempfile::tempdir().unwrap();
+        let good = dir.path().join("good");
+        fs::write(&good, fake_appimage("x")).unwrap();
+        linux::check_appimage(&good).unwrap();
+        let mut plain_elf = fake_appimage("x");
+        plain_elf[8..11].copy_from_slice(&[0, 0, 0]);
+        let bad = dir.path().join("bad");
+        fs::write(&bad, plain_elf).unwrap();
+        assert!(linux::check_appimage(&bad).is_err());
+        let short = dir.path().join("short");
+        fs::write(&short, b"\x7fELF").unwrap();
+        assert!(linux::check_appimage(&short).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_failed_replacement_leaves_the_appimage_alone() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("OpenAgents.AppImage");
+        fs::write(&target, b"old").unwrap();
+        let staged = dir.path().join("staged");
+        fs::write(&staged, b"new").unwrap();
+        let error = linux::replace_file(&target, &staged, &digest(b"other")).unwrap_err();
+        assert!(
+            matches!(error, UpdateError::DigestMismatch { .. }),
+            "{error}"
+        );
+        assert_eq!(fs::read(&target).unwrap(), b"old");
+        assert!(!dir.path().join(".OpenAgents.AppImage.incoming").exists());
+        linux::replace_file(&target, &staged, &digest(b"new")).unwrap();
+        assert_eq!(fs::read(&target).unwrap(), b"new");
     }
 }

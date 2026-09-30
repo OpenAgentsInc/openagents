@@ -537,6 +537,9 @@ impl App for DesktopApp {
         }
         crate::menubar::start(waker.clone());
         if self.live {
+            crate::updates::start(waker.clone());
+        }
+        if self.live {
             self.screen_lock = Some(ScreenLock::start(waker.clone()));
         }
         if let Runner::Pending(context) = &mut self.runner
@@ -576,6 +579,11 @@ impl App for DesktopApp {
         crate::menubar::sync(&self.model)
             .into_iter()
             .for_each(|intent| self.activate(intent, now));
+        if self.live
+            && let Some(state) = &mut self.navigation
+        {
+            state.update = crate::updates::offer();
+        }
         let requests = self.model.tick(now);
         self.send(requests, now);
         if let Some(chat) = &mut self.chat {
@@ -681,6 +689,11 @@ impl App for DesktopApp {
             return;
         }
         if let Intent::Navigate { action } = intent {
+            if action == chrome::Action::Update {
+                crate::updates::act();
+                self.present();
+                return;
+            }
             if action == chrome::Action::Saved {
                 if let Some(state) = &mut self.navigation {
                     state.activate(action);
