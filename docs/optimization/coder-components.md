@@ -1029,8 +1029,10 @@ runtime, capability registry, or project scheduler.
 
 The claim that the live view can read the existing bundle needs qualification:
 
-- [`Recorder`](../../crates/coder-one/src/record.rs) is an in-memory
-  `Rc<RefCell<Vec<Step>>>`. Appending a step does not persist it.
+- [`Recorder`](../../crates/coder-delegate/src/record.rs) stores steps in memory.
+  It keeps them in a vector that can be shared and changed through reference
+  counting and interior mutability. Appending a step changes only this in-memory
+  vector; it does not write the step to persistent storage.
 - [`run_episode`](../../crates/coder-one/src/episode.rs) runs the initial
   survey before installing the snapshot wrapper. Setup and survey can
   therefore perform work before the first bundle checkpoint.
@@ -1079,7 +1081,7 @@ one consistent candidate. Reuse the completeness discipline of
 Do not run a full recursive snapshot after every token or stream event.
 
 The operation contract also needs more than the label “read-only.” In
-[`JevJudge::probe`](../../crates/coder-one/src/judge.rs), task-derived paths
+[`JevJudge::probe`](../../crates/coder-delegate/src/judge.rs), task-derived paths
 are interpolated into strings such as `head -200 {token}` and executed through
 `bash -c`. The setup pack likewise executes extracted command strings. Use
 typed read, list, Git, clone, and install operations with validated arguments
@@ -1093,7 +1095,7 @@ cannot retroactively save the cost of probes that already ran.
 
 ### Session control is an adapter contract, not just a CLI flag
 
-[`Executor::execute`](../../crates/coder-one/src/delegate.rs) returns one
+[`Executor::execute`](../../crates/coder-delegate/src/delegate.rs) returns one
 `Report` after completion. The CLI reads its briefing from a file redirected
 to stdin and redirects its native events to another file. The host parses
 that file only after `supervise::Job::run` returns. Resume, steer, fork, and
@@ -1137,7 +1139,7 @@ timeout.” Setup commands receive individual 240-second limits, the delegate
 receives its configured limit, and the Jev client uses the SDK defaults.
 [`RetryPolicy`](../../crates/jev/src/retry.rs) already supports a whole-call
 budget, including retries and waits, but its default is `None`, and
-[Coder One's client constructor](../../crates/coder-one/src/credentials.rs)
+[Coder One's client constructor](../../crates/coder-delegate/src/credentials.rs)
 does not set it.
 
 Give the controller one monotonic episode deadline and pass the remaining
@@ -1171,7 +1173,7 @@ accounting cases in [`episode::usage`](../../crates/coder-one/src/episode.rs):
 ### Price monitoring by actual work and measure its added value
 
 The unit called a “turn” is not currently comparable across executors.
-[`Summary::parse_codex`](../../crates/coder-one/src/delegate.rs) assigns
+[`Summary::parse_codex`](../../crates/coder-delegate/src/delegate.rs) assigns
 completed items to `num_turns`; it keeps native completed-turn counts under
 `usage.codex_turns` and leaves API-call count unknown. Claude's parser reads
 `num_turns` and separately counts unique assistant message IDs. The generic
