@@ -57,3 +57,28 @@ appear, and the original saved session remains unchanged. Stop and archive
 every verification task afterward. Scratch tests cover both source formats,
 the native reader, real broker admission, exact prompt bytes, acknowledgment
 retries, restart identity, cancellation, and archive without owner state.
+
+## Desktop playable Grid (#10038)
+
+Install a desktop bundle built from current `main` on macOS and on Linux
+Wayland/X11. Choose **The Grid → Play**. Verify right-drag look, left-drag
+orbit, simultaneous WASD, wheel entry and exit from first person, Escape,
+Tab, Alt-Tab/Cmd-Tab, minimization, display-scale changes, and returning to
+Watch or chat. A failed cursor grab must leave the pointer usable and explain
+the keyboard fallback. Confirm the original chat draft survives.
+
+Verify the separate world identity and Gym connection in the macOS login
+Keychain or Linux Secret Service. Relaunch Play and confirm the public key
+stays the same; deny a key read and confirm Play stays offline without
+replacing it. Pairing and the resident host must retain their existing keys.
+With a grant created for that world public key, inspect Gym runs, review a
+recipe's budget, and explicitly confirm a permitted launch. Walking and
+public boards must never launch it. Check desktop/phone movement together
+against the chosen relay without creating test chats or tasks.
+
+The isolated relay, shared controller, native input and layout, GPU captures,
+and Linux binary checks are recorded in
+`docs/desktop/verification/2026-09-30-playable-grid/verification.md`.
+Native OS cursor grabs, protected-store prompts, and the signed Mac bundle
+need device checks. Windows Verse remains tracked by #10027. Open a new issue
+if any installed-device check finds a defect; these checks do not keep #10038 open.

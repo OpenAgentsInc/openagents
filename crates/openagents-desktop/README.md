@@ -48,7 +48,7 @@ second, so dragging does not start a subprocess on the UI thread.
 
 The screens are Rust Native views ([`src/screens.rs`](src/screens.rs)),
 drawn by [`rust-native-desktop`](../rust-native-desktop/). The window process
-holds no secret key: it talks to the host only over the local control socket
+holds no host or owner secret key: it talks to the host only over the local control socket
 ([`src/control.rs`](src/control.rs), `openagents-connect`'s protocol). The
 host, `coder host serve --keychain --iroh --control`, runs as the login agent
 the app registers with `SMAppService`, and reads its keys from the keychain
@@ -60,16 +60,68 @@ the same program that reads them and macOS never asks to allow it.
 When a code shows, rotates, and is cancelled is [`src/codes.rs`](src/codes.rs);
 `INVARIANTS.md` (Linking devices) states the rules.
 
+## Play the Grid
+
+On macOS and Linux, open **The Grid** and choose **Play** to join the same
+`verse-bare` world as the phone. **Watch** returns to the spectator. Opening the
+app or selecting the Grid starts no player. Leaving the Grid ends Play and
+preserves your chat drafts and sidebar state.
+
+- W/S move forward and back; A/D and Q/E strafe. Space jumps once per press;
+  Shift sprints. Diagonals, backpedaling, collisions, and shared bodies use the
+  phone's controller and physics.
+- Hold the right mouse button to look and turn; hold the left button to orbit.
+  Both buttons move forward. The wheel zooms through first person and back.
+  Escape closes a board or releases the mouse. Click the world to resume.
+- Walk into the Gym and click its GYM, RESULTS, or EVALS board. Native controls
+  show the shared board state, result provenance and caveats, attempt traces,
+  replay controls, and published evals. Long boards have numbered pages.
+  Movement pauses while a board is open. **Compare notes** remains off until
+  you choose it; its explanation states what the agent publishes.
+- The Gym accepts a separately granted connection through **Open Gym connection
+  file**. Copy its **world public key** when creating that grant. Review a
+  recipe's revision and budget before **Confirm and launch this recipe**.
+  Walking, opening a board, and public result reads grant no execution rights.
+
+Play owns a dedicated world key, separate from host, owner, pairing, and chat
+keys: service `com.openagents.desktop.verse`, accounts `world-key` and
+`gym-connection`, in the macOS login Keychain or Linux Secret Service. Key
+creation and reads happen off the UI thread, only after Play. An unreadable
+stored identity is never replaced; Play stays offline and explains why.
+The public result cache and Compare notes preference live under
+`~/.openagents/desktop/grid/`; these files contain no secret key or Gym grant.
+
+[`coder_mobile::verse_surface`](../coder-mobile/src/verse_surface.rs) exposes
+the phone's Rust scene without its touch or platform bridge. The desktop uses
+that scene for signed spawn recovery, peer interpolation, the ball and blocks,
+and board admission. New players use the phone's spawn; returning players may
+restore only their own signed pose. Presence uses the phone's 3-second moving,
+5-second idle, and 30-second state cadence, with the same 54-event/minute budget
+and 1.5-second moving-body interval. Frame timing remains independent.
+
+The interactive GPU viewport uses the window's device at full resolution,
+without spectator dimming or blur. Its loop requests 60 Hz and bounds long
+frame gaps. Focus loss, hidden windows, modals, and navigation release input
+and pause or end the session. Reduce motion affects Watch; deliberate Play
+still moves. If cursor capture fails, keyboard movement and wheel zoom remain
+available. `--no-backdrop` disables Watch's background and still allows Play.
+Windows shows an unsupported state until Verse portability lands (#10027).
+
+`--fake-host` uses an offline player fixture and reads committed results;
+it creates no world key and joins no relay as a player. See the
+[verification record](../../docs/desktop/verification/2026-09-30-playable-grid/verification.md)
+for captures, test commands, timing scope, and remaining native device checks.
+
 ## The backdrop
 
-Behind every screen is the Grid, the OpenAgents app's Verse world, seen live
+In Watch mode, behind every screen is the Grid, the OpenAgents app's Verse world, seen live
 from above ([#9982](https://github.com/OpenAgentsInc/openagents/issues/9982),
 [`src/backdrop.rs`](src/backdrop.rs)). Other players walk around the plaza,
 the ball, the blocks, and the Gym as the phones draw them, and the camera
 sways slowly over it. With nobody there the Grid is empty; nothing is
 invented.
 
-- **A spectator, never a player.** `verse::spectator` subscribes to the
+- **Watch is a spectator.** `verse::spectator` subscribes to the
   Grid's pose frames and entity states (`verse-bare` on
   `wss://relay.openagents.com`) and has no way to publish: no avatar, no
   presence, no input to the world, no chat, no name. If the relay asks for
@@ -92,7 +144,7 @@ invented.
   with three players walking, 3.0% with the Grid empty, 0.03% minimized,
   and 0.03% for the window without a backdrop.
 - **Choosing.** `--verse-relay URL` (or `OPENAGENTS_VERSE_RELAY`) watches
-  another relay; `--no-backdrop` shows the plain black window. Windows has
+  another relay; `--no-backdrop` shows a plain black background in Watch and keeps Play available. Windows has
   no backdrop yet: Verse does not build there.
 
 ## Run it

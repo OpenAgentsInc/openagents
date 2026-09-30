@@ -1,0 +1,8 @@
+{
+  "adapter": "NVIDIA GeForce RTX 4080",
+  "samples": 90,
+  "frame_median_us": 9721,
+  "frame_p95_us": 22491,
+  "input_us": 4,
+  "scope": "offline 900x600 GPU submission and completion; native views captured separately"
+}

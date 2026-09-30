@@ -676,3 +676,14 @@ Tap again after the effect to walk there. Empty hands reuse that gate's last
 compatible key; Reset clears its choice. Choices stay on this device, while
 walks and effects stop when the app becomes inactive. See the
 [interaction guide and portal specification](world-interactions.md).
+
+## Shared desktop Grid surface
+
+The OpenAgents desktop app's explicit Play mode mounts the same Rust scene
+through [`coder_mobile::verse_surface::GridSurface`](../../crates/coder-mobile/src/verse_surface.rs).
+The wrapper supplies physical keyboard input and camera intents instead of
+mobile touches, and returns geometry plus the shared Gym board views. It
+owns no second physics, presence, or authority implementation. The mobile
+C ABI and native mounting remain unchanged. Watch continues to use the
+independent read-only spectator. See
+[desktop Play](../../crates/openagents-desktop/README.md#play-the-grid).

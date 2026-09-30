@@ -88,14 +88,20 @@ desktop retains keys 1, 2, and 3. See [zone loading and architecture](zones.md),
 [future creator rules](zone-rules.md), and
 [mobile controls](mobile.md#enter-a-zone).
 
-## Watching from the desktop app
+## Play and Watch in the desktop app
 
 The OpenAgents desktop app shows the Grid live behind its windows: a
 bird's-eye view of the OpenAgents app's world with its players walking.
-It is a spectator (`verse::spectator`): it subscribes to `verse-bare`
+Watch is a spectator (`verse::spectator`): it subscribes to `verse-bare`
 presence and publishes nothing, so it has no avatar and is never shown or
 counted as a player. See the
-[desktop app](../../crates/openagents-desktop/README.md#the-backdrop).
+[desktop backdrop](../../crates/openagents-desktop/README.md#the-backdrop).
+
+On macOS and Linux, **The Grid → Play** deliberately joins the phone's Grid
+with WASD, mouse look and orbit, jump, sprint, first person, shared bodies,
+and native Gym boards. It shares the mobile Rust scene and keeps a separate
+protected world identity. Returning to Watch or another app page ends Play.
+See [desktop controls and identity](../../crates/openagents-desktop/README.md#play-the-grid).
 
 ## Multiplayer
 
