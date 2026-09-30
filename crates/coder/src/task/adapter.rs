@@ -87,6 +87,14 @@ pub enum Access {
     /// `PATH`, and a scratch `HOME`.
     #[default]
     Boundary,
+    /// The filesystem boundary with this computer's developer tools, for
+    /// a person running Coder on their own computer (`coder::task::local`):
+    /// writes still only to the workspace and private scratch, and reads
+    /// still confined, but the toolchains installed here are readable and
+    /// on `PATH` ([`coder_boundary::toolchains`]), the network is open,
+    /// and `HOME` is still the scratch. The allow list is recorded in the
+    /// run's transcript.
+    Toolchains,
     /// The owner's full access, for the owner's own hosts: commands run
     /// as the host's user with no sandbox, with network access, in the
     /// user's login-shell environment and real `HOME`. Credential variables
@@ -107,6 +115,7 @@ impl Access {
     pub fn as_str(self) -> &'static str {
         match self {
             Access::Boundary => "boundary",
+            Access::Toolchains => "toolchains",
             Access::Full => "full",
         }
     }
@@ -194,10 +203,18 @@ impl Configuration {
         }
         if let Some(container) = &self.container {
             container.validate()?;
-            if self.access == Access::Full {
-                return Err(Error::InvalidCommand(
-                    "full access does not apply to container commands",
-                ));
+            match self.access {
+                Access::Boundary => {}
+                Access::Full => {
+                    return Err(Error::InvalidCommand(
+                        "full access does not apply to container commands",
+                    ));
+                }
+                Access::Toolchains => {
+                    return Err(Error::InvalidCommand(
+                        "this computer's toolchains do not apply to container commands",
+                    ));
+                }
             }
         }
         if self.fallbacks.len() > MAX_FALLBACKS {
@@ -422,6 +439,20 @@ struct TraceStep {
     extensions: serde_json::Map<String, Value>,
 }
 
+/// A toolchain run's command `PATH`: the toolchains' search path, then the
+/// system one, each kept only when the boundary can read it.
+fn command_path(
+    boundary: &Boundary,
+    toolchains: &coder_boundary::Toolchains,
+) -> std::ffi::OsString {
+    let entries = toolchains
+        .path
+        .iter()
+        .cloned()
+        .chain(std::env::split_paths(owner::SYSTEM_PATH));
+    boundary.search_path(&std::env::join_paths(entries).unwrap_or_default())
+}
+
 /// Full bounded process observation; prompt summaries are a caller's projection.
 #[derive(Debug)]
 pub struct CommandObservation {
@@ -441,6 +472,9 @@ pub struct Host {
     /// The command boundary, for a run under it; a full-access run has
     /// none, since its commands run as the owner with no sandbox.
     boundary: Option<Boundary>,
+    /// This computer's toolchains, for a run with [`Access::Toolchains`]:
+    /// what its boundary reads, and its commands' `PATH` and variables.
+    toolchains: Option<coder_boundary::Toolchains>,
     /// The owner's login-shell environment, for a full-access run: read
     /// beside admission, and waited for by the first command that runs
     /// with it ([`Host::login_environment`]). Set to `None` at admission
@@ -556,7 +590,7 @@ impl Host {
         // the first command waits for it ([`Host::login_environment`]).
         let login_reading = match configuration.access {
             Access::Full => Some(tokio::spawn(login::capture())),
-            Access::Boundary => None,
+            Access::Boundary | Access::Toolchains => None,
         };
         // The workspace is observed with the digests earlier owners kept,
         // so only files that changed since are read again.
@@ -600,22 +634,37 @@ impl Host {
         // boundary for it anyway, as it always has; Windows builds none, so
         // a computer there that cannot make an AppContainer still runs the
         // owner's own full-access tasks.
-        let boundary = if configuration.access == Access::Boundary || cfg!(unix) {
-            Some(
-                spec.readable(&workspace)
+        // A run with this computer's tools reads its toolchains too, never
+        // a grant that would hold the task store or the Git directory.
+        let toolchains = (configuration.access == Access::Toolchains).then(|| {
+            coder_boundary::Toolchains::derive(&coder_boundary::toolchains::Host::this_computer())
+                .clear_of(&[owner.dir.clone(), git_directory.clone()])
+        });
+        let boundary =
+            if configuration.access != Access::Full || cfg!(unix) {
+                let mut spec = spec
+                    .readable(&workspace)
                     .readable(&program)
                     .sealed(&owner.dir)
                     .sealed(&git_directory)
-                    .owned_scratch_under(std::env::temp_dir())
-                    .offline()
-                    .build()
-                    .map_err(|_| {
-                        Error::InvalidCommand("the repository boundary cannot be enforced")
-                    })?,
-            )
-        } else {
-            None
-        };
+                    .owned_scratch_under(std::env::temp_dir());
+                for read in toolchains.iter().flat_map(|toolchains| &toolchains.reads) {
+                    spec = spec.readable(&read.path);
+                }
+                // Git in the worktree reads the common Git directory; it stays
+                // sealed against writes.
+                if toolchains.is_some() {
+                    spec = spec.readable(&git_directory);
+                }
+                if configuration.access != Access::Toolchains {
+                    spec = spec.offline();
+                }
+                Some(spec.build().map_err(|_| {
+                    Error::InvalidCommand("the repository boundary cannot be enforced")
+                })?)
+            } else {
+                None
+            };
         if let Some(container) = &configuration.container {
             container.admit(&workspace, &owner.dir).await?;
         }
@@ -643,7 +692,7 @@ impl Host {
             adapter: NAME.into(),
             network: if configuration.container.is_some() {
                 "container_network_none"
-            } else if configuration.access == Access::Full {
+            } else if configuration.access != Access::Boundary {
                 "host_network"
             } else {
                 owner::network_policy()
@@ -653,6 +702,8 @@ impl Host {
                 "workspace_host_reads_and_pinned_container_image"
             } else if configuration.access == Access::Full {
                 "host_user"
+            } else if configuration.access == Access::Toolchains {
+                "workspace_system_and_toolchains"
             } else {
                 "workspace_and_system"
             }
@@ -696,10 +747,14 @@ impl Host {
                 "command_environment",
                 if login_reading.is_some() {
                     json!({"source":"login_shell","recorded":"before the first command"})
+                } else if let (Some(toolchains), Some(boundary)) = (&toolchains, &boundary) {
+                    json!({"source":"toolchains","path":command_path(boundary, toolchains).to_string_lossy(),
+                        "variables":toolchains.environment.iter().map(|(name, _)| name).collect::<Vec<_>>()})
                 } else {
                     json!({"source":"cleared","path":owner::SYSTEM_PATH})
                 },
-            ),
+            )
+            .noting("toolchains", json!(toolchains)),
         )?;
         if Snapshot::observe(&workspace).digest() != before.digest() {
             return Err(Error::InvalidCommand(
@@ -724,6 +779,7 @@ impl Host {
             admission,
             before,
             boundary,
+            toolchains,
             login: if login_reading.is_some() {
                 tokio::sync::OnceCell::new()
             } else {
@@ -1045,8 +1101,18 @@ impl Host {
                     .env("HOME", scratch)
                     .env("TMPDIR", scratch)
                     .env("TMP", scratch)
-                    .env("TEMP", scratch)
-                    .envs(script_variables);
+                    .env("TEMP", scratch);
+                if let Some(toolchains) = &self.toolchains {
+                    command
+                        .env("PATH", command_path(boundary, toolchains))
+                        .envs(toolchains.environment.iter().map(|(k, v)| (k, v)));
+                    // `xcrun` keeps its lookup cache in the user's own
+                    // temporary directory, not `TMPDIR`; the scratch holds it.
+                    if cfg!(target_os = "macos") {
+                        command.env("xcrun_db", scratch.join("xcrun_db"));
+                    }
+                }
+                command.envs(script_variables);
                 if cfg!(windows) {
                     command.env("USERPROFILE", scratch);
                 }

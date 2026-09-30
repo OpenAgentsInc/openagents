@@ -436,6 +436,8 @@ async fn run_loop<G: Generate, J: Judge>(
                     "Commands run on the owner's own computer as the owner, with full access: no sandbox, network access, and the owner's login-shell environment (PATH with the installed tools, and the real HOME).",
                 coder::task::adapter::Access::Boundary =>
                     "Commands have the admitted workspace boundary, cleared environment, private scratch, and no external network.",
+                coder::task::adapter::Access::Toolchains =>
+                    "Commands run on this computer in a filesystem boundary: they write only in the repository and a private scratch HOME, and this computer's installed developer tools (Xcode and Command Line Tools, Homebrew, rustup and cargo, Node, Python, Go, Bun, Deno) are on PATH and usable, with network access. Use them; install project dependencies inside the repository (for example a .venv), not globally.",
             },
             if host.configuration().container.is_some() {
                 "Each command uses a new container. Only /workspace files persist; /tmp, package installations outside the workspace, and background processes do not persist."

@@ -585,6 +585,11 @@ impl Launch for Process {
         if let Some(home) = std::env::var_os("HOME") {
             command.env("HOME", home);
         }
+        // A run with this computer's tools derives them from the person's
+        // own PATH, which the engine process otherwise never sees.
+        if engine.access == adapter::Access::Toolchains {
+            command.envs(coder_boundary::toolchains::carried());
+        }
         // A host a service manager starts has a short PATH, and the engine
         // gets a shorter one, so the host names the `claude` it finds
         // (npm, Homebrew, or the login shell's PATH) for the engine.

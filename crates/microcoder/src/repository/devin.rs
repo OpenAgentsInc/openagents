@@ -348,7 +348,7 @@ impl Handler for Recorder<'_> {
         // nothing is.
         let chosen = match self.access {
             Access::Full => request.allow(),
-            Access::Boundary => request.reject(),
+            Access::Boundary | Access::Toolchains => request.reject(),
         };
         self.append(
             &Step::said(
@@ -448,12 +448,12 @@ pub(crate) fn binary() -> Result<PathBuf, String> {
 pub(crate) async fn turn(host: &Host, route: &GrantRoute, program: PathBuf) -> Turn {
     let access = host.configuration().access;
     let mut arguments = acp_client::devin::arguments(&route.model);
-    if access == Access::Boundary {
+    if access != Access::Full {
         arguments.insert(0, "--sandbox".into());
     }
     let permission = match access {
         Access::Full => acp_client::devin::Permission::Bypass,
-        Access::Boundary => acp_client::devin::Permission::AcceptEdits,
+        Access::Boundary | Access::Toolchains => acp_client::devin::Permission::AcceptEdits,
     };
     let resume = host.earlier_note(SESSION_NOTE).and_then(|note| {
         note.get("session")

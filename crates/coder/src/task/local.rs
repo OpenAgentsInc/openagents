@@ -350,7 +350,7 @@ impl Local {
                 usage_probe: Some(UsageProbe {
                     threshold_percent: usage::DEFAULT_THRESHOLD_PERCENT,
                 }),
-                access: adapter::Access::Boundary,
+                access: adapter::Access::Toolchains,
             },
             changed_at: (self.now)(),
         };
@@ -1145,6 +1145,8 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let run = local(dir.path(), both);
         let policy = run.policy("proj").unwrap();
+        // A person's own run uses this computer's tools (#10045).
+        assert_eq!(policy.engine.access, adapter::Access::Toolchains);
         let (order, reason) = run.choose(&policy).unwrap();
         assert_eq!(order[0].provider, Provider::Codex);
         assert_eq!(order[1].provider, Provider::Claude);

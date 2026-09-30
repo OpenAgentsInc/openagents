@@ -114,7 +114,7 @@ pub(crate) async fn turn(host: &Host, route: &GrantRoute, program: PathBuf) -> T
     let access = host.configuration().access;
     let permission = match access {
         Access::Full => Permission::Full,
-        Access::Boundary => Permission::Edits,
+        Access::Boundary | Access::Toolchains => Permission::Edits,
     };
     let variables = opencode_environment(host, &model, permission).await;
     let database = engine_database(&variables);

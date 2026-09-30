@@ -333,6 +333,16 @@ pub(super) fn transition(record: &Record, tasks: &mut BTreeMap<String, Task>) ->
                     // The owner's full access: the host user's reads and
                     // network, and nothing narrower claimed.
                     admission.network != "host_network" || admission.read_scope != "host_user"
+                } else if admission
+                    .grant
+                    .adapter_configuration
+                    .as_ref()
+                    .is_some_and(|config| config.access == super::adapter::Access::Toolchains)
+                {
+                    // This computer's tools: the network, and reads of the
+                    // workspace, the system, and the derived toolchains.
+                    admission.network != "host_network"
+                        || admission.read_scope != "workspace_system_and_toolchains"
                 } else {
                     !matches!(
                         admission.network.as_str(),

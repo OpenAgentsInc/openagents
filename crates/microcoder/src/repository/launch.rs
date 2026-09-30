@@ -127,6 +127,12 @@ pub fn start(directory: &Path, bytes: &[u8]) -> Result<Launched, String> {
                 process.env(key, value);
             }
         }
+        // The person's toolchain variables, for a run with this
+        // computer's tools, reach the model host that admits it.
+        process.envs(std::env::vars_os().filter(|(key, _)| {
+            key.to_string_lossy()
+                .starts_with(coder_boundary::toolchains::CARRIED_PREFIX)
+        }));
         process
             .args(["repository", "--store"])
             .arg(&directory)
@@ -207,6 +213,12 @@ pub fn start(directory: &Path, bytes: &[u8]) -> Result<Launched, String> {
                 process.env(key, value);
             }
         }
+        // The person's toolchain variables, for a run with this
+        // computer's tools, reach the model host that admits it.
+        process.envs(std::env::vars_os().filter(|(key, _)| {
+            key.to_string_lossy()
+                .starts_with(coder_boundary::toolchains::CARRIED_PREFIX)
+        }));
         process
             .args(["repository", "--store"])
             .arg(&directory)

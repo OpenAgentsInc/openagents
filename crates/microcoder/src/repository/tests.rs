@@ -1337,6 +1337,61 @@ async fn full_access_runs_as_the_owner_with_no_sandbox() {
     host.finish("fixture_complete", false, json!({})).unwrap();
 }
 
+fn toolchains_access(grant: &[u8]) -> Vec<u8> {
+    let mut grant: task::owner::Grant = serde_json::from_slice(grant).unwrap();
+    grant.adapter_configuration.as_mut().unwrap().access = coder::task::adapter::Access::Toolchains;
+    serde_json::to_vec(&grant).unwrap()
+}
+
+/// This computer's tools (a local run, #10045): the tools that run here
+/// run inside the boundary, `HOME` is still the scratch, a write outside
+/// the workspace is still denied, and the transcript records the allow
+/// list the boundary used.
+#[tokio::test]
+async fn a_toolchain_run_uses_this_computers_tools_and_still_writes_only_its_workspace() {
+    let home = coder::task::adapter::login::account().home;
+    let elsewhere = tempfile::tempdir_in("/var/tmp").unwrap();
+    let outside = elsewhere.path().join("outside");
+    let (_root, store, grant) = fixture();
+    let host = Host::admit(&store, &toolchains_access(&grant))
+        .await
+        .unwrap();
+    let script = format!(
+        "printf 'home=%s\\n' \"$HOME\"; git --version && echo git=ok; \
+         printf inside > inside.txt && echo inside=ok; \
+         if printf written > '{}' 2>/dev/null; then echo outside=written; else echo outside=denied; fi",
+        outside.display()
+    );
+    let observation = host
+        .command(&script, Duration::from_secs(20))
+        .await
+        .unwrap();
+    let output = &observation.output;
+    assert!(output.contains("outside=denied"), "{output}");
+    assert!(output.contains("inside=ok"), "{output}");
+    assert!(
+        !output.contains(&format!("home={}\n", home.display())),
+        "{output}"
+    );
+    // Where Git runs outside the boundary, it runs inside it (on macOS,
+    // `/usr/bin/git` is an `xcrun` shim into Xcode or the Command Line
+    // Tools).
+    if std::process::Command::new("git")
+        .arg("--version")
+        .output()
+        .is_ok_and(|out| out.status.success())
+    {
+        assert!(output.contains("git=ok"), "{output}");
+    }
+    assert!(!outside.exists());
+    let trace = std::fs::read_to_string(store.join("fixture.1.atif.jsonl")).unwrap();
+    assert!(trace.contains("\"access\":\"toolchains\""), "{trace}");
+    assert!(trace.contains("workspace_system_and_toolchains"));
+    assert!(trace.contains("\"toolchains\":{\"reads\":["));
+    assert!(trace.contains("\"source\":\"toolchains\""));
+    host.finish("fixture_complete", false, json!({})).unwrap();
+}
+
 /// Full access applies to local commands only; a container keeps its own
 /// boundary.
 #[test]
