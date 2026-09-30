@@ -38,6 +38,9 @@ pub enum Layout {
     /// Several images clustered in a centered grid, two to a row, each as
     /// large as its cell allows: a slide's `![alt](path)` lines, in order.
     Gallery,
+    /// A small title at the top and one figure (the slide's body, such as
+    /// `$0`) as large as fits, in the middle of the slide.
+    Figure,
 }
 
 impl Layout {
@@ -55,6 +58,7 @@ impl Layout {
             "ask" => Some(Layout::Ask),
             "image" => Some(Layout::Image),
             "gallery" => Some(Layout::Gallery),
+            "figure" => Some(Layout::Figure),
             _ => None,
         }
     }
@@ -73,6 +77,7 @@ impl Layout {
             Layout::Ask => "ask",
             Layout::Image => "image",
             Layout::Gallery => "gallery",
+            Layout::Figure => "figure",
         }
     }
 }
@@ -349,6 +354,7 @@ mod tests {
             Layout::Ask,
             Layout::Image,
             Layout::Gallery,
+            Layout::Figure,
         ] {
             assert_eq!(Layout::named(layout.name()), Some(layout));
         }

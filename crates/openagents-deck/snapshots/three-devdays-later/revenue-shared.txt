@@ -1,0 +1,4 @@
+title at 40,42 720x23
+  Revenue shared with developers
+figure at 40,89 720x273 ×11.869565
+  $0

@@ -45,6 +45,8 @@ const DISPLAY: f32 = 3.0;
 const NUMBER: f32 = 2.5;
 /// A statement's sentence.
 const STATEMENT: f32 = 1.5;
+/// The most a figure (`$0`) is magnified: as large as the slide allows.
+const FIGURE: f32 = 14.0;
 
 /// The space between a kicker and its title, a title and the body, and the
 /// body and the note, in points.
@@ -511,6 +513,28 @@ fn body(slide: &Slide) -> Vec<Part> {
             let room = CONTENT_BOTTOM - MARGIN_Y - column.height - gap - note_room;
             column.push(image_part(slide, room), gap);
             note(&mut column, false);
+        }
+        Layout::Figure => {
+            // Placed on the canvas, not stacked: the title at the top and
+            // the figure in the middle of the whole slide.
+            let mut parts = vec![];
+            if let Some(title) = &slide.title {
+                let node = text("title", title, TextRole::Heading, None);
+                let mut heading = centered("title", node, 1.0);
+                heading.y = MARGIN_Y + 16.0;
+                parts.push(heading);
+            }
+            let node = text("figure", slide.body.trim(), TextRole::Heading, None);
+            let mut magnification = fitting(&node, COLUMN * 0.9, FIGURE);
+            let mut figure = centered("figure", node.clone(), magnification);
+            let most = (CONTENT_BOTTOM - MARGIN_Y) * 0.7;
+            if figure.height() > most {
+                magnification *= most / figure.height();
+                figure = centered("figure", node, magnification);
+            }
+            figure.y = ((HEIGHT - figure.height()) / 2.0).round();
+            parts.push(figure);
+            return parts;
         }
         Layout::Gallery => {
             kicker(&mut column, false);

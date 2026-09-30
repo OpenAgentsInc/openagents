@@ -14,6 +14,15 @@ source: OpenAI DevDay opening keynote on YouTube; screenshot in decks/assets/imp
 
 ---
 
+layout: figure
+id: revenue-shared
+title: Revenue shared with developers
+source: the owner's claim for the talk, 2026-09-30
+
+$0
+
+---
+
 layout: image
 id: ethan-mollick
 scale: 2
