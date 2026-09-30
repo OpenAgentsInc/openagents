@@ -9,14 +9,7 @@ use axum::response::{Html, IntoResponse, Response};
 pub const COPYRIGHT: &str = "\u{a9} 2026 OpenAgents, Inc.";
 
 /// The sections the header links to, in order.
-pub const SECTIONS: [(&str, &str); 3] = [
-    ("Desktop", "/desktop"),
-    ("Docs", "/docs"),
-    ("Blog", "/blog"),
-];
-
-/// The footer's other links, after the two legal documents.
-const MORE: [(&str, &str); 1] = [("Install", "/docs/install")];
+pub const SECTIONS: [(&str, &str); 1] = [("Install", "/install")];
 
 /// Escapes text for HTML content and attribute values.
 #[must_use]
@@ -67,12 +60,6 @@ pub fn document(title: &str, section: Option<&str>, body: &str) -> String {
         };
         nav.push_str(&format!("<li><a href=\"{href}\"{current}>{name}</a></li>"));
     }
-    let mut more = String::new();
-    for (name, href) in MORE {
-        more.push_str(&format!(
-            "<span class=\"sep\" aria-hidden=\"true\">\u{b7}</span><a href=\"{href}\">{name}</a>"
-        ));
-    }
     format!(
         "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">\
 <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\
@@ -84,8 +71,8 @@ pub fn document(title: &str, section: Option<&str>, body: &str) -> String {
 <ul class=\"navlinks\">{nav}</ul></nav></header>\
 <div class=\"scroller\"><main id=\"content\" tabindex=\"-1\">{body}</main>\
 <footer class=\"site-footer\"><span class=\"copyright\">{COPYRIGHT}</span>\
-<nav aria-label=\"Legal and more\"><a href=\"/terms\">Terms</a>\
-<span class=\"sep\" aria-hidden=\"true\">\u{b7}</span><a href=\"/privacy\">Privacy</a>{more}</nav>\
+<nav aria-label=\"Legal\"><a href=\"/terms\">Terms</a>\
+<span class=\"sep\" aria-hidden=\"true\">\u{b7}</span><a href=\"/privacy\">Privacy</a></nav>\
 </footer></div></body></html>"
     )
 }
@@ -124,17 +111,17 @@ mod tests {
 
     #[test]
     fn every_page_links_to_the_terms_and_the_privacy_policy_once() {
-        let html = document("Docs", Some("/docs"), "<p>x</p>");
+        let html = document("Install OpenAgents", Some("/install"), "<p>x</p>");
         assert_eq!(html.matches("href=\"/terms\"").count(), 1);
         assert_eq!(html.matches("href=\"/privacy\"").count(), 1);
-        assert!(html.contains("<a href=\"/docs\" aria-current=\"page\">Docs</a>"));
+        assert!(html.contains("<a href=\"/install\" aria-current=\"page\">Install</a>"));
         assert!(html.contains("width=device-width"));
         assert!(!html.to_ascii_lowercase().contains("<script"));
     }
 
     #[test]
     fn only_the_region_under_the_header_scrolls() {
-        let html = document("Docs", Some("/docs"), "<p>x</p>");
+        let html = document("Install OpenAgents", Some("/install"), "<p>x</p>");
         let header = html.find("</header>").unwrap();
         let scroller = html.find("<div class=\"scroller\">").unwrap();
         assert!(header < scroller, "the header sits outside the scroller");

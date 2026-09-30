@@ -1,10 +1,9 @@
 # OpenAgents web
 
 This Rust server is the OpenAgents website: the public pages that
-openagents.com serves, the terms of service and the privacy policy, the
-desktop download, the landing page for the pairing QR code, and the release
-proxy that the install command reads. It also serves a local, read-only
-task browser at `/app`.
+openagents.com serves, the terms of service and the privacy policy, the one
+install page, and the landing page for the pairing QR code. It also serves a
+local, read-only task browser at `/app`.
 
 The site is a terminal in a browser, drawn in four intensities of white on
 near-black (`src/palette.rs`). No page runs a script, and every response
@@ -32,31 +31,34 @@ the `Host` headers `127.0.0.1:4300` and `localhost:4300`.
 | `--store DIRECTORY` | `~/.openagents/tasks` | The task store `/app` reads. It is never created. |
 | `--listen ADDRESS` | `127.0.0.1:4300` | The address to bind. |
 | `--public-host HOST` | none | Another `Host` header the public pages answer, such as `openagents.com`. Repeatable. The task browser still answers only the local hosts. |
-| `--releases-url URL` | `https://storage.googleapis.com/openagentsgemini-cli-releases` | The public bucket `/releases/{name}` proxies. |
 
-A development server needs no secrets. The release proxy and the install
-page's channel rows read the public release bucket; everything else is
-compiled in or read from this repository.
+A development server needs no secrets and makes no network requests:
+everything it serves is compiled in or read from this repository.
 
 ## Pages
 
 | Route | Source | Development server |
 | --- | --- | --- |
-| `/` | Welcome card, install commands, desktop link, ask box | Renders. |
-| `/ask?q=` | Commands (`download`, `desktop`, `blog`, `docs`, `help`, `clear`) and questions | Commands answer; a question says chat isn't connected. |
+| `/` | Welcome card, one `[ Install OpenAgents ]` link, ask box | Renders. |
+| `/ask?q=` | Commands (`download`, `install`, `desktop`, `mac`, `iphone`, `help`, `clear`) and questions | The install commands print a short summary that links `/install`; a question says chat isn't connected. |
+| `/install` | Everything OpenAgents is launching, in order: the notarized OpenAgents for Mac `.dmg` in `openagentsgemini-oa-updates`, the iPhone app on TestFlight, pairing by QR code, and signing in to Codex or Claude Code on the Mac so the phone can run Coder | Renders. |
+| `/desktop` | Permanent redirect to `/install` | Redirects. |
 | `/terms`, `/privacy` | `content/legal/*.md`, the published text (2026-09-03), compiled in | Renders. |
-| `/docs`, `/docs/{slug}` | `content/docs/*.md`, compiled in; `/doc` redirects | Renders; the install page reads the channel pointers. |
-| `/blog`, `/blog/{slug}` | `content/blog/*.md`, compiled in | Renders. |
-| `/desktop` | The notarized `.dmg` in `openagentsgemini-oa-updates` | Renders. |
 | `/connect` | Landing page for `https://openagents.com/connect#<code>` | Renders; no script, no referrer. |
 | `/.well-known/apple-app-site-association`, `/.well-known/assetlinks.json` | Universal link and App Link claims for `/connect` | Serves. |
-| `/releases/{name}` | Proxy to the release bucket, with ranges | Proxies the public bucket. |
-| `/install-terminal.sh`, `/install-terminal.ps1` | Redirect under `/releases/` | Redirects. |
 | `/u/{login}` | `Backend::profile` | Says the backend isn't connected. |
 | `/app`, `/app/tasks/{id}` | The local task store | Reads the store; local hosts only. |
 
+The header links only Install; the footer links the terms and the privacy
+policy.
+
 The Forum, Gym, Traces, Earn, Weights, and QA sections of the old site are
-not served and not linked (owner-directed, 2026-09-29).
+not served and not linked (owner-directed, 2026-09-29). Neither is anything
+for the old Coder Terminal product, which is not connected to OpenAgents:
+the `/releases/{name}` proxy to its release bucket, the
+`/install-terminal.sh` and `/install-terminal.ps1` install commands, and the
+Docs (`/docs`, `/doc`) and Blog (`/blog`) sections, whose every document was
+about it (owner-directed, 2026-09-29).
 
 Pages that read accounts go through the
 `Backend` trait in `src/backend.rs`. The development backend is connected to
@@ -82,9 +84,12 @@ cargo test -p openagents-web
 
 The tests check that every public page answers `200` on a development
 server with the header, the footer's links to the terms and the policy, and
-no script; that the legal pages carry the published text; that every color
-in the stylesheet is a gray and that the text steps meet WCAG AA; the
-`/connect` page's policy and the association files; the release proxy's
-allowlist and ranges against a stand-in bucket; that the removed sections
-answer `404` and are never linked; a connected test backend's pages and
-escaping; and the task browser.
+no script; the homepage's single install link and the ask box's commands;
+the install page and the `/desktop` redirect; that the legal pages carry the
+published text; that every color in the stylesheet is a gray and that the
+text steps meet WCAG AA; the `/connect` page's policy and the association
+files; that the removed sections, the release proxy, the Terminal install
+commands, the docs, and the blog answer `404` and are never linked; that no
+page but the published legal text names Coder Terminal or its install
+command; a connected test backend's pages and escaping; and the task
+browser.

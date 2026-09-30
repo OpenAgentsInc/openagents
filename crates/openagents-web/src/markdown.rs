@@ -1,20 +1,15 @@
-//! Markdown to HTML for the pages that serve a document: the docs, the
-//! blog, and the legal pages.
+//! Markdown to HTML for the legal pages and the ask box's answers.
 //!
 //! Raw HTML in the source is shown as text, never as markup, so a document
-//! cannot write into the page. A link keeps its
-//! target only when it is `http`, `https`, `mailto`, a site path, or an
-//! anchor. A link to a sibling Markdown document (`install.md`) points at
-//! that document's page under `link_base`. A relative link that leaves the
-//! document's folder (`../roadmap.md`) points into a repository the site
-//! does not serve, so it is drawn as its text without a link.
+//! or an answer cannot write into the page. A link keeps its target only
+//! when it is `http`, `https`, `mailto`, a site path, or an anchor; any
+//! other link is drawn as its text.
 
 use pulldown_cmark::{Alignment, CowStr, Event, Options, Parser, Tag, TagEnd, html};
 
-/// Renders `source` with sibling `.md` links resolved under `link_base`
-/// (for example `/docs`).
+/// Renders `source` as HTML.
 #[must_use]
-pub fn render(source: &str, link_base: &str) -> String {
+pub fn render(source: &str) -> String {
     let options = Options::ENABLE_TABLES | Options::ENABLE_STRIKETHROUGH;
     let mut kept_links = Vec::new();
     let events = Parser::new_ext(source, options).filter_map(|event| match event {
@@ -24,7 +19,7 @@ pub fn render(source: &str, link_base: &str) -> String {
             dest_url,
             title,
             id,
-        }) => match resolve(&dest_url, link_base) {
+        }) => match resolve(&dest_url) {
             Some(target) => {
                 kept_links.push(true);
                 Some(Event::Start(Tag::Link {
@@ -62,30 +57,11 @@ pub fn render(source: &str, link_base: &str) -> String {
 }
 
 /// Where a link may point, or `None` when it is drawn as plain text.
-fn resolve(target: &str, link_base: &str) -> Option<String> {
+fn resolve(target: &str) -> Option<String> {
     let lower = target.to_ascii_lowercase();
-    if lower.starts_with("https://") || lower.starts_with("http://") || lower.starts_with("mailto:")
-    {
-        return Some(target.to_owned());
-    }
-    if target.starts_with('#') || (target.starts_with('/') && !target.starts_with("//")) {
-        return Some(target.to_owned());
-    }
-    if lower.contains(':') || target.contains('/') || target.contains('\\') {
-        return None;
-    }
-    let (path, anchor) = match target.split_once('#') {
-        Some((path, anchor)) => (path, Some(anchor)),
-        None => (target, None),
-    };
-    let slug = path.strip_suffix(".md")?;
-    if slug.is_empty() {
-        return None;
-    }
-    Some(match anchor {
-        Some(anchor) => format!("{link_base}/{slug}#{anchor}"),
-        None => format!("{link_base}/{slug}"),
-    })
+    let web = lower.starts_with("https://") || lower.starts_with("http://");
+    let site = target.starts_with('#') || (target.starts_with('/') && !target.starts_with("//"));
+    (web || lower.starts_with("mailto:") || site).then(|| target.to_owned())
 }
 
 /// The first level-one heading, or `fallback`.
@@ -97,38 +73,13 @@ pub fn title(source: &str, fallback: &str) -> String {
         .unwrap_or_else(|| fallback.to_owned())
 }
 
-/// The first paragraph line after the first heading, for a listing.
-#[must_use]
-pub fn description(source: &str) -> String {
-    let mut past_heading = false;
-    for line in source.lines() {
-        let trimmed = line.trim();
-        if trimmed.starts_with('#') {
-            past_heading = true;
-            continue;
-        }
-        if past_heading
-            && !trimmed.is_empty()
-            && !trimmed.starts_with("```")
-            && !trimmed.starts_with("---")
-            && !trimmed.starts_with("Last updated")
-        {
-            return trimmed.to_owned();
-        }
-    }
-    String::new()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn raw_html_is_text() {
-        let html = render(
-            "Hi <script>alert(1)</script>\n\n<div onclick=x>y</div>",
-            "/docs",
-        );
+        let html = render("Hi <script>alert(1)</script>\n\n<div onclick=x>y</div>");
         assert!(!html.contains("<script"), "{html}");
         assert!(!html.contains("<div"), "{html}");
         assert!(html.contains("&lt;script&gt;"), "{html}");
@@ -137,11 +88,11 @@ mod tests {
     #[test]
     fn links_resolve_or_draw_as_text() {
         let html = render(
-            "[a](install.md) [b](install.md#windows) [c](../roadmap.md) [d](javascript:alert(1)) [e](https://x.example) [f](/terms)",
-            "/docs",
+            "[a](install.md) [b](#top) [c](../roadmap.md) [d](javascript:alert(1)) [e](https://x.example) [f](/terms) [g](mailto:a@b.example)",
         );
-        assert!(html.contains("href=\"/docs/install\""), "{html}");
-        assert!(html.contains("href=\"/docs/install#windows\""), "{html}");
+        assert!(!html.contains("install.md"), "{html}");
+        assert!(html.contains("href=\"#top\""), "{html}");
+        assert!(html.contains("href=\"mailto:a@b.example\""), "{html}");
         assert!(!html.contains("roadmap"), "{html}");
         assert!(html.contains(">c<") || html.contains(" c "), "{html}");
         assert!(!html.contains("javascript"), "{html}");
@@ -150,10 +101,9 @@ mod tests {
     }
 
     #[test]
-    fn titles_and_descriptions() {
+    fn titles() {
         let source = "# Terms of Service\nLast updated: 2026-09-03\n\nFirst line.\n";
         assert_eq!(title(source, "x"), "Terms of Service");
-        assert_eq!(description(source), "First line.");
         assert_eq!(title("no heading", "fallback"), "fallback");
     }
 }

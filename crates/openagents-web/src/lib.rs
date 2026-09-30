@@ -1,9 +1,8 @@
 //! The OpenAgents website.
 //!
-//! One axum router serves the public pages (the homepage, the terms and the
-//! privacy policy, the docs, the blog, the desktop download, the pairing
-//! link's landing page, the release proxy, and profiles) and the local,
-//! read-only task browser at `/app`.
+//! One axum router serves the public pages (the homepage, the install
+//! page, the terms and the privacy policy, the pairing link's landing page,
+//! and profiles) and the local, read-only task browser at `/app`.
 //!
 //! No page runs a script. Pages that need the production account store
 //! read through [`backend::Backend`]; a
@@ -20,7 +19,6 @@ mod tasks;
 
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::Instant;
 
 use axum::Router;
 use axum::extract::Request;
@@ -30,10 +28,6 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 
 use crate::backend::{Backend, Development};
-
-/// The public bucket the Coder Terminal release objects live in.
-pub const DEFAULT_RELEASES_URL: &str =
-    "https://storage.googleapis.com/openagentsgemini-cli-releases";
 
 /// The policy every page is served under unless it sets a stricter one:
 /// no script from anywhere, styles and images from this site only.
@@ -51,8 +45,6 @@ pub struct Config {
     /// may reach the public pages (for example `openagents.com`). The task
     /// browser answers only the local hosts.
     pub public_hosts: Vec<String>,
-    /// The base URL `/releases/{name}` proxies.
-    pub releases_url: String,
     pub backend: Arc<dyn Backend>,
 }
 
@@ -64,7 +56,6 @@ impl Config {
             store,
             port: 4300,
             public_hosts: Vec::new(),
-            releases_url: DEFAULT_RELEASES_URL.to_owned(),
             backend: Arc::new(Development),
         }
     }
@@ -76,10 +67,6 @@ pub(crate) struct App(Arc<Inner>);
 
 pub(crate) struct Inner {
     pub config: Config,
-    /// The client the release proxy and the channel pointers read through.
-    pub http: Option<reqwest::Client>,
-    /// The two channel pointers and when they were read.
-    pub pointers: tokio::sync::Mutex<Option<(Instant, String, String)>>,
 }
 
 impl std::ops::Deref for App {
@@ -91,16 +78,7 @@ impl std::ops::Deref for App {
 
 /// The whole site.
 pub fn router(config: Config) -> Router {
-    let http = reqwest::Client::builder()
-        .connect_timeout(std::time::Duration::from_secs(5))
-        .no_gzip()
-        .build()
-        .ok();
-    let app = App(Arc::new(Inner {
-        config,
-        http,
-        pointers: tokio::sync::Mutex::new(None),
-    }));
+    let app = App(Arc::new(Inner { config }));
     let hosts = Hosts {
         port: app.config.port,
         public: app.config.public_hosts.clone(),

@@ -12,12 +12,9 @@ use crate::backend::Profile;
 
 const LOCAL: &str = "127.0.0.1:4300";
 
-/// A development config whose release store is unreachable, so no test
-/// touches the network.
+/// A development config.
 fn config(store: PathBuf) -> Config {
-    let mut config = Config::development(store);
-    config.releases_url = "http://127.0.0.1:1".to_owned();
-    config
+    Config::development(store)
 }
 
 async fn get_with(
@@ -49,23 +46,19 @@ async fn get(router: Router, uri: &str) -> (StatusCode, String) {
 }
 
 /// Every public HTML page a development server serves.
-const PAGES: [&str; 17] = [
+const PAGES: [&str; 13] = [
     "/",
     "/ask?q=help",
     "/ask?q=download",
+    "/ask?q=install",
     "/ask?q=desktop",
+    "/ask?q=mac",
+    "/ask?q=iphone",
     "/ask?q=what+is+openagents",
+    "/ask?q=docs",
+    "/install",
     "/terms",
     "/privacy",
-    "/docs",
-    "/docs/about",
-    "/docs/install",
-    "/docs/plugins",
-    "/docs/changelog",
-    "/docs/release-notes-0.5.0",
-    "/blog",
-    "/blog/introducing-coder",
-    "/desktop",
     "/connect",
 ];
 
@@ -106,14 +99,38 @@ async fn the_legal_pages_carry_the_published_text() {
 }
 
 #[tokio::test]
-async fn the_homepage_offers_the_install_command_the_desktop_app_and_the_ask_box() {
+async fn the_homepage_links_one_install_page_and_the_ask_box() {
     let root = tempfile::tempdir().unwrap();
     let (_, home) = get(router(config(root.path().into())), "/").await;
     assert!(home.contains("Welcome to OpenAgents."));
-    assert!(home.contains("curl -fsSL https://openagents.com/releases/install-terminal.sh | sh"));
-    assert!(home.contains("irm https://openagents.com/releases/install-terminal.ps1 | iex"));
-    assert!(home.contains(pages::MAC_DMG));
+    assert!(home.contains("<a class=\"button\" href=\"/install\">[ Install OpenAgents ]</a>"));
+    assert!(
+        !home.contains(pages::MAC_DMG),
+        "the download lives on /install"
+    );
+    assert!(!home.contains("curl ") && !home.contains("irm "));
     assert!(home.contains("action=\"/ask\""));
+    for command in ["download", "install", "desktop", "mac", "iphone"] {
+        let (_, answer) = get(
+            router(config(root.path().into())),
+            &format!("/ask?q={command}"),
+        )
+        .await;
+        assert!(answer.contains("href=\"/install\""), "{command}");
+        assert!(answer.contains("TestFlight"), "{command}");
+    }
+    for command in ["help", "docs", "blog", "why"] {
+        let (_, answer) = get(
+            router(config(root.path().into())),
+            &format!("/ask?q={command}"),
+        )
+        .await;
+        for word in ["Terminal", "href=\"/docs", "href=\"/blog", "blog", "docs"] {
+            let shown = answer.replace(&format!("value=\"{command}\""), "");
+            let shown = shown.replace(&format!("<p class=\"typed\">{command}</p>"), "");
+            assert!(!shown.contains(word), "{command} mentions {word}");
+        }
+    }
     let (_, answer) = get(router(config(root.path().into())), "/ask?q=%3Cb%3Ehi").await;
     assert!(answer.contains("&lt;b&gt;hi"), "{answer}");
     assert!(!answer.contains("<b>hi"), "{answer}");
@@ -123,11 +140,23 @@ async fn the_homepage_offers_the_install_command_the_desktop_app_and_the_ask_box
 }
 
 #[tokio::test]
-async fn the_desktop_page_links_the_published_dmg_and_testflight() {
+async fn the_install_page_covers_the_mac_the_iphone_and_pairing() {
     let root = tempfile::tempdir().unwrap();
-    let (_, body) = get(router(config(root.path().into())), "/desktop").await;
+    let (status, body) = get(router(config(root.path().into())), "/install").await;
+    assert_eq!(status, StatusCode::OK);
     assert!(body.contains("https://storage.googleapis.com/openagentsgemini-oa-updates/desktop/macos/0.1.0/OpenAgents-0.1.0.dmg"));
+    assert!(body.contains("macOS 13 or later"));
+    assert!(body.contains("<strong>Applications</strong>"));
     assert!(body.contains(pages::TESTFLIGHT));
+    assert!(body.contains("<strong>Connect a computer</strong>"));
+    assert!(body.contains("iPhone Camera"));
+    assert!(body.contains("Codex or Claude Code"));
+    assert!(body.contains("Android") && body.contains("Linux") && body.contains("Windows"));
+    assert!(body.contains("<a href=\"/install\" aria-current=\"page\">Install</a>"));
+    let (status, headers, _) =
+        get_with(router(config(root.path().into())), "/desktop", LOCAL).await;
+    assert_eq!(status, StatusCode::PERMANENT_REDIRECT);
+    assert_eq!(headers[header::LOCATION], "/install");
 }
 
 #[tokio::test]
@@ -225,13 +254,7 @@ async fn hosts_other_than_the_local_ones_are_refused_and_the_browser_stays_local
 #[tokio::test]
 async fn unknown_addresses_and_documents_answer_404_in_the_frame() {
     let root = tempfile::tempdir().unwrap();
-    for uri in [
-        "/nope",
-        "/docs/../../etc/passwd",
-        "/docs/missing",
-        "/blog/missing",
-        "/u/-bad-",
-    ] {
+    for uri in ["/nope", "/terms/../../etc/passwd", "/u/-bad-"] {
         let (status, body) = get(router(config(root.path().into())), uri).await;
         assert_eq!(status, StatusCode::NOT_FOUND, "{uri}");
         assert!(body.contains("href=\"/terms\""), "{uri}");
@@ -242,117 +265,53 @@ async fn unknown_addresses_and_documents_answer_404_in_the_frame() {
 async fn the_removed_sections_are_gone_and_never_linked() {
     let root = tempfile::tempdir().unwrap();
     let removed = [
-        "/forum", "/gym", "/traces", "/trace/x", "/earn", "/weights", "/qa",
+        "/forum",
+        "/gym",
+        "/traces",
+        "/trace/x",
+        "/earn",
+        "/weights",
+        "/qa",
+        "/releases/x",
+        "/releases/install-terminal.sh",
+        "/install-terminal.sh",
+        "/install-terminal.ps1",
+        "/docs",
+        "/docs/install",
+        "/doc",
+        "/doc/install",
+        "/blog",
+        "/blog/introducing-coder",
     ];
     for uri in removed {
         let (status, _) = get(router(config(root.path().into())), uri).await;
         assert_eq!(status, StatusCode::NOT_FOUND, "{uri}");
     }
-    let (_, home) = get(router(config(root.path().into())), "/").await;
-    for uri in removed {
-        assert!(!home.contains(&format!("href=\"{uri}")), "{uri} is linked");
-    }
-}
-
-#[tokio::test]
-async fn the_install_redirects_point_under_releases() {
-    let root = tempfile::tempdir().unwrap();
-    let (status, headers, _) = get_with(
-        router(config(root.path().into())),
-        "/install-terminal.sh",
-        LOCAL,
-    )
-    .await;
-    assert_eq!(status, StatusCode::PERMANENT_REDIRECT);
-    assert_eq!(headers[header::LOCATION], "/releases/install-terminal.sh");
-    let (status, headers, _) = get_with(
-        router(config(root.path().into())),
-        "/install-terminal.ps1",
-        LOCAL,
-    )
-    .await;
-    assert_eq!(status, StatusCode::PERMANENT_REDIRECT);
-    assert_eq!(headers[header::LOCATION], "/releases/install-terminal.ps1");
-}
-
-/// A stand-in for the public release bucket.
-async fn a_bucket() -> String {
-    use axum::http::HeaderMap;
-    use axum::routing::get as route;
-    async fn object(
-        axum::extract::Path(name): axum::extract::Path<String>,
-        headers: HeaderMap,
-    ) -> axum::response::Response {
-        match name.as_str() {
-            "coder-terminal.stable" => "0.4.0\n".into_response(),
-            "coder-terminal.rc" => "not a version".into_response(),
-            "coder-terminal-0.4.0-linux-x86_64" => {
-                let body: Vec<u8> = (0..256u32).map(|i| b'a' + (i % 26) as u8).collect();
-                match headers.get(header::RANGE).and_then(|v| v.to_str().ok()) {
-                    Some("bytes=0-9") => (
-                        StatusCode::PARTIAL_CONTENT,
-                        [(header::CONTENT_RANGE, "bytes 0-9/256")],
-                        body[..10].to_vec(),
-                    )
-                        .into_response(),
-                    _ => body.into_response(),
-                }
-            }
-            _ => StatusCode::NOT_FOUND.into_response(),
+    for page in PAGES {
+        let (_, html) = get(router(config(root.path().join("tasks"))), page).await;
+        for uri in removed {
+            assert!(
+                !html.contains(&format!("href=\"{uri}")),
+                "{page} links {uri}"
+            );
         }
     }
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let address = listener.local_addr().unwrap();
-    tokio::spawn(async move {
-        let _ = axum::serve(listener, Router::new().route("/{name}", route(object))).await;
-    });
-    format!("http://{address}")
 }
 
+/// The old Coder Terminal product is not connected to OpenAgents, so no
+/// page names it or its install command. The terms and the privacy policy
+/// are the published legal text, unchanged, and name every product they
+/// cover, so they may name it; neither links its install command.
 #[tokio::test]
-async fn releases_stream_from_the_bucket_with_ranges_and_the_install_page_reads_the_channels() {
+async fn no_page_mentions_coder_terminal_or_its_install_command() {
     let root = tempfile::tempdir().unwrap();
-    let mut with_bucket = config(root.path().into());
-    with_bucket.releases_url = a_bucket().await;
-    let (status, headers, body) = get_with(
-        router(with_bucket.clone()),
-        "/releases/coder-terminal-0.4.0-linux-x86_64",
-        LOCAL,
-    )
-    .await;
-    assert_eq!(status, StatusCode::OK);
-    assert_eq!(headers[header::CONTENT_TYPE], "application/octet-stream");
-    assert_eq!(body.len(), 256);
-    let response = router(with_bucket.clone())
-        .oneshot(
-            Request::builder()
-                .uri("/releases/coder-terminal-0.4.0-linux-x86_64")
-                .header(header::HOST, LOCAL)
-                .header(header::RANGE, "bytes=0-9")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(response.status(), StatusCode::PARTIAL_CONTENT);
-    assert_eq!(response.headers()[header::CONTENT_RANGE], "bytes 0-9/256");
-    let (status, _, _) = get_with(router(with_bucket.clone()), "/releases/missing", LOCAL).await;
-    assert_eq!(status, StatusCode::NOT_FOUND);
-    let (status, _, _) = get_with(router(with_bucket.clone()), "/releases/..hidden", LOCAL).await;
-    assert_eq!(status, StatusCode::NOT_FOUND);
-    let (_, _, install) = get_with(router(with_bucket), "/docs/install", LOCAL).await;
-    assert!(install.contains("<code>0.4.0</code>"), "{install}");
-    assert!(
-        install.contains("<code>unknown</code>"),
-        "an invalid pointer reads unknown"
-    );
-    let (status, _, _) = get_with(
-        router(config(root.path().into())),
-        "/releases/coder-terminal.stable",
-        LOCAL,
-    )
-    .await;
-    assert_eq!(status, StatusCode::BAD_GATEWAY, "an unreachable bucket");
+    for uri in PAGES.iter().copied().chain(["/u/AtlantisPleb", "/nope"]) {
+        let (_, html) = get(router(config(root.path().join("tasks"))), uri).await;
+        if !matches!(uri, "/terms" | "/privacy") {
+            assert!(!html.contains("Coder Terminal"), "{uri}");
+        }
+        assert!(!html.contains("install-terminal"), "{uri}");
+    }
 }
 
 // ---------------------------------------------------------------------

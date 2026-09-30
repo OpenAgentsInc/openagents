@@ -2,7 +2,7 @@
 //!
 //! Every distinction the site draws is a difference in how bright the same
 //! white is, never a second hue. The ladder mirrors the terminal's four
-//! intensities, so a page reads the way Coder Terminal's screen does, in
+//! intensities, so a page reads the way a terminal screen does, in
 //! black and white.
 //!
 //! `Full`, `ThreeQuarters`, and `Half` carry text and meet WCAG AA (4.5:1)

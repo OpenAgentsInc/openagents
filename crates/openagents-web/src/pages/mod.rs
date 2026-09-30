@@ -2,25 +2,23 @@
 
 mod connect;
 mod content;
-mod desktop;
 mod home;
+mod install;
 mod profile;
-mod releases;
 
 use axum::Router;
 
 use crate::App;
 
 pub(crate) use connect::TESTFLIGHT;
-pub(crate) use desktop::MAC_DMG;
-pub(crate) use home::UNIX_COMMAND;
+#[cfg(test)]
+pub(crate) use install::MAC_DMG;
 
 pub(crate) fn routes() -> Router<App> {
     Router::new()
         .merge(home::routes())
         .merge(content::routes())
-        .merge(desktop::routes())
+        .merge(install::routes())
         .merge(connect::routes())
-        .merge(releases::routes())
         .merge(profile::routes())
 }

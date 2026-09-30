@@ -1,16 +1,16 @@
 //! The homepage and its ask box.
 //!
-//! `/` is a terminal on a black page: the welcome card, the install step,
-//! the desktop app, and a composer. The composer is a plain form that
-//! sends the line to `/ask`, so it works with no script: `/ask` draws the
-//! line you typed and the answer under it, the way a terminal prints a
-//! command's output, and puts the composer back under both.
+//! `/` is a terminal on a black page: the welcome card, one link to
+//! `/install`, and a composer. The composer is a plain form that sends the
+//! line to `/ask`, so it works with no script: `/ask` draws the line you
+//! typed and the answer under it, the way a terminal prints a command's
+//! output, and puts the composer back under both.
 //!
-//! A command is answered here: `download` (or `install`) prints the
-//! install step, `desktop` the desktop app, `blog` and `docs` link their
-//! sections, `help` lists the commands, and `clear` returns to `/`. Any
-//! other line is a question for OpenAgents, answered by the backend. A
-//! development server has no chat backend, and says so.
+//! A command is answered here: `download`, `install`, `desktop`, `mac`, and
+//! `iphone` print a short install summary that links `/install`, `help`
+//! lists the commands, and `clear` returns to `/`. Any other line is a
+//! question for OpenAgents, answered by the backend. A development server
+//! has no chat backend, and says so.
 
 use axum::Router;
 use axum::extract::{Query, State};
@@ -22,19 +22,11 @@ use crate::App;
 use crate::layout::{escape, page};
 use crate::markdown;
 
-/// The install command on macOS and Linux.
-pub(crate) const UNIX_COMMAND: &str =
-    "curl -fsSL https://openagents.com/releases/install-terminal.sh | sh";
-
-/// The install command on Windows, in PowerShell.
-pub(crate) const WINDOWS_COMMAND: &str =
-    "irm https://openagents.com/releases/install-terminal.ps1 | iex";
-
 /// The longest line the ask box takes, in characters.
 const MAX_LINE: usize = 2000;
 
 /// What the composer's input tells a reader that does not see the terminal.
-const LABEL: &str = "Type a command such as download, blog, or help, or ask a question";
+const LABEL: &str = "Type a command such as install or help, or ask a question";
 
 pub(crate) fn routes() -> Router<App> {
     Router::new().route("/", get(home)).route("/ask", get(ask))
@@ -61,11 +53,7 @@ fn welcome(credit: Option<&str>) -> String {
         "<section class=\"box\"><h2 class=\"box-title\">OpenAgents</h2>\
 <p class=\"loud\">Welcome to OpenAgents.</p>\
 <p>Chat with OpenAgents on your phone and your computer. Its agents work on your own \
-machines, and Coder is the one that writes code.</p>\
-<p>Coder Terminal is a coding agent that runs in your terminal. It works in your repository \
-on your own computer: it reads the code, runs commands, and edits files, and it shows you \
-each step.</p>\
-<p>In Coder Terminal you can resume a session, add plugins, and hand work to other agents.</p>",
+machines, and Coder is the one that writes code.</p>",
     );
     if let Some(credit) = credit {
         out.push_str(&format!(
@@ -74,34 +62,19 @@ each step.</p>\
         ));
     }
     out.push_str(
-        "<p class=\"dim\">Type download to install Coder Terminal, type blog to read the blog, \
+        "<p class=\"dim\">Type install to get OpenAgents on your Mac and iPhone, \
 or ask a question.</p></section>",
     );
     out
 }
 
-/// The install step, for both platforms.
-fn install() -> String {
-    format!(
-        "<div class=\"line\"><p class=\"label\">Install Coder Terminal on macOS and Linux</p>\
-<code class=\"command\">{}</code>\
-<p class=\"label\">On Windows, in PowerShell</p><code class=\"command\">{}</code>\
-<p class=\"hint\"><a href=\"/docs/install\">[ Install guide ]</a></p></div>",
-        escape(UNIX_COMMAND),
-        escape(WINDOWS_COMMAND)
-    )
-}
+/// The single way in to installing: a link to `/install`.
+const INSTALL_LINK: &str = "<div class=\"line\"><p><a class=\"button\" href=\"/install\">[ Install OpenAgents ]</a></p></div>";
 
-/// The desktop step.
-fn desktop() -> String {
-    format!(
-        "<div class=\"line\"><p class=\"label\">OpenAgents for Mac</p>\
-<p>Pairs your phone with your computer by QR code. \
-<a href=\"/desktop\">[ Get OpenAgents for Mac ]</a> \
-<a href=\"{}\">[ Download the .dmg ]</a></p></div>",
-        super::MAC_DMG
-    )
-}
+/// The install summary the ask box prints.
+const INSTALL_SUMMARY: &str = "<p>Get OpenAgents for Mac and the OpenAgents iPhone app on TestFlight, then scan the \
+Mac's QR code with your phone to connect them.</p>\
+<p><a href=\"/install\">[ Install OpenAgents ]</a></p>";
 
 fn composer(value: &str) -> String {
     format!(
@@ -109,7 +82,7 @@ fn composer(value: &str) -> String {
 <span class=\"prompt\" aria-hidden=\"true\">&gt;</span>\
 <input type=\"text\" name=\"q\" value=\"{}\" maxlength=\"{MAX_LINE}\" autocomplete=\"off\" \
 autocapitalize=\"off\" spellcheck=\"false\" enterkeyhint=\"send\" autofocus \
-placeholder=\"download, blog, help, or a question\" aria-label=\"{LABEL}\">\
+placeholder=\"install, help, or a question\" aria-label=\"{LABEL}\">\
 <button type=\"submit\">[ Send ]</button></form>",
         escape(value)
     )
@@ -125,19 +98,16 @@ fn terminal(inner: &str) -> String {
 async fn home(State(app): State<App>) -> Response {
     let credit = credit(app.config.backend.new_account_credit_cents());
     let inner = format!(
-        "{}{}{}{}",
+        "{}{INSTALL_LINK}{}",
         welcome(credit.as_deref()),
-        install(),
-        desktop(),
         composer("")
     );
     page("OpenAgents", None, &terminal(&inner))
 }
 
 /// The help line.
-const HELP: &str = "**download** installs Coder Terminal. **desktop** gets OpenAgents for Mac. \
-**blog** opens the blog, **docs** the documentation. **clear** clears this screen. Type a \
-command, or ask a question.";
+const HELP: &str = "**install** shows how to get OpenAgents on your Mac and iPhone. **clear** \
+clears this screen. Type a command, or ask a question.";
 
 async fn ask(State(app): State<App>, Query(line): Query<Line>) -> Response {
     let text: String = line
@@ -153,18 +123,13 @@ async fn ask(State(app): State<App>, Query(line): Query<Line>) -> Response {
     let command = text.trim_start_matches('/').to_ascii_lowercase();
     let answer = match command.as_str() {
         "clear" => return Redirect::to("/").into_response(),
-        "download" | "install" => install(),
-        "desktop" | "mac" => desktop(),
-        "blog" => "<p><a href=\"/blog\">[ Open the blog ]</a></p>".to_owned(),
-        "docs" => "<p><a href=\"/docs\">[ Open the docs ]</a></p>".to_owned(),
-        "help" => markdown::render(HELP, "/docs"),
+        "download" | "install" | "desktop" | "mac" | "iphone" => INSTALL_SUMMARY.to_owned(),
+        "help" => markdown::render(HELP),
         _ => match app.config.backend.answer(&text).await {
-            Some(answer) => markdown::render(&answer, "/docs"),
+            Some(answer) => markdown::render(&answer),
             None => markdown::render(
                 "Chat with OpenAgents isn't connected on this server, so it can't answer \
-                 questions here. Type **download** to run Coder on your own computer, or \
-                 **desktop** to get OpenAgents for Mac.",
-                "/docs",
+                 questions here. Type **install** to get OpenAgents on your Mac and iPhone.",
             ),
         },
     };

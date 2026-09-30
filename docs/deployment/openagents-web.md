@@ -6,8 +6,8 @@ repository (`bins/coder-serve`) into this repository's
 2026-09-29. openagents.com still deploys from the `coder` repository; nothing
 here is deployed.
 
-The port reimplements the pages. It copies the published content (the terms,
-the privacy policy, the public docs, and the blog post) and no backend code,
+The port reimplements the pages. It copies the published content (the terms
+and the privacy policy) and no backend code,
 prompts, endpoints, or secrets. The site is now drawn in four intensities of
 white on near-black instead of four intensities of amber.
 
@@ -15,20 +15,19 @@ white on near-black instead of four intensities of amber.
 
 These pages need nothing more than this repository and the public buckets:
 
-- `/`, the homepage: welcome card, install commands, desktop link, and an
-  ask box that works without a script (`/ask`).
+- `/`, the homepage: welcome card, one `[ Install OpenAgents ]` link to
+  `/install`, and an ask box that works without a script (`/ask`).
+- `/install`: new. The one install page for everything being launched, in
+  order: the notarized OpenAgents for Mac `.dmg` in
+  `openagentsgemini-oa-updates`, the iPhone app on TestFlight, pairing by
+  the Mac's QR code, and signing in to Codex or Claude Code on the Mac so
+  the phone can run Coder. Android, Linux, and Windows are named as not yet
+  available. `/desktop` redirects here permanently.
 - `/terms` and `/privacy`: the published text, last updated 2026-09-03,
   unchanged and compiled in.
-- `/docs` and `/docs/{slug}`: the public Coder docs, compiled in. The
-  install page reads the `stable` and `rc` channel pointers.
-- `/blog` and `/blog/{slug}`.
-- `/desktop`: new. Links the notarized OpenAgents for Mac `.dmg` in
-  `openagentsgemini-oa-updates` and the TestFlight app.
 - `/connect`, `/.well-known/apple-app-site-association`, and
   `/.well-known/assetlinks.json`: the pairing link's landing page and the
   app-association files, as the `coder` repository serves them.
-- `/releases/{name}`, `/install-terminal.sh`, and `/install-terminal.ps1`:
-  the release proxy and its short forms.
 - `/app`: the local task browser, loopback only.
 
 ## Ported, waiting on a production backend
@@ -49,8 +48,15 @@ implementation yet:
 The Forum (`/forum`), Gym (`/gym`, `/gym/results/...`), Traces (`/traces`,
 `/trace/{key}`), Earn (`/earn`), Weights (`/weights`), and QA (`/qa`)
 sections were ported and then removed on 2026-09-29 at the owner's
-direction: the site serves none of them and links none of them. The Coder
-docs no longer point readers at `/earn`, `/forum`, or `/qa`.
+direction: the site serves none of them and links none of them.
+
+Also removed on 2026-09-29 at the owner's direction, because the old Coder
+Terminal product (installed from the private `coder` repository's bucket
+`openagentsgemini-cli-releases`) is not connected to OpenAgents: the
+`/releases/{name}` release proxy, the `/install-terminal.sh` and
+`/install-terminal.ps1` redirects, the homepage's install commands, and the
+Docs (`/docs`, `/docs/{slug}`, `/doc*`) and Blog (`/blog*`) sections, whose
+every document was about Coder Terminal. All of them answer `404`.
 
 ## Not ported
 
@@ -75,12 +81,17 @@ These need accounts, sessions, or payments, or are internal:
    `--listen 0.0.0.0:PORT --public-host openagents.com`, behind TLS.
 3. Serve the association files at `openagents.com` with no redirect, and
    check that iOS and Android still verify `/connect`.
-4. Keep every URL that the `coder` repository serves and this port serves
-   the same: the install command (`/releases/install-terminal.sh`), the
-   pairing link (`/connect`), and the legal pages.
-5. Update `about.md` in the docs: it says Coder Desktop has no public
-   download, which `/desktop` now contradicts. The owner decides that copy.
-6. Update `/desktop` for each desktop release; it links version 0.1.0.
+4. Keep the URLs that must not move the same as the `coder` repository
+   serves them: the pairing link (`/connect`) and the legal pages.
+5. Decide the old Coder Terminal's fate. This server does not serve
+   `/releases/*`, `/install-terminal.sh`, `/install-terminal.ps1`, `/docs`,
+   or `/blog`. Once DNS moves, the installed Coder Terminal's self-update
+   (which reads `/releases/`) and its published install command
+   (`curl -fsSL https://openagents.com/releases/install-terminal.sh | sh`,
+   and the PowerShell form) stop working, and old docs and blog links
+   answer `404`. That is an owner decision: accept the break, or restore a
+   redirect to the bucket before cutover.
+6. Update `/install` for each desktop release; it links version 0.1.0.
 7. When this server serves openagents.com, update the `INVARIANTS.md` row
    for the connect link, which names `coder-serve` as the server of
    `/connect`.
