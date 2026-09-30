@@ -400,3 +400,16 @@ Strict scoped all-target Clippy and formatting pass.
 This preserves the shared host's existing empty-chat persistence behavior.
 Zeron's draft route creates its conversation on first submission; OpenAgents
 still uses its already-created host thread for that draft.
+
+## Native benchmark frame coverage
+
+Active benchmark phases now wait for both 120 input steps and 120 submitted
+frames, with a 10-second deadline for unavailable surfaces. Reports include
+both counts. A phase retains at most 120 samples after its first five frames,
+so extra backdrop frames cannot consume a global sample budget before menus
+run. Idle CPU is measured separately. Missing frames still fail the existing
+coverage checks; the deadline does not convert an occluded run into a pass.
+
+Regression checks cover coalesced input, blocked presentation, the deadline,
+and 1,000 submissions per phase without starving later phases. This improves
+the measurement driver; it does not establish a new native performance result.

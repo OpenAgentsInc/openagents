@@ -23,6 +23,13 @@ enum Phase {
     Idle,
 }
 impl Phase {
+    fn finished(self, elapsed: Duration, steps: usize, frames: usize) -> bool {
+        match self {
+            Self::Warm => elapsed >= Duration::from_secs(1),
+            Self::Idle => elapsed >= Duration::from_secs(5),
+            _ => (steps >= 120 && frames >= 120) || elapsed >= Duration::from_secs(10),
+        }
+    }
     fn next(self) -> Option<Self> {
         match self {
             Self::Warm => Some(Self::Scroll),
@@ -81,6 +88,8 @@ struct Skipped {
 #[derive(Serialize)]
 struct PhaseResult {
     phase: Phase,
+    steps: usize,
+    submitted_frames: usize,
     seconds: f64,
     cpu_percent: Option<f64>,
     peak_rss_bytes: Option<u64>,
@@ -178,6 +187,8 @@ impl Fixture {
         let seconds = now.duration_since(self.phase_started).as_secs_f64();
         self.results.push(PhaseResult {
             phase: self.phase,
+            steps: self.steps,
+            submitted_frames: self.frames,
             seconds,
             cpu_percent: resource
                 .cpu_seconds
@@ -256,12 +267,11 @@ impl App for Fixture {
             return Some(self.next);
         }
         let start = Instant::now();
-        if matches!(self.phase, Phase::Warm)
-            && now.duration_since(self.phase_started) > Duration::from_secs(1)
-            || matches!(self.phase, Phase::Idle)
-                && now.duration_since(self.phase_started) > Duration::from_secs(5)
-            || !matches!(self.phase, Phase::Warm | Phase::Idle) && self.steps >= 120
-        {
+        if self.phase.finished(
+            now.duration_since(self.phase_started),
+            self.steps,
+            self.frames,
+        ) {
             self.advance(now);
         }
         if self.done {
@@ -356,7 +366,7 @@ impl App for Fixture {
         {
             self.openings.push(sample.clone());
         }
-        if self.frames >= 5 && !matches!(self.phase, Phase::Warm) && self.samples.len() < 600 {
+        if (5..125).contains(&self.frames) && !matches!(self.phase, Phase::Warm | Phase::Idle) {
             self.samples.push(sample);
         }
         self.frames += 1;
@@ -509,6 +519,57 @@ impl App for Reporting {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn extra_backdrop_frames_cannot_starve_later_phases() {
+        let mut fixture = Fixture::new();
+        for phase in [
+            Phase::Scroll,
+            Phase::Streaming,
+            Phase::Sidebar,
+            Phase::Composer,
+            Phase::Commands,
+            Phase::ChatMenu,
+        ] {
+            fixture.phase = phase;
+            fixture.frames = 0;
+            for _ in 0..1000 {
+                fixture.frame_presented(FrameTiming::default());
+            }
+            assert_eq!(
+                fixture
+                    .samples
+                    .iter()
+                    .filter(|sample| sample.phase == phase)
+                    .count(),
+                120
+            );
+        }
+        assert_eq!(fixture.samples.len(), 720);
+        assert!(check_coverage(&fixture.samples, &fixture.openings).is_ok());
+    }
+
+    #[test]
+    fn phases_wait_for_submitted_frames_and_bound_occlusion() {
+        for phase in [
+            Phase::Scroll,
+            Phase::Streaming,
+            Phase::Sidebar,
+            Phase::Composer,
+            Phase::Commands,
+            Phase::ChatMenu,
+        ] {
+            assert!(!phase.finished(Duration::from_secs(2), 120, 36));
+            assert!(!phase.finished(Duration::from_secs(2), 36, 120));
+            assert!(phase.finished(Duration::from_secs(3), 150, 120));
+            assert!(!phase.finished(Duration::from_secs(9), 600, 0));
+            assert!(phase.finished(Duration::from_secs(10), 600, 0));
+        }
+        assert!(!Phase::Warm.finished(Duration::from_millis(999), 120, 120));
+        assert!(Phase::Warm.finished(Duration::from_secs(1), 0, 0));
+        assert!(!Phase::Idle.finished(Duration::from_secs(4), 120, 120));
+        assert!(Phase::Idle.finished(Duration::from_secs(5), 0, 0));
+    }
 
     fn sample(phase: Phase) -> Sample {
         Sample {
