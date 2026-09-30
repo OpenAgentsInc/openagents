@@ -39,19 +39,20 @@ fn runner(backend: &Backend, thread: &str) -> Local {
 
 /// The words that answer a thread's question from this terminal.
 fn answer_hint(backend: &Backend, thread: &str) -> String {
-    let scratch = if matches!(backend, Backend::Local { scratch: true, .. }) {
-        " --scratch"
-    } else {
-        ""
-    };
-    format!("openagents chat answer{scratch} --thread {thread} \"YOUR ANSWER\"")
+    format!(
+        "openagents chat answer{} --thread {thread} \"YOUR ANSWER\"",
+        flag(backend)
+    )
 }
 
+/// The switch that reaches the thread's store again: `--scratch` for a
+/// scratch thread, `--local` for one in this command's own store (so a
+/// host started later is not asked for it).
 fn flag(backend: &Backend) -> &'static str {
-    if matches!(backend, Backend::Local { scratch: true, .. }) {
-        " --scratch"
-    } else {
-        ""
+    match backend {
+        Backend::Local { scratch: true, .. } => " --scratch",
+        Backend::Local { .. } => " --local",
+        Backend::Host { .. } => "",
     }
 }
 
