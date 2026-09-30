@@ -433,7 +433,19 @@ fn the_c_interface_shapes_without_a_measurer_and_hands_out_the_fonts() {
         let data = unsafe { rust_native_font_data(face, &mut len) };
         assert!(!data.is_null() && len > 100_000);
     }
-    assert!(unsafe { rust_native_font_data(4, std::ptr::null_mut()) }.is_null());
+    // The C interface's font spec uses the default family, so a host only
+    // ever draws the four default faces; the table also holds Geist's
+    // sixteen, which stay fetchable by index.
+    for weight in 0..4 {
+        for italic in 0..2 {
+            for mono in 0..2 {
+                assert!(rust_native_font_spec(15.0, weight, italic, mono).face < 4);
+            }
+        }
+    }
+    assert_eq!(FACES.len(), 20);
+    assert!(!unsafe { rust_native_font_data(19, std::ptr::null_mut()) }.is_null());
+    assert!(unsafe { rust_native_font_data(20, std::ptr::null_mut()) }.is_null());
     let code = rust_native_font_spec(14.4, 3, 1, 1);
     assert_eq!(
         (code.face, code.weight, code.optical, code.calt),
