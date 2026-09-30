@@ -863,27 +863,54 @@ fn hex(bytes: &[u8]) -> String {
 
 /// A hosted chat is local data and grants no computer execution authority.
 fn chat(shared: &Shared, command: openagents_chat::service::Command) -> Reply {
+    match apply_chat(shared, command) {
+        Ok(snapshot) => Reply::Chat { snapshot },
+        Err(ChatRefusal::Unavailable(message)) => refused("unavailable", message),
+        Err(ChatRefusal::Chat(message)) => refused("chat", message),
+    }
+}
+
+/// Why the host's chat service did not answer.
+#[derive(Debug)]
+pub(crate) enum ChatRefusal {
+    /// The host keeps no chat store, or cannot open it.
+    Unavailable(String),
+    /// The chat service refused the command, in its own words.
+    Chat(String),
+}
+
+/// Apply one chat service command to the host's threads: the store in
+/// `<host root>/basic-chats`, opened on first use. The local operator
+/// socket and a granted device's `thread.*` operations share it.
+pub(crate) fn apply_chat(
+    shared: &Shared,
+    command: openagents_chat::service::Command,
+) -> std::result::Result<openagents_chat::service::Snapshot, ChatRefusal> {
     use openagents_chat::{
         basic_chats::BasicChats,
         basic_coder::{RELAY, Relay, WORKER},
         cache::Cache,
     };
+    let unavailable = |message: &str| ChatRefusal::Unavailable(message.into());
     let mut state = shared
         .chats
         .lock()
         .unwrap_or_else(|poison| poison.into_inner());
     if state.is_none() {
         let Some(control) = shared.config.control.as_ref() else {
-            return refused("unavailable", "This host has no local chat storage.");
+            return Err(unavailable("This host has no local chat storage."));
         };
-        let store = match Cache::open(&control.root.join("basic-chats"), &shared.secret) {
-            Ok(store) => store,
-            Err(_) => return refused("unavailable", "Couldn't open encrypted chat storage."),
-        };
-        let door = match Relay::new(RELAY, WORKER, shared.secret) {
-            Ok(door) => door,
-            Err(_) => return refused("unavailable", "Couldn't configure chat."),
-        };
+        let store = Cache::open(&control.root.join("basic-chats"), &shared.secret)
+            .map_err(|_| unavailable("Couldn't open encrypted chat storage."))?;
+        let (relay, worker) = shared
+            .config
+            .chat_door
+            .as_ref()
+            .map_or((RELAY, WORKER), |door| {
+                (door.relay.as_str(), door.worker.as_str())
+            });
+        let door = Relay::new(relay, worker, shared.secret)
+            .map_err(|_| unavailable("Couldn't configure chat."))?;
         *state = Some(BasicChats::new(
             Some(tokio::runtime::Handle::current()),
             Some(Arc::new(door)),
@@ -896,24 +923,21 @@ fn chat(shared: &Shared, command: openagents_chat::service::Command) -> Reply {
         computer_ready: shared.config.keys.is_some() && !shared.config.workspaces.is_empty(),
         ..openagents_chat::router::Context::default()
     });
-    match openagents_chat::service::apply(
+    let mut snapshot = openagents_chat::service::apply(
         chats,
         command,
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0, |elapsed| elapsed.as_secs()),
-    ) {
-        Ok(mut snapshot) => {
-            snapshot.ready_computer =
-                (shared.config.keys.is_some() && !shared.config.workspaces.is_empty()).then(|| {
-                    if shared.config.label.is_empty() {
-                        "This computer".into()
-                    } else {
-                        shared.config.label.clone()
-                    }
-                });
-            Reply::Chat { snapshot }
-        }
-        Err(message) => refused("chat", message),
-    }
+    )
+    .map_err(ChatRefusal::Chat)?;
+    snapshot.ready_computer =
+        (shared.config.keys.is_some() && !shared.config.workspaces.is_empty()).then(|| {
+            if shared.config.label.is_empty() {
+                "This computer".into()
+            } else {
+                shared.config.label.clone()
+            }
+        });
+    Ok(snapshot)
 }

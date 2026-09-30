@@ -13,6 +13,7 @@ pub mod host;
 pub mod protocol;
 pub mod rights;
 pub mod spend;
+pub mod thread;
 
 pub use client::{Client, Pending};
 pub use coder_connect::RelayPolicy;

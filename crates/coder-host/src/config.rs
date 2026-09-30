@@ -168,6 +168,28 @@ pub struct Config {
     /// off when tailnet admission already serves it from this process.
     pub chats: Option<crate::tailnet::Chats>,
     pub serve_chats: bool,
+    /// Where the host's chat threads ask OpenAgents: a relay and the chat
+    /// worker's key. `None` is the public worker on the OpenAgents relay;
+    /// tests name a local relay with a scripted worker.
+    pub chat_door: Option<ChatDoor>,
+}
+
+/// A chat worker other than the public one, as `openagents chat` takes it
+/// from `OPENAGENTS_CHAT_RELAY` and `OPENAGENTS_CHAT_WORKER`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ChatDoor {
+    pub relay: String,
+    pub worker: String,
+}
+
+impl ChatDoor {
+    /// The door the environment names, when it names both halves.
+    #[must_use]
+    pub fn from_env() -> Option<Self> {
+        let relay = std::env::var("OPENAGENTS_CHAT_RELAY").ok()?;
+        let worker = std::env::var("OPENAGENTS_CHAT_WORKER").ok()?;
+        (!relay.is_empty() && !worker.is_empty()).then_some(Self { relay, worker })
+    }
 }
 
 impl Config {
@@ -198,6 +220,7 @@ impl Config {
             label: String::new(),
             chats: None,
             serve_chats: false,
+            chat_door: None,
         }
     }
 

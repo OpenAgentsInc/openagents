@@ -79,6 +79,21 @@ impl Dispatch for Dispatcher {
         chat_invitation(&self.shared.config)
     }
 
+    /// The host's chat threads, for a device holding `observe`.
+    fn threads(&mut self, _device: &str) -> Result<Vec<coder_access::thread::ThreadRow>, Code> {
+        super::threads::list(&self.shared)
+    }
+
+    /// One page of a host thread, for a device holding `observe`.
+    fn thread(
+        &mut self,
+        _device: &str,
+        thread: &str,
+        before: Option<u64>,
+    ) -> Result<coder_access::thread::ThreadPage, Code> {
+        super::threads::read(&self.shared, thread, before)
+    }
+
     /// The book of agent spend requests the phone answers.
     fn spends(&mut self) -> Option<&mut dyn coder_access::host::Spends> {
         Some(&mut self.spends)
@@ -156,6 +171,19 @@ impl Dispatch for Dispatcher {
             } => {
                 let result = tasks.cancel(request, device, task, *revision, reason);
                 self.task(op, result)
+            }
+            // A follow-up appended to a host thread; its send ID keeps a
+            // retry from appending it twice.
+            Operation::SendThread {
+                thread,
+                request: send,
+                text,
+            } => {
+                super::threads::send(&self.shared, thread, send, text)?;
+                Ok(Receipt {
+                    operation: op.name().into(),
+                    reference: thread.clone(),
+                })
             }
             // An archived task leaves the lists, so it publishes no summary.
             Operation::ArchiveTask { task } => {

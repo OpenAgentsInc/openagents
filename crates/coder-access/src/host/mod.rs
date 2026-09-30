@@ -83,6 +83,25 @@ pub trait Dispatch: Send {
     fn chats(&mut self, _device: &str, _now: u64) -> std::result::Result<(String, u64), Code> {
         Err(Code::Unavailable)
     }
+    /// The host's chat threads for `device`, which holds `observe`
+    /// (`thread.list`): newest first, archived ones left out. A host that
+    /// keeps no threads has none to offer.
+    fn threads(
+        &mut self,
+        _device: &str,
+    ) -> std::result::Result<Vec<crate::thread::ThreadRow>, Code> {
+        Err(Code::Unavailable)
+    }
+    /// One page of `thread` for `device`, which holds `observe`
+    /// (`thread.read`). `before` names the first turn not to include.
+    fn thread(
+        &mut self,
+        _device: &str,
+        _thread: &str,
+        _before: Option<u64>,
+    ) -> std::result::Result<crate::thread::ThreadPage, Code> {
+        Err(Code::Unavailable)
+    }
 }
 /// Where the host keeps agent spend requests (phase 1 agent spending). The
 /// host has checked the sender's `operate` right, and for `spend.list` that
@@ -614,6 +633,17 @@ impl Host {
                     {
                         // Authority was rechecked above; the retained bytes are current.
                         return Ok(reply.clone());
+                    } else if request.op.reads_only() {
+                        // A read changes nothing, so its reply is not
+                        // retained: a thread polled while its reply streams
+                        // would otherwise fill the store with pages.
+                        let result = match self.execute(
+                            &mut store, &mut book, &secret, &request, event, &p, now, dispatch,
+                        )? {
+                            Ok(outcome) => ReplyResult::Ok { outcome },
+                            Err(error) => refused(error),
+                        };
+                        (result, false)
                     } else {
                         let result = match self.execute(
                             &mut store, &mut book, &secret, &request, event, &p, now, dispatch,
@@ -742,6 +772,30 @@ impl Host {
                 }
                 Err(code) => Err(Error::new(code, "the host serves no chats")),
             },
+            Operation::ListThreads {} => match dispatch.threads(&p.key) {
+                Ok(threads) => {
+                    let outcome = Outcome::Threads { threads };
+                    match outcome.validate() {
+                        Ok(()) => Ok(outcome),
+                        Err(_) => Err(Error::new(Code::Unavailable, "the thread list is invalid")),
+                    }
+                }
+                Err(code) => Err(Error::new(code, "the host keeps no threads")),
+            },
+            Operation::ReadThread { thread, before } => {
+                match dispatch.thread(&p.key, thread, *before) {
+                    Ok(page) => {
+                        let outcome = Outcome::Thread {
+                            thread: Box::new(page),
+                        };
+                        match outcome.validate() {
+                            Ok(()) if outcome.answers(&request.op) => Ok(outcome),
+                            _ => Err(Error::new(Code::Unavailable, "the thread page is invalid")),
+                        }
+                    }
+                    Err(code) => Err(Error::new(code, "the host could not read the thread")),
+                }
+            }
             Operation::SettleSpend { receipt } => {
                 match dispatch.spends().map(|s| s.settle(&p.key, receipt, now)) {
                     Some(Ok(recorded)) => {
@@ -765,7 +819,8 @@ impl Host {
             | Operation::SteerTask { .. }
             | Operation::CancelTask { .. }
             | Operation::ArchiveTask { .. }
-            | Operation::CommandTask { .. } => {
+            | Operation::CommandTask { .. }
+            | Operation::SendThread { .. } => {
                 // Record the admitted intent before the effect. A crash after
                 // dispatch replays the same idempotency key, never a new one.
                 if book.replies.len() >= MAX_REPLIES {

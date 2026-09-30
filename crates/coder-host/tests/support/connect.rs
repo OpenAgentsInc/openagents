@@ -61,6 +61,9 @@ pub struct Options {
     /// Serve read-only Coder chats on the relay and issue invitations to
     /// them: beside grants redeemed over iroh, and on `chats.invite`.
     pub chats: bool,
+    /// The chat worker the host's threads ask; the public one by default,
+    /// which a test never reaches.
+    pub chat_door: Option<coder_host::config::ChatDoor>,
 }
 
 impl Default for Options {
@@ -70,6 +73,7 @@ impl Default for Options {
             workspace: true,
             autostart: None,
             chats: false,
+            chat_door: None,
         }
     }
 }
@@ -96,6 +100,7 @@ pub async fn host_with(options: Options) -> Host {
         uid: options.uid,
     });
     config.label = "Studio Mac".into();
+    config.chat_door = options.chat_door;
     config.recheck_every = Duration::from_secs(30);
     if options.workspace {
         let checkout = temp.path().join("checkout");

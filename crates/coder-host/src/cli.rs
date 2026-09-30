@@ -654,6 +654,9 @@ async fn serve(common: &Common, options: &mut Options, open_tasks: Box<OpenTasks
     config.iroh = connect.iroh;
     config.control = connect.control;
     config.label = connect.label;
+    // The same override `openagents chat` honours, so a scratch host and the
+    // command reach one worker.
+    config.chat_door = crate::config::ChatDoor::from_env();
     // A phone that pairs with a connect code reads this host's Coder chats
     // as a tailnet-admitted one does: the same observer and sources. When
     // tailnet admission serves the observer, this only issues invitations.

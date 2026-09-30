@@ -20,7 +20,10 @@
         "terminal.open",
         "spend.list",
         "spend.settle",
-        "chats.invite"
+        "chats.invite",
+        "thread.list",
+        "thread.read",
+        "thread.send"
       ],
       "remote": {
         "relays": [

@@ -53,7 +53,7 @@ pub const CALL_SCHEMA: &[u8] = include_bytes!("../../../nips/openagents/schemas/
 pub const ANSWER_SCHEMA: &[u8] =
     include_bytes!("../../../nips/openagents/schemas/host-answer.v1.json");
 /// Every NIP-HOST operation this binding carries.
-pub const OPERATIONS: [&str; 18] = [
+pub const OPERATIONS: [&str; 21] = [
     "enroll.redeem",
     "enroll.approve",
     "enroll.deny",
@@ -72,6 +72,9 @@ pub const OPERATIONS: [&str; 18] = [
     "spend.list",
     "spend.settle",
     "chats.invite",
+    "thread.list",
+    "thread.read",
+    "thread.send",
 ];
 
 const LOCK: &str = "openagents.lock.v1";

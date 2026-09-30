@@ -535,8 +535,31 @@ pub enum Operation {
     /// grant ends.
     #[serde(rename = "chats.invite")]
     InviteChats {},
+    /// List the host's chat threads, newest first, without archived ones.
+    #[serde(rename = "thread.list")]
+    ListThreads {},
+    /// Read one page of a thread: its newest turns, or those before
+    /// `before`, and the reply streaming into it.
+    #[serde(rename = "thread.read")]
+    ReadThread { thread: String, before: Option<u64> },
+    /// Append a message to a thread through the host, which asks
+    /// OpenAgents for the reply. `request` is a send ID the device mints
+    /// once and replays unchanged: the host appends a message once per ID,
+    /// and different text under the same ID refuses as `conflict`.
+    #[serde(rename = "thread.send")]
+    SendThread {
+        thread: String,
+        request: String,
+        text: String,
+    },
 }
 impl Operation {
+    /// A read with no effect, whose reply the host does not retain: an
+    /// exact retry reads again. Its answer changes as the thread does.
+    #[must_use]
+    pub fn reads_only(&self) -> bool {
+        matches!(self, Self::ListThreads {} | Self::ReadThread { .. })
+    }
     pub fn name(&self) -> &'static str {
         match self {
             Self::Redeem { .. } => "enroll.redeem",
@@ -557,6 +580,9 @@ impl Operation {
             Self::ListSpends { .. } => "spend.list",
             Self::SettleSpend { .. } => "spend.settle",
             Self::InviteChats {} => "chats.invite",
+            Self::ListThreads {} => "thread.list",
+            Self::ReadThread { .. } => "thread.read",
+            Self::SendThread { .. } => "thread.send",
         }
     }
     /// The right this operation requires. Redemption uses the invitation's
@@ -570,7 +596,9 @@ impl Operation {
             | Self::CancelInvite { .. }
             | Self::Revoke { .. } => Some(Right::AccessAdmin),
             Self::ListDevices {} => Some(Right::AccessRead),
-            Self::InviteChats {} => Some(Right::Observe),
+            Self::InviteChats {} | Self::ListThreads {} | Self::ReadThread { .. } => {
+                Some(Right::Observe)
+            }
             Self::CreateTask { .. }
             | Self::SteerTask { .. }
             | Self::CancelTask { .. }
@@ -579,7 +607,8 @@ impl Operation {
             | Self::CommandTask { .. }
             | Self::QueueTask { .. }
             | Self::ListSpends { .. }
-            | Self::SettleSpend { .. } => Some(Right::Operate),
+            | Self::SettleSpend { .. }
+            | Self::SendThread { .. } => Some(Right::Operate),
             Self::OpenTerminal { .. } => Some(Right::Terminal),
         }
     }
@@ -619,7 +648,25 @@ impl Operation {
                 grant_expires_at, ..
             } => safe(*grant_expires_at)?,
             Self::CancelInvite { invitation } => identity(invitation).map_err(Error::from)?,
-            Self::ListDevices {} | Self::ListWorkspaces {} | Self::InviteChats {} => {}
+            Self::ListDevices {}
+            | Self::ListWorkspaces {}
+            | Self::InviteChats {}
+            | Self::ListThreads {} => {}
+            Self::ReadThread { thread, before } => {
+                crate::thread::id(thread)?;
+                if let Some(before) = before {
+                    safe(*before)?;
+                }
+            }
+            Self::SendThread {
+                thread,
+                request,
+                text,
+            } => {
+                crate::thread::id(thread)?;
+                crate::thread::id(request)?;
+                crate::thread::message(text)?;
+            }
             Self::Revoke { device } => public(device)?,
             Self::CreateTask { task } => {
                 text(&task.title, 200)?;
@@ -787,6 +834,15 @@ pub enum Outcome {
         invitation: String,
         expires_at: u64,
     },
+    /// The host's chat threads (`thread.list`), newest first, at most
+    /// [`crate::thread::MAX_THREADS`].
+    Threads {
+        threads: Vec<crate::thread::ThreadRow>,
+    },
+    /// One page of a thread (`thread.read`).
+    Thread {
+        thread: Box<crate::thread::ThreadPage>,
+    },
 }
 
 /// The longest `coder-pair:` invitation a `chats` outcome carries.
@@ -844,6 +900,24 @@ impl Outcome {
         {
             return fail(Code::Malformed, "not a chat invitation");
         }
+        if let Self::Threads { threads } = self {
+            if threads.len() > crate::thread::MAX_THREADS {
+                return fail(Code::Bounds, "too many threads");
+            }
+            for row in threads {
+                row.validate()?;
+            }
+        }
+        if let Self::Thread { thread } = self {
+            thread.validate()?;
+        }
+        if matches!(self, Self::Threads { .. } | Self::Thread { .. })
+            && serde_json::to_vec(self).map_or(true, |bytes| {
+                bytes.len() > crate::thread::MAX_PAGE_BYTES + 1024
+            })
+        {
+            return fail(Code::Bounds, "thread answer exceeds its bound");
+        }
         if let Self::Workspaces { workspaces } = self {
             if workspaces.len() > MAX_WORKSPACES {
                 return fail(Code::Bounds, "too many workspaces");
@@ -870,7 +944,11 @@ impl Outcome {
             | (Operation::ListWorkspaces {}, Self::Workspaces { .. }) => true,
             (Operation::QueueTask { task, .. }, Self::Queue { queue }) => queue.task == *task,
             (Operation::ListSpends { .. }, Self::Spends { .. })
-            | (Operation::InviteChats {}, Self::Chats { .. }) => true,
+            | (Operation::InviteChats {}, Self::Chats { .. })
+            | (Operation::ListThreads {}, Self::Threads { .. }) => true,
+            (Operation::ReadThread { thread, .. }, Self::Thread { thread: page }) => {
+                page.thread == *thread
+            }
             (Operation::SettleSpend { receipt }, Self::Settled { receipt: recorded }) => {
                 recorded.request == receipt.request && recorded.grant == receipt.grant
             }
@@ -880,7 +958,8 @@ impl Outcome {
                 | Operation::SteerTask { .. }
                 | Operation::CancelTask { .. }
                 | Operation::ArchiveTask { .. }
-                | Operation::CommandTask { .. },
+                | Operation::CommandTask { .. }
+                | Operation::SendThread { .. },
                 Self::Dispatched { receipt },
             ) => receipt.operation == op.name(),
             _ => false,

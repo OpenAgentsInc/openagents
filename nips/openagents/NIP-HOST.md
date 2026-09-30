@@ -4,7 +4,9 @@
 [connect codes](#connect-codes), [enrollment over iroh](#enrollment-over-iroh),
 the [local operator socket](#local-operator-socket), and
 [nearby approval](#nearby-approval-planned) for the
-[QR pairing design](../../docs/coder/design/2026-09-29-auto-pairing.md). The
+[QR pairing design](../../docs/coder/design/2026-09-29-auto-pairing.md), and
+2026-09-30 with the [thread operations](#operations) (`thread.list`,
+`thread.read`, `thread.send`) that carry the host's chat threads to a phone. The
 [shared contracts](contracts.md)
 are normative. This profile lets one host admit a device with host-wide,
 scoped rights. It defines enrollment by host invitation, reverse enrollment
@@ -667,6 +669,9 @@ A request is `openagents.host-request.v1`:
 | `spend.list` | `operate` | `spends` |
 | `spend.settle` | `operate` | `settled` |
 | `chats.invite` | `observe` | `chats` |
+| `thread.list` | `observe` | `threads` |
+| `thread.read` | `observe` | `thread` |
+| `thread.send` | `operate` | `dispatched` |
 
 `task.create` carries `{title, prompt, workspace}`. The title is at most 200
 bytes, the prompt at most 16 KiB, and the workspace a host-scoped label of at
@@ -687,6 +692,47 @@ carries ends. It admits only the host's Coder task store. A device holding
 (nearby approval, or a connect code redeemed on the relay), and again before
 its chat grant ends. A host that serves no chats refuses it as
 `unavailable`, and an older host as `malformed` or `unsupported`.
+`thread.list`, `thread.read`, and `thread.send` carry the host's chat
+threads to a device: the conversations with OpenAgents that the host keeps
+in its own chat store, which the owner starts in the desktop app or with
+`openagents chat` on that computer
+([glossary](../../docs/glossary.md), Thread). Thread and send IDs are 32
+lowercase hex characters. `thread.list` carries nothing and returns
+`threads`: `{threads}`, at most 128 rows, newest first, with archived threads
+left out; each row is `{thread, title, started, updated, pinned, coder}`, a
+title of at most 160 bytes without control characters, and `coder` null or
+the Coder task the thread started, `{host, task, project, at}`.
+`thread.read` carries `{thread, before}`, `before` null for the newest turns
+or the index of the first turn not to include, and returns `thread`:
+`{thread: {thread, title, start, total, turns, busy, partial, failure,
+coder}}`. `turns` holds at most 64 turns from index `start`, oldest first,
+each `{role, text, at, stopped, model, request}`: `role` is `user` or
+`assistant`, `at` when the host saved it or null, `stopped` whether the
+reply stopped before its result, `model` the model the worker named or
+null, and `request` the send ID that created a message, whichever device
+sent it, or null. `busy` says a reply is streaming, `partial` is the reply
+so far (empty when none), and `failure` why the last message has no reply,
+at most 1,024 bytes, or null. A `threads` or `thread` outcome encodes in at
+most 48 KiB, so a reply fits one relay frame: the host drops a page's oldest
+turns first, then keeps only the end of a single turn or partial that is
+still too large, marked with `…`. A device reads the reply as it streams by
+reading the thread again, for example every 300 milliseconds while `busy`.
+The router's typed judgments, offers, and cards stay on the host.
+`thread.send` carries `{thread, request, text}`: the send ID the device
+mints once and replays unchanged, and a message of 1 byte to 32 KiB that is
+not blank. The host appends the message to the thread and asks OpenAgents
+for the reply with the thread as context, as a send from its own window
+does, and answers `dispatched` with the thread ID as its reference once the
+message is saved; that is a handling receipt, not the reply. The host
+appends a message once per send ID: a replay with the same text is
+dispatched again with no second message, and different text under a send
+ID the thread holds refuses as `conflict`, as does a send while the thread
+is answering or to an archived thread. An unknown thread, or a host that
+keeps no chat store, refuses as `unavailable`, and an older host refuses all
+three as `malformed` or `unsupported`. No thread operation grants execution
+authority: running Coder for a thread is the owner's choice on the host.
+Unlike every other operation, the host does not retain a `thread.list` or
+`thread.read` reply (see [Admission order and retention](#admission-order-and-retention)).
 `task.steer` carries `{task, revision, prompt}` and `task.cancel` carries
 `{task, revision, reason}`: the host-issued task ID from a `task.create`
 receipt, the task revision the device last read, and a replacement prompt of
@@ -848,7 +894,10 @@ and act. Every operation, including an exact retry, repeats these checks.
 
 The idempotency key is the request ID. The host retains the signed reply of
 an admitted principal with the exact request event ID until the request
-expires. An identical retry returns the retained bytes while the principal
+expires. The exception is a read with no effect, `thread.list` and
+`thread.read`: its reply is not retained, so a device that polls a streaming
+thread never fills the host's store, and an exact retry reads again and may
+answer newer content. An identical retry returns the retained bytes while the principal
 is still current. Different bytes under the same request ID refuse as
 `conflict`. For an operation with an external effect, the host records the
 admitted request before dispatch and passes the request ID to the effect's
@@ -1106,3 +1155,16 @@ redemption over iroh, a second device refused `forbidden`, a terminal only
 with `terminal`, revocation closing an open channel, an unknown key reaching
 only enrollment, clock skew, renewal on a channel, the socket's modes and
 peer check, and minting, rotating, and cancelling codes.
+
+The thread operations are implemented. The resident host answers them from
+the same chat store and service its local operator socket uses
+(`crates/coder-host/src/serve/threads.rs`), so a thread the desktop app or
+`openagents chat` started is the one a phone reads, and a phone's follow-up
+shows in both. `crates/coder-host/tests/threads.rs` runs a host whose threads
+ask a scripted chat worker on a local relay: a phone paired with a connect
+code lists and reads a thread the owner started on the socket, sends a
+follow-up whose reply it reads as it streams, replays the send without a
+second message, is refused `conflict` for other text under its send ID, and
+the owner reads the follow-up back; an `observe`-only device reads but is
+refused the send as `missing_right`; and polling reads leaves the access
+store's size unchanged.

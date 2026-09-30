@@ -43,6 +43,7 @@ pub(crate) mod nearby;
 mod relay;
 mod standing;
 mod terminal;
+mod threads;
 mod websocket;
 
 /// The runtime record schema SSH launchers read.

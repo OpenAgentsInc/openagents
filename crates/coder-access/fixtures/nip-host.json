@@ -342,6 +342,53 @@
         "kind": "chats.invite"
       }
     },
+    "request_thread_list": {
+      "v": "openagents.host-request.v1",
+      "requires": [],
+      "request": "d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4",
+      "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+      "grant": "1111111111111111111111111111111111111111111111111111111111111111",
+      "epoch": 0,
+      "relay": "wss://relay.example.com/",
+      "issued_at": 1790000000,
+      "expires_at": 1790000060,
+      "op": {
+        "kind": "thread.list"
+      }
+    },
+    "request_thread_read": {
+      "v": "openagents.host-request.v1",
+      "requires": [],
+      "request": "d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5",
+      "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+      "grant": "1111111111111111111111111111111111111111111111111111111111111111",
+      "epoch": 0,
+      "relay": "wss://relay.example.com/",
+      "issued_at": 1790000000,
+      "expires_at": 1790000060,
+      "op": {
+        "kind": "thread.read",
+        "thread": "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f",
+        "before": 16
+      }
+    },
+    "request_thread_send": {
+      "v": "openagents.host-request.v1",
+      "requires": [],
+      "request": "d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6",
+      "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+      "grant": "1111111111111111111111111111111111111111111111111111111111111111",
+      "epoch": 0,
+      "relay": "wss://relay.example.com/",
+      "issued_at": 1790000000,
+      "expires_at": 1790000060,
+      "op": {
+        "kind": "thread.send",
+        "thread": "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f",
+        "request": "1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e",
+        "text": "And in the snow?"
+      }
+    },
     "request_spend_list": {
       "v": "openagents.host-request.v1",
       "requires": [],
@@ -1370,6 +1417,70 @@
             "remaining": null,
             "at": 1790000000
           }
+        }
+      },
+      "code": "malformed"
+    },
+    {
+      "name": "thread ID that is not 32 lowercase hex",
+      "schema": "request",
+      "body": {
+        "v": "openagents.host-request.v1",
+        "requires": [],
+        "request": "d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7",
+        "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+        "grant": "1111111111111111111111111111111111111111111111111111111111111111",
+        "epoch": 0,
+        "relay": "wss://relay.example.com/",
+        "issued_at": 1790000000,
+        "expires_at": 1790000060,
+        "op": {
+          "kind": "thread.read",
+          "thread": "0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F",
+          "before": null
+        }
+      },
+      "code": "malformed"
+    },
+    {
+      "name": "blank thread message",
+      "schema": "request",
+      "body": {
+        "v": "openagents.host-request.v1",
+        "requires": [],
+        "request": "d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8",
+        "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+        "grant": "1111111111111111111111111111111111111111111111111111111111111111",
+        "epoch": 0,
+        "relay": "wss://relay.example.com/",
+        "issued_at": 1790000000,
+        "expires_at": 1790000060,
+        "op": {
+          "kind": "thread.send",
+          "thread": "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f",
+          "request": "1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e",
+          "text": "  "
+        }
+      },
+      "code": "bounds"
+    },
+    {
+      "name": "thread send without a send ID",
+      "schema": "request",
+      "body": {
+        "v": "openagents.host-request.v1",
+        "requires": [],
+        "request": "d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9",
+        "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+        "grant": "1111111111111111111111111111111111111111111111111111111111111111",
+        "epoch": 0,
+        "relay": "wss://relay.example.com/",
+        "issued_at": 1790000000,
+        "expires_at": 1790000060,
+        "op": {
+          "kind": "thread.send",
+          "thread": "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f",
+          "text": "Hello"
         }
       },
       "code": "malformed"

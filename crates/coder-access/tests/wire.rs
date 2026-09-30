@@ -143,6 +143,9 @@ fn every_operation_has_a_fixture() {
         "spend.list",
         "spend.settle",
         "chats.invite",
+        "thread.list",
+        "thread.read",
+        "thread.send",
     ] {
         assert!(kinds.contains(kind), "no request fixture for {kind}");
     }
@@ -201,4 +204,74 @@ fn chats_invite_requires_observe_and_answers_only_a_chat_invitation() {
     ] {
         assert_eq!(bad.validate().expect_err("refused").code, Code::Malformed);
     }
+}
+
+#[test]
+fn thread_reads_need_observe_sends_need_operate_and_reads_are_not_retained() {
+    use coder_access::protocol::{Operation, Outcome, Receipt};
+    use coder_access::thread::{MAX_THREADS, ThreadPage, ThreadRow};
+    let thread = "0f".repeat(16);
+    let list = Operation::ListThreads {};
+    let read = Operation::ReadThread {
+        thread: thread.clone(),
+        before: None,
+    };
+    let send = Operation::SendThread {
+        thread: thread.clone(),
+        request: "1e".repeat(16),
+        text: "And in the snow?".into(),
+    };
+    assert_eq!(list.required(), Some(coder_access::Right::Observe));
+    assert_eq!(read.required(), Some(coder_access::Right::Observe));
+    assert_eq!(send.required(), Some(coder_access::Right::Operate));
+    assert!(list.reads_only() && read.reads_only() && !send.reads_only());
+    let row = |n: usize| ThreadRow {
+        thread: format!("{n:032x}"),
+        title: format!("Thread {n}"),
+        started: 1,
+        updated: 2,
+        pinned: false,
+        coder: None,
+    };
+    let rows = Outcome::Threads {
+        threads: (0..3).map(row).collect(),
+    };
+    assert!(rows.validate().is_ok() && rows.answers(&list) && !rows.answers(&read));
+    let too_many = Outcome::Threads {
+        threads: (0..=MAX_THREADS).map(row).collect(),
+    };
+    assert_eq!(too_many.validate().unwrap_err().code, Code::Bounds);
+    let page = ThreadPage {
+        thread: thread.clone(),
+        title: "Rain".into(),
+        start: 0,
+        total: 0,
+        turns: vec![],
+        busy: false,
+        partial: String::new(),
+        failure: None,
+        coder: None,
+    };
+    let answer = Outcome::Thread {
+        thread: Box::new(page.clone()),
+    };
+    assert!(answer.validate().is_ok() && answer.answers(&read));
+    let other = Outcome::Thread {
+        thread: Box::new(ThreadPage {
+            thread: "1f".repeat(16),
+            ..page.clone()
+        }),
+    };
+    assert!(!other.answers(&read));
+    let beyond = Outcome::Thread {
+        thread: Box::new(ThreadPage { start: 1, ..page }),
+    };
+    assert!(beyond.validate().is_err());
+    let receipt = Outcome::Dispatched {
+        receipt: Receipt {
+            operation: "thread.send".into(),
+            reference: thread,
+        },
+    };
+    assert!(receipt.answers(&send));
 }
