@@ -10,7 +10,10 @@
 //! `desktop/macos/VERSION/` (`docs/desktop/release.md`,
 //! `scripts/desktop/sign-manifest.sh`). The installed app updates itself
 //! from the signed manifest beside it, and it bundles this repository's
-//! `coder` and `microcoder`.
+//! `coder` and `microcoder`. The Linux AppImage and `.deb` are the ones
+//! `scripts/desktop/build-linux-release.sh` builds and
+//! `scripts/desktop/sign-manifest-linux.sh` signs and publishes under
+//! `desktop/linux/VERSION/`, beside `SHA256SUMS` and its signature.
 
 use axum::Router;
 use axum::response::{Redirect, Response};
@@ -24,6 +27,12 @@ pub(crate) const MAC_VERSION: &str = "1.0.0";
 
 /// The published `.dmg`, a universal build for Apple silicon and Intel.
 pub(crate) const MAC_DMG: &str = "https://storage.googleapis.com/openagentsgemini-oa-updates/desktop/macos/1.0.0/OpenAgents-1.0.0.dmg";
+
+/// The published Linux AppImage, x86_64, at the same version.
+pub(crate) const LINUX_APPIMAGE: &str = "https://storage.googleapis.com/openagentsgemini-oa-updates/desktop/linux/1.0.0/OpenAgents-1.0.0-x86_64.AppImage";
+
+/// The published Linux `.deb`, amd64, at the same version.
+pub(crate) const LINUX_DEB: &str = "https://storage.googleapis.com/openagentsgemini-oa-updates/desktop/linux/1.0.0/openagents_1.0.0_amd64.deb";
 
 pub(crate) fn routes() -> Router<App> {
     Router::new().route("/install", get(install)).route(
@@ -58,15 +67,22 @@ async fn install() -> Response {
         "<ul class=\"dl-list\">{}{}{}{}</ul>\
 <p class=\"hint\">OpenAgents {MAC_VERSION} for Mac is one universal build, macOS 13 or later, \
 signed by OpenAgents, Inc. and notarized by Apple. Open the <code>.dmg</code> and drag \
-<strong>OpenAgents</strong> onto <strong>Applications</strong>. It updates itself.</p>",
+<strong>OpenAgents</strong> onto <strong>Applications</strong>. It updates itself.</p>\
+<p class=\"hint\">On Linux, x86_64 with glibc 2.31 or later (Debian 11, Ubuntu 20.04, and newer): \
+make the AppImage executable and open it, and it updates itself; or install the <code>.deb</code> \
+with your package manager.</p>",
         row(
             "macOS",
             "Apple silicon and Intel",
             Some((MAC_DMG, "Download .dmg"))
         ),
         row("Windows", "x64, .msi", None),
-        row("Linux", ".deb", None),
-        row("Linux", "AppImage", None),
+        row("Linux", "x86_64, .deb", Some((LINUX_DEB, "Download .deb"))),
+        row(
+            "Linux",
+            "x86_64, AppImage",
+            Some((LINUX_APPIMAGE, "Download AppImage"))
+        ),
     );
     let mobile = format!(
         "<ul class=\"dl-list\">{}{}</ul>",

@@ -14,5 +14,10 @@ You need two things: the app on your Mac and the app on your iPhone. The
 OpenAgents for Mac updates itself. The iPhone app updates through
 TestFlight.
 
-Android is in testing and not public yet. OpenAgents for Linux and Windows
-is not published yet.
+On Linux (x86_64), the [install page](/install) has an AppImage and a
+`.deb`. Make the AppImage executable and open it; it updates itself. The
+`.deb` installs with your package manager, and the app says when a newer
+one is out.
+
+Android is in testing and not public yet. OpenAgents for Windows is not
+published yet.

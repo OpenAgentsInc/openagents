@@ -165,7 +165,7 @@ async fn the_homepage_links_one_install_page_and_shows_the_verse() {
 }
 
 #[tokio::test]
-async fn the_install_page_covers_the_mac_the_iphone_and_pairing() {
+async fn the_install_page_covers_the_mac_linux_the_iphone_and_pairing() {
     let root = tempfile::tempdir().unwrap();
     let (status, body) = get(router(config(root.path().into())), "/install").await;
     assert_eq!(status, StatusCode::OK);
@@ -177,10 +177,19 @@ async fn the_install_page_covers_the_mac_the_iphone_and_pairing() {
     assert!(body.contains("iPhone Camera"));
     assert!(body.contains("Codex or Claude Code"));
     assert!(body.contains("Android") && body.contains("Linux") && body.contains("Windows"));
-    // One row per platform: macOS and iPhone link a real build; Windows,
-    // both Linux formats, and Android are unpublished and link nowhere.
+    // Linux links the published AppImage and .deb, beside the signed
+    // update manifest.
+    for linux in [
+        "https://storage.googleapis.com/openagentsgemini-oa-updates/desktop/linux/1.0.0/OpenAgents-1.0.0-x86_64.AppImage",
+        "https://storage.googleapis.com/openagentsgemini-oa-updates/desktop/linux/1.0.0/openagents_1.0.0_amd64.deb",
+    ] {
+        assert!(body.contains(&format!("href=\"{linux}\"")), "{linux}");
+    }
+    assert!(body.contains("glibc 2.31"));
+    // One row per platform: macOS, both Linux formats, and iPhone link a
+    // real build; Windows and Android are unpublished and link nowhere.
     assert_eq!(body.matches("class=\"dl-row\"").count(), 6, "{body}");
-    assert_eq!(body.matches("Coming soon").count(), 4, "{body}");
+    assert_eq!(body.matches("Coming soon").count(), 2, "{body}");
     for row in body.split("<li class=\"dl-row\">").skip(1) {
         let row = &row[..row.find("</li>").unwrap()];
         assert_eq!(row.contains("Coming soon"), !row.contains("href="), "{row}");
