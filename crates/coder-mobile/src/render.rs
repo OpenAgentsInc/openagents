@@ -34,6 +34,7 @@ fn button(
             ..Style::default()
         },
         element: Element::Button {
+            shortcut: None,
             label: label.into(),
             enabled,
             icon: None,

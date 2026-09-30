@@ -5,9 +5,19 @@
 
 use rust_native::style::{Color, Space};
 
+/// The bundled vector control artwork.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum IconSet {
+    #[default]
+    Standard,
+    /// Solar Icons by 480 Design (CC BY 4.0).
+    Solar,
+}
+
 /// The colors and sizes a view is painted with, in points.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Theme {
+    pub icons: IconSet,
     /// The bundled font pair used by semantic controls.
     pub font_family: rust_native::layout::display::FontFamily,
     /// The window's field.
@@ -49,6 +59,7 @@ pub struct Theme {
 impl Default for Theme {
     fn default() -> Theme {
         Theme {
+            icons: IconSet::Standard,
             font_family: Default::default(),
             background: Color::rgb(0, 0, 0),
             text: Color::rgb(245, 245, 245),

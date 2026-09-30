@@ -460,6 +460,7 @@ impl App for DesktopApp {
             return Theme::default();
         }
         Theme {
+            icons: rust_native_desktop::theme::IconSet::Solar,
             font_family: rust_native::layout::display::FontFamily::Geist,
             background: openagents_chat_app::visual::SIDEBAR,
             text: openagents_chat_app::visual::TEXT,
@@ -2912,6 +2913,17 @@ mod command_fixtures {
             capture(&mut app, &format!("latest-{width}"), width, height);
             key(&mut app, now, "k", true, false);
             let (_, palette) = rust_native_desktop::capture(&mut app, width, height, 1.0);
+            assert!(palette.ops.iter().any(|op| matches!(op, rust_native_desktop::layout::Op::Surface {resource,..} if resource == "glyph:command-search")));
+            assert!(palette.ops.iter().any(|op| matches!(op, rust_native_desktop::layout::Op::Text {paragraph,..} if paragraph.text == "New chat" && paragraph.font.size == 13.0 && paragraph.font.weight == rust_native::layout::display::Weight::Regular)));
+            let shortcut = if cfg!(target_os = "macos") {
+                "N"
+            } else {
+                "Ctrl+N"
+            };
+            assert!(palette.ops.iter().any(|op| matches!(op, rust_native_desktop::layout::Op::Text {paragraph,..} if paragraph.text == shortcut && paragraph.font.mono && paragraph.font.size == 10.0)));
+            if cfg!(target_os = "macos") {
+                assert!(palette.ops.iter().any(|op| matches!(op, rust_native_desktop::layout::Op::Text {paragraph,..} if paragraph.text == "⌘" && paragraph.font.family == rust_native::layout::display::FontFamily::Inter && paragraph.font.mono)));
+            }
             let card = palette.bounds["command-panel"];
             assert_eq!(card.w, 560.0);
             assert!((card.x + card.w / 2.0 - width / 2.0).abs() < 0.01);

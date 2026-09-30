@@ -239,6 +239,7 @@ fn button(key: &str, label: &str, intent: TerminalIntent, enabled: bool) -> Node
             ..Style::default()
         },
         element: Element::Button {
+            shortcut: None,
             label: label.into(),
             enabled,
             icon: None,

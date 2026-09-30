@@ -1267,6 +1267,7 @@ fn button(key: &str, label: &str, enabled: bool) -> Node<()> {
         style: Style::default(),
         element: Element::Button {
             label: label.into(),
+            shortcut: None,
             enabled,
             icon: None,
             intent: (),

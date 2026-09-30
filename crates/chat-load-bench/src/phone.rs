@@ -407,6 +407,7 @@ pub fn list(chats: &[Chat]) -> Node<()> {
             node(
                 format!("chat-{index}"),
                 Element::Button {
+                    shortcut: None,
                     label: format!(
                         "{}\n{:?} · {}",
                         chat.title,

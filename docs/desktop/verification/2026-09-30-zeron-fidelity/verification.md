@@ -156,9 +156,50 @@ metrics: heading font/line sizes 19/27, 16/24, 15/22, and 14/22 in semibold;
 code 12.5/18, 28-point header, 11-point language label, ten-point vertical
 padding, and a 24×22 copy control. Default callers retain their existing
 metrics and serialized copy widgets. Copy retains the original code bytes.
-The copy glyph is still awaiting the exact Solar asset pass.
+The following Solar artwork slice supplies the exact copy glyph.
 
 Shared application: 104 tests passed; core: 87 passed and three opt-in checks
 ignored, including the now-fixed CoreText corpus digest check; desktop adapter:
 57 passed. Strict all-target Clippy passed for core, adapter, shared application,
 and desktop. This remains a component slice of open #10029.
+
+## Solar artwork and shortcut badges
+
+Render Zeron's public Solar Linear assets for the chat controls, command
+palette, and chat menu, including the code-copy control. Keep the artwork's
+CC BY 4.0 attribution beside the embedded files. Cache alpha masks by asset
+and pixel size, then tint at paint time; a bounded cache avoids parsing SVGs
+on each frame. The source interface's attachment glyph is 18 points inside
+a 28-point hit area. Menu labels use regular 13-point Geist, with muted
+16-point icons and a ten-point gap.
+
+Shortcut badges use ten-point Geist Mono and retain typed activation separately
+from their display hints. Geist lacks the Command symbol, so that symbol alone
+uses the existing bundled JetBrains Mono fallback. Verify both macOS badges
+and the portable Ctrl label path without changing application shortcuts.
+
+[Default palette](solar-palette-1200.png),
+[minimum palette](solar-palette-760.png),
+[chat menu](solar-menu-760.png), and
+[context menu](solar-context-menu.png) retain this component slice. The
+retained-versus-complete repaint comparison passes through 24 menu transitions
+at 1× and 2× with the actual vector masks and surface revision keys.
+
+Shared application: 104 tests passed; core: 88 passed and three opt-in checks
+ignored; adapter: 58 passed; command fixtures: five passed. Scoped formatting
+and strict all-target Clippy pass for core, adapter, shared application, and
+desktop. All-target checks pass for Coder computers, mobile, terminal, and the
+chat load benchmark. The separate OpenAgents phone workspace also compiles.
+
+The dependency gate reports the same 30 failures as parent `482b8b811b`, after
+reviewing the new `arrayref` 0.3.9 BSD-2-Clause license and retaining its notice
+under a per-version exception. Existing source, advisory, license, wildcard,
+and yanked-version failures remain recorded; this slice adds none. See the
+[dependency review](../../../dependencies.md#embedded-vector-artwork).
+
+Menu shadow and background blur, tabs, new-chat composition, activity chrome,
+syntax colors, and the project/model footer still need the reference pass.
+This slice does not complete #10029. After integration with `2129cbc83a`, the shared application passes 109 tests;
+the desktop passes 92 library tests, 53 application tests (five opt-in checks
+ignored), and three version checks. Native performance verification follows
+the optimized build rebased on current main.

@@ -942,6 +942,7 @@ pub fn without_intents<I>(node: &Node<I>) -> Node<()> {
             icon,
             ..
         } => Element::Button {
+            shortcut: None,
             label: label.clone(),
             enabled: *enabled,
             icon: *icon,

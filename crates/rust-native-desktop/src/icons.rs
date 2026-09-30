@@ -10,6 +10,9 @@ pub(crate) fn draw(frame: &mut Frame, rect: PxRect, glyph: Glyph, color: Color) 
     let mut line =
         |a: (f32, f32), b: (f32, f32)| frame.line(p(a.0, a.1), p(b.0, b.1), width, color);
     match glyph {
+        Glyph::Search | Glyph::Settings | Glyph::Pin | Glyph::Archive | Glyph::Restore => {
+            crate::solar::draw_glyph(frame, rect, glyph, color);
+        }
         Glyph::Menu => {
             line((0.12, 0.2), (0.88, 0.2));
             line((0.12, 0.5), (0.88, 0.5));
@@ -81,7 +84,7 @@ pub(crate) fn draw(frame: &mut Frame, rect: PxRect, glyph: Glyph, color: Color) 
                 color,
             );
         }
-        Glyph::Compose => {
+        Glyph::Compose | Glyph::Edit => {
             line((0.2, 0.7), (0.72, 0.18));
             line((0.72, 0.18), (0.88, 0.34));
             line((0.88, 0.34), (0.36, 0.86));
@@ -198,5 +201,18 @@ pub(crate) fn draw(frame: &mut Frame, rect: PxRect, glyph: Glyph, color: Color) 
             );
         }
         Glyph::Unchecked => frame.stroke(rect, rect.w * 0.15, width, color),
+    }
+}
+
+/// Paints a bundled vector icon into a locally registered surface.
+pub fn paint(
+    frame: &mut Frame,
+    rect: PxRect,
+    glyph: Glyph,
+    set: crate::theme::IconSet,
+    color: Color,
+) {
+    if set != crate::theme::IconSet::Solar || !crate::solar::draw_glyph(frame, rect, glyph, color) {
+        draw(frame, rect, glyph, color);
     }
 }

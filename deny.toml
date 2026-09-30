@@ -32,6 +32,8 @@ allow = [
 # docs/dependencies.md, "iroh transport". No identifier here is allowed
 # graph-wide.
 exceptions = [
+    # Embedded SVG masks: reviewed permissive BSD license under tiny-skia.
+    { crate = "arrayref@0.3.9", allow = ["BSD-2-Clause"] },
     # Windows clipboard helpers; reviewed permissive Boost license.
     { crate = "clipboard-win@5.4.1", allow = ["BSL-1.0"] },
     { crate = "error-code@3.4.0", allow = ["BSL-1.0"] },

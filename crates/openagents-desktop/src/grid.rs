@@ -541,6 +541,7 @@ pub fn control(key: &str, label: &str) -> Node<Intent> {
         key: format!("grid-{key}"),
         style: Style::default(),
         element: Element::Button {
+            shortcut: None,
             label: label.into(),
             icon: None,
             enabled: true,

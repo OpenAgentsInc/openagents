@@ -126,6 +126,17 @@ pub struct Style {
     /// Horizontal and vertical button content insets in logical points.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub button_padding: Option<[u16; 2]>,
+    /// The vector glyph size, independent of its button's hit area.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub glyph_size: Option<u16>,
+    /// Space between a leading glyph and its label.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub glyph_gap: Option<u16>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub glyph_color: Option<Color>,
+    /// Use the monospaced member of the selected font family.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub monospace: Option<bool>,
 }
 
 /// A declaration contains only canonical leaf properties. A later explicit
@@ -151,6 +162,10 @@ pub struct StylePatch {
     pub line_height: Patch<u16>,
     pub min_height: Patch<u16>,
     pub button_padding: Patch<[u16; 2]>,
+    pub glyph_size: Patch<u16>,
+    pub glyph_gap: Patch<u16>,
+    pub glyph_color: Patch<Color>,
+    pub monospace: Patch<bool>,
 }
 
 impl StylePatch {
@@ -186,6 +201,10 @@ impl StylePatch {
             line_height: self.line_height.overlay(later.line_height),
             min_height: self.min_height.overlay(later.min_height),
             button_padding: self.button_padding.overlay(later.button_padding),
+            glyph_size: self.glyph_size.overlay(later.glyph_size),
+            glyph_gap: self.glyph_gap.overlay(later.glyph_gap),
+            glyph_color: self.glyph_color.overlay(later.glyph_color),
+            monospace: self.monospace.overlay(later.monospace),
         }
     }
 
@@ -211,6 +230,10 @@ impl StylePatch {
             line_height: self.line_height.resolve(defaults.line_height),
             min_height: self.min_height.resolve(defaults.min_height),
             button_padding: self.button_padding.resolve(defaults.button_padding),
+            glyph_size: self.glyph_size.resolve(defaults.glyph_size),
+            glyph_gap: self.glyph_gap.resolve(defaults.glyph_gap),
+            glyph_color: self.glyph_color.resolve(defaults.glyph_color),
+            monospace: self.monospace.resolve(defaults.monospace),
         }
     }
 }

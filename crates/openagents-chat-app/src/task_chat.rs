@@ -838,6 +838,7 @@ impl Session {
             key: key.into(),
             style: Style::default(),
             element: Element::Button {
+                shortcut: None,
                 label: label.into(),
                 enabled: !self.busy(),
                 icon: None,

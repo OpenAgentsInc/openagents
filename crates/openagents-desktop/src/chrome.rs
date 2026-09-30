@@ -319,6 +319,7 @@ fn action(
     let mut node = node(
         key,
         Element::Button {
+            shortcut: None,
             label,
             enabled: true,
             icon: glyph.map(|glyph| Icon {
@@ -348,6 +349,7 @@ fn icon_button(key: &str, label: &str, action: Action, glyph: Glyph) -> Node<Int
     let mut node = node(
         key,
         Element::Button {
+            shortcut: None,
             label: label.into(),
             enabled: true,
             icon: Some(Icon {

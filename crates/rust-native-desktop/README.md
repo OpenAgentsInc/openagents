@@ -122,3 +122,17 @@ Implement `rust_native_desktop::App` and call
 ```sh
 cargo test -p rust-native-desktop
 ```
+
+
+## Control artwork
+
+`Theme.icons` selects the original control vectors or bundled Solar artwork.
+Solar Icons by 480 Design use CC BY 4.0; [attribution](assets/solar/README.md)
+travels with the assets. The adapter renders only its embedded, closed set of
+assets through `resvg`, with text and raster-image features disabled. It caches
+alpha masks independently of tint, with at most 128 entries and 2 MiB per UI
+thread. Drawing preserves the current damage clip.
+
+The desktop adapter supports button shortcut hints, independent glyph sizes,
+glyph spacing and tint, and monospaced labels. Shortcut hints remain display
+metadata; typed application intents and key admission own execution.

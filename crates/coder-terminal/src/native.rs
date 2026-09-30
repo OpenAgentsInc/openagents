@@ -390,6 +390,7 @@ mod tests {
             node(
                 key,
                 Element::Button {
+                    shortcut: None,
                     label: label.into(),
                     enabled,
                     icon: None,

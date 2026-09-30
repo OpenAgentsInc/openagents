@@ -73,6 +73,21 @@ September 30 dependency gate reports the same 29 existing failures as the
 parent commit, with no new failures from these dependencies. See the
 [rich text receipt](desktop/verification/2026-09-30-rich-text/verification.md).
 
+## Embedded vector artwork
+
+The desktop adapter uses `resvg` 0.48.1 from crates.io with default features
+disabled, including SVG text and raster-image decoding. Its MIT or Apache-2.0
+license satisfies the existing license policy. The root lockfile pins `usvg`,
+`tiny-skia`, and their supporting crates. `arrayref` 0.3.9 is reachable through
+`resvg -> tiny-skia` and declares BSD-2-Clause. Its copyright, redistribution
+conditions, and disclaimer were reviewed; a per-version license exception
+allows this permissive license only for that package. Its unchanged
+[license text](../crates/rust-native-desktop/assets/third-party/arrayref-LICENSE)
+is retained for distribution. The adapter accepts no SVG paths or
+URLs from a view: it renders a fixed embedded set of Solar controls. Solar's
+CC BY 4.0 asset attribution is retained separately in
+[`assets/solar`](../crates/rust-native-desktop/assets/solar/README.md).
+
 ## The paste exception
 
 [RUSTSEC-2024-0436](https://rustsec.org/advisories/RUSTSEC-2024-0436) reports

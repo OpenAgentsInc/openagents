@@ -179,6 +179,7 @@ pub fn chip<I>(chip: &Chip, intent: I) -> Node<I> {
         key: chip.key.clone(),
         style: Style::default(),
         element: Element::Button {
+            shortcut: None,
             label: chip.label.clone(),
             enabled: true,
             icon: Some(Icon {
@@ -320,6 +321,7 @@ fn card_button<I>(button: &Button, intent: I) -> Node<I> {
         key: button.id.clone(),
         style: Style::default(),
         element: Element::Button {
+            shortcut: None,
             label: button.label.clone(),
             enabled: button.enabled,
             icon: None,

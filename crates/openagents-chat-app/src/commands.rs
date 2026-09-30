@@ -52,6 +52,17 @@ pub fn shortcut(key: &str, command: bool, shift: bool, scope: Scope) -> Option<A
     }
 }
 
+/// Display-only labels for the shortcuts admitted by `shortcut`.
+pub fn badge(action: &Action, macos: bool) -> Option<&'static str> {
+    match (action, macos) {
+        (Action::NewChat, true) => Some("⌘N"),
+        (Action::NewChat, false) => Some("Ctrl+N"),
+        (Action::Settings, true) => Some("⌘,"),
+        (Action::Settings, false) => Some("Ctrl+,"),
+        _ => None,
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Entry {
     pub key: String,

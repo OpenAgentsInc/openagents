@@ -3671,6 +3671,7 @@ fn button(key: &str, label: &str, intent: Intent) -> Node<Intent> {
             ..Style::default()
         },
         element: Element::Button {
+            shortcut: None,
             label: label.into(),
             enabled: true,
             icon: None,

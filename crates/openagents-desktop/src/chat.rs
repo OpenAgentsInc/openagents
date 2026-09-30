@@ -1967,6 +1967,7 @@ impl Panel {
     pub fn version(&self, resource: &str) -> Option<u64> {
         match resource {
             COMMAND_QUERY => Some(self.command_query.version()),
+            "glyph:command-search" => Some(0),
             SEARCH => Some(self.search.version()),
             RENAME => self.rename.as_ref().map(|(_, field)| field.version()),
             TRANSCRIPT => Some(self.transcript.version()),
@@ -2018,6 +2019,7 @@ impl Panel {
         match resource {
             SEARCH => Some((available, 28.0)),
             COMMAND_QUERY => Some((available, 28.0)),
+            "glyph:command-search" => Some((16.0, 16.0)),
             RENAME => Some((available, 56.0)),
             TRANSCRIPT => Some((
                 available,
@@ -2046,6 +2048,16 @@ impl Panel {
     }
     pub fn paint(&mut self, resource: &str, frame: &mut Frame, rect: PxRect) -> bool {
         let scale = self.viewport.2;
+        if resource == "glyph:command-search" {
+            rust_native_desktop::paint_icon(
+                frame,
+                rect,
+                Glyph::Search,
+                rust_native_desktop::theme::IconSet::Solar,
+                openagents_chat_app::visual::MUTED,
+            );
+            return true;
+        }
         if resource == COMMAND_QUERY || resource == SEARCH || resource == RENAME {
             let field = if resource == COMMAND_QUERY {
                 Some(&mut self.command_query)
@@ -2243,16 +2255,29 @@ impl Panel {
                     },
                 };
                 let mut escape = button("command-close", "Esc", Action::DismissOverlay, true);
-                escape.style.text_size = Some(11);
+                escape.style.text_size = Some(10);
+                escape.style.monospace = Some(true);
+                escape.style.weight = Some(TextWeight::Normal);
                 escape.style.line_height = Some(14);
-                escape.style.button_padding = Some([6, 2]);
-                escape.style.radius = Some(4);
+                escape.style.button_padding = Some([5, 1]);
+                escape.style.radius = Some(5);
                 escape.style.foreground = Some(openagents_chat_app::visual::MUTED);
                 escape.style.background = Some(Color::rgb(32, 32, 32));
                 let mut header = stack(
                     "command-search-header",
                     Axis::Horizontal,
-                    vec![query, escape],
+                    vec![
+                        Node {
+                            key: "command-search-icon".into(),
+                            style: Style::default(),
+                            element: Element::Surface {
+                                label: "Command search".into(),
+                                resource: "glyph:command-search".into(),
+                            },
+                        },
+                        query,
+                        escape,
+                    ],
                 );
                 header.style.padding_points = Some([8, 16, 8, 16]);
                 header.style.gap_points = Some(10);
@@ -2294,6 +2319,35 @@ impl Panel {
                     },
                     entry.enabled,
                 );
+                if let Element::Button { icon, shortcut, .. } = &mut row.element {
+                    if *kind == Kind::Palette {
+                        *shortcut = openagents_chat_app::commands::badge(
+                            &entry.action,
+                            cfg!(target_os = "macos"),
+                        )
+                        .map(str::to_owned);
+                    }
+                    *icon = Some(Icon {
+                        glyph: match entry.action {
+                            C::NewChat => Glyph::Compose,
+                            C::Search => Glyph::Search,
+                            C::Settings => Glyph::Settings,
+                            C::Stop => Glyph::Stop,
+                            C::Rename => Glyph::Edit,
+                            C::Pin => Glyph::Pin,
+                            C::Archive => Glyph::Archive,
+                            C::Restore => Glyph::Restore,
+                            C::Switch(_) => Glyph::Ask,
+                            _ => Glyph::More,
+                        },
+                        circular: false,
+                        pill: false,
+                    });
+                }
+                row.style.weight = Some(TextWeight::Normal);
+                row.style.glyph_color = Some(openagents_chat_app::visual::MUTED);
+                row.style.glyph_size = Some(16);
+                row.style.glyph_gap = Some(10);
                 row.style.align = Some(rust_native::style::TextAlign::Start);
                 row.style.text_size = Some(13);
                 row.style.line_height = Some(18);
@@ -3080,6 +3134,7 @@ fn button(key: &str, label: &str, action: Action, enabled: bool) -> Node<Intent>
             ..Style::default()
         },
         element: Element::Button {
+            shortcut: None,
             label: label.into(),
             enabled,
             icon: None,
@@ -3096,6 +3151,11 @@ fn icon_button(
     primary: bool,
 ) -> Node<Intent> {
     let mut node = button(key, label, action, enabled);
+    node.style.glyph_size = Some(match glyph {
+        Glyph::Paperclip => 18,
+        Glyph::Stop => 11,
+        _ => 14,
+    });
     node.style.background = Some(if primary {
         openagents_chat_app::visual::TEXT
     } else {

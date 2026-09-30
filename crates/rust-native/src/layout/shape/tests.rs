@@ -25,7 +25,7 @@ use super::*;
 use crate::markdown;
 use crate::style::Style;
 use crate::view::{MessageRole, TextRole};
-use serde_json::{Value, json};
+use serde_json::Value;
 
 /// Records every paragraph the layout measures.
 struct Recording {
@@ -458,7 +458,7 @@ fn the_c_interface_shapes_without_a_measurer_and_hands_out_the_fonts() {
     );
     let handle = rust_native_layout_create_shaped();
     let rows = super::super::tests::conversation(6);
-    let request = serde_json::to_vec(&json!({
+    let request = serde_json::to_vec(&serde_json::json!({
         "width": 390.0,
         "scale": 1.0,
         "order": rows.iter().map(|r| r.key.clone()).collect::<Vec<_>>(),

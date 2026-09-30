@@ -65,6 +65,7 @@ fn sample() -> View<Intent> {
                         key: "inspect".into(),
                         style: Style::default(),
                         element: Element::Button {
+                            shortcut: None,
                             label: "Inspect task".into(),
                             enabled: true,
                             icon: None,
@@ -185,6 +186,7 @@ fn resource_bounds_apply_to_constructed_and_decoded_views() {
 fn encoded_budget_includes_intents_and_escaping() {
     let mut source = sample();
     source.root.element = Element::Button {
+        shortcut: None,
         label: "Inspect".into(),
         enabled: true,
         icon: None,
@@ -195,6 +197,7 @@ fn encoded_budget_includes_intents_and_escaping() {
     assert!(matches!(source.validate(), Err(ViewError::ViewLimit)));
     let mut source = sample();
     source.root.element = Element::Button {
+        shortcut: None,
         label: "  ".into(),
         enabled: true,
         icon: None,
@@ -236,6 +239,7 @@ fn json_nesting_bound_includes_intents_but_not_quoted_brackets() {
             key: "button".into(),
             style: Style::default(),
             element: Element::Button {
+                shortcut: None,
                 label: "Inspect".into(),
                 enabled: true,
                 icon: None,
@@ -617,6 +621,7 @@ fn a_button_icon_is_optional_and_keeps_its_label() {
                 key: "new-chat".into(),
                 style: Style::default(),
                 element: Element::Button {
+                    shortcut: None,
                     label: "New chat".into(),
                     enabled: true,
                     icon,
@@ -713,6 +718,7 @@ fn checkbox_glyphs_round_trip() {
                 key: "allow".into(),
                 style: Style::default(),
                 element: Element::Button {
+                    shortcut: None,
                     label: "Allow it".into(),
                     enabled: true,
                     icon: Some(icon),
@@ -734,4 +740,43 @@ fn checkbox_glyphs_round_trip() {
             Element::Button { icon: Some(i), .. } if i == icon
         ));
     }
+}
+
+#[test]
+fn shortcut_hints_are_bounded_and_leave_the_typed_activation_unchanged() {
+    for shortcut in ["", "\n", "\r", &"x".repeat(65)] {
+        let mut view = sample();
+        view.root.element = Element::Button {
+            label: "New chat".into(),
+            enabled: true,
+            icon: None,
+            shortcut: Some(shortcut.into()),
+            intent: Intent::InspectTask {
+                task: "fixture".into(),
+            },
+        };
+        assert!(view.validate().is_err());
+    }
+    let mut view = sample();
+    view.root.element = Element::Button {
+        label: "New chat".into(),
+        enabled: true,
+        icon: None,
+        shortcut: Some("⌘N".into()),
+        intent: Intent::InspectTask {
+            task: "fixture".into(),
+        },
+    };
+    let view = view.validate().unwrap();
+    let activation = Activation {
+        instance: view.view().instance.clone(),
+        revision: view.view().revision,
+        node: view.view().root.key.clone(),
+    };
+    assert_eq!(
+        view.activate(&activation),
+        Ok(&Intent::InspectTask {
+            task: "fixture".into()
+        })
+    );
 }

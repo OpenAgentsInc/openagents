@@ -747,26 +747,7 @@ impl Transcript {
                             w: 12.0 * unit,
                             h: 12.0 * unit,
                         };
-                        let stroke = 0.75 * unit;
-                        frame.stroke(
-                            PxRect {
-                                x: icon.x + 1.3 * unit,
-                                y: icon.y + 1.3 * unit,
-                                w: 7.4 * unit,
-                                h: 7.4 * unit,
-                            },
-                            1.5 * unit,
-                            stroke,
-                            color,
-                        );
-                        let front = PxRect {
-                            x: icon.x + 3.3 * unit,
-                            y: icon.y + 3.3 * unit,
-                            w: 7.2 * unit,
-                            h: 7.2 * unit,
-                        };
-                        frame.fill(front, 1.5 * unit, self.ink(Ink::Role(ColorRole::Surface)));
-                        frame.stroke(front, 1.5 * unit, stroke, color);
+                        crate::solar::draw_copy(frame, icon, color);
                     }
                     WidgetKind::Copy { .. } => {
                         let paragraph = fonts.paragraph(
@@ -1196,6 +1177,7 @@ mod button_tests {
             key: "card-action".into(),
             style: Style::default(),
             element: Element::Button {
+                shortcut: None,
                 label: label.into(),
                 enabled,
                 icon: None,

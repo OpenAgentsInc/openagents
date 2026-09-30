@@ -21,6 +21,7 @@ rust-native = { path = "../rust-native", features = ["shaping"] }
 serde = { version = "1", features = ["derive"] }
 swash = "0.2.10"
 png = "0.18.1"
+resvg = { version = "0.48.1", default-features = false }
 rfd = { version = "0.17.2", optional = true }
 arboard = { version = "3.6.1", features = ["wayland-data-control"], optional = true }
 pollster = { version = "0.4", optional = true }

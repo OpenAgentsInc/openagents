@@ -55,6 +55,7 @@ fn button(key: &str, label: &str, intent: Intent, enabled: bool) -> Node<Intent>
         key,
         Style::default(),
         Element::Button {
+            shortcut: None,
             label: label.into(),
             enabled,
             icon: None,
@@ -86,6 +87,7 @@ fn checkbox(key: &str, label: &str, on: bool, intent: Intent, enabled: bool) -> 
         key,
         Style::default(),
         Element::Button {
+            shortcut: None,
             label: label.into(),
             enabled,
             icon: Some(Icon {
@@ -672,6 +674,7 @@ fn write_outline<I: serde::Serialize>(node: &Node<I>, depth: usize, out: &mut St
             format!("{} {value:?}", format!("{role:?}").to_lowercase())
         }
         Element::Button {
+            shortcut: _,
             label,
             enabled,
             icon,

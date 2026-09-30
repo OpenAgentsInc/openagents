@@ -220,7 +220,18 @@ fn paint_clipped(
                 clips.pop();
                 frame.set_clip(clips.last().copied().or(base_clip));
             }
-            Op::Glyph { rect, glyph, color } => crate::icons::draw(frame, px(rect), *glyph, *color),
+            Op::Glyph {
+                rect,
+                glyph,
+                set,
+                color,
+            } => {
+                if *set != crate::theme::IconSet::Solar
+                    || !crate::solar::draw_glyph(frame, px(rect), *glyph, *color)
+                {
+                    crate::icons::draw(frame, px(rect), *glyph, *color);
+                }
+            }
             Op::Fill {
                 rect,
                 radius,

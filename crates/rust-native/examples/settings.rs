@@ -31,6 +31,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         key: "inspect".into(),
                         style: Style::default(),
                         element: Element::Button {
+                            shortcut: None,
                             label: "Open preferences".into(),
                             enabled: true,
                             icon: None,

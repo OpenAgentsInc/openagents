@@ -85,6 +85,9 @@ pub enum Element<I> {
         enabled: bool,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         icon: Option<Icon>,
+        /// Display-only shortcut hint. The application owns the key binding.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        shortcut: Option<String>,
         intent: I,
     },
     /// A conversation, oldest row first. Adapters keep the newest row in view
@@ -187,6 +190,8 @@ pub enum Glyph {
     Back,
     /// Start something new, such as a chat.
     Compose,
+    /// Edit an item.
+    Edit,
     /// Open a list of earlier items beside the screen, such as previous
     /// chats: a hamburger.
     Menu,
@@ -210,6 +215,16 @@ pub enum Glyph {
     Clipboard,
     /// Open additional actions.
     More,
+    /// Find an item.
+    Search,
+    /// Open application settings.
+    Settings,
+    /// Keep an item at the top of a list.
+    Pin,
+    /// Archive an item without deleting it.
+    Archive,
+    /// Restore an archived item.
+    Restore,
     /// The current choice among several.
     Check,
     /// Ask a suggested question, such as a follow-up under an answer.
@@ -358,7 +373,12 @@ impl<I: Serialize> View<I> {
             if depth > MAX_DEPTH {
                 return Err(ViewError::DepthLimit);
             }
-            if node.style.radius.is_some_and(|radius| radius > 128)
+            if node
+                .style
+                .glyph_size
+                .is_some_and(|value| !(1..=128).contains(&value))
+                || node.style.glyph_gap.is_some_and(|value| value > 128)
+                || node.style.radius.is_some_and(|radius| radius > 128)
                 || node
                     .style
                     .padding_points
@@ -450,6 +470,13 @@ impl<I: Serialize> View<I> {
                     if label.trim().is_empty() {
                         return Err(ViewError::MissingLabel);
                     }
+                }
+                Element::Button { shortcut, .. }
+                    if shortcut.as_ref().is_some_and(|s| {
+                        s.trim().is_empty() || s.len() > 64 || s.contains(['\n', '\r'])
+                    }) =>
+                {
+                    return Err(ViewError::TextLimit);
                 }
                 Element::Button { label, .. } | Element::Working { label } => {
                     check_text(label)?;

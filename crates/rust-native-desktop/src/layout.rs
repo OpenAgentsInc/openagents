@@ -74,6 +74,7 @@ pub enum Op {
     Glyph {
         rect: Rect,
         glyph: Glyph,
+        set: crate::theme::IconSet,
         color: Color,
     },
     Fill {
@@ -777,7 +778,7 @@ impl Engine<'_> {
         let mut font = font(
             style.text_size.map_or(size, f32::from),
             if bold { Weight::Bold } else { weight },
-            mono,
+            style.monospace.unwrap_or(mono),
         );
         font.family = self.theme.font_family;
         font
@@ -829,7 +830,15 @@ impl Engine<'_> {
                 let paragraph = self.paragraph(label, TextRole::Status, &node.style, Some(inner));
                 (paragraph.width, paragraph.height)
             }
-            Element::Button { label, icon, .. } => {
+            Element::Button {
+                label,
+                icon,
+                shortcut,
+                ..
+            } => {
+                let badge_width = self.shortcut(shortcut.as_deref()).map_or(0.0, |parts| {
+                    parts.iter().map(|p| p.width).sum::<f32>() + 20.0
+                });
                 if checkbox_state(*icon).is_some() {
                     let paragraph = self.paragraph(
                         label,
@@ -844,7 +853,12 @@ impl Engine<'_> {
                 } else if icon.is_some_and(|icon| icon.circular) {
                     (self.theme.icon_size, self.theme.icon_size)
                 } else if transparent(node.style.background) {
-                    let icon_width = if icon.is_some() { 24.0 } else { 0.0 };
+                    let icon_width = if icon.is_some() {
+                        f32::from(node.style.glyph_size.unwrap_or(16))
+                            + f32::from(node.style.glyph_gap.unwrap_or(8))
+                    } else {
+                        0.0
+                    };
                     let paragraph = self.paragraph(
                         label,
                         TextRole::Body,
@@ -860,7 +874,12 @@ impl Engine<'_> {
                         paragraph.height + 4.0,
                     )
                 } else {
-                    let icon_width = if icon.is_some() { 24.0 } else { 0.0 };
+                    let icon_width = if icon.is_some() {
+                        f32::from(node.style.glyph_size.unwrap_or(16))
+                            + f32::from(node.style.glyph_gap.unwrap_or(8))
+                    } else {
+                        0.0
+                    };
                     let paragraph = self.paragraph(
                         label,
                         TextRole::Body,
@@ -868,13 +887,13 @@ impl Engine<'_> {
                             weight: node.style.weight.or(Some(TextWeight::Bold)),
                             ..node.style
                         },
-                        Some((inner - 2.0 * button_pad.0 - icon_width).max(1.0)),
+                        Some((inner - 2.0 * button_pad.0 - icon_width - badge_width).max(1.0)),
                     );
                     (
                         if node.style.align == Some(TextAlign::Start) {
                             inner
                         } else {
-                            paragraph.width + 2.0 * button_pad.0 + icon_width
+                            paragraph.width + 2.0 * button_pad.0 + icon_width + badge_width
                         },
                         paragraph.height + 2.0 * button_pad.1,
                     )
@@ -1289,6 +1308,47 @@ impl Engine<'_> {
         });
     }
 
+    fn shortcut(&mut self, value: Option<&str>) -> Option<Vec<Rc<Paragraph>>> {
+        value.map(|value| {
+            let mut font = self.text_font(TextRole::Code, &Style::default());
+            font.size = 10.0;
+            font.weight = Weight::Regular;
+            // Geist lacks the Command symbol. Use a bundled fallback for that
+            // symbol and preserve Geist Mono for the shortcut's remaining text.
+            let mut parts = Vec::new();
+            let mut start = 0;
+            for (at, ch) in value.char_indices() {
+                if ch != '⌘' || font.family != rust_native::layout::display::FontFamily::Geist {
+                    continue;
+                }
+                if start < at {
+                    parts.push(self.fonts.paragraph_with_line_height(
+                        &value[start..at],
+                        font,
+                        None,
+                        Some(14.0),
+                    ));
+                }
+                let mut fallback = font;
+                fallback.family = rust_native::layout::display::FontFamily::Inter;
+                parts.push(
+                    self.fonts
+                        .paragraph_with_line_height("⌘", fallback, None, Some(14.0)),
+                );
+                start = at + ch.len_utf8();
+            }
+            if start < value.len() {
+                parts.push(self.fonts.paragraph_with_line_height(
+                    &value[start..],
+                    font,
+                    None,
+                    Some(14.0),
+                ));
+            }
+            parts
+        })
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn button<I>(
         &mut self,
@@ -1300,6 +1360,14 @@ impl Engine<'_> {
         y: f32,
         inner: f32,
     ) {
+        let shortcut = match &node.element {
+            Element::Button { shortcut, .. } => shortcut.as_deref(),
+            _ => None,
+        };
+        let badge = self.shortcut(shortcut);
+        let badge_width = badge.as_ref().map_or(0.0, |parts| {
+            parts.iter().map(|p| p.width).sum::<f32>() + 20.0
+        });
         let button_pad = button_padding(&node.style);
         let hovered = self.interaction.hover.as_deref() == Some(node.key.as_str());
         let pressed = self.interaction.pressed.as_deref() == Some(node.key.as_str());
@@ -1403,16 +1471,38 @@ impl Engine<'_> {
             }
             self.scene.ops.push(Op::Glyph {
                 rect: Rect {
-                    x: x + theme.icon_size / 4.0,
-                    y: y + theme.icon_size / 4.0,
-                    w: theme.icon_size / 2.0,
-                    h: theme.icon_size / 2.0,
+                    x: x + (theme.icon_size
+                        - node
+                            .style
+                            .glyph_size
+                            .map_or(theme.icon_size / 2.0, f32::from))
+                        / 2.0,
+                    y: y + (theme.icon_size
+                        - node
+                            .style
+                            .glyph_size
+                            .map_or(theme.icon_size / 2.0, f32::from))
+                        / 2.0,
+                    w: node
+                        .style
+                        .glyph_size
+                        .map_or(theme.icon_size / 2.0, f32::from),
+                    h: node
+                        .style
+                        .glyph_size
+                        .map_or(theme.icon_size / 2.0, f32::from),
                 },
                 glyph: icon.glyph,
-                color,
+                set: theme.icons,
+                color: node.style.glyph_color.unwrap_or(color),
             });
         } else if transparent(node.style.background) {
-            let icon_width = if icon.is_some() { 24.0 } else { 0.0 };
+            let icon_width = if icon.is_some() {
+                f32::from(node.style.glyph_size.unwrap_or(16))
+                    + f32::from(node.style.glyph_gap.unwrap_or(8))
+            } else {
+                0.0
+            };
             let paragraph = self.paragraph(
                 label,
                 TextRole::Body,
@@ -1460,7 +1550,8 @@ impl Engine<'_> {
                         h: 16.0,
                     },
                     glyph: icon.glyph,
-                    color,
+                    set: theme.icons,
+                    color: node.style.glyph_color.unwrap_or(color),
                 });
             }
             self.text(
@@ -1472,7 +1563,12 @@ impl Engine<'_> {
                 color,
             );
         } else {
-            let icon_width = if icon.is_some() { 24.0 } else { 0.0 };
+            let icon_width = if icon.is_some() {
+                f32::from(node.style.glyph_size.unwrap_or(16))
+                    + f32::from(node.style.glyph_gap.unwrap_or(8))
+            } else {
+                0.0
+            };
             let style = Style {
                 weight: node.style.weight.or(Some(TextWeight::Bold)),
                 ..node.style
@@ -1481,7 +1577,7 @@ impl Engine<'_> {
                 label,
                 TextRole::Body,
                 &style,
-                Some((inner - 2.0 * button_pad.0 - icon_width).max(1.0)),
+                Some((inner - 2.0 * button_pad.0 - icon_width - badge_width).max(1.0)),
             );
             rect = Rect {
                 x,
@@ -1489,7 +1585,7 @@ impl Engine<'_> {
                 w: if node.style.align == Some(TextAlign::Start) {
                     inner
                 } else {
-                    paragraph.width + 2.0 * button_pad.0 + icon_width
+                    paragraph.width + 2.0 * button_pad.0 + icon_width + badge_width
                 },
                 h: (paragraph.height + 2.0 * button_pad.1)
                     .max(node.style.min_height.map_or(0.0, f32::from)),
@@ -1519,12 +1615,13 @@ impl Engine<'_> {
                 self.scene.ops.push(Op::Glyph {
                     rect: Rect {
                         x: x + button_pad.0,
-                        y: y + button_pad.1 + 1.0,
-                        w: 16.0,
-                        h: 16.0,
+                        y: y + (rect.h - f32::from(node.style.glyph_size.unwrap_or(16))) / 2.0,
+                        w: f32::from(node.style.glyph_size.unwrap_or(16)),
+                        h: f32::from(node.style.glyph_size.unwrap_or(16)),
                     },
                     glyph: icon.glyph,
-                    color,
+                    set: theme.icons,
+                    color: node.style.glyph_color.unwrap_or(color),
                 });
             }
             let text_y = y + (rect.h - paragraph.height) / 2.0;
@@ -1532,10 +1629,37 @@ impl Engine<'_> {
                 paragraph,
                 x + button_pad.0 + icon_width,
                 text_y,
-                rect.w - 2.0 * button_pad.0 - icon_width,
+                rect.w - 2.0 * button_pad.0 - icon_width - badge_width,
                 node.style.align.unwrap_or(TextAlign::Center),
                 color,
             );
+        }
+        if let Some(badge) = badge {
+            let text_width = badge.iter().map(|p| p.width).sum::<f32>();
+            let bounds = Rect {
+                x: rect.x + rect.w - button_pad.0 - text_width - 10.0,
+                y: rect.y + (rect.h - 16.0) / 2.0,
+                w: text_width + 10.0,
+                h: 16.0,
+            };
+            self.scene.ops.push(Op::Fill {
+                rect: bounds,
+                radius: 5.0,
+                color: mix(theme.background, theme.text, 0.05),
+            });
+            let mut pen = bounds.x + 5.0;
+            for part in badge {
+                let width = part.width;
+                self.text(
+                    part,
+                    pen,
+                    bounds.y + 1.0,
+                    width,
+                    TextAlign::Start,
+                    theme.muted,
+                );
+                pen += width;
+            }
         }
         if focused {
             self.scene.ops.push(Op::Stroke {
@@ -1583,6 +1707,7 @@ mod tests {
             key,
             Style::default(),
             Element::Button {
+                shortcut: None,
                 label: label.into(),
                 enabled: true,
                 icon,
