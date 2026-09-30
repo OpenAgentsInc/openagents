@@ -179,6 +179,20 @@ fn states() -> Vec<(&'static str, Model)> {
     no_chooser.problem = Some(crate::model::NO_CHOOSER.into());
     states.push(("dsk-02-no-folder-chooser", no_chooser));
 
+    // Another folder just chosen: it shows at once, saving.
+    let (mut saving, _) = model(Screen::Connected {
+        device: device.clone(),
+    });
+    saving.host = Some(host(vec![phone('d', "Kai's iPhone", true, 5)], true, true));
+    saving.saving = Some(crate::model::Saving {
+        path: PathBuf::from("/Users/kai/code/omarchy"),
+        replace: Some("website".into()),
+        autostart: true,
+        running: true,
+        tries: 1,
+    });
+    states.push(("dsk-02-saving-folder", saving));
+
     let (mut picked, _) = model(Screen::Connected { device });
     picked.host = Some(host(vec![phone('d', "Kai's iPhone", true, 5)], true, true));
     picked.agents = Agents::default();

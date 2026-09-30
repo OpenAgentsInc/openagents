@@ -58,6 +58,10 @@ struct State {
     now: u64,
     online: bool,
     down: bool,
+    /// How many calls go unanswered after each change of the projects, as
+    /// a host that starts again to serve them; and how many are left now.
+    restart_calls: u32,
+    restarting: u32,
     label: String,
     issued: Vec<Issued>,
     devices: BTreeMap<String, Device>,
@@ -73,6 +77,23 @@ struct State {
 /// another to the model.
 #[derive(Clone, Debug)]
 pub struct FakeHost(Arc<Mutex<State>>);
+
+impl State {
+    /// Whether the host does not answer this call: it is down, or starting
+    /// again after a change of its projects.
+    fn away(&mut self) -> bool {
+        if self.restarting > 0 {
+            self.restarting -= 1;
+            return true;
+        }
+        self.down
+    }
+
+    /// The projects changed: the host starts again.
+    fn changed(&mut self) {
+        self.restarting = self.restart_calls;
+    }
+}
 
 impl Default for FakeHost {
     fn default() -> Self {
@@ -138,6 +159,14 @@ impl FakeHost {
 
     pub fn set_down(&self, down: bool) {
         self.state().down = down;
+    }
+
+    /// After each change of its projects, the host leaves the next `calls`
+    /// calls unanswered while it starts again, as the real one does.
+    pub fn set_restart_calls(&self, calls: u32) {
+        let mut state = self.state();
+        state.restart_calls = calls;
+        state.restarting = state.restarting.min(calls);
     }
 
     /// Every invitation issued so far.
@@ -223,8 +252,8 @@ impl FakeHost {
 
 impl HostControl for FakeHost {
     fn status(&mut self) -> ControlResult<Status> {
-        let state = self.state();
-        if state.down {
+        let mut state = self.state();
+        if state.away() {
             return Err(ControlError::Unreachable);
         }
         let now = state.now;
@@ -321,7 +350,11 @@ impl HostControl for FakeHost {
     }
 
     fn autostart(&mut self) -> ControlResult<Autostart> {
-        Ok(self.state().autostart.clone().unwrap_or(Autostart {
+        let mut state = self.state();
+        if state.away() {
+            return Err(ControlError::Unreachable);
+        }
+        Ok(state.autostart.clone().unwrap_or(Autostart {
             enabled: false,
             projects: vec![],
             max_running: 1,
@@ -330,6 +363,9 @@ impl HostControl for FakeHost {
 
     fn set_autostart(&mut self, policy: Autostart) -> ControlResult<Autostart> {
         let mut state = self.state();
+        if state.away() {
+            return Err(ControlError::Unreachable);
+        }
         // As the host's `coder host autostart on` does: every label must
         // be a project it admits.
         if policy.enabled
@@ -348,11 +384,18 @@ impl HostControl for FakeHost {
     }
 
     fn projects(&mut self) -> ControlResult<Vec<Project>> {
-        Ok(self.state().projects.clone())
+        let mut state = self.state();
+        if state.away() {
+            return Err(ControlError::Unreachable);
+        }
+        Ok(state.projects.clone())
     }
 
     fn add_project(&mut self, path: &str) -> ControlResult<Vec<Project>> {
         let mut state = self.state();
+        if state.away() {
+            return Err(ControlError::Unreachable);
+        }
         let base = std::path::Path::new(path).file_name().map_or_else(
             || path.to_string(),
             |name| name.to_string_lossy().into_owned(),
@@ -377,12 +420,16 @@ impl HostControl for FakeHost {
                 folder: Some(path.into()),
             });
             state.projects.sort_by(|a, b| a.label.cmp(&b.label));
+            state.changed();
         }
         Ok(state.projects.clone())
     }
 
     fn remove_project(&mut self, label: &str) -> ControlResult<Vec<Project>> {
         let mut state = self.state();
+        if state.away() {
+            return Err(ControlError::Unreachable);
+        }
         let before = state.projects.len();
         state.projects.retain(|project| project.label != label);
         if state.projects.len() == before {
@@ -396,6 +443,7 @@ impl HostControl for FakeHost {
             policy.projects.retain(|held| held != label);
             policy.enabled &= !policy.projects.is_empty();
         }
+        state.changed();
         Ok(state.projects.clone())
     }
 

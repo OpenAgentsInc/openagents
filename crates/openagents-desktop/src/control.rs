@@ -109,26 +109,50 @@ pub enum PickError {
     Setting,
 }
 
-/// How many times a call after a project change is tried while the host
-/// starts again, and how long apart.
-const AGAIN: (u32, Duration) = (20, Duration::from_millis(250));
+/// How long a call waits for the host while it starts again after a
+/// settings change, and how often it asks meanwhile.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Patience {
+    pub wait: Duration,
+    pub every: Duration,
+}
 
-/// Runs `call`, trying again while the host is starting again after a
-/// project change (it is unreachable for a moment).
+/// The window's patience: a host that starts again answers within a
+/// second or two, and one its service manager has to start again within
+/// ten; thirty seconds covers both with room.
+pub const PATIENCE: Patience = Patience {
+    wait: Duration::from_secs(30),
+    every: Duration::from_millis(250),
+};
+
+/// Runs `call`, trying again while the host does not answer (it is
+/// starting again after a settings change) for up to `patience.wait`.
 fn again<T>(
     control: &mut dyn HostControl,
+    patience: Patience,
     mut call: impl FnMut(&mut dyn HostControl) -> ControlResult<T>,
 ) -> ControlResult<T> {
-    let mut tries = 1;
+    let deadline = std::time::Instant::now() + patience.wait;
     loop {
         match call(control) {
-            Err(ControlError::Unreachable) if tries < AGAIN.0 => {
-                tries += 1;
-                std::thread::sleep(AGAIN.1);
+            Err(ControlError::Unreachable) if std::time::Instant::now() < deadline => {
+                std::thread::sleep(patience.every);
             }
             result => return result,
         }
     }
+}
+
+/// Sets the auto-start policy, waiting for a host that is starting again.
+/// The host changes only whether the policy is on, its projects, and how
+/// many run (`coder host autostart on --keep-engine`, or `off`); the engine
+/// the owner set up stays.
+pub fn set_autostart(
+    control: &mut dyn HostControl,
+    policy: Autostart,
+    patience: Patience,
+) -> ControlResult<Autostart> {
+    again(control, patience, |c| c.set_autostart(policy.clone()))
 }
 
 /// The label the host gave the folder at `path`: the one project that was
@@ -163,34 +187,73 @@ fn label_of(before: &[Project], after: &[Project], path: &str) -> Option<String>
 /// other project the host still admits and names no project the host no
 /// longer has, so a phone's task in the shown project starts when the
 /// switch is on.
+///
+/// Each step changes the host's settings and may start it again, so each
+/// waits for it ([`PATIENCE`]). Every step is idempotent: run again after a
+/// failure partway, the same call finishes the swap (the folder is already
+/// in, the old project already gone) instead of leaving two projects or a
+/// policy naming a label the host no longer has.
 pub fn pick_project(
     control: &mut dyn HostControl,
     path: &str,
     replace: Option<&str>,
     autostart: bool,
 ) -> Result<(), PickError> {
-    let before = again(control, |c| c.projects()).unwrap_or_default();
-    let mut after = control.add_project(path).map_err(|_| PickError::Folder)?;
+    pick_project_with(control, path, replace, autostart, PATIENCE)
+}
+
+/// [`pick_project`] with `patience` for the host.
+pub fn pick_project_with(
+    control: &mut dyn HostControl,
+    path: &str,
+    replace: Option<&str>,
+    autostart: bool,
+    patience: Patience,
+) -> Result<(), PickError> {
+    let setting = |_| PickError::Setting;
+    let before = again(control, patience, |c| c.projects()).map_err(setting)?;
+    let mut after = match again(control, patience, |c| c.add_project(path)) {
+        Ok(after) => after,
+        Err(ControlError::Refused { .. }) => return Err(PickError::Folder),
+        Err(_) => return Err(PickError::Setting),
+    };
     let label = label_of(&before, &after, path).ok_or(PickError::Setting)?;
-    if let Some(old) = replace.filter(|old| *old != label) {
-        after = again(control, |c| c.remove_project(old)).map_err(|_| PickError::Setting)?;
+    if let Some(old) = replace.filter(|old| *old != label)
+        && after.iter().any(|project| project.label == old)
+    {
+        after = match again(control, patience, |c| c.remove_project(old)) {
+            Ok(after) => after,
+            // A host that took it off and started again before it answered
+            // says it has no such project now: it is gone either way.
+            Err(ControlError::Refused { .. }) => {
+                let now = again(control, patience, |c| c.projects()).map_err(setting)?;
+                if now.iter().any(|project| project.label == old) {
+                    return Err(PickError::Setting);
+                }
+                now
+            }
+            Err(_) => return Err(PickError::Setting),
+        };
     }
-    let policy = again(control, |c| c.autostart()).map_err(|_| PickError::Setting)?;
+    let policy = again(control, patience, |c| c.autostart()).map_err(setting)?;
     let mut projects: Vec<String> = policy
         .projects
-        .into_iter()
-        .filter(|held| *held != label && after.iter().any(|project| project.label == *held))
+        .iter()
+        .filter(|held| **held != label && after.iter().any(|project| project.label == **held))
+        .cloned()
         .collect();
     projects.push(label);
-    again(control, |c| {
-        c.set_autostart(Autostart {
-            enabled: autostart,
-            projects: projects.clone(),
-            max_running: policy.max_running.max(1),
-        })
-    })
-    .map(|_| ())
-    .map_err(|_| PickError::Setting)
+    let wanted = Autostart {
+        enabled: autostart,
+        projects,
+        max_running: policy.max_running.max(1),
+    };
+    if policy == wanted {
+        return Ok(());
+    }
+    set_autostart(control, wanted, patience)
+        .map(|_| ())
+        .map_err(setting)
 }
 
 /// The blocking client for the host's socket. One connection a request.
@@ -430,6 +493,109 @@ mod tests {
         );
         let back: Request = read_message(&mut &bytes[..]).expect("decodes");
         assert_eq!(back, request);
+    }
+
+    /// A host that applies a removal and starts again before its answer
+    /// arrives: the window hears nothing, asks again, and is told there is
+    /// no such project. The swap still finishes, and running it again
+    /// changes nothing.
+    #[test]
+    fn a_swap_whose_answer_was_lost_finishes_and_runs_again_harmlessly() {
+        use crate::fake::FakeHost;
+        struct LostReply {
+            host: FakeHost,
+            lose: bool,
+        }
+        impl HostControl for LostReply {
+            fn status(&mut self) -> ControlResult<Status> {
+                self.host.status()
+            }
+            fn invite(&mut self) -> ControlResult<Invite> {
+                self.host.invite()
+            }
+            fn cancel(&mut self, invitation: &str) -> ControlResult<u32> {
+                self.host.cancel(invitation)
+            }
+            fn cancel_all(&mut self) -> ControlResult<u32> {
+                self.host.cancel_all()
+            }
+            fn devices(&mut self) -> ControlResult<Vec<Device>> {
+                self.host.devices()
+            }
+            fn revoke(&mut self, device: &str) -> ControlResult<()> {
+                self.host.revoke(device)
+            }
+            fn autostart(&mut self) -> ControlResult<Autostart> {
+                self.host.autostart()
+            }
+            fn set_autostart(&mut self, policy: Autostart) -> ControlResult<Autostart> {
+                self.host.set_autostart(policy)
+            }
+            fn projects(&mut self) -> ControlResult<Vec<Project>> {
+                self.host.projects()
+            }
+            fn add_project(&mut self, path: &str) -> ControlResult<Vec<Project>> {
+                self.host.add_project(path)
+            }
+            fn remove_project(&mut self, label: &str) -> ControlResult<Vec<Project>> {
+                let result = self.host.remove_project(label);
+                if std::mem::take(&mut self.lose) {
+                    return Err(ControlError::Unreachable);
+                }
+                result
+            }
+            fn nearby_pending(&mut self) -> ControlResult<Option<NearbyPrompt>> {
+                self.host.nearby_pending()
+            }
+            fn nearby_decide(&mut self, id: u64, connect: bool) -> ControlResult<()> {
+                self.host.nearby_decide(id, connect)
+            }
+        }
+        let patience = Patience {
+            wait: Duration::from_millis(200),
+            every: Duration::from_millis(1),
+        };
+        let host = FakeHost::default();
+        let mut control = LostReply {
+            host: host.clone(),
+            lose: false,
+        };
+        pick_project_with(&mut control, "/code/openagents", None, true, patience).unwrap();
+        control.lose = true;
+        pick_project_with(
+            &mut control,
+            "/code/omarchy",
+            Some("openagents"),
+            true,
+            patience,
+        )
+        .unwrap();
+        let check = |control: &mut LostReply| {
+            let projects = control.host.projects().unwrap();
+            assert_eq!(projects.len(), 1, "{projects:?}");
+            assert_eq!(projects[0].label, "omarchy");
+            let policy = control.host.autostart().unwrap();
+            assert!(policy.enabled);
+            assert_eq!(policy.projects, ["omarchy"]);
+        };
+        check(&mut control);
+        // Run again, as the window does after a failure: nothing changes.
+        pick_project_with(
+            &mut control,
+            "/code/omarchy",
+            Some("openagents"),
+            true,
+            patience,
+        )
+        .unwrap();
+        check(&mut control);
+        // A host that never answers is a setting that did not change, not
+        // a folder it refused.
+        host.set_down(true);
+        assert_eq!(
+            pick_project_with(&mut control, "/code/site", None, true, patience),
+            Err(PickError::Setting)
+        );
     }
 
     #[test]

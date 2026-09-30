@@ -719,18 +719,98 @@ async fn serve(common: &Common, options: &mut Options, open_tasks: Box<OpenTasks
     Ok(())
 }
 
-/// Replace this process with a fresh start of the same command. Returns
-/// only on failure.
+/// How many times, and how far apart, the host looks for its program when
+/// it starts again: a build that replaces the file removes it for a moment.
+const REEXEC_TRIES: (u32, Duration) = (10, Duration::from_millis(300));
+
+/// The program to start again as: the path this process was started from,
+/// even after a rebuild replaced the file there.
+///
+/// On Linux `current_exe` reads `/proc/self/exe`, which names a replaced
+/// (unlinked) file as `PATH (deleted)`; the new build is at `PATH`. When
+/// that is not a file, `argv[0]` is resolved: as a path, against `cwd`
+/// when relative, or on `PATH` when a bare name. `None` when no candidate
+/// is a file now.
+fn restart_program(
+    current: Option<&Path>,
+    argv0: Option<&std::ffi::OsStr>,
+    path: Option<&std::ffi::OsStr>,
+    cwd: Option<&Path>,
+) -> Option<PathBuf> {
+    let current = current.map(|exe| {
+        exe.to_str()
+            .and_then(|text| text.strip_suffix(" (deleted)"))
+            .map_or_else(|| exe.to_path_buf(), PathBuf::from)
+    });
+    let named = argv0.filter(|name| !name.is_empty()).and_then(|name| {
+        let named = Path::new(name);
+        if named.is_absolute() {
+            Some(named.to_path_buf())
+        } else if named.components().count() > 1 {
+            cwd.map(|cwd| cwd.join(named))
+        } else {
+            path.and_then(|path| {
+                std::env::split_paths(path)
+                    .map(|dir| dir.join(named))
+                    .find(|candidate| candidate.is_file())
+            })
+        }
+    });
+    current.into_iter().chain(named).find(|path| path.is_file())
+}
+
+/// [`restart_program`] for this process, waiting briefly for a file a
+/// build is replacing.
+fn restart_program_here() -> Option<PathBuf> {
+    for attempt in 0..REEXEC_TRIES.0 {
+        if attempt > 0 {
+            std::thread::sleep(REEXEC_TRIES.1);
+        }
+        let found = restart_program(
+            std::env::current_exe().ok().as_deref(),
+            std::env::args_os().next().as_deref(),
+            std::env::var_os("PATH").as_deref(),
+            std::env::current_dir().ok().as_deref(),
+        );
+        if found.is_some() {
+            return found;
+        }
+    }
+    None
+}
+
+/// Replace this process with a fresh start of the same command, from the
+/// path it was started from ([`restart_program`]), so a build that
+/// replaced the file does not end the host. Returns only on failure; the
+/// host then exits with a failure, and its service manager starts it again
+/// within a second or two.
 #[cfg(unix)]
 fn reexec() -> Error {
     use std::os::unix::process::CommandExt;
-    let Ok(program) = std::env::current_exe() else {
-        return Error::Config("the host cannot start again".into());
-    };
-    let error = std::process::Command::new(program)
-        .args(std::env::args_os().skip(1))
-        .exec();
-    Error::Config(format!("the host cannot start again: {error}"))
+    let mut last = None;
+    for attempt in 0..REEXEC_TRIES.0 {
+        if attempt > 0 {
+            std::thread::sleep(REEXEC_TRIES.1);
+        }
+        let Some(program) = restart_program_here() else {
+            break;
+        };
+        // `exec` returns only on failure.
+        last = Some(
+            std::process::Command::new(&program)
+                .arg0(
+                    std::env::args_os()
+                        .next()
+                        .unwrap_or_else(|| program.clone().into_os_string()),
+                )
+                .args(std::env::args_os().skip(1))
+                .exec(),
+        );
+    }
+    match last {
+        Some(error) => Error::Config(format!("the host cannot start again: {error}")),
+        None => Error::Config("the host cannot start again: its program is gone".into()),
+    }
 }
 
 /// Start the same command again as a new process, with no console window,
@@ -742,8 +822,8 @@ fn reexec() -> Error {
     // Process creation flags, from `winbase.h`.
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;
     const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
-    let Ok(program) = std::env::current_exe() else {
-        return Error::Config("the host cannot start again".into());
+    let Some(program) = restart_program_here() else {
+        return Error::Config("the host cannot start again: its program is gone".into());
     };
     match std::process::Command::new(program)
         .args(std::env::args_os().skip(1))
@@ -1143,6 +1223,56 @@ fn retry_busy<T>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Starting again after a rebuild replaced the running file: Linux names
+    /// the unlinked file `PATH (deleted)`, and the new build is at `PATH`.
+    /// Failing that, `argv[0]` as a path or on `PATH`; never a missing file.
+    #[test]
+    fn start_again_finds_the_program_a_rebuild_replaced() {
+        let dir = tempfile::tempdir().unwrap();
+        let bin = dir.path().join("bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        let coder = bin.join("coder");
+        std::fs::write(&coder, b"old build").unwrap();
+        let deleted = PathBuf::from(format!("{} (deleted)", coder.display()));
+        // The running file is replaced: removed, then written again.
+        std::fs::remove_file(&coder).unwrap();
+        assert_eq!(restart_program(Some(&deleted), None, None, None), None);
+        std::fs::write(&coder, b"new build").unwrap();
+        assert_eq!(
+            restart_program(Some(&deleted), None, None, None),
+            Some(coder.clone())
+        );
+        assert_eq!(
+            restart_program(Some(&coder), None, None, None),
+            Some(coder.clone())
+        );
+        // No current path: argv[0] absolute, relative to the start folder,
+        // or a bare name on PATH.
+        let gone = dir.path().join("gone/coder (deleted)");
+        let os = |text: &str| std::ffi::OsString::from(text);
+        assert_eq!(
+            restart_program(Some(&gone), Some(coder.as_os_str()), None, None),
+            Some(coder.clone())
+        );
+        assert_eq!(
+            restart_program(Some(&gone), Some(&os("bin/coder")), None, Some(dir.path())),
+            Some(dir.path().join("bin/coder"))
+        );
+        let path = std::env::join_paths([dir.path().join("empty"), bin.clone()]).unwrap();
+        assert_eq!(
+            restart_program(None, Some(&os("coder")), Some(&path), None),
+            Some(coder.clone())
+        );
+        assert_eq!(
+            restart_program(None, Some(&os("coder")), None, Some(dir.path())),
+            None
+        );
+        assert_eq!(
+            restart_program(None, Some(&os("")), Some(&path), None),
+            None
+        );
+    }
 
     #[test]
     fn serve_flags_take_no_value() {

@@ -15,6 +15,12 @@
 //!   reloads the user manager, and enables and starts it. Inside an
 //!   AppImage the unit runs the AppImage file itself (`AppRun` dispatches
 //!   `coder ...`), because the AppImage's mount point changes every launch.
+//!   Outside an installed location (a build directory such as
+//!   `target/release`, which the next build overwrites), the unit runs a
+//!   copy of `coder` and `microcoder` in `~/.openagents/host/bin/<sha256>/`
+//!   ([`stage`]), named by their contents: a new build is a new folder,
+//!   picked up the next time the app starts, and never replaced under a
+//!   running host.
 //! - **Control socket.** `$XDG_RUNTIME_DIR/openagents/control.sock`
 //!   ([`openagents_desktop::control::socket_path`]); the host checks every
 //!   peer's user ID with `SO_PEERCRED`.
@@ -152,7 +158,13 @@ pub fn render_unit(command: &HostCommand, path: &str) -> Result<String, String> 
         "Type=simple".into(),
         format!("ExecStart={exec}"),
         "Restart=on-failure".into(),
-        "RestartSec=10".into(),
+        // A host that could not start itself again after a settings change
+        // exits with a failure; it is back within a second. A host that
+        // keeps failing waits longer each time, up to 30 seconds (systemd
+        // 254 and later; older ones ignore the two lines).
+        "RestartSec=1".into(),
+        "RestartSteps=5".into(),
+        "RestartMaxDelaySec=30".into(),
         "KillMode=control-group".into(),
         "UMask=0077".into(),
         "NoNewPrivileges=yes".into(),
@@ -253,6 +265,9 @@ impl LoginAgent {
             std::fs::rename(&temp, &target).map_err(io)?;
         }
         checked(systemctl, &["daemon-reload"])?;
+        // A host that failed to start too often is left stopped by the
+        // start limit until this clears it.
+        let _ = systemctl.run(&["reset-failed", UNIT]);
         checked(systemctl, &["enable", "--now", UNIT])?;
         // `enable --now` leaves a running host on the old unit.
         if changed && previous.is_some() {
@@ -296,10 +311,133 @@ impl LoginAgent {
     }
 }
 
+/// Where a copy of a build directory's `coder` lives for the unit, under
+/// the home folder: one folder a build, named by its SHA-256.
+const STAGED: &str = ".openagents/host/bin";
+
+/// The programs copied together: `coder`, and the engine it finds beside
+/// itself (`coder host autostart` sets up its first policy with it).
+const STAGED_PROGRAMS: [&str; 2] = [CODER, "microcoder"];
+
+/// Whether `dir` is an installed location that no build overwrites: the
+/// .deb's `/usr/lib/openagents`, `/opt`, or the Nix store.
+pub fn installed(dir: &Path) -> bool {
+    ["/usr", "/opt", "/nix/store", "/snap"]
+        .iter()
+        .any(|root| dir.starts_with(root))
+}
+
+/// SHA-256 over the programs in `dir` (`coder` required), each named and
+/// sized, so the folder changes when any of them does.
+fn programs_digest(dir: &Path) -> Result<String, String> {
+    use ring::digest::{Context, SHA256};
+    use std::io::Read;
+    let mut digest = Context::new(&SHA256);
+    for name in STAGED_PROGRAMS {
+        let path = dir.join(name);
+        if name != CODER && !path.is_file() {
+            continue;
+        }
+        let mut file = std::fs::File::open(&path)
+            .map_err(|error| format!("cannot read {}: {error}", path.display()))?;
+        let size = file.metadata().map_err(|error| error.to_string())?.len();
+        digest.update(name.as_bytes());
+        digest.update(&[0]);
+        digest.update(&size.to_be_bytes());
+        let mut buffer = vec![0u8; 1 << 16];
+        loop {
+            let read = file.read(&mut buffer).map_err(|error| error.to_string())?;
+            if read == 0 {
+                break;
+            }
+            digest.update(&buffer[..read]);
+        }
+    }
+    Ok(digest
+        .finish()
+        .as_ref()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect())
+}
+
+/// Copies `coder` (and `microcoder`, when it is there) from `source` into
+/// `root/<sha256>/`, the folder `0700` and each program `0500`, and returns
+/// the copy of `coder`. A folder already there with the same contents is
+/// used as it is; a copy that changed while it was made is refused.
+pub fn stage(source: &Path, root: &Path) -> Result<PathBuf, String> {
+    use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
+    let digest = programs_digest(source)?;
+    let target = root.join(&digest);
+    let program = target.join(CODER);
+    if program.is_file() && programs_digest(&target).as_deref() == Ok(digest.as_str()) {
+        return Ok(program);
+    }
+    let io = |error: io::Error| format!("cannot copy Coder for the start-up entry: {error}");
+    std::fs::DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create(&target)
+        .map_err(io)?;
+    std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o700)).map_err(io)?;
+    for name in STAGED_PROGRAMS {
+        let from = source.join(name);
+        if !from.is_file() {
+            continue;
+        }
+        let pending = target.join(format!(".{name}.pending"));
+        let _ = std::fs::remove_file(&pending);
+        std::fs::copy(&from, &pending).map_err(io)?;
+        std::fs::set_permissions(&pending, std::fs::Permissions::from_mode(0o500)).map_err(io)?;
+        std::fs::File::open(&pending)
+            .and_then(|file| file.sync_all())
+            .map_err(io)?;
+        std::fs::rename(&pending, target.join(name)).map_err(io)?;
+    }
+    if programs_digest(&target)? != digest {
+        let _ = std::fs::remove_dir_all(&target);
+        return Err("Coder changed while it was copied; try again after the build".into());
+    }
+    Ok(program)
+}
+
+/// Removes the copies of earlier builds under `root`, keeping `keep`: only
+/// folders named by a SHA-256 that hold nothing but the programs [`stage`]
+/// copies, so anything else there (an older setup's launcher) stays.
+pub fn prune_staged(root: &Path, keep: &Path) {
+    let Ok(entries) = std::fs::read_dir(root) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let name = entry.file_name();
+        let hashed = name.len() == 64
+            && name
+                .to_str()
+                .is_some_and(|name| name.bytes().all(|b| b.is_ascii_hexdigit()));
+        if !hashed || path == keep || !path.is_dir() {
+            continue;
+        }
+        let only_ours = std::fs::read_dir(&path).is_ok_and(|files| {
+            files.flatten().all(|file| {
+                file.file_name()
+                    .to_str()
+                    .is_some_and(|file| STAGED_PROGRAMS.contains(&file))
+            })
+        });
+        if only_ours {
+            let _ = std::fs::remove_dir_all(&path);
+        }
+    }
+}
+
 /// Registers the systemd user unit that runs `coder host serve`, and
-/// reports whether it may run. Only an installed app (an AppImage, or the
-/// .deb's directory with `coder` beside the window) registers one; a
-/// development build reports `NotRegistered`, as on a Mac outside a bundle.
+/// reports whether it may run. Only an app with `coder` beside it (an
+/// AppImage, the .deb's directory, or a build directory) registers one.
+/// Outside an installed location the unit runs a copy of the build
+/// ([`stage`]), so the next build never replaces the file under the
+/// running host; a changed build is a changed unit, and the host restarts
+/// onto it.
 pub fn register_agent(keys: &Keys) -> Agent {
     let Some(dir) = exe_dir() else {
         return Agent::NotRegistered;
@@ -311,10 +449,32 @@ pub fn register_agent(keys: &Keys) -> Agent {
     let Some(agent) = LoginAgent::current() else {
         return Agent::Failed("HOME is not set".into());
     };
-    let command = HostCommand::for_install(appimage.as_deref(), &dir, keys);
+    let mut command = HostCommand::for_install(appimage.as_deref(), &dir, keys);
+    let mut staged = None;
+    if appimage.is_none() && !installed(&dir) {
+        let Some(home) = std::env::var_os("HOME")
+            .map(PathBuf::from)
+            .filter(|home| home.is_absolute())
+        else {
+            return Agent::Failed("HOME is not set".into());
+        };
+        let root = home.join(STAGED);
+        match stage(&dir, &root) {
+            Ok(program) => {
+                command.program = program;
+                staged = Some(root);
+            }
+            Err(message) => return Agent::Failed(message),
+        }
+    }
     let path = std::env::var("PATH").unwrap_or_else(|_| "/usr/local/bin:/usr/bin:/bin".into());
     match agent.register(&command, &path, &mut UserSystemctl) {
-        Ok(()) => Agent::Enabled,
+        Ok(()) => {
+            if let (Some(root), Some(keep)) = (staged, command.program.parent()) {
+                prune_staged(&root, keep);
+            }
+            Agent::Enabled
+        }
         Err(message) => Agent::Failed(message),
     }
 }
@@ -620,6 +780,8 @@ mod tests {
         assert!(unit.contains("Environment=\"PATH=/usr/bin:/home/kai/.local/bin\"\n"));
         assert!(unit.contains("WantedBy=default.target\n"));
         assert!(unit.contains("Restart=on-failure\n"));
+        // A host that could not start itself again is back within a second.
+        assert!(unit.contains("RestartSec=1\n"));
         assert!(unit.contains("UMask=0077\n"));
     }
 
@@ -655,7 +817,11 @@ mod tests {
             0o644
         );
         let enable = format!("enable --now {UNIT}");
-        assert_eq!(systemctl.calls, ["daemon-reload", enable.as_str()]);
+        let reset = format!("reset-failed {UNIT}");
+        assert_eq!(
+            systemctl.calls,
+            ["daemon-reload", reset.as_str(), enable.as_str()]
+        );
         assert_eq!(agent.status(&mut systemctl), (true, true));
 
         // The same command again does not restart the host.
@@ -663,7 +829,10 @@ mod tests {
         agent
             .register(&command, "/usr/bin", &mut systemctl)
             .unwrap();
-        assert_eq!(systemctl.calls, ["daemon-reload", enable.as_str()]);
+        assert_eq!(
+            systemctl.calls,
+            ["daemon-reload", reset.as_str(), enable.as_str()]
+        );
 
         // A moved install rewrites the unit and restarts the host onto it.
         systemctl.calls.clear();
@@ -677,7 +846,12 @@ mod tests {
         let restart = format!("restart {UNIT}");
         assert_eq!(
             systemctl.calls,
-            ["daemon-reload", enable.as_str(), restart.as_str()]
+            [
+                "daemon-reload",
+                reset.as_str(),
+                enable.as_str(),
+                restart.as_str()
+            ]
         );
 
         systemctl.calls.clear();
@@ -687,6 +861,71 @@ mod tests {
         assert_eq!(systemctl.calls, [disable.as_str(), "daemon-reload"]);
         assert_eq!(agent.status(&mut systemctl), (false, false));
         agent.unregister(&mut systemctl).unwrap();
+    }
+
+    /// A build directory's `coder` runs from a copy named by its contents:
+    /// a rebuild never replaces the file under the running host, the same
+    /// build is the same copy, and a new build is a new folder that
+    /// replaces the old copies (never another setup's files).
+    #[test]
+    fn a_build_directorys_coder_runs_from_a_copy_named_by_its_contents() {
+        use std::os::unix::fs::PermissionsExt;
+        assert!(installed(Path::new("/usr/lib/openagents")));
+        assert!(installed(Path::new("/nix/store/abc-openagents/lib")));
+        assert!(!installed(Path::new("/home/kai/openagents/target/release")));
+        assert!(!installed(Path::new("/usrlocal/openagents")));
+
+        let dir = tempfile::tempdir().unwrap();
+        let build = dir.path().join("target/release");
+        std::fs::create_dir_all(&build).unwrap();
+        std::fs::write(build.join("coder"), b"coder build 1").unwrap();
+        std::fs::write(build.join("microcoder"), b"engine build 1").unwrap();
+        let root = dir.path().join("home/.openagents/host/bin");
+        // An older setup's launcher in the same folder stays.
+        let launcher = root.join("f".repeat(64));
+        std::fs::create_dir_all(&launcher).unwrap();
+        std::fs::write(launcher.join("coder-service"), b"launcher").unwrap();
+
+        let first = stage(&build, &root).unwrap();
+        assert_eq!(first.file_name().unwrap(), "coder");
+        let folder = first.parent().unwrap().to_path_buf();
+        assert_eq!(folder.parent().unwrap(), root);
+        assert_eq!(folder.file_name().unwrap().len(), 64);
+        assert_eq!(std::fs::read(&first).unwrap(), b"coder build 1");
+        assert_eq!(
+            std::fs::read(folder.join("microcoder")).unwrap(),
+            b"engine build 1"
+        );
+        let mode = |path: &Path| std::fs::metadata(path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode(&folder), 0o700);
+        assert_eq!(mode(&first), 0o500);
+        assert_eq!(stage(&build, &root).unwrap(), first, "the same build");
+
+        // The build is replaced, as cargo does: the copy stays as it was.
+        std::fs::remove_file(build.join("coder")).unwrap();
+        std::fs::write(build.join("coder"), b"coder build 2").unwrap();
+        assert_eq!(std::fs::read(&first).unwrap(), b"coder build 1");
+        let second = stage(&build, &root).unwrap();
+        assert_ne!(second, first);
+        assert_eq!(std::fs::read(&second).unwrap(), b"coder build 2");
+        // A new engine alone is a new folder too.
+        std::fs::write(build.join("microcoder"), b"engine build 2").unwrap();
+        let third = stage(&build, &root).unwrap();
+        assert_ne!(third, second);
+
+        prune_staged(&root, third.parent().unwrap());
+        assert!(third.is_file());
+        assert!(!first.exists() && !second.exists());
+        assert!(launcher.join("coder-service").is_file());
+
+        // The unit runs the copy.
+        let mut command = HostCommand::for_install(None, &build, &Keys::Keychain);
+        command.program = third.clone();
+        let unit = render_unit(&command, "/usr/bin").unwrap();
+        assert!(unit.contains(&format!("ExecStart=\"{}\"", third.display())));
+        assert!(!unit.contains("target/release"));
+        // No `coder` in the build: nothing to copy.
+        assert!(stage(&dir.path().join("empty"), &root).is_err());
     }
 
     #[test]

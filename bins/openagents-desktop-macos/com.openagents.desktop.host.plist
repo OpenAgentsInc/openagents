@@ -32,8 +32,10 @@
     <key>SuccessfulExit</key>
     <false/>
   </dict>
+  <!-- A host that could not start itself again after a settings change
+       exits with a failure; launchd starts it again within a second. -->
   <key>ThrottleInterval</key>
-  <integer>10</integer>
+  <integer>1</integer>
   <key>ProcessType</key>
   <string>Interactive</string>
 </dict>

@@ -302,6 +302,25 @@ fn phone_name(label: &str) -> &str {
 /// refused under it.
 fn project_row(model: &Model) -> Vec<Node<Intent>> {
     let mut rows = Vec::new();
+    // A folder just chosen shows at once, with Saving… until the host has
+    // taken it on (it starts again to serve it).
+    if let Some(saving) = &model.saving {
+        let mut row = vec![text(
+            "project-path",
+            saving.path.display().to_string(),
+            TextRole::Body,
+        )];
+        row.push(if saving.running {
+            text("project-saving", "Saving…", TextRole::Status)
+        } else {
+            quiet("choose", "Choose another folder…", Intent::ChooseFolder)
+        });
+        rows.push(stack("project", Axis::Horizontal, Space::Sm, row));
+        if let Some(problem) = &model.problem {
+            rows.push(text("problem", problem, TextRole::Status));
+        }
+        return rows;
+    }
     let (path, label) = match model.project() {
         Some(project) => (
             text("project-path", project.shown(), TextRole::Body),

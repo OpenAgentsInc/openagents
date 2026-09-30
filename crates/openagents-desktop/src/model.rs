@@ -9,7 +9,7 @@
 //! it is showing, which is on the screen anyway.
 
 use crate::codes::{Action, Codes, Conditions};
-use crate::control::{Autostart, Device, NearbyPrompt, Project, Status};
+use crate::control::{Autostart, Device, NearbyPrompt, PickError, Project, Status};
 pub use crate::folder::Chosen;
 use serde::Serialize;
 use std::collections::BTreeSet;
@@ -27,6 +27,14 @@ pub const CODER_POLL: Duration = Duration::from_secs(15);
 /// forward.
 pub const NO_CHOOSER: &str = "No folder chooser opened on this computer. \
      Install zenity or kdialog, or start the desktop portal, then choose again.";
+/// What the project row says when the host would not take a folder.
+pub const FOLDER_REFUSED: &str = "Coder couldn't use that folder. Choose another one.";
+/// What the window says when a setting did not change: the host did not
+/// answer for the whole of [`crate::control::PATIENCE`], or refused.
+pub const SETTING_FAILED: &str = "Couldn't change that setting. Try again.";
+/// How many times the window sends one chosen folder's swap before it
+/// gives up on it: the first try, then once a refresh after each failure.
+pub const SAVE_TRIES: u32 = 4;
 /// How long a copied code stays on the clipboard.
 pub const CLIPBOARD_LIFE: Duration = Duration::from_secs(60);
 /// How long Coder may go without answering before the screens say so and
@@ -36,6 +44,35 @@ pub const STALL: Duration = Duration::from_secs(20);
 /// own (the launch start: register the login agent, upgrading an earlier
 /// setup first). Polling for an answer goes on every [`SLOW_POLL`].
 pub const RESTART: Duration = Duration::from_secs(60);
+
+/// A folder the person chose that the host has not finished taking on: the
+/// project row shows it with **Saving…** at once, and until the swap is
+/// done. A swap that failed partway is sent again on the next answer from
+/// the host ([`crate::control::pick_project`] finishes it), up to
+/// [`SAVE_TRIES`] times.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Saving {
+    /// The folder chosen.
+    pub path: PathBuf,
+    /// The project it replaces.
+    pub replace: Option<String>,
+    /// Whether the switch is on for it.
+    pub autostart: bool,
+    /// Whether its [`Request::AddProject`] is out.
+    pub running: bool,
+    /// How many times it was sent.
+    pub tries: u32,
+}
+
+impl Saving {
+    fn request(&self) -> Request {
+        Request::AddProject {
+            path: self.path.clone(),
+            replace: self.replace.clone(),
+            autostart: self.autostart,
+        }
+    }
+}
 
 /// The screens: `DSK-01` to `DSK-03`.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -217,6 +254,8 @@ pub enum Outcome {
         message: String,
     },
     Folder(Chosen),
+    /// A [`Request::AddProject`] finished.
+    Picked(Result<(), PickError>),
     Coder {
         agents: Agents,
         tasks: Vec<Task>,
@@ -242,6 +281,7 @@ fn outcome_name(outcome: &Outcome) -> &'static str {
         Outcome::CreateFailed { .. } => "CreateFailed",
         Outcome::Failed { .. } => "Failed",
         Outcome::Folder(_) => "Folder",
+        Outcome::Picked(_) => "Picked",
         Outcome::Coder { .. } => "Coder",
         Outcome::Copied => "Copied",
         Outcome::Started(_) => "Started",
@@ -280,6 +320,8 @@ pub struct Model {
     pub copied_at: Option<Instant>,
     /// A line for the person about the last thing that went wrong.
     pub problem: Option<String>,
+    /// The folder being saved as the project, while it is.
+    pub saving: Option<Saving>,
     pub visible: bool,
     pub unlocked: bool,
     /// Devices known when the code screen opened; a new one is a pairing.
@@ -327,6 +369,7 @@ impl Model {
             confirming: None,
             copied_at: None,
             problem: None,
+            saving: None,
             visible: true,
             unlocked: true,
             known: None,
@@ -377,6 +420,11 @@ impl Model {
             return false;
         };
         host.autostart.enabled && host.autostart.projects.contains(&project.label)
+    }
+
+    /// Whether a chosen folder's swap is out now.
+    pub fn saving_now(&self) -> bool {
+        self.saving.as_ref().is_some_and(|saving| saving.running)
     }
 
     /// Brings the model up to `now`.
@@ -502,8 +550,13 @@ impl Model {
                 self.codes.show_again(now);
                 self.tick(now)
             }
+            // One folder at a time: the row says Saving… meanwhile.
+            Intent::ChooseFolder if self.saving_now() => Vec::new(),
             Intent::ChooseFolder => vec![Request::ChooseFolder],
             Intent::ToggleAutostart => {
+                if self.saving_now() {
+                    return Vec::new();
+                }
                 let Some(host) = &self.host else {
                     return Vec::new();
                 };
@@ -620,6 +673,15 @@ impl Model {
                     }
                     _ => {}
                 }
+                // A swap that failed partway: the host answers again, so
+                // finish it.
+                if let Some(saving) = &mut self.saving
+                    && !saving.running
+                {
+                    saving.running = true;
+                    saving.tries += 1;
+                    requests.push(saving.request());
+                }
                 requests.extend(self.tick(now));
                 requests
             }
@@ -651,6 +713,7 @@ impl Model {
                 self.problem = Some(NO_CHOOSER.into());
                 Vec::new()
             }
+            Outcome::Folder(Chosen::Folder(_)) if self.saving_now() => Vec::new(),
             Outcome::Folder(Chosen::Folder(path)) => {
                 if !path.join(".git").exists() {
                     self.problem = Some(
@@ -669,14 +732,41 @@ impl Model {
                     .and_then(|host| host.projects.first())
                     .map(|project| project.label.clone());
                 let autostart = self.autostart() || self.project().is_none();
-                vec![
-                    Request::AddProject {
-                        path,
-                        replace,
-                        autostart,
-                    },
-                    Request::Refresh,
-                ]
+                let saving = Saving {
+                    path,
+                    replace,
+                    autostart,
+                    running: true,
+                    tries: 1,
+                };
+                let request = saving.request();
+                self.saving = Some(saving);
+                vec![request]
+            }
+            Outcome::Picked(result) => {
+                if let Some(saving) = &mut self.saving {
+                    saving.running = false;
+                    match result {
+                        Ok(()) => {
+                            self.saving = None;
+                            self.problem = None;
+                        }
+                        Err(PickError::Folder) => {
+                            self.saving = None;
+                            self.problem = Some(FOLDER_REFUSED.into());
+                        }
+                        // The host did not come back in time, or refused a
+                        // step: say so, and finish on its next answer.
+                        Err(PickError::Setting) => {
+                            if saving.tries >= SAVE_TRIES {
+                                self.saving = None;
+                            }
+                            self.problem = Some(SETTING_FAILED.into());
+                        }
+                    }
+                }
+                self.next_poll = now;
+                vec![Request::Refresh]
             }
             Outcome::Coder { agents, tasks } => {
                 self.agents = agents;
@@ -712,6 +802,8 @@ mod tests {
         pub folder: Chosen,
         /// How many times the model asked to start Coder.
         pub starts: usize,
+        /// How long a call waits for the host starting again.
+        pub patience: crate::control::Patience,
     }
 
     impl Rig {
@@ -725,6 +817,10 @@ mod tests {
                 clipboard: None,
                 folder: Chosen::Cancelled,
                 starts: 0,
+                patience: crate::control::Patience {
+                    wait: Duration::from_millis(200),
+                    every: Duration::from_millis(1),
+                },
             }
         }
 
@@ -774,18 +870,19 @@ mod tests {
                         path,
                         replace,
                         autostart,
-                    } => {
-                        let _ = crate::control::pick_project(
-                            &mut self.host,
-                            &path.to_string_lossy(),
-                            replace.as_deref(),
-                            autostart,
-                        );
-                        None
-                    }
+                    } => Some(Outcome::Picked(crate::control::pick_project_with(
+                        &mut self.host,
+                        &path.to_string_lossy(),
+                        replace.as_deref(),
+                        autostart,
+                        self.patience,
+                    ))),
                     Request::SetAutostart(policy) => {
-                        let _ = self.host.set_autostart(policy);
-                        None
+                        crate::control::set_autostart(&mut self.host, policy, self.patience)
+                            .err()
+                            .map(|_| Outcome::Failed {
+                                message: SETTING_FAILED.into(),
+                            })
                     }
                     Request::Copy { code } => {
                         self.clipboard = Some(code);
@@ -1117,6 +1214,141 @@ mod tests {
         assert_eq!(
             rig.host.clone().autostart().expect("a policy").projects,
             ["website"]
+        );
+    }
+
+    /// The host starts again after every project change (`coder host
+    /// serve` re-execs to serve it), so each call after one goes
+    /// unanswered for a moment. The chosen folder shows at once with
+    /// Saving…, the window waits for the host, and the swap finishes with
+    /// no problem shown: one project, and the switch on for its label.
+    #[test]
+    fn a_host_that_starts_again_after_each_change_still_swaps_the_project() {
+        let mut rig = connected_rig();
+        rig.host.set_restart_calls(5);
+        let (_first_parent, first) = checkout("openagents");
+        rig.folder = Chosen::Folder(first);
+        rig.click(Intent::ChooseFolder);
+        assert_eq!(
+            rig.model.project().map(|p| p.label.as_str()),
+            Some("openagents")
+        );
+        assert!(rig.model.autostart());
+
+        let (_second_parent, second) = checkout("omarchy");
+        let requests = rig
+            .model
+            .outcome(Outcome::Folder(Chosen::Folder(second.clone())), rig.now);
+        assert!(rig.model.saving_now());
+        let words = crate::screens::words(&crate::screens::root(&rig.model, 0));
+        assert!(words.iter().any(|w| w == "Saving…"), "{words:?}");
+        assert!(
+            words.iter().any(|w| *w == second.display().to_string()),
+            "{words:?}"
+        );
+        // One folder at a time.
+        assert!(rig.model.activate(Intent::ChooseFolder, rig.now).is_empty());
+        rig.run(requests);
+        assert_eq!(rig.model.saving, None);
+        assert_eq!(rig.model.problem, None);
+        let projects = rig.host.clone().projects().expect("projects");
+        assert_eq!(projects.len(), 1, "{projects:?}");
+        assert_eq!(projects[0].label, "omarchy");
+        let policy = rig.host.clone().autostart().expect("a policy");
+        assert!(policy.enabled);
+        assert_eq!(policy.projects, ["omarchy"]);
+        assert!(rig.model.autostart());
+    }
+
+    /// The owner's case: the folder went in, then the host stayed away
+    /// longer than the window waits, so the old project and the switch did
+    /// not follow. The window says so, and the next answer from the host
+    /// finishes the swap: one project, the switch carried over to the label
+    /// the host gave the new one, and no dead label.
+    #[test]
+    fn a_swap_that_fails_partway_finishes_on_the_next_refresh() {
+        let mut rig = connected_rig();
+        let (_first_parent, first) = checkout("openagents");
+        rig.folder = Chosen::Folder(first);
+        rig.click(Intent::ChooseFolder);
+        assert!(rig.model.autostart());
+
+        // Away for far longer than the rig's patience after the add.
+        rig.host.set_restart_calls(1_000_000);
+        let (_second_parent, second) = checkout("openagents");
+        rig.folder = Chosen::Folder(second.clone());
+        rig.click(Intent::ChooseFolder);
+        assert_eq!(rig.model.problem.as_deref(), Some(SETTING_FAILED));
+        let saving = rig.model.saving.clone().expect("still saving");
+        assert!(!saving.running);
+        assert_eq!(saving.replace.as_deref(), Some("openagents"));
+        assert!(saving.autostart);
+        rig.host.set_restart_calls(0);
+        let mut host = rig.host.clone();
+        assert_eq!(host.projects().expect("projects").len(), 2);
+        assert_eq!(host.autostart().expect("a policy").projects, ["openagents"]);
+
+        // The host answers again: the swap finishes.
+        rig.tick(10);
+        assert_eq!(rig.model.saving, None);
+        assert_eq!(rig.model.problem, None);
+        let projects = host.projects().expect("projects");
+        assert_eq!(projects.len(), 1, "{projects:?}");
+        assert_eq!(projects[0].label, "openagents-2");
+        assert_eq!(
+            projects[0].folder.as_deref(),
+            Some(second.to_string_lossy().as_ref())
+        );
+        let policy = host.autostart().expect("a policy");
+        assert!(policy.enabled);
+        assert_eq!(policy.projects, ["openagents-2"]);
+        assert!(rig.model.autostart());
+        // Nothing more to send.
+        rig.tick(20);
+        assert_eq!(host.projects().expect("projects").len(), 1);
+    }
+
+    /// A host that never takes the folder: the window tries the swap
+    /// [`SAVE_TRIES`] times in all, once an answer from the host, then
+    /// stops saying Saving… and leaves the reason.
+    #[test]
+    fn a_swap_is_given_up_after_its_tries() {
+        let mut rig = connected_rig();
+        let (_parent, folder) = checkout("website");
+        rig.host.set_down(true);
+        rig.folder = Chosen::Folder(folder);
+        rig.click(Intent::ChooseFolder);
+        assert_eq!(rig.model.problem.as_deref(), Some(SETTING_FAILED));
+        let answer = || {
+            let mut host = FakeHost::default();
+            Outcome::Refreshed(Some(Box::new(Refreshed {
+                status: host.status().expect("a status"),
+                devices: vec![],
+                projects: vec![],
+                autostart: host.autostart().expect("a policy"),
+                nearby: None,
+            })))
+        };
+        for tries in 2..=SAVE_TRIES {
+            let requests = rig.model.outcome(answer(), rig.now);
+            assert!(
+                requests
+                    .iter()
+                    .any(|r| matches!(r, Request::AddProject { .. })),
+                "{requests:?}"
+            );
+            assert_eq!(rig.model.saving.as_ref().map(|s| s.tries), Some(tries));
+            let _ = rig
+                .model
+                .outcome(Outcome::Picked(Err(PickError::Setting)), rig.now);
+        }
+        assert_eq!(rig.model.saving, None);
+        assert_eq!(rig.model.problem.as_deref(), Some(SETTING_FAILED));
+        let requests = rig.model.outcome(answer(), rig.now);
+        assert!(
+            !requests
+                .iter()
+                .any(|r| matches!(r, Request::AddProject { .. }))
         );
     }
 

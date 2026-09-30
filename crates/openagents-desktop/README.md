@@ -152,6 +152,17 @@ log, and the normal screens show one quiet line. On a Linux desktop with no
 Secret Service the keys go to `~/.openagents/host-keys` instead. Tasks the
 owner archived never show on the home screen.
 
+On Linux the host runs as the systemd user unit
+`com.openagents.desktop.host.service`. From an AppImage the unit runs the
+AppImage; from the .deb it runs `/usr/lib/openagents/coder`. From anywhere
+else, such as a development build in `target/release`, it runs a copy of
+`coder` and `microcoder` in `~/.openagents/host/bin/<sha256>/`, named by
+their contents, so the next build never replaces the file under the running
+host: quit the window and open it again to move the host onto a new build.
+A settings change makes the host start itself again; the window shows the
+chosen folder with **Saving…**, waits up to 30 seconds for it to answer, and
+finishes a folder swap that failed partway the next time the host answers.
+
 ## Test it
 
 ```sh

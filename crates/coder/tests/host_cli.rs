@@ -175,3 +175,136 @@ async fn host_commands_and_serve_under_the_service_contract() {
     assert!(status.success(), "{status:?}");
     assert!(!runtime.exists());
 }
+
+/// One request on the host's control socket (`openagents.control.v1`: a
+/// 4-byte big-endian length, then JSON), or `None` when nothing answers.
+fn control(socket: &Path, op: serde_json::Value) -> Option<serde_json::Value> {
+    use std::io::{Read, Write};
+    let mut stream = std::os::unix::net::UnixStream::connect(socket).ok()?;
+    stream
+        .set_read_timeout(Some(Duration::from_secs(10)))
+        .unwrap();
+    let body =
+        serde_json::to_vec(&serde_json::json!({"v": "openagents.control.v1", "id": 1, "op": op}))
+            .unwrap();
+    stream
+        .write_all(&u32::try_from(body.len()).unwrap().to_be_bytes())
+        .ok()?;
+    stream.write_all(&body).ok()?;
+    let mut length = [0u8; 4];
+    stream.read_exact(&mut length).ok()?;
+    let mut reply = vec![0u8; u32::from_be_bytes(length) as usize];
+    stream.read_exact(&mut reply).ok()?;
+    serde_json::from_slice::<serde_json::Value>(&reply)
+        .ok()
+        .map(|response| response["result"].clone())
+}
+
+/// A rebuild replaces the running `coder` (the file is removed and written
+/// again, as cargo does), then a project change asks the host to start
+/// again: it starts again from the same path, as the same process, and
+/// answers on its control socket with the new project. On Linux the running
+/// file then reads as `PATH (deleted)`, which the host once tried to run.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_replaced_program_still_starts_again_after_a_project_change() {
+    let (relay, _relay_task, _) = relay::start().await;
+    let temp = tempfile::tempdir().unwrap();
+    let (state, root) = (temp.path().join("access"), temp.path().join("host"));
+    let owner = SecretKey::new(&mut secp256k1::rand::rng());
+    coder(
+        &state,
+        &root,
+        &["init", "--owner", &pubkey(&owner), "--relay", &relay],
+    );
+    // The host runs a copy, which this test can replace.
+    let bin = temp.path().join("bin");
+    std::fs::create_dir_all(&bin).unwrap();
+    let program = bin.join("coder");
+    std::fs::copy(env!("CARGO_BIN_EXE_coder"), &program).unwrap();
+    let socket = temp.path().join("c/control.sock");
+    let log = temp.path().join("host.log");
+    let mut serve = Command::new(&program)
+        .args(["host", "serve", "--loopback-test", "--no-runtime"])
+        .arg("--state")
+        .arg(&state)
+        .arg("--root")
+        .arg(&root)
+        .arg("--tasks")
+        .arg(temp.path().join("tasks"))
+        .arg("--control-socket")
+        .arg(&socket)
+        .env("OPENAGENTS_HOST_LISTEN", "127.0.0.1:0")
+        .stdout(Stdio::null())
+        .stderr(std::fs::File::create(&log).unwrap())
+        .spawn()
+        .unwrap();
+    let answers = |what: &str| {
+        let deadline = Instant::now() + Duration::from_secs(30);
+        loop {
+            if let Some(reply) = control(&socket, serde_json::json!({"kind": "status"})) {
+                return reply;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "the host never answered {what}: {}",
+                std::fs::read_to_string(&log).unwrap_or_default()
+            );
+            std::thread::sleep(Duration::from_millis(50));
+        }
+    };
+    assert_eq!(answers("at first")["kind"], "status");
+
+    let checkout = temp.path().join("site");
+    std::fs::create_dir_all(&checkout).unwrap();
+    for args in [
+        &["init", "--quiet"][..],
+        &["commit", "--quiet", "--allow-empty", "-m", "first"][..],
+    ] {
+        let status = Command::new("git")
+            .arg("-C")
+            .arg(&checkout)
+            .args([
+                "-c",
+                "user.name=test",
+                "-c",
+                "user.email=test@example.invalid",
+            ])
+            .args(args)
+            .status()
+            .unwrap();
+        assert!(status.success(), "git {args:?}");
+    }
+
+    // The rebuild: a new file at the same path.
+    std::fs::remove_file(&program).unwrap();
+    std::fs::copy(env!("CARGO_BIN_EXE_coder"), &program).unwrap();
+    let added = control(
+        &socket,
+        serde_json::json!({"kind": "project_add", "path": checkout.display().to_string()}),
+    )
+    .expect("an answer");
+    assert_eq!(added["kind"], "projects", "{added}");
+
+    // It goes away to start again, and comes back as the same process.
+    let deadline = Instant::now() + Duration::from_secs(30);
+    while !std::fs::read_to_string(&log)
+        .unwrap_or_default()
+        .contains("starting again")
+    {
+        assert!(Instant::now() < deadline, "the host never started again");
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    answers("after starting again");
+    let listed =
+        control(&socket, serde_json::json!({"kind": "project_list"})).expect("the projects");
+    assert_eq!(listed["projects"][0]["label"], "site", "{listed}");
+    assert!(serve.try_wait().unwrap().is_none(), "the host exited");
+    let text = std::fs::read_to_string(&log).unwrap();
+    assert!(!text.contains("cannot start again"), "{text}");
+    assert_eq!(text.matches("control socket").count(), 2, "{text}");
+
+    let pid = libc::pid_t::try_from(serve.id()).unwrap();
+    // SAFETY: `kill` takes two integers; the process is this test's child.
+    assert_eq!(unsafe { libc::kill(pid, libc::SIGTERM) }, 0);
+    assert!(serve.wait().unwrap().success());
+}
