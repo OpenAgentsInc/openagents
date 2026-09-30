@@ -81,6 +81,20 @@ class MainActivity : ComponentActivity() {
     /** The Coder tab's requests to open Account > Computers, as last handled. */
     private var computersShown = 0
     private var screensShown = 0
+    private var imagePicksShown = 0
+    /** Each attached image's card by resource, so a refresh keeps it. */
+    private val imageViews = HashMap<String, View>()
+
+    /** **Attach image**: the system photo picker; Rust decodes the photo. */
+    private val pickImage = registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) Thread {
+            val bytes = runCatching {
+                contentResolver.openInputStream(uri)?.use { input -> input.readBytes() }
+            }.getOrNull()
+            val photo = bytes?.let { ChatImages.encoded(it) }
+            main.post { photo?.let { (name, data) -> bridge.attachImage(name, data) } }
+        }.start()
+    }
     private var statusTop = 0
 
     private val pages = mutableMapOf<AppTab, FrameLayout>()
@@ -154,7 +168,8 @@ class MainActivity : ComponentActivity() {
         gym = GymViews(this) { id -> bridge.gym(id) }
         coderRenderer = NativeRenderer(this, { view, node -> bridge.activate("coder", view, node) },
             { token, value -> bridge.submit("coder", token, value) }, surfaces = { resource ->
-                resource.removePrefix("gym-card:").takeIf { it != resource }?.let { id ->
+                if (resource.startsWith("image:")) imageViews.getOrPut(resource) { ChatImages.card(this, bridge, resource) }
+                else resource.removePrefix("gym-card:").takeIf { it != resource }?.let { id ->
                     bridge.packet?.objectOrNull("gym")?.objectOrNull("cards")?.objectOrNull(id)?.let { card ->
                         // Rebuild a card only when its content changes: the
                         // packet refreshes every second while a chat shows,
@@ -266,6 +281,15 @@ class MainActivity : ComponentActivity() {
         if (BuildConfig.DEBUG) {
             val taps = intent.getStringExtra("coder_tap")?.split(",").orEmpty().filter { it.isNotEmpty() }
             launchTaps(taps, intent.getStringExtra("coder_send"), 0)
+            // `--es attach_image NAME` attaches NAME from the app's external
+            // files directory, as the photo picker would.
+            intent.getStringExtra("attach_image")?.let { name ->
+                main.postDelayed({
+                    val file = java.io.File(getExternalFilesDir(null), name)
+                    runCatching { file.readBytes() }.getOrNull()?.let { ChatImages.encoded(it) }
+                        ?.let { (photo, data) -> bridge.attachImage(photo, data) }
+                }, 3000)
+            }
             intent.getStringExtra("gym_script")?.let { script -> gymScript(script.split("|").filter { it.isNotEmpty() }, 0) }
         }
         tabBar.setOnLongClickListener { report(); true }
@@ -652,6 +676,12 @@ class MainActivity : ComponentActivity() {
             computersShown = bridge.computersRequested
             select(AppTab.ACCOUNT)
             open(AccountRoute.COMPUTERS)
+        }
+        // The chat's attach control asked for a photo.
+        if (bridge.imagePicks != imagePicksShown) {
+            imagePicksShown = bridge.imagePicks
+            pickImage.launch(androidx.activity.result.PickVisualMediaRequest(
+                ActivityResultContracts.PickVisualMedia.ImageOnly))
         }
         // An offer under a chat reply opened another screen.
         if (bridge.screenRequests != screensShown) {

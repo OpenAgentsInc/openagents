@@ -47,6 +47,10 @@ class MobileBridge(private val context: Context, private val computersFixture: B
     /** The Coder tab's last request to open another screen (wallet, keys, playtest, report), and how many so far. */
     var screenRequested: String? = null; private set
     var screenRequests = 0; private set
+    /** Counts the Chat tab's requests for the photo picker (`pick_image`). */
+    var imagePicks = 0; private set
+    /** Decoded images for the chat's `image:` surfaces, by resource. */
+    private val images = HashMap<String, android.graphics.Bitmap>()
 
     init {
         pending += 1
@@ -356,27 +360,74 @@ class MobileBridge(private val context: Context, private val computersFixture: B
         }
     }
 
+    /** Attaches a photo's encoded bytes to the open chat's draft; Rust decodes and bounds them. */
+    fun attachImage(name: String, bytes: ByteArray) {
+        if (disposed) return
+        pending += 1
+        worker.execute {
+            val result = runCatching {
+                check(handle != 0L) { failure ?: "OpenAgents has not started." }
+                OpenAgentsNative.attachImage(handle, name, bytes)
+            }
+            main.post {
+                pending -= 1
+                if (disposed) return@post
+                result.exceptionOrNull()?.let { if (handle != 0L) failure = it.message }
+                receive(result.getOrNull())
+            }
+        }
+    }
+
+    /** The image an `image:` surface shows: the bytes Rust decoded and bounded, decoded here for display. */
+    fun image(resource: String, received: (android.graphics.Bitmap?) -> Unit) {
+        images[resource]?.let { return received(it) }
+        if (disposed) return received(null)
+        worker.execute {
+            val bitmap = runCatching {
+                check(handle != 0L)
+                val bytes = OpenAgentsNative.image(handle, resource)
+                if (bytes.isEmpty()) null else {
+                    val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                    android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+                    var sample = 1
+                    while (maxOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= 480) sample *= 2
+                    android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size,
+                        android.graphics.BitmapFactory.Options().apply { inSampleSize = sample })
+                }
+            }.getOrNull()
+            main.post {
+                if (bitmap != null) { if (images.size > 16) images.clear(); images[resource] = bitmap }
+                received(bitmap)
+            }
+        }
+    }
+
     private fun send(request: JSONObject, done: (() -> Unit)? = null) {
         call(request) { text ->
             done?.invoke()
-            if (text == null) return@call
-            val next = try { packet(text, "openagents.mobile.v1") } catch (problem: Exception) {
-                failure = problem.message ?: "OpenAgents returned an unreadable screen."
-                changed(); return@call
-            }
-            packet = next
-            failure = null
-            nearby.hold(next.optBoolean("nearby_listening"))
-            next.objectOrNull("gym")?.textOrNull("share")?.let { gymShare = it }
-            when (val go = next.textOrNull("coder_go")) {
-                "computers" -> computersRequested += 1
-                "wallet", "keys", "playtest", "report", "verse_gym", "chat" -> { screenRequested = go; screenRequests += 1 }
-            }
-            if (!next.optBoolean("terminal")) { terminalView = null; terminalRevision = 0 }
-            next.textOrNull("open_url")?.let { link -> open(link) }
-            next.textOrNull("wallet_open_url")?.let { link -> browse(link) }
-            changed()
+            receive(text)
         }
+    }
+
+    private fun receive(text: String?) {
+        if (text == null) return
+        val next = try { packet(text, "openagents.mobile.v1") } catch (problem: Exception) {
+            failure = problem.message ?: "OpenAgents returned an unreadable screen."
+            changed(); return
+        }
+        packet = next
+        failure = null
+        nearby.hold(next.optBoolean("nearby_listening"))
+        next.objectOrNull("gym")?.textOrNull("share")?.let { gymShare = it }
+        when (val go = next.textOrNull("coder_go")) {
+            "computers" -> computersRequested += 1
+            "pick_image" -> imagePicks += 1
+            "wallet", "keys", "playtest", "report", "verse_gym", "chat" -> { screenRequested = go; screenRequests += 1 }
+        }
+        if (!next.optBoolean("terminal")) { terminalView = null; terminalRevision = 0 }
+        next.textOrNull("open_url")?.let { link -> open(link) }
+        next.textOrNull("wallet_open_url")?.let { link -> browse(link) }
+        changed()
     }
 
     /** Opens a sign-in page Rust named, then tells Rust to wait for approval. */

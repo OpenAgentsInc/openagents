@@ -377,16 +377,90 @@ struct NativeRowDisplay: Decodable {
         let button: Bool?
     }
 
+    /// A code paragraph and its fence's language, for syntax colors.
+    struct CodeBlock: Decodable {
+        let text: Int
+        let language: String
+    }
+
     let key: String
     let height: CGFloat
     let styles: [Style]
     let texts: [String]
+    let code_blocks: [CodeBlock]?
     let runs: [Run]
     let rects: [Rect]
     let widgets: [Widget]
     let scrollers: [Scroller]?
     let accessibility: Accessibility
     let copy: String?
+}
+
+/// Paint-only syntax colors for code blocks, from Rust Native's shared
+/// highlighter (`rust_native_syntax_spans`). Highlighting runs on a worker;
+/// a row paints plain code until its spans arrive, then `ready` repaints it.
+/// Fonts, text, and layout never change.
+final class NativeSyntax {
+    static let shared = NativeSyntax()
+    static let ready = Notification.Name("NativeSyntaxReady")
+
+    struct Span {
+        let start: Int
+        let length: Int
+        let color: UIColor
+    }
+
+    private struct Key: Hashable {
+        let language: String
+        let text: String
+        let light: Bool
+    }
+
+    // Main thread only.
+    private var cache: [Key: [Span]] = [:]
+    private var pending: Set<Key> = []
+    private let queue = DispatchQueue(label: "com.openagents.syntax", qos: .utility)
+
+    /// The spans for `text`, or nil while they are being worked out.
+    func spans(language: String, text: String, light: Bool) -> [Span]? {
+        let key = Key(language: language, text: text, light: light)
+        if let spans = cache[key] { return spans }
+        guard !language.isEmpty, text.utf8.count <= 64 * 1024, pending.count < 16,
+              !pending.contains(key) else { return nil }
+        pending.insert(key)
+        queue.async {
+            let spans = Self.highlight(key)
+            DispatchQueue.main.async {
+                self.pending.remove(key)
+                if self.cache.count >= 64 { self.cache.removeAll() }
+                self.cache[key] = spans
+                if !spans.isEmpty { NotificationCenter.default.post(name: Self.ready, object: nil) }
+            }
+        }
+        return nil
+    }
+
+    private static func highlight(_ key: Key) -> [Span] {
+        let language = Array(key.language.utf8)
+        let text = Array(key.text.utf8)
+        let buffer = language.withUnsafeBufferPointer { language in
+            text.withUnsafeBufferPointer { text in
+                rust_native_syntax_spans(language.baseAddress, language.count, text.baseAddress, text.count,
+                                         key.light ? 1 : 0)
+            }
+        }
+        defer { rust_native_layout_buffer_free(buffer) }
+        guard let pointer = buffer.data, buffer.len > 0,
+              let rows = try? JSONSerialization.jsonObject(with: Data(bytes: pointer, count: buffer.len))
+                as? [[Any]] else { return [] }
+        return rows.compactMap { row in
+            guard row.count == 3, let start = row[0] as? Int, let length = row[1] as? Int,
+                  let rgba = row[2] as? [Int], rgba.count == 4 else { return nil }
+            return Span(start: start, length: length,
+                        color: UIColor(red: CGFloat(rgba[0]) / 255, green: CGFloat(rgba[1]) / 255,
+                                       blue: CGFloat(rgba[2]) / 255, alpha: CGFloat(rgba[3]) / 255))
+        }
+    }
 }
 
 /// A place in a row's text: a run and a UTF-16 offset within it.
@@ -406,21 +480,34 @@ final class NativeRowModel {
     private let runScroller: [Int]
     private let rectScroller: [Int]
 
-    init(_ display: NativeRowDisplay) {
+    /// `light` picks the syntax palette for code blocks' colors.
+    init(_ display: NativeRowDisplay, light: Bool = false) {
         self.display = display
         let texts = display.texts.map { $0 as NSString }
+        // Paint-only syntax spans for each code paragraph, when Rust has
+        // them; until then (and for unknown languages) code stays plain.
+        var spans: [Int: [NativeSyntax.Span]] = [:]
+        for block in display.code_blocks ?? [] where block.text < texts.count {
+            spans[block.text] = NativeSyntax.shared.spans(language: block.language,
+                                                          text: display.texts[block.text], light: light)
+        }
+        let fromContext = NSAttributedString.Key(kCTForegroundColorFromContextAttributeName as String)
         lines = display.runs.map { run in
             guard run.text < texts.count, run.style < display.styles.count else { return nil }
             let text = texts[run.text]
             let range = NSRange(location: run.start16, length: run.len16)
             guard range.location >= 0, range.length > 0, NSMaxRange(range) <= text.length else { return nil }
             let font = display.styles[run.style].font.uiFont
-            let attributes: [NSAttributedString.Key: Any] = [
-                .font: font,
-                NSAttributedString.Key(kCTForegroundColorFromContextAttributeName as String): true,
-            ]
-            let line = CTLineCreateWithAttributedString(
-                NSAttributedString(string: text.substring(with: range), attributes: attributes))
+            let attributes: [NSAttributedString.Key: Any] = [.font: font, fromContext: true]
+            let string = NSMutableAttributedString(string: text.substring(with: range), attributes: attributes)
+            for span in spans[run.text] ?? [] {
+                let overlap = NSIntersectionRange(range, NSRange(location: span.start, length: span.length))
+                guard overlap.length > 0 else { continue }
+                let local = NSRange(location: overlap.location - range.location, length: overlap.length)
+                string.removeAttribute(fromContext, range: local)
+                string.addAttribute(.foregroundColor, value: span.color, range: local)
+            }
+            let line = CTLineCreateWithAttributedString(string)
             guard let limit = run.truncate else { return line }
             let ellipsis = CTLineCreateWithAttributedString(NSAttributedString(string: "\u{2026}", attributes: attributes))
             return CTLineCreateTruncatedLine(line, Double(max(0, limit)), .end, ellipsis) ?? line
@@ -820,6 +907,10 @@ final class NativeRowView: UIView, UIContextMenuInteractionDelegate, UIEditMenuI
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { nil }
+
+    /// Paint the row again from a new model at its next tile, as when code
+    /// colors arrive.
+    func forget() { version = 0 }
 
     func apply(_ model: NativeRowModel, version: UInt64, epoch: Int) {
         clearSelection()
@@ -1355,7 +1446,11 @@ final class NativeTranscriptView: UIScrollView, UIScrollViewDelegate, UIGestureR
         }
         registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (self: Self, _) in
             self.rowViews.values.forEach { $0.repaint() }
+            self.syntaxReady()
         }
+        // Code colors arrive after the rows show: paint those rows again.
+        NotificationCenter.default.addObserver(self, selector: #selector(syntaxReady),
+                                               name: NativeSyntax.ready, object: nil)
         expansion = NativeExpansion.shared.$keys.sink { [weak self] _ in
             DispatchQueue.main.async { self?.expansionChanged() }
         }
@@ -1555,6 +1650,12 @@ final class NativeTranscriptView: UIScrollView, UIScrollViewDelegate, UIGestureR
     }
 
     /// Places the rows in the visible range plus overscan, reusing views.
+    @objc private func syntaxReady() {
+        models.removeAll(keepingCapacity: true)
+        rowViews.values.forEach { $0.forget() }
+        tile()
+    }
+
     private func tile() {
         guard let frame = current else { return }
         let started = CACurrentMediaTime()
@@ -1653,7 +1754,7 @@ final class NativeTranscriptView: UIScrollView, UIScrollViewDelegate, UIGestureR
                        version: UInt64) -> NativeRowModel? {
         if let cached = models[key], cached.version == version { return cached.model }
         guard let display = frame.display(index) else { return nil }
-        let model = NativeRowModel(display)
+        let model = NativeRowModel(display, light: traitCollection.userInterfaceStyle == .light)
         if models.count > 400 { models.removeAll(keepingCapacity: true) }
         models[key] = (version, model)
         return model

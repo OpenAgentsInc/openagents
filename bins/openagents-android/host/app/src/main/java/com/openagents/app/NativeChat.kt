@@ -416,16 +416,54 @@ private fun View.stateDescriptionCompat(value: String) {
 }
 
 /**
+ * The composer's text field: it reports selection changes, the delete key,
+ * and undo and redo (Ctrl+Z, Ctrl+Shift+Z, and the text menu) to its
+ * [Composer], which edits through the shared draft.
+ */
+class ComposerField(context: Context) : EditText(context) {
+    var selectionChanged: ((Int, Int) -> Unit)? = null
+    /** Handles the delete key; false lets the field delete, as while an IME composes. */
+    var deleteKey: (() -> Boolean)? = null
+    var undoKey: ((Boolean) -> Boolean)? = null
+
+    override fun onSelectionChanged(selStart: Int, selEnd: Int) {
+        super.onSelectionChanged(selStart, selEnd)
+        selectionChanged?.invoke(selStart, selEnd)
+    }
+
+    override fun onKeyDown(keyCode: Int, event: android.view.KeyEvent): Boolean {
+        if (keyCode == android.view.KeyEvent.KEYCODE_DEL && deleteKey?.invoke() == true) return true
+        return super.onKeyDown(keyCode, event)
+    }
+
+    override fun onTextContextMenuItem(id: Int): Boolean {
+        if (id == android.R.id.undo && undoKey?.invoke(false) == true) return true
+        if (id == android.R.id.redo && undoKey?.invoke(true) == true) return true
+        return super.onTextContextMenuItem(id)
+    }
+
+    override fun onKeyShortcut(keyCode: Int, event: android.view.KeyEvent): Boolean {
+        if (keyCode == android.view.KeyEvent.KEYCODE_Z && event.isCtrlPressed &&
+            undoKey?.invoke(event.isShiftPressed) == true) return true
+        return super.onKeyShortcut(keyCode, event)
+    }
+}
+
+/**
  * A multi-line text field with a send control. A send is an input answer
  * bound to the composer's token; while Rust reports `busy`, the control
  * becomes stop, which activates the composer node. With `choices`, a long
  * press on send offers the other ways to send, each answering with its own
- * token. A new token with a `draft` puts the draft in the field.
+ * token. The draft is Rust Native's shared editor's ([DraftEditor]): the
+ * field reports each change and shows the draft Rust returns, a new token
+ * starts a new draft (its `draft`, or empty), and a refused send keeps it.
  */
 class Composer(private val context: Context, private val send: (String, String) -> Unit,
-               private val stop: (String) -> Unit) {
+               private val stop: (String) -> Unit, private val editor: DraftEditor = DraftEditor()) {
     val root = context.row()
-    private val field = EditText(context)
+    private val field = ComposerField(context)
+    /** The field is showing Rust's draft: its own callbacks are echoes. */
+    private var showing = false
     private val control = context.text("↑", 17f, Palette.BACKGROUND)
     private var token = ""
     private var maxBytes = 65_536
@@ -463,8 +501,11 @@ class Composer(private val context: Context, private val send: (String, String) 
             addTextChangedListener(object : TextWatcher {
                 override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) = Unit
                 override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) = Unit
-                override fun afterTextChanged(s: Editable?) = refresh()
+                override fun afterTextChanged(s: Editable?) { synced(); refresh() }
             })
+            selectionChanged = { start, end -> selected(start, end) }
+            deleteKey = { deleteBackward() }
+            undoKey = { redo -> undo(redo) }
         }
         control.apply {
             gravity = Gravity.CENTER
@@ -480,8 +521,11 @@ class Composer(private val context: Context, private val send: (String, String) 
 
     fun update(props: JSONObject) {
         val next = props.getString("token")
-        if (next != token && props.has("draft") && !props.isNull("draft")) {
-            field.setText(props.getString("draft"))
+        val draft = if (props.has("draft") && !props.isNull("draft")) props.getString("draft") else null
+        if (editor.live) {
+            if (editor.mount(next, props.getInt("max_bytes"), draft)) editor.state?.let { show(it) }
+        } else if (next != token && draft != null) {
+            field.setText(draft)
             field.setSelection(field.text.length)
         }
         // A screen whose purpose is to write, such as a new chat, opens
@@ -527,8 +571,62 @@ class Composer(private val context: Context, private val send: (String, String) 
     private fun doSend(answer: String) {
         if (!canSend) return
         val value = field.text.toString()
-        field.setText("")
+        // The shared draft stays until Rust accepts it: the next composer's
+        // new token clears it, and a refused send keeps the words.
+        if (!editor.live) field.setText("")
         send(answer, value)
+    }
+
+    /** Frees the shared draft when the renderer drops this composer. */
+    fun close() = editor.close()
+
+    /** Show the shared draft: its text and selection. */
+    private fun show(state: DraftEditor.State) {
+        showing = true
+        try {
+            if (field.text.toString() != state.text) field.setText(state.text)
+            val length = field.text.length
+            if (state.end <= length && (field.selectionStart != state.start || field.selectionEnd != state.end)) {
+                field.setSelection(state.start, state.end)
+            }
+        } finally { showing = false }
+    }
+
+    private fun composing(): Pair<Int, Int>? {
+        val text = field.text ?: return null
+        val start = android.view.inputmethod.BaseInputConnection.getComposingSpanStart(text)
+        val end = android.view.inputmethod.BaseInputConnection.getComposingSpanEnd(text)
+        return if (start in 0 until end) start to end else null
+    }
+
+    /** The field changed: report it; outside a composition, show Rust's draft if it differs. */
+    private fun synced() {
+        if (showing || !editor.live || editor.state == null) return
+        val marked = composing()
+        val state = editor.sync(field.text.toString(), field.selectionStart.coerceAtLeast(0),
+            field.selectionEnd.coerceAtLeast(0), marked) ?: return
+        // Rust refused the change or kept a grapheme whole: show its draft.
+        if (marked == null && state.text != field.text.toString()) field.post { if (composing() == null) show(state) }
+    }
+
+    private fun selected(start: Int, end: Int) {
+        if (showing || !editor.live || composing() != null) return
+        val state = editor.state ?: return
+        if (state.text != field.text.toString() || (state.start == start && state.end == end)) return
+        editor.select(start, end)
+    }
+
+    /** The delete key outside a composition: one whole grapheme, or the selection. */
+    private fun deleteBackward(): Boolean {
+        if (!editor.live || !enabled || composing() != null || editor.state == null) return false
+        editor.delete(true)?.let { show(it); refresh() }
+        return true
+    }
+
+    private fun undo(redo: Boolean): Boolean {
+        if (!editor.live || editor.state == null) return false
+        (if (redo) editor.redo() else editor.undo())?.let { show(it); refresh() }
+        return true
     }
 
     /** A long press on send: a menu of the other ways to send. */

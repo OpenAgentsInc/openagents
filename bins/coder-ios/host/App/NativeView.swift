@@ -24,6 +24,9 @@ struct NativeStyle: Codable, Equatable {
     let gap: String?
     let weight: String?
     let align: String?
+    /// `context`: the stack's first child is a card and its other buttons
+    /// are the card's menu (`rust_native::style::Menu`).
+    var menu: String? = nil
 
     static func points(_ space: String?) -> CGFloat {
         switch space {
@@ -149,6 +152,11 @@ struct NativeIcon: Decodable, Equatable {
         case "wallet": "creditcard"
         case "key": "key"
         case "person": "person"
+        case "pin": "pin"
+        case "archive": "archivebox"
+        case "restore": "arrow.uturn.backward"
+        case "paperclip": "paperclip"
+        case "more": "ellipsis"
         default: nil
         }
     }
@@ -230,6 +238,11 @@ struct NativeRenderer: View {
     /// Receives a composer send as the input token and the text.
     var submit: ((String, String) -> Void)? = nil
     let activate: (String) -> Void
+    /// Activates a node of the newest view, for a menu item chosen after
+    /// the view that opened the menu was replaced. Menu item keys name
+    /// their item and action, so a key that is gone refuses. Without it,
+    /// items activate against the view that drew them.
+    var activateCurrent: ((String) -> Void)? = nil
 
     var body: some View {
         content
@@ -244,6 +257,27 @@ struct NativeRenderer: View {
 
     private var content: AnyView {
         switch node.element {
+        case let .stack(_, children) where node.style.menu == "context" && children.count > 1:
+            // A card with a context menu: a long press offers the other
+            // buttons as a native menu (UIMenu). Each item activates its
+            // own node, so a menu from an older view is refused.
+            return AnyView(render(children[0]).contextMenu {
+                ForEach(children.dropFirst()) { item in
+                    if case let .button(label, enabled, icon) = item.element {
+                        Button {
+                            (activateCurrent ?? activate)(item.key)
+                        } label: {
+                            if let symbol = icon?.symbol {
+                                Label(label, systemImage: symbol)
+                            } else {
+                                Text(label)
+                            }
+                        }
+                        .disabled(!enabled)
+                        .accessibilityIdentifier(item.key)
+                    }
+                }
+            })
         case let .stack(axis, children):
             if axis == "wrap" {
                 // Left to right, continuing on the next line, as a row of
@@ -268,7 +302,7 @@ struct NativeRenderer: View {
         case let .list(label, children):
             return AnyView(NativeList(key: node.key, rows: children, label: label, revision: revision,
                                      followTarget: followTarget, followChanged: followChanged,
-                                     surface: surface, activate: activate))
+                                     surface: surface, activate: activate, activateCurrent: activateCurrent))
         case let .button(label, enabled, icon?) where icon.symbol != nil:
             // An end-aligned glyph button takes the rest of its row and sits
             // at its end, as a toolbar button does.
@@ -301,7 +335,7 @@ struct NativeRenderer: View {
     private func render(_ child: NativeNode) -> NativeRenderer {
         NativeRenderer(node: child, revision: revision, followTarget: followTarget,
                        followChanged: followChanged, surface: surface, submit: submit,
-                       activate: activate)
+                       activate: activate, activateCurrent: activateCurrent)
     }
 }
 
@@ -359,6 +393,7 @@ private struct NativeList: View {
     let followChanged: ((Bool) -> Void)?
     let surface: ((String, String) -> AnyView)?
     let activate: (String) -> Void
+    let activateCurrent: ((String) -> Void)?
     @State private var following = true
 
     var body: some View {
@@ -371,7 +406,8 @@ private struct NativeList: View {
             ScrollViewReader { proxy in
                 List(rows) { row in
                     NativeRenderer(node: row, revision: revision, followTarget: nil,
-                                   followChanged: nil, surface: surface, activate: activate)
+                                   followChanged: nil, surface: surface, activate: activate,
+                                   activateCurrent: activateCurrent)
                         .id(row.key)
                 }
                 .listStyle(.plain)

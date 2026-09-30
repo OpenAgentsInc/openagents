@@ -245,8 +245,11 @@ directional selection, bounded undo/redo, checked UTF-8/UTF-16 conversion, and
 IME composition as one undo step. The desktop's `composer::ComposerDraft`
 binds it to the existing semantic composer with view and edit revision checks.
 This is the first input foundation for
-[#9996](https://github.com/OpenAgentsInc/openagents/issues/9996); window events,
-painting, application submission, and phone adapter integration remain pending.
+[#9996](https://github.com/OpenAgentsInc/openagents/issues/9996). The phone
+composers edit through the same editor with `edit::mirror`: the native field
+reports each change and shows the draft Rust returns, so grapheme-safe
+deletion, IME composition, undo, and stale-stamp refusal are shared
+([#10028](https://github.com/OpenAgentsInc/openagents/issues/10028)).
 See the [editing contract](../../../crates/rust-native/docs/spec.md#local-text-editing).
 
 Do not add a text field as a string property plus an unversioned change

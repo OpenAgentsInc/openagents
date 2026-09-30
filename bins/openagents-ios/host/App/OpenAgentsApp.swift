@@ -1,6 +1,7 @@
 // Rust builds every screen; this host decodes and renders them, and supplies
 // the pieces a Rust Native tree cannot: tabs, the camera, keyboards, and the
 // terminal's keyboard target.
+import PhotosUI
 import SwiftUI
 
 @main
@@ -287,6 +288,8 @@ struct CoderTab: View {
     @ObservedObject var bridge: MobileBridge
     /// The sheet this host is showing, to tell a swipe from Rust closing it.
     @State private var shownSheet: String?
+    @State private var picking = false
+    @State private var picked: PhotosPickerItem?
 
     private var gym: GymPacket? { bridge.packet?.gymPacket }
 
@@ -301,11 +304,18 @@ struct CoderTab: View {
                 if let view = bridge.packet?.coder {
                     NativeRenderer(node: view.root, revision: view.revision, followTarget: nil,
                                    followChanged: nil,
-                                   surface: { resource, _ in
-                                       AnyView(GymCardSurface(resource: resource, bridge: bridge))
+                                   surface: { resource, label in
+                                       if resource.hasPrefix("image:") {
+                                           return AnyView(ChatImageSurface(resource: resource, label: label,
+                                                                           bridge: bridge))
+                                       }
+                                       return AnyView(GymCardSurface(resource: resource, bridge: bridge))
                                    },
                                    submit: { token, text in bridge.submit("coder", token: token, value: text) },
-                                   activate: { node in bridge.activate("coder", view: view, node: node) })
+                                   activate: { node in bridge.activate("coder", view: view, node: node) },
+                                   activateCurrent: { node in
+                                       bridge.activate("coder", view: bridge.packet?.coder ?? view, node: node)
+                                   })
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 } else {
                     Color.clear
@@ -313,6 +323,18 @@ struct CoderTab: View {
             }
         }
         .toolbar(gym?.screen == "first_run" ? .hidden : .visible, for: .tabBar)
+        // **Attach image**: the system photo picker; Rust decodes the photo.
+        .photosPicker(isPresented: $picking, selection: $picked, matching: .images)
+        .onChange(of: bridge.imagePickRequested) { _, _ in picking = true }
+        .onChange(of: picked) { _, item in
+            guard let item else { return }
+            picked = nil
+            Task {
+                guard let data = try? await item.loadTransferable(type: Data.self),
+                      let photo = ChatImageSurface.encoded(data) else { return }
+                bridge.attachImage(name: photo.name, data: photo.data)
+            }
+        }
         .sheet(item: Binding(get: { gym?.sheet }, set: { _ in }), onDismiss: {
             // A swipe closed it while Rust still shows it: tell Rust.
             if let sheet = gym?.sheet, sheet.id == shownSheet {
@@ -367,7 +389,8 @@ struct GymShareSheet: UIViewControllerRepresentable {
 /// `task-*` for the first chat in the menu. A step `send:TEXT` sends TEXT
 /// from the screen's composer, `sleep:N` waits N seconds, and `try:KEY`
 /// taps KEY only if the screen shows it now (a tap the screen may have
-/// replaced before it arrived, tried again). Then
+/// replaced before it arrived, tried again), and `attach:PATH` attaches the
+/// image file at PATH to the draft as the photo picker would. Then
 /// `--coder-send TEXT` sends TEXT from the screen's composer.
 enum CoderLaunchTaps {
     @MainActor static func run(_ bridge: MobileBridge) async {
@@ -377,6 +400,15 @@ enum CoderLaunchTaps {
             for key in arguments[index + 1].split(separator: ",").map(String.init) {
                 if key.hasPrefix("sleep:") {
                     try? await Task.sleep(for: .seconds(Double(key.dropFirst(6)) ?? 1))
+                    continue
+                }
+                if key.hasPrefix("attach:") {
+                    // A photo from the Mac's disk, as the picker would send it.
+                    let path = String(key.dropFirst(7))
+                    if let data = FileManager.default.contents(atPath: path),
+                       let photo = ChatImageSurface.encoded(data) {
+                        bridge.attachImage(name: photo.name, data: photo.data)
+                    }
                     continue
                 }
                 if key.hasPrefix("try:") {
@@ -594,5 +626,62 @@ struct InvitationQR: View {
                 }
             }
         }
+    }
+}
+
+/// An attached image's card: the `image:` surface Rust names, drawn from
+/// the bytes Rust decoded, with its alternative text as the spoken label.
+struct ChatImageSurface: View {
+    let resource: String
+    let label: String
+    @ObservedObject var bridge: MobileBridge
+    @State private var image: UIImage?
+
+    var body: some View {
+        Group {
+            if let image {
+                Image(uiImage: image).resizable().scaledToFill()
+            } else {
+                Color(uiColor: NativeChatPalette.raised)
+            }
+        }
+        .frame(width: 96, height: 72)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
+            .strokeBorder(Color(uiColor: NativeChatPalette.border), lineWidth: 0.5))
+        .accessibilityElement()
+        .accessibilityLabel(label)
+        .accessibilityAddTraits(.isImage)
+        .accessibilityIdentifier(resource)
+        .task(id: resource) { bridge.image(resource) { image = $0 } }
+    }
+
+    /// A picked photo as the PNG or JPEG Rust accepts: kept as is when it
+    /// already is one and fits, else re-encoded as a JPEG at most 4096
+    /// pixels a side.
+    static func encoded(_ data: Data) -> (name: String, data: Data)? {
+        let png: [UInt8] = [0x89, 0x50, 0x4E, 0x47]
+        let jpeg: [UInt8] = [0xFF, 0xD8, 0xFF]
+        let head = [UInt8](data.prefix(4))
+        guard let image = UIImage(data: data) else { return nil }
+        let side = max(image.size.width * image.scale, image.size.height * image.scale)
+        if side <= 4096, data.count <= 8 * 1024 * 1024 {
+            if head.starts(with: png) { return ("Photo.png", data) }
+            if head.starts(with: jpeg) { return ("Photo.jpg", data) }
+        }
+        let scale = min(1, 4096 / max(side, 1))
+        let size = CGSize(width: floor(image.size.width * image.scale * scale),
+                          height: floor(image.size.height * image.scale * scale))
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        let resized = UIGraphicsImageRenderer(size: size, format: format).image { _ in
+            image.draw(in: CGRect(origin: .zero, size: size))
+        }
+        for quality in [0.85, 0.7, 0.5] {
+            if let encoded = resized.jpegData(compressionQuality: quality), encoded.count <= 8 * 1024 * 1024 {
+                return ("Photo.jpg", encoded)
+            }
+        }
+        return nil
     }
 }

@@ -886,9 +886,9 @@ private struct NativeComposer: View {
     // capsule's ends and a round send control inside its trailing end.
     var body: some View {
         HStack(alignment: .bottom, spacing: 8) {
-            NativeComposerField(text: $text, placeholder: props.placeholder, maxBytes: props.maxBytes,
-                                enabled: props.enabled, focusToken: props.focus ? props.token : nil,
-                                send: send)
+            NativeComposerField(text: $text, token: props.token, placeholder: props.placeholder,
+                                maxBytes: props.maxBytes, enabled: props.enabled, draft: props.draft,
+                                focusToken: props.focus ? props.token : nil, send: send)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .overlay(alignment: .topLeading) {
                     if text.isEmpty {
@@ -914,8 +914,6 @@ private struct NativeComposer: View {
         .frame(maxWidth: .infinity)
         .opacity(props.enabled ? 1 : 0.6)
         .accessibilityIdentifier(key)
-        .onAppear(perform: takeDraft)
-        .onChange(of: props.token) { _, _ in takeDraft() }
     }
 
     /// The control stops only when the view carries a stop intent. A busy
@@ -966,17 +964,11 @@ private struct NativeComposer: View {
 
     private func send() { send(as: props.token) }
 
+    /// The draft stays until Rust accepts it: the next composer's new token
+    /// clears the shared draft, and a refused send keeps the words.
     private func send(as token: String) {
         guard canSend, let submit else { return }
-        let value = text
-        text = ""
-        submit(token, value)
-    }
-
-    /// A new composer with a draft, such as a queued message to edit, puts
-    /// the draft in the field.
-    private func takeDraft() {
-        if let draft = props.draft { text = draft }
+        submit(token, text)
     }
 
     private func stop() {
@@ -1000,12 +992,119 @@ private struct NativeComposerSurface: ViewModifier {
     }
 }
 
+/// A composer draft edited through Rust Native's shared editor
+/// (`rust_native::edit::mirror`): the text view reports each change, and
+/// the draft Rust returns is what it shows. Deletion never splits a
+/// grapheme, an IME composition is one undo step, undo and redo are the
+/// shared history's, and a stamp from an older draft is refused.
+final class NativeComposerEditor {
+    struct Stamp: Codable, Equatable {
+        let token: String
+        let lifetime: UInt64
+        let revision: UInt64
+    }
+
+    struct State: Decodable, Equatable {
+        let stamp: Stamp
+        let text: String
+        /// Anchor and caret, in UTF-16 code units.
+        let selection: [Int]
+        let marked: [Int]?
+        let can_undo: Bool
+        let can_redo: Bool
+
+        var range: NSRange {
+            let low = min(selection.first ?? 0, selection.last ?? 0)
+            let high = max(selection.first ?? 0, selection.last ?? 0)
+            return NSRange(location: low, length: high - low)
+        }
+    }
+
+    private struct Reply: Decodable {
+        let state: State?
+        let replaced: Bool?
+        let error: String?
+    }
+
+    private let handle = rust_native_editor_create()
+    private(set) var state: State?
+
+    deinit { if let handle { rust_native_editor_destroy(handle) } }
+
+    /// Milliseconds on a monotonic clock, for undo coalescing.
+    static var now: UInt64 { UInt64(ProcessInfo.processInfo.systemUptime * 1000) }
+
+    /// Mounts the view's composer. Returns whether the draft was replaced:
+    /// a new token starts a new draft (its `draft`, or empty).
+    func mount(token: String, maxBytes: Int, draft: String?) -> Bool {
+        var request: [String: Any] = ["op": "mount", "token": token, "max_bytes": maxBytes]
+        if let draft { request["draft"] = draft }
+        guard let reply = call(request) else { return false }
+        if let state = reply.state { self.state = state }
+        return reply.replaced == true
+    }
+
+    /// Applies one change to the current draft; the reply's state is the
+    /// draft to show, also after a refusal.
+    @discardableResult
+    func apply(_ change: [String: Any]) -> State? {
+        guard let stamp = state?.stamp else { return nil }
+        let request: [String: Any] = [
+            "op": "apply",
+            "stamp": ["token": stamp.token, "lifetime": stamp.lifetime, "revision": stamp.revision],
+            "change": change,
+        ]
+        if let reply = call(request), let state = reply.state { self.state = state }
+        return state
+    }
+
+    private func call(_ request: [String: Any]) -> Reply? {
+        guard let handle, let body = try? JSONSerialization.data(withJSONObject: request) else { return nil }
+        let data = body.withUnsafeBytes { bytes -> Data? in
+            let buffer = rust_native_editor_call(handle, bytes.bindMemory(to: UInt8.self).baseAddress, bytes.count)
+            defer { rust_native_layout_buffer_free(buffer) }
+            guard let pointer = buffer.data, buffer.len > 0 else { return nil }
+            return Data(bytes: pointer, count: buffer.len)
+        }
+        return data.flatMap { try? JSONDecoder().decode(Reply.self, from: $0) }
+    }
+}
+
+/// Undo and redo from the shared draft's history: the edit menu, the
+/// three-finger gestures, shake, and Command-Z all reach it. The text view
+/// registers nothing of its own.
+final class NativeComposerUndo: UndoManager {
+    var editor: NativeComposerEditor?
+    var changed: ((NativeComposerEditor.State) -> Void)?
+
+    override init() {
+        super.init()
+        disableUndoRegistration()
+    }
+
+    override var canUndo: Bool { editor?.state?.can_undo ?? false }
+    override var canRedo: Bool { editor?.state?.can_redo ?? false }
+    override var undoActionName: String { "" }
+    override var redoActionName: String { "" }
+
+    override func undo() {
+        if let state = editor?.apply(["op": "undo"]) { changed?(state) }
+    }
+
+    override func redo() {
+        if let state = editor?.apply(["op": "redo"]) { changed?(state) }
+    }
+}
+
 /// A text view that grows from one to six lines and sends on Command-Return.
 private struct NativeComposerField: UIViewRepresentable {
     @Binding var text: String
+    let token: String
     let placeholder: String
     let maxBytes: Int
     let enabled: Bool
+    /// The draft a new token puts in the field, such as a message to edit.
+    let draft: String?
     /// The composer token to focus the field for, once, when it first shows.
     let focusToken: String?
     let send: () -> Void
@@ -1027,17 +1126,33 @@ private struct NativeComposerField: UIViewRepresentable {
         view.delegate = context.coordinator
         view.accessibilityLabel = placeholder
         view.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        let coordinator = context.coordinator
+        view.undo.editor = coordinator.editor
+        view.undo.changed = { [weak coordinator, weak view] state in
+            guard let coordinator, let view else { return }
+            coordinator.show(state, in: view)
+        }
+        view.onDeleteBackward = { [weak coordinator, weak view] in
+            guard let coordinator, let view else { return false }
+            return coordinator.deleteBackward(in: view)
+        }
         return view
     }
 
     func updateUIView(_ view: NativeComposerTextView, context: Context) {
-        context.coordinator.parent = self
-        view.onCommandReturn = { [weak coordinator = context.coordinator] in coordinator?.parent.send() }
-        if view.text != text { view.text = text }
+        let coordinator = context.coordinator
+        coordinator.parent = self
+        view.onCommandReturn = { [weak coordinator] in coordinator?.parent.send() }
+        if coordinator.editor.mount(token: token, maxBytes: maxBytes, draft: draft),
+           let state = coordinator.editor.state {
+            coordinator.show(state, in: view)
+        } else if view.markedTextRange == nil, let state = coordinator.editor.state, view.text != state.text {
+            coordinator.show(state, in: view)
+        }
         view.isEditable = enabled
         view.accessibilityLabel = placeholder
-        if enabled, let token = focusToken, context.coordinator.focused != token {
-            context.coordinator.focused = token
+        if enabled, let token = focusToken, coordinator.focused != token {
+            coordinator.focused = token
             DispatchQueue.main.async { view.becomeFirstResponder() }
         }
     }
@@ -1059,11 +1174,86 @@ private struct NativeComposerField: UIViewRepresentable {
         var parent: NativeComposerField
         /// The composer token the field last took focus for.
         var focused: String?
+        let editor = NativeComposerEditor()
+        /// The field is showing Rust's draft: its own callbacks are echoes.
+        private var showing = false
 
         init(_ parent: NativeComposerField) { self.parent = parent }
 
+        /// Show the shared draft: its text and selection.
+        func show(_ state: NativeComposerEditor.State, in view: UITextView) {
+            showing = true
+            defer { showing = false }
+            if view.text != state.text { view.text = state.text }
+            let length = (state.text as NSString).length
+            let range = state.range
+            if NSMaxRange(range) <= length, view.selectedRange != range { view.selectedRange = range }
+            if parent.text != state.text {
+                let text = state.text
+                DispatchQueue.main.async { self.parent.text = text }
+            }
+        }
+
+        /// The delete key outside a composition: one whole grapheme, or the
+        /// selection, through the shared draft.
+        func deleteBackward(in view: UITextView) -> Bool {
+            guard view.markedTextRange == nil, parent.enabled, editor.state != nil else { return false }
+            let before = editor.state
+            guard let state = editor.apply(["op": "delete", "backwards": true, "at_ms": NativeComposerEditor.now])
+            else { return false }
+            if state != before { show(state, in: view) }
+            return true
+        }
+
         func textViewDidChange(_ textView: UITextView) {
-            parent.text = textView.text
+            guard !showing, editor.state != nil else { return }
+            let selected = textView.selectedRange
+            var change: [String: Any] = [
+                "op": "sync",
+                "text": textView.text ?? "",
+                "selection": [selected.location, selected.location + selected.length],
+                "at_ms": NativeComposerEditor.now,
+            ]
+            if let marked = textView.markedTextRange {
+                let start = textView.offset(from: textView.beginningOfDocument, to: marked.start)
+                let end = textView.offset(from: textView.beginningOfDocument, to: marked.end)
+                change["marked"] = [start, end]
+            }
+            guard let state = editor.apply(change) else { return }
+            if textView.markedTextRange == nil, textView.text != state.text {
+                // Rust refused the change or kept a grapheme whole: show its draft.
+                show(state, in: textView)
+            } else if parent.text != state.text {
+                parent.text = state.text
+            }
+        }
+
+        func textViewDidChangeSelection(_ textView: UITextView) {
+            guard !showing, textView.markedTextRange == nil, let state = editor.state,
+                  textView.text == state.text else { return }
+            let selected = textView.selectedRange
+            guard selected != state.range else { return }
+            editor.apply(["op": "select", "selection": [selected.location, selected.location + selected.length]])
+        }
+
+        /// A phone has no Command-Z: the field's edit menu offers the shared
+        /// draft's undo and redo while they would change it.
+        func textView(_ textView: UITextView, editMenuForTextIn range: NSRange,
+                      suggestedActions: [UIMenuElement]) -> UIMenu? {
+            guard let view = textView as? NativeComposerTextView, let state = editor.state else { return nil }
+            var history: [UIMenuElement] = []
+            if state.can_undo {
+                history.append(UIAction(title: "Undo", image: UIImage(systemName: "arrow.uturn.backward")) {
+                    [weak view] _ in view?.undo.undo()
+                })
+            }
+            if state.can_redo {
+                history.append(UIAction(title: "Redo", image: UIImage(systemName: "arrow.uturn.forward")) {
+                    [weak view] _ in view?.undo.redo()
+                })
+            }
+            guard !history.isEmpty else { return nil }
+            return UIMenu(children: [UIMenu(options: .displayInline, children: history)] + suggestedActions)
         }
 
         func textView(_ textView: UITextView, shouldChangeTextIn range: NSRange,
@@ -1078,13 +1268,31 @@ private struct NativeComposerField: UIViewRepresentable {
 
 final class NativeComposerTextView: UITextView {
     var onCommandReturn: (() -> Void)?
+    /// Handles the delete key; false lets the text view delete, as while an
+    /// IME composes.
+    var onDeleteBackward: (() -> Bool)?
+    let undo = NativeComposerUndo()
+
+    override var undoManager: UndoManager? { undo }
 
     override var keyCommands: [UIKeyCommand]? {
         let send = UIKeyCommand(title: "Send", action: #selector(commandReturn), input: "\r",
                                 modifierFlags: .command)
         send.wantsPriorityOverSystemBehavior = true
-        return (super.keyCommands ?? []) + [send]
+        let undo = UIKeyCommand(title: "Undo", action: #selector(undoDraft), input: "z", modifierFlags: .command)
+        undo.wantsPriorityOverSystemBehavior = true
+        let redo = UIKeyCommand(title: "Redo", action: #selector(redoDraft), input: "z",
+                                modifierFlags: [.command, .shift])
+        redo.wantsPriorityOverSystemBehavior = true
+        return (super.keyCommands ?? []) + [send, undo, redo]
+    }
+
+    override func deleteBackward() {
+        if onDeleteBackward?() == true { return }
+        super.deleteBackward()
     }
 
     @objc private func commandReturn() { onCommandReturn?() }
+    @objc private func undoDraft() { undo.undo() }
+    @objc private func redoDraft() { undo.redo() }
 }

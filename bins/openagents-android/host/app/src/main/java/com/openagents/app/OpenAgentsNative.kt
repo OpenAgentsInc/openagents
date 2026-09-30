@@ -15,6 +15,10 @@ object OpenAgentsNative {
     @JvmStatic external fun create(config: String): Long
     @JvmStatic external fun call(handle: Long, request: String): String
     @JvmStatic external fun destroy(handle: Long)
+    /** Attaches a photo's encoded bytes to the open chat's draft; answers with the app packet. */
+    @JvmStatic external fun attachImage(handle: Long, name: String, bytes: ByteArray): String
+    /** The encoded bytes the chat's `image:` surface shows, or an empty array. */
+    @JvmStatic external fun image(handle: Long, resource: String): ByteArray
     /**
      * Blocks until the app packet changes: Rust's change count once it
      * differs from [seen], or [seen] after [timeoutMs]. Call it on a thread

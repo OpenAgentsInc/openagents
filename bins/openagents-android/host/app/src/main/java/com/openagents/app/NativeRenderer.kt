@@ -66,10 +66,14 @@ class NativeRenderer(
             (root.parent as? ViewGroup)?.removeView(root)
             container.addView(root, FrameLayout.LayoutParams(-1, if (scrolling) -2 else -1))
         }
-        mounts.keys.retainAll(seen)
+        mounts.entries.removeAll { (key, mounted) -> (key !in seen).also { if (it) mounted.composer?.close() } }
     }
 
-    fun clear() { currentView = null; currentInstance = null; currentRevision = -1; mounts.clear() }
+    fun clear() {
+        currentView = null; currentInstance = null; currentRevision = -1
+        mounts.values.forEach { it.composer?.close() }
+        mounts.clear()
+    }
 
     private fun activateNode(key: String) { currentView?.let { activate(it, key) } }
 
@@ -91,6 +95,9 @@ class NativeRenderer(
                     else -> "button:link"
                 }
             }
+            // A card with a context menu (`rust_native::style::Menu`).
+            elementKind == "stack" && style.textOrNull("menu") == "context" &&
+                props.getJSONArray("children").length() > 1 -> "stack:menu"
             elementKind == "stack" && props.getString("axis") == "wrap" -> "stack:wrap"
             else -> elementKind
         }
@@ -129,6 +136,35 @@ class NativeRenderer(
                 while (childCount > children.size) removeViewAt(childCount - 1)
                 requestLayout()
             }
+            "stack:menu" -> (view as FrameLayout).let { frame ->
+                // The card, whose long press offers the other buttons as a
+                // native menu (PopupMenu). Each item activates its own node,
+                // so a menu from an older view is refused.
+                val children = props.getJSONArray("children").objects()
+                val card = node(children.first(), depth + 1)
+                val items = children.drop(1).map { item ->
+                    val itemProps = item.getJSONObject("element").getJSONObject("props")
+                    Triple(item.getString("key"), itemProps.optString("label"), itemProps.optBoolean("enabled"))
+                }
+                if (frame.childCount != 1 || frame.getChildAt(0) !== card) {
+                    (card.parent as? ViewGroup)?.removeView(card)
+                    frame.removeAllViews()
+                    frame.addView(card, FrameLayout.LayoutParams(-1, -2))
+                }
+                card.setOnLongClickListener { anchor ->
+                    val menu = android.widget.PopupMenu(context, anchor)
+                    items.forEachIndexed { index, (_, label, enabled) ->
+                        menu.menu.add(0, index, index, label).isEnabled = enabled
+                    }
+                    menu.setOnMenuItemClickListener { item ->
+                        items.getOrNull(item.itemId)?.let { (itemKey, _, _) -> activateNode(itemKey) }
+                        true
+                    }
+                    menu.show()
+                    true
+                }
+                card.setTag(R.id.native_menu, items.map { it.first })
+            }
             "list" -> {
                 view.contentDescription = props.getString("label")
                 replaceChildren(mounted.rows!!, props.getJSONArray("children").objects().map { child ->
@@ -159,6 +195,8 @@ class NativeRenderer(
             }
             "surface" -> (view as FrameLayout).let { frame ->
                 val value = props.getString("resource")
+                // An attached image speaks its alternative text.
+                if (value.startsWith("image:")) frame.contentDescription = props.getString("label")
                 val drawn = surfaces?.invoke(value)
                     ?: context.text("This device can't display ${props.getString("label")}.", 14f, Palette.SECONDARY)
                 // The same view again (its content unchanged) stays mounted,
@@ -259,6 +297,7 @@ class NativeRenderer(
             setOnClickListener { v -> if (v.isEnabled) (v.getTag(R.id.native_key) as? String)?.let { activateNode(it) } }
         })
         kind == "stack:wrap" -> Mounted(kind, NativeFlow(context))
+        kind == "stack:menu" -> Mounted(kind, FrameLayout(context))
         kind == "stack" -> Mounted(kind, context.column())
         kind == "list" -> {
             val rows = context.column()
@@ -299,6 +338,7 @@ class NativeRenderer(
         "wallet" -> R.drawable.ic_glyph_wallet
         "key" -> R.drawable.ic_glyph_key
         "person" -> R.drawable.ic_glyph_person
+        "paperclip" -> R.drawable.ic_glyph_paperclip
         else -> null
     }
 

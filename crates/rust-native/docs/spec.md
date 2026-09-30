@@ -59,7 +59,30 @@ Transcript display lists can identify code paragraph fields in `code_blocks`.
 The shared `syntax::Cache` returns bounded foreground spans asynchronously;
 adapters apply them to shaped clusters without changing fonts, wrapping, or
 row geometry. Unknown languages and oversized inputs remain plain. Native
-adapters opt in to the worker and provide their own wake callback.
+adapters opt in to the worker and provide their own wake callback. Phone
+adapters call `syntax::highlight_utf16` (`rust_native_syntax_spans`, or JNI
+`TranscriptNative.highlight`) from their own worker for spans in UTF-16 code
+units, in the dark palette or `Palette::light`, and repaint a row when its
+spans arrive.
+
+A stack whose style sets `menu: context` is a card with a context menu: its
+first child is the card, and every other child is a button the menu offers.
+Phone adapters present the items natively (`UIMenu` from a long press on
+iOS, `PopupMenu` on Android); an adapter without menus lays the children out
+on the stack's axis. Items activate through the view like any button. A
+native menu can stay open while the application publishes newer views, so
+the adapter resolves a chosen item's key against the newest view it has;
+applications key items by their subject and action (as `talk-…-pin`), so a
+key never changes meaning, and an item that no longer applies is missing and
+refuses. Validation requires a stack with the card and at least one button
+to offer.
+
+An attached image is a `Surface` whose resource is `image:{id}` and whose
+label is its alternative text. The application owns the decoded, bounded
+bytes (`openagents-chat-app::attachments`); the phone adapter asks the
+application for them by resource and draws them with the platform decoder
+(`UIImage`, `Bitmap`). The desktop paints the same node with
+`rust_native_desktop::image`.
 
 `selection::Selection` stores stable row keys and grapheme-safe byte positions
 in display paragraph fields. Prepending and appending rows preserve endpoints;
@@ -150,7 +173,27 @@ The desktop adapter connects these APIs to native key and IME events,
 clipboard access, caret and selection painting, and visual line movement.
 Its reusable `Field` takes an application-provided placeholder. Search and
 title fields use the same editor with separate editing lifetimes. Platform
-accessibility and phone editor adoption remain separate work under #10003.
+accessibility remains separate work under #10003.
+
+### Phone fields
+
+`edit::mirror::Mirror` lets a platform text field (`UITextView`,
+`EditText`) edit through the same editor while it keeps drawing, the caret,
+dictation, and the system keyboard. The field reports each change as its
+whole text, selection, and marked (IME) range in UTF-16 code units; the
+mirror turns the change into one editor operation (a replacement, a preedit,
+or a commit) and returns the canonical state, which the field shows. A
+deletion that would split a grapheme removes the whole grapheme, whatever the
+keyboard sent; the delete key, undo, and redo go to the editor directly.
+Every call names a stamp (the composer's input token, the mirror's editing
+lifetime, and the editor revision); any other stamp is stale, changes
+nothing, and the refusal returns the current state without echoing the
+change. A new token starts a new lifetime with the view's `draft`, a
+rerender with the same token keeps the draft and its history, and a changed
+byte bound without a new token refuses. `submitted` clears only the exact
+draft a send carried. Adapters reach it through `rust_native_editor_*` in
+`include/rust_native_layout.h` or the Android JNI's `EditorNative`, with one
+JSON request per call; the editor is fast enough for the UI thread.
 
 ## Transcript layout
 
@@ -304,7 +347,7 @@ one-point inset stack border. `Style.fill_height` fills the remaining height
 of a bounded vertical container; the desktop split adapter allocates its body
 from the actual header and footer sizes. These properties compose and reset
 like the existing style leaves. Adapters that do not implement them retain
-their established rendering; phone mounting is tracked in #10028.
+their established rendering.
 
 `TranscriptLayout::set_metrics` selects bounded reading width, body font size
 and line height, row spacing, and bubble geometry for a mounted reader. The

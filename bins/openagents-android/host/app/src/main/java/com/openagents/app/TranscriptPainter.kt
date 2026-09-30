@@ -61,6 +61,8 @@ object TranscriptNative {
     @JvmStatic external fun fontData(face: Int): ByteArray
     /** Debug fixture only: publishes a transcript node's rows as the source `name`. */
     @JvmStatic external fun publish(name: String, node: String)
+    /** Paint-only syntax spans for a code block, as JSON `[[start16, len16, [r, g, b, a]]]`. */
+    @JvmStatic external fun highlight(language: String, text: String, light: Boolean): String
 }
 
 /** The bundled faces at the variations Rust measured with. */
@@ -92,6 +94,49 @@ internal object TranscriptFonts {
 }
 
 /** A row's display list (`rust_native::layout::display`), ready to paint. */
+/**
+ * Paint-only syntax colors for code blocks, from Rust Native's shared
+ * highlighter. Highlighting runs on its own worker; a row paints plain code
+ * until its spans arrive, then the transcripts listening repaint. Fonts,
+ * text, and layout never change.
+ */
+internal object Syntax {
+    class Span(val start: Int, val length: Int, val color: Int)
+    private data class Key(val language: String, val text: String)
+
+    private val cache = java.util.Collections.synchronizedMap(object : LinkedHashMap<Key, List<Span>>(32, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Key, List<Span>>?) = size > 64
+    })
+    private val pending = java.util.Collections.synchronizedSet(HashSet<Key>())
+    private val worker = Executors.newSingleThreadExecutor { Thread(it, "openagents-syntax") }
+    private val main by lazy { Handler(Looper.getMainLooper()) }
+    val listeners = java.util.concurrent.CopyOnWriteArrayList<() -> Unit>()
+
+    /** The spans for `text`, or null while they are being worked out. Safe off the UI thread. */
+    fun spans(language: String, text: String): List<Span>? {
+        val key = Key(language, text)
+        cache[key]?.let { return it }
+        if (language.isEmpty() || text.isEmpty() || text.length > 65_536 || pending.size >= 16 || !pending.add(key)) return null
+        worker.execute {
+            val spans = runCatching { parse(TranscriptNative.highlight(language, text, false)) }.getOrDefault(emptyList())
+            cache[key] = spans
+            pending.remove(key)
+            if (spans.isNotEmpty()) main.post { listeners.forEach { it() } }
+        }
+        return null
+    }
+
+    fun parse(json: String): List<Span> = JSONArray(json).let { rows ->
+        (0 until rows.length()).mapNotNull { index ->
+            val row = rows.optJSONArray(index) ?: return@mapNotNull null
+            val rgba = row.optJSONArray(2) ?: return@mapNotNull null
+            if (row.length() != 3 || rgba.length() != 4) return@mapNotNull null
+            val (r, g, b, a) = List(4) { rgba.getInt(it).coerceIn(0, 255) }
+            Span(row.getInt(0), row.getInt(1), (a shl 24) or (r shl 16) or (g shl 8) or b)
+        }
+    }
+}
+
 internal class RowModel(val json: JSONObject, private val context: Context) {
     class Style(val paint: TextPaint, val size: Float, val underline: Boolean, val strike: Boolean)
     class Run(val text: Int, val start: Int, val length: Int, val x: Float, val baseline: Float,
@@ -123,6 +168,12 @@ internal class RowModel(val json: JSONObject, private val context: Context) {
         Scroller(RectF(it.f("x"), it.f("y"), it.f("x") + it.f("w"), it.f("y") + it.f("h")), it.f("content_w"),
             r.getInt(0) until r.getInt(1), q.getInt(0) until q.getInt(1))
     }.filter { it.runs.last < runs.size && it.rects.last < rects.size && it.box.width() > 0 }
+    /** Syntax spans for each code paragraph, once Rust has them. */
+    private val code: Map<Int, List<Syntax.Span>> = (json.optJSONArray("code_blocks") ?: JSONArray()).objects()
+        .mapNotNull { block ->
+            val text = block.getInt("text")
+            texts.getOrNull(text)?.let { value -> Syntax.spans(block.getString("language"), value)?.let { text to it } }
+        }.toMap()
     private val runScroller = IntArray(runs.size) { -1 }
     private val rectScroller = IntArray(rects.size) { -1 }
     private val clipped = arrayOfNulls<CharSequence>(runs.size)
@@ -271,13 +322,40 @@ internal class RowModel(val json: JSONObject, private val context: Context) {
                 maxOf(0f, limit) * d, TextUtils.TruncateAt.END).also { clipped[index] = it }
             canvas.drawText(shown, 0, shown.length, run.x * d, run.baseline * d, style.paint)
         } else {
-            canvas.drawText(text, run.start, end, run.x * d, run.baseline * d, style.paint)
+            val spans = code[run.text]
+            if (spans.isNullOrEmpty()) canvas.drawText(text, run.start, end, run.x * d, run.baseline * d, style.paint)
+            else drawColored(canvas, run, style, text, spans)
         }
         if (style.underline) canvas.drawRect(run.x * d, (run.baseline + 2f) * d, (run.x + run.width) * d, (run.baseline + 2f) * d + maxOf(1f, d), style.paint)
         if (style.strike) {
             val y = (run.baseline - style.size * 0.3f) * d
             canvas.drawRect(run.x * d, y, (run.x + run.width) * d, y + maxOf(1f, d), style.paint)
         }
+    }
+
+    /** A code run in its syntax colors: each stretch at the advance the paint gives it, so text never moves. */
+    private fun drawColored(canvas: Canvas, run: Run, style: Style, text: String, spans: List<Syntax.Span>) {
+        val d = pixels
+        val end = run.start + run.length
+        val paint = style.paint
+        val base = paint.color
+        var at = run.start
+        fun draw(to: Int, color: Int) {
+            if (to <= at) return
+            paint.color = Color.argb(Color.alpha(color) * Color.alpha(base) / 255, Color.red(color), Color.green(color), Color.blue(color))
+            val x = run.x * d + paint.measureText(text, run.start, at)
+            canvas.drawText(text, at, to, x, run.baseline * d, paint)
+            at = to
+        }
+        for (span in spans) {
+            val from = maxOf(span.start, run.start)
+            val to = minOf(span.start + span.length, end)
+            if (to <= from || from < at) continue
+            draw(from, base)
+            draw(to, span.color)
+        }
+        draw(end, base)
+        paint.color = base
     }
 
     private fun faded(color: Int, alpha: Float): Int =
@@ -670,8 +748,13 @@ class RustTranscript(private val context: Context, private val activate: (String
         }
     }
     private lateinit var selection: SelectionLayer
+    /** Code colors arrived: rebuild the rows' models and paint them again. */
+    private val syntaxReady: () -> Unit = {
+        if (!disposed) { models.clear(); adapter.notifyItemRangeChanged(0, items.size) }
+    }
 
     init {
+        Syntax.listeners.add(syntaxReady)
         list.layoutManager = layout
         list.adapter = adapter
         list.itemAnimator = null
@@ -911,6 +994,7 @@ class RustTranscript(private val context: Context, private val activate: (String
     }
 
     private fun dispose() {
+        Syntax.listeners.remove(syntaxReady)
         selection.clear()
         if (disposed || handle == 0L) return
         disposed = true

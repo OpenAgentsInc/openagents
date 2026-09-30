@@ -343,6 +343,10 @@ final class MobileBridge: ObservableObject {
     /// The Coder tab's last request to open another screen (`wallet`,
     /// `keys`, `playtest`, or `report`), numbered so a repeat still shows.
     @Published private(set) var screenRequest = ScreenRequest(screen: "", serial: 0)
+    /// Counts the Chat tab's requests for the photo picker (`pick_image`).
+    @Published private(set) var imagePickRequested = 0
+    /// Decoded images for the chat's `image:` surfaces, by resource.
+    private var images: [String: UIImage] = [:]
     private let queue = DispatchQueue(label: "com.openagents.app.rust")
     private nonisolated(unsafe) let handle: UnsafeMutableRawPointer?
     private var terminalRevision: UInt64 = 0
@@ -742,6 +746,7 @@ final class MobileBridge: ObservableObject {
             if let share = packet.gymPacket?.share { self.gymShare = share }
             switch packet.coder_go {
             case "computers": self.computersRequested += 1
+            case "pick_image": self.imagePickRequested += 1
             case let screen? where ["wallet", "keys", "playtest", "report", "verse_gym", "chat"].contains(screen):
                 self.screenRequest = ScreenRequest(screen: screen, serial: self.screenRequest.serial + 1)
             default: break
@@ -753,6 +758,57 @@ final class MobileBridge: ObservableObject {
             }
             if let link = packet.wallet_open_url, let url = URL(string: link), url.scheme == "https" {
                 UIApplication.shared.open(url)
+            }
+        }
+    }
+
+    /// Attach a photo's encoded bytes to the open chat's draft. Rust decodes
+    /// and bounds them; the packet that answers shows the image's card.
+    func attachImage(name: String, data: Data) {
+        guard let handle else { return }
+        pending += 1
+        queue.async {
+            let name = Array(name.utf8)
+            let reply = data.withUnsafeBytes { bytes -> Data? in
+                name.withUnsafeBufferPointer { name in
+                    let buffer = openagents_mobile_attach_image(
+                        handle, name.baseAddress, name.count,
+                        bytes.bindMemory(to: UInt8.self).baseAddress, bytes.count)
+                    defer { openagents_mobile_buffer_free(buffer) }
+                    guard let pointer = buffer.data, buffer.len > 0 else { return nil }
+                    return Data(bytes: pointer, count: buffer.len)
+                }
+            }
+            DispatchQueue.main.async {
+                self.pending -= 1
+                if let reply, let packet = try? JSONDecoder().decode(AppPacket.self, from: reply),
+                   packet.schema == "openagents.mobile.v1" {
+                    self.packet = packet
+                }
+            }
+        }
+    }
+
+    /// The image an `image:` surface in the chat shows: the bytes Rust
+    /// decoded and bounded, decoded again here for display and cached.
+    func image(_ resource: String, received: @escaping (UIImage?) -> Void) {
+        if let image = images[resource] { return received(image) }
+        guard let handle else { return received(nil) }
+        queue.async {
+            let key = Array(resource.utf8)
+            let data = key.withUnsafeBufferPointer { key -> Data? in
+                let buffer = openagents_mobile_image(handle, key.baseAddress, key.count)
+                defer { openagents_mobile_buffer_free(buffer) }
+                guard let pointer = buffer.data, buffer.len > 0 else { return nil }
+                return Data(bytes: pointer, count: buffer.len)
+            }
+            let image = data.flatMap { UIImage(data: $0)?.preparingThumbnail(of: CGSize(width: 480, height: 480)) }
+            DispatchQueue.main.async {
+                if let image {
+                    if self.images.count > 16 { self.images.removeAll() }
+                    self.images[resource] = image
+                }
+                received(image)
             }
         }
     }
