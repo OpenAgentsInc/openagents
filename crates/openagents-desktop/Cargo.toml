@@ -25,6 +25,8 @@ app = [
     "dep:objc2-service-management",
     "dep:core-foundation",
     "dep:objc2-app-kit",
+    "dep:objc2-user-notifications",
+    "dep:block2",
     "dep:reqwest",
     "dep:ring",
     "dep:semver",
@@ -95,10 +97,13 @@ gym-leaderboard = { path = "../gym-leaderboard", default-features = false, featu
 core-foundation = { version = "0.9.4", optional = true }
 security-framework = { version = "3.7", optional = true }
 objc2 = { version = "0.6.4", optional = true }
-objc2-foundation = { version = "0.3.2", optional = true, default-features = false, features = ["std", "NSString", "NSError"] }
+objc2-foundation = { version = "0.3.2", optional = true, default-features = false, features = ["std", "NSString", "NSError", "NSBundle"] }
 # The menu-bar item (`menubar`).
 objc2-app-kit = { version = "0.3.2", optional = true, default-features = false, features = ["std", "objc2-core-foundation", "NSApplication", "NSButton", "NSCell", "NSControl", "NSImage", "NSMenu", "NSMenuItem", "NSResponder", "NSStatusBar", "NSStatusBarButton", "NSStatusItem", "NSView", "NSWindow", "NSWorkspace", "NSAccessibility"] }
 objc2-service-management = { version = "0.3.2", optional = true, default-features = false, features = ["std", "SMAppService", "objc2", "objc2-foundation"] }
+# Coder's notifications through the notification center (`mac_notify`).
+objc2-user-notifications = { version = "0.3.2", optional = true, default-features = false, features = ["std", "bitflags", "block2", "UNNotification", "UNNotificationContent", "UNNotificationRequest", "UNNotificationResponse", "UNNotificationSound", "UNNotificationTrigger", "UNUserNotificationCenter"] }
+block2 = { version = "0.6.2", optional = true }
 
 # Process CPU and peak resident memory in the offline native benchmark.
 [target.'cfg(unix)'.dependencies]

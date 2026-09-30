@@ -22,6 +22,8 @@ mod chat_test_host;
 mod grid_fixtures;
 #[cfg(not(any(target_os = "linux", windows)))]
 mod mac;
+#[cfg(target_os = "macos")]
+mod mac_notify;
 mod menubar;
 mod native;
 mod platform;
@@ -61,7 +63,7 @@ Usage: openagents-desktop [options]
   --check-update       say whether a newer release is published (Linux, Windows)
   --update             install a newer release now: an AppImage replaces itself,
                        the Windows MSI installs after exit (Linux, Windows)
-  --notify-test        show a test notification and say how it was delivered (Linux)
+  --notify-test        show a test notification and say how it was delivered (Linux, macOS)
   --open-deck ID       open the deck filed under ID in the slide viewer at launch,
                        for testing (for example three-devdays-later)
   --help               this text";

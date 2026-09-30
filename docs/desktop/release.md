@@ -352,9 +352,12 @@ compiled key still has to verify it.
 **What differs on Windows.** Chat, Coder runs from chat, and pairing are
 the same shared Rust as on the Mac. The Verse backdrop (the Grid behind the
 window) stays off: Verse does not build for Windows yet, and the window
-keeps its plain background. Coder's desktop notifications are Linux's for
-now ([#10026](https://github.com/OpenAgentsInc/openagents/issues/10026));
-on Windows, as on the Mac, a notice is dropped, so there is no toast yet.
+keeps its plain background. Coder's desktop notifications are Linux's
+([#10026](https://github.com/OpenAgentsInc/openagents/issues/10026)) and the
+Mac's ([#10061](https://github.com/OpenAgentsInc/openagents/issues/10061),
+through the notification center, asked for on the first notice); on Windows
+a notice is dropped, so there is no toast yet
+([#10062](https://github.com/OpenAgentsInc/openagents/issues/10062)).
 Copy and paste use the Windows
 clipboard API as Unicode text; the folder chooser is the common item
 dialog (`IFileOpenDialog`); IME composition comes from winit, and a

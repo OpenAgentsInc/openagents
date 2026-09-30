@@ -25,17 +25,21 @@ pub fn control_path() -> Option<std::path::PathBuf> {
     openagents_desktop::control::socket_path()
 }
 
-/// Desktop notifications are Linux's for now (#10026); elsewhere a notice
-/// is dropped.
-#[cfg(not(target_os = "linux"))]
+/// macOS's notifications go through the notification center (#10061).
+#[cfg(target_os = "macos")]
+pub use crate::mac_notify::{listen_notifications, notify, notify_now};
+
+/// Desktop notifications are Linux's and macOS's for now (#10026, #10061);
+/// elsewhere a notice is dropped.
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
 pub fn notify(_: openagents_desktop::notices::Notice) {}
 
 /// See [`notify`]: no notification clicks to listen for here.
-#[cfg(not(target_os = "linux"))]
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
 pub fn listen_notifications() {}
 
 /// See [`notify`]: no notification service here.
-#[cfg(not(target_os = "linux"))]
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
 pub fn notify_now(_: &openagents_desktop::notices::Notice) -> Option<&'static str> {
     None
 }

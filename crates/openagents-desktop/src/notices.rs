@@ -3,7 +3,8 @@
 //! in front, the desktop says so once.
 //!
 //! This decides *when*; the platform delivers (on Linux the desktop portal,
-//! else `org.freedesktop.Notifications`). A chat seen for the first time is
+//! else `org.freedesktop.Notifications`; on macOS the notification center,
+//! through [`deliver`] and a [`Center`]). A chat seen for the first time is
 //! only recorded, so opening the app on finished work notifies nothing, and
 //! a status that does not change notifies nothing again. Nothing here reads
 //! a message: the notice says what Coder is doing, under the chat's title.
@@ -68,6 +69,20 @@ pub fn server_click(action: &str) -> bool {
     action == SERVER_DEFAULT || action == OPEN_ACTION
 }
 
+/// macOS's name for a click on a notice's body
+/// (`UNNotificationDefaultActionIdentifier`).
+pub const MAC_DEFAULT_ACTION: &str = "com.apple.UNNotificationDefaultActionIdentifier";
+
+/// The chat a click reported by macOS's notification center opens: the
+/// notice `id`'s chat when `action` is a click on its body
+/// ([`MAC_DEFAULT_ACTION`]), not a dismissal.
+#[must_use]
+pub fn mac_click<'a>(id: &'a str, action: &str) -> Option<&'a str> {
+    (action == MAC_DEFAULT_ACTION)
+        .then(|| chat_of(id))
+        .flatten()
+}
+
 /// The chat a notice's ID names, if it is a Coder notice.
 #[must_use]
 pub fn chat_of(id: &str) -> Option<&str> {
@@ -98,6 +113,63 @@ impl Notice {
     pub fn chat(&self) -> Option<&str> {
         chat_of(&self.id)
     }
+}
+
+/// Whether the person lets this app show notifications.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Permission {
+    Granted,
+    /// Turned off for this app in the system's settings, or declined when
+    /// asked.
+    Denied,
+    /// No notification service to ask (e.g. not running from an app bundle).
+    Unavailable,
+}
+
+/// How a notice went.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Delivery {
+    Shown,
+    Denied,
+    Unavailable,
+    /// The service refused the notice, with its reason.
+    Failed(String),
+}
+
+/// A system notification center that asks the person before it shows
+/// anything (macOS's `UNUserNotificationCenter`). Both calls may answer on
+/// another thread.
+pub trait Center {
+    /// Asks the person the first time; after that answers from their
+    /// setting without asking again.
+    fn authorize(&self, then: Box<dyn FnOnce(Permission) + Send>);
+    /// Shows `notice` under its ID (a newer notice with the same ID
+    /// replaces the older one), with its title and body and nothing else.
+    fn post(&self, notice: &Notice, then: Box<dyn FnOnce(Result<(), String>) + Send>);
+}
+
+/// Shows `notice` through `center`: asks for permission first (so the
+/// person is asked on the first notice, never at launch), and posts only
+/// once it is granted. `done` hears how it went.
+pub fn deliver<C: Center + Send + Sync + 'static>(
+    center: std::sync::Arc<C>,
+    notice: Notice,
+    done: impl FnOnce(Delivery) + Send + 'static,
+) {
+    let poster = center.clone();
+    center.authorize(Box::new(move |permission| match permission {
+        Permission::Granted => poster.post(
+            &notice,
+            Box::new(move |posted| {
+                done(match posted {
+                    Ok(()) => Delivery::Shown,
+                    Err(reason) => Delivery::Failed(reason),
+                });
+            }),
+        ),
+        Permission::Denied => done(Delivery::Denied),
+        Permission::Unavailable => done(Delivery::Unavailable),
+    }));
 }
 
 /// The last status seen for each chat.
@@ -224,6 +296,100 @@ mod tests {
         assert!(!server_click("close"));
         assert_eq!(chat_of("coder-"), None);
         assert_eq!(chat_of("other-c1"), None);
+    }
+
+    /// A stand-in notification center that records what it was asked.
+    struct MockCenter {
+        permission: Permission,
+        refuse: Option<String>,
+        calls: std::sync::Mutex<Vec<String>>,
+    }
+
+    impl MockCenter {
+        fn new(permission: Permission, refuse: Option<&str>) -> std::sync::Arc<Self> {
+            std::sync::Arc::new(Self {
+                permission,
+                refuse: refuse.map(str::to_owned),
+                calls: std::sync::Mutex::default(),
+            })
+        }
+
+        fn calls(&self) -> Vec<String> {
+            self.calls.lock().unwrap().clone()
+        }
+    }
+
+    impl Center for MockCenter {
+        fn authorize(&self, then: Box<dyn FnOnce(Permission) + Send>) {
+            self.calls.lock().unwrap().push("authorize".into());
+            then(self.permission.clone());
+        }
+
+        fn post(&self, notice: &Notice, then: Box<dyn FnOnce(Result<(), String>) + Send>) {
+            self.calls.lock().unwrap().push(format!(
+                "post {} | {} | {}",
+                notice.id, notice.title, notice.body
+            ));
+            then(self.refuse.clone().map_or(Ok(()), Err));
+        }
+    }
+
+    fn delivered(center: &std::sync::Arc<MockCenter>, notice: Notice) -> Delivery {
+        let (tx, rx) = std::sync::mpsc::channel();
+        deliver(center.clone(), notice, move |delivery| {
+            tx.send(delivery).unwrap();
+        });
+        rx.recv().unwrap()
+    }
+
+    #[test]
+    fn the_center_asks_on_the_first_notice_and_posts_only_the_title_and_status() {
+        let mut notices = Notices::default();
+        notices.observe(chat(Status::Working), false);
+        let center = MockCenter::new(Permission::Granted, None);
+        // Nothing is asked before there is a notice to show.
+        assert!(center.calls().is_empty());
+        let asked = notices.observe(chat(Status::Question), false).remove(0);
+        assert_eq!(delivered(&center, asked), Delivery::Shown);
+        assert_eq!(
+            center.calls(),
+            [
+                "authorize",
+                "post coder-c1 | Fix the login bug | Coder asked a question"
+            ]
+        );
+    }
+
+    #[test]
+    fn a_declined_or_missing_center_shows_nothing() {
+        let notice = || Notice {
+            id: "coder-c1".into(),
+            title: "Fix the login bug".into(),
+            body: "Coder finished".into(),
+            urgent: false,
+        };
+        let denied = MockCenter::new(Permission::Denied, None);
+        assert_eq!(delivered(&denied, notice()), Delivery::Denied);
+        assert_eq!(denied.calls(), ["authorize"]);
+        let missing = MockCenter::new(Permission::Unavailable, None);
+        assert_eq!(delivered(&missing, notice()), Delivery::Unavailable);
+        assert_eq!(missing.calls(), ["authorize"]);
+        let refused = MockCenter::new(Permission::Granted, Some("no"));
+        assert_eq!(delivered(&refused, notice()), Delivery::Failed("no".into()));
+    }
+
+    #[test]
+    fn a_click_on_a_mac_notice_opens_its_chat_and_a_dismissal_does_not() {
+        assert_eq!(mac_click("coder-c1", MAC_DEFAULT_ACTION), Some("c1"));
+        assert_eq!(
+            mac_click(
+                "coder-c1",
+                "com.apple.UNNotificationDismissActionIdentifier"
+            ),
+            None
+        );
+        assert_eq!(mac_click("openagents-test", MAC_DEFAULT_ACTION), None);
+        assert_eq!(mac_click("coder-", MAC_DEFAULT_ACTION), None);
     }
 
     #[test]

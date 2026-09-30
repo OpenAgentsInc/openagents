@@ -32,7 +32,7 @@ pub fn start(waker: Waker) {
 }
 
 /// The person clicked the notification for `chat`: open it. Any thread.
-#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+#[cfg_attr(not(any(target_os = "linux", target_os = "macos")), allow(dead_code))]
 pub fn open_chat(chat: String) {
     if let Ok(mut opened) = OPENED.lock() {
         opened.push(chat);
