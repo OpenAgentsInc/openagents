@@ -998,6 +998,34 @@ impl CoderTab {
             .max_by_key(|s| s.sequence)
     }
 
+    /// A stop tapped on a computer's thread just before the view the phone
+    /// holds was replaced. A streaming reply renders a new view every few
+    /// hundred milliseconds, so the tap often names the previous one; it
+    /// still stops the reply when the current view's composer offers the
+    /// stop. That is safe because `thread.stop` names the message the
+    /// thread answers now and changes nothing otherwise.
+    fn late_thread_stop<'a>(
+        &self,
+        view: &'a ValidatedView<Intent>,
+        event: &Activation,
+    ) -> Option<&'a Intent> {
+        let current = view.view();
+        if self.threads.opened().is_none()
+            || event.node != "coder-composer"
+            || event.instance != current.instance
+            || event.revision >= current.revision
+        {
+            return None;
+        }
+        let fresh = Activation {
+            revision: current.revision,
+            ..event.clone()
+        };
+        view.activate(&fresh)
+            .ok()
+            .filter(|intent| **intent == Intent::Stop)
+    }
+
     fn running(phase: Phase) -> bool {
         matches!(phase, Phase::Queued | Phase::Running | Phase::Waiting)
     }
@@ -1011,7 +1039,11 @@ impl CoderTab {
         let Some(intent) = self
             .current
             .as_ref()
-            .and_then(|view| view.activate(event).ok())
+            .and_then(|view| {
+                view.activate(event)
+                    .ok()
+                    .or_else(|| self.late_thread_stop(view, event))
+            })
             .cloned()
         else {
             return;

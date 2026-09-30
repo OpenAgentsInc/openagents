@@ -2161,7 +2161,29 @@ fn a_computers_streaming_reply_stops_from_the_phone_and_offers_to_stop_its_coder
     }
     assert!(node(&chat, "thread-coder-stop").is_none());
     assert_eq!(fake.stops.lock().unwrap().len(), 1, "only the probe");
-    fixture.tap("coder-composer");
+    // The tap names the view the phone held; a newer one replaced it while
+    // the reply streamed. The stop still goes, but no other stale tap.
+    let stale = chat;
+    fixture.render();
+    let late = |node: &str| Activation {
+        instance: stale["instance"].as_str().unwrap().into(),
+        revision: stale["revision"].as_u64().unwrap(),
+        node: node.into(),
+    };
+    fixture.coder.activate(
+        &late("coder-new"),
+        Some(&mut fixture.computers),
+        &mut fixture.chats,
+    );
+    assert!(
+        node(&fixture.render(), "coder-chat-place").is_some(),
+        "still the thread"
+    );
+    fixture.coder.activate(
+        &late("coder-composer"),
+        Some(&mut fixture.computers),
+        &mut fixture.chats,
+    );
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
     let chat = loop {
         let chat = fixture.render();
