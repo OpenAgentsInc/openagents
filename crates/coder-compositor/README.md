@@ -228,7 +228,7 @@ coder-desk shot /tmp/screen.png
 
 - Dwindle tiling from `coder-wm`: nine desks, floats, fullscreen, maximize,
   and the split rule the Hyprland session uses. Gaps of 3 and 6 pixels and a
-  one-pixel amber border, which is what
+  one-pixel white border, which is what
   `os/modules/coderos/desktop.nix` sets.
 - The tiles fill the screen less every exclusive zone a layer surface
   holds. A window that fills the screen covers the zones, which is what

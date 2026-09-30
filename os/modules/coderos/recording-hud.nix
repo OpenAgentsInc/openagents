@@ -13,7 +13,7 @@
 # for why it is a terminal and not a layer-shell surface or a browser window.
 # The short version is that it has to follow the camera by title with
 # `coder-desk shape`, the way camera-overlay places itself, and foot is already the
-# session's amber-themed terminal. The level comes from a second `pw-record` on
+# session's white-themed terminal. The level comes from a second `pw-record` on
 # the node `screen-record microphone` reports, which PipeWire shares, so the
 # meter does not hold the device against the recorder's own capture, and the
 # strip turns red when that node is the wrong one or delivers nothing.

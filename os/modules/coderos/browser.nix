@@ -7,7 +7,7 @@
 # Widevine CDM bundled, and SUPER + B opens it on Wayland, dark, with the
 # DevTools Protocol listening on a loopback port. The launcher and every
 # flag it passes are `os/bin/coder-browser`, and the one policy the browser
-# reads, the amber theme colour, is the file this module writes under
+# reads, the white theme colour, is the file this module writes under
 # /etc/chromium/policies/managed; nothing about the browser is set on the
 # host by hand.
 #
@@ -93,11 +93,11 @@ let
       ];
   });
 
-  # The toolbar wants the scheme without shouting it. The console amber on
-  # the whole chrome reads as yellow, not amber, so the toolbar takes a dark
-  # amber from the low end of the ladder in `crates/coder-ui/src/theme.rs`,
-  # which `desktop.nix` copies for the terminal and the borders.
-  chromeTheme = "#211700";
+  # The toolbar wants the scheme without shouting it: full white on the
+  # whole chrome would glare, so the toolbar takes the raised near-black
+  # from the low end of the white ladder `desktop.nix` holds for the
+  # terminal and the borders.
+  chromeTheme = "#1a1a1a";
 
   # What Chromium reads as managed policy from /etc/chromium/policies/managed.
   # `BrowserThemeColor` seeds the browser's own theme from one colour, which

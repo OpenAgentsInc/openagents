@@ -35,7 +35,7 @@
 # A browser window would draw the meter well, but reading the level in a page
 # means `getUserMedia` on the capture source, a second heavy Chromium beside
 # the one browser.nix grants, and a profile to keep them apart. foot is already
-# the session's terminal, already themed amber on the near-black ground through
+# the session's terminal, already themed white on the near-black ground through
 # /etc/coderos/foot.ini, opens in twenty milliseconds, and draws the meter in
 # the same braille and block glyphs the console already uses. The level comes
 # from a second `pw-record` on the microphone's node, which PipeWire shares
@@ -66,7 +66,7 @@ DICTATION_FILE="${CODEROS_DICTATION_PID:-/tmp/dictation_recording.pid}"
 # under and no wider. The gap is negative, so the strip rides up over the
 # circle's lower edge and the meter reads in line with the bottom of the face
 # rather than floating below it. The panel is transparent and sits above the
-# camera, so the overlap shows only the amber over the lower part of the
+# camera, so the overlap shows only the white over the lower part of the
 # picture.
 HUD_HEIGHT="${CODEROS_HUD_HEIGHT:-104}"
 HUD_GAP="${CODEROS_HUD_GAP:--48}"
@@ -81,14 +81,14 @@ RAISE_TICKS="${CODEROS_HUD_RAISE_TICKS:-50}"
 # without a rebuild.
 HUD_GAIN="${CODEROS_HUD_GAIN:-1600}"
 
-# The console amber ladder, the rungs crates/coder-ui-core/palette.rs holds
+# The console white ladder, the rungs os/modules/coderos/desktop.nix holds
 # and desktop.nix and browser.nix copy. A Nix file cannot read a Rust
 # constant, and neither can this, so the rungs are here again.
-AMBER="255;176;0"      # amber, the bright bars and the labels
-AMBER75="193;134;0"    # amber 75, a lit control
-AMBER50="131;91;0"     # amber 50, the flat baseline and the dim glyphs
-AMBER25="70;49;0"      # amber 25, the dim record dot between blinks
-RECRED="227;66;52"     # the record dot and the error label, the signals that are not amber
+WHITE="255;255;255"    # white, the bright bars and the labels
+WHITE75="200;200;200"  # white 75, a lit control
+WHITE50="138;138;138"  # white 50, the flat baseline and the dim glyphs
+WHITE25="74;74;74"     # white 25, the dim record dot between blinks
+RECRED="227;66;52"     # the record dot and the error label, the signals that are not white
 RED75="170;50;39"      # the bars while the microphone is wrong or silent
 RED50="113;33;26"      # the baseline in the same condition
 # The near-black ground is foot's, set in /etc/coderos/foot.ini, so the strip
@@ -248,7 +248,7 @@ shape_hud() {
         place_hud
     fi
     coder-desk shape "title:$HUD_TITLE" --pin >/dev/null 2>&1
-    # Above the camera, so the transparent strip draws its amber over the
+    # Above the camera, so the transparent strip draws its white over the
     # circle's lower edge rather than behind it.
     coder-desk raise "title:$HUD_TITLE" >/dev/null 2>&1
 }
@@ -274,9 +274,9 @@ open_hud() {
     wait_for_camera || exit 0
 
     # Shape the window once it appears, then become foot. foot runs this same
-    # file in `run` mode and reads the session's amber theme, so the panel
+    # file in `run` mode and reads the session's white theme, so the panel
     # matches the terminal and the browser. `colors-dark.alpha=0.0` clears its
-    # ground to nothing, so it shows only its amber over whatever is behind,
+    # ground to nothing, so it shows only its white over whatever is behind,
     # the way the camera window shows only the circle.
     shape_hud &
     exec foot \
@@ -522,9 +522,9 @@ run_hud() {
         local frame="" r c idx u full part row_glyph line
         # The microphone's condition decides the ladder the meter draws in.
         # Red means the recording is reading the wrong microphone, none, or
-        # one that delivers nothing; amber means the one the host names, and
+        # one that delivers nothing; white means the one the host names, and
         # a level within the window.
-        local live=1 state="" text="" bright=$AMBER mid=$AMBER75 dim=$AMBER50
+        local live=1 state="" text="" bright=$WHITE mid=$WHITE75 dim=$WHITE50
         (( tick - last_level_tick > MIC_DEAD_TICKS )) && live=0
         if (( mic_known )); then
             local video_only=0
@@ -572,7 +572,7 @@ run_hud() {
             frame+="${line}\033[0m\033[K"
             (( r < wave_rows - 1 )) && frame+=$'\n'
         done
-        # The microphone's name rides the top-left corner, in amber when it
+        # The microphone's name rides the top-left corner, in white when it
         # is the one the host names and delivering, and in red otherwise. It
         # is drawn over the meter, the way the record dot is, so the strip
         # stays one meter tall.
@@ -583,9 +583,9 @@ run_hud() {
             if [[ $state == "error" ]]; then
                 frame+="\033[1;1H\033[1;38;2;${RECRED}m${text}\033[0m"
             elif [[ $state == "quiet" ]]; then
-                frame+="\033[1;1H\033[38;2;${AMBER50}m${text}\033[0m"
+                frame+="\033[1;1H\033[38;2;${WHITE50}m${text}\033[0m"
             else
-                frame+="\033[1;1H\033[38;2;${AMBER}m${text}\033[0m"
+                frame+="\033[1;1H\033[38;2;${WHITE}m${text}\033[0m"
             fi
         fi
         # The record dot rides the top-right corner while a recording rolls,
@@ -597,9 +597,9 @@ run_hud() {
             (( dotcol < 1 )) && dotcol=1
             frame+="\033[1;${dotcol}H"
             if (( blink )); then
-                frame+="\033[38;2;${RECRED}m●\033[38;2;${AMBER}m${label}\033[0m"
+                frame+="\033[38;2;${RECRED}m●\033[38;2;${WHITE}m${label}\033[0m"
             else
-                frame+="\033[38;2;${AMBER25}m●\033[38;2;${AMBER50}m${label}\033[0m"
+                frame+="\033[38;2;${WHITE25}m●\033[38;2;${WHITE50}m${label}\033[0m"
             fi
         fi
         # The dictation indicator. Dictation opens the microphone from a key
@@ -618,7 +618,7 @@ run_hud() {
             if (( blink )); then
                 frame+="\033[${drow};${dcol}H\033[1;38;2;${RECRED}m${dlabel}\033[0m"
             else
-                frame+="\033[${drow};${dcol}H\033[38;2;${AMBER50}m${dlabel}\033[0m"
+                frame+="\033[${drow};${dcol}H\033[38;2;${WHITE50}m${dlabel}\033[0m"
             fi
         fi
         # The control row.
@@ -632,16 +632,16 @@ run_hud() {
         local recording_now=0
         is_recording && recording_now=1
         if (( recording_now )); then
-            out+="\033[${rows};${REC_C0}H\033[38;2;${AMBER}m[ ■ stop ]\033[0m"
+            out+="\033[${rows};${REC_C0}H\033[38;2;${WHITE}m[ ■ stop ]\033[0m"
         else
-            out+="\033[${rows};${REC_C0}H\033[38;2;${AMBER}m[ ● record ]\033[0m"
+            out+="\033[${rows};${REC_C0}H\033[38;2;${WHITE}m[ ● record ]\033[0m"
         fi
-        out+="\033[${rows};${MINUS_C0}H\033[38;2;${AMBER75}m[ - ]\033[0m"
-        out+="\033[${rows};${PLUS_C0}H\033[38;2;${AMBER75}m[ + ]\033[0m"
+        out+="\033[${rows};${MINUS_C0}H\033[38;2;${WHITE75}m[ - ]\033[0m"
+        out+="\033[${rows};${PLUS_C0}H\033[38;2;${WHITE75}m[ + ]\033[0m"
         # The circle's diameter, so the resize keys have a number to read. The
         # value is the cached one the loop refreshes, not a fresh query every
         # frame.
-        out+="\033[${rows};$((PLUS_C1 + 2))H\033[38;2;${AMBER50}m${cam_size}px\033[0m"
+        out+="\033[${rows};$((PLUS_C1 + 2))H\033[38;2;${WHITE50}m${cam_size}px\033[0m"
         printf '%b' "$out"
     }
 

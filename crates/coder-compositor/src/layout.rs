@@ -23,12 +23,12 @@ pub const GAP_OUTER: i32 = 6;
 /// The border's thickness in pixels, Hyprland's `border_size`.
 pub const BORDER: i32 = 1;
 
-/// The amber a focused window's border draws in, as
-/// `crates/coder-ui-core/palette.rs` holds it and `desktop.nix` copies it.
-pub const BORDER_ACTIVE: [f32; 4] = [1.0, 0.690, 0.0, 1.0];
+/// The white a focused window's border draws in: the top of the OpenAgents
+/// white ladder `desktop.nix` holds.
+pub const BORDER_ACTIVE: [f32; 4] = [1.0, 1.0, 1.0, 1.0];
 
-/// The dim amber every other window's border draws in.
-pub const BORDER_IDLE: [f32; 4] = [0.275, 0.192, 0.0, 1.0];
+/// The dim white every other window's border draws in (white 25, `4a4a4a`).
+pub const BORDER_IDLE: [f32; 4] = [0.290, 0.290, 0.290, 1.0];
 
 /// How tall the bar a notice draws across the top of the screen is, in
 /// pixels.

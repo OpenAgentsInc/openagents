@@ -99,28 +99,29 @@ in
     # pinned.
     programs.nix-ld.enable = true;
 
-    # The console is a 16-color VGA text mode with no truecolor, so Coder's
-    # amber collapses to the nearest ANSI slot and draws yellow and red. The
-    # Linux console lets those 16 entries be redefined, so every slot is set
-    # to a rung of the amber ladder in `crates/coder-ui/src/theme.rs`. The
-    # screen is then amber whichever slot a program reaches for.
+    # The console is a 16-color VGA text mode with no truecolor, so a
+    # program's colours collapse to the nearest ANSI slot. The Linux console
+    # lets those 16 entries be redefined, so every slot is set to a rung of
+    # the OpenAgents white ladder (white, 75, 50, 25 on near-black; see
+    # `desktop.nix`). The screen is then white whichever slot a program
+    # reaches for.
     console.colors = [
-      "080600" # near black
-      "835b00" # amber 50
-      "835b00"
-      "ffb000" # amber
-      "463100" # amber 25
-      "835b00"
-      "c18600" # amber 75
-      "c18600"
-      "211700" # near black, tinted
-      "c18600"
-      "c18600"
-      "ffb000"
-      "835b00"
-      "c18600"
-      "ffb000"
-      "ffb000"
+      "0a0a0a" # near black
+      "8a8a8a" # white 50
+      "8a8a8a"
+      "ffffff" # white
+      "4a4a4a" # white 25
+      "8a8a8a"
+      "c8c8c8" # white 75
+      "c8c8c8"
+      "1a1a1a" # near black, raised
+      "c8c8c8"
+      "c8c8c8"
+      "ffffff"
+      "8a8a8a"
+      "c8c8c8"
+      "ffffff"
+      "ffffff"
     ];
 
     # `~/.local/bin` holds binaries built from a checkout, such as the

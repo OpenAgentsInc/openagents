@@ -31,38 +31,40 @@
 let
   cfg = config.coderos.desktop;
 
-  # crates/coder-ui/src/theme.rs holds these values. The copies here are
-  # copies because a Nix file cannot read a Rust constant, and they match
-  # the console palette `default.nix` sets.
-  amber = "ffb000";
-  amber25 = "463100";
-  amber50 = "835b00";
-  amber75 = "c18600";
-  nearBlackTinted = "211700";
-  nearBlack = "080600";
+  # The OpenAgents white ladder: four intensities of white on near-black,
+  # the same values the website (`crates/openagents-web/src/palette.rs`)
+  # and the desktop theme use. It replaced the amber ladder on 2026-09-30.
+  # The copies here are copies because a Nix file cannot read a Rust
+  # constant, and they match the console palette `default.nix` sets.
+  white = "ffffff";
+  white25 = "4a4a4a";
+  white50 = "8a8a8a";
+  white75 = "c8c8c8";
+  nearBlackTinted = "1a1a1a";
+  nearBlack = "0a0a0a";
 
   # foot has its own 16-colour palette; without it a program that asks for
-  # green (the bash prompt is bold green) draws green on this amber desktop.
-  # Map every ANSI slot to a rung of the amber ladder, the same mapping
-  # console.colors makes for the VGA console, so foot is amber whichever slot
+  # green (the bash prompt is bold green) draws green on this white desktop.
+  # Map every ANSI slot to a rung of the white ladder, the same mapping
+  # console.colors makes for the VGA console, so foot is white whichever slot
   # a program reaches for.
   footPalette = ''
     regular0=${nearBlack}
-    regular1=${amber50}
-    regular2=${amber50}
-    regular3=${amber}
-    regular4=${amber25}
-    regular5=${amber50}
-    regular6=${amber75}
-    regular7=${amber75}
+    regular1=${white50}
+    regular2=${white50}
+    regular3=${white}
+    regular4=${white25}
+    regular5=${white50}
+    regular6=${white75}
+    regular7=${white75}
     bright0=${nearBlackTinted}
-    bright1=${amber75}
-    bright2=${amber75}
-    bright3=${amber}
-    bright4=${amber50}
-    bright5=${amber75}
-    bright6=${amber}
-    bright7=${amber}'';
+    bright1=${white75}
+    bright2=${white75}
+    bright3=${white}
+    bright4=${white50}
+    bright5=${white75}
+    bright6=${white}
+    bright7=${white}'';
 
   # The tile's terminal. `os/bin/coder-pane` opens foot running Coder or a
   # bare shell.
@@ -90,8 +92,8 @@ let
   notifications = "${pkgs.mako}/bin/mako --config=/etc/coderos/mako.ini";
   makoConf = ''
     background-color=#${nearBlack}
-    text-color=#${amber}
-    border-color=#${amber}
+    text-color=#${white}
+    border-color=#${white}
     border-size=1
     border-radius=0
     font=Cascadia Mono 12
@@ -236,12 +238,12 @@ let
     # the same theme. It starts on the dark one.
     [colors-dark]
     background=${nearBlack}
-    foreground=${amber}
+    foreground=${white}
     ${footPalette}
 
     [colors-light]
     background=${nearBlack}
-    foreground=${amber}
+    foreground=${white}
     ${footPalette}
 
     # The size of the text, from the keyboard. Control belongs to the
@@ -290,8 +292,8 @@ let
         gaps_in = 3
         gaps_out = 6
         border_size = 1
-        col.active_border = rgb(${amber})
-        col.inactive_border = rgb(${amber25})
+        col.active_border = rgb(${white})
+        col.inactive_border = rgb(${white25})
     }
 
     dwindle {
@@ -329,7 +331,7 @@ let
     ${startLines}
 
     # The notification daemon, which draws the close key's notice and the
-    # banner that says the microphone is open, in the console amber. It
+    # banner that says the microphone is open, in the console white. It
     # starts here rather than from the start list, which the Coder
     # compositor's session also reads, so that session decides for itself
     # what draws a notice.
