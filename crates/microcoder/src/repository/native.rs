@@ -57,12 +57,25 @@ impl<T: codex_transport::Transport> codex_transport::Transport for Transport<'_,
     }
 }
 
+/// What a step's judgment says on a computer with no Jev key.
+pub(super) const NO_JEV_KEY: &str = "no Jev key on this computer";
+
 struct NativeJudge<'a> {
     host: &'a Host,
-    client: jev::Client,
+    /// `None` on a computer with no Jev key: every judgment answers nothing,
+    /// costs nothing, and names why, and no request is made.
+    client: Option<jev::Client>,
 }
 impl Judge for NativeJudge<'_> {
     async fn judge(&self, set: &QuestionSet, state: &Value) -> Judgment {
+        let Some(client) = &self.client else {
+            return Judgment {
+                error: Some(NO_JEV_KEY.into()),
+                usd: Some(0.0),
+                usd_upper: Some(0.0),
+                ..Judgment::default()
+            };
+        };
         let started = std::time::Instant::now();
         let mut questions = jev::Questions::new();
         for question in &set.questions {
@@ -71,9 +84,9 @@ impl Judge for NativeJudge<'_> {
         let request =
             jev::SystemOneRequest::new(state.clone(), questions).retry(jev::RetryPolicy {
                 max_retries: 0,
-                ..self.client.retry().clone()
+                ..client.retry().clone()
             });
-        let response = self.client.system_one(request).await;
+        let response = client.system_one(request).await;
         let milliseconds = started.elapsed().as_millis().try_into().unwrap_or(u64::MAX);
         match response {
             Ok(response) => {
@@ -221,7 +234,7 @@ pub(super) async fn run_stage<T: codex_transport::Transport>(
     host: &Host,
     book: PathBuf,
     clients: Vec<(GrantRoute, Client<T>)>,
-    client: jev::Client,
+    client: Option<jev::Client>,
     session: &str,
 ) -> Result<(State, crate::run::Outcome), task::Error> {
     let replies = Replies::new(host);
@@ -263,6 +276,24 @@ pub(super) async fn run_stage<T: codex_transport::Transport>(
 mod tests {
     use super::*;
     use codex_transport::Transport as _;
+
+    #[tokio::test]
+    async fn without_a_jev_key_a_judgment_answers_nothing_costs_nothing_and_says_why() {
+        let (_root, store, grant) = super::super::tests::fixture();
+        let host = Host::admit(&store, &grant).await.unwrap();
+        let judge = NativeJudge {
+            host: &host,
+            client: None,
+        };
+        let set = microcoder_loop::models::question_set();
+        let judgment = judge.judge(&set, &json!({"task": "fixture"})).await;
+        assert!(judgment.answers.is_empty());
+        assert_eq!(judgment.error.as_deref(), Some(NO_JEV_KEY));
+        assert_eq!(judgment.usd, Some(0.0));
+        assert!(judgment.cost_unknown.is_none());
+        assert!(judgment.render(&set).contains(NO_JEV_KEY));
+        host.finish("fixture", false, json!({})).unwrap();
+    }
 
     #[tokio::test]
     async fn missing_or_mismatched_native_identity_is_retained_but_never_accepted() {

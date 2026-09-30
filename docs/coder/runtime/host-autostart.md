@@ -347,9 +347,11 @@ the command line.
   the refusal in its diagnostic file.
 - Writing tasks share one worktree. Consecutive tasks see each other's
   uncommitted changes; review and commit or reset between them.
-- The engine needs a login for each route it uses and the host's Jev key, as
-  `microcoder repository` does. A refusal from either shows in the task's
-  diagnostic file, not in the journal.
+- The engine needs a login for each route it uses, as `microcoder
+  repository` does; a refusal shows in the task's diagnostic file, not in
+  the journal. The host's Jev key is used when there is one; without one
+  the steps run without Jev's judgments
+  ([the repository adapter](microcoder-repository.md#prepare-the-request-and-grant)).
 - Without usage probes, capacity is learned from refusals, so the first task
   after a limit is reached still makes one refused request. A Claude refusal
   records the reset Claude Code's stream reports. With probes, a reading

@@ -271,18 +271,26 @@ fn parse(args: &[String]) -> Result<Options, String> {
     Ok(options)
 }
 
-fn jev_client() -> Result<jev::Client, String> {
+/// The Jev key from `TYPESAFE_API_KEY`, else `api_key` in
+/// `~/.openagents/jev.json`, or `None` when neither holds one.
+fn jev_key() -> Option<String> {
     let from_env = std::env::var("TYPESAFE_API_KEY")
         .ok()
         .filter(|k| !k.trim().is_empty());
-    let key = from_env.or_else(|| {
+    from_env.or_else(|| {
         let path = std::path::PathBuf::from(std::env::var_os("HOME")?).join(".openagents/jev.json");
         let value: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(path).ok()?).ok()?;
-        value["api_key"].as_str().map(str::to_string)
-    });
-    let key =
-        key.ok_or("no Jev key: set TYPESAFE_API_KEY or put api_key in ~/.openagents/jev.json")?;
+        value["api_key"]
+            .as_str()
+            .filter(|key| !key.trim().is_empty())
+            .map(str::to_string)
+    })
+}
+
+fn jev_client() -> Result<jev::Client, String> {
+    let key = jev_key()
+        .ok_or("no Jev key: set TYPESAFE_API_KEY or put api_key in ~/.openagents/jev.json")?;
     jev::Client::new(jev::Config::new().api_key(key.trim())).map_err(|e| format!("Jev: {e}"))
 }
 
@@ -834,8 +842,15 @@ async fn repository_cli(arguments: &[String]) -> u8 {
             return microcoder::repository::launch::start(&store, &bytes)
                 .map(|launched| serde_json::json!(launched));
         }
-        let judge = JevJudge {
-            client: jev_client()?,
+        // A computer without a Jev key still runs a repository turn: the
+        // desktop app asks only that Codex or Claude Code is signed in, so
+        // the steps go without Jev's advisory judgments there, and the
+        // transcript says so. A key that is present is always used.
+        let judge = match jev_key() {
+            Some(_) => Some(JevJudge {
+                client: jev_client()?,
+            }),
+            None => None,
         };
         microcoder::repository::execute(&store, &bytes, judge)
             .await

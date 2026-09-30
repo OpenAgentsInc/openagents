@@ -343,9 +343,15 @@ mod tests {
         let host = Host::admit(store, grant).await.unwrap();
         let stages: Vec<Stage<codex_transport::codex::CodexTransport>> =
             vec![Stage::Agent(AgentEngine::OpenCode, route(model), agent)];
-        run_stages(host, store.to_path_buf(), stages, jev(), "fixture-session")
-            .await
-            .unwrap()
+        run_stages(
+            host,
+            store.to_path_buf(),
+            stages,
+            Some(jev()),
+            "fixture-session",
+        )
+        .await
+        .unwrap()
     }
 
     /// The configuration OpenCode was started with.

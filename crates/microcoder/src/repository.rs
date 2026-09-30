@@ -649,7 +649,7 @@ fn stages(
 pub async fn execute(
     directory: &Path,
     bytes: &[u8],
-    judge: crate::models::JevJudge,
+    judge: Option<crate::models::JevJudge>,
 ) -> Result<task::Task, String> {
     let grant = task::owner::Grant::parse(bytes).map_err(|error| error.to_string())?;
     let config = grant
@@ -657,8 +657,9 @@ pub async fn execute(
         .as_ref()
         .ok_or("missing repository configuration")?;
     config.validate().map_err(|error| error.to_string())?;
-    if judge.client.base_url() != config.decision_endpoint
-        || judge.client.default_model() != config.decision_model
+    if let Some(judge) = &judge
+        && (judge.client.base_url() != config.decision_endpoint
+            || judge.client.default_model() != config.decision_model)
     {
         return Err("The configured decision client differs from the execution grant.".into());
     }
@@ -676,17 +677,32 @@ pub async fn execute(
             .noting("routes_unavailable", json!(unavailable)),
         );
     }
+    if judge.is_none() {
+        let _ = host.append(
+            &Step::said(
+                Source::System,
+                "This computer has no Jev key, so Coder runs without Jev's judgments.",
+            )
+            .noting("decision_unavailable", json!({"reason":"no_key"})),
+        );
+    }
     let book = host.store().to_path_buf();
-    run_stages(host, book, stages, judge.client, &session)
-        .await
-        .map_err(|error| error.to_string())
+    run_stages(
+        host,
+        book,
+        stages,
+        judge.map(|judge| judge.client),
+        &session,
+    )
+    .await
+    .map_err(|error| error.to_string())
 }
 
 async fn run_stages<T: codex_transport::Transport>(
     host: Host,
     book: PathBuf,
     stages: Vec<Stage<T>>,
-    client: jev::Client,
+    client: Option<jev::Client>,
     session: &str,
 ) -> Result<task::Task, task::Error> {
     let count = stages.len();

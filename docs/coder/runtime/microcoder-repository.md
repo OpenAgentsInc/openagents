@@ -116,7 +116,14 @@ endpoint of each route's provider. The decision endpoint and model must equal th
 actual Jev client configuration before admission. The returned decision model
 name must also match exactly. An alias such as `jev-latest` that resolves to a
 different returned name is refused; select and admit an explicit version when
-you need an exact identity. Endpoints cannot contain URL
+you need an exact identity. On a computer with no Jev key (neither
+`TYPESAFE_API_KEY` nor `api_key` in `~/.openagents/jev.json`), which is a
+computer set up only with the desktop app and a signed-in Codex or Claude
+Code, the run makes no decision request: the transcript opens with a
+`decision_unavailable` step (`no_key`), every step's judgment says **no Jev
+key on this computer** and costs nothing, and the loop, whose judgments are
+advisory, runs its commands as before. A key that is present is always used,
+under the checks above. Endpoints cannot contain URL
 credentials, query strings, or fragments. Other benchmark providers remain
 available through the existing Terminal-Bench command; they are unsupported by
 this repository profile.

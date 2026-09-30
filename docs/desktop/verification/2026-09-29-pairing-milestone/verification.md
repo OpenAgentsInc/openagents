@@ -94,11 +94,13 @@ and the phone shows **Connected directly** on its terminal.
 
 ## Gaps found and not fixed here
 
-- **A fresh Mac also needs a Jev key.** `microcoder repository` builds its
-  Jev judge from `TYPESAFE_API_KEY` or `~/.openagents/jev.json` and fails
-  the launch without one (`no Jev key`); the task then stays **Waiting to
-  start** on both screens. Codex or Claude Code being signed in is not
-  enough. This check used the owner's key file.
+- **A fresh Mac also needed a Jev key.** `microcoder repository` built its
+  Jev judge from `TYPESAFE_API_KEY` or `~/.openagents/jev.json` and failed
+  the launch without one (`no Jev key`), so the task stayed **Waiting to
+  start**. This check used the owner's key file. Fixed afterwards in
+  [#9984](https://github.com/OpenAgentsInc/openagents/issues/9984): without
+  a key the steps run without Jev's advisory judgments, and a repository
+  run with no key and Claude Code alone finished and changed the file.
 - **A task whose owner process never admits it** stays queued forever on
   the phone and the desktop instead of ending with the diagnostic.
 - **After the host restarts** (it does on every project change), a command

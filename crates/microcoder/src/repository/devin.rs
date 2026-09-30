@@ -687,9 +687,15 @@ mod tests {
         let host = Host::admit(store, grant).await.unwrap();
         let stages: Vec<Stage<codex_transport::codex::CodexTransport>> =
             vec![Stage::Agent(AgentEngine::Devin, route(), agent)];
-        run_stages(host, store.to_path_buf(), stages, jev(), "fixture-session")
-            .await
-            .unwrap()
+        run_stages(
+            host,
+            store.to_path_buf(),
+            stages,
+            Some(jev()),
+            "fixture-session",
+        )
+        .await
+        .unwrap()
     }
 
     #[tokio::test]
@@ -888,7 +894,7 @@ mod tests {
         admitted.model = "claude-opus-5-5-medium".into();
         let stages: Vec<Stage<codex_transport::codex::CodexTransport>> =
             vec![Stage::Agent(AgentEngine::Devin, admitted, agent)];
-        let task = run_stages(host, store.clone(), stages, jev(), "fixture-session")
+        let task = run_stages(host, store.clone(), stages, Some(jev()), "fixture-session")
             .await
             .unwrap();
         let result = task.run.as_ref().unwrap().result.as_ref().unwrap();
