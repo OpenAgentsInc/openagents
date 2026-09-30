@@ -1,0 +1,10 @@
+message user
+  markdown "add a unit test for slugify"
+message assistant
+  markdown "We'll dispatch Coder to add a unit test for slugify."
+vertical stack [card]
+  body "Coder started on Codex · gpt-6-luna"
+  body "Codex is signed in and has capacity."
+  status "slugs · /tmp/scratch/worktrees/slugs-2e517c264d8e"
+  status "Falls back to Claude Code (claude-opus-5-5)"
+status "Coder stopped before the turn started."

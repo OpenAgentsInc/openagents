@@ -1,0 +1,17 @@
+message user
+  markdown "add a unit test for slugify"
+message assistant
+  markdown "We'll dispatch Coder to add a unit test for slugify."
+vertical stack [card]
+  body "Coder started on Codex · gpt-6-luna"
+  body "Codex is signed in and has capacity."
+  status "slugs · /tmp/scratch/worktrees/slugs-0897815422cf"
+  status "Falls back to Claude Code (claude-opus-5-5)"
+message user
+  markdown "tidy up"
+status "Switched from Codex (gpt-6-luna) to Claude Code (claude-opus-5-5): Codex refused for a usage limit until 2026-10-03 18:07 UTC."
+status "Claude Code refused for a rate limit until 2026-09-28 05:40 UTC; no other provider has capacity."
+status "Worked for 0s"
+vertical stack [card]
+  body "Coder didn't finish"
+  body "No admitted provider has capacity."

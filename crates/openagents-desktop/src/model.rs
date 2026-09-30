@@ -144,6 +144,13 @@ pub enum Request {
         ticket: u64,
         request: openagents_chat_app::task_chat::Request,
     },
+    /// A Coder run on this computer for a chat
+    /// ([`openagents_chat_app::coder_run`]).
+    CoderRun {
+        chat: String,
+        ticket: u64,
+        request: openagents_chat_app::coder_run::Request,
+    },
 
     Chat {
         ticket: u64,
@@ -194,6 +201,7 @@ impl std::fmt::Debug for Request {
             Request::Chat { ticket, .. } => write!(f, "Chat {{ ticket: {ticket}, .. }}"),
             Request::Saved { ticket, .. } => write!(f, "Saved {{ ticket: {ticket}, .. }}"),
             Request::TaskChat { ticket, .. } => write!(f, "TaskChat {{ ticket: {ticket}, .. }}"),
+            Request::CoderRun { ticket, .. } => write!(f, "CoderRun {{ ticket: {ticket}, .. }}"),
             Request::Copy { .. } => f.write_str("Copy { .. }"),
             Request::ClearClipboard { .. } => f.write_str("ClearClipboard { .. }"),
             Request::Refresh => f.write_str("Refresh"),
@@ -280,6 +288,11 @@ pub enum Outcome {
         ticket: u64,
         result: Box<crate::control::ControlResult<openagents_chat_app::task_chat::Answer>>,
     },
+    CoderRun {
+        chat: String,
+        ticket: u64,
+        result: Box<Result<openagents_chat_app::coder_run::Answer, String>>,
+    },
 
     Chat {
         ticket: u64,
@@ -327,6 +340,7 @@ fn outcome_name(outcome: &Outcome) -> &'static str {
         Outcome::Chat { .. } => "Chat",
         Outcome::Saved { .. } => "Saved",
         Outcome::TaskChat { .. } => "TaskChat",
+        Outcome::CoderRun { .. } => "CoderRun",
         Outcome::Refreshed(_) => "Refreshed",
         Outcome::Created { .. } => "Created",
         Outcome::CreateFailed { .. } => "CreateFailed",
@@ -702,7 +716,10 @@ impl Model {
     /// Applies a finished request.
     pub fn outcome(&mut self, outcome: Outcome, now: Instant) -> Vec<Request> {
         match outcome {
-            Outcome::Chat { .. } | Outcome::TaskChat { .. } | Outcome::Saved { .. } => Vec::new(),
+            Outcome::Chat { .. }
+            | Outcome::TaskChat { .. }
+            | Outcome::CoderRun { .. }
+            | Outcome::Saved { .. } => Vec::new(),
             Outcome::Refreshed(Some(state)) => {
                 let state = *state;
                 self.reached = true;
@@ -920,7 +937,10 @@ mod tests {
             let mut queue: std::collections::VecDeque<Request> = requests.into();
             while let Some(request) = queue.pop_front() {
                 let outcome = match request {
-                    Request::Chat { .. } | Request::TaskChat { .. } | Request::Saved { .. } => {
+                    Request::Chat { .. }
+                    | Request::TaskChat { .. }
+                    | Request::CoderRun { .. }
+                    | Request::Saved { .. } => {
                         panic!("computer model does not dispatch chat")
                     }
                     Request::Refresh => {

@@ -5,6 +5,7 @@ use crate::control::ControlResult;
 use crate::model::{Intent, Request};
 use openagents_chat::basic_coder::{Role, Turn};
 use openagents_chat::service::{Command, Snapshot};
+use openagents_chat_app::coder_run::{self, Action as RunAction, Run};
 use openagents_chat_app::projection::{self, Appearance, Projection, Reply};
 use openagents_chat_app::session::Session;
 use openagents_chat_app::task_chat::{self, Action as TaskAction};
@@ -54,6 +55,15 @@ pub struct Panel {
     submissions: BTreeMap<String, (String, Submission)>,
     tasks: BTreeMap<String, task_chat::Session>,
     task_submissions: BTreeMap<(String, String), Submission>,
+    /// Coder runs on this computer, by chat ([`coder_run`]).
+    runs: BTreeMap<String, Run>,
+    run_submissions: BTreeMap<(String, u64), Submission>,
+    /// Messages sent from this window, by chat and request: a coding
+    /// reply to one starts Coder here at once, as `openagents chat` does.
+    sent: std::collections::BTreeSet<(String, String)>,
+    /// The folders a new run tries first: this computer's projects, the
+    /// one shown on Phones and computers first.
+    coder_projects: Vec<String>,
     task_editor: BTreeMap<String, u64>,
     born: Instant,
     pub viewport: (f32, f32, f32),
@@ -107,6 +117,10 @@ impl Panel {
             submissions: BTreeMap::new(),
             tasks: BTreeMap::new(),
             task_submissions: BTreeMap::new(),
+            runs: BTreeMap::new(),
+            run_submissions: BTreeMap::new(),
+            sent: Default::default(),
+            coder_projects: vec![],
             task_editor: BTreeMap::new(),
             born: now,
             viewport: (1200.0, 840.0, 1.0),
@@ -452,19 +466,173 @@ impl Panel {
         if previous != self.session.selected {
             self.selected_changed(previous);
         }
-        outcome.or_else(|| {
-            let chat = self.session.selected.clone()?;
-            let (ticket, request) = self.tasks.get_mut(&chat)?.tick(now)?;
-            Some(Request::TaskChat {
+        if outcome.is_some() {
+            return outcome;
+        }
+        // A task started here is recorded on its thread, so the host's
+        // threads (and the phone) show it.
+        let bind = self
+            .runs
+            .iter_mut()
+            .find_map(|(chat, run)| run.take_bind().map(|bind| (chat.clone(), bind)));
+        if let Some((chat, (task, project))) = bind {
+            return Some(self.request(Command::BindCoder {
+                chat,
+                host: coder_run::LOCAL.into(),
+                task,
+                project: Some(project),
+            }));
+        }
+        if let Some(chat) = self.session.selected.clone()
+            && let Some((ticket, request)) = self.tasks.get_mut(&chat).and_then(|t| t.tick(now))
+        {
+            return Some(Request::TaskChat {
                 chat,
                 ticket,
                 request,
-            })
-        })
+            });
+        }
+        // The shown chat's run first, then the others.
+        let selected = self.session.selected.clone();
+        let mut chats: Vec<String> = self.runs.keys().cloned().collect();
+        chats.sort_by_key(|chat| Some(chat) != selected.as_ref());
+        for chat in chats {
+            let run = self.runs.get_mut(&chat)?;
+            let revision = run.revision;
+            let ticked = run.tick(now);
+            if revision != run.revision && selected.as_ref() == Some(&chat) {
+                self.rows_dirty = true;
+            }
+            if let Some((ticket, request)) = ticked {
+                return Some(Request::CoderRun {
+                    chat,
+                    ticket,
+                    request,
+                });
+            }
+        }
+        None
     }
     fn busy(&self) -> bool {
+        if let Some(run) = self.run() {
+            return run.busy();
+        }
         self.task()
             .map_or_else(|| self.session.busy(), task_chat::Session::busy)
+    }
+    fn run(&self) -> Option<&Run> {
+        self.runs.get(self.session.selected.as_ref()?)
+    }
+    /// This computer's project folders, the shown one first: where a new
+    /// Coder run starts unless the chat has its own.
+    pub fn set_coder_projects(&mut self, folders: Vec<String>) {
+        self.coder_projects = folders;
+    }
+    /// Start Coder on this computer for `chat`, as `openagents chat` does.
+    fn start_run(&mut self, chat: &str) {
+        if self.runs.contains_key(chat) {
+            return;
+        }
+        let Some(snapshot) = self.session.states.get(chat) else {
+            return;
+        };
+        if snapshot.coder.is_some() {
+            return;
+        }
+        let title = self
+            .session
+            .summaries
+            .iter()
+            .find(|summary| summary.id == chat)
+            .map_or_else(|| "Coder task".to_owned(), |summary| summary.title.clone());
+        let prompt = openagents_chat::delegation::prompt(&title, &snapshot.turns);
+        self.runs.insert(
+            chat.to_owned(),
+            Run::start(
+                chat,
+                &title,
+                &prompt,
+                self.coder_projects.clone(),
+                Instant::now(),
+            ),
+        );
+        if self.session.selected.as_deref() == Some(chat) {
+            self.rows_dirty = true;
+        }
+    }
+    /// The runner's answer for a chat's run.
+    pub fn run_outcome(
+        &mut self,
+        chat: String,
+        ticket: u64,
+        result: Result<coder_run::Answer, String>,
+    ) {
+        let Some(run) = self.runs.get_mut(&chat) else {
+            return;
+        };
+        let revision = run.revision;
+        let accepted = run.outcome(ticket, result, Instant::now());
+        if revision != run.revision && self.session.selected.as_ref() == Some(&chat) {
+            self.rows_dirty = true;
+        }
+        let submission = self.run_submissions.remove(&(chat.clone(), ticket));
+        if accepted
+            && let Some(submission) = submission
+            && let Some(field) = self.fields.get_mut(&chat)
+        {
+            let _ = field.draft.accepted(&submission);
+            field.focused = true;
+        }
+    }
+    fn run_action(&mut self, action: RunAction, view: &ValidatedView<Intent>) -> Option<Request> {
+        let chat = self.session.selected.clone()?;
+        let composing = matches!(
+            action,
+            RunAction::Send | RunAction::Queue | RunAction::Steer
+        );
+        let submission = if composing {
+            let field = self.field()?;
+            let stamp = field.draft.stamp().ok()?;
+            let submission = field.draft.submission(view, &stamp, None).ok()?;
+            if submission.text.len() > coder_run::MAX_MESSAGE {
+                self.notice = Some(
+                    "Coder accepts messages up to 16 KiB. Shorten this draft to send it.".into(),
+                );
+                return None;
+            }
+            Some(submission)
+        } else {
+            None
+        };
+        let run = self.runs.get_mut(&chat)?;
+        let revision = run.revision;
+        let requested = run.action(action, submission.as_ref().map_or("", |s| s.text.as_str()));
+        let changed = revision != run.revision;
+        if changed {
+            self.rows_dirty = true;
+        }
+        if let Some(submission) = submission {
+            match &requested {
+                Some((ticket, coder_run::Request::Continue { .. })) => {
+                    self.run_submissions
+                        .insert((chat.clone(), *ticket), submission);
+                }
+                // Queued, or held until the stop ends the turn.
+                _ if changed => {
+                    if let Some(field) = self.fields.get_mut(&chat) {
+                        let _ = field.draft.accepted(&submission);
+                        field.focused = true;
+                    }
+                }
+                _ => {}
+            }
+        }
+        let (ticket, request) = requested?;
+        Some(Request::CoderRun {
+            chat,
+            ticket,
+            request,
+        })
     }
     fn task(&self) -> Option<&task_chat::Session> {
         self.tasks.get(self.session.selected.as_ref()?)
@@ -735,6 +903,22 @@ impl Panel {
             .outcome(ticket, result.map_err(|error| error.to_string()));
         if let Some(snapshot) = self.session.state()
             && let (Some(chat), Some(binding)) = (&snapshot.chat, &snapshot.coder)
+            && binding.host == coder_run::LOCAL
+        {
+            // Coder on this computer: its events, from the first.
+            let replace = self
+                .runs
+                .get(chat)
+                .is_none_or(|run| run.task.as_ref().is_some_and(|task| *task != binding.task));
+            if replace {
+                self.runs.insert(
+                    chat.clone(),
+                    Run::follow(chat, &binding.task, binding.project.clone(), Instant::now()),
+                );
+                self.rows_dirty = true;
+            }
+        } else if let Some(snapshot) = self.session.state()
+            && let (Some(chat), Some(binding)) = (&snapshot.chat, &snapshot.coder)
         {
             let replace = self.tasks.get(chat).is_none_or(|task| {
                 task.binding.task != binding.task || task.binding.host != binding.host
@@ -747,6 +931,7 @@ impl Panel {
                 self.rows_dirty = true;
             }
         }
+        self.run_if_coding();
         for (_, request) in accepted {
             if let Some((id, submission)) = self.submissions.remove(&request)
                 && let Some(field) = self.fields.get_mut(&id)
@@ -761,6 +946,57 @@ impl Panel {
         if revision != self.session.revision {
             self.rows_dirty = true;
         }
+    }
+    /// A coding reply to a message sent from this window starts Coder
+    /// here at once, as `openagents chat` does; the reply's offer is the
+    /// router's judgment.
+    fn run_if_coding(&mut self) {
+        let Some(snapshot) = self.session.state() else {
+            return;
+        };
+        let Some(chat) = snapshot.chat.clone() else {
+            return;
+        };
+        if snapshot.busy {
+            return;
+        }
+        let sent: Vec<String> = self
+            .sent
+            .iter()
+            .filter(|(id, _)| *id == chat)
+            .map(|(_, request)| request.clone())
+            .collect();
+        let mut run = false;
+        for request in sent {
+            let Some(at) = snapshot
+                .turns
+                .iter()
+                .rposition(|turn| turn.request.as_deref() == Some(request.as_str()))
+            else {
+                continue;
+            };
+            let Some(reply) = snapshot.turns.get(at + 1) else {
+                continue;
+            };
+            self.sent.remove(&(chat.clone(), request));
+            if reply.role == Role::Assistant
+                && !reply.stopped
+                && openagents_chat::delegation::offered(reply.meta.as_ref(), snapshot.computer)
+            {
+                run = true;
+            }
+        }
+        if run {
+            self.start_run(&chat);
+        }
+    }
+    /// The transcript's rows as last published, for tests and captures.
+    pub fn transcript_rows(&self) -> &[Arc<Node<()>>] {
+        &self.transcript_rows
+    }
+    /// The chat's Coder run on this computer, if it has one.
+    pub fn coder_run(&self, chat: &str) -> Option<&Run> {
+        self.runs.get(chat)
     }
     pub fn take_activated(&mut self) -> Vec<String> {
         std::mem::take(&mut self.activated)
@@ -890,6 +1126,19 @@ impl Panel {
                 if let Some(action) = self.task().and_then(|task| task.actions.get(&key)).cloned() {
                     return self.task_action(action, view, now);
                 }
+                if key == "coder-steer" {
+                    return self.run_action(RunAction::Steer, view);
+                }
+                if let Some(action) = self.run().and_then(|run| run.actions.get(&key)).cloned() {
+                    return self.run_action(action, view);
+                }
+                // Run Coder starts it on this computer (#10033).
+                if self.session.cards.actions.get(&key)
+                    == Some(&openagents_chat_app::cards::Action::RunCoder)
+                {
+                    self.start_run(&id);
+                    return None;
+                }
                 let previous = self.session.selected.clone();
                 let effect = self.session.card_action(&key);
                 if previous != self.session.selected {
@@ -945,6 +1194,9 @@ impl Panel {
                 if self.task().is_some() {
                     return self.task_action(TaskAction::Send, view, now);
                 }
+                if self.run().is_some() {
+                    return self.run_action(RunAction::Send, view);
+                }
                 if let Some(reason) = self.session.images.hosted_send_refusal(&id) {
                     self.notice = Some(reason.into());
                     return None;
@@ -957,6 +1209,7 @@ impl Panel {
                 let command = self
                     .session
                     .submit(send_id.clone(), submission.text.clone())?;
+                self.sent.insert((id.clone(), send_id.clone()));
                 self.submissions.insert(send_id, (id, submission));
                 Some(request(command))
             }
@@ -1002,6 +1255,8 @@ impl Panel {
             Action::Stop => {
                 if self.task().is_some() {
                     self.task_action(TaskAction::Stop, view, now)
+                } else if self.run().is_some() {
+                    self.run_action(RunAction::Stop, view)
                 } else {
                     Some(self.request(Command::Stop { chat: id }))
                 }
@@ -1009,6 +1264,8 @@ impl Panel {
             Action::Retry => {
                 if self.task().is_some() {
                     self.task_action(TaskAction::Retry, view, now)
+                } else if self.run().is_some() {
+                    self.run_action(RunAction::Retry, view)
                 } else {
                     self.session.retry().map(request)
                 }
@@ -1601,10 +1858,14 @@ impl Panel {
         false
     }
     pub fn next_wake(&self, now: Instant) -> Instant {
-        self.task().map_or_else(
+        let wake = self.task().map_or_else(
             || self.session.next_wake(now),
             |task| self.session.next_wake(now).min(task.next_wake(now)),
-        )
+        );
+        self.runs
+            .values()
+            .map(|run| run.next_wake(now))
+            .fold(wake, Instant::min)
     }
     pub fn version(&self, resource: &str) -> Option<u64> {
         match resource {
@@ -2027,6 +2288,12 @@ impl Panel {
                 if rows.is_empty() {
                     rows.push(Arc::new(message("welcome".into(),&Turn::assistant("How can we help?\n\nAsk a question, explore an idea, or work through a problem.",None))));
                 }
+                let run_rows = self
+                    .session
+                    .selected
+                    .as_ref()
+                    .and_then(|id| self.runs.get_mut(id))
+                    .map(Run::rows);
                 let busy = self.busy();
                 let fallback = Snapshot {
                     chat: self.session.selected.clone(),
@@ -2043,8 +2310,13 @@ impl Panel {
                         .cards
                         .rows_with(snapshot, busy, self.session.error.as_deref())
                         .into_iter()
+                        // A run here replaces the offer to start one.
+                        .filter(|row| run_rows.is_none() || row.key != "coder-run")
                         .map(Arc::new),
                 );
+                // Coder on this computer: its events after the reply that
+                // started it, as `openagents chat` prints them.
+                rows.extend(run_rows.into_iter().flatten().map(Arc::new));
                 rows
             };
             if self.transcript_rows.len() != rows.len()
@@ -2166,7 +2438,11 @@ impl Panel {
         }
         let busy = self.busy();
         let task = self.tasks.get(&id);
-        let placeholder = task.map_or("Message OpenAgents…", task_chat::Session::placeholder);
+        let run = self.runs.get(&id);
+        let placeholder = task.map_or_else(
+            || run.map_or("Message OpenAgents…", Run::placeholder),
+            task_chat::Session::placeholder,
+        );
         if let Some(field) = self.fields.get_mut(&id) {
             field.set_placeholder(placeholder);
             field.set_unframed(true);
@@ -2180,7 +2456,9 @@ impl Panel {
                 field.text().to_owned()
             }
         });
-        let task_mode = task.map(task_chat::Session::mode);
+        let task_mode = task
+            .map(task_chat::Session::mode)
+            .or_else(|| run.map(Run::mode));
         let task_ready = task.is_none_or(|task| task.summary.is_some());
         let enabled = draft.as_ref().is_some_and(|text| !text.trim().is_empty())
             || !self.session.images.get(&id).is_empty();
@@ -2222,6 +2500,28 @@ impl Panel {
             ),
             text("chat-toolbar-space", "", TextRole::Status),
         ];
+        if let Some(run) = run
+            && run.active()
+        {
+            if let Some(choice) = run.steer_choice() {
+                buttons.push(button(
+                    "coder-steer",
+                    choice.label(),
+                    Action::Card {
+                        key: "coder-steer".into(),
+                    },
+                    enabled && !busy,
+                ));
+            }
+            buttons.push(icon_button(
+                "chat-stop",
+                "Stop Coder",
+                Action::Stop,
+                !busy && run.task.is_some(),
+                Glyph::Stop,
+                false,
+            ));
+        }
         if let Some(task) = task
             && task.active()
         {
@@ -2244,7 +2544,7 @@ impl Panel {
                 false,
             ));
         }
-        buttons.push(if busy && task.is_none() {
+        buttons.push(if busy && task.is_none() && run.is_none() {
             icon_button(
                 "chat-stop",
                 "Stop",
@@ -2301,6 +2601,7 @@ impl Panel {
         let field_width = (self.column_width - 114.0).max(1.0);
         let compact = !has_previews
             && task.is_none_or(|task| !task.active())
+            && run.is_none_or(|run| !run.active())
             && self.fields.get(&id).is_some_and(|field| {
                 !field.text().contains('\n') && field.content_line_count(field_width - 16.0) == 1
             });

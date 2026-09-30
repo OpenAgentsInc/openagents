@@ -372,6 +372,15 @@ impl DesktopApp {
                             if let Some(chat) = &mut self.chat {
                                 chat.outcome(ticket, *result);
                             }
+                        } else if let Outcome::CoderRun {
+                            chat,
+                            ticket,
+                            result,
+                        } = outcome
+                        {
+                            if let Some(panel) = &mut self.chat {
+                                panel.run_outcome(chat, ticket, *result);
+                            }
                         } else {
                             queue.extend(self.model.outcome(outcome, now));
                         }
@@ -409,6 +418,17 @@ impl DesktopApp {
             if let Outcome::Chat { ticket, result } = outcome {
                 if let Some(chat) = &mut self.chat {
                     chat.outcome(ticket, *result);
+                }
+                continue;
+            }
+            if let Outcome::CoderRun {
+                chat,
+                ticket,
+                result,
+            } = outcome
+            {
+                if let Some(panel) = &mut self.chat {
+                    panel.run_outcome(chat, ticket, *result);
                 }
                 continue;
             }
@@ -551,6 +571,22 @@ impl App for DesktopApp {
             .for_each(|intent| self.activate(intent, now));
         let requests = self.model.tick(now);
         self.send(requests, now);
+        if let Some(chat) = &mut self.chat {
+            // A coding request runs in this computer's projects, the one
+            // Phones and computers shows first; none is needed.
+            chat.set_coder_projects(
+                self.model
+                    .host
+                    .as_ref()
+                    .map(|host| {
+                        host.projects
+                            .iter()
+                            .map(|project| project.folder.clone().unwrap_or(project.path.clone()))
+                            .collect()
+                    })
+                    .unwrap_or_default(),
+            );
+        }
         if let Some(request) = self.chat.as_mut().and_then(|chat| chat.tick(now)) {
             self.send(vec![request], now);
         }
@@ -2246,30 +2282,82 @@ mod card_fixtures {
         }
         let view = app.view().clone();
         let panel = app.chat.as_mut().unwrap();
-        let Request::Chat { ticket, command } = panel
-            .action(
-                openagents_desktop::chat_action::Action::Card {
-                    key: "coder-run".into(),
-                },
-                &view,
-                Instant::now(),
-            )
-            .unwrap()
-        else {
-            panic!("dispatch")
+        // Run Coder starts it on this computer (#10033): no host dispatch.
+        assert!(
+            panel
+                .action(
+                    openagents_desktop::chat_action::Action::Card {
+                        key: "coder-run".into(),
+                    },
+                    &view,
+                    Instant::now(),
+                )
+                .is_none()
+        );
+        let next = |panel: &mut openagents_desktop::chat::Panel| {
+            for step in 0..20 {
+                match panel.tick(Instant::now() + std::time::Duration::from_millis(step * 10)) {
+                    Some(Request::Chat {
+                        ticket,
+                        command: Command::Read { .. } | Command::List {},
+                    }) => panel.outcome(ticket, Ok(snapshot.clone())),
+                    Some(request) => return request,
+                    None => {}
+                }
+            }
+            panic!("no request")
         };
-        assert_eq!(command, Command::RunCoder { chat });
+        let Request::CoderRun {
+            chat: started,
+            ticket,
+            request: openagents_chat_app::coder_run::Request::Start { title, prompt, .. },
+        } = next(panel)
+        else {
+            panic!("start")
+        };
+        assert_eq!(started, chat);
+        assert!(
+            prompt.contains("fix the flaky test in openagents"),
+            "{prompt}"
+        );
+        assert!(!title.is_empty());
+        panel.run_outcome(
+            chat.clone(),
+            ticket,
+            Ok(openagents_chat_app::coder_run::Answer::Started {
+                task: "b".repeat(64),
+                project: "openagents".into(),
+                checkout: "/w/openagents".into(),
+            }),
+        );
+        // The thread records the task, so the host's threads show it.
+        let Request::Chat { ticket, command } = next(panel) else {
+            panic!("bind")
+        };
+        assert_eq!(
+            command,
+            Command::BindCoder {
+                chat: chat.clone(),
+                host: "local".into(),
+                task: "b".repeat(64),
+                project: Some("openagents".into()),
+            }
+        );
         panel.outcome(
             ticket,
             Ok(Snapshot {
                 coder: Some(openagents_chat::basic_chats::Spawned {
-                    host: "a".repeat(64),
+                    host: "local".into(),
                     task: "b".repeat(64),
                     project: Some("openagents".into()),
                     at: Some(10),
                 }),
                 ..snapshot
             }),
+        );
+        assert_eq!(
+            panel.coder_run(&chat).and_then(|run| run.task.as_deref()),
+            Some("b".repeat(64).as_str())
         );
         app.present();
         let (frame, _) = rust_native_desktop::capture(&mut app, 760.0, 540.0, 1.0);
@@ -3285,5 +3373,276 @@ mod saved_fixtures {
         for (path, bytes) in originals {
             assert_eq!(std::fs::read(path).unwrap(), bytes);
         }
+    }
+}
+
+/// The Coder events of a run on this computer, as the desktop chat draws
+/// them (#10033): every event type the scripted provider emits
+/// (`microcoder`'s `local_run` tests write the fixtures), outlined under
+/// `snapshots/dsk-10-coder-*.txt`.
+#[cfg(test)]
+mod coder_events {
+    use super::*;
+    use openagents_chat::{
+        basic_chats::Spawned,
+        basic_coder::Turn,
+        coder_events::Line,
+        service::{Command, Snapshot},
+    };
+    use openagents_chat_app::coder_run::{Answer, Request as RunRequest, State as RunState};
+    use rust_native::{Element, Node};
+
+    const QUESTION_THEN_RESULT: &str =
+        include_str!("../../openagents-chat/fixtures/coder-events/question-then-result.ndjson");
+    const OTHER_ENDINGS: &str =
+        include_str!("../../openagents-chat/fixtures/coder-events/other-endings.ndjson");
+
+    fn tasks(text: &str) -> Vec<Vec<Line>> {
+        let mut out: Vec<Vec<Line>> = vec![];
+        for line in text.lines() {
+            let line: Line = serde_json::from_str(line).unwrap();
+            match out.last_mut() {
+                Some(task) if task[0].task == line.task => task.push(line),
+                _ => out.push(vec![line]),
+            }
+        }
+        out
+    }
+
+    /// A thread bound to `lines`' task, after one poll that read them.
+    fn window(lines: &[Line], state: RunState) -> DesktopApp {
+        let mut app = super::tests::chat_fixture(0).0;
+        let now = Instant::now();
+        let panel = app.chat.as_mut().unwrap();
+        let Request::Chat {
+            ticket,
+            command: Command::Create { chat },
+        } = panel.new_chat()
+        else {
+            panic!("create")
+        };
+        let snapshot = Snapshot {
+            chat: Some(chat.clone()),
+            computer: true,
+            total: 2,
+            turns: vec![
+                Turn::user("add a unit test for slugify"),
+                Turn::assistant("We'll dispatch Coder to add a unit test for slugify.", None),
+            ],
+            coder: Some(Spawned {
+                host: "local".into(),
+                task: lines[0].task.clone(),
+                project: Some("slugs".into()),
+                at: Some(1),
+            }),
+            ..Snapshot::default()
+        };
+        panel.outcome(ticket, Ok(snapshot.clone()));
+        let mut polled = false;
+        for step in 0..20 {
+            match panel.tick(now + std::time::Duration::from_millis(step * 300)) {
+                Some(Request::Chat { ticket, .. }) => panel.outcome(ticket, Ok(snapshot.clone())),
+                Some(Request::CoderRun {
+                    chat: at,
+                    ticket,
+                    request: RunRequest::Poll { task },
+                }) => {
+                    assert_eq!(
+                        (at.as_str(), task.as_str()),
+                        (chat.as_str(), lines[0].task.as_str())
+                    );
+                    panel.run_outcome(
+                        chat.clone(),
+                        ticket,
+                        Ok(Answer::Lines {
+                            lines: lines.to_vec(),
+                            state,
+                        }),
+                    );
+                    polled = true;
+                    break;
+                }
+                _ => {}
+            }
+        }
+        assert!(polled, "the bound thread follows its task");
+        app.present();
+        app
+    }
+
+    /// Each transcript row, one node a line, with what it says.
+    fn outline(rows: &[std::sync::Arc<Node<()>>]) -> String {
+        fn write(node: &Node<()>, depth: usize, out: &mut String) {
+            let pad = "  ".repeat(depth);
+            let line = match &node.element {
+                Element::Text { value, role } => {
+                    format!("{} {value:?}", format!("{role:?}").to_lowercase())
+                }
+                Element::Button { label, enabled, .. } => {
+                    format!(
+                        "button {label:?}{}",
+                        if *enabled { "" } else { " (disabled)" }
+                    )
+                }
+                Element::Message { role, .. } => format!("message {role:?}").to_lowercase(),
+                Element::Markdown { blocks } => {
+                    format!("markdown {:?}", rust_native::markdown::plain(blocks))
+                }
+                Element::Tool {
+                    name,
+                    detail,
+                    state,
+                    ..
+                } => format!("tool {name:?} {detail:?} [{state:?}]")
+                    .replace("[D", "[d")
+                    .replace("[R", "[r")
+                    .replace("[F", "[f"),
+                Element::Working { label } => format!("working {label:?}"),
+                Element::Stack { axis, .. } => {
+                    let card = node.style.background.is_some_and(|c| c.alpha > 0);
+                    format!("{axis:?} stack{}", if card { " [card]" } else { "" }).to_lowercase()
+                }
+                other => format!("{other:?}").chars().take(40).collect(),
+            };
+            out.push_str(&format!("{pad}{line}\n"));
+            if let Element::Stack { children, .. }
+            | Element::Message { children, .. }
+            | Element::Tool { children, .. } = &node.element
+            {
+                for child in children {
+                    write(child, depth + 1, out);
+                }
+            }
+        }
+        let mut out = String::new();
+        for row in rows {
+            write(row, 0, &mut out);
+        }
+        out
+    }
+
+    fn check_snapshot(name: &str, actual: &str) {
+        let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("snapshots")
+            .join(format!("{name}.txt"));
+        if std::env::var_os("UPDATE_SNAPSHOTS").is_some() {
+            std::fs::write(&path, actual).unwrap();
+            return;
+        }
+        let expected = std::fs::read_to_string(&path).unwrap_or_else(|_| {
+            panic!("no snapshot {name}; run with UPDATE_SNAPSHOTS=1. The view is:\n{actual}")
+        });
+        assert_eq!(
+            expected, actual,
+            "the {name} snapshot differs; run with UPDATE_SNAPSHOTS=1 to record it"
+        );
+    }
+
+    /// Each case: its snapshot name, the lines read, and where the task is.
+    fn cases() -> Vec<(&'static str, Vec<Line>, RunState)> {
+        let whole = tasks(QUESTION_THEN_RESULT).remove(0);
+        let others = tasks(OTHER_ENDINGS);
+        let asked = whole
+            .iter()
+            .position(|line| line.event.name() == "question")
+            .unwrap();
+        let command = whole
+            .iter()
+            .position(|line| line.event.name() == "output")
+            .unwrap();
+        vec![
+            (
+                "dsk-10-coder-running",
+                whole[..command].to_vec(),
+                RunState::Running,
+            ),
+            (
+                "dsk-10-coder-question",
+                whole[..=asked].to_vec(),
+                RunState::Waiting,
+            ),
+            ("dsk-10-coder-result", whole.clone(), RunState::Ended),
+            (
+                "dsk-10-coder-approval",
+                others[0].clone(),
+                RunState::Waiting,
+            ),
+            (
+                "dsk-10-coder-no-capacity",
+                others[1].clone(),
+                RunState::Ended,
+            ),
+            ("dsk-10-coder-stopped", others[2].clone(), RunState::Ended),
+        ]
+    }
+
+    #[test]
+    fn every_event_type_renders_in_the_desktop_transcript() {
+        let directory =
+            std::env::var_os("OPENAGENTS_CODER_CAPTURE_DIR").map(std::path::PathBuf::from);
+        let mut drawn = std::collections::BTreeSet::new();
+        for (name, lines, state) in cases() {
+            let mut app = window(&lines, state);
+            let (frame, _) = rust_native_desktop::capture(&mut app, 1200.0, 840.0, 1.0);
+            let text = outline(app.chat.as_ref().unwrap().transcript_rows());
+            check_snapshot(name, &text);
+            // Every event the case read shows: its row names it.
+            for line in &lines {
+                let key = format!("coder-{}", line.seq);
+                let shown = text.contains(&key) || {
+                    let rows = app.chat.as_ref().unwrap().transcript_rows();
+                    rows.iter().any(|row| row.key == key)
+                };
+                if shown {
+                    drawn.insert(line.event.name());
+                }
+            }
+            if let Some(directory) = &directory {
+                std::fs::create_dir_all(directory).unwrap();
+                std::fs::write(directory.join(format!("{name}.png")), frame.png().unwrap())
+                    .unwrap();
+            }
+        }
+        // Progress shows as the working line; a reply as the message; an
+        // output inside its command's row. The rest are rows of their own.
+        for name in [
+            "coder_started",
+            "step",
+            "provider_switched",
+            "question",
+            "approval",
+            "result",
+            "failure",
+            "stopped",
+        ] {
+            assert!(drawn.contains(name), "{name} draws no row: {drawn:?}");
+        }
+    }
+
+    #[test]
+    fn a_run_s_buttons_can_be_pressed() {
+        let others = tasks(OTHER_ENDINGS);
+        let mut app = window(&others[0], RunState::Waiting);
+        rust_native_desktop::capture(&mut app, 1200.0, 840.0, 1.0);
+        let panel = app.chat.as_ref().unwrap();
+        for key in ["coder-approve", "coder-deny"] {
+            assert!(panel.transcript.control_bounds(key).is_some(), "{key}");
+        }
+    }
+
+    #[test]
+    fn output_and_progress_render_inside_their_rows() {
+        let whole = tasks(QUESTION_THEN_RESULT).remove(0);
+        let first_output = whole
+            .iter()
+            .position(|line| line.event.name() == "output")
+            .unwrap();
+        let app = window(&whole[..=first_output], RunState::Running);
+        let text = outline(app.chat.as_ref().unwrap().transcript_rows());
+        assert!(text.contains("tool \"Command\" \"printf 'import unittest\\\\n' > test_slugs.py · exit 0 in 0.0s\" [done]"), "{text}");
+        assert!(
+            text.contains("working \"Coder is working · step 1 of 24 · 0s\""),
+            "{text}"
+        );
     }
 }

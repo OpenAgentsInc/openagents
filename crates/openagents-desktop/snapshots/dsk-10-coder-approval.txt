@@ -1,0 +1,21 @@
+message user
+  markdown "add a unit test for slugify"
+message assistant
+  markdown "We'll dispatch Coder to add a unit test for slugify."
+vertical stack [card]
+  body "Coder started on Codex · gpt-6-luna"
+  body "Codex is signed in and has capacity."
+  status "slugs · /tmp/scratch/worktrees/slugs-fbfd2ba85fd1"
+  status "Falls back to Claude Code (claude-opus-5-5)"
+message user
+  markdown "tidy up"
+tool "Thinking" "Done." [done]
+  code "Done."
+status "Worked for 0s · thought once"
+vertical stack [card]
+  body "Coder asks to go ahead"
+  markdown "May I delete slugs.py?"
+  status "Approve or deny below, or answer in your own words."
+horizontal stack
+  button "Approve"
+  button "Deny"

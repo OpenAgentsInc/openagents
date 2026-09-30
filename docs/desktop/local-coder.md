@@ -64,6 +64,56 @@ for editing. An acknowledgment clears only the editing state that submitted
 those bytes; newer edits remain. Task revision changes also invalidate a
 pressed transcript button before release.
 
+## Coder on this computer, from a chat
+
+A coding request typed in a desktop chat runs Coder right here, with no
+pairing, no registered project, and no accept step: the same local run
+`openagents chat` starts ([#10032](https://github.com/OpenAgentsInc/openagents/issues/10032),
+[#10033](https://github.com/OpenAgentsInc/openagents/issues/10033)). When
+the chat router's reply to a message sent from this window judges it coding
+work, or the person picks **Run Coder**, the window's Coder lane
+(`src/worker.rs`) calls `coder::task::local::Local::start` with the chat's
+handoff prompt. Codex, then Claude Code, each only when signed in here with
+capacity; Coder's own worktree of the project's `HEAD`; the same engine,
+failover, and ATIF recording as a host's auto-start. Reopening a chat never
+starts a run.
+
+The project is a default, never a gate: the chat's own project, then this
+computer's projects (the one **Phones and computers** shows first), then the
+project Coder last started in (`<tasks>/local/last-project`). When none of
+them is a Git checkout, the chat says so with **Choose folder…** and starts
+there.
+
+The window records the task on its thread through the host
+(`BindCoder`, host `local`), so the host's threads, and a phone, show it.
+A bound thread follows its task with `Local::follow` from the first event:
+a thread started in `openagents chat` shows its whole history and keeps
+streaming while it runs. The rows are `openagents_chat_app::coder_run`,
+drawn from the one event stream (`openagents_chat::coder_events`) the CLI
+prints:
+
+| Event | In the chat |
+| --- | --- |
+| `coder_started` | A card: the provider and model, why that provider, the project and worktree, and what it falls back to. A later turn says "Coder continued". |
+| `step` | The request as the person's message; thoughts as a **Thinking** row; each command as a **Command** row, running until its output; an agent's call as its own row; the reply as the assistant's message; a note as a quiet line. A later turn's carried conversation shows once. |
+| `output` | Inside its command's row, with the exit and time on the row; failed or timed out marks the row failed; cut output says so. |
+| `provider_switched` | "Switched from Codex (…) to Claude Code (…): why", or that no other provider has capacity. |
+| `progress` | The working line: step, bound, Jev's done estimate, and time. |
+| `question` | A **Coder asks** card; the composer answers it. |
+| `approval` | A **Coder asks to go ahead** card with **Approve** and **Deny**; the composer answers in words. |
+| `result` | **Coder finished**: the summary, files changed with `+`/`−` lines, and the worktree, after a "Worked for …" line. |
+| `failure` | **Coder didn't finish** and why. |
+| `stopped` | The stop, in a line. |
+
+The controls keep #10016's: **Stop Coder** stops the running turn
+(`Local::stop`); while Coder works, Send queues the message for the next
+turn (up to eight, each with **Send now** and **Remove**) and **Stop and
+send** stops the turn and continues with the message; after a question, an
+approval, or an ended turn, Send continues the task in the same worktree
+(`Local::answer`). Set `OPENAGENTS_DESKTOP_CODER_EVENTS=FILE` to append every
+event the window receives to `FILE` as NDJSON, the lines `openagents --json
+chat follow` prints.
+
 ## Saved Codex and Claude Code sessions
 
 **Saved sessions** reads this computer's `.codex` and `.claude` directories

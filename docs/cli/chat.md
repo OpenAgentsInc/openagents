@@ -148,7 +148,8 @@ in, no capacity).
 Under `--json`, every event of the task follows the chat's own events as one
 NDJSON line. The stream is `openagents_chat::coder_events`
 ([source](../../crates/openagents-chat/src/coder_events.rs)): the desktop
-([#10033](https://github.com/OpenAgentsInc/openagents/issues/10033)) and the
+([#10033](https://github.com/OpenAgentsInc/openagents/issues/10033),
+[how it draws each event](../desktop/local-coder.md#coder-on-this-computer-from-a-chat)) and the
 phone ([#10035](https://github.com/OpenAgentsInc/openagents/issues/10035))
 consume the same types, mapped from the same trajectories by the same
 `Mapper`.

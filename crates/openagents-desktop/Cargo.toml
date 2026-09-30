@@ -34,6 +34,7 @@ app = [
     "dep:keyring",
     "dep:security-framework",
     "dep:rfd",
+    "dep:coder",
 ]
 
 [dependencies]
@@ -43,6 +44,9 @@ openagents-chat-app = { path = "../openagents-chat-app" }
 coder-access = { path = "../coder-access", default-features = false }
 coder-connect = { path = "../coder-connect", default-features = false }
 coder-history = { path = "../coder-history" }
+# Coder on this computer for a chat: the runner `openagents chat` uses
+# (`coder::task::local`), in the window's Coder lane (`src/worker.rs`).
+coder = { path = "../coder", optional = true }
 uuid = { version = "1", features = ["v4"] }
 base64 = "0.22"
 # The control protocol's messages.

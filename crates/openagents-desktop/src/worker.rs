@@ -19,6 +19,7 @@
 //! sign-in check does not ask the keychain.
 
 use crate::platform;
+use openagents_chat_app::coder_run;
 use openagents_desktop::codes::Action;
 use openagents_desktop::control::{ControlError, HostControl, PATIENCE};
 use openagents_desktop::fake::FakeHost;
@@ -38,10 +39,24 @@ const RECENT_TASKS: usize = 5;
 /// The most bytes of `coder task list` output read.
 const TASK_LIST_MAX: usize = 16 * 1024 * 1024;
 
-/// What the worker needs: the host lane and the local lane.
+/// What the worker needs: the host lane, the local lane, and the Coder
+/// lane.
 pub struct Context {
     host: HostLane,
     local: LocalLane,
+    coder: CoderLane,
+}
+
+/// Coder runs on this computer for chats: started, followed, answered, and
+/// stopped through `coder::task::local`, the runner `openagents chat`
+/// uses, over this computer's task store. Its own thread, so following a
+/// run never waits behind a folder chooser or a slow host.
+struct CoderLane {
+    fake: bool,
+    local: Option<coder::task::local::Local>,
+    /// One follower a task, kept across polls so each poll reads only
+    /// what is new.
+    follows: std::collections::BTreeMap<String, coder::task::local::Follow>,
 }
 
 /// The control client, and the in-process host in `--fake-host` mode.
@@ -64,8 +79,16 @@ struct LocalLane {
     saved_history: Option<Result<coder_history::History, String>>,
 }
 
+/// Whether `request` runs on the Coder lane.
+fn coder(request: &Request) -> bool {
+    matches!(request, Request::CoderRun { request, .. } if *request != coder_run::Request::Choose)
+}
+
 /// Whether `request` runs on the local lane.
 fn local(request: &Request) -> bool {
+    if let Request::CoderRun { request, .. } = request {
+        return *request == coder_run::Request::Choose;
+    }
     if let Request::Saved { request, .. } = request {
         return !matches!(
             request,
@@ -96,6 +119,11 @@ impl Context {
         home: PathBuf,
     ) -> Context {
         Context {
+            coder: CoderLane {
+                fake: fake.is_some(),
+                local: None,
+                follows: Default::default(),
+            },
             local: LocalLane {
                 fake: fake.is_some(),
                 coder,
@@ -119,9 +147,20 @@ impl Context {
         self
     }
 
+    /// Run chats' Coder over the task store `store` with `local`, as a
+    /// test's scripted runner does.
+    #[cfg(test)]
+    pub fn with_coder(mut self, local: coder::task::local::Local) -> Self {
+        self.coder.fake = false;
+        self.coder.local = Some(local);
+        self
+    }
+
     /// Runs one request.
     pub fn run(&mut self, request: Request) -> Option<Outcome> {
-        if local(&request) {
+        if coder(&request) {
+            self.coder.run(request)
+        } else if local(&request) {
             self.local.run(request)
         } else {
             self.host.run(request)
@@ -218,6 +257,20 @@ impl LocalLane {
                 None
             }
             Request::ChooseFolder => Some(Outcome::Folder(platform::choose_folder())),
+            Request::CoderRun { chat, ticket, .. } => Some(Outcome::CoderRun {
+                chat,
+                ticket,
+                result: Box::new(Ok(coder_run::Answer::Folder(if self.fake {
+                    None
+                } else {
+                    match platform::choose_folder() {
+                        openagents_desktop::folder::Chosen::Folder(path) => {
+                            Some(path.display().to_string())
+                        }
+                        _ => None,
+                    }
+                }))),
+            }),
             Request::Coder => Some(Outcome::Coder {
                 agents: if self.fake {
                     Agents {
@@ -386,6 +439,151 @@ impl HostLane {
     }
 }
 
+/// Where the window notes the project Coder last started in: beside the
+/// local runs' records in the task store.
+fn last_project(store: &std::path::Path) -> PathBuf {
+    store.join("local").join("last-project")
+}
+
+/// The command that answers a thread's question from a terminal, as
+/// `openagents chat` names it for a thread in this computer's host.
+pub fn answer_hint(chat: &str) -> String {
+    format!("openagents chat answer --thread {chat} \"YOUR ANSWER\"")
+}
+
+impl CoderLane {
+    fn run(&mut self, request: Request) -> Option<Outcome> {
+        let Request::CoderRun {
+            chat,
+            ticket,
+            request,
+        } = request
+        else {
+            unreachable!("{request:?} runs on another lane")
+        };
+        let result = self.answer(&chat, request);
+        Some(Outcome::CoderRun {
+            chat,
+            ticket,
+            result: Box::new(result),
+        })
+    }
+
+    fn local(&mut self) -> &coder::task::local::Local {
+        self.local.get_or_insert_with(|| {
+            coder::task::local::Local::new(coder::task::local::default_store())
+        })
+    }
+
+    fn answer(
+        &mut self,
+        chat: &str,
+        request: coder_run::Request,
+    ) -> Result<coder_run::Answer, String> {
+        use coder::task::local::{self as run, State};
+        use coder_run::{Answer, Request};
+        if self.fake {
+            return Err("Coder doesn't run in this offline fixture.".into());
+        }
+        match request {
+            Request::Start {
+                title,
+                prompt,
+                mut dirs,
+            } => {
+                let store = self.local().store().to_path_buf();
+                if let Ok(last) = std::fs::read_to_string(last_project(&store)) {
+                    dirs.push(last.trim().to_owned());
+                }
+                let mut why = None;
+                let mut tried = std::collections::BTreeSet::new();
+                for dir in dirs.iter().filter(|dir| !dir.is_empty()) {
+                    if !tried.insert(dir.clone()) {
+                        continue;
+                    }
+                    let path = std::path::Path::new(dir);
+                    match run::checkout(path) {
+                        Ok(_) => {
+                            let record = self.local().start(path, &title, &prompt, Some(chat))?;
+                            let _ = std::fs::write(last_project(&store), &record.checkout);
+                            return Ok(Answer::Started {
+                                task: record.task,
+                                project: record.project,
+                                checkout: record.checkout,
+                            });
+                        }
+                        Err(error) => {
+                            why.get_or_insert(if error.contains("is not in a Git checkout") {
+                                format!(
+                                    "{dir} is not a Git checkout. Choose the project folder Coder \
+                                     works in."
+                                )
+                            } else {
+                                error
+                            });
+                        }
+                    }
+                }
+                Ok(Answer::NeedsProject {
+                    why: why.unwrap_or_else(|| {
+                        "Choose the project folder Coder works in: a Git checkout on this \
+                         computer."
+                            .into()
+                    }),
+                })
+            }
+            Request::Poll { task } => {
+                if !self.follows.contains_key(&task) {
+                    let follow = self
+                        .local()
+                        .follow(&task, Some(chat), Some(answer_hint(chat)));
+                    self.follows.insert(task.clone(), follow);
+                }
+                let follow = self.follows.get_mut(&task).expect("a follower");
+                let (lines, state) = follow.poll()?;
+                dump(&lines);
+                Ok(Answer::Lines {
+                    lines,
+                    state: match state {
+                        State::Running => coder_run::State::Running,
+                        State::Waiting => coder_run::State::Waiting,
+                        State::Ended => coder_run::State::Ended,
+                    },
+                })
+            }
+            Request::Stop { task } => self.local().stop(&task).map(|()| Answer::Stopping),
+            Request::Continue { task, text } => {
+                self.local().answer(&task, &text).map(|_| Answer::Continued)
+            }
+            Request::Choose => unreachable!("the folder chooser runs on the local lane"),
+        }
+    }
+}
+
+/// Names a file every Coder event the window receives is appended to, as
+/// NDJSON: the same lines `openagents --json chat follow` prints, for
+/// comparing the two.
+pub const EVENTS_VAR: &str = "OPENAGENTS_DESKTOP_CODER_EVENTS";
+
+fn dump(lines: &[openagents_chat::coder_events::Line]) {
+    use std::io::Write as _;
+    let Some(path) = std::env::var_os(EVENTS_VAR).filter(|path| !path.is_empty()) else {
+        return;
+    };
+    let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+    else {
+        return;
+    };
+    for line in lines {
+        if let Ok(text) = serde_json::to_string(line) {
+            let _ = writeln!(file, "{text}");
+        }
+    }
+}
+
 impl LocalLane {
     /// Coder's recent tasks, from the task store through `coder task list`.
     fn tasks(&self) -> Vec<Task> {
@@ -529,6 +727,7 @@ impl ScreenLock {
 pub struct Worker {
     host: Sender<Request>,
     local: Sender<Request>,
+    coder: Sender<Request>,
     outcomes: Receiver<Outcome>,
 }
 
@@ -559,16 +758,20 @@ impl Worker {
         let Context {
             mut host,
             mut local,
+            mut coder,
         } = context;
         Worker {
             host: spawn_lane(move |r| host.run(r), outbox.clone(), waker.clone()),
-            local: spawn_lane(move |r| local.run(r), outbox, waker),
+            local: spawn_lane(move |r| local.run(r), outbox.clone(), waker.clone()),
+            coder: spawn_lane(move |r| coder.run(r), outbox, waker),
             outcomes,
         }
     }
 
     pub fn send(&self, request: Request) {
-        let lane = if local(&request) {
+        let lane = if coder(&request) {
+            &self.coder
+        } else if local(&request) {
             &self.local
         } else {
             &self.host
@@ -677,6 +880,143 @@ mod tests {
         assert_eq!(started.note, None);
         assert_eq!(std::fs::read(access.join("access.json")).unwrap(), b"{}");
         assert_eq!(std::fs::read_dir(&access).unwrap().count(), 1);
+    }
+
+    /// A chat's Coder run goes through the shared local runner: started in
+    /// the first folder that is a checkout, followed from its first event,
+    /// stopped, and continued; a folder that is not a checkout asks for
+    /// one. The engine is a launcher that starts nothing.
+    #[test]
+    fn a_chat_run_starts_follows_stops_and_continues_through_the_local_runner() {
+        use coder::task::autostart::{Engine, Launch, Launched};
+        use coder::task::capacity::{Connection, Provider};
+        use openagents_chat::coder_events::CoderEvent;
+        use openagents_chat_app::coder_run::{Answer, Request as Run, State};
+
+        struct Idle;
+        impl Launch for Idle {
+            fn launch(
+                &self,
+                _: &Engine,
+                _: &std::path::Path,
+                _: &std::path::Path,
+            ) -> Result<Launched, String> {
+                Ok(Launched {
+                    owner_process: std::process::id(),
+                    grant_digest: String::new(),
+                })
+            }
+        }
+        fn signed_in(_: Provider) -> Connection {
+            Connection::Connected
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let top = dir.path().join("slugs");
+        std::fs::create_dir_all(&top).unwrap();
+        for args in [
+            vec!["init", "-q"],
+            vec![
+                "-c",
+                "user.name=F",
+                "-c",
+                "user.email=f@example.invalid",
+                "commit",
+                "-q",
+                "--allow-empty",
+                "-m",
+                "one",
+            ],
+        ] {
+            assert!(
+                Command::new("git")
+                    .args(args)
+                    .current_dir(&top)
+                    .status()
+                    .unwrap()
+                    .success()
+            );
+        }
+        let store = dir.path().join("tasks");
+        let fake = FakeHost::new("Studio Mac", 1_790_000_000);
+        let mut context = Context::new(
+            Box::new(fake.clone()),
+            None,
+            None,
+            None,
+            dir.path().to_path_buf(),
+        )
+        .with_coder(
+            coder::task::local::Local::new(store.clone())
+                .with_probe(signed_in)
+                .with_controller(std::env::current_exe().unwrap())
+                .with_launcher(Box::new(Idle)),
+        );
+        let chat = "c".repeat(32);
+        let mut ask = |request: Run| match context.run(Request::CoderRun {
+            chat: chat.clone(),
+            ticket: 1,
+            request,
+        }) {
+            Some(Outcome::CoderRun { result, .. }) => *result,
+            other => panic!("{other:?}"),
+        };
+        let empty = dir.path().join("empty");
+        std::fs::create_dir_all(&empty).unwrap();
+        let Ok(Answer::NeedsProject { why }) = ask(Run::Start {
+            title: "t".into(),
+            prompt: "add a test".into(),
+            dirs: vec![empty.display().to_string()],
+        }) else {
+            panic!("a folder that is not a checkout asks for one")
+        };
+        assert!(why.contains("is not a Git checkout"), "{why}");
+        let Ok(Answer::Started { task, project, .. }) = ask(Run::Start {
+            title: "add a test".into(),
+            prompt: "add a test".into(),
+            dirs: vec![empty.display().to_string(), top.display().to_string()],
+        }) else {
+            panic!("start")
+        };
+        assert_eq!(project, "slugs");
+        assert_eq!(
+            std::fs::read_to_string(store.join("local/last-project")).unwrap(),
+            top.canonicalize().unwrap().display().to_string()
+        );
+        let Ok(Answer::Lines { lines, state }) = ask(Run::Poll { task: task.clone() }) else {
+            panic!("poll")
+        };
+        assert_eq!(state, State::Running);
+        let CoderEvent::CoderStarted(started) = &lines[0].event else {
+            panic!("{lines:?}")
+        };
+        assert_eq!(
+            (started.provider.as_str(), started.via.as_str()),
+            ("codex", "local")
+        );
+        assert_eq!(lines[0].thread.as_deref(), Some(chat.as_str()));
+        assert_eq!(ask(Run::Stop { task: task.clone() }), Ok(Answer::Stopping));
+        let Ok(Answer::Lines { lines, state }) = ask(Run::Poll { task: task.clone() }) else {
+            panic!("poll")
+        };
+        assert_eq!(state, State::Ended);
+        assert_eq!(lines.last().unwrap().event.name(), "stopped");
+        // The same follower goes on: the stopped task continues.
+        assert_eq!(
+            ask(Run::Continue {
+                task: task.clone(),
+                text: "go on".into()
+            }),
+            Ok(Answer::Continued)
+        );
+        // With no project given, the last one Coder used.
+        let Ok(Answer::Started { project, .. }) = ask(Run::Start {
+            title: "again".into(),
+            prompt: "again".into(),
+            dirs: vec![],
+        }) else {
+            panic!("start in the last project")
+        };
+        assert_eq!(project, "slugs");
     }
 
     #[test]
