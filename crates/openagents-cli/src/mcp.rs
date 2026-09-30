@@ -532,10 +532,19 @@ pub struct Outcome {
 }
 
 /// The tool result for a finished command: the parsed document when the
-/// output is one JSON value, else the raw text, and the exit code either way.
+/// output is one JSON value, `{"events": [...]}` when it is NDJSON (as
+/// `chat` streams), else the raw text, and the exit code either way.
 pub fn tool_outcome(outcome: &Outcome) -> Value {
     let trimmed = outcome.stdout.trim();
-    let document: Option<Value> = serde_json::from_str(trimmed).ok();
+    let document: Option<Value> = serde_json::from_str(trimmed).ok().or_else(|| {
+        trimmed
+            .lines()
+            .map(serde_json::from_str::<Value>)
+            .collect::<Result<Vec<_>, _>>()
+            .ok()
+            .filter(|events| events.len() > 1)
+            .map(|events| json!({ "events": events }))
+    });
     let mut structured = json!({ "exit_code": outcome.exit_code });
     match &document {
         Some(document) => structured["document"] = document.clone(),
@@ -752,6 +761,19 @@ Exit codes: 0 success, 1 refused or failed, 64 invalid usage.";
         assert_eq!(outcome["structuredContent"]["stdout"], "plain\n");
         assert_eq!(outcome["structuredContent"]["stderr"], "why\n");
         assert!(outcome["structuredContent"].get("document").is_none());
+    }
+
+    /// `chat --json` streams NDJSON events; a tool call returns them all.
+    #[test]
+    fn ndjson_outcomes_are_one_list_of_events() {
+        let outcome = tool_outcome(&Outcome {
+            exit_code: 0,
+            stdout: "{\"event\":\"accepted\"}\n{\"event\":\"result\",\"text\":\"hi\"}\n".into(),
+            stderr: String::new(),
+        });
+        let events = &outcome["structuredContent"]["document"]["events"];
+        assert_eq!(events[1]["text"], "hi");
+        assert_eq!(outcome["isError"], false);
     }
 
     #[test]

@@ -45,7 +45,7 @@ fn lists_groups_and_runs_version() {
         .iter()
         .map(|t| t["name"].as_str().unwrap())
         .collect();
-    for expected in ["verse", "zone", "sov", "computer", "key", "version"] {
+    for expected in ["verse", "zone", "sov", "computer", "key", "version", "chat"] {
         assert!(names.contains(&expected), "{names:?}");
     }
     assert!(

@@ -25,7 +25,8 @@ until the pieces NIP-SOV requires exist.
   group's syntax.
 - Keys live under `~/.openagents/`: Verse profile keys in `verse/`, the
   Computers device key in `coder-computers/`, host and access records in
-  `host/` and `coder-access/`. No command prints a secret key, a bearer
+  `host/` and `coder-access/`, and `openagents chat`'s own device key in
+  `chat/`. No command prints a secret key, a bearer
   key, or an invitation after the moment it is created.
 
 ## Build and install
@@ -34,6 +35,18 @@ until the pieces NIP-SOV requires exist.
 cargo build --release -p openagents-cli
 install target/release/openagents ~/.local/bin/
 ```
+
+## Chat with OpenAgents (`openagents chat`)
+
+`openagents chat "How do I connect a phone"` sends a message to OpenAgents,
+the chat router the phone and the desktop use, and streams the reply. The
+unit is the thread: `--thread ID` continues one, `chat threads` lists them,
+`chat read --thread ID` prints one, and `chat export --thread ID` prints its
+ATIF trajectory. When this computer's host runs, threads are the desktop
+app's; otherwise the command keeps its own under `~/.openagents/chat/`, and
+`--scratch` uses a throwaway identity. `--json` streams NDJSON events with
+the router's typed metadata, and `--run-coder` accepts a Coder offer through
+the host. The full guide is [chat.md](chat.md).
 
 ## Knowledge entries (NIP-KB)
 

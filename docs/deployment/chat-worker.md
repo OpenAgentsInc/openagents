@@ -272,13 +272,24 @@ name the quota. The worker secret is kept with the
 owner's secrets as `coder-chat-worker.env`; the gateway key is the owner's
 AI Gateway key.
 
-To check the deployed path from a checkout, send one turn from a fresh key,
-as a new install does:
+To check the deployed path, send one turn from a fresh, throwaway key, as a
+new install does, with the `openagents` command
+([guide](../cli/chat.md)):
 
 ```sh
-cargo test --manifest-path crates/openagents-mobile/Cargo.toml \
-  live_basic_coder_streams_a_reply -- --ignored --nocapture
+openagents chat --scratch --json "How do I connect a phone"
+openagents chat --scratch --json "Write a haiku about rain"
 ```
+
+Each prints NDJSON: `accepted`, the streamed `partial`s, the router's
+`route` (tier, route, bank, served answer, and the judgment as it arrived),
+any `offer`, and the `result` with the model the worker named, or a
+`failure` with the chat's own words; the exit code is 0 only for a result.
+The first should be the product-knowledge answer about the QR code, with no
+`[openagents.` tags. `--scratch` never touches a real identity, store, or
+host. `live_basic_coder_streams_a_reply` in `crates/openagents-chat` (run
+through `crates/openagents-mobile`) still measures time to first words and
+the legacy request shape.
 
 ### When the phone gets no answer
 
@@ -295,7 +306,8 @@ order on `oa-coder-worker-1`:
 2. `systemctl show coder-worker-chat -p WatchdogTimestamp -p NRestarts`.
    A `WatchdogTimestamp` that is not recent, or restarts climbing, means
    the worker cannot prove its subscription.
-3. Run `live_basic_coder_streams_a_reply` (above) from a checkout. If it
+3. Run `openagents chat --scratch --json "Write a haiku about rain"`
+   (above) from a checkout. If it
    fails while the journal shows no fault, save `sudo ss -tnpi` for the
    worker's PID (the relay socket's `lastrcv` says how long it has heard
    nothing) and the journal, then `sudo systemctl restart

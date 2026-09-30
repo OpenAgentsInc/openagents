@@ -7084,6 +7084,7 @@ checksum = "c08d65885ee38876c4f86fa503fb49d7b507c2b62552df7c70b2fce627e06381"
 name = "openagents-chat"
 version = "0.1.0"
 dependencies = [
+ "atif",
  "futures-util",
  "nostr",
  "nostr-transport",
@@ -7127,6 +7128,7 @@ dependencies = [
 name = "openagents-cli"
 version = "0.1.0"
 dependencies = [
+ "atif",
  "base64 0.22.1",
  "bitcoin-amount",
  "coder",
@@ -7141,6 +7143,7 @@ dependencies = [
  "coder-ssh",
  "discovery",
  "ext-eval",
+ "futures-util",
  "glam",
  "gym",
  "gym-bridge",
@@ -7150,6 +7153,7 @@ dependencies = [
  "microcoder",
  "nostr",
  "nostr-relay",
+ "openagents-chat",
  "openagents-connect",
  "openagents-wallet",
  "openagents-x402",
@@ -7162,6 +7166,7 @@ dependencies = [
  "sha2 0.11.0",
  "tempfile",
  "tokio",
+ "tokio-tungstenite",
  "verse",
  "verse-lagrange",
 ]

@@ -20,6 +20,9 @@ coder-computers = { path = "../coder-computers" }
 coder-connect = { path = "../coder-connect" }
 # `openagents connect`: the local control protocol and the connect code.
 openagents-connect = { path = "../openagents-connect" }
+# `openagents chat`: the shared chat service, threads, and their ATIF export.
+openagents-chat = { path = "../openagents-chat" }
+atif = { path = "../atif" }
 coder-host = { path = "../coder-host" }
 coder-labor = { path = "../coder-labor" }
 coder-link = { path = "../coder-link" }
@@ -55,6 +58,9 @@ verse = { path = "../verse", default-features = false, features = ["xp-host"] }
 verse-lagrange = { path = "../verse-lagrange" }
 
 [dev-dependencies]
+# `tests/chat.rs` runs a local NIP-42 relay with a scripted chat worker.
+futures-util = "0.3"
+tokio-tungstenite = "0.30"
 nostr = { path = "../nostr", features = ["test-invoice"] }
 # `tests/ext_eval.rs` publishes to and checks against a local relay.
 nostr-relay = { path = "../nostr-relay" }

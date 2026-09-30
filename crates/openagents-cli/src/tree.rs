@@ -89,6 +89,7 @@ pub fn help() -> Vec<GroupHelp<'static>> {
             Some(crate::session::USAGE),
             crate::session::EFFECTS,
         ),
+        group("chat", Some(crate::chat::USAGE), crate::chat::EFFECTS),
         group("task", Some(coder::task::cli::USAGE), TASK),
         group(
             "service",

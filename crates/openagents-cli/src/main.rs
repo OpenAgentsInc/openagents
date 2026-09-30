@@ -14,6 +14,7 @@ use std::path::Path;
 use std::process::ExitCode;
 
 mod catalog;
+mod chat;
 mod computer;
 mod connect;
 mod discover;
@@ -61,6 +62,10 @@ Pairing and computers (NIP-HOST, NIP-REACH):
   study        Launch and read Microcoder study runs on a host.
   reach        Owner directory, host presence, and route probes.
   session      Observe a paired computer's chats (NIP-SESS): pair, list, read, tail.
+
+Chat:
+  chat         Talk to OpenAgents, the chat router: send a message, continue a
+               thread, list, read, and export threads as ATIF.
 
 Coder:
   task         Durable local task requests and explicit execution.
@@ -131,6 +136,7 @@ fn main() -> ExitCode {
         "host" => runtime().block_on(host(&rest)),
         "pair" => runtime().block_on(pair(&rest)),
         "task" => runtime().block_on(coder::task::cli::run(&rest)),
+        "chat" => chat::run(&output, &rest),
         "computer" | "computers" => computer::run(&output, &rest),
         "connect" => connect::run(&output, &rest),
         "verse" => world::run(&output, &rest),
@@ -171,7 +177,7 @@ fn main() -> ExitCode {
     ExitCode::from(code)
 }
 
-fn version_line() -> String {
+pub(crate) fn version_line() -> String {
     coder::identity::line().replacen("coder ", "openagents ", 1)
 }
 
@@ -234,6 +240,9 @@ fn doctor(output: &Output) -> u8 {
         );
     }
     report.insert("paths".into(), paths.into());
+    // Where `openagents chat` keeps threads, and its public identity; the
+    // device key itself is never printed.
+    report.insert("chat".into(), chat::doctor());
     output.emit(&serde_json::Value::Object(report), |value| {
         let mut lines = vec![
             format!("version   {}", value["version"].as_str().unwrap_or("")),
@@ -243,6 +252,20 @@ fn doctor(output: &Output) -> u8 {
             ),
             format!("world     {}", value["world"].as_str().unwrap_or("")),
         ];
+        let chat = &value["chat"];
+        lines.push(format!(
+            "chat           {} ({})",
+            chat["backend"].as_str().unwrap_or(""),
+            if chat["host_running"].as_bool().unwrap_or(false) {
+                chat["host_socket"].as_str().unwrap_or("").to_owned()
+            } else {
+                format!(
+                    "{}, identity {}",
+                    chat["home"].as_str().unwrap_or(""),
+                    chat["identity"].as_str().unwrap_or("not created yet")
+                )
+            }
+        ));
         if let Some(paths) = value["paths"].as_object() {
             for (name, entry) in paths {
                 let mark = if entry["exists"].as_bool().unwrap_or(false) {

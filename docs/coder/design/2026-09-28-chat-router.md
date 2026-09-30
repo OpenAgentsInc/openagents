@@ -55,6 +55,7 @@ the owner can answer.
 - [Metrics](#metrics)
 - [Rollout](#rollout)
 - [Gym and eval routes (2026-09-29)](#gym-and-eval-routes-2026-09-29)
+- [From the terminal: `openagents chat` (2026-09-30)](#from-the-terminal-openagents-chat-2026-09-30)
 - [Open questions for the owner](#open-questions-for-the-owner)
 
 ## What exists today
@@ -1463,6 +1464,32 @@ card's own follow-up message with its turn before it), split by the id's
 hash as before; the Gym suite `chat-router-v3` and its question set
 `chat-router-route-v4` are generated from it, and the v2 files are kept
 as recorded.
+
+## From the terminal: `openagents chat` (2026-09-30)
+
+The router is reachable from the `openagents` command
+([#10031](https://github.com/OpenAgentsInc/openagents/issues/10031),
+[guide](../../cli/chat.md)). `openagents chat MESSAGE` runs the shared chat
+service's commands, through this computer's host when it runs (so the
+threads are the desktop's) or in process with the command's own key, and
+prints the reply as it streams. In process, the request says
+`surface: "terminal"`, which the worker already reads
+([`Surface::Terminal`](#on-the-wire)), and `client: "openagents-cli"`.
+
+Nothing on the terminal side routes. `--json` emits the router's typed
+fields as NDJSON (`route` with the tier, route, bank, served answer, and the
+judgment as it arrived; one `offer` event per offer; `result` with the model
+the worker named), so scripts and agents read the same observations the
+phone draws. A `run_coder` offer is accepted only through the host's
+handoff (`Command::RunCoder`), the desktop's own path.
+
+Each thread renders as one `ATIF-v1.8` trajectory
+(`openagents_chat::thread`): one step per turn, the router's judgment as a
+decision call (`openagents.decision-call.v1`) on the reply's step, the
+served knowledge entry as `served_answer`, and a delegated Coder task as a
+`subagent_trajectory_ref`. `openagents chat export --thread ID` prints it.
+To support that, a saved turn now keeps when it was saved (`at`) and, for a
+reply, the model the worker named (`model`); neither is sent to the worker.
 
 ## Open questions for the owner
 
