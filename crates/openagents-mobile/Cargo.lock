@@ -5250,6 +5250,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "openagents-chat-app"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "coder-computers",
+ "coder-connect",
+ "coder-history",
+ "coder-host",
+ "nostr",
+ "openagents-chat",
+ "playtest",
+ "rust-native",
+ "secp256k1 0.31.1",
+ "serde",
+ "serde_json",
+ "tokio",
+ "uuid",
+ "xp-ledger",
+]
+
+[[package]]
 name = "openagents-connect"
 version = "0.1.0"
 dependencies = [
@@ -5289,6 +5310,7 @@ dependencies = [
  "nostr",
  "nostr-transport",
  "openagents-chat",
+ "openagents-chat-app",
  "openagents-connect",
  "playtest",
  "qrcodegen",

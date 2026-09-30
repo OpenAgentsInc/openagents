@@ -10,6 +10,7 @@ description = "Rust-owned application state and native bridge for the OpenAgents
 crate-type = ["rlib", "staticlib", "cdylib"]
 
 [dependencies]
+openagents-chat-app = { path = "../openagents-chat-app" }
 openagents-chat = { path = "../openagents-chat" }
 # Coder's Computers screens, live host client, encrypted store, and phone
 # terminal screen: enrollment, presence, direct channels, and commands.
@@ -83,6 +84,7 @@ libc = "0.2"
 ndk-sys = "0.6"
 
 [dev-dependencies]
+openagents-chat-app = { path = "../openagents-chat-app", features = ["test-support"] }
 # Nearby computers' iroh keys in tests.
 openagents-connect = { path = "../openagents-connect" }
 # Signed BOLT11 invoices for the agent-spending tests.
