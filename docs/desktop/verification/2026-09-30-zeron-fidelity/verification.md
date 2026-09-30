@@ -534,3 +534,56 @@ For the intrinsic-size fix, the native adapter passes 68 checks (one GPU check
 ignored), and the full desktop binary passes 63 checks (five native, network,
 and timing checks ignored). Strict all-target Clippy for both packages, scoped
 formatting, and diff whitespace checks pass.
+
+
+The optimized scratch preview at `c5ba84826d` confirms the correction for the
+ignored-input case: 19 text/key events generate zero foreground frames, zero
+surface acquisitions, and zero modal frames. The chat menu remains visible.
+The first opening submits in 1.265 ms. Repeated native chat/palette openings
+and closings still submit real transitions; all available content-free local
+samples are retained in [intrinsic-size-preview.jsonl](intrinsic-size-preview.jsonl).
+Palette transitions include a full-window dimming scrim and still reach
+10.837 ms in this short run. This evidence establishes submitted-frame
+behavior, not scanout timing or the epic's complete latency gate.
+
+
+### Profile footer and pointer admission
+
+The footer reimplements public Zeron `shell.rs`'s profile trigger and settings
+toggle at reference `50cf9e97a32e54a8ea7e1174b80b5adc3b1d2ef4`: 28-point
+controls, an 8-point trigger radius, a 16-point circular initial with 10-point
+semibold Geist Mono, and a 13/17-point medium label. The settings glyph uses
+the reference's actual `settings.svg` at 15 points, inside a 28-point hit area.
+Open and hover fills remain authored alpha washes, and the settings button
+returns to the previous page. Computers, Grid, saved sessions, and Commands
+remain reachable through a local profile menu; no Zeron account or sync
+behavior is imported. Generic fallback buttons now use the product's neutral
+fill and text colors instead of the adapter's white default.
+
+The native adapter also fixes pointer delivery under popups. It previously
+looked for a custom surface anywhere under the pointer, allowing the transcript
+behind the menu to consume clicks or change hover selection. Modal admission
+now uses the semantic subtree and cached node bounds. It preserves popup
+editor selection and capture, rejects a reused surface resource outside the
+popup, and clears an underlying drag capture when the popup opens.
+
+The source geometry and navigation fixture covers 1200×840 and 760×540 at
+1× and 2×, all four profile actions, repeated trigger activation, settings
+return, and draft preservation. Retained-versus-complete painting includes
+profile open, ignored typing, and dismissal. Core avatar checks cover style
+composition/reset, serialization, and bounds; absent properties preserve
+existing views. Frost, shadows, popup animation, and the remaining components
+listed earlier still require work; this footer slice is not a claim of full
+visual fidelity.
+
+
+Retained captures: [default at 1×](profile-1200x840-1x.png),
+[default at 2×](profile-1200x840-2x.png),
+[minimum at 1×](profile-760x540-1x.png), and
+[minimum at 2×](profile-760x540-2x.png).
+Core: 102 passed, one benchmark ignored. Native adapter: 69 passed, one GPU
+check ignored. Desktop library: 113 passed; binary: 64 passed, five native,
+network, and timing checks ignored; version checks: three passed. The nine
+command fixtures include retained painting of the profile menu. Shared chat: 117 passed. Strict all-target Clippy for core, native adapter,
+shared chat presentation, and desktop, scoped formatting, and diff whitespace
+checks pass.

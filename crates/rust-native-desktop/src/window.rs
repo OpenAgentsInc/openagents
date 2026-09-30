@@ -218,6 +218,7 @@ fn run_shell<A: App>(
         scene: None,
         laid_out: None,
         surface_sizes: Vec::new(),
+        modal_surfaces: None,
         interaction: Interaction::default(),
         cursor: PhysicalPosition::new(-1.0, -1.0),
         modifiers: ModifiersState::empty(),
@@ -382,6 +383,57 @@ fn input_requires_redraw(
         })
 }
 
+/// Only surfaces inside the current modal subtree can receive pointer input.
+/// Bounds distinguish a resource reused by the popup and the underlying page.
+fn modal_surfaces<I>(
+    root: &rust_native::Node<I>,
+    modal: Option<&str>,
+    scene: &Scene,
+) -> Option<Vec<(String, crate::layout::Rect)>> {
+    use rust_native::Element;
+    let modal = modal?;
+    let mut pending = vec![(root, false)];
+    let mut surfaces = Vec::new();
+    while let Some((node, admitted)) = pending.pop() {
+        let admitted = admitted || node.key == modal;
+        if admitted && let Some(bounds) = scene.bounds.get(&node.key) {
+            let resource = match &node.element {
+                Element::Surface { resource, .. } => Some(resource.clone()),
+                Element::Composer { .. } => Some(format!("composer:{}", node.key)),
+                _ => None,
+            };
+            if let Some(resource) = resource {
+                surfaces.push((resource, *bounds));
+            }
+        }
+        if let Element::Stack { children, .. }
+        | Element::List { children, .. }
+        | Element::Transcript { children, .. }
+        | Element::Message { children, .. }
+        | Element::Tool { children, .. } = &node.element
+        {
+            pending.extend(children.iter().map(|child| (child, admitted)));
+        }
+    }
+    Some(surfaces)
+}
+
+fn surface_admitted(
+    modal: Option<&[(String, crate::layout::Rect)]>,
+    resource: &str,
+    rect: crate::layout::Rect,
+) -> bool {
+    modal.is_none_or(|surfaces| {
+        surfaces.iter().any(|(name, bounds)| {
+            name == resource
+                && rect.x >= bounds.x - 0.01
+                && rect.y >= bounds.y - 0.01
+                && rect.x + rect.w <= bounds.x + bounds.w + 0.01
+                && rect.y + rect.h <= bounds.y + bounds.h + 0.01
+        })
+    })
+}
+
 struct Shell<A: App> {
     app: A,
     options: Options,
@@ -392,6 +444,7 @@ struct Shell<A: App> {
     scene: Option<Scene>,
     laid_out: Option<LaidOut>,
     surface_sizes: Vec<SurfaceSize>,
+    modal_surfaces: Option<Vec<(String, crate::layout::Rect)>>,
     interaction: Interaction,
     cursor: PhysicalPosition<f64>,
     modifiers: ModifiersState,
@@ -643,6 +696,17 @@ impl<A: App> Shell<A> {
             self.surface_sizes = surface_sizes(&scene, |resource, available| {
                 self.app.surface_size(resource, available)
             });
+            self.modal_surfaces =
+                modal_surfaces(&self.app.view().view().root, self.app.modal_root(), &scene);
+            if self
+                .captured_surface
+                .as_ref()
+                .is_some_and(|(resource, rect)| {
+                    !surface_admitted(self.modal_surfaces.as_deref(), resource, *rect)
+                })
+            {
+                self.captured_surface = None;
+            }
             self.scene = Some(scene);
             self.laid_out = Some(self.layout_key());
         }
@@ -775,7 +839,13 @@ impl<A: App> Shell<A> {
                 _ => {}
             }
         }
-        let mut target = self.captured_surface.clone().or(target);
+        let mut target = self
+            .captured_surface
+            .clone()
+            .or(target)
+            .filter(|(resource, rect)| {
+                surface_admitted(self.modal_surfaces.as_deref(), resource, *rect)
+            });
         if let Some((resource, rect)) = &mut target
             && let Some(scene) = &self.scene
             && let Some(current) = scene.ops.iter().find_map(|op| match op {
@@ -1642,8 +1712,65 @@ impl<A: App> ApplicationHandler<()> for Shell<A> {
 #[cfg(test)]
 mod tests {
     use super::{
-        Area, LaidOut, Zoom, input_requires_redraw, placement, surface_sizes, surface_sizes_changed,
+        Area, LaidOut, Zoom, input_requires_redraw, modal_surfaces, placement, surface_admitted,
+        surface_sizes, surface_sizes_changed,
     };
+
+    #[test]
+    fn modal_surfaces_block_the_reader_and_keep_the_popup_editor() {
+        use crate::layout::{Rect, Scene};
+        use rust_native::{Axis, Element, Node, style::Style};
+        let surface = |key: &str, resource: &str| Node::<()> {
+            key: key.into(),
+            style: Style::default(),
+            element: Element::Surface {
+                resource: resource.into(),
+                label: key.into(),
+            },
+        };
+        let popup = Node {
+            key: "popup".into(),
+            style: Style::default(),
+            element: Element::Stack {
+                axis: Axis::Vertical,
+                children: vec![surface("search", "editor")],
+            },
+        };
+        let root = Node {
+            key: "root".into(),
+            style: Style::default(),
+            element: Element::Stack {
+                axis: Axis::Vertical,
+                children: vec![
+                    surface("reader", "reader"),
+                    surface("draft", "editor"),
+                    popup,
+                ],
+            },
+        };
+        let editor = Rect {
+            x: 100.0,
+            y: 100.0,
+            w: 200.0,
+            h: 28.0,
+        };
+        let reader = Rect {
+            x: 0.0,
+            y: 0.0,
+            w: 760.0,
+            h: 540.0,
+        };
+        let mut scene = Scene::default();
+        scene.bounds.insert("search".into(), editor);
+        let modal = modal_surfaces(&root, Some("popup"), &scene).unwrap();
+        assert!(!surface_admitted(Some(&modal), "reader", reader));
+        assert!(!surface_admitted(Some(&modal), "editor", reader));
+        assert!(surface_admitted(Some(&modal), "editor", editor));
+        assert!(surface_admitted(None, "reader", reader));
+        assert!(modal_surfaces(&root, None, &scene).is_none());
+        let missing = modal_surfaces(&root, Some("missing"), &scene).unwrap();
+        assert!(!surface_admitted(Some(&missing), "reader", reader));
+    }
 
     #[test]
     fn unchanged_input_skips_frames_but_editor_and_modal_changes_do_not() {

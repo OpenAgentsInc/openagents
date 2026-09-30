@@ -1691,7 +1691,10 @@ impl Engine<'_> {
                 fill = mix(fill, theme.background, 0.7);
                 color = mix(color, fill, 0.5);
             } else if pressed {
-                fill = mix(fill, theme.background, 0.3);
+                fill = node
+                    .style
+                    .hover_background
+                    .unwrap_or_else(|| mix(fill, theme.background, 0.3));
             } else if hovered {
                 fill = node
                     .style

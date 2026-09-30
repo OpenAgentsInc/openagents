@@ -572,9 +572,13 @@ fn sidebar(state: &State) -> Node<Intent> {
         Color { alpha: 204, ..TEXT }
     });
     profile.style.hover_foreground = Some(TEXT);
-    profile.style.hover_background = Some(Color {
-        alpha: 22,
-        ..SELECTED
+    profile.style.hover_background = Some(if state.profile_open {
+        SELECTED
+    } else {
+        Color {
+            alpha: 22,
+            ..SELECTED
+        }
     });
     profile.style.button_avatar = Some(rust_native::style::ButtonAvatar {
         initial: 'L',

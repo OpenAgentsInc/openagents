@@ -24,7 +24,7 @@ fn asset(glyph: Glyph) -> Option<&'static str> {
         Glyph::Paperclip => asset!("paperclip"),
         Glyph::Clipboard => COPY,
         Glyph::Search => asset!("magnifer"),
-        Glyph::Settings => asset!("settings-minimalistic"),
+        Glyph::Settings => asset!("settings"),
         Glyph::Pin => asset!("pin"),
         Glyph::Archive => asset!("archive-minimalistic"),
         Glyph::Restore => asset!("archive-up-minimalistic"),

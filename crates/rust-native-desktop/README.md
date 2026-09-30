@@ -166,3 +166,11 @@ view, layout, interaction, or a tracked drawing surface changes. Surface height
 changes also require a frame. A custom surface without revision tracking keeps
 the conservative refresh behavior. Input-to-presentation timing starts when
 foreground work is pending; backdrop animation keeps its own frame schedule.
+
+
+Modal pointer routing admits only custom surfaces under `App::modal_root`.
+The popup's editor keeps pointer selection and drag capture; underlying reader
+and composer surfaces cannot consume popup clicks or moves. Admission is
+cached with layout and includes node bounds, so reusing a resource name outside
+the modal does not admit that other surface. A missing modal root refuses
+surface input until a valid layout is available.

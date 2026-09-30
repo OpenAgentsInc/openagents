@@ -3354,6 +3354,16 @@ mod command_fixtures {
                         now,
                     ),
                     9 | 10 | 19 => key(&mut app, now, "ArrowDown", false, false),
+                    21 => app.activate(
+                        Intent::Chat {
+                            action: ChatAction::Profile,
+                        },
+                        now,
+                    ),
+                    22 => {
+                        app.text_input(TextInput::Commit("ignored profile text"), now);
+                    }
+                    23 => key(&mut app, now, "Escape", false, false),
                     _ => {}
                 }
                 let interaction = layout::Interaction {
