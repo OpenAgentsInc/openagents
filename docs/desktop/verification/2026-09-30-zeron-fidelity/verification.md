@@ -413,3 +413,20 @@ coverage checks; the deadline does not convert an occluded run into a pass.
 Regression checks cover coalesced input, blocked presentation, the deadline,
 and 1,000 submissions per phase without starving later phases. This improves
 the measurement driver; it does not establish a new native performance result.
+
+The optimized native run at `a112fcfbb9` now has complete coverage: 115
+samples in all six active phases, both opening frames, and one skipped
+acquisition. [Retained report](native-frame-coverage.json). Chat-menu p50/p99:
+3.156/4.426 ms. Palette: 7.000/9.931 ms; first palette/menu frames:
+14.867/12.018 ms. Scroll: 7.710/19.314 ms; streaming: 8.297/11.555 ms;
+sidebar: 5.335/14.140 ms; composer: 3.515/7.419 ms. Idle CPU: 3.84% of one
+core; peak RSS: 206.0 MiB. This passes coverage, but several frame timings
+exceed the 8.3 ms target. Acquisition accounts for 12.251 ms at scroll p99;
+the report retains painting, upload, and presentation separately.
+
+The empty scratch preview was refreshed from the same optimized build.
+Repeated command-palette and chat-menu openings, keyboard selection, and
+closing render correctly. The original morning fixture remains open with its
+temporary chats. The updated preview enables the existing local, content-free
+timing log. GPU readback and software repaint parity remain the automated
+checks for texture preservation; screenshots do not prove display scanout.
