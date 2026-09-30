@@ -3026,7 +3026,9 @@ fn primary_improves(
         detail: if gain > margin {
             format!("{measure} {before:.3} to {after:.3}, past the margin {margin:.3}")
         } else {
-            format!("{measure} {before:.3} to {after:.3}, inside the margin {margin:.3}: no clear change")
+            format!(
+                "{measure} {before:.3} to {after:.3}, inside the margin {margin:.3}: no clear change"
+            )
         },
     }
 }
@@ -3100,7 +3102,8 @@ fn judge_router(rule: &RouterRule, comparison: &RouterComparison) -> Vec<Criteri
                 .map(|name| format!("{name}_not_materially_worse")),
         )
         .collect();
-    let (Some(baseline), Some(margin), None) = (baseline, rule.max_decrease.value(), blocked.as_deref())
+    let (Some(baseline), Some(margin), None) =
+        (baseline, rule.max_decrease.value(), blocked.as_deref())
     else {
         let reason = blocked.unwrap_or_default();
         criteria.extend(names.into_iter().map(|name| not_judged(name, 2, &reason)));
@@ -3109,12 +3112,18 @@ fn judge_router(rule: &RouterRule, comparison: &RouterComparison) -> Vec<Criteri
     let higher = rule.primary.direction == Direction::Higher;
     let before = baseline.measure(primary).and_then(|(v, _)| v);
     let after = comparison.subject.measure(primary).and_then(|(v, _)| v);
-    criteria.push(not_materially_worse(&names[0], margin, higher, before, after, primary));
-    criteria.push(primary_improves(&names[1], margin, higher, before, after, primary));
+    criteria.push(not_materially_worse(
+        &names[0], margin, higher, before, after, primary,
+    ));
+    criteria.push(primary_improves(
+        &names[1], margin, higher, before, after, primary,
+    ));
     for (name, criterion) in rule.non_inferiority.iter().zip(&names[2..]) {
         let (before, higher) = baseline.measure(name).unwrap_or((None, true));
         let after = comparison.subject.measure(name).and_then(|(v, _)| v);
-        criteria.push(not_materially_worse(criterion, margin, higher, before, after, name));
+        criteria.push(not_materially_worse(
+            criterion, margin, higher, before, after, name,
+        ));
     }
     criteria
 }
@@ -3519,7 +3528,13 @@ mod tests {
         load("router-v1").expect("router-v1 loads")
     }
 
-    fn router_scores(canned: f64, recall: f64, dispatch: f64, route: f64, ece: f64) -> RouterScores {
+    fn router_scores(
+        canned: f64,
+        recall: f64,
+        dispatch: f64,
+        route: f64,
+        ece: f64,
+    ) -> RouterScores {
         RouterScores {
             items: 186,
             canned_precision: Some(canned),
@@ -3552,7 +3567,12 @@ mod tests {
         assert_eq!(rule.primary.direction, Direction::Higher);
         assert_eq!(
             rule.non_inferiority,
-            ["route_accuracy", "canned_recall", "dispatch_precision", "ece"]
+            [
+                "route_accuracy",
+                "canned_recall",
+                "dispatch_precision",
+                "ece"
+            ]
         );
         let mut repointed = gate.clone();
         if let Rule::Router(rule) = &mut repointed.rule {
@@ -3581,14 +3601,24 @@ mod tests {
                 .verdict
         };
         assert_eq!(by_name("scored_rows>=30"), Verdict::Passed);
-        assert_eq!(by_name("canned_precision_at_or_above_floor"), Verdict::Passed);
-        assert_eq!(by_name("dispatch_precision_at_or_above_floor"), Verdict::Passed);
+        assert_eq!(
+            by_name("canned_precision_at_or_above_floor"),
+            Verdict::Passed
+        );
+        assert_eq!(
+            by_name("dispatch_precision_at_or_above_floor"),
+            Verdict::Passed
+        );
         assert_eq!(by_name("baseline_arm_ran"), Verdict::Unverifiable);
         assert_eq!(by_name("canned_precision_improves"), Verdict::Unverifiable);
         assert_eq!(by_name("ece_not_materially_worse"), Verdict::Unverifiable);
 
         let below = router_verdict(router_scores(0.95, 0.68, 0.947, 0.887, 0.08), None);
-        assert_eq!(below.verdict, Verdict::Failed, "a floor is judged without a baseline");
+        assert_eq!(
+            below.verdict,
+            Verdict::Failed,
+            "a floor is judged without a baseline"
+        );
 
         let nothing_served = router_verdict(
             RouterScores {
@@ -3599,7 +3629,12 @@ mod tests {
             None,
         );
         assert_eq!(nothing_served.verdict, Verdict::Unverifiable);
-        assert!(nothing_served.criteria.iter().all(|c| c.verdict != Verdict::Failed));
+        assert!(
+            nothing_served
+                .criteria
+                .iter()
+                .all(|c| c.verdict != Verdict::Failed)
+        );
 
         let thin = router_verdict(
             RouterScores {
@@ -3608,7 +3643,11 @@ mod tests {
             },
             None,
         );
-        assert_eq!(thin.verdict, Verdict::Unverifiable, "below the floor nothing is judged");
+        assert_eq!(
+            thin.verdict,
+            Verdict::Unverifiable,
+            "below the floor nothing is judged"
+        );
     }
 
     /// With a baseline: Better only when canned precision rises past the
@@ -3623,19 +3662,45 @@ mod tests {
         let same = router_verdict(router_scores(0.98, 0.66, 0.95, 0.88, 0.09), Some(serving));
         assert_eq!(same.verdict, Verdict::Unverifiable, "{:#?}", same.criteria);
         let floor = router_verdict(router_scores(0.96, 0.68, 0.95, 0.88, 0.08), Some(serving));
-        assert_eq!(floor.verdict, Verdict::Failed, "the product floor holds with a baseline too");
+        assert_eq!(
+            floor.verdict,
+            Verdict::Failed,
+            "the product floor holds with a baseline too"
+        );
 
         let bought = router_verdict(router_scores(1.0, 0.40, 0.947, 0.887, 0.08), Some(serving));
-        assert_eq!(bought.verdict, Verdict::Failed, "recall was spent to buy precision");
+        assert_eq!(
+            bought.verdict,
+            Verdict::Failed,
+            "recall was spent to buy precision"
+        );
 
         let miscalibrated =
             router_verdict(router_scores(1.0, 0.68, 0.947, 0.887, 0.20), Some(serving));
-        assert_eq!(miscalibrated.verdict, Verdict::Failed, "ECE rose past the margin");
+        assert_eq!(
+            miscalibrated.verdict,
+            Verdict::Failed,
+            "ECE rose past the margin"
+        );
 
-        let worse = router_verdict(router_scores(0.985, 0.68, 0.95, 0.887, 0.08), Some(router_scores(1.0, 0.68, 1.0, 0.887, 0.08)));
-        assert_eq!(worse.verdict, Verdict::Unverifiable, "a fall inside the margin is no clear change");
-        let lost = router_verdict(router_scores(0.985, 0.68, 0.90, 0.80, 0.08), Some(router_scores(1.0, 0.68, 1.0, 0.887, 0.08)));
-        assert_eq!(lost.verdict, Verdict::Failed, "route accuracy fell past the margin");
+        let worse = router_verdict(
+            router_scores(0.985, 0.68, 0.95, 0.887, 0.08),
+            Some(router_scores(1.0, 0.68, 1.0, 0.887, 0.08)),
+        );
+        assert_eq!(
+            worse.verdict,
+            Verdict::Unverifiable,
+            "a fall inside the margin is no clear change"
+        );
+        let lost = router_verdict(
+            router_scores(0.985, 0.68, 0.90, 0.80, 0.08),
+            Some(router_scores(1.0, 0.68, 1.0, 0.887, 0.08)),
+        );
+        assert_eq!(
+            lost.verdict,
+            Verdict::Failed,
+            "route accuracy fell past the margin"
+        );
     }
 
     /// The Gym's door-against-door comparison on the route question reads
@@ -3655,8 +3720,15 @@ mod tests {
             scores(0.887, 0.08),
             scores(0.95, 0.07),
         ));
-        assert_eq!(outcome.verdict, Verdict::Unverifiable, "{:#?}", outcome.criteria);
-        assert!(outcome.criteria.iter().any(|c| c.name == "route_accuracy_not_materially_worse" && c.verdict == Verdict::Passed));
+        assert_eq!(
+            outcome.verdict,
+            Verdict::Unverifiable,
+            "{:#?}",
+            outcome.criteria
+        );
+        assert!(outcome.criteria.iter().any(
+            |c| c.name == "route_accuracy_not_materially_worse" && c.verdict == Verdict::Passed
+        ));
         let regressed = router().judge(&Comparison::new(
             "route",
             scores(0.887, 0.08),
