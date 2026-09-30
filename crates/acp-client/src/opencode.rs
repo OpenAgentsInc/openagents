@@ -325,11 +325,13 @@ impl RefusalData {
 }
 
 #[cfg(test)]
+// The session cases run a `/bin/sh` stand-in, so on Windows some helpers go
+// unused.
+#[cfg_attr(windows, allow(unused_imports, dead_code))]
 mod tests {
     use super::*;
     use crate::replay;
     use crate::{Handler, Opening, Session, StopReason, Update, Usage};
-    use std::os::unix::fs::PermissionsExt;
     use std::time::Duration;
 
     /// Recorded from `opencode acp` 1.18.26 on 2026-09-28: `cat` through
@@ -383,6 +385,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[cfg(unix)]
     async fn the_recorded_opencode_turn_replays_through_a_session() {
         let dir = tempfile::tempdir().unwrap();
         let agent = replay::script(dir.path(), &replay::blocks(TURN));
@@ -430,6 +433,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[cfg(unix)]
     async fn a_refused_turn_names_opencodes_error() {
         let dir = tempfile::tempdir().unwrap();
         let agent = replay::script(dir.path(), &replay::blocks(REFUSED));
@@ -499,13 +503,17 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn the_binary_is_found_by_variable_path_or_installer_location() {
         let dir = tempfile::tempdir().unwrap();
         let bin = dir.path().join(".opencode/bin");
         std::fs::create_dir_all(&bin).unwrap();
         let opencode = bin.join("opencode");
         std::fs::write(&opencode, "#!/bin/sh\n").unwrap();
-        std::fs::set_permissions(&opencode, std::fs::Permissions::from_mode(0o755)).unwrap();
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&opencode, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
         let home = dir.path().as_os_str().to_owned();
         let env = |name: &str| (name == "HOME").then(|| home.clone());
         assert_eq!(binary(&env), Some(opencode.clone()));

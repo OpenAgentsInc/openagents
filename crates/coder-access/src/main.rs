@@ -119,12 +119,25 @@ fn public_key(text: &str) -> Result<String> {
 }
 /// Read the signing key from a private, singly linked, owner-only file.
 fn signing_key() -> Result<SecretKey> {
-    use std::os::unix::fs::{MetadataExt, PermissionsExt};
     let path = std::env::var_os("CODER_ACCESS_KEY_FILE")
         .ok_or_else(|| bad("set CODER_ACCESS_KEY_FILE to a private 0600 hex-key file"))?;
-    let metadata = std::fs::symlink_metadata(&path)
-        .map_err(|_| Error::new(Code::Unavailable, "key file is unavailable"))?;
-    if !metadata.is_file() || metadata.nlink() != 1 || metadata.permissions().mode() & 0o077 != 0 {
+    #[cfg(unix)]
+    let private = {
+        use std::os::unix::fs::{MetadataExt, PermissionsExt};
+        let metadata = std::fs::symlink_metadata(&path)
+            .map_err(|_| Error::new(Code::Unavailable, "key file is unavailable"))?;
+        metadata.is_file() && metadata.nlink() == 1 && metadata.permissions().mode() & 0o077 == 0
+    };
+    #[cfg(windows)]
+    let private = {
+        let unavailable = |_| Error::new(Code::Unavailable, "key file is unavailable");
+        let (identity, metadata) =
+            private_fs::identity_of(std::path::Path::new(&path)).map_err(unavailable)?;
+        metadata.is_file()
+            && identity.links == 1
+            && private_fs::is_private_path(std::path::Path::new(&path)).map_err(unavailable)?
+    };
+    if !private {
         return Err(Error::new(
             Code::Forbidden,
             "key file must be a private singly linked regular file",

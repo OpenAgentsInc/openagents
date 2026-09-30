@@ -1957,9 +1957,12 @@ mod tests {
             format!("#!/bin/sh\ncat '{}'\nexit {code}\n", data.display()),
         )
         .unwrap();
-        let mut permissions = std::fs::metadata(&path).unwrap().permissions();
-        std::os::unix::fs::PermissionsExt::set_mode(&mut permissions, 0o755);
-        std::fs::set_permissions(&path, permissions).unwrap();
+        #[cfg(unix)]
+        {
+            let mut permissions = std::fs::metadata(&path).unwrap().permissions();
+            std::os::unix::fs::PermissionsExt::set_mode(&mut permissions, 0o755);
+            std::fs::set_permissions(&path, permissions).unwrap();
+        }
         path
     }
 

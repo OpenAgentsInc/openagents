@@ -244,8 +244,20 @@ pub fn faults(directory: &Path, manifest: &Manifest) -> Vec<String> {
         .collect()
 }
 
+/// Windows has no descriptor-relative no-follow open in the standard
+/// library, so an artifact is never read there rather than read through a
+/// link raced into place, as the workspace snapshot refuses.
+#[cfg(not(unix))]
+pub(super) fn confined_file(_root: &Path, _relative: &Path) -> std::io::Result<File> {
+    Err(std::io::Error::new(
+        std::io::ErrorKind::Unsupported,
+        "artifact reads need Unix no-follow opens",
+    ))
+}
+
 /// Resolve each component against an already opened directory, refusing links
 /// at every level. A renamed parent cannot redirect a subsequent child open.
+#[cfg(unix)]
 pub(super) fn confined_file(root: &Path, relative: &Path) -> std::io::Result<File> {
     use std::os::fd::{AsRawFd, FromRawFd};
     use std::os::unix::ffi::OsStrExt;
@@ -291,7 +303,7 @@ pub(super) fn confined_file(root: &Path, relative: &Path) -> std::io::Result<Fil
     Err(std::io::Error::other("artifact has no file component"))
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
     #[test]

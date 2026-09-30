@@ -4,6 +4,10 @@
 //! print. The only process groups signaled are the ones these hosts
 //! created.
 
+// The programs these run (`/bin/sh`, `cat`, `stty`) and the signals they
+// trap are Unix's; `windows.rs` covers the pseudoconsole.
+#![cfg(unix)]
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::mpsc::Receiver;
 use std::sync::{Arc, Mutex};

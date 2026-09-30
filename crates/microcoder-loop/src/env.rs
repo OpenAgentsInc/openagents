@@ -279,6 +279,8 @@ mod tests {
     use super::*;
 
     #[tokio::test]
+    // The script runs under `sh`, which Windows does not ship.
+    #[cfg(unix)]
     async fn a_local_command_reports_its_output_and_exit() {
         let dir = std::env::temp_dir();
         let env = Local { dir };
@@ -293,6 +295,8 @@ mod tests {
     }
 
     #[tokio::test]
+    // The script runs under `sh`, which Windows does not ship.
+    #[cfg(unix)]
     async fn a_script_with_quotes_and_a_heredoc_runs_as_written() {
         let dir = std::env::temp_dir().join(format!("microcoder-env-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
@@ -310,6 +314,8 @@ mod tests {
     }
 
     #[tokio::test]
+    // The script runs under `sh`, which Windows does not ship.
+    #[cfg(unix)]
     async fn a_local_command_past_its_deadline_is_stopped() {
         let env = Local {
             dir: std::env::temp_dir(),
@@ -353,6 +359,8 @@ mod tests {
     }
 
     #[tokio::test]
+    // The script runs under `sh`, which Windows does not ship.
+    #[cfg(unix)]
     async fn the_models_commands_never_see_a_key() {
         // SAFETY: tests in this module don't read this variable concurrently.
         unsafe { std::env::set_var("MICROCODER_TEST_API_KEY", "secret-value") };

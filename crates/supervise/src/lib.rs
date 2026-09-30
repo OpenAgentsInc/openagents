@@ -79,18 +79,30 @@
 //!
 //! # Platform support
 //!
-//! Unix only, and stated rather than assumed. Process-tree ownership here
-//! is `process_group(0)` and `killpg`; no equivalent is implemented for
-//! another platform, so this crate does not build on one.
+//! Unix and Windows, and stated rather than assumed. On Unix, process-tree
+//! ownership is `process_group(0)` and `killpg`. On Windows it is a job
+//! object the direct child joins before it runs, and `TerminateJobObject`;
+//! Windows has no signal that asks a windowless program to stop, so there
+//! a deadline ends the tree without a grace period. The [`memory`] module
+//! has the memory cap on each. No other platform is implemented, so this
+//! crate does not build on one.
 
 use std::time::Duration;
 
-#[cfg(not(unix))]
+#[cfg(not(any(unix, windows)))]
 compile_error!(
-    "supervise owns a job through Unix process groups; no other platform is implemented"
+    "supervise owns a job through Unix process groups or Windows job objects; no other platform is implemented"
 );
 
 mod group;
+
+#[cfg(feature = "job")]
+mod spawn;
+
+// Without `job`, the blocking half uses only part of the job object.
+#[cfg(windows)]
+#[cfg_attr(not(feature = "job"), allow(dead_code))]
+mod windows;
 
 pub mod memory;
 
@@ -369,6 +381,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn a_live_process_and_a_dead_one_probe_differently() {
         assert!(process_running(std::process::id()));
         assert!(!process_running(0));

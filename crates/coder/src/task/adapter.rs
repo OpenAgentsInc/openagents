@@ -562,11 +562,17 @@ impl Host {
         let observing = {
             let workspace = workspace.clone();
             tokio::task::spawn_blocking(move || {
+                #[cfg(unix)]
                 Snapshot::recall_digests(&digests);
                 let before = Snapshot::observe(&workspace);
+                // Off Unix the observation refuses, and there is nothing
+                // to keep.
+                #[cfg(unix)]
                 if let Err(error) = Snapshot::remember_digests(&digests) {
                     eprintln!("coder: cannot keep the workspace digests: {error}");
                 }
+                #[cfg(not(unix))]
+                let _ = digests;
                 before
             })
         };

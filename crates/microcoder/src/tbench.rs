@@ -666,6 +666,7 @@ async fn bring_up(
         std::fs::create_dir_all(&source)
             .map_err(|e| format!("can't make {}: {e}", source.display()))?;
         // The container's user may not be this one.
+        #[cfg(unix)]
         let _ =
             std::fs::set_permissions(&source, std::os::unix::fs::PermissionsExt::from_mode(0o777));
         mounts.push((source.to_string_lossy().to_string(), (*target).to_string()));
@@ -984,6 +985,20 @@ pub async fn save_artifacts(task: &Task, name: &str, dir: &Path) -> Vec<String> 
     saved
 }
 
+/// The `UID:GID` a container hands the mounts back to.
+#[cfg(unix)]
+fn owner_of(meta: &std::fs::Metadata) -> String {
+    use std::os::unix::fs::MetadataExt;
+    format!("{}:{}", meta.uid(), meta.gid())
+}
+
+/// Docker Desktop on Windows maps the mounts to the user already; root's
+/// own IDs change nothing.
+#[cfg(not(unix))]
+fn owner_of(_meta: &std::fs::Metadata) -> String {
+    "0:0".into()
+}
+
 /// Removes the Compose project `name` (containers, networks, and volumes)
 /// and its scratch folder, ignoring one that's already gone.
 pub async fn remove(name: &str) {
@@ -993,8 +1008,7 @@ pub async fn remove(name: &str) {
     if let Ok(meta) = std::fs::metadata(&scratch)
         && let Some(container) = service_container(name, MAIN).await
     {
-        use std::os::unix::fs::MetadataExt;
-        let owner = format!("{}:{}", meta.uid(), meta.gid());
+        let owner = owner_of(&meta);
         let _ = docker(&[
             "exec",
             "-u",

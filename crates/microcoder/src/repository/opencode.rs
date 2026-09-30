@@ -220,6 +220,7 @@ pub(crate) async fn turn(host: &Host, route: &GrantRoute, program: PathBuf) -> T
     if !group_clear {
         host.fail("the OpenCode process group did not stop");
     }
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     super::devin::keep_delegate(
         host,
         coder_history::Harness::OpenCode,
@@ -242,11 +243,7 @@ pub(crate) async fn turn(host: &Host, route: &GrantRoute, program: PathBuf) -> T
             let refusal = (RefusalData::parse(error.data.as_ref()).api()
                 && ended.tool_calls == 0
                 && ended.reply.is_empty())
-            .then(|| {
-                database
-                    .as_deref()
-                    .and_then(|database| coder_history::opencode::last_error(database, &session_id))
-            })
+            .then(|| last_error(database.as_deref(), &session_id))
             .flatten()
             .and_then(|saved| Refusal::opencode(&saved, coder::task::autostart::unix_now()));
             if refusal.is_none() {
@@ -280,7 +277,20 @@ pub(crate) async fn turn(host: &Host, route: &GrantRoute, program: PathBuf) -> T
     }
 }
 
-#[cfg(test)]
+/// The error OpenCode saved for `session`, where `coder-history` reads
+/// OpenCode's database.
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn last_error(database: Option<&Path>, session: &str) -> Option<serde_json::Value> {
+    coder_history::opencode::last_error(database?, session)
+}
+
+/// OpenCode's database is read only on Linux and macOS.
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+fn last_error(_database: Option<&Path>, _session: &str) -> Option<serde_json::Value> {
+    None
+}
+
+#[cfg(all(test, unix))]
 mod tests {
     use super::super::tests::fixture_with;
     use super::super::{AgentEngine, Stage, run_stages};

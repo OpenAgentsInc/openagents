@@ -341,8 +341,10 @@ pub async fn run(arguments: &[String]) -> u8 {
 /// Detach the host, not the executor. The host itself owns supervision and its
 /// retained owner lock. Starting a process is not an execution admission receipt.
 fn start_owner(directory: &std::path::Path, grant: &str) -> u8 {
-    use std::os::unix::fs::OpenOptionsExt;
+    #[cfg(unix)]
     use std::os::unix::process::CommandExt;
+    #[cfg(windows)]
+    use std::os::windows::process::CommandExt;
     use std::process::{Command, Stdio};
     if grant == "-" {
         return failure("configuration", "start requires a retained grant file");
@@ -367,22 +369,31 @@ fn start_owner(directory: &std::path::Path, grant: &str) -> u8 {
             atif::now_ms()
         );
         let grant = directory.join(format!("{launch}.grant.json"));
-        let mut saved = std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .mode(0o600)
-            .open(&grant)?;
+        let mut saved =
+            crate::private::file(std::fs::OpenOptions::new().write(true).create_new(true))
+                .open(&grant)?;
         saved.write_all(&bytes)?;
         saved.sync_all()?;
         let diagnostic_path = directory.join(format!("{launch}.jsonl"));
-        let diagnostic = std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .mode(0o600)
-            .open(&diagnostic_path)?;
+        let diagnostic =
+            crate::private::file(std::fs::OpenOptions::new().write(true).create_new(true))
+                .open(&diagnostic_path)?;
+        // Windows cannot flush a directory; NTFS journals the new names.
+        #[cfg(unix)]
         std::fs::File::open(&directory)?.sync_all()?;
         let mut command = Command::new(std::env::current_exe()?);
+        #[cfg(unix)]
         command.env_clear().env("PATH", "/usr/bin:/bin");
+        #[cfg(windows)]
+        {
+            let root = std::env::var_os("SystemRoot").unwrap_or_else(|| r"C:\Windows".into());
+            let mut path = std::path::PathBuf::from(&root);
+            path.push("System32");
+            command
+                .env_clear()
+                .env("SystemRoot", &root)
+                .env("PATH", path);
+        }
         command
             .args(["task", "execute", "--store"])
             .arg(&directory)
@@ -392,6 +403,7 @@ fn start_owner(directory: &std::path::Path, grant: &str) -> u8 {
             .stdout(Stdio::from(diagnostic.try_clone()?))
             .stderr(Stdio::from(diagnostic));
         // SAFETY: setsid is async-signal-safe and uses no parent-memory state.
+        #[cfg(unix)]
         unsafe {
             command.pre_exec(|| {
                 if libc::setsid() == -1 {
@@ -401,6 +413,9 @@ fn start_owner(directory: &std::path::Path, grant: &str) -> u8 {
                 }
             });
         }
+        // A process group of its own, with no console window.
+        #[cfg(windows)]
+        command.creation_flags(0x0000_0200 | 0x0800_0000);
         let child = command.spawn()?;
         Ok(
             json!({"task_id": task.task_id, "owner_process": child.id(), "admission": "pending", "diagnostic_path": diagnostic_path,

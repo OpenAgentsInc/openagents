@@ -259,7 +259,7 @@ pub(super) async fn run_stage<T: codex_transport::Transport>(
     run_loop(host, &generator, &judge, replies).await
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
     use codex_transport::Transport as _;

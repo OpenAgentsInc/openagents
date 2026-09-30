@@ -3,6 +3,9 @@
 //! is the same across two runs. Stopping, deadlines, refusals, and grants
 //! are covered here too.
 
+// Off Unix only the refusal case runs, so most helpers go unused.
+#![cfg_attr(not(unix), allow(dead_code, unused_imports))]
+
 #[path = "support/runner.rs"]
 mod support;
 
@@ -19,6 +22,8 @@ use support::*;
 fn quiet(_: Progress) {}
 
 #[test]
+// The run sandbox is Unix's; elsewhere every run refuses as unconfined.
+#[cfg(unix)]
 fn both_arms_run_and_the_gate_says_better_twice() {
     let door = fake_door();
     let work = tempfile::tempdir().unwrap();
@@ -139,6 +144,8 @@ fn an_unconfined_host_refuses_every_run_and_spawns_nothing() {
 }
 
 #[test]
+// The run sandbox is Unix's; elsewhere every run refuses as unconfined.
+#[cfg(unix)]
 fn stopping_a_run_stops_its_child_and_marks_it_cancelled() {
     let door = fake_door();
     let work = tempfile::tempdir().unwrap();
@@ -202,6 +209,8 @@ fn stopping_a_run_stops_its_child_and_marks_it_cancelled() {
 }
 
 #[test]
+// The run sandbox is Unix's; elsewhere every run refuses as unconfined.
+#[cfg(unix)]
 fn a_deadline_stops_the_child_as_a_timeout() {
     let door = fake_door();
     let work = tempfile::tempdir().unwrap();
@@ -234,6 +243,8 @@ fn a_deadline_stops_the_child_as_a_timeout() {
 }
 
 #[test]
+// The run sandbox is Unix's; elsewhere every run refuses as unconfined.
+#[cfg(unix)]
 fn an_env_key_outside_oa_eval_is_rejected_before_spawning() {
     let door = fake_door();
     let work = tempfile::tempdir().unwrap();
@@ -265,6 +276,8 @@ fn an_env_key_outside_oa_eval_is_rejected_before_spawning() {
 }
 
 #[test]
+// The run sandbox is Unix's; elsewhere every run refuses as unconfined.
+#[cfg(unix)]
 fn the_workspace_is_writable_only_with_the_write_grant() {
     let door = fake_door();
     let work = tempfile::tempdir().unwrap();

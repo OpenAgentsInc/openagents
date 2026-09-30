@@ -208,16 +208,19 @@ pub fn admits(route_model: &str, reported: Option<&str>) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::os::unix::fs::PermissionsExt;
 
     #[test]
+    #[cfg(unix)]
     fn the_binary_is_found_by_variable_path_or_installer_location() {
         let dir = tempfile::tempdir().unwrap();
         let bin = dir.path().join(".local/bin");
         std::fs::create_dir_all(&bin).unwrap();
         let devin = bin.join("devin");
         std::fs::write(&devin, "#!/bin/sh\n").unwrap();
-        std::fs::set_permissions(&devin, std::fs::Permissions::from_mode(0o755)).unwrap();
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&devin, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
         let home = dir.path().as_os_str().to_owned();
         let env = |name: &str| (name == "HOME").then(|| home.clone());
         assert_eq!(binary(&env), Some(devin.clone()));

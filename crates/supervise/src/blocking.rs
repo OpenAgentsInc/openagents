@@ -7,11 +7,18 @@
 //! rules are the contract's: the job runs in a process group of its own,
 //! the deadline terminates the group, and the direct child is reaped before
 //! the wait returns.
+//!
+//! On Windows the job's tree is a job object that [`wait`] puts the child
+//! in when it starts waiting, since a blocking caller's spawn has returned
+//! by then; a process the child started before that is not in it. The
+//! deadline ends the job object at once, with no grace period.
 
 use std::process::{Child, Command};
 use std::time::{Duration, Instant};
 
-use crate::{Ending, GRACE, group};
+use crate::Ending;
+#[cfg(unix)]
+use crate::{GRACE, group};
 
 /// How often the wait asks whether the child is done.
 const POLL: Duration = Duration::from_millis(25);
@@ -21,6 +28,7 @@ const POLL: Duration = Duration::from_millis(25);
 ///
 /// Call this before spawning. A child spawned without it shares this
 /// process's group, and terminating that group would terminate the caller.
+#[cfg(unix)]
 pub fn own_group(command: &mut Command) {
     use std::os::unix::process::CommandExt as _;
     command.process_group(0);
@@ -36,6 +44,7 @@ pub fn own_group(command: &mut Command) {
 /// The child must have been spawned through [`own_group`]. Waiting on one
 /// that was not would signal this process's own group, so this returns
 /// [`Ending::Failed`] rather than doing that.
+#[cfg(unix)]
 pub fn wait(child: &mut Child, wall: Duration) -> Ending {
     let group = match i32::try_from(child.id()) {
         Ok(group) if leads(group) => group,
@@ -66,6 +75,7 @@ pub fn wait(child: &mut Child, wall: Duration) -> Ending {
 }
 
 /// Ends a child that ran past its deadline, and everything it started.
+#[cfg(unix)]
 fn terminate(child: &mut Child, group: i32) -> Ending {
     group::ask(group);
     let grace = Instant::now() + GRACE;
@@ -83,8 +93,58 @@ fn terminate(child: &mut Child, group: i32) -> Ending {
 /// Whether the process leads a group of its own, which is what
 /// [`own_group`] arranges and what makes the process identifier a group
 /// identifier this job owns.
+#[cfg(unix)]
 fn leads(pid: i32) -> bool {
     // SAFETY: `getpgid` reads a process identifier and returns the group
     // it is in, or -1.
     unsafe { libc::getpgid(pid) == pid }
+}
+
+/// Starts the command's job in a process group of its own with no console
+/// window, which is what [`wait`] expects of a child on Windows.
+#[cfg(windows)]
+pub fn own_group(command: &mut Command) {
+    use std::os::windows::process::CommandExt as _;
+    command.creation_flags(crate::windows::RUNNING);
+}
+
+/// Waits for a child, ending its job object when `wall` passes.
+///
+/// The child joins a job object of its own as the wait starts, and the job
+/// ends with the wait: at the deadline, or once the child exits, so a
+/// descendant started after the child joined cannot outlive it. The child
+/// should have been spawned through [`own_group`].
+#[cfg(windows)]
+pub fn wait(child: &mut Child, wall: Duration) -> Ending {
+    use std::os::windows::io::AsRawHandle as _;
+    // A child that already exited cannot join a job, and has nothing left
+    // to end; any other failure still gets the child ended at the deadline.
+    let tree = crate::windows::JobObject::new(None)
+        .and_then(|job| job.contain(child.as_raw_handle(), child.id()))
+        .ok();
+    let end = |child: &mut Child| {
+        if let Some(tree) = &tree {
+            tree.end();
+        }
+        let _ = child.kill();
+    };
+    let deadline = Instant::now() + wall;
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                if let Some(tree) = &tree {
+                    tree.end();
+                }
+                return Ending::Exited(status.code());
+            }
+            Ok(None) => {}
+            Err(error) => return Ending::Failed(error.to_string()),
+        }
+        if Instant::now() >= deadline {
+            end(child);
+            let _ = child.wait();
+            return Ending::TimedOut;
+        }
+        std::thread::sleep(POLL);
+    }
 }

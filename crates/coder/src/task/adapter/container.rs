@@ -4,6 +4,7 @@
 //! Docker client alone does not prove that the processes it started stopped.
 use super::*;
 use std::ffi::OsString;
+#[cfg(unix)]
 use std::os::unix::fs::FileTypeExt;
 
 const SCHEMA: &str = "openagents.microcoder.container.v1";
@@ -49,7 +50,7 @@ impl Profile {
         if self.docker_program.canonicalize()? != self.docker_program
             || self.socket.canonicalize()? != self.socket
             || digest_bytes(&std::fs::read(&self.docker_program)?) != self.docker_digest
-            || !std::fs::metadata(&self.socket)?.file_type().is_socket()
+            || !is_socket(&self.socket)?
         {
             return Err(Error::InvalidCommand(
                 "Docker executable or local socket differs from admission",
@@ -435,4 +436,18 @@ async fn run_started(
         output,
         group_clear: false,
     })
+}
+
+/// Whether `path` is a Unix socket, as the Docker daemon's is.
+#[cfg(unix)]
+fn is_socket(path: &std::path::Path) -> std::io::Result<bool> {
+    Ok(std::fs::metadata(path)?.file_type().is_socket())
+}
+
+/// A pinned container profile names the Docker daemon's Unix socket, which
+/// Windows does not have, so no profile is admitted there.
+#[cfg(not(unix))]
+#[allow(clippy::unnecessary_wraps)]
+fn is_socket(_path: &std::path::Path) -> std::io::Result<bool> {
+    Ok(false)
 }

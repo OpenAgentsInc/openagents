@@ -228,12 +228,15 @@ mod tests {
         let advertised = settings.advertised().unwrap();
         assert_eq!(advertised[0].class, Class::Tailnet);
         assert_eq!(settings.tls().unwrap().name, "box.example.ts.net");
-        use std::os::unix::fs::PermissionsExt;
-        let mode = std::fs::metadata(dir.path().join(FILE))
-            .unwrap()
-            .permissions()
-            .mode();
-        assert_eq!(mode & 0o777, 0o600);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(dir.path().join(FILE))
+                .unwrap()
+                .permissions()
+                .mode();
+            assert_eq!(mode & 0o777, 0o600);
+        }
     }
 
     #[test]

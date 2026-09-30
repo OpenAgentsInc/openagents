@@ -3,6 +3,9 @@
 //! host key, owner, and grants are the same. The keychain names are the
 //! ones adoption writes.
 
+// Adoption moves a launchd or systemd setup; Windows never had one.
+#![cfg(unix)]
+
 use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
 use std::sync::Arc;
 use std::time::Duration;

@@ -586,22 +586,9 @@ impl Book {
 /// # Errors
 /// Reports a failed read or write.
 pub fn record(dir: &Path, refusal: Refusal) -> Result<Book, String> {
-    use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
     let now = refusal.observed_at;
-    std::fs::DirBuilder::new()
-        .recursive(true)
-        .mode(0o700)
-        .create(dir)
-        .map_err(|_| format!("cannot create {}", dir.display()))?;
     let path = dir.join(FILE);
-    let mut file = std::fs::OpenOptions::new()
-        .read(true)
-        .write(true)
-        .create(true)
-        .truncate(false)
-        .mode(0o600)
-        .open(&path)
-        .map_err(|_| format!("cannot open {}", path.display()))?;
+    let mut file = open_private(dir, &path)?;
     file.lock()
         .map_err(|_| format!("cannot lock {}", path.display()))?;
     let mut bytes = Vec::new();
@@ -619,6 +606,32 @@ pub fn record(dir: &Path, refusal: Refusal) -> Result<Book, String> {
         .and_then(|()| file.sync_all())
         .map_err(|_| format!("cannot write {}", path.display()))?;
     Ok(book)
+}
+
+/// Opens `path` in `dir` for reading and writing, creating both where
+/// missing: the directory `0700` and the file `0600` on Unix, and on
+/// Windows a directory made the user's alone, whose files inherit that.
+///
+/// # Errors
+/// Reports a directory or file that cannot be made or opened.
+pub(crate) fn open_private(dir: &Path, path: &Path) -> Result<std::fs::File, String> {
+    let mut options = std::fs::OpenOptions::new();
+    options.read(true).write(true).create(true).truncate(false);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
+        std::fs::DirBuilder::new()
+            .recursive(true)
+            .mode(0o700)
+            .create(dir)
+            .map_err(|_| format!("cannot create {}", dir.display()))?;
+        options.mode(0o600);
+    }
+    #[cfg(windows)]
+    private_fs::create_dir_all(dir).map_err(|_| format!("cannot create {}", dir.display()))?;
+    options
+        .open(path)
+        .map_err(|_| format!("cannot open {}", path.display()))
 }
 
 /// Whether a provider can be used from this host.
@@ -803,9 +816,12 @@ mod tests {
             None
         );
         // Private, and it holds nothing from the body but typed fields.
-        use std::os::unix::fs::PermissionsExt;
-        let meta = std::fs::metadata(dir.path().join(FILE)).unwrap();
-        assert_eq!(meta.permissions().mode() & 0o777, 0o600);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let meta = std::fs::metadata(dir.path().join(FILE)).unwrap();
+            assert_eq!(meta.permissions().mode() & 0o777, 0o600);
+        }
         let text = std::fs::read_to_string(dir.path().join(FILE)).unwrap();
         assert!(!text.contains("message"));
     }

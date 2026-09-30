@@ -31,6 +31,7 @@ pub mod devices;
 pub mod directory;
 pub mod owner;
 pub mod plan;
+mod private;
 pub mod service;
 pub mod ssh;
 pub mod tailscale;

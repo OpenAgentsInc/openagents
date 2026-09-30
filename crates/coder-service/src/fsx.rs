@@ -4,6 +4,7 @@
 
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read as _, Write as _};
+#[cfg(unix)]
 use std::os::unix::fs::{MetadataExt as _, OpenOptionsExt as _, PermissionsExt as _};
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -18,6 +19,7 @@ pub const RECORD_MAX: u64 = 1024 * 1024;
 
 /// Creates `path` as a private directory, or checks that an existing one is
 /// a private ordinary directory owned by this user.
+#[cfg(unix)]
 pub fn private_dir(path: &Path) -> Result<()> {
     match fs::symlink_metadata(path) {
         Ok(meta) => {
@@ -54,17 +56,43 @@ pub fn private_dir(path: &Path) -> Result<()> {
     }
 }
 
+/// Creates `path` as a private directory, or checks that an existing one is
+/// a private ordinary directory owned by this user: on Windows, owned by
+/// this user with a DACL that admits no one else
+/// ([`private_fs::is_private`]).
+#[cfg(windows)]
+pub fn private_dir(path: &Path) -> Result<()> {
+    match private_fs::open_dir(path) {
+        Ok(directory) => {
+            if !directory.metadata()?.file_type().is_dir() {
+                return Err(Error::refused(format!(
+                    "{} is not an ordinary directory",
+                    path.display()
+                )));
+            }
+            if !private_fs::is_private(&directory)? {
+                return Err(Error::refused(format!(
+                    "{} must belong to this user and admit no other user",
+                    path.display()
+                )));
+            }
+            Ok(())
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            Ok(private_fs::create_dir_all(path)?)
+        }
+        Err(error) => Err(error.into()),
+    }
+}
+
 /// Reads an ordinary file of at most `max` bytes, refusing a symbolic link,
 /// a device, a FIFO, or a hard-linked file.
 pub fn read_bounded(path: &Path, max: u64) -> Result<Vec<u8>> {
-    let file = OpenOptions::new()
-        .read(true)
-        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
-        .open(path)?;
+    let file = open_record(path)?;
     let meta = file.metadata()?;
     // A link count of zero is a complete record that an atomic write
     // replaced after this open; more than one is a hard link, refused.
-    if !meta.file_type().is_file() || meta.nlink() > 1 {
+    if !meta.file_type().is_file() || links(&file, &meta)? > 1 {
         return Err(Error::refused(format!(
             "{} is not an ordinary file without hard links",
             path.display()
@@ -81,6 +109,31 @@ pub fn read_bounded(path: &Path, max: u64) -> Result<Vec<u8>> {
     Ok(bytes)
 }
 
+/// Opens a record for reading without following a link, or blocking on a
+/// FIFO.
+fn open_record(path: &Path) -> std::io::Result<File> {
+    let mut options = OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    options.custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK);
+    #[cfg(windows)]
+    private_fs::nofollow(&mut options);
+    options.open(path)
+}
+
+/// How many links the open `file` has.
+#[cfg(unix)]
+#[allow(clippy::unnecessary_wraps)]
+fn links(_file: &File, meta: &fs::Metadata) -> std::io::Result<u64> {
+    Ok(meta.nlink())
+}
+
+/// How many links the open `file` has.
+#[cfg(windows)]
+fn links(file: &File, _meta: &fs::Metadata) -> std::io::Result<u64> {
+    Ok(u64::from(private_fs::identity(file)?.links))
+}
+
 /// Reads a record, or `None` when the file does not exist.
 pub fn read_optional(path: &Path) -> Result<Option<Vec<u8>>> {
     match read_bounded(path, RECORD_MAX) {
@@ -92,7 +145,8 @@ pub fn read_optional(path: &Path) -> Result<Option<Vec<u8>>> {
 
 /// Replaces `path` with `bytes` atomically: a private temporary file in the
 /// same directory, synced, renamed over the target, and the directory
-/// synced after the rename.
+/// synced after the rename. On Windows `mode` is not used: the file
+/// inherits its private directory's owner-only DACL.
 pub fn atomic_write(path: &Path, bytes: &[u8], mode: u32) -> Result<()> {
     let parent = path
         .parent()
@@ -104,12 +158,16 @@ pub fn atomic_write(path: &Path, bytes: &[u8], mode: u32) -> Result<()> {
         .into_owned();
     let temporary = parent.join(format!(".{name}.pending-{}", std::process::id()));
     let result = (|| -> Result<()> {
-        let mut file = OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .mode(mode)
-            .custom_flags(libc::O_NOFOLLOW)
-            .open(&temporary)?;
+        let mut options = OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        options.mode(mode).custom_flags(libc::O_NOFOLLOW);
+        #[cfg(windows)]
+        {
+            let _ = mode;
+            private_fs::nofollow(&mut options);
+        }
+        let mut file = options.open(&temporary)?;
         file.write_all(bytes)?;
         file.sync_all()?;
         fs::rename(&temporary, path)?;
@@ -122,8 +180,18 @@ pub fn atomic_write(path: &Path, bytes: &[u8], mode: u32) -> Result<()> {
 }
 
 /// Flushes a directory's entries, so a rename in it survives a crash.
+#[cfg(unix)]
 pub fn sync_dir(path: &Path) -> Result<()> {
     File::open(path)?.sync_all()?;
+    Ok(())
+}
+
+/// Flushes a directory's entries, so a rename in it survives a crash.
+/// Windows cannot flush a directory, and NTFS journals the rename itself,
+/// so this only checks that the directory is there.
+#[cfg(windows)]
+pub fn sync_dir(path: &Path) -> Result<()> {
+    private_fs::open_dir(path)?;
     Ok(())
 }
 
@@ -135,10 +203,7 @@ pub fn sha256_hex(bytes: &[u8]) -> String {
 
 /// The SHA-256 of an ordinary file's contents, streamed.
 pub fn sha256_file(path: &Path) -> Result<String> {
-    let file = OpenOptions::new()
-        .read(true)
-        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
-        .open(path)?;
+    let file = open_record(path)?;
     if !file.metadata()?.file_type().is_file() {
         return Err(Error::refused(format!(
             "{} is not an ordinary file",

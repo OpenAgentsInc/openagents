@@ -212,7 +212,10 @@ pub mod delegate {
     /// Settle a freshly written copy at `fresh` onto `path`: nothing when
     /// they are the same, an append when `path` holds a prefix of it, else a
     /// replacement. Returns whether `path` changed.
-    #[cfg(any(feature = "opencode", feature = "devin"))]
+    #[cfg(all(
+        any(feature = "opencode", feature = "devin"),
+        any(target_os = "linux", target_os = "macos")
+    ))]
     pub(crate) fn settle(fresh: &std::path::Path, path: &std::path::Path) -> Result<bool, String> {
         use std::io::Write as _;
         let new =

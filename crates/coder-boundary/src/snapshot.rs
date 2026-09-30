@@ -70,6 +70,8 @@ type Id = (u64, u64);
 
 /// One observed path: what it is, and enough of it to tell a change from
 /// a rewrite.
+// Off Unix every walk is refused, so no entry is ever made.
+#[cfg_attr(not(unix), allow(dead_code))]
 #[derive(Clone, Debug)]
 enum Entry {
     Directory {

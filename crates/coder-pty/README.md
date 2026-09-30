@@ -13,7 +13,7 @@ missed, bounded and in order.
 | `wire` | always | all | The NIP-TERM request, result, and frame bodies, with validation. |
 | `ring` | always | all | The bounded replay buffer: sequence numbers, discard, and missed ranges. |
 | `client` | always | all | `TerminalState` applies frames, ignores duplicates, detects lost frames, records gaps, and keeps a bounded plain-text `Screen`. |
-| `host` | `host` (default) | Unix | `Host` owns PTYs, process groups, rings, attachments, budgets, idle expiry, and shutdown. |
+| `host` | `host` (default) | Unix, Windows | `Host` owns PTYs (a Windows pseudoconsole), process groups (job objects), rings, attachments, budgets, idle expiry, and shutdown. |
 
 A client build, such as the mobile library or a renderer, uses
 `default-features = false` and gets no system calls. The screen buffer is a
@@ -65,7 +65,13 @@ host.attach(device, &Attach::new(request2, terminal, Mode::Interact, 0, 64 * 102
 
 ## Limits
 
-- **Unix only.** Elsewhere `Host::open` refuses as `unavailable`. Tested on
+- **Unix and Windows.** Elsewhere `Host::open` refuses as `unavailable`.
+  On Windows a terminal is a pseudoconsole (ConPTY, Windows 10 1809 or
+  later) whose program starts suspended inside a kill-on-close job object;
+  a hang-up closes the pseudoconsole (`CTRL_CLOSE_EVENT`), an interrupt
+  types Ctrl+C, and a kill ends the job. The default shell is `%ComSpec%`.
+  `tests/windows.rs` passes under Wine 11, which does not implement
+  `ResizePseudoConsole`, so the resize case skips there. Tested on
   macOS and on Linux with glibc 2.42 (NixOS); the
   [Linux runs record](../../docs/coder/verification/2026-09-27-linux-runs.md)
   holds the Linux results. On glibc the crate links `libutil`, where

@@ -275,30 +275,53 @@ pub fn write_new(path: &Path, value: &impl Serialize) -> Result<(), String> {
         use std::os::unix::fs::OpenOptionsExt;
         opts.mode(0o600);
     }
-    #[cfg(not(unix))]
-    {
-        return Err("private bundle storage is unsupported on this host".into());
-    }
     let result = (|| {
         let mut file = opts.open(&tmp).map_err(|e| e.to_string())?;
+        // Windows has no mode bits: the file is made the user's alone
+        // before anything is written to it.
+        #[cfg(windows)]
+        private_fs::restrict(&tmp).map_err(|e| e.to_string())?;
         file.write_all(&bytes)
             .and_then(|()| file.sync_all())
             .map_err(|e| e.to_string())?;
         std::fs::hard_link(&tmp, path)
             .map_err(|e| format!("cannot install immutable bundle: {e}"))?;
-        std::fs::File::open(parent)
-            .and_then(|f| f.sync_all())
-            .map_err(|e| e.to_string())
+        sync_directory(parent)
     })();
     let _ = std::fs::remove_file(&tmp);
     result
 }
 
+/// Makes a new link in `directory` durable. Windows cannot open a
+/// directory as a file to flush it; NTFS journals the link itself.
+pub(crate) fn sync_directory(directory: &Path) -> Result<(), String> {
+    #[cfg(unix)]
+    {
+        std::fs::File::open(directory)
+            .and_then(|f| f.sync_all())
+            .map_err(|e| e.to_string())
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = directory;
+        Ok(())
+    }
+}
+
+#[cfg(unix)]
 pub(crate) fn entropy() -> Result<[u8; 32], String> {
     let mut bytes = [0; 32];
     std::fs::File::open("/dev/urandom")
         .and_then(|mut f| f.read_exact(&mut bytes))
         .map_err(|e| e.to_string())?;
+    Ok(bytes)
+}
+
+/// 32 bytes from the system's random source (`ProcessPrng` on Windows).
+#[cfg(not(unix))]
+pub(crate) fn entropy() -> Result<[u8; 32], String> {
+    let mut bytes = [0; 32];
+    getrandom::fill(&mut bytes).map_err(|e| e.to_string())?;
     Ok(bytes)
 }
 pub(crate) fn hex(bytes: &[u8]) -> String {

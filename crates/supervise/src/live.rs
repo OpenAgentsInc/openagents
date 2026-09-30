@@ -25,12 +25,14 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
-use tokio::process::{ChildStdin, Command};
+use tokio::process::ChildStdin;
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 use tokio::time::timeout;
 
-use crate::{Captured, Ending, GRACE, Job, Memory, Sink, group, memory};
+use crate::group::Tree;
+use crate::spawn::{Spawned, Unspawned, spawn};
+use crate::{Captured, Ending, GRACE, Job, Memory, Sink};
 
 /// The bytes one read takes from a pipe.
 const CHUNK: usize = 8 * 1024;
@@ -163,7 +165,9 @@ impl Pending {
 #[derive(Debug)]
 pub struct Live {
     pid: Option<u32>,
-    group: Option<i32>,
+    /// The job's tree. On Windows this holds the job object open, so
+    /// dropping the handle ends whatever is left in it.
+    tree: Tree,
     stdout: Arc<Mutex<Pending>>,
     stdin: Option<ChildStdin>,
     stop: Option<oneshot::Sender<()>>,
@@ -181,35 +185,20 @@ impl Job {
     pub fn start(self, input: Input) -> Result<Live, String> {
         let started = Instant::now();
         let limits = self.limits;
-        let mut prepared = self.command;
-        let handshake = limits
-            .memory_max
-            .map(|max| memory::arm(&mut prepared, max))
-            .transpose()?;
-        let mut command = Command::from(prepared);
-        command
-            .stdin(match input {
-                Input::Null => Stdio::null(),
-                Input::Piped => Stdio::piped(),
-            })
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .process_group(0)
-            .kill_on_drop(true);
-        // With a cap, the child waits between `fork` and `exec` until the
-        // helper has placed it, so the spawn returns once it is placed.
-        let serving = handshake.map(memory::Handshake::serve);
-        let spawned = command.spawn();
-        let placed = serving.map(memory::Serving::finish);
-        let mut child = match spawned {
-            Ok(child) => child,
-            Err(error) => {
+        let stdin = match input {
+            Input::Null => Stdio::null(),
+            Input::Piped => Stdio::piped(),
+        };
+        let Spawned {
+            mut child,
+            tree,
+            placed,
+        } = match spawn(self.command, limits.memory_max, stdin) {
+            Ok(spawned) => spawned,
+            Err(Unspawned { why, placed }) => {
                 // A child that failed to execute may still have been
                 // placed; its scope is cleared away without holding up the
                 // caller.
-                let why = placed
-                    .as_ref()
-                    .map_or_else(|| error.to_string(), |placed| placed.refusal(&error));
                 if let Some(placed) = placed {
                     std::thread::spawn(move || placed.settle());
                 }
@@ -217,7 +206,6 @@ impl Job {
             }
         };
         let pid = child.id();
-        let group = pid.and_then(|id| i32::try_from(id).ok());
         let stdin = child.stdin.take();
         let stdout = Arc::new(Mutex::new(Pending {
             max: limits.stream_max,
@@ -227,7 +215,9 @@ impl Job {
         let err_sink = Arc::new(Mutex::new(Sink::new(limits.stream_max)));
         let err_reader = drain(child.stderr.take(), Arc::clone(&err_sink));
         let (stop, stopped) = oneshot::channel::<()>();
+        let supervising = tree.clone();
         let supervisor = tokio::spawn(async move {
+            let tree = supervising;
             let mut requested = false;
             let ending = tokio::select! {
                 waited = child.wait() => match waited {
@@ -245,22 +235,14 @@ impl Job {
             let mut graceful = true;
             let mut stopped_with = None;
             match &ending {
-                Ending::Exited(_) => {
-                    if let Some(group) = group {
-                        group::end(group);
-                    }
-                }
+                Ending::Exited(_) => tree.end(),
                 _ => {
-                    if let Some(group) = group {
-                        group::ask(group);
-                    }
+                    tree.ask();
                     match timeout(GRACE, child.wait()).await {
                         Ok(Ok(status)) => stopped_with = Some(status.code()),
                         _ => graceful = false,
                     }
-                    if let Some(group) = group {
-                        group::end(group);
-                    }
+                    tree.end();
                     if !graceful {
                         stopped_with = child.wait().await.ok().map(|status| status.code());
                     }
@@ -287,7 +269,7 @@ impl Job {
         });
         Ok(Live {
             pid,
-            group,
+            tree,
             stdout,
             stdin,
             stop: Some(stop),
@@ -376,11 +358,11 @@ impl Live {
         // A killed descendant stays in the group until its parent, or
         // init for an orphan, reaps it, so emptiness is waited for, within
         // the grace period, rather than read once.
-        let mut group_clear = self.group.is_none_or(|group| !group::running(group));
+        let mut group_clear = !self.tree.running();
         let settle = Instant::now();
         while !group_clear && settle.elapsed() < GRACE {
             tokio::time::sleep(Duration::from_millis(5)).await;
-            group_clear = self.group.is_none_or(|group| !group::running(group));
+            group_clear = !self.tree.running();
         }
         let mut pending = self
             .stdout
@@ -396,7 +378,7 @@ impl Live {
             requested,
             graceful,
             group_clear,
-            group: self.group,
+            group: self.tree.id(),
             rest,
             stdout_bytes,
             stderr,

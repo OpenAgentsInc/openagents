@@ -10,15 +10,21 @@
 //! the usual tool directories.
 
 use std::ffi::OsString;
-use std::path::{Path, PathBuf};
+#[cfg(unix)]
+use std::path::Path;
+use std::path::PathBuf;
+#[cfg(unix)]
 use std::time::Duration;
 
+#[cfg(unix)]
 use supervise::{Job, Limits};
 
+#[cfg(any(unix, test))]
 /// Printed before the environment, so text a profile prints first is
 /// skipped.
 const MARKER: &str = "__OPENAGENTS_LOGIN_ENVIRONMENT__";
 
+#[cfg(unix)]
 /// The longest the login shell may take to answer.
 const DEADLINE: Duration = Duration::from_secs(20);
 
@@ -82,6 +88,17 @@ pub fn credential(name: &str) -> bool {
 /// The owner's login-shell environment, or the fallback when the shell
 /// cannot answer. `HOME`, `USER`, `LOGNAME`, and `SHELL` always hold this
 /// account's own values.
+/// On Windows there is no login shell to ask: the host's own environment,
+/// which Windows built from the user's profile at sign-in, is the login
+/// environment, less the same per-shell and credential variables.
+#[cfg(windows)]
+#[allow(clippy::unused_async)]
+pub async fn capture() -> Environment {
+    let account = account();
+    finish(std::env::vars_os().collect(), "process", &account)
+}
+
+#[cfg(unix)]
 pub async fn capture() -> Environment {
     let account = account();
     let shell = account.shell.clone();
@@ -121,6 +138,28 @@ pub struct Account {
 
 /// This process's account: its name, home, and login shell from the
 /// account database, with `USER`, `HOME`, and `SHELL` preferred when set.
+#[cfg(windows)]
+#[must_use]
+pub fn account() -> Account {
+    let comspec = std::env::var_os("ComSpec")
+        .map(PathBuf::from)
+        .filter(|p| p.is_absolute() && p.is_file());
+    let root =
+        std::env::var_os("SystemRoot").map_or_else(|| PathBuf::from(r"C:\Windows"), PathBuf::from);
+    Account {
+        name: std::env::var_os("USERNAME").unwrap_or_default(),
+        home: std::env::var_os("HOME")
+            .or_else(|| std::env::var_os("USERPROFILE"))
+            .map(PathBuf::from)
+            .filter(|p| p.is_absolute())
+            .unwrap_or_else(|| PathBuf::from(r"C:\")),
+        shell: comspec.unwrap_or_else(|| root.join(r"System32\cmd.exe")),
+    }
+}
+
+/// This process's account: its name, home, and login shell from the
+/// account database, with `USER`, `HOME`, and `SHELL` preferred when set.
+#[cfg(unix)]
 #[must_use]
 pub fn account() -> Account {
     use std::os::unix::ffi::OsStrExt;
@@ -160,6 +199,7 @@ pub fn account() -> Account {
     }
 }
 
+#[cfg(any(unix, test))]
 /// The variables in `env -0` output after [`MARKER`], or `None` without
 /// the marker or a `PATH`.
 fn parse(stdout: &str) -> Option<Vec<(OsString, OsString)>> {

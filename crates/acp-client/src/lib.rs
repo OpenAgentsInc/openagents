@@ -38,6 +38,9 @@ pub use session::{Failure, Opening, Session};
 pub use wire::{PermissionAnswer, PermissionRequest, StopReason, Update, Usage};
 
 #[cfg(test)]
+// The session cases run a `/bin/sh` stand-in, so on Windows some helpers go
+// unused.
+#[cfg_attr(windows, allow(unused_imports, dead_code))]
 mod tests {
     use super::*;
     use std::path::PathBuf;
@@ -82,6 +85,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[cfg(unix)]
     async fn the_recorded_devin_turn_replays_through_a_session() {
         let dir = tempfile::tempdir().unwrap();
         let agent = replay::script(dir.path(), &replay::blocks(replay::DEVIN_TURN));
@@ -119,6 +123,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[cfg(unix)]
     async fn a_cancelled_turn_sends_session_cancel_and_ends_cancelled() {
         let dir = tempfile::tempdir().unwrap();
         let mut blocks = replay::blocks(replay::DEVIN_TURN);
@@ -147,6 +152,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[cfg(unix)]
     async fn a_refused_reattachment_falls_back_to_a_new_session() {
         let dir = tempfile::tempdir().unwrap();
         let mut blocks = replay::blocks(replay::DEVIN_TURN);

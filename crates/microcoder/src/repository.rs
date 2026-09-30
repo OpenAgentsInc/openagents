@@ -785,5 +785,6 @@ mod devin;
 pub mod launch;
 mod native;
 mod opencode;
-#[cfg(test)]
+// The repository tests run shell programs under the Unix write boundary.
+#[cfg(all(test, unix))]
 mod tests;

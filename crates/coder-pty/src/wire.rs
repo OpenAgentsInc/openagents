@@ -103,7 +103,8 @@ impl TerminalRef {
 pub enum Launch {
     /// The host's configured shell. The client does not choose which.
     Shell,
-    /// An exact program and arguments. The program is an absolute path;
+    /// An exact program and arguments. The program is an absolute path —
+    /// `/…` on a Unix host, or a drive path such as `C:\…` on Windows;
     /// the host resolves no name through a search path.
     Command { program: String, args: Vec<String> },
 }
@@ -168,7 +169,7 @@ impl Open {
             Launch::Shell => {}
             Launch::Command { program, args } => {
                 bounded(program, TEXT_MAX, "program")?;
-                if !program.starts_with('/') {
+                if !absolute_program(program) {
                     return Err(Refusal::malformed(
                         "a command's program must be an absolute path",
                     ));
@@ -758,6 +759,19 @@ fn bounded(text: &str, max: usize, what: &str) -> Result<(), Refusal> {
     Ok(())
 }
 
+/// Whether `program` names a program by absolute path: `/` first, as on a
+/// Unix host, or a drive letter, a colon, and a separator, as on Windows.
+/// A UNC path (`\\server\share`) is not admitted: a terminal never starts
+/// a program from the network.
+fn absolute_program(program: &str) -> bool {
+    let bytes = program.as_bytes();
+    program.starts_with('/')
+        || (bytes.len() > 3
+            && bytes[0].is_ascii_alphabetic()
+            && bytes[1] == b':'
+            && matches!(bytes[2], b'\\' | b'/'))
+}
+
 fn relative_dir(dir: &str) -> Result<(), Refusal> {
     bounded(dir, TEXT_MAX, "dir")?;
     if dir.starts_with('/') {
@@ -807,6 +821,23 @@ mod b64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_program_is_a_unix_or_a_windows_drive_path() {
+        for program in ["/bin/sh", r"C:\Windows\System32\cmd.exe", "d:/tools/x.exe"] {
+            assert!(absolute_program(program), "{program}");
+        }
+        for program in [
+            "sh",
+            r"cmd.exe",
+            r"C:cmd.exe",
+            r"\\server\share\x.exe",
+            "C:",
+            r"\x",
+        ] {
+            assert!(!absolute_program(program), "{program}");
+        }
+    }
 
     const ID: &str = "0101010101010101010101010101010101010101010101010101010101010101";
 

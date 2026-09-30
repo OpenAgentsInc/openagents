@@ -1,6 +1,7 @@
 //! Generated identities, roots, and relay traffic only; no ambient chat discovery.
 use super::*;
 use crate::pairing::{self, Invitation};
+#[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 
 fn invite(f: &Fixture) -> String {
@@ -192,6 +193,8 @@ fn bootstrap_cancellation_revocation_and_changed_roots_refuse() {
     );
     assert!(f.host().invitation_grant(&invitation.id).unwrap().is_none());
 }
+// Widens a file's mode to make the save fail.
+#[cfg(unix)]
 #[test]
 fn expiry_is_rechecked_and_failed_save_returns_no_success_or_memory_claim() {
     let f = Fixture::new("wss://relay.example/");
@@ -334,6 +337,7 @@ fn qr_modules_are_a_square_with_a_quiet_zone_and_finder_patterns() {
     assert!(pairing::qr_modules_prefixed("coder-host:", &code).is_err());
 }
 
+#[cfg(unix)]
 #[test]
 #[ignore = "writes a synthetic invitation SVG and exact payload for an independent native QR decoder"]
 fn export_synthetic_qr_fixture() {

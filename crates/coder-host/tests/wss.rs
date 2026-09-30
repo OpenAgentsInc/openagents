@@ -8,6 +8,7 @@
 
 use std::collections::BTreeMap;
 use std::net::SocketAddr;
+#[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -62,7 +63,14 @@ fn tls_files(dir: &Path, key: &str, mode: u32) -> WebsocketTls {
     let key_path = dir.join("key.pem");
     std::fs::copy(fixture("localhost.pem"), &cert).unwrap();
     std::fs::copy(fixture(key), &key_path).unwrap();
+    #[cfg(unix)]
     std::fs::set_permissions(&key_path, std::fs::Permissions::from_mode(mode)).unwrap();
+    // Windows has no modes: an owner-only mode is an owner-only DACL, and
+    // any other keeps the entries the copy inherited.
+    #[cfg(windows)]
+    if mode & 0o077 == 0 {
+        private_fs::restrict(&key_path).unwrap();
+    }
     WebsocketTls {
         cert,
         key: key_path,
@@ -416,14 +424,22 @@ async fn start_refuses_unusable_tls_files() {
     std::fs::create_dir(&tls.key).unwrap();
     expect(start(tls).await, "not a regular file");
 
-    // A key open to group or others.
+    // A key open to group or others. Wine keeps no DACL on a file, so
+    // there only the owner is checked.
+    #[cfg(unix)]
+    let widened = "open to group or others";
+    #[cfg(windows)]
+    let widened = "open to no other";
     for mode in [0o640, 0o604, 0o644] {
+        if std::env::var_os("OPENAGENTS_TEST_UNDER_WINE").is_some() {
+            break;
+        }
         let tls = tls_files(
             &temp.path().join(format!("mode-{mode:o}")),
             "localhost.key",
             mode,
         );
-        expect(start(tls).await, "open to group or others");
+        expect(start(tls).await, widened);
     }
 
     // A key that is not the certificate's.

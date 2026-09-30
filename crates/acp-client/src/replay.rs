@@ -10,7 +10,9 @@
 //! client sends `session/cancel`, which the script answers with a
 //! `cancelled` turn.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
+#[cfg(unix)]
+use std::path::PathBuf;
 
 use serde_json::Value;
 
@@ -43,6 +45,7 @@ pub fn blocks(recording: &str) -> Vec<Vec<Value>> {
 ///
 /// # Panics
 /// The directory cannot be written.
+#[cfg(unix)]
 #[must_use]
 pub fn script(dir: &Path, blocks: &[Vec<Value>]) -> PathBuf {
     use std::os::unix::fs::PermissionsExt;

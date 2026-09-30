@@ -5,6 +5,10 @@
 //! after the job was supposed to be over. A marker that exists afterwards
 //! is a process that outlived the bound it was given.
 
+// The programs these run (`sh`, `sleep`, `kill`) are Unix's; `windows.rs`
+// runs the same contract through `cmd`.
+#![cfg(unix)]
+
 use std::path::Path;
 use std::time::Duration;
 

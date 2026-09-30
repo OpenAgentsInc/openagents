@@ -701,6 +701,7 @@ mod tests {
         assert_eq!(before.text, "before");
     }
 
+    #[cfg(unix)]
     #[test]
     fn atomic_sources_refuse_oversize_and_external_symlinks() {
         let dir = tempfile::tempdir().unwrap();

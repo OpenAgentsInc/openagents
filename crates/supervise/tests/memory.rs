@@ -31,6 +31,13 @@ fn allocate_when_asked() {
     println!("held {} MiB", held.len());
 }
 
+/// Wine accepts a job object's memory limit and does not enforce it, so a
+/// Windows build run under Wine (`OPENAGENTS_TEST_UNDER_WINE`) skips the
+/// cases that need the cap to bite.
+fn cap_unenforced_here() -> bool {
+    cfg!(windows) && std::env::var_os("OPENAGENTS_TEST_UNDER_WINE").is_some()
+}
+
 fn allocating(mib: u64, cap: u64) -> Job {
     let mut command = std::process::Command::new(std::env::current_exe().unwrap());
     command
@@ -41,6 +48,9 @@ fn allocating(mib: u64, cap: u64) -> Job {
 
 #[tokio::test]
 async fn a_job_past_its_cap_is_killed_and_reported() {
+    if cap_unenforced_here() {
+        return;
+    }
     let ended = allocating(1024, 64 * MIB).run().await;
     let memory = ended.memory.clone().expect("the job ran under a cap");
     assert_eq!(memory.max, 64 * MIB);
@@ -59,6 +69,11 @@ async fn a_job_past_its_cap_is_killed_and_reported() {
             assert!(ended.over_memory(), "{memory:?} {:?}", ended.ending);
             assert_eq!(memory.unenforced, None);
         }
+        // On Windows the job object failed the allocation and its port
+        // said so.
+        Enforcement::JobObject => {
+            assert!(ended.over_memory(), "{memory:?} {:?}", ended.ending);
+        }
     }
 }
 
@@ -76,6 +91,7 @@ async fn a_job_under_its_cap_runs_and_is_not_reported() {
     assert_eq!(ended.memory.map(|memory| memory.max), Some(256 * MIB));
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn a_crash_under_a_cap_is_not_a_memory_ending() {
     let ended = Job::new("sh")
@@ -107,6 +123,7 @@ async fn what_the_job_starts_first_is_already_inside_the_scope() {
     }
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn a_job_without_a_cap_reports_none() {
     let ended = Job::new("true")
@@ -119,13 +136,17 @@ async fn a_job_without_a_cap_reports_none() {
 
 #[tokio::test]
 async fn a_watched_job_past_its_cap_is_reported_when_it_stops() {
+    if cap_unenforced_here() {
+        return;
+    }
     let live = allocating(1024, 64 * MIB)
         .start(supervise::Input::Null)
         .unwrap();
     let stopped = live.wait().await;
     let memory = stopped.memory.clone().expect("the job ran under a cap");
     assert!(!stopped.ending.success());
-    if let Enforcement::Scope(_) | Enforcement::Watch = memory.enforcement {
+    if let Enforcement::Scope(_) | Enforcement::Watch | Enforcement::JobObject = memory.enforcement
+    {
         assert!(stopped.over_memory(), "{memory:?}");
     }
 }
@@ -144,6 +165,7 @@ async fn on_macos_a_capped_job_is_watched() {
     assert_eq!(memory.unenforced, None);
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn a_process_that_left_the_group_ends_with_the_scope() {
     if std::process::Command::new("setsid")
@@ -179,4 +201,18 @@ async fn a_process_that_left_the_group_ends_with_the_scope() {
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
     assert!(!supervise::process_running(pid), "{pid} outlived its scope");
+}
+
+#[cfg(windows)]
+#[tokio::test]
+async fn on_windows_a_capped_job_is_held_by_its_job_object() {
+    let ended = Job::new("cmd")
+        .args(["/c", "exit 0"])
+        .bounded(Limits::within(Duration::from_secs(5)).memory(Some(256 * MIB)))
+        .run()
+        .await;
+    assert!(ended.ending.success(), "{:?}", ended.ending);
+    let memory = ended.memory.expect("the job ran under a cap");
+    assert_eq!(memory.enforcement, Enforcement::JobObject);
+    assert!(!memory.exceeded);
 }

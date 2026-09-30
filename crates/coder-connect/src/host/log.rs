@@ -10,7 +10,6 @@ use super::*;
 use crate::store;
 use std::collections::HashMap;
 use std::io::{Read as _, Seek, SeekFrom, Write};
-use std::os::unix::fs::MetadataExt;
 
 pub(super) const LOG: &str = "observer.requests";
 /// The log is rewritten with only its live records past this size.
@@ -85,8 +84,9 @@ impl Reads {
             return Ok(());
         };
         let m = file.metadata().map_err(unavailable)?;
-        if self.file != Some((m.dev(), m.ino())) || m.len() < self.offset {
-            self.file = Some((m.dev(), m.ino()));
+        let id = store::file_id(&file, &m)?;
+        if self.file != Some(id) || m.len() < self.offset {
+            self.file = Some(id);
             self.offset = 0;
         }
         if m.len() == self.offset {
@@ -150,10 +150,11 @@ impl Reads {
         let mut file =
             store::private_append(&directory.join(LOG), true)?.ok_or_else(|| unavailable(()))?;
         let m = file.metadata().map_err(unavailable)?;
+        let id = store::file_id(&file, &m)?;
         if self.file.is_none() && m.len() == 0 {
-            self.file = Some((m.dev(), m.ino()));
+            self.file = Some(id);
         }
-        if self.file != Some((m.dev(), m.ino())) || m.len() < self.offset {
+        if self.file != Some(id) || m.len() < self.offset {
             // Another writer's records are unread: refuse rather than skip them.
             return fail(ErrorCode::Conflict, "observer request log changed");
         }
@@ -208,8 +209,9 @@ impl Reads {
         let mut file = store::private(&pending, true)?;
         file.write_all(&bytes).map_err(unavailable)?;
         let m = file.metadata().map_err(unavailable)?;
+        let id = store::file_id(&file, &m)?;
         std::fs::rename(&pending, directory.join(LOG)).map_err(unavailable)?;
-        self.file = Some((m.dev(), m.ino()));
+        self.file = Some(id);
         self.offset = bytes.len() as u64;
         Ok(())
     }

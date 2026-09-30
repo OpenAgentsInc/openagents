@@ -121,10 +121,20 @@ uses `libc` 0.2 directly — `openpty`, `setsid`, `TIOCSCTTY`, `TIOCSWINSZ`,
   beside the supervisor's process-group conventions, plus Windows console
   support this crate refuses to use. The system calls above are the whole
   requirement.
-- The host half is Unix only. `libc` and `supervise` are target-gated
-  dependencies of the optional `host` feature; on another platform the host
-  compiles and refuses every open as `unavailable`. The client half builds
-  without them.
+- The host half is Unix and Windows. `libc` and `supervise` are target-gated
+  dependencies of the optional `host` feature; on Windows it uses ConPTY
+  through `windows-sys` 0.61 instead
+  ([#9980](https://github.com/OpenAgentsInc/openagents/issues/9980)), and
+  on another platform the host compiles and refuses every open as
+  `unavailable`. The client half builds without them.
+
+On Windows ([#9980](https://github.com/OpenAgentsInc/openagents/issues/9980)),
+`supervise` (job objects), `coder-pty` (ConPTY), `acp-client`, the new
+`private-fs` (owner-only DACLs), and `coder-host` (the control pipe and
+Credential Manager) call Win32 through `windows-sys` 0.61, which the graph
+already resolved for `tokio` and `iroh`; `knowledge` and `ext-eval` take
+their random bytes from `getrandom` 0.3, also already resolved. The
+resolved graph gains no registry package.
 - On glibc the crate links `libutil`, which holds `openpty` before glibc 2.34
   and remains as an empty compatibility library afterwards.
 - macOS implements `openpty` with the non-reentrant `ptsname`, and concurrent

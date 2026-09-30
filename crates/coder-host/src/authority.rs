@@ -9,6 +9,7 @@
 //! therefore reaches open channels and terminal attachments on their next
 //! check. A snapshot that cannot be reloaded fails closed.
 
+#[cfg(unix)]
 use std::os::unix::fs::MetadataExt;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard, TryLockError};
@@ -290,6 +291,19 @@ impl Authority {
         }
     }
 
+    #[cfg(windows)]
+    fn stamp(&self) -> Option<Stamp> {
+        // The store replaces its file by a rename, which changes the file
+        // index as it changes an inode.
+        let (identity, metadata) = private_fs::identity_of(&self.state).ok()?;
+        Some(Stamp {
+            inode: identity.index,
+            len: metadata.len(),
+            modified: metadata.modified().ok(),
+        })
+    }
+
+    #[cfg(unix)]
     fn stamp(&self) -> Option<Stamp> {
         let metadata = std::fs::metadata(&self.state).ok()?;
         Some(Stamp {

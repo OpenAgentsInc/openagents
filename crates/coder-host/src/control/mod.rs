@@ -4,7 +4,9 @@
 //! protocol (`openagents_connect::control`) to a running host over a Unix
 //! socket. The socket is `0600` in a `0700` directory, and the host serves a
 //! peer only when the kernel reports the peer's user ID equal to its own
-//! (see [`socket`]). A caller that passes is the local operator, which
+//! (see `socket`). On Windows the same protocol runs over this user's named
+//! pipe, whose DACL admits only the user and whose server checks every
+//! client's token user (see [`windows`]). A caller that passes is the local operator, which
 //! NIP-HOST treats as the owner acting with a command on the host: it can
 //! create and cancel invitations (connect codes), list and revoke devices,
 //! get and set the auto-start policy and the projects, and read status. No
@@ -21,7 +23,7 @@ use coder_access::{Right, Rights};
 use openagents_connect::control::{
     self, Autostart, Device, Op, Project, Reply, Request, Response, Status,
 };
-use tokio::net::UnixStream;
+use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::sync::Semaphore;
 
 use crate::config::Control;
@@ -29,9 +31,11 @@ use crate::serve::Shared;
 use crate::settings::ServeSettings;
 use crate::{Error, Result};
 
+#[cfg(unix)]
 pub mod socket;
 pub mod windows;
 
+#[cfg(unix)]
 pub use socket::{Bound, own_uid};
 
 /// Connections served at once; more wait for a slot.
@@ -41,20 +45,34 @@ pub const CONNECT_GRANT_SECS: u64 = coder_access::protocol::MAX_GRANT_LIFETIME;
 
 /// The default socket path for this platform, or `None` where the
 /// variable it needs is unset.
+#[cfg(unix)]
 #[must_use]
 pub fn default_path() -> Option<PathBuf> {
     control::socket_path()
 }
 
+/// This user's control pipe name, or `None` when the process token cannot
+/// be read.
+#[cfg(windows)]
+#[must_use]
+pub fn default_path() -> Option<PathBuf> {
+    windows::current_user_sid()
+        .ok()
+        .and_then(|sid| windows::pipe_name(&sid))
+        .map(PathBuf::from)
+}
+
 /// Bind the control socket the configuration names.
 ///
 /// # Errors
-/// As [`socket::bind`].
+/// As `socket::bind`.
+#[cfg(unix)]
 pub async fn bind(config: &Control) -> Result<Bound> {
     socket::bind(&config.path, config.uid).await
 }
 
 /// Serve the bound socket until the host stops.
+#[cfg(unix)]
 pub(crate) async fn serve(shared: Arc<Shared>, bound: Bound) {
     let slots = Arc::new(Semaphore::new(CONNECTIONS));
     loop {
@@ -78,8 +96,108 @@ pub(crate) async fn serve(shared: Arc<Shared>, bound: Bound) {
     }
 }
 
+/// The bound control pipe on Windows.
+#[cfg(windows)]
+pub struct Bound {
+    pipe: windows::ControlPipe,
+    path: PathBuf,
+}
+
+#[cfg(windows)]
+impl std::fmt::Debug for Bound {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Bound").field("path", &self.path).finish()
+    }
+}
+
+#[cfg(windows)]
+impl Bound {
+    /// The pipe's name.
+    #[must_use]
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+}
+
+/// Windows admits a control client by its token's user SID, not a user ID,
+/// so the configuration's user ID is not read there; this is zero.
+#[cfg(windows)]
+#[must_use]
+pub fn own_uid() -> u32 {
+    0
+}
+
+/// How long a bind waits for a pipe that another host still holds.
+#[cfg(windows)]
+const BIND_WAIT: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// Bind the control pipe the configuration names: this user's
+/// (`\\.\pipe\openagents-control-<SID>`), or another local pipe name a
+/// test chooses. Either way its DACL admits only this user and it is the
+/// name's first instance, so a pipe another process already holds refuses
+/// the bind.
+///
+/// # Errors
+/// Refuses a name that is not a local pipe name, or a pipe already held.
+#[cfg(windows)]
+pub async fn bind(config: &Control) -> Result<Bound> {
+    let name = config.path.to_string_lossy().into_owned();
+    // A host that restarts itself starts its successor before it exits, so
+    // the name can stay held for a moment; a host that keeps running holds
+    // it past this wait.
+    let deadline = std::time::Instant::now() + BIND_WAIT;
+    let pipe = loop {
+        match windows::ControlPipe::bind_at(&name) {
+            Ok(pipe) => break pipe,
+            Err(_) if std::time::Instant::now() < deadline => {
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            }
+            Err(error) => {
+                return Err(Error::Config(format!(
+                    "the control pipe {name} cannot be created ({error}); is another host running?"
+                )));
+            }
+        }
+    };
+    Ok(Bound {
+        path: config.path.clone(),
+        pipe,
+    })
+}
+
+/// Serve the bound pipe until the host stops. A client that is not this
+/// user is disconnected before a byte is read.
+#[cfg(windows)]
+pub(crate) async fn serve(shared: Arc<Shared>, bound: Bound) {
+    let Bound { mut pipe, .. } = bound;
+    let slots = Arc::new(Semaphore::new(CONNECTIONS));
+    loop {
+        let stream = match pipe
+            .accept(|refusal| eprintln!("coder host: refused a control client: {refusal}"))
+            .await
+        {
+            Ok(stream) => stream,
+            Err(error) => {
+                // A pipe that cannot make its next instance cannot serve
+                // anyone; wait rather than spin.
+                eprintln!("coder host: the control pipe failed: {error}");
+                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                continue;
+            }
+        };
+        let Ok(slot) = slots.clone().acquire_owned().await else {
+            return;
+        };
+        let shared = shared.clone();
+        tokio::spawn(async move {
+            connection(shared, stream).await;
+            drop(slot);
+        });
+    }
+}
+
 /// Answer requests on one connection, in order, until the client closes.
-async fn connection(shared: Arc<Shared>, mut stream: UnixStream) {
+async fn connection<S: AsyncRead + AsyncWrite + Unpin>(shared: Arc<Shared>, mut stream: S) {
     loop {
         let request = match control::next_request(&mut stream).await {
             Ok(Some(request)) => request,

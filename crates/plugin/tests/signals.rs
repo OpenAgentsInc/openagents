@@ -7,6 +7,11 @@
 //! Wasmtime starts blocks the signal, which leaves the kernel no other
 //! thread to deliver it to.
 
+//!
+//! Windows has no Unix signals, so there the test is empty.
+
+#![cfg_attr(not(unix), allow(unused_imports))]
+
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
@@ -14,8 +19,13 @@ use std::sync::atomic::AtomicBool;
 use plugin::{Limits, Profile, Snapshot, invoke};
 use serde_json::json;
 
+#[cfg(not(unix))]
+fn main() {}
+
+#[cfg(unix)]
 extern "C" fn ignore(_: libc::c_int) {}
 
+#[cfg(unix)]
 fn main() {
     // SAFETY: installs a no-op handler, as a host that reaps children
     // does, and blocks it on this thread; no Rust-managed state changes.

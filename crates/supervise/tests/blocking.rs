@@ -1,5 +1,9 @@
 //! The blocking half owns a tree the same way the asynchronous one does.
 
+// The programs these run (`sh`, `sleep`, `kill`) are Unix's; `windows.rs`
+// runs the same contract through `cmd`.
+#![cfg(unix)]
+
 use std::process::{Command, Stdio};
 use std::time::Duration;
 

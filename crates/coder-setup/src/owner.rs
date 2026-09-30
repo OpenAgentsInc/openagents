@@ -35,7 +35,6 @@ pub fn default_path() -> Result<PathBuf> {
 /// user, one that group or others can read or write, and malformed contents.
 /// No message repeats the contents.
 pub fn load(path: &Path) -> Result<SecretKey> {
-    use std::os::unix::fs::MetadataExt;
     let meta = std::fs::symlink_metadata(path).map_err(|_| {
         Error::new(format!(
             "no owner key at {}; create one with `coder link owner init`",
@@ -45,14 +44,25 @@ pub fn load(path: &Path) -> Result<SecretKey> {
     if !meta.file_type().is_file() {
         return Err(Error::new("the owner key is not a regular file"));
     }
-    // SAFETY: `getuid` has no preconditions and cannot fail.
-    let uid = unsafe { libc::getuid() };
-    if meta.uid() != uid {
-        return Err(Error::new("the owner key file belongs to another user"));
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        // SAFETY: `getuid` has no preconditions and cannot fail.
+        let uid = unsafe { libc::getuid() };
+        if meta.uid() != uid {
+            return Err(Error::new("the owner key file belongs to another user"));
+        }
+        if meta.mode() & 0o077 != 0 {
+            return Err(Error::new(format!(
+                "the owner key file is open to group or others; run chmod 600 {}",
+                path.display()
+            )));
+        }
     }
-    if meta.mode() & 0o077 != 0 {
+    #[cfg(windows)]
+    if !private_fs::is_private_path(path).unwrap_or(false) {
         return Err(Error::new(format!(
-            "the owner key file is open to group or others; run chmod 600 {}",
+            "the owner key file must belong to this user and be open to no other; restrict {} with icacls",
             path.display()
         )));
     }
@@ -95,25 +105,20 @@ pub fn parse(text: &str) -> Result<SecretKey> {
 /// Reports a failed write, and an existing key that does not load.
 pub fn create(path: &Path) -> Result<(String, bool)> {
     use std::io::Write;
-    use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
     if std::fs::symlink_metadata(path).is_ok() {
         return Ok((coder_reach::pubkey(&load(path)?), false));
     }
     let parent = path
         .parent()
         .ok_or_else(|| Error::new("the owner key path has no directory"))?;
-    std::fs::DirBuilder::new()
-        .recursive(true)
-        .mode(0o700)
-        .create(parent)
+    crate::private::create_dir_all(parent)
         .map_err(|_| Error::new("cannot create the owner key directory"))?;
     let secret = SecretKey::new(&mut secp256k1::rand::rng());
-    let mut file = std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .mode(0o600)
+    let mut file = crate::private::file(std::fs::OpenOptions::new().write(true).create_new(true))
         .open(path)
         .map_err(|_| Error::new("cannot create the owner key file"))?;
+    #[cfg(windows)]
+    private_fs::restrict(path).map_err(|_| Error::new("cannot create the owner key file"))?;
     file.write_all(format!("{}\n", secret.display_secret()).as_bytes())
         .and_then(|()| file.sync_all())
         .map_err(|_| Error::new("cannot write the owner key file"))?;
@@ -139,7 +144,7 @@ pub fn public_key(text: &str) -> Result<String> {
     Ok(hex)
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
     use std::os::unix::fs::PermissionsExt;

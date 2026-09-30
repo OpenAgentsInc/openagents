@@ -1,0 +1,18 @@
+[package]
+name = "private-fs"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Owner-only files and directories on Windows: the counterpart of the 0600 and 0700 modes, the owner check, and O_NOFOLLOW that the host's Unix code keeps its state with."
+
+# Windows only; on every other platform the crate is empty, and callers keep
+# their mode bits and `geteuid` checks.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_Security_Authorization", "Win32_Storage_FileSystem", "Win32_System_LibraryLoader", "Win32_System_SystemServices", "Win32_System_Threading"] }
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true

@@ -8,11 +8,12 @@ description = "Host terminal sessions over a real PTY with bounded replay, and t
 
 [features]
 default = ["host"]
-# The host half: real PTYs, process groups, and the replay ring. Unix only;
-# elsewhere it compiles to a host that refuses every open. A client build
-# (mobile, a renderer) disables default features and keeps the portable
-# wire types and client state.
-host = ["dep:libc", "dep:supervise"]
+# The host half: real PTYs (a Unix PTY, or a Windows pseudoconsole),
+# process groups or job objects, and the replay ring. Elsewhere it compiles
+# to a host that refuses every open. A client build (mobile, a renderer)
+# disables default features and keeps the portable wire types and client
+# state.
+host = ["dep:libc", "dep:supervise", "dep:windows-sys"]
 
 [dependencies]
 base64 = "0.22"
@@ -23,6 +24,11 @@ serde_json = "1"
 libc = { version = "0.2", optional = true }
 supervise = { path = "../supervise", default-features = false, optional = true }
 
+# The Windows host: ConPTY, the job object a terminal's tree runs in, and
+# the system random source.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", optional = true, features = ["Win32_Foundation", "Win32_Security", "Win32_Security_Cryptography", "Win32_Storage_FileSystem", "Win32_System_Console", "Win32_System_IO", "Win32_System_JobObjects", "Win32_System_Pipes", "Win32_System_Threading"] }
+
 [dev-dependencies]
 tempfile = "3"
 
@@ -30,8 +36,16 @@ tempfile = "3"
 [target.'cfg(unix)'.dev-dependencies]
 coder-boundary = { path = "../coder-boundary" }
 
+# Checks that a terminal's process is gone.
+[target.'cfg(windows)'.dev-dependencies]
+supervise = { path = "../supervise" }
+
 [[test]]
 name = "pty"
+required-features = ["host"]
+
+[[test]]
+name = "windows"
 required-features = ["host"]
 
 [lints]

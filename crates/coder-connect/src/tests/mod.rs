@@ -519,16 +519,19 @@ fn strict_destinations_schemas_and_private_store_permissions() {
     let mut value: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
     value["mutation"] = serde_json::json!(true);
     assert!(ConnectionCode::parse(&serde_json::to_vec(&value).unwrap()).is_err());
-    use std::os::unix::fs::PermissionsExt;
-    std::fs::set_permissions(
-        f.state.join("observer.json"),
-        std::fs::Permissions::from_mode(0o644),
-    )
-    .unwrap();
-    assert_eq!(
-        f.host().relays(f.now).unwrap_err().code,
-        ErrorCode::Forbidden
-    );
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(
+            f.state.join("observer.json"),
+            std::fs::Permissions::from_mode(0o644),
+        )
+        .unwrap();
+        assert_eq!(
+            f.host().relays(f.now).unwrap_err().code,
+            ErrorCode::Forbidden
+        );
+    }
 }
 
 #[test]

@@ -7,8 +7,11 @@
 //! placement then skips it.
 //!
 //! CPU use is the one-minute load average divided by the CPU count, capped
-//! at 100 percent. Available memory is `MemAvailable` over `MemTotal` on
-//! Linux and the kernel's memory status level on macOS.
+//! at 100 percent. Windows has no load average, so there it is the busy
+//! share of CPU time since the previous sample (`GetSystemTimes`), and the
+//! first sample is withheld. Available memory is `MemAvailable` over
+//! `MemTotal` on Linux, the kernel's memory status level on macOS, and the
+//! available share of physical memory on Windows (`GlobalMemoryStatusEx`).
 
 use coder_reach::presence::{MAX_CPU_COUNT, Telemetry};
 
@@ -20,12 +23,13 @@ pub fn sample() -> Option<Telemetry> {
         .clamp(1, MAX_CPU_COUNT);
     Some(Telemetry {
         cpu_count: cpus,
-        cpu_utilization_pct: utilization(load_average()?, cpus),
+        cpu_utilization_pct: cpu_use(cpus)?,
         memory_available_pct: memory_available_pct()?,
     })
 }
 
 /// Load per CPU as a whole percentage, capped at 100.
+#[cfg(any(unix, test))]
 fn utilization(load: f64, cpus: u32) -> u8 {
     if !load.is_finite() || load <= 0.0 {
         return 0;
@@ -39,7 +43,66 @@ fn utilization(load: f64, cpus: u32) -> u8 {
     }
 }
 
+/// Recent CPU use, as a whole percentage.
+#[cfg(unix)]
+fn cpu_use(cpus: u32) -> Option<u8> {
+    Some(utilization(load_average()?, cpus))
+}
+
+/// The busy share of all CPUs' time since the previous sample, as a whole
+/// percentage; `None` for the first sample, which has nothing to compare.
+#[cfg(windows)]
+fn cpu_use(_cpus: u32) -> Option<u8> {
+    use std::sync::Mutex;
+    use windows_sys::Win32::Foundation::FILETIME;
+    use windows_sys::Win32::System::Threading::GetSystemTimes;
+    static PREVIOUS: Mutex<Option<CpuTimes>> = Mutex::new(None);
+    let (mut idle, mut kernel, mut user) = (
+        FILETIME::default(),
+        FILETIME::default(),
+        FILETIME::default(),
+    );
+    // SAFETY: three writable FILETIMEs.
+    if unsafe { GetSystemTimes(&mut idle, &mut kernel, &mut user) } == 0 {
+        return None;
+    }
+    let ticks =
+        |time: FILETIME| (u64::from(time.dwHighDateTime) << 32) | u64::from(time.dwLowDateTime);
+    let now = CpuTimes {
+        idle: ticks(idle),
+        kernel: ticks(kernel),
+        user: ticks(user),
+    };
+    let previous = PREVIOUS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .replace(now);
+    busy_pct(previous?, now)
+}
+
+/// Cumulative system CPU times, in 100-nanosecond ticks. Kernel time
+/// includes idle time, as `GetSystemTimes` reports it.
+#[cfg(any(windows, test))]
+#[derive(Clone, Copy, Debug)]
+struct CpuTimes {
+    idle: u64,
+    kernel: u64,
+    user: u64,
+}
+
+/// The busy share of the time between two samples, as a whole percentage.
+#[cfg(any(windows, test))]
+fn busy_pct(before: CpuTimes, after: CpuTimes) -> Option<u8> {
+    let idle = after.idle.checked_sub(before.idle)?;
+    let total = after.kernel.checked_sub(before.kernel)? + after.user.checked_sub(before.user)?;
+    if total == 0 || idle > total {
+        return None;
+    }
+    u8::try_from((total - idle).saturating_mul(100) / total).ok()
+}
+
 /// The one-minute load average.
+#[cfg(unix)]
 fn load_average() -> Option<f64> {
     let mut loads = [0.0_f64; 3];
     // SAFETY: `loads` has room for the three samples requested.
@@ -84,12 +147,26 @@ fn memory_available_pct() -> Option<u8> {
     u8::try_from(level).ok().filter(|level| *level <= 100)
 }
 
-#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+#[cfg(windows)]
+fn memory_available_pct() -> Option<u8> {
+    use windows_sys::Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX};
+    let mut status = MEMORYSTATUSEX {
+        dwLength: u32::try_from(std::mem::size_of::<MEMORYSTATUSEX>()).ok()?,
+        ..MEMORYSTATUSEX::default()
+    };
+    // SAFETY: a MEMORYSTATUSEX with its length set.
+    if unsafe { GlobalMemoryStatusEx(&mut status) } == 0 {
+        return None;
+    }
+    percent_of(status.ullAvailPhys, status.ullTotalPhys)
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "macos", windows)))]
 fn memory_available_pct() -> Option<u8> {
     None
 }
 
-#[cfg(any(target_os = "linux", test))]
+#[cfg(any(target_os = "linux", windows, test))]
 fn percent_of(part: u64, whole: u64) -> Option<u8> {
     if whole == 0 || part > whole {
         return None;
@@ -100,6 +177,20 @@ fn percent_of(part: u64, whole: u64) -> Option<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn windows_cpu_use_is_the_busy_share_between_samples() {
+        let at = |idle, kernel, user| CpuTimes { idle, kernel, user };
+        // 400 ticks passed, 100 of them idle: 75 percent busy.
+        assert_eq!(busy_pct(at(0, 0, 0), at(100, 300, 100)), Some(75));
+        assert_eq!(busy_pct(at(0, 0, 0), at(100, 100, 0)), Some(0));
+        assert_eq!(busy_pct(at(0, 0, 0), at(0, 50, 50)), Some(100));
+        // No time passed, a counter that went backwards, or more idle time
+        // than time: withheld.
+        assert_eq!(busy_pct(at(5, 5, 5), at(5, 5, 5)), None);
+        assert_eq!(busy_pct(at(5, 5, 5), at(4, 9, 9)), None);
+        assert_eq!(busy_pct(at(0, 0, 0), at(10, 5, 0)), None);
+    }
 
     #[test]
     fn utilization_is_load_per_cpu_capped() {

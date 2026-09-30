@@ -531,7 +531,7 @@ impl Store {
     /// no one waiting on it, such as an auto-start sweep, can wait out a
     /// holder whose disk sync is slow.
     pub fn open_waiting(dir: &Path, wait: Duration) -> Result<Self, Error> {
-        if !cfg!(unix) {
+        if !cfg!(any(unix, windows)) {
             return Err(Error::UnsupportedPlatform);
         }
         prepare_directory(dir)?;
@@ -716,7 +716,7 @@ impl Store {
             std::fs::rename(&pending, self.dir.join(STORE_FILE))?;
             #[cfg(test)]
             self.inject_fault(Fault::AfterRename)?;
-            File::open(&self.dir)?.sync_all()?;
+            sync_directory(&self.dir)?;
             Ok(())
         })();
         // A failure after rename is ambiguous to the caller. The next opener
@@ -742,7 +742,7 @@ impl Store {
         let path = self.dir.join(PENDING_FILE);
         if regular_or_absent(&path)? {
             std::fs::remove_file(path)?;
-            File::open(&self.dir)?.sync_all()?;
+            sync_directory(&self.dir)?;
         }
         Ok(())
     }
@@ -947,9 +947,93 @@ fn read_document(path: &Path) -> Result<Document, Error> {
 
 fn sync_directory_ancestry(path: &Path) -> Result<(), Error> {
     for ancestor in path.ancestors() {
-        File::open(ancestor)?.sync_all()?;
+        sync_directory(ancestor)?;
     }
     Ok(())
+}
+
+/// Flushes a directory's entries.
+#[cfg(unix)]
+fn sync_directory(path: &Path) -> Result<(), Error> {
+    File::open(path)?.sync_all()?;
+    Ok(())
+}
+
+/// Windows cannot flush a directory, and NTFS journals its entries, so
+/// this only checks that it is there.
+#[cfg(windows)]
+fn sync_directory(path: &Path) -> Result<(), Error> {
+    private_fs::open_dir(path)?;
+    Ok(())
+}
+
+#[cfg(not(any(unix, windows)))]
+fn sync_directory(_: &Path) -> Result<(), Error> {
+    Err(Error::UnsupportedPlatform)
+}
+
+/// The Windows form of the store directory's rule: every missing directory
+/// is created for this user alone (an owner-only DACL), and the store
+/// directory must be one this user owns that admits no one else.
+#[cfg(windows)]
+fn prepare_directory(path: &Path) -> Result<(), Error> {
+    match std::fs::symlink_metadata(path) {
+        Ok(_) => return verify_directory(path),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(Error::Io(error)),
+    }
+    let absolute = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        std::env::current_dir()?.join(path)
+    };
+    private_fs::create_dir_all(&absolute)?;
+    verify_directory(path)
+}
+
+#[cfg(windows)]
+fn verify_directory(path: &Path) -> Result<(), Error> {
+    let directory = private_fs::open_dir(path)?;
+    let metadata = directory.metadata()?;
+    if !metadata.is_dir()
+        || metadata.file_type().is_symlink()
+        || !private_fs::is_private(&directory)?
+    {
+        return Err(Error::UnsafePath);
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
+fn verify_same_file(path: &Path, file: &File) -> Result<(), Error> {
+    let (at_path, path_metadata) = private_fs::identity_of(path)?;
+    let opened = private_fs::identity(file)?;
+    if !path_metadata.is_file()
+        || path_metadata.file_type().is_symlink()
+        || !file.metadata()?.is_file()
+        || opened.links != 1
+        || (at_path.volume, at_path.index) != (opened.volume, opened.index)
+        || !private_fs::is_private(file)?
+    {
+        return Err(Error::UnsafePath);
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
+fn private_open(path: &Path, create: bool, write: bool) -> Result<File, Error> {
+    if !create {
+        regular_or_absent(path)?;
+    }
+    let file = private_fs::nofollow(
+        OpenOptions::new()
+            .read(true)
+            .write(write)
+            .create_new(create),
+    )
+    .open(path)?;
+    verify_same_file(path, &file)?;
+    Ok(file)
 }
 
 #[cfg(unix)]
@@ -985,7 +1069,7 @@ fn prepare_directory(path: &Path) -> Result<(), Error> {
         }
         verify_directory(&directory)?;
         // Persist each new directory entry as well as the document inside it.
-        File::open(directory.parent().ok_or(Error::UnsafePath)?)?.sync_all()?;
+        sync_directory(directory.parent().ok_or(Error::UnsafePath)?)?;
     }
     verify_directory(path)
 }
@@ -1047,19 +1131,19 @@ fn private_open(path: &Path, create: bool, write: bool) -> Result<File, Error> {
     Ok(file)
 }
 
-#[cfg(not(unix))]
+#[cfg(not(any(unix, windows)))]
 fn prepare_directory(_: &Path) -> Result<(), Error> {
     Err(Error::UnsupportedPlatform)
 }
-#[cfg(not(unix))]
+#[cfg(not(any(unix, windows)))]
 fn verify_directory(_: &Path) -> Result<(), Error> {
     Err(Error::UnsupportedPlatform)
 }
-#[cfg(not(unix))]
+#[cfg(not(any(unix, windows)))]
 fn verify_same_file(_: &Path, _: &File) -> Result<(), Error> {
     Err(Error::UnsupportedPlatform)
 }
-#[cfg(not(unix))]
+#[cfg(not(any(unix, windows)))]
 fn private_open(_: &Path, _: bool, _: bool) -> Result<File, Error> {
     Err(Error::UnsupportedPlatform)
 }

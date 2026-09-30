@@ -37,13 +37,38 @@ pub fn copy_tree(from: &Path, to: &Path) -> Result<(), String> {
             copy_tree(&path, &target)?;
         } else if kind.is_symlink() {
             let link = std::fs::read_link(&path).map_err(|error| error.to_string())?;
-            std::os::unix::fs::symlink(link, &target).map_err(|error| error.to_string())?;
+            copy_link(&path, &link, &target)?;
         } else {
             std::fs::copy(&path, &target)
                 .map_err(|error| format!("{}: {error}", path.display()))?;
         }
     }
     Ok(())
+}
+
+/// Makes `target` a symbolic link to `link`, as the link at `path` is.
+#[cfg(unix)]
+fn copy_link(_path: &Path, link: &Path, target: &Path) -> Result<(), String> {
+    std::os::unix::fs::symlink(link, target).map_err(|error| error.to_string())
+}
+
+/// Makes `target` a symbolic link to `link`, as the link at `path` is.
+/// Windows tells a directory link from a file link, and making either
+/// needs Developer Mode or the right to create symbolic links; without
+/// it the copy refuses rather than drop the link.
+#[cfg(windows)]
+fn copy_link(path: &Path, link: &Path, target: &Path) -> Result<(), String> {
+    let made = if std::fs::metadata(path).is_ok_and(|meta| meta.is_dir()) {
+        std::os::windows::fs::symlink_dir(link, target)
+    } else {
+        std::os::windows::fs::symlink_file(link, target)
+    };
+    made.map_err(|error| {
+        format!(
+            "{}: cannot copy a symbolic link here ({error}); turn on Developer Mode to allow it",
+            path.display()
+        )
+    })
 }
 
 /// Every file under `dir` a merge compares, by path relative to `dir`,

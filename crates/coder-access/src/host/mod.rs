@@ -1176,18 +1176,25 @@ pub(crate) fn same_digest(a: &str, b: &str) -> bool {
 
 /// Create the private store's parent directory with owner-only permissions.
 pub fn ensure_parent(directory: &Path) -> Result<()> {
-    use std::os::unix::fs::DirBuilderExt;
-    if let Some(parent) = directory.parent() {
+    #[cfg(unix)]
+    fn create(parent: &Path) -> std::io::Result<()> {
+        use std::os::unix::fs::DirBuilderExt;
         std::fs::DirBuilder::new()
             .recursive(true)
             .mode(0o700)
             .create(parent)
-            .map_err(|_| {
-                Error::new(
-                    Code::Unavailable,
-                    "cannot create the store's parent directory",
-                )
-            })?;
+    }
+    #[cfg(windows)]
+    fn create(parent: &Path) -> std::io::Result<()> {
+        private_fs::create_dir_all(parent)
+    }
+    if let Some(parent) = directory.parent() {
+        create(parent).map_err(|_| {
+            Error::new(
+                Code::Unavailable,
+                "cannot create the store's parent directory",
+            )
+        })?;
     }
     Ok(())
 }

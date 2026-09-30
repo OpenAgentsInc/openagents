@@ -3034,6 +3034,7 @@ mod tests {
         assert!(delegation.boundary.is_none());
     }
 
+    #[cfg(unix)]
     /// A pinned argv word's *target* is sealed, but the word itself is
     /// what the argv spells: a word inside a granted directory can be
     /// retargeted by the delegate after verification — the pinned script
@@ -3079,6 +3080,7 @@ mod tests {
         assert!(delegation.boundary.is_none());
     }
 
+    #[cfg(unix)]
     #[tokio::test]
     async fn a_trust_store_alias_under_a_writable_grant_refuses() {
         if !boundary_supported() {
@@ -3109,6 +3111,7 @@ mod tests {
         assert!(result.detail.contains("retarget"), "{}", result.detail);
     }
 
+    #[cfg(unix)]
     /// The same refusal through a symlinked directory: the word's parent
     /// is a link inside the grant, and the delegate could swing the link
     /// to a directory of its own. The ancestry check follows the link —

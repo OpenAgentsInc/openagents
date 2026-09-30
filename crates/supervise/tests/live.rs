@@ -1,6 +1,10 @@
 //! A watched job: output as it arrives, input while it runs, and a stop
 //! that owns the whole tree.
 
+// The programs these run (`sh`, `sleep`, `kill`) are Unix's; `windows.rs`
+// runs the same contract through `cmd`.
+#![cfg(unix)]
+
 use std::time::{Duration, Instant};
 
 use supervise::{Ending, Input, Job, Limits};

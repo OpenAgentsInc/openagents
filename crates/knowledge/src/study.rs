@@ -185,10 +185,7 @@ fn create(path: &Path, value: &[u8]) -> Result<(), String> {
     let mut file = options.open(path).map_err(fail)?;
     file.write_all(value).map_err(fail)?;
     file.sync_all().map_err(fail)?;
-    File::open(path.parent().ok_or("record has no parent")?)
-        .map_err(fail)?
-        .sync_all()
-        .map_err(fail)
+    crate::snapshot::sync_directory(path.parent().ok_or("record has no parent")?)
 }
 
 impl Plan {
@@ -324,6 +321,8 @@ impl Store {
             use std::os::unix::fs::PermissionsExt;
             std::fs::set_permissions(root, std::fs::Permissions::from_mode(0o700)).map_err(fail)?;
         }
+        #[cfg(windows)]
+        private_fs::restrict(root).map_err(fail)?;
         create(&root.join("candidate.json"), candidate)?;
         create(&root.join("plan.json"), &bytes(plan)?)?;
         create(&root.join("assignments.json"), &bytes(&plan.assignments())?)?;

@@ -5,6 +5,7 @@
 use coder_boundary::{Boundary, Snapshot};
 use serde_json::json;
 use std::io::Read;
+#[cfg(unix)]
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -91,15 +92,7 @@ async fn check(candidate: &str, executable: &Path) -> Result<bool, String> {
         .and_then(Path::parent)
         .ok_or("compiler toolchain")?;
     let scratch = tempfile::tempdir().map_err(|e| e.to_string())?;
-    let mut source = std::fs::OpenOptions::new()
-        .read(true)
-        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
-        .open(workspace.join("lib.rs"))
-        .map_err(|e| e.to_string())?;
-    let metadata = source.metadata().map_err(|e| e.to_string())?;
-    if !metadata.is_file() || metadata.nlink() != 1 {
-        return Err("candidate source must be an ordinary file".into());
-    }
+    let mut source = open_source(&workspace.join("lib.rs"))?;
     let mut bytes = Vec::new();
     source
         .by_ref()
@@ -162,6 +155,27 @@ async fn check(candidate: &str, executable: &Path) -> Result<bool, String> {
     }
     Ok(passed)
 }
+/// The candidate's source: an ordinary, singly linked file, never a link.
+#[cfg(unix)]
+fn open_source(path: &Path) -> Result<std::fs::File, String> {
+    let source = std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open(path)
+        .map_err(|e| e.to_string())?;
+    let metadata = source.metadata().map_err(|e| e.to_string())?;
+    if !metadata.is_file() || metadata.nlink() != 1 {
+        return Err("candidate source must be an ordinary file".into());
+    }
+    Ok(source)
+}
+
+/// The checks run under the Unix write boundary only.
+#[cfg(not(unix))]
+fn open_source(_path: &Path) -> Result<std::fs::File, String> {
+    Err("the independent checks run on Unix only".into())
+}
+
 #[tokio::main]
 async fn main() {
     let arguments: Vec<String> = std::env::args().skip(1).collect();

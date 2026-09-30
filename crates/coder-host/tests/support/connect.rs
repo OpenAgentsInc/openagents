@@ -22,6 +22,7 @@ use openagents_connect::endpoint::{ConnectEndpoint, EndpointConfig};
 use openagents_connect::enroll::{self, EnrollRequest};
 use openagents_connect::stream::IrohStream;
 use secp256k1::SecretKey;
+#[cfg(unix)]
 use tokio::net::UnixStream;
 
 #[path = "../../../coder-control/src/tests/relay.rs"]
@@ -83,8 +84,7 @@ pub async fn host_with(options: Options) -> Host {
     let store = coder_host::access::host::Host::new(&access, POLICY);
     store.init(&pubkey(&key())).unwrap();
     let root = temp.path().join("host");
-    // A short path: a Unix socket path is bounded.
-    let socket = temp.path().join("c/control.sock");
+    let socket = control_path(&temp);
     let mut config = Config::new(access, vec![relay.clone()], 3);
     config.policy = POLICY;
     config.iroh = Some(Iroh::loopback());
@@ -128,11 +128,55 @@ pub async fn host_with(options: Options) -> Host {
     }
 }
 
+/// Where a test host's control channel is: a short socket path, since a
+/// Unix socket path is bounded.
+#[cfg(unix)]
+pub fn control_path(temp: &tempfile::TempDir) -> PathBuf {
+    temp.path().join("c/control.sock")
+}
+
+/// Where a test host's control channel is: a pipe of its own, so tests
+/// running at once, and a real host, never share a name.
+#[cfg(windows)]
+pub fn control_path(_temp: &tempfile::TempDir) -> PathBuf {
+    use std::sync::atomic::{AtomicU32, Ordering};
+    static NEXT: AtomicU32 = AtomicU32::new(0);
+    PathBuf::from(format!(
+        r"\\.\pipe\openagents-control-test-{}-{}",
+        std::process::id(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
+    ))
+}
+
 /// One request on a fresh control connection.
+#[cfg(unix)]
 pub async fn call(socket: &std::path::Path, op: Op) -> openagents_connect::Result<Reply> {
     let mut stream = UnixStream::connect(socket).await.map_err(|_| {
         openagents_connect::Error::new(openagents_connect::Code::Unavailable, "connect")
     })?;
+    control::call(&mut stream, &Request::new(7, op)).await
+}
+
+/// One request on a fresh control connection: the pipe, waiting while
+/// every instance is busy.
+#[cfg(windows)]
+pub async fn call(pipe: &std::path::Path, op: Op) -> openagents_connect::Result<Reply> {
+    use tokio::net::windows::named_pipe::ClientOptions;
+    // ERROR_PIPE_BUSY: the host's next instance is not up yet.
+    const BUSY: i32 = 231;
+    let unavailable =
+        || openagents_connect::Error::new(openagents_connect::Code::Unavailable, "connect");
+    let mut tries = 0;
+    let mut stream = loop {
+        match ClientOptions::new().open(pipe) {
+            Ok(stream) => break stream,
+            Err(error) if error.raw_os_error() == Some(BUSY) && tries < 50 => {
+                tries += 1;
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+            Err(_) => return Err(unavailable()),
+        }
+    };
     control::call(&mut stream, &Request::new(7, op)).await
 }
 

@@ -90,9 +90,14 @@ impl fmt::Debug for Proxy {
 ///
 /// Returns the I/O error when the system's random source can't be read.
 pub fn random_token() -> std::io::Result<String> {
-    use std::io::Read;
     let mut bytes = [0_u8; 32];
-    std::fs::File::open("/dev/urandom")?.read_exact(&mut bytes)?;
+    #[cfg(unix)]
+    {
+        use std::io::Read;
+        std::fs::File::open("/dev/urandom")?.read_exact(&mut bytes)?;
+    }
+    #[cfg(not(unix))]
+    getrandom::fill(&mut bytes).map_err(std::io::Error::other)?;
     Ok(bytes.iter().map(|byte| format!("{byte:02x}")).collect())
 }
 

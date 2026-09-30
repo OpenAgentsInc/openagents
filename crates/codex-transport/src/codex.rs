@@ -756,6 +756,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn taking_a_login_removes_the_file_and_the_link_to_it() {
         let dir = tempfile::tempdir().unwrap();
         let secrets = dir.path().join("secrets");

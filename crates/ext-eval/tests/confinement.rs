@@ -5,6 +5,8 @@
 //!
 //! One test sets process environment, so this file holds only it.
 
+#![cfg_attr(not(unix), allow(dead_code, unused_imports))]
+
 #[path = "support/runner.rs"]
 mod support;
 
@@ -29,6 +31,8 @@ const HARNESS_CODER_VARS: [&str; 10] = [
 ];
 
 #[test]
+// The run sandbox is Unix's; elsewhere every run refuses as unconfined.
+#[cfg(unix)]
 fn the_child_sees_nothing_of_the_operator() {
     // The operator's shell carries a config home and its own door.
     // SAFETY: this is the only test in this binary; nothing else reads

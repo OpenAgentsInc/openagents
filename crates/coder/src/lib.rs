@@ -69,6 +69,7 @@ pub mod gym_kb;
 pub mod identity;
 pub mod package;
 pub mod permit;
+mod private;
 pub mod product_kb;
 pub mod profiles;
 pub mod program;

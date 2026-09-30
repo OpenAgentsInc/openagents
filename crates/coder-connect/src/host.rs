@@ -3,6 +3,7 @@ use crate::{Error, ErrorCode, Result, fail, protocol::*, store::Store};
 use nostr::domain::Event;
 use secp256k1::SecretKey;
 use serde::{Deserialize, Serialize};
+#[cfg(unix)]
 use std::os::unix::fs::MetadataExt;
 
 pub const MAX_READS_PER_MINUTE: u32 = 240;
@@ -33,7 +34,7 @@ impl Root {
                 "selected history root is unavailable",
             )
         })?;
-        let metadata = std::fs::symlink_metadata(&canonical).map_err(|_| {
+        let (metadata, (device, inode)) = root_identity(&canonical).map_err(|_| {
             Error::new(
                 ErrorCode::Unavailable,
                 "selected history root is unavailable",
@@ -59,26 +60,40 @@ impl Root {
                 kind,
             },
             path: canonical,
-            device: metadata.dev(),
-            inode: metadata.ino(),
+            device,
+            inode,
         })
     }
     fn current(&self) -> Result<()> {
-        let m = std::fs::symlink_metadata(&self.path).map_err(|_| {
+        let (m, id) = root_identity(&self.path).map_err(|_| {
             Error::new(
                 ErrorCode::SourceChanged,
                 "admitted history root is unavailable",
             )
         })?;
         if !m.is_dir()
-            || m.dev() != self.device
-            || m.ino() != self.inode
+            || id != (self.device, self.inode)
             || self.path.canonicalize().ok().as_deref() != Some(self.path.as_path())
         {
             return fail(ErrorCode::SourceChanged, "admitted history root changed");
         }
         Ok(())
     }
+}
+/// A history root's metadata, not followed through a link, and its
+/// identity: device and inode, or on Windows volume and file index.
+#[cfg(unix)]
+fn root_identity(path: &Path) -> std::io::Result<(std::fs::Metadata, (u64, u64))> {
+    let m = std::fs::symlink_metadata(path)?;
+    let id = (m.dev(), m.ino());
+    Ok((m, id))
+}
+/// A history root's metadata, not followed through a link, and its
+/// identity: device and inode, or on Windows volume and file index.
+#[cfg(windows)]
+fn root_identity(path: &Path) -> std::io::Result<(std::fs::Metadata, (u64, u64))> {
+    let (id, m) = private_fs::identity_of(path)?;
+    Ok((m, (u64::from(id.volume), id.index)))
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -989,18 +1004,25 @@ fn history_error(error: coder_history::Error) -> Error {
 }
 
 pub fn ensure_parent(directory: &Path) -> Result<()> {
-    use std::os::unix::fs::DirBuilderExt;
-    if let Some(parent) = directory.parent() {
+    #[cfg(unix)]
+    fn create(parent: &Path) -> std::io::Result<()> {
+        use std::os::unix::fs::DirBuilderExt;
         std::fs::DirBuilder::new()
             .recursive(true)
             .mode(0o700)
             .create(parent)
-            .map_err(|_| {
-                Error::new(
-                    ErrorCode::Unavailable,
-                    "cannot create observer parent directory",
-                )
-            })?;
+    }
+    #[cfg(windows)]
+    fn create(parent: &Path) -> std::io::Result<()> {
+        private_fs::create_dir_all(parent)
+    }
+    if let Some(parent) = directory.parent() {
+        create(parent).map_err(|_| {
+            Error::new(
+                ErrorCode::Unavailable,
+                "cannot create observer parent directory",
+            )
+        })?;
     }
     Ok(())
 }

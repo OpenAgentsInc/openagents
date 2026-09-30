@@ -409,6 +409,7 @@ mod tests {
         directory
     }
 
+    #[cfg(unix)]
     #[tokio::test]
     async fn a_parent_symlink_cannot_create_a_checkout_outside_the_repository() {
         let repository = repository().await;

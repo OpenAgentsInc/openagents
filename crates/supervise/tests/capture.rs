@@ -4,6 +4,10 @@
 //! string it hands back at the end, so every test here asks a program for
 //! far more output than its cap allows and then asks what was kept.
 
+// The programs these run (`sh`, `sleep`, `kill`) are Unix's; `windows.rs`
+// runs the same contract through `cmd`.
+#![cfg(unix)]
+
 use std::time::Duration;
 
 use supervise::{Ending, Job, Limits};

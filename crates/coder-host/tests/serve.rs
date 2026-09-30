@@ -118,6 +118,8 @@ impl Fixture {
     }
 }
 
+// The host service, and its launcher, are Unix's.
+#[cfg(unix)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn ready_record_is_the_one_the_host_service_reads() {
     let fixture = fixture(9).await;

@@ -1,5 +1,9 @@
 //! Resources used by a subprocess outlive cancellation of its caller.
 
+// The programs these run (`sh`, `sleep`, `kill`) are Unix's; `windows.rs`
+// runs the same contract through `cmd`.
+#![cfg(unix)]
+
 use std::path::PathBuf;
 use std::time::Duration;
 

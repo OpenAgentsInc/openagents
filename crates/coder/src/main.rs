@@ -301,8 +301,36 @@ impl App {
     }
 }
 
+#[cfg(not(windows))]
 #[tokio::main]
 async fn main() -> ExitCode {
+    start().await
+}
+
+/// Windows sets no `HOME`, and Coder keeps its state under it, so a
+/// process started without one takes the user's profile folder
+/// (`USERPROFILE`) before anything reads it, then runs as elsewhere.
+#[cfg(windows)]
+fn main() -> ExitCode {
+    if std::env::var_os("HOME").is_none()
+        && let Some(profile) = std::env::var_os("USERPROFILE")
+    {
+        // SAFETY: no other thread exists yet; the runtime starts below.
+        unsafe { std::env::set_var("HOME", profile) };
+    }
+    match tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+    {
+        Ok(runtime) => runtime.block_on(start()),
+        Err(error) => {
+            eprintln!("coder: cannot start: {error}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+async fn start() -> ExitCode {
     let arguments: Vec<String> = std::env::args().skip(1).collect();
     if arguments.first().is_some_and(|argument| argument == "pair") {
         // Deprecated with coder link (#9978): the desktop app's QR code

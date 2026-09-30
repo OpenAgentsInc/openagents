@@ -69,9 +69,11 @@ security-framework = { version = "3.7", optional = true }
 keyring = { version = "=4.2.0", optional = true }
 
 # The Windows control pipe (`control/windows.rs`): its DACL and the peer's
-# token user.
+# token user. The Windows keychain key source: generic credentials in the
+# Credential Manager. Owner-only state files, where Unix has modes.
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_Security_Authorization", "Win32_System_Pipes", "Win32_System_Threading"] }
+private-fs = { path = "../private-fs" }
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_Security_Authorization", "Win32_Security_Credentials", "Win32_System_Pipes", "Win32_System_SystemInformation", "Win32_System_Threading"] }
 
 [dev-dependencies]
 # The ready record test decodes with the host service's own reader.

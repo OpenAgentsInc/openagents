@@ -18,6 +18,11 @@ sha2 = "0.10"
 nostr = { path = "../nostr" }
 secp256k1 = "0.31.1"
 
+# Windows: the system's random source, and owner-only bundle files.
+[target.'cfg(windows)'.dependencies]
+getrandom = "0.3"
+private-fs = { path = "../private-fs" }
+
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt", "net", "io-util"] }
 

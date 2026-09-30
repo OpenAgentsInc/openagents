@@ -344,6 +344,8 @@ fn aliased_spellings_of_one_ledger_share_one_first_read() {
         .expect("the directory resolves")
         .join("ledger.jsonl");
     let dotdot = dir.path().join("subdir/../ledger.jsonl");
+    // Unix adds a symlinked spelling below.
+    #[cfg_attr(not(unix), allow(unused_mut, clippy::useless_vec))]
     let mut spellings = vec![lexical.clone(), canonical, dotdot];
     #[cfg(unix)]
     {

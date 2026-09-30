@@ -7,8 +7,16 @@ description = "One subprocess supervisor: a job owns its process tree, and its o
 publish.workspace = true
 
 [dependencies]
-libc = "0.2"
 tokio = { version = "1", features = ["io-util", "macros", "process", "rt", "sync", "time"], optional = true }
+
+# Unix: process groups, signals, pipes, and resource limits.
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+# Windows: the job object a job's tree runs in, the suspended child's
+# threads, and the completion port its memory cap reports on.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_System_Diagnostics_ToolHelp", "Win32_System_IO", "Win32_System_JobObjects", "Win32_System_SystemServices", "Win32_System_Threading"] }
 
 [dev-dependencies]
 tempfile = "3"
@@ -38,6 +46,10 @@ required-features = ["job"]
 
 [[test]]
 name = "memory"
+required-features = ["job"]
+
+[[test]]
+name = "windows"
 required-features = ["job"]
 
 [lints]

@@ -168,7 +168,6 @@ pub fn run(
     deadline: Duration,
     cancel: &Cancel,
 ) -> std::io::Result<Finished> {
-    use std::os::unix::process::CommandExt;
     let stdout = std::fs::File::create(sandbox.out().join("stdout.jsonl"))?;
     let stderr = std::fs::File::create(sandbox.out().join("stderr.txt"))?;
     command
@@ -180,8 +179,21 @@ pub fn run(
         .current_dir(sandbox.cwd())
         .stdin(Stdio::null())
         .stdout(Stdio::from(stdout))
-        .stderr(Stdio::from(stderr))
-        .process_group(0);
+        .stderr(Stdio::from(stderr));
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        command.process_group(0);
+    }
+    // Windows has no process group to signal: the child gets no console
+    // window, and a stop ends the child alone.
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        command.creation_flags(CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW);
+    }
     let started = Instant::now();
     let mut child = command.spawn()?;
     let group = i32::try_from(child.id()).unwrap_or(0);
@@ -207,6 +219,7 @@ pub fn run(
 
 /// Stops a child's whole process group: `SIGTERM`, a short grace, then
 /// `SIGKILL`, and reaps it.
+#[cfg(unix)]
 fn stop(child: &mut std::process::Child, group: i32) {
     if group > 0 {
         // SAFETY: `killpg` takes a process group id and a signal number.
@@ -223,6 +236,14 @@ fn stop(child: &mut std::process::Child, group: i32) {
         // SAFETY: as above; the group may already be gone, which is fine.
         unsafe { libc::killpg(group, libc::SIGKILL) };
     }
+    let _ = child.kill();
+    let _ = child.wait();
+}
+
+/// Stops a child on Windows, which has no signal that asks a windowless
+/// program to stop: it is ended and reaped at once.
+#[cfg(not(unix))]
+fn stop(child: &mut std::process::Child, _group: i32) {
     let _ = child.kill();
     let _ = child.wait();
 }

@@ -428,21 +428,8 @@ pub fn refresh(dir: &Path, providers: &[Provider], now: u64, fetch: Fetch) -> Bo
 }
 
 fn write(dir: &Path, learned: &[(Provider, Outcome)], now: u64) -> Result<Book, String> {
-    use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
-    std::fs::DirBuilder::new()
-        .recursive(true)
-        .mode(0o700)
-        .create(dir)
-        .map_err(|_| format!("cannot create {}", dir.display()))?;
     let path = dir.join(FILE);
-    let mut file = std::fs::OpenOptions::new()
-        .read(true)
-        .write(true)
-        .create(true)
-        .truncate(false)
-        .mode(0o600)
-        .open(&path)
-        .map_err(|_| format!("cannot open {}", path.display()))?;
+    let mut file = crate::capacity::open_private(dir, &path)?;
     file.lock()
         .map_err(|_| format!("cannot lock {}", path.display()))?;
     let mut bytes = Vec::new();
@@ -877,9 +864,12 @@ mod tests {
             failed.describe(Provider::Codex, NOW),
             "unknown (probe: no_credential)"
         );
-        use std::os::unix::fs::PermissionsExt;
-        let meta = std::fs::metadata(dir.path().join(FILE)).unwrap();
-        assert_eq!(meta.permissions().mode() & 0o777, 0o600);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let meta = std::fs::metadata(dir.path().join(FILE)).unwrap();
+            assert_eq!(meta.permissions().mode() & 0o777, 0o600);
+        }
         // A malformed book reads as empty.
         std::fs::write(dir.path().join(FILE), b"{").unwrap();
         assert_eq!(Book::load(dir.path()), Book::default());

@@ -1980,6 +1980,8 @@ mod tests {
             .expect("the directory resolves")
             .join("ledger.jsonl");
         let dotdot = directory.path().join("subdir/../ledger.jsonl");
+        // Unix adds a symlinked spelling below.
+        #[cfg_attr(not(unix), allow(unused_mut, clippy::useless_vec))]
         let mut spellings = vec![lexical, canonical, dotdot];
         #[cfg(unix)]
         {

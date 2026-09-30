@@ -58,6 +58,11 @@ serde_json = "1"
 thiserror = "2"
 toml = "0.9"
 
+# Windows: the owner-only check a trusted extension directory passes.
+[target.'cfg(windows)'.dependencies]
+getrandom = "0.3"
+private-fs = { path = "../private-fs" }
+
 [dev-dependencies]
 tempfile = "3"
 

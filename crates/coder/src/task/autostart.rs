@@ -455,14 +455,10 @@ impl Entry {
 /// # Errors
 /// Reports a failed write.
 pub fn record(root: &Path, entry: &Entry) -> Result<(), String> {
-    use std::os::unix::fs::OpenOptionsExt;
     std::fs::create_dir_all(root).map_err(|_| "cannot create the host root".to_owned())?;
     let mut line = serde_json::to_vec(entry).map_err(|e| e.to_string())?;
     line.push(b'\n');
-    let mut file = std::fs::OpenOptions::new()
-        .append(true)
-        .create(true)
-        .mode(0o600)
+    let mut file = crate::private::file(std::fs::OpenOptions::new().append(true).create(true))
         .open(root.join(JOURNAL_FILE))
         .map_err(|_| "cannot open the auto-start journal".to_owned())?;
     file.write_all(&line)
@@ -1027,6 +1023,14 @@ pub fn spawn_sweeper(autostart: Arc<Autostart>) {
 }
 
 /// The canonical system shell the repository adapter admits.
+/// The task owner's program runs under the Unix write boundary, which
+/// Windows does not have, so auto-start refuses there.
+#[cfg(not(unix))]
+fn shell() -> std::result::Result<PathBuf, String> {
+    Err("repository tasks need the Unix write boundary, which this computer does not have".into())
+}
+
+#[cfg(unix)]
 fn shell() -> std::result::Result<PathBuf, String> {
     ["/bin/bash", "/bin/sh"]
         .iter()
@@ -1035,21 +1039,18 @@ fn shell() -> std::result::Result<PathBuf, String> {
 }
 
 fn write_private(path: &Path, bytes: &[u8]) -> std::result::Result<(), String> {
-    use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
     let parent = path.parent().ok_or("no parent directory")?;
-    std::fs::DirBuilder::new()
-        .recursive(true)
-        .mode(0o700)
-        .create(parent)
+    crate::private::create_dir_all(parent)
         .map_err(|_| format!("cannot create {}", parent.display()))?;
     let temporary = path.with_extension("tmp");
-    let mut file = std::fs::OpenOptions::new()
-        .write(true)
-        .create(true)
-        .truncate(true)
-        .mode(0o600)
-        .open(&temporary)
-        .map_err(|_| format!("cannot write {}", path.display()))?;
+    let mut file = crate::private::file(
+        std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true),
+    )
+    .open(&temporary)
+    .map_err(|_| format!("cannot write {}", path.display()))?;
     file.write_all(bytes)
         .and_then(|()| file.sync_all())
         .map_err(|_| format!("cannot write {}", path.display()))?;

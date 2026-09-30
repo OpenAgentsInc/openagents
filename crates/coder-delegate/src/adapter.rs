@@ -828,12 +828,16 @@ line step_finish '{"type":"step-finish","reason":"stop","tokens":{"total":13,"in
     /// Panics when the file can't be written; it is for tests.
     #[must_use]
     pub fn install(dir: &Path, name: &str, script: &str) -> PathBuf {
-        use std::os::unix::fs::PermissionsExt;
         std::fs::create_dir_all(dir).expect("stand-in directory");
         let path = dir.join(name);
         std::fs::write(&path, script).expect("stand-in script");
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755))
-            .expect("stand-in mode");
+        // The stand-ins are `/bin/sh` scripts, which only Unix runs.
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755))
+                .expect("stand-in mode");
+        }
         path
     }
 }

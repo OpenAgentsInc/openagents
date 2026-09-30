@@ -16,6 +16,7 @@
 use std::collections::BTreeMap;
 use std::fs::{File, OpenOptions};
 use std::io::Write;
+#[cfg(unix)]
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -164,14 +165,15 @@ impl Book {
     ) -> Result<T, Refused> {
         let store = |error: std::io::Error| Refused::Store(error.kind().to_string());
         std::fs::create_dir_all(&self.directory).map_err(store)?;
-        let lock = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .truncate(false)
-            .mode(0o600)
-            .open(self.directory.join(LOCK))
-            .map_err(store)?;
+        let lock = private_options(
+            OpenOptions::new()
+                .read(true)
+                .write(true)
+                .create(true)
+                .truncate(false),
+        )
+        .open(self.directory.join(LOCK))
+        .map_err(store)?;
         lock.lock().map_err(store)?;
         let path = self.directory.join(FILE);
         let mut state = match File::open(&path) {
@@ -199,13 +201,10 @@ impl Book {
             let bytes = serde_json::to_vec(&state)
                 .map_err(|_| Refused::Store("the book could not be written".into()))?;
             let pending = self.directory.join(".spend.pending");
-            let mut file = OpenOptions::new()
-                .write(true)
-                .create(true)
-                .truncate(true)
-                .mode(0o600)
-                .open(&pending)
-                .map_err(store)?;
+            let mut file =
+                private_options(OpenOptions::new().write(true).create(true).truncate(true))
+                    .open(&pending)
+                    .map_err(store)?;
             file.write_all(&bytes)
                 .and_then(|()| file.sync_all())
                 .map_err(store)?;
@@ -471,6 +470,14 @@ impl coder_access::host::Spends for Book {
 }
 
 pub mod cli;
+/// A new file here is `0600`; on Windows it inherits the host root's
+/// owner-only DACL.
+fn private_options(options: &mut OpenOptions) -> &mut OpenOptions {
+    #[cfg(unix)]
+    options.mode(0o600);
+    options
+}
+
 #[cfg(test)]
 mod tests;
 pub mod wake;

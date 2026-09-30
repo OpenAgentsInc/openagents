@@ -1,6 +1,9 @@
 //! `coder host` as separate processes: owner setup, the one-line invitation
 //! an SSH launcher reads, and `serve` under the host service's contract.
 
+// The service contract is stopped with `SIGTERM` and checks Unix modes.
+#![cfg(unix)]
+
 use std::path::Path;
 use std::process::{Command, Output, Stdio};
 use std::time::{Duration, Instant};

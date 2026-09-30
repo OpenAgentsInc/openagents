@@ -736,6 +736,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[cfg(unix)]
     async fn a_call_keeps_the_accounts_connectors_out() {
         // A stand-in binary that answers with the variable it was given.
         let dir = tempfile::tempdir().unwrap();
@@ -756,6 +757,7 @@ mod tests {
     }
 
     /// A stand-in `claude` binary running `script`.
+    #[cfg(unix)]
     fn stand_in(dir: &Path, script: &str) -> PathBuf {
         use std::os::unix::fs::PermissionsExt;
         let binary = dir.join("claude");
@@ -765,6 +767,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[cfg(unix)]
     async fn the_structured_output_streams_and_the_call_returns_at_its_result() {
         let dir = tempfile::tempdir().unwrap();
         let binary = stand_in(
@@ -804,6 +807,7 @@ sleep 20
     }
 
     #[tokio::test]
+    #[cfg(unix)]
     async fn a_warm_binary_waits_for_its_prompt_and_answers_the_step() {
         let dir = tempfile::tempdir().unwrap();
         let started = dir.path().join("started");

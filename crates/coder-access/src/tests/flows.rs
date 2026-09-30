@@ -514,15 +514,31 @@ async fn administrator_lists_and_revokes_devices() {
 
 #[test]
 fn owner_is_established_locally_and_the_store_is_private() {
-    use std::os::unix::fs::PermissionsExt;
     let f = Fixture::local();
     let host = f.host();
     assert_eq!(host.init(&pubkey(&f.owner)).unwrap(), f.host_key);
     assert_eq!(host.init(&pubkey(&key())).unwrap_err().code, Code::Conflict);
-    let mode = |p: PathBuf| std::fs::metadata(p).unwrap().permissions().mode() & 0o777;
-    assert_eq!(mode(f.dir.clone()), 0o700);
-    for file in ["access.json", "access.lock", "host.key"] {
-        assert_eq!(mode(f.dir.join(file)), 0o600, "{file}");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = |p: PathBuf| std::fs::metadata(p).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode(f.dir.clone()), 0o700);
+        for file in ["access.json", "access.lock", "host.key"] {
+            assert_eq!(mode(f.dir.join(file)), 0o600, "{file}");
+        }
+    }
+    #[cfg(windows)]
+    for path in [
+        f.dir.clone(),
+        f.dir.join("access.json"),
+        f.dir.join("access.lock"),
+        f.dir.join("host.key"),
+    ] {
+        assert!(
+            private_fs::is_private_path(&path).unwrap(),
+            "{}",
+            path.display()
+        );
     }
     let issued = host
         .invite(

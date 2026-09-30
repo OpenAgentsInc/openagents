@@ -30,6 +30,10 @@ libc = { version = "0.2", optional = true }
 notify = { version = "8.2", optional = true }
 qrcodegen = { version = "1.8", optional = true }
 
+# Owner-only state on Windows, where there are no mode bits.
+[target.'cfg(windows)'.dependencies]
+private-fs = { path = "../private-fs" }
+
 [dev-dependencies]
 tempfile = "3"
 futures-util = "0.3"

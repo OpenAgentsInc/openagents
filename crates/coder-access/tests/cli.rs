@@ -111,6 +111,7 @@ async fn cli_invites_serves_lists_and_revokes() {
 #[tokio::test]
 async fn cli_reverse_enrollment_is_approved_by_the_owner() {
     use std::io::{BufRead, BufReader};
+    #[cfg(unix)]
     use std::os::unix::fs::OpenOptionsExt;
     let (relay, _relay_task, _) = relay::start().await;
     let temp = tempfile::tempdir().unwrap();
@@ -126,12 +127,13 @@ async fn cli_reverse_enrollment_is_approved_by_the_owner() {
         .to_owned();
     // A throwaway fixture key in a private file, as the CLI requires.
     let key_file = temp.path().join("owner.key");
-    let mut file = std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .mode(0o600)
-        .open(&key_file)
-        .unwrap();
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    options.mode(0o600);
+    let mut file = options.open(&key_file).unwrap();
+    #[cfg(windows)]
+    private_fs::restrict(&key_file).unwrap();
     std::io::Write::write_all(&mut file, owner.display_secret().to_string().as_bytes()).unwrap();
 
     let mut requester = Command::new(env!("CARGO_BIN_EXE_coder-access"))

@@ -12,24 +12,36 @@
 //! The host root defaults to `~/.openagents/host`. Read
 //! `docs/coder/runtime/host-service.md` for every option.
 
+#[cfg(unix)]
 use std::path::{Path, PathBuf};
+#[cfg(unix)]
 use std::process::ExitCode;
+#[cfg(unix)]
 use std::sync::atomic::{AtomicBool, Ordering};
+#[cfg(unix)]
 use std::time::{Duration, Instant};
 
+#[cfg(unix)]
 use coder_service::descriptor::UpdateState;
+#[cfg(unix)]
 use coder_service::launcher::{self, CONFIG_SCHEMA, Config, Launcher, Layout};
+#[cfg(unix)]
 use coder_service::service::{self, Platform, SystemRunner};
+#[cfg(unix)]
 use coder_service::{Error, Result, bundle};
 
+#[cfg(unix)]
 static STOP: AtomicBool = AtomicBool::new(false);
 
+#[cfg(unix)]
 extern "C" fn on_signal(_: libc::c_int) {
     STOP.store(true, Ordering::SeqCst);
 }
 
+#[cfg(unix)]
 const USAGE: &str = "usage: coder-service [--root DIR] (service (install|status|restart|uninstall|render) | run | update --to SHA256 [--wait SECONDS] | descriptor | adopt detect)";
 
+#[cfg(unix)]
 fn main() -> ExitCode {
     match real_main() {
         Ok(code) => code,
@@ -40,6 +52,7 @@ fn main() -> ExitCode {
     }
 }
 
+#[cfg(unix)]
 fn home() -> Result<PathBuf> {
     std::env::var_os("HOME")
         .map(PathBuf::from)
@@ -47,11 +60,13 @@ fn home() -> Result<PathBuf> {
         .ok_or_else(|| Error::Refused("HOME must be an absolute path".into()))
 }
 
+#[cfg(unix)]
 fn print(value: &impl serde::Serialize) -> Result<()> {
     println!("{}", serde_json::to_string_pretty(value)?);
     Ok(())
 }
 
+#[cfg(unix)]
 fn real_main() -> Result<ExitCode> {
     let mut args: Vec<String> = std::env::args().skip(1).collect();
     let home = home()?;
@@ -169,6 +184,7 @@ fn real_main() -> Result<ExitCode> {
     Ok(ExitCode::SUCCESS)
 }
 
+#[cfg(unix)]
 fn install(layout: &Layout, home: &Path, mut args: Vec<String>) -> Result<()> {
     let host_args = match args.iter().position(|arg| arg == "--") {
         Some(index) => {
@@ -253,6 +269,7 @@ fn install(layout: &Layout, home: &Path, mut args: Vec<String>) -> Result<()> {
     print(&report)
 }
 
+#[cfg(unix)]
 fn take_option(args: &mut Vec<String>, name: &str) -> Result<Option<String>> {
     let Some(index) = args.iter().position(|arg| arg == name) else {
         return Ok(None);
@@ -265,6 +282,7 @@ fn take_option(args: &mut Vec<String>, name: &str) -> Result<Option<String>> {
     Ok(Some(value))
 }
 
+#[cfg(unix)]
 fn take_flag(args: &mut Vec<String>, name: &str) -> bool {
     match args.iter().position(|arg| arg == name) {
         Some(index) => {
@@ -275,6 +293,7 @@ fn take_flag(args: &mut Vec<String>, name: &str) -> bool {
     }
 }
 
+#[cfg(unix)]
 fn no_extra(args: &[String]) -> Result<()> {
     match args.first() {
         Some(extra) => Err(Error::Refused(format!(
@@ -284,12 +303,14 @@ fn no_extra(args: &[String]) -> Result<()> {
     }
 }
 
+#[cfg(unix)]
 fn parse_number(value: &str, name: &str) -> Result<u64> {
     value
         .parse()
         .map_err(|_| Error::Refused(format!("{name} takes a whole number")))
 }
 
+#[cfg(unix)]
 fn absolute(path: &str) -> Result<PathBuf> {
     let path = PathBuf::from(path);
     if path.is_absolute() {
@@ -297,4 +318,16 @@ fn absolute(path: &str) -> Result<PathBuf> {
     } else {
         Ok(std::env::current_dir()?.join(path))
     }
+}
+
+/// The host service is a launchd or systemd unit, so this program has
+/// nothing to run on Windows, where the desktop app starts the host from
+/// the `Run` key.
+#[cfg(not(unix))]
+fn main() -> std::process::ExitCode {
+    eprintln!(
+        "{}",
+        serde_json::json!({ "error": "coder-service runs the host as a launchd or systemd service, which Windows does not have; the OpenAgents app starts the host there" })
+    );
+    std::process::ExitCode::from(2)
 }

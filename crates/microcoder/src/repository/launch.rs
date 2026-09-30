@@ -1,10 +1,15 @@
 //! Detach the common task owner while retaining the exact operator grant.
+#[cfg(unix)]
 use std::io::Write;
+#[cfg(unix)]
 use std::os::unix::fs::OpenOptionsExt;
+#[cfg(unix)]
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
+#[cfg(unix)]
 use std::process::{Command, Stdio};
 
+#[cfg(unix)]
 use coder::task::{self, Store};
 use serde::Serialize;
 
@@ -17,8 +22,16 @@ pub struct Launched {
     pub diagnostic_path: PathBuf,
 }
 
+/// A repository task runs under the Unix write boundary, which Windows does
+/// not have, so no task owner starts there.
+#[cfg(not(unix))]
+pub fn start(_directory: &Path, _bytes: &[u8]) -> Result<Launched, String> {
+    Err("repository tasks need the Unix write boundary, which this computer does not have".into())
+}
+
 /// A launch receipt means a host process started, not that it admitted the task.
 /// The child acquires the existing owner lease before any model or shell effect.
+#[cfg(unix)]
 pub fn start(directory: &Path, bytes: &[u8]) -> Result<Launched, String> {
     let attempt = || -> Result<Launched, Box<dyn std::error::Error>> {
         let grant = task::owner::Grant::parse(bytes)?;
@@ -138,6 +151,7 @@ pub fn start(directory: &Path, bytes: &[u8]) -> Result<Launched, String> {
 }
 
 /// This process's account name from the account database.
+#[cfg(unix)]
 fn account_name() -> Option<std::ffi::OsString> {
     use std::os::unix::ffi::OsStrExt;
     // SAFETY: getpwuid returns a pointer into static storage or null; the

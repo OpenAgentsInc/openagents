@@ -50,7 +50,7 @@
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::ffi::OsString;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, SyncSender, TrySendError};
@@ -64,9 +64,13 @@ use crate::wire::{
     Reason, Refusal, Resize, Signal, Size, Status, TerminalRef, Value,
 };
 
+mod cmdline;
 #[cfg(unix)]
 mod sys;
-#[cfg(not(unix))]
+#[cfg(windows)]
+#[path = "windows.rs"]
+mod sys;
+#[cfg(not(any(unix, windows)))]
 #[path = "unsupported.rs"]
 mod sys;
 
@@ -74,8 +78,9 @@ mod sys;
 /// killed, and how long the reader drains output after the child exits.
 #[cfg(unix)]
 pub const GRACE: Duration = supervise::GRACE;
-/// How long a terminal's group has to exit after a hang-up before it is
-/// killed, and how long the reader drains output after the child exits.
+/// How long a terminal's tree has to exit after a hang-up before it is
+/// killed, and how long the reader drains output after the child exits:
+/// `supervise::GRACE`, which this build does not link.
 #[cfg(not(unix))]
 pub const GRACE: Duration = Duration::from_millis(250);
 
@@ -206,19 +211,26 @@ impl std::fmt::Debug for Config {
 impl Config {
     /// Defaults with a fresh generation: `/bin/sh`, `TERM=xterm-256color`
     /// and this process's `PATH`, `HOME`, and `LANG`, a 1 MiB ring, 256 KiB
-    /// per second per attachment, and 30 minutes of idle life.
+    /// per second per attachment, and 30 minutes of idle life. On Windows
+    /// the shell is `%ComSpec%` (`cmd.exe`), and the variables are the ones
+    /// a Windows program expects to find ([`WINDOWS_ENV`]).
     #[must_use]
     pub fn new() -> Self {
         let mut base_env = vec![("TERM".to_string(), "xterm-256color".to_string())];
-        for name in ["PATH", "HOME", "LANG", "USER", "LOGNAME"] {
+        let inherited: &[&str] = if cfg!(windows) {
+            &WINDOWS_ENV
+        } else {
+            &["PATH", "HOME", "LANG", "USER", "LOGNAME"]
+        };
+        for name in inherited {
             if let Ok(value) = std::env::var(name) {
-                base_env.push((name.to_string(), value));
+                base_env.push(((*name).to_string(), value));
             }
         }
         Config {
             generation: sys::random_id(),
             workspaces: BTreeMap::new(),
-            shell: PathBuf::from("/bin/sh"),
+            shell: default_shell(),
             shell_args: Vec::new(),
             base_env,
             env_allow: BTreeSet::new(),
@@ -239,6 +251,44 @@ impl Config {
     pub fn workspace(mut self, id: impl Into<String>, root: impl Into<PathBuf>) -> Self {
         self.workspaces.insert(id.into(), root.into());
         self
+    }
+}
+
+/// The variables a terminal on Windows gets from the host's own
+/// environment: without `SystemRoot` many programs fail to start, and
+/// without `PATH` and `PATHEXT` a shell finds nothing.
+pub const WINDOWS_ENV: [&str; 16] = [
+    "SystemRoot",
+    "SystemDrive",
+    "windir",
+    "ComSpec",
+    "PATH",
+    "PATHEXT",
+    "USERPROFILE",
+    "USERNAME",
+    "USERDOMAIN",
+    "HOMEDRIVE",
+    "HOMEPATH",
+    "APPDATA",
+    "LOCALAPPDATA",
+    "ProgramData",
+    "TEMP",
+    "TMP",
+];
+
+/// The shell a `shell` launch runs: `/bin/sh`, or on Windows `%ComSpec%`,
+/// falling back to `cmd.exe` under `%SystemRoot%`.
+fn default_shell() -> PathBuf {
+    if cfg!(windows) {
+        std::env::var_os("ComSpec")
+            .map(PathBuf::from)
+            .filter(|path| path.is_absolute())
+            .unwrap_or_else(|| {
+                let root = std::env::var_os("SystemRoot").unwrap_or_else(|| r"C:\Windows".into());
+                PathBuf::from(root).join("System32").join("cmd.exe")
+            })
+    } else {
+        PathBuf::from("/bin/sh")
     }
 }
 
@@ -839,10 +889,19 @@ impl Inner {
                 self.config.shell.clone(),
                 self.config.shell_args.iter().map(OsString::from).collect(),
             ),
-            Launch::Command { program, args } => (
-                PathBuf::from(program),
-                args.iter().map(OsString::from).collect(),
-            ),
+            Launch::Command { program, args } => {
+                // The wire admits either form of absolute path; this host
+                // runs only its own, so a name is never searched for.
+                if !Path::new(program).is_absolute() {
+                    return Err(Refusal::malformed(
+                        "a command's program must be an absolute path on this host",
+                    ));
+                }
+                (
+                    PathBuf::from(program),
+                    args.iter().map(OsString::from).collect(),
+                )
+            }
         };
         let mut command = match &self.config.wrap {
             Some(wrap) => wrap.command(&program, &args).map_err(|why| {
@@ -927,6 +986,14 @@ impl Inner {
                 "the workspace is not admitted on this host",
             )
         })?;
+        // The wire refuses `/` and `..`; on Windows `\\`, a drive, and a
+        // `..` between backslashes are this host's own ways to leave.
+        if Path::new(dir)
+            .components()
+            .any(|part| !matches!(part, Component::Normal(_) | Component::CurDir))
+        {
+            return Err(Refusal::malformed("dir must not leave the workspace root"));
+        }
         let root = root.canonicalize().map_err(|_| {
             Refusal::new(Reason::Unavailable, "the workspace root is not available")
         })?;

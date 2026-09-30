@@ -14,12 +14,34 @@ fn traces() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../bench/terminal-bench/traces")
 }
 
+/// Puts the retained job at `from` at `to`: a link on Unix, and a copy on
+/// Windows, where making a link needs a privilege a test does not have.
+fn link(from: &std::path::Path, to: &std::path::Path) {
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(from, to).expect("a link");
+    #[cfg(not(unix))]
+    copy(from, to);
+}
+
+#[cfg(not(unix))]
+fn copy(from: &std::path::Path, to: &std::path::Path) {
+    if from.is_dir() {
+        std::fs::create_dir_all(to).expect("a directory");
+        for entry in std::fs::read_dir(from).expect("a listing") {
+            let entry = entry.expect("an entry");
+            copy(&entry.path(), &to.join(entry.file_name()));
+        }
+    } else {
+        std::fs::copy(from, to).expect("a copy");
+    }
+}
+
 /// A catalog over only the named retained jobs, linked into a temporary
 /// traces directory so the test doesn't read all of them.
 fn catalog_of(jobs: &[&str]) -> (tempfile::TempDir, Catalog) {
     let dir = tempfile::tempdir().expect("a temporary directory");
     for job in jobs {
-        std::os::unix::fs::symlink(traces().join(job), dir.path().join(job)).expect("a link");
+        link(&traces().join(job), &dir.path().join(job));
     }
     let catalog = Catalog::load(Sources {
         jobs: None,

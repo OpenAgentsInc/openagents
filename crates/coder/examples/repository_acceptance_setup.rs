@@ -2,8 +2,19 @@
 use coder::task::{self, checks};
 use coder_boundary::Snapshot;
 use serde_json::{Value, json};
+#[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
+
+/// Sets an owner-only `mode`; on Windows the path keeps what it inherited.
+fn owner_only(path: &Path, mode: u32) -> Result<(), String> {
+    #[cfg(unix)]
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode))
+        .map_err(|e| e.to_string())?;
+    #[cfg(not(unix))]
+    let _ = (path, mode);
+    Ok(())
+}
 
 fn git(root: &Path, args: &[&str]) -> Result<String, String> {
     let git = task::owner::GIT_PATHS
@@ -38,8 +49,7 @@ fn run() -> Result<Value, String> {
     }
     let root = PathBuf::from(&args[0]);
     std::fs::create_dir(&root).map_err(|e| e.to_string())?;
-    std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o700))
-        .map_err(|e| e.to_string())?;
+    owner_only(&root, 0o700)?;
     let root = root.canonicalize().map_err(|e| e.to_string())?;
     let controller = PathBuf::from(&args[1])
         .canonicalize()
@@ -129,8 +139,7 @@ fn run() -> Result<Value, String> {
         let workspace = workspace.canonicalize().map_err(|e| e.to_string())?;
         let program = root.join(format!("repository-check-{name}"));
         std::fs::copy(&checker, &program).map_err(|e| e.to_string())?;
-        std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o700))
-            .map_err(|e| e.to_string())?;
+        owner_only(&program, 0o700)?;
         let program = program.canonicalize().map_err(|e| e.to_string())?;
         let slug = format!("repository-check-{name}");
         let manifest = capabilities.join(format!("{slug}.json"));

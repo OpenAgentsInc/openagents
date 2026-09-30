@@ -367,6 +367,8 @@ impl Handler for Recorder<'_> {
     }
 }
 
+// Delegate history is kept only where `coder-history` reads it.
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 /// Copy the agent's session `session` from its store `database` into the
 /// task directory, beside the task's transcript, and note the copy on the
 /// transcript ([`coder_history::delegate`]), so a device reads the delegate's
@@ -407,6 +409,7 @@ pub(super) fn keep_delegate(
 /// The Devin CLI's session store for the agent process's environment
 /// `variables` ([`environment`], which carries the whole environment):
 /// under its `XDG_DATA_HOME`, else its `HOME`.
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 fn devin_database(variables: &[(String, String)]) -> Option<PathBuf> {
     let lookup = |name: &str| {
         variables
@@ -561,6 +564,9 @@ pub(crate) async fn turn(host: &Host, route: &GrantRoute, program: PathBuf) -> T
     if !group_clear {
         host.fail("the Devin process group did not stop");
     }
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+    let _ = &session_id;
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     keep_delegate(
         host,
         coder_history::Harness::Devin,
@@ -615,7 +621,7 @@ fn coder_history_mark() -> &'static str {
     coder_history::engine::MARK
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod tests {
     use super::super::tests::fixture_with;
     use super::super::{AgentEngine, Stage, run_stages};

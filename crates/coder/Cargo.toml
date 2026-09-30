@@ -51,6 +51,10 @@ nostr-transport = { path = "../nostr-transport" }
 plugin = { path = "../plugin" }
 receipts = { path = "../receipts" }
 
+# Owner-only state on Windows, where there are no modes.
+[target.'cfg(windows)'.dependencies]
+private-fs = { path = "../private-fs" }
+
 [dev-dependencies]
 coderbench = { path = "../coderbench" }
 tempfile = "3"

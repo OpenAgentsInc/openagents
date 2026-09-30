@@ -24,12 +24,11 @@
 //!
 //! The pure parts (names, the security descriptor, the admit rule) are
 //! compiled everywhere so their tests run on every platform; the pipe
-//! itself is `cfg(windows)`. The host does not build for Windows yet
-//! (`supervise` owns jobs through Unix process groups), so nothing serves
-//! this pipe until it does; the desktop app already dials it
+//! itself is `cfg(windows)`. The host serves it from [`super::serve`] with
+//! the same protocol as the socket, and the desktop app dials it
 //! (`openagents-desktop`'s `platform/windows.rs`, same name). The Windows
-//! code is cross-checked with `cargo clippy --target x86_64-pc-windows-gnu`
-//! on a copy of this file, and its test runs under Wine.
+//! code is checked with `cargo clippy --target x86_64-pc-windows-gnu`, and
+//! its tests run under Wine.
 
 use std::fmt;
 
@@ -92,6 +91,13 @@ pub fn pipe_name(sid: &str) -> Option<String> {
     is_valid_sid(sid).then(|| format!("{PIPE_PREFIX}{PIPE_STEM}{sid}"))
 }
 
+/// Whether `name` is a local pipe name with one component after
+/// [`PIPE_PREFIX`].
+pub fn is_local_pipe_name(name: &str) -> bool {
+    name.strip_prefix(PIPE_PREFIX)
+        .is_some_and(|rest| !rest.is_empty() && !rest.contains(['\\', '/']) && rest.len() <= 200)
+}
+
 /// The security descriptor, in SDDL, that the pipe is created with: owned by
 /// `sid`, and a protected DACL (`P`: nothing inherited) with one entry that
 /// allows `sid` generic-all. No other principal appears, so no other user,
@@ -118,7 +124,7 @@ pub use imp::{ControlPipe, current_user_sid};
 
 #[cfg(windows)]
 mod imp {
-    use super::{Refusal, admit, pipe_name, security_descriptor};
+    use super::{Refusal, admit, is_local_pipe_name, pipe_name, security_descriptor};
     use std::ffi::c_void;
     use std::io;
     use std::os::windows::io::AsRawHandle;
@@ -252,8 +258,24 @@ mod imp {
         pub fn bind() -> io::Result<Self> {
             let sid = current_user_sid()?;
             let name = pipe_name(&sid).ok_or_else(|| io::Error::other("malformed user SID"))?;
-            let next = create(&name, &sid, true)?;
-            Ok(Self { name, sid, next })
+            Self::bind_at(&name)
+        }
+
+        /// Creates the first instance of a control pipe named `name`, with
+        /// the same DACL and client check as [`ControlPipe::bind`]; a test
+        /// uses its own name so it never meets a running host. The name
+        /// must be a local pipe name, `\\.\pipe\` and one component.
+        pub fn bind_at(name: &str) -> io::Result<Self> {
+            if !is_local_pipe_name(name) {
+                return Err(io::Error::other("not a local pipe name"));
+            }
+            let sid = current_user_sid()?;
+            let next = create(name, &sid, true)?;
+            Ok(Self {
+                name: name.to_string(),
+                sid,
+                next,
+            })
         }
 
         /// The pipe's full name, for the client to dial.
@@ -376,6 +398,22 @@ mod tests {
         }
         // An injected SID never reaches the descriptor.
         assert_eq!(security_descriptor("S-1-5-18)(A;;GA;;;WD"), None);
+    }
+
+    #[test]
+    fn control_pipe_names_are_local_and_single() {
+        assert!(is_local_pipe_name(&pipe_name(ME).unwrap()));
+        assert!(is_local_pipe_name(r"\\.\pipe\openagents-control-test-1"));
+        for bad in [
+            r"\\.\pipe\",
+            r"\\server\pipe\openagents-control",
+            r"\\.\pipe\a\b",
+            r"\\.\pipe\a/b",
+            "openagents-control",
+            "/tmp/control.sock",
+        ] {
+            assert!(!is_local_pipe_name(bad), "accepted {bad:?}");
+        }
     }
 
     #[test]

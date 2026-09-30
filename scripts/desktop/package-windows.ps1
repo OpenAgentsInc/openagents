@@ -23,9 +23,8 @@ Without a certificate the packages are built unsigned and the script says
 so; -RequireSigning turns that into an error (use it for a release).
 
 -SkipCoder packages the window alone (as SKIP_CODER=1 does for the Mac
-bundle): `coder` does not build for Windows yet, because `supervise` owns
-a task's processes through Unix process groups. Without coder.exe the app
-registers no sign-in entry and shows the host as offline.
+bundle). Without coder.exe the app registers no sign-in entry and shows the
+host as offline.
 
 Needs: Rust with the x86_64-pc-windows-msvc target, the WiX Toolset v4 or
 later (`dotnet tool install --global wix`) for the MSI, and signtool (the

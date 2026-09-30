@@ -39,7 +39,6 @@ pub const PIPE_PREFIX: &str = r"\\.\pipe\openagents-control-";
 
 // Process creation flags, from `winbase.h`.
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-const DETACHED_PROCESS: u32 = 0x0000_0008;
 const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
 
 /// The `Run` value's command line for this app's executable `exe`: the
@@ -96,8 +95,13 @@ fn host_running() -> bool {
     })
 }
 
-/// Starts `coder.exe host serve`, detached and with no console window,
-/// unless a host already answers. The `Run` entry's command ends here.
+/// Starts `coder.exe host serve` with a console that has no window, unless
+/// a host already answers. The `Run` entry's command ends here.
+///
+/// The host gets a hidden console (`CREATE_NO_WINDOW`) rather than none
+/// (`DETACHED_PROCESS`): every console program it starts, such as `git`,
+/// shares that console, where with none each would open a window of its
+/// own on the desktop.
 pub fn start_host() -> io::Result<()> {
     if host_running() {
         return Ok(());
@@ -108,7 +112,7 @@ pub fn start_host() -> io::Result<()> {
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
-        .creation_flags(CREATE_NO_WINDOW | DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP)
+        .creation_flags(CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP)
         .spawn()
         .map(drop)
 }

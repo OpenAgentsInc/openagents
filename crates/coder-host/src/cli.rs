@@ -705,6 +705,7 @@ async fn serve(common: &Common, options: &mut Options, open_tasks: Box<OpenTasks
 
 /// Replace this process with a fresh start of the same command. Returns
 /// only on failure.
+#[cfg(unix)]
 fn reexec() -> Error {
     use std::os::unix::process::CommandExt;
     let Ok(program) = std::env::current_exe() else {
@@ -714,6 +715,29 @@ fn reexec() -> Error {
         .args(std::env::args_os().skip(1))
         .exec();
     Error::Config(format!("the host cannot start again: {error}"))
+}
+
+/// Start the same command again as a new process, with no console window,
+/// and end this one: Windows cannot replace a running image. The new host
+/// waits for this one's control pipe to close before it binds.
+#[cfg(windows)]
+fn reexec() -> Error {
+    use std::os::windows::process::CommandExt;
+    // Process creation flags, from `winbase.h`.
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
+    let Ok(program) = std::env::current_exe() else {
+        return Error::Config("the host cannot start again".into());
+    };
+    match std::process::Command::new(program)
+        .args(std::env::args_os().skip(1))
+        .stdin(std::process::Stdio::null())
+        .creation_flags(CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP)
+        .spawn()
+    {
+        Ok(_) => std::process::exit(0),
+        Err(error) => Error::Config(format!("the host cannot start again: {error}")),
+    }
 }
 
 /// `coder host adopt [detect]`: move a host set up the old way under the
@@ -742,6 +766,15 @@ fn adopt(args: &[String]) -> u8 {
     code
 }
 
+/// Windows never had the old way (key files under a launchd or systemd
+/// agent), so there is nothing to adopt.
+#[cfg(windows)]
+#[allow(clippy::unnecessary_wraps)]
+fn adopt_report(_detect_only: bool) -> std::result::Result<serde_json::Value, String> {
+    Ok(serde_json::json!({"kind": "none"}))
+}
+
+#[cfg(unix)]
 fn adopt_report(detect_only: bool) -> std::result::Result<serde_json::Value, String> {
     use coder_service::adopt::{self, Paths};
     let home = std::env::var_os("HOME")
@@ -860,32 +893,39 @@ fn keychain_keys() -> Result<crate::serve::keys::Keys> {
     )))
 }
 
-#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+#[cfg(windows)]
+#[allow(clippy::unnecessary_wraps)]
+fn keychain_keys() -> Result<crate::serve::keys::Keys> {
+    Ok(crate::serve::keys::Keys(Arc::new(
+        crate::serve::keys::CredentialManager::default(),
+    )))
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux", windows)))]
 fn keychain_keys() -> Result<crate::serve::keys::Keys> {
     Err(Error::Config(
-        "--keychain is macOS and Linux only here; pass --keys DIR".into(),
+        "--keychain is macOS, Linux, and Windows only here; pass --keys DIR".into(),
     ))
 }
 
 /// The `coder` program that runs `coder host autostart`, when this host is
 /// that program.
 fn autostart_program() -> Option<PathBuf> {
+    #[cfg(windows)]
+    let named = |name: &std::ffi::OsStr| name.eq_ignore_ascii_case("coder.exe");
+    #[cfg(not(windows))]
+    let named = |name: &std::ffi::OsStr| name == "coder";
     std::env::current_exe()
         .ok()
-        .filter(|path| path.file_name().is_some_and(|name| name == "coder"))
+        .filter(|path| path.file_name().is_some_and(named))
 }
 
 /// This computer's name for a connect code and a phone's list: the host
 /// name without a `.local` suffix, at most 48 bytes.
 fn computer_name() -> String {
-    let mut buffer = [0_u8; 256];
-    // SAFETY: gethostname writes at most `buffer.len()` bytes into `buffer`.
-    let status = unsafe { libc::gethostname(buffer.as_mut_ptr().cast(), buffer.len()) };
-    if status != 0 {
+    let Some(name) = host_name() else {
         return String::new();
-    }
-    let end = buffer.iter().position(|b| *b == 0).unwrap_or(buffer.len());
-    let name = String::from_utf8_lossy(&buffer[..end]);
+    };
     let name = name.strip_suffix(".local").unwrap_or(&name);
     let mut label = String::new();
     for c in name.chars().filter(|c| !c.is_control()) {
@@ -895,6 +935,36 @@ fn computer_name() -> String {
         label.push(c);
     }
     label
+}
+
+/// The system's host name.
+#[cfg(unix)]
+fn host_name() -> Option<String> {
+    let mut buffer = [0_u8; 256];
+    // SAFETY: gethostname writes at most `buffer.len()` bytes into `buffer`.
+    let status = unsafe { libc::gethostname(buffer.as_mut_ptr().cast(), buffer.len()) };
+    if status != 0 {
+        return None;
+    }
+    let end = buffer.iter().position(|b| *b == 0).unwrap_or(buffer.len());
+    Some(String::from_utf8_lossy(&buffer[..end]).into_owned())
+}
+
+/// The computer's DNS host name, as Settings > System > About shows it.
+#[cfg(windows)]
+fn host_name() -> Option<String> {
+    use windows_sys::Win32::System::SystemInformation::{
+        ComputerNameDnsHostname, GetComputerNameExW,
+    };
+    let mut buffer = [0_u16; 256];
+    let mut length = u32::try_from(buffer.len()).ok()?;
+    // SAFETY: `length` is the buffer's size in UTF-16 units, and the call
+    // writes at most that many.
+    if unsafe { GetComputerNameExW(ComputerNameDnsHostname, buffer.as_mut_ptr(), &mut length) } == 0
+    {
+        return None;
+    }
+    Some(String::from_utf16_lossy(buffer.get(..length as usize)?))
 }
 
 /// `--websocket-tls-cert FILE --websocket-tls-key FILE --websocket-name NAME`:
@@ -918,12 +988,19 @@ fn websocket_tls(options: &mut Options) -> Result<Option<WebsocketTls>> {
 
 /// The most open files the host asks for. macOS refuses a soft limit above
 /// its per-process maximum, 10,240 by default.
+#[cfg(unix)]
 const OPEN_FILES: u64 = 10_240;
 
 /// Raise the soft open-file limit toward the hard limit. A launchd agent
 /// starts with a soft limit of 256, too few for the terminals, channels, and
 /// task owners the host starts, which inherit it: a task owner's workspace
 /// snapshot of a full checkout failed with `Too many open files`.
+#[cfg(windows)]
+fn raise_open_file_limit() {
+    // Windows has no per-process open-file limit to raise.
+}
+
+#[cfg(unix)]
 fn raise_open_file_limit() {
     let mut limit = libc::rlimit {
         rlim_cur: 0,
@@ -942,7 +1019,32 @@ fn raise_open_file_limit() {
     }
 }
 
+/// Wait for Ctrl+C or Ctrl+Break, the console's close, or the session's
+/// sign-out or shutdown.
+#[cfg(windows)]
+async fn wait_for_stop() {
+    use tokio::signal::windows;
+    let (Ok(mut interrupt), Ok(mut brk), Ok(mut close), Ok(mut logoff), Ok(mut shutdown)) = (
+        windows::ctrl_c(),
+        windows::ctrl_break(),
+        windows::ctrl_close(),
+        windows::ctrl_logoff(),
+        windows::ctrl_shutdown(),
+    ) else {
+        std::future::pending::<()>().await;
+        return;
+    };
+    tokio::select! {
+        _ = interrupt.recv() => {},
+        _ = brk.recv() => {},
+        _ = close.recv() => {},
+        _ = logoff.recv() => {},
+        _ = shutdown.recv() => {},
+    }
+}
+
 /// Wait for `SIGTERM` or `SIGINT`.
+#[cfg(unix)]
 async fn wait_for_stop() {
     use tokio::signal::unix::{SignalKind, signal};
     let (Ok(mut term), Ok(mut interrupt)) = (
@@ -1111,6 +1213,7 @@ mod tests {
         assert_eq!(run(&other, no_tasks()).await, EXIT_FAILED);
     }
 
+    #[cfg(unix)]
     #[test]
     fn serve_raises_a_launchd_sized_open_file_limit() {
         let read = || {

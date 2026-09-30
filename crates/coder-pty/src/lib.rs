@@ -5,7 +5,8 @@
 //! into it, resizes it, detaches, and reattaches from another device to see
 //! the output it missed, bounded and in order. This crate has two halves:
 //!
-//! - `host` (the default `host` feature, Unix only) owns real PTYs. Each
+//! - `host` (the default `host` feature, Unix and Windows) owns real PTYs
+//!   (a pseudoconsole on Windows, whose tree is a job object). Each
 //!   terminal's process leads a session and process group of its own, as
 //!   `crates/supervise` requires of every job; closing, idle expiry, and
 //!   host shutdown end that group with `SIGHUP` and `SIGTERM`, then
@@ -25,7 +26,8 @@
 //!
 //! # Platform support
 //!
-//! The host needs a Unix PTY and Unix process groups. On another platform
+//! The host needs a Unix PTY and Unix process groups, or on Windows a
+//! pseudoconsole (ConPTY) and a job object. On another platform
 //! `host::Host::open` refuses with `unavailable` rather than pretending;
 //! the wire types and client state build everywhere.
 

@@ -11,6 +11,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "tokio",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1354,6 +1355,7 @@ dependencies = [
  "nostr-transport",
  "openrouter",
  "plugin",
+ "private-fs",
  "ratatui",
  "receipts",
  "reqwest 0.12.28",
@@ -1377,6 +1379,7 @@ dependencies = [
  "futures-util",
  "nostr",
  "nostr-transport",
+ "private-fs",
  "secp256k1 0.31.1",
  "serde",
  "serde_json",
@@ -1458,6 +1461,7 @@ dependencies = [
  "nostr",
  "nostr-transport",
  "notify",
+ "private-fs",
  "qrcodegen",
  "secp256k1 0.31.1",
  "serde",
@@ -1584,6 +1588,7 @@ dependencies = [
  "nostr",
  "nostr-transport",
  "openagents-connect",
+ "private-fs",
  "rustls",
  "secp256k1 0.31.1",
  "security-framework",
@@ -1709,6 +1714,7 @@ dependencies = [
  "serde_json",
  "supervise",
  "tempfile",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1744,6 +1750,7 @@ version = "0.1.0"
 dependencies = [
  "coder-access",
  "libc",
+ "private-fs",
  "secp256k1 0.31.1",
  "serde",
  "serde_json",
@@ -1765,6 +1772,7 @@ dependencies = [
  "futures-util",
  "libc",
  "nostr",
+ "private-fs",
  "secp256k1 0.31.1",
  "serde",
  "serde_json",
@@ -3097,12 +3105,14 @@ dependencies = [
  "base64 0.22.1",
  "coder-boundary",
  "futures-util",
+ "getrandom 0.3.4",
  "gym",
  "indexmap",
  "jev",
  "libc",
  "nostr",
  "plugin",
+ "private-fs",
  "regex",
  "reqwest 0.12.28",
  "serde",
@@ -5061,8 +5071,10 @@ version = "0.1.0"
 dependencies = [
  "codex-transport",
  "flate2",
+ "getrandom 0.3.4",
  "nostr",
  "openrouter",
+ "private-fs",
  "secp256k1 0.31.1",
  "serde",
  "serde_json",
@@ -5743,6 +5755,7 @@ dependencies = [
  "knowledge",
  "nostr",
  "openrouter",
+ "private-fs",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
@@ -7755,6 +7768,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "private-fs"
+version = "0.1.0"
+dependencies = [
+ "tempfile",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
 name = "proc-macro-crate"
 version = "3.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9494,6 +9515,7 @@ dependencies = [
  "libc",
  "tempfile",
  "tokio",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

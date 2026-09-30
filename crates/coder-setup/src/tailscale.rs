@@ -192,22 +192,18 @@ fn split_pem(text: &str) -> Result<(String, String)> {
 
 fn write_private(path: &Path, bytes: &[u8]) -> Result<()> {
     use std::io::Write;
-    use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
     let failed = || Error::new(format!("cannot write {}", path.display()));
     let parent = path.parent().ok_or_else(failed)?;
-    std::fs::DirBuilder::new()
-        .recursive(true)
-        .mode(0o700)
-        .create(parent)
-        .map_err(|_| failed())?;
+    crate::private::create_dir_all(parent).map_err(|_| failed())?;
     let temporary = path.with_extension("tmp");
-    let mut file = std::fs::OpenOptions::new()
-        .write(true)
-        .create(true)
-        .truncate(true)
-        .mode(0o600)
-        .open(&temporary)
-        .map_err(|_| failed())?;
+    let mut file = crate::private::file(
+        std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true),
+    )
+    .open(&temporary)
+    .map_err(|_| failed())?;
     file.write_all(bytes)
         .and_then(|()| file.sync_all())
         .map_err(|_| failed())?;

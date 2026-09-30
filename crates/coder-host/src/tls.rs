@@ -13,6 +13,7 @@
 //! validity period; a client does both when it dials. To rotate the files,
 //! replace them and restart the host.
 
+#[cfg(unix)]
 use std::os::unix::fs::MetadataExt;
 use std::path::Path;
 use std::sync::Arc;
@@ -60,16 +61,25 @@ fn read_key(path: &Path) -> Result<PrivateKeyDer<'static>> {
             "the WebSocket TLS key {shown} is not a regular file"
         )));
     }
-    // SAFETY: `geteuid` has no preconditions and cannot fail.
-    let user = unsafe { libc::geteuid() };
-    if metadata.uid() != user {
-        return Err(refuse(&format!(
-            "the WebSocket TLS key {shown} is not owned by this user"
-        )));
+    #[cfg(unix)]
+    {
+        // SAFETY: `geteuid` has no preconditions and cannot fail.
+        let user = unsafe { libc::geteuid() };
+        if metadata.uid() != user {
+            return Err(refuse(&format!(
+                "the WebSocket TLS key {shown} is not owned by this user"
+            )));
+        }
+        if metadata.mode() & 0o077 != 0 {
+            return Err(refuse(&format!(
+                "the WebSocket TLS key {shown} is open to group or others; run chmod 600 on it"
+            )));
+        }
     }
-    if metadata.mode() & 0o077 != 0 {
+    #[cfg(windows)]
+    if !private_fs::is_private_path(path).unwrap_or(false) {
         return Err(refuse(&format!(
-            "the WebSocket TLS key {shown} is open to group or others; run chmod 600 on it"
+            "the WebSocket TLS key {shown} must be owned by this user and open to no other; run icacls on it with /inheritance:r /grant:r and your user name"
         )));
     }
     let bytes = std::fs::read(path)

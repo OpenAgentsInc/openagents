@@ -2,6 +2,7 @@
 //! owner mints, rotates, and cancels connect codes, lists and removes
 //! phones, and changes projects.
 
+#[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::time::Duration;
 
@@ -12,12 +13,16 @@ use openagents_connect::control::{Autostart, Op, Reply};
 #[path = "support/connect.rs"]
 mod support;
 
-use support::{Options, Phone, call, host, host_with, now};
+#[cfg(unix)]
+use support::{Options, host_with};
+use support::{Phone, call, host, now};
 
+#[cfg(unix)]
 fn mode(path: &std::path::Path) -> u32 {
     std::fs::metadata(path).unwrap().permissions().mode() & 0o777
 }
 
+#[cfg(unix)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn the_socket_is_private_and_serves_only_this_user() {
     let host = host().await;
@@ -52,6 +57,7 @@ async fn the_socket_is_private_and_serves_only_this_user() {
     host.running.shutdown().await;
 }
 
+#[cfg(unix)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn a_widened_directory_is_made_private_and_a_stale_socket_is_replaced() {
     let temp = tempfile::tempdir().unwrap();
@@ -376,6 +382,8 @@ async fn a_host_under_a_key_source_makes_its_own_owner_and_keeps_no_key_file() {
     running.shutdown().await;
 }
 
+// The stand-in command is a shell script.
+#[cfg(unix)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn auto_start_changes_run_the_hosts_own_command() {
     let bin = tempfile::tempdir().unwrap();
@@ -449,4 +457,37 @@ async fn auto_start_changes_run_the_hosts_own_command() {
     };
     assert_eq!(code, "bounds");
     host.running.shutdown().await;
+}
+
+/// On Windows the control channel is a pipe only this user opens: the host
+/// serves this user's requests over it, and while it runs no second host
+/// can bind the name. Wine does not enforce the first-instance flag, so the
+/// second bind is checked only on Windows.
+#[cfg(windows)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn the_pipe_serves_this_user_and_a_second_host_cannot_bind_it() {
+    let host = host().await;
+    let Reply::Status(status) = call(&host.socket, Op::Status {}).await.unwrap() else {
+        panic!("status")
+    };
+    assert_eq!(status.label, "Studio Mac");
+    if std::env::var_os("OPENAGENTS_TEST_UNDER_WINE").is_none() {
+        let control = coder_host::config::Control {
+            path: host.socket.clone(),
+            root: host.root.clone(),
+            autostart: None,
+            uid: coder_host::control::own_uid(),
+        };
+        let started = std::time::Instant::now();
+        assert!(coder_host::control::bind(&control).await.is_err());
+        // A held name is waited for, then refused.
+        assert!(started.elapsed() >= Duration::from_secs(4));
+    }
+    // Several requests at once each get their own instance.
+    let calls = (0..4).map(|_| call(&host.socket, Op::Status {}));
+    for reply in futures_util::future::join_all(calls).await {
+        assert!(matches!(reply.unwrap(), Reply::Status(_)));
+    }
+    host.running.shutdown().await;
+    assert!(call(&host.socket, Op::Status {}).await.is_err());
 }

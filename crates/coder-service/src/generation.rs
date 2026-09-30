@@ -34,7 +34,9 @@
 //! could hand out a value a client already saw.
 
 use std::fs::{File, OpenOptions};
+#[cfg(unix)]
 use std::os::fd::AsRawFd as _;
+#[cfg(unix)]
 use std::os::unix::fs::OpenOptionsExt as _;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -182,6 +184,7 @@ fn read(root: &Path) -> Result<Option<Record>> {
 
 /// Creates a missing host root privately. An existing root is used as it
 /// is; the launcher checks its own root's permissions separately.
+#[cfg(unix)]
 fn create_root(root: &Path) -> Result<()> {
     use std::os::unix::fs::DirBuilderExt as _;
     if !root.is_dir() {
@@ -193,7 +196,30 @@ fn create_root(root: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Creates a missing host root privately: each directory this creates
+/// admits only this user.
+#[cfg(windows)]
+fn create_root(root: &Path) -> Result<()> {
+    Ok(private_fs::create_dir_all(root)?)
+}
+
 /// Takes the counter lock, waiting while another starting host holds it.
+#[cfg(windows)]
+fn lock(root: &Path) -> Result<File> {
+    let file = private_fs::nofollow(
+        OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false),
+    )
+    .open(root.join(LOCK))?;
+    file.lock()?;
+    Ok(file)
+}
+
+/// Takes the counter lock, waiting while another starting host holds it.
+#[cfg(unix)]
 fn lock(root: &Path) -> Result<File> {
     let file = OpenOptions::new()
         .read(true)

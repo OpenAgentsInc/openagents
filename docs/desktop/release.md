@@ -202,6 +202,17 @@ The same app builds for Linux and Windows
   `-CertificateThumbprint` through `signtool`; `-RequireSigning` for a
   release. The host starts at sign-in from the `Run` entry `OpenAgents`
   (`OpenAgents.exe --start-host`, which starts `coder.exe` with no console),
-  and the control channel is a named pipe only this user can open. `coder`
-  does not build for Windows yet (`supervise` is Unix-only), so today only
-  `-SkipCoder` packages succeed: the window, with the host shown offline.
+  and the control channel is a named pipe only this user can open
+  ([#9980](https://github.com/OpenAgentsInc/openagents/issues/9980)). The
+  host runs `coder.exe host serve --keychain --iroh --control` with a
+  console that has no window, so neither it nor a program it starts opens
+  one. Its keys are generic credentials in Credential Manager
+  (`host-key.com.openagents.desktop`, `owner-key.…`, `host-iroh-key.…`,
+  kept on this computer only), and its state files admit only the user
+  (an owner-only DACL where Unix has `0700` and `0600`). A task's
+  processes run in a job object that ends with the task, and terminals are
+  ConPTY consoles running `%ComSpec%`. Repository tasks and auto-start
+  refuse on Windows for now: they run under the write boundary and the
+  workspace snapshot, which have no Windows implementation yet
+  ([#9983](https://github.com/OpenAgentsInc/openagents/issues/9983)).
+  `-SkipCoder` still packages the window alone.

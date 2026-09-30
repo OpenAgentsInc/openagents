@@ -4,8 +4,9 @@
 //! as before, and the iroh key in a `0600` file under
 //! `~/.openagents/connect` ([`FileKeySource`]). A host the desktop app runs
 //! keeps the owner, host, and iroh keys in the login keychain
-//! ([`Keychain`] on macOS, [`SecretService`] on Linux), read only by the
-//! host process: never a file, an argument, or a log line.
+//! (`Keychain` on macOS, `SecretService` on Linux, `CredentialManager` on
+//! Windows), read only by the host process: never a file, an argument, or a
+//! log line.
 
 use std::sync::Arc;
 
@@ -197,7 +198,7 @@ impl KeySource for Keychain {
     }
 }
 
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(any(target_os = "macos", target_os = "linux", windows))]
 fn account(name: KeyName) -> openagents_connect::Result<&'static str> {
     keychain_account(name).ok_or_else(|| {
         openagents_connect::Error::new(
@@ -263,11 +264,180 @@ impl KeySource for SecretService {
     }
 }
 
+/// The Windows Credential Manager's target name for a key's `account`
+/// under `service`: the account, a dot, and the service
+/// (`host-key.com.openagents.desktop` under [`KEYCHAIN_SERVICE`]), the name
+/// the `keyring` crate gives the same service and account on Windows, so
+/// the items line up with the macOS keychain's and the Secret Service's.
+#[must_use]
+pub fn credential_target(service: &str, account: &str) -> String {
+    format!("{account}.{service}")
+}
+
+/// A key's hex text as a credential blob: UTF-16LE, as `keyring` writes a
+/// password on Windows.
+#[must_use]
+pub fn credential_blob(text: &str) -> Vec<u8> {
+    text.encode_utf16().flat_map(u16::to_le_bytes).collect()
+}
+
+/// A credential blob's text, or `None` when it is not UTF-16LE text.
+#[must_use]
+pub fn credential_text(blob: &[u8]) -> Option<String> {
+    if !blob.len().is_multiple_of(2) {
+        return None;
+    }
+    let units: Vec<u16> = blob
+        .chunks_exact(2)
+        .map(|pair| u16::from_le_bytes([pair[0], pair[1]]))
+        .collect();
+    String::from_utf16(&units).ok()
+}
+
+/// The Windows keychain: generic credentials in the user's Credential
+/// Manager, one per key, named by [`credential_target`] with the account as
+/// the user name and the key as 64 lowercase hex characters, as on macOS
+/// and Linux. Each is kept on this computer only
+/// (`CRED_PERSIST_LOCAL_MACHINE`), never roamed with a domain profile, and
+/// Windows protects it with the user's logon credentials. A Credential
+/// Manager that refuses is `unavailable`; the host never falls back to a
+/// file for these keys.
+#[cfg(windows)]
+#[derive(Clone, Debug)]
+pub struct CredentialManager {
+    service: String,
+}
+
+#[cfg(windows)]
+impl Default for CredentialManager {
+    fn default() -> Self {
+        Self {
+            service: KEYCHAIN_SERVICE.to_owned(),
+        }
+    }
+}
+
+#[cfg(windows)]
+impl CredentialManager {
+    /// The keys under another service, so a test never touches the
+    /// desktop app's items.
+    #[must_use]
+    pub fn under(service: impl Into<String>) -> Self {
+        Self {
+            service: service.into(),
+        }
+    }
+
+    fn target(&self, name: KeyName) -> openagents_connect::Result<Vec<u16>> {
+        Ok(Self::wide(&credential_target(
+            &self.service,
+            account(name)?,
+        )))
+    }
+
+    fn wide(text: &str) -> Vec<u16> {
+        text.encode_utf16().chain(std::iter::once(0)).collect()
+    }
+
+    fn refused(what: &'static str) -> openagents_connect::Error {
+        openagents_connect::Error::new(openagents_connect::Code::Unavailable, what)
+    }
+}
+
+#[cfg(windows)]
+impl KeySource for CredentialManager {
+    fn load(&self, name: KeyName) -> openagents_connect::Result<Option<Secret>> {
+        use openagents_connect::{Code, Error};
+        use windows_sys::Win32::Foundation::ERROR_NOT_FOUND;
+        use windows_sys::Win32::Security::Credentials::{
+            CRED_TYPE_GENERIC, CREDENTIALW, CredFree, CredReadW,
+        };
+        let target = self.target(name)?;
+        let mut credential: *mut CREDENTIALW = std::ptr::null_mut();
+        // SAFETY: a NUL-terminated target name; `credential` receives a
+        // block the call allocates, freed below with CredFree.
+        if unsafe { CredReadW(target.as_ptr(), CRED_TYPE_GENERIC, 0, &mut credential) } == 0 {
+            let error = std::io::Error::last_os_error();
+            return if error.raw_os_error() == Some(ERROR_NOT_FOUND as i32) {
+                Ok(None)
+            } else {
+                Err(Self::refused("read the Credential Manager"))
+            };
+        }
+        // SAFETY: CredReadW succeeded, so `credential` points to a
+        // credential whose blob is `CredentialBlobSize` bytes.
+        let blob = unsafe {
+            let credential = &*credential;
+            if credential.CredentialBlob.is_null() {
+                Vec::new()
+            } else {
+                std::slice::from_raw_parts(
+                    credential.CredentialBlob,
+                    credential.CredentialBlobSize as usize,
+                )
+                .to_vec()
+            }
+        };
+        // SAFETY: the block came from CredReadW and is freed once.
+        unsafe { CredFree(credential.cast()) };
+        credential_text(&blob)
+            .and_then(|text| parse_hex(text.trim_end()))
+            .map(|bytes| Some(Secret::from_bytes(bytes)))
+            .ok_or_else(|| Error::new(Code::Malformed, "keychain item is not a key"))
+    }
+
+    fn store(&self, name: KeyName, secret: &Secret) -> openagents_connect::Result<()> {
+        use windows_sys::Win32::Security::Credentials::{
+            CRED_PERSIST_LOCAL_MACHINE, CRED_TYPE_GENERIC, CREDENTIALW, CredWriteW,
+        };
+        let mut target = self.target(name)?;
+        let mut user = Self::wide(account(name)?);
+        let text: String = secret.expose().iter().map(|b| format!("{b:02x}")).collect();
+        let mut blob = credential_blob(&text);
+        let credential = CREDENTIALW {
+            Type: CRED_TYPE_GENERIC,
+            TargetName: target.as_mut_ptr(),
+            CredentialBlobSize: u32::try_from(blob.len()).unwrap_or(u32::MAX),
+            CredentialBlob: blob.as_mut_ptr(),
+            Persist: CRED_PERSIST_LOCAL_MACHINE,
+            UserName: user.as_mut_ptr(),
+            ..CREDENTIALW::default()
+        };
+        // SAFETY: every pointer in the credential points into a buffer that
+        // lives across the call.
+        let written = unsafe { CredWriteW(&raw const credential, 0) } != 0;
+        // The hex text is a copy of the key; clear it before it is freed.
+        blob.iter_mut().for_each(|byte| *byte = 0);
+        if written {
+            Ok(())
+        } else {
+            Err(Self::refused("write the Credential Manager"))
+        }
+    }
+
+    fn delete(&self, name: KeyName) -> openagents_connect::Result<()> {
+        use windows_sys::Win32::Foundation::ERROR_NOT_FOUND;
+        use windows_sys::Win32::Security::Credentials::{CRED_TYPE_GENERIC, CredDeleteW};
+        let target = self.target(name)?;
+        // SAFETY: a NUL-terminated target name.
+        if unsafe { CredDeleteW(target.as_ptr(), CRED_TYPE_GENERIC, 0) } != 0 {
+            return Ok(());
+        }
+        if std::io::Error::last_os_error().raw_os_error() == Some(ERROR_NOT_FOUND as i32) {
+            Ok(())
+        } else {
+            Err(Self::refused("write the Credential Manager"))
+        }
+    }
+}
+
 /// A key source seen as the keychain that adopting an older host writes
 /// (`coder_service::adopt`): items by account name, values 64 lowercase
 /// hex characters.
+#[cfg(unix)]
 pub struct AdoptInto<'a>(pub &'a dyn KeySource);
 
+#[cfg(unix)]
 impl coder_service::adopt::Keychain for AdoptInto<'_> {
     fn read(&mut self, account: &str) -> coder_service::Result<Option<String>> {
         let name = named(account)?;
@@ -290,6 +460,7 @@ impl coder_service::adopt::Keychain for AdoptInto<'_> {
 }
 
 /// The key an account names.
+#[cfg(unix)]
 fn named(account: &str) -> coder_service::Result<KeyName> {
     [KeyName::Owner, KeyName::Host, KeyName::HostIroh]
         .into_iter()
@@ -375,5 +546,55 @@ mod tests {
     #[cfg(target_os = "linux")]
     fn hex_of(bytes: &[u8]) -> String {
         bytes.iter().map(|b| format!("{b:02x}")).collect()
+    }
+
+    #[test]
+    fn credential_manager_items_are_named_as_keyring_names_them() {
+        let target = |name| credential_target(KEYCHAIN_SERVICE, keychain_account(name).unwrap());
+        assert_eq!(target(KeyName::Host), "host-key.com.openagents.desktop");
+        assert_eq!(target(KeyName::Owner), "owner-key.com.openagents.desktop");
+        assert_eq!(
+            target(KeyName::HostIroh),
+            "host-iroh-key.com.openagents.desktop"
+        );
+        let text = "0a".repeat(32);
+        let blob = credential_blob(&text);
+        assert_eq!(blob.len(), 128);
+        assert_eq!(&blob[..4], &[b'0', 0, b'a', 0]);
+        assert_eq!(credential_text(&blob).as_deref(), Some(text.as_str()));
+        assert_eq!(credential_text(&blob[..3]), None);
+        assert_eq!(credential_text(&[0x00, 0xd8]), None);
+    }
+
+    /// The real Credential Manager: every key the host keeps round-trips
+    /// under its keyring name and is deleted again. The items are under a
+    /// test service of their own, never the desktop app's. Runs on Windows
+    /// and under Wine.
+    #[cfg(windows)]
+    #[test]
+    fn the_credential_manager_keeps_the_host_keys_as_hex() {
+        let source =
+            CredentialManager::under(format!("{KEYCHAIN_SERVICE}.test-{}", std::process::id()));
+        // Another run's leftovers would make the first load lie.
+        for name in [KeyName::Owner, KeyName::Host, KeyName::HostIroh] {
+            source.delete(name).unwrap();
+            assert_eq!(source.load(name).unwrap(), None, "{} exists", name.as_str());
+        }
+        let host = HostKey(Arc::new(source.clone()));
+        use coder_access::host::KeySource as _;
+        let key = SecretKey::new(&mut secp256k1::rand::rng());
+        host.store(&key).unwrap();
+        assert_eq!(host.load().unwrap(), Some(key));
+        // Storing again replaces the item.
+        let again = SecretKey::new(&mut secp256k1::rand::rng());
+        host.store(&again).unwrap();
+        assert_eq!(host.load().unwrap(), Some(again));
+        let first = owner(&source).unwrap();
+        assert_eq!(owner(&source).unwrap(), first);
+        for name in [KeyName::Owner, KeyName::Host, KeyName::HostIroh] {
+            source.delete(name).unwrap();
+            assert_eq!(source.load(name).unwrap(), None);
+        }
+        assert!(source.load(KeyName::Device).is_err());
     }
 }

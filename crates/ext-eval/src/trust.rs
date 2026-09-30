@@ -39,6 +39,7 @@ pub enum TrustError {
 /// # Errors
 ///
 /// Returns [`TrustError::NotOwned`] or [`TrustError::WritableByOthers`].
+#[cfg(unix)]
 pub fn check_owner(path: &Path) -> Result<(), TrustError> {
     use std::os::unix::fs::MetadataExt;
     let shown = path.display().to_string();
@@ -53,6 +54,25 @@ pub fn check_owner(path: &Path) -> Result<(), TrustError> {
         return Err(TrustError::WritableByOthers(shown));
     }
     Ok(())
+}
+
+/// Refuses a path that is not the operator's alone. Windows has no mode
+/// bits to read "writable by others" from, so the rule there is the
+/// stricter one `private_fs` checks: the operator owns the path and its
+/// access list grants no one else (`private_fs::restrict` makes it so).
+///
+/// # Errors
+///
+/// Returns [`TrustError::WritableByOthers`], or [`TrustError::Store`] when
+/// the path's security can't be read.
+#[cfg(windows)]
+pub fn check_owner(path: &Path) -> Result<(), TrustError> {
+    let shown = path.display().to_string();
+    match private_fs::is_private_path(path) {
+        Ok(true) => Ok(()),
+        Ok(false) => Err(TrustError::WritableByOthers(shown)),
+        Err(error) => Err(TrustError::Store(shown, error.to_string())),
+    }
 }
 
 /// The remembered set of trusted directories.
@@ -185,6 +205,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn a_directory_others_can_write_is_refused() {
         use std::os::unix::fs::PermissionsExt;
         let dir = tempfile::tempdir().unwrap();

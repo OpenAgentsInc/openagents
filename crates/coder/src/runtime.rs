@@ -7988,6 +7988,7 @@ mod tests {
         assert_eq!(value(2)["files_considered"], 0);
     }
 
+    #[cfg(unix)]
     /// A symlink in the granted scope whose target is outside the
     /// workspace refuses the step before the guest starts, whether the
     /// scope names it or walks into it. One whose target stays inside is

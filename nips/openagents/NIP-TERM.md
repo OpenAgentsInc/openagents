@@ -73,13 +73,15 @@ requests; a retry older than that window is a new request.
 | --- | --- |
 | `workspace` | Common ID of an admitted workspace. The host maps it to a root directory. |
 | `dir` | Working directory relative to the root, at most 1,024 bytes. Empty is the root. Absolute paths and `..` components refuse. |
-| `launch` | `{kind: "shell"}` for the host's configured shell, or `{kind: "command", program, args}` for an exact program by absolute path and at most 256 arguments of at most 4,096 bytes each. |
+| `launch` | `{kind: "shell"}` for the host's configured shell, or `{kind: "command", program, args}` for an exact program by absolute path (`/…`, or on a Windows host a drive path such as `C:\…`; never a network path) and at most 256 arguments of at most 4,096 bytes each. |
 | `size` | `{rows, cols}`, each 1 to 1,024. |
 | `env` | At most 64 `{name, value}` entries. Names are uppercase letters, digits, and underscores; values are at most 4,096 bytes. |
 
 The host resolves the working directory, following symbolic links, and
 refuses as `not_admitted` when the result leaves the workspace root. It
-resolves no program name through a search path. It clears its own
+resolves no program name through a search path, and refuses as
+`malformed` a program that is not an absolute path on its own platform.
+It clears its own
 environment and sets a host-chosen base (for example `PATH`, `HOME`, and
 `TERM`) plus the requested variables; a requested name outside the host's
 allowlist refuses the whole request as `not_admitted` rather than being

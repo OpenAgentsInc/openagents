@@ -729,23 +729,27 @@ fn write_ready(path: &Path, generation: u64, version: &str) -> Result<()> {
 /// Write a private file by a temporary name and a rename.
 pub(crate) fn write_private(path: &Path, bytes: &[u8]) -> Result<()> {
     use std::io::Write;
+    #[cfg(unix)]
     use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
     let failed = || Error::Config(format!("cannot write {}", path.display()));
     let parent = path.parent().ok_or_else(failed)?;
+    #[cfg(unix)]
     std::fs::DirBuilder::new()
         .recursive(true)
         .mode(0o700)
         .create(parent)
         .map_err(|_| failed())?;
+    #[cfg(windows)]
+    private_fs::create_dir_all(parent).map_err(|_| failed())?;
     let name = path.file_name().ok_or_else(failed)?.to_string_lossy();
     let temporary: PathBuf = parent.join(format!(".{name}.{}", std::process::id()));
     let _ = std::fs::remove_file(&temporary);
-    let mut file = std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .mode(0o600)
-        .open(&temporary)
-        .map_err(|_| failed())?;
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    // On Windows the file inherits its directory's owner-only DACL.
+    #[cfg(unix)]
+    options.mode(0o600);
+    let mut file = options.open(&temporary).map_err(|_| failed())?;
     file.write_all(bytes)
         .and_then(|()| file.sync_all())
         .map_err(|_| failed())?;

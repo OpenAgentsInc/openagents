@@ -53,9 +53,12 @@ fn local_pair_and_revoke_cli_retain_only_public_connection_output() {
     );
 }
 
+#[cfg(unix)]
 #[path = "../../coder-control/src/tests/relay.rs"]
 mod relay;
 
+// Reads Unix modes and interrupts the command with `SIGINT`.
+#[cfg(unix)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn connect_command_displays_qr_pairs_and_retains_only_the_selected_roots() {
     use coder_connect::{RelayPolicy, pairing};

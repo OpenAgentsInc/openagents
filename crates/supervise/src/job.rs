@@ -7,13 +7,15 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use tokio::io::{AsyncRead, AsyncReadExt};
-use tokio::process::{Child, Command};
+use tokio::process::Child;
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 use tokio::time::timeout;
 
-use crate::memory::{self, Placed};
-use crate::{Captured, Ended, Ending, GRACE, Limits, Memory, Sink, group};
+use crate::group::Tree;
+use crate::memory::Placed;
+use crate::spawn::{Spawned, Unspawned, spawn};
+use crate::{Captured, Ended, Ending, GRACE, Limits, Memory, Sink};
 
 /// The bytes one read takes from a pipe. Two of these are the only capture
 /// memory a job holds beyond its caps.
@@ -140,44 +142,17 @@ impl Job {
 /// Spawns the job, drains it, ends it, and reaps it.
 async fn supervise(job: Job, dropped: oneshot::Receiver<()>) -> Ended {
     let started = Instant::now();
-    let mut prepared = job.command;
-    let handshake = match job.limits.memory_max {
-        Some(max) => match memory::arm(&mut prepared, max) {
-            Ok(handshake) => Some(handshake),
-            Err(why) => return unspawned(why, started),
-        },
-        None => None,
-    };
-    let mut command = Command::from(prepared);
-    command
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        // The group is what this supervisor terminates. `kill_on_drop` is
-        // kept underneath it as the last resort for the direct child if the
-        // runtime itself goes away mid-cleanup.
-        .process_group(0)
-        .kill_on_drop(true);
-    // With a cap, the child waits between `fork` and `exec` until the
-    // helper has placed it, so the spawn returns once it is placed.
-    let serving = handshake.map(memory::Handshake::serve);
-    let spawned = command.spawn();
-    let placed = serving.map(memory::Serving::finish);
-    let mut child = match spawned {
-        Ok(child) => child,
-        Err(error) => {
-            // A child that failed to execute may still have been placed,
-            // and its scope is cleared away like any other.
-            let why = placed
-                .as_ref()
-                .map_or_else(|| error.to_string(), |placed| placed.refusal(&error));
+    let Spawned {
+        mut child,
+        tree,
+        placed,
+    } = match spawn(job.command, job.limits.memory_max, Stdio::null()) {
+        Ok(spawned) => spawned,
+        Err(Unspawned { why, placed }) => {
             settle(placed).await;
             return unspawned(why, started);
         }
     };
-    // `process_group(0)` makes the child the leader of a new group, so the
-    // group's identifier is the child's own.
-    let group = child.id().and_then(|id| i32::try_from(id).ok());
     let out = drain(child.stdout.take(), job.limits.stream_max);
     let err = drain(child.stderr.take(), job.limits.stream_max);
 
@@ -194,12 +169,8 @@ async fn supervise(job: Job, dropped: oneshot::Receiver<()>) -> Ended {
         // The child is already reaped, so anything left in the group is a
         // descendant that outlived the job. There is nothing to negotiate
         // with it about: the job has its result.
-        Ending::Exited(_) => {
-            if let Some(group) = group {
-                group::end(group);
-            }
-        }
-        _ => stop(group, &mut child).await,
+        Ending::Exited(_) => tree.end(),
+        _ => stop(&tree, &mut child).await,
     }
 
     let stdout = finish(out).await;
@@ -240,14 +211,10 @@ pub(crate) async fn settle(placed: Option<Placed>) -> Option<Memory> {
 }
 
 /// Ends a job that is still running and reaps its direct child.
-async fn stop(group: Option<i32>, child: &mut Child) {
-    if let Some(group) = group {
-        group::ask(group);
-    }
+async fn stop(tree: &Tree, child: &mut Child) {
+    tree.ask();
     let exited = timeout(GRACE, child.wait()).await.is_ok();
-    if let Some(group) = group {
-        group::end(group);
-    }
+    tree.end();
     if !exited {
         // The group is killed, so this is the reap rather than a wait.
         let _ = child.wait().await;

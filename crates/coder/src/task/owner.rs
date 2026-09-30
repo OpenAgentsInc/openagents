@@ -817,5 +817,6 @@ fn fault(_point: &str) -> Result<(), Error> {
 #[cfg(test)]
 std::thread_local! { static OWNER_FAULT: std::cell::Cell<Option<&'static str>> = const { std::cell::Cell::new(None) }; }
 
-#[cfg(test)]
+// The owner tests run shell scripts as the task program.
+#[cfg(all(test, unix))]
 mod tests;

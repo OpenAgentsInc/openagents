@@ -218,7 +218,14 @@ fn keychain_record() -> Option<Vec<u8>> {
     Some(bytes)
 }
 
+/// This process's account name.
+#[cfg(windows)]
+fn account_name() -> Option<std::ffi::OsString> {
+    std::env::var_os("USERNAME").filter(|name| !name.is_empty())
+}
+
 /// This process's account name from the account database.
+#[cfg(unix)]
 fn account_name() -> Option<std::ffi::OsString> {
     use std::os::unix::ffi::OsStrExt;
     // SAFETY: getpwuid returns a pointer into static storage or null; the

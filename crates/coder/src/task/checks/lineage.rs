@@ -259,6 +259,7 @@ mod tests {
         assert!(capture(Some(&requirements), workspace.path(), "target").is_err());
     }
 
+    #[cfg(unix)]
     #[test]
     fn private_paths_symlinks_and_changed_versions_refuse() {
         use std::os::unix::fs::symlink;

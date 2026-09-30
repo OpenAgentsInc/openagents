@@ -27,17 +27,26 @@
 //! launcher. [`bundle`] reads the immutable, digest-named bundles that
 //! `scripts/coder-host.py` stages; this crate never stages a binary.
 //!
-//! Unix only: the launcher owns its host through a process group, as the
-//! `supervise` crate does. Read `docs/coder/runtime/host-service.md` before
-//! you change a state transition, a rendered unit, or the descriptor.
+//! The service, the launcher, snapshots, and adoption are Unix only: the
+//! launcher owns its host through a process group, as the `supervise` crate
+//! does, and the service is a launchd or systemd unit. On Windows the
+//! desktop app starts the host from the `Run` key instead, and this crate
+//! keeps only the generation counter, the descriptor, bundles, and the
+//! filesystem rules, with owner-only DACLs where Unix has modes. Read
+//! `docs/coder/runtime/host-service.md` before you change a state
+//! transition, a rendered unit, or the descriptor.
 
+#[cfg(unix)]
 pub mod adopt;
 pub mod bundle;
 pub mod descriptor;
 pub mod fsx;
 pub mod generation;
+#[cfg(unix)]
 pub mod launcher;
+#[cfg(unix)]
 pub mod service;
+#[cfg(unix)]
 pub mod snapshot;
 
 use std::fmt;
