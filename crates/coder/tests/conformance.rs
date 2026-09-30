@@ -1272,10 +1272,10 @@ async fn the_local_profile_sends_no_credential_anywhere() {
         "the hosted profile sends its credential, and only its credential"
     );
 
-    // The relay profile resolves — and builds no System One HTTP
-    // client, because a relay's decisions travel the relay. That is
-    // the honest boundary the acceptance names: the profile exists
-    // where the service capability does, and says so where it does not.
+    // The relay profile resolves, and builds a client whose decisions
+    // travel the relay as NIP-DEC decision jobs to its worker — the
+    // hosted door of the one resolver — never a keyed HTTP client, even
+    // with a TypeSafe key on the machine.
     let relay_env = |name: &str| match name {
         "CODER_DECISION_PROFILE" => Some("relay".to_string()),
         "CODER_DECISION_RELAY" => Some("wss://relay.example.com".to_string()),
@@ -1287,12 +1287,17 @@ async fn the_local_profile_sends_no_credential_anywhere() {
     let relay = Profiles::new()
         .resolve(relay_env)
         .expect("the relay profile resolves");
-    match relay.client() {
-        Err(coder::profiles::Refusal::Unsupported { profile, .. }) => {
-            assert_eq!(profile, "relay");
-        }
-        other => panic!("a relay profile builds no HTTP client: {other:?}"),
-    }
+    let keys = tempfile::tempdir().unwrap();
+    std::fs::write(keys.path().join("jev.json"), r#"{"api_key":"ts-local"}"#).unwrap();
+    let client = relay
+        .client_in(keys.path())
+        .expect("a relay profile builds its hosted client");
+    let service = client.service().expect("a relay client names its service");
+    assert!(
+        service.contains("79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798")
+            && service.contains("wss://relay.example.com"),
+        "{service}"
+    );
 }
 
 // ---------------------------------------------------------------------

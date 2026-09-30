@@ -7,6 +7,7 @@ description = "One way every Jev caller finds Jev: a local TypeSafe key, else Op
 publish.workspace = true
 
 [dependencies]
+atif = { path = "../atif" }
 jev = { path = "../jev" }
 nostr = { path = "../nostr" }
 nostr-transport = { path = "../nostr-transport" }

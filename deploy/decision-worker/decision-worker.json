@@ -20,5 +20,10 @@
   "service": {
     "door": "https://api.typesafe.ai",
     "version": "decision-worker@RELEASE"
+  },
+  "backup": {
+    "url": "https://openrouter.ai/api/alpha/decisions",
+    "key_env": "OPENROUTER_API_KEY",
+    "door": "https://openrouter.ai"
   }
 }

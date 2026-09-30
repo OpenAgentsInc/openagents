@@ -180,6 +180,7 @@ async fn rig() -> Rig {
         open: None,
         service: None,
         probe_secs: 0,
+        backup: None,
     })
     .unwrap();
     let worker_pub = worker.pubkey().to_string();

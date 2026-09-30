@@ -1256,40 +1256,31 @@ pub enum Judge {
 }
 
 impl Judge {
-    /// Hosted Jev with the operator's TypeSafe key: `TYPESAFE_API_KEY`, or
-    /// `api_key` in `~/.openagents/jev.json`. `GYM_JEV=off` turns it off.
-    /// The key is never printed; a message names where it was looked for.
+    /// Jev through the one resolver every caller shares
+    /// (`jev_hosted::resolve`): the operator's TypeSafe key
+    /// (`TYPESAFE_API_KEY`, or `api_key` in `~/.openagents/jev.json`), else
+    /// the OpenAgents hosted decision service. `GYM_JEV=off` turns it off.
+    /// The key is never printed; a message says why there is no Jev.
     #[must_use]
     pub fn from_environment() -> Self {
         if std::env::var("GYM_JEV").is_ok_and(|value| value.trim() == "off") {
             return Judge::Off("GYM_JEV=off turns Jev off".to_owned());
         }
-        let key = std::env::var("TYPESAFE_API_KEY")
-            .ok()
-            .map(|key| key.trim().to_owned())
-            .filter(|key| !key.is_empty())
-            .or_else(|| {
-                let path = PathBuf::from(std::env::var_os("HOME")?).join(".openagents/jev.json");
-                read_json(&path)?
-                    .get("api_key")?
-                    .as_str()
-                    .map(|key| key.trim().to_owned())
-                    .filter(|key| !key.is_empty())
-            });
-        let Some(key) = key else {
-            return Judge::Off(
-                "no TypeSafe key: set TYPESAFE_API_KEY or put `api_key` in ~/.openagents/jev.json"
-                    .to_owned(),
-            );
+        let Some(dir) = jev_hosted::openagents_dir() else {
+            return Judge::Off("no Jev: HOME is not set".to_owned());
         };
-        match jev::Client::new(
-            jev::Config::new()
-                .api_key(key)
-                .base_url(JEV_BASE_URL)
-                .default_model(JEV_MODEL),
+        let env = |name: &str| std::env::var(name).ok();
+        match jev_hosted::resolve(
+            &env,
+            &dir,
+            &jev_hosted::Door {
+                url: JEV_BASE_URL,
+                model: JEV_MODEL,
+            },
+            &|config| config,
         ) {
-            Ok(client) => Judge::Live(client),
-            Err(error) => Judge::Off(format!("cannot build the Jev client: {error}")),
+            Ok(resolved) => Judge::Live(resolved.client),
+            Err(why) => Judge::Off(format!("no Jev: {why}")),
         }
     }
 

@@ -204,8 +204,10 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
     let out = out.ok_or("execution-audit needs --out")?;
     std::fs::create_dir_all(&out).map_err(|e| e.to_string())?;
     let home = crate::credentials::openagents_dir().ok_or("HOME is not set")?;
-    let key = crate::credentials::jev_key(|name| std::env::var(name).ok(), &home)?;
-    let mode = JevMode::Live(crate::credentials::jev_client(&key.secret)?);
+    let mode = JevMode::Live(crate::credentials::jev_live(
+        |name| std::env::var(name).ok(),
+        &home,
+    )?);
     let rows: Vec<_> = manifest
         .as_array()
         .ok_or("Manifest must be an array")?

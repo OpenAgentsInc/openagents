@@ -4259,19 +4259,19 @@ impl Runtime {
             Ok(response) => response,
             Err(error) => {
                 let milliseconds = started.elapsed().as_millis() as u64;
-                let decision = Decision {
+                let mut decision = Decision {
                     id: String::new(),
                     name: name.to_string(),
                     door: door.base_url().to_string(),
                     model: door.default_model().to_string(),
                     request: asked,
                     answers: Value::Null,
-                    route: None,
                     error: Some(error.to_string()),
                     attempts,
-                    review: None,
                     milliseconds,
+                    ..Decision::default()
                 };
+                jev_hosted::served(&mut decision, door, Err(&error));
                 self.record_decision(trace, set, decision);
                 return Err(door_refused(name, &error));
             }
@@ -4383,7 +4383,7 @@ impl Runtime {
             }
         }
         let milliseconds = started.elapsed().as_millis() as u64;
-        let decision = Decision {
+        let mut decision = Decision {
             id: String::new(),
             name: name.to_string(),
             door: door.base_url().to_string(),
@@ -4397,7 +4397,9 @@ impl Runtime {
             attempts,
             review: review_record,
             milliseconds,
+            ..Decision::default()
         };
+        jev_hosted::served(&mut decision, door, Ok(&response));
         self.record_decision(trace, set, decision);
         match refused {
             Some(refused) => Err(refused),

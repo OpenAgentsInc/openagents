@@ -96,7 +96,9 @@ pub fn version() -> String {
 struct Settings {
     bearer: Option<Secret>,
     door_url: String,
-    jev_key: Option<Secret>,
+    /// Jev through the shared resolver (`jev_hosted::resolve`): a local
+    /// key, else the hosted decision service, else why there is none.
+    jev: Result<jev::Client, String>,
     delegate_bin: Option<PathBuf>,
     credential: Credential,
     resolution: Resolution,
@@ -120,9 +122,7 @@ impl Settings {
                 .map(|found| found.secret),
             door_url: env("OPENAGENTS_DOOR_URL")
                 .unwrap_or_else(|| credentials::GENERATION_BASE_URL.to_string()),
-            jev_key: credentials::jev_key(|name| env(name), &dir)
-                .ok()
-                .map(|found| found.secret),
+            jev: credentials::jev_live(|name| env(name), &dir),
             delegate_bin,
             credential,
             resolution,
@@ -173,20 +173,23 @@ pub async fn doctor(contract: &str) -> Result<(), String> {
     }
 
     if policy.jev() {
-        match &settings.jev_key {
-            None => problems
-                .push("TYPESAFE_API_KEY is not set and CODER_ONE_JEV is not off".to_string()),
-            Some(key) => {
-                let client = credentials::jev_client(key)?;
-                match client.models().list(jev::ListOptions::default()).await {
-                    Ok(models) => println!(
-                        "jev door: {} answered with {} models",
-                        credentials::JEV_BASE_URL,
-                        models.len()
-                    ),
-                    Err(error) => problems.push(format!("jev door: {error}")),
-                }
-            }
+        match &settings.jev {
+            Err(why) => problems.push(format!("no Jev and CODER_ONE_JEV is not off: {why}")),
+            // The hosted decision service answers decisions only; it names
+            // itself instead of listing models.
+            Ok(client) if client.service().is_some() => println!(
+                "jev: {} ({})",
+                client.service().unwrap_or_default(),
+                credentials::JEV_MODEL
+            ),
+            Ok(client) => match client.models().list(jev::ListOptions::default()).await {
+                Ok(models) => println!(
+                    "jev door: {} answered with {} models",
+                    credentials::JEV_BASE_URL,
+                    models.len()
+                ),
+                Err(error) => problems.push(format!("jev door: {error}")),
+            },
         }
     } else {
         println!("jev: off (CODER_ONE_JEV)");
@@ -480,11 +483,12 @@ pub async fn run_episode(args: RunArgs) -> Result<i32, String> {
         .clone()
         .ok_or("OPENAGENTS_API_KEY is not set")?;
     let jev_client = if policy.jev() {
-        let key = settings
-            .jev_key
-            .as_ref()
-            .ok_or("TYPESAFE_API_KEY is not set and CODER_ONE_JEV is not off")?;
-        Some(credentials::jev_client(key)?)
+        Some(
+            settings
+                .jev
+                .clone()
+                .map_err(|why| format!("no Jev and CODER_ONE_JEV is not off: {why}"))?,
+        )
     } else {
         None
     };
@@ -1451,6 +1455,7 @@ mod tests {
             attempts: Vec::new(),
             review: None,
             milliseconds: 5,
+            ..Decision::default()
         };
         Step::called(decision.call()).noting("jev_usage", json!({ "input_tokens": input_tokens }))
     }
@@ -1576,6 +1581,7 @@ mod accounting_tests {
             attempts: Vec::new(),
             review: None,
             milliseconds: 40,
+            ..Decision::default()
         };
         match outcome {
             Ok(tokens) => Step::called(decision.call()).noting(
@@ -1845,6 +1851,7 @@ mod accounting_tests {
             attempts: Vec::new(),
             review: None,
             milliseconds: 5,
+            ..Decision::default()
         };
         decision.error = Some("timed out".to_string());
         let failed = Step::called(decision.call());

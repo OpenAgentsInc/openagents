@@ -1300,11 +1300,8 @@ impl JevJudge {
                 model: JEV_MODEL.to_string(),
                 request: body,
                 answers: serde_json::Value::Null,
-                route: None,
                 error: Some(DEADLINE_SKIP.to_string()),
-                attempts: Vec::new(),
-                review: None,
-                milliseconds: 0,
+                ..Decision::default()
             };
             self.recorder
                 .push(Step::called(decision.call()).noting("jev_usage", charge_skipped()));
@@ -1320,16 +1317,14 @@ impl JevJudge {
         let mut decision = Decision {
             id,
             name: "jev_step".to_string(),
-            door: JEV_BASE_URL.to_string(),
+            door: client.base_url().to_string(),
             model: JEV_MODEL.to_string(),
             request: body,
             answers: serde_json::Value::Null,
-            route: None,
-            error: None,
-            attempts: Vec::new(),
-            review: None,
             milliseconds,
+            ..Decision::default()
         };
+        jev_hosted::served(&mut decision, client, result.as_ref());
         let response = match result {
             Ok(response) => response,
             Err(error) => {

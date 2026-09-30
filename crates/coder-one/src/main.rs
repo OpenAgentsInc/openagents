@@ -555,8 +555,7 @@ async fn solve(url: &str, options: Options) -> Result<(), String> {
     let env = |name: &str| std::env::var(name).ok();
     let bearer = credentials::bearer(env, &dir)?;
     let jev = if options.jev {
-        let key = credentials::jev_key(env, &dir)?;
-        Some(credentials::jev_client(&key.secret)?)
+        Some(credentials::jev_live(env, &dir)?)
     } else {
         None
     };

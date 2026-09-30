@@ -520,7 +520,7 @@ fn run(ask: Ask) -> i32 {
     };
     let mut questions = Questions::new();
     for (id, question) in &body {
-        questions.insert(id.clone(), Question::Raw(question.clone()));
+        questions.insert(id.clone(), Question::from_value(question.clone()));
     }
     if let Err(error) = questions.validate() {
         eprintln!("oak: {error}");

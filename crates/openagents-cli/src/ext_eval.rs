@@ -606,15 +606,10 @@ fn execute(
         decision: prepared.decision.as_ref(),
         options: &prepared.options,
     };
-    let jev = prepared.decision.as_ref().and_then(|pin| {
-        JevDoor::new(
-            jev::Config::new()
-                .api_key(pin.key.expose())
-                .base_url(pin.url.clone()),
-            None,
-        )
-        .ok()
-    });
+    let jev = prepared
+        .decision
+        .as_ref()
+        .and_then(|pin| JevDoor::resolved(&pin.url, Some(pin.key.expose()), None).ok());
     let cancel = Cancel::on_signals();
     eprintln!(
         "running {} case(s) of {} through {} …",

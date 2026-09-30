@@ -84,17 +84,30 @@ impl Judge for NativeJudge<'_> {
             return unavailable(why);
         }
         let started = std::time::Instant::now();
-        let mut questions = jev::Questions::new();
-        for question in &set.questions {
-            questions = questions.with(question.id.clone(), jev::Noul::new(question.text.clone()));
-        }
         let request =
-            jev::SystemOneRequest::new(state.clone(), questions).retry(jev::RetryPolicy {
+            jev::SystemOneRequest::new(state.clone(), set.questions()).retry(jev::RetryPolicy {
                 max_retries: 0,
                 ..client.retry().clone()
             });
+        let asked = request
+            .body(client.default_model())
+            .map_or(Value::Null, Value::Object);
         let response = client.system_one(request).await;
         let milliseconds = started.elapsed().as_millis().try_into().unwrap_or(u64::MAX);
+        // The call itself, as every Jev caller records one
+        // (`openagents.decision-call.v1`): the structured request, the door
+        // and how it was reached, the service, latency, and cost.
+        let record = jev_hosted::decision_record(
+            format!("decision-{}", set.id),
+            set.id.clone(),
+            client,
+            asked,
+            response.as_ref(),
+            milliseconds,
+        );
+        let _ = self
+            .host
+            .append(&Step::called(record.call()).taking(milliseconds));
         match response {
             Ok(response) => {
                 let retained=self.host.append(&Step::said(Source::System,"Native decision response retained.")

@@ -66,6 +66,7 @@ fn main() -> std::io::Result<()> {
             attempts: Vec::new(),
             review: None,
             milliseconds: 240,
+            ..Default::default()
         }
         .call(),
     ))?;

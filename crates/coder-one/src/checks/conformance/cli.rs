@@ -40,8 +40,7 @@ fn modes(word: &str, recorded: &Recorded) -> Result<(JevMode, Option<JevMode>), 
         "recorded" => Ok((replay, None)),
         "live" => {
             let dir = crate::credentials::openagents_dir().ok_or("HOME is not set")?;
-            let key = crate::credentials::jev_key(|name| std::env::var(name).ok(), &dir)?;
-            let client = crate::credentials::jev_client(&key.secret)?;
+            let client = crate::credentials::jev_live(|name| std::env::var(name).ok(), &dir)?;
             Ok((JevMode::Live(client), Some(replay)))
         }
         other => Err(format!("--jev is off, recorded, or live, not {other}")),

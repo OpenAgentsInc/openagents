@@ -1390,6 +1390,7 @@ dependencies = [
  "gym",
  "indexmap",
  "jev",
+ "jev-hosted",
  "knowledge",
  "libc",
  "microcoder-loop",
@@ -3136,6 +3137,7 @@ dependencies = [
  "gym",
  "indexmap",
  "jev",
+ "jev-hosted",
  "libc",
  "nostr",
  "plugin",
@@ -3988,6 +3990,7 @@ dependencies = [
  "crossterm",
  "indexmap",
  "jev",
+ "jev-hosted",
  "knowledge",
  "ratatui",
  "serde",
@@ -4925,6 +4928,7 @@ dependencies = [
 name = "jev-hosted"
 version = "0.1.0"
 dependencies = [
+ "atif",
  "axum",
  "futures-util",
  "gateway",
@@ -11235,6 +11239,7 @@ version = "0.1.0"
 dependencies = [
  "atif",
  "jev",
+ "jev-hosted",
  "libc",
  "mlua",
  "nostr",

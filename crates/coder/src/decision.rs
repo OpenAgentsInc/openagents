@@ -97,18 +97,11 @@ pub fn profile_from_env() -> Result<Option<Profile>, String> {
 }
 
 /// The TypeSafe key in `~/.openagents/jev.json` (`{"api_key": "…"}`), when
-/// the file exists and holds one.
+/// the file exists and holds one: the shared resolver's own reading
+/// (`jev_hosted::local_key`).
 fn jev_file_key() -> Option<String> {
-    let home = std::env::var_os("HOME")?;
-    let path = std::path::Path::new(&home).join(".openagents/jev.json");
-    let text = std::fs::read_to_string(path).ok()?;
-    let value: serde_json::Value = serde_json::from_str(&text).ok()?;
-    value
-        .get("api_key")
-        .and_then(serde_json::Value::as_str)
-        .map(str::trim)
-        .filter(|key| !key.is_empty())
-        .map(str::to_string)
+    let dir = jev_hosted::openagents_dir()?;
+    jev_hosted::local_key(&|_| None, &dir).map(|(key, _)| key)
 }
 
 /// `read` decides what the environment says, so a test fixes it.
@@ -132,8 +125,11 @@ fn resolve(read: impl Fn(&str) -> Option<String>) -> Result<Option<jev::Client>,
 fn door(
     resolved: Result<Profile, crate::profiles::Refusal>,
 ) -> Result<Option<jev::Client>, String> {
+    // A relay profile keeps its decision key in a scratch directory here,
+    // never the running user's `~/.openagents`.
+    let dir = std::env::temp_dir().join(format!("coder-decision-test-{}", std::process::id()));
     resolved
-        .and_then(|profile| profile.client())
+        .and_then(|profile| profile.client_in(&dir))
         .map(Some)
         .map_err(|refusal| refusal.to_string())
 }
@@ -170,9 +166,9 @@ mod tests {
         assert!(profile(&[("CODER_DECISION_PROFILE", "hosted-ish")]).is_err());
     }
 
-    /// Every profile kind that speaks the System One HTTP door builds
-    /// the one client the call sites share; the relay kind resolves
-    /// cleanly and refuses the HTTP door it does not use.
+    /// Every profile kind builds the one client the call sites share: the
+    /// HTTP kinds a client to their door, and the relay kind a client whose
+    /// judgments travel as NIP-DEC decision jobs to its worker.
     #[test]
     fn each_profile_kind_builds_its_door() {
         for (values, url) in [
@@ -206,13 +202,17 @@ mod tests {
                 .expect("a configured profile builds a door");
             assert_eq!(client.base_url(), url, "{values:?}");
         }
-        match profile(&[
+        let relay = profile(&[
             ("CODER_DECISION_PROFILE", "relay"),
             ("CODER_DECISION_WORKER", WORKER),
-        ]) {
-            Err(error) => assert!(error.contains("relay"), "{error}"),
-            Ok(client) => panic!("a relay profile built an HTTP door: {client:?}"),
-        }
+            // A key elsewhere in the environment does not make it direct.
+            ("TYPESAFE_API_KEY", "ts-secret"),
+        ])
+        .unwrap_or_else(|error| panic!("a relay profile refused: {error}"))
+        .expect("a relay profile builds a door");
+        let service = relay.service().expect("a relay door names its service");
+        assert!(service.contains(WORKER), "{service}");
+        assert_eq!(relay.base_url(), jev_hosted::DOOR);
     }
 
     /// A local endpoint never invents a provider credential: a

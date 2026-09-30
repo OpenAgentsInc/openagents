@@ -785,40 +785,29 @@ impl Agent {
             Ok(response) => {
                 let judgment = judgment_of(&response);
                 let route = route(&judgment);
-                self.record_decision(
-                    questions_provenance(),
-                    Decision {
-                        id: String::new(),
-                        name: "classify".to_string(),
-                        door: classify.base_url().to_string(),
-                        model: response.model.clone(),
-                        request: asked,
-                        answers: answers_value(&response.answers),
-                        route: Some(route.word().to_string()),
-                        error: None,
-                        attempts: Vec::new(),
-                        review: None,
-                        milliseconds,
-                    },
+                let mut record = jev_hosted::decision_record(
+                    String::new(),
+                    "classify",
+                    &classify,
+                    asked,
+                    Ok(&response),
+                    milliseconds,
                 );
+                record.route = Some(route.word().to_string());
+                self.record_decision(questions_provenance(), record);
                 Classified::Judged(Verdict { route, judgment })
             }
             Err(error) => {
                 self.record_decision(
                     questions_provenance(),
-                    Decision {
-                        id: String::new(),
-                        name: "classify".to_string(),
-                        door: classify.base_url().to_string(),
-                        model: classify.default_model().to_string(),
-                        request: asked,
-                        answers: Value::Null,
-                        route: None,
-                        error: Some(error.to_string()),
-                        attempts: Vec::new(),
-                        review: None,
+                    jev_hosted::decision_record(
+                        String::new(),
+                        "classify",
+                        &classify,
+                        asked,
+                        Err(&error),
                         milliseconds,
-                    },
+                    ),
                 );
                 Classified::Skipped(format!(
                     "the classifier failed ({error}), so the reply is not routed"
@@ -883,24 +872,22 @@ impl Agent {
                     Some(error.to_string()),
                 ),
             };
-            self.record_decision(
-                crate::select::Select::provenance(),
-                Decision {
-                    id: String::new(),
-                    name: "repository/select".to_string(),
-                    door: classify.base_url().to_string(),
-                    model,
-                    request: asked,
-                    answers,
-                    route: ranking
-                        .as_ref()
-                        .map(|ranking| ranking.verdict.word().to_string()),
-                    error: error.or(fault),
-                    attempts: Vec::new(),
-                    review: None,
-                    milliseconds,
-                },
-            );
+            let mut record = Decision {
+                id: String::new(),
+                name: "repository/select".to_string(),
+                door: classify.base_url().to_string(),
+                model,
+                request: asked,
+                answers,
+                route: ranking
+                    .as_ref()
+                    .map(|ranking| ranking.verdict.word().to_string()),
+                error: error.or(fault),
+                milliseconds,
+                ..Decision::default()
+            };
+            jev_hosted::served(&mut record, &classify, answered.as_ref());
+            self.record_decision(crate::select::Select::provenance(), record);
             ranking?
         };
         self.evidence_ranking = Some(ranking.clone());
@@ -1331,41 +1318,30 @@ impl Agent {
             Ok(response) => {
                 let verdict = shell_verdict_of(&response);
                 let route = verdict.route();
-                self.record_decision(
-                    shell_provenance(),
-                    Decision {
-                        id: String::new(),
-                        name: "shell_judge".to_string(),
-                        door: classify.base_url().to_string(),
-                        model: response.model.clone(),
-                        request: asked,
-                        answers: answers_value(&response.answers),
-                        route: Some(route.word().to_string()),
-                        error: None,
-                        attempts: Vec::new(),
-                        review: None,
-                        milliseconds,
-                    },
+                let mut record = jev_hosted::decision_record(
+                    String::new(),
+                    "shell_judge",
+                    &classify,
+                    asked,
+                    Ok(&response),
+                    milliseconds,
                 );
+                record.route = Some(route.word().to_string());
+                self.record_decision(shell_provenance(), record);
                 shell(ShellEvent::Verdict(verdict.line()));
                 route
             }
             Err(error) => {
                 self.record_decision(
                     shell_provenance(),
-                    Decision {
-                        id: String::new(),
-                        name: "shell_judge".to_string(),
-                        door: classify.base_url().to_string(),
-                        model: classify.default_model().to_string(),
-                        request: asked,
-                        answers: Value::Null,
-                        route: None,
-                        error: Some(error.to_string()),
-                        attempts: Vec::new(),
-                        review: None,
+                    jev_hosted::decision_record(
+                        String::new(),
+                        "shell_judge",
+                        &classify,
+                        asked,
+                        Err(&error),
                         milliseconds,
-                    },
+                    ),
                 );
                 ShellRoute::Pass
             }

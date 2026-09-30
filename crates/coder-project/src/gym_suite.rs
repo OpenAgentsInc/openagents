@@ -107,7 +107,7 @@ pub async fn run(plan: &Plan) -> Result<Report, String> {
                 .ok_or("suite measurement exceeded its total deadline")?;
             let request = jev::SystemOneRequest::new(
                 item.state.clone(),
-                jev::Questions::new().with("q", jev::Question::Raw(question.clone())),
+                jev::Questions::new().with("q", jev::Question::from_value(question.clone())),
             );
             let began = Instant::now();
             let response = tokio::time::timeout(remaining, client.system_one(request))

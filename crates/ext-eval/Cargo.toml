@@ -49,6 +49,7 @@ indexmap = { version = "2", features = ["serde"] }
 # `decision` graders ask Jev through `POST /v1/systemone`. The engine is
 # synchronous, so it uses the SDK's blocking client.
 jev = { path = "../jev", features = ["blocking"] }
+jev-hosted = { path = "../jev-hosted" }
 # ArtifactRef, DefinitionRef, and EventRef validation, and `sha256:` digests.
 nostr = { path = "../nostr" }
 plugin = { path = "../plugin", optional = true }

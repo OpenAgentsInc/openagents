@@ -280,8 +280,10 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
         atif::now_ms()
     ))?;
     let home = crate::credentials::openagents_dir().ok_or("HOME is not set")?;
-    let key = crate::credentials::jev_key(|name| std::env::var(name).ok(), &home)?;
-    let mode = JevMode::Live(crate::credentials::jev_client(&key.secret)?);
+    let mode = JevMode::Live(crate::credentials::jev_live(
+        |name| std::env::var(name).ok(),
+        &home,
+    )?);
     let mut request = request(&input, literal_citations);
     let started = Instant::now();
     let deadline = crate::deadline::Deadline::starting(
@@ -478,8 +480,10 @@ pub async fn rejudge_command(args: &[String]) -> Result<i32, String> {
     }
     std::fs::create_dir_all(out).map_err(|e| e.to_string())?;
     let home = crate::credentials::openagents_dir().ok_or("HOME is not set")?;
-    let key = crate::credentials::jev_key(|name| std::env::var(name).ok(), &home)?;
-    let mode = JevMode::Live(crate::credentials::jev_client(&key.secret)?);
+    let mode = JevMode::Live(crate::credentials::jev_live(
+        |name| std::env::var(name).ok(),
+        &home,
+    )?);
     let recorder = Recorder::default();
     let deadline = crate::deadline::Deadline::new(Some(Duration::from_secs(180)), Duration::ZERO);
     let mut findings = Vec::new();

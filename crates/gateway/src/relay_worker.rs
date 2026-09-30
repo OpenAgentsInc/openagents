@@ -132,6 +132,66 @@ pub struct WorkerConfig {
     /// reconnects: a quiet socket is never trusted. Zero turns it off.
     #[serde(default = "default_probe_secs")]
     pub probe_secs: u64,
+    /// A backup door the worker asks only when the upstream is unreachable
+    /// or refusing for its own reasons (NIP-DEC: OpenRouter's Decisions
+    /// API, which serves Jev as `typesafe/jev-1.13`). It is off unless the
+    /// variable its `key_env` names holds a key when the worker starts.
+    #[serde(default)]
+    pub backup: Option<BackupDoor>,
+}
+
+/// A backup door: an HTTP Decisions API that answers the same NIP-DEC
+/// request body, asked under its own key when the upstream cannot answer.
+#[derive(Clone, Debug, Deserialize)]
+pub struct BackupDoor {
+    /// The full URL the request posts to, such as
+    /// `https://openrouter.ai/api/alpha/decisions`.
+    pub url: String,
+    /// The environment variable holding the backup door's key, such as
+    /// `OPENROUTER_API_KEY`. Read once at start and never logged, written,
+    /// or put in a payload. Unset or empty leaves the backup off.
+    pub key_env: String,
+    /// The `service.door` an answer from this door names, such as
+    /// `https://openrouter.ai`.
+    pub door: String,
+    /// How the door names models: `openrouter` asks OpenRouter's name for
+    /// the canonical model (`jev-1.13.0` → `typesafe/jev-1.13`); `canonical`
+    /// asks the canonical name.
+    #[serde(default = "default_backup_naming")]
+    pub naming: String,
+}
+
+fn default_backup_naming() -> String {
+    "openrouter".to_string()
+}
+
+/// Whether a settled primary attempt is one the backup door may retry: the
+/// upstream was unreachable, out of capacity, or refused for a reason of its
+/// own (its key, its account, its quota), never for the caller's request.
+fn falls_back(settled: &Settled) -> bool {
+    if settled.outcome == "answered" {
+        return false;
+    }
+    if settled.outcome == "unavailable" {
+        return true;
+    }
+    matches!(
+        settled.code.as_deref(),
+        Some(
+            "unauthenticated"
+                | "payment_required"
+                | "not_admitted"
+                | "rate_limited"
+                | "quota_exhausted"
+                | "internal"
+                | "door_unavailable"
+                | "identity_mismatch"
+                | "busy"
+                | "unavailable"
+                | "timeout"
+                | "overloaded"
+        )
+    )
 }
 
 fn default_probe_secs() -> u64 {
@@ -536,6 +596,8 @@ pub struct Worker {
     open_key: Option<String>,
     /// The open lane's counts.
     quota: Option<Mutex<crate::open_quota::Ledger>>,
+    /// The backup door and its key, when one is configured and keyed.
+    backup: Option<(BackupDoor, String)>,
 }
 
 impl Worker {
@@ -595,6 +657,13 @@ impl Worker {
             }
             None => (None, None),
         };
+        let backup = config.backup.clone().and_then(|backup| {
+            let key = std::env::var(&backup.key_env)
+                .ok()
+                .map(|key| key.trim().to_string())
+                .filter(|key| !key.is_empty())?;
+            Some((backup, key))
+        });
         let (outbox, inbox) = mpsc::unbounded_channel();
         let window = config
             .request_window
@@ -616,7 +685,13 @@ impl Worker {
             published: AtomicU64::new(0),
             open_key,
             quota,
+            backup,
         }))
+    }
+
+    /// Whether the backup door is on: configured, and its key present.
+    pub fn backup_on(&self) -> bool {
+        self.backup.is_some()
     }
 
     /// The worker's public key, hex — the value callers `p`-tag and the
@@ -1299,6 +1374,94 @@ impl Worker {
     /// logical request, `X-Attempt` the attempt, so a relay retry is
     /// not a second spend on the HTTP lane either.
     async fn dispatch(&self, binding: &Binding, body: &RequestBody, started: Instant) -> Settled {
+        let primary = self.primary(binding, body, started).await;
+        let Some((backup, key)) = &self.backup else {
+            return primary;
+        };
+        if !falls_back(&primary) {
+            return primary;
+        }
+        let remaining = body
+            .deadline
+            .map(|deadline| deadline.saturating_sub(unix_now()));
+        if remaining == Some(0) {
+            return primary;
+        }
+        let second = self.backup_call(backup, key, body, started).await;
+        eprintln!(
+            "decision-worker: upstream {} ({}); backup door {} answered {}",
+            primary.outcome,
+            primary.code.as_deref().unwrap_or("-"),
+            backup.door,
+            second.code.as_deref().unwrap_or(&second.outcome),
+        );
+        if second.outcome == "answered" {
+            second
+        } else {
+            primary
+        }
+    }
+
+    /// The backup door's call: OpenRouter's Decisions body (the same
+    /// `state` and `questions`, the model under the door's name) under the
+    /// backup key, in whatever time the job's deadline leaves.
+    async fn backup_call(
+        &self,
+        backup: &BackupDoor,
+        key: &str,
+        body: &RequestBody,
+        started: Instant,
+    ) -> Settled {
+        let canonical = decision::canonical_model(&body.model);
+        let model = if backup.naming == "canonical" {
+            canonical.to_string()
+        } else {
+            jev::nip_dec::openrouter_model(canonical).into_owned()
+        };
+        let envelope = json!({
+            "model": model,
+            "state": body.state,
+            "questions": body.questions,
+        });
+        let request = self
+            .http
+            .post(&backup.url)
+            .bearer_auth(key)
+            .header("idempotency-key", &body.request)
+            .header("x-attempt", body.attempt.to_string())
+            .json(&envelope);
+        let timeout = body
+            .deadline
+            .map(|deadline| Duration::from_secs(deadline.saturating_sub(unix_now()).max(1)))
+            .unwrap_or_else(|| Duration::from_secs(self.config.upstream_timeout_secs));
+        let service = ServiceConfig {
+            door: backup.door.clone(),
+            version: self
+                .config
+                .service
+                .as_ref()
+                .and_then(|service| service.version.clone()),
+        };
+        match tokio::time::timeout(timeout, request.send()).await {
+            Ok(Ok(response)) => {
+                self.settle_response(response, started, Some(&service))
+                    .await
+            }
+            Ok(Err(error)) => unavailable(
+                "unavailable",
+                format!("The call to the backup door failed: {error}"),
+                started,
+            ),
+            Err(_) => unavailable(
+                "timeout",
+                "The job ran out of time before the backup door answered.".to_string(),
+                started,
+            ),
+        }
+    }
+
+    /// The upstream call.
+    async fn primary(&self, binding: &Binding, body: &RequestBody, started: Instant) -> Settled {
         // `state` and `questions` go to the door exactly as the caller sent
         // them (NIP-DEC: structured entries pass through unchanged); a model
         // alias goes as the canonical name it stands for.
@@ -1327,7 +1490,10 @@ impl Worker {
             })
             .unwrap_or_else(|| Duration::from_secs(self.config.upstream_timeout_secs));
         match tokio::time::timeout(timeout, request.send()).await {
-            Ok(Ok(response)) => self.settle_response(response, started).await,
+            Ok(Ok(response)) => {
+                self.settle_response(response, started, self.config.service.as_ref())
+                    .await
+            }
             Ok(Err(error)) => Settled {
                 outcome: "unavailable".to_string(),
                 cause: Some("unavailable".to_string()),
@@ -1364,7 +1530,12 @@ impl Worker {
     /// Map the upstream's HTTP answer to the settled record: the
     /// door's own refusals are `refused`; capacity and transport
     /// failures are `unavailable`, with the exact code kept as cause.
-    async fn settle_response(&self, response: reqwest::Response, started: Instant) -> Settled {
+    async fn settle_response(
+        &self,
+        response: reqwest::Response,
+        started: Instant,
+        service: Option<&ServiceConfig>,
+    ) -> Settled {
         let status = response.status();
         let header = |name: &str| {
             response
@@ -1389,7 +1560,7 @@ impl Worker {
         if status.is_success() {
             let mut response = parsed.unwrap_or(Value::Null);
             let mut raw = raw.to_vec();
-            if let (Some(service), Some(map)) = (&self.config.service, response.as_object_mut()) {
+            if let (Some(service), Some(map)) = (service, response.as_object_mut()) {
                 map.insert(
                     "service".to_string(),
                     json!({
@@ -1427,10 +1598,14 @@ impl Worker {
             .and_then(|value| value.get("error"))
             .map(|error| {
                 (
+                    // A typed code names itself; OpenRouter's Decisions
+                    // API puts the HTTP status number in `code`, read by
+                    // NIP-DEC's status table.
                     error
                         .get("code")
                         .and_then(Value::as_str)
-                        .unwrap_or("unavailable")
+                        .filter(|code| !code.is_empty())
+                        .unwrap_or_else(|| decision::code_for_http_status(status.as_u16()))
                         .chars()
                         .take(decision::MAX_CODE_BYTES)
                         .collect::<String>(),
@@ -1476,6 +1651,24 @@ impl Worker {
             resolved_at,
             result_digest: None,
         }
+    }
+}
+
+/// A settled attempt no door answered: `cause` names why.
+fn unavailable(cause: &str, message: String, started: Instant) -> Settled {
+    Settled {
+        outcome: "unavailable".to_string(),
+        cause: Some(cause.to_string()),
+        code: Some("unavailable".to_string()),
+        message: Some(message),
+        retry_after_ms: None,
+        response: None,
+        served_model: None,
+        served_artifact: None,
+        usage: None,
+        latency_ms: Some(started.elapsed().as_millis() as u64),
+        resolved_at: Some(now_utc()),
+        result_digest: None,
     }
 }
 
@@ -1542,6 +1735,17 @@ pub async fn run(config: WorkerConfig) -> Result<(), Trouble> {
             open.quota.total_day
         ),
         None => eprintln!("decision-worker: no open lane"),
+    }
+    match &worker.config.backup {
+        Some(backup) if worker.backup_on() => eprintln!(
+            "decision-worker: backup door {} under ${}",
+            backup.url, backup.key_env
+        ),
+        Some(backup) => eprintln!(
+            "decision-worker: backup door {} off: ${} is not set",
+            backup.url, backup.key_env
+        ),
+        None => eprintln!("decision-worker: no backup door"),
     }
     loop {
         match tokio_tungstenite::connect_async(&worker.config.relay).await {

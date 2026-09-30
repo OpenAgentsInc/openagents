@@ -1198,8 +1198,8 @@ pub mod mcp {
             },
             {
                 let schema = json!({"type": "object", "properties": {
-                    "state": {"description": "The JSON or text the questions are about."},
-                    "questions": {"type": "object", "minProperties": 1, "maxProperties": 64, "description": "Questions keyed by an ID you choose: {type: noul|choice|score, instructions, criteria?}."},
+                    "state": {"description": "The text or JSON object the questions are about."},
+                    "questions": {"type": "object", "minProperties": 1, "maxProperties": 64, "description": "Questions keyed by an ID you choose, in NIP-DEC's shape: {type: noul|choice|score, instructions, criteria?}, where instructions and each criterion may be text or structured JSON."},
                     "model": model,
                     "request_id": request_id,
                 }, "required": ["state", "questions"], "additionalProperties": false});
@@ -2018,6 +2018,12 @@ pub mod mcp {
             if questions.is_empty() || questions.len() > 64 {
                 return Err("`questions` must hold 1 to 64 questions".to_string());
             }
+            // NIP-DEC's shapes, read by the shared decision model: `state`
+            // is text or an object, and `instructions` and every criterion
+            // an EntryType (text, object, array, or null).
+            if !matches!(arguments["state"], Value::String(_) | Value::Object(_)) {
+                return Err("`state` must be text or a JSON object".into());
+            }
             for (qid, question) in questions {
                 let kind = question
                     .get("type")
@@ -2028,10 +2034,17 @@ pub mod mcp {
                         "question `{qid}` has type `{kind}`; use noul, choice, or score"
                     ));
                 }
-                if !question.get("instructions").is_some_and(|v| v.is_string()) {
-                    return Err(format!("question `{qid}` needs string `instructions`"));
+                if !question.get("instructions").is_some_and(|v| {
+                    matches!(v, Value::String(_) | Value::Object(_) | Value::Array(_))
+                }) {
+                    return Err(format!(
+                        "question `{qid}` needs `instructions`: text, an object, or an array"
+                    ));
                 }
             }
+            jev::Questions::from_map(questions.clone())
+                .validate()
+                .map_err(|error| error.to_string())?;
             let mut request = json!({
                 "state": arguments["state"],
                 "questions": arguments["questions"],

@@ -545,7 +545,7 @@ impl Set {
                     .map(|requirement| {
                         (
                             requirement.clone(),
-                            Question::Raw(written(template, REQUIREMENT, requirement)),
+                            Question::from_value(written(template, REQUIREMENT, requirement)),
                         )
                     })
                     .collect()
@@ -565,7 +565,7 @@ impl Set {
                     .map(|finding| {
                         (
                             finding.clone(),
-                            Question::Raw(written(template, FINDING, finding)),
+                            Question::from_value(written(template, FINDING, finding)),
                         )
                     })
                     .collect()
@@ -585,7 +585,9 @@ impl Set {
                 .map(|(id, question)| {
                     Ok((
                         id.clone(),
-                        Question::Raw(filled(id, question, fill).map_err(|why| why.to_string())?),
+                        Question::from_value(
+                            filled(id, question, fill).map_err(|why| why.to_string())?,
+                        ),
                     ))
                 })
                 .collect::<Result<Questions, String>>()?,
@@ -1000,7 +1002,10 @@ mod tests {
                 ("run-suite".to_string(), "Scores doors.".to_string()),
             ]))
             .unwrap();
-        let Some(Question::Raw(body)) = questions.get("program") else {
+        let Some(body) = questions
+            .get("program")
+            .map(|question| serde_json::to_value(question).unwrap())
+        else {
             panic!("the program question is the one that was filled");
         };
         assert_eq!(
@@ -1036,7 +1041,10 @@ mod tests {
             ]))
             .unwrap();
         assert_eq!(questions.len(), 2);
-        let Some(Question::Raw(body)) = questions.get("t2") else {
+        let Some(body) = questions
+            .get("t2")
+            .map(|question| serde_json::to_value(question).unwrap())
+        else {
             panic!("one question per requirement, named for it");
         };
         assert!(
@@ -1059,7 +1067,10 @@ mod tests {
             .build(&Fill::Findings(vec!["f1".to_string(), "f2".to_string()]))
             .unwrap();
         assert_eq!(questions.len(), 2);
-        let Some(Question::Raw(body)) = questions.get("f2") else {
+        let Some(body) = questions
+            .get("f2")
+            .map(|question| serde_json::to_value(question).unwrap())
+        else {
             panic!("one question per finding, named for it");
         };
         assert!(

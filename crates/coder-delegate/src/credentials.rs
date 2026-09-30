@@ -114,27 +114,10 @@ pub fn bearer(env: impl Fn(&str) -> Option<String>, dir: &Path) -> Result<Found,
     })
 }
 
-/// A Jev client on the pinned model, authenticated with `key`. Every call
-/// has a whole-call budget, retries and waits included; the judge narrows
-/// it per request to what the episode deadline leaves.
-pub fn jev_client(key: &Secret) -> Result<jev::Client, String> {
-    jev::Client::new(
-        jev::Config::new()
-            .api_key(key.expose())
-            .base_url(JEV_BASE_URL)
-            .default_model(JEV_MODEL)
-            .retry(jev::RetryPolicy {
-                budget: Some(crate::component::jev::JEV_CALL_BUDGET),
-                ..jev::RetryPolicy::default()
-            }),
-    )
-    .map_err(|error| format!("cannot build the Jev client: {error}"))
-}
-
 /// Jev for a turn, through the one resolver every Jev caller shares
-/// ([`jev_hosted::resolve`]): this computer's TypeSafe key when it has one
-/// (the client [`jev_client`] builds), else the OpenAgents hosted decision
-/// service, which needs no key on this computer. Either client is pinned
+/// ([`jev_hosted::resolve`]): this computer's TypeSafe key when it has one,
+/// else the OpenAgents hosted decision service, which needs no key on this
+/// computer. Either client is pinned
 /// to [`JEV_BASE_URL`] and [`JEV_MODEL`] and carries the same call budget.
 ///
 /// # Errors
@@ -158,6 +141,16 @@ pub fn jev(
             })
         },
     )
+}
+
+/// The resolved client alone, for a caller that does not report how Jev
+/// was reached: [`jev`]'s client, or why this computer has no Jev.
+///
+/// # Errors
+///
+/// Why this computer has no Jev, never a key.
+pub fn jev_live(env: impl Fn(&str) -> Option<String>, dir: &Path) -> Result<jev::Client, String> {
+    jev(env, dir).map(|resolved| resolved.client)
 }
 
 /// `~/.openagents`, the directory both credential files live in.

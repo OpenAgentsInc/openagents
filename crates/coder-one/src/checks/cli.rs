@@ -433,8 +433,10 @@ async fn truth_command(
         let client = match jev_word.as_str() {
             "live" => {
                 let dir = crate::credentials::openagents_dir().ok_or("HOME is not set")?;
-                let key = crate::credentials::jev_key(|name| std::env::var(name).ok(), &dir)?;
-                Some(crate::credentials::jev_client(&key.secret)?)
+                Some(crate::credentials::jev_live(
+                    |name| std::env::var(name).ok(),
+                    &dir,
+                )?)
             }
             "recorded" => None,
             "off" => {

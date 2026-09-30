@@ -180,8 +180,10 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
             "recorded" => replay.clone(),
             "live" => {
                 let dir = crate::credentials::openagents_dir().ok_or("HOME is not set")?;
-                let key = crate::credentials::jev_key(|name| std::env::var(name).ok(), &dir)?;
-                JevMode::Live(crate::credentials::jev_client(&key.secret)?)
+                JevMode::Live(crate::credentials::jev_live(
+                    |name| std::env::var(name).ok(),
+                    &dir,
+                )?)
             }
             other => return Err(format!("--jev is off, recorded, or live, not {other}")),
         };
@@ -296,8 +298,10 @@ async fn write_command(args: &[String]) -> Result<i32, String> {
         }
         "live" => {
             let dir = crate::credentials::openagents_dir().ok_or("HOME is not set")?;
-            let key = crate::credentials::jev_key(|name| std::env::var(name).ok(), &dir)?;
-            JevMode::Live(crate::credentials::jev_client(&key.secret)?)
+            JevMode::Live(crate::credentials::jev_live(
+                |name| std::env::var(name).ok(),
+                &dir,
+            )?)
         }
         other => return Err(format!("--jev is off, recorded, or live, not {other}")),
     };

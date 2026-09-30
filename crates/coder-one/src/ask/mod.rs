@@ -502,8 +502,8 @@ pub async fn run(options: Options, progress: &Progress) -> Result<(Value, i32), 
         JevChoice::Recorded(path) => JevMode::Recorded(Recorded::load(path)?),
         JevChoice::Live => {
             let dir = crate::credentials::openagents_dir().ok_or("HOME is not set")?;
-            match crate::credentials::jev_key(|name| std::env::var(name).ok(), &dir) {
-                Ok(key) => JevMode::Live(crate::credentials::jev_client(&key.secret)?),
+            match crate::credentials::jev_live(|name| std::env::var(name).ok(), &dir) {
+                Ok(client) => JevMode::Live(client),
                 Err(why) => {
                     progress.line(&format!("jev ▸ off: {why}"));
                     JevMode::Off

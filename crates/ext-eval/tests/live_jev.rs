@@ -35,7 +35,7 @@ fn key() -> String {
 #[test]
 #[ignore = "calls the live Jev door and spends quota"]
 fn a_live_decision_grader_tells_a_right_answer_from_a_wrong_one() {
-    let door = JevDoor::new(jev::Config::new().api_key(key()), None).expect("the client builds");
+    let door = JevDoor::resolved(jev_hosted::DOOR, Some(&key()), None).expect("the client builds");
     let case = Case::parse(
         "find-callers",
         "evals/find-callers",

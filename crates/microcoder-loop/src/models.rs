@@ -78,11 +78,26 @@ pub const CREDIBLE: &str = include_str!("../credible.json");
 /// task states a numeric target and a test measures it (`--gate-target`).
 pub const TARGET: &str = include_str!("../target.json");
 
-/// One question in the set.
+/// One question in the set: a Noul whose instructions are `text`, with
+/// optional NIP-DEC `criteria` describing what yes and no mean.
 #[derive(Clone, Debug, Deserialize)]
 pub struct Question {
     pub id: String,
     pub text: String,
+    /// What a yes and a no mean, as NIP-DEC's structured noul criteria.
+    #[serde(default)]
+    pub criteria: Option<jev::NoulCriteria>,
+}
+
+impl Question {
+    /// The question in the shared decision model.
+    #[must_use]
+    pub fn noul(&self) -> jev::Noul {
+        match &self.criteria {
+            Some(criteria) => jev::Noul::with_criteria(self.text.clone(), criteria.clone()),
+            None => jev::Noul::new(self.text.clone()),
+        }
+    }
 }
 
 /// The question set.
@@ -90,6 +105,17 @@ pub struct Question {
 pub struct QuestionSet {
     pub id: String,
     pub questions: Vec<Question>,
+}
+
+impl QuestionSet {
+    /// The set in the shared decision model, in file order.
+    #[must_use]
+    pub fn questions(&self) -> jev::Questions {
+        self.questions
+            .iter()
+            .map(|question| (question.id.clone(), question.noul()))
+            .collect()
+    }
 }
 
 /// The embedded question set.
@@ -197,6 +223,7 @@ pub fn relevance_set(template: &QuestionSet, count: usize) -> QuestionSet {
             .map(|n| Question {
                 id: format!("entry_{n}"),
                 text: text.replace("{entry}", &format!("entry_{n}")),
+                criteria: template.questions.first().and_then(|q| q.criteria.clone()),
             })
             .collect(),
     }
@@ -417,11 +444,7 @@ pub struct JevJudge {
 impl Judge for JevJudge {
     async fn judge(&self, set: &QuestionSet, state: &Value) -> Judgment {
         let started = Instant::now();
-        let mut questions = jev::Questions::new();
-        for q in &set.questions {
-            questions = questions.with(q.id.clone(), jev::Noul::new(q.text.clone()));
-        }
-        let request = jev::SystemOneRequest::new(state.clone(), questions);
+        let request = jev::SystemOneRequest::new(state.clone(), set.questions());
         let milliseconds = || u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
         let bound = jev_upper_bound(set, state);
         match self.client.system_one(request).await {

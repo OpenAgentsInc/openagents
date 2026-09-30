@@ -37,6 +37,27 @@ Coder <--27010 status, 26910 result----------- relay.openagents.com <-- decision
   checks the worker's signature, the request's event id, its own key, and
   the receipt before it believes an answer.
 
+## The backup door
+
+When TypeSafe cannot answer, the worker can ask OpenRouter's Decisions API
+instead: `POST https://openrouter.ai/api/alpha/decisions` with the same
+`state` and `questions` and the model under OpenRouter's name
+(`jev-1.13.0` → `typesafe/jev-1.13`; NIP-DEC, "Doors and the backup door").
+It is the `backup` block of the config and is **off unless
+`OPENROUTER_API_KEY` is in the worker's environment file** when it starts;
+the journal says which at start (`backup door … under $OPENROUTER_API_KEY`,
+or `backup door … off: $OPENROUTER_API_KEY is not set`).
+
+- It is asked only after TypeSafe was unreachable, timed out, answered a
+  5xx, or refused for its own reasons (its key, its account, its rate or
+  quota). A request the caller got wrong (`invalid_request`, …) is never
+  retried there.
+- Its answer names it: `service: {door: "https://openrouter.ai", …}`,
+  OpenRouter's dated model (`typesafe/jev-1.13-20260917`), and
+  `usage.cost`. If it fails too, the caller gets TypeSafe's refusal.
+- A backup answer counts against the open lane like any other; the lane's
+  daily total still bounds the day's spend on both doors together.
+
 ## One resolver for every caller
 
 `jev_hosted::resolve` is how every Jev caller finds Jev:
@@ -63,7 +84,17 @@ The callers:
 | --- | --- |
 | Local runs (`openagents chat --local`) and the desktop's auto-start | `microcoder repository` (`crates/microcoder/src/main.rs`), pinned to the grant's `decision_endpoint` and `decision_model` |
 | The delegate door (terminal and `coder -p` turns) | `coder::delegate_door::jev_from` through `coder_delegate::credentials::jev` |
-| The hands seam | `coder_hands::seam::configured` |
+| The hands seam | `coder_hands::seam::configured` (its key, `TYPESAFE_BASE_URL`, and model pass through the resolver) |
+| Coder One's episode, checks, and tools | `coder_delegate::credentials::jev_live` |
+| The Microcoder bench and gate replay | `microcoder`'s `jev_client` |
+| The decision profile (terminal routing, the shell judge, `decide` steps, the chat and CLI routers) | `coder::profiles::Profile::client`: keyed doors through the local-key door, the `relay` profile through the hosted door |
+| The Gym (`gym ask --jev`, run learning) | `gym`'s `open_doors` and `runs_learning::Judge::from_environment` |
+| External-eval graders (the eval runner and `openagents eval`) | `ext_eval::JevDoor::resolved` |
+| Voyager's live door | `voyager::decide::Door::live` |
+
+Every one records its calls the same way when it keeps a trajectory
+(`jev_hosted::decision_record`, `openagents.decision-call.v1`): the door,
+`via`, the relaying `service`, latency, usage, and cost.
 
 Each repository turn's transcript names the service once
 (`decision_service`: `via` `direct` or `hosted`), and each decision response
@@ -107,7 +138,8 @@ key; `models`; `quota`), `service` is what each answer names, and
 `probe_secs` is the liveness probe: a `REQ` with `limit` 0 every 30 seconds,
 and one still unanswered at the next ends the session, which reconnects.
 The environment file ([example](../../deploy/decision-worker/decision-worker.env.example))
-holds the two secrets, `DECISION_WORKER_SECRET` and `TYPESAFE_API_KEY`.
+holds the two secrets, `DECISION_WORKER_SECRET` and `TYPESAFE_API_KEY`, and
+optionally a third, `OPENROUTER_API_KEY`, which turns the backup door on.
 
 ## Deploying
 

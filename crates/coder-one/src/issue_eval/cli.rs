@@ -250,8 +250,10 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
             }
             let jev = if args.jev == "live" {
                 let dir = crate::credentials::openagents_dir().ok_or("HOME is not set")?;
-                let key = crate::credentials::jev_key(|name| std::env::var(name).ok(), &dir)?;
-                Some(crate::credentials::jev_client(&key.secret)?)
+                Some(crate::credentials::jev_live(
+                    |name| std::env::var(name).ok(),
+                    &dir,
+                )?)
             } else {
                 None
             };

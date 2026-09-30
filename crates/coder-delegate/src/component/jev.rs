@@ -299,15 +299,14 @@ pub async fn ask(mode: &JevMode, recorder: &Recorder, ask: Ask<'_>) -> Asked {
     let mut decision = Decision {
         id: ask.id,
         name: ask.name.to_string(),
-        door: JEV_BASE_URL.to_string(),
+        door: match mode {
+            JevMode::Live(client) => client.base_url().to_string(),
+            _ => JEV_BASE_URL.to_string(),
+        },
         model: JEV_MODEL.to_string(),
         request: body,
         answers: Value::Null,
-        route: None,
-        error: None,
-        attempts: Vec::new(),
-        review: None,
-        milliseconds: 0,
+        ..Decision::default()
     };
     let credit = |step: Step| step.noting(crate::record::ATTRIBUTION_KEY, json!(invocation));
     let asked = match mode {
@@ -394,6 +393,7 @@ pub async fn ask(mode: &JevMode, recorder: &Recorder, ask: Ask<'_>) -> Asked {
             let result = client.system_one(request).await;
             let milliseconds = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
             decision.milliseconds = milliseconds;
+            jev_hosted::served(&mut decision, client, result.as_ref());
             match result {
                 Ok(response) => {
                     decision.model.clone_from(&response.model);

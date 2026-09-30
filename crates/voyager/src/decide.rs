@@ -85,20 +85,28 @@ impl Door {
     }
 
     /// Points at a remote `POST /v1/systemone` endpoint — the live
-    /// TypeSafe API — where the caller's `TYPESAFE_API_KEY` does the
-    /// talking.
+    /// TypeSafe API — through the one resolver every Jev caller shares
+    /// (`jev_hosted::resolve`): this computer's TypeSafe key talks to the
+    /// door directly, and with none the OpenAgents hosted decision service
+    /// answers for TypeSafe's door.
     ///
     /// # Errors
     ///
-    /// The client must build: a credential must resolve and the
-    /// decisions directory must create.
+    /// The client must build: Jev must resolve and the decisions
+    /// directory must create.
     pub fn live(url: &str, model: &str, dir: impl AsRef<Path>) -> Result<Self> {
         std::fs::create_dir_all(dir.as_ref())?;
-        let client =
-            jev::BlockingClient::new(jev::Config::new().base_url(url).default_model(model))
-                .map_err(|error| {
-                    Error::decision(format!("the decision client did not start: {error}"))
-                })?;
+        let home = jev_hosted::openagents_dir()
+            .ok_or_else(|| Error::decision("no Jev: HOME is not set".to_string()))?;
+        let env = |name: &str| std::env::var(name).ok();
+        let resolved =
+            jev_hosted::resolve(&env, &home, &jev_hosted::Door { url, model }, &|config| {
+                config
+            })
+            .map_err(|why| Error::decision(format!("no Jev: {why}")))?;
+        let client = jev::BlockingClient::from_client(resolved.client).map_err(|error| {
+            Error::decision(format!("the decision client did not start: {error}"))
+        })?;
         Ok(Door {
             client,
             model: model.to_string(),

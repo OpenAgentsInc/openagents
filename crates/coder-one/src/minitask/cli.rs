@@ -251,9 +251,10 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
                             .map(|value| value.trim().to_string())
                             .filter(|value| !value.is_empty())
                     };
-                    let key = crate::credentials::jev_key(env, &dir)
-                        .map_err(|error| format!("--jev live needs a Jev key: {error}"))?;
-                    Some(crate::credentials::jev_client(&key.secret)?)
+                    Some(
+                        crate::credentials::jev_live(env, &dir)
+                            .map_err(|error| format!("--jev live has no Jev: {error}"))?,
+                    )
                 }
                 other => return Err(format!("--jev takes off or live, not {other}")),
             };

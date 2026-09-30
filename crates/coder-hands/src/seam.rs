@@ -188,30 +188,33 @@ pub fn configured() -> Result<(Seam, String), String> {
     let model = present(std::env::var(jev::env::DEFAULT_MODEL).ok())
         .or_else(|| file.as_ref().and_then(|file| present(file.model.clone())))
         .unwrap_or_else(|| jev::defaults::MODEL.to_string());
+    // One resolver for every Jev caller: this machine's key (the variable,
+    // then the file) talks to TypeSafe directly; with none, the hosted
+    // decision service answers.
     let key = present(std::env::var(jev::env::API_KEY).ok())
         .or_else(|| file.and_then(|file| present(file.api_key)));
-    let client = match key {
-        Some(key) => {
-            let config = jev::Config::new().api_key(key).default_model(model.clone());
-            jev::Client::new(config).map_err(|error| error.to_string())?
-        }
-        None => {
-            let dir = jev_hosted::openagents_dir()
-                .ok_or_else(|| "Jev has no key and no home directory.".to_string())?;
-            let env = |name: &str| std::env::var(name).ok();
-            jev_hosted::resolve(
-                &env,
-                &dir,
-                &jev_hosted::Door {
-                    url: jev_hosted::DOOR,
-                    model: &model,
-                },
-                &|config| config,
-            )
-            .map_err(|why| format!("Jev is unavailable: {why}."))?
-            .client
+    let url = present(std::env::var(jev::env::BASE_URL).ok())
+        .unwrap_or_else(|| jev_hosted::DOOR.to_string());
+    let dir =
+        jev_hosted::openagents_dir().unwrap_or_else(|| std::path::PathBuf::from("/nonexistent"));
+    let env = |name: &str| {
+        if name == jev::env::API_KEY {
+            key.clone()
+        } else {
+            std::env::var(name).ok()
         }
     };
+    let client = jev_hosted::resolve(
+        &env,
+        &dir,
+        &jev_hosted::Door {
+            url: &url,
+            model: &model,
+        },
+        &|config| config,
+    )
+    .map_err(|why| format!("Jev is unavailable: {why}."))?
+    .client;
     let seam = Seam::start(client, model.clone())
         .map_err(|error| format!("the seam's thread did not start: {error}."))?;
     Ok((seam, model))

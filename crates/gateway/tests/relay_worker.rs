@@ -506,6 +506,7 @@ async fn rig(
         open: None,
         service: None,
         probe_secs: 0,
+        backup: None,
     })
     .unwrap();
     let worker_pub = worker.pubkey().to_string();
@@ -1216,6 +1217,7 @@ async fn settled_record_survives_restart() {
         open: None,
         service: None,
         probe_secs: 0,
+        backup: None,
     })
     .unwrap();
     let serving = Arc::clone(&worker);
@@ -1534,4 +1536,211 @@ async fn structured_entries_pass_through_and_model_aliases_admit() {
         assert_eq!(sent["state"], state);
         assert_eq!(sent["questions"], questions);
     }
+}
+
+// ---------- the backup door: OpenRouter's Decisions API ----------
+
+/// A door that answers by the request's state: `"primary down"` is a 503
+/// with no typed error, `"caller error"` a typed 400, and `"limited"` a 429
+/// with OpenRouter's numeric `error.code`. Anything else is answered.
+async fn scripted_upstream() -> (String, Arc<AtomicUsize>) {
+    let asked = Arc::new(AtomicUsize::new(0));
+    let counter = asked.clone();
+    let router = axum::Router::new().route(
+        "/v1/systemone",
+        post(move |body: Bytes| {
+            let counter = counter.clone();
+            async move {
+                counter.fetch_add(1, Ordering::SeqCst);
+                let body: Value = serde_json::from_slice(&body).unwrap_or_default();
+                match body["state"].as_str().unwrap_or_default() {
+                    "primary down" => (StatusCode::SERVICE_UNAVAILABLE, "").into_response(),
+                    "caller error" => (
+                        StatusCode::BAD_REQUEST,
+                        Json(json!({"error": {"code": "invalid_request", "message": "bad"}})),
+                    )
+                        .into_response(),
+                    "limited" => (
+                        StatusCode::TOO_MANY_REQUESTS,
+                        Json(json!({"error": {"code": 429, "message": "Rate limit exceeded"}})),
+                    )
+                        .into_response(),
+                    _ => Json(json!({
+                        "model": "jev-1.13.0",
+                        "answers": {"q1": {"type": "noul", "noul": 0.8}},
+                        "usage": {"input_tokens": 12, "output_tokens": 1},
+                    }))
+                    .into_response(),
+                }
+            }
+        }),
+    );
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    tokio::spawn(axum::serve(listener, router).into_future());
+    (format!("http://{address}"), asked)
+}
+
+/// An OpenRouter-shaped Decisions API: it answers only its own bearer,
+/// records every body, refuses `"limited"` with a numeric 402, and answers
+/// the rest in OpenRouter's response shape.
+async fn openrouter_door(bearer: &'static str) -> (String, Arc<Mutex<Vec<Value>>>) {
+    let bodies = Arc::new(Mutex::new(Vec::new()));
+    let seen = bodies.clone();
+    let router = axum::Router::new().route(
+        "/api/alpha/decisions",
+        post(move |headers: axum::http::HeaderMap, body: Bytes| {
+            let seen = seen.clone();
+            async move {
+                let authorized = headers
+                    .get("authorization")
+                    .and_then(|value| value.to_str().ok())
+                    == Some(format!("Bearer {bearer}").as_str());
+                if !authorized {
+                    return (
+                        StatusCode::UNAUTHORIZED,
+                        Json(json!({"error": {"code": 401, "message": "User not found."}})),
+                    )
+                        .into_response();
+                }
+                let body: Value = serde_json::from_slice(&body).unwrap_or_default();
+                seen.lock().unwrap().push(body.clone());
+                if body["state"] == "limited" {
+                    return (
+                        StatusCode::PAYMENT_REQUIRED,
+                        Json(json!({"error": {"code": 402, "message": "Insufficient credits"}})),
+                    )
+                        .into_response();
+                }
+                Json(json!({
+                    "id": "gen-dec-test",
+                    "model": "typesafe/jev-1.13-20260917",
+                    "provider": "TypeSafe",
+                    "answers": {"q1": {"type": "noul", "noul": 0.7}},
+                    "usage": {"input_tokens": 12, "output_tokens": 1, "cost": 0.0000005},
+                }))
+                .into_response()
+            }
+        }),
+    );
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    tokio::spawn(axum::serve(listener, router).into_future());
+    (format!("http://{address}/api/alpha/decisions"), bodies)
+}
+
+/// With the backup door on, a job the upstream cannot answer goes to
+/// OpenRouter's Decisions API as `typesafe/jev-1.13` with the same state
+/// and questions, and the answer names the backup door; a job the upstream
+/// refuses for the caller's own fault never reaches the backup; a backup
+/// that also refuses leaves the upstream's refusal, read from a numeric
+/// `error.code`; and a configured backup with no key is off.
+#[tokio::test]
+async fn the_backup_door_answers_only_when_the_upstream_cannot() {
+    const OPEN_ENV: &str = "DECISION_WORKER_TEST_BACKUP_OPEN_KEY";
+    const BACKUP_ENV: &str = "DECISION_WORKER_TEST_BACKUP_KEY";
+    // SAFETY: this test binary reads these variables nowhere else, and no
+    // other test sets them.
+    unsafe {
+        std::env::set_var(OPEN_ENV, "ts-test-key");
+        std::env::set_var(BACKUP_ENV, "or-test-key");
+    }
+    let (relay_url, conns) = relay().await;
+    let (upstream, asked) = scripted_upstream().await;
+    let (backup, backup_bodies) = openrouter_door("or-test-key").await;
+    let jobs_dir = tempfile::tempdir().unwrap();
+    let config = |backup_env: &str| {
+        serde_json::from_value::<WorkerConfig>(json!({
+            "relay": relay_url,
+            "worker_secret": hex_secret(WORKER_BYTE),
+            "upstream": upstream,
+            "jobs_dir": jobs_dir.path(),
+            "probe_secs": 0,
+            "open": {
+                "key_env": OPEN_ENV,
+                "models": ["jev-1.13.0"],
+                "quota": {"per_key_day": 20, "per_key_minute": 20, "total_day": 20},
+            },
+            "service": {"door": "https://api.typesafe.ai", "version": "decision-worker/test"},
+            "backup": {"url": backup, "key_env": backup_env, "door": "https://openrouter.ai"},
+        }))
+        .unwrap()
+    };
+    assert!(
+        !Worker::open(config("DECISION_WORKER_TEST_BACKUP_UNSET"))
+            .unwrap()
+            .backup_on()
+    );
+    let worker = Worker::open(config(BACKUP_ENV)).unwrap();
+    assert!(worker.backup_on());
+    let worker_pub = worker.pubkey().to_string();
+    let serving = Arc::clone(&worker);
+    let url = relay_url.clone();
+    tokio::spawn(async move {
+        let (socket, _) = connect_async(&url).await.unwrap();
+        let _ = serving.serve(socket).await;
+    });
+    subscribed(&conns).await;
+    let mut socket = authenticated_socket(&relay_url, CALLER_BYTE).await;
+    let questions = json!({"q1": {"type": "noul", "instructions": {"question": "Is it?", "focus": ["x"]},
+                                  "criteria": {"true": {"what": "yes"}}}});
+    let ask = |request: &str, state: &str| {
+        RequestBody::new(
+            request,
+            1,
+            "typesafe/jev-1.13",
+            json!(state),
+            questions.as_object().unwrap().clone(),
+        )
+        .deadline(unix_now() + 20)
+    };
+
+    // The upstream is down: the backup answers.
+    let body = ask("backup-1", "primary down");
+    let event = request_event(CALLER_BYTE, &worker_pub, &body, unix_now());
+    let (_, result) = run_job(&mut socket, CALLER_BYTE, &worker_pub, &body, &event, 15).await;
+    let result = result.expect("the backup never answered");
+    assert_eq!(result.outcome, decision::Outcome::Answered);
+    let response = result.response.unwrap();
+    assert_eq!(response["model"], "typesafe/jev-1.13-20260917");
+    assert_eq!(response["service"]["door"], "https://openrouter.ai");
+    assert_eq!(response["usage"]["cost"], 0.0000005);
+    let sent = backup_bodies.lock().unwrap()[0].clone();
+    assert_eq!(sent["model"], "typesafe/jev-1.13");
+    assert_eq!(sent["state"], "primary down");
+    assert_eq!(sent["questions"], questions);
+
+    // The caller's own error: the backup is not asked.
+    let body = ask("backup-2", "caller error");
+    let event = request_event(CALLER_BYTE, &worker_pub, &body, unix_now());
+    let (_, result) = run_job(&mut socket, CALLER_BYTE, &worker_pub, &body, &event, 15).await;
+    let result = result.expect("the refusal never resolved");
+    assert_eq!(result.outcome, decision::Outcome::Refused);
+    assert_eq!(result.refusal.unwrap().code, "invalid_request");
+    assert_eq!(backup_bodies.lock().unwrap().len(), 1);
+
+    // Both refuse: the upstream's refusal stands, read from its status.
+    let body = ask("backup-3", "limited");
+    let event = request_event(CALLER_BYTE, &worker_pub, &body, unix_now());
+    let (statuses, result) =
+        run_job(&mut socket, CALLER_BYTE, &worker_pub, &body, &event, 15).await;
+    let code = result
+        .and_then(|result| result.refusal.map(|refusal| refusal.code))
+        .or_else(|| {
+            statuses
+                .last()
+                .and_then(|status| status.refusal.clone())
+                .map(|refusal| refusal.code)
+        });
+    assert_eq!(code.as_deref(), Some("rate_limited"));
+    assert_eq!(backup_bodies.lock().unwrap().len(), 2);
+
+    // A healthy upstream answers itself.
+    let body = ask("backup-4", "fine");
+    let event = request_event(CALLER_BYTE, &worker_pub, &body, unix_now());
+    let (_, result) = run_job(&mut socket, CALLER_BYTE, &worker_pub, &body, &event, 15).await;
+    let response = result.unwrap().response.unwrap();
+    assert_eq!(response["service"]["door"], "https://api.typesafe.ai");
+    assert_eq!(backup_bodies.lock().unwrap().len(), 2);
+    assert_eq!(asked.load(Ordering::SeqCst), 4);
 }

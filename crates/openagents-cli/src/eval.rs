@@ -451,7 +451,7 @@ async fn published_facts(client: &Client, name: &str) -> Facts {
 }
 
 async fn ask(client: &Client, state: &Value, question: &Value) -> (Disposition, Option<f64>) {
-    let questions = Questions::new().with("q", jev::Question::Raw(question.clone()));
+    let questions = Questions::new().with("q", jev::Question::from_value(question.clone()));
     let request = SystemOneRequest::new(state.clone(), questions);
     let started = Instant::now();
     let response = client.system_one(request).await;

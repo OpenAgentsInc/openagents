@@ -135,6 +135,24 @@ pub fn resolve(
             via: Via::Direct { source },
         });
     }
+    hosted(env, dir, door, tune)
+}
+
+/// The hosted decision service alone, whatever key this computer holds:
+/// [`resolve`]'s second door, for a caller configured to use it (the
+/// decision profile's `relay`). `RELAY_VAR` and `WORKER_VAR` name another
+/// relay and worker.
+///
+/// # Errors
+///
+/// As [`resolve`], less the local key: the hosted service is off or does
+/// not front `door`, or the decision key cannot be read or made.
+pub fn hosted(
+    env: &dyn Fn(&str) -> Option<String>,
+    dir: &Path,
+    door: &Door<'_>,
+    tune: &dyn Fn(jev::Config) -> jev::Config,
+) -> Result<Resolved, String> {
     if env(HOSTED_VAR).is_some_and(|value| value.trim() == "off") {
         return Err(format!(
             "no TypeSafe key here, and {HOSTED_VAR}=off turns the hosted decision service off"
@@ -517,6 +535,110 @@ pub fn wire_body(
     )
 }
 
+/// How a client reaches its door, as a decision call records it (`via`):
+/// `hosted` through the hosted decision service, `local` for a door on a
+/// loopback or private address, `direct` for any other door this computer
+/// holds a key for.
+#[must_use]
+pub fn via(client: &jev::Client) -> &'static str {
+    if client.service().is_some() {
+        return "hosted";
+    }
+    let host = url_host(client.base_url());
+    let local = host == "localhost"
+        || host
+            .trim_start_matches('[')
+            .trim_end_matches(']')
+            .parse::<std::net::IpAddr>()
+            .is_ok_and(|ip| match ip {
+                std::net::IpAddr::V4(ip) => ip.is_loopback() || ip.is_private(),
+                std::net::IpAddr::V6(ip) => ip.is_loopback(),
+            });
+    if local { "local" } else { "direct" }
+}
+
+fn url_host(url: &str) -> &str {
+    let rest = url.split_once("://").map_or(url, |(_, rest)| rest);
+    let authority = rest.split('/').next().unwrap_or(rest);
+    let authority = authority
+        .rsplit_once('@')
+        .map_or(authority, |(_, host)| host);
+    if authority.starts_with('[') {
+        return authority
+            .split(']')
+            .next()
+            .map_or(authority, |host| &authority[..host.len() + 1]);
+    }
+    authority.split(':').next().unwrap_or(authority)
+}
+
+/// One decision call as an ATIF `openagents.decision-call.v1` record
+/// (`atif::Decision`), filled the same way for every caller (NIP-DEC,
+/// "Recording decisions in ATIF"): the request body, the door and how it
+/// was reached (`via`), the service that relayed the answer, the served
+/// model and answers, the request id, usage and cost, the latency, and the
+/// error when there was no answer. A caller adds its own `route`,
+/// `attempts`, and `review`.
+#[must_use]
+pub fn decision_record(
+    id: impl Into<String>,
+    name: impl Into<String>,
+    client: &jev::Client,
+    request: serde_json::Value,
+    result: Result<&jev::SystemOneResponse, &jev::Error>,
+    milliseconds: u64,
+) -> atif::Decision {
+    let requested = request["model"]
+        .as_str()
+        .unwrap_or_else(|| client.default_model())
+        .to_string();
+    let mut record = atif::Decision {
+        id: id.into(),
+        name: name.into(),
+        door: client.base_url().to_string(),
+        model: requested,
+        request,
+        answers: Value::Null,
+        milliseconds,
+        via: Some(via(client).to_string()),
+        ..atif::Decision::default()
+    };
+    if let Ok(response) = result {
+        record.model = response.model.clone();
+        record.answers = response.answers_value();
+    }
+    if let Err(error) = result {
+        record.error = Some(error.to_string());
+    }
+    served(&mut record, client, result);
+    record
+}
+
+/// Fill what served a decision call into a record a caller built itself:
+/// `via`, the relaying `service`, the request id, usage, and cost. It
+/// leaves the model, answers, error, and everything the caller owns.
+pub fn served(
+    record: &mut atif::Decision,
+    client: &jev::Client,
+    result: Result<&jev::SystemOneResponse, &jev::Error>,
+) {
+    record.via = Some(via(client).to_string());
+    match result {
+        Ok(response) => {
+            record.service = response.service();
+            record.request_id = response.request_id().map(str::to_string);
+            record.usage = serde_json::to_value(response.usage).ok();
+            record.cost_usd = response.usage.cost_usd();
+        }
+        Err(error) => {
+            record.request_id = error.request_id().map(str::to_string);
+            if let Some(service) = client.service() {
+                record.service = Some(json!({"exchange": service}));
+            }
+        }
+    }
+}
+
 /// The HTTP-shaped reply a worker refusal becomes: the status NIP-DEC maps
 /// the refusal code to (`nostr::decision::http_status`, the statuses
 /// OpenRouter's Decisions API uses), and a message that starts with
@@ -724,6 +846,57 @@ mod tests {
             seen += 1;
         }
         assert!(seen >= 6, "only {seen} examples");
+    }
+
+    #[test]
+    fn every_decision_record_names_its_door_via_service_and_cost() {
+        let dir = tempfile::tempdir().unwrap();
+        let hosted = resolve(&no_env, dir.path(), &DOOR_PIN, &|config| config).unwrap();
+        assert_eq!(via(&hosted.client), "hosted");
+        let local = jev::Client::new(jev::Config::local("http://127.0.0.1:9", "kev")).unwrap();
+        assert_eq!(via(&local), "local");
+        let direct = jev::Client::new(jev::Config::new().api_key("k")).unwrap();
+        assert_eq!(via(&direct), "direct");
+        assert_eq!(url_host("http://[::1]:8080/x"), "[::1]");
+
+        let request = json!({"model": "jev-1.13.0", "state": {"a": 1},
+                             "questions": {"q": {"type": "noul", "instructions": {"question": "Is it?"}}}});
+        let error = jev::Error::Timeout {
+            timeout: Duration::from_secs(1),
+        };
+        let record = decision_record(
+            "d1",
+            "judge",
+            &hosted.client,
+            request.clone(),
+            Err(&error),
+            12,
+        );
+        assert_eq!(record.via.as_deref(), Some("hosted"));
+        assert_eq!(record.door, DOOR);
+        assert!(record.error.is_some());
+        let call = record.call();
+        assert_eq!(call.arguments, request);
+        assert_eq!(call.extra["via"], "hosted");
+        assert_eq!(call.extra["latency_ms"], 12);
+        assert!(
+            call.extra["service"]["exchange"]
+                .as_str()
+                .unwrap()
+                .contains(WORKER)
+        );
+
+        // An oversized request keeps digests and bounded content.
+        let big = json!({"model": "jev-1.13.0", "state": "x".repeat(atif::REQUEST_BOUND * 2),
+                         "questions": {"q": {"type": "noul", "instructions": "Is it?"}}});
+        let call = decision_record("d2", "judge", &local, big.clone(), Err(&error), 1).call();
+        assert_eq!(call.extra["request_bounded"], true);
+        assert_eq!(call.arguments["questions"], big["questions"]);
+        assert_eq!(
+            call.arguments["state"]["excerpt"].as_str().unwrap().len(),
+            atif::STATE_EXCERPT
+        );
+        assert_eq!(call.extra["state_digest"], atif::digest(&big["state"]));
     }
 
     #[test]

@@ -729,7 +729,7 @@ fn questions(candidates: &Candidates) -> Questions {
         .map(|(id, question)| {
             (
                 id.clone(),
-                Question::Raw(filled(question, candidates, &names)),
+                Question::from_value(filled(question, candidates, &names)),
             )
         })
         .collect()
@@ -938,8 +938,12 @@ mod tests {
 
     /// The criteria the gate question offers, in order.
     fn options_of(request: &SystemOneRequest) -> Vec<String> {
-        let Some(Question::Raw(gate)) = request.questions.get("most_relevant") else {
-            panic!("the gate question renders raw");
+        let Some(gate) = request
+            .questions
+            .get("most_relevant")
+            .map(|question| serde_json::to_value(question).unwrap())
+        else {
+            panic!("the gate question renders");
         };
         gate["criteria"]
             .as_object()

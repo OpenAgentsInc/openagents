@@ -65,7 +65,8 @@ pub use content::{
     AudioSource, ContentPart, ImageSource, SUPPORTED_SCHEMA_VERSIONS, supported, upgrade, validate,
 };
 pub use document::{
-    AGENT_NAME, Attempt, Call, DECISION_CALL_SCHEMA, Decision, EXPORTER, Outcome, SCHEMA_VERSION,
-    Session, Source, Step, Usage, digest, document, intent, iso, now_ms, stamp,
+    AGENT_NAME, Attempt, Call, DECISION_CALL_SCHEMA, Decision, EXPORTER, Outcome, REQUEST_BOUND,
+    SCHEMA_VERSION, STATE_EXCERPT, Session, Source, Step, Usage, digest, document, intent, iso,
+    now_ms, stamp,
 };
 pub use log::{Fault, FaultKind, Log, Recording};

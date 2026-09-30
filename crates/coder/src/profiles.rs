@@ -279,16 +279,52 @@ impl Profile {
     /// credential. A resolved value the SDK cannot build from is
     /// [`Refusal::Malformed`] naming the setting that held it.
     pub fn client(&self) -> Result<jev::Client, Refusal> {
+        self.client_in(
+            &jev_hosted::openagents_dir()
+                .unwrap_or_else(|| std::path::PathBuf::from("/nonexistent")),
+        )
+    }
+
+    /// [`Profile::client`] with the directory a relay profile keeps its
+    /// decision key in (`~/.openagents` for [`Profile::client`]).
+    ///
+    /// A keyed door goes through the one resolver every Jev caller shares
+    /// (`jev_hosted::resolve`, its local-key door): the profile's credential
+    /// talks to the profile's URL directly. A relay profile goes through the
+    /// same resolver's hosted door: each judgment is a NIP-DEC decision job
+    /// to the profile's worker on the profile's relay, signed by this
+    /// computer's decision key. A credential-free local door is a plain
+    /// HTTP client to a loopback address.
+    ///
+    /// # Errors
+    ///
+    /// As [`Profile::client`].
+    pub fn client_in(&self, dir: &std::path::Path) -> Result<jev::Client, Refusal> {
+        let keyed = |url: &Sourced<String>, model: &Sourced<String>, key: &ApiKey| {
+            let key = key.expose().to_string();
+            let env = |name: &str| (name == TYPESAFE_KEY_VAR).then(|| key.clone());
+            jev_hosted::resolve(
+                &env,
+                dir,
+                &jev_hosted::Door {
+                    url: url.value.as_str(),
+                    model: model.value.as_str(),
+                },
+                &|config| config,
+            )
+            .map(|resolved| resolved.client)
+            .map_err(|reason| Refusal::Malformed {
+                variable: match url.source {
+                    Source::Env(name) => name,
+                    Source::Flag | Source::Default => URL_VAR,
+                },
+                reason,
+            })
+        };
         let (url, config) = match self {
             Self::HostedHttp {
                 url, model, key, ..
-            } => (
-                url,
-                jev::Config::new()
-                    .base_url(url.value.as_str())
-                    .default_model(model.value.as_str())
-                    .api_key(key.value.clone()),
-            ),
+            } => return keyed(url, model, &key.value),
             Self::DirectLocal { url, model, .. } => {
                 if !loopback_ip(&url.value) {
                     return Err(Refusal::Unsupported {
@@ -308,10 +344,7 @@ impl Profile {
             } => (
                 url,
                 match key {
-                    Some(key) => jev::Config::new()
-                        .base_url(url.value.as_str())
-                        .default_model(model.value.as_str())
-                        .api_key(key.value.clone()),
+                    Some(key) => return keyed(url, model, &key.value),
                     None if loopback_ip(&url.value) => {
                         jev::Config::local(url.value.as_str(), model.value.as_str())
                     }
@@ -325,12 +358,29 @@ impl Profile {
                     }
                 },
             ),
-            Self::Relay { .. } => {
-                return Err(Refusal::Unsupported {
+            Self::Relay { relay, worker, .. } => {
+                let (relay, worker) = (relay.value.clone(), worker.value.to_string());
+                // The hosted door alone: a TypeSafe key in the environment
+                // or in `jev.json` does not turn a relay profile into a
+                // direct one.
+                let env = |name: &str| match name {
+                    jev_hosted::RELAY_VAR => Some(relay.clone()),
+                    jev_hosted::WORKER_VAR => Some(worker.clone()),
+                    _ => None,
+                };
+                return jev_hosted::hosted(
+                    &env,
+                    dir,
+                    &jev_hosted::Door {
+                        url: jev_hosted::DOOR,
+                        model: jev::defaults::MODEL,
+                    },
+                    &|config| config,
+                )
+                .map(|resolved| resolved.client)
+                .map_err(|reason| Refusal::Unsupported {
                     profile: "relay",
-                    reason: "its decisions travel the relay, not the System One \
-                             HTTP door"
-                        .to_string(),
+                    reason,
                 });
             }
         };

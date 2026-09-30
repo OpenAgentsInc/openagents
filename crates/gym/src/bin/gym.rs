@@ -529,9 +529,25 @@ fn items_of<'a>(
 fn open_doors(options: &Options) -> Result<Vec<(String, Client)>, String> {
     let mut doors: Vec<(String, Client)> = Vec::new();
     if options.jev {
-        match Client::from_env() {
-            Ok(client) => doors.push(("jev (hosted)".to_string(), client)),
-            Err(error) => eprintln!("skipping hosted Jev: {error}"),
+        // Jev through the one resolver every caller shares: a local
+        // TypeSafe key, else the OpenAgents hosted decision service.
+        let env = |name: &str| std::env::var(name).ok();
+        let resolved = jev_hosted::openagents_dir()
+            .ok_or_else(|| "HOME is not set".to_string())
+            .and_then(|dir| {
+                jev_hosted::resolve(
+                    &env,
+                    &dir,
+                    &jev_hosted::Door {
+                        url: jev_hosted::DOOR,
+                        model: jev::defaults::MODEL,
+                    },
+                    &|config| config,
+                )
+            });
+        match resolved {
+            Ok(resolved) => doors.push(("jev (hosted)".to_string(), resolved.client)),
+            Err(error) => eprintln!("skipping Jev: {error}"),
         }
     }
     for (name, url) in &options.doors {
@@ -645,7 +661,7 @@ fn option_count(question: &Value) -> usize {
 fn question_for(question: &Value) -> Questions {
     // The suite stores each question in the shape the door reads; send it
     // through the wire unchanged so the call is the one a caller would make.
-    Questions::new().with("q", jev::Question::Raw(question.clone()))
+    Questions::new().with("q", jev::Question::from_value(question.clone()))
 }
 
 /// Asks one door one item, and times it.

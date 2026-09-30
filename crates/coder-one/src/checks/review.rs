@@ -331,8 +331,10 @@ pub async fn command(args: &[String]) -> Result<i32, String> {
     }
 
     let dir = crate::credentials::openagents_dir().ok_or("HOME is not set")?;
-    let key = crate::credentials::jev_key(|name| std::env::var(name).ok(), &dir)?;
-    let jev = JevMode::Live(crate::credentials::jev_client(&key.secret)?);
+    let jev = JevMode::Live(crate::credentials::jev_live(
+        |name| std::env::var(name).ok(),
+        &dir,
+    )?);
     let result = if let Some(path) = replay {
         let original: Value =
             serde_json::from_str(&std::fs::read_to_string(path).map_err(|e| e.to_string())?)

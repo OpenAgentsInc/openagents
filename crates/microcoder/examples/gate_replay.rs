@@ -16,18 +16,21 @@ use microcoder::gate::{GateState, Gates, Used, check};
 use microcoder::models::JevJudge;
 use microcoder::state::{Action, State, Test};
 
+/// Jev through the one resolver every caller shares
+/// (`jev_hosted::resolve`): a local key, else the hosted service.
 fn jev_client() -> Result<jev::Client, String> {
-    let from_env = std::env::var("TYPESAFE_API_KEY")
-        .ok()
-        .filter(|k| !k.trim().is_empty());
-    let key = from_env.or_else(|| {
-        let path = std::path::PathBuf::from(std::env::var_os("HOME")?).join(".openagents/jev.json");
-        let value: serde_json::Value =
-            serde_json::from_str(&std::fs::read_to_string(path).ok()?).ok()?;
-        value["api_key"].as_str().map(str::to_string)
-    });
-    let key = key.ok_or("no Jev key")?;
-    jev::Client::new(jev::Config::new().api_key(key.trim())).map_err(|e| e.to_string())
+    let dir = jev_hosted::openagents_dir().ok_or("HOME is not set")?;
+    let env = |name: &str| std::env::var(name).ok();
+    jev_hosted::resolve(
+        &env,
+        &dir,
+        &jev_hosted::Door {
+            url: jev_hosted::DOOR,
+            model: jev::defaults::MODEL,
+        },
+        &|config| config,
+    )
+    .map(|resolved| resolved.client)
 }
 
 /// The state a run ended in, or why it's skipped.
@@ -95,7 +98,7 @@ fn end_state(dir: &std::path::Path) -> Result<(State, serde_json::Value), String
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
     let judge = JevJudge {
-        client: jev_client().expect("a Jev key"),
+        client: jev_client().expect("Jev"),
     };
     let one = |f: fn(&mut Gates)| {
         let mut gates = Gates::default();

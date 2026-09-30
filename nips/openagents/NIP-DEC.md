@@ -97,6 +97,10 @@ callers sent before this NIP. It stays valid and passes through unchanged.
 Fields a question carries beyond `type`, `instructions`, and `criteria` pass
 through to the door unchanged; a door may refuse them.
 
+TypeSafe's own API also takes a JSON array as `state`; a NIP-DEC host does
+not. A client that holds an array or a scalar sends its compact JSON text
+(`jev::State::from` does), which every host admits and every door reads.
+
 One question does not read another's answer in the same request. Dependent
 questions (walking a taxonomy one level at a time, for example) are separate
 requests.
@@ -178,7 +182,10 @@ aliases and sends the door the canonical name:
 | `jev-latest` | TypeSafe's current Jev. A receipt's served `model` names the version that answered. |
 | `typesafe/jev-1.13` | OpenRouter's name for Jev 1.13; an alias of `jev-1.13.0`. |
 
-`nostr::decision::canonical_model` resolves an alias. The hosted decision
+`nostr::decision::canonical_model` resolves an alias, and
+`jev::nip_dec::openrouter_model` gives OpenRouter's name for a canonical
+one (`jev-1.13.0` → `typesafe/jev-1.13`; another bare name `n` →
+`typesafe/n`). The hosted decision
 worker's deployed release (`04113fec9d`) admits `jev-1.13.0` and
 `jev-latest`; a worker built from this NIP's commit on also admits
 `typesafe/jev-1.13`, with no config change. A model a worker does not admit
@@ -200,7 +207,39 @@ A decision job and an HTTP call are the same decision:
 | Receipt `usage` | `X-Receipt` header. |
 
 A gateway that relays a job to an HTTP door sends `state` and `questions`
-unchanged. A client that turns a relay refusal back into an HTTP-shaped
+unchanged. The OpenAgents gateway's `POST /v1/systemone` (`crates/gateway`,
+`serve`) checks every bound above before a door is consulted
+(`nostr::decision::check_body`), asks a model alias's door by its canonical
+name, and answers its own refusals with the status table below; a refusal
+code only that gateway defines (such as `out_of_scope`) keeps its own
+status. OpenRouter's Decisions API puts the HTTP status number in
+`error.code`; a client or worker reads a numeric or absent code through
+`code_for_http_status`.
+
+### Doors and the backup door
+
+The body is the same at every door; only the model's name differs:
+
+| Door | Route | Body |
+| --- | --- | --- |
+| TypeSafe | `POST https://api.typesafe.ai/v1/systemone` | `jev::DecisionRequest::to_value` |
+| An OpenAgents gateway | `POST /v1/systemone` | the same |
+| OpenRouter | `POST https://openrouter.ai/api/alpha/decisions` | `jev::DecisionRequest::openrouter_body` (the model as `typesafe/jev-1.13`) |
+| A decision job | kind `25910` | `jev_hosted::wire_body` |
+
+OpenRouter's answer adds `id`, `provider`, and `usage.cost`, and names the
+dated model it served (`typesafe/jev-1.13-20260917`); a reader ignores
+fields it does not use. A decision worker may keep a backup door
+(`decision-worker.json` `backup`): it is asked only when the primary door
+was unreachable, out of capacity, or refused for its own reasons (its key,
+its account, its quota: `unauthenticated`, `payment_required`,
+`not_admitted`, `rate_limited`, `quota_exhausted`, `internal`, and the
+`502`–`529` rows), never for a request the caller got wrong, and it is off
+unless its key is in the worker's environment. An answer from the backup
+names it in `service.door`; when the backup also fails, the primary's
+refusal stands.
+
+A client that turns a relay refusal back into an HTTP-shaped
 error (`jev_hosted` does, so every Jev caller sees one error shape) uses the
 same table.
 
@@ -332,12 +371,23 @@ name which to compare and what matters:
 
 A decision a program or agent makes is recorded in its ATIF trajectory as a
 tool call whose `extra.schema` is `openagents.decision-call.v1`
-(`crates/atif`, `Decision`): `door`, `model`, `state_digest` and
-`questions_digest` (SHA-256 of the canonical `state` and `questions`,
-structured entries included), `question_ids`, the selected `answers`, the
-consuming `route`, any `error`, every dispatch `attempt`, and any `review`.
-The call's arguments hold the request body, so the questions and answers
-read beside each other. The final metrics count decision calls by name.
+(`crates/atif`, `Decision`): `door`, `model` (the served one),
+`state_digest` and `questions_digest` (SHA-256 of the canonical `state` and
+`questions`, structured entries included), `question_ids`, the selected
+`answers`, the consuming `route`, any `error`, every dispatch `attempt`,
+any `review`, and what served it: `via` (`direct` with this computer's key,
+`hosted` through the hosted decision service, `local` for a loopback or
+private door), `service` (the relaying service's `{door, version}`),
+`request_id`, `usage` (`input_tokens`, `output_tokens`, and `cost` when the
+door priced it), `cost_usd` (the door's cost, else input tokens at Jev's
+list price), and `latency_ms`. The call's arguments hold the request body,
+so the questions and answers read beside each other; a body over 32 KiB
+(`atif::REQUEST_BOUND`) is recorded bounded instead: its model, its
+questions when they fit (else their digest and size), and its state as a
+digest, a size, and a 2 KiB excerpt, with `extra.request_bounded`. The
+digests always cover the whole body. `jev_hosted::decision_record` builds
+the record the same way for every caller. The final metrics count
+decision calls by name.
 [NIP-ATIF](NIP-ATIF.md) carries the trajectory. A recorded decision call
 records a judgment, not proof that it was right.
 
@@ -352,12 +402,24 @@ records a judgment, not proof that it was right.
   reports the result as NIP-CJ `judgment` feedback (`route`, `route_p`,
   `lane`, `risk`, `tier`, …). The thread's ATIF records the judgment as a
   decision call.
-- **Coder.** Every Jev caller (the Microcoder repository adapter, the
-  delegate door's Jev and judge, and the hands seam) finds Jev through
+- **Coder.** Every caller that asks TypeSafe's door finds Jev through
   `jev_hosted::resolve`: a local TypeSafe key calls TypeSafe over HTTP;
-  otherwise the call goes to the hosted decision worker as a decision job.
-  The `jev` SDK's `Entry`, `NoulCriteria`, `Choice`, and `Score` build every
-  entry form here, and both paths send the same body.
+  otherwise the call goes to the hosted decision worker as a decision job;
+  otherwise there is no Jev, and the caller says why. The callers: the
+  Microcoder repository adapter and bench, the delegate door's Jev and
+  judge, Coder One's episode, checks, and tools, the hands seam, a
+  program's `decide` step, the chat router and CLI route (through the
+  decision profile: its keyed doors resolve the same way, its `relay`
+  profile is the hosted door, and a terminal with no profile and no key
+  runs ordinary chat without a classifier, as it always has), the Gym,
+  external-eval graders, and Voyager's live door. A door on this machine
+  (`kev-serve`, a local Lev) is a plain client with no key. Every request is built with the shared
+  model in the `jev` SDK: `jev::State`, `jev::Questions` of `Noul`,
+  `Choice`, and `Score` with `Entry` fields and `NoulCriteria`, and
+  `jev::DecisionRequest`; a question file's JSON reads into the same types
+  (`Question::from_value`, which keeps anything it does not model as it
+  stands). Answers read back as `jev::Answer` and serialize in the shape
+  above; an HTTP error reads as a `jev::Refusal` with its NIP-DEC code.
 
 ## Conformance
 
@@ -373,3 +435,14 @@ structured request reaches the door byte-for-byte and that
 `crates/jev-hosted` (`tests/live.rs`,
 `live_hosted_structured_decision_answers`) asks the deployed worker a
 structured `choice` and `noul`; it is opt-in and needs no key.
+`crates/jev` (`nip_dec`) round-trips every documented shape through the
+shared model, and `crates/jev-hosted` checks that every example becomes the
+same decision job and that the SDK's alias and status tables are the
+wire's. `crates/gateway` (`tests/serve.rs`,
+`the_decisions_api_answers_the_typesafe_docs_examples`) sends TypeSafe's
+documentation examples (the invoice `field`, the `billing`/`orders`/
+`account` rubric, the taxonomy walk, the PR-scope levels, and the
+credentials noul) to the gateway's HTTP API under `typesafe/jev-1.13` and
+checks each refusal's status;
+`the_backup_door_answers_only_when_the_upstream_cannot`
+(`tests/relay_worker.rs`) checks the backup door.

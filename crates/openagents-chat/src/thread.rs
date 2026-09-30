@@ -283,13 +283,21 @@ fn step(turn: &Turn, ordinal: usize, at: u64) -> atif::Step {
                         name: "chat_router".into(),
                         door: door(),
                         model,
-                        request: json!({ "router": ROUTER }),
-                        answers,
+                        // The worker asked the routing question set it
+                        // names (`set`, `bank`) about the turn; the thread
+                        // records that identity, not the worker's state.
+                        request: json!({
+                            "router": ROUTER,
+                            "set": answers["set"],
+                            "bank": answers["bank"],
+                        }),
                         route: meta.route.clone(),
-                        error: None,
-                        attempts: vec![],
-                        review: None,
-                        milliseconds: 0,
+                        // The chat worker asked its decision door and relayed
+                        // the judgment as NIP-CJ feedback.
+                        via: Some("hosted".into()),
+                        service: Some(json!({"door": door()})),
+                        answers,
+                        ..atif::Decision::default()
                     }
                     .call(),
                 );

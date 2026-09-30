@@ -848,6 +848,22 @@ impl BlockingClient {
         })
     }
 
+    /// Wrap a client already built, such as one a resolver chose, in its
+    /// own runtime.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Config`] when the runtime does not start.
+    pub fn from_client(client: Client) -> Result<Self> {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|error| {
+                Error::Config(format!("the SDK couldn't start its async runtime: {error}"))
+            })?;
+        Ok(Self { client, runtime })
+    }
+
     /// Build a blocking client from the environment and the defaults alone.
     ///
     /// # Errors

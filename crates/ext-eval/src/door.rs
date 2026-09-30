@@ -247,13 +247,54 @@ impl JevDoor {
         Ok(Self { client, model })
     }
 
-    /// A door from `TYPESAFE_API_KEY` and the SDK's defaults.
+    /// A door over a client already built.
     ///
     /// # Errors
     ///
-    /// Returns the SDK's configuration error.
+    /// Returns the SDK's error when its runtime does not start.
+    pub fn from_client(client: jev::Client, model: Option<String>) -> Result<Self, String> {
+        let client = jev::BlockingClient::from_client(client).map_err(|error| error.to_string())?;
+        Ok(Self { client, model })
+    }
+
+    /// Jev through the one resolver every caller shares
+    /// (`jev_hosted::resolve`): `key` (or this computer's own TypeSafe key)
+    /// asks the door at `url` directly; with none, the OpenAgents hosted
+    /// decision service answers for TypeSafe's door.
+    ///
+    /// # Errors
+    ///
+    /// Why there is no Jev, never a key.
+    pub fn resolved(url: &str, key: Option<&str>, model: Option<String>) -> Result<Self, String> {
+        let dir = jev_hosted::openagents_dir().ok_or("no Jev: HOME is not set")?;
+        let env = |name: &str| {
+            if name == jev::env::API_KEY
+                && let Some(key) = key
+            {
+                return Some(key.to_string());
+            }
+            std::env::var(name).ok()
+        };
+        let resolved = jev_hosted::resolve(
+            &env,
+            &dir,
+            &jev_hosted::Door {
+                url,
+                model: model.as_deref().unwrap_or(jev::defaults::MODEL),
+            },
+            &|config| config,
+        )?;
+        Self::from_client(resolved.client, model)
+    }
+
+    /// A door from this computer's Jev: its TypeSafe key, else the hosted
+    /// decision service.
+    ///
+    /// # Errors
+    ///
+    /// Why there is no Jev.
     pub fn from_env() -> Result<Self, String> {
-        Self::new(jev::Config::new(), None)
+        Self::resolved(jev_hosted::DOOR, None, None)
     }
 }
 

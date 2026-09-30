@@ -388,13 +388,22 @@ pub struct Attempt {
     pub outcome: String,
 }
 
+/// The serialized request size past which a decision call's `arguments`
+/// hold digests and bounded content instead of the whole body (NIP-DEC,
+/// "Recording decisions in ATIF"). NIP-DEC bounds `state` at 128 KiB and a
+/// question at 32 KiB; a trajectory keeps 32 KiB of any one request.
+pub const REQUEST_BOUND: usize = 32 * 1024;
+
+/// How much of an oversized `state` a bounded record keeps, as text.
+pub const STATE_EXCERPT: usize = 2 * 1024;
+
 /// One decision-model call, on its way to becoming a [`Call`].
 ///
 /// A door answering `POST /v1/systemone` is the half of a session the Gym's
 /// rows cannot supply: a row says what one door answered for one state, and
 /// this says what the agent did next. Recording it as a first-class call
 /// rather than as prose is why the format is worth having.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct Decision {
     /// Unique within the session.
     pub id: String,
@@ -425,6 +434,21 @@ pub struct Decision {
     pub review: Option<Value>,
     /// Wall time the call took.
     pub milliseconds: u64,
+    /// How the call reached its door: `direct` (this computer's key),
+    /// `hosted` (the OpenAgents hosted decision service), or `local` (a
+    /// door on this machine or network).
+    pub via: Option<String>,
+    /// What answered: the hosted service's `{door, version}` when a
+    /// service relayed the answer, else null.
+    pub service: Option<Value>,
+    /// The door's request id, when it sent one.
+    pub request_id: Option<String>,
+    /// The usage the door reported for the selected answer:
+    /// `input_tokens`, `output_tokens`, and `cost` when the door priced it.
+    pub usage: Option<Value>,
+    /// What the call cost in US dollars, when the door's cost or its
+    /// tokens say.
+    pub cost_usd: Option<f64>,
 }
 
 impl Decision {
@@ -473,10 +497,30 @@ impl Decision {
         if let Some(review) = &self.review {
             extra.insert("review".to_string(), review.clone());
         }
+        if let Some(via) = &self.via {
+            extra.insert("via".to_string(), json!(via));
+        }
+        if let Some(service) = &self.service {
+            extra.insert("service".to_string(), service.clone());
+        }
+        if let Some(request_id) = &self.request_id {
+            extra.insert("request_id".to_string(), json!(request_id));
+        }
+        if let Some(usage) = &self.usage {
+            extra.insert("usage".to_string(), usage.clone());
+        }
+        if let Some(cost) = self.cost_usd {
+            extra.insert("cost_usd".to_string(), json!(cost));
+        }
+        extra.insert("latency_ms".to_string(), json!(self.milliseconds));
+        let arguments = bounded_request(self.request, &state, &questions);
+        if arguments.get("bounded").is_some() {
+            extra.insert("request_bounded".to_string(), json!(true));
+        }
         Call {
             id: self.id,
             name: self.name,
-            arguments: self.request,
+            arguments,
             output: match &self.error {
                 Some(error) => error.clone(),
                 None => serde_json::to_string(&self.answers).unwrap_or_default(),
@@ -490,6 +534,48 @@ impl Decision {
             extra,
         }
     }
+}
+
+/// The request a decision call records: the whole body up to
+/// [`REQUEST_BOUND`], else its model, its questions when they fit, and the
+/// state as a digest, a size, and a [`STATE_EXCERPT`]-byte excerpt. The
+/// digests in the call's `extra` cover the whole body either way.
+fn bounded_request(request: Value, state: &Value, questions: &Value) -> Value {
+    let bytes = serde_json::to_vec(&request).map_or(0, |bytes| bytes.len());
+    if bytes <= REQUEST_BOUND {
+        return request;
+    }
+    let state_text = match state {
+        Value::String(text) => text.clone(),
+        other => other.to_string(),
+    };
+    let mut cut = STATE_EXCERPT.min(state_text.len());
+    while !state_text.is_char_boundary(cut) {
+        cut -= 1;
+    }
+    let questions_bytes = serde_json::to_vec(questions).map_or(0, |bytes| bytes.len());
+    let mut bounded = Map::new();
+    if let Some(model) = request.get("model") {
+        bounded.insert("model".to_string(), model.clone());
+    }
+    bounded.insert(
+        "state".to_string(),
+        json!({
+            "digest": digest(state),
+            "bytes": serde_json::to_vec(state).map_or(0, |bytes| bytes.len()),
+            "excerpt": &state_text[..cut],
+        }),
+    );
+    if questions_bytes <= REQUEST_BOUND {
+        bounded.insert("questions".to_string(), questions.clone());
+    } else {
+        bounded.insert(
+            "questions".to_string(),
+            json!({"digest": digest(questions), "bytes": questions_bytes}),
+        );
+    }
+    bounded.insert("bounded".to_string(), json!({"bytes": bytes}));
+    Value::Object(bounded)
 }
 
 /// The ids of a question set, in the order it names them.
@@ -957,6 +1043,7 @@ mod tests {
             attempts: Vec::new(),
             review: None,
             milliseconds: 240,
+            ..Default::default()
         }
         .call();
         assert!(call.is_decision());
@@ -987,6 +1074,7 @@ mod tests {
             attempts: Vec::new(),
             review: None,
             milliseconds: 30,
+            ..Default::default()
         }
         .call();
         assert_eq!(call.outcome, Outcome::Failed);
@@ -1037,6 +1125,7 @@ mod tests {
                 "outcome": "changed",
             })),
             milliseconds: 380,
+            ..Default::default()
         }
         .call();
         let attempts = &call.extra["attempts"];
@@ -1069,6 +1158,7 @@ mod tests {
             attempts: Vec::new(),
             review: None,
             milliseconds: 100,
+            ..Default::default()
         }
         .call();
         let steps = vec![

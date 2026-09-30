@@ -85,9 +85,8 @@ pub fn live_client() -> Result<::jev::Client, String> {
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty())
     };
-    let key = crate::credentials::jev_key(env, &dir)
-        .map_err(|error| format!("--jev live needs a Jev key: {error}"))?;
-    crate::credentials::jev_client(&key.secret)
+    crate::credentials::jev_live(env, &dir)
+        .map_err(|error| format!("--jev live has no Jev: {error}"))
 }
 
 struct Flags {
