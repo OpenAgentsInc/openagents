@@ -142,6 +142,9 @@ pub struct Style {
     /// Keep one semantic label while styling its secondary line independently.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub button_detail: Option<ButtonDetail>,
+    /// An explicit hover fill for a framed button; absence uses the adapter default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hover_background: Option<Color>,
     /// The vector glyph size, independent of its button's hit area.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub glyph_size: Option<u16>,
@@ -180,6 +183,7 @@ pub struct StylePatch {
     pub min_height: Patch<u16>,
     pub button_padding: Patch<[u16; 2]>,
     pub button_detail: Patch<ButtonDetail>,
+    pub hover_background: Patch<Color>,
     pub glyph_size: Patch<u16>,
     pub glyph_gap: Patch<u16>,
     pub glyph_color: Patch<Color>,
@@ -221,6 +225,7 @@ impl StylePatch {
             min_height: self.min_height.overlay(later.min_height),
             button_padding: self.button_padding.overlay(later.button_padding),
             button_detail: self.button_detail.overlay(later.button_detail),
+            hover_background: self.hover_background.overlay(later.hover_background),
             glyph_size: self.glyph_size.overlay(later.glyph_size),
             glyph_gap: self.glyph_gap.overlay(later.glyph_gap),
             glyph_color: self.glyph_color.overlay(later.glyph_color),
@@ -252,6 +257,7 @@ impl StylePatch {
             min_height: self.min_height.resolve(defaults.min_height),
             button_padding: self.button_padding.resolve(defaults.button_padding),
             button_detail: self.button_detail.resolve(defaults.button_detail),
+            hover_background: self.hover_background.resolve(defaults.hover_background),
             glyph_size: self.glyph_size.resolve(defaults.glyph_size),
             glyph_gap: self.glyph_gap.resolve(defaults.glyph_gap),
             glyph_color: self.glyph_color.resolve(defaults.glyph_color),

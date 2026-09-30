@@ -569,7 +569,7 @@ impl<A: App> Shell<A> {
         self.scene().hit(x, y).map(|hit| hit.key.clone())
     }
 
-    fn hover(&mut self) {
+    fn hover(&mut self, pointer_motion: bool) {
         let target = self.target();
         let scale = self.scale();
         let (x, y) = (self.cursor.x as f32 / scale, self.cursor.y as f32 / scale);
@@ -587,7 +587,8 @@ impl<A: App> Shell<A> {
                 CursorIcon::Default
             });
         }
-        if target != self.interaction.hover {
+        let changed = pointer_motion && self.app.pointer_hover(target.as_deref(), Instant::now());
+        if target != self.interaction.hover || changed {
             self.interaction.hover = target;
             self.redraw();
         }
@@ -1336,11 +1337,11 @@ impl<A: App> ApplicationHandler<()> for Shell<A> {
                     self.tick();
                     self.redraw();
                 }
-                self.hover();
+                self.hover(true);
             }
             WindowEvent::CursorLeft { .. } => {
                 self.cursor = PhysicalPosition::new(-1.0, -1.0);
-                self.hover();
+                self.hover(true);
             }
             WindowEvent::MouseWheel { delta, .. } => {
                 self.app.input(Instant::now());
@@ -1377,7 +1378,7 @@ impl<A: App> ApplicationHandler<()> for Shell<A> {
                     let limit = (self.scene().height - height).max(0.0);
                     self.scroll = (self.scroll - lines).clamp(0.0, limit);
                 }
-                self.hover();
+                self.hover(false);
                 self.redraw();
             }
             WindowEvent::MouseInput {

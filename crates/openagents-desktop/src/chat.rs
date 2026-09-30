@@ -37,6 +37,7 @@ pub const RENAME: &str = "composer:chat-rename";
 
 pub struct Panel {
     commands: openagents_chat_app::commands::Overlay,
+    command_rows: BTreeMap<String, usize>,
     saved: openagents_chat_app::retained::Session,
     saved_visible: bool,
     saved_project: Option<String>,
@@ -126,10 +127,11 @@ impl Panel {
         let transcript = chat_transcript();
         Self {
             commands: openagents_chat_app::commands::Overlay::default(),
+            command_rows: BTreeMap::new(),
             saved: openagents_chat_app::retained::Session::default(),
             saved_visible: false,
             saved_project: None,
-            command_query: chat_field("Find a command or chat…"),
+            command_query: chat_field("Search commands and chats…"),
             command_token: String::new(),
             menu_point: None,
             menu_navigation: false,
@@ -1399,7 +1401,7 @@ impl Panel {
         }
         self.commands.open(kind);
         self.command_token = uuid::Uuid::new_v4().simple().to_string();
-        self.command_query = chat_field("Find a command or chat…");
+        self.command_query = chat_field("Search commands and chats…");
         self.command_query.focused = true;
         self.command_query.set_unframed(true);
         self.command_query
@@ -1417,12 +1419,30 @@ impl Panel {
     }
     fn close_overlay(&mut self) {
         self.commands.close();
+        self.command_rows.clear();
         self.command_query.focused = false;
         self.rename = None;
         self.rename_pending = None;
         if let Some(field) = self.field() {
             field.focused = true;
         }
+    }
+    pub fn hover_command(&mut self, target: Option<&str>) -> bool {
+        use openagents_chat_app::commands::Kind;
+        if !matches!(self.commands.kind, Some(Kind::Palette | Kind::Menu)) {
+            return false;
+        }
+        let Some(key) = target.and_then(|key| key.strip_prefix("command-")) else {
+            return false;
+        };
+        let Some(&index) = self.command_rows.get(key) else {
+            return false;
+        };
+        let changed = self.commands.selected != index
+            || (self.commands.kind == Some(Kind::Menu) && !self.menu_navigation);
+        self.commands.selected = index;
+        self.menu_navigation = true;
+        changed
     }
     pub fn anchor_context_menu(&mut self, point: (f32, f32)) {
         if point.0.is_finite() && point.1.is_finite() {
@@ -2302,6 +2322,7 @@ impl Panel {
         Some(pill)
     }
     fn command_panel(&mut self) -> Node<Intent> {
+        self.command_rows.clear();
         if let Some(kind) = &self.commands.kind {
             let entries: Vec<_> = self
                 .commands
@@ -2332,7 +2353,7 @@ impl Panel {
                     style: Style::default(),
                     element: Element::Composer {
                         token: self.command_token.clone(),
-                        placeholder: "Find a command or chat…".into(),
+                        placeholder: "Search commands and chats…".into(),
                         max_bytes: 128,
                         enabled: true,
                         busy: false,
@@ -2381,12 +2402,17 @@ impl Panel {
                 ));
             }
             let visible = if *kind == openagents_chat_app::commands::Kind::Palette {
-                ((self.viewport.1 - 180.0) / 32.0).clamp(3.0, 10.0) as usize
+                ((self.viewport.1 - 180.0) / 45.0).clamp(3.0, 10.0) as usize
             } else {
                 entries.len()
             };
+            let mut actions_shown = false;
+            let mut history_started = false;
             for index in self.commands.window_at(entries.len(), visible) {
                 let entry = &entries[index];
+                if entry.enabled {
+                    self.command_rows.insert(entry.key.clone(), index);
+                }
                 use openagents_chat_app::commands::{Action as C, Kind};
                 let label = if *kind == Kind::Menu {
                     match entry.action {
@@ -2400,9 +2426,48 @@ impl Panel {
                 } else {
                     &entry.label
                 };
+                let history = if *kind == Kind::Palette {
+                    if let C::Switch(id) = &entry.action {
+                        self.session
+                            .summaries
+                            .iter()
+                            .find(|summary| &summary.id == id)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
+                let history_label = history.map(|summary| {
+                    format!(
+                        "{}\n{}",
+                        summary.title,
+                        summary
+                            .coder
+                            .as_ref()
+                            .and_then(|coder| coder.project.as_deref())
+                            .unwrap_or("OpenAgents · Saved")
+                    )
+                });
+                if history.is_some() && !history_started && actions_shown {
+                    let mut separator = stack(
+                        "command-history-separator",
+                        Axis::Vertical,
+                        vec![command_surface(
+                            "command-history-rule",
+                            "History separator",
+                            "glyph:command-rule",
+                        )],
+                    );
+                    separator.style.padding_points = Some([8, 0, 8, 0]);
+                    separator.style.gap = Some(Space::None);
+                    items.push(separator);
+                }
+                history_started |= history.is_some();
+                actions_shown |= history.is_none();
                 let mut row = button(
                     &format!("command-{}", entry.key),
-                    label,
+                    history_label.as_deref().unwrap_or(label),
                     Action::Command {
                         key: entry.key.clone(),
                     },
@@ -2433,23 +2498,36 @@ impl Panel {
                         pill: false,
                     });
                 }
+                if history.is_some() {
+                    if let Element::Button { icon, .. } = &mut row.element {
+                        *icon = None;
+                    }
+                    row.style.button_detail = Some(rust_native::style::ButtonDetail {
+                        text_size: 11,
+                        line_height: 16,
+                        color: openagents_chat_app::visual::MUTED,
+                        leading: true,
+                    });
+                }
                 row.style.weight = Some(TextWeight::Normal);
                 row.style.glyph_color = Some(openagents_chat_app::visual::MUTED);
                 row.style.glyph_size = Some(16);
                 row.style.glyph_gap = Some(10);
                 row.style.align = Some(rust_native::style::TextAlign::Start);
                 row.style.text_size = Some(13);
-                row.style.line_height = Some(18);
+                row.style.line_height = Some(if history.is_some() { 17 } else { 18 });
                 row.style.button_padding = Some([
                     8,
-                    if *kind == openagents_chat_app::commands::Kind::Palette {
+                    if *kind == Kind::Palette && history.is_none() {
                         4
                     } else {
                         6
                     },
                 ]);
                 row.style.min_height = Some(30);
-                row.style.radius = Some(if *kind == openagents_chat_app::commands::Kind::Palette {
+                row.style.radius = Some(if history.is_some() {
+                    8
+                } else if *kind == openagents_chat_app::commands::Kind::Palette {
                     10
                 } else {
                     7
@@ -2463,10 +2541,18 @@ impl Panel {
                         Color::rgb(16, 16, 16)
                     },
                 );
+                // Pointer motion and keys choose one row; a resting pointer
+                // does not add a second highlight after keyboard navigation.
+                row.style.hover_background = row.style.background;
                 items.push(row);
             }
             let mut results = stack("command-results", Axis::Vertical, items);
-            results.style.padding_points = Some([4, 4, 4, 4]);
+            results.style.padding_points =
+                Some(if *kind == openagents_chat_app::commands::Kind::Palette {
+                    [8, 8, 8, 8]
+                } else {
+                    [4, 4, 4, 4]
+                });
             results.style.gap_points = Some(2);
             rows.push(results);
             if *kind == openagents_chat_app::commands::Kind::Palette {

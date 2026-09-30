@@ -352,3 +352,27 @@ The original scratch chat preview's process started at 10:34, before the
 retained menu damage and texture replacement fixes. It stays open to preserve
 its temporary chats and draft. A separate updated preview provides the merged
 build without replacing that state.
+
+## Palette history and pointer selection
+
+Reimplemented Zeron's palette history rows with the sidebar's 11/16-point
+context and 13/17-point title, a 45-point row, an 8-point radius, and a section
+rule with 8-point vertical insets. Action rows retain their 30-point minimum
+and 10-point radius. Palette results use 8-point outer insets, making action
+labels start 16 points inside the card. The search placeholder follows the
+reference. Captures: [default](palette-history-1200.png) and
+[minimum](palette-history-760.png).
+
+Explicit pointer motion and keyboard navigation now share one selected row.
+A resting pointer cannot add a second hover fill or steal selection when
+scrolling moves a row beneath it. Hover looks up a bounded map of mounted
+rows; it does not rebuild the full chat registry for each pointer event.
+The generic button hover fill remains optional, preserving other adapters'
+existing defaults.
+
+Seven product menu checks pass, including mouse-to-keyboard handoff, history
+geometry and typed activation, draft preservation, and retained/full repaint
+parity across 24 transitions at both scales. Core: 88 passed, one ignored.
+Adapter: 60 passed, the explicit GPU check is ignored in the ordinary suite
+and passed separately in the previous slice. Strict all-target Clippy and
+scoped formatting pass.

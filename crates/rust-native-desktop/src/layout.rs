@@ -1661,7 +1661,10 @@ impl Engine<'_> {
             } else if pressed {
                 fill = mix(fill, theme.background, 0.3);
             } else if hovered {
-                fill = mix(fill, theme.text, 0.06);
+                fill = node
+                    .style
+                    .hover_background
+                    .unwrap_or_else(|| mix(fill, theme.text, 0.06));
             }
             self.scene.ops.push(Op::Fill {
                 rect,

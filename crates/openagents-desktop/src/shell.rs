@@ -847,6 +847,16 @@ impl App for DesktopApp {
         false
     }
 
+    fn pointer_hover(&mut self, target: Option<&str>, _now: Instant) -> bool {
+        let changed = self
+            .chat
+            .as_mut()
+            .is_some_and(|chat| chat.hover_command(target));
+        if changed {
+            self.present();
+        }
+        changed
+    }
     fn pointer_down(&mut self, target: Option<&str>, point: (f32, f32), _now: Instant) -> bool {
         let consumed = self
             .chat
@@ -2862,6 +2872,112 @@ mod command_fixtures {
     use super::*;
     use openagents_desktop::chat_action::Action as ChatAction;
     use rust_native_desktop::{App, input::TextInput};
+    #[test]
+    fn palette_history_matches_sidebar_typography_and_keeps_its_action() {
+        let (mut app, now) = super::tests::chat_fixture(0);
+        key(&mut app, now, "n", true, false);
+        let id = app
+            .chat
+            .as_ref()
+            .unwrap()
+            .state()
+            .unwrap()
+            .chat
+            .clone()
+            .unwrap();
+        let title = app.navigation.as_ref().unwrap().chats[0].title.clone();
+        key(&mut app, now, "k", true, false);
+        app.text_input(TextInput::Commit("new"), now);
+        for (width, height) in [(1200.0, 840.0), (760.0, 540.0)] {
+            let (_, scene) = rust_native_desktop::capture(&mut app, width, height, 1.0);
+            let key = format!("command-switch-{id}");
+            let row = scene.bounds[&key];
+            assert_eq!(row.h, 45.0);
+            assert!(scene.bounds.contains_key("command-history-separator"));
+            let runs: Vec<_> = scene
+                .ops
+                .iter()
+                .filter_map(|op| {
+                    if let rust_native_desktop::layout::Op::Text {
+                        paragraph, x, y, ..
+                    } = op
+                        && *x >= row.x
+                        && *x < row.x + row.w
+                        && *y >= row.y
+                        && *y < row.y + row.h
+                    {
+                        Some(paragraph)
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            assert_eq!(runs.len(), 2);
+            assert_eq!(runs[0].font.size, 11.0);
+            assert_eq!(runs[1].font.size, 13.0);
+            assert_eq!(runs[1].text, title);
+            let view = app.view().view();
+            let intent = app
+                .view()
+                .activate(&rust_native::Activation {
+                    instance: view.instance.clone(),
+                    revision: view.revision,
+                    node: key,
+                })
+                .unwrap();
+            assert!(
+                matches!(intent, Intent::Chat { action: ChatAction::Command { key } }
+                if key == &format!("switch-{id}"))
+            );
+            capture(&mut app, &format!("palette-history-{width}"), width, height);
+        }
+    }
+    #[test]
+    fn pointer_motion_and_keys_share_one_palette_selection() {
+        let (mut app, now) = super::tests::chat_fixture(0);
+        key(&mut app, now, "n", true, false);
+        key(&mut app, now, "k", true, false);
+        assert!(app.pointer_hover(Some("command-pin"), now));
+        fn selected(app: &mut DesktopApp) -> String {
+            let (_, scene) = rust_native_desktop::capture(app, 760.0, 540.0, 1.0);
+            let selected: Vec<_> = scene
+                .hits
+                .iter()
+                .filter(|hit| {
+                    hit.key.starts_with("command-")
+                        && scene.ops.iter().any(|op| {
+                            matches!(op,
+                    rust_native_desktop::layout::Op::Fill { rect, color, .. }
+                    if *rect == hit.rect && *color == openagents_chat_app::visual::SELECTED)
+                        })
+                })
+                .collect();
+            assert_eq!(selected.len(), 1);
+            selected[0].key.clone()
+        }
+        assert_eq!(selected(&mut app), "command-pin");
+        key(&mut app, now, "ArrowDown", false, false);
+        assert_ne!(selected(&mut app), "command-pin");
+        // Moving inside the same row again takes selection back from the keys.
+        assert!(app.pointer_hover(Some("command-pin"), now));
+        assert_eq!(selected(&mut app), "command-pin");
+        assert!(!app.pointer_hover(Some("command-pin"), now));
+        assert!(!app.pointer_hover(Some("sidebar-settings"), now));
+        let (_, scene) = rust_native_desktop::capture(&mut app, 760.0, 540.0, 1.0);
+        let pin = scene.bounds["command-pin"];
+        let selected_fills = scene
+            .ops
+            .iter()
+            .filter(|op| {
+                matches!(op,
+            rust_native_desktop::layout::Op::Fill { rect, color, .. }
+            if *rect == pin && *color == openagents_chat_app::visual::SELECTED)
+            })
+            .count();
+        assert_eq!(selected_fills, 1);
+        key(&mut app, now, "Escape", false, false);
+        assert!(!app.pointer_hover(Some("command-pin"), now));
+    }
     #[test]
     fn floating_menu_repaints_match_complete_frames() {
         use rust_native_desktop::{layout, paint, text::Fonts};

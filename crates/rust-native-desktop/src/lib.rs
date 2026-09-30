@@ -187,6 +187,12 @@ pub trait App {
         false
     }
 
+    /// Explicit pointer motion over a control. Return true when presentation changes.
+    fn pointer_hover(&mut self, target: Option<&str>, now: Instant) -> bool {
+        let _ = (target, now);
+        false
+    }
+
     /// An explicit secondary click. The application admits the current target.
     fn context_menu(&mut self, target: Option<&str>, now: Instant) -> bool {
         let _ = (target, now);
