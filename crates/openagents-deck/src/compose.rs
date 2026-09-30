@@ -394,11 +394,12 @@ fn body(slide: &Slide) -> Vec<Part> {
     let kicker = |column: &mut Column, center: bool| {
         if let Some(kicker) = &slide.kicker {
             let node = text("kicker", kicker, TextRole::Status, muted);
+            let size = f32::from(slide.kicker_scale.unwrap_or(1));
             column.push(
                 if center {
-                    centered("kicker", node, 1.0)
+                    centered("kicker", node, size)
                 } else {
-                    left("kicker", node, 1.0)
+                    left("kicker", node, size)
                 },
                 0.0,
             );
@@ -434,8 +435,21 @@ fn body(slide: &Slide) -> Vec<Part> {
                 TextRole::Heading,
                 None,
             );
-            let magnification = fitting(&heading, COLUMN, DISPLAY);
+            let mut magnification = fitting(&heading, COLUMN, DISPLAY);
+            // A bold second line shares the title's size, so the widest of
+            // the two sets it.
+            let subtitle = slide
+                .subtitle
+                .as_ref()
+                .map(|line| prose("subtitle", markdown::parse(&format!("**{line}**"))));
+            if let Some(line) = &subtitle {
+                let heading_size = fitting(line, COLUMN, DISPLAY);
+                magnification = magnification.min(heading_size);
+            }
             column.push(centered("title", heading, magnification), KICKER_GAP);
+            if let Some(line) = subtitle {
+                column.push(centered("subtitle", line, magnification), 0.0);
+            }
             if let Some(lead) = &slide.lead {
                 let node = text("lead", lead, TextRole::Body, muted);
                 column.push(centered("lead", node, 1.0), BODY_GAP);

@@ -60,6 +60,18 @@ fn slide(text: &str, number: usize) -> Result<Slide, String> {
             Some(("note", value)) => slide.note = Some(value.to_string()),
             Some(("kicker", value)) => slide.kicker = Some(value.to_string()),
             Some(("corner", value)) => slide.corner = Some(value.to_string()),
+            Some(("subtitle", value)) => slide.subtitle = Some(value.to_string()),
+            Some(("kicker_scale", value)) => {
+                slide.kicker_scale = Some(
+                    value
+                        .parse::<u8>()
+                        .ok()
+                        .filter(|scale| (1..=4).contains(scale))
+                        .ok_or_else(|| {
+                            format!("slide {number}: kicker_scale is a whole number from 1 to 4")
+                        })?,
+                );
+            }
             Some(("metric", value)) => slide.metrics.push(metric(value)),
             Some(("column", value)) => slide.columns.push(value.to_string()),
             Some(("row", value)) => slide.rows.push(row(value)),
@@ -123,8 +135,22 @@ fn slide(text: &str, number: usize) -> Result<Slide, String> {
 
 /// The keys a line may open with.
 const KEYS: &[&str] = &[
-    "layout", "id", "title", "lead", "kicker", "source", "note", "metric", "column", "row", "step",
-    "notes", "scale", "corner",
+    "layout",
+    "id",
+    "title",
+    "lead",
+    "kicker",
+    "source",
+    "note",
+    "metric",
+    "column",
+    "row",
+    "step",
+    "notes",
+    "scale",
+    "corner",
+    "subtitle",
+    "kicker_scale",
 ];
 
 /// The key and the value of a directive line, when the line is one. A key

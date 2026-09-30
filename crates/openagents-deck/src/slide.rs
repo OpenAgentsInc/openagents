@@ -145,6 +145,12 @@ pub struct Slide {
     /// A comparison's top-left header cell, over the row labels; empty
     /// when the script names none.
     pub corner: Option<String>,
+    /// How many times body size a title slide's kicker is set
+    /// (`kicker_scale: 2`); `None` is 1.
+    pub kicker_scale: Option<u8>,
+    /// A title slide's second line, bold, at the title's size
+    /// (`subtitle: v1.0.0`).
+    pub subtitle: Option<String>,
     /// How many times its native size an image slide's image may grow,
     /// when the slide has room (`scale: 2`); `None` is 1, never enlarged.
     pub scale: Option<u8>,

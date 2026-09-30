@@ -1,4 +1,6 @@
-kicker at 40,175 720x17
+kicker at 40,135 720x34 ×2
   2026.10.01
-title at 40,198 720x69 ×3
-  OpenAgents v1.0.0
+title at 40,175 720x69 ×3
+  OpenAgents
+subtitle at 330,244 720x63 ×3
+  v1.0.0
