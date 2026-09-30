@@ -8,5 +8,3 @@ body at 40,196 720x128
   - Knowledge. Cited entries, such as methods and known mistakes, retrieved for the task.
   - Delegation. Another agent, briefed with selected evidence.
   - Typed judgment. A fast, cheap decision that picks which of the others to use, and when.
-foot at 640,424 120x17
-  10 / 22

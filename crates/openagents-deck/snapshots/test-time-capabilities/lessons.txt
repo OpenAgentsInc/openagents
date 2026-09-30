@@ -7,5 +7,3 @@ body at 40,186 720x149
   - Reach did not. Four tests failed in both arms: Jev did not pick the tool for that wording.
   - The first gate was wrong. Under v1, faster but no more correct read Better. v2 replaced the rule the same day; the old result keeps its old digest.
   - Graders are software. One looked for "not found" and missed another phrasing; we released a new test set version.
-foot at 640,424 120x17
-  18 / 22

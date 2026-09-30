@@ -10,5 +10,3 @@ body at 40,146 720x230
   - Marginal adoption. Once the defaults hold anything, measure against them, not against nothing.
   - Revalidation. Nothing reopens a claim yet when its baseline, grant, or model changes.
   - Network evidence: marginal validated utility per adopted contribution, reported when zero.
-foot at 640,424 120x17
-  21 / 22

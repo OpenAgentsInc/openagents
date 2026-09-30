@@ -10,5 +10,3 @@ body at 40,158 720x152
   - Typed judgment. Jev picks which of the others to use, and when.
 note at 40,328 720x37
   One declared Terminal-Bench 4.0 attempt passed fin-saccr-rwa for $0.94 in 149.5 s, under Fable 5.1 low's best. It was in-sample and tuned; 2 of 13 attempts beat the bar.
-foot at 640,424 120x17
-  16 / 22

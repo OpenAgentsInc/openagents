@@ -9,5 +9,3 @@ table at 40,164 720x137
   Test reader | 5 of 6 | 2 of 6 | Better
 note at 40,320 720x37
   Hosted runs, three per arm. The grant has no shell, so without the tool Coder cannot read the files at all: the delta is what each tool adds under that grant, not on top of a shell.
-foot at 640,424 120x17
-  17 / 22

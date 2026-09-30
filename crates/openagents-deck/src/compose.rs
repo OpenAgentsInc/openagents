@@ -369,33 +369,16 @@ pub fn plain(node: &Node<()>) -> String {
     }
 }
 
-/// The slide at `index` of `deck`, laid out on the canvas, with its place
-/// in the deck at the foot.
+/// The slide at `index` of `deck`, laid out on the canvas. Slides carry no
+/// page number.
 pub fn compose(deck: &Deck, index: usize) -> Composed {
     let Some(slide) = deck.slide(index) else {
         return Composed { parts: vec![] };
     };
-    let mut parts = body(slide);
-    let place = format!("{} / {}", index + 1, deck.len().max(1));
-    let mut foot = {
-        let mut node = text("foot", &place, TextRole::Status, Some(tones().muted));
-        node.style.align = Some(TextAlign::End);
-        let width = 120.0;
-        let label = plain(&node);
-        part(
-            "foot",
-            label,
-            lay(node, width, 1.0),
-            1.0,
-            WIDTH - MARGIN_X - width,
-        )
-    };
-    foot.y = FOOT_Y;
-    parts.push(foot);
-    Composed { parts }
+    Composed { parts: body(slide) }
 }
 
-/// The slide's parts, without the foot.
+/// The slide's parts.
 fn body(slide: &Slide) -> Vec<Part> {
     let tones = tones();
     let mut column = Column::new();
@@ -786,8 +769,10 @@ mod tests {
             rich.width(),
             title.magnification
         );
-        let foot = slide.parts.iter().find(|p| p.kind == "foot").unwrap();
-        assert_eq!(foot.text, "1 / 1");
+        assert!(
+            slide.parts.iter().all(|p| p.kind != "foot"),
+            "slides carry no page number"
+        );
     }
 
     #[test]

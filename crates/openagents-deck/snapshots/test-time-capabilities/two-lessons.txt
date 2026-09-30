@@ -5,5 +5,3 @@ title at 40,145 720x34 ×1.5
 body at 40,202 720x119
   1. A verifier is what makes extra compute pay. Sampling helps only as far as something can tell a right answer from a wrong one. Where the checker is weak, extra samples stop helping.
   2. Compute should be allocated per question. Easy prompts do not need a long chain of thought. The allocation is itself a judgment, and it should cost far less than the work it allocates.
-foot at 640,424 120x17
-  8 / 22

@@ -9,5 +9,3 @@ table at 40,112 720x275
   POL | cost, adoption | operator adopts; runs keep lock | Designed
   OPT | optimization | faces the same test | Designed
   MV | Verse | Gym notes cite the result | Partial
-foot at 640,424 120x17
-  7 / 22

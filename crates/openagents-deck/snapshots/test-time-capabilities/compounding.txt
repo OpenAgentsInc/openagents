@@ -7,5 +7,3 @@ body at 40,160 720x125
   - Credit that tracks use. Recognition for verification work and adoptions, not for agreement.
 note at 40,302 720x37
   A hypothesis. Whether more participants make an agent measurably better has to be shown, measured the way the lexicon says.
-foot at 640,424 120x17
-  4 / 22

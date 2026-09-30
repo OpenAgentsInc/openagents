@@ -20,5 +20,3 @@ label at 598,231 162x45
   tools adopted into the defaults
 note at 40,318 720x37
   Every part of the loop is built and the first runs, checks, and awards are live. The policy now requires a validation before any adoption, and none exists: the tests have to come from someone else. The flywheel has not been shown turning.
-foot at 640,424 120x17
-  20 / 22

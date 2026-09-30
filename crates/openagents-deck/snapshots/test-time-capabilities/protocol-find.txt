@@ -10,5 +10,3 @@ table at 40,94 720x310
   CTX | briefings | what a delegate was shown | Designed
   SESS | delegate engines | how each engine is steered | Designed
   WORK | tracked delegation | who answers for the work | Designed
-foot at 640,424 120x17
-  6 / 22

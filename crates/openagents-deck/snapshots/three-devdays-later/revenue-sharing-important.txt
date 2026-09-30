@@ -1,0 +1,3 @@
+image at 40,26 720x390
+  image 2264 x 1612 pixels
+  OpenAI DevDay opening keynote: the stage slide reads "Revenue sharing" and the caption reads "Revenue sharing is important to us."

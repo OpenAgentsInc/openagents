@@ -6,5 +6,3 @@ body at 40,188 720x146
   - Two arms, not one score. A benchmark says how an agent did. A with-and-without result says what one component changed, which is the thing worth sharing.
   - A written rule gives the verdict. The rule is a versioned file, and every result carries the digest of the rule that judged it. A replaced rule reinterprets old results; it reruns nothing.
   - Others can rerun it. Published tests and exact component versions let someone else confirm or dispute the result.
-foot at 640,424 120x17
-  12 / 22

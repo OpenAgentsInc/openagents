@@ -12,5 +12,3 @@ table at 40,106 720x310
   Validate | Validated | Helps on tests its author didn't write
   Adopt | Adoption | Joins the defaults, measured against them
   Credit | Credit | For reruns either way, and for adoption
-foot at 640,424 120x17
-  11 / 22

@@ -5,5 +5,3 @@ body at 40,138 720x221
   - Easily extensible. About a hundred specs, and if they lack what you need, you add one.
   - Agents can build on it in a few prompts. Pointed at the NIPs repo, a coding agent added multiplayer chat, presence, social feeds, and encrypted DMs to an app. Any human or agent can use the same specs for immediate, permissionless interop.
   - Don't overthink it. Signed, optionally encrypted JSON over websockets works for most cases. If agents need a custom peer-to-peer thing, they negotiate it over the chat primitives that already exist.
-foot at 640,424 120x17
-  5 / 22

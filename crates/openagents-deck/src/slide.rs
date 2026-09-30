@@ -145,8 +145,8 @@ pub struct SlideImage {
 /// The files the scripts may show, by their path under `decks/`.
 pub const ASSETS: &[(&str, &[u8])] = &[
     (
-        "assets/revenuesharing.png",
-        include_bytes!("../decks/assets/revenuesharing.png"),
+        "assets/important.png",
+        include_bytes!("../decks/assets/important.png"),
     ),
     (
         "assets/ethan1.png",
@@ -200,12 +200,12 @@ pub struct Deck {
 /// window opens without `--deck`.
 pub const SCRIPTS: &[(&str, &str)] = &[
     (
-        "test-time-capabilities",
-        include_str!("../decks/test-time-capabilities.md"),
-    ),
-    (
         "three-devdays-later",
         include_str!("../decks/three-devdays-later.md"),
+    ),
+    (
+        "test-time-capabilities",
+        include_str!("../decks/test-time-capabilities.md"),
     ),
 ];
 

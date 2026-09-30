@@ -2,5 +2,3 @@ kicker at 40,150 720x17
   THE CLAIM
 body at 46,189 720x104 ×1.5
   Test-time compute asks how long a model should think. Test-time capabilities ask what it should be able to use, and prove the answer with a test.
-foot at 640,424 120x17
-  22 / 22

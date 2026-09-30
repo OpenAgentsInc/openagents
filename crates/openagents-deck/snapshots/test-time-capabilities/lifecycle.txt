@@ -26,5 +26,3 @@ arrow at 641,222 18x21
   →
 note at 40,278 720x37
   The hosted runner runs on coderos-4080 with a per-trainer daily quota. Suites are NIP-EXT releases; results, checks, and validations NIP-EVAL 3189 events; credit NIP-XP awards; adoption a coder-defaults release.
-foot at 640,424 120x17
-  19 / 22

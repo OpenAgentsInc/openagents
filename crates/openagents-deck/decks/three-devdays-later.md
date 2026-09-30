@@ -6,10 +6,10 @@ source: the owner's talk title, 2026-09-30
 ---
 
 layout: image
-id: revenue-sharing
-source: a DevDay stage photo; decks/assets/revenuesharing.png
+id: revenue-sharing-important
+source: OpenAI DevDay opening keynote on YouTube; screenshot in decks/assets/important.png
 
-![OpenAI DevDay stage slide reading Revenue sharing](assets/revenuesharing.png)
+![OpenAI DevDay opening keynote: the stage slide reads "Revenue sharing" and the caption reads "Revenue sharing is important to us."](assets/important.png)
 
 ---
 

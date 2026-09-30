@@ -47,7 +47,7 @@ asks the window to enter or leave fullscreen, text rows that honor
 scrolling.
 
 Not carried over from the old cell-grid renderer: the block face and the
-progress hairline in the foot (the foot keeps the slide's place, "6 / 22"),
+progress hairline in the foot (slides carry no page number),
 and the one-full-intensity-element rule (emphasis is now size and weight,
 as in the desktop). The Verse backdrop is not drawn: it needs a relay
 connection, and the deck reads nothing but itself.
@@ -59,9 +59,9 @@ cargo run -p openagents-deck -- --deck test-time-capabilities
 cargo run -p openagents-deck -- --deck three-devdays-later
 ```
 
-The default deck is `test-time-capabilities`, so `cargo run -p
+The default deck is `three-devdays-later`, so `cargo run -p
 openagents-deck` (the `deck` alias) opens it. Open the other with
-`deck --deck three-devdays-later`; `--decks` lists them all. A slide appears whole the moment it is
+`deck --deck test-time-capabilities`; `--decks` lists them all. A slide appears whole the moment it is
 opened, in the debug build and the release build alike: there is no
 per-slide animation, and the window paints only on a key, a click, or a
 resize.
@@ -146,7 +146,7 @@ compiled in through `ASSETS` in [`src/slide.rs`](src/slide.rs).
 - **No animation.** A slide appears whole the moment it opens, and the
   window paints only on a key, a click, or a resize.
 - **Everything fits.** A test checks that every part stays inside the
-  margins, above the foot, and that no table scrolls sideways.
+  margins, and that no table scrolls sideways.
 - **No invented numbers.** Every slide names a `source`. A metric with no
   value draws a muted dash, and `--check` lists every slide still waiting
   on facts.

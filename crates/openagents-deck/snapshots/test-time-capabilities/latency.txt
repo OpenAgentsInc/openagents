@@ -16,5 +16,3 @@ label at 536,243 224x21
   ms: full model answer, at most
 note at 40,306 720x37
   Measured from Send on the phone. Judgment p95 235 ms; about 0.3 s of each phone time is relay setup. Prepared answers: 36 of 36 correct (100 % precision) on 138 held-out messages.
-foot at 640,424 120x17
-  15 / 22

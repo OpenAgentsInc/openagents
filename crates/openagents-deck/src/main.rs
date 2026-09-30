@@ -33,7 +33,7 @@ openagents-deck: the OpenAgents deck
 
 Usage: openagents-deck [options]
 
-  --deck NAME       the deck under crates/openagents-deck/decks/ (default: the first)
+  --deck NAME       the deck under crates/openagents-deck/decks/ (default: three-devdays-later)
   --decks           list the decks
   --slide N         open on slide N (from 1)
   --notes           open with the presenter's notes showing
