@@ -1408,6 +1408,7 @@ impl Panel {
         )
     }
     fn open_commands(&mut self, kind: openagents_chat_app::commands::Kind) {
+        let searchable = kind == openagents_chat_app::commands::Kind::Palette;
         self.menu_point = None;
         self.menu_navigation = false;
         self.rename = None;
@@ -1418,7 +1419,7 @@ impl Panel {
         self.commands.open(kind);
         self.command_token = uuid::Uuid::new_v4().simple().to_string();
         self.command_query = chat_field("Search commands and chats…");
-        self.command_query.focused = true;
+        self.command_query.focused = searchable;
         self.command_query.set_unframed(true);
         self.command_query
             .set_metrics(rust_native_desktop::composer::field::Metrics {
@@ -1734,6 +1735,11 @@ impl Panel {
                     }
                     return FieldAction::Edited;
                 }
+            }
+            if self.commands.kind != Some(openagents_chat_app::commands::Kind::Palette) {
+                // Menus have no text field. Native text and IME events must not
+                // filter their rows through the palette's hidden editor.
+                return FieldAction::Edited;
             }
             let result = self.command_query.input(event, at);
             let query = self.command_query.text().to_owned();
@@ -3294,7 +3300,7 @@ fn chat_field(placeholder: &str) -> Field {
     field.set_colors(
         openagents_chat_app::visual::TEXT,
         openagents_chat_app::visual::FAINT,
-        Color::rgb(129, 140, 248),
+        openagents_chat_app::visual::ACCENT,
     );
     field
 }

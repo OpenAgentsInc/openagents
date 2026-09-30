@@ -3043,6 +3043,49 @@ mod command_fixtures {
         assert!(!app.pointer_hover(Some("command-pin"), now));
     }
     #[test]
+    fn menu_rows_stay_visible_through_text_ime_and_idle_ticks() {
+        for scale in [1.0, 2.0] {
+            let (mut app, now) = super::tests::chat_fixture(0);
+            key(&mut app, now, "n", true, false);
+            app.text_input(TextInput::Commit("Keep this draft  "), now);
+            app.activate(
+                Intent::Chat {
+                    action: ChatAction::Menu,
+                },
+                now,
+            );
+            let (before, scene) = rust_native_desktop::capture(&mut app, 760.0, 540.0, scale);
+            let menu = scene.bounds["command-panel"];
+            for event in [
+                TextInput::Commit("missing menu item"),
+                TextInput::Preedit {
+                    text: "pin",
+                    selection: Some((0, 3)),
+                },
+                TextInput::CancelComposition,
+            ] {
+                assert!(app.text_input(event, now));
+            }
+            for step in 1..=4 {
+                app.tick(now + std::time::Duration::from_millis(step * 500));
+                let (after, scene) = rust_native_desktop::capture(&mut app, 760.0, 540.0, scale);
+                assert_eq!(scene.bounds["command-panel"], menu);
+                for key in ["command-rename", "command-pin", "command-archive"] {
+                    assert!(scene.hits.iter().any(|hit| hit.key == key && hit.enabled));
+                }
+                for y in (menu.y * scale) as usize..((menu.y + menu.h) * scale) as usize {
+                    let start = (y * before.width + (menu.x * scale) as usize) * 4;
+                    let end = (y * before.width + ((menu.x + menu.w) * scale) as usize) * 4;
+                    assert_eq!(&after.pixels[start..end], &before.pixels[start..end]);
+                }
+            }
+            key(&mut app, now, "ArrowDown", false, false);
+            key(&mut app, now, "Escape", false, false);
+            assert!(!app.chat.as_ref().unwrap().modal());
+            assert_eq!(app.chat.as_ref().unwrap().draft(), "Keep this draft  ");
+        }
+    }
+    #[test]
     fn floating_menu_repaints_match_complete_frames() {
         use rust_native_desktop::{layout, paint, text::Fonts};
         for scale in [1.0, 2.0] {

@@ -475,3 +475,15 @@ be distinguished from repeated repainting, and failed acquisitions cannot
 produce false open or close records. No menu identifiers, queries, or chat text
 enter the log. The transition and blocked-writer regressions, all seven menu
 fixtures, scoped formatting, and strict all-target desktop Clippy pass.
+
+The chat menu and archive confirmation no longer focus or accept text into
+the palette's hidden search editor. Previously, typing or an IME commit could
+filter all menu rows out despite the absence of a visible search field. Only
+the palette searches; menu arrow, Tab, Enter, and Escape behavior is retained.
+The new regression compares menu geometry and pixels through text, preedit,
+composition cancellation, and four idle ticks at both display scales, then
+checks that the original draft remains intact. All eight menu fixtures and
+strict all-target desktop Clippy pass. Formatting is checked on the changed
+files; an unrelated formatting difference in `worker.rs` is left unchanged.
+The field caret also uses the pinned Zeron accent instead of the earlier
+approximation.
