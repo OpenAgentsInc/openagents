@@ -44,8 +44,8 @@ pub mod transcript;
 pub mod window;
 
 pub use canvas::{Frame, PxRect};
+pub use layout::{OverlayLayout, OverlayPlacement, SplitLayout, WindowLayout};
 pub use layout::{Rect, Scene};
-pub use layout::{SplitLayout, WindowLayout};
 pub use theme::Theme;
 
 /// A command key chord that activates a node in the current view.
@@ -191,8 +191,19 @@ pub trait App {
         false
     }
 
+    /// A secondary click with its position in logical window points.
+    fn context_menu_at(&mut self, target: Option<&str>, point: (f32, f32), now: Instant) -> bool {
+        let _ = point;
+        self.context_menu(target, now)
+    }
+
     /// The semantic root of the active modal, if any.
     fn modal_root(&self) -> Option<&str> {
+        None
+    }
+
+    /// An optional floating third child of a header split's root.
+    fn overlay_layout(&self) -> Option<OverlayLayout> {
         None
     }
 
@@ -307,7 +318,7 @@ fn capture_into<A: App>(
     app.viewport(width, height, scale);
     let theme = app.theme();
     let mut fonts = text::Fonts::new();
-    let scene = layout::lay_out_with_layout(
+    let scene = layout::lay_out_with_overlay(
         app.view().view(),
         &theme,
         &mut fonts,
@@ -316,6 +327,7 @@ fn capture_into<A: App>(
         width,
         height,
         app.window_layout(),
+        app.overlay_layout(),
     );
     let mut frame = frame(
         (width * scale).round() as usize,

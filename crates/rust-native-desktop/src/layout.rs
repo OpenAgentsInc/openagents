@@ -207,6 +207,114 @@ impl WindowLayout {
     }
 }
 
+/// Placement of a floating semantic node above a header split's two panes.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum OverlayPlacement {
+    Center,
+    At { x: f32, y: f32 },
+    TopRight { top: u16, right: u16 },
+    Above { anchor: &'static str, gap: u16 },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct OverlayLayout {
+    /// Zero uses the node's natural width; otherwise clamp this width to the window.
+    pub width: u16,
+    pub placement: OverlayPlacement,
+    pub scrim: Option<Color>,
+}
+
+/// Lay out the panes, then their optional third root child as a floating layer.
+#[allow(clippy::too_many_arguments)]
+pub fn lay_out_with_overlay<I>(
+    view: &View<I>,
+    theme: &Theme,
+    fonts: &mut Fonts,
+    sizes: &SurfaceSizes<'_>,
+    interaction: &Interaction,
+    width: f32,
+    height: f32,
+    layout: WindowLayout,
+    overlay: Option<OverlayLayout>,
+) -> Scene {
+    let scene = lay_out_with_layout(
+        view,
+        theme,
+        fonts,
+        sizes,
+        interaction,
+        width,
+        height,
+        layout,
+    );
+    let Some(overlay) = overlay else { return scene };
+    let Element::Stack { children, .. } = &view.root.element else {
+        return scene;
+    };
+    let Some(node) = children.get(2) else {
+        return scene;
+    };
+    let mut engine = Engine {
+        theme,
+        fonts,
+        sizes,
+        interaction,
+        scene,
+        paint_clip: None,
+    };
+    let available = (width - 32.0).max(1.0);
+    let requested = if overlay.width == 0 {
+        available
+    } else {
+        f32::from(overlay.width).min(available)
+    };
+    let (natural, h) = engine.size(node, requested);
+    let h = h.min((height - 16.0).max(1.0));
+    let w = if overlay.width == 0 {
+        natural
+    } else {
+        requested
+    };
+    let (x, y) = match overlay.placement {
+        OverlayPlacement::Center => ((width - w) / 2.0, (height - h) / 2.0),
+        OverlayPlacement::At { x, y } => (x, y),
+        OverlayPlacement::TopRight { top, right } => (width - w - f32::from(right), f32::from(top)),
+        OverlayPlacement::Above { anchor, gap } => {
+            let Some(rect) = engine.scene.bounds.get(anchor) else {
+                return engine.scene;
+            };
+            (rect.x + (rect.w - w) / 2.0, rect.y - h - f32::from(gap))
+        }
+    };
+    if !x.is_finite() || !y.is_finite() {
+        engine.scene.unsupported.insert("window.overlay.geometry");
+        return engine.scene;
+    }
+    let x = x.clamp(8.0, (width - w - 8.0).max(8.0));
+    let y = y.clamp(8.0, (height - h - 8.0).max(8.0));
+    if let Some(color) = overlay.scrim {
+        engine.scene.ops.push(Op::Fill {
+            rect: Rect {
+                x: 0.0,
+                y: 0.0,
+                w: width,
+                h: height,
+            },
+            radius: 0.0,
+            color,
+        });
+    }
+    let bounds = Rect { x, y, w, h };
+    engine.scene.ops.push(Op::PushClip(bounds));
+    let first_hit = engine.scene.hits.len();
+    engine.place_sized(node, x, y, w, h);
+    for hit in &mut engine.scene.hits[first_hit..] {
+        hit.clip = Some(bounds);
+    }
+    engine.scene.ops.push(Op::PopClip);
+    engine.scene
+}
+
 /// Sizing for a leading pane and a content pane, in logical points.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SplitLayout {
@@ -311,7 +419,7 @@ pub fn lay_out_with_layout<I>(
             Element::Stack {
                 axis: Axis::Vertical,
                 children,
-            } if children.len() == 2 => (&children[1], Some(&children[0])),
+            } if (2..=3).contains(&children.len()) => (&children[1], Some(&children[0])),
             _ => {
                 let mut scene =
                     lay_out_window(view, theme, fonts, sizes, interaction, width, height);
@@ -1312,7 +1420,7 @@ impl Engine<'_> {
             let radius = if pill {
                 rect.h / 2.0
             } else {
-                theme.button_radius
+                node.style.radius.map_or(theme.button_radius, f32::from)
             };
             let mut fill = node.style.background.unwrap_or(theme.button);
             let mut color = node.style.foreground.unwrap_or(theme.button_text);

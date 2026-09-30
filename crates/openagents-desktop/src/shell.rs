@@ -217,8 +217,7 @@ impl DesktopApp {
             && (self
                 .navigation
                 .as_ref()
-                .is_some_and(|state| matches!(state.page, Page::Chat(_) | Page::Saved))
-                || self.chat.as_ref().is_some_and(|chat| chat.modal()))
+                .is_some_and(|state| matches!(state.page, Page::Chat(_) | Page::Saved)))
             && let Some(chat) = &mut self.chat
             && let rust_native::Element::Stack { children, .. } = &mut root.element
             && let Some(panes) = children.get_mut(1)
@@ -228,6 +227,12 @@ impl DesktopApp {
         {
             children[1] = chat.body();
             children[2] = chat.footer();
+        }
+        if self.model.nearby().is_none()
+            && let Some(floating) = self.chat.as_mut().and_then(|chat| chat.floating())
+            && let rust_native::Element::Stack { children, .. } = &mut root.element
+        {
+            children.push(floating);
         }
         self.presenter.present(root);
         if let Some(chat) = &mut self.chat {
@@ -684,6 +689,21 @@ impl App for DesktopApp {
     }
     fn modal_root(&self) -> Option<&str> {
         self.chat.as_ref().and_then(|chat| chat.modal_root())
+    }
+
+    fn context_menu_at(&mut self, target: Option<&str>, point: (f32, f32), now: Instant) -> bool {
+        if !self.context_menu(target, now) {
+            return false;
+        }
+        if let Some(chat) = &mut self.chat {
+            chat.anchor_context_menu(point);
+        }
+        self.present();
+        true
+    }
+
+    fn overlay_layout(&self) -> Option<rust_native_desktop::OverlayLayout> {
+        self.chat.as_ref().and_then(|chat| chat.overlay_layout())
     }
     fn allows_focus(&self, key: &str) -> bool {
         self.chat.as_ref().is_none_or(|chat| chat.allows_focus(key))
@@ -2383,6 +2403,64 @@ mod command_fixtures {
     use super::*;
     use openagents_desktop::chat_action::Action as ChatAction;
     use rust_native_desktop::{App, input::TextInput};
+    #[test]
+    fn floating_controls_preserve_the_reader_and_composer_geometry() {
+        let now = Instant::now();
+        let (mut app, _) = DesktopApp::performance_fixture(100, 1, now);
+        for (width, height) in [(1200.0, 840.0), (760.0, 540.0)] {
+            let (_, before) = rust_native_desktop::capture(&mut app, width, height, 1.0);
+            assert!(!before.bounds.contains_key("chat-key-hint"));
+            app.performance_scroll(200.0, now);
+            let (_, reading) = rust_native_desktop::capture(&mut app, width, height, 1.0);
+            let pill = reading.bounds["chat-latest-pill"];
+            let composer = reading.bounds["chat-composer-card"];
+            assert_eq!(pill.h, 30.0);
+            assert!((pill.y + pill.h + 6.0 - composer.y).abs() < 0.01);
+            assert!((pill.x + pill.w / 2.0 - composer.x - composer.w / 2.0).abs() < 0.01);
+            assert_eq!(
+                before.bounds["chat-transcript"],
+                reading.bounds["chat-transcript"]
+            );
+            capture(&mut app, &format!("latest-{width}"), width, height);
+            key(&mut app, now, "k", true, false);
+            let (_, palette) = rust_native_desktop::capture(&mut app, width, height, 1.0);
+            let card = palette.bounds["command-panel"];
+            assert_eq!(card.w, 560.0);
+            assert!((card.x + card.w / 2.0 - width / 2.0).abs() < 0.01);
+            assert_eq!(palette.bounds["chat-composer-card"], composer);
+            assert_eq!(
+                palette.bounds["chat-transcript"],
+                reading.bounds["chat-transcript"]
+            );
+            key(&mut app, now, "Escape", false, false);
+            app.activate(
+                Intent::Chat {
+                    action: ChatAction::Menu,
+                },
+                now,
+            );
+            let (_, menu) = rust_native_desktop::capture(&mut app, width, height, 1.0);
+            assert_eq!(menu.bounds["command-panel"].w, 216.0);
+            assert_eq!(menu.bounds["command-panel"].y, 40.0);
+            assert_eq!(menu.bounds["chat-composer-card"], composer);
+            assert!(menu.hits.iter().any(|hit| hit.key == "command-archive"));
+            assert!(app.context_menu_at(None, (width - 10.0, height - 10.0), now));
+            let (_, edge_menu) = rust_native_desktop::capture(&mut app, width, height, 1.0);
+            let edge = edge_menu.bounds["command-panel"];
+            assert_eq!(edge.x + edge.w, width - 8.0);
+            assert_eq!(edge.y + edge.h, height - 8.0);
+            key(&mut app, now, "Escape", false, false);
+            app.activate(
+                Intent::Chat {
+                    action: ChatAction::Latest,
+                },
+                now,
+            );
+            let (_, latest) = rust_native_desktop::capture(&mut app, width, height, 1.0);
+            assert!(!latest.bounds.contains_key("chat-latest-pill"));
+        }
+    }
+
     #[test]
     fn composer_wraps_and_collapses_without_losing_text_or_clipping_controls() {
         let (mut app, now) = super::tests::chat_fixture(0);

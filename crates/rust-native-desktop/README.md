@@ -64,6 +64,12 @@ inside the header, and dragging an empty header area moves the window.
 `App::fullscreen_changed` reports native fullscreen state before layout so an
 application can adjust the space reserved for those controls.
 
+`App::overlay_layout` can place a third root child over those panes, centered
+in the window, at its top right, or above a named semantic node. The optional
+scrim paints after the panes and before the floating node. Modal focus and
+outside-click dismissal remain application-owned. Captures and the native
+window use the same placement and clamp the layer inside the viewport.
+
 `App::window_layout` defaults to the centered column. `WindowLayout::Split`
 lays out a horizontal root stack with two vertical pane stacks. Each pane has
 three children: header, scrollable body, and footer. All controls stay ordinary

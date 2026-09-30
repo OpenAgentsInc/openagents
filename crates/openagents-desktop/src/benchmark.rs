@@ -172,6 +172,9 @@ impl App for Fixture {
     fn view(&self) -> &ValidatedView<Intent> {
         self.app.view()
     }
+    fn overlay_layout(&self) -> Option<rust_native_desktop::OverlayLayout> {
+        self.app.overlay_layout()
+    }
     fn activate(&mut self, _: Intent, _: Instant) {}
     fn start(&mut self, _: rust_native_desktop::Waker) {}
     fn tick(&mut self, now: Instant) -> Option<Instant> {
@@ -341,6 +344,9 @@ impl App for Reporting {
     }
     fn view(&self) -> &ValidatedView<Intent> {
         self.fixture.view()
+    }
+    fn overlay_layout(&self) -> Option<rust_native_desktop::OverlayLayout> {
+        self.fixture.overlay_layout()
     }
     fn activate(&mut self, i: Intent, n: Instant) {
         self.fixture.activate(i, n)

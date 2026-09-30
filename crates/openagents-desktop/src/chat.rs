@@ -38,6 +38,8 @@ pub struct Panel {
     saved_project: Option<String>,
     command_query: Field,
     command_token: String,
+    menu_point: Option<(f32, f32)>,
+    menu_navigation: bool,
     search: Field,
     rename: Option<(String, Field)>,
     rename_pending: Option<(u64, String, String)>,
@@ -83,6 +85,8 @@ impl Panel {
             saved_project: None,
             command_query: chat_field("Find a command or chat…"),
             command_token: String::new(),
+            menu_point: None,
+            menu_navigation: false,
             search: search_field(),
             rename: None,
             rename_pending: None,
@@ -1034,6 +1038,8 @@ impl Panel {
         )
     }
     fn open_commands(&mut self, kind: openagents_chat_app::commands::Kind) {
+        self.menu_point = None;
+        self.menu_navigation = false;
         self.rename = None;
         self.search.focused = false;
         if let Some(field) = self.field() {
@@ -1043,6 +1049,16 @@ impl Panel {
         self.command_token = uuid::Uuid::new_v4().simple().to_string();
         self.command_query = chat_field("Find a command or chat…");
         self.command_query.focused = true;
+        self.command_query.set_unframed(true);
+        self.command_query
+            .set_metrics(rust_native_desktop::composer::field::Metrics {
+                font_size: 14.0,
+                line_height: 22.0,
+                padding: [3.0, 0.0, 3.0, 0.0],
+                min_height: 28.0,
+                max_height: 28.0,
+            })
+            .expect("valid command search metrics");
         if let Some(wake) = self.waker.clone() {
             self.command_query.start(wake);
         }
@@ -1054,6 +1070,11 @@ impl Panel {
         self.rename_pending = None;
         if let Some(field) = self.field() {
             field.focused = true;
+        }
+    }
+    pub fn anchor_context_menu(&mut self, point: (f32, f32)) {
+        if point.0.is_finite() && point.1.is_finite() {
+            self.menu_point = Some(point);
         }
     }
     pub fn allows_focus(&self, key: &str) -> bool {
@@ -1092,6 +1113,7 @@ impl Panel {
             return None;
         }
         match key {
+            "chat-latest" => return Some("Scroll to bottom".into()),
             "chat-attach" => return Some("Attach image".into()),
             "chat-paste-image" => return Some("Paste image or text".into()),
             "chat-menu" => return Some("Chat actions · Shift+F10".into()),
@@ -1311,6 +1333,7 @@ impl Panel {
                     return FieldAction::Unhandled;
                 }
                 if matches!(*key, "Tab" | "ArrowDown" | "ArrowUp") {
+                    self.menu_navigation = true;
                     let entries = self.commands.entries(&self.registry());
                     self.commands
                         .navigate_entries(*key == "ArrowUp" || (*key == "Tab" && *shift), &entries);
@@ -1591,7 +1614,8 @@ impl Panel {
             .map_or(56.0, |field| field.height(available));
         match resource {
             SEARCH => Some((available, 28.0)),
-            COMMAND_QUERY | RENAME => Some((available, 56.0)),
+            COMMAND_QUERY => Some((available, 28.0)),
+            RENAME => Some((available, 56.0)),
             TRANSCRIPT => Some((
                 available,
                 (self.viewport.1
@@ -1716,17 +1740,86 @@ impl Panel {
             (rect.y / scale + field.caret.1 + 20.0) as f64,
         ))
     }
-    pub fn body(&mut self) -> Node<Intent> {
+    pub fn overlay_layout(&self) -> Option<rust_native_desktop::OverlayLayout> {
+        use openagents_chat_app::commands::Kind;
+        use rust_native_desktop::{OverlayLayout, OverlayPlacement};
         if let Some(kind) = &self.commands.kind {
-            let entries = self.commands.entries(&self.registry());
+            Some(OverlayLayout {
+                width: match kind {
+                    Kind::Palette => 560,
+                    Kind::Menu => 216,
+                    Kind::ConfirmArchive => 360,
+                },
+                placement: if *kind == Kind::Menu {
+                    self.menu_point.map_or(
+                        OverlayPlacement::TopRight { top: 40, right: 10 },
+                        |(x, y)| OverlayPlacement::At { x, y },
+                    )
+                } else {
+                    OverlayPlacement::Center
+                },
+                scrim: (*kind != Kind::Menu).then_some(Color {
+                    alpha: 89,
+                    ..Color::rgb(0, 0, 0)
+                }),
+            })
+        } else if !self.saved_visible && !self.modal() && !self.transcript.at_tail() {
+            Some(OverlayLayout {
+                width: 0,
+                placement: OverlayPlacement::Above {
+                    anchor: "chat-composer-card",
+                    gap: 6,
+                },
+                scrim: None,
+            })
+        } else {
+            None
+        }
+    }
+    pub fn floating(&mut self) -> Option<Node<Intent>> {
+        if self.commands.kind.is_some() {
+            return Some(self.command_panel());
+        }
+        self.overlay_layout()?;
+        let mut button = button("chat-latest", "↓  Scroll to bottom", Action::Latest, true);
+        button.style.background = Some(Color::rgb(32, 32, 32));
+        button.style.text_size = Some(13);
+        button.style.line_height = Some(18);
+        button.style.button_padding = Some([12, 5]);
+        button.style.radius = Some(15);
+        let mut pill = stack("chat-latest-pill", Axis::Vertical, vec![button]);
+        pill.style.gap = Some(Space::None);
+        pill.style.radius = Some(15);
+        pill.style.border = Some(openagents_chat_app::visual::BORDER);
+        Some(pill)
+    }
+    fn command_panel(&mut self) -> Node<Intent> {
+        if let Some(kind) = &self.commands.kind {
+            let entries: Vec<_> = self
+                .commands
+                .entries(&self.registry())
+                .into_iter()
+                .filter(|entry| {
+                    *kind != openagents_chat_app::commands::Kind::Menu
+                        || entry.enabled
+                        || entry.action != openagents_chat_app::commands::Action::Restore
+                })
+                .collect();
             let label = match kind {
                 openagents_chat_app::commands::Kind::Palette => "Commands",
                 openagents_chat_app::commands::Kind::Menu => "Chat menu",
                 openagents_chat_app::commands::Kind::ConfirmArchive => "Archive this conversation?",
             };
-            let mut rows = vec![text("command-heading", label, TextRole::Heading)];
+            let mut rows = vec![];
+            if *kind == openagents_chat_app::commands::Kind::ConfirmArchive {
+                let mut heading = text("command-heading", label, TextRole::Body);
+                heading.style.text_size = Some(13);
+                heading.style.line_height = Some(20);
+                heading.style.padding_points = Some([12, 12, 12, 12]);
+                rows.push(heading);
+            }
             if *kind == openagents_chat_app::commands::Kind::Palette {
-                rows.push(Node {
+                let query = Node {
                     key: "command-query".into(),
                     style: Style::default(),
                     element: Element::Composer {
@@ -1740,47 +1833,116 @@ impl Panel {
                         draft: Some(self.commands.query.clone()),
                         focus: true,
                     },
-                });
+                };
+                let mut escape = button("command-close", "Esc", Action::DismissOverlay, true);
+                escape.style.text_size = Some(11);
+                escape.style.line_height = Some(14);
+                escape.style.button_padding = Some([6, 2]);
+                escape.style.radius = Some(4);
+                escape.style.foreground = Some(openagents_chat_app::visual::MUTED);
+                escape.style.background = Some(Color::rgb(32, 32, 32));
+                let mut header = stack(
+                    "command-search-header",
+                    Axis::Horizontal,
+                    vec![query, escape],
+                );
+                header.style.padding_points = Some([8, 16, 8, 16]);
+                header.style.gap_points = Some(10);
+                rows.push(header);
             }
+            let mut items = vec![];
             if entries.is_empty() {
-                rows.push(text(
+                items.push(text(
                     "command-none",
                     "No matching commands.",
                     TextRole::Status,
                 ));
             }
-            for index in self
-                .commands
-                .window_at(entries.len(), if self.viewport.1 < 650.0 { 3 } else { 5 })
-            {
+            let visible = if *kind == openagents_chat_app::commands::Kind::Palette {
+                ((self.viewport.1 - 180.0) / 32.0).clamp(3.0, 10.0) as usize
+            } else {
+                entries.len()
+            };
+            for index in self.commands.window_at(entries.len(), visible) {
                 let entry = &entries[index];
-                let label = format!(
-                    "{}{}\n{}",
-                    if index == self.commands.selected {
-                        "› "
-                    } else {
-                        ""
-                    },
-                    entry.label,
-                    entry.hint
-                );
-                rows.push(button(
+                use openagents_chat_app::commands::{Action as C, Kind};
+                let label = if *kind == Kind::Menu {
+                    match entry.action {
+                        C::Rename => "Rename…",
+                        C::Pin if entry.label.starts_with("Unpin") => "Unpin",
+                        C::Pin => "Pin",
+                        C::Archive => "Archive",
+                        C::Restore => "Unarchive",
+                        _ => &entry.label,
+                    }
+                } else {
+                    &entry.label
+                };
+                let mut row = button(
                     &format!("command-{}", entry.key),
-                    &label,
+                    label,
                     Action::Command {
                         key: entry.key.clone(),
                     },
                     entry.enabled,
-                ));
+                );
+                row.style.align = Some(rust_native::style::TextAlign::Start);
+                row.style.text_size = Some(13);
+                row.style.line_height = Some(18);
+                row.style.button_padding = Some([
+                    8,
+                    if *kind == openagents_chat_app::commands::Kind::Palette {
+                        4
+                    } else {
+                        6
+                    },
+                ]);
+                row.style.min_height = Some(30);
+                row.style.radius = Some(if *kind == openagents_chat_app::commands::Kind::Palette {
+                    10
+                } else {
+                    7
+                });
+                row.style.background = Some(
+                    if index == self.commands.selected
+                        && (*kind != Kind::Menu || self.menu_navigation)
+                    {
+                        openagents_chat_app::visual::SELECTED
+                    } else {
+                        Color::rgb(16, 16, 16)
+                    },
+                );
+                items.push(row);
+            }
+            let mut results = stack("command-results", Axis::Vertical, items);
+            results.style.padding_points = Some([4, 4, 4, 4]);
+            results.style.gap_points = Some(2);
+            rows.push(results);
+            if *kind == openagents_chat_app::commands::Kind::Palette {
+                let mut hint = text(
+                    "command-navigation-hint",
+                    "↑↓ Navigate    ↵ Select    Esc Close",
+                    TextRole::Status,
+                );
+                hint.style.text_size = Some(11);
+                hint.style.line_height = Some(16);
+                hint.style.padding_points = Some([7, 16, 7, 16]);
+                rows.push(hint);
             }
             let mut panel = stack("command-panel", Axis::Vertical, rows);
-            panel.style.background = Some(rust_native::style::Color::rgb(25, 29, 35));
-            panel.style.padding_top = Some(Space::Md);
-            panel.style.padding_bottom = Some(Space::Md);
-            panel.style.padding_start = Some(Space::Md);
-            panel.style.padding_end = Some(Space::Md);
+            panel.style.background = Some(Color::rgb(16, 16, 16));
+            panel.style.border = Some(openagents_chat_app::visual::BORDER);
+            panel.style.radius = Some(if *kind == openagents_chat_app::commands::Kind::Palette {
+                16
+            } else {
+                12
+            });
+            panel.style.gap = Some(Space::None);
             return panel;
         }
+        stack("command-panel", Axis::Vertical, vec![])
+    }
+    pub fn body(&mut self) -> Node<Intent> {
         if self.saved_visible {
             return self.saved_body();
         }
@@ -1860,9 +2022,6 @@ impl Panel {
                 true,
             ));
         }
-        if !self.transcript.at_tail() {
-            controls.push(button("chat-latest", "Latest", Action::Latest, true));
-        }
         let mut children = vec![Node {
             key: "chat-transcript".into(),
             style: Style {
@@ -1885,14 +2044,6 @@ impl Panel {
         body
     }
     pub fn footer(&mut self) -> Node<Intent> {
-        if self.commands.kind.is_some() {
-            return button(
-                "command-close",
-                "Close · Escape",
-                Action::DismissOverlay,
-                true,
-            );
-        }
         if self.saved_visible {
             return self.saved_footer();
         }
@@ -2123,11 +2274,6 @@ impl Panel {
         card.style.border = Some(openagents_chat_app::visual::COMPOSER_BORDER);
         card.style.gap = Some(if compact { Space::Xs } else { Space::None });
         content.push(card);
-        content.push(text(
-            "chat-key-hint",
-            "Enter to send · Shift+Enter for a new line",
-            TextRole::Status,
-        ));
         let mut footer = stack("chat-footer", Axis::Vertical, content);
         footer.style.padding_start = Some(Space::Md);
         footer.style.padding_end = Some(Space::Md);

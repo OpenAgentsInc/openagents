@@ -21,7 +21,7 @@
 
 use crate::backdrop::{Backdrop, Compositor, Gpu as BackdropGpu, Look};
 use crate::input::{NativeInput, SurfaceInput, TextInput};
-use crate::layout::{Interaction, Scene, WindowLayout, lay_out_with_layout};
+use crate::layout::{Interaction, Scene, WindowLayout, lay_out_with_overlay};
 use crate::text::Fonts;
 use crate::timing::{FrameTiming, Phase, Timings};
 use crate::{App, Waker, paint};
@@ -309,6 +309,7 @@ struct LaidOut {
     scale: u32,
     interaction: Interaction,
     layout: WindowLayout,
+    overlay: Option<crate::layout::OverlayLayout>,
 }
 
 struct Shell<A: App> {
@@ -489,6 +490,7 @@ impl<A: App> Shell<A> {
             scale: (self.scale() * 100.0) as u32,
             interaction: self.interaction.clone(),
             layout: self.app.window_layout(),
+            overlay: self.app.overlay_layout(),
         };
         let resized_surface = self.scene.as_ref().is_some_and(|scene| {
             scene.ops.iter().any(|op| {
@@ -505,7 +507,7 @@ impl<A: App> Shell<A> {
             let started = Instant::now();
             let theme = self.app.theme();
             let app = &self.app;
-            let mut scene = lay_out_with_layout(
+            let mut scene = lay_out_with_overlay(
                 app.view().view(),
                 &theme,
                 &mut self.fonts,
@@ -514,6 +516,7 @@ impl<A: App> Shell<A> {
                 width,
                 height,
                 app.window_layout(),
+                app.overlay_layout(),
             );
             if let Some(key) = &self.interaction.hover
                 && let Some(value) = self.app.tooltip(key)
@@ -1355,7 +1358,12 @@ impl<A: App> ApplicationHandler<()> for Shell<A> {
                 ..
             } => {
                 let target = self.target();
-                if self.app.context_menu(target.as_deref(), Instant::now()) {
+                let scale = self.scale();
+                let point = (self.cursor.x as f32 / scale, self.cursor.y as f32 / scale);
+                if self
+                    .app
+                    .context_menu_at(target.as_deref(), point, Instant::now())
+                {
                     self.tick();
                     self.redraw();
                 }
