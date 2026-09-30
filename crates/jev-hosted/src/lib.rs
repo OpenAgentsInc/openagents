@@ -499,19 +499,13 @@ impl Exchange for RelayExchange {
     }
 }
 
-/// The HTTP-shaped reply a worker refusal becomes: the status the same
-/// refusal carries on the HTTP lane, and a message that starts with
+/// The HTTP-shaped reply a worker refusal becomes: the status NIP-DEC maps
+/// the refusal code to (`nostr::decision::http_status`, the statuses
+/// OpenRouter's Decisions API uses), and a message that starts with
 /// "Jev refused".
 fn from_refusal(refusal: &decision::Refusal) -> Reply {
     let code = refusal.code.as_str();
-    let status = match code {
-        "quota_exhausted" | "rate_limited" => 429,
-        "busy" | "unavailable" | "door_unavailable" | "overloaded" | "timeout" => 503,
-        "not_admitted" | "door_not_bound" => 403,
-        "idempotency_conflict" => 409,
-        "stale" | "malformed" | "invalid_request" | "unsupported_version" | "limit_exceeded" => 400,
-        _ => 502,
-    };
+    let status = decision::http_status(code);
     let what = match code {
         "quota_exhausted" | "rate_limited" => "quota".to_string(),
         other => other.to_string(),

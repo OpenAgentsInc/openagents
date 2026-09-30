@@ -55,6 +55,8 @@ Read the spec before the code. The files you need most often:
 - `nips/block/README.md` — a per-spec summary of all 17 Block NIPs.
 - `nips/openagents/NIP-CJ.md` — Coder jobs, the protocol between `coder`
   and `coder-worker`.
+- `nips/openagents/NIP-DEC.md` — decisions: typed questions with structured
+  (EntryType) instructions and criteria, carried by the CJ decision family.
 - `nips/openagents/NIP-CAP.md` — capability manifests and presence.
 - `nips/openagents/NIP-PRG.md` — programs.
 - `nips/openagents/NIP-EXT.md` — extension releases, discovery, revocation,

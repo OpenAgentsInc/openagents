@@ -1409,3 +1409,129 @@ async fn send_raw(socket: &mut WebSocketStream<TcpStream>, value: Value) {
         .await
         .unwrap();
 }
+
+/// A door that records the body of each call it answers.
+async fn recording_door() -> (String, Arc<Mutex<Vec<Value>>>) {
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let log = seen.clone();
+    let router = axum::Router::new().route(
+        "/v1/systemone",
+        post(move |body: Bytes| {
+            let log = log.clone();
+            async move {
+                let sent: Value = serde_json::from_slice(&body).unwrap();
+                log.lock().unwrap().push(sent);
+                (
+                    StatusCode::OK,
+                    Json(json!({
+                        "model": "jev-1.13.0",
+                        "answers": {
+                            "queue": {
+                                "type": "choice",
+                                "choice": "billing",
+                                "confidence": 0.9,
+                                "probabilities": {"billing": 0.9, "technical": 0.1},
+                            },
+                            "refund": {"type": "noul", "noul": 0.8},
+                        },
+                        "usage": {"input_tokens": 40, "output_tokens": 2},
+                    })),
+                )
+                    .into_response()
+            }
+        }),
+    );
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    tokio::spawn(axum::serve(listener, router).into_future());
+    (format!("http://{address}"), seen)
+}
+
+/// NIP-DEC: an object `state`, a `choice` whose options are structured
+/// rubrics, and a `noul` with structured `true`/`false` reach the door
+/// exactly as the caller sent them, and OpenRouter's model name
+/// `typesafe/jev-1.13` is admitted where `jev-1.13.0` is and goes to the
+/// door as `jev-1.13.0`.
+#[tokio::test]
+async fn structured_entries_pass_through_and_model_aliases_admit() {
+    const KEY_ENV: &str = "DECISION_WORKER_TEST_STRUCTURED_KEY";
+    // SAFETY: this test binary reads this variable nowhere else, and no
+    // other test sets it.
+    unsafe { std::env::set_var(KEY_ENV, "ts-test-structured") };
+    let (relay_url, conns) = relay().await;
+    let (door, seen) = recording_door().await;
+    let jobs_dir = tempfile::tempdir().unwrap();
+    let config: WorkerConfig = serde_json::from_value(json!({
+        "relay": relay_url,
+        "worker_secret": hex_secret(WORKER_BYTE),
+        "upstream": door,
+        "jobs_dir": jobs_dir.path(),
+        "probe_secs": 0,
+        "open": {
+            "key_env": KEY_ENV,
+            "models": ["jev-1.13.0"],
+            "quota": {"per_key_day": 10, "per_key_minute": 10, "total_day": 10},
+        },
+    }))
+    .unwrap();
+    let worker = Worker::open(config).unwrap();
+    let worker_pub = worker.pubkey().to_string();
+    let serving = Arc::clone(&worker);
+    let url = relay_url.clone();
+    tokio::spawn(async move {
+        let (socket, _) = connect_async(&url).await.unwrap();
+        let _ = serving.serve(socket).await;
+    });
+    subscribed(&conns).await;
+    let mut socket = authenticated_socket(&relay_url, CALLER_BYTE).await;
+
+    let state = json!({
+        "message": "I was charged twice for March. Please refund the extra $49.",
+        "account": {"plan": "team", "seats": 12},
+    });
+    let questions = json!({
+        "queue": {
+            "type": "choice",
+            "instructions": {"question": "Which queue handles this?", "focus": "the request, not the tone"},
+            "criteria": {
+                "billing": {"what": "Charges and refunds.", "not_for": "Plan features.", "examples": ["Billed twice"]},
+                "technical": {"what": "Something is broken.", "not_for": "Money.", "examples": ["Login loops"]},
+            },
+        },
+        "refund": {
+            "type": "noul",
+            "instructions": "Does the customer ask for money back?",
+            "criteria": {
+                "true": {"what": "Asks for a refund or credit.", "examples": ["Refund me"]},
+                "false": {"what": "Asks for anything else.", "examples": ["Why this charge?"]},
+            },
+        },
+    });
+    for (request, model) in [
+        ("structured-1", "jev-1.13.0"),
+        ("structured-2", "typesafe/jev-1.13"),
+    ] {
+        let body = RequestBody::new(
+            request,
+            1,
+            model,
+            state.clone(),
+            questions.as_object().unwrap().clone(),
+        );
+        let event = request_event(CALLER_BYTE, &worker_pub, &body, unix_now());
+        let (_, result) = run_job(&mut socket, CALLER_BYTE, &worker_pub, &body, &event, 10).await;
+        let result = result.expect("the worker never answered");
+        assert_eq!(result.outcome, decision::Outcome::Answered, "{model}");
+        assert_eq!(
+            result.response.unwrap()["answers"]["queue"]["choice"],
+            "billing"
+        );
+    }
+    let seen = seen.lock().unwrap();
+    assert_eq!(seen.len(), 2);
+    for sent in seen.iter() {
+        assert_eq!(sent["model"], "jev-1.13.0");
+        assert_eq!(sent["state"], state);
+        assert_eq!(sent["questions"], questions);
+    }
+}

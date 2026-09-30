@@ -33,11 +33,11 @@ pub const CJ_CONVERSATION_REQUEST: u16 = 25_900;
 pub const CJ_CONVERSATION_RESULT: u16 = 26_900;
 /// NIP-CJ conversation job feedback.
 pub const CJ_CONVERSATION_FEEDBACK: u16 = 27_000;
-/// NIP-CJ typed-decision job request.
+/// NIP-DEC decision job request or cancel (the NIP-CJ decision family).
 pub const CJ_DECISION_REQUEST: u16 = 25_910;
-/// NIP-CJ typed-decision job result.
+/// NIP-DEC decision job result.
 pub const CJ_DECISION_RESULT: u16 = 26_910;
-/// NIP-CJ typed-decision job feedback.
+/// NIP-DEC decision job status.
 pub const CJ_DECISION_FEEDBACK: u16 = 27_010;
 /// NIP-CJ execution request or control.
 pub const CJ_EXECUTION_REQUEST: u16 = 25_920;
@@ -150,14 +150,18 @@ pub const REGISTRY: &[Claim] = &[
         "NIP-CJ",
         "Conversation job request",
     ),
-    claim(CJ_DECISION_REQUEST, "NIP-CJ", "Decision job request"),
+    claim(
+        CJ_DECISION_REQUEST,
+        "NIP-DEC",
+        "Decision job request or cancel",
+    ),
     claim(
         CJ_EXECUTION_REQUEST,
         "NIP-CJ",
         "Execution request or control",
     ),
     claim(CJ_CONVERSATION_RESULT, "NIP-CJ", "Conversation job result"),
-    claim(CJ_DECISION_RESULT, "NIP-CJ", "Decision job result"),
+    claim(CJ_DECISION_RESULT, "NIP-DEC", "Decision job result"),
     claim(
         CJ_EXECUTION_RESULT,
         "NIP-CJ",
@@ -168,7 +172,7 @@ pub const REGISTRY: &[Claim] = &[
         "NIP-CJ",
         "Conversation job feedback",
     ),
-    claim(CJ_DECISION_FEEDBACK, "NIP-CJ", "Decision job feedback"),
+    claim(CJ_DECISION_FEEDBACK, "NIP-DEC", "Decision job status"),
     claim(
         CJ_EXECUTION_FEEDBACK,
         "NIP-CJ",

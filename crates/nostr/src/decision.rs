@@ -3,7 +3,8 @@
 //!
 //! One decision job carries one `POST /v1/systemone` call — `state` plus
 //! typed `questions` — over the relay instead of HTTP. The wire shapes are
-//! `nips/openagents/NIP-CJ.md` ("Decision jobs"); the service semantics are
+//! `nips/openagents/NIP-DEC.md` (NIP-CJ's "Typed decision jobs" section
+//! points there); the service semantics are
 //! `docs/decision-models/api/relay-decision-contract.md`. This module is the
 //! protocol half both ends share: envelope construction, the checks a
 //! signature can back, and the bounds every field lives under.
@@ -75,6 +76,18 @@ pub const MAX_CHOICE_OPTIONS: usize = 255;
 pub const MIN_SCORE_LEVELS: usize = 2;
 /// The most levels a `score` question names, matching the SDK bound.
 pub const MAX_SCORE_LEVELS: usize = 10;
+/// The most bytes a `choice` option id carries.
+pub const MAX_OPTION_ID_BYTES: usize = 128;
+/// How deeply a structured entry (an `instructions`, a choice option's
+/// description, a score level, or a noul `true`/`false`) nests: a string or
+/// null is depth 0, and each object or array adds one.
+pub const MAX_ENTRY_DEPTH: usize = 8;
+/// How deeply an object `state` nests, counted as for entries.
+pub const MAX_STATE_DEPTH: usize = 32;
+/// Model names a host that serves the canonical name also admits, as
+/// `(alias, canonical)`. `typesafe/jev-1.13` is how OpenRouter's Decisions
+/// API names Jev 1.13.
+pub const MODEL_ALIASES: &[(&str, &str)] = &[("typesafe/jev-1.13", "jev-1.13.0")];
 /// The most bytes a refusal `code` carries.
 pub const MAX_CODE_BYTES: usize = 64;
 /// The most bytes a refusal `message` carries.
@@ -389,6 +402,7 @@ impl RequestBody {
                 "state is {state_bytes} bytes, more than {MAX_STATE_BYTES}"
             )));
         }
+        check_state(&self.state)?;
         check_questions(&self.questions)?;
         Ok(())
     }
@@ -1243,8 +1257,118 @@ fn parse_request(payload: &Value) -> Result<RequestBody, DecisionError> {
     Ok(body)
 }
 
+/// The canonical name a model alias stands for, or the name itself. A
+/// host admits an alias only where it admits the canonical name, and sends
+/// the canonical name to its door.
+#[must_use]
+pub fn canonical_model(model: &str) -> &str {
+    MODEL_ALIASES
+        .iter()
+        .find(|(alias, _)| *alias == model)
+        .map_or(model, |(_, canonical)| canonical)
+}
+
+/// The HTTP status a gateway answers a refusal code with (NIP-DEC,
+/// "Refusals and HTTP status"), the statuses OpenRouter's Decisions API
+/// uses. A code the table does not name is `502`: the door refused in a way
+/// the gateway cannot classify.
+#[must_use]
+pub fn http_status(code: &str) -> u16 {
+    match code {
+        "malformed"
+        | "invalid_request"
+        | "too_many_questions"
+        | "too_many_options"
+        | "unsupported_version"
+        | "stale"
+        | "idempotency_conflict"
+        | "uncalibrated" => 400,
+        "unauthenticated" => 401,
+        "payment_required" => 402,
+        "not_admitted" => 403,
+        "door_not_bound" | "not_found" => 404,
+        "limit_exceeded" => 413,
+        "rate_limited" | "quota_exhausted" => 429,
+        "internal" => 500,
+        "door_unavailable" | "identity_mismatch" => 502,
+        "busy"
+        | "unavailable"
+        | "registry_unavailable"
+        | "membership_unavailable"
+        | "ledger_unavailable" => 503,
+        "timeout" => 524,
+        "overloaded" => 529,
+        _ => 502,
+    }
+}
+
+/// The refusal code an HTTP status stands for when a door answers with a
+/// status and no typed error, the inverse of [`http_status`] on the
+/// statuses NIP-DEC names. Any other status is `unavailable`.
+#[must_use]
+pub fn code_for_http_status(status: u16) -> &'static str {
+    match status {
+        400 => "invalid_request",
+        401 => "unauthenticated",
+        402 => "payment_required",
+        403 => "not_admitted",
+        404 => "door_not_bound",
+        413 => "limit_exceeded",
+        429 => "rate_limited",
+        500 => "internal",
+        502 => "door_unavailable",
+        524 => "timeout",
+        529 => "overloaded",
+        _ => "unavailable",
+    }
+}
+
+/// Check one EntryType value: a string, an object, an array, or null, nested
+/// at most [`MAX_ENTRY_DEPTH`] deep. What sits inside an object or array is
+/// any JSON. `field` names the entry in the refusal.
+pub fn check_entry(value: &Value, field: &str) -> Result<(), DecisionError> {
+    match value {
+        Value::String(_) | Value::Null | Value::Object(_) | Value::Array(_) => {}
+        _ => {
+            return Err(invalid_request(&format!(
+                "{field} is a string, an object, an array, or null, not a bare number or boolean"
+            )));
+        }
+    }
+    if nests_past(value, MAX_ENTRY_DEPTH) {
+        return Err(invalid_request(&format!(
+            "{field} nests more than {MAX_ENTRY_DEPTH} levels deep"
+        )));
+    }
+    Ok(())
+}
+
+/// `state` is a string or a JSON object, nested at most
+/// [`MAX_STATE_DEPTH`] deep.
+fn check_state(state: &Value) -> Result<(), DecisionError> {
+    match state {
+        Value::String(_) => Ok(()),
+        Value::Object(_) if nests_past(state, MAX_STATE_DEPTH) => Err(invalid_request(&format!(
+            "state nests more than {MAX_STATE_DEPTH} levels deep"
+        ))),
+        Value::Object(_) => Ok(()),
+        _ => Err(invalid_request("state is a string or a JSON object")),
+    }
+}
+
+/// Whether a value's containers nest deeper than `limit`: a scalar is depth
+/// 0, and each object or array adds one. Stops as soon as the limit is
+/// passed, so a hostile value costs no more than `limit` levels of descent.
+fn nests_past(value: &Value, limit: usize) -> bool {
+    match value {
+        Value::Object(map) => limit == 0 || map.values().any(|child| nests_past(child, limit - 1)),
+        Value::Array(items) => limit == 0 || items.iter().any(|child| nests_past(child, limit - 1)),
+        _ => false,
+    }
+}
+
 /// The request envelope's question checks: count, ids, per-question size,
-/// and the `type`/`criteria` shape the SDK holds a raw question to.
+/// and each type's `instructions` and `criteria` shape (NIP-DEC, "Questions").
 fn check_questions(questions: &Map<String, Value>) -> Result<(), DecisionError> {
     if questions.is_empty() {
         return Err(invalid_request("a request asks at least one question"));
@@ -1265,33 +1389,67 @@ fn check_questions(questions: &Map<String, Value>) -> Result<(), DecisionError> 
                 "question `{id}` serializes past {MAX_QUESTION_BYTES} bytes"
             )));
         }
+        if !question.is_object() {
+            return Err(invalid_request(&format!("question `{id}` is an object")));
+        }
         let kind = question
             .get("type")
             .and_then(Value::as_str)
             .filter(|kind| !kind.is_empty())
             .ok_or_else(|| invalid_request(&format!("question `{id}` names a nonempty `type`")))?;
+        if let Some(instructions) = question.get("instructions") {
+            check_entry(instructions, &format!("question `{id}` instructions"))?;
+        }
+        let criteria = question.get("criteria");
         match kind {
+            "noul" => match criteria {
+                // A string is the legacy undescribed form some callers sent
+                // before NIP-DEC; it stays valid and passes through unchanged.
+                None | Some(Value::Null | Value::String(_)) => {}
+                Some(Value::Object(outcomes)) => {
+                    for (outcome, entry) in outcomes {
+                        if outcome != "true" && outcome != "false" {
+                            return Err(invalid_request(&format!(
+                                "a noul question `{id}` describes only `true` and `false`, not `{outcome}`"
+                            )));
+                        }
+                        check_entry(entry, &format!("question `{id}` criteria.{outcome}"))?;
+                    }
+                }
+                Some(_) => {
+                    return Err(invalid_request(&format!(
+                        "a noul question `{id}` names criteria as {{\"true\": …, \"false\": …}}"
+                    )));
+                }
+            },
             "choice" => {
-                let options = question
-                    .get("criteria")
-                    .and_then(Value::as_object)
-                    .ok_or_else(|| {
-                        invalid_request(&format!("a choice question `{id}` names `criteria`"))
-                    })?;
+                let options = criteria.and_then(Value::as_object).ok_or_else(|| {
+                    invalid_request(&format!("a choice question `{id}` names `criteria`"))
+                })?;
+                if options.is_empty() {
+                    return Err(invalid_request(&format!(
+                        "a choice question `{id}` names at least one option"
+                    )));
+                }
                 if options.len() > MAX_CHOICE_OPTIONS {
                     return Err(DecisionError::TooManyOptions {
                         question: id.clone(),
                         count: options.len(),
                     });
                 }
+                for (option, entry) in options {
+                    if option.is_empty() || option.len() > MAX_OPTION_ID_BYTES {
+                        return Err(invalid_request(&format!(
+                            "an option id of question `{id}` must contain 1 to {MAX_OPTION_ID_BYTES} bytes"
+                        )));
+                    }
+                    check_entry(entry, &format!("question `{id}` option `{option}`"))?;
+                }
             }
             "score" => {
-                let levels = question
-                    .get("criteria")
-                    .and_then(Value::as_array)
-                    .ok_or_else(|| {
-                        invalid_request(&format!("a score question `{id}` names `criteria`"))
-                    })?;
+                let levels = criteria.and_then(Value::as_array).ok_or_else(|| {
+                    invalid_request(&format!("a score question `{id}` names `criteria`"))
+                })?;
                 if levels.len() < MIN_SCORE_LEVELS {
                     return Err(invalid_request(&format!(
                         "a score question `{id}` names at least {MIN_SCORE_LEVELS} levels"
@@ -1303,8 +1461,15 @@ fn check_questions(questions: &Map<String, Value>) -> Result<(), DecisionError> 
                         count: levels.len(),
                     });
                 }
+                for (level, entry) in levels.iter().enumerate() {
+                    check_entry(entry, &format!("question `{id}` level {level}"))?;
+                }
             }
-            _ => {}
+            other => {
+                return Err(invalid_request(&format!(
+                    "question `{id}` has type `{other}`; a question is `noul`, `choice`, or `score`"
+                )));
+            }
         }
     }
     Ok(())
@@ -2111,6 +2276,250 @@ mod tests {
         let error = ends.admit(&request).unwrap_err();
         assert!(matches!(error, DecisionError::TooManyOptions { .. }));
         assert_eq!(error.code(), Some("too_many_options"));
+    }
+
+    // ---- structured entries (NIP-DEC) ----
+
+    /// The NIP-DEC examples, `fixtures/decisions/valid/*.json`: each is
+    /// `{state, questions}` a request must carry unchanged.
+    const VALID_EXAMPLES: &[(&str, &str)] = &[
+        (
+            "string-only",
+            include_str!("../fixtures/decisions/valid/string-only.json"),
+        ),
+        (
+            "invoice-field",
+            include_str!("../fixtures/decisions/valid/invoice-field.json"),
+        ),
+        (
+            "rubric-choice",
+            include_str!("../fixtures/decisions/valid/rubric-choice.json"),
+        ),
+        (
+            "taxonomy-walk",
+            include_str!("../fixtures/decisions/valid/taxonomy-walk.json"),
+        ),
+        (
+            "score-levels",
+            include_str!("../fixtures/decisions/valid/score-levels.json"),
+        ),
+        (
+            "structured-noul",
+            include_str!("../fixtures/decisions/valid/structured-noul.json"),
+        ),
+        (
+            "compare-focus",
+            include_str!("../fixtures/decisions/valid/compare-focus.json"),
+        ),
+    ];
+
+    /// Requests NIP-DEC refuses, `fixtures/decisions/invalid/*.json`.
+    const INVALID_EXAMPLES: &[(&str, &str)] = &[
+        (
+            "too-deep-entry",
+            include_str!("../fixtures/decisions/invalid/too-deep-entry.json"),
+        ),
+        (
+            "bare-number-instructions",
+            include_str!("../fixtures/decisions/invalid/bare-number-instructions.json"),
+        ),
+        (
+            "array-state",
+            include_str!("../fixtures/decisions/invalid/array-state.json"),
+        ),
+        (
+            "noul-extra-outcome",
+            include_str!("../fixtures/decisions/invalid/noul-extra-outcome.json"),
+        ),
+        (
+            "unknown-type",
+            include_str!("../fixtures/decisions/invalid/unknown-type.json"),
+        ),
+        (
+            "empty-choice",
+            include_str!("../fixtures/decisions/invalid/empty-choice.json"),
+        ),
+        (
+            "score-bare-number-level",
+            include_str!("../fixtures/decisions/invalid/score-bare-number-level.json"),
+        ),
+    ];
+
+    fn example_body(name: &str, text: &str) -> RequestBody {
+        let example: Value =
+            serde_json::from_str(text).unwrap_or_else(|e| panic!("{name} parses: {e}"));
+        RequestBody::new(
+            format!("req-{name}"),
+            1,
+            "jev-1.13.0",
+            example["state"].clone(),
+            example["questions"].as_object().unwrap().clone(),
+        )
+        .deadline(NOW + 30)
+    }
+
+    /// Every structured example seals into a `25910` event, decrypts and
+    /// admits on the worker side with `state` and `questions` byte-for-byte
+    /// what the caller sent (canonically), and digests the same on both ends.
+    #[test]
+    fn every_structured_example_round_trips_the_wire() {
+        let ends = ends();
+        for (name, text) in VALID_EXAMPLES {
+            let body = example_body(name, text);
+            body.validate()
+                .unwrap_or_else(|e| panic!("{name} validates: {e}"));
+            let event = request_event(ends.caller_seal(), &body, &ends.worker.1).unwrap();
+            let Admitted::Call(call) = ends
+                .admit(&event)
+                .unwrap_or_else(|e| panic!("{name} admits: {e}"))
+            else {
+                panic!("{name} admits as a call");
+            };
+            assert_eq!(call.body, body, "{name}");
+            assert_eq!(
+                canonicalize(&call.body.state),
+                canonicalize(&body.state),
+                "{name}"
+            );
+            assert_eq!(
+                canonicalize(&Value::Object(call.body.questions.clone())),
+                canonicalize(&Value::Object(body.questions.clone())),
+                "{name}"
+            );
+            assert_eq!(call.request_digest, body.digest(), "{name}");
+            // The payload a worker forwards reads back as the same body.
+            let reread = parse_request(&call.payload).unwrap();
+            assert_eq!(reread, body, "{name}");
+        }
+    }
+
+    #[test]
+    fn every_invalid_example_is_refused_invalid_request() {
+        let ends = ends();
+        for (name, text) in INVALID_EXAMPLES {
+            let body = example_body(name, text);
+            let error = body.validate().expect_err(name);
+            assert_eq!(error.code(), Some("invalid_request"), "{name}: {error}");
+            // Sealed around the caller-side check, the worker refuses it too.
+            let event = ends
+                .caller_seal()
+                .event(
+                    REQUEST_KIND,
+                    vec![Tag::new(vec!["p".into(), ends.worker.1.clone()])],
+                    &body.payload(),
+                )
+                .unwrap();
+            let error = ends.admit(&event).expect_err(name);
+            assert_eq!(error.code(), Some("invalid_request"), "{name}: {error}");
+        }
+    }
+
+    #[test]
+    fn entry_depth_is_bounded_at_exactly_the_limit() {
+        let mut entry = json!("leaf");
+        for _ in 0..MAX_ENTRY_DEPTH {
+            entry = json!({ "next": entry });
+        }
+        assert!(check_entry(&entry, "instructions").is_ok());
+        let deeper = json!([entry]);
+        let error = check_entry(&deeper, "instructions").unwrap_err();
+        assert_eq!(error.code(), Some("invalid_request"));
+        assert!(error.to_string().contains("levels deep"), "{error}");
+    }
+
+    #[test]
+    fn a_too_deep_state_is_refused() {
+        let mut state = json!({});
+        for _ in 0..MAX_STATE_DEPTH {
+            state = json!({ "next": state });
+        }
+        let mut body = body();
+        body.state = state;
+        let error = body.validate().unwrap_err();
+        assert_eq!(error.code(), Some("invalid_request"));
+        assert!(error.to_string().contains("state nests"), "{error}");
+    }
+
+    #[test]
+    fn oversize_entries_and_state_are_refused() {
+        let mut body = body();
+        body.questions.insert(
+            "big".to_owned(),
+            json!({
+                "type": "choice",
+                "instructions": "Pick one.",
+                "criteria": {"a": {"what": "x".repeat(MAX_QUESTION_BYTES)}, "b": null},
+            }),
+        );
+        let error = body.validate().unwrap_err();
+        assert_eq!(error.code(), Some("invalid_request"));
+        assert!(error.to_string().contains("serializes past"), "{error}");
+
+        let mut body = super::tests::body();
+        body.state = json!({"document": "x".repeat(MAX_STATE_BYTES)});
+        let error = body.validate().unwrap_err();
+        assert_eq!(error.code(), Some("invalid_request"));
+        assert!(error.to_string().contains("bytes, more than"), "{error}");
+    }
+
+    #[test]
+    fn a_noul_may_omit_null_or_describe_its_criteria() {
+        for criteria in [
+            None,
+            Some(Value::Null),
+            Some(json!({})),
+            Some(json!({"true": "yes"})),
+            Some(json!("yes/no")),
+        ] {
+            let mut question = json!({"type": "noul", "instructions": "Yes?"});
+            if let Some(criteria) = criteria {
+                question["criteria"] = criteria;
+            }
+            let mut body = body();
+            body.questions.insert("q".to_owned(), question);
+            body.validate().unwrap();
+        }
+    }
+
+    #[test]
+    fn model_aliases_name_their_canonical_model() {
+        assert_eq!(canonical_model("typesafe/jev-1.13"), "jev-1.13.0");
+        assert_eq!(canonical_model("jev-1.13.0"), "jev-1.13.0");
+        assert_eq!(canonical_model("jev-latest"), "jev-latest");
+        assert_eq!(canonical_model("shared-kev"), "shared-kev");
+    }
+
+    #[test]
+    fn refusal_codes_map_to_the_decisions_api_statuses() {
+        for (code, status) in [
+            ("invalid_request", 400),
+            ("malformed", 400),
+            ("unauthenticated", 401),
+            ("payment_required", 402),
+            ("not_admitted", 403),
+            ("door_not_bound", 404),
+            ("limit_exceeded", 413),
+            ("rate_limited", 429),
+            ("quota_exhausted", 429),
+            ("internal", 500),
+            ("door_unavailable", 502),
+            ("busy", 503),
+            ("unavailable", 503),
+            ("timeout", 524),
+            ("overloaded", 529),
+            ("something_new", 502),
+        ] {
+            assert_eq!(http_status(code), status, "{code}");
+        }
+        for status in [400, 401, 402, 403, 404, 413, 429, 500, 502, 524, 529] {
+            assert_eq!(
+                http_status(code_for_http_status(status)),
+                status,
+                "{status}"
+            );
+        }
+        assert_eq!(code_for_http_status(503), "unavailable");
+        assert_eq!(code_for_http_status(418), "unavailable");
     }
 
     // ---- cancellation ----

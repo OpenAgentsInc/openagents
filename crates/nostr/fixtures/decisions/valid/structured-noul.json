@@ -1,0 +1,19 @@
+{
+  "state": {"message": "Why was I charged $49 on March 3rd? I don't recognize it."},
+  "questions": {
+    "refund": {
+      "type": "noul",
+      "instructions": "Does the customer ask for money back?",
+      "criteria": {
+        "true": {
+          "what": "The message asks for a refund, credit, or reversal of a charge.",
+          "examples": ["Please refund the duplicate charge", "Credit my account"]
+        },
+        "false": {
+          "what": "The message asks for anything else, including an explanation of a charge.",
+          "examples": ["Why was I charged $49?", "Send me the invoice PDF"]
+        }
+      }
+    }
+  }
+}

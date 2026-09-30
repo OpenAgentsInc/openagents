@@ -3,9 +3,9 @@
 `draft` `optional` — v1. The [shared contracts](contracts.md) are normative.
 
 This NIP defines encrypted conversation, typed-decision, and recoverable
-execution jobs. Tasks are domain-independent: document, research, coding,
-and business operations use the same transport with domain schemas and
-host admission. A relay transports requests; it grants no execution authority.
+execution jobs; [NIP-DEC](NIP-DEC.md) specifies typed decisions. Tasks are
+domain-independent: document, research, coding, and business operations use
+the same transport with domain schemas and host admission. A relay transports requests; it grants no execution authority.
 
 Test-time capabilities: decision jobs and the conversation `judgment` feedback carry the router's side of the [judgment budget](../../docs/essays/2026-09-29-test-time-capabilities.md#5-judgment-budget); the `start_eval` and `publish_eval` offers, cards, and test-set draft carry the chat path, and execution jobs carry hosted eval runs ([mapping](../../docs/essays/2026-09-29-test-time-capabilities.md#how-the-protocol-carries-test-time-capabilities)).
 
@@ -14,7 +14,7 @@ Test-time capabilities: decision jobs and the conversation `judgment` feedback c
 | Family | Request/control | Result/control answer | Feedback | Payload version |
 | --- | --- | --- | --- | --- |
 | Conversation | `25900` | `26900` | `27000` | Integer `1`. |
-| Decision | `25910` | `26910` | `27010` | `openagents.systemone.v1`. |
+| Decision ([NIP-DEC](NIP-DEC.md)) | `25910` | `26910` | `27010` | `openagents.systemone.v1`. |
 | Execution | `25920` | `26920` | `27020` | `openagents.execution.v1`. |
 
 All kinds are ephemeral. Relays fan them out to matching subscriptions and
@@ -146,64 +146,14 @@ recovery, cancellation, or exact implementation attribution use execution jobs.
 
 ## Typed decision jobs
 
-A request has `v: "openagents.systemone.v1"`, `requires`, `type: "systemone"`,
-`request` (common random ID), `attempt` (positive integer), `model` (nonempty
-host-admitted target identifier), `state` (string), `questions`, and `deadline`
-(Unix seconds). Questions is a nonempty object keyed by unique nonempty IDs.
-Each question has `type`, `instructions` (string), and the following fields:
-
-| Type | Input | Answer |
-| --- | --- | --- |
-| `noul` | No additional fields. | `{type: "noul", noul}` with a finite probability in `[0,1]`. |
-| `choice` | `criteria`: nonempty map of unique option IDs to description strings. | `{type: "choice", choice, confidence, probabilities}`; selected option belongs to criteria, and probabilities names exactly those options. |
-| `score` | `criteria`: ordered nonempty array of level description strings. | `{type: "score", score, confidence, legend, probabilities}`; legend maps zero-based decimal-string indexes to the requested descriptions; probabilities maps zero-based level indexes, encoded as decimal strings, to probabilities; score is their probability-weighted index. |
-
-All probabilities and confidence values are finite in `[0,1]`. Categorical
-probabilities sum to one within absolute tolerance `0.000001`. Choice confidence
-is the selected option's probability; select a maximum-probability option and
-break ties by lexicographic option ID. Score confidence is the largest level
-probability; score is within `0.000001` of the weighted index. This transport
-does not certify calibration or turn a probability into permission. Consumers
-pin any abstention, threshold, and interpretation policy separately.
-
-The same state supplies every question; one question does not consume another
-answer from the same request. Dependent questions require separate calls.
-A result contains `v`, `requires`, `type: "result"`, request/attempt, common
-`outcome`, `dispatched`, `response`, `receipt`, and `code`. Receipt is an
-ArtifactRef to the shared execution receipt. On `completed`, response contains
-`model`, `answers` keyed exactly as requested, `usage` (ArtifactRef or null),
-and optionally `service` (`{door, version}`: the door that answered and the
-build or weights version it declares, so a report's baseline and a rerun's
-reliance set can name the decision service) and `latency_ms`,
-and code is null. On other outcomes, response is null and code is a bounded
-cause string or null when no more specific cause is known. Answer types must
-match the questions. Refusals, transport failure, and model answers are distinct.
-
-Progress is `type: "status"` with request/attempt and status `queued`,
-`processing`, or `error`. Error includes code/message and optional
-`retry_after_ms`; it is not evidence that an admitted call incurred no cost.
-The caller obtains the final receipt or retains an unknown outcome.
-
-The idempotency key is `(worker, principal, request, attempt)`. A fingerprint
-covers JCS of the complete request body. Retransmission with the same key and
-fingerprint retrieves recorded state without a second charge or model call;
-changed content is `idempotency_conflict`. Reserve quota and persist admission
-before dispatch. A new permitted attempt increments attempt under the same
-request, after preceding uncertain spend/execution is reconciled. The worker
-publishes its supported retention horizon; outside it, absence of state cannot
-justify automatic replay. Use execution jobs when a required recovery horizon
-or model-call composition is part of the task.
-
-Cancellation uses `type: "cancel"`, the same version/features, request/attempt,
-and an `e` tag naming the request. Require the original signer. Before dispatch,
-resolve cancelled with `dispatched: false`; after dispatch, propagate a stop
-request and preserve unknown effects or usage until reconciliation. Receipt
-of a cancel control is not proof of stop.
-
-Refusal causes include shared codes and `busy`, `quota_exhausted`,
-`rate_limited`, and `uncalibrated`. Workers admit model targets, recipients,
-capacity, and budgets under policy; a client naming a model does not authorize
-its use. Only supported families and roles may be advertised.
+The decision family (`25910` request or cancel, `26910` result, `27010`
+status, `v: "openagents.systemone.v1"`) is specified in
+[NIP-DEC](NIP-DEC.md): the request and answer shapes, EntryType
+instructions and criteria, object `state`, bounds, model aliases, the
+HTTP-gateway equivalence and status table, and ATIF recording. The
+transport rules above apply to it unchanged, and it is the same wire this
+section defined before 2026-09-30: every request valid then is valid now.
+Execution results keep separate receipts for any decision subcalls.
 
 ## Execution jobs
 

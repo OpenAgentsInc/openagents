@@ -4,8 +4,8 @@
 is not. No decision worker or relay-side caller exists; this document is the contract a worker implementation
 follows, written spec-first under
 [#9469](https://github.com/OpenAgentsInc/openagents/issues/9469). The wire
-shapes are defined in [NIP-CJ](../../../nips/openagents/NIP-CJ.md) ("Decision
-jobs"); this document defines what the payloads mean and how the service
+shapes are defined in [NIP-DEC](../../../nips/openagents/NIP-DEC.md) (the
+NIP-CJ decision family); this document defines what the payloads mean and how the service
 semantics of the HTTP lane carry to the relay lane.
 
 A relay decision job is one `POST /v1/systemone` call carried as a NIP-CJ

@@ -208,7 +208,7 @@ In short, which NIP is for what:
 | --- | --- | --- |
 | Discover | [EXT](NIP-EXT.md), [CAP](NIP-CAP.md), [KB](NIP-KB.md) | Component releases and listings (the packages capabilities ship in), operation descriptions and presence, knowledge entries. |
 | Admit | [EXT](NIP-EXT.md), [CAP](NIP-CAP.md), [RUN](NIP-RUN.md), [contracts](contracts.md) | Locks, grants, and admission as separate decisions; the run's recorded lock. |
-| Run and judge | [CJ](NIP-CJ.md), [CAP](NIP-CAP.md), [PRG](NIP-PRG.md) | Decision jobs and the router's `judgment` feedback; decision services; `decide` steps. |
+| Run and judge | [DEC](NIP-DEC.md), [CJ](NIP-CJ.md), [CAP](NIP-CAP.md), [PRG](NIP-PRG.md) | Decisions and the router's `judgment` feedback; decision services; `decide` steps. |
 | Delegate | [PRG](NIP-PRG.md), [SESS](NIP-SESS.md), [WORK](NIP-WORK.md), [CTX](NIP-CTX.md) | `delegate` steps, delegate engines' steering rows, work delegations, briefing evidence. |
 | Trajectory | [ATIF](NIP-ATIF.md) | Each run's trajectory and its links to delegated sub-agents. |
 | Measure and publish | [EVAL](NIP-EVAL.md) | With-and-without reports with the claim's scope in `meta.ext_eval` (reliance set, identity strength, distribution, defaults), the gate's verdict under a declared primary outcome, and `3189` results. |
@@ -238,6 +238,7 @@ conformance requires validation and enforcement for each advertised role.
 | [NIP-EXT](NIP-EXT.md) | Extension packages, the container a capability ships in: immutable releases, imports, host component sets, discovery, revocation, and namespace transfer; `eval-suite` components carry published test sets. | `3184`–`3186`, `30184`, `30185`; private records on shared `3188`. |
 | [NIP-RUN](NIP-RUN.md) | Encrypted durable journals, fencing, evidence, and recovery. | `3187`, `30186`. |
 | [NIP-CJ](NIP-CJ.md) | Conversation, typed-decision, and recoverable execution jobs; conversation offers, cards, and the test-set draft (`crates/nostr` `cj_conversation`). | `25900`/`26900`/`27000`, `25910`/`26910`/`27010`, `25920`/`26920`/`27020`. |
+| [NIP-DEC](NIP-DEC.md) | Decisions: one state (a string or object) and typed `noul`, `choice`, and `score` questions whose instructions and criteria are EntryType (string, object, array, or null), answered with probabilities; bounds, model aliases (`typesafe/jev-1.13`), HTTP-gateway equivalence with OpenRouter's status codes, and ATIF decision calls. Implemented in `crates/nostr` `decision`, served by the hosted decision worker. | The CJ decision family `25910`/`26910`/`27010`, `openagents.systemone.v1`. |
 | [NIP-CTX](NIP-CTX.md) | Task frames, snapshots, context views, representations, and expansion. | Shared `3188`; CJ/RUN references. |
 | [NIP-POL](NIP-POL.md) | Instructions, learned preferences, approvals, disclosure, routing, and adoption authority. | Shared `3188`; CJ/RUN references. |
 | [NIP-COORD](NIP-COORD.md) | Tasks, fenced claims, shared budgets, background findings, and trial coordination. | Shared `3188`; CJ/RUN references. |
@@ -317,13 +318,13 @@ NIP-32 `1985` labels or Block `24200` frames, aren't claims.
 | `23301` | [NIP-MV](NIP-MV.md) | Gesture |
 | `23302` | [NIP-MV](NIP-MV.md) | Zone command |
 | `25900` | [NIP-CJ](NIP-CJ.md) | Conversation job request |
-| `25910` | [NIP-CJ](NIP-CJ.md) | Decision job request |
+| `25910` | [NIP-DEC](NIP-DEC.md) | Decision job request or cancel |
 | `25920` | [NIP-CJ](NIP-CJ.md) | Execution request or control |
 | `26900` | [NIP-CJ](NIP-CJ.md) | Conversation job result |
-| `26910` | [NIP-CJ](NIP-CJ.md) | Decision job result |
+| `26910` | [NIP-DEC](NIP-DEC.md) | Decision job result |
 | `26920` | [NIP-CJ](NIP-CJ.md) | Execution result or control answer |
 | `27000` | [NIP-CJ](NIP-CJ.md) | Conversation job feedback |
-| `27010` | [NIP-CJ](NIP-CJ.md) | Decision job feedback |
+| `27010` | [NIP-DEC](NIP-DEC.md) | Decision job status |
 | `27020` | [NIP-CJ](NIP-CJ.md) | Execution admission and progress |
 | `30180` | [NIP-CAP](NIP-CAP.md) | Capability discovery head |
 | `30181` | [NIP-CAP](NIP-CAP.md) | Operator preference head |

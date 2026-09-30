@@ -2034,6 +2034,7 @@ along than the NIP as a whole; the notes say where.
 | [NIP-KB](../../nips/openagents/NIP-KB.md) | Implemented | Knowledge as a capability: signed entry versions and heads, with evidence that an entry helps as a with-and-without `3189` report. | `3190`, `30190`, `3191` |
 | [NIP-PRG](../../nips/openagents/NIP-PRG.md) | Partial | Typed workflows whose `decide` and `delegate` steps call a pinned decision function or hand a bounded task to an admitted executor. | `30182`, `30183` |
 | [NIP-CJ](../../nips/openagents/NIP-CJ.md) | Partial | The jobs: conversation turns with the router's `judgment` feedback, typed decision jobs, execution jobs (the hosted eval runner), and the chat's eval `offer`s, `card`s, and test-set `draft`. | `25900`/`26900`/`27000`, `25910`/`26910`/`27010`, `25920`/`26920`/`27020` |
+| [NIP-DEC](../../nips/openagents/NIP-DEC.md) | Implemented | The decisions themselves: one state and typed `noul`, `choice`, and `score` questions with structured (EntryType) instructions and criteria, answered with probabilities; the judgment the budget spends. | CJ's `25910`/`26910`/`27010` |
 | [NIP-CTX](../../nips/openagents/NIP-CTX.md) | Designed | Context requests and selection receipts: which evidence was chosen for a recipient, which is what a delegate's briefing is. | None; shared `3188` |
 | [NIP-POL](../../nips/openagents/NIP-POL.md) | Designed | Route receipts and observed usage (the cost side of a judgment), and the authority under which an evaluated implementation is adopted. | None; shared `3188` |
 | [NIP-SESS](../../nips/openagents/NIP-SESS.md) | Designed (read-only observer implemented) | Engine sessions: each delegate engine's steering capability row, and session history exports whose portable form can be an ATIF trajectory. | None; shared `3188` |
@@ -2061,7 +2062,7 @@ evidence, so they don't appear below.
 | --- | --- | --- |
 | Discover | [EXT](../../nips/openagents/NIP-EXT.md#listings-updates-and-installation), [CAP](../../nips/openagents/NIP-CAP.md#discovery-and-probes), [KB](../../nips/openagents/NIP-KB.md#heads-30190), [CJ](../../nips/openagents/NIP-CJ.md#conversation-jobs) | EXT listing `30184` and release `3184`; the operation descriptor's `summary`, `input`, `output`, `effects`, and `evaluation` support shortlisting. CAP `30180` heads with presence `present`/`absent`/`unavailable`/`unprobed`/`unknown`. KB heads `30190`. In chat, the CJ `card` of type `tool` and `news`. |
 | Admit | [EXT](../../nips/openagents/NIP-EXT.md#listings-updates-and-installation), [CAP](../../nips/openagents/NIP-CAP.md#description-binding-and-grant), [contracts](../../nips/openagents/contracts.md#locks-and-resolution), [RUN](../../nips/openagents/NIP-RUN.md#record-types) | Installation commits one lock; enablement, grants, and invocation admission are separate. CAP separates definition, host binding, grant, and presence. RUN's `created` record holds the lock and grant references. An eval report's `subject.lock` is the lock the with arm held. |
-| Run and judge | [CJ](../../nips/openagents/NIP-CJ.md#typed-decision-jobs), [CAP](../../nips/openagents/NIP-CAP.md#decision-services), [PRG](../../nips/openagents/NIP-PRG.md#step-kinds) | Decision jobs `25910`/`26910` (`openagents.systemone.v1`, question types `noul`, `choice`, `score`); conversation `25900` with `router`, answered by `judgment` feedback carrying `route`, `route_p`, `answer_p`, `needs_specifics`, `risk`, `lane`, and `tier`. CAP's `service` profile lists the lanes and doors. PRG's `decide` step. |
+| Run and judge | [DEC](../../nips/openagents/NIP-DEC.md), [CJ](../../nips/openagents/NIP-CJ.md#conversation-jobs), [CAP](../../nips/openagents/NIP-CAP.md#decision-services), [PRG](../../nips/openagents/NIP-PRG.md#step-kinds) | Decision jobs `25910`/`26910` (`openagents.systemone.v1`, question types `noul`, `choice`, `score`); conversation `25900` with `router`, answered by `judgment` feedback carrying `route`, `route_p`, `answer_p`, `needs_specifics`, `risk`, `lane`, and `tier`. CAP's `service` profile lists the lanes and doors. PRG's `decide` step. |
 | Delegate | [PRG](../../nips/openagents/NIP-PRG.md#step-kinds), [SESS](../../nips/openagents/NIP-SESS.md#steering-capability), [ATIF](../../nips/openagents/NIP-ATIF.md#delegated-sub-agents), [WORK](../../nips/openagents/NIP-WORK.md#delegation-and-execution-links), [CTX](../../nips/openagents/NIP-CTX.md#context-requests-and-selection-receipts) | PRG `delegate` step. SESS steering rows for the delegate engines (OpenCode `run` as Coder One's delegate executor, Devin and OpenCode ACP routes). ATIF `subagent_trajectory_ref` and the manifest's `parent` and `children`. WORK `openagents.work-delegation.v1`. CTX `openagents.context-selection.v1` for the briefing's evidence. |
 | Trajectory | [ATIF](../../nips/openagents/NIP-ATIF.md#manifest), [EVAL](../../nips/openagents/NIP-EVAL.md#reports) | Manifest `openagents.atif-manifest.v1` (`trajectory_id`, `steps_digest`, `task`, `run`, `coverage`, `derivation`), private on `3188` or public as `3198` with chunks `3199`. Each eval run's `artifacts` include its ATIF log ArtifactRef (schema `ATIF-v1.8`). |
 | Measure (with and without) | [EVAL](../../nips/openagents/NIP-EVAL.md#reports) | `openagents.eval-report.v1`: `subject` and `baseline` arms, `runs`, `coverage`, `measurements` (`cases_passed`, `mean_score`, `cost_usd`, `seconds`, and `change` on the `comparison` arm), `verdict`, and `acceptance` (the gate's digest, repeated in `meta.ext_eval.gate`). KB's [evidence](../../nips/openagents/NIP-KB.md#evidence-3189) uses the same report for knowledge entries. |
@@ -2151,6 +2152,17 @@ cards, and test-set draft; the hosted eval runner is an execution-job worker.
 Without it, the cheap judgment that decides how much thinking a turn gets
 would be invisible, and a chat request to run tests would have no job to
 travel in. Status: Partial. [NIP-CJ](../../nips/openagents/NIP-CJ.md#typed-decision-jobs)
+
+#### NIP-DEC
+
+NIP-DEC (decisions) defines the decision a decision job carries: one state,
+a string or an object, and typed `noul`, `choice`, and `score` questions
+whose instructions, options, levels, and outcomes may be structured, answered
+with probabilities. It is the same body TypeSafe's Jev API and OpenRouter's
+Decisions API take, with the same HTTP status codes. It is the judgment the
+judgment budget spends, and a decision call in a trajectory records one.
+Without it, a judgment would be free text that no program could threshold
+or measure. Status: Implemented. [NIP-DEC](../../nips/openagents/NIP-DEC.md)
 
 #### NIP-PRG
 

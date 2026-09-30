@@ -14,8 +14,8 @@ Coder <--27010 status, 26910 result----------- relay.openagents.com <-- decision
 ```
 
 - **Wire.** Each judgment is one `POST /v1/systemone` call carried as a
-  NIP-CJ decision job ([`nips/openagents/NIP-CJ.md`](../../nips/openagents/NIP-CJ.md),
-  "Typed decision jobs"; `crates/nostr/src/decision.rs`): a kind `25910`
+  decision job ([NIP-DEC](../../nips/openagents/NIP-DEC.md), the NIP-CJ
+  decision family; `crates/nostr/src/decision.rs`): a kind `25910`
   request signed by the computer's decision key and encrypted with NIP-44 to
   the worker, then the worker's `27010` statuses and its `26910` result. The
   relay sees ciphertext and routing tags only, and every kind is ephemeral.
@@ -82,7 +82,7 @@ The worker answers keys nobody provisioned, so its open lane is metered
 | Jobs per caller key per UTC day | 2,000 | `quota_exhausted`, with `retry_after_ms` to midnight UTC |
 | Jobs for every caller together per UTC day | 20,000 | `quota_exhausted`, with `retry_after_ms` to midnight UTC |
 | Request ciphertext | 256 KiB | `limit_exceeded` |
-| Models | `jev-1.13.0`, `jev-latest` | `not_admitted` |
+| Models | `jev-1.13.0`, `jev-latest` (and the alias `typesafe/jev-1.13` from a build at or after NIP-DEC's commit) | `not_admitted` |
 | Jobs at once | 8 | `busy` |
 
 - The total is the spend bound: a caller can mint any number of keys. At
@@ -164,7 +164,11 @@ env -u TYPESAFE_API_KEY HOME=$(mktemp -d) \
 ```
 
 `live_hosted_decision_answers` asks the deployed worker one judgment and
-prints the answer, its `service`, and its time. A Coder run is the real
+prints the answer, its `service`, and its time.
+`live_hosted_structured_decision_answers` asks a structured
+([NIP-DEC](../../nips/openagents/NIP-DEC.md)) decision: an object `state`, a
+`choice` whose options are `what` / `not_for` / `examples` rubrics, and a
+`noul` with structured `true` and `false`. A Coder run is the real
 check: `openagents chat --local "add a unit test for <fn>"` in a scratch
 checkout with no key should record `decision_service` with `via: hosted`
 and `decision_response` steps whose `service` names the worker, and no
@@ -218,3 +222,13 @@ Codex login linked in and a scratch Python checkout in `$TMPDIR`:
   jobs on this worker.)`, and the task finished.
 - With `TYPESAFE_API_KEY` set: `decision_service` `via: direct`, seven
   direct answers (130 to 889 ms), and no decision key made.
+
+NIP-DEC ([#10047](https://github.com/OpenAgentsInc/openagents/issues/10047),
+2026-09-30) needed no redeploy: release `04113fec9d` already forwards
+structured `state` and questions to TypeSafe unchanged.
+`live_hosted_structured_decision_answers` against it, with no key:
+`model jev-1.13.0 queue=billing confidence=1.000 probabilities={"billing":
+1.0, "sales": 0.0, "technical": 0.0} refund=0.990
+service={"door":"https://api.typesafe.ai","version":"decision-worker@04113fec9d"}
+input_tokens=Some(677) in 553 ms`. The `typesafe/jev-1.13` alias and the
+HTTP-status reading of an untyped door error arrive with the next release.

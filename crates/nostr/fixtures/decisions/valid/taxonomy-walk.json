@@ -1,0 +1,31 @@
+{
+  "state": {"title": "USB-C charging cable, 2 m, braided", "seller_notes": "Works with laptops and phones."},
+  "questions": {
+    "department": {
+      "type": "choice",
+      "instructions": {
+        "question": "Which top-level department does this product belong in?",
+        "path": [],
+        "next": "Ask again one level down with the chosen department's children as options."
+      },
+      "criteria": {
+        "electronics": {
+          "what": "Devices and the parts that power or connect them.",
+          "children": {
+            "accessories": ["cables", "chargers", "cases"],
+            "computers": ["laptops", "desktops"],
+            "phones": []
+          }
+        },
+        "home": {
+          "what": "Furniture, kitchen, and household goods.",
+          "children": {"kitchen": ["cookware", "appliances"], "furniture": []}
+        },
+        "apparel": {
+          "what": "Clothing, shoes, and worn accessories.",
+          "children": ["tops", "bottoms", "footwear"]
+        }
+      }
+    }
+  }
+}

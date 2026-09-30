@@ -2,8 +2,8 @@
 //! this crate serves.
 //!
 //! A decision job is one `POST /v1/systemone` call carried as Nostr
-//! events instead of an HTTP request (`nips/openagents/NIP-CJ.md`,
-//! "Decision jobs"; `docs/decision-models/api/relay-decision-contract.md`).
+//! events instead of an HTTP request (`nips/openagents/NIP-DEC.md`;
+//! `docs/decision-models/api/relay-decision-contract.md`).
 //! The worker subscribes kind `25910` addressed to its key, admits each
 //! request through `nostr::decision` — signature, addressing, freshness,
 //! payload — resolves the verified signer to an operator-provisioned
@@ -1106,7 +1106,8 @@ impl Worker {
         if self.config.principals.contains_key(&call.principal) || !binding.open {
             return None;
         }
-        if !open.models.iter().any(|model| model == &call.body.model) {
+        let model = decision::canonical_model(&call.body.model);
+        if !open.models.iter().any(|admitted| admitted == model) {
             return Some(Refusal::new("not_admitted").message(format!(
                 "This worker answers {} only.",
                 open.models.join(", ")
@@ -1298,8 +1299,11 @@ impl Worker {
     /// logical request, `X-Attempt` the attempt, so a relay retry is
     /// not a second spend on the HTTP lane either.
     async fn dispatch(&self, binding: &Binding, body: &RequestBody, started: Instant) -> Settled {
+        // `state` and `questions` go to the door exactly as the caller sent
+        // them (NIP-DEC: structured entries pass through unchanged); a model
+        // alias goes as the canonical name it stands for.
         let envelope = json!({
-            "model": body.model,
+            "model": decision::canonical_model(&body.model),
             "state": body.state,
             "questions": body.questions,
         });
@@ -1441,7 +1445,7 @@ impl Worker {
             })
             .unwrap_or_else(|| {
                 (
-                    "unavailable".to_string(),
+                    decision::code_for_http_status(status.as_u16()).to_string(),
                     format!("The model server returned HTTP {status} without an error code."),
                 )
             });
@@ -1452,6 +1456,8 @@ impl Worker {
             | "door_unavailable"
             | "identity_mismatch"
             | "unavailable"
+            | "internal"
+            | "timeout"
             | "registry_unavailable"
             | "membership_unavailable" => "unavailable",
             _ => "refused",
