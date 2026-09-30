@@ -714,7 +714,11 @@ pub fn root(state: &State, model: &Model, now: u64) -> Node<Intent> {
                         text("shell-grid-title", "The Grid", TextRole::Heading),
                         text(
                             "shell-grid-line",
-                            "A window into the shared world.",
+                            if cfg!(windows) {
+                                "Playable Verse is not yet available on Windows."
+                            } else {
+                                "A window into the shared world."
+                            },
                             TextRole::Status,
                         ),
                     ],

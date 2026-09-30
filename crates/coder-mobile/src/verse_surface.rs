@@ -15,6 +15,7 @@ pub enum Panel {
 }
 
 /// Explicit choices in an already admitted board.
+#[derive(Clone)]
 pub enum Command {
     Open(Panel),
     Close,
@@ -50,6 +51,7 @@ impl GridSurface {
         let panels = (gym.panel, gym.results_panel, gym.evals_panel);
         let restore = presence.is_some() && !gym.preview && !gym.xp_preview;
         let check_relay = gym.check_relay.clone();
+        let notes = gym.notes;
         let mut scene = Scene::new(bare_config_with_gym(
             viewport.width(),
             viewport.height(),
@@ -68,7 +70,14 @@ impl GridSurface {
             coder_connect::RelayPolicy::LoopbackTest
                 .validate(&relay)
                 .map_err(|_| "A Grid fixture requires a credential-free relay URL".to_owned())?;
+            scene.reader_relay = Some(relay.clone());
             scene.relay = Some(relay);
+        }
+        if scene.relay.is_none() {
+            // The offline board uses the scene's existing identity, without
+            // granting or starting any network activity.
+            let signer = scene.world_signer()?;
+            scene.hall = Some(verse::gym_hall::Hall::offline(signer, notes));
         }
         Ok(Self { scene })
     }
@@ -81,7 +90,16 @@ impl GridSurface {
     }
 
     pub fn resize(&mut self, viewport: Viewport) -> Result<(), String> {
-        self.scene.resize(viewport)
+        let scale_changed = self.scene.lifecycle.viewport().scale() != viewport.scale();
+        self.scene.resize(viewport)?;
+        if scale_changed {
+            self.scene.atlas = verse::ui::Atlas::new(12.0 * viewport.scale().clamp(1.0, 4.0));
+        }
+        Ok(())
+    }
+
+    pub fn scale(&self) -> f32 {
+        self.scene.lifecycle.viewport().scale()
     }
 
     pub fn update(&mut self, timestamp: f64, input: InputState) -> Result<Option<f32>, String> {
@@ -180,12 +198,27 @@ impl GridSurface {
             .as_ref()
             .map(verse::session::Session::pubkey)
     }
+    pub fn identity_key(&self) -> String {
+        self.scene.gym_board.view().public_key
+    }
     pub fn status(&self) -> &'static str {
         match self.scene.session.as_ref().map(|session| session.status) {
             Some(verse::session::Status::Online) => "Online",
             Some(verse::session::Status::Connecting) => "Connecting",
             _ => "Offline",
         }
+    }
+
+    /// Presentation revisions, independent of world geometry and frame time.
+    pub fn view_revision(&self) -> (u64, u64, u64) {
+        (
+            self.scene.gym_board.revision(),
+            self.scene.results.revision(),
+            self.scene
+                .hall
+                .as_ref()
+                .map_or(0, verse::gym_hall::Hall::revision),
+        )
     }
 
     pub fn frame(&mut self, dt: f32) -> Frame {
@@ -218,6 +251,7 @@ impl GridSurface {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::verse_app::bare_presence_tests::loopback_relay as relay;
 
     fn offline() -> GridSurface {
         GridSurface::new(
@@ -227,6 +261,7 @@ mod tests {
                 panel: true,
                 results_panel: true,
                 evals_panel: true,
+                xp_preview: true,
                 ..BareGym::default()
             },
         )
@@ -282,5 +317,176 @@ mod tests {
         assert_eq!(grid.panel(), None);
         assert!(grid.gym().is_none());
         assert!(grid.results().is_none());
+    }
+
+    #[test]
+    fn native_boards_keep_shared_proximity_admission_and_pause_movement() {
+        let mut grid = offline();
+        grid.active(true).unwrap();
+        let site = grid.scene.world.gym_site().unwrap();
+        for (panel, stand) in [
+            (Panel::Gym, verse::world::GYM_BOARD.with_y(0.0).with_x(54.0)),
+            (
+                Panel::Results,
+                verse::world::GYM_RESULTS_BOARD.with_y(0.0).with_x(54.0),
+            ),
+            (
+                Panel::Evals,
+                verse::world::GYM_EVALS_BOARD.with_y(0.0).with_x(54.0),
+            ),
+        ] {
+            grid.scene
+                .world
+                .set_spawn(site.point(stand), site.yaw_of(std::f32::consts::FRAC_PI_2))
+                .unwrap();
+            grid.update(0.0, InputState::default()).unwrap();
+            grid.command(Command::Open(panel)).unwrap();
+            assert_eq!(grid.panel(), Some(panel));
+            let before = grid.world().player.pos;
+            for n in 1..=30 {
+                grid.update(
+                    n as f64 / 60.0,
+                    InputState {
+                        forward: true,
+                        ..InputState::default()
+                    },
+                )
+                .unwrap();
+            }
+            assert_eq!(grid.world().player.pos, before);
+            grid.active(false).unwrap();
+            assert_eq!(grid.panel(), None);
+            grid.active(true).unwrap();
+        }
+        assert!(grid.command(Command::Launch).is_err());
+    }
+
+    #[test]
+    fn desktop_and_mobile_equivalent_grid_clients_share_presence_and_bodies() {
+        use std::time::{Duration, Instant};
+        let relay = relay::LoopbackRelay::start();
+        let make = |secret: &str| {
+            GridSurface::new(
+                Viewport::new(900, 600, 1.0).unwrap(),
+                Some(BarePresence {
+                    secret_hex: secret.repeat(32),
+                    relay: Some(relay.url.clone()),
+                }),
+                BareGym {
+                    panel: true,
+                    results_panel: true,
+                    evals_panel: true,
+                    check_relay: Some(relay.url.clone()),
+                    ..BareGym::default()
+                },
+            )
+            .unwrap()
+        };
+        let mut desktop = make("22");
+        let mut phone = make("33");
+        desktop.active(true).unwrap();
+        phone.active(true).unwrap();
+        let mut phone_spawn = phone.world().player.pos;
+        phone_spawn.x += 8.0;
+        phone.scene.world.set_spawn(phone_spawn, 0.0).unwrap();
+        let desktop_key = desktop.identity_key();
+        let phone_key = phone.identity_key();
+        assert_ne!(desktop_key, phone_key);
+        assert_eq!(
+            desktop.scene.session.as_ref().unwrap().body_interval(),
+            Duration::from_millis(1500)
+        );
+        assert_eq!(
+            desktop.scene.session.as_ref().unwrap().crowd.delay(),
+            Duration::from_millis(3300)
+        );
+        let start = Instant::now();
+        while start.elapsed() < Duration::from_secs(9) {
+            let time = start.elapsed().as_secs_f64();
+            desktop
+                .update(
+                    time,
+                    InputState {
+                        forward: time > 2.0 && time < 5.0,
+                        ..InputState::default()
+                    },
+                )
+                .unwrap();
+            phone.update(time, InputState::default()).unwrap();
+            desktop.frame(1.0 / 60.0);
+            phone.frame(1.0 / 60.0);
+            std::thread::sleep(Duration::from_millis(16));
+        }
+        assert_eq!(desktop.status(), "Online");
+        assert_eq!(phone.status(), "Online");
+        assert_eq!(desktop.scene.session.as_ref().unwrap().crowd.len(), 1);
+        assert_eq!(phone.scene.session.as_ref().unwrap().crowd.len(), 1);
+        assert!(
+            phone
+                .scene
+                .session
+                .as_ref()
+                .unwrap()
+                .crowd
+                .shown(Instant::now())
+                .iter()
+                .any(|peer| peer.pubkey == desktop_key)
+        );
+        let events = relay.published();
+        assert!(
+            events
+                .iter()
+                .any(|event| event.kind == 23300 && event.pubkey == desktop_key)
+        );
+        assert!(
+            events
+                .iter()
+                .any(|event| event.content.contains("\"role\":\"body\"")
+                    || event.content.contains("\"role\":\"bodies\""))
+        );
+        for key in [&desktop_key, &phone_key] {
+            assert!(
+                events.iter().filter(|event| &event.pubkey == key).count()
+                    <= verse::session::EVENT_BUDGET
+            );
+        }
+        assert!(
+            events
+                .iter()
+                .filter(|event| matches!(event.kind, 23300 | 33301))
+                .all(|event| event
+                    .tags
+                    .iter()
+                    .any(|tag| tag.0.first().map(String::as_str) == Some("w")
+                        && tag.0.get(1).map(String::as_str) == Some("verse-bare")))
+        );
+        desktop.active(false).unwrap();
+        assert!(desktop.public_key().is_none());
+        let saved: verse::mv::State = events
+            .iter()
+            .rev()
+            .filter(|e| e.pubkey == desktop_key && e.kind == 33301)
+            .filter_map(|e| serde_json::from_str::<verse::mv::State>(&e.content).ok())
+            .find(|state| state.role == "avatar")
+            .expect("this identity's signed retained pose");
+        let mut restored = make("22");
+        restored
+            .scene
+            .world
+            .set_spawn([-30.0, 0.0, -30.0].into(), 0.0)
+            .unwrap();
+        restored.active(true).unwrap();
+        let began = Instant::now();
+        while began.elapsed() < Duration::from_secs(2) {
+            restored
+                .update(began.elapsed().as_secs_f64(), InputState::default())
+                .unwrap();
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert_eq!(restored.public_key(), Some(desktop_key.as_str()));
+        assert!((restored.world().player.pos.x - saved.p[0]).abs() < 0.01);
+        assert!((restored.world().player.pos.z - saved.p[2]).abs() < 0.01);
+        phone.active(false).unwrap();
+        restored.active(false).unwrap();
     }
 }

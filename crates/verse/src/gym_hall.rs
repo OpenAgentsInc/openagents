@@ -125,6 +125,7 @@ pub struct View {
 
 /// The hall's state on the game thread.
 pub struct Hall {
+    offline: bool,
     config: Config,
     worker: Option<Worker>,
     opted_in: bool,
@@ -140,6 +141,7 @@ impl Hall {
     #[must_use]
     pub fn new(config: Config, opted_in: bool) -> Self {
         Self {
+            offline: false,
             config,
             worker: None,
             opted_in,
@@ -151,6 +153,21 @@ impl Hall {
         }
     }
 
+    /// An empty board for local play. It starts no relay or notes worker.
+    #[must_use]
+    pub fn offline(signer: nostr::domain::RelaySigner, opted_in: bool) -> Self {
+        let mut hall = Self::new(
+            Config {
+                relay: String::new(),
+                world: crate::session::BARE_WORLD.into(),
+                signer,
+            },
+            opted_in,
+        );
+        hall.offline = true;
+        hall
+    }
+
     /// The player's public key.
     #[must_use]
     pub fn me(&self) -> &str {
@@ -160,6 +177,9 @@ impl Hall {
     /// Starts reading when the player enters the Gym and stops when they
     /// leave. The last snapshot stays for the next visit.
     pub fn set_active(&mut self, active: bool) {
+        if self.offline {
+            return;
+        }
         match (active, self.worker.is_some()) {
             (true, false) => {
                 self.worker = Some(self.start());

@@ -135,6 +135,12 @@ impl GridBackdrop {
     pub fn connected(&self) -> bool {
         self.overlook.connected()
     }
+
+    /// Release spectator reads when an interactive player owns the viewport.
+    pub fn pause(&mut self, now: Instant) {
+        self.overlook.pause();
+        self.pace.shown(false, (self.reduce_motion)(), now);
+    }
 }
 
 impl Backdrop for GridBackdrop {

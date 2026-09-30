@@ -754,6 +754,7 @@ pub(crate) struct Scene {
     secret: secp256k1::SecretKey,
     public_key: String,
     pub(crate) relay: Option<String>,
+    pub(crate) reader_relay: Option<String>,
     pub(crate) restore_spawn: bool,
     synthetic: bool,
     spawn_pending: bool,
@@ -779,7 +780,7 @@ pub(crate) struct Scene {
     /// building but never opens a panel it cannot close.
     pub(crate) gym_panel: bool,
     /// The Grid's RESULTS board and its panel. It needs no Gym connection.
-    results: verse::gym_results::Results,
+    pub(crate) results: verse::gym_results::Results,
     pub(crate) results_open: bool,
     /// The host shows the native results panel, so a tap on the RESULTS
     /// board may open it and the board shows its tap cue.
@@ -787,7 +788,7 @@ pub(crate) struct Scene {
     /// The Grid's EVALS board: published eval results and the agents'
     /// notes, read while the player is in the Gym. It exists while the
     /// bare world has a relay.
-    hall: Option<verse::gym_hall::Hall>,
+    pub(crate) hall: Option<verse::gym_hall::Hall>,
     pub(crate) evals_open: bool,
     /// The host shows the native EVALS panel, so a tap on the EVALS board
     /// may open it and the board shows its tap cue.
@@ -947,6 +948,7 @@ impl Scene {
                 .to_owned(),
             relay,
             restore_spawn,
+            reader_relay: None,
             synthetic: config.synthetic,
             spawn_pending: false,
             camera_mode: CameraMode::Touch,
@@ -1051,6 +1053,10 @@ impl Scene {
         Ok(())
     }
 
+    pub(crate) fn world_signer(&self) -> Result<nostr::domain::RelaySigner, String> {
+        Ok(verse::identity::Identity::from_secret("phone", self.secret)?.signer)
+    }
+
     fn start_session(&mut self) -> Result<(), String> {
         if !self.plaza_online_allowed() {
             return Err("This zone is local-only".into());
@@ -1095,7 +1101,9 @@ impl Scene {
         if self.world.is_bare() && self.xp.is_none() {
             let signer = verse::identity::Identity::from_secret("phone", self.secret)?.signer;
             self.xp = Some(verse::xp::Board::start_with(
-                verse::session::PUBLIC_RELAY,
+                self.reader_relay
+                    .as_deref()
+                    .unwrap_or(verse::session::PUBLIC_RELAY),
                 verse::xp::openagents_trust(),
                 None,
                 Some(signer.clone()),
@@ -1106,7 +1114,9 @@ impl Scene {
             && let Some(trust) = verse::xp::playtest_trust()
         {
             self.playtest = Some(verse::xp::Board::start_with(
-                verse::session::PUBLIC_RELAY,
+                self.reader_relay
+                    .as_deref()
+                    .unwrap_or(verse::session::PUBLIC_RELAY),
                 trust,
                 None,
                 Some(verse::identity::Identity::from_secret("phone", self.secret)?.signer),
@@ -1831,7 +1841,11 @@ impl Scene {
                 if let Some(spawn) =
                     session.poll_spawn(&self.world.world.blockers, self.world.zone_half())
                 {
-                    self.world.set_spawn(spawn.pos, spawn.yaw)?;
+                    // A new Grid player starts at the same place as mobile;
+                    // only a signed retained pose may replace that spawn.
+                    if !self.world.is_bare() || spawn.resumed {
+                        self.world.set_spawn(spawn.pos, spawn.yaw)?;
+                    }
                     self.spawn_pending = false;
                     self.reset_motion();
                 } else {
@@ -3111,7 +3125,7 @@ mod bare_evals_tests;
 mod bare_gym_tests;
 #[cfg(test)]
 #[path = "bare_presence_tests.rs"]
-mod bare_presence_tests;
+pub(crate) mod bare_presence_tests;
 #[cfg(test)]
 #[path = "bare_results_tests.rs"]
 mod bare_results_tests;

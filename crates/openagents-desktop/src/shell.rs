@@ -36,6 +36,10 @@ pub struct DesktopApp {
     screen_lock: Option<ScreenLock>,
     navigation: Option<State>,
     chat: Option<openagents_desktop::chat::Panel>,
+    #[cfg(not(windows))]
+    grid: Option<openagents_desktop::grid::Shared>,
+    #[cfg(not(windows))]
+    normal_wake: Option<Instant>,
 }
 
 pub fn unix_now() -> u64 {
@@ -183,6 +187,10 @@ impl DesktopApp {
                 }
             }),
             chat: (live && chrome).then(|| openagents_desktop::chat::Panel::new(Instant::now())),
+            #[cfg(not(windows))]
+            grid: None,
+            #[cfg(not(windows))]
+            normal_wake: None,
         };
         app.present();
         app
@@ -192,7 +200,41 @@ impl DesktopApp {
         &self.model
     }
 
+    #[cfg(not(windows))]
+    pub fn set_grid(&mut self, grid: openagents_desktop::grid::Shared) {
+        self.grid = Some(grid);
+        self.present();
+    }
+
+    #[cfg(not(windows))]
+    fn grid_active(&self) -> bool {
+        self.navigation
+            .as_ref()
+            .is_some_and(|state| state.page == Page::Grid)
+            && self.model.nearby().is_none()
+            && !self
+                .chat
+                .as_ref()
+                .is_some_and(|chat| chat.modal() || chat.aux_focused())
+    }
+
     fn present(&mut self) {
+        #[cfg(not(windows))]
+        if let Some(grid) = &self.grid {
+            grid.borrow_mut().suspend(!self.grid_active());
+            if !self
+                .navigation
+                .as_ref()
+                .is_some_and(|state| state.page == Page::Grid)
+            {
+                grid.borrow_mut().stop();
+            } else if !self.grid_active() {
+                grid.borrow_mut().input(
+                    rust_native_desktop::input::NativeInput::Cancel,
+                    Instant::now(),
+                );
+            }
+        }
         if let (Some(chat), Some(state)) = (&mut self.chat, &mut self.navigation) {
             let leading = if state.collapsed {
                 0.0
@@ -214,6 +256,17 @@ impl DesktopApp {
             || root(&self.model, unix_now()),
             |state| chrome::root(state, &self.model, unix_now()),
         );
+        #[cfg(not(windows))]
+        if self.grid_active()
+            && let Some(grid) = &self.grid
+            && let rust_native::Element::Stack { children, .. } = &mut root.element
+            && let Some(panes) = children.get_mut(1)
+            && let rust_native::Element::Stack { children, .. } = &mut panes.element
+            && let Some(content) = children.get_mut(1)
+            && let rust_native::Element::Stack { children, .. } = &mut content.element
+        {
+            children[1] = grid.borrow_mut().view();
+        }
         if self.model.nearby().is_none()
             && (self
                 .navigation
@@ -467,6 +520,25 @@ impl App for DesktopApp {
     }
 
     fn tick(&mut self, now: Instant) -> Option<Instant> {
+        #[cfg(not(windows))]
+        if let Some(grid) = &self.grid {
+            let changed = grid.borrow_mut().poll();
+            if grid.borrow().playing
+                && let Some(wake) = self.normal_wake
+                && wake > now
+                && self.model.next_wake() > now
+            {
+                let wake = if grid.borrow().needs_tick() {
+                    wake.min(now + openagents_desktop::grid::FRAME)
+                } else {
+                    wake
+                };
+                if changed {
+                    self.present();
+                }
+                return Some(wake);
+            }
+        }
         if let Runner::Background(worker) = &self.runner {
             let outcomes = worker.outcomes();
             self.apply(outcomes, now);
@@ -483,13 +555,26 @@ impl App for DesktopApp {
             self.send(vec![request], now);
         }
         self.present();
-        Some(
-            self.model.next_wake().min(
-                self.chat
-                    .as_ref()
-                    .map_or(self.model.next_wake(), |chat| chat.next_wake(now)),
-            ),
-        )
+        let wake = self.model.next_wake().min(
+            self.chat
+                .as_ref()
+                .map_or(self.model.next_wake(), |chat| chat.next_wake(now)),
+        );
+        #[cfg(not(windows))]
+        {
+            self.normal_wake = Some(wake);
+        }
+        #[cfg(not(windows))]
+        let wake = if self
+            .grid
+            .as_ref()
+            .is_some_and(|grid| grid.borrow().needs_tick())
+        {
+            wake.min(now + openagents_desktop::grid::FRAME)
+        } else {
+            wake
+        };
+        Some(wake)
     }
 
     fn view(&self) -> &ValidatedView<Intent> {
@@ -497,6 +582,18 @@ impl App for DesktopApp {
     }
 
     fn activate(&mut self, intent: Intent, now: Instant) {
+        if let Intent::Grid { key } = intent {
+            #[cfg(not(windows))]
+            if self.grid_active()
+                && let Some(grid) = &self.grid
+            {
+                grid.borrow_mut().activate(&key);
+            }
+            #[cfg(windows)]
+            let _ = key;
+            self.present();
+            return;
+        }
         if let Intent::Chat { action } = intent {
             let request = self
                 .chat
@@ -603,6 +700,10 @@ impl App for DesktopApp {
     }
 
     fn shown(&mut self, visible: bool, now: Instant) {
+        #[cfg(not(windows))]
+        if let Some(grid) = &self.grid {
+            grid.borrow_mut().visible(visible);
+        }
         self.model.shown(visible, now);
         let requests = self.model.tick(now);
         self.send(requests, now);
@@ -611,6 +712,60 @@ impl App for DesktopApp {
 
     fn input(&mut self, now: Instant) {
         self.model.input(now);
+    }
+
+    fn native_input(
+        &mut self,
+        event: rust_native_desktop::input::NativeInput<'_>,
+        now: Instant,
+    ) -> bool {
+        #[cfg(not(windows))]
+        if let Some(grid) = &self.grid {
+            let active = self.grid_active();
+            let consumed = grid.borrow_mut().input(
+                if active || matches!(event, rust_native_desktop::input::NativeInput::Focus(_)) {
+                    event
+                } else {
+                    rust_native_desktop::input::NativeInput::Cancel
+                },
+                now,
+            );
+            let changed = grid.borrow_mut().poll();
+            if changed {
+                self.present();
+            }
+            return consumed;
+        }
+        let _ = (event, now);
+        false
+    }
+
+    fn cursor_capture(&self) -> bool {
+        #[cfg(not(windows))]
+        return self.grid_active()
+            && self
+                .grid
+                .as_ref()
+                .is_some_and(|grid| grid.borrow().capture());
+        #[cfg(windows)]
+        false
+    }
+
+    fn capture_failed(&mut self, _: Instant) {
+        #[cfg(not(windows))]
+        if let Some(grid) = &self.grid {
+            grid.borrow_mut().capture_failed();
+        }
+        self.present();
+    }
+
+    fn graphics_failed(&mut self, error: &str, _: Instant) {
+        #[cfg(not(windows))]
+        if let Some(grid) = &self.grid {
+            grid.borrow_mut().graphics_failed(error);
+        }
+        let _ = error;
+        self.present();
     }
 
     fn text_input(
@@ -733,6 +888,10 @@ impl App for DesktopApp {
         if let Some(percent) = parse_ring(resource) {
             return Some(u64::from(percent));
         }
+        #[cfg(not(windows))]
+        if resource == openagents_desktop::grid::WORLD {
+            return Some(0);
+        }
         if resource == chrome::MARK {
             return Some(0);
         }
@@ -777,6 +936,10 @@ impl App for DesktopApp {
     }
 
     fn viewport(&mut self, width: f32, height: f32, scale: f32) {
+        #[cfg(not(windows))]
+        if let Some(grid) = &self.grid {
+            grid.borrow_mut().viewport = (width, height, scale);
+        }
         if let Some(chat) = &mut self.chat
             && chat.viewport != (width, height, scale)
         {
@@ -798,6 +961,12 @@ impl App for DesktopApp {
     }
 
     fn surface_size(&self, resource: &str, available: f32) -> Option<(f32, f32)> {
+        #[cfg(not(windows))]
+        if resource == openagents_desktop::grid::WORLD
+            && let Some(grid) = &self.grid
+        {
+            return Some((available, grid.borrow().surface_height()));
+        }
         if let Some(size) = self
             .chat
             .as_ref()
@@ -961,6 +1130,160 @@ mod tests {
             },
         );
         assert_eq!(frame.pixel(12, 1), [214, 168, 92]);
+    }
+    #[cfg(not(windows))]
+    #[test]
+    fn grid_play_owns_input_and_releases_it_on_escape_focus_and_departure() {
+        use openagents_desktop::grid::{Grid, WORLD};
+        use rust_native_desktop::input::NativeInput;
+        let now = Instant::now();
+        let (mut app, _) = DesktopApp::performance_fixture(0, 1, now);
+        assert!(app.text_input(
+            rust_native_desktop::input::TextInput::Commit("Keep this Grid draft"),
+            now
+        ));
+        let home = tempfile::tempdir().unwrap();
+        let grid = Grid::new("ws://127.0.0.1:1".into(), home.path().into(), true);
+        app.set_grid(grid.clone());
+        app.activate(
+            Intent::Navigate {
+                action: Action::Grid,
+            },
+            now,
+        );
+        assert!(!grid.borrow().playing);
+        app.activate(Intent::Grid { key: "play".into() }, now);
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while grid.borrow().surface.is_none() && Instant::now() < deadline {
+            app.tick(Instant::now());
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        assert!(grid.borrow().surface.is_some());
+        for (width, height, scale) in [
+            (1200.0, 840.0, 1.0),
+            (760.0, 540.0, 1.0),
+            (1200.0, 840.0, 2.0),
+            (760.0, 540.0, 2.0),
+        ] {
+            let (frame, scene) = rust_native_desktop::capture_views(&mut app, width, height, scale);
+            assert!(scene.unsupported.is_empty());
+            let rect = scene
+                .ops
+                .iter()
+                .find_map(|op| match op {
+                    rust_native_desktop::layout::Op::Surface { resource, rect, .. }
+                        if resource == WORLD =>
+                    {
+                        Some(*rect)
+                    }
+                    _ => None,
+                })
+                .expect("the playable viewport is mounted");
+            assert!(
+                rect.x >= 0.0
+                    && rect.y >= 0.0
+                    && rect.x + rect.w <= width
+                    && rect.y + rect.h <= height,
+                "{rect:?}"
+            );
+            assert_eq!(
+                frame.pixels[(((rect.y + rect.h / 2.0) * scale) as usize * frame.width
+                    + ((rect.x + rect.w / 2.0) * scale) as usize)
+                    * 4
+                    + 3],
+                0,
+                "the CPU foreground leaves a transparent GPU viewport"
+            );
+            grid.borrow_mut().rect = rect;
+        }
+        let rect = grid.borrow().rect;
+        assert!(app.native_input(
+            NativeInput::Button {
+                button: 1,
+                pressed: true,
+                x: rect.x + 10.0,
+                y: rect.y + 10.0
+            },
+            now
+        ));
+        assert!(app.cursor_capture());
+        assert!(app.native_input(
+            NativeInput::Key {
+                code: "KeyW",
+                pressed: true,
+                repeat: false,
+                command: false,
+                alt: false
+            },
+            now
+        ));
+        assert!(app.native_input(NativeInput::Motion { dx: 25.0, dy: 5.0 }, now));
+        assert!(app.native_input(
+            NativeInput::Key {
+                code: "Escape",
+                pressed: true,
+                repeat: false,
+                command: false,
+                alt: false
+            },
+            now
+        ));
+        assert!(!app.cursor_capture());
+        assert!(grid.borrow().playing);
+        app.activate(
+            Intent::Chat {
+                action: openagents_desktop::chat_action::Action::Palette,
+            },
+            now,
+        );
+        assert!(!app.cursor_capture());
+        assert!(!grid.borrow().needs_tick());
+        assert!(!app.native_input(
+            NativeInput::Key {
+                code: "KeyW",
+                pressed: true,
+                repeat: false,
+                command: false,
+                alt: false
+            },
+            now
+        ));
+        app.activate(
+            Intent::Chat {
+                action: openagents_desktop::chat_action::Action::DismissOverlay,
+            },
+            now,
+        );
+        assert!(grid.borrow().playing);
+        app.capture_failed(now);
+        assert!(!app.cursor_capture());
+        app.native_input(NativeInput::Focus(false), now);
+        assert!(!grid.borrow().needs_tick());
+        app.native_input(NativeInput::Focus(true), now);
+        app.shown(false, now);
+        assert!(!grid.borrow().needs_tick());
+        app.shown(true, now);
+        app.activate(
+            Intent::Navigate {
+                action: Action::Computers,
+            },
+            now,
+        );
+        assert!(!grid.borrow().playing);
+        assert!(grid.borrow().surface.is_none());
+        assert!(!app.cursor_capture());
+        assert!(!app.native_input(
+            NativeInput::Key {
+                code: "KeyW",
+                pressed: true,
+                repeat: false,
+                command: false,
+                alt: false
+            },
+            now
+        ));
+        assert!(!home.path().join(".openagents").exists());
+        assert_eq!(app.chat.as_ref().unwrap().draft(), "Keep this Grid draft");
     }
 
     /// The window as `--fake-host` runs it (worker threads, the shell,

@@ -794,24 +794,15 @@ impl<A: App> Shell<A> {
             .as_ref()
             .and_then(|backdrop| backdrop.surface())
             .map(str::to_owned);
-        let region = surface
-            .as_ref()
-            .and_then(|resource| {
-                self.scene().ops.iter().find_map(|op| match op {
-                    crate::layout::Op::Surface {
-                        resource: found,
-                        rect,
-                        ..
-                    } if found == resource => Some(*rect),
-                    _ => None,
-                })
-            })
-            .unwrap_or(crate::Rect {
+        let region = match surface {
+            Some(resource) => self.scene().surface_rect(&resource).unwrap_or_default(),
+            None => crate::Rect {
                 x: 0.0,
                 y: 0.0,
                 w: width as f32 / scale,
                 h: height as f32 / scale,
-            });
+            },
+        };
         if let Some(backdrop) = &mut self.backdrop {
             backdrop.viewport(region, scale);
         }
@@ -1202,7 +1193,13 @@ impl<A: App> ApplicationHandler<()> for Shell<A> {
             | WindowEvent::ScaleFactorChanged { .. } => Some(NativeInput::Cancel),
             _ => None,
         };
-        if native.is_some_and(|input| self.app.native_input(input, Instant::now())) {
+        let over_control = matches!(native, Some(NativeInput::Button { pressed: true, .. }))
+            && self.scene().hit(x, y).is_some();
+        if over_control {
+            self.app.native_input(NativeInput::Cancel, Instant::now());
+        }
+        if !over_control && native.is_some_and(|input| self.app.native_input(input, Instant::now()))
+        {
             self.app.input(Instant::now());
             self.tick();
             self.request_frame();

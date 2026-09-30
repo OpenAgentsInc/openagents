@@ -477,11 +477,11 @@ fn off_a_mac_no_screen_says_mac() {
     );
 }
 
-/// The window process holds no secret: its sources never name a keychain
+/// The pairing and task paths hold no host secret: their sources never name a keychain
 /// store or the in-process adoption call. The host reads the keychain, and
 /// adoption runs in `coder host adopt`, a child process.
 #[test]
-fn the_window_sources_never_reach_the_keychain() {
+fn pairing_sources_never_reach_the_host_keychain() {
     let window = [
         ("main.rs", include_str!("main.rs")),
         ("shell.rs", include_str!("shell.rs")),

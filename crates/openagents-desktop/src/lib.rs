@@ -42,6 +42,8 @@ pub mod codes;
 pub mod control;
 pub mod fake;
 pub mod folder;
+#[cfg(all(feature = "app", not(windows)))]
+pub mod grid;
 pub mod migrate;
 pub mod model;
 pub mod qr;

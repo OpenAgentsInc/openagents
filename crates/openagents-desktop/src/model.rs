@@ -96,6 +96,8 @@ pub enum Screen {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Intent {
+    /// An action admitted by the Grid's current native controls.
+    Grid { key: String },
     /// A local hosted-chat action; the shell checks its current conversation.
     Chat { action: crate::chat_action::Action },
     /// Navigate the desktop shell without starting work.
@@ -602,7 +604,7 @@ impl Model {
     pub fn activate(&mut self, intent: Intent, now: Instant) -> Vec<Request> {
         self.codes.input(now);
         match intent {
-            Intent::Chat { .. } => Vec::new(),
+            Intent::Grid { .. } | Intent::Chat { .. } => Vec::new(),
             Intent::Navigate { .. } => Vec::new(),
             Intent::CopyCode => match self.codes.shown() {
                 Some(shown) => {

@@ -17,6 +17,8 @@
 mod benchmark;
 #[cfg(test)]
 mod chat_test_host;
+#[cfg(all(test, not(windows)))]
+mod grid_fixtures;
 #[cfg(not(any(target_os = "linux", windows)))]
 mod mac;
 mod menubar;
@@ -216,6 +218,10 @@ fn main() -> ExitCode {
         )
     };
     let mut app = DesktopApp::window(model, context);
+    #[cfg(not(windows))]
+    let backdrop = backdrop(&options, &mut app);
+    #[cfg(windows)]
+    let backdrop = backdrop(&options);
     if options.fake_host && options.fake_phones > 0 {
         app.activate(
             Intent::Navigate {
@@ -231,7 +237,7 @@ fn main() -> ExitCode {
         min_size: (760.0, 540.0),
         ..rust_native_desktop::window::Options::default()
     };
-    let result = match backdrop(&options) {
+    let result = match backdrop {
         Some(backdrop) => rust_native_desktop::window::run_with_backdrop(app, window, backdrop),
         None => rust_native_desktop::window::run(app, window),
     };
@@ -250,20 +256,22 @@ const WINDOW_FILL: f64 = 0.9;
 /// The Grid behind the window, watched on the chosen relay, unless the
 /// person asked for a plain background. Windows has none.
 #[cfg(not(windows))]
-fn backdrop(options: &Options) -> Option<Box<dyn rust_native_desktop::backdrop::Backdrop>> {
-    if options.no_backdrop {
-        return None;
-    }
+fn backdrop(
+    options: &Options,
+    app: &mut DesktopApp,
+) -> Option<Box<dyn rust_native_desktop::backdrop::Backdrop>> {
     let relay = options
         .verse_relay
         .clone()
         .or_else(|| std::env::var("OPENAGENTS_VERSE_RELAY").ok())
         .filter(|relay| !relay.is_empty())
         .unwrap_or_else(|| verse::session::PUBLIC_RELAY.to_owned());
-    Some(Box::new(openagents_desktop::backdrop::GridBackdrop::new(
-        &relay,
-        Box::new(platform::reduce_motion),
-    )))
+    let grid = openagents_desktop::grid::Grid::new(relay.clone(), home(), options.fake_host);
+    app.set_grid(grid.clone());
+    let watch = (!options.no_backdrop).then(|| {
+        openagents_desktop::backdrop::GridBackdrop::new(&relay, Box::new(platform::reduce_motion))
+    });
+    Some(Box::new(openagents_desktop::grid::Layer::new(grid, watch)))
 }
 
 #[cfg(windows)]

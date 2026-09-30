@@ -137,6 +137,29 @@ pub struct Scene {
 }
 
 impl Scene {
+    /// The visible rectangle of a registered surface, after nested clips.
+    pub fn surface_rect(&self, resource: &str) -> Option<Rect> {
+        let mut clips: Vec<Rect> = Vec::new();
+        for op in &self.ops {
+            match op {
+                Op::PushClip(rect) => {
+                    clips.push(clips.last().map_or(*rect, |clip| intersect(*clip, *rect)))
+                }
+                Op::PopClip => {
+                    clips.pop();
+                }
+                Op::Surface {
+                    resource: found,
+                    rect,
+                    ..
+                } if found == resource => {
+                    return Some(clips.last().map_or(*rect, |clip| intersect(*clip, *rect)));
+                }
+                _ => {}
+            }
+        }
+        None
+    }
     /// The enabled button under `x`, `y`, if any.
     pub fn hit(&self, x: f32, y: f32) -> Option<&Hit> {
         self.hits.iter().rev().find(|hit| {
@@ -164,6 +187,61 @@ impl Scene {
                 _ => None,
             })
             .collect()
+    }
+}
+
+fn intersect(a: Rect, b: Rect) -> Rect {
+    let x = a.x.max(b.x);
+    let y = a.y.max(b.y);
+    Rect {
+        x,
+        y,
+        w: ((a.x + a.w).min(b.x + b.w) - x).max(0.0),
+        h: ((a.y + a.h).min(b.y + b.h) - y).max(0.0),
+    }
+}
+
+#[cfg(test)]
+mod gpu_surface_tests {
+    use super::*;
+    #[test]
+    fn a_gpu_surface_stays_inside_nested_scroll_clips() {
+        let surface = Rect {
+            x: 200.0,
+            y: -50.0,
+            w: 600.0,
+            h: 400.0,
+        };
+        let clip = Rect {
+            x: 220.0,
+            y: 40.0,
+            w: 540.0,
+            h: 500.0,
+        };
+        let scene = Scene {
+            ops: vec![
+                Op::PushClip(clip),
+                Op::PushClip(Rect { y: 100.0, ..clip }),
+                Op::Surface {
+                    resource: "world".into(),
+                    rect: surface,
+                    version: Some(0),
+                },
+                Op::PopClip,
+                Op::PopClip,
+            ],
+            ..Scene::default()
+        };
+        assert_eq!(
+            scene.surface_rect("world"),
+            Some(Rect {
+                x: 220.0,
+                y: 100.0,
+                w: 540.0,
+                h: 250.0
+            })
+        );
+        assert_eq!(scene.surface_rect("absent"), None);
     }
 }
 
