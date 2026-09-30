@@ -362,8 +362,12 @@ struct GymShareSheet: UIViewControllerRepresentable {
 }
 
 /// Simulator checks: `--coder-tap KEY[,KEY...]` taps Coder nodes in order
-/// once the surface shows them. A key ending in `*` taps the first node whose
-/// key starts with the rest, such as `task-*` for the first chat in the menu. Then
+/// once the surface shows them, waiting up to 30 seconds for each. A key
+/// ending in `*` taps the first node whose key starts with the rest, such as
+/// `task-*` for the first chat in the menu. A step `send:TEXT` sends TEXT
+/// from the screen's composer, `sleep:N` waits N seconds, and `try:KEY`
+/// taps KEY only if the screen shows it now (a tap the screen may have
+/// replaced before it arrived, tried again). Then
 /// `--coder-send TEXT` sends TEXT from the screen's composer.
 enum CoderLaunchTaps {
     @MainActor static func run(_ bridge: MobileBridge) async {
@@ -371,8 +375,23 @@ enum CoderLaunchTaps {
         let arguments = ProcessInfo.processInfo.arguments
         if let index = arguments.firstIndex(of: "--coder-tap"), index + 1 < arguments.count {
             for key in arguments[index + 1].split(separator: ",").map(String.init) {
-                for _ in 0..<20 {
+                if key.hasPrefix("sleep:") {
+                    try? await Task.sleep(for: .seconds(Double(key.dropFirst(6)) ?? 1))
+                    continue
+                }
+                if key.hasPrefix("try:") {
+                    if let view = bridge.packet?.coder, let node = find(String(key.dropFirst(4)), in: view.root) {
+                        bridge.activate("coder", view: view, node: node)
+                    }
+                    continue
+                }
+                for _ in 0..<60 {
                     try? await Task.sleep(for: .milliseconds(500))
+                    if key.hasPrefix("send:") {
+                        guard let view = bridge.packet?.coder, let token = composer(in: view.root) else { continue }
+                        bridge.submit("coder", token: token, value: String(key.dropFirst(5)))
+                        break
+                    }
                     guard let view = bridge.packet?.coder, let node = find(key, in: view.root) else { continue }
                     bridge.activate("coder", view: view, node: node)
                     break

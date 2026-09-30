@@ -998,23 +998,32 @@ impl CoderTab {
             .max_by_key(|s| s.sequence)
     }
 
-    /// A stop tapped on a computer's thread just before the view the phone
-    /// holds was replaced. A streaming reply renders a new view every few
-    /// hundred milliseconds, so the tap often names the previous one; it
-    /// still stops the reply when the current view's composer offers the
-    /// stop ([`ValidatedView::activate_late`]). That is safe because
-    /// `thread.stop` names the message the thread answers now and changes
-    /// nothing otherwise.
+    /// A stop, or a Coder link, tapped on a computer's thread just before
+    /// the view the phone held was replaced. An open thread renders a new
+    /// view every few hundred milliseconds while it streams or its Coder
+    /// task runs, so the tap often names the previous one; it still counts
+    /// when the current view offers the same control
+    /// ([`ValidatedView::activate_late`]), resolved against the current
+    /// view. That is safe: `thread.stop` names the message the thread
+    /// answers now and changes nothing otherwise, and **Open Coder** and
+    /// **Stop Coder too** name the task the open thread links to now.
+    /// Every other stale tap is still ignored.
     fn late_thread_stop<'a>(
         &self,
         view: &'a ValidatedView<Intent>,
         event: &Activation,
     ) -> Option<&'a Intent> {
-        if self.threads.opened().is_none() || event.node != "coder-composer" {
+        if self.threads.opened().is_none() {
             return None;
         }
-        view.activate_late(event, |intent| *intent == Intent::Stop)
-            .ok()
+        let node = event.node.as_str();
+        view.activate_late(event, |intent| match intent {
+            Intent::Stop => node == "coder-composer",
+            Intent::Open { .. } => node == "thread-coder-open",
+            Intent::StopThreadCoder { .. } => node == "thread-coder-stop",
+            _ => false,
+        })
+        .ok()
     }
 
     fn running(phase: Phase) -> bool {

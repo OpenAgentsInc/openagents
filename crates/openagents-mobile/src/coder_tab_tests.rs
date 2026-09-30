@@ -2222,7 +2222,18 @@ fn a_computers_streaming_reply_stops_from_the_phone_and_offers_to_stop_its_coder
     // Stopping the reply stopped nothing on Coder; the offer does, through
     // the task's own stop.
     assert!(script.lock().unwrap().commands.is_empty());
-    fixture.tap("thread-coder-stop");
+    // Tapped on a view a newer render replaced, as an open thread renders
+    // every few hundred milliseconds while its Coder task runs (#10043).
+    fixture.render();
+    fixture.coder.activate(
+        &Activation {
+            instance: chat["instance"].as_str().unwrap().into(),
+            revision: chat["revision"].as_u64().unwrap(),
+            node: "thread-coder-stop".into(),
+        },
+        Some(&mut fixture.computers),
+        &mut fixture.chats,
+    );
     let commands = script.lock().unwrap().commands.clone();
     assert_eq!(commands.len(), 1, "{commands:?}");
     assert_eq!(commands[0].0, coder_host::CommandAction::Interrupt);
