@@ -14,7 +14,8 @@ Rust Native; no GPUI dependency or private backend is imported. OpenAgents
 identity, Coder execution policy, and existing actions remain in place.
 
 Main commits: `4be3f56c39` (Geist faces), `00fc15b218` (palette and reader),
-`7670c7d6dd` (controls), and `81ca088a5a` (streaming).
+`7670c7d6dd` (controls), `81ca088a5a` (streaming), and
+`a75e5eefba` (native header and fixed scale).
 
 - Bundle the reference's 16 unmodified static Geist and Geist Mono faces,
   including weights and italics, with their SIL Open Font License and notice.
@@ -69,8 +70,24 @@ and [after](native-shared-rows.json).
 
 ## Remaining fidelity work
 
-The unified titlebar, exact Markdown headings and code chrome, syntax palette,
+The native header now uses 38 points, with controls centered at 21 points,
+88-point window-control clearance on macOS, and 12 points in fullscreen.
+The native window preserves fixed logical component sizes on larger displays.
+A regression checks both window modes at default and minimum sizes, including
+the docked composer and unclipped sidebar. Desktop library: 83 passed; binary:
+37 passed and four ignored; adapter: 54 passed; strict Clippy and release build
+passed. A separate native scratch window verified the unified header and zoom
+and fullscreen transitions; the screen-sharing indicator obscures the standard
+traffic lights in the captured image, so their final visual comparison remains.
+
+Updated captures: [default](header-list-1200.png), [minimum](header-list-760.png),
+and [512 chats](header-512-chats.png). A native repeat with no simultaneous
+window manipulation records 115 samples per active phase: scroll p50/p99
+2.390/2.670 ms, streaming 3.422/3.980 ms, and sidebar 1.868/4.833 ms. Idle CPU
+is 2.21% of one core; peak RSS is 207.1 MiB. These use the same CPU work and
+submission measure above. [Retained report](native-header.json).
+
+The titlebar's tab and navigation controls, exact Markdown headings and code chrome, syntax palette,
 activity chips, new-chat composition, model badge, project footer, vector
-icons, and menu geometry still need comparison and implementation. The native
-window currently grows its UI with large windows; Zeron retains fixed logical
-text sizes. These are tracked within #10029 before the next epic feature.
+icons, and menu geometry still need comparison and implementation. These are
+tracked within #10029 before the next epic feature.
