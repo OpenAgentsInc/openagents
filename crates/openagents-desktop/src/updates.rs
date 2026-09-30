@@ -30,7 +30,7 @@ use openagents_desktop::chrome;
 const MANIFEST_OVERRIDE: &str = "OPENAGENTS_UPDATE_MANIFEST_URL";
 
 #[cfg(any(target_os = "linux", windows))]
-pub use linux::{act, command, offer, start};
+pub use linux::{act, command, offer, ready, start};
 
 /// Linux's and Windows' shared flow; [`detect`], [`for_install`], and
 /// [`open_download`] are what differ.
@@ -124,7 +124,15 @@ mod linux {
         }
     }
 
-    /// Settings' update button.
+    /// The version of a downloaded, checked update waiting for a restart,
+    /// for the window's update strip ([`crate::strip`]).
+    pub fn ready() -> Option<String> {
+        offer()
+            .filter(|update| update.ready)
+            .map(|update| update.version)
+    }
+
+    /// Settings' update button, and the update strip's.
     pub fn act() {
         let Some(shared) = SHARED.get() else {
             return;
@@ -224,8 +232,17 @@ pub fn offer() -> Option<chrome::Update> {
     None
 }
 
+/// The Mac's waiting update, from the menu-bar item's updater.
 #[cfg(not(any(target_os = "linux", windows)))]
-pub fn act() {}
+pub fn ready() -> Option<String> {
+    crate::menubar::update_ready()
+}
+
+/// The update strip's button on a Mac: the menu's **Restart to Update**.
+#[cfg(not(any(target_os = "linux", windows)))]
+pub fn act() {
+    crate::menubar::install_update();
+}
 
 #[cfg(not(any(target_os = "linux", windows)))]
 pub fn command(_install: bool) -> bool {

@@ -568,17 +568,87 @@ pub fn notify(notice: openagents_desktop::notices::Notice) {
 /// (`org.freedesktop.portal.Notification`), else the notification server
 /// (`org.freedesktop.Notifications`). `None` when neither answers.
 pub fn notify_now(notice: &openagents_desktop::notices::Notice) -> Option<&'static str> {
-    let connection = zbus::blocking::Connection::session().ok()?;
-    notifications::deliver(&connection, notice)
+    notifications::deliver(notifications::bus()?, notice)
+}
+
+/// Listens, on a thread of its own, for clicks on the notices this app
+/// showed, and opens each one's chat in the window
+/// ([`crate::native::open_chat`]).
+pub fn listen_notifications() {
+    let _ = std::thread::Builder::new()
+        .name("notification-clicks".into())
+        .spawn(|| {
+            if let Some(connection) = notifications::bus() {
+                notifications::listen(connection, crate::native::open_chat);
+            }
+        });
 }
 
 /// Notifications over the session bus.
 mod notifications {
-    use openagents_desktop::notices::Notice;
+    use openagents_desktop::notices::{self, Notice};
     use std::collections::HashMap;
-    use std::sync::Mutex;
+    use std::sync::{Mutex, OnceLock};
     use zbus::blocking::{Connection, Proxy, proxy::Builder};
     use zbus::zvariant::Value;
+
+    /// The session bus connection every notice is sent on. One connection
+    /// for the app's life: the portal and the notification server send a
+    /// click back to the connection that showed the notice.
+    pub(super) fn bus() -> Option<&'static Connection> {
+        static BUS: OnceLock<Option<Connection>> = OnceLock::new();
+        BUS.get_or_init(|| Connection::session().ok()).as_ref()
+    }
+
+    /// Reads clicks on this app's notices from `connection` until it
+    /// closes, and calls `open` with each clicked notice's chat: the
+    /// portal's `ActionInvoked` for [`notices::OPEN_ACTION`], or the
+    /// server's for its default action on a notice this app showed.
+    pub(super) fn listen(connection: &Connection, open: impl Fn(String)) {
+        let rule = zbus::MatchRule::builder()
+            .msg_type(zbus::message::Type::Signal)
+            .member("ActionInvoked")
+            .map(|rule| rule.build());
+        let Ok(rule) = rule else {
+            return;
+        };
+        let Ok(messages) = zbus::blocking::MessageIterator::for_match_rule(rule, connection, None)
+        else {
+            return;
+        };
+        for message in messages.flatten() {
+            if let Some(chat) = clicked(&message) {
+                open(chat);
+            }
+        }
+    }
+
+    /// The chat a click signal opens, if it is a click on this app's notice.
+    pub(super) fn clicked(message: &zbus::Message) -> Option<String> {
+        let header = message.header();
+        let body = message.body();
+        match header.interface()?.as_str() {
+            "org.freedesktop.portal.Notification" => {
+                let (id, action, _): (String, String, Vec<zbus::zvariant::OwnedValue>) =
+                    body.deserialize().ok()?;
+                notices::portal_click(&id, &action).map(str::to_owned)
+            }
+            "org.freedesktop.Notifications" => {
+                let (server_id, action): (u32, String) = body.deserialize().ok()?;
+                if !notices::server_click(&action) {
+                    return None;
+                }
+                let shown = SHOWN.lock().ok()?;
+                let id = shown
+                    .as_ref()?
+                    .iter()
+                    .find(|(_, shown)| **shown == server_id)?
+                    .0;
+                notices::chat_of(id).map(str::to_owned)
+            }
+            _ => None,
+        }
+    }
 
     /// The app's ID: its desktop file's name, `com.openagents.desktop.desktop`.
     pub(super) const APP_ID: &str = "com.openagents.desktop";
@@ -636,21 +706,30 @@ mod notifications {
         )
     }
 
-    /// The portal's notification: title, body, and priority.
+    /// The portal's notification: title, body, priority, and, for a
+    /// chat's notice, a click that opens the chat: the default action
+    /// [`notices::OPEN_ACTION`] with the chat's ID as its target. The name
+    /// is not an `app.` action, so the portal sends it back as
+    /// `ActionInvoked` ([`listen`]) rather than activating the app.
     pub(super) fn portal_fields(notice: &Notice) -> HashMap<&'static str, Value<'_>> {
-        HashMap::from([
+        let mut fields = HashMap::from([
             ("title", Value::from(notice.title.as_str())),
             ("body", Value::from(notice.body.as_str())),
             (
                 "priority",
                 Value::from(if notice.urgent { "high" } else { "normal" }),
             ),
-        ])
+        ]);
+        if let Some(chat) = notice.chat() {
+            fields.insert("default-action", Value::from(notices::OPEN_ACTION));
+            fields.insert("default-action-target", Value::from(chat));
+        }
+        fields
     }
 
     /// The server's ID of the last notice shown for each chat, so a newer
     /// one replaces it.
-    static SHOWN: Mutex<Option<HashMap<String, u32>>> = Mutex::new(None);
+    pub(super) static SHOWN: Mutex<Option<HashMap<String, u32>>> = Mutex::new(None);
 
     /// `Notify` on the notification server (mako, dunst, GNOME Shell,
     /// Plasma).
@@ -673,7 +752,12 @@ mod notifications {
                 Value::from(if notice.urgent { 2u8 } else { 1u8 }),
             ),
         ]);
-        let actions: Vec<&str> = vec![];
+        // A click on the notice's body is the default action ([`listen`]).
+        let actions: Vec<&str> = if notice.chat().is_some() {
+            vec![notices::SERVER_DEFAULT, "Open"]
+        } else {
+            vec![]
+        };
         let id: u32 = server.call(
             "Notify",
             &(
@@ -1089,6 +1173,61 @@ mod tests {
         );
     }
 
+    /// A click on this app's notice, from the portal or the notification
+    /// server, names the notice's chat; anything else opens nothing.
+    #[test]
+    fn a_click_on_a_notice_opens_its_chat() {
+        use zbus::zvariant::Value;
+        let signal =
+            |interface: &str, body: &dyn Fn(zbus::message::Builder<'_>) -> zbus::Message| {
+                body(
+                    zbus::Message::signal(
+                        "/org/freedesktop/portal/desktop",
+                        interface,
+                        "ActionInvoked",
+                    )
+                    .unwrap(),
+                )
+            };
+        let portal = |id: &'static str, action: &'static str| {
+            signal("org.freedesktop.portal.Notification", &move |builder| {
+                builder
+                    .build(&(id, action, vec![Value::from("c1")]))
+                    .unwrap()
+            })
+        };
+        assert_eq!(
+            notifications::clicked(&portal("coder-c1", "open")).as_deref(),
+            Some("c1")
+        );
+        assert_eq!(notifications::clicked(&portal("coder-c1", "other")), None);
+        assert_eq!(
+            notifications::clicked(&portal("someone-else", "open")),
+            None
+        );
+
+        notifications::SHOWN
+            .lock()
+            .unwrap()
+            .get_or_insert_with(Default::default)
+            .insert("coder-c2".into(), 9_001);
+        let server = |id: u32, action: &'static str| {
+            signal("org.freedesktop.Notifications", &move |builder| {
+                builder.build(&(id, action)).unwrap()
+            })
+        };
+        assert_eq!(
+            notifications::clicked(&server(9_001, "default")).as_deref(),
+            Some("c2")
+        );
+        assert_eq!(
+            notifications::clicked(&server(9_001, "open")).as_deref(),
+            Some("c2")
+        );
+        assert_eq!(notifications::clicked(&server(9_002, "default")), None);
+        assert_eq!(notifications::clicked(&server(9_001, "close")), None);
+    }
+
     /// Notifications over a private session bus with a stand-in portal and
     /// notification server: the server when there is no portal, the portal
     /// when there is one, each with the notice's fields, and a newer notice
@@ -1211,6 +1350,9 @@ mod tests {
         assert_eq!(text(&seen[0].3["title"]), "Fix the login bug");
         assert_eq!(text(&seen[0].3["body"]), "Coder finished");
         assert_eq!(text(&seen[0].3["priority"]), "normal");
+        // A click on the body opens the chat.
+        assert_eq!(text(&seen[0].3["default-action"]), "open");
+        assert_eq!(text(&seen[0].3["default-action-target"]), "c1");
         assert_eq!(served.lock().unwrap().len(), 2, "the server was not asked");
     }
 

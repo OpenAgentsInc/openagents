@@ -333,6 +333,13 @@ pub trait App {
     fn fullscreen_changed(&mut self, fullscreen: bool) {
         let _ = fullscreen;
     }
+
+    /// Whether the application asks for its window to come forward, for
+    /// example after the person clicked one of its notifications. Asked
+    /// after every tick; answer `true` once per request.
+    fn focus_request(&mut self) -> bool {
+        false
+    }
 }
 
 /// Lays out and paints `app`'s current view into a frame `width` by

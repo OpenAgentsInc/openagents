@@ -43,6 +43,8 @@ pub struct DesktopApp {
     /// saw ([`openagents_desktop::notices`]).
     focused: bool,
     notices: openagents_desktop::notices::Notices,
+    /// A downloaded update's version, for the update strip ([`crate::strip`]).
+    update_ready: Option<String>,
     #[cfg(not(windows))]
     grid: Option<openagents_desktop::grid::Shared>,
     #[cfg(not(windows))]
@@ -198,6 +200,7 @@ impl DesktopApp {
             chat: (live && chrome).then(|| openagents_desktop::chat::Panel::new(Instant::now())),
             focused: true,
             notices: openagents_desktop::notices::Notices::default(),
+            update_ready: None,
             #[cfg(not(windows))]
             grid: None,
             #[cfg(not(windows))]
@@ -256,6 +259,13 @@ impl DesktopApp {
     /// Shows a desktop notification for each chat whose Coder now asks
     /// for the person, finished, or failed while the window is away. Only
     /// a real window notifies; captures and tests never do.
+    fn strip_shows(&self) -> bool {
+        self.model.nearby().is_none()
+            && self.navigation.as_ref().is_some_and(|state| {
+                crate::strip::shows(self.update_ready.as_deref(), Some(state.page))
+            })
+    }
+
     fn notify(&mut self) {
         let Some(chat) = &self.chat else {
             return;
@@ -351,8 +361,13 @@ impl DesktopApp {
             children[1] = chat.body();
             children[2] = chat.footer();
         }
+        let strip = self.strip_shows();
         if self.model.nearby().is_none()
-            && let Some(floating) = self.chat.as_mut().and_then(|chat| chat.floating())
+            && let Some(floating) = self
+                .chat
+                .as_mut()
+                .and_then(|chat| chat.floating())
+                .or_else(|| strip.then(crate::strip::node))
             && let rust_native::Element::Stack { children, .. } = &mut root.element
         {
             children.push(floating);
@@ -627,6 +642,7 @@ impl App for DesktopApp {
         crate::menubar::start(waker.clone());
         if self.live {
             crate::updates::start(waker.clone());
+            crate::native::start(waker.clone());
         }
         if self.live {
             self.screen_lock = Some(ScreenLock::start(waker.clone()));
@@ -673,6 +689,17 @@ impl App for DesktopApp {
             && let Some(state) = &mut self.navigation
         {
             state.update = crate::updates::offer();
+        }
+        if self.live {
+            self.update_ready = crate::updates::ready();
+            let registry = self
+                .chat
+                .as_ref()
+                .map(|chat| chat.command_registry())
+                .unwrap_or_default();
+            crate::native::tick(&registry)
+                .into_iter()
+                .for_each(|intent| self.activate(intent, now));
         }
         let requests = self.model.tick(now);
         self.send(requests, now);
@@ -1059,7 +1086,13 @@ impl App for DesktopApp {
                 scrim: None,
             });
         }
-        self.chat.as_ref().and_then(|chat| chat.overlay_layout())
+        self.chat
+            .as_ref()
+            .and_then(|chat| chat.overlay_layout())
+            .or_else(|| self.strip_shows().then(crate::strip::layout))
+    }
+    fn focus_request(&mut self) -> bool {
+        self.live && crate::native::focus_request()
     }
     fn allows_focus(&self, key: &str) -> bool {
         self.chat.as_ref().is_none_or(|chat| chat.allows_focus(key))
@@ -4096,6 +4129,9 @@ mod saved_fixtures {
 #[cfg(test)]
 #[path = "late_click_tests.rs"]
 mod late_click_tests;
+#[cfg(test)]
+#[path = "native_tests.rs"]
+mod native_tests;
 
 /// The slide viewer over the page (#10057).
 #[cfg(test)]

@@ -553,6 +553,10 @@ impl<A: App> Shell<A> {
             {
                 window.set_fullscreen(on.then_some(Fullscreen::Borderless(None)));
             }
+            if self.app.focus_request() {
+                window.set_minimized(false);
+                window.focus_window();
+            }
             let cursor = self.app.ime_cursor();
             window.set_ime_allowed(cursor.is_some());
             if let Some((x, y)) = cursor {

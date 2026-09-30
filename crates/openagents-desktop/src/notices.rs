@@ -7,6 +7,11 @@
 //! only recorded, so opening the app on finished work notifies nothing, and
 //! a status that does not change notifies nothing again. Nothing here reads
 //! a message: the notice says what Coder is doing, under the chat's title.
+//!
+//! Clicking a notice opens its chat: the notice carries [`OPEN_ACTION`] with
+//! the chat's ID, and the window runs the shared command registry's switch
+//! entry for that chat ([`open_command`]), the same command the palette's
+//! "Switch to" row runs.
 
 use std::collections::BTreeMap;
 
@@ -40,6 +45,42 @@ impl Status {
     }
 }
 
+/// The prefix of a Coder notice's [`Notice::id`]; the rest is the chat's ID.
+const PREFIX: &str = "coder-";
+
+/// The action a notice carries for a click on its body.
+pub const OPEN_ACTION: &str = "open";
+
+/// The notification server's name for a click on a notice's body.
+pub const SERVER_DEFAULT: &str = "default";
+
+/// The chat a click reported by the desktop portal opens: notice `id`'s
+/// chat when `action` is [`OPEN_ACTION`].
+#[must_use]
+pub fn portal_click<'a>(id: &'a str, action: &str) -> Option<&'a str> {
+    (action == OPEN_ACTION).then(|| chat_of(id)).flatten()
+}
+
+/// Whether a notification server's `ActionInvoked` `action` opens the
+/// notice's chat: its body ([`SERVER_DEFAULT`]) or its Open button.
+#[must_use]
+pub fn server_click(action: &str) -> bool {
+    action == SERVER_DEFAULT || action == OPEN_ACTION
+}
+
+/// The chat a notice's ID names, if it is a Coder notice.
+#[must_use]
+pub fn chat_of(id: &str) -> Option<&str> {
+    id.strip_prefix(PREFIX).filter(|chat| !chat.is_empty())
+}
+
+/// The shared command (`openagents_chat_app::commands::registry` key) a
+/// click on a chat's notice runs: switch to that chat.
+#[must_use]
+pub fn open_command(chat: &str) -> String {
+    format!("switch-{chat}")
+}
+
 /// One notification to show.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Notice {
@@ -49,6 +90,14 @@ pub struct Notice {
     pub body: String,
     /// Coder waits for the person.
     pub urgent: bool,
+}
+
+impl Notice {
+    /// The chat this notice opens when clicked.
+    #[must_use]
+    pub fn chat(&self) -> Option<&str> {
+        chat_of(&self.id)
+    }
 }
 
 /// The last status seen for each chat.
@@ -76,7 +125,7 @@ impl Notices {
                 && let Some(body) = status.body()
             {
                 notices.push(Notice {
-                    id: format!("coder-{id}"),
+                    id: format!("{PREFIX}{id}"),
                     title: if title.trim().is_empty() {
                         "OpenAgents".into()
                     } else {
@@ -137,6 +186,44 @@ mod tests {
         // A chat that goes away is forgotten, and comes back unannounced.
         assert!(notices.observe(vec![], false).is_empty());
         assert!(notices.observe(chat(Status::Approval), false).is_empty());
+    }
+
+    #[test]
+    fn a_notice_opens_its_chat_through_the_shared_switch_command() {
+        let mut notices = Notices::default();
+        notices.observe(chat(Status::Working), false);
+        let done = notices.observe(chat(Status::Finished), false);
+        assert_eq!(done[0].chat(), Some("c1"));
+        assert_eq!(open_command("c1"), "switch-c1");
+        let registry = openagents_chat_app::commands::registry(
+            &[openagents_chat::basic_chats::Summary {
+                id: "c1".into(),
+                title: "Fix the login bug".into(),
+                started: 1,
+                updated: 1,
+                coder: None,
+                archived: false,
+                pinned: false,
+                named: false,
+            }],
+            None,
+            false,
+        );
+        let entry = registry
+            .iter()
+            .find(|entry| entry.key == open_command("c1"))
+            .expect("the registry switches to the notice's chat");
+        assert_eq!(
+            entry.action,
+            openagents_chat_app::commands::Action::Switch("c1".into())
+        );
+        assert_eq!(portal_click("coder-c1", OPEN_ACTION), Some("c1"));
+        assert_eq!(portal_click("coder-c1", "dismiss"), None);
+        assert_eq!(portal_click("other-c1", OPEN_ACTION), None);
+        assert!(server_click("default") && server_click("open"));
+        assert!(!server_click("close"));
+        assert_eq!(chat_of("coder-"), None);
+        assert_eq!(chat_of("other-c1"), None);
     }
 
     #[test]

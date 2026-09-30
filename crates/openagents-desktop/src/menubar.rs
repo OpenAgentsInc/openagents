@@ -197,7 +197,7 @@ pub fn intent_for(command: MenuCommand, model: &Model) -> Option<Intent> {
 }
 
 #[cfg(target_os = "macos")]
-pub use mac::{start, sync};
+pub use mac::{install_update, start, sync, update_ready};
 
 #[cfg(target_os = "macos")]
 mod mac {
@@ -436,6 +436,36 @@ mod mac {
         })
     }
 
+    /// The version of a checked update waiting to be installed, for the
+    /// window's update strip ([`crate::strip`]).
+    pub fn update_ready() -> Option<String> {
+        TRAY.with(|tray| {
+            let tray = tray.borrow();
+            match tray.as_ref()?.update.lock().ok()?.clone() {
+                UpdateState::Ready(staged) => Some(staged.version.to_string()),
+                _ => None,
+            }
+        })
+    }
+
+    /// Installs the waiting update and relaunches, as the menu's
+    /// **Restart to Update** does; the update strip's button.
+    pub fn install_update() {
+        TRAY.with(|tray| {
+            let tray = tray.borrow();
+            let Some(tray) = tray.as_ref() else {
+                return;
+            };
+            let staged = match tray.update.lock().map(|state| state.clone()) {
+                Ok(UpdateState::Ready(staged)) => staged,
+                _ => return,
+            };
+            if let Some(updater) = &tray.updater {
+                install(updater, &staged, &tray.update);
+            }
+        });
+    }
+
     fn install(updater: &Updater, staged: &update::Staged, state: &Mutex<UpdateState>) {
         let result = updater
             .install(staged)
@@ -489,6 +519,14 @@ pub fn start(_waker: rust_native_desktop::Waker) {}
 pub fn sync(_model: &Model) -> Vec<Intent> {
     Vec::new()
 }
+
+#[cfg(not(target_os = "macos"))]
+pub fn update_ready() -> Option<String> {
+    None
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn install_update() {}
 
 #[cfg(test)]
 mod tests {

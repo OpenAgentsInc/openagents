@@ -1640,6 +1640,15 @@ impl Panel {
     pub fn aux_focused(&self) -> bool {
         self.modal() || self.search.focused
     }
+    /// The shared command registry as the window shows it now, for the
+    /// native menu bar (`appmenu`), whose items run these same commands.
+    pub fn command_registry(&self) -> Vec<openagents_chat_app::commands::Entry> {
+        self.registry()
+    }
+    /// The selected chat's ID.
+    pub fn selected_chat(&self) -> Option<&str> {
+        self.session.selected.as_deref()
+    }
     fn registry(&self) -> Vec<openagents_chat_app::commands::Entry> {
         if self.commands.kind == Some(openagents_chat_app::commands::Kind::Profile) {
             return openagents_chat_app::commands::profile_registry();

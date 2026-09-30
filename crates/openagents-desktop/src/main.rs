@@ -14,6 +14,7 @@
 // A GUI program on Windows: no console window behind the app.
 #![cfg_attr(windows, windows_subsystem = "windows")]
 
+mod appmenu;
 mod benchmark;
 #[cfg(test)]
 mod chat_test_host;
@@ -22,8 +23,10 @@ mod grid_fixtures;
 #[cfg(not(any(target_os = "linux", windows)))]
 mod mac;
 mod menubar;
+mod native;
 mod platform;
 mod shell;
+mod strip;
 mod updates;
 mod worker;
 

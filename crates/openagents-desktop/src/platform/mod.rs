@@ -30,6 +30,10 @@ pub fn control_path() -> Option<std::path::PathBuf> {
 #[cfg(not(target_os = "linux"))]
 pub fn notify(_: openagents_desktop::notices::Notice) {}
 
+/// See [`notify`]: no notification clicks to listen for here.
+#[cfg(not(target_os = "linux"))]
+pub fn listen_notifications() {}
+
 /// See [`notify`]: no notification service here.
 #[cfg(not(target_os = "linux"))]
 pub fn notify_now(_: &openagents_desktop::notices::Notice) -> Option<&'static str> {
