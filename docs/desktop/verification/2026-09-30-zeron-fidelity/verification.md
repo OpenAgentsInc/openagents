@@ -587,3 +587,17 @@ network, and timing checks ignored; version checks: three passed. The nine
 command fixtures include retained painting of the profile menu. Shared chat: 117 passed. Strict all-target Clippy for core, native adapter,
 shared chat presentation, and desktop, scoped formatting, and diff whitespace
 checks pass.
+
+
+The optimized preview at `3a7f088030` verifies real native pointer activation:
+the chat menu's Rename row opens its editor, the Local trigger opens the profile
+menu, Commands opens the palette, and clicking its search field then typing
+filters the rows without delivering text to the underlying composer. The
+original preview with the owner's scratch conversations remains running.
+
+The [complete native repeat](native-popup-pointer.json) retains all 690 samples,
+both first opening frames, and two warm-up occlusion skips. All six active
+phases have 115 samples, but this is a coverage pass and a latency failure.
+The palette's first frame submits in 33.155 ms and the chat menu's in 27.089 ms.
+Idle CPU is 3.879% of one core and peak RSS is 203.5 MiB. Acquisition contributes
+most of the observed stalls. These failures remain required work.
