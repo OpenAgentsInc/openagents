@@ -470,8 +470,10 @@ impl CoderLane {
     }
 
     fn local(&mut self) -> &coder::task::local::Local {
+        // With the person's settings (#10036): the providers, the usage
+        // threshold, the project folders, and what commands may reach.
         self.local.get_or_insert_with(|| {
-            coder::task::local::Local::new(coder::task::local::default_store())
+            coder::task::local::Local::here(coder::task::local::default_store())
         })
     }
 
@@ -495,6 +497,15 @@ impl CoderLane {
                 if let Ok(last) = std::fs::read_to_string(last_project(&store)) {
                     dirs.push(last.trim().to_owned());
                 }
+                // The settings' project folders are projects too.
+                if let Ok(settings) = self.local().settings() {
+                    dirs.extend(
+                        settings
+                            .projects
+                            .iter()
+                            .map(|folder| folder.display().to_string()),
+                    );
+                }
                 let mut why = None;
                 let mut tried = std::collections::BTreeSet::new();
                 for dir in dirs.iter().filter(|dir| !dir.is_empty()) {
@@ -502,7 +513,7 @@ impl CoderLane {
                         continue;
                     }
                     let path = std::path::Path::new(dir);
-                    match run::checkout(path) {
+                    match self.local().project(path) {
                         Ok(_) => {
                             let record = self.local().start(path, &title, &prompt, Some(chat))?;
                             let _ = std::fs::write(last_project(&store), &record.checkout);
@@ -1026,6 +1037,131 @@ mod tests {
             panic!("start in the last project")
         };
         assert_eq!(project, "slugs");
+    }
+
+    /// The desktop's local run honors the same settings as
+    /// `openagents chat` (#10036): the allowed providers and their order,
+    /// and the project folders: a checkout outside them is not a project.
+    #[test]
+    fn a_chat_run_follows_the_local_capability_settings() {
+        use coder::task::autostart::{Engine, Launch, Launched};
+        use coder::task::capacity::{Connection, Provider};
+        use coder::task::settings;
+        use openagents_chat::coder_events::CoderEvent;
+        use openagents_chat_app::coder_run::{Answer, Request as Run};
+        struct Idle;
+        impl Launch for Idle {
+            fn launch(
+                &self,
+                _: &Engine,
+                _: &std::path::Path,
+                _: &std::path::Path,
+            ) -> Result<Launched, String> {
+                Ok(Launched {
+                    owner_process: std::process::id(),
+                    grant_digest: String::new(),
+                })
+            }
+        }
+        fn signed_in(_: Provider) -> Connection {
+            Connection::Connected
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let checkout = |name: &str| {
+            let top = dir.path().join(name);
+            std::fs::create_dir_all(&top).unwrap();
+            for args in [
+                vec!["init", "-q"],
+                vec![
+                    "-c",
+                    "user.name=F",
+                    "-c",
+                    "user.email=f@example.invalid",
+                    "commit",
+                    "-q",
+                    "--allow-empty",
+                    "-m",
+                    "one",
+                ],
+            ] {
+                assert!(
+                    Command::new("git")
+                        .args(args)
+                        .current_dir(&top)
+                        .status()
+                        .unwrap()
+                        .success()
+                );
+            }
+            top.canonicalize().unwrap()
+        };
+        let slugs = checkout("slugs");
+        let allowed = dir.path().join("code");
+        std::fs::create_dir_all(&allowed).unwrap();
+        let parser = {
+            let top = checkout("code/parser");
+            assert!(top.starts_with(allowed.canonicalize().unwrap()));
+            top
+        };
+        let settings = settings::Coder {
+            providers: vec![
+                settings::Choice::new(Provider::Claude),
+                settings::Choice::new(Provider::Codex),
+            ],
+            projects: vec![allowed.canonicalize().unwrap()],
+            ..settings::Coder::default()
+        };
+        let mut context = Context::new(
+            Box::new(FakeHost::new("Studio Mac", 1_790_000_000)),
+            None,
+            None,
+            None,
+            dir.path().to_path_buf(),
+        )
+        .with_coder(
+            coder::task::local::Local::new(dir.path().join("tasks"))
+                .with_settings(settings)
+                .with_probe(signed_in)
+                .with_controller(std::env::current_exe().unwrap())
+                .with_launcher(Box::new(Idle)),
+        );
+        let chat = "d".repeat(32);
+        let mut ask = |request: Run| match context.run(Request::CoderRun {
+            chat: chat.clone(),
+            ticket: 1,
+            request,
+        }) {
+            Some(Outcome::CoderRun { result, .. }) => *result,
+            other => panic!("{other:?}"),
+        };
+        // A checkout outside the project folders is not a project.
+        let Ok(Answer::NeedsProject { why }) = ask(Run::Start {
+            title: "t".into(),
+            prompt: "add a test".into(),
+            dirs: vec![slugs.display().to_string()],
+        }) else {
+            panic!("a checkout outside the project folders asks for one")
+        };
+        assert!(why.contains("is not in one of your project folders"), "{why}");
+        // A checkout inside them runs, on Claude Code first, as the
+        // settings order it.
+        let Ok(Answer::Started { task, project, .. }) = ask(Run::Start {
+            title: "add a test".into(),
+            prompt: "add a test".into(),
+            dirs: vec![parser.display().to_string()],
+        }) else {
+            panic!("start in a project folder")
+        };
+        assert_eq!(project, "parser");
+        let Ok(Answer::Lines { lines, .. }) = ask(Run::Poll { task }) else {
+            panic!("poll")
+        };
+        let CoderEvent::CoderStarted(started) = &lines[0].event else {
+            panic!("{lines:?}")
+        };
+        assert_eq!(started.provider, "claude");
+        assert_eq!(started.reason, "Claude Code is signed in and has capacity.");
+        assert_eq!(started.fallbacks, vec!["codex:gpt-6-luna".to_owned()]);
     }
 
     #[test]

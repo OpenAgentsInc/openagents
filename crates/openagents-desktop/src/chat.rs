@@ -65,6 +65,10 @@ pub struct Panel {
     /// The folders a new run tries first: this computer's projects, the
     /// one shown on Phones and computers first.
     coder_projects: Vec<String>,
+    /// Whether a coding reply waits for **Run Coder** instead of starting
+    /// Coder at once: the settings' `coder.start` (#10036), read when a
+    /// reply is judged coding work.
+    coder_asks_first: fn() -> bool,
     task_editor: BTreeMap<String, u64>,
     born: Instant,
     pub viewport: (f32, f32, f32),
@@ -150,6 +154,11 @@ impl Panel {
             run_submissions: BTreeMap::new(),
             sent: Default::default(),
             coder_projects: vec![],
+            coder_asks_first: if cfg!(test) {
+                || false
+            } else {
+                coder_asks_first
+            },
             task_editor: BTreeMap::new(),
             born: now,
             viewport: (1200.0, 840.0, 1.0),
@@ -562,6 +571,11 @@ impl Panel {
     /// Coder run starts unless the chat has its own.
     pub fn set_coder_projects(&mut self, folders: Vec<String>) {
         self.coder_projects = folders;
+    }
+    /// Decide whether a coding reply asks first with `asks` instead of
+    /// the settings file.
+    pub fn set_coder_asks_first(&mut self, asks: fn() -> bool) {
+        self.coder_asks_first = asks;
     }
     /// Start Coder on this computer for `chat`, as `openagents chat` does.
     fn start_run(&mut self, chat: &str) {
@@ -1054,7 +1068,9 @@ impl Panel {
                 run = true;
             }
         }
-        if run {
+        // `coder.start: ask_first` leaves the offer's **Run Coder** to
+        // the person, as `openagents chat` leaves `run-coder`.
+        if run && !(self.coder_asks_first)() {
             self.start_run(&chat);
         }
     }
@@ -3409,6 +3425,51 @@ fn request((ticket, command): (u64, Command)) -> Request {
 }
 
 #[cfg(test)]
+mod start_setting_tests {
+    use super::*;
+    use openagents_chat::basic_coder::Turn;
+    use openagents_chat::service::Snapshot;
+
+    /// A coding reply to a message sent from this window, on a computer
+    /// that can run Coder.
+    fn replied(asks_first: fn() -> bool) -> Panel {
+        let mut panel = Panel::new(Instant::now());
+        panel.set_coder_asks_first(asks_first);
+        let chat = "c".repeat(32);
+        let mut user = Turn::user("add a unit test for slugify");
+        user.request = Some("r1".into());
+        panel.session.states.insert(
+            chat.clone(),
+            Snapshot {
+                chat: Some(chat.clone()),
+                computer: true,
+                turns: vec![user, Turn::assistant("We'll dispatch Coder.", None)],
+                ..Default::default()
+            },
+        );
+        panel.session.select(&chat);
+        panel.sent.insert((chat, "r1".into()));
+        panel.run_if_coding();
+        panel
+    }
+
+    /// `coder.start` (#10036): `at_once`, the default, starts Coder for a
+    /// coding reply; `ask_first` leaves the offer's **Run Coder**, which
+    /// still starts it.
+    #[test]
+    fn the_start_setting_decides_whether_a_coding_reply_runs_at_once() {
+        let chat = "c".repeat(32);
+        let at_once = replied(|| false);
+        assert!(at_once.coder_run(&chat).is_some());
+        let mut asks = replied(|| true);
+        assert!(asks.coder_run(&chat).is_none());
+        assert!(asks.sent.is_empty(), "the reply was judged once");
+        asks.start_run(&chat);
+        assert!(asks.coder_run(&chat).is_some());
+    }
+}
+
+#[cfg(test)]
 mod image_tests {
     use super::*;
     #[test]
@@ -3738,4 +3799,10 @@ mod task_tests {
         assert!(!keys.iter().any(|key| key == "changes-pane"));
         assert!(keys.iter().any(|key| key == "changes-card"));
     }
+}
+
+/// The settings' `coder.start` on this computer (`coder::task::settings`):
+/// whether a coding reply waits for **Run Coder**.
+fn coder_asks_first() -> bool {
+    coder::task::local::Local::here(std::path::PathBuf::new()).asks_first()
 }
