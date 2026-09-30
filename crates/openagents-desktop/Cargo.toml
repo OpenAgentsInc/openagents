@@ -37,6 +37,7 @@ openagents-chat = { path = "../openagents-chat" }
 openagents-chat-app = { path = "../openagents-chat-app" }
 coder-access = { path = "../coder-access", default-features = false }
 coder-connect = { path = "../coder-connect", default-features = false }
+coder-history = { path = "../coder-history" }
 uuid = { version = "1", features = ["v4"] }
 base64 = "0.22"
 # The control protocol's messages.

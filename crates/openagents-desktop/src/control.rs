@@ -81,6 +81,18 @@ pub type ControlResult<T> = Result<T, ControlError>;
 
 /// The operations the window uses, over any transport.
 pub trait HostControl: Send {
+    fn import_task(
+        &mut self,
+        request: String,
+        chat: String,
+        task: coder_access::protocol::TaskCreate,
+    ) -> ControlResult<openagents_chat::service::Snapshot> {
+        let _ = (request, chat, task);
+        Err(ControlError::Refused {
+            code: "unsupported".into(),
+            message: "Update this host to continue saved sessions through Coder.".into(),
+        })
+    }
     fn task_chat(
         &mut self,
         request: openagents_chat_app::task_chat::Request,
@@ -432,6 +444,22 @@ fn unexpected<T>() -> ControlResult<T> {
 }
 
 impl HostControl for SocketControl {
+    fn import_task(
+        &mut self,
+        request: String,
+        chat: String,
+        task: coder_access::protocol::TaskCreate,
+    ) -> ControlResult<openagents_chat::service::Snapshot> {
+        match self.call(Op::ImportTask {
+            request,
+            chat,
+            task,
+        })? {
+            Reply::Chat { snapshot } => Ok(snapshot),
+            _ => Err(ControlError::Malformed),
+        }
+    }
+
     fn task_chat(
         &mut self,
         request: openagents_chat_app::task_chat::Request,

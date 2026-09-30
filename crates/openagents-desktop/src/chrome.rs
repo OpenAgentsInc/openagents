@@ -64,6 +64,7 @@ pub enum Action {
     ToggleSection { section: Section },
     SelectChat { id: u64 },
     NewChat,
+    Saved,
     Grid,
     Computers,
     Settings,
@@ -72,6 +73,7 @@ pub enum Action {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Page {
     Chat(u64),
+    Saved,
     Grid,
     Computers,
     Settings,
@@ -249,6 +251,7 @@ impl State {
                 self.closed_sections.remove(&Section::Recent);
                 self.page = Page::Chat(id);
             }
+            Action::Saved => self.page = Page::Saved,
             Action::Grid => self.page = Page::Grid,
             Action::Computers => self.page = Page::Computers,
             Action::Settings => self.page = Page::Settings,
@@ -405,6 +408,15 @@ fn sidebar(state: &State) -> Node<Intent> {
         Some(Glyph::Cloud),
         state.page == Page::Grid,
     )];
+    if state.live {
+        groups.push(action(
+            "sidebar-saved",
+            "Saved sessions",
+            Action::Saved,
+            Some(Glyph::History),
+            state.page == Page::Saved,
+        ));
+    }
     for section in [
         Section::Pinned,
         Section::OpenAgents,
@@ -625,6 +637,7 @@ pub fn root(state: &State, model: &Model, now: u64) -> Node<Intent> {
                 .selected()
                 .map_or("New chat", |chat| chat.title.as_str())
                 .into(),
+            Page::Saved => "Saved sessions".into(),
             Page::Grid => "The Grid".into(),
             Page::Computers => "Phones and computers".into(),
             Page::Settings => "Settings".into(),
@@ -689,7 +702,7 @@ pub fn root(state: &State, model: &Model, now: u64) -> Node<Intent> {
         crate::screens::root(model, now)
     } else {
         match state.page {
-            Page::Chat(_) => placeholder(state),
+            Page::Chat(_) | Page::Saved => placeholder(state),
             Page::Grid => {
                 let mut body = stack(
                     "shell-grid",

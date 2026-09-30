@@ -33,6 +33,9 @@ pub const RENAME: &str = "composer:chat-rename";
 
 pub struct Panel {
     commands: openagents_chat_app::commands::Overlay,
+    saved: openagents_chat_app::retained::Session,
+    saved_visible: bool,
+    saved_project: Option<String>,
     command_query: Field,
     command_token: String,
     search: Field,
@@ -73,6 +76,9 @@ impl Panel {
     pub fn new(now: Instant) -> Self {
         Self {
             commands: openagents_chat_app::commands::Overlay::default(),
+            saved: openagents_chat_app::retained::Session::default(),
+            saved_visible: false,
+            saved_project: None,
             command_query: Field::with_placeholder("Find a command or chat…"),
             command_token: String::new(),
             search: Field::with_placeholder("Search chats…"),
@@ -138,6 +144,9 @@ impl Panel {
         }
     }
     pub fn dropped_file(&mut self, path: std::path::PathBuf) {
+        if self.saved_visible {
+            return;
+        }
         self.import_image(crate::chat_images::Source::File(path));
     }
     fn poll_images(&mut self, at_ms: u64) {
@@ -188,8 +197,218 @@ impl Panel {
         self.transcript.start(Arc::new(move || wake.wake()));
         self.waker = Some(waker);
     }
+    pub fn show_saved(&mut self, visible: bool, project: Option<String>) {
+        if self.saved_visible != visible {
+            self.rows_dirty = true;
+            self.transcript.jump_to_tail();
+        }
+        if visible && let Some(field) = self.field() {
+            field.focused = false;
+        }
+        self.saved_visible = visible;
+        self.saved_project = project;
+    }
+    pub fn read_saved(&mut self) -> Option<Request> {
+        self.saved
+            .list(false)
+            .map(|(ticket, request)| Request::Saved { ticket, request })
+    }
+    pub fn saved_outcome(
+        &mut self,
+        ticket: u64,
+        result: Result<
+            openagents_chat_app::retained::Answer,
+            openagents_chat_app::retained::Failure,
+        >,
+    ) -> bool {
+        let snapshot = self.saved.outcome(ticket, result);
+        self.rows_dirty = true;
+        if let Some(snapshot) = snapshot {
+            let Some(id) = snapshot.chat.clone() else {
+                return false;
+            };
+            let selected = self.saved_visible;
+            if selected {
+                self.select(&id);
+            }
+            let (ticket, _) = self.session.request(Command::Read {
+                chat: id,
+                before: None,
+            });
+            self.outcome(ticket, Ok(snapshot));
+            self.saved_visible = false;
+            return selected;
+        }
+        false
+    }
+    fn saved_body(&mut self) -> Node<Intent> {
+        let mut children = vec![];
+        if let Some(chat) = &self.saved.selected {
+            children.push(text(
+                "saved-title",
+                format!(
+                    "{} · {}",
+                    openagents_chat_app::retained::harness(chat.harness),
+                    chat.title
+                ),
+                TextRole::Heading,
+            ));
+            children.push(text(
+                "saved-time",
+                chat.updated_at.as_deref().unwrap_or("Time unavailable"),
+                TextRole::Status,
+            ));
+            if self.rows_dirty {
+                self.transcript_rows = self.saved.reader.project();
+                let (width, height) = self.transcript_size;
+                if width > 0.0 && height > 0.0 {
+                    let _ = self
+                        .transcript
+                        .update(self.transcript_rows.clone(), width, height);
+                }
+                self.rows_dirty = false;
+            }
+            children.push(Node {
+                key: "chat-transcript".into(),
+                style: Style::default(),
+                element: Element::Surface {
+                    label: "Saved session transcript · read-only".into(),
+                    resource: TRANSCRIPT.into(),
+                },
+            });
+            if self.saved.previous.is_some() {
+                children.push(button(
+                    "saved-earlier",
+                    "Load earlier",
+                    Action::SavedEarlier,
+                    !self.saved.busy(),
+                ));
+            }
+        } else {
+            children.push(text(
+                "saved-heading",
+                "Codex and Claude Code",
+                TextRole::Heading,
+            ));
+            children.push(text(
+                "saved-description",
+                "Saved on this computer · read-only",
+                TextRole::Status,
+            ));
+            for chat in &self.saved.chats {
+                children.push(button(
+                    &format!("saved-{}", chat.id),
+                    &format!(
+                        "{} · {}\n{}{}",
+                        openagents_chat_app::retained::harness(chat.harness),
+                        chat.title,
+                        chat.updated_at.as_deref().unwrap_or("Time unavailable"),
+                        if chat.archived { " · Archived" } else { "" }
+                    ),
+                    Action::SavedSelect {
+                        id: chat.id.clone(),
+                    },
+                    chat.source_id.is_some() && !self.saved.busy(),
+                ));
+            }
+            if self.saved.chats.is_empty() && !self.saved.busy() {
+                children.push(text(
+                    "saved-empty",
+                    "No saved Codex or Claude Code sessions were found.",
+                    TextRole::Status,
+                ));
+            }
+        }
+        if self.saved.busy() {
+            children.push(text(
+                "saved-loading",
+                "Reading saved session…",
+                TextRole::Status,
+            ));
+        }
+        if let Some(error) = &self.saved.error {
+            children.push(text("saved-error", error, TextRole::Status));
+            if self.saved.can_retry() {
+                children.push(button(
+                    "saved-retry",
+                    "Retry",
+                    Action::SavedRetry,
+                    !self.saved.busy(),
+                ));
+            }
+        }
+        stack("saved-body", Axis::Vertical, children)
+    }
+    fn saved_footer(&self) -> Node<Intent> {
+        let busy = self.saved.busy();
+        if self.saved.selected.is_some() {
+            return stack(
+                "saved-footer",
+                Axis::Vertical,
+                vec![
+                    text(
+                        "saved-context-hint",
+                        self.saved_project.as_ref().map_or(
+                            "Choose a project in Settings to continue.",
+                            |_| "Continue with recent loaded context · up to 16 KiB",
+                        ),
+                        TextRole::Status,
+                    ),
+                    stack(
+                        "saved-actions",
+                        Axis::Wrap,
+                        vec![
+                            button(
+                                "saved-continue",
+                                &self
+                                    .saved_project
+                                    .as_ref()
+                                    .map_or("Continue with Coder".into(), |project| {
+                                        format!("Continue with Coder · {project}")
+                                    }),
+                                Action::SavedContinue,
+                                self.saved.can_continue() && self.saved_project.is_some(),
+                            ),
+                            button(
+                                "saved-refresh",
+                                "Refresh session",
+                                Action::SavedRefresh,
+                                !busy,
+                            ),
+                            button("saved-list", "Back to sessions", Action::SavedList, !busy),
+                        ],
+                    ),
+                ],
+            );
+        }
+        stack(
+            "saved-list-footer",
+            Axis::Wrap,
+            vec![
+                button("saved-refresh", "Refresh", Action::SavedRefresh, !busy),
+                button(
+                    "saved-previous",
+                    "Previous",
+                    Action::SavedPrevious,
+                    !busy && self.saved.has_previous_list(),
+                ),
+                button(
+                    "saved-more",
+                    "More sessions",
+                    Action::SavedMore,
+                    !busy && self.saved.next.is_some(),
+                ),
+            ],
+        )
+    }
     pub fn tick(&mut self, now: Instant) -> Option<Request> {
         self.transcript.poll_highlights();
+        if self.saved_visible {
+            return self
+                .saved
+                .open_more()
+                .map(|(ticket, request)| Request::Saved { ticket, request });
+        }
         let at_ms = now.saturating_duration_since(self.born).as_millis() as u64;
         self.poll_images(at_ms);
         self.search.poll_clipboard(at_ms);
@@ -541,6 +760,43 @@ impl Panel {
         view: &ValidatedView<Intent>,
         now: Instant,
     ) -> Option<Request> {
+        let saved = match &action {
+            Action::SavedSelect { id } => self.saved.select(id),
+            Action::SavedRefresh => {
+                let id = self.saved.selected.as_ref().map(|chat| chat.id.clone());
+                if let Some(id) = id {
+                    self.saved.select(&id)
+                } else {
+                    self.saved.list(false)
+                }
+            }
+            Action::SavedMore => self.saved.list(true),
+            Action::SavedPrevious => self.saved.previous_list(),
+            Action::SavedEarlier => self.saved.earlier(),
+            Action::SavedContinue => self
+                .saved
+                .continue_in(self.saved_project.as_deref().unwrap_or("")),
+            Action::SavedRetry => self.saved.retry(),
+            Action::SavedList => {
+                self.saved.selected = None;
+                self.rows_dirty = true;
+                return None;
+            }
+            _ => None,
+        };
+        if matches!(
+            action,
+            Action::SavedSelect { .. }
+                | Action::SavedRefresh
+                | Action::SavedMore
+                | Action::SavedPrevious
+                | Action::SavedEarlier
+                | Action::SavedContinue
+                | Action::SavedRetry
+        ) {
+            self.rows_dirty = true;
+            return saved.map(|(ticket, request)| Request::Saved { ticket, request });
+        }
         match &action {
             Action::Palette => {
                 self.open_commands(openagents_chat_app::commands::Kind::Palette);
@@ -577,6 +833,14 @@ impl Panel {
         }
         let id = self.session.selected.clone()?;
         match action {
+            Action::SavedSelect { .. }
+            | Action::SavedRefresh
+            | Action::SavedMore
+            | Action::SavedPrevious
+            | Action::SavedEarlier
+            | Action::SavedContinue
+            | Action::SavedRetry
+            | Action::SavedList => None,
             Action::Palette | Action::Menu | Action::DismissOverlay | Action::Command { .. } => {
                 None
             }
@@ -752,8 +1016,12 @@ impl Panel {
     fn registry(&self) -> Vec<openagents_chat_app::commands::Entry> {
         openagents_chat_app::commands::registry(
             &self.session.summaries,
-            self.session.selected.as_deref(),
-            self.busy(),
+            if self.saved_visible {
+                None
+            } else {
+                self.session.selected.as_deref()
+            },
+            !self.saved_visible && self.busy(),
         )
     }
     fn open_commands(&mut self, kind: openagents_chat_app::commands::Kind) {
@@ -877,6 +1145,18 @@ impl Panel {
         else {
             return false;
         };
+        if self.saved_visible
+            && matches!(
+                action,
+                openagents_chat_app::commands::Action::Stop
+                    | openagents_chat_app::commands::Action::Rename
+                    | openagents_chat_app::commands::Action::Pin
+                    | openagents_chat_app::commands::Action::Archive
+                    | openagents_chat_app::commands::Action::Restore
+            )
+        {
+            return false;
+        }
         self.run_command(action, view, now);
         true
     }
@@ -974,6 +1254,9 @@ impl Panel {
         Some(request)
     }
     pub fn input(&mut self, event: TextInput<'_>, now: Instant) -> FieldAction {
+        if self.saved_visible && !self.modal() && !self.search.focused {
+            return FieldAction::Unhandled;
+        }
         let at = now.duration_since(self.born).as_millis() as u64;
         if let TextInput::Key { key, .. } = &event {
             let composing =
@@ -1495,6 +1778,9 @@ impl Panel {
             panel.style.padding_end = Some(Space::Md);
             return panel;
         }
+        if self.saved_visible {
+            return self.saved_body();
+        }
         let start = self.state().map_or(0, |state| state.start);
         if self.rows_dirty {
             let task_rows = self
@@ -1590,6 +1876,9 @@ impl Panel {
                 Action::DismissOverlay,
                 true,
             );
+        }
+        if self.saved_visible {
+            return self.saved_footer();
         }
         if let Some((title, field)) = &self.rename {
             return stack(

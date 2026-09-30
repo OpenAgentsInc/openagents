@@ -127,6 +127,10 @@ pub enum Intent {
 /// A request for the shell to run.
 #[derive(Clone, PartialEq, Eq)]
 pub enum Request {
+    Saved {
+        ticket: u64,
+        request: openagents_chat_app::retained::Request,
+    },
     TaskChat {
         chat: String,
         ticket: u64,
@@ -178,6 +182,7 @@ impl std::fmt::Debug for Request {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Request::Chat { ticket, .. } => write!(f, "Chat {{ ticket: {ticket}, .. }}"),
+            Request::Saved { ticket, .. } => write!(f, "Saved {{ ticket: {ticket}, .. }}"),
             Request::TaskChat { ticket, .. } => write!(f, "TaskChat {{ ticket: {ticket}, .. }}"),
             Request::Copy { .. } => f.write_str("Copy { .. }"),
             Request::ClearClipboard { .. } => f.write_str("ClearClipboard { .. }"),
@@ -253,6 +258,12 @@ pub struct Started {
 /// A finished request.
 #[derive(Clone, PartialEq, Eq)]
 pub enum Outcome {
+    Saved {
+        ticket: u64,
+        result: Box<
+            Result<openagents_chat_app::retained::Answer, openagents_chat_app::retained::Failure>,
+        >,
+    },
     TaskChat {
         chat: String,
         ticket: u64,
@@ -301,6 +312,7 @@ impl std::fmt::Debug for Outcome {
 fn outcome_name(outcome: &Outcome) -> &'static str {
     match outcome {
         Outcome::Chat { .. } => "Chat",
+        Outcome::Saved { .. } => "Saved",
         Outcome::TaskChat { .. } => "TaskChat",
         Outcome::Refreshed(_) => "Refreshed",
         Outcome::Created { .. } => "Created",
@@ -660,7 +672,7 @@ impl Model {
     /// Applies a finished request.
     pub fn outcome(&mut self, outcome: Outcome, now: Instant) -> Vec<Request> {
         match outcome {
-            Outcome::Chat { .. } | Outcome::TaskChat { .. } => Vec::new(),
+            Outcome::Chat { .. } | Outcome::TaskChat { .. } | Outcome::Saved { .. } => Vec::new(),
             Outcome::Refreshed(Some(state)) => {
                 let state = *state;
                 self.reached = true;
@@ -861,7 +873,7 @@ mod tests {
             let mut queue: std::collections::VecDeque<Request> = requests.into();
             while let Some(request) = queue.pop_front() {
                 let outcome = match request {
-                    Request::Chat { .. } | Request::TaskChat { .. } => {
+                    Request::Chat { .. } | Request::TaskChat { .. } | Request::Saved { .. } => {
                         panic!("computer model does not dispatch chat")
                     }
                     Request::Refresh => {

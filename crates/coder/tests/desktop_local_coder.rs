@@ -421,3 +421,194 @@ async fn desktop_handoff_keeps_the_phone_prompt_project_policy_and_restart_ident
     running.shutdown().await;
     relay_task.abort();
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn saved_sessions_continue_with_context_through_the_durable_coder_broker() {
+    use openagents_chat_app::retained::{Answer, Request, Session};
+    use openagents_desktop::control::HostControl;
+    let temp = tempfile::tempdir().unwrap();
+    let (relay, relay_task, _) = relay::start().await;
+    let tasks = temp.path().join("tasks");
+    let checkout = temp.path().join("checkout");
+    std::fs::create_dir_all(&checkout).unwrap();
+    drop(coder::task::Store::open(&tasks).unwrap());
+    let projects = BTreeMap::from([("checkout".into(), checkout)]);
+    let inbox = Arc::new(coder::task::remote::Inbox::new(&tasks, projects.clone()));
+    let socket = temp.path().join("c/control.sock");
+    let mut config = Config::new(temp.path().join("access"), vec![relay], 1);
+    config.policy = RelayPolicy::LoopbackTest;
+    config.keys = Some(Keys(Arc::new(FileKeySource::new(temp.path().join("keys")))));
+    config.workspaces = projects;
+    config.control = Some(Control {
+        path: socket.clone(),
+        root: temp.path().join("host"),
+        autostart: None,
+        uid: coder_host::control::own_uid(),
+    });
+    config.chats = Some(coder_host::tailnet::Chats {
+        observer: temp.path().join("observer"),
+        sources: coder_history::Config {
+            coder: Some(tasks.clone()),
+            ..Default::default()
+        },
+    });
+    let codex = temp.path().join("codex");
+    let claude = temp.path().join("claude");
+    std::fs::create_dir_all(codex.join("sessions")).unwrap();
+    std::fs::create_dir_all(claude.join("projects/scratch")).unwrap();
+    std::fs::write(codex.join("sessions/one.jsonl"), "{\"type\":\"session_meta\",\"payload\":{\"id\":\"one\"}}\n{\"type\":\"response_item\",\"payload\":{\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"Recent Codex context\"}]}}\n").unwrap();
+    std::fs::write(claude.join("projects/scratch/two.jsonl"), "{\"type\":\"user\",\"sessionId\":\"two\",\"customTitle\":\"Scratch Claude\",\"message\":{\"role\":\"user\",\"content\":\"Recent Claude context\"}}\n").unwrap();
+    let history_config = coder_history::Config {
+        codex: Some(codex),
+        claude: Some(claude),
+        ..Default::default()
+    };
+    let running = coder_host::start(config.clone(), inbox.clone())
+        .await
+        .unwrap();
+    let first_socket = socket.clone();
+    let first_tasks = tasks.clone();
+    let plans = tokio::task::spawn_blocking(move || {
+        let history = coder_history::History::open(history_config).unwrap();
+        let mut session = Session::default();
+        let (ticket, Request::Catalog(query)) = session.list(false).unwrap() else {
+            panic!("list")
+        };
+        session.outcome(ticket, Ok(Answer::Catalog(history.catalog(query).unwrap())));
+        assert_eq!(session.chats.len(), 2);
+        assert!(session.chats.iter().all(|chat| chat.updated_at.is_some()));
+        let mut client = SocketControl::new(first_socket);
+        let mut plans = vec![];
+        for id in session
+            .chats
+            .iter()
+            .map(|chat| chat.id.clone())
+            .collect::<Vec<_>>()
+        {
+            let (ticket, Request::Page(query)) = session.select(&id).unwrap() else {
+                panic!("read")
+            };
+            session.outcome(ticket, Ok(Answer::Page(history.transcript(query).unwrap())));
+            let (ticket, request @ Request::Continue { .. }) =
+                session.continue_in("checkout").unwrap()
+            else {
+                panic!("continue")
+            };
+            let Request::Continue {
+                request: operation,
+                chat,
+                task,
+            } = &request
+            else {
+                unreachable!()
+            };
+            let snapshot = client
+                .import_task(operation.clone(), chat.clone(), task.clone())
+                .unwrap();
+            let binding = snapshot.coder.clone().unwrap();
+            let stored = coder::task::Store::open(&first_tasks)
+                .unwrap()
+                .show(&binding.task)
+                .unwrap();
+            assert_eq!(stored.intent.prompt, task.prompt);
+            assert_eq!(
+                stored.status,
+                coder::task::Status::Queued,
+                "the existing auto-start policy remains authoritative"
+            );
+            assert!(
+                stored.intent.prompt.contains("Recent Codex context")
+                    || stored.intent.prompt.contains("Recent Claude context")
+            );
+            // Drop the first durable acknowledgment, then replay the exact request.
+            session.outcome(ticket, Err("Lost acknowledgment".into()));
+            let (retry, same) = session.retry().unwrap();
+            assert_eq!(same, request);
+            let retried = client
+                .import_task(operation.clone(), chat.clone(), task.clone())
+                .unwrap();
+            assert_eq!(retried.coder, snapshot.coder);
+            assert!(
+                session
+                    .outcome(retry, Ok(Answer::Continued(retried)))
+                    .is_some()
+            );
+            let mut changed = task.clone();
+            changed.prompt.push_str(" changed");
+            assert!(
+                client
+                    .import_task(operation.clone(), chat.clone(), changed)
+                    .is_err()
+            );
+            plans.push((operation.clone(), chat.clone(), task.clone(), binding.task));
+        }
+        assert_eq!(
+            coder::task::Store::open(&first_tasks)
+                .unwrap()
+                .list()
+                .unwrap()
+                .len(),
+            2
+        );
+        let coder_connect::protocol::Observation::Catalog(page) = client
+            .task_history(coder_connect::protocol::Query::Catalog(
+                coder_history::CatalogRequest::default(),
+            ))
+            .unwrap()
+        else {
+            panic!("observer")
+        };
+        assert!(
+            page.entries
+                .iter()
+                .all(|chat| chat.harness == coder_history::Harness::Coder)
+        );
+        plans
+    })
+    .await
+    .unwrap();
+    running.shutdown().await;
+    let restarted = coder_host::start(config, inbox).await.unwrap();
+    tokio::task::spawn_blocking(move || {
+        let mut client = SocketControl::new(socket);
+        for (index, (request, chat, task, native)) in plans.into_iter().enumerate() {
+            let snapshot = client.import_task(request, chat, task).unwrap();
+            assert_eq!(snapshot.coder.unwrap().task, native);
+            let revision = coder::task::Store::open(&tasks)
+                .unwrap()
+                .show(&native)
+                .unwrap()
+                .revision;
+            client
+                .task_operation(
+                    &format!("{:064x}", index + 0x200),
+                    Operation::CancelTask {
+                        task: native.clone(),
+                        revision,
+                        reason: "Scratch continuation verification finished".into(),
+                    },
+                )
+                .unwrap();
+            client
+                .task_operation(
+                    &format!("{:064x}", index + 0x100),
+                    Operation::ArchiveTask { task: native },
+                )
+                .unwrap();
+        }
+        let archived = coder::task::archive::archived(&tasks);
+        assert_eq!(archived.len(), 2);
+        assert!(
+            coder::task::Store::open(&tasks)
+                .unwrap()
+                .list()
+                .unwrap()
+                .iter()
+                .all(|task| archived.contains(&task.task_id))
+        );
+    })
+    .await
+    .unwrap();
+    restarted.shutdown().await;
+    relay_task.abort();
+}

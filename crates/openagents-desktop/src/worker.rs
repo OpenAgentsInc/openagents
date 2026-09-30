@@ -60,10 +60,18 @@ struct LocalLane {
     fake: bool,
     coder: Option<PathBuf>,
     home: PathBuf,
+    saved_config: Option<coder_history::Config>,
+    saved_history: Option<Result<coder_history::History, String>>,
 }
 
 /// Whether `request` runs on the local lane.
 fn local(request: &Request) -> bool {
+    if let Request::Saved { request, .. } = request {
+        return !matches!(
+            request,
+            openagents_chat_app::retained::Request::Continue { .. }
+        );
+    }
     matches!(
         request,
         Request::Start
@@ -92,6 +100,8 @@ impl Context {
                 fake: fake.is_some(),
                 coder,
                 home,
+                saved_config: None,
+                saved_history: None,
             },
             host: HostLane {
                 control,
@@ -100,6 +110,13 @@ impl Context {
                 first_code: None,
             },
         }
+    }
+
+    /// Select explicit history roots for an isolated fixture or host adapter.
+    #[cfg(test)]
+    pub fn with_saved_history(mut self, config: coder_history::Config) -> Self {
+        self.local.saved_config = Some(config);
+        self
     }
 
     /// Runs one request.
@@ -113,8 +130,88 @@ impl Context {
 }
 
 impl LocalLane {
+    fn saved(
+        &mut self,
+        request: openagents_chat_app::retained::Request,
+    ) -> Result<openagents_chat_app::retained::Answer, String> {
+        use openagents_chat_app::retained::{Answer, Request};
+        if self.fake && self.saved_config.is_none() && self.saved_history.is_none() {
+            return match request {
+                Request::Catalog(_) => Ok(Answer::Catalog(coder_history::CatalogPage {
+                    snapshot: "fixture".into(),
+                    entries: vec![],
+                    next: None,
+                    notices: vec![],
+                })),
+                _ => Err("No saved session is selected in this offline fixture.".into()),
+            };
+        }
+        if self.saved_history.as_ref().is_none_or(Result::is_err) {
+            #[cfg(test)]
+            assert_ne!(
+                Some(self.home.as_os_str()),
+                std::env::var_os("HOME").as_deref(),
+                "saved-session tests must use an explicit temporary home"
+            );
+            let config = self
+                .saved_config
+                .clone()
+                .unwrap_or_else(|| coder_history::Config {
+                    codex: self
+                        .home
+                        .join(".codex")
+                        .is_dir()
+                        .then(|| self.home.join(".codex")),
+                    claude: self
+                        .home
+                        .join(".claude")
+                        .is_dir()
+                        .then(|| self.home.join(".claude")),
+                    ..coder_history::Config::default()
+                });
+            if config.codex.is_none() && config.claude.is_none() {
+                return match request {
+                    Request::Catalog(_) => Ok(Answer::Catalog(coder_history::CatalogPage {
+                        snapshot: "empty".into(),
+                        entries: vec![],
+                        next: None,
+                        notices: vec![],
+                    })),
+                    _ => Err("The saved-session source is unavailable.".into()),
+                };
+            }
+            self.saved_history = Some(
+                coder_history::History::open(config)
+                    .map_err(|error| format!("Saved sessions could not be opened: {error:?}")),
+            );
+        }
+        let history = self
+            .saved_history
+            .as_ref()
+            .unwrap()
+            .as_ref()
+            .map_err(Clone::clone)?;
+        match request {
+            Request::Catalog(query) => history.catalog(query).map(Answer::Catalog),
+            Request::Page(query) => history.transcript(query).map(Answer::Page),
+            Request::Continue { .. } => unreachable!("continuation runs on the admitted host lane"),
+        }
+        .map_err(|error| {
+            format!("The saved-session read failed: {error:?}. Refresh the session if it changed.")
+        })
+    }
+
     fn run(&mut self, request: Request) -> Option<Outcome> {
         match request {
+            Request::Saved { ticket, request } => Some(Outcome::Saved {
+                ticket,
+                result: Box::new(self.saved(request).map_err(|message| {
+                    openagents_chat_app::retained::Failure {
+                        message,
+                        uncertain: false,
+                    }
+                })),
+            }),
             Request::Copy { code } => platform::copy(&code).then_some(Outcome::Copied),
             Request::ClearClipboard { code } => {
                 platform::clear_if(&code);
@@ -161,6 +258,24 @@ impl LocalLane {
 impl HostLane {
     fn run(&mut self, request: Request) -> Option<Outcome> {
         match request {
+            Request::Saved {
+                ticket,
+                request:
+                    openagents_chat_app::retained::Request::Continue {
+                        request,
+                        chat,
+                        task,
+                    },
+            } => Some(Outcome::Saved {
+                ticket,
+                result: Box::new(
+                    self.control
+                        .import_task(request, chat, task)
+                        .map(openagents_chat_app::retained::Answer::Continued)
+                        .map_err(|error| openagents_chat_app::retained::Failure { uncertain: !matches!(&error, ControlError::Refused { code, .. } if code != "unavailable"), message: error.to_string() }),
+                ),
+            }),
+            Request::Saved { .. } => unreachable!("saved-session reads run on the local lane"),
             Request::TaskChat {
                 chat,
                 ticket,

@@ -7207,6 +7207,7 @@ dependencies = [
  "base64 0.22.1",
  "coder-access",
  "coder-connect",
+ "coder-history",
  "core-foundation 0.9.4",
  "libc",
  "nostr",

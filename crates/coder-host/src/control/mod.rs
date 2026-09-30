@@ -219,6 +219,14 @@ async fn connection<S: AsyncRead + AsyncWrite + Unpin>(shared: Arc<Shared>, mut 
 
 async fn handle(shared: &Arc<Shared>, request: Request) -> Response {
     let Request { id, op, .. } = request;
+    if let Op::ImportTask {
+        request,
+        chat,
+        task,
+    } = op
+    {
+        return Response::new(id, tasks::import(shared.clone(), request, chat, task).await);
+    }
     if let Op::Task { request, operation } = op {
         return Response::new(id, tasks::call(shared.clone(), request, operation).await);
     }
@@ -275,7 +283,9 @@ fn host_refused(error: &Error) -> Reply {
 fn answer(shared: &Shared, op: Op) -> Reply {
     match op {
         Op::Chat { command } => chat(shared, command),
-        Op::Task { .. } => refused("unavailable", "task broker requires its own lane"),
+        Op::Task { .. } | Op::ImportTask { .. } => {
+            refused("unavailable", "task broker requires its own lane")
+        }
         Op::TaskHistory { query } => tasks::history(shared, query),
         Op::Status {} => status(shared),
         Op::InviteCreate {} => invite(shared),

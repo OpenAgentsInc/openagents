@@ -15,6 +15,153 @@ struct Handoff {
     task: coder_access::protocol::TaskCreate,
 }
 
+#[derive(Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+struct Import {
+    request: String,
+    task: coder_access::protocol::TaskCreate,
+}
+
+pub(super) async fn import(
+    shared: Arc<Shared>,
+    request: String,
+    chat: String,
+    task: coder_access::protocol::TaskCreate,
+) -> Reply {
+    let _serial = shared.local_handoffs.lock().await;
+    if chat.len() != 32
+        || !chat
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+        || request.len() != 64
+        || !request
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+        || (Operation::CreateTask { task: task.clone() })
+            .validate()
+            .is_err()
+    {
+        return super::refused("malformed", "Invalid continuation task");
+    }
+    let plan = Import {
+        request: request.clone(),
+        task: task.clone(),
+    };
+    let worker = shared.clone();
+    let id = chat.clone();
+    let prepared = tokio::task::spawn_blocking(move || {
+        let control = worker
+            .config
+            .control
+            .as_ref()
+            .ok_or("Local conversation storage is unavailable")?;
+        let cache =
+            openagents_chat::cache::Cache::open(&control.root.join("imports"), &worker.secret)?;
+        let old: Option<Import> = cache.read(&id)?;
+        let existing = super::chat(
+            &worker,
+            openagents_chat::service::Command::Read {
+                chat: id.clone(),
+                before: None,
+            },
+        );
+        if let Some(old) = old {
+            if old != plan {
+                return Err("This continuation ID is already bound to another request".into());
+            }
+        } else {
+            if matches!(existing, Reply::Chat { .. }) {
+                return Err("Choose a fresh conversation for this continuation".into());
+            }
+            // Persist exact retry bytes before creating the conversation or task.
+            cache.write(&id, &plan)?;
+        }
+        let Reply::Chat { snapshot } = super::chat(
+            &worker,
+            openagents_chat::service::Command::Create { chat: id.clone() },
+        ) else {
+            return Err("The continuation conversation could not be saved".into());
+        };
+        if snapshot.storage_error.is_some() {
+            return Err("The continuation conversation could not be saved".into());
+        }
+        if !matches!(existing, Reply::Chat { .. }) {
+            let Reply::Chat { snapshot } = super::chat(
+                &worker,
+                openagents_chat::service::Command::Rename {
+                    chat: id,
+                    title: plan.task.title.clone(),
+                },
+            ) else {
+                return Err("The continuation title could not be saved".into());
+            };
+            if snapshot.storage_error.is_some() {
+                return Err("The continuation title could not be saved".into());
+            }
+        }
+        Ok::<_, String>(())
+    })
+    .await;
+    match prepared {
+        Ok(Ok(())) => {}
+        Ok(Err(error)) => return super::refused("unavailable", error),
+        Err(_) => return super::refused("unavailable", "Coder could not prepare the continuation"),
+    }
+    let result = call(
+        shared.clone(),
+        request,
+        Operation::CreateTask { task: task.clone() },
+    )
+    .await;
+    let Reply::Task {
+        outcome: coder_access::protocol::Outcome::Dispatched { receipt },
+    } = result
+    else {
+        return result;
+    };
+    let worker = shared.clone();
+    tokio::task::spawn_blocking(move || {
+        {
+            let mut state = worker
+                .chats
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let Some(chats) = state.as_mut() else {
+                return super::refused(
+                    "unavailable",
+                    "Coder accepted the task; refresh this conversation",
+                );
+            };
+            if let Some(binding) = chats.get(&chat).and_then(|summary| summary.coder.as_ref()) {
+                if binding.host != worker.host_key
+                    || binding.task != receipt.reference
+                    || binding.project.as_deref() != Some(&task.workspace)
+                {
+                    return super::refused("chat", "This conversation is bound to another task");
+                }
+            } else {
+                chats.spawned_in(
+                    &chat,
+                    &worker.host_key,
+                    &receipt.reference,
+                    Some(&task.workspace),
+                    crate::unix_time().unwrap_or_default(),
+                );
+            }
+        }
+        super::chat(
+            &worker,
+            openagents_chat::service::Command::Read { chat, before: None },
+        )
+    })
+    .await
+    .unwrap_or_else(|_| {
+        super::refused(
+            "unavailable",
+            "Coder accepted the task; refresh this conversation",
+        )
+    })
+}
+
 pub(super) async fn handoff(shared: Arc<Shared>, chat: String) -> Reply {
     let _serial = shared.local_handoffs.lock().await;
     let worker = shared.clone();

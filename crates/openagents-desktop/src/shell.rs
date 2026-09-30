@@ -194,6 +194,10 @@ impl DesktopApp {
 
     fn present(&mut self) {
         if let (Some(chat), Some(state)) = (&mut self.chat, &mut self.navigation) {
+            chat.show_saved(
+                state.page == Page::Saved,
+                self.model.project().map(|project| project.label.clone()),
+            );
             chat.sync_sidebar(state);
         }
         let mut root = self.navigation.as_ref().map_or_else(
@@ -204,7 +208,7 @@ impl DesktopApp {
             && (self
                 .navigation
                 .as_ref()
-                .is_some_and(|state| matches!(state.page, Page::Chat(_)))
+                .is_some_and(|state| matches!(state.page, Page::Chat(_) | Page::Saved))
                 || self.chat.as_ref().is_some_and(|chat| chat.modal()))
             && let Some(chat) = &mut self.chat
             && let rust_native::Element::Stack { children, .. } = &mut root.element
@@ -276,7 +280,16 @@ impl DesktopApp {
                 Runner::Background(worker) => worker.send(request),
                 Runner::Inline(context) => {
                     if let Some(outcome) = context.run(request) {
-                        if let Outcome::TaskChat {
+                        if let Outcome::Saved { ticket, result } = outcome {
+                            if self
+                                .chat
+                                .as_mut()
+                                .is_some_and(|panel| panel.saved_outcome(ticket, *result))
+                                && let Some(state) = &mut self.navigation
+                            {
+                                state.page = Page::Chat(0);
+                            }
+                        } else if let Outcome::TaskChat {
                             chat,
                             ticket,
                             result,
@@ -301,6 +314,17 @@ impl DesktopApp {
 
     fn apply(&mut self, outcomes: Vec<Outcome>, now: Instant) {
         for outcome in outcomes {
+            if let Outcome::Saved { ticket, result } = outcome {
+                if self
+                    .chat
+                    .as_mut()
+                    .is_some_and(|panel| panel.saved_outcome(ticket, *result))
+                    && let Some(state) = &mut self.navigation
+                {
+                    state.page = Page::Chat(0);
+                }
+                continue;
+            }
             if let Outcome::TaskChat {
                 chat,
                 ticket,
@@ -497,6 +521,23 @@ impl App for DesktopApp {
             return;
         }
         if let Intent::Navigate { action } = intent {
+            if action == chrome::Action::Saved {
+                if let Some(state) = &mut self.navigation {
+                    state.activate(action);
+                }
+                if let Some(chat) = &mut self.chat {
+                    chat.show_saved(
+                        true,
+                        self.model.project().map(|project| project.label.clone()),
+                    );
+                    if let Some(request) = chat.read_saved() {
+                        self.send(vec![request], now);
+                    }
+                }
+                self.present();
+                return;
+            }
+
             if matches!(
                 action,
                 chrome::Action::Grid | chrome::Action::Computers | chrome::Action::Settings
@@ -2512,6 +2553,122 @@ mod task_fixtures {
                     .unwrap();
                 }
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod saved_fixtures {
+    use super::*;
+    use openagents_desktop::{
+        chat_action::Action as ChatAction,
+        control::HostControl,
+        fake::FakeHost,
+        model::{Agent, Screen},
+    };
+    use rust_native_desktop::input::TextInput;
+    #[test]
+    fn both_saved_harnesses_open_read_only_without_changing_an_unsent_draft() {
+        let temp = tempfile::tempdir().unwrap();
+        let codex = temp.path().join("codex");
+        let claude = temp.path().join("claude");
+        std::fs::create_dir_all(codex.join("sessions")).unwrap();
+        std::fs::create_dir_all(claude.join("projects/scratch")).unwrap();
+        std::fs::write(codex.join("session_index.jsonl"), "{\"id\":\"one\",\"thread_name\":\"Scratch Codex\",\"updated_at\":\"2026-09-30T12:00:00Z\"}\n").unwrap();
+        std::fs::write(codex.join("sessions/rollout-one.jsonl"), "{\"type\":\"session_meta\",\"payload\":{\"id\":\"one\"}}\n{\"type\":\"response_item\",\"payload\":{\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"Codex fixture reply with **bold** and `code`.\"}]}}\n").unwrap();
+        std::fs::write(claude.join("projects/scratch/two.jsonl"), "{\"type\":\"summary\",\"summary\":\"Scratch Claude\"}\n{\"type\":\"user\",\"sessionId\":\"two\",\"timestamp\":\"2026-09-30T12:01:00Z\",\"message\":{\"role\":\"user\",\"content\":\"Claude fixture request\"}}\n{\"type\":\"assistant\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"Claude fixture reply\"}]}}\n").unwrap();
+        let originals = [
+            codex.join("sessions/rollout-one.jsonl"),
+            claude.join("projects/scratch/two.jsonl"),
+        ]
+        .map(|path| (path.clone(), std::fs::read(path).unwrap()));
+        let mut fake = FakeHost::new("Scratch computer", unix_now());
+        fake.add_project("/synthetic/checkout").unwrap();
+        let context = Context::new(
+            Box::new(fake.clone()),
+            Some(fake),
+            None,
+            None,
+            temp.path().to_path_buf(),
+        )
+        .with_saved_history(coder_history::Config {
+            codex: Some(codex),
+            claude: Some(claude),
+            ..Default::default()
+        });
+        let now = Instant::now();
+        let mut app =
+            DesktopApp::inline_chat(Model::new(now, Screen::Connect, Agent::Enabled), context);
+        app.activate(
+            Intent::Navigate {
+                action: chrome::Action::NewChat,
+            },
+            now,
+        );
+        app.text_input(TextInput::Commit("Keep this draft  "), now);
+        app.send(vec![Request::Refresh], now);
+        app.activate(
+            Intent::Navigate {
+                action: chrome::Action::Saved,
+            },
+            now,
+        );
+        let words = openagents_desktop::screens::words(&app.view().view().root);
+        assert!(words.iter().any(|word| word.contains("Scratch Codex")));
+        assert!(words.iter().any(|word| word.contains("Claude Code")));
+        assert!(words.iter().any(|word| word.contains("2026-09-30")));
+        let hits = rust_native_desktop::capture(&mut app, 1200.0, 840.0, 2.0)
+            .1
+            .hits;
+        let ids: Vec<_> = hits
+            .iter()
+            .filter_map(|hit| {
+                hit.key
+                    .strip_prefix("saved-")
+                    .filter(|suffix| suffix.len() == 64)
+            })
+            .map(str::to_owned)
+            .collect();
+        assert_eq!(ids.len(), 2);
+        for (index, id) in ids.into_iter().enumerate() {
+            app.activate(
+                Intent::Chat {
+                    action: ChatAction::SavedSelect { id },
+                },
+                now,
+            );
+            for (width, height, scale) in [(1200.0, 840.0, 2.0), (760.0, 540.0, 1.0)] {
+                app.viewport(width, height, scale);
+                let (frame, scene) = rust_native_desktop::capture(&mut app, width, height, scale);
+                assert!(scene.unsupported.is_empty());
+                assert!(!scene.bounds.contains_key("chat-composer"));
+                let continued = scene
+                    .hits
+                    .iter()
+                    .find(|hit| hit.key == "saved-continue")
+                    .unwrap();
+                assert!(continued.enabled && continued.rect.y + continued.rect.h <= height);
+                if let Some(path) = std::env::var_os("OPENAGENTS_SAVED_CAPTURE_DIR") {
+                    let path = std::path::PathBuf::from(path);
+                    std::fs::create_dir_all(&path).unwrap();
+                    std::fs::write(
+                        path.join(format!("session-{index}-{width}.png")),
+                        frame.png().unwrap(),
+                    )
+                    .unwrap();
+                }
+            }
+            assert!(!app.text_input(TextInput::Commit("Cannot edit saved history"), now));
+            assert_eq!(app.chat.as_ref().unwrap().draft(), "Keep this draft  ");
+            app.activate(
+                Intent::Chat {
+                    action: ChatAction::SavedList,
+                },
+                now,
+            );
+        }
+        for (path, bytes) in originals {
+            assert_eq!(std::fs::read(path).unwrap(), bytes);
         }
     }
 }

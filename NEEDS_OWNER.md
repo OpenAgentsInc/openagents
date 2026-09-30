@@ -45,3 +45,15 @@ cover all three task modes at normal and minimum window sizes.
 Archive every verification task afterward. The scratch same-user socket,
 portable client, durable inbox, restart, history, admission, and cancellation
 checks pass without accessing the owner’s computer state.
+
+## Installed saved sessions (#10017)
+
+After installing a desktop and resident Coder built from current `main`, open
+**Saved sessions** and inspect a known Codex session and Claude Code session.
+Confirm their titles and times against the original tools. Choose a configured
+project and continue one with the engine signed in and the existing auto-start
+policy enabled. Confirm that its recent context reaches Coder, tool steps
+appear, and the original saved session remains unchanged. Stop and archive
+every verification task afterward. Scratch tests cover both source formats,
+the native reader, real broker admission, exact prompt bytes, acknowledgment
+retries, restart identity, cancellation, and archive without owner state.

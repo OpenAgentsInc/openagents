@@ -73,6 +73,13 @@ impl Request {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Op {
+    /// Create a Coder task from explicitly selected retained context and keep
+    /// its conversation binding. This grants no new execution authority.
+    ImportTask {
+        request: String,
+        chat: String,
+        task: coder_access::protocol::TaskCreate,
+    },
     /// Same-user broker for a typed NIP-HOST task operation. The host signs;
     /// the caller supplies a stable 64-character hexadecimal identity.
     Task {

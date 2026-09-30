@@ -3,6 +3,14 @@ use serde::Serialize;
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(tag = "action", rename_all = "snake_case")]
 pub enum Action {
+    SavedSelect { id: String },
+    SavedRefresh,
+    SavedMore,
+    SavedPrevious,
+    SavedEarlier,
+    SavedContinue,
+    SavedRetry,
+    SavedList,
     Card { key: String },
     Palette,
     Menu,

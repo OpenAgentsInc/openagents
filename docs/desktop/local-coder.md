@@ -63,3 +63,38 @@ exact command ID and bytes for retry. A verified refusal preserves the draft
 for editing. An acknowledgment clears only the editing state that submitted
 those bytes; newer edits remain. Task revision changes also invalidate a
 pressed transcript button before release.
+
+## Saved Codex and Claude Code sessions
+
+**Saved sessions** reads this computer's `.codex` and `.claude` directories
+through `coder-history`. The desktop worker opens the configured local roots
+only when you request the list. Catalog pages show each session's title,
+harness, and saved time. Transcript pages use the shared phone conversation
+parser and Rust Native transcript surface. The original files remain read-only.
+An unavailable source stays visible with its status and cannot be opened.
+
+The shared `openagents_chat_app::retained` reader bounds catalogs to 32 entries,
+transcript pages to 32 KiB, projected content to 240 rows and 160 KiB, and its
+chunk buffer to 384 KiB. Source identity, incarnation, record IDs, and byte
+boundaries must match before a page changes the displayed rows. Earlier pages
+extend the reader without replacing the newest context used for continuation.
+
+**Continue with Coder** submits the newest loaded context, bounded to 16 KiB,
+to the selected project. The UI and prompt disclose that earlier records may
+be omitted. This creates an ordinary Coder task through the same local broker
+and admission used by **Run Coder**. It does not resume either tool's harness.
+The host's existing auto-start policy decides whether the task starts.
+
+The shared application prepares stable conversation and request IDs. The host
+saves the exact continuation plan in its encrypted control cache before
+creating a conversation or dispatching a task. A lost acknowledgment retries
+that plan and binds the original receipt across restarts. Changing the plan
+under its ID is refused. The resulting conversation opens the existing Coder
+task chat. Opening a retained session leaves an unsent ordinary chat draft
+unchanged. A late continuation response does not replace a chat selected
+while the request was pending.
+
+These local file reads do not extend phone observer authority. The existing
+NIP history connection continues to expose only Coder sources. The portable
+reader and continuation factory compile in the phone's Rust library; native
+phone mounting remains part of #10028.
