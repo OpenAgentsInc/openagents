@@ -364,6 +364,13 @@ impl DesktopApp {
             };
             self.activate(Intent::Navigate { action }, now);
         }
+        if let Some(action) = self
+            .chat
+            .as_mut()
+            .and_then(|chat| chat.take_desktop_navigation())
+        {
+            self.activate(Intent::Navigate { action }, now);
+        }
         self.present();
     }
 
@@ -492,7 +499,9 @@ impl App for DesktopApp {
             text: openagents_chat_app::visual::TEXT,
             muted: openagents_chat_app::visual::MUTED,
             rule: openagents_chat_app::visual::BORDER,
-            focus: Color::rgb(184, 207, 231),
+            focus: openagents_chat_app::visual::ACCENT,
+            button: openagents_chat_app::visual::SELECTED,
+            button_text: openagents_chat_app::visual::TEXT,
             button_radius: 7.0,
             icon_size: 28.0,
             body: size.scale(14.0),
@@ -698,6 +707,13 @@ impl App for DesktopApp {
                 state.page = Page::Chat(0);
             }
             self.send(requests, now);
+            if let Some(action) = self
+                .chat
+                .as_mut()
+                .and_then(|chat| chat.take_desktop_navigation())
+            {
+                self.activate(Intent::Navigate { action }, now);
+            }
             if let Some(screen) = self.chat.as_mut().and_then(|chat| chat.take_navigation()) {
                 use openagents_chat::router::Screen;
                 let action = match screen {
@@ -774,6 +790,14 @@ impl App for DesktopApp {
             }
             if let Some(request) = chat_request {
                 self.send(vec![request], now);
+            }
+            if self
+                .navigation
+                .as_ref()
+                .is_some_and(|state| matches!(state.page, Page::Chat(_)))
+                && let Some(chat) = &mut self.chat
+            {
+                chat.focus_composer();
             }
             self.present();
             return;
@@ -3014,6 +3038,127 @@ mod command_fixtures {
     use super::*;
     use openagents_desktop::chat_action::Action as ChatAction;
     use rust_native_desktop::{App, input::TextInput};
+    #[test]
+    fn profile_footer_matches_source_geometry_and_preserves_navigation() {
+        use rust_native::layout::display::Weight;
+        use rust_native_desktop::layout::Op;
+        for (width, height) in [(1200.0, 840.0), (760.0, 540.0)] {
+            for scale in [1.0, 2.0] {
+                let (mut app, now) = super::tests::chat_fixture(0);
+                key(&mut app, now, "n", true, false);
+                app.text_input(TextInput::Commit("Keep this draft  "), now);
+                let (_, closed) = rust_native_desktop::capture(&mut app, width, height, scale);
+                let footer = closed.bounds["sidebar-footer"];
+                let profile = closed.bounds["sidebar-profile"];
+                let settings = closed.bounds["sidebar-settings"];
+                assert_eq!(profile.h, 28.0);
+                assert!(profile.w < 100.0);
+                assert_eq!(settings.w, 28.0);
+                assert_eq!(settings.h, 28.0);
+                assert!((settings.x + settings.w - footer.x - footer.w).abs() < 0.5);
+                assert!(
+                    closed
+                        .ops
+                        .iter()
+                        .any(|op| matches!(op, Op::Text { paragraph, .. }
+                    if paragraph.font.weight == Weight::Medium && paragraph.font.size == 13.0))
+                );
+                assert!(closed.ops.iter().any(|op| matches!(op, Op::Text { paragraph, .. }
+                    if paragraph.font.weight == Weight::Semibold && paragraph.font.size == 10.0 && paragraph.font.mono)));
+                for key in ["computers", "grid", "saved", "commands"] {
+                    app.activate(
+                        Intent::Chat {
+                            action: ChatAction::Profile,
+                        },
+                        now,
+                    );
+                    let (frame, opened) =
+                        rust_native_desktop::capture(&mut app, width, height, scale);
+                    let menu = opened.bounds["command-panel"];
+                    assert_eq!(
+                        menu.w,
+                        app.navigation.as_ref().unwrap().sidebar_width - 16.0
+                    );
+                    assert!((menu.x - footer.x).abs() < 0.5);
+                    assert!(menu.y + menu.h <= footer.y - 7.5);
+                    assert!(!opened.bounds.contains_key("command-search-header"));
+                    for action in ["computers", "grid", "saved", "commands"] {
+                        let hit = opened
+                            .hits
+                            .iter()
+                            .find(|hit| hit.key == format!("command-{action}"))
+                            .unwrap();
+                        assert!(hit.enabled);
+                        assert_eq!(hit.rect.h, 32.0);
+                    }
+                    if key == "computers"
+                        && let Some(path) = std::env::var_os("OPENAGENTS_PROFILE_EVIDENCE")
+                    {
+                        let path = std::path::PathBuf::from(path);
+                        std::fs::create_dir_all(&path).unwrap();
+                        std::fs::write(
+                            path.join(format!("profile-{width}x{height}-{scale}x.png")),
+                            frame.png().unwrap(),
+                        )
+                        .unwrap();
+                    }
+                    app.activate(
+                        Intent::Chat {
+                            action: ChatAction::Command { key: key.into() },
+                        },
+                        now,
+                    );
+                    app.chat_effects(now);
+                    match key {
+                        "computers" => {
+                            assert_eq!(app.navigation.as_ref().unwrap().page, Page::Computers)
+                        }
+                        "grid" => assert_eq!(app.navigation.as_ref().unwrap().page, Page::Grid),
+                        "saved" => assert_eq!(app.navigation.as_ref().unwrap().page, Page::Saved),
+                        "commands" => {
+                            assert!(app.chat.as_ref().unwrap().modal());
+                            key_escape(&mut app, now);
+                        }
+                        _ => unreachable!(),
+                    }
+                    assert_eq!(app.chat.as_ref().unwrap().draft(), "Keep this draft  ");
+                }
+                app.activate(
+                    Intent::Chat {
+                        action: ChatAction::Profile,
+                    },
+                    now,
+                );
+                assert!(app.chat.as_ref().unwrap().modal());
+                app.activate(
+                    Intent::Chat {
+                        action: ChatAction::Profile,
+                    },
+                    now,
+                );
+                assert!(!app.chat.as_ref().unwrap().modal());
+                app.activate(
+                    Intent::Navigate {
+                        action: chrome::Action::Settings,
+                    },
+                    now,
+                );
+                assert_eq!(app.navigation.as_ref().unwrap().page, Page::Settings);
+                app.activate(
+                    Intent::Navigate {
+                        action: chrome::Action::Settings,
+                    },
+                    now,
+                );
+                assert_eq!(app.navigation.as_ref().unwrap().page, Page::Saved);
+                assert_eq!(app.chat.as_ref().unwrap().draft(), "Keep this draft  ");
+            }
+        }
+    }
+    fn key_escape(app: &mut DesktopApp, now: Instant) {
+        key(app, now, "Escape", false, false);
+    }
+
     #[test]
     fn palette_history_matches_sidebar_typography_and_keeps_its_action() {
         let (mut app, now) = super::tests::chat_fixture(0);

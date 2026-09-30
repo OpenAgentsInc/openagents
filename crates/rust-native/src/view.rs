@@ -399,6 +399,12 @@ impl<I: Serialize> View<I> {
                     .line_height
                     .is_some_and(|value| !(1..=800).contains(&value))
                 || node.style.min_height.is_some_and(|value| value > 4096)
+                || node.style.button_avatar.is_some_and(|avatar| {
+                    !(1..=128).contains(&avatar.size)
+                        || !(1..=128).contains(&avatar.text_size)
+                        || avatar.initial.is_control()
+                        || avatar.initial.is_whitespace()
+                })
                 || node.style.button_detail.is_some_and(|detail| {
                     !(1..=400).contains(&detail.text_size)
                         || !(1..=800).contains(&detail.line_height)

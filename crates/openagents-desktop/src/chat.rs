@@ -94,6 +94,8 @@ pub struct Panel {
     rows_generation: u64,
     queued: Vec<Request>,
     navigation: Option<openagents_chat::router::Screen>,
+    desktop_navigation: Option<crate::chrome::Action>,
+    sidebar_width: f32,
     notice: Option<String>,
     waker: Option<rust_native_desktop::Waker>,
     image_input: Option<(
@@ -182,6 +184,8 @@ impl Panel {
             rows_generation: 0,
             queued: vec![],
             navigation: None,
+            desktop_navigation: None,
+            sidebar_width: crate::chrome::SIDEBAR_DEFAULT,
             notice: None,
             waker: None,
             image_input: None,
@@ -1030,6 +1034,9 @@ impl Panel {
             })
     }
     pub fn sync_sidebar(&mut self, state: &mut State) {
+        state.profile_open =
+            self.commands.kind == Some(openagents_chat_app::commands::Kind::Profile);
+        self.sidebar_width = state.sidebar_width;
         let mut next = self.ids.values().max().copied().unwrap_or(0) + 1;
         for summary in &self.session.summaries {
             if !self.ids.contains_key(&summary.id) {
@@ -1218,6 +1225,9 @@ impl Panel {
     pub fn take_requests(&mut self) -> Vec<Request> {
         std::mem::take(&mut self.queued)
     }
+    pub fn take_desktop_navigation(&mut self) -> Option<crate::chrome::Action> {
+        self.desktop_navigation.take()
+    }
     pub fn take_navigation(&mut self) -> Option<openagents_chat::router::Screen> {
         self.navigation.take()
     }
@@ -1281,6 +1291,14 @@ impl Panel {
             return saved.map(|(ticket, request)| Request::Saved { ticket, request });
         }
         match &action {
+            Action::Profile => {
+                if self.commands.kind == Some(openagents_chat_app::commands::Kind::Profile) {
+                    self.close_overlay();
+                } else {
+                    self.open_commands(openagents_chat_app::commands::Kind::Profile);
+                }
+                return None;
+            }
             Action::Palette => {
                 self.open_commands(openagents_chat_app::commands::Kind::Palette);
                 return None;
@@ -1324,9 +1342,11 @@ impl Panel {
             | Action::SavedContinue
             | Action::SavedRetry
             | Action::SavedList => None,
-            Action::Palette | Action::Menu | Action::DismissOverlay | Action::Command { .. } => {
-                None
-            }
+            Action::Palette
+            | Action::Profile
+            | Action::Menu
+            | Action::DismissOverlay
+            | Action::Command { .. } => None,
             Action::Card { key } if key == "changes-open" && self.show_changes() => {
                 self.changes_open = true;
                 self.changes_scroll = 0.0;
@@ -1520,6 +1540,11 @@ impl Panel {
     pub fn modal(&self) -> bool {
         self.commands.kind.is_some() || self.rename.is_some()
     }
+    pub fn focus_composer(&mut self) {
+        if let Some(field) = self.field() {
+            field.focused = true;
+        }
+    }
     pub fn search_focused(&self) -> bool {
         self.search.focused
     }
@@ -1527,6 +1552,9 @@ impl Panel {
         self.modal() || self.search.focused
     }
     fn registry(&self) -> Vec<openagents_chat_app::commands::Entry> {
+        if self.commands.kind == Some(openagents_chat_app::commands::Kind::Profile) {
+            return openagents_chat_app::commands::profile_registry();
+        }
         openagents_chat_app::commands::registry(
             &self.session.summaries,
             if self.saved_visible {
@@ -1576,7 +1604,10 @@ impl Panel {
     }
     pub fn hover_command(&mut self, target: Option<&str>) -> bool {
         use openagents_chat_app::commands::Kind;
-        if !matches!(self.commands.kind, Some(Kind::Palette | Kind::Menu)) {
+        if !matches!(
+            self.commands.kind,
+            Some(Kind::Palette | Kind::Menu | Kind::Profile)
+        ) {
             return false;
         }
         let Some(key) = target.and_then(|key| key.strip_prefix("command-")) else {
@@ -1586,7 +1617,7 @@ impl Panel {
             return false;
         };
         let changed = self.commands.selected != index
-            || (self.commands.kind == Some(Kind::Menu) && !self.menu_navigation);
+            || (self.commands.kind != Some(Kind::Palette) && !self.menu_navigation);
         self.commands.selected = index;
         self.menu_navigation = true;
         changed
@@ -1724,6 +1755,18 @@ impl Panel {
                     field.focused = false;
                 }
                 self.search.focused = true;
+                None
+            }
+            C::Computers => {
+                self.navigation = Some(openagents_chat::router::Screen::Computers);
+                None
+            }
+            C::Grid => {
+                self.navigation = Some(openagents_chat::router::Screen::VerseGym);
+                None
+            }
+            C::Saved => {
+                self.desktop_navigation = Some(crate::chrome::Action::Saved);
                 None
             }
             C::Settings => {
@@ -2415,16 +2458,22 @@ impl Panel {
                     Kind::Palette => 560,
                     Kind::Menu => 216,
                     Kind::ConfirmArchive => 360,
+                    Kind::Profile => (self.sidebar_width - 16.0).round() as u16,
                 },
                 placement: if *kind == Kind::Menu {
                     self.menu_point.map_or(
                         OverlayPlacement::TopRight { top: 40, right: 10 },
                         |(x, y)| OverlayPlacement::At { x, y },
                     )
+                } else if *kind == Kind::Profile {
+                    OverlayPlacement::Above {
+                        anchor: "sidebar-footer",
+                        gap: 8,
+                    }
                 } else {
                     OverlayPlacement::Center
                 },
-                scrim: (*kind != Kind::Menu).then_some(Color {
+                scrim: (!matches!(kind, Kind::Menu | Kind::Profile)).then_some(Color {
                     alpha: 89,
                     ..Color::rgb(0, 0, 0)
                 }),
@@ -2489,6 +2538,7 @@ impl Panel {
             let label = match kind {
                 openagents_chat_app::commands::Kind::Palette => "Commands",
                 openagents_chat_app::commands::Kind::Menu => "Chat menu",
+                openagents_chat_app::commands::Kind::Profile => "Local profile",
                 openagents_chat_app::commands::Kind::ConfirmArchive => "Archive this conversation?",
             };
             let mut rows = vec![];
@@ -2544,6 +2594,13 @@ impl Panel {
                     "Header separator",
                     "glyph:command-rule",
                 ));
+            }
+            if *kind == openagents_chat_app::commands::Kind::Profile {
+                let mut identity = text("profile-identity", "Local", TextRole::Status);
+                identity.style.text_size = Some(11);
+                identity.style.line_height = Some(17);
+                identity.style.padding_points = Some([10, 12, 2, 12]);
+                rows.push(identity);
             }
             let mut items = vec![];
             if entries.is_empty() {
@@ -2638,6 +2695,10 @@ impl Panel {
                             C::NewChat => Glyph::Compose,
                             C::Search => Glyph::Search,
                             C::Settings => Glyph::Settings,
+                            C::Computers => Glyph::Computer,
+                            C::Grid => Glyph::Cloud,
+                            C::Saved => Glyph::History,
+                            C::Palette => Glyph::Terminal,
                             C::Stop => Glyph::Stop,
                             C::Rename => Glyph::Edit,
                             C::Pin => Glyph::Pin,
@@ -2676,7 +2737,7 @@ impl Panel {
                         6
                     },
                 ]);
-                row.style.min_height = Some(30);
+                row.style.min_height = Some(if *kind == Kind::Profile { 32 } else { 30 });
                 row.style.radius = Some(if history.is_some() {
                     8
                 } else if *kind == openagents_chat_app::commands::Kind::Palette {
@@ -2685,7 +2746,7 @@ impl Panel {
                     7
                 });
                 let selected = index == self.commands.selected
-                    && (*kind != Kind::Menu || self.menu_navigation);
+                    && (*kind == Kind::Palette || self.menu_navigation);
                 if history.is_none() && !selected {
                     row.style.foreground = Some(Color {
                         alpha: 230,

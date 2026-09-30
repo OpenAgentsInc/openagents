@@ -13,6 +13,7 @@ pub enum Action {
     SavedList,
     Card { key: String },
     Palette,
+    Profile,
     Menu,
     DismissOverlay,
     Command { key: String },

@@ -838,7 +838,6 @@ impl Engine<'_> {
     }
 
     fn text_font(&self, role: TextRole, style: &Style) -> rust_native::layout::display::Font {
-        let bold = style.weight == Some(TextWeight::Bold);
         let (size, weight, mono) = match role {
             TextRole::Heading => (self.theme.heading, Weight::Semibold, false),
             TextRole::Status => (self.theme.status, Weight::Regular, false),
@@ -847,7 +846,13 @@ impl Engine<'_> {
         };
         let mut font = font(
             style.text_size.map_or(size, f32::from),
-            if bold { Weight::Bold } else { weight },
+            match style.weight {
+                Some(TextWeight::Normal) => Weight::Regular,
+                Some(TextWeight::Medium) => Weight::Medium,
+                Some(TextWeight::Semibold) => Weight::Semibold,
+                Some(TextWeight::Bold) => Weight::Bold,
+                None => weight,
+            },
             style.monospace.unwrap_or(mono),
         );
         font.family = self.theme.font_family;
@@ -922,8 +927,10 @@ impl Engine<'_> {
                     )
                 } else if icon.is_some_and(|icon| icon.circular) {
                     (self.theme.icon_size, self.theme.icon_size)
-                } else if transparent(node.style.background) {
-                    let icon_width = if icon.is_some() {
+                } else if transparent(node.style.background) && node.style.button_avatar.is_none() {
+                    let icon_width = if let Some(avatar) = node.style.button_avatar {
+                        f32::from(avatar.size) + f32::from(node.style.glyph_gap.unwrap_or(8))
+                    } else if icon.is_some() {
                         f32::from(node.style.glyph_size.unwrap_or(16))
                             + f32::from(node.style.glyph_gap.unwrap_or(8))
                     } else {
@@ -944,7 +951,9 @@ impl Engine<'_> {
                         paragraph.height + 4.0,
                     )
                 } else {
-                    let icon_width = if icon.is_some() {
+                    let icon_width = if let Some(avatar) = node.style.button_avatar {
+                        f32::from(avatar.size) + f32::from(node.style.glyph_gap.unwrap_or(8))
+                    } else if icon.is_some() {
                         f32::from(node.style.glyph_size.unwrap_or(16))
                             + f32::from(node.style.glyph_gap.unwrap_or(8))
                     } else {
@@ -1518,16 +1527,22 @@ impl Engine<'_> {
             let base = node.style.background.unwrap_or(theme.button);
             let color = node.style.foreground.unwrap_or(theme.text);
             let color = if enabled {
-                color
+                if hovered || pressed {
+                    node.style.hover_foreground.unwrap_or(color)
+                } else {
+                    color
+                }
             } else {
                 mix(color, theme.background, 0.5)
             };
             if base.alpha > 0 || (hovered && enabled) || (pressed && enabled) {
                 self.scene.ops.push(Op::Fill {
                     rect,
-                    radius: theme.icon_size / 2.0,
+                    radius: node.style.radius.map_or(theme.icon_size / 2.0, f32::from),
                     color: if !enabled {
                         mix(base, theme.background, 0.7)
+                    } else if (hovered || pressed) && node.style.hover_background.is_some() {
+                        node.style.hover_background.expect("explicit hover fill")
                     } else if hovered || pressed {
                         if base.alpha == 0 {
                             mix(theme.background, theme.text, 0.08)
@@ -1566,8 +1581,10 @@ impl Engine<'_> {
                 set: theme.icons,
                 color: node.style.glyph_color.unwrap_or(color),
             });
-        } else if transparent(node.style.background) {
-            let icon_width = if icon.is_some() {
+        } else if transparent(node.style.background) && node.style.button_avatar.is_none() {
+            let icon_width = if let Some(avatar) = node.style.button_avatar {
+                f32::from(avatar.size) + f32::from(node.style.glyph_gap.unwrap_or(8))
+            } else if icon.is_some() {
                 f32::from(node.style.glyph_size.unwrap_or(16))
                     + f32::from(node.style.glyph_gap.unwrap_or(8))
             } else {
@@ -1633,7 +1650,9 @@ impl Engine<'_> {
                 color,
             );
         } else {
-            let icon_width = if icon.is_some() {
+            let icon_width = if let Some(avatar) = node.style.button_avatar {
+                f32::from(avatar.size) + f32::from(node.style.glyph_gap.unwrap_or(8))
+            } else if icon.is_some() {
                 f32::from(node.style.glyph_size.unwrap_or(16))
                     + f32::from(node.style.glyph_gap.unwrap_or(8))
             } else {
@@ -1679,11 +1698,47 @@ impl Engine<'_> {
                     .hover_background
                     .unwrap_or_else(|| mix(fill, theme.text, 0.06));
             }
+            if enabled && (hovered || pressed) {
+                color = node.style.hover_foreground.unwrap_or(color);
+            }
             self.scene.ops.push(Op::Fill {
                 rect,
                 radius,
                 color: fill,
             });
+            if let Some(avatar) = node.style.button_avatar {
+                let diameter = f32::from(avatar.size);
+                let avatar_rect = Rect {
+                    x: x + button_pad.0,
+                    y: y + (rect.h - diameter) / 2.0,
+                    w: diameter,
+                    h: diameter,
+                };
+                self.scene.ops.push(Op::Fill {
+                    rect: avatar_rect,
+                    radius: diameter / 2.0,
+                    color: avatar.background,
+                });
+                let initial = self.paragraph(
+                    &avatar.initial.to_string(),
+                    TextRole::Code,
+                    &Style {
+                        text_size: Some(avatar.text_size),
+                        line_height: Some(avatar.size),
+                        weight: Some(avatar.weight),
+                        ..Style::default()
+                    },
+                    None,
+                );
+                self.text(
+                    initial,
+                    avatar_rect.x,
+                    avatar_rect.y,
+                    diameter,
+                    TextAlign::Center,
+                    avatar.foreground,
+                );
+            }
             let mut primary_y = y + (rect.h - paragraph.height) / 2.0;
             for (run, secondary) in &paragraph.runs {
                 if !secondary {

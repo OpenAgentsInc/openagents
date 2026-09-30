@@ -6,6 +6,9 @@ pub enum Action {
     NewChat,
     Search,
     Settings,
+    Computers,
+    Grid,
+    Saved,
     Stop,
     Palette,
     Menu,
@@ -186,11 +189,28 @@ pub fn registry(chats: &[Summary], selected: Option<&str>, busy: bool) -> Vec<En
     entries
 }
 
+/// Local profile actions reuse the desktop's existing navigation authority.
+pub fn profile_registry() -> Vec<Entry> {
+    vec![
+        entry(
+            "computers",
+            "Phones and computers",
+            "",
+            Action::Computers,
+            true,
+        ),
+        entry("grid", "The Grid", "", Action::Grid, true),
+        entry("saved", "Saved sessions", "", Action::Saved, true),
+        entry("commands", "Commands", "Cmd/Ctrl+K", Action::Palette, true),
+    ]
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Kind {
     Palette,
     Menu,
     ConfirmArchive,
+    Profile,
 }
 #[derive(Default)]
 pub struct Overlay {

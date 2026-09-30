@@ -112,6 +112,7 @@ pub struct State {
     pub sidebar_width: f32,
     pub collapsed: bool,
     pub fullscreen: bool,
+    pub profile_open: bool,
     pub closed_sections: BTreeSet<Section>,
     pub chats: Vec<Chat>,
     pub search: String,
@@ -121,6 +122,7 @@ pub struct State {
     /// Settings' page and preferences ([`crate::settings`]).
     pub settings: crate::settings::Settings,
     next_chat: u64,
+    settings_return: Page,
 }
 
 impl Default for State {
@@ -210,6 +212,8 @@ impl Default for State {
             sidebar_width: SIDEBAR_DEFAULT,
             collapsed: false,
             fullscreen: false,
+            profile_open: false,
+            settings_return: Page::Chat(1),
             closed_sections: BTreeSet::from([Section::Archived]),
             chats: examples
                 .into_iter()
@@ -233,6 +237,7 @@ impl State {
             live: true,
             chats: vec![],
             page: Page::Chat(0),
+            settings_return: Page::Chat(0),
             ..Self::default()
         }
     }
@@ -279,7 +284,14 @@ impl State {
             Action::Saved => self.page = Page::Saved,
             Action::Grid => self.page = Page::Grid,
             Action::Computers => self.page = Page::Computers,
-            Action::Settings => self.page = Page::Settings,
+            Action::Settings => {
+                if self.page == Page::Settings {
+                    self.page = self.settings_return;
+                } else {
+                    self.settings_return = self.page;
+                    self.page = Page::Settings;
+                }
+            }
             // The shell runs it; the page stays.
             Action::Update => {}
         }
@@ -536,44 +548,70 @@ fn sidebar(state: &State) -> Node<Intent> {
         ));
     }
     let body = stack("sidebar-body", Axis::Vertical, Space::Md, groups);
-    let mut command = icon_button(
-        "sidebar-commands",
-        "Commands · Cmd/Ctrl+K",
+    let mut profile = action(
+        "sidebar-profile",
+        "Local",
         Action::NewChat,
-        Glyph::Terminal,
+        None,
+        state.profile_open,
     );
-    if let Element::Button { intent, .. } = &mut command.element {
+    if let Element::Button { intent, .. } = &mut profile.element {
         *intent = Intent::Chat {
-            action: crate::chat_action::Action::Palette,
+            action: crate::chat_action::Action::Profile,
         };
     }
-    let footer = stack(
+    profile.style.align = Some(TextAlign::Center);
+    profile.style.intrinsic_width = Some(true);
+    profile.style.text_size = Some(13);
+    profile.style.line_height = Some(17);
+    profile.style.weight = Some(TextWeight::Medium);
+    profile.style.button_padding = Some([8, 0]);
+    profile.style.foreground = Some(if state.profile_open {
+        TEXT
+    } else {
+        Color { alpha: 204, ..TEXT }
+    });
+    profile.style.hover_foreground = Some(TEXT);
+    profile.style.hover_background = Some(Color {
+        alpha: 22,
+        ..SELECTED
+    });
+    profile.style.button_avatar = Some(rust_native::style::ButtonAvatar {
+        initial: 'L',
+        size: 16,
+        text_size: 10,
+        weight: TextWeight::Semibold,
+        background: TEXT,
+        foreground: openagents_chat_app::visual::SIDEBAR,
+    });
+    let mut settings = icon_button(
+        "sidebar-settings",
+        "Settings",
+        Action::Settings,
+        Glyph::Settings,
+    );
+    settings.style.radius = Some(8);
+    settings.style.glyph_size = Some(15);
+    settings.style.hover_background = Some(SELECTED);
+    settings.style.hover_foreground = Some(TEXT);
+    if state.page == Page::Settings {
+        settings.style.background = Some(SELECTED);
+        settings.style.foreground = Some(TEXT);
+    }
+    let mut spacer = stack(
+        "sidebar-footer-spacer",
+        Axis::Horizontal,
+        Space::None,
+        vec![],
+    );
+    spacer.style.fill_height = Some(false);
+    let mut footer = stack(
         "sidebar-footer",
         Axis::Horizontal,
-        Space::Sm,
-        vec![
-            icon_button(
-                "sidebar-computers",
-                "Phones and computers",
-                Action::Computers,
-                Glyph::Computer,
-            ),
-            icon_button("sidebar-grid", "The Grid", Action::Grid, Glyph::Cloud),
-            icon_button(
-                "sidebar-saved",
-                "Saved sessions",
-                Action::Saved,
-                Glyph::History,
-            ),
-            command,
-            icon_button(
-                "sidebar-settings",
-                "Settings",
-                Action::Settings,
-                Glyph::Menu,
-            ),
-        ],
+        Space::None,
+        vec![profile, spacer, settings],
     );
+    footer.style.gap_points = Some(4);
     let mut pane = stack(
         "shell-sidebar",
         Axis::Vertical,

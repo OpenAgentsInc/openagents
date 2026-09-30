@@ -805,7 +805,10 @@ impl Ctx<'_> {
                 };
                 let weight = match node.style.weight {
                     Some(crate::style::TextWeight::Bold) => Weight::Bold,
-                    _ => weight,
+                    Some(crate::style::TextWeight::Medium) => Weight::Medium,
+                    Some(crate::style::TextWeight::Semibold) => Weight::Semibold,
+                    Some(crate::style::TextWeight::Normal) => Weight::Regular,
+                    None => weight,
                 };
                 let style = TextStyle::new(self.font(size, weight, false, mono), ink);
                 let value = value.strip_suffix('\n').unwrap_or(value);

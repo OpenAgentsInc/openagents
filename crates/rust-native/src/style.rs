@@ -43,6 +43,8 @@ impl Color {
 #[serde(rename_all = "snake_case")]
 pub enum TextWeight {
     Normal,
+    Medium,
+    Semibold,
     Bold,
 }
 
@@ -75,6 +77,18 @@ pub struct ButtonDetail {
     pub line_height: u16,
     pub color: Color,
     pub leading: bool,
+}
+
+/// A leading circular initial inside a button. Applications supply its colors.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ButtonAvatar {
+    pub initial: char,
+    pub size: u16,
+    pub text_size: u16,
+    pub weight: TextWeight,
+    pub background: Color,
+    pub foreground: Color,
 }
 
 /// Unset preserves an earlier declaration. Reset removes it at this layer.
@@ -155,9 +169,13 @@ pub struct Style {
     /// Keep one semantic label while styling its secondary line independently.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub button_detail: Option<ButtonDetail>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub button_avatar: Option<ButtonAvatar>,
     /// An explicit hover fill for a framed button; absence uses the adapter default.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hover_background: Option<Color>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hover_foreground: Option<Color>,
     /// The vector glyph size, independent of its button's hit area.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub glyph_size: Option<u16>,
@@ -199,7 +217,9 @@ pub struct StylePatch {
     pub min_height: Patch<u16>,
     pub button_padding: Patch<[u16; 2]>,
     pub button_detail: Patch<ButtonDetail>,
+    pub button_avatar: Patch<ButtonAvatar>,
     pub hover_background: Patch<Color>,
+    pub hover_foreground: Patch<Color>,
     pub glyph_size: Patch<u16>,
     pub glyph_gap: Patch<u16>,
     pub glyph_color: Patch<Color>,
@@ -242,7 +262,9 @@ impl StylePatch {
             min_height: self.min_height.overlay(later.min_height),
             button_padding: self.button_padding.overlay(later.button_padding),
             button_detail: self.button_detail.overlay(later.button_detail),
+            button_avatar: self.button_avatar.overlay(later.button_avatar),
             hover_background: self.hover_background.overlay(later.hover_background),
+            hover_foreground: self.hover_foreground.overlay(later.hover_foreground),
             glyph_size: self.glyph_size.overlay(later.glyph_size),
             glyph_gap: self.glyph_gap.overlay(later.glyph_gap),
             glyph_color: self.glyph_color.overlay(later.glyph_color),
@@ -275,7 +297,9 @@ impl StylePatch {
             min_height: self.min_height.resolve(defaults.min_height),
             button_padding: self.button_padding.resolve(defaults.button_padding),
             button_detail: self.button_detail.resolve(defaults.button_detail),
+            button_avatar: self.button_avatar.resolve(defaults.button_avatar),
             hover_background: self.hover_background.resolve(defaults.hover_background),
+            hover_foreground: self.hover_foreground.resolve(defaults.hover_foreground),
             glyph_size: self.glyph_size.resolve(defaults.glyph_size),
             glyph_gap: self.glyph_gap.resolve(defaults.glyph_gap),
             glyph_color: self.glyph_color.resolve(defaults.glyph_color),
