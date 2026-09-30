@@ -456,3 +456,22 @@ translucent washes. Captures: [default palette](authored-inks-palette-1200.png),
 [transcript](authored-inks-transcript-760.png).
 Scoped formatting and strict all-target Clippy pass for the core, shared
 chat presentation, and desktop.
+
+## Submitted menu telemetry and the subsequent native run
+
+The [authored-color native report](native-authored-inks.json) retains the next
+optimized run at `f1ca0c2777`: all six active phases complete, with at least
+115 submitted samples each and both first menu frames. This run does not pass
+the 8.3 ms latency target. Commands are 11.877/23.616 ms at p50/p99; chat-menu
+selection is 13.782/22.778 ms. Chat-menu paint is 0.279/0.424 ms, upload is
+0.198/0.326 ms, and acquisition is 10.740/19.691 ms. Idle CPU is 5.62% of
+one core; peak RSS is 205.6 MiB. Other worktrees were compiling concurrently;
+this run does not establish how much that load contributed to the stalls.
+
+The existing bounded, content-free local timing log now records `ModalOpen`,
+`ModalFrame`, and `ModalClose` after successful submissions. Each includes CPU
+frame duration and foreground damage counts. A stationary menu can therefore
+be distinguished from repeated repainting, and failed acquisitions cannot
+produce false open or close records. No menu identifiers, queries, or chat text
+enter the log. The transition and blocked-writer regressions, all seven menu
+fixtures, scoped formatting, and strict all-target desktop Clippy pass.

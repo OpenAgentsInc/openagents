@@ -18,6 +18,9 @@ pub enum Phase {
     SurfaceLost,
     Present,
     Frame,
+    ModalOpen,
+    ModalFrame,
+    ModalClose,
     InputToPresent,
 }
 
@@ -63,6 +66,7 @@ pub struct Timings {
     writer: Option<SyncSender<Sample>>,
     pub dropped: u64,
     input: Option<Instant>,
+    modal_presented: bool,
 }
 
 impl Default for Timings {
@@ -72,6 +76,7 @@ impl Default for Timings {
             writer: None,
             dropped: 0,
             input: None,
+            modal_presented: false,
         }
     }
 }
@@ -125,6 +130,24 @@ impl Timings {
             self.record(Phase::InputToPresent, input.elapsed(), 0, 0);
         }
     }
+    /// Records modal changes only after submission, including damaged pixels.
+    /// Skipped frames must not call this method. No modal identifiers are retained.
+    pub fn modal_presented(
+        &mut self,
+        visible: bool,
+        duration: Duration,
+        pixels: u64,
+        regions: usize,
+    ) {
+        let phase = match (self.modal_presented, visible) {
+            (false, true) => Phase::ModalOpen,
+            (true, true) => Phase::ModalFrame,
+            (true, false) => Phase::ModalClose,
+            (false, false) => return,
+        };
+        self.modal_presented = visible;
+        self.record(phase, duration, pixels, regions);
+    }
     pub fn record(&mut self, phase: Phase, duration: Duration, pixels: u64, regions: usize) {
         let sample = Sample {
             phase,
@@ -147,6 +170,32 @@ impl Timings {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn modal_samples_follow_submitted_frames_and_keep_damage() {
+        let mut timings = Timings::default();
+        let elapsed = Duration::from_micros(37);
+        timings.modal_presented(false, elapsed, 100, 1);
+        assert!(timings.samples().is_empty());
+        // Acquisitions can fail while opening; those do not advance visibility.
+        timings.record(Phase::SurfaceTimeout, elapsed, 0, 0);
+        timings.modal_presented(true, elapsed, 100, 2);
+        timings.modal_presented(true, elapsed, 0, 0);
+        timings.modal_presented(true, elapsed, 20, 1);
+        timings.modal_presented(false, elapsed, 100, 2);
+        timings.modal_presented(false, elapsed, 0, 0);
+        let samples: Vec<_> = timings.samples().iter().collect();
+        assert_eq!(samples.len(), 5);
+        assert_eq!(samples[1].phase, Phase::ModalOpen);
+        assert_eq!(samples[1].micros, 37);
+        assert_eq!((samples[1].pixels, samples[1].regions), (100, 2));
+        assert_eq!(samples[2].phase, Phase::ModalFrame);
+        assert_eq!((samples[2].pixels, samples[2].regions), (0, 0));
+        assert_eq!(samples[3].phase, Phase::ModalFrame);
+        assert_eq!((samples[3].pixels, samples[3].regions), (20, 1));
+        assert_eq!(samples[4].phase, Phase::ModalClose);
+        timings.modal_presented(true, elapsed, 100, 2);
+        assert_eq!(timings.samples().back().unwrap().phase, Phase::ModalOpen);
+    }
     #[test]
     fn samples_and_blocked_writer_stay_bounded() {
         let (writer, _receiver) = sync_channel(1);

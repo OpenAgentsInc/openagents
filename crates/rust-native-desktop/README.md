@@ -146,3 +146,9 @@ reason and acquisition duration; `App::frame_presented` reports successful
 CPU work and submission. Neither callback measures GPU completion or scanout.
 The opt-in timings log records each acquisition outcome without application
 content.
+
+The same log records `ModalOpen`, `ModalFrame`, and `ModalClose` after successful
+submission. Their pixel and region counts describe foreground damage, so a
+stationary menu frame with no upload has zero for both. These records use the
+CPU frame duration and retain no menu names or text. Skipped acquisitions do
+not change the recorded modal state.

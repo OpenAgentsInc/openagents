@@ -962,6 +962,12 @@ impl<A: App> Shell<A> {
             0,
         );
         self.timings.presented();
+        self.timings.modal_presented(
+            self.app.modal_root().is_some(),
+            started.elapsed(),
+            timing.damaged_pixels,
+            timing.regions,
+        );
         timing.total_us = started.elapsed().as_micros() as u64;
         self.app.frame_presented(timing);
         self.hold = None;
