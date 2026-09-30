@@ -82,11 +82,11 @@ pub fn document(title: &str, section: Option<&str>, body: &str) -> String {
 <a class=\"skip\" href=\"#content\">Skip to content</a>\
 <header class=\"site-header\"><nav aria-label=\"Main\"><a class=\"wordmark\" href=\"/\">OpenAgents</a>\
 <ul class=\"navlinks\">{nav}</ul></nav></header>\
-<main id=\"content\">{body}</main>\
+<div class=\"scroller\"><main id=\"content\" tabindex=\"-1\">{body}</main>\
 <footer class=\"site-footer\"><span class=\"copyright\">{COPYRIGHT}</span>\
 <nav aria-label=\"Legal and more\"><a href=\"/terms\">Terms</a>\
 <span class=\"sep\" aria-hidden=\"true\">\u{b7}</span><a href=\"/privacy\">Privacy</a>{more}</nav>\
-</footer></body></html>"
+</footer></div></body></html>"
     )
 }
 
@@ -130,6 +130,18 @@ mod tests {
         assert!(html.contains("<a href=\"/docs\" aria-current=\"page\">Docs</a>"));
         assert!(html.contains("width=device-width"));
         assert!(!html.to_ascii_lowercase().contains("<script"));
+    }
+
+    #[test]
+    fn only_the_region_under_the_header_scrolls() {
+        let html = document("Docs", Some("/docs"), "<p>x</p>");
+        let header = html.find("</header>").unwrap();
+        let scroller = html.find("<div class=\"scroller\">").unwrap();
+        assert!(header < scroller, "the header sits outside the scroller");
+        assert!(html.ends_with("</footer></div></body></html>"));
+        let css = include_str!("../static/site.css");
+        assert!(css.contains("html,body{height:100%;overflow:hidden}"));
+        assert!(css.contains(".scroller{flex:1;min-height:0;overflow-y:auto"));
     }
 
     #[test]

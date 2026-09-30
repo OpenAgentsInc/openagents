@@ -6,7 +6,11 @@
 
 *{box-sizing:border-box}
 html{background:var(--bg);color:var(--w75);font-family:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;font-size:14px;line-height:1.5;-webkit-text-size-adjust:100%}
-body{margin:0;min-height:100vh;display:flex;flex-direction:column;background:var(--bg)}
+html,body{height:100%;overflow:hidden}
+/* The page is the window's height: the header stays at the top and only
+   the region under it scrolls. */
+body{margin:0;height:100vh;height:100dvh;display:flex;flex-direction:column;background:var(--bg)}
+.scroller{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;display:flex;flex-direction:column}
 ::selection{background:var(--w50);color:var(--bg)}
 a{color:var(--w100);text-underline-offset:3px}
 a:hover{background:var(--tint)}
@@ -31,7 +35,7 @@ img{max-width:100%}
 .unseen{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 
 /* The header: the wordmark, then the sections. */
-.site-header{border-bottom:1px solid var(--w25)}
+.site-header{flex:none;border-bottom:1px solid var(--w25);background:var(--bg)}
 .site-header nav,.site-footer,main{width:min(96ch,100% - 32px);margin-inline:auto}
 .site-header nav{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:.5rem 2ch;padding:.75rem 0}
 .wordmark{color:var(--w100);font-weight:700;text-decoration:none;letter-spacing:.02em}
@@ -39,10 +43,11 @@ img{max-width:100%}
 .navlinks a{color:var(--w75);text-decoration:none}
 .navlinks a:hover,.navlinks a[aria-current=page]{color:var(--w100);text-decoration:underline}
 
-main{flex:1;padding:2rem 0 3rem}
+main{flex:1 0 auto;padding:2rem 0 3rem}
+main:focus{outline:none}
 
 /* The footer: the documents a visitor agrees to, then the rest. */
-.site-footer{border-top:1px solid var(--w25);display:flex;flex-wrap:wrap;justify-content:space-between;gap:.5rem 2ch;padding:1rem 0 2rem;color:var(--w50);font-size:.9rem}
+.site-footer{flex:none;border-top:1px solid var(--w25);display:flex;flex-wrap:wrap;justify-content:space-between;gap:.5rem 2ch;padding:1rem 0 2rem;color:var(--w50);font-size:.9rem}
 .site-footer nav{display:flex;flex-wrap:wrap;gap:.25rem 1.5ch}
 .site-footer a{color:var(--w75)}
 .sep{color:var(--w50)}
