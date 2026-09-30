@@ -213,3 +213,20 @@ This includes SVG mask preparation and full damage when a menu first appears.
 It uses the same CPU work and submission measure; it does not measure GPU
 completion or scanout. The local timings writer remains opt-in, bounded, and
 content-free.
+
+The first native Solar repeat at `9bccdcf814` exposes a remaining cost:
+palette filtering p99 is 8.618 ms and the first palette frame is 9.851 ms.
+The palette repaints and uploads the whole 4,032,000-pixel foreground whenever
+its filtered rows change the display-list length. The [raw report](native-solar-before-damage.json)
+retains that failing performance result; scroll, streaming, sidebar, composer,
+and chat-menu selection remain below 8.3 ms at p99.
+
+The retained painter now compares drawing operations with their effective
+pixel clips. A changed clip, insertion, or removal damages the old and new
+clipped drawing bounds, while stable leading and trailing drawing stays
+retained. Dynamic surfaces still refresh, and texture invalidation still
+forces full damage. The actual menu regression verifies byte-for-byte parity
+with complete frames and bounds filtering damage below 70% of the minimum
+window at both scales. Adapter: 59 tests passed; five command fixtures and
+the broader shell retained-paint regression pass; scoped formatting and
+strict all-target Clippy pass. A native repeat follows the merged build.

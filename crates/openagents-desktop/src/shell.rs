@@ -2865,7 +2865,7 @@ mod command_fixtures {
                     }
                 }
                 let size = ((760.0 * scale) as usize, (540.0 * scale) as usize);
-                retained.update(
+                let damage = retained.update(
                     &scene,
                     size,
                     scale,
@@ -2874,6 +2874,13 @@ mod command_fixtures {
                     &mut fonts,
                     &mut |resource, frame, rect| app.paint_surface(resource, frame, rect),
                 );
+                if matches!(step, 3 | 5) {
+                    let pixels = damage.iter().map(|r| r.w * r.h).sum::<f32>();
+                    assert!(
+                        pixels < (size.0 * size.1) as f32 * 0.7,
+                        "filtering repainted the panes at step {step}, scale {scale}: {pixels} pixels"
+                    );
+                }
                 let mut complete = Frame::transparent(size.0, size.1);
                 paint::paint(
                     &scene,

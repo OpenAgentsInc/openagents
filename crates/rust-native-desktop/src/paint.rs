@@ -50,13 +50,7 @@ impl Retained {
             .frame
             .as_ref()
             .is_none_or(|frame| (frame.width, frame.height) != size)
-            || self.transform != Some((scale, scroll, background))
-            || self.ops.len() != scene.ops.len()
-            || self.ops.iter().zip(&scene.ops).any(|(old, new)| {
-                old != new
-                    && (matches!(old, Op::PushClip(_) | Op::PopClip)
-                        || matches!(new, Op::PushClip(_) | Op::PopClip))
-            });
+            || self.transform != Some((scale, scroll, background));
         if self
             .frame
             .as_ref()
@@ -68,27 +62,26 @@ impl Retained {
         if full {
             regions.push(window);
         } else {
-            for (old, new) in self.ops.iter().zip(&scene.ops) {
-                if old != new {
-                    for op in [old, new] {
-                        if let Some(rect) = bounds(op) {
-                            add_region(
-                                &mut regions,
-                                pixels(rect, scale, scroll).intersection(window),
-                            );
-                        }
-                    }
-                }
-                if let Op::Surface {
-                    rect,
-                    version: None,
-                    ..
-                } = new
-                {
-                    add_region(
-                        &mut regions,
-                        pixels(*rect, scale, scroll).intersection(window),
-                    );
+            let old = clipped_ops(&self.ops, scale, scroll);
+            let new = clipped_ops(&scene.ops, scale, scroll);
+            let prefix = old.iter().zip(&new).take_while(|(a, b)| a == b).count();
+            let suffix = old[prefix..]
+                .iter()
+                .rev()
+                .zip(new[prefix..].iter().rev())
+                .take_while(|(a, b)| a == b)
+                .count();
+            // Inserted or removed rows invalidate their own clipped paint
+            // bounds, rather than the unchanged panes around a floating menu.
+            for op in old[prefix..old.len() - suffix]
+                .iter()
+                .chain(&new[prefix..new.len() - suffix])
+            {
+                add_region(&mut regions, op.damage(scale, scroll).intersection(window));
+            }
+            for op in &new {
+                if let Op::Surface { version: None, .. } = op.op {
+                    add_region(&mut regions, op.damage(scale, scroll).intersection(window));
                 }
             }
         }
@@ -101,6 +94,43 @@ impl Retained {
         self.transform = Some((scale, scroll, background));
         regions
     }
+}
+
+#[derive(PartialEq)]
+struct ClippedOp<'a> {
+    op: &'a Op,
+    clip: Option<PxRect>,
+}
+impl ClippedOp<'_> {
+    fn damage(&self, scale: f32, scroll: f32) -> PxRect {
+        let rect = pixels(bounds(self.op).expect("a drawing operation"), scale, scroll);
+        self.clip.map_or(rect, |clip| rect.intersection(clip))
+    }
+}
+fn clipped_ops(ops: &[Op], scale: f32, scroll: f32) -> Vec<ClippedOp<'_>> {
+    let mut clips: Vec<PxRect> = Vec::new();
+    let mut drawing = Vec::with_capacity(ops.len());
+    for op in ops {
+        match op {
+            Op::PushClip(rect) => {
+                let rect = PxRect {
+                    x: (rect.x * scale).round(),
+                    y: ((rect.y - scroll) * scale).round(),
+                    w: (rect.w * scale).round(),
+                    h: (rect.h * scale).round(),
+                };
+                clips.push(clips.last().map_or(rect, |clip| clip.intersection(rect)));
+            }
+            Op::PopClip => {
+                clips.pop();
+            }
+            _ => drawing.push(ClippedOp {
+                op,
+                clip: clips.last().copied(),
+            }),
+        }
+    }
+    drawing
 }
 
 fn add_region(regions: &mut Vec<PxRect>, mut rect: PxRect) {
