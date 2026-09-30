@@ -44,7 +44,7 @@ knowledge still has to prove.
 | --- | --- |
 | Install or run a turn | [Install](guides/install.md), [headless mode](guides/headless.md), [shared turn contract](runtime/shell-loop.md) |
 | Submit and inspect durable work | [Task commands](guides/tasks.md), [execution owner](runtime/task-owner.md), [frozen context](runtime/frozen-task-context.md) |
-| Browse local tasks on the web | [Coder web](../../crates/coder-web/README.md), a read-only website and task browser |
+| Browse local tasks on the web | [OpenAgents web](../../crates/openagents-web/README.md), the website and a read-only task browser |
 | Link your computers and phone | [Link your devices](guides/link-devices.md), [host serve](runtime/host-serve.md), [host auto-start](runtime/host-autostart.md) |
 | Use Microcoder outside the benchmark harness | [Repository adapter](runtime/microcoder-repository.md), including admitted configurations and incomplete live acceptance |
 | Inspect runs and evidence | [Traces](runtime/traces.md), [artifact verification](guides/artifact-verification.md), [Terminal-Bench index](../terminal-bench/README.md) |

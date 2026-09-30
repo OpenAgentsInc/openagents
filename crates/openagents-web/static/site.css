@@ -1,0 +1,126 @@
+/* The OpenAgents site: a terminal in a browser, in four intensities of
+   white on near-black. `src/palette.rs` writes the :root block above this
+   file, so every color here is a custom property from that ladder. Boxes
+   are drawn with one-cell borders and a title set into the top rule, the
+   way a terminal box is. No script runs on any page. */
+
+*{box-sizing:border-box}
+html{background:var(--bg);color:var(--w75);font-family:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;font-size:14px;line-height:1.5;-webkit-text-size-adjust:100%}
+body{margin:0;min-height:100vh;display:flex;flex-direction:column;background:var(--bg)}
+::selection{background:var(--w50);color:var(--bg)}
+a{color:var(--w100);text-underline-offset:3px}
+a:hover{background:var(--tint)}
+a:focus-visible,button:focus-visible,input:focus-visible,summary:focus-visible{outline:1px solid var(--w100);outline-offset:2px}
+h1,h2,h3,h4{color:var(--w100);font-weight:700;line-height:1.3}
+h1{font-size:1.4rem;margin:0 0 1rem}
+h2{font-size:1.15rem;margin:2rem 0 .75rem}
+h3{font-size:1rem;margin:1.5rem 0 .5rem}
+p,ul,ol,table,pre,blockquote{margin:0 0 1rem}
+code{color:var(--w100);font-family:inherit}
+pre{border:1px solid var(--w25);padding:.75rem 1ch;overflow-x:auto;white-space:pre;color:var(--w100)}
+pre code{color:inherit}
+hr{border:0;border-top:1px solid var(--w25);margin:1.5rem 0}
+blockquote{border-left:1px solid var(--w50);padding-left:1.5ch;color:var(--w75)}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}
+th,td{border:1px solid var(--w25);padding:.25rem 1ch;text-align:left;vertical-align:top}
+th{color:var(--w100)}
+img{max-width:100%}
+
+.skip{position:absolute;left:-999px;top:0;background:var(--bg);color:var(--w100);padding:.5rem 1ch;z-index:2}
+.skip:focus{left:1ch}
+.unseen{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+/* The header: the wordmark, then the sections. */
+.site-header{border-bottom:1px solid var(--w25)}
+.site-header nav,.site-footer,main{width:min(96ch,100% - 32px);margin-inline:auto}
+.site-header nav{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:.5rem 2ch;padding:.75rem 0}
+.wordmark{color:var(--w100);font-weight:700;text-decoration:none;letter-spacing:.02em}
+.navlinks{display:flex;flex-wrap:wrap;gap:.25rem 2ch;margin:0;padding:0;list-style:none}
+.navlinks a{color:var(--w75);text-decoration:none}
+.navlinks a:hover,.navlinks a[aria-current=page]{color:var(--w100);text-decoration:underline}
+
+main{flex:1;padding:2rem 0 3rem}
+
+/* The footer: the documents a visitor agrees to, then the rest. */
+.site-footer{border-top:1px solid var(--w25);display:flex;flex-wrap:wrap;justify-content:space-between;gap:.5rem 2ch;padding:1rem 0 2rem;color:var(--w50);font-size:.9rem}
+.site-footer nav{display:flex;flex-wrap:wrap;gap:.25rem 1.5ch}
+.site-footer a{color:var(--w75)}
+.sep{color:var(--w50)}
+
+/* A box: a one-cell frame with its title set into the top rule. */
+.box{position:relative;border:1px solid var(--w50);padding:1.25rem 2ch 1rem;margin:0 0 1.5rem}
+.box>.box-title{position:absolute;top:-.75rem;left:1.5ch;background:var(--bg);padding:0 1ch;color:var(--w100);font-weight:700;line-height:1.5rem;margin:0;font-size:1rem}
+.box.quiet{border-color:var(--w25)}
+.box>:last-child{margin-bottom:0}
+
+.label,.hint,.meta{color:var(--w50)}
+.dim{color:var(--w50)}
+.loud{color:var(--w100)}
+.error{color:var(--w100);border-left:2px solid var(--w100);padding-left:1ch}
+.notice{border:1px dashed var(--w50);padding:.75rem 2ch;color:var(--w75);margin:0 0 1.5rem}
+
+/* The homepage terminal. */
+.terminal{border:1px solid var(--w100);padding:1.5rem 2ch 1rem}
+.terminal .line{margin:0 0 .75rem}
+.prompt{color:var(--w100);font-weight:700}
+.command{display:block;border:1px solid var(--w25);padding:.5rem 1ch;margin:.25rem 0 .5rem;color:var(--w100);overflow-x:auto;white-space:pre}
+.composer{display:flex;align-items:center;gap:1ch;border:1px solid var(--w50);padding:.5rem 1ch;margin-top:1rem}
+.composer:focus-within{border-color:var(--w100)}
+.composer input{flex:1;min-width:0;background:transparent;border:0;color:var(--w100);font:inherit;outline:none;caret-color:var(--w100)}
+.composer input::placeholder{color:var(--w50)}
+button,.button{background:transparent;border:0;color:var(--w100);font:inherit;cursor:pointer;padding:0;text-decoration:none;white-space:nowrap}
+button:hover,.button:hover{background:var(--tint)}
+.typed{color:var(--w100)}
+.typed::before{content:"> ";color:var(--w50)}
+.answer{border-left:1px solid var(--w25);padding-left:1.5ch;margin:0 0 1rem}
+
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 2ch}
+
+/* Lists of documents, posts, boards, topics, traces. */
+.list{list-style:none;margin:0;padding:0}
+.list>li{border-top:1px solid var(--w25);padding:.75rem 0}
+.list>li:last-child{border-bottom:1px solid var(--w25)}
+.list .title{color:var(--w100);font-weight:700}
+.list p{margin:.25rem 0 0}
+
+/* Rendered Markdown: docs, blog, legal, forum posts. */
+.md{overflow-wrap:anywhere}
+.md h1{font-size:1.4rem}
+.md li{margin:.2rem 0}
+.md a{overflow-wrap:anywhere}
+
+.crumbs{color:var(--w50);margin:0 0 1rem}
+.chips{display:flex;flex-wrap:wrap;gap:.25rem 1ch;list-style:none;margin:.25rem 0 .75rem;padding:0}
+.chips li{border:1px solid var(--w25);padding:0 1ch;color:var(--w75);font-size:.9rem}
+.cells{display:flex;flex-wrap:wrap;gap:.25rem 1ch;margin:.25rem 0 0;padding:0;list-style:none}
+.cells a{border:1px solid var(--w25);padding:0 1ch;text-decoration:none;color:var(--w75)}
+.cells a.pass{color:var(--w100);border-color:var(--w50)}
+.cells a.beat{color:var(--bg);background:var(--w100);border-color:var(--w100)}
+.tabs{display:flex;flex-wrap:wrap;gap:.25rem 1ch;margin:0 0 1rem;padding:0;list-style:none}
+.tabs a,.tabs span{border:1px solid var(--w25);padding:0 1ch;text-decoration:none}
+.tabs [aria-current=page]{border-color:var(--w100);color:var(--w100)}
+.tabs span{color:var(--w50)}
+.steps{list-style:none;margin:0;padding:0}
+.steps>li{border-top:1px solid var(--w25);padding:.5rem 0}
+.steps .at{color:var(--w50)}
+.steps pre{margin:.5rem 0 0;white-space:pre-wrap;overflow-wrap:anywhere}
+details summary{cursor:pointer;color:var(--w75)}
+
+/* The local task browser. */
+.facts{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:1ch;margin:1rem 0 2rem}
+.facts div{border-top:1px solid var(--w50);padding-top:.5rem;min-width:0}
+.facts dt{color:var(--w50);font-size:.85rem;text-transform:uppercase}
+.facts dd{color:var(--w100);margin:.25rem 0 0;overflow-wrap:anywhere}
+.task-row{display:flex;gap:2ch;justify-content:space-between;align-items:center;text-decoration:none}
+.task-row small{display:block;color:var(--w50)}
+.status{color:var(--w50);text-transform:lowercase}
+.detail pre{white-space:pre-wrap;overflow-wrap:anywhere}
+
+@media (max-width:640px){
+  html{font-size:13px}
+  .site-header nav,.site-footer,main{width:calc(100% - 32px)}
+  .grid2{grid-template-columns:1fr}
+  .facts{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .box{padding:1.25rem 1.5ch 1rem}
+  .terminal{padding:1.25rem 1.5ch 1rem}
+}

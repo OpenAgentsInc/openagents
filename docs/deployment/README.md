@@ -36,6 +36,7 @@ leaves media disabled.
 | Hosted eval runner, which runs extension test sets for chat on our computers | [Hosted eval runner](eval-runner.md) |
 | Free-only labor reference host | [Labor runtime](../coder/runtime/free-labor.md) |
 | Local model doors | [Kev](../kev/README.md), [Lev](../lev/README.md), and [Laya](../laya/README.md) |
+| The OpenAgents website, not yet deployed from this repository | [Website port](openagents-web.md) |
 
 These services have distinct grants, identities, credentials, persistence, and
 acceptance evidence. The portable-host launchd fixture and Linux systemd fixture

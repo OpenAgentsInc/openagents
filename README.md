@@ -331,7 +331,8 @@ cargo run -p gym --features tui --bin gym-terminal -- --terminal-bench
 | [`crates/coder-connect`](crates/coder-connect/README.md), [`crates/coder-history`](crates/coder-history/README.md) | Paired read-only chat history. |
 | [`crates/coder-computers`](crates/coder-computers/README.md) | The shared Computers screens. |
 | [`crates/coder-pty`](crates/coder-pty/README.md), [`crates/coder-vt`](crates/coder-vt/README.md), [`crates/coder-ssh`](crates/coder-ssh/README.md) | Remote terminals and SSH hosts. |
-| [`crates/coder-terminal`](crates/coder-terminal/), [`crates/coder-ui`](crates/coder-ui/), [`crates/coder-web`](crates/coder-web/README.md) | Terminal design system, theme values, and the local website. |
+| [`crates/coder-terminal`](crates/coder-terminal/), [`crates/coder-ui`](crates/coder-ui/) | Terminal design system and theme values. |
+| [`crates/openagents-web`](crates/openagents-web/README.md) | The OpenAgents website and the local task browser. |
 | [`crates/coder-project`](crates/coder-project/), [`crates/coder-scheduler`](crates/coder-scheduler/), [`crates/coder-labor`](crates/coder-labor/) | Supervised projects, backlog scheduling, and free labor orders. |
 | [`crates/coder-boundary`](crates/coder-boundary/), [`crates/supervise`](crates/supervise/) | The write boundary and subprocess supervision. |
 | [`crates/coderbench`](crates/coderbench/README.md), [`crates/chat-load-bench`](crates/chat-load-bench/), [`crates/coder-mobile-probe`](crates/coder-mobile-probe/) | Episode goldens, the chat speed benchmark, and a mobile view probe. |

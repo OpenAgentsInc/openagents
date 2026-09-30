@@ -1798,21 +1798,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "coder-web"
-version = "0.1.0"
-dependencies = [
- "axum",
- "base64 0.22.1",
- "coder",
- "coder-ui",
- "serde",
- "serde_json",
- "tempfile",
- "tokio",
- "tower",
-]
-
-[[package]]
 name = "coder-wm"
 version = "0.1.0"
 
@@ -7080,6 +7065,24 @@ dependencies = [
  "serde_json",
  "sha2 0.10.9",
  "thiserror 2.0.20",
+]
+
+[[package]]
+name = "openagents-web"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "base64 0.22.1",
+ "coder",
+ "futures-util",
+ "gym-leaderboard",
+ "pulldown-cmark",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tower",
 ]
 
 [[package]]

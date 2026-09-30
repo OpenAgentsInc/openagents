@@ -1,0 +1,29 @@
+[package]
+name = "openagents-web"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "The OpenAgents website: public pages, legal documents, the desktop and pairing pages, and the local read-only task browser."
+
+[dependencies]
+axum = "0.8"
+base64 = "0.22"
+coder = { path = "../coder" }
+futures-util = "0.3"
+# The published Terminal-Bench results: the contract, digest checks, and the
+# view model the apps share. No generator, no network client.
+gym-leaderboard = { path = "../gym-leaderboard", default-features = false }
+pulldown-cmark = { version = "0.13.4", default-features = false, features = ["html"] }
+# The release proxy streams public release objects; rustls, no cookies.
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "sync", "time"] }
+
+[dev-dependencies]
+tempfile = "3"
+tower = { version = "0.5", features = ["util"] }
+
+[lints]
+workspace = true
