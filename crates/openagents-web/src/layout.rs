@@ -77,7 +77,7 @@ pub fn document(title: &str, section: Option<&str>, body: &str) -> String {
 <ul class=\"navlinks\">{nav}</ul></nav></header>\
 <div class=\"scroller\"><main id=\"content\" tabindex=\"-1\">{body}</main>\
 <footer class=\"site-footer\"><span class=\"copyright\">{COPYRIGHT}</span>\
-<nav aria-label=\"Legal\"><a href=\"/terms\">Terms</a>\
+<nav aria-label=\"Legal and links\"><a href=\"/terms\">Terms</a>\
 <span class=\"sep\" aria-hidden=\"true\">\u{b7}</span><a href=\"/privacy\">Privacy</a>\
 <span class=\"sep\" aria-hidden=\"true\">\u{b7}</span><a href=\"{GITHUB}\" rel=\"noopener\">GitHub</a>\
 <span class=\"sep\" aria-hidden=\"true\">\u{b7}</span><a href=\"{X}\" rel=\"noopener\">X</a></nav>\
