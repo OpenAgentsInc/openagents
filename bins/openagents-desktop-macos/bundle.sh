@@ -48,7 +48,10 @@ cp "$target/release/openagents-desktop" "$app/Contents/MacOS/OpenAgents"
 if [[ "${SKIP_CODER:-0}" != "1" ]]; then
   cp "$target/release/coder" "$app/Contents/MacOS/coder"
   cp "$target/release/microcoder" "$app/Contents/MacOS/microcoder"
-  cp "$target/release/openagents" "$app/Contents/MacOS/openagents"
+  # In Helpers, never MacOS: on a case-insensitive volume openagents is
+  # the app's own OpenAgents.
+  mkdir -p "$app/Contents/Helpers"
+  cp "$target/release/openagents" "$app/Contents/Helpers/openagents"
 fi
 cp "$here/com.openagents.desktop.host.plist" "$app/Contents/Library/LaunchAgents/"
 cp "$here/Info.plist" "$app/Contents/Info.plist"

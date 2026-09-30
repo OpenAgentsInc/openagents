@@ -57,9 +57,11 @@ What it does, in order:
      MacOS/OpenAgents                the window and menu bar
      MacOS/coder                     runs `coder host serve` as a launchd agent
      MacOS/microcoder
-     MacOS/openagents                the command a phone's command card runs;
-                                     the host puts MacOS/ first on its
-                                     terminals' PATH
+     Helpers/openagents              the command a phone's command card runs;
+                                     the host puts Helpers/ first on its
+                                     terminals' PATH (not in MacOS/, where a
+                                     case-insensitive volume makes it
+                                     OpenAgents)
      Library/LaunchAgents/com.openagents.desktop.host.plist
      Resources/AppIcon.icns
    ```

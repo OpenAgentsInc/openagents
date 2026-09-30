@@ -756,16 +756,16 @@ pub(crate) fn write_private(path: &Path, bytes: &[u8]) -> Result<()> {
     std::fs::rename(&temporary, path).map_err(|_| failed())
 }
 
-/// The desktop app's bundle ships the `openagents` command beside this
-/// host (`Contents/MacOS`). Put that folder first on the `PATH` terminals
-/// get, so a phone's read-only command card runs the command that came with
-/// the app, on a Mac where nobody installed it. A host with no `openagents`
-/// beside it keeps the `PATH` it has.
+/// The desktop app's bundle ships the `openagents` command in
+/// `Contents/Helpers`, beside this host's `Contents/MacOS` (not in it: on a
+/// case-insensitive volume `MacOS/openagents` is the app's own `OpenAgents`).
+/// Put that folder first on the `PATH` terminals get, so a phone's read-only
+/// command card runs the command that came with the app, on a Mac where
+/// nobody installed it. A host outside such a bundle keeps its `PATH`.
 fn bundled_commands_first(env: &mut Vec<(String, String)>) {
     let Some(dir) = std::env::current_exe()
         .ok()
-        .and_then(|exe| exe.parent().map(std::path::Path::to_path_buf))
-        .filter(|dir| dir.join("openagents").is_file())
+        .and_then(|exe| helpers_of(&exe))
     else {
         return;
     };
@@ -778,6 +778,41 @@ fn bundled_commands_first(env: &mut Vec<(String, String)>) {
             "PATH".into(),
             format!("{dir}:/usr/bin:/bin:/usr/sbin:/sbin"),
         )),
+    }
+}
+
+/// `Contents/Helpers` of the app bundle whose `Contents/MacOS` holds `exe`,
+/// when it holds an `openagents` command.
+fn helpers_of(exe: &std::path::Path) -> Option<std::path::PathBuf> {
+    let macos = exe.parent()?;
+    if macos.file_name()? != "MacOS" {
+        return None;
+    }
+    let helpers = macos.parent()?.join("Helpers");
+    helpers.join("openagents").is_file().then_some(helpers)
+}
+
+#[cfg(test)]
+mod bundle_tests {
+    use super::helpers_of;
+
+    #[test]
+    fn only_an_app_bundles_helpers_folder_goes_on_the_path() {
+        let temp = tempfile::tempdir().unwrap();
+        let contents = temp.path().join("OpenAgents.app/Contents");
+        std::fs::create_dir_all(contents.join("MacOS")).unwrap();
+        std::fs::create_dir_all(contents.join("Helpers")).unwrap();
+        let coder = contents.join("MacOS/coder");
+        // No command in Helpers yet: nothing to add.
+        assert_eq!(helpers_of(&coder), None);
+        std::fs::write(contents.join("Helpers/openagents"), b"").unwrap();
+        assert_eq!(helpers_of(&coder), Some(contents.join("Helpers")));
+        // A host outside a bundle, even with a command beside it, keeps
+        // its PATH.
+        let loose = temp.path().join("bin");
+        std::fs::create_dir_all(&loose).unwrap();
+        std::fs::write(loose.join("openagents"), b"").unwrap();
+        assert_eq!(helpers_of(&loose.join("coder")), None);
     }
 }
 

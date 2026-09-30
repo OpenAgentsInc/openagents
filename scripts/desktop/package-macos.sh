@@ -7,7 +7,8 @@
 #   1. Build universal (arm64 + x86_64) release binaries of the app
 #      (`openagents-desktop`), `coder`, `microcoder`, and `openagents`, and glue each pair
 #      with `lipo`.
-#   2. Assemble OpenAgents.app: Contents/MacOS/{OpenAgents,coder,microcoder,openagents},
+#   2. Assemble OpenAgents.app: Contents/MacOS/{OpenAgents,coder,microcoder},
+#      Contents/Helpers/openagents,
 #      Info.plist, icon, and the host's launchd plist in
 #      Contents/Library/LaunchAgents/.
 #   3. Sign every executable, inner ones first, with the Developer ID
@@ -215,7 +216,8 @@ assemble_app() {
   build_universal coder coder; coder_bin="$built"
   build_universal microcoder microcoder; micro_bin="$built"
   # The command a phone's read-only command card runs on this Mac; the
-  # host puts Contents/MacOS first on its terminals' PATH.
+  # host puts Contents/Helpers first on its terminals' PATH. Never in
+  # Contents/MacOS: on a case-insensitive volume openagents is OpenAgents.
   build_universal openagents-cli openagents; cli_bin="$built"
 
   app="$out/OpenAgents.app"
@@ -259,7 +261,8 @@ PLIST
   cp "$app_bin" "$app/Contents/MacOS/$exe"
   cp "$coder_bin" "$app/Contents/MacOS/coder"
   cp "$micro_bin" "$app/Contents/MacOS/microcoder"
-  cp "$cli_bin" "$app/Contents/MacOS/openagents"
+  mkdir -p "$app/Contents/Helpers"
+  cp "$cli_bin" "$app/Contents/Helpers/openagents"
 
   if [[ -f "$macos_dir/com.openagents.desktop.host.plist" ]]; then
     cp "$macos_dir/com.openagents.desktop.host.plist" "$app/Contents/Library/LaunchAgents/"

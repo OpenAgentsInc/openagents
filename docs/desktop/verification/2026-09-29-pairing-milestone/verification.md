@@ -86,8 +86,10 @@ and the phone shows **Connected directly** on its terminal.
    `crates/coder-host`, `crates/coder-computers`, `crates/openagents-mobile`;
    NIP-HOST and `INVARIANTS.md` updated).
 6. **Command cards need `openagents` on the Mac.** The app bundle now ships
-   `openagents` beside `coder`, and a host with `openagents` beside it puts
-   that folder first on its terminals' `PATH`
+   `openagents` in `Contents/Helpers` (not `Contents/MacOS`, where a
+   case-insensitive volume makes it the app's own `OpenAgents`; the first
+   package of this change did that and was withdrawn), and a host running
+   from the bundle puts that folder first on its terminals' `PATH`
    (`scripts/desktop/package-macos.sh`, `bins/openagents-desktop-macos/bundle.sh`,
    `crates/coder-host/src/serve/mod.rs`). Before, the card ran whatever
    `openagents` the shell found, here an unrelated older binary.
