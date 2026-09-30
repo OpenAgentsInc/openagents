@@ -201,10 +201,11 @@ impl DesktopApp {
             |state| chrome::root(state, &self.model, unix_now()),
         );
         if self.model.nearby().is_none()
-            && self
+            && (self
                 .navigation
                 .as_ref()
                 .is_some_and(|state| matches!(state.page, Page::Chat(_)))
+                || self.chat.as_ref().is_some_and(|chat| chat.modal()))
             && let Some(chat) = &mut self.chat
             && let rust_native::Element::Stack { children, .. } = &mut root.element
             && let Some(content) = children.get_mut(1)
@@ -217,6 +218,54 @@ impl DesktopApp {
         if let Some(chat) = &mut self.chat {
             chat.mounted(self.presenter.view());
         }
+    }
+
+    fn chat_effects(&mut self, now: Instant) {
+        if self.chat.as_ref().is_some_and(|chat| chat.search_focused())
+            && let Some(state) = &mut self.navigation
+        {
+            state.collapsed = false;
+        }
+        let keys = self
+            .chat
+            .as_mut()
+            .map_or_else(Vec::new, |chat| chat.take_activated());
+        for key in keys {
+            let action = if let Some(key) = key.strip_prefix("command:") {
+                openagents_desktop::chat_action::Action::Command { key: key.into() }
+            } else {
+                openagents_desktop::chat_action::Action::Card { key }
+            };
+            self.activate(Intent::Chat { action }, now);
+        }
+        let requests = self
+            .chat
+            .as_mut()
+            .map_or_else(Vec::new, |chat| chat.take_requests());
+        if requests.iter().any(|r| {
+            matches!(
+                r,
+                Request::Chat {
+                    command: openagents_chat::service::Command::Create { .. }
+                        | openagents_chat::service::Command::Read { .. },
+                    ..
+                }
+            )
+        }) && let Some(state) = &mut self.navigation
+        {
+            state.page = Page::Chat(0);
+        }
+        self.send(requests, now);
+        if let Some(screen) = self.chat.as_mut().and_then(|chat| chat.take_navigation()) {
+            use openagents_chat::router::Screen;
+            let action = match screen {
+                Screen::Keys => chrome::Action::Settings,
+                Screen::Computers => chrome::Action::Computers,
+                _ => chrome::Action::Grid,
+            };
+            self.activate(Intent::Navigate { action }, now);
+        }
+        self.present();
     }
 
     /// Sends requests; inline, runs them and applies what comes back.
@@ -314,8 +363,15 @@ impl App for DesktopApp {
     }
 
     fn key_bindings(&self) -> &'static [KeyBinding] {
-        if self.navigation.is_none() {
+        if self.navigation.is_none() || self.chat.as_ref().is_some_and(|chat| chat.modal()) {
             return &[];
+        }
+        if self.chat.is_some() {
+            return &[KeyBinding {
+                key: "b",
+                shift: false,
+                node: "shell-toggle-sidebar",
+            }];
         }
         &[
             KeyBinding {
@@ -389,6 +445,19 @@ impl App for DesktopApp {
                 .chat
                 .as_mut()
                 .map_or_else(Vec::new, |chat| chat.take_requests());
+            if requests.iter().any(|r| {
+                matches!(
+                    r,
+                    Request::Chat {
+                        command: openagents_chat::service::Command::Create { .. }
+                            | openagents_chat::service::Command::Read { .. },
+                        ..
+                    }
+                )
+            }) && let Some(state) = &mut self.navigation
+            {
+                state.page = Page::Chat(0);
+            }
             self.send(requests, now);
             if let Some(screen) = self.chat.as_mut().and_then(|chat| chat.take_navigation()) {
                 use openagents_chat::router::Screen;
@@ -468,10 +537,19 @@ impl App for DesktopApp {
         event: rust_native_desktop::input::TextInput<'_>,
         now: Instant,
     ) -> bool {
+        if self
+            .chat
+            .as_mut()
+            .is_some_and(|chat| chat.shortcut(&event, self.presenter.view(), now))
+        {
+            self.chat_effects(now);
+            return true;
+        }
         if !self
             .navigation
             .as_ref()
             .is_some_and(|state| matches!(state.page, Page::Chat(_)))
+            && !self.chat.as_ref().is_some_and(|chat| chat.aux_focused())
         {
             return false;
         }
@@ -490,15 +568,53 @@ impl App for DesktopApp {
             }
         }
         if action != rust_native_desktop::composer::field::Action::Unhandled {
-            let requests = self
-                .chat
-                .as_mut()
-                .map_or_else(Vec::new, |chat| chat.take_requests());
-            self.send(requests, now);
-            self.present();
+            self.chat_effects(now);
             return true;
         }
         false
+    }
+
+    fn pointer_down(&mut self, target: Option<&str>, point: (f32, f32), _now: Instant) -> bool {
+        let consumed = self
+            .chat
+            .as_mut()
+            .is_some_and(|chat| chat.pointer_down(target, point));
+        if consumed {
+            self.present();
+        }
+        consumed
+    }
+    fn context_menu(&mut self, target: Option<&str>, now: Instant) -> bool {
+        if let Some(number) = target
+            .and_then(|key| key.strip_prefix("sidebar-chat-"))
+            .and_then(|s| s.parse::<u64>().ok())
+        {
+            self.activate(
+                Intent::Navigate {
+                    action: chrome::Action::SelectChat { id: number },
+                },
+                now,
+            );
+        }
+        if self.chat.is_none() {
+            return false;
+        }
+        self.activate(
+            Intent::Chat {
+                action: openagents_desktop::chat_action::Action::Menu,
+            },
+            now,
+        );
+        true
+    }
+    fn modal_root(&self) -> Option<&str> {
+        self.chat.as_ref().and_then(|chat| chat.modal_root())
+    }
+    fn allows_focus(&self, key: &str) -> bool {
+        self.chat.as_ref().is_none_or(|chat| chat.allows_focus(key))
+    }
+    fn tooltip(&self, key: &str) -> Option<String> {
+        self.chat.as_ref().and_then(|chat| chat.tooltip(key))
     }
 
     fn dropped_file(&mut self, path: std::path::PathBuf, _now: Instant) -> bool {
@@ -566,6 +682,7 @@ impl App for DesktopApp {
             .navigation
             .as_ref()
             .is_some_and(|state| matches!(state.page, Page::Chat(_)))
+            && !self.chat.as_ref().is_some_and(|chat| chat.aux_focused())
         {
             return None;
         }
@@ -1969,5 +2086,139 @@ mod chat_management {
                     .unwrap();
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod command_fixtures {
+    use super::*;
+    use openagents_desktop::chat_action::Action as ChatAction;
+    use rust_native_desktop::{App, input::TextInput};
+    fn key(app: &mut DesktopApp, now: Instant, key: &str, command: bool, shift: bool) {
+        assert!(app.text_input(
+            TextInput::Key {
+                key,
+                text: None,
+                command,
+                alt: false,
+                shift
+            },
+            now
+        ));
+    }
+    fn capture(app: &mut DesktopApp, name: &str, width: f32, height: f32) {
+        app.viewport(width, height, 1.0);
+        let (frame, scene) = rust_native_desktop::capture(app, width, height, 1.0);
+        assert!(scene.unsupported.is_empty(), "{:?}", scene.unsupported);
+        if let Some(path) = std::env::var_os("OPENAGENTS_COMMAND_CAPTURE_DIR") {
+            let path = std::path::PathBuf::from(path);
+            std::fs::create_dir_all(&path).unwrap();
+            std::fs::write(path.join(format!("{name}.png")), frame.png().unwrap()).unwrap();
+        }
+    }
+    #[test]
+    fn keys_palette_context_menu_and_modal_admission_share_one_registry() {
+        let (mut app, now) = super::tests::chat_fixture(0);
+        key(&mut app, now, "n", true, false);
+        app.text_input(TextInput::Commit("Keep this unsent draft"), now);
+        let first = app.navigation.as_ref().unwrap().chats[0].id;
+        key(&mut app, now, "k", true, false);
+        assert!(!app.allows_focus("sidebar-new-chat"));
+        assert!(app.allows_focus("command-new"));
+        app.text_input(
+            TextInput::Preedit {
+                text: "日本",
+                selection: Some((0, 6)),
+            },
+            now,
+        );
+        key(&mut app, now, "Enter", false, false);
+        assert!(
+            app.chat.as_ref().unwrap().modal(),
+            "IME candidate confirmation cannot execute a command"
+        );
+        key(&mut app, now, "Escape", false, false);
+        assert!(
+            app.chat.as_ref().unwrap().modal(),
+            "first Escape cancels composition"
+        );
+        assert!(
+            serde_json::to_string(app.view().view())
+                .unwrap()
+                .contains("command-new")
+        );
+        capture(&mut app, "palette", 1200.0, 840.0);
+        capture(&mut app, "palette-minimum", 760.0, 540.0);
+        let count = app.navigation.as_ref().unwrap().chats.len();
+        key(&mut app, now, "n", true, false);
+        assert_eq!(
+            app.navigation.as_ref().unwrap().chats.len(),
+            count,
+            "global chords cannot escape a modal"
+        );
+        key(&mut app, now, "Escape", false, false);
+        assert_eq!(app.chat.as_ref().unwrap().draft(), "Keep this unsent draft");
+        key(&mut app, now, "k", true, false);
+        app.text_input(TextInput::Commit("settings"), now);
+        key(&mut app, now, "Enter", false, false);
+        assert_eq!(app.navigation.as_ref().unwrap().page, Page::Settings);
+        key(&mut app, now, "n", true, false);
+        assert!(matches!(
+            app.navigation.as_ref().unwrap().page,
+            Page::Chat(_)
+        ));
+        key(&mut app, now, "Tab", true, true);
+        assert_eq!(app.navigation.as_ref().unwrap().page, Page::Chat(first));
+        assert_eq!(app.chat.as_ref().unwrap().draft(), "Keep this unsent draft");
+        key(&mut app, now, "f", true, false);
+        app.text_input(TextInput::Commit("new"), now);
+        assert_eq!(app.navigation.as_ref().unwrap().search, "new");
+        assert!(app.context_menu(Some(&format!("sidebar-chat-{first}")), now));
+        capture(&mut app, "context-menu", 1200.0, 840.0);
+        app.activate(
+            Intent::Chat {
+                action: ChatAction::Command {
+                    key: "archive".into(),
+                },
+            },
+            now,
+        );
+        assert!(
+            serde_json::to_string(app.view().view())
+                .unwrap()
+                .contains("Archive this conversation?"),
+            "{}",
+            serde_json::to_string(app.view().view()).unwrap()
+        );
+        capture(&mut app, "archive-dialog", 760.0, 540.0);
+        assert!(!app.allows_focus("sidebar-settings"));
+        assert!(app.pointer_down(Some("sidebar-settings"), (10.0, 10.0), now));
+        assert!(!app.chat.as_ref().unwrap().modal());
+        assert!(matches!(
+            app.navigation.as_ref().unwrap().page,
+            Page::Chat(_)
+        ));
+        assert_eq!(app.chat.as_ref().unwrap().draft(), "Keep this unsent draft");
+        app.activate(
+            Intent::Chat {
+                action: ChatAction::Rename,
+            },
+            now,
+        );
+        key(&mut app, now, "Tab", false, false);
+        key(&mut app, now, "Tab", false, false);
+        key(&mut app, now, "Enter", false, false);
+        assert!(
+            !app.chat.as_ref().unwrap().modal(),
+            "Tab traps focus and Cancel closes rename"
+        );
+        assert_eq!(app.chat.as_ref().unwrap().draft(), "Keep this unsent draft");
+        key(&mut app, now, ",", true, false);
+        assert_eq!(app.navigation.as_ref().unwrap().page, Page::Settings);
+        assert!(
+            app.tooltip("sidebar-new-chat")
+                .unwrap()
+                .contains("Cmd/Ctrl+N")
+        );
     }
 }

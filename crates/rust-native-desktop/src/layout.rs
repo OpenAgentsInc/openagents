@@ -125,6 +125,8 @@ pub struct Scene {
     pub ops: Vec<Op>,
     /// Every button, in the view's order, which is also the focus order.
     pub hits: Vec<Hit>,
+    /// Bounds of semantic nodes, in logical points, for modal and accessibility adapters.
+    pub bounds: std::collections::BTreeMap<String, Rect>,
     /// The height of everything drawn, with the margins, in points.
     pub height: f32,
     /// Elements and properties this adapter drew differently, or not at
@@ -727,6 +729,15 @@ impl Engine<'_> {
     /// Places `node` at `x`, `y` in a box `width` points wide.
     fn place<I>(&mut self, node: &Node<I>, x: f32, y: f32, width: f32) {
         let (_, height) = self.size(node, width);
+        self.scene.bounds.insert(
+            node.key.clone(),
+            Rect {
+                x,
+                y,
+                w: width,
+                h: height,
+            },
+        );
         let [top, end, bottom, start] = padding(&node.style);
         let inner = (width - start - end).max(1.0);
         let (ix, iy) = (x + start, y + top);

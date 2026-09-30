@@ -26,13 +26,18 @@ use std::time::Instant;
 pub const TRANSCRIPT: &str = "chat-transcript";
 pub const COMPOSER: &str = "composer:chat-composer";
 
+pub const COMMAND_QUERY: &str = "composer:command-query";
 pub const SEARCH: &str = "composer:chat-search";
 pub const RENAME: &str = "composer:chat-rename";
 
 pub struct Panel {
+    commands: openagents_chat_app::commands::Overlay,
+    command_query: Field,
+    command_token: String,
     search: Field,
     rename: Option<(String, Field)>,
     rename_pending: Option<(u64, String, String)>,
+    rename_focus: usize,
     aux_rect: Option<PxRect>,
     session: Session,
     ids: BTreeMap<String, u64>,
@@ -63,9 +68,13 @@ pub struct Panel {
 impl Panel {
     pub fn new(now: Instant) -> Self {
         Self {
+            commands: openagents_chat_app::commands::Overlay::default(),
+            command_query: Field::with_placeholder("Find a command or chat…"),
+            command_token: String::new(),
             search: Field::with_placeholder("Search chats…"),
             rename: None,
             rename_pending: None,
+            rename_focus: 0,
             aux_rect: None,
             session: Session::new(now),
             ids: BTreeMap::new(),
@@ -164,6 +173,7 @@ impl Panel {
     }
     pub fn start(&mut self, waker: rust_native_desktop::Waker) {
         self.search.start(waker.clone());
+        self.command_query.start(waker.clone());
         for field in self.fields.values_mut() {
             field.start(waker.clone());
         }
@@ -176,6 +186,7 @@ impl Panel {
         let at_ms = now.saturating_duration_since(self.born).as_millis() as u64;
         self.poll_images(at_ms);
         self.search.poll_clipboard(at_ms);
+        self.command_query.poll_clipboard(at_ms);
         if let Some((_, field)) = &mut self.rename {
             field.poll_clipboard(at_ms);
         }
@@ -226,6 +237,7 @@ impl Panel {
         }
     }
     fn selected_changed(&mut self, previous: Option<String>) {
+        self.search.input(TextInput::FocusLost, 0);
         self.rename = None;
         self.rename_pending = None;
         if let Some(field) = previous.and_then(|id| self.fields.get_mut(&id)) {
@@ -368,6 +380,7 @@ impl Panel {
     }
     pub fn mounted(&mut self, view: &ValidatedView<Intent>) {
         let _ = self.search.draft.mount(view, "chat-search");
+        let _ = self.command_query.draft.mount(view, "command-query");
         if let Some((_, field)) = &mut self.rename {
             let _ = field.draft.mount(view, "chat-rename");
         }
@@ -384,8 +397,45 @@ impl Panel {
         view: &ValidatedView<Intent>,
         now: Instant,
     ) -> Option<Request> {
+        match &action {
+            Action::Palette => {
+                self.open_commands(openagents_chat_app::commands::Kind::Palette);
+                return None;
+            }
+            Action::Menu => {
+                self.open_commands(openagents_chat_app::commands::Kind::Menu);
+                return None;
+            }
+            Action::DismissOverlay => {
+                self.close_overlay();
+                return None;
+            }
+            Action::Command { key } => {
+                let registry = self.registry();
+                let entries = self.commands.entries(&registry);
+                if let Some(entry) = entries
+                    .iter()
+                    .find(|entry| &entry.key == key && entry.enabled)
+                    .cloned()
+                {
+                    let confirm = self.commands.kind
+                        == Some(openagents_chat_app::commands::Kind::ConfirmArchive);
+                    if entry.action == openagents_chat_app::commands::Action::Archive && !confirm {
+                        self.open_commands(openagents_chat_app::commands::Kind::ConfirmArchive);
+                    } else {
+                        self.close_overlay();
+                        self.run_command(entry.action, view, now);
+                    }
+                }
+                return None;
+            }
+            _ => {}
+        }
         let id = self.session.selected.clone()?;
         match action {
+            Action::Palette | Action::Menu | Action::DismissOverlay | Action::Command { .. } => {
+                None
+            }
             Action::Card { key } => {
                 let previous = self.session.selected.clone();
                 let effect = self.session.card_action(&key);
@@ -481,6 +531,7 @@ impl Panel {
                 }
                 field.focused = true;
                 // The initial title mounts with the next semantic view.
+                self.rename_focus = 0;
                 self.rename = Some((title, field));
                 None
             }
@@ -518,6 +569,217 @@ impl Panel {
             }
         }
     }
+    pub fn modal_root(&self) -> Option<&str> {
+        if self.commands.kind.is_some() {
+            Some("command-panel")
+        } else if self.rename.is_some() {
+            Some("chat-rename-controls")
+        } else {
+            None
+        }
+    }
+    pub fn modal(&self) -> bool {
+        self.commands.kind.is_some() || self.rename.is_some()
+    }
+    pub fn search_focused(&self) -> bool {
+        self.search.focused
+    }
+    pub fn aux_focused(&self) -> bool {
+        self.modal() || self.search.focused
+    }
+    fn registry(&self) -> Vec<openagents_chat_app::commands::Entry> {
+        openagents_chat_app::commands::registry(
+            &self.session.summaries,
+            self.session.selected.as_deref(),
+            self.busy(),
+        )
+    }
+    fn open_commands(&mut self, kind: openagents_chat_app::commands::Kind) {
+        self.rename = None;
+        self.search.focused = false;
+        if let Some(field) = self.field() {
+            field.focused = false;
+        }
+        self.commands.open(kind);
+        self.command_token = uuid::Uuid::new_v4().simple().to_string();
+        self.command_query = Field::with_placeholder("Find a command or chat…");
+        self.command_query.focused = true;
+        if let Some(wake) = self.waker.clone() {
+            self.command_query.start(wake);
+        }
+    }
+    fn close_overlay(&mut self) {
+        self.commands.close();
+        self.command_query.focused = false;
+        self.rename = None;
+        self.rename_pending = None;
+        if let Some(field) = self.field() {
+            field.focused = true;
+        }
+    }
+    pub fn allows_focus(&self, key: &str) -> bool {
+        if self.commands.kind.is_some() {
+            key.starts_with("command-")
+        } else if self.rename.is_some() {
+            matches!(key, "chat-save-name" | "chat-cancel-name")
+        } else {
+            true
+        }
+    }
+    pub fn pointer_down(&mut self, target: Option<&str>, point: (f32, f32)) -> bool {
+        if !self.modal() {
+            return false;
+        }
+        if target.is_some_and(|key| self.allows_focus(key)) {
+            return false;
+        }
+        let inside_field = (self.rename.is_some()
+            || self.commands.kind == Some(openagents_chat_app::commands::Kind::Palette))
+            && self.aux_rect.is_some_and(|rect| {
+                let scale = self.viewport.2;
+                point.0 >= rect.x / scale
+                    && point.0 < (rect.x + rect.w) / scale
+                    && point.1 >= rect.y / scale
+                    && point.1 < (rect.y + rect.h) / scale
+            });
+        if inside_field {
+            return false;
+        }
+        self.close_overlay();
+        true
+    }
+    pub fn tooltip(&self, key: &str) -> Option<String> {
+        if self.modal() {
+            return None;
+        }
+        let id = match key {
+            "sidebar-new-chat" | "shell-new-chat" => "new",
+            "chat-stop" => "stop",
+            "sidebar-settings" => "settings",
+            "chat-rename-start" => "rename",
+            "chat-pin" => "pin",
+            "chat-archive" => "archive",
+            _ => return None,
+        };
+        self.registry()
+            .into_iter()
+            .find(|e| e.key == id)
+            .map(|e| format!("{} · {}", e.label, e.hint))
+    }
+    pub fn shortcut(
+        &mut self,
+        event: &TextInput<'_>,
+        view: &ValidatedView<Intent>,
+        now: Instant,
+    ) -> bool {
+        let TextInput::Key {
+            key,
+            command,
+            shift,
+            ..
+        } = event
+        else {
+            return false;
+        };
+        use openagents_chat_app::commands::Scope;
+        let scope = if self.modal() {
+            Scope::Overlay
+        } else if self
+            .field()
+            .is_some_and(|f| f.draft.editor().is_some_and(|e| e.is_composing()))
+            || (self.search.focused && self.search.draft.editor().is_some_and(|e| e.is_composing()))
+        {
+            Scope::Composing
+        } else if self.field().is_some_and(|f| f.focused) || self.search.focused {
+            Scope::Editor
+        } else {
+            Scope::Window
+        };
+        let Some(action) = openagents_chat_app::commands::shortcut(key, *command, *shift, scope)
+        else {
+            return false;
+        };
+        self.run_command(action, view, now);
+        true
+    }
+    fn run_command(
+        &mut self,
+        action: openagents_chat_app::commands::Action,
+        view: &ValidatedView<Intent>,
+        now: Instant,
+    ) {
+        use openagents_chat_app::commands::Action as C;
+        let request = match action {
+            C::NewChat => Some(self.new_chat()),
+            C::Search => {
+                if let Some(field) = self.field() {
+                    field.focused = false;
+                }
+                self.search.focused = true;
+                None
+            }
+            C::Settings => {
+                self.navigation = Some(openagents_chat::router::Screen::Keys);
+                None
+            }
+            C::Palette => {
+                self.open_commands(openagents_chat_app::commands::Kind::Palette);
+                None
+            }
+            C::Menu => {
+                self.open_commands(openagents_chat_app::commands::Kind::Menu);
+                None
+            }
+            C::Switch(id) => {
+                if self.session.summaries.iter().any(|s| s.id == id) {
+                    self.select(&id);
+                    Some(self.request(Command::Read {
+                        chat: id,
+                        before: None,
+                    }))
+                } else {
+                    None
+                }
+            }
+            C::Cycle(back) => {
+                let rows = openagents_chat_app::chat_list::search(&self.session.summaries, "");
+                if rows.is_empty() {
+                    None
+                } else {
+                    let at = rows
+                        .iter()
+                        .position(|r| Some(&r.id) == self.session.selected.as_ref())
+                        .unwrap_or(0);
+                    let id = rows[if back {
+                        (at + rows.len() - 1) % rows.len()
+                    } else {
+                        (at + 1) % rows.len()
+                    }]
+                    .id
+                    .clone();
+                    self.select(&id);
+                    Some(self.request(Command::Read {
+                        chat: id,
+                        before: None,
+                    }))
+                }
+            }
+            C::Stop if self.busy() => self.action(Action::Stop, view, now),
+            C::Rename => self.action(Action::Rename, view, now),
+            C::Pin => self.action(Action::Pin, view, now),
+            C::Archive => self.action(Action::Archive, view, now),
+            C::Restore => self.action(Action::Restore, view, now),
+            C::Dismiss => {
+                self.close_overlay();
+                None
+            }
+            C::Stop => None,
+        };
+        if let Some(request) = request {
+            self.queued.push(request);
+        }
+    }
+
     fn save_name(&mut self, chat: String, title: String) -> Option<Request> {
         if self.rename_pending.is_some() {
             return None;
@@ -533,6 +795,75 @@ impl Panel {
     }
     pub fn input(&mut self, event: TextInput<'_>, now: Instant) -> FieldAction {
         let at = now.duration_since(self.born).as_millis() as u64;
+        if let TextInput::Key { key, .. } = &event {
+            let composing =
+                if self.commands.kind == Some(openagents_chat_app::commands::Kind::Palette) {
+                    Some(&mut self.command_query)
+                } else {
+                    self.rename.as_mut().map(|(_, field)| field)
+                };
+            if let Some(field) = composing.filter(|field| {
+                field.focused
+                    && field
+                        .draft
+                        .editor()
+                        .is_some_and(|editor| editor.is_composing())
+            }) {
+                if *key == "Escape" {
+                    field.input(TextInput::CancelComposition, at);
+                } else {
+                    field.input(event, at);
+                }
+                if self.commands.kind == Some(openagents_chat_app::commands::Kind::Palette) {
+                    self.commands.query = self.command_query.text().to_owned();
+                    self.commands.selected = 0;
+                }
+                return FieldAction::Edited;
+            }
+        }
+        if let TextInput::Key { key: "Escape", .. } = &event
+            && self.modal()
+        {
+            self.close_overlay();
+            return FieldAction::Edited;
+        }
+        if self.commands.kind.is_some() {
+            if let TextInput::Key {
+                key,
+                shift,
+                command,
+                ..
+            } = &event
+            {
+                if *command && matches!(*key, "q" | "w") {
+                    return FieldAction::Unhandled;
+                }
+                if matches!(*key, "Tab" | "ArrowDown" | "ArrowUp") {
+                    let entries = self.commands.entries(&self.registry());
+                    self.commands
+                        .navigate_entries(*key == "ArrowUp" || (*key == "Tab" && *shift), &entries);
+                    return FieldAction::Edited;
+                }
+                if *key == "Enter" {
+                    let entries = self.commands.entries(&self.registry());
+                    if let Some(entry) = entries.get(self.commands.selected).filter(|e| e.enabled) {
+                        self.activated.push(format!("command:{}", entry.key));
+                    }
+                    return FieldAction::Edited;
+                }
+            }
+            let result = self.command_query.input(event, at);
+            let query = self.command_query.text().to_owned();
+            if self.commands.query != query {
+                self.commands.query = query;
+                self.commands.selected = 0;
+            }
+            return if result == FieldAction::Unhandled {
+                FieldAction::Edited
+            } else {
+                result
+            };
+        }
         if self.search.focused {
             let result = self.search.input(event, at);
             return if result == FieldAction::Send {
@@ -541,8 +872,33 @@ impl Panel {
                 result
             };
         }
+        if self.rename.is_some() {
+            if let TextInput::Key {
+                key: "Tab", shift, ..
+            } = &event
+            {
+                self.rename_focus = (self.rename_focus + if *shift { 2 } else { 1 }) % 3;
+                if let Some((_, field)) = &mut self.rename {
+                    field.input(TextInput::FocusLost, at);
+                    field.focused = self.rename_focus == 0;
+                }
+                return FieldAction::Edited;
+            }
+            if let TextInput::Key { key: "Enter", .. } = &event
+                && self.rename_focus == 2
+            {
+                self.close_overlay();
+                return FieldAction::Edited;
+            }
+        }
         if let Some((_, field)) = &mut self.rename {
-            let result = field.input(event, at);
+            let result = if self.rename_focus == 1
+                && matches!(&event, TextInput::Key { key: "Enter", .. })
+            {
+                FieldAction::Send
+            } else {
+                field.input(event, at)
+            };
             if result == FieldAction::Send {
                 if let Some(chat) = self.session.selected.clone() {
                     let title = field.text().to_owned();
@@ -603,8 +959,10 @@ impl Panel {
                 field.input(TextInput::FocusLost, at);
             }
         }
-        if resource == SEARCH || resource == RENAME {
-            let field = if resource == SEARCH {
+        if resource == COMMAND_QUERY || resource == SEARCH || resource == RENAME {
+            let field = if resource == COMMAND_QUERY {
+                Some(&mut self.command_query)
+            } else if resource == SEARCH {
                 Some(&mut self.search)
             } else {
                 self.rename.as_mut().map(|(_, f)| f)
@@ -704,6 +1062,7 @@ impl Panel {
     }
     pub fn version(&self, resource: &str) -> Option<u64> {
         match resource {
+            COMMAND_QUERY => Some(self.command_query.version()),
             SEARCH => Some(self.search.version()),
             RENAME => self.rename.as_ref().map(|(_, field)| field.version()),
             TRANSCRIPT => Some(self.transcript.version()),
@@ -748,7 +1107,7 @@ impl Panel {
             .and_then(|id| self.fields.get(id))
             .map_or(56.0, |field| field.height(available));
         match resource {
-            SEARCH | RENAME => Some((available, 56.0)),
+            COMMAND_QUERY | SEARCH | RENAME => Some((available, 56.0)),
             TRANSCRIPT => Some((
                 available,
                 (self.viewport.1
@@ -775,8 +1134,10 @@ impl Panel {
     }
     pub fn paint(&mut self, resource: &str, frame: &mut Frame, rect: PxRect) -> bool {
         let scale = self.viewport.2;
-        if resource == SEARCH || resource == RENAME {
-            let field = if resource == SEARCH {
+        if resource == COMMAND_QUERY || resource == SEARCH || resource == RENAME {
+            let field = if resource == COMMAND_QUERY {
+                Some(&mut self.command_query)
+            } else if resource == SEARCH {
                 Some(&mut self.search)
             } else {
                 self.rename.as_mut().map(|(_, f)| f)
@@ -843,7 +1204,14 @@ impl Panel {
         false
     }
     pub fn cursor(&self) -> Option<(f64, f64)> {
-        let aux = if self.search.focused {
+        if self.commands.kind.is_some()
+            && self.commands.kind != Some(openagents_chat_app::commands::Kind::Palette)
+        {
+            return None;
+        }
+        let aux = if self.commands.kind.is_some() {
+            Some(&self.command_query)
+        } else if self.search.focused {
             Some(&self.search)
         } else {
             self.rename.as_ref().map(|(_, f)| f).filter(|f| f.focused)
@@ -872,6 +1240,70 @@ impl Panel {
         ))
     }
     pub fn body(&mut self) -> Node<Intent> {
+        if let Some(kind) = &self.commands.kind {
+            let entries = self.commands.entries(&self.registry());
+            let label = match kind {
+                openagents_chat_app::commands::Kind::Palette => "Commands",
+                openagents_chat_app::commands::Kind::Menu => "Chat menu",
+                openagents_chat_app::commands::Kind::ConfirmArchive => "Archive this conversation?",
+            };
+            let mut rows = vec![text("command-heading", label, TextRole::Heading)];
+            if *kind == openagents_chat_app::commands::Kind::Palette {
+                rows.push(Node {
+                    key: "command-query".into(),
+                    style: Style::default(),
+                    element: Element::Composer {
+                        token: self.command_token.clone(),
+                        placeholder: "Find a command or chat…".into(),
+                        max_bytes: 128,
+                        enabled: true,
+                        busy: false,
+                        stop: None,
+                        choices: vec![],
+                        draft: Some(self.commands.query.clone()),
+                        focus: true,
+                    },
+                });
+            }
+            if entries.is_empty() {
+                rows.push(text(
+                    "command-none",
+                    "No matching commands.",
+                    TextRole::Status,
+                ));
+            }
+            for index in self
+                .commands
+                .window_at(entries.len(), if self.viewport.1 < 650.0 { 3 } else { 5 })
+            {
+                let entry = &entries[index];
+                let label = format!(
+                    "{}{}\n{}",
+                    if index == self.commands.selected {
+                        "› "
+                    } else {
+                        ""
+                    },
+                    entry.label,
+                    entry.hint
+                );
+                rows.push(button(
+                    &format!("command-{}", entry.key),
+                    &label,
+                    Action::Command {
+                        key: entry.key.clone(),
+                    },
+                    entry.enabled,
+                ));
+            }
+            let mut panel = stack("command-panel", Axis::Vertical, rows);
+            panel.style.background = Some(rust_native::style::Color::rgb(25, 29, 35));
+            panel.style.padding_top = Some(Space::Md);
+            panel.style.padding_bottom = Some(Space::Md);
+            panel.style.padding_start = Some(Space::Md);
+            panel.style.padding_end = Some(Space::Md);
+            return panel;
+        }
         let start = self.state().map_or(0, |state| state.start);
         if self.rows_dirty {
             let state = self.session.state();
@@ -949,6 +1381,14 @@ impl Panel {
         stack("chat-body", Axis::Vertical, children)
     }
     pub fn footer(&mut self) -> Node<Intent> {
+        if self.commands.kind.is_some() {
+            return button(
+                "command-close",
+                "Close · Escape",
+                Action::DismissOverlay,
+                true,
+            );
+        }
         if let Some((title, field)) = &self.rename {
             return stack(
                 "chat-rename-controls",

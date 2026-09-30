@@ -4,6 +4,10 @@ use serde::Serialize;
 #[serde(tag = "action", rename_all = "snake_case")]
 pub enum Action {
     Card { key: String },
+    Palette,
+    Menu,
+    DismissOverlay,
+    Command { key: String },
     Send,
     Pin,
     Rename,

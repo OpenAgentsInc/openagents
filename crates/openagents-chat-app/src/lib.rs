@@ -25,3 +25,5 @@ pub mod session;
 pub mod attachments;
 
 pub mod chat_list;
+
+pub mod commands;

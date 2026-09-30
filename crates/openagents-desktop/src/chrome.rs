@@ -360,6 +360,17 @@ fn sidebar(state: &State) -> Node<Intent> {
     let mut header_rows = vec![title, new];
     if state.live {
         header_rows.push(node(
+            "sidebar-commands",
+            Element::Button {
+                label: "Commands · Cmd/Ctrl+K".into(),
+                enabled: true,
+                icon: None,
+                intent: Intent::Chat {
+                    action: crate::chat_action::Action::Palette,
+                },
+            },
+        ));
+        header_rows.push(node(
             "chat-search",
             Element::Composer {
                 token: "chat-search".into(),

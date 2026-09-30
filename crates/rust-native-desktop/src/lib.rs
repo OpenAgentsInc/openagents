@@ -155,6 +155,35 @@ pub trait App {
         false
     }
 
+    /// A pointer press before normal hit dispatch. A modal may consume an outside click.
+    fn pointer_down(&mut self, target: Option<&str>, point: (f32, f32), now: Instant) -> bool {
+        let _ = (target, point, now);
+        false
+    }
+
+    /// An explicit secondary click. The application admits the current target.
+    fn context_menu(&mut self, target: Option<&str>, now: Instant) -> bool {
+        let _ = (target, now);
+        false
+    }
+
+    /// The semantic root of the active modal, if any.
+    fn modal_root(&self) -> Option<&str> {
+        None
+    }
+
+    /// Restrict native keyboard focus while an application modal is mounted.
+    fn allows_focus(&self, key: &str) -> bool {
+        let _ = key;
+        true
+    }
+
+    /// A bounded explanation for a currently hovered control.
+    fn tooltip(&self, key: &str) -> Option<String> {
+        let _ = key;
+        None
+    }
+
     /// Files explicitly dropped into this window. Applications admit their destination.
     fn dropped_file(&mut self, path: std::path::PathBuf, now: Instant) -> bool {
         let _ = (path, now);

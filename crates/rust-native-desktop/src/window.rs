@@ -420,7 +420,7 @@ impl<A: App> Shell<A> {
             let started = Instant::now();
             let theme = self.app.theme();
             let app = &self.app;
-            let scene = lay_out_with_layout(
+            let mut scene = lay_out_with_layout(
                 app.view().view(),
                 &theme,
                 &mut self.fonts,
@@ -430,6 +430,32 @@ impl<A: App> Shell<A> {
                 height,
                 app.window_layout(),
             );
+            if let Some(key) = &self.interaction.hover
+                && let Some(value) = self.app.tooltip(key)
+                && let Some(hit) = scene.hits.iter().find(|hit| &hit.key == key)
+            {
+                let value: String = value.chars().take(180).collect();
+                let font =
+                    crate::text::font(12.0, rust_native::layout::display::Weight::Regular, false);
+                let paragraph = self.fonts.paragraph(&value, font, Some(260.0));
+                let w = (paragraph.width + 16.0).min(width);
+                let h = paragraph.height + 12.0;
+                let x = hit.rect.x.clamp(0.0, (width - w).max(0.0));
+                let y = (hit.rect.y - h - 6.0).clamp(0.0, (height - h).max(0.0));
+                scene.ops.push(crate::layout::Op::Fill {
+                    rect: crate::layout::Rect { x, y, w, h },
+                    radius: 6.0,
+                    color: theme.background,
+                });
+                scene.ops.push(crate::layout::Op::Text {
+                    paragraph,
+                    x: x + 8.0,
+                    y: y + 6.0,
+                    width: w - 16.0,
+                    align: rust_native::style::TextAlign::Start,
+                    color: theme.text,
+                });
+            }
             if let Some(split) = scene.split {
                 self.interaction.leading_scroll = split.leading.offset;
                 self.interaction.content_scroll = split.content.offset;
@@ -499,6 +525,10 @@ impl<A: App> Shell<A> {
             .focus_order()
             .into_iter()
             .map(str::to_string)
+            .collect();
+        let order: Vec<_> = order
+            .into_iter()
+            .filter(|key| self.app.allows_focus(key))
             .collect();
         if order.is_empty() {
             return;
@@ -1122,11 +1152,45 @@ impl<A: App> ApplicationHandler<()> for Shell<A> {
                 self.redraw();
             }
             WindowEvent::MouseInput {
+                state: ElementState::Pressed,
+                button: MouseButton::Right,
+                ..
+            } => {
+                let target = self.target();
+                if self.app.context_menu(target.as_deref(), Instant::now()) {
+                    self.tick();
+                    self.redraw();
+                }
+            }
+            WindowEvent::MouseInput {
                 state,
                 button: MouseButton::Left,
                 ..
             } => {
                 self.app.input(Instant::now());
+                if state == ElementState::Pressed {
+                    let target = self.target();
+                    let scale = self.scale();
+                    let point = (self.cursor.x as f32 / scale, self.cursor.y as f32 / scale);
+                    let modal = self.app.modal_root().map(str::to_owned);
+                    let inside_modal = modal
+                        .as_ref()
+                        .and_then(|key| self.scene().bounds.get(key))
+                        .is_some_and(|rect| rect.contains(point.0, point.1));
+                    if !inside_modal
+                        && self.app.pointer_down(
+                            target.as_deref(),
+                            (self.cursor.x as f32 / scale, self.cursor.y as f32 / scale),
+                            Instant::now(),
+                        )
+                    {
+                        self.interaction.pressed = None;
+                        self.captured_surface = None;
+                        self.tick();
+                        self.redraw();
+                        return;
+                    }
+                }
                 let shift = self.modifiers.shift_key();
                 if self.surface(|x, y| match state {
                     ElementState::Pressed => SurfaceInput::Down { x, y, shift },
