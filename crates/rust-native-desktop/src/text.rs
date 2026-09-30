@@ -32,6 +32,8 @@ pub struct Paragraph {
     pub width: f32,
     /// Every line's height together, in points.
     pub height: f32,
+    /// Baseline-to-baseline line spacing.
+    pub line_height: f32,
 }
 
 /// One line of a paragraph.
@@ -48,7 +50,7 @@ pub struct TextLine {
 impl Paragraph {
     /// The height of one line, in points.
     pub fn line_height(&self) -> f32 {
-        (self.font.size * LINE_EM).round()
+        self.line_height
     }
 }
 
@@ -289,6 +291,7 @@ impl Fonts {
             font,
             width: lines.iter().map(|line| line.width).fold(0.0, f32::max),
             height: line_height * lines.len() as f32,
+            line_height,
             lines,
         }
     }

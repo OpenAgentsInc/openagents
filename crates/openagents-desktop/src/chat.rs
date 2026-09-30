@@ -1848,7 +1848,10 @@ impl Panel {
         }
         let mut children = vec![Node {
             key: "chat-transcript".into(),
-            style: Style::default(),
+            style: Style {
+                fill_height: Some(true),
+                ..Style::default()
+            },
             element: Element::Surface {
                 label: "Conversation".into(),
                 resource: TRANSCRIPT.into(),
@@ -1860,7 +1863,9 @@ impl Panel {
         if let Some(notice) = &self.notice {
             children.push(text("chat-notice", notice, TextRole::Status));
         }
-        stack("chat-body", Axis::Vertical, children)
+        let mut body = stack("chat-body", Axis::Vertical, children);
+        body.style.fill_height = Some(true);
+        body
     }
     pub fn footer(&mut self) -> Node<Intent> {
         if self.commands.kind.is_some() {
@@ -2066,19 +2071,46 @@ impl Panel {
             ));
         }
         let mut content = vec![];
-        if !previews.is_empty() {
+        let has_previews = !previews.is_empty();
+        if has_previews {
             content.push(stack("image-previews", Axis::Wrap, previews));
         }
-        let mut toolbar = stack("chat-send-controls", Axis::Horizontal, buttons);
-        toolbar.style.padding_start = Some(Space::Sm);
-        toolbar.style.padding_end = Some(Space::Sm);
-        toolbar.style.padding_bottom = Some(Space::Sm);
-        let mut card = stack(
-            "chat-composer-card",
-            Axis::Vertical,
-            vec![composer, toolbar],
-        );
-        card.style.background = Some(Color::rgb(25, 29, 35));
+        let field_width =
+            (self.viewport.0 - crate::chrome::SIDEBAR_DEFAULT - 72.0).clamp(160.0, 704.0) - 80.0;
+        let compact = !has_previews
+            && task.is_none_or(|task| !task.active())
+            && self.fields.get(&id).is_some_and(|field| {
+                !field.text().contains('\n') && field.height(field_width) <= 49.0
+            });
+        let mut card = if compact {
+            let attach = buttons.remove(0);
+            let paste = buttons.remove(0);
+            buttons.remove(0); // Expanded-only flexible spacer.
+            let send = buttons.pop().expect("composer send control");
+            let mut card = stack(
+                "chat-composer-card",
+                Axis::Horizontal,
+                vec![attach, composer, paste, send],
+            );
+            card.style.padding_start = Some(Space::Sm);
+            card.style.padding_end = Some(Space::Sm);
+            card.style.gap = Some(Space::Xs);
+            card
+        } else {
+            let mut toolbar = stack("chat-send-controls", Axis::Horizontal, buttons);
+            toolbar.style.padding_start = Some(Space::Sm);
+            toolbar.style.padding_end = Some(Space::Sm);
+            toolbar.style.padding_top = Some(Space::Xs);
+            toolbar.style.padding_bottom = Some(Space::Sm);
+            stack(
+                "chat-composer-card",
+                Axis::Vertical,
+                vec![composer, toolbar],
+            )
+        };
+        card.style.background = Some(openagents_chat_app::visual::COMPOSER);
+        card.style.radius = Some(26);
+        card.style.border = Some(openagents_chat_app::visual::COMPOSER_BORDER);
         card.style.gap = Some(Space::None);
         content.push(card);
         content.push(text(
@@ -2086,18 +2118,39 @@ impl Panel {
             "Enter to send · Shift+Enter for a new line",
             TextRole::Status,
         ));
-        stack("chat-footer", Axis::Vertical, content)
+        let mut footer = stack("chat-footer", Axis::Vertical, content);
+        footer.style.padding_start = Some(Space::Md);
+        footer.style.padding_end = Some(Space::Md);
+        footer
     }
 }
 fn chat_transcript() -> Transcript {
     let mut transcript = Transcript::default();
     transcript.set_font_family(rust_native::layout::display::FontFamily::Geist);
     transcript
+        .set_metrics(openagents_chat_app::visual::TRANSCRIPT)
+        .expect("valid chat metrics");
+    transcript.set_palette(&openagents_chat_app::visual::COLORS);
+    transcript
 }
 
 fn chat_field(placeholder: &str) -> Field {
     let mut field = Field::with_placeholder(placeholder);
     field.set_font_family(rust_native::layout::display::FontFamily::Geist);
+    field
+        .set_metrics(rust_native_desktop::composer::field::Metrics {
+            font_size: 14.0,
+            line_height: 22.75,
+            padding: [12.0, 16.0, 12.0, 16.0],
+            min_height: 49.0,
+            max_height: 260.0,
+        })
+        .expect("valid composer metrics");
+    field.set_colors(
+        openagents_chat_app::visual::TEXT,
+        openagents_chat_app::visual::FAINT,
+        Color::rgb(129, 140, 248),
+    );
     field
 }
 
@@ -2149,8 +2202,8 @@ fn button(key: &str, label: &str, action: Action, enabled: bool) -> Node<Intent>
     Node {
         key: key.into(),
         style: Style {
-            background: Some(Color::rgb(33, 36, 41)),
-            foreground: Some(Color::rgb(195, 200, 208)),
+            background: Some(openagents_chat_app::visual::SELECTED),
+            foreground: Some(openagents_chat_app::visual::TEXT),
             weight: Some(TextWeight::Normal),
             ..Style::default()
         },
@@ -2172,7 +2225,7 @@ fn icon_button(
 ) -> Node<Intent> {
     let mut node = button(key, label, action, enabled);
     node.style.background = Some(if primary {
-        Color::rgb(230, 232, 235)
+        openagents_chat_app::visual::TEXT
     } else {
         Color {
             alpha: 0,
@@ -2180,9 +2233,9 @@ fn icon_button(
         }
     });
     node.style.foreground = Some(if primary {
-        Color::rgb(18, 20, 23)
+        openagents_chat_app::visual::SIDEBAR
     } else {
-        Color::rgb(150, 155, 163)
+        openagents_chat_app::visual::MUTED
     });
     if let Element::Button { icon, .. } = &mut node.element {
         *icon = Some(Icon {

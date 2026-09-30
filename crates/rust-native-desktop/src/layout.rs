@@ -440,7 +440,12 @@ impl Engine<'_> {
         }
         let width = (rect.w - 2.0 * inset).max(1.0);
         let header_height = self.size(&children[0], width).1;
-        let footer_height = self.size(&children[2], width).1;
+        let footer_width = if center {
+            width.min(self.theme.column)
+        } else {
+            width
+        };
+        let footer_height = self.size(&children[2], footer_width).1;
         self.place(&children[0], rect.x + inset, rect.y + inset, width);
         let body_rect = Rect {
             x: rect.x + inset,
@@ -453,7 +458,11 @@ impl Engine<'_> {
         } else {
             width
         };
-        let body_height = self.size(&children[1], body_width).1;
+        let body_height = if children[1].style.fill_height == Some(true) {
+            body_rect.h
+        } else {
+            self.size(&children[1], body_width).1
+        };
         let limit = (body_height - body_rect.h).max(0.0);
         let offset = if scroll.is_finite() {
             scroll.clamp(0.0, limit)
@@ -468,11 +477,12 @@ impl Engine<'_> {
         self.scene.ops.push(Op::PushClip(body_rect));
         let first_hit = self.scene.hits.len();
         let previous_clip = self.paint_clip.replace(body_rect);
-        self.place(
+        self.place_sized(
             &children[1],
             body_rect.x + (width - body_width) / 2.0,
             body_rect.y + top - offset,
             body_width,
+            body_height,
         );
         self.paint_clip = previous_clip;
         for hit in &mut self.scene.hits[first_hit..] {
@@ -494,11 +504,16 @@ impl Engine<'_> {
                 color: self.theme.rule,
             });
         }
+        let footer_width = if center {
+            width.min(self.theme.column)
+        } else {
+            width
+        };
         self.place(
             &children[2],
-            rect.x + inset,
+            rect.x + inset + (width - footer_width) / 2.0,
             rect.y + rect.h - inset - footer_height,
-            width,
+            footer_width,
         );
         self.scene.ops.push(Op::PopClip);
         ScrollRegion {
@@ -578,7 +593,7 @@ impl Engine<'_> {
                         paragraph.height.max(CHECKBOX),
                     )
                 } else if icon.is_some_and(|icon| icon.circular) {
-                    (32.0, 32.0)
+                    (self.theme.icon_size, self.theme.icon_size)
                 } else if transparent(node.style.background) {
                     let icon_width = if icon.is_some() { 24.0 } else { 0.0 };
                     let paragraph = self.paragraph(
@@ -731,6 +746,9 @@ impl Engine<'_> {
     /// Places `node` at `x`, `y` in a box `width` points wide.
     fn place<I>(&mut self, node: &Node<I>, x: f32, y: f32, width: f32) {
         let (_, height) = self.size(node, width);
+        self.place_sized(node, x, y, width, height);
+    }
+    fn place_sized<I>(&mut self, node: &Node<I>, x: f32, y: f32, width: f32, height: f32) {
         self.scene.bounds.insert(
             node.key.clone(),
             Rect {
@@ -780,8 +798,21 @@ impl Engine<'_> {
                     w: width,
                     h: height,
                 },
-                radius: self.theme.card_radius,
+                radius: node.style.radius.map_or(self.theme.card_radius, f32::from),
                 color: background,
+            });
+        }
+        if is_stack && let Some(color) = node.style.border {
+            self.scene.ops.push(Op::Stroke {
+                rect: Rect {
+                    x,
+                    y,
+                    w: width,
+                    h: height,
+                },
+                radius: node.style.radius.map_or(self.theme.card_radius, f32::from),
+                width: 1.0,
+                color,
             });
         }
         let align = node.style.align.unwrap_or(TextAlign::Start);
@@ -832,6 +863,11 @@ impl Engine<'_> {
             Element::Surface { resource, label } => match (self.sizes)(resource, inner) {
                 Some((w, h)) => {
                     let w = w.min(inner);
+                    let h = if node.style.fill_height == Some(true) {
+                        (height - top - bottom).max(1.0)
+                    } else {
+                        h
+                    };
                     let offset = match align {
                         TextAlign::Start => 0.0,
                         TextAlign::Center => (inner - w) / 2.0,
@@ -879,6 +915,25 @@ impl Engine<'_> {
                 let list = matches!(node.element, Element::List { .. });
                 let gap = self.gap(node);
                 let mut cy = iy;
+                let fill_count = children
+                    .iter()
+                    .filter(|child| child.style.fill_height == Some(true))
+                    .count();
+                let fixed_height: f32 = if fill_count > 0 {
+                    children
+                        .iter()
+                        .filter(|child| child.style.fill_height != Some(true))
+                        .map(|child| self.size(child, inner).1)
+                        .sum()
+                } else {
+                    0.0
+                };
+                let remaining = (height
+                    - top
+                    - bottom
+                    - fixed_height
+                    - gap * children.len().saturating_sub(1) as f32)
+                    .max(1.0);
                 for (index, child) in children.iter().enumerate() {
                     if index > 0 {
                         if list {
@@ -908,8 +963,14 @@ impl Engine<'_> {
                     } else {
                         (ix, inner)
                     };
-                    self.place(child, cx, cy, box_width);
-                    cy += ch;
+                    if child.style.fill_height == Some(true) && fill_count > 0 {
+                        let fill = remaining / fill_count as f32;
+                        self.place_sized(child, cx, cy, box_width, fill);
+                        cy += fill;
+                    } else {
+                        self.place(child, cx, cy, box_width);
+                        cy += ch;
+                    }
                 }
             }
             Element::Stack {
@@ -1054,8 +1115,8 @@ impl Engine<'_> {
             rect = Rect {
                 x,
                 y,
-                w: 32.0,
-                h: 32.0,
+                w: theme.icon_size,
+                h: theme.icon_size,
             };
             let base = node.style.background.unwrap_or(theme.button);
             let color = node.style.foreground.unwrap_or(theme.text);
@@ -1067,7 +1128,7 @@ impl Engine<'_> {
             if base.alpha > 0 || (hovered && enabled) || (pressed && enabled) {
                 self.scene.ops.push(Op::Fill {
                     rect,
-                    radius: 16.0,
+                    radius: theme.icon_size / 2.0,
                     color: if !enabled {
                         mix(base, theme.background, 0.7)
                     } else if hovered || pressed {
@@ -1083,10 +1144,10 @@ impl Engine<'_> {
             }
             self.scene.ops.push(Op::Glyph {
                 rect: Rect {
-                    x: x + 8.0,
-                    y: y + 8.0,
-                    w: 16.0,
-                    h: 16.0,
+                    x: x + theme.icon_size / 4.0,
+                    y: y + theme.icon_size / 4.0,
+                    w: theme.icon_size / 2.0,
+                    h: theme.icon_size / 2.0,
                 },
                 glyph: icon.glyph,
                 color,

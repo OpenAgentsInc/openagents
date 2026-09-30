@@ -120,6 +120,14 @@ fn rect(x: f32, y: f32, w: f32, h: f32, radius: f32) -> Rect {
 }
 
 impl Ctx<'_> {
+    fn content_band(&self, width: f32) -> (f32, f32) {
+        let side =
+            SIDE_MARGIN.max((width - f32::from(self.typography.metrics.reading_width)) / 2.0);
+        (side, (width - 2.0 * side).max(1.0))
+    }
+    fn body_size(&self) -> f32 {
+        f32::from(self.typography.metrics.body_size)
+    }
     fn font(&self, size: f32, weight: Weight, italic: bool, mono: bool) -> Font {
         Font {
             family: self.typography.family,
@@ -190,7 +198,15 @@ impl Ctx<'_> {
         let mut top = y;
         let mut widest: f32 = 0.0;
         for (number, line) in measured.lines.iter().enumerate() {
-            if number > 0 {
+            let fixed_height = self.typography.metrics.body_line_height > 0
+                && runs.iter().any(|run| {
+                    !run.font.mono
+                        && (run.font.size - self.typography.size(self.body_size())).abs() < 0.01
+                })
+                && runs
+                    .iter()
+                    .all(|run| run.font.size <= self.typography.size(self.body_size()) + 0.01);
+            if number > 0 && !fixed_height {
                 top += spacing;
             }
             let inner: Vec<(u32, f32)> =
@@ -218,8 +234,14 @@ impl Ctx<'_> {
                 AlignX::Center => ((band - shown) / 2.0).max(0.0),
                 AlignX::End => (band - shown).max(0.0),
             };
-            let baseline = top + line.ascent;
-            let height = line.ascent + line.descent + line.leading;
+            let measured_height = line.ascent + line.descent + line.leading;
+            let height = if fixed_height {
+                self.typography
+                    .size(f32::from(self.typography.metrics.body_line_height))
+            } else {
+                measured_height
+            };
+            let baseline = top + line.ascent + ((height - measured_height) / 2.0).max(0.0);
             widest = widest.max(shown);
             for (index, run) in runs.iter().enumerate() {
                 let start = run.start16.max(line.start16);
@@ -336,7 +358,7 @@ impl Ctx<'_> {
                     .0
             }
             Block::Paragraph { spans } => {
-                let para = self.spans(spans, 16.0, Weight::Regular, ink, 1.0);
+                let para = self.spans(spans, self.body_size(), Weight::Regular, ink, 1.0);
                 self.para(&para, x, y, Wrap::At(w), 3.0, AlignX::Start).0
             }
             Block::List {
@@ -394,7 +416,7 @@ impl Ctx<'_> {
                 } else {
                     ("•".to_owned(), Weight::Bold)
                 };
-                let mut style = self.style(16.0, weight, ink);
+                let mut style = self.style(self.body_size(), weight, ink);
                 style.opacity = 0.7;
                 Some(Para::plain(&text, style))
             })
@@ -686,7 +708,7 @@ impl Ctx<'_> {
                         (13.0, Weight::Regular, false, Wrap::At(w))
                     }
                     TextRole::Body | TextRole::Markdown => {
-                        (16.0, Weight::Regular, false, Wrap::At(w))
+                        (self.body_size(), Weight::Regular, false, Wrap::At(w))
                     }
                 };
                 let weight = match node.style.weight {
@@ -851,11 +873,23 @@ impl Ctx<'_> {
     ) -> f32 {
         match role {
             MessageRole::User => {
-                let inner_x = x + 48.0 + 14.0;
-                let inner_w = (w - 48.0 - 28.0).max(1.0);
+                let metrics = self.typography.metrics;
+                let padding = f32::from(metrics.bubble_padding);
+                let cap = if metrics.bubble_max_percent == 0 {
+                    (w - 48.0).max(1.0)
+                } else {
+                    w * f32::from(metrics.bubble_max_percent) / 100.0
+                };
+                let inner_w = (cap - 2.0 * padding).max(1.0);
+                let inner_x = x + w - cap + padding;
                 let mark = self.out.mark();
                 let content_h = self.stack(children, inner_x, y + 10.0, inner_w, tone, 8.0, false);
-                let natural = if self.out.has_blocks_since(mark) {
+                let wrapped = metrics.bubble_max_percent > 0
+                    && self.out.runs[mark.runs..]
+                        .first()
+                        .zip(self.out.runs[mark.runs..].last())
+                        .is_some_and(|(first, last)| first.baseline != last.baseline);
+                let natural = if wrapped || self.out.has_blocks_since(mark) {
                     inner_w
                 } else {
                     (self.out.text_extent(mark) - inner_x)
@@ -863,9 +897,15 @@ impl Ctx<'_> {
                         .clamp(0.0, inner_w)
                 };
                 self.out.shift(mark, inner_w - natural, 0.0);
-                let bubble_w = natural + 28.0;
-                let mut bubble = rect(x + w - bubble_w, y, bubble_w, content_h + 20.0, 18.0);
-                bubble.radii = [18.0, 18.0, 4.0, 18.0];
+                let bubble_w = natural + 2.0 * padding;
+                let radius = f32::from(metrics.bubble_radius);
+                let mut bubble = rect(x + w - bubble_w, y, bubble_w, content_h + 20.0, radius);
+                bubble.radii = [
+                    radius,
+                    radius,
+                    f32::from(metrics.bubble_tail_radius),
+                    radius,
+                ];
                 bubble.fill = Some(Ink::Role(ColorRole::Bubble));
                 self.out.insert_rect(mark.rects, bubble);
                 let mut height = content_h + 20.0;
@@ -1115,7 +1155,7 @@ pub(crate) fn plain(node: &Node<()>) -> String {
 
 /// Lays out one row at the top of a `width`-point band.
 pub(crate) fn lay_row(ctx: &mut Ctx<'_>, node: &Node<()>, expanded: bool, width: f32) -> f32 {
-    let (x, w) = content_band(width);
+    let (x, w) = ctx.content_band(width);
     let tone = ink(node.style.foreground, PRIMARY);
     let height = match &node.element {
         Element::Message {
@@ -1174,7 +1214,7 @@ pub(crate) fn lay_row(ctx: &mut Ctx<'_>, node: &Node<()>, expanded: bool, width:
 
 /// Lays out the control that loads older rows.
 pub(crate) fn lay_earlier(ctx: &mut Ctx<'_>, label: &str, loading: bool, width: f32) -> f32 {
-    let (x, w) = content_band(width);
+    let (x, w) = ctx.content_band(width);
     let height = 44.0f32.max(ctx.line_height(15.0) + 16.0).ceil();
     let style = ctx.style(15.0, Weight::Regular, SECONDARY);
     let para = Para::plain(label, style);

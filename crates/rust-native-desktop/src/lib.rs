@@ -277,6 +277,7 @@ fn capture_into<A: App>(
     scale: f32,
     frame: impl FnOnce(usize, usize) -> Frame,
 ) -> (Frame, Scene) {
+    app.viewport(width, height, scale);
     let theme = app.theme();
     let mut fonts = text::Fonts::new();
     let scene = layout::lay_out_with_layout(
@@ -302,4 +303,65 @@ fn capture_into<A: App>(
         &mut |resource, frame, rect| app.paint_surface(resource, frame, rect),
     );
     (frame, scene)
+}
+
+#[cfg(test)]
+mod capture_tests {
+    use super::*;
+
+    struct CaptureApp {
+        view: ValidatedView<()>,
+        viewport: Option<(f32, f32, f32)>,
+        painted: bool,
+    }
+    impl App for CaptureApp {
+        type Intent = ();
+        fn title(&self) -> String {
+            "Capture test".into()
+        }
+        fn tick(&mut self, _: Instant) -> Option<Instant> {
+            None
+        }
+        fn view(&self) -> &ValidatedView<()> {
+            &self.view
+        }
+        fn activate(&mut self, _: (), _: Instant) {}
+        fn viewport(&mut self, width: f32, height: f32, scale: f32) {
+            self.viewport = Some((width, height, scale));
+        }
+        fn surface_size(&self, _: &str, _: f32) -> Option<(f32, f32)> {
+            assert_eq!(self.viewport, Some((300.0, 200.0, 2.0)));
+            Some((40.0, 20.0))
+        }
+        fn paint_surface(&mut self, _: &str, _: &mut Frame, rect: PxRect) {
+            assert_eq!(self.viewport, Some((300.0, 200.0, 2.0)));
+            assert_eq!((rect.w, rect.h), (80.0, 40.0));
+            self.painted = true;
+        }
+    }
+    #[test]
+    fn captures_supply_the_viewport_before_measuring_and_painting_surfaces() {
+        let view = rust_native::View::new(
+            "capture-test",
+            1,
+            rust_native::Node {
+                key: "surface".into(),
+                style: Default::default(),
+                element: rust_native::Element::Surface {
+                    label: "Test surface".into(),
+                    resource: "test".into(),
+                },
+            },
+        )
+        .validate()
+        .unwrap();
+        let mut app = CaptureApp {
+            view,
+            viewport: None,
+            painted: false,
+        };
+        let (frame, _) = capture(&mut app, 300.0, 200.0, 2.0);
+        assert_eq!((frame.width, frame.height), (600, 400));
+        assert!(app.painted);
+    }
 }

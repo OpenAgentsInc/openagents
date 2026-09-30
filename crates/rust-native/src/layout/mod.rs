@@ -122,11 +122,54 @@ impl Update {
     }
 }
 
+/// Scoped transcript dimensions in logical points. Defaults preserve the
+/// established reader; applications supply their own component metrics.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct Metrics {
+    pub reading_width: u16,
+    pub body_size: u16,
+    /// Zero uses measured font metrics; otherwise each body line uses this height.
+    pub body_line_height: u16,
+    pub row_gap: u16,
+    pub bubble_padding: u16,
+    /// Zero preserves the default fixed leading gutter.
+    pub bubble_max_percent: u8,
+    pub bubble_radius: u16,
+    pub bubble_tail_radius: u16,
+}
+impl Default for Metrics {
+    fn default() -> Self {
+        Self {
+            reading_width: 720,
+            body_size: 16,
+            body_line_height: 0,
+            row_gap: 18,
+            bubble_padding: 14,
+            bubble_max_percent: 0,
+            bubble_radius: 18,
+            bubble_tail_radius: 4,
+        }
+    }
+}
+impl Metrics {
+    fn valid(self) -> bool {
+        (1..=16384).contains(&self.reading_width)
+            && (1..=400).contains(&self.body_size)
+            && self.body_line_height <= 800
+            && self.row_gap <= 400
+            && self.bubble_padding <= 128
+            && self.bubble_max_percent <= 100
+            && self.bubble_radius <= 128
+            && self.bubble_tail_radius <= 128
+    }
+}
+
 /// How nominal font sizes become drawn sizes: one scale, or a curve.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Typography {
     scale: f32,
     family: display::FontFamily,
+    metrics: Metrics,
     /// Sorted by nominal size, without repeats.
     curve: Vec<(f32, f32)>,
 }
@@ -136,6 +179,7 @@ impl Default for Typography {
         Self {
             scale: 1.0,
             family: Default::default(),
+            metrics: Metrics::default(),
             curve: vec![],
         }
     }
@@ -164,6 +208,7 @@ impl Typography {
         Ok(Self {
             scale,
             family: Default::default(),
+            metrics: Metrics::default(),
             curve: points,
         })
     }
@@ -191,7 +236,7 @@ impl Typography {
             .iter()
             .map(|(a, b)| (a.to_bits(), b.to_bits()))
             .collect();
-        hash_of(&(self.scale.to_bits(), bits, self.family))
+        hash_of(&(self.scale.to_bits(), bits, self.family, self.metrics))
     }
 }
 
@@ -352,6 +397,7 @@ fn rows_in(tops: &[f32], height: impl Fn(usize) -> f32, y0: f32, y1: f32) -> Ran
 pub struct TranscriptLayout {
     width: f32,
     family: display::FontFamily,
+    metrics: Metrics,
     typography: Typography,
     rows: Vec<Row>,
     keys: Arc<Vec<String>>,
@@ -377,6 +423,7 @@ impl TranscriptLayout {
         Self {
             width: 0.0,
             family: Default::default(),
+            metrics: Metrics::default(),
             typography: Typography::default(),
             rows: vec![],
             keys: Arc::default(),
@@ -394,6 +441,15 @@ impl TranscriptLayout {
         self.family = family;
     }
 
+    /// Apply checked component dimensions on the next update.
+    pub fn set_metrics(&mut self, metrics: Metrics) -> Result<(), LayoutError> {
+        if !metrics.valid() {
+            return Err(LayoutError::Geometry);
+        }
+        self.metrics = metrics;
+        Ok(())
+    }
+
     /// Applies an update and lays out the rows it invalidates.
     pub fn update(
         &mut self,
@@ -407,6 +463,7 @@ impl TranscriptLayout {
         }
         let mut typography = Typography::new(update.scale, &update.curve)?;
         typography.family = self.family;
+        typography.metrics = self.metrics;
         let expanded: HashSet<String> = update.expanded.into_iter().collect();
         if let Some(name) = update.source {
             if update.order.is_some() || !update.rows.is_empty() || update.earlier.is_some() {
@@ -680,12 +737,12 @@ impl TranscriptLayout {
         let mut y = EDGE_INSET;
         for row in &self.rows {
             self.tops.push(y);
-            y += row.height + ROW_GAP;
+            y += row.height + f32::from(self.metrics.row_gap);
         }
         let end = if self.rows.is_empty() {
             2.0 * EDGE_INSET
         } else {
-            y - ROW_GAP + EDGE_INSET
+            y - f32::from(self.metrics.row_gap) + EDGE_INSET
         };
         self.tops.push(end);
     }

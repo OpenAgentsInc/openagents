@@ -12,12 +12,12 @@ use std::collections::BTreeSet;
 pub const MARK: &str = "openagents-mark";
 pub const SIDEBAR_MIN: f32 = 224.0;
 pub const SIDEBAR_MAX: f32 = 400.0;
-pub const SIDEBAR_DEFAULT: f32 = 280.0;
+pub const SIDEBAR_DEFAULT: f32 = 256.0;
 const SAMPLE_LIMIT: usize = 40;
-const SIDEBAR: Color = Color::rgb(18, 20, 23);
-const SELECTED: Color = Color::rgb(44, 47, 52);
-const TEXT: Color = Color::rgb(230, 232, 235);
-const MUTED: Color = Color::rgb(150, 155, 163);
+const SIDEBAR: Color = openagents_chat_app::visual::SIDEBAR;
+const SELECTED: Color = openagents_chat_app::visual::SELECTED;
+const TEXT: Color = openagents_chat_app::visual::TEXT;
+const MUTED: Color = openagents_chat_app::visual::MUTED;
 const CLEAR: Color = Color {
     red: 0,
     green: 0,
@@ -358,7 +358,7 @@ fn sidebar(state: &State) -> Node<Intent> {
         Some(Glyph::Compose),
         false,
     );
-    new.style.background = Some(Color::rgb(33, 36, 41));
+    new.style.background = Some(CLEAR);
     new.style.foreground = Some(TEXT);
     let mut header_rows = vec![title, new];
     if state.live {
@@ -771,11 +771,13 @@ pub fn root(state: &State, model: &Model, now: u64) -> Node<Intent> {
         Space::None,
         vec![header, body, footer],
     );
-    content.style.background = Some(Color {
-        red: 10,
-        green: 12,
-        blue: 15,
-        alpha: 105,
+    content.style.background = Some(if matches!(state.page, Page::Grid) {
+        Color {
+            alpha: 0,
+            ..openagents_chat_app::visual::CANVAS
+        }
+    } else {
+        openagents_chat_app::visual::CANVAS
     });
     stack(
         "desktop-shell",

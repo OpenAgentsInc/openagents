@@ -298,6 +298,7 @@ pub enum ViewError {
     TextLimit,
     ViewLimit,
     MissingLabel,
+    StyleBounds,
     Encoding(String),
     StaleActivation,
     NotInteractive,
@@ -317,6 +318,7 @@ impl fmt::Display for ViewError {
             Self::JsonDepthLimit => f.write_str("view exceeds its JSON nesting bound"),
             Self::TextLimit => f.write_str("view text exceeds its byte bound"),
             Self::ViewLimit => f.write_str("view exceeds its encoded byte bound"),
+            Self::StyleBounds => f.write_str("view style exceeds its geometry bound"),
             Self::MissingLabel => f.write_str("button, list, or surface requires a nonempty label"),
             Self::Encoding(error) => write!(f, "invalid Rust Native view encoding: {error}"),
             Self::StaleActivation => f.write_str("activation does not name the current view"),
@@ -355,6 +357,9 @@ impl<I: Serialize> View<I> {
         while let Some((node, depth)) = pending.pop() {
             if depth > MAX_DEPTH {
                 return Err(ViewError::DepthLimit);
+            }
+            if node.style.radius.is_some_and(|radius| radius > 128) {
+                return Err(ViewError::StyleBounds);
             }
             if !crate::valid_id(&node.key) {
                 return Err(ViewError::Identity);

@@ -31,3 +31,5 @@ pub mod commands;
 pub mod task_chat;
 
 pub mod retained;
+
+pub mod visual;

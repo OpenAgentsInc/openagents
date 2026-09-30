@@ -369,7 +369,21 @@ impl App for DesktopApp {
         if self.navigation.is_none() {
             return Theme::default();
         }
-        Theme::openagents()
+        Theme {
+            font_family: rust_native::layout::display::FontFamily::Geist,
+            background: openagents_chat_app::visual::SIDEBAR,
+            text: openagents_chat_app::visual::TEXT,
+            muted: openagents_chat_app::visual::MUTED,
+            rule: openagents_chat_app::visual::BORDER,
+            focus: Color::rgb(184, 207, 231),
+            button_radius: 7.0,
+            icon_size: 28.0,
+            body: 14.0,
+            heading: 26.0,
+            status: 12.0,
+            column: 768.0,
+            ..Theme::openagents()
+        }
     }
 
     fn window_layout(&self) -> WindowLayout {

@@ -22,6 +22,33 @@ enum ClipboardResult {
     Cut(bool),
 }
 
+/// Geometry for a native text field, in logical points.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Metrics {
+    pub font_size: f32,
+    pub line_height: f32,
+    pub padding: [f32; 4],
+    pub min_height: f32,
+    pub max_height: f32,
+}
+impl Default for Metrics {
+    fn default() -> Self {
+        Self {
+            font_size: 15.0,
+            line_height: 21.0,
+            padding: [14.0; 4],
+            min_height: 56.0,
+            max_height: 196.0,
+        }
+    }
+}
+
+#[derive(Default)]
+struct HeightCache {
+    text: Option<String>,
+    widths: Vec<(u32, f32)>,
+}
+
 #[derive(Default)]
 pub struct Field {
     pub draft: ComposerDraft,
@@ -29,13 +56,15 @@ pub struct Field {
     placeholder: String,
     unframed: bool,
     font_family: rust_native::layout::display::FontFamily,
+    metrics: Metrics,
+    colors: Option<[Color; 3]>,
     paragraph: Option<Rc<Paragraph>>,
     offset: f32,
     dragging: bool,
     pub caret: (f32, f32),
     clipboard: Option<(Stamp, std::sync::mpsc::Receiver<ClipboardResult>)>,
     waker: Option<crate::Waker>,
-    measured_height: std::cell::RefCell<Option<(String, f32, f32)>>,
+    measured_height: std::cell::RefCell<HeightCache>,
 }
 
 impl Field {
@@ -45,15 +74,42 @@ impl Field {
             ..Self::default()
         }
     }
+    pub fn set_metrics(&mut self, metrics: Metrics) -> Result<(), &'static str> {
+        if !metrics.font_size.is_finite()
+            || !(1.0..=400.0).contains(&metrics.font_size)
+            || !metrics.line_height.is_finite()
+            || !(1.0..=800.0).contains(&metrics.line_height)
+            || metrics
+                .padding
+                .iter()
+                .any(|value| !value.is_finite() || !(0.0..=128.0).contains(value))
+            || !metrics.min_height.is_finite()
+            || !metrics.max_height.is_finite()
+            || metrics.min_height < metrics.line_height
+            || metrics.max_height < metrics.min_height
+            || metrics.max_height > 4096.0
+        {
+            return Err("The text field metrics exceed their bounds");
+        }
+        if self.metrics != metrics {
+            self.metrics = metrics;
+            self.paragraph = None;
+            *self.measured_height.borrow_mut() = Default::default();
+        }
+        Ok(())
+    }
+    pub fn set_colors(&mut self, text: Color, placeholder: Color, caret: Color) {
+        self.colors = Some([text, placeholder, caret]);
+    }
     pub fn set_font_family(&mut self, family: rust_native::layout::display::FontFamily) {
         if self.font_family != family {
             self.font_family = family;
             self.paragraph = None;
-            *self.measured_height.borrow_mut() = None;
+            *self.measured_height.borrow_mut() = Default::default();
         }
     }
     fn font(&self) -> rust_native::layout::display::Font {
-        let mut font = font(15.0, Weight::Regular, false);
+        let mut font = font(self.metrics.font_size, Weight::Regular, false);
         font.family = self.font_family;
         font
     }
@@ -69,11 +125,16 @@ impl Field {
     /// Grow from one line to eight lines, then scroll within the field.
     pub fn height(&self, width: f32) -> f32 {
         let text = self.text();
-        if let Some((previous, previous_width, height)) = self.measured_height.borrow().as_ref()
-            && previous == text
-            && *previous_width == width
         {
-            return *height;
+            let cache = self.measured_height.borrow();
+            if cache.text.as_deref() == Some(text)
+                && let Some((_, height)) = cache
+                    .widths
+                    .iter()
+                    .find(|(bits, _)| *bits == width.to_bits())
+            {
+                return *height;
+            }
         }
         use rust_native::layout::{MeasureRun, Measurer, shape::ShapingMeasurer};
         let font = self.font();
@@ -85,14 +146,25 @@ impl Field {
                 start16: 0,
                 end16: text.encode_utf16().count() as u32,
             }],
-            Some((width - 28.0).max(1.0)),
+            Some((width - self.metrics.padding[1] - self.metrics.padding[3]).max(1.0)),
         );
         let mut lines = measured.map_or(1, |measured| measured.lines.len().max(1));
         if text.ends_with('\n') {
             lines += 1;
         }
-        let height = (lines as f32 * 21.0 + 28.0).clamp(56.0, 196.0);
-        *self.measured_height.borrow_mut() = Some((text.to_owned(), width, height));
+        let height = (lines as f32 * self.metrics.line_height
+            + self.metrics.padding[0]
+            + self.metrics.padding[2])
+            .clamp(self.metrics.min_height, self.metrics.max_height);
+        let mut cache = self.measured_height.borrow_mut();
+        if cache.text.as_deref() != Some(text) {
+            cache.text = Some(text.to_owned());
+            cache.widths.clear();
+        }
+        if cache.widths.len() >= 8 {
+            cache.widths.remove(0);
+        }
+        cache.widths.push((width.to_bits(), height));
         height
     }
     pub fn start(&mut self, waker: crate::Waker) {
@@ -168,6 +240,13 @@ impl Field {
             &self.placeholder,
             self.unframed,
             self.font_family,
+            self.metrics.font_size.to_bits(),
+            self.metrics.line_height.to_bits(),
+            self.metrics.padding.map(f32::to_bits),
+            self.metrics.min_height.to_bits(),
+            self.metrics.max_height.to_bits(),
+            self.colors
+                .map(|colors| colors.map(|c| [c.red, c.green, c.blue, c.alpha])),
         )
             .hash(&mut hash);
         hash.finish()
@@ -340,7 +419,8 @@ impl Field {
         let Some(paragraph) = &self.paragraph else {
             return self.text().len();
         };
-        let index = ((y - 14.0 + self.offset).max(0.0) / paragraph.line_height()) as usize;
+        let index = ((y - self.metrics.padding[0] + self.offset).max(0.0) / paragraph.line_height())
+            as usize;
         let Some(line) = paragraph.lines.get(index) else {
             return self.text().len();
         };
@@ -348,7 +428,7 @@ impl Field {
             + fonts.caret_byte(
                 &paragraph.text[line.start..line.end],
                 paragraph.font,
-                x - 14.0,
+                x - self.metrics.padding[3],
             )
     }
 
@@ -397,7 +477,15 @@ impl Field {
         }
         let font = self.font();
         let text = self.text().to_owned();
-        let paragraph = fonts.editable_paragraph(&text, font, (rect.w / scale - 28.0).max(1.0));
+        let mut paragraph = (*fonts.editable_paragraph(
+            &text,
+            font,
+            (rect.w / scale - self.metrics.padding[1] - self.metrics.padding[3]).max(1.0),
+        ))
+        .clone();
+        paragraph.line_height = self.metrics.line_height;
+        paragraph.height = paragraph.line_height * paragraph.lines.len() as f32;
+        let paragraph = Rc::new(paragraph);
         let height = paragraph.line_height();
         let selection = self
             .draft
@@ -410,7 +498,7 @@ impl Field {
             .rposition(|line| line.start <= selection.caret)
             .unwrap_or(0);
         let caret_y = caret_line as f32 * height;
-        let available = rect.h / scale - 28.0;
+        let available = rect.h / scale - self.metrics.padding[0] - self.metrics.padding[2];
         if self.focused {
             if caret_y < self.offset {
                 self.offset = caret_y;
@@ -423,7 +511,8 @@ impl Field {
             .offset
             .clamp(0.0, (paragraph.height - available).max(0.0));
         for (index, line) in paragraph.lines.iter().enumerate() {
-            let y = rect.y + (14.0 + index as f32 * height - self.offset) * scale;
+            let y =
+                rect.y + (self.metrics.padding[0] + index as f32 * height - self.offset) * scale;
             let lo = range.start.max(line.start).min(line.end);
             let hi = range.end.min(line.end).max(lo);
             if lo < hi {
@@ -431,7 +520,7 @@ impl Field {
                 let width = fonts.advance(&text[lo..hi], font);
                 frame.fill(
                     PxRect {
-                        x: rect.x + (14.0 + left) * scale,
+                        x: rect.x + (self.metrics.padding[3] + left) * scale,
                         y,
                         w: width * scale,
                         h: height * scale,
@@ -442,34 +531,41 @@ impl Field {
             }
         }
         if text.is_empty() {
-            let placeholder = fonts.paragraph(&self.placeholder, font, None);
+            let mut placeholder = (*fonts.paragraph(&self.placeholder, font, None)).clone();
+            placeholder.line_height = self.metrics.line_height;
+            placeholder.height = self.metrics.line_height;
             fonts.draw(
                 frame,
                 &placeholder,
-                rect.x + 14.0 * scale,
-                rect.y + 14.0 * scale,
-                rect.w / scale - 28.0,
+                rect.x + self.metrics.padding[3] * scale,
+                rect.y + self.metrics.padding[0] * scale,
+                rect.w / scale - self.metrics.padding[1] - self.metrics.padding[3],
                 TextAlign::Start,
                 scale,
-                Color::rgb(137, 144, 155),
+                self.colors
+                    .map_or(Color::rgb(137, 144, 155), |colors| colors[1]),
             );
         } else {
             fonts.draw(
                 frame,
                 &paragraph,
-                rect.x + 14.0 * scale,
-                rect.y + (14.0 - self.offset) * scale,
-                rect.w / scale - 28.0,
+                rect.x + self.metrics.padding[3] * scale,
+                rect.y + (self.metrics.padding[0] - self.offset) * scale,
+                rect.w / scale - self.metrics.padding[1] - self.metrics.padding[3],
                 TextAlign::Start,
                 scale,
-                Color::rgb(230, 232, 235),
+                self.colors
+                    .map_or(Color::rgb(230, 232, 235), |colors| colors[0]),
             );
         }
         let line = paragraph.lines.get(caret_line);
         let left = line.map_or(0.0, |line| {
             fonts.advance(&text[line.start..selection.caret.min(text.len())], font)
         });
-        self.caret = (14.0 + left, 14.0 + caret_y - self.offset);
+        self.caret = (
+            self.metrics.padding[3] + left,
+            self.metrics.padding[0] + caret_y - self.offset,
+        );
         if self.focused {
             frame.fill(
                 PxRect {
@@ -479,7 +575,8 @@ impl Field {
                     h: height * scale,
                 },
                 0.0,
-                Color::rgb(222, 231, 243),
+                self.colors
+                    .map_or(Color::rgb(222, 231, 243), |colors| colors[2]),
             );
         }
         if let Some(marked) = self.draft.editor().and_then(|e| e.marked_range()) {
@@ -489,9 +586,11 @@ impl Field {
                 if lo < hi {
                     let left = fonts.advance(&text[line.start..lo], font);
                     let width = fonts.advance(&text[lo..hi], font);
-                    let y = rect.y + (14.0 + (index + 1) as f32 * height - self.offset) * scale;
+                    let y = rect.y
+                        + (self.metrics.padding[0] + (index + 1) as f32 * height - self.offset)
+                            * scale;
                     frame.line(
-                        (rect.x + (14.0 + left) * scale, y),
+                        (rect.x + (self.metrics.padding[3] + left) * scale, y),
                         (rect.x + (14.0 + left + width) * scale, y),
                         scale,
                         Color::rgb(169, 199, 234),
@@ -549,6 +648,17 @@ mod tests {
     fn check_trailing_spaces(family: rust_native::layout::display::FontFamily) {
         let mut field = field();
         field.set_font_family(family);
+        if family == rust_native::layout::display::FontFamily::Geist {
+            field
+                .set_metrics(Metrics {
+                    font_size: 14.0,
+                    line_height: 22.75,
+                    padding: [12.0, 16.0, 12.0, 16.0],
+                    min_height: 49.0,
+                    max_height: 260.0,
+                })
+                .unwrap();
+        }
         let mut fonts = Fonts::new();
         let mut frame = Frame::transparent(400, 100);
         let rect = PxRect {

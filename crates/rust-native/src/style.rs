@@ -99,6 +99,15 @@ pub struct Style {
     pub gap: Option<Space>,
     pub weight: Option<TextWeight>,
     pub align: Option<TextAlign>,
+    /// Rounded corners in logical points; zero produces square corners.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub radius: Option<u16>,
+    /// A one-point inset border around a stack's background.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub border: Option<Color>,
+    /// Fill the remaining height of a bounded vertical container.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fill_height: Option<bool>,
 }
 
 /// A declaration contains only canonical leaf properties. A later explicit
@@ -115,6 +124,9 @@ pub struct StylePatch {
     pub gap: Patch<Space>,
     pub weight: Patch<TextWeight>,
     pub align: Patch<TextAlign>,
+    pub radius: Patch<u16>,
+    pub border: Patch<Color>,
+    pub fill_height: Patch<bool>,
 }
 
 impl StylePatch {
@@ -141,6 +153,9 @@ impl StylePatch {
             gap: self.gap.overlay(later.gap),
             weight: self.weight.overlay(later.weight),
             align: self.align.overlay(later.align),
+            radius: self.radius.overlay(later.radius),
+            border: self.border.overlay(later.border),
+            fill_height: self.fill_height.overlay(later.fill_height),
         }
     }
 
@@ -157,6 +172,9 @@ impl StylePatch {
             gap: self.gap.resolve(defaults.gap),
             weight: self.weight.resolve(defaults.weight),
             align: self.align.resolve(defaults.align),
+            radius: self.radius.resolve(defaults.radius),
+            border: self.border.resolve(defaults.border),
+            fill_height: self.fill_height.resolve(defaults.fill_height),
         }
     }
 }

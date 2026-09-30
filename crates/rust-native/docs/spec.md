@@ -298,3 +298,16 @@ same exact face for shaping and painting. Family participates in measurement
 and glyph cache identity. `TranscriptLayout::set_font_family` invalidates
 measured rows on the next update; it does not mutate a published frame.
 The existing font-spec C ABI continues to select the default pair.
+
+`Style.radius` selects 0–128 point rounded corners. `Style.border` adds a
+one-point inset stack border. `Style.fill_height` fills the remaining height
+of a bounded vertical container; the desktop split adapter allocates its body
+from the actual header and footer sizes. These properties compose and reset
+like the existing style leaves. Adapters that do not implement them retain
+their established rendering; phone mounting is tracked in #10028.
+
+`TranscriptLayout::set_metrics` selects bounded reading width, body font size
+and line height, row spacing, and bubble geometry for a mounted reader. The
+next update invalidates affected measurements. The defaults preserve existing
+reader geometry. A native field can likewise select bounded font, line,
+padding, and height metrics without changing editing or IME state.

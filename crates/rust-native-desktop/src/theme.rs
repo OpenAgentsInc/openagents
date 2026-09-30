@@ -30,6 +30,8 @@ pub struct Theme {
     pub card_radius: f32,
     /// A button's corner radius.
     pub button_radius: f32,
+    /// Circular control diameter.
+    pub icon_size: f32,
     /// Body text.
     pub body: f32,
     /// A heading.
@@ -58,6 +60,7 @@ impl Default for Theme {
             focus: Color::rgb(120, 170, 255),
             card_radius: 12.0,
             button_radius: 8.0,
+            icon_size: 32.0,
             body: 15.0,
             heading: 22.0,
             status: 13.0,

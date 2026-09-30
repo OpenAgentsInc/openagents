@@ -23,6 +23,7 @@ use rust_native::selection::{Position as Point, Selection};
 /// Exact row heights, reading position, selection, and horizontally scrolled blocks.
 pub struct Transcript {
     version: u64,
+    palette: HashMap<ColorRole, Color>,
     highlights: rust_native::syntax::Cache,
     wake: Option<Arc<dyn Fn() + Send + Sync>>,
     expanded: BTreeSet<String>,
@@ -50,6 +51,7 @@ impl Default for Transcript {
         let frame = layout.frame();
         Self {
             version: 0,
+            palette: HashMap::new(),
             highlights: Default::default(),
             wake: None,
             expanded: BTreeSet::new(),
@@ -74,6 +76,27 @@ impl Default for Transcript {
 }
 
 impl Transcript {
+    pub fn set_metrics(
+        &mut self,
+        metrics: rust_native::layout::Metrics,
+    ) -> Result<(), rust_native::layout::LayoutError> {
+        self.layout.set_metrics(metrics)?;
+        self.rows.clear();
+        self.version = self.version.wrapping_add(1);
+        Ok(())
+    }
+    pub fn set_palette(&mut self, colors: &[(ColorRole, Color)]) {
+        self.palette = colors.iter().copied().collect();
+        self.version = self.version.wrapping_add(1);
+    }
+    fn ink(&self, value: Ink) -> Color {
+        if let Ink::Role(role) = value
+            && let Some(color) = self.palette.get(&role)
+        {
+            return *color;
+        }
+        ink(value)
+    }
     pub fn set_font_family(&mut self, family: rust_native::layout::display::FontFamily) {
         self.layout.set_font_family(family);
         self.rows.clear();
@@ -522,10 +545,10 @@ impl Transcript {
                     h: shape.h * scale,
                 };
                 if let Some(fill) = shape.fill {
-                    frame.fill(bounds, shape.radii[0] * scale, ink(fill));
+                    frame.fill(bounds, shape.radii[0] * scale, self.ink(fill));
                 }
                 if let Some(stroke) = shape.stroke {
-                    frame.stroke(bounds, shape.radii[0] * scale, scale, ink(stroke));
+                    frame.stroke(bounds, shape.radii[0] * scale, scale, self.ink(stroke));
                 }
                 if let Some(clip) = clip {
                     frame.restore_clip(clip);
@@ -604,7 +627,7 @@ impl Transcript {
                 let mut color = if hovered {
                     Color::rgb(210, 231, 252)
                 } else {
-                    ink(style.ink)
+                    self.ink(style.ink)
                 };
                 color.alpha = (f32::from(color.alpha) * style.opacity) as u8;
                 let truncated = run
@@ -658,7 +681,7 @@ impl Transcript {
                 if !frame.visible(bounds) {
                     continue;
                 }
-                let color = ink(Ink::Role(ColorRole::Secondary));
+                let color = self.ink(Ink::Role(ColorRole::Secondary));
                 match &widget.kind {
                     WidgetKind::Copy { .. } => {
                         let paragraph = fonts.paragraph(
