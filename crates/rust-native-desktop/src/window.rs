@@ -319,6 +319,23 @@ struct LaidOut {
     overlay: Option<crate::layout::OverlayLayout>,
 }
 
+fn input_requires_redraw(
+    previous: Option<&LaidOut>,
+    current: &LaidOut,
+    scene: Option<&Scene>,
+    version: impl Fn(&str) -> Option<u64>,
+    size: impl Fn(&str, f32) -> Option<(f32, f32)>,
+) -> bool {
+    previous != Some(current)
+        || scene.is_none_or(|scene| {
+            scene.ops.iter().any(|op| {
+                matches!(op, crate::layout::Op::Surface { resource, rect, version: cached }
+                    if cached.is_none() || version(resource) != *cached
+                    || size(resource, rect.w).is_some_and(|(_, height)| (height - rect.h).abs() > 0.5))
+            })
+        })
+}
+
 struct Shell<A: App> {
     app: A,
     options: Options,
@@ -494,10 +511,10 @@ impl<A: App> Shell<A> {
         (view.instance.clone(), view.revision)
     }
 
-    /// The current scene, laid out again when anything it depends on moved.
-    fn scene(&mut self) -> &Scene {
+    /// The values used to lay out the foreground.
+    fn layout_key(&self) -> LaidOut {
         let (width, height) = self.logical_size();
-        let key = LaidOut {
+        LaidOut {
             instance: self.app.view().view().instance.clone(),
             revision: self.app.view().view().revision,
             size: (width.round() as u32, height.round() as u32),
@@ -505,7 +522,25 @@ impl<A: App> Shell<A> {
             interaction: self.interaction.clone(),
             layout: self.app.window_layout(),
             overlay: self.app.overlay_layout(),
-        };
+        }
+    }
+
+    /// Handled text does not require a frame unless its presentation changed.
+    /// Surfaces without revision tracking remain conservative.
+    fn input_requires_redraw(&self) -> bool {
+        input_requires_redraw(
+            self.laid_out.as_ref(),
+            &self.layout_key(),
+            self.scene.as_ref(),
+            |resource| self.app.surface_version(resource),
+            |resource, available| self.app.surface_size(resource, available),
+        )
+    }
+
+    /// The current scene, laid out again when anything it depends on moved.
+    fn scene(&mut self) -> &Scene {
+        let (width, height) = self.logical_size();
+        let key = self.layout_key();
         let resized_surface = self.scene.as_ref().is_some_and(|scene| {
             scene.ops.iter().any(|op| {
                 if let crate::layout::Op::Surface { resource, rect, .. } = op {
@@ -1311,7 +1346,6 @@ impl<A: App> ApplicationHandler<()> for Shell<A> {
                         _ => String::new(),
                     };
                     let input_started = Instant::now();
-                    self.timings.input(input_started);
                     let consumed = self.app.text_input(
                         TextInput::Key {
                             key: &key,
@@ -1329,12 +1363,16 @@ impl<A: App> ApplicationHandler<()> for Shell<A> {
                         return;
                     }
                     self.tick();
-                    if consumed {
-                        self.redraw();
+                    if !self.painted || self.input_requires_redraw() {
+                        self.timings.input(input_started);
+                        if consumed {
+                            self.redraw();
+                        }
                     }
                 }
             }
             WindowEvent::Ime(event) => {
+                let input_started = Instant::now();
                 match event {
                     winit::event::Ime::Preedit(text, selection) => {
                         self.app.text_input(
@@ -1355,8 +1393,13 @@ impl<A: App> ApplicationHandler<()> for Shell<A> {
                     }
                     _ => {}
                 }
+                self.timings
+                    .record(Phase::Input, input_started.elapsed(), 0, 0);
                 self.tick();
-                self.redraw();
+                if self.input_requires_redraw() {
+                    self.timings.input(input_started);
+                    self.redraw();
+                }
             }
             WindowEvent::CursorMoved { position, .. } => {
                 self.app.input(Instant::now());
@@ -1554,7 +1597,105 @@ impl<A: App> ApplicationHandler<()> for Shell<A> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Area, Zoom, placement};
+    use super::{Area, LaidOut, Zoom, input_requires_redraw, placement};
+
+    #[test]
+    fn unchanged_input_skips_frames_but_editor_and_modal_changes_do_not() {
+        use crate::layout::{
+            Interaction, Op, OverlayLayout, OverlayPlacement, Rect, Scene, WindowLayout,
+        };
+        let cached = LaidOut {
+            instance: "input-test".into(),
+            revision: 1,
+            size: (760, 540),
+            scale: 200,
+            interaction: Interaction::default(),
+            layout: WindowLayout::Column,
+            overlay: None,
+        };
+        let mut scene = Scene {
+            ops: vec![Op::Surface {
+                resource: "editor".into(),
+                rect: Rect::default(),
+                version: Some(7),
+            }],
+            ..Scene::default()
+        };
+        let needs = |current: &LaidOut, scene: &Scene, version| {
+            input_requires_redraw(
+                Some(&cached),
+                current,
+                Some(scene),
+                |_| version,
+                |_, _| None,
+            )
+        };
+        assert!(
+            !needs(&cached, &scene, Some(7)),
+            "consumed input with identical presentation needs no frame"
+        );
+        assert!(
+            needs(&cached, &scene, Some(8)),
+            "editing or selection changes require a frame even with the same semantic view"
+        );
+        assert!(
+            needs(&cached, &scene, None),
+            "losing revision tracking must remain conservative"
+        );
+        assert!(
+            input_requires_redraw(
+                Some(&cached),
+                &cached,
+                Some(&scene),
+                |_| Some(7),
+                |_, _| Some((20.0, 30.0))
+            ),
+            "surface geometry changes require a frame even with the same drawing revision"
+        );
+        let mut current = cached.clone();
+        current.overlay = Some(OverlayLayout {
+            width: 216,
+            placement: OverlayPlacement::Center,
+            scrim: None,
+        });
+        assert!(
+            needs(&current, &scene, Some(7)),
+            "opening a menu requires a frame"
+        );
+        current = cached.clone();
+        current.interaction.focus = Some("button".into());
+        assert!(
+            needs(&current, &scene, Some(7)),
+            "keyboard focus requires a frame"
+        );
+        current = cached.clone();
+        current.revision += 1;
+        assert!(
+            needs(&current, &scene, Some(7)),
+            "semantic changes require a frame"
+        );
+        if let Op::Surface { version, .. } = &mut scene.ops[0] {
+            *version = None;
+        }
+        assert!(
+            needs(&cached, &scene, None),
+            "untracked custom painters must still refresh"
+        );
+        assert!(input_requires_redraw(
+            None,
+            &cached,
+            Some(&scene),
+            |_| Some(7),
+            |_, _| None
+        ));
+        assert!(input_requires_redraw(
+            Some(&cached),
+            &cached,
+            None,
+            |_| Some(7),
+            |_, _| None
+        ));
+    }
 
     #[test]
     fn a_filling_window_is_centered_on_the_usable_area() {

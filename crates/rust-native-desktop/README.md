@@ -160,3 +160,9 @@ submission. Their pixel and region counts describe foreground damage, so a
 stationary menu frame with no upload has zero for both. These records use the
 CPU frame duration and retain no menu names or text. Skipped acquisitions do
 not change the recorded modal state.
+
+Consumed keyboard and IME events request a new foreground frame only when the
+view, layout, interaction, or a tracked drawing surface changes. Surface height
+changes also require a frame. A custom surface without revision tracking keeps
+the conservative refresh behavior. Input-to-presentation timing starts when
+foreground work is pending; backdrop animation keeps its own frame schedule.

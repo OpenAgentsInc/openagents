@@ -487,3 +487,30 @@ strict all-target desktop Clippy pass. Formatting is checked on the changed
 files; an unrelated formatting difference in `worker.rs` is left unchanged.
 The field caret also uses the pinned Zeron accent instead of the earlier
 approximation.
+
+The updated scratch preview at `4cfa05d9d1` keeps the chat menu visible through
+native typing, keyboard selection, and repeated openings. Its two chat-menu
+openings submit in 3.183 and 3.092 ms. Stationary frames have zero damaged pixels
+and regions, but still include acquisition stalls, reaching 23.640 ms in this
+short interaction. The first palette frame is 22.529 ms. These are CPU and
+submission measurements, not scanout verification or a latency pass. The
+[local timing snapshot](menu-stability-preview.jsonl) retains all available
+content-free samples from the interaction.
+
+The native event loop now avoids requesting a foreground frame for consumed
+keyboard or IME events when the cached view, layout, interaction, and tracked
+surfaces are unchanged. It still redraws editing, selection, focus, menu,
+semantic-view, and surface-height changes, and remains conservative for custom
+surfaces without revisions. This removes surface acquisition from unchanged
+input rather than repainting or presenting the same menu again. Backdrop
+animation remains independently scheduled. Input timing records only pending
+foreground work, and IME events now have the same input-duration records as
+keyboard events.
+
+The redraw-decision regression covers unchanged input, editing revisions,
+surface geometry, opening a modal, keyboard focus, missing caches, and loss of
+surface revision tracking. Native adapter: 62 passed, one GPU check ignored.
+Full desktop binary: 62 passed, five native/network/timing checks ignored,
+including pairing captures, keyboard and IME editing, attachments, retained
+repaint parity, and clicks during streaming. Scoped formatting, diff whitespace,
+and strict all-target native-adapter/desktop Clippy pass.
