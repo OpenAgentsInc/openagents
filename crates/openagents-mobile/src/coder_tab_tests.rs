@@ -2221,9 +2221,15 @@ fn a_computers_threads_survive_a_relaunch_with_it_off_and_a_queued_follow_up_goe
     );
     // A follow-up while it is off waits on the phone.
     fixture.send(&chat, None, "And in the snow?");
-    until(&mut fixture, "the queued follow-up never showed", &|view| {
+    let queued = until(&mut fixture, "the queued follow-up never showed", &|view| {
         node(view, "thread-m2").is_some()
     });
+    assert!(
+        queued["root"]
+            .to_string()
+            .contains("Waiting for Studio Mac…"),
+        "a queued follow-up waits rather than works"
+    );
     assert!(off.sent.lock().unwrap().is_empty());
     fixture.tap("coder-new");
 

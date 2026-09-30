@@ -2750,6 +2750,14 @@ impl CoderTab {
                 &format!("Saved on this phone · last read {}", ago(now, at)),
             ));
         }
+        // A follow-up the computer has not taken yet, while it is not
+        // answering, waits rather than works.
+        let waiting = format!("Waiting for {label}…");
+        let working_label = if shown.queued && (shown.error.is_some() || shown.kept_at.is_some()) {
+            waiting.as_str()
+        } else {
+            "Working…"
+        };
         let rows: Vec<Node<Intent>> = if shown.loading {
             vec![node(
                 "thread-loading",
@@ -2771,7 +2779,7 @@ impl CoderTab {
                     body_suffix: "-md",
                     streaming_key: format!("thread-m{}", shown.start as usize + shown.turns.len()),
                     working_key: "thread-working",
-                    working_label: "Working…",
+                    working_label,
                     failed_key: "thread-failed",
                     status_style: Style {
                         foreground: Some(GRAY),
