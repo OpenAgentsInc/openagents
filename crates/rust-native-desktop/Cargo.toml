@@ -13,7 +13,7 @@ description = "A desktop adapter for Rust Native views: layout, software paintin
 default = ["window"]
 # The native window. Without it the crate still lays out and paints views
 # into frames, which is what tests and captures use.
-window = ["dep:winit", "dep:wgpu", "dep:pollster", "dep:rfd", "dep:arboard", "dep:objc2", "dep:objc2-app-kit", "dep:objc2-foundation"]
+window = ["dep:winit", "dep:wgpu", "dep:pollster", "dep:rfd", "dep:arboard", "dep:objc2", "dep:objc2-app-kit", "dep:objc2-foundation", "dep:wayland-client", "dep:wayland-backend"]
 
 [dependencies]
 # The semantic views, and the bundled faces and line breaking it shapes with.
@@ -27,6 +27,13 @@ arboard = { version = "3.6.1", features = ["wayland-data-control"], optional = t
 pollster = { version = "0.4", optional = true }
 wgpu = { version = "29.0.4", optional = true }
 winit = { version = "0.30.13", default-features = false, features = ["rwh_06", "x11", "wayland", "wayland-dlopen"], optional = true }
+
+# The Wayland seat beside winit's, on winit's own connection: drag and
+# drop (winit 0.30 has none on Wayland) and the clipboard, read and written
+# in process on any compositor. The same versions winit links.
+[target.'cfg(target_os = "linux")'.dependencies]
+wayland-client = { version = "0.31.15", optional = true }
+wayland-backend = { version = "0.3.17", features = ["client_system", "dlopen"], optional = true }
 
 # The Mac's visible frame (the display without the menu bar and the Dock),
 # for a window that opens filling it.

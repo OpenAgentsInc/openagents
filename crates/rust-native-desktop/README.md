@@ -25,6 +25,14 @@ dependency the workspace did not already have.
   changes, sleeps until the application's next tick, and turns clicks and
   Tab/Enter/Space into a revision-bound `Activation` it resolves against
   the current view before the application sees an intent.
+- **Clipboard and drop** ([`src/input.rs`](src/input.rs),
+  [`src/wayland.rs`](src/wayland.rs), [`src/transfer.rs`](src/transfer.rs))
+  read the clipboard only on an explicit paste. On Wayland the window joins
+  the seat on winit's own connection and reads, sets, and receives drops
+  through the core `wl_data_device`, so no data-control protocol is needed;
+  `wl-copy`/`wl-paste` or `xclip`, then `arboard`, are the fallbacks. A
+  drop hands the application file paths, as winit's `DroppedFile` does
+  elsewhere.
 
 - **Backdrop** ([`src/backdrop.rs`](src/backdrop.rs), with `window`) is
   an optional live picture an application draws with the window's own

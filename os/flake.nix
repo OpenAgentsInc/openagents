@@ -221,6 +221,28 @@
             throw "the start list lost its default or a capability's rows: ${builtins.toJSON grant.start}"
           else
             evaluates "extension-points" host;
+
+        # The old Coder host installer stands down for the OpenAgents app's
+        # host: systemd skips its unit once the app registered
+        # `com.openagents.desktop.host.service` or adopted the old service,
+        # so a rebuild never installs a second host and nobody masks the
+        # installer by hand.
+        coder-host-stands-down =
+          let
+            host = stubHost [ ./tests/all-capabilities.nix ];
+            unit = host.config.systemd.user.units."coderos-coder-host-install.service".text;
+            lines = lib.splitString "\n" unit;
+            wanted = [
+              "ConditionUser=operator"
+              "ConditionPathExists=!%E/systemd/user/com.openagents.desktop.host.service"
+              "ConditionPathExists=!%h/.openagents/host/service.adopted.json"
+            ];
+            missing = lib.filter (line: !(lib.elem line lines)) wanted;
+          in
+          if missing != [ ] then
+            throw "the Coder host installer does not stand down for the app's host; missing: ${lib.concatStringsSep "; " missing}"
+          else
+            evaluates "coder-host-stands-down" host;
       };
 
       # The shell that builds the Android apps: `nix develop ./os#android`

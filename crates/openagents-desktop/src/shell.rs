@@ -36,6 +36,10 @@ pub struct DesktopApp {
     screen_lock: Option<ScreenLock>,
     navigation: Option<State>,
     chat: Option<openagents_desktop::chat::Panel>,
+    /// Whether the window is in front, and what Coder's notifications last
+    /// saw ([`openagents_desktop::notices`]).
+    focused: bool,
+    notices: openagents_desktop::notices::Notices,
     #[cfg(not(windows))]
     grid: Option<openagents_desktop::grid::Shared>,
     #[cfg(not(windows))]
@@ -187,6 +191,8 @@ impl DesktopApp {
                 }
             }),
             chat: (live && chrome).then(|| openagents_desktop::chat::Panel::new(Instant::now())),
+            focused: true,
+            notices: openagents_desktop::notices::Notices::default(),
             #[cfg(not(windows))]
             grid: None,
             #[cfg(not(windows))]
@@ -198,6 +204,21 @@ impl DesktopApp {
 
     pub fn model(&self) -> &Model {
         &self.model
+    }
+
+    /// Shows a desktop notification for each chat whose Coder now asks
+    /// for the person, finished, or failed while the window is away. Only
+    /// a real window notifies; captures and tests never do.
+    fn notify(&mut self) {
+        let Some(chat) = &self.chat else {
+            return;
+        };
+        let notices = self.notices.observe(chat.coder_statuses(), self.focused);
+        if self.live && !self.fixture {
+            for notice in notices {
+                crate::platform::notify(notice);
+            }
+        }
     }
 
     #[cfg(not(windows))]
@@ -605,6 +626,7 @@ impl App for DesktopApp {
         if let Some(request) = self.chat.as_mut().and_then(|chat| chat.tick(now)) {
             self.send(vec![request], now);
         }
+        self.notify();
         self.present();
         let wake = self.model.next_wake().min(
             self.chat
@@ -775,6 +797,9 @@ impl App for DesktopApp {
         event: rust_native_desktop::input::NativeInput<'_>,
         now: Instant,
     ) -> bool {
+        if let rust_native_desktop::input::NativeInput::Focus(focused) = event {
+            self.focused = focused;
+        }
         #[cfg(not(windows))]
         if let Some(grid) = &self.grid {
             let active = self.grid_active();
@@ -2509,6 +2534,48 @@ mod image_fixtures {
     use openagents_chat_app::attachments::Image;
     use rust_native_desktop::{App, input::TextInput};
     use std::time::Duration;
+    /// Files dropped together arrive one by one while the first is read:
+    /// every image is attached and a dropped document's path joins the
+    /// message, with no "already being imported" notice.
+    #[test]
+    fn files_dropped_together_are_all_taken() {
+        let (mut app, now) = super::tests::chat_fixture(0);
+        let create = app.chat.as_mut().unwrap().new_chat();
+        app.send(vec![create], now);
+        app.present();
+        let root = tempfile::tempdir().unwrap();
+        let image = Image::pixels(4, 4, vec![200; 4 * 4 * 4]).unwrap();
+        let mut paths = vec![];
+        for name in ["one.png", "two.PNG", "three.png"] {
+            let path = root.path().join(name);
+            std::fs::write(&path, image.bytes.as_slice()).unwrap();
+            paths.push(path);
+        }
+        let notes = root.path().join("notes.md");
+        std::fs::write(&notes, b"# notes").unwrap();
+        paths.push(notes.clone());
+        for path in paths {
+            assert!(app.dropped_file(path, now));
+        }
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while app.chat.as_ref().unwrap().images().len() < 3
+            || !app.chat.as_ref().unwrap().draft().contains("notes.md")
+        {
+            assert!(Instant::now() < deadline, "the drop was not all taken");
+            app.tick(Instant::now());
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert_eq!(
+            app.chat.as_ref().unwrap().draft().trim(),
+            notes.display().to_string()
+        );
+        assert!(
+            !serde_json::to_string(app.view().view())
+                .unwrap()
+                .contains("already being imported")
+        );
+    }
+
     #[test]
     fn dropped_images_preview_remove_and_refuse_unsupported_send_without_losing_text() {
         let (mut app, now) = super::tests::chat_fixture(0);

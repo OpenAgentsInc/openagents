@@ -1,6 +1,7 @@
 //! Native image input. All file reading, decoding, and clipboard work runs off
 //! the rendering thread; the application binds its result to a conversation.
 use openagents_chat_app::attachments::{Image, MAX_IMAGE_BYTES};
+use rust_native_desktop::input::PastedImage;
 use std::{io::Read, path::PathBuf};
 pub enum Source {
     Picker,
@@ -18,14 +19,20 @@ pub fn read(source: Source) -> Result {
         Source::Picker => {
             rust_native_desktop::input::pick_image().map_or(Result::Cancelled, read_file)
         }
-        Source::File(path) => read_file(path),
+        Source::File(path) => read_dropped(path),
         Source::Clipboard => match rust_native_desktop::input::paste_image() {
-            Ok(Some(image)) => match (u32::try_from(image.width), u32::try_from(image.height)) {
-                (Ok(w), Ok(h)) => {
-                    Image::pixels(w, h, image.rgba).map_or_else(Result::Failed, Result::Image)
+            Ok(Some(PastedImage::Pixels(image))) => {
+                match (u32::try_from(image.width), u32::try_from(image.height)) {
+                    (Ok(w), Ok(h)) => {
+                        Image::pixels(w, h, image.rgba).map_or_else(Result::Failed, Result::Image)
+                    }
+                    _ => Result::Failed("The clipboard image is too large.".into()),
                 }
-                _ => Result::Failed("The clipboard image is too large.".into()),
-            },
+            }
+            Ok(Some(PastedImage::Encoded(bytes))) => {
+                Image::decode("Pasted image", bytes).map_or_else(Result::Failed, Result::Image)
+            }
+            Ok(Some(PastedImage::File(path))) => read_dropped(path),
             Ok(None) => rust_native_desktop::input::paste().map_or(
                 Result::Failed("The clipboard contains no image or text.".into()),
                 Result::Text,
@@ -35,6 +42,39 @@ pub fn read(source: Source) -> Result {
             }
         },
     }
+}
+
+/// Whether `path` names a file the composer attaches as an image, by its
+/// extension: the formats [`Image::decode`] reads.
+fn is_image(path: &std::path::Path) -> bool {
+    path.extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| {
+            ["png", "jpg", "jpeg"]
+                .iter()
+                .any(|image| extension.eq_ignore_ascii_case(image))
+        })
+}
+
+/// A dropped (or copied) file: an image is attached; any other file or a
+/// folder puts its path in the message, as a terminal does, so Coder can
+/// be pointed at it.
+fn read_dropped(path: PathBuf) -> Result {
+    dropped_path(&path).unwrap_or_else(|| read_file(path))
+}
+
+/// What a dropped file that is not an image puts in the message, at once
+/// and without reading it; `None` for an image, which is read off the
+/// window's thread.
+pub fn dropped_path(path: &std::path::Path) -> Option<Result> {
+    if is_image(path) {
+        return None;
+    }
+    Some(match path.to_str() {
+        Some(text) if path.exists() => Result::Text(format!("{text} ")),
+        Some(_) => Result::Failed("That file is no longer there.".into()),
+        None => Result::Failed("That file's name can't be put in a message.".into()),
+    })
 }
 fn read_file(path: PathBuf) -> Result {
     let name = path
@@ -85,5 +125,30 @@ mod tests {
         let bad = root.path().join("bad.png");
         std::fs::write(&bad, b"not a png").unwrap();
         assert!(matches!(read_file(bad), Result::Failed(_)));
+    }
+
+    /// A dropped file that is not an image, or a folder, puts its path in
+    /// the message; an image by any case of its extension is attached.
+    #[test]
+    fn dropped_files_that_are_not_images_become_their_paths() {
+        let root = tempfile::tempdir().unwrap();
+        let notes = root.path().join("notes.md");
+        std::fs::write(&notes, b"# notes").unwrap();
+        let Result::Text(text) = read(Source::File(notes.clone())) else {
+            panic!("text")
+        };
+        assert_eq!(text, format!("{} ", notes.display()));
+        let Result::Text(folder) = read(Source::File(root.path().to_owned())) else {
+            panic!("folder")
+        };
+        assert_eq!(folder, format!("{} ", root.path().display()));
+        assert!(matches!(
+            read(Source::File(root.path().join("gone.txt"))),
+            Result::Failed(_)
+        ));
+        let image = Image::pixels(1, 1, vec![1, 2, 3, 255]).unwrap();
+        let shouting = root.path().join("SHOT.PNG");
+        std::fs::write(&shouting, image.bytes.as_slice()).unwrap();
+        assert!(matches!(read(Source::File(shouting)), Result::Image(_)));
     }
 }

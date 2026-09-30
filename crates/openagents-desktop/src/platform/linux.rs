@@ -1,5 +1,5 @@
 //! Linux: the host as a systemd user unit, the session's lock hint, and
-//! the desktop's clipboard and folder chooser.
+//! the desktop's clipboard, folder chooser, and notifications.
 //!
 //! - **Keys.** The host (`coder host serve --keychain`) keeps its keys in
 //!   the Secret Service (GNOME Keyring, KWallet, KeePassXC), under the
@@ -31,7 +31,7 @@
 use openagents_desktop::folder::{self, Chosen};
 use openagents_desktop::migrate::Keys;
 use openagents_desktop::model::{Agent, Agents};
-use std::io::{self, Write};
+use std::io;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
@@ -508,50 +508,161 @@ pub fn reduce_motion() -> bool {
         .is_ok_and(|output| output.status.success() && output.stdout.trim_ascii() == b"false")
 }
 
-/// Which clipboard tool this session uses: `wl-copy` on Wayland, `xclip`
-/// on X11.
-fn clipboard(wayland: bool, copy: bool) -> (&'static str, &'static [&'static str]) {
-    match (wayland, copy) {
-        (true, true) => ("wl-copy", &[]),
-        (true, false) => ("wl-paste", &["--no-newline"]),
-        (false, true) => ("xclip", &["-selection", "clipboard", "-in"]),
-        (false, false) => ("xclip", &["-selection", "clipboard", "-out"]),
-    }
-}
-
-fn wayland() -> bool {
-    std::env::var_os("WAYLAND_DISPLAY").is_some()
-}
-
-/// Puts `text` on the clipboard.
+/// Puts `text` on the clipboard: the window's own Wayland selection, else
+/// `wl-copy` or `xclip`, else `arboard`
+/// ([`rust_native_desktop::input::copy`]).
 pub fn copy(text: &str) -> bool {
-    let (program, args) = clipboard(wayland(), true);
-    let Ok(mut child) = Command::new(program)
-        .args(args)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-    else {
-        return false;
-    };
-    let wrote = child
-        .stdin
-        .take()
-        .is_some_and(|mut stdin| stdin.write_all(text.as_bytes()).is_ok());
-    child.wait().is_ok_and(|status| status.success()) && wrote
+    rust_native_desktop::input::copy(text)
 }
 
 /// Empties the clipboard if it still holds `text`.
 pub fn clear_if(text: &str) {
-    let (program, args) = clipboard(wayland(), false);
-    let holds = Command::new(program)
-        .args(args)
-        .stderr(Stdio::null())
-        .output()
-        .is_ok_and(|output| output.stdout == text.as_bytes());
-    if holds {
-        copy("");
+    if rust_native_desktop::input::paste().as_deref() == Some(text) {
+        rust_native_desktop::input::clear();
+    }
+}
+
+// ---------------------------------------------------------- notifications
+
+/// Shows `notice` on a thread of its own, so a slow session bus never holds
+/// the window ([`notify_now`]).
+pub fn notify(notice: openagents_desktop::notices::Notice) {
+    let _ = std::thread::Builder::new()
+        .name("notification".into())
+        .spawn(move || {
+            let _ = notify_now(&notice);
+        });
+}
+
+/// Shows `notice` and says how: the desktop portal
+/// (`org.freedesktop.portal.Notification`), else the notification server
+/// (`org.freedesktop.Notifications`). `None` when neither answers.
+pub fn notify_now(notice: &openagents_desktop::notices::Notice) -> Option<&'static str> {
+    let connection = zbus::blocking::Connection::session().ok()?;
+    notifications::deliver(&connection, notice)
+}
+
+/// Notifications over the session bus.
+mod notifications {
+    use openagents_desktop::notices::Notice;
+    use std::collections::HashMap;
+    use std::sync::Mutex;
+    use zbus::blocking::{Connection, Proxy, proxy::Builder};
+    use zbus::zvariant::Value;
+
+    /// The app's ID: its desktop file's name, `com.openagents.desktop.desktop`.
+    pub(super) const APP_ID: &str = "com.openagents.desktop";
+
+    fn proxy<'a>(
+        connection: &Connection,
+        destination: &'static str,
+        path: &'static str,
+        interface: &'static str,
+    ) -> zbus::Result<Proxy<'a>> {
+        Builder::new(connection)
+            .destination(destination)?
+            .path(path)?
+            .interface(interface)?
+            .cache_properties(zbus::proxy::CacheProperties::No)
+            .build()
+    }
+
+    /// The portal first, then the notification server.
+    pub(super) fn deliver(connection: &Connection, notice: &Notice) -> Option<&'static str> {
+        if portal(connection, notice).is_ok() {
+            return Some("the desktop portal (org.freedesktop.portal.Notification)");
+        }
+        server(connection, notice)
+            .ok()
+            .map(|_| "the notification server (org.freedesktop.Notifications)")
+    }
+
+    /// `AddNotification` on the desktop portal. A host app first names
+    /// itself to the portal (`org.freedesktop.host.portal.Registry`, on
+    /// portals that have it), so the notice carries the app's name and
+    /// icon; a portal without it, or without the desktop file, still shows
+    /// the notice.
+    pub(super) fn portal(connection: &Connection, notice: &Notice) -> zbus::Result<()> {
+        const DESTINATION: &str = "org.freedesktop.portal.Desktop";
+        const PATH: &str = "/org/freedesktop/portal/desktop";
+        if let Ok(registry) = proxy(
+            connection,
+            DESTINATION,
+            PATH,
+            "org.freedesktop.host.portal.Registry",
+        ) {
+            let options: HashMap<&str, Value<'_>> = HashMap::new();
+            let _: zbus::Result<()> = registry.call("Register", &(APP_ID, options));
+        }
+        let portal = proxy(
+            connection,
+            DESTINATION,
+            PATH,
+            "org.freedesktop.portal.Notification",
+        )?;
+        portal.call::<_, _, ()>(
+            "AddNotification",
+            &(notice.id.as_str(), portal_fields(notice)),
+        )
+    }
+
+    /// The portal's notification: title, body, and priority.
+    pub(super) fn portal_fields(notice: &Notice) -> HashMap<&'static str, Value<'_>> {
+        HashMap::from([
+            ("title", Value::from(notice.title.as_str())),
+            ("body", Value::from(notice.body.as_str())),
+            (
+                "priority",
+                Value::from(if notice.urgent { "high" } else { "normal" }),
+            ),
+        ])
+    }
+
+    /// The server's ID of the last notice shown for each chat, so a newer
+    /// one replaces it.
+    static SHOWN: Mutex<Option<HashMap<String, u32>>> = Mutex::new(None);
+
+    /// `Notify` on the notification server (mako, dunst, GNOME Shell,
+    /// Plasma).
+    pub(super) fn server(connection: &Connection, notice: &Notice) -> zbus::Result<u32> {
+        let server = proxy(
+            connection,
+            "org.freedesktop.Notifications",
+            "/org/freedesktop/Notifications",
+            "org.freedesktop.Notifications",
+        )?;
+        let replaces = SHOWN
+            .lock()
+            .ok()
+            .and_then(|shown| shown.as_ref()?.get(&notice.id).copied())
+            .unwrap_or(0);
+        let hints: HashMap<&str, Value<'_>> = HashMap::from([
+            ("desktop-entry", Value::from(APP_ID)),
+            (
+                "urgency",
+                Value::from(if notice.urgent { 2u8 } else { 1u8 }),
+            ),
+        ]);
+        let actions: Vec<&str> = vec![];
+        let id: u32 = server.call(
+            "Notify",
+            &(
+                "OpenAgents",
+                replaces,
+                APP_ID,
+                notice.title.as_str(),
+                notice.body.as_str(),
+                actions,
+                hints,
+                -1i32,
+            ),
+        )?;
+        if let Ok(mut shown) = SHOWN.lock() {
+            shown
+                .get_or_insert_with(HashMap::new)
+                .insert(notice.id.clone(), id);
+        }
+        Ok(id)
     }
 }
 
@@ -948,15 +1059,129 @@ mod tests {
         );
     }
 
+    /// Notifications over a private session bus with a stand-in portal and
+    /// notification server: the server when there is no portal, the portal
+    /// when there is one, each with the notice's fields, and a newer notice
+    /// for a chat replacing the older one. Refuses the login session's bus.
+    /// `dbus-run-session -- cargo test -p openagents-desktop --bin
+    /// openagents-desktop -- --ignored notifications_over_a_private_bus`
     #[test]
-    fn linux_clipboard_follows_the_display_server() {
-        assert_eq!(clipboard(true, true).0, "wl-copy");
-        assert_eq!(clipboard(true, false).0, "wl-paste");
-        assert_eq!(clipboard(false, true).1, ["-selection", "clipboard", "-in"]);
-        assert_eq!(
-            clipboard(false, false).1,
-            ["-selection", "clipboard", "-out"]
+    #[ignore = "needs a private session bus (dbus-run-session)"]
+    fn notifications_over_a_private_bus() {
+        use openagents_desktop::notices::Notice;
+        use std::collections::HashMap;
+        use std::sync::{Arc, Mutex};
+        use zbus::zvariant::OwnedValue;
+
+        let address = std::env::var("DBUS_SESSION_BUS_ADDRESS").unwrap_or_default();
+        assert!(
+            !address.is_empty() && !address.contains("/run/user/"),
+            "run under dbus-run-session, not on the login session's bus"
         );
+
+        type Seen = Arc<Mutex<Vec<(String, String, String, HashMap<String, OwnedValue>)>>>;
+        struct Server(Seen, Mutex<u32>);
+        #[zbus::interface(name = "org.freedesktop.Notifications")]
+        impl Server {
+            #[allow(clippy::too_many_arguments)]
+            fn notify(
+                &self,
+                app_name: String,
+                replaces_id: u32,
+                _app_icon: String,
+                summary: String,
+                body: String,
+                _actions: Vec<String>,
+                hints: HashMap<String, OwnedValue>,
+                _expire_timeout: i32,
+            ) -> u32 {
+                self.0.lock().unwrap().push((
+                    format!("{app_name} replaces {replaces_id}"),
+                    summary,
+                    body,
+                    hints,
+                ));
+                let mut next = self.1.lock().unwrap();
+                *next += 1;
+                *next
+            }
+        }
+        struct Portal(Seen);
+        #[zbus::interface(name = "org.freedesktop.portal.Notification")]
+        impl Portal {
+            fn add_notification(&self, id: String, notification: HashMap<String, OwnedValue>) {
+                self.0
+                    .lock()
+                    .unwrap()
+                    .push((id, String::new(), String::new(), notification));
+            }
+        }
+        let text = |value: &OwnedValue| String::try_from(value.try_clone().unwrap()).unwrap();
+
+        let served: Seen = Arc::default();
+        let _server = zbus::blocking::connection::Builder::session()
+            .unwrap()
+            .name("org.freedesktop.Notifications")
+            .unwrap()
+            .serve_at(
+                "/org/freedesktop/Notifications",
+                Server(served.clone(), Mutex::new(40)),
+            )
+            .unwrap()
+            .build()
+            .unwrap();
+        let notice = Notice {
+            id: "coder-c1".into(),
+            title: "Fix the login bug".into(),
+            body: "Coder asked for approval".into(),
+            urgent: true,
+        };
+        let client = zbus::blocking::Connection::session().unwrap();
+        assert_eq!(
+            notifications::deliver(&client, &notice),
+            Some("the notification server (org.freedesktop.Notifications)")
+        );
+        assert_eq!(
+            notifications::deliver(&client, &notice),
+            Some("the notification server (org.freedesktop.Notifications)")
+        );
+        {
+            let seen = served.lock().unwrap();
+            assert_eq!(seen.len(), 2);
+            assert_eq!(seen[0].0, "OpenAgents replaces 0");
+            // The second notice for the chat replaces the first.
+            assert_eq!(seen[1].0, "OpenAgents replaces 41");
+            assert_eq!(seen[0].1, "Fix the login bug");
+            assert_eq!(seen[0].2, "Coder asked for approval");
+            assert_eq!(u8::try_from(&seen[0].3["urgency"]).unwrap(), 2);
+            assert_eq!(text(&seen[0].3["desktop-entry"]), "com.openagents.desktop");
+        }
+
+        let portal: Seen = Arc::default();
+        let _portal = zbus::blocking::connection::Builder::session()
+            .unwrap()
+            .name("org.freedesktop.portal.Desktop")
+            .unwrap()
+            .serve_at("/org/freedesktop/portal/desktop", Portal(portal.clone()))
+            .unwrap()
+            .build()
+            .unwrap();
+        let finished = Notice {
+            body: "Coder finished".into(),
+            urgent: false,
+            ..notice
+        };
+        assert_eq!(
+            notifications::deliver(&client, &finished),
+            Some("the desktop portal (org.freedesktop.portal.Notification)")
+        );
+        let seen = portal.lock().unwrap();
+        assert_eq!(seen.len(), 1);
+        assert_eq!(seen[0].0, "coder-c1");
+        assert_eq!(text(&seen[0].3["title"]), "Fix the login bug");
+        assert_eq!(text(&seen[0].3["body"]), "Coder finished");
+        assert_eq!(text(&seen[0].3["priority"]), "normal");
+        assert_eq!(served.lock().unwrap().len(), 2, "the server was not asked");
     }
 
     /// The real user manager: registers a harmless stand-in (`sleep`) as

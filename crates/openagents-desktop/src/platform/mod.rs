@@ -1,7 +1,7 @@
 //! The computer around the window, one module a system: the login agent
 //! that runs `coder host serve`, where the host's control channel is, the
-//! screen lock, the clipboard, the folder chooser, and whether Codex and
-//! Claude Code are signed in. macOS is [`crate::mac`]; Linux and Windows
+//! screen lock, the clipboard, the folder chooser, notifications, and
+//! whether Codex and Claude Code are signed in. macOS is [`crate::mac`]; Linux and Windows
 //! are here. Each exposes the same functions, and the rest of the binary
 //! calls them through this module.
 
@@ -23,4 +23,15 @@ pub use crate::mac::*;
 #[cfg(not(windows))]
 pub fn control_path() -> Option<std::path::PathBuf> {
     openagents_desktop::control::socket_path()
+}
+
+/// Desktop notifications are Linux's for now (#10026); elsewhere a notice
+/// is dropped.
+#[cfg(not(target_os = "linux"))]
+pub fn notify(_: openagents_desktop::notices::Notice) {}
+
+/// See [`notify`]: no notification service here.
+#[cfg(not(target_os = "linux"))]
+pub fn notify_now(_: &openagents_desktop::notices::Notice) -> Option<&'static str> {
+    None
 }

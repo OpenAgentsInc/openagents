@@ -233,6 +233,10 @@ fn run_shell<A: App>(
         timings: Timings::from_env(),
         captured_surface: None,
         captured_cursor: false,
+        #[cfg(target_os = "linux")]
+        drops: None,
+        #[cfg(target_os = "linux")]
+        wake_proxy: None,
     };
     event_loop
         .run_app(&mut shell)
@@ -343,6 +347,13 @@ struct Shell<A: App> {
     timings: Timings,
     captured_surface: Option<(String, crate::layout::Rect)>,
     captured_cursor: bool,
+    /// Files dropped on the window through the Wayland seat
+    /// ([`crate::wayland`]); winit has no drag and drop there.
+    #[cfg(target_os = "linux")]
+    drops: Option<crate::wayland::Drops>,
+    /// Wakes the event loop from another thread.
+    #[cfg(target_os = "linux")]
+    wake_proxy: Option<EventLoopProxy<()>>,
 }
 
 impl<A: App> Shell<A> {
@@ -1067,6 +1078,10 @@ impl<A: App> ApplicationHandler<()> for Shell<A> {
             return;
         }
         if let Some(proxy) = self.proxy.take() {
+            #[cfg(target_os = "linux")]
+            {
+                self.wake_proxy = Some(proxy.clone());
+            }
             let waker = Waker::new(move || {
                 let _ = proxy.send_event(());
             });
@@ -1134,6 +1149,12 @@ impl<A: App> ApplicationHandler<()> for Shell<A> {
                 return;
             }
         }
+        #[cfg(target_os = "linux")]
+        if let Some(proxy) = self.wake_proxy.take() {
+            self.drops = crate::wayland::attach(&window, move || {
+                let _ = proxy.send_event(());
+            });
+        }
         self.window = Some(window.clone());
         self.app.shown(true, Instant::now());
         if let Some(backdrop) = &mut self.backdrop {
@@ -1145,6 +1166,21 @@ impl<A: App> ApplicationHandler<()> for Shell<A> {
     }
 
     fn user_event(&mut self, _: &ActiveEventLoop, (): ()) {
+        #[cfg(target_os = "linux")]
+        {
+            let paths = self
+                .drops
+                .as_ref()
+                .map(crate::wayland::Drops::take)
+                .unwrap_or_default();
+            let mut dropped = false;
+            for path in paths {
+                dropped |= self.app.dropped_file(path, Instant::now());
+            }
+            if dropped {
+                self.redraw();
+            }
+        }
         self.tick();
         if self.backdrop_due(Instant::now()).is_some() {
             self.request_frame();

@@ -23,7 +23,9 @@
 # account, so the account's service manager runs from boot without a login,
 # and a user unit that runs the installer once. The installer exits at once
 # when the host service is already installed, so a rebuild or a login never
-# touches a running host.
+# touches a running host. Once the OpenAgents desktop app runs the host
+# (its `com.openagents.desktop.host.service`), the installer's unit does not
+# run at all.
 #
 # Install needs three things this module cannot supply:
 #
@@ -39,6 +41,10 @@ let
   cfg = config.coderos.coderHost;
 
   installUnit = "coderos-coder-host-install";
+
+  # The systemd user unit the OpenAgents desktop app registers to run the
+  # host (`crates/openagents-desktop/src/platform/linux.rs`).
+  appHostUnit = "com.openagents.desktop.host.service";
 
   # No `runtimeInputs`: install records the PATH it runs with as the host's
   # path, and a Nix store path there would go stale after a garbage
@@ -106,7 +112,22 @@ in
     systemd.user.services.${installUnit} = {
       description = "Install the Coder host service with coder-service";
       wantedBy = [ "default.target" ];
-      unitConfig.ConditionUser = cfg.user;
+      unitConfig = {
+        ConditionUser = cfg.user;
+        # The OpenAgents desktop app runs the host on this account once it
+        # has registered its own unit, or adopted the old service (renaming
+        # `service.json` to `service.adopted.json`). The installer then
+        # stands down: systemd skips it, at login and when `coder-update`
+        # starts it, so no rebuild installs a second host on the same
+        # state and nobody has to mask it by hand. `%E` is the account's
+        # configuration directory (`$XDG_CONFIG_HOME`, else `~/.config`),
+        # where the app writes its unit. The installer script checks the
+        # same two files.
+        ConditionPathExists = [
+          "!%E/systemd/user/${appHostUnit}"
+          "!%h/.openagents/host/service.adopted.json"
+        ];
+      };
 
       environment = {
         CODER_HOST_LABEL = cfg.label;

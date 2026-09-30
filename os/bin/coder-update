@@ -189,7 +189,8 @@ if [ ! -f "$host_root/launcher.json" ] || [ ! -f "$host_root/service.json" ]; th
   install_command
   prune_bundles
   echo "coder is now $short. No host service is installed, so nothing else changed."
-  if [ -f "$host_root/service.adopted.json" ]; then
+  if [ -f "$host_root/service.adopted.json" ] \
+    || [ -f "${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/com.openagents.desktop.host.service" ]; then
     # The OpenAgents desktop app runs the host now; it has no old service
     # to install or update.
     exit 0

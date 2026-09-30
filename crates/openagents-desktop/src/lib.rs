@@ -33,6 +33,7 @@
 //! - [`fake`]: an in-process host for tests and `--fake-host`.
 //! - [`folder`]: choosing a folder, and the order Linux tries choosers in.
 //! - [`migrate`]: adopting an old-style setup through `coder host adopt`.
+//! - [`notices`]: when Coder's work is worth a desktop notification.
 //! - `update`: the signed-manifest updater (the `app` feature).
 
 #[cfg(all(feature = "app", not(windows)))]
@@ -46,6 +47,7 @@ pub mod folder;
 pub mod grid;
 pub mod migrate;
 pub mod model;
+pub mod notices;
 pub mod qr;
 pub mod screens;
 #[cfg(feature = "app")]

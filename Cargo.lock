@@ -8985,6 +8985,8 @@ dependencies = [
  "rust-native",
  "serde",
  "swash",
+ "wayland-backend",
+ "wayland-client",
  "wgpu",
  "winit",
 ]

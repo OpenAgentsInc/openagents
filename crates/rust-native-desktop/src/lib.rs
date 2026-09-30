@@ -42,6 +42,9 @@ pub mod text;
 pub mod theme;
 pub mod timing;
 pub mod transcript;
+pub mod transfer;
+#[cfg(all(target_os = "linux", feature = "window"))]
+pub mod wayland;
 #[cfg(feature = "window")]
 pub mod window;
 

@@ -154,7 +154,7 @@ Icon=$app_id
 Terminal=false
 Categories=Development;Utility;
 StartupWMClass=openagents-desktop
-X-GNOME-UsesNotifications=false
+X-GNOME-UsesNotifications=true
 EOF
 }
 

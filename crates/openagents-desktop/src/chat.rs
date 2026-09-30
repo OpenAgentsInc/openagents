@@ -30,6 +30,8 @@ pub const COMPOSER: &str = "composer:chat-composer";
 /// The read-only change pane. The resource carries no file bytes.
 pub const CHANGES: &str = "changes-lines";
 const CHANGES_LINE: f32 = 18.0;
+/// The most dropped files waiting to be read; a larger drop keeps these.
+const MAX_PENDING_DROPS: usize = 16;
 
 pub const COMMAND_QUERY: &str = "composer:command-query";
 pub const SEARCH: &str = "composer:chat-search";
@@ -99,6 +101,8 @@ pub struct Panel {
         rust_native_desktop::composer::Stamp,
         std::sync::mpsc::Receiver<crate::chat_images::Result>,
     )>,
+    /// Dropped files waiting for the one being read ([`MAX_PENDING_DROPS`]).
+    pending_drops: std::collections::VecDeque<std::path::PathBuf>,
     changes: Option<openagents_chat_app::changes::Document>,
     changes_bound: bool,
     changes_open: bool,
@@ -181,6 +185,7 @@ impl Panel {
             notice: None,
             waker: None,
             image_input: None,
+            pending_drops: std::collections::VecDeque::new(),
             changes: None,
             changes_bound: false,
             changes_open: false,
@@ -225,6 +230,34 @@ impl Panel {
         if self.saved_visible {
             return;
         }
+        // Any other file puts its path in the message now.
+        if let Some(result) = crate::chat_images::dropped_path(&path) {
+            match result {
+                crate::chat_images::Result::Text(text) => {
+                    let at_ms = self.born.elapsed().as_millis() as u64;
+                    if let Some(field) = self.field()
+                        && let Ok(stamp) = field.draft.stamp()
+                    {
+                        let _ = field.draft.apply(
+                            &stamp,
+                            rust_native_desktop::composer::Input::Paste(&text),
+                            at_ms,
+                        );
+                    }
+                }
+                crate::chat_images::Result::Failed(error) => self.notice = Some(error),
+                _ => {}
+            }
+            return;
+        }
+        // Several images dropped at once arrive one by one; each waits for
+        // the one before it.
+        if self.image_input.is_some() {
+            if self.pending_drops.len() < MAX_PENDING_DROPS {
+                self.pending_drops.push_back(path);
+            }
+            return;
+        }
         self.import_image(crate::chat_images::Source::File(path));
     }
     fn poll_images(&mut self, at_ms: u64) {
@@ -260,6 +293,9 @@ impl Panel {
             }
             crate::chat_images::Result::Failed(error) => self.notice = Some(error),
             crate::chat_images::Result::Cancelled => {}
+        }
+        if let Some(path) = self.pending_drops.pop_front() {
+            self.import_image(crate::chat_images::Source::File(path));
         }
     }
     fn request(&mut self, command: Command) -> Request {
@@ -715,6 +751,53 @@ impl Panel {
         press
             .release(revision, key, Some(&offered), Pressed::late)
             .is_some()
+    }
+    /// Each chat with Coder work, its title, and what Coder is doing, for
+    /// desktop notifications ([`crate::notices`]).
+    pub fn coder_statuses(&self) -> Vec<(String, String, crate::notices::Status)> {
+        use crate::notices::Status;
+        use nostr::activity_summary::{Attention, Phase};
+        let title = |chat: &str| {
+            self.session
+                .summaries
+                .iter()
+                .find(|summary| summary.id == chat)
+                .map(|summary| summary.title.clone())
+                .unwrap_or_default()
+        };
+        let runs = self.runs.iter().map(|(chat, run)| {
+            let status = match run.state() {
+                coder_run::State::Waiting
+                    if run.lines().last().is_some_and(|line| {
+                        matches!(
+                            line.event,
+                            openagents_chat::coder_events::CoderEvent::Approval(_)
+                        )
+                    }) =>
+                {
+                    Status::Approval
+                }
+                coder_run::State::Waiting => Status::Question,
+                _ if run.finished() => Status::Finished,
+                _ => Status::Working,
+            };
+            (chat.clone(), title(chat), status)
+        });
+        let tasks = self
+            .tasks
+            .iter()
+            .filter(|(chat, _)| !self.runs.contains_key(*chat))
+            .map(|(chat, task)| {
+                let status = match task.summary.as_ref().map(|s| (s.phase, s.attention)) {
+                    Some((Phase::Waiting, Attention::Approval)) => Status::Approval,
+                    Some((Phase::Waiting, Attention::Input)) => Status::Question,
+                    Some((Phase::Completed, _)) => Status::Finished,
+                    Some((Phase::Failed, _)) => Status::Failed,
+                    _ => Status::Working,
+                };
+                (chat.clone(), title(chat), status)
+            });
+        runs.chain(tasks).collect()
     }
     fn task(&self) -> Option<&task_chat::Session> {
         self.tasks.get(self.session.selected.as_ref()?)

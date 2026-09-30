@@ -57,6 +57,7 @@ Usage: openagents-desktop [options]
                        PNG files in DIR
   --check-update       say whether a newer release is published (Linux)
   --update             install a newer release now: an AppImage replaces itself (Linux)
+  --notify-test        show a test notification and say how it was delivered (Linux)
   --help               this text";
 
 #[derive(Debug, Default)]
@@ -74,6 +75,7 @@ struct Options {
     benchmark_scale: Option<f32>,
     check_update: bool,
     update: bool,
+    notify_test: bool,
 }
 
 fn parse(args: impl Iterator<Item = String>) -> Result<Options, String> {
@@ -123,6 +125,7 @@ fn parse(args: impl Iterator<Item = String>) -> Result<Options, String> {
             }
             "--check-update" => options.check_update = true,
             "--update" => options.update = true,
+            "--notify-test" => options.notify_test = true,
             "--help" | "-h" => options.help = true,
             // macOS passes a process serial number to an app opened from
             // the Finder on some versions.
@@ -158,6 +161,23 @@ fn main() -> ExitCode {
     if options.help {
         println!("{USAGE}");
         return ExitCode::SUCCESS;
+    }
+    if options.notify_test {
+        return match platform::notify_now(&openagents_desktop::notices::Notice {
+            id: "openagents-test".into(),
+            title: "OpenAgents".into(),
+            body: "Notifications from OpenAgents show here.".into(),
+            urgent: false,
+        }) {
+            Some(how) => {
+                println!("notification delivered through {how}");
+                ExitCode::SUCCESS
+            }
+            None => {
+                eprintln!("no notification service answered on this desktop");
+                ExitCode::FAILURE
+            }
+        };
     }
     if options.check_update || options.update {
         return if updates::command(options.update) {
