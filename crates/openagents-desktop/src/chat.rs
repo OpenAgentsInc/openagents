@@ -1008,7 +1008,17 @@ impl Panel {
         }
         state.search = self.search.text().into();
         state.projects.clear();
-        let listed = openagents_chat_app::chat_list::search(&self.session.summaries, &state.search);
+        let mut listed =
+            openagents_chat_app::chat_list::search(&self.session.summaries, &state.search);
+        // The sidebar shows project chats inside Recent, so Recent is newest
+        // first across projects: a new chat opens at the top, not below them.
+        listed.sort_by_key(|summary| {
+            (
+                sidebar_rank(summary),
+                std::cmp::Reverse(summary.updated),
+                summary.id.clone(),
+            )
+        });
         for summary in &listed {
             if let openagents_chat_app::chat_list::Group::Project(project) =
                 openagents_chat_app::chat_list::group(summary)
@@ -3898,4 +3908,60 @@ mod task_tests {
 /// whether a coding reply waits for **Run Coder**.
 fn coder_asks_first() -> bool {
     coder::task::local::Local::here(std::path::PathBuf::new()).asks_first()
+}
+
+/// The sidebar section a summary sorts into: pinned, then recent, then archived.
+fn sidebar_rank(summary: &openagents_chat::basic_chats::Summary) -> u8 {
+    if summary.archived {
+        2
+    } else if summary.pinned {
+        0
+    } else {
+        1
+    }
+}
+
+#[cfg(test)]
+mod sidebar_order_tests {
+    use super::*;
+    use openagents_chat::basic_chats::{Spawned, Summary};
+
+    fn summary(id: &str, updated: u64, project: Option<&str>) -> Summary {
+        Summary {
+            id: id.into(),
+            title: id.into(),
+            started: updated,
+            updated,
+            coder: project.map(|project| Spawned {
+                host: "local".into(),
+                task: "t".into(),
+                project: Some(project.into()),
+                at: None,
+            }),
+            archived: false,
+            pinned: false,
+            named: false,
+        }
+    }
+
+    /// A new chat (no project yet) is the newest, so it opens at the top
+    /// of Recent, above older Coder chats that name a project.
+    #[test]
+    fn a_new_chat_is_listed_first_above_older_project_chats() {
+        let mut panel = Panel::new(Instant::now());
+        panel.session.summaries = vec![
+            summary("older-project", 10, Some("openagents")),
+            summary("old-plain", 5, None),
+            summary("new", 20, None),
+        ];
+        let mut state = State::default();
+        panel.sync_sidebar(&mut state);
+        let titles: Vec<&str> = state
+            .chats
+            .iter()
+            .filter(|chat| chat.section == Section::Recent)
+            .map(|chat| chat.title.as_str())
+            .collect();
+        assert_eq!(titles, ["new", "older-project", "old-plain"]);
+    }
 }
