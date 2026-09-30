@@ -209,12 +209,12 @@ reuses the releases. The measured first runs are in
 
 ## Checking the deployed path
 
-From a checkout, send the phone's own hosted request from a fresh key; the
+From a checkout, send the hosted request the phone and the desktop share (`openagents-chat-app::hosted`) from a fresh key; the
 runner refuses it `not_admitted` at once, which proves it receives
 requests:
 
 ```sh
-cargo test --manifest-path crates/openagents-mobile/Cargo.toml --lib \
+cargo test -p openagents-chat-app --lib \
   live_the_runner_answers_the_phone -- --ignored --nocapture
 ```
 

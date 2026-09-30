@@ -273,6 +273,12 @@ fn main() -> ExitCode {
             Context::new(control, None, None, coder, home()),
         )
     };
+    // The chat's Gym keeps its trainer and runs for the real window only
+    // (#10060); the fake host touches nothing the real app manages.
+    #[cfg(not(windows))]
+    if !options.fake_host {
+        openagents_desktop::chat_gym::configure(home());
+    }
     let mut app = DesktopApp::window(model, context);
     // Settings' choices, kept beside Coder's (#10021).
     app.use_settings_file(coder::task::settings::path());

@@ -115,6 +115,9 @@ pub struct Panel {
     changes_scroll: f32,
     changes_revision: u64,
     changes_highlighter: Option<rust_native::syntax::Highlighter>,
+    /// The Gym's trainer key, being read (`chat_gym`).
+    #[cfg(not(windows))]
+    gym_loading: Option<crate::chat_gym::Loading>,
 }
 
 /// A transcript button's action and target when a press began on it.
@@ -202,6 +205,8 @@ impl Panel {
             changes_scroll: 0.0,
             changes_revision: 0,
             changes_highlighter: None,
+            #[cfg(not(windows))]
+            gym_loading: None,
         }
     }
     fn import_image(&mut self, source: crate::chat_images::Source) {
@@ -319,7 +324,43 @@ impl Panel {
         }
         let wake = waker.clone();
         self.transcript.start(Arc::new(move || wake.wake()));
+        // The Gym's trainer and hosted runner, in the real window only.
+        #[cfg(not(windows))]
+        {
+            let wake = waker.clone();
+            self.gym_loading = crate::chat_gym::load(Arc::new(move || wake.wake()));
+        }
         self.waker = Some(waker);
+    }
+    /// Use `gym` for the chat's Gym: the one `chat_gym` loads with its
+    /// trainer, runner, and saved runs, or a test's.
+    pub fn use_gym(&mut self, gym: openagents_chat_app::gym::Gym) {
+        self.session.cards.gym = gym;
+        self.rows_dirty = true;
+    }
+    /// The chat's Gym.
+    pub fn gym(&self) -> &openagents_chat_app::gym::Gym {
+        &self.session.cards.gym
+    }
+    /// Take the trainer once it's read, and what hosted runs saw since
+    /// the last tick.
+    fn poll_gym(&mut self) {
+        #[cfg(not(windows))]
+        if let Some(loaded) = self
+            .gym_loading
+            .as_ref()
+            .and_then(crate::chat_gym::Loading::poll)
+        {
+            self.gym_loading = None;
+            if let Ok(gym) = loaded {
+                self.use_gym(gym);
+            }
+        }
+        // A computer run's phase is its Coder run's, in this chat's own
+        // transcript; only hosted runs report here.
+        if self.session.cards.gym.settle(&|_, _| None) {
+            self.rows_dirty = true;
+        }
     }
     pub fn show_saved(&mut self, visible: bool, project: Option<String>) {
         if self.saved_visible != visible {
@@ -535,6 +576,7 @@ impl Panel {
     }
     pub fn tick(&mut self, now: Instant) -> Option<Request> {
         self.transcript.poll_highlights();
+        self.poll_gym();
         if self.saved_visible {
             return self
                 .saved
@@ -2277,6 +2319,17 @@ impl Panel {
             || self.session.next_wake(now),
             |task| self.session.next_wake(now).min(task.next_wake(now)),
         );
+        // A hosted Gym run is read again each second, beside its wakes.
+        let wake = if self.session.cards.gym.active().is_some_and(|run| {
+            matches!(
+                run.place,
+                Some(openagents_chat_app::gym::Place::Hosted { .. })
+            )
+        }) {
+            wake.min(now + std::time::Duration::from_secs(1))
+        } else {
+            wake
+        };
         self.runs
             .values()
             .map(|run| run.next_wake(now))

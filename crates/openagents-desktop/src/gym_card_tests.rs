@@ -184,3 +184,186 @@ fn a_draft_test_sets_sheet() {
         "the sheet closes"
     );
 }
+
+/// A stand-in for the hosted runner (never the live one): it answers a
+/// request as the runner would, queued and then, when `finish`, the
+/// recorded report, and records what it was asked to start and follow.
+#[cfg(not(windows))]
+#[derive(Default)]
+struct StandIn {
+    finish: bool,
+    started: std::sync::Mutex<Vec<openagents_chat_app::gym::HostedRun>>,
+    resumed: std::sync::Mutex<Vec<serde_json::Value>>,
+}
+
+#[cfg(not(windows))]
+impl openagents_chat_app::gym::Hosted for StandIn {
+    fn start(
+        &self,
+        _world: secp256k1::SecretKey,
+        run: openagents_chat_app::gym::HostedRun,
+        live: Arc<std::sync::Mutex<openagents_chat_app::gym::Live>>,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
+        self.started.lock().unwrap().push(run);
+        let finish = self.finish;
+        Box::pin(async move {
+            let mut live = live.lock().unwrap();
+            live.request = Some("ab".repeat(32));
+            live.event = Some(serde_json::json!({"id": "ab".repeat(32)}));
+            live.queued = true;
+            if finish {
+                live.outcome = Some(Ok(openagents_chat_app::gym::Outcome::from_report(
+                    include_bytes!("../../openagents-mobile/fixtures/gym-report.json"),
+                )
+                .unwrap()));
+            }
+        })
+    }
+    fn resume(
+        &self,
+        _world: secp256k1::SecretKey,
+        event: serde_json::Value,
+        _live: Arc<std::sync::Mutex<openagents_chat_app::gym::Live>>,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
+        self.resumed.lock().unwrap().push(event);
+        Box::pin(async {})
+    }
+    fn stop(
+        &self,
+        _world: secp256k1::SecretKey,
+        _event: serde_json::Value,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
+        Box::pin(async {})
+    }
+    fn publish(
+        &self,
+        _world: secp256k1::SecretKey,
+        _request: String,
+        _report: serde_json::Value,
+        _live: Arc<std::sync::Mutex<openagents_chat_app::gym::Live>>,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
+        Box::pin(async {})
+    }
+}
+
+/// The tool card with START THE TEST, on a desktop whose chat Gym has the
+/// hosted runner (`runner`), a trainer key, and its store in `home`.
+#[cfg(not(windows))]
+fn hosted_chat(
+    home: &std::path::Path,
+    runner: Arc<StandIn>,
+    runtime: &tokio::runtime::Runtime,
+) -> DesktopApp {
+    let mut meta = Meta::default();
+    meta.carded(&fixture("tool"));
+    meta.offers.extend(Offer::parse(&fixture("start")));
+    let mut app = chat_with("We'd try Project map.", meta);
+    let world = secp256k1::SecretKey::from_byte_array([0x42; 32]).unwrap();
+    app.chat
+        .as_mut()
+        .unwrap()
+        .use_gym(openagents_desktop::chat_gym::gym(
+            home,
+            world,
+            runner,
+            runtime.handle().clone(),
+        ));
+    app.present();
+    app
+}
+
+/// Tick the window until `done` holds, as its wakes would.
+#[cfg(not(windows))]
+fn until(app: &mut DesktopApp, done: impl Fn(&openagents_chat_app::gym::Gym) -> bool) {
+    let deadline = Instant::now() + std::time::Duration::from_secs(10);
+    while !done(app.chat.as_ref().unwrap().gym()) {
+        assert!(Instant::now() < deadline, "the Gym never settled");
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        let _ = app.chat.as_mut().unwrap().tick(Instant::now());
+    }
+    app.present();
+}
+
+/// With no computer ready, START THE TEST runs on the hosted runner, as
+/// it does on the phone, and its result is in the chat; the result is
+/// kept, so a reopened desktop still has it and follows nothing again.
+#[cfg(not(windows))]
+#[test]
+fn with_no_computer_a_test_runs_hosted_and_its_result_survives_a_reopen() {
+    let home = tempfile::tempdir().unwrap();
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let runner = Arc::new(StandIn {
+        finish: true,
+        ..StandIn::default()
+    });
+    let mut app = hosted_chat(home.path(), runner.clone(), &runtime);
+    assert!(click(&mut app, "START THE TEST").is_none());
+    until(&mut app, |gym| gym.latest_result().is_some());
+    capture(&mut app, "dsk-gym-05-hosted-result");
+    let shown = text(&app);
+    assert!(shown.contains("CODER GOT BETTER"), "{shown}");
+    assert!(shown.contains("with Project map: 7 of 8"), "{shown}");
+    assert!(!shown.contains("Connect a computer"), "{shown}");
+    assert!(!shown.contains("can't take these tests"), "{shown}");
+    let started = runner.started.lock().unwrap().clone();
+    assert_eq!(started.len(), 1, "one request to the hosted runner");
+    let offer = fixture("start");
+    assert_eq!(started[0].offer["suite"], offer["suite"]);
+    assert_eq!(started[0].offer["subject"], offer["subject"]);
+    assert_eq!(started[0].runs, 3);
+    let result = app
+        .chat
+        .as_ref()
+        .unwrap()
+        .gym()
+        .latest_result()
+        .unwrap()
+        .clone();
+    assert!(matches!(
+        result.place,
+        Some(openagents_chat_app::gym::Place::Hosted {
+            request: Some(_),
+            ..
+        })
+    ));
+    assert!(result.outcome.is_some());
+    drop(app);
+
+    let again = Arc::new(StandIn::default());
+    let app = hosted_chat(home.path(), again.clone(), &runtime);
+    let kept = app.chat.as_ref().unwrap().gym().latest_result().cloned();
+    assert_eq!(kept, Some(result), "the run and its result are kept");
+    assert!(again.resumed.lock().unwrap().is_empty());
+    assert!(again.started.lock().unwrap().is_empty());
+}
+
+/// A hosted run still going when the desktop closes is followed again
+/// when it reopens, by the same signed request.
+#[cfg(not(windows))]
+#[test]
+fn a_hosted_run_still_going_is_followed_again_after_a_reopen() {
+    let home = tempfile::tempdir().unwrap();
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let mut app = hosted_chat(home.path(), Arc::new(StandIn::default()), &runtime);
+    assert!(click(&mut app, "START THE TEST").is_none());
+    until(&mut app, |gym| {
+        gym.active().is_some_and(|run| {
+            matches!(
+                run.place,
+                Some(openagents_chat_app::gym::Place::Hosted {
+                    request: Some(_),
+                    ..
+                })
+            )
+        })
+    });
+    drop(app);
+
+    let again = Arc::new(StandIn::default());
+    let app = hosted_chat(home.path(), again.clone(), &runtime);
+    assert!(app.chat.as_ref().unwrap().gym().active().is_some());
+    assert_eq!(
+        *again.resumed.lock().unwrap(),
+        [serde_json::json!({"id": "ab".repeat(32)})]
+    );
+}

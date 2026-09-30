@@ -17,6 +17,7 @@ coder-host = { path = "../coder-host", default-features = false }
 coder-connect = { path = "../coder-connect", default-features = false }
 coder-history = { path = "../coder-history", default-features = false }
 nostr = { path = "../nostr" }
+nostr-transport = { path = "../nostr-transport" }
 rust-native = { path = "../rust-native" }
 xp-ledger = { path = "../xp-ledger" }
 # Portable event codes; the phone adapter owns playtest logging and reports.
@@ -30,6 +31,7 @@ tokio = { version = "1", features = ["rt-multi-thread", "time", "sync", "macros"
 uuid = { version = "1", features = ["v4"] }
 
 [dev-dependencies]
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 tempfile = "3"
 xp-ledger = { path = "../xp-ledger", features = ["fixtures"] }
 

@@ -5292,6 +5292,7 @@ dependencies = [
  "coder-host",
  "image",
  "nostr",
+ "nostr-transport",
  "openagents-chat",
  "openagents-connect",
  "playtest",

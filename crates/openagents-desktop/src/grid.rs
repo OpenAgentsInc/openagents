@@ -3,7 +3,7 @@
 mod controls;
 mod fixture;
 mod panels;
-mod store;
+pub(crate) mod store;
 
 use crate::model::Intent;
 use coder_mobile::verse_surface::{Command, GridSurface, Panel};

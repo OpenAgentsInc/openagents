@@ -39,6 +39,8 @@
 
 #[cfg(all(feature = "app", not(windows)))]
 pub mod backdrop;
+#[cfg(all(feature = "app", not(windows)))]
+pub mod chat_gym;
 pub mod chrome;
 pub mod codes;
 pub mod control;

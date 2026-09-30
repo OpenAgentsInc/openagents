@@ -12,6 +12,7 @@ pub mod eval_cards;
 pub mod first_run;
 pub mod gym;
 pub mod host_threads;
+pub mod hosted;
 pub mod outbox;
 pub mod preferences;
 pub mod transcripts;

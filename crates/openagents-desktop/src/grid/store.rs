@@ -76,6 +76,18 @@ pub fn launch(root: &Path, relay: &str, fixture: bool) -> Result<Launch, String>
     })
 }
 
+/// The world key, as the chat's Gym uses it for its trainer (#10060): the
+/// same verified key Play uses, made once if there is none, and never
+/// replaced when it can't be read.
+pub fn world_key() -> Result<secp256k1::SecretKey, String> {
+    let _identity = IDENTITY_LOCK
+        .lock()
+        .map_err(|_| "The world identity store is unavailable".to_owned())?;
+    load_or_create(read, write)?
+        .parse()
+        .map_err(|_| "The saved world identity is invalid".to_owned())
+}
+
 fn load_or_create(
     mut read: impl FnMut(&str) -> Result<Option<String>, String>,
     mut write: impl FnMut(&str, &str) -> Result<(), String>,
