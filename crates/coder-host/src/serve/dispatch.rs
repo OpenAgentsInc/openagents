@@ -197,6 +197,19 @@ impl Dispatch for Dispatcher {
                     reference: thread.clone(),
                 })
             }
+            // Start Coder for a host thread. The handoff runs here, on the
+            // access lock, so it must not take that lock again or the
+            // desktop handoff lock.
+            Operation::RunThread { thread } => {
+                let started = crate::control::run_thread(&self.shared, thread)?;
+                if let Some(task) = started.changed {
+                    self.changed.push(task);
+                }
+                Ok(Receipt {
+                    operation: op.name().into(),
+                    reference: started.task,
+                })
+            }
             // An archived task leaves the lists, so it publishes no summary.
             Operation::ArchiveTask { task } => {
                 tasks.archive(request, device, task)?;

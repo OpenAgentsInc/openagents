@@ -24,7 +24,8 @@
         "thread.list",
         "thread.read",
         "thread.send",
-        "thread.stop"
+        "thread.stop",
+        "thread.run"
       ],
       "remote": {
         "relays": [

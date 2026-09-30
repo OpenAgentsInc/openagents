@@ -22,9 +22,9 @@ use tokio_tungstenite::tungstenite::Message;
 fn script(payload: &Value) -> (Vec<Value>, Value) {
     let transcript = payload["transcript"].as_array();
     let turns = transcript.map_or(0, Vec::len);
-    let slowly = transcript
-        .and_then(|turns| turns.last())
-        .is_some_and(|last| last.to_string().contains("slowly"));
+    let last = transcript.and_then(|turns| turns.last());
+    let slowly = last.is_some_and(|last| last.to_string().contains("slowly"));
+    let offer = last.is_some_and(|last| last.to_string().contains("offer coder"));
     let mut feedback = vec![
         json!({"v": 2, "type": "judgment", "lane": "chat", "route": "general", "tier": "model", "model": "jev-fixture"}),
         json!({"v": 2, "type": "partial", "seq": 0, "delta": "Rain on "}),
@@ -35,11 +35,24 @@ fn script(payload: &Value) -> (Vec<Value>, Value) {
             (2..42).map(|seq| json!({"v": 2, "type": "partial", "seq": seq, "delta": "."})),
         );
     }
-    (
-        feedback,
-        json!({"v": 2, "type": "result", "model": "fixture-model", "tier": "model",
-            "text": format!("Rain on the roof. (turns: {turns})")}),
-    )
+    if offer {
+        feedback.push(json!({"v": 2, "requires": [], "type": "offer", "offer": "run_coder"}));
+        feedback.push(json!({
+            "v": 2, "requires": [], "type": "card", "card": "news",
+            "items": [{
+                "title": "Rain",
+                "line": "On the roof.",
+                "event": null,
+                "path": "notes/rain"
+            }]
+        }));
+    }
+    let mut result = json!({"v": 2, "type": "result", "model": "fixture-model", "tier": "model",
+        "text": format!("Rain on the roof. (turns: {turns})")});
+    if offer {
+        result["followups"] = json!([{"label": "Say it shorter"}]);
+    }
+    (feedback, result)
 }
 
 /// The worker's key as the chat door names it.

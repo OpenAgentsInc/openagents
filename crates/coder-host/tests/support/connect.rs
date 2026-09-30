@@ -64,6 +64,8 @@ pub struct Options {
     /// The chat worker the host's threads ask; the public one by default,
     /// which a test never reaches.
     pub chat_door: Option<coder_host::config::ChatDoor>,
+    /// The task owner. Unset, the host refuses task operations.
+    pub tasks: Option<Arc<dyn coder_host::Tasks>>,
 }
 
 impl Default for Options {
@@ -74,6 +76,7 @@ impl Default for Options {
             autostart: None,
             chats: false,
             chat_door: None,
+            tasks: None,
         }
     }
 }
@@ -123,7 +126,10 @@ pub async fn host_with(options: Options) -> Host {
         });
         config.serve_chats = true;
     }
-    let running = coder_host::start(config, Arc::new(NoTasks)).await.unwrap();
+    let tasks = options
+        .tasks
+        .unwrap_or_else(|| Arc::new(NoTasks) as Arc<dyn coder_host::Tasks>);
+    let running = coder_host::start(config, tasks).await.unwrap();
     Host {
         temp,
         relay,

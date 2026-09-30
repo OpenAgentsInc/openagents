@@ -1931,6 +1931,7 @@ impl openagents_chat_app::host_threads::Link for HostThreadsFake {
             stopped: false,
             model: None,
             request,
+            extras: Default::default(),
         };
         let mut turns = vec![
             turn(ThreadRole::User, "Write a haiku about rain", None),
@@ -1991,6 +1992,14 @@ impl openagents_chat_app::host_threads::Link for HostThreadsFake {
         }
         self.stops.lock().unwrap().push(request.map(str::to_owned));
         Ok(())
+    }
+
+    fn run(
+        &self,
+        _host: &str,
+        _thread: &str,
+    ) -> Result<String, openagents_chat_app::host_threads::Refusal> {
+        Err(openagents_chat_app::host_threads::Refusal::NotServed)
     }
 }
 

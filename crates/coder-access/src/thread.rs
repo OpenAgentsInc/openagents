@@ -10,10 +10,12 @@
 //! host. They are the wire form only; the host maps its chat service's
 //! records to them, and a device maps them back to its own views.
 //!
-//! Nothing here carries the router's typed judgments, offers, or cards:
-//! those stay on the host. A thread that delegated Coder work names the
-//! task ([`ThreadCoder`]); the device reads that task through the observer
-//! profile, as it reads any Coder chat.
+//! A turn may carry the router's offers, cards, and follow-up chips
+//! ([`ThreadExtras`]). The typed judgment (tier, answer, route, bank, and
+//! judgment text) stays on the host. A thread that delegated Coder work
+//! names the task ([`ThreadCoder`]); the device reads that task through the
+//! observer profile, as it reads any Coder chat. `thread.run` asks the host
+//! to start that work through the same handoff the desktop uses.
 use crate::{Code, Result, fail};
 use serde::{Deserialize, Serialize};
 
@@ -24,8 +26,8 @@ pub const MAX_THREADS: usize = 128;
 pub const MAX_TURNS: usize = 64;
 /// The largest encoded `thread` or `threads` outcome, so a reply seals
 /// well inside one relay frame (128 KiB, base64 and the envelope
-/// included). A host drops older turns from a page, and shortens a single
-/// turn's text, to stay inside it.
+/// included). A host drops extras on the oldest turns first, then older
+/// turns, and shortens a single turn's text, to stay inside it.
 pub const MAX_PAGE_BYTES: usize = 48 * 1024;
 /// The longest thread title.
 pub const MAX_TITLE: usize = 160;
@@ -34,6 +36,16 @@ pub const MAX_TITLE: usize = 160;
 pub const MAX_MESSAGE: usize = 32 * 1024;
 /// The longest refusal or failure text a page carries.
 pub const MAX_FAILURE: usize = 1024;
+/// The most offers one turn carries.
+pub const MAX_OFFERS: usize = 4;
+/// The most follow-up chips one turn carries.
+pub const MAX_FOLLOWUPS: usize = 3;
+/// The most cards one turn carries.
+pub const MAX_CARDS: usize = 4;
+/// The longest follow-up label, in characters.
+pub const MAX_FOLLOWUP_CHARS: usize = 80;
+/// The largest encoded offer or card object.
+pub const MAX_EXTRA_VALUE: usize = 8 * 1024;
 
 /// Who wrote a turn.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -70,6 +82,37 @@ pub struct ThreadRow {
     pub coder: Option<ThreadCoder>,
 }
 
+/// One follow-up chip: tapping it sends `label` as the person's message.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ThreadFollowup {
+    /// The prepared answer it leads to, when the router named one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub answer: Option<String>,
+    pub label: String,
+}
+
+/// Offers, follow-up chips, and cards on one turn. Absent on an older page,
+/// which means there are none.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ThreadExtras {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub offers: Vec<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub followups: Vec<ThreadFollowup>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub cards: Vec<serde_json::Value>,
+}
+
+impl ThreadExtras {
+    /// Nothing to show.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.offers.is_empty() && self.followups.is_empty() && self.cards.is_empty()
+    }
+}
+
 /// One turn of a thread.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -85,6 +128,11 @@ pub struct ThreadTurn {
     /// The send ID that created a message, whichever device sent it: 32
     /// lowercase hex characters.
     pub request: Option<String>,
+    /// Offers, follow-up chips, and cards on this turn. Absent on an older
+    /// page, which means there are none. The router's typed judgment stays
+    /// on the host.
+    #[serde(default, skip_serializing_if = "ThreadExtras::is_empty")]
+    pub extras: ThreadExtras,
 }
 
 /// One bounded page of a thread, newest turns last, and the reply
@@ -173,6 +221,7 @@ impl ThreadPage {
             if turn.model.as_ref().is_some_and(|model| model.len() > 256) {
                 return fail(Code::Bounds, "model name exceeds its bound");
             }
+            turn.extras.validate()?;
         }
         if self
             .failure
@@ -193,14 +242,73 @@ pub(crate) fn message(text: &str) -> Result<()> {
     Ok(())
 }
 
-/// Fit `page` inside [`MAX_PAGE_BYTES`] and [`MAX_TURNS`]: drop its oldest
-/// turns first, then shorten the one turn left and the streaming reply,
-/// keeping their ends. A host calls this before it answers.
+impl ThreadExtras {
+    fn validate(&self) -> Result<()> {
+        if self.offers.len() > MAX_OFFERS
+            || self.followups.len() > MAX_FOLLOWUPS
+            || self.cards.len() > MAX_CARDS
+        {
+            return fail(Code::Bounds, "thread extras exceed their bound");
+        }
+        for offer in &self.offers {
+            extra_value(offer)?;
+        }
+        for card in &self.cards {
+            extra_value(card)?;
+        }
+        for followup in &self.followups {
+            let label = followup.label.chars().count();
+            if !(1..=MAX_FOLLOWUP_CHARS).contains(&label)
+                || followup.label.chars().any(char::is_control)
+            {
+                return fail(Code::Bounds, "a follow-up label exceeds its bound");
+            }
+            if followup
+                .answer
+                .as_ref()
+                .is_some_and(|answer| !tag_like(answer))
+            {
+                return fail(Code::Malformed, "a follow-up answer exceeds its bound");
+            }
+        }
+        Ok(())
+    }
+}
+
+/// An offer or card body: one JSON object, at most [`MAX_EXTRA_VALUE`].
+fn extra_value(value: &serde_json::Value) -> Result<()> {
+    if !value.is_object() {
+        return fail(Code::Malformed, "an offer or card is an object");
+    }
+    if serde_json::to_vec(value).map_or(true, |bytes| bytes.len() > MAX_EXTRA_VALUE) {
+        return fail(Code::Bounds, "an offer or card exceeds its bound");
+    }
+    Ok(())
+}
+
+/// A short bank id: lowercase ASCII, digits, and `._@-:` .
+fn tag_like(text: &str) -> bool {
+    (1..=96).contains(&text.len())
+        && text.bytes().all(|byte| {
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || b"._@-:".contains(&byte)
+        })
+}
+
+/// Fit `page` inside [`MAX_PAGE_BYTES`] and [`MAX_TURNS`]: drop extras on
+/// the oldest turns first, then drop those turns, then shorten the one
+/// turn left and the streaming reply, keeping their ends. A host calls
+/// this before it answers.
 pub fn fit(page: &mut ThreadPage) {
     let size = |page: &ThreadPage| serde_json::to_vec(page).map_or(usize::MAX, |bytes| bytes.len());
     while page.turns.len() > MAX_TURNS {
         page.turns.remove(0);
         page.start += 1;
+    }
+    while size(page) > MAX_PAGE_BYTES {
+        let Some(turn) = page.turns.iter_mut().find(|turn| !turn.extras.is_empty()) else {
+            break;
+        };
+        turn.extras = ThreadExtras::default();
     }
     while size(page) > MAX_PAGE_BYTES && page.turns.len() > 1 {
         page.turns.remove(0);
@@ -247,6 +355,7 @@ mod tests {
             stopped: false,
             model: None,
             request: None,
+            extras: ThreadExtras::default(),
         }
     }
 
@@ -299,5 +408,65 @@ mod tests {
         assert!(row.validate().is_err());
         assert!(message("  ").is_err());
         assert!(message(&"z".repeat(MAX_MESSAGE + 1)).is_err());
+    }
+
+    #[test]
+    fn extras_drop_before_turns_and_an_older_page_has_none() {
+        let bulky = |byte: char| ThreadExtras {
+            cards: vec![serde_json::json!({"card": byte.to_string().repeat(26_000)})],
+            ..ThreadExtras::default()
+        };
+        let mut older = turn("kept older");
+        older.extras = bulky('a');
+        let mut newer = turn("kept newer");
+        newer.extras = bulky('b');
+        let mut page = ThreadPage {
+            thread: "c".repeat(32),
+            title: "Rain".into(),
+            start: 0,
+            total: 2,
+            turns: vec![older, newer],
+            busy: false,
+            partial: String::new(),
+            failure: None,
+            coder: None,
+        };
+        fit(&mut page);
+        assert!(serde_json::to_vec(&page).unwrap().len() <= MAX_PAGE_BYTES);
+        assert_eq!(page.turns.len(), 2);
+        assert!(page.turns[0].extras.is_empty());
+        assert_eq!(page.turns[0].text, "kept older");
+        assert!(!page.turns[1].extras.is_empty());
+        assert_eq!(page.turns[1].text, "kept newer");
+
+        let mut huge = turn("plain words");
+        huge.extras
+            .cards
+            .push(serde_json::json!({"card": "z".repeat(60_000)}));
+        let mut one = ThreadPage {
+            turns: vec![huge],
+            start: 0,
+            total: 1,
+            partial: String::new(),
+            ..page
+        };
+        fit(&mut one);
+        assert!(one.turns[0].extras.is_empty());
+        assert_eq!(one.turns[0].text, "plain words");
+        assert!(serde_json::to_vec(&one).unwrap().len() <= MAX_PAGE_BYTES);
+
+        let bare = serde_json::to_value(turn("Hi")).unwrap();
+        assert!(bare.get("extras").is_none());
+        let old: ThreadTurn = serde_json::from_value(bare).unwrap();
+        assert!(old.extras.is_empty());
+
+        let mut too_many = turn("bounds");
+        too_many.extras.offers = (0..5).map(|n| serde_json::json!({"n": n})).collect();
+        let over = ThreadPage {
+            turns: vec![too_many],
+            total: 1,
+            ..one
+        };
+        assert!(over.validate().is_err());
     }
 }

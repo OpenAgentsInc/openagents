@@ -147,6 +147,7 @@ fn every_operation_has_a_fixture() {
         "thread.read",
         "thread.send",
         "thread.stop",
+        "thread.run",
     ] {
         assert!(kinds.contains(kind), "no request fixture for {kind}");
     }
@@ -308,4 +309,35 @@ fn thread_stop_needs_operate_names_a_send_id_and_is_retained() {
     }))
     .unwrap();
     assert_eq!(parsed, unnamed);
+}
+
+#[test]
+fn thread_run_needs_operate_and_is_retained() {
+    use coder_access::protocol::{Operation, Outcome, Receipt};
+    let thread = "0f".repeat(16);
+    let run = Operation::RunThread {
+        thread: thread.clone(),
+    };
+    assert_eq!(run.name(), "thread.run");
+    assert_eq!(run.required(), Some(coder_access::Right::Operate));
+    assert!(!run.reads_only());
+    assert!(run.validate().is_ok());
+    assert!(
+        Operation::RunThread {
+            thread: "short".into()
+        }
+        .validate()
+        .is_err()
+    );
+    let receipt = Outcome::Dispatched {
+        receipt: Receipt {
+            operation: "thread.run".into(),
+            reference: "ab".repeat(32),
+        },
+    };
+    assert!(receipt.answers(&run));
+    assert!(!receipt.answers(&Operation::StopThread {
+        thread,
+        request: None,
+    }));
 }

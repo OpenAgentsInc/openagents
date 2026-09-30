@@ -4,10 +4,10 @@
 //! A computer's host keeps its own threads (`<host root>/basic-chats`): the
 //! ones started in its desktop app or with `openagents chat` there. This
 //! device lists them beside its own with NIP-HOST `thread.list`, reads the
-//! open one with `thread.read`, sends a follow-up with `thread.send`, and
-//! stops a reply with `thread.stop`, all on the computer's current host
-//! link (iroh or the relay) under the device's grant: `observe` to read,
-//! `operate` to send or stop. The host appends
+//! open one with `thread.read`, sends a follow-up with `thread.send`, stops
+//! a reply with `thread.stop`, and starts Coder with `thread.run`, all on
+//! the computer's current host link (iroh or the relay) under the device's
+//! grant: `observe` to read, `operate` to send, stop, or run. The host appends
 //! the follow-up and asks OpenAgents for the reply, so the desktop and
 //! `openagents chat read` show it too, and this device reads the reply as
 //! it streams by reading the thread again while the host answers.
@@ -18,6 +18,12 @@
 //! that answers is one that stops; an older one, or a grant without
 //! `operate`, refuses, and then no stop control shows at all, never one
 //! that does nothing.
+//!
+//! Run Coder shows when the reply carried that offer and the thread has not
+//! started Coder. Tapping it sends `thread.run`. The phone does not ask
+//! whether the computer can start Coder until that tap. An older computer
+//! refuses the operation, and then the chip goes away. A follow-up chip
+//! sends its label with `thread.send`.
 //!
 //! Nothing here is kept across a relaunch, and nothing here touches this
 //! device's own threads, which need no computer: when a computer is
@@ -77,6 +83,9 @@ pub trait Link: Send + Sync {
     /// `thread.stop` on `host`: stop the reply to the message whose send
     /// ID is `request`. A computer that predates it refuses as not served.
     fn stop(&self, host: &str, thread: &str, request: Option<&str>) -> Result<(), Refusal>;
+    /// `thread.run` on `host`: start Coder for the thread. Returns the task
+    /// ID. A computer that predates it refuses as not served.
+    fn run(&self, host: &str, thread: &str) -> Result<String, Refusal>;
 }
 
 /// The live link: the Computers service's current link to each host.
@@ -160,6 +169,30 @@ impl Link for Live {
             _ => Err(Refusal::Failed),
         }
     }
+
+    fn run(&self, host: &str, thread: &str) -> Result<String, Refusal> {
+        let link = (self.terminals.links(host))().map_err(|_| Refusal::Failed)?;
+        match self.handle.block_on(link.call(Operation::RunThread {
+            thread: thread.to_owned(),
+        })) {
+            Ok(Outcome::Dispatched { receipt }) => Ok(receipt.reference),
+            Ok(_) => Err(Refusal::Failed),
+            Err(coder_host::Error::Access(error)) => Err(match error.code {
+                Code::Unsupported | Code::Malformed => Refusal::NotServed,
+                Code::Conflict => {
+                    Refusal::Refused("Wait for a complete saved reply before running Coder.".into())
+                }
+                Code::Forbidden => {
+                    Refusal::Refused("This reply has no current Coder offer.".into())
+                }
+                Code::MissingRight => {
+                    Refusal::Refused("This phone may not do that on this computer.".into())
+                }
+                _ => Refusal::Refused("Coder could not start on this computer.".into()),
+            }),
+            Err(_) => Err(Refusal::Failed),
+        }
+    }
 }
 
 /// One computer's threads as last read.
@@ -202,6 +235,11 @@ struct Opened {
     stopping: bool,
     /// This device stopped a reply in this thread since it opened.
     stopped_here: bool,
+    /// `thread.run` is on its way.
+    running: bool,
+    /// The computer can start Coder from this phone. Unknown until a run
+    /// is refused as not served, which hides the chip.
+    can_run: Option<bool>,
     error: Option<String>,
 }
 
@@ -270,6 +308,8 @@ pub struct Shown {
     pub stoppable: bool,
     /// This device stopped a reply here since the thread opened.
     pub stopped_here: bool,
+    /// Run Coder can still be offered. An older computer sets this false.
+    pub runnable: bool,
 }
 
 impl HostThreads {
@@ -393,6 +433,8 @@ impl HostThreads {
                 can_stop,
                 stopping: false,
                 stopped_here: false,
+                running: false,
+                can_run: None,
                 error: None,
             });
             self.changed(&mut inner);
@@ -536,6 +578,56 @@ impl HostThreads {
         true
     }
 
+    /// Start Coder for the open thread through its computer. False when no
+    /// thread is open, a run is on its way, the computer cannot start
+    /// Coder, a reply is streaming, or the thread already started Coder.
+    pub fn run(&self, link: Arc<dyn Link>) -> bool {
+        let (host, thread, generation) = {
+            let mut inner = self.lock();
+            let Some(open) = inner.open.as_mut() else {
+                return false;
+            };
+            if open.running || open.can_run == Some(false) {
+                return false;
+            }
+            if open
+                .page
+                .as_ref()
+                .is_some_and(|page| page.busy || page.coder.is_some())
+            {
+                return false;
+            }
+            open.running = true;
+            open.error = None;
+            let found = (open.host.clone(), open.thread.clone(), open.generation);
+            self.changed(&mut inner);
+            found
+        };
+        let threads = self.clone();
+        std::thread::spawn(move || {
+            let answer = link.run(&host, &thread);
+            let mut inner = threads.lock();
+            let Some(open) = inner
+                .open
+                .as_mut()
+                .filter(|open| open.generation == generation)
+            else {
+                return;
+            };
+            open.running = false;
+            match answer {
+                Ok(_) => {}
+                Err(Refusal::NotServed) => {
+                    open.can_run = Some(false);
+                    open.error = Some("This computer can't start Coder from the phone yet.".into());
+                }
+                Err(refusal) => open.error = Some(words(&refusal)),
+            }
+            threads.changed(&mut inner);
+        });
+        true
+    }
+
     /// Read the turns before the loaded ones.
     pub fn earlier(&self, link: Arc<dyn Link>) {
         let (host, thread, before, generation) = {
@@ -613,6 +705,7 @@ impl HostThreads {
             coder: page.and_then(|page| page.coder.clone()),
             stoppable: open.can_stop == Some(true) && !open.stopping && open.answering().is_some(),
             stopped_here: open.stopped_here,
+            runnable: open.can_run != Some(false),
         })
     }
 
@@ -735,7 +828,55 @@ pub fn turn(turn: &ThreadTurn) -> Turn {
     out.stopped = turn.stopped;
     out.model = turn.model.clone();
     out.request = turn.request.clone();
+    out.meta = meta_of(&turn.extras);
     out
+}
+
+/// Offers, cards, and follow-ups the page carried, read again. Anything
+/// the phone's own tables refuse is dropped. The typed judgment stays off
+/// the page, so it stays unset here.
+fn meta_of(
+    extras: &coder_host::access::thread::ThreadExtras,
+) -> Option<openagents_chat::router::Meta> {
+    if extras.is_empty() {
+        return None;
+    }
+    let mut meta = openagents_chat::router::Meta::default();
+    for value in &extras.offers {
+        if let Some(offer) = openagents_chat::router::Offer::parse(value)
+            && meta.offers.len() < coder_host::access::thread::MAX_OFFERS
+            && !meta.offers.contains(&offer)
+        {
+            meta.offers.push(offer);
+        }
+    }
+    for followup in &extras.followups {
+        let label = followup.label.trim();
+        let count = label.chars().count();
+        if !(1..=coder_host::access::thread::MAX_FOLLOWUP_CHARS).contains(&count)
+            || label.chars().any(char::is_control)
+            || meta.followups.len() >= coder_host::access::thread::MAX_FOLLOWUPS
+            || meta.followups.iter().any(|kept| kept.label == label)
+        {
+            continue;
+        }
+        meta.followups.push(openagents_chat::router::Followup {
+            answer: followup.answer.clone().filter(|answer| answer_tag(answer)),
+            label: label.to_owned(),
+        });
+    }
+    for card in &extras.cards {
+        meta.carded(card);
+    }
+    (!meta.offers.is_empty() || !meta.followups.is_empty() || !meta.cards.is_empty())
+        .then_some(meta)
+}
+
+fn answer_tag(text: &str) -> bool {
+    (1..=96).contains(&text.len())
+        && text.bytes().all(|byte| {
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || b"._@-:".contains(&byte)
+        })
 }
 
 #[cfg(test)]
@@ -755,12 +896,14 @@ mod tests {
         /// A computer from before `thread.stop`.
         old: std::sync::atomic::AtomicBool,
         stops: AtomicUsize,
+        runs: AtomicUsize,
     }
 
     #[derive(Default)]
     struct FakeState {
         turns: Vec<ThreadTurn>,
         streaming: Option<usize>,
+        coder: Option<coder_host::access::thread::ThreadCoder>,
     }
 
     fn user(text: &str, request: Option<&str>) -> ThreadTurn {
@@ -771,6 +914,7 @@ mod tests {
             stopped: false,
             model: None,
             request: request.map(str::to_owned),
+            extras: coder_host::access::thread::ThreadExtras::default(),
         }
     }
 
@@ -824,7 +968,7 @@ mod tests {
                 busy: state.streaming.is_some(),
                 partial,
                 failure: None,
-                coder: None,
+                coder: state.coder.clone(),
             })
         }
         fn send(
@@ -867,6 +1011,21 @@ mod tests {
                 });
             }
             Ok(())
+        }
+
+        fn run(&self, host: &str, _thread: &str) -> Result<String, Refusal> {
+            self.runs.fetch_add(1, Ordering::SeqCst);
+            if self.old.load(Ordering::SeqCst) {
+                return Err(Refusal::NotServed);
+            }
+            let task = "ab".repeat(32);
+            self.state.lock().unwrap().coder = Some(coder_host::access::thread::ThreadCoder {
+                host: host.to_owned(),
+                task: task.clone(),
+                project: Some("checkout".into()),
+                at: Some(1),
+            });
+            Ok(task)
         }
     }
 
@@ -1019,5 +1178,58 @@ mod tests {
         assert!(!shown.stoppable, "no stop control on an older computer");
         assert!(!threads.stop(link));
         assert_eq!(fake.stops.load(Ordering::SeqCst), 1, "only the probe");
+    }
+
+    #[test]
+    fn a_host_threads_offer_is_read_back_and_run_starts_coder() {
+        let fake = Arc::new(Fake::default());
+        {
+            let mut state = fake.state.lock().unwrap();
+            state.turns.push(user("offer coder a haiku", None));
+            let mut reply = user("Rain on the roof.", None);
+            reply.role = ThreadRole::Assistant;
+            reply.extras = coder_host::access::thread::ThreadExtras {
+                offers: vec![serde_json::json!({"offer": "run_coder"})],
+                followups: vec![coder_host::access::thread::ThreadFollowup {
+                    answer: None,
+                    label: "Say it shorter".into(),
+                }],
+                cards: vec![serde_json::json!({
+                    "v": 2, "requires": [], "type": "card", "card": "news",
+                    "items": [{
+                        "title": "Rain", "line": "On the roof.",
+                        "event": null, "path": "notes/rain"
+                    }]
+                })],
+            };
+            state.turns.push(reply);
+        }
+        let link: Arc<dyn Link> = fake.clone();
+        let threads = HostThreads::default();
+        threads.open("host", THREAD, link.clone());
+        until("the reply arrives", || {
+            threads.shown().is_some_and(|shown| {
+                !shown.loading && shown.turns.last().is_some_and(|turn| turn.meta.is_some())
+            })
+        });
+        let shown = threads.shown().unwrap();
+        let meta = shown.turns.last().unwrap().meta.as_ref().unwrap();
+        assert!(
+            meta.offers
+                .contains(&openagents_chat::router::Offer::RunCoder)
+        );
+        assert_eq!(meta.followups[0].label, "Say it shorter");
+        assert_eq!(meta.cards[0]["card"], "news");
+        assert!(meta.judgment.is_none() && meta.tier.is_none());
+        assert!(shown.runnable);
+        assert!(threads.run(link));
+        until("Coder is linked", || {
+            threads.shown().is_some_and(|shown| shown.coder.is_some())
+        });
+        assert_eq!(fake.runs.load(Ordering::SeqCst), 1);
+        assert_eq!(
+            threads.shown().unwrap().coder.unwrap().task,
+            "ab".repeat(32)
+        );
     }
 }

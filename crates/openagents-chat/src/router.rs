@@ -135,6 +135,22 @@ pub enum Screen {
 }
 
 impl Screen {
+    /// The worker's `screen` word for this screen.
+    #[must_use]
+    pub fn word(self) -> &'static str {
+        match self {
+            Self::Wallet => "wallet",
+            Self::Computers => "account.computers",
+            Self::Keys => "account.keys",
+            Self::Playtest => "account.playtest",
+            Self::Report => "account.report_problem",
+            Self::VerseGym => "verse.gym",
+            Self::GymResult => "gym.result",
+            Self::GymPublish => "gym.publish",
+            Self::GymTestSet => "gym.test_set",
+        }
+    }
+
     /// The screen an offer's exact `screen` value names.
     fn parse(word: &str) -> Option<Self> {
         Some(match word {
@@ -206,6 +222,26 @@ pub enum Offer {
 }
 
 impl Offer {
+    /// The worker payload [`Offer::parse`] accepts. A page carries this
+    /// shape, whose screen words are [`Screen::word`].
+    #[must_use]
+    pub fn wire(&self) -> Value {
+        match self {
+            Self::RunCoder => json!({"offer": "run_coder"}),
+            Self::OpenScreen { screen } => json!({"offer": "open_screen", "screen": screen.word()}),
+            Self::Cli { argv, runs_on } => json!({
+                "offer": "cli",
+                "effect": "read_only",
+                "argv": argv,
+                "runs_on": match runs_on {
+                    RunsOn::ThisDevice => "this_device",
+                    RunsOn::ConnectedComputer => "connected_computer",
+                },
+            }),
+            Self::StartEval { body } | Self::PublishEval { body } => body.clone(),
+        }
+    }
+
     /// Reads one `offer` feedback payload. Exact enum values only; an
     /// unknown offer, screen, or command, or a command that is not
     /// read-only, is `None`.
@@ -670,6 +706,30 @@ mod tests {
         phone.sort();
         assert!(!worker.is_empty());
         assert_eq!(phone, worker);
+    }
+
+    #[test]
+    fn an_offers_wire_form_parses_back() {
+        assert_eq!(Offer::parse(&Offer::RunCoder.wire()), Some(Offer::RunCoder));
+        for screen in [
+            Screen::Wallet,
+            Screen::Computers,
+            Screen::Keys,
+            Screen::Playtest,
+            Screen::Report,
+            Screen::VerseGym,
+            Screen::GymResult,
+            Screen::GymPublish,
+            Screen::GymTestSet,
+        ] {
+            let offer = Offer::OpenScreen { screen };
+            assert_eq!(Offer::parse(&offer.wire()), Some(offer));
+        }
+        let command = Offer::Cli {
+            argv: vec!["computer".into(), "list".into()],
+            runs_on: RunsOn::ConnectedComputer,
+        };
+        assert_eq!(Offer::parse(&command.wire()), Some(command));
     }
 }
 

@@ -563,6 +563,12 @@ pub enum Operation {
         thread: String,
         request: Option<String>,
     },
+    /// Start Coder for a thread through the host's handoff. When the thread
+    /// already names a task, the receipt names that task and no second task
+    /// starts. The device replays its request ID; the handoff's own key
+    /// keeps a second request from starting another task.
+    #[serde(rename = "thread.run")]
+    RunThread { thread: String },
 }
 impl Operation {
     /// A read with no effect, whose reply the host does not retain: an
@@ -595,6 +601,7 @@ impl Operation {
             Self::ReadThread { .. } => "thread.read",
             Self::SendThread { .. } => "thread.send",
             Self::StopThread { .. } => "thread.stop",
+            Self::RunThread { .. } => "thread.run",
         }
     }
     /// The right this operation requires. Redemption uses the invitation's
@@ -621,7 +628,8 @@ impl Operation {
             | Self::ListSpends { .. }
             | Self::SettleSpend { .. }
             | Self::SendThread { .. }
-            | Self::StopThread { .. } => Some(Right::Operate),
+            | Self::StopThread { .. }
+            | Self::RunThread { .. } => Some(Right::Operate),
             Self::OpenTerminal { .. } => Some(Right::Terminal),
         }
     }
@@ -686,6 +694,7 @@ impl Operation {
                     crate::thread::id(request)?;
                 }
             }
+            Self::RunThread { thread } => crate::thread::id(thread)?,
             Self::Revoke { device } => public(device)?,
             Self::CreateTask { task } => {
                 text(&task.title, 200)?;
@@ -979,7 +988,8 @@ impl Outcome {
                 | Operation::ArchiveTask { .. }
                 | Operation::CommandTask { .. }
                 | Operation::SendThread { .. }
-                | Operation::StopThread { .. },
+                | Operation::StopThread { .. }
+                | Operation::RunThread { .. },
                 Self::Dispatched { receipt },
             ) => receipt.operation == op.name(),
             _ => false,

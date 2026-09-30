@@ -1146,6 +1146,23 @@ impl CoderTab {
                     }
                 }
             }
+            Intent::Followup { index } if self.threads.opened().is_some() => {
+                let label = self.threads.shown().and_then(|shown| {
+                    shown.turns.last().and_then(|turn| {
+                        turn.meta.as_ref().and_then(|meta| {
+                            meta.followups
+                                .get(index)
+                                .map(|followup| followup.label.clone())
+                        })
+                    })
+                });
+                let Some(label) = label else { return };
+                if self.threads.send(&label) {
+                    self.notice = None;
+                } else {
+                    self.notice = Some("Wait for this reply to finish.".into());
+                }
+            }
             Intent::Followup { index } => {
                 let Some(id) = self.talk.clone() else { return };
                 let Some(followup) = self
@@ -1186,6 +1203,24 @@ impl CoderTab {
                 // Tapped once, it never shows again on this device.
                 self.basic.use_suggestion(suggestion.id);
                 self.start_talk(suggestion.message, computers.as_deref());
+            }
+            Intent::RunCoder if self.threads.opened().is_some() => {
+                let Some((host, _)) = self.threads.opened() else {
+                    return;
+                };
+                let Some(link) = self.thread_link.clone() else {
+                    self.notice = Some("Couldn't reach the computer.".into());
+                    return;
+                };
+                if !Self::operates(computers.as_deref(), &host) {
+                    self.notice = Some("This phone can only read this chat".into());
+                    return;
+                }
+                if self.threads.run(link) {
+                    self.notice = None;
+                } else {
+                    self.notice = Some("Coder is already starting.".into());
+                }
             }
             Intent::RunCoder => {
                 let Some(computers) = computers else {
@@ -2741,6 +2776,64 @@ impl CoderTab {
                 source: None,
             },
         ));
+        // The same cards and chips a thread on this phone shows. Run Coder
+        // stays visible when this phone may only read; the tap says so.
+        // A thread that already started Coder, or a computer that cannot
+        // start it, drops that one chip. Proposed commands stay on this phone.
+        let here = crate::gym::Here { busy: shown.busy };
+        for card in self.gym.cards_for(&shown.thread, &shown.turns, &here) {
+            children.push(node(
+                &format!("gym-card-{card}"),
+                Element::Surface {
+                    resource: format!("gym-card:{card}"),
+                    label: "Card".into(),
+                },
+            ));
+        }
+        let failed = shown.failure.is_some();
+        let mut meta = crate::projection::actionable(&shown.turns, shown.busy, failed).cloned();
+        if (shown.coder.is_some() || !shown.runnable)
+            && let Some(meta) = meta.as_mut()
+        {
+            meta.offers
+                .retain(|offer| !matches!(offer, Offer::RunCoder));
+        }
+        let actions = crate::cards::reply_actions_for(
+            meta.as_ref(),
+            &[],
+            false,
+            &crate::cards::Target::Ready(&label),
+            self.gym.latest_result().is_some(),
+        );
+        let mut agents = vec![];
+        if let Some((key, value)) = &actions.notice {
+            agents.push(status(key, value));
+        }
+        for chip in &actions.chips {
+            if !matches!(chip.action, crate::cards::Action::Followup { .. })
+                && let Some(intent) = card_intent(chip.action.clone())
+            {
+                agents.push(pill(&chip.key, &chip.label, chip.glyph, intent));
+            }
+        }
+        if !agents.is_empty() {
+            children.push(wrap("coder-agents", agents));
+        }
+        let followups: Vec<_> = actions
+            .chips
+            .iter()
+            .filter_map(|chip| {
+                if matches!(chip.action, crate::cards::Action::Followup { .. }) {
+                    card_intent(chip.action.clone())
+                        .map(|intent| pill(&chip.key, &chip.label, chip.glyph, intent))
+                } else {
+                    None
+                }
+            })
+            .collect();
+        if !followups.is_empty() {
+            children.push(wrap("coder-followups", followups));
+        }
         // Coder work the thread started opens as that task's chat, read
         // through the computer's history observer like any Coder chat.
         if let Some(coder) = &shown.coder {
@@ -3692,4 +3785,239 @@ fn card_intent(action: crate::cards::Action) -> Option<Intent> {
         Action::RunCli { index } => Intent::RunCli { index },
         Action::Gym { .. } => return None,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::host_threads::{HostThreads, Link, Refusal};
+    use rust_native::{Element, Node};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::{Arc, Mutex};
+
+    const THREAD: &str = "0123456789abcdef0123456789abcdef";
+
+    struct Fake {
+        runs: AtomicUsize,
+        sends: Mutex<Vec<String>>,
+    }
+
+    impl Link for Fake {
+        fn list(&self, _host: &str) -> Result<Vec<coder_host::access::thread::ThreadRow>, Refusal> {
+            Ok(vec![coder_host::access::thread::ThreadRow {
+                thread: THREAD.into(),
+                title: "Rain".into(),
+                started: 1,
+                updated: 2,
+                pinned: false,
+                coder: None,
+            }])
+        }
+        fn read(
+            &self,
+            _host: &str,
+            thread: &str,
+            _before: Option<u64>,
+        ) -> Result<coder_host::access::thread::ThreadPage, Refusal> {
+            use coder_host::access::thread::{
+                ThreadExtras, ThreadFollowup, ThreadRole, ThreadTurn,
+            };
+            let user = ThreadTurn {
+                role: ThreadRole::User,
+                text: "offer coder a haiku".into(),
+                at: Some(1),
+                stopped: false,
+                model: None,
+                request: None,
+                extras: ThreadExtras::default(),
+            };
+            let reply = ThreadTurn {
+                role: ThreadRole::Assistant,
+                text: "Rain on the roof.".into(),
+                at: Some(2),
+                stopped: false,
+                model: None,
+                request: None,
+                extras: ThreadExtras {
+                    offers: vec![serde_json::json!({"offer": "run_coder"})],
+                    followups: vec![ThreadFollowup {
+                        answer: None,
+                        label: "Say it shorter".into(),
+                    }],
+                    cards: vec![serde_json::json!({
+                        "v": 2, "requires": [], "type": "card", "card": "news",
+                        "items": [{
+                            "title": "Rain", "line": "On the roof.",
+                            "event": null, "path": "notes/rain"
+                        }]
+                    })],
+                },
+            };
+            Ok(coder_host::access::thread::ThreadPage {
+                thread: thread.into(),
+                title: "Rain".into(),
+                start: 0,
+                total: 2,
+                turns: vec![user, reply],
+                busy: false,
+                partial: String::new(),
+                failure: None,
+                coder: None,
+            })
+        }
+        fn send(
+            &self,
+            _host: &str,
+            _thread: &str,
+            _request: &str,
+            text: &str,
+        ) -> Result<(), Refusal> {
+            self.sends.lock().unwrap().push(text.to_owned());
+            Ok(())
+        }
+        fn stop(&self, _host: &str, _thread: &str, _request: Option<&str>) -> Result<(), Refusal> {
+            Ok(())
+        }
+        fn run(&self, _host: &str, _thread: &str) -> Result<String, Refusal> {
+            self.runs.fetch_add(1, Ordering::SeqCst);
+            Ok("ab".repeat(32))
+        }
+    }
+
+    fn until(mut done: impl FnMut() -> bool) {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while !done() {
+            assert!(std::time::Instant::now() < deadline);
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+    }
+
+    fn buttons(node: &Node<Intent>, found: &mut Vec<(String, String)>) {
+        if let Element::Button { label, .. } = &node.element {
+            found.push((node.key.clone(), label.clone()));
+        }
+        let children = match &node.element {
+            Element::Stack { children, .. }
+            | Element::List { children, .. }
+            | Element::Transcript { children, .. }
+            | Element::Message { children, .. }
+            | Element::Tool { children, .. } => children,
+            _ => return,
+        };
+        for child in children {
+            buttons(child, found);
+        }
+    }
+
+    fn surfaces(node: &Node<Intent>, found: &mut Vec<String>) {
+        if node.key.starts_with("gym-card-") {
+            found.push(node.key.clone());
+        }
+        let children = match &node.element {
+            Element::Stack { children, .. }
+            | Element::List { children, .. }
+            | Element::Transcript { children, .. }
+            | Element::Message { children, .. }
+            | Element::Tool { children, .. } => children,
+            _ => return,
+        };
+        for child in children {
+            surfaces(child, found);
+        }
+    }
+
+    #[test]
+    fn a_host_thread_shows_the_same_run_coder_chip_and_follow_ups() {
+        let fake = Arc::new(Fake {
+            runs: AtomicUsize::new(0),
+            sends: Mutex::new(vec![]),
+        });
+        let link: Arc<dyn Link> = fake.clone();
+        let threads = HostThreads::default();
+        threads.poll(vec![("host".into(), "Studio Mac".into())], &link);
+        until(|| !threads.rows().is_empty());
+        threads.open("host", THREAD, link.clone());
+        until(|| threads.shown().is_some_and(|shown| !shown.loading));
+        let mut tab = CoderTab::new("coder:threads".into()).with_threads(threads, Some(link));
+        let view = tab.thread_view(None);
+        let meta = tab
+            .threads
+            .shown()
+            .unwrap()
+            .turns
+            .last()
+            .unwrap()
+            .meta
+            .clone()
+            .unwrap();
+        let shared = crate::cards::reply_actions_for(
+            Some(&meta),
+            &[],
+            false,
+            &crate::cards::Target::Ready("Studio Mac"),
+            false,
+        );
+        let mut labels = vec![];
+        buttons(&view, &mut labels);
+        let run = labels.iter().find(|(key, _)| key == "coder-run").unwrap();
+        let follow = labels
+            .iter()
+            .find(|(key, _)| key == "coder-followup-0")
+            .unwrap();
+        assert_eq!(run.1, "Run Coder on Studio Mac");
+        assert_eq!(
+            run.1,
+            shared
+                .chips
+                .iter()
+                .find(|chip| chip.key == "coder-run")
+                .unwrap()
+                .label
+        );
+        assert_eq!(follow.1, "Say it shorter");
+        assert!(labels.iter().all(|(key, _)| !key.starts_with("coder-cli")));
+        let mut cards = vec![];
+        surfaces(&view, &mut cards);
+        assert!(!cards.is_empty(), "the news card is on the thread");
+
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let secret = secp256k1::SecretKey::from_byte_array([0x31; 32]).unwrap();
+        let mut chats =
+            crate::chats::Chats::new(runtime.handle().clone(), secret, Err("test".into()));
+        let rendered = tab.render(None, &mut chats).expect("the thread view");
+        tab.activate(
+            &rust_native::Activation {
+                instance: rendered["instance"].as_str().unwrap().into(),
+                revision: rendered["revision"].as_u64().unwrap(),
+                node: "coder-run".into(),
+            },
+            None,
+            &mut chats,
+        );
+        assert_eq!(
+            tab.notice.as_deref(),
+            Some("This phone can only read this chat")
+        );
+        assert_eq!(fake.runs.load(Ordering::SeqCst), 0);
+        let rendered = tab.render(None, &mut chats).expect("the thread view");
+        tab.activate(
+            &rust_native::Activation {
+                instance: rendered["instance"].as_str().unwrap().into(),
+                revision: rendered["revision"].as_u64().unwrap(),
+                node: "coder-followup-0".into(),
+            },
+            None,
+            &mut chats,
+        );
+        until(|| {
+            fake.sends
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|text| text == "Say it shorter")
+        });
+    }
 }

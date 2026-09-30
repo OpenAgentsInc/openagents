@@ -405,6 +405,21 @@
         "request": "1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e"
       }
     },
+    "request_thread_run": {
+      "v": "openagents.host-request.v1",
+      "requires": [],
+      "request": "e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4",
+      "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+      "grant": "1111111111111111111111111111111111111111111111111111111111111111",
+      "epoch": 0,
+      "relay": "wss://relay.example.com/",
+      "issued_at": 1790000000,
+      "expires_at": 1790000060,
+      "op": {
+        "kind": "thread.run",
+        "thread": "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f"
+      }
+    },
     "request_spend_list": {
       "v": "openagents.host-request.v1",
       "requires": [],

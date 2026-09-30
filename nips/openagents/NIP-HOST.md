@@ -6,8 +6,8 @@ the [local operator socket](#local-operator-socket), and
 [nearby approval](#nearby-approval-planned) for the
 [QR pairing design](../../docs/coder/design/2026-09-29-auto-pairing.md), and
 2026-09-30 with the [thread operations](#operations) (`thread.list`,
-`thread.read`, `thread.send`, `thread.stop`) that carry the host's chat
-threads to a phone. The
+`thread.read`, `thread.send`, `thread.stop`, `thread.run`) that carry the
+host's chat threads to a phone and start Coder from an offer on one. The
 [shared contracts](contracts.md)
 are normative. This profile lets one host admit a device with host-wide,
 scoped rights. It defines enrollment by host invitation, reverse enrollment
@@ -674,6 +674,7 @@ A request is `openagents.host-request.v1`:
 | `thread.read` | `observe` | `thread` |
 | `thread.send` | `operate` | `dispatched` |
 | `thread.stop` | `operate` | `dispatched` |
+| `thread.run` | `operate` | `dispatched` |
 
 `task.create` carries `{title, prompt, workspace}`. The title is at most 200
 bytes, the prompt at most 16 KiB, and the workspace a host-scoped label of at
@@ -708,18 +709,27 @@ the Coder task the thread started, `{host, task, project, at}`.
 or the index of the first turn not to include, and returns `thread`:
 `{thread: {thread, title, start, total, turns, busy, partial, failure,
 coder}}`. `turns` holds at most 64 turns from index `start`, oldest first,
-each `{role, text, at, stopped, model, request}`: `role` is `user` or
+each `{role, text, at, stopped, model, request, extras}`: `role` is `user` or
 `assistant`, `at` when the host saved it or null, `stopped` whether the
 reply stopped before its result, `model` the model the worker named or
 null, and `request` the send ID that created a message, whichever device
-sent it, or null. `busy` says a reply is streaming, `partial` is the reply
-so far (empty when none), and `failure` why the last message has no reply,
-at most 1,024 bytes, or null. A `threads` or `thread` outcome encodes in at
-most 48 KiB, so a reply fits one relay frame: the host drops a page's oldest
-turns first, then keeps only the end of a single turn or partial that is
-still too large, marked with `…`. A device reads the reply as it streams by
-reading the thread again, for example every 300 milliseconds while `busy`.
-The router's typed judgments, offers, and cards stay on the host.
+sent it, or null. `extras` is optional. An older page omits it, which means
+the turn has none. When present it is `{offers, followups, cards}`: `offers`
+holds at most 4 objects the chat router already accepts (a Run Coder offer,
+an open-screen offer, a read-only command, or an eval offer), each at most
+8 KiB; `followups` holds at most 3 chips, each `{label, answer}`, with
+`label` of 1 to 80 characters and no control characters, and `answer` a
+short tag or absent; `cards` holds at most 4 card objects the conversation
+parser already accepts, each at most 8 KiB. The router's typed judgment
+(tier, answer, route, bank, and judgment text) stays on the host. `busy`
+says a reply is streaming, `partial` is the reply so far (empty when none),
+and `failure` why the last message has no reply, at most 1,024 bytes, or
+null. A `threads` or `thread` outcome encodes in at most 48 KiB, so a reply
+fits one relay frame: the host drops the oldest turns' extras first, then
+drops the oldest turns, then keeps only the end of a single turn or partial
+that is still too large, marked with `…`. A device reads the reply as it
+streams by reading the thread again, for example every 300 milliseconds
+while `busy`.
 `thread.send` carries `{thread, request, text}`: the send ID the device
 mints once and replays unchanged, and a message of 1 byte to 32 KiB that is
 not blank. The host appends the message to the thread and asks OpenAgents
@@ -754,8 +764,22 @@ stops; a refusal, from an older host or without `operate`, means no stop
 control, never one that does nothing. Stopping a thread's reply does not
 stop Coder work the thread started; a device offers that separately,
 through the task's own stop.
-No thread operation grants execution
-authority: running Coder for a thread is the owner's choice on the host.
+`thread.run` carries `{thread}`. It asks the host to start Coder for that
+thread through the same handoff the desktop uses: one stable request key
+per thread and host, then `task.create`, and the thread's record of the
+task. The host answers `dispatched` with the task ID as its reference.
+When the thread already names a Coder task, the host answers `dispatched`
+again with that task's ID and starts no second task. A reply with no
+current Coder offer, a thread that is still answering, or an archived
+thread refuses as `conflict`. A host with no project refuses as
+`forbidden`. An unknown thread, or a host that keeps no chat store,
+refuses as `unavailable`. An older host refuses `thread.run` as
+`malformed` or `unsupported`. A device does not probe `thread.run` when a
+thread opens. It shows the Run Coder chip from the offer on the page, and
+sends `thread.run` when the person accepts that chip. A `malformed` or
+`unsupported` refusal means the device drops the chip. `thread.run` grants
+no execution authority beyond that handoff: the host's auto-start policy
+still decides whether the task runs.
 Unlike every other operation, the host does not retain a `thread.list` or
 `thread.read` reply (see [Admission order and retention](#admission-order-and-retention)).
 `task.steer` carries `{task, revision, prompt}` and `task.cancel` carries
@@ -1207,4 +1231,17 @@ does its composer carry a stop while a reply streams, and the stop names
 the message being answered. An older computer, or a phone without
 `operate`, gets a composer with no stop icon, never a dead one. After a
 stop, a thread whose Coder task is still running offers **Stop Coder too**,
-which sends that task's own interrupt.
+which sends that task's own interrupt. A page with no extras shows no
+cards or chips. When a reply carries a Run Coder offer, the phone shows
+the same **Run Coder** chip and follow-up chips it shows on its own
+threads, from the shared card code, and the cards on that turn. Accepting
+**Run Coder** sends `thread.run`. Accepting a follow-up chip sends
+`thread.send` with that chip's label. The phone does not probe
+`thread.run` when a thread opens. An older computer refuses `thread.run`
+as `malformed` or `unsupported`, and the phone drops the chip. A thread
+that already names a Coder task shows no second **Run Coder** chip.
+`crates/coder-host/tests/threads.rs` also runs that offer: the phone reads
+the Run Coder offer, the follow-up chip, and the card, with no judgment
+on the page, and `thread.run` starts one task that the owner reads back
+on the socket. A second `thread.run` returns the same task. An
+`observe`-only device is refused the run.

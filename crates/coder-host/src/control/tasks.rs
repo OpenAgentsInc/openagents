@@ -228,6 +228,12 @@ pub(super) async fn handoff(shared: Arc<Shared>, chat: String) -> Reply {
 }
 
 fn prepare_handoff(shared: &Shared, id: &str) -> Result<Option<Handoff>, String> {
+    prepare(shared, id, true)
+}
+
+/// The desktop handoff requires the owner's keys. `thread.run` does not:
+/// it creates the task directly, and the test host has no key file.
+fn prepare(shared: &Shared, id: &str, require_keys: bool) -> Result<Option<Handoff>, String> {
     let Reply::Chat { snapshot } = super::chat(
         shared,
         openagents_chat::service::Command::Read {
@@ -250,7 +256,7 @@ fn prepare_handoff(shared: &Shared, id: &str) -> Result<Option<Handoff>, String>
     if snapshot.busy || snapshot.failure.is_some() || snapshot.storage_error.is_some() {
         return Err("Wait for a complete saved reply before running Coder.".into());
     }
-    if shared.config.keys.is_none() || shared.config.workspaces.is_empty() {
+    if shared.config.workspaces.is_empty() || (require_keys && shared.config.keys.is_none()) {
         return Err("Choose a project in Settings before running Coder.".into());
     }
     let control = shared
@@ -320,6 +326,89 @@ fn prepare_handoff(shared: &Shared, id: &str) -> Result<Option<Handoff>, String>
     };
     cache.write(id, &plan)?;
     Ok(Some(plan))
+}
+
+/// What `thread.run` started. `changed` is set when this call created the
+/// task, so the host publishes its summary. A thread that already names a
+/// task leaves it unset.
+pub(crate) struct RunStarted {
+    pub task: String,
+    pub changed: Option<crate::tasks::TaskRef>,
+}
+
+/// Start Coder for `id` on this computer. The same handoff key the desktop
+/// uses, so one thread starts one task. This runs inside the access lock
+/// and does not take it again, and it does not take the desktop handoff lock.
+pub(crate) fn run_thread(shared: &Shared, id: &str) -> Result<RunStarted, Code> {
+    if !coder_access::thread::is_id(id) {
+        return Err(Code::Malformed);
+    }
+    let plan = prepare(shared, id, false).map_err(run_code)?;
+    let Some(plan) = plan else {
+        return Ok(RunStarted {
+            task: bound_task(shared, id)?,
+            changed: None,
+        });
+    };
+    if let Err(error) = (Operation::CreateTask {
+        task: plan.task.clone(),
+    })
+    .validate()
+    {
+        return Err(error.code);
+    }
+    let created = shared.tasks.create(&plan.request, &plan.host, &plan.task)?;
+    {
+        let mut state = shared
+            .chats
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let Some(chats) = state.as_mut() else {
+            return Err(Code::Unavailable);
+        };
+        chats.spawned_in(
+            id,
+            &plan.host,
+            &created.task,
+            Some(&plan.task.workspace),
+            crate::unix_time().unwrap_or_default(),
+        );
+    }
+    let task = created.task.clone();
+    Ok(RunStarted {
+        task,
+        changed: Some(created),
+    })
+}
+
+fn bound_task(shared: &Shared, id: &str) -> Result<String, Code> {
+    let Reply::Chat { snapshot } = super::chat(
+        shared,
+        openagents_chat::service::Command::Read {
+            chat: id.into(),
+            before: None,
+        },
+    ) else {
+        return Err(Code::Unavailable);
+    };
+    snapshot
+        .coder
+        .as_ref()
+        .map(|coder| coder.task.clone())
+        .filter(|task| task.len() == 64)
+        .ok_or(Code::Unavailable)
+}
+
+fn run_code(message: String) -> Code {
+    match message.as_str() {
+        "Restore this chat before running Coder."
+        | "Wait for a complete saved reply before running Coder."
+        | "This reply has no current Coder offer." => Code::Conflict,
+        "Choose a project in Settings."
+        | "Choose a project in Settings before running Coder."
+        | "The saved Coder project is unavailable. Restore it in Settings." => Code::Forbidden,
+        _ => Code::Unavailable,
+    }
 }
 
 fn error(error: coder_access::Error) -> Reply {

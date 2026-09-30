@@ -7,7 +7,8 @@
 //! access layer has already checked the device's grant and the right each
 //! operation needs (`observe` to read, `operate` to send or stop). What leaves the
 //! host is the wire form in `coder_access::thread`: titles, turns, the reply
-//! streaming, and a link to Coder work, and never the router's judgments.
+//! streaming, a link to Coder work, and each turn's offers, cards, and
+//! follow-up chips. The router's typed judgment stays on the host.
 
 use coder_access::Code;
 use coder_access::thread::{
@@ -224,7 +225,69 @@ fn turn(turn: &Turn) -> ThreadTurn {
             .request
             .clone()
             .filter(|request| thread::is_id(request)),
+        extras: extras(turn),
     }
+}
+
+/// Offers, follow-ups, and cards the phone can read again. The typed
+/// judgment stays in the chat store.
+fn extras(turn: &Turn) -> thread::ThreadExtras {
+    let Some(meta) = turn.meta.as_ref() else {
+        return thread::ThreadExtras::default();
+    };
+    let offers = meta
+        .offers
+        .iter()
+        .filter_map(|offer| {
+            let value = offer.wire();
+            let fits = serde_json::to_vec(&value)
+                .is_ok_and(|bytes| bytes.len() <= thread::MAX_EXTRA_VALUE);
+            (fits && openagents_chat::router::Offer::parse(&value).is_some()).then_some(value)
+        })
+        .take(thread::MAX_OFFERS)
+        .collect();
+    let followups = meta
+        .followups
+        .iter()
+        .filter_map(|followup| {
+            let label = followup.label.trim();
+            let count = label.chars().count();
+            if !(1..=thread::MAX_FOLLOWUP_CHARS).contains(&count)
+                || label.chars().any(char::is_control)
+            {
+                return None;
+            }
+            Some(thread::ThreadFollowup {
+                answer: followup.answer.clone().filter(|answer| answer_tag(answer)),
+                label: label.to_owned(),
+            })
+        })
+        .take(thread::MAX_FOLLOWUPS)
+        .collect();
+    let cards = meta
+        .cards
+        .iter()
+        .filter(|card| {
+            nostr::cj_conversation::parse_card(card).is_ok()
+                && serde_json::to_vec(card)
+                    .is_ok_and(|bytes| bytes.len() <= thread::MAX_EXTRA_VALUE)
+        })
+        .take(thread::MAX_CARDS)
+        .cloned()
+        .collect();
+    thread::ThreadExtras {
+        offers,
+        followups,
+        cards,
+    }
+}
+
+/// A bank id the follow-up may name: short, lowercase ASCII.
+fn answer_tag(text: &str) -> bool {
+    (1..=96).contains(&text.len())
+        && text.bytes().all(|byte| {
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || b"._@-:".contains(&byte)
+        })
 }
 
 fn page(summary: &Summary, snapshot: &Snapshot) -> ThreadPage {

@@ -1,6 +1,6 @@
-//! A paired phone reads the host's chat threads, continues one, and stops
-//! a reply (NIP-HOST `thread.list`, `thread.read`, `thread.send`,
-//! `thread.stop`).
+//! A paired phone reads the host's chat threads, continues one, stops
+//! a reply, and starts Coder from an offer (NIP-HOST `thread.list`,
+//! `thread.read`, `thread.send`, `thread.stop`, `thread.run`).
 //!
 //! The host runs with a control socket, the one the desktop app and
 //! `openagents chat` use, and its threads ask a scripted chat worker on a
@@ -444,5 +444,212 @@ async fn a_phone_stops_a_host_threads_streaming_reply_and_the_owner_reads_it_sto
     );
     let unknown = stop(&link, &"5b".repeat(16), None).await.unwrap_err();
     assert_eq!(refusal(&unknown), Some((Code::Unavailable, None)));
+    host.running.shutdown().await;
+}
+
+/// A task owner that records each creation once per idempotency key.
+struct Recorder(std::sync::Mutex<Vec<(String, coder_host::TaskRef, coder_host::TaskCreate)>>);
+
+impl Recorder {
+    fn created(&self) -> Vec<(coder_host::TaskRef, coder_host::TaskCreate)> {
+        self.0
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|(_, task, input)| (task.clone(), input.clone()))
+            .collect()
+    }
+}
+
+impl coder_host::Tasks for Recorder {
+    fn create(
+        &self,
+        key: &str,
+        _: &str,
+        task: &coder_host::TaskCreate,
+    ) -> std::result::Result<coder_host::TaskRef, Code> {
+        let mut tasks = self.0.lock().unwrap();
+        if let Some((_, found, _)) = tasks.iter().find(|(held, _, _)| held == key) {
+            return Ok(found.clone());
+        }
+        let found = coder_host::TaskRef {
+            task: coder_host::reach::new_id(),
+            revision: 1,
+            phase: nostr::activity_summary::Phase::Queued,
+        };
+        tasks.push((key.to_owned(), found.clone(), task.clone()));
+        Ok(found)
+    }
+
+    fn steer(
+        &self,
+        _: &str,
+        _: &str,
+        _: &str,
+        _: u64,
+        _: &str,
+    ) -> std::result::Result<coder_host::TaskRef, Code> {
+        Err(Code::Unavailable)
+    }
+
+    fn cancel(
+        &self,
+        _: &str,
+        _: &str,
+        _: &str,
+        _: u64,
+        _: &str,
+    ) -> std::result::Result<coder_host::TaskRef, Code> {
+        Err(Code::Unavailable)
+    }
+}
+
+fn json_keys(value: &serde_json::Value, found: &mut Vec<String>) {
+    match value {
+        serde_json::Value::Object(map) => {
+            for (key, child) in map {
+                found.push(key.clone());
+                json_keys(child, found);
+            }
+        }
+        serde_json::Value::Array(items) => {
+            for item in items {
+                json_keys(item, found);
+            }
+        }
+        _ => {}
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_phone_runs_coder_from_a_host_threads_offer() {
+    let worker = support::key();
+    let (door, _payloads) = chat_worker::start(worker).await;
+    let recorder = std::sync::Arc::new(Recorder(std::sync::Mutex::new(vec![])));
+    let host = host_with(Options {
+        chat_door: Some(ChatDoor {
+            relay: door,
+            worker: chat_worker::worker_key(&worker),
+        }),
+        tasks: Some(recorder.clone()),
+        ..Options::default()
+    })
+    .await;
+    let thread = "8e".repeat(16);
+    chat(
+        &host,
+        Command::Create {
+            chat: thread.clone(),
+        },
+    )
+    .await;
+    chat(
+        &host,
+        Command::Send {
+            chat: thread.clone(),
+            request: "55".repeat(16),
+            text: "offer coder a haiku".into(),
+        },
+    )
+    .await;
+    let deadline = Instant::now() + Duration::from_secs(20);
+    loop {
+        let snapshot = chat(
+            &host,
+            Command::Read {
+                chat: thread.clone(),
+                before: None,
+            },
+        )
+        .await;
+        if !snapshot.busy && snapshot.turns.len() == 2 {
+            break;
+        }
+        assert!(Instant::now() < deadline, "the worker never answered");
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+
+    let phone = Phone::new().await;
+    let (_, code) = host.code().await;
+    let (_, access, _) = phone.redeem(&code, &host.relay, now()).await;
+    let device = phone.device(access.unwrap());
+    let link = phone.link(&host, &device).await.unwrap();
+    let page = read(&link, &thread).await.unwrap();
+    assert!(page.coder.is_none());
+    assert!(page.turns[0].extras.is_empty());
+    let reply = &page.turns[1];
+    assert_eq!(reply.text, "Rain on the roof. (turns: 1)");
+    assert_eq!(
+        openagents_chat::router::Offer::parse(&reply.extras.offers[0]),
+        Some(openagents_chat::router::Offer::RunCoder)
+    );
+    assert_eq!(reply.extras.followups[0].label, "Say it shorter");
+    assert_eq!(reply.extras.cards[0]["card"], "news");
+    let encoded = serde_json::to_value(reply).unwrap();
+    let mut keys = vec![];
+    json_keys(&encoded, &mut keys);
+    for kept in ["judgment", "tier", "route", "bank"] {
+        assert!(!keys.iter().any(|key| key == kept), "{keys:?}");
+    }
+
+    let Outcome::Dispatched { receipt } = link
+        .call(Operation::RunThread {
+            thread: thread.clone(),
+        })
+        .await
+        .unwrap()
+    else {
+        panic!("a receipt")
+    };
+    assert_eq!(receipt.operation.as_str(), "thread.run");
+    let created = recorder.created();
+    assert_eq!(created.len(), 1);
+    assert_eq!(created[0].0.task, receipt.reference);
+    assert_eq!(created[0].1.workspace, "checkout");
+    assert!(
+        created[0].1.prompt.contains("offer coder a haiku"),
+        "{}",
+        created[0].1.prompt
+    );
+    let started = read(&link, &thread).await.unwrap();
+    let coder = started.coder.as_ref().expect("the thread names its task");
+    assert_eq!(coder.task, receipt.reference);
+    assert_eq!(coder.project.as_deref(), Some("checkout"));
+    let snapshot = chat(
+        &host,
+        Command::Read {
+            chat: thread.clone(),
+            before: None,
+        },
+    )
+    .await;
+    assert_eq!(
+        snapshot.coder.as_ref().map(|coder| coder.task.as_str()),
+        Some(receipt.reference.as_str())
+    );
+
+    let Outcome::Dispatched { receipt: again } = link
+        .call(Operation::RunThread {
+            thread: thread.clone(),
+        })
+        .await
+        .unwrap()
+    else {
+        panic!("a receipt")
+    };
+    assert_eq!(again.reference, receipt.reference);
+    assert_eq!(recorder.created().len(), 1);
+
+    let (_watcher, watching) = observer(&host).await;
+    let refused = watching
+        .call(Operation::RunThread {
+            thread: thread.clone(),
+        })
+        .await
+        .unwrap_err();
+    assert_eq!(
+        refusal(&refused),
+        Some((Code::MissingRight, Some(Right::Operate)))
+    );
     host.running.shutdown().await;
 }
