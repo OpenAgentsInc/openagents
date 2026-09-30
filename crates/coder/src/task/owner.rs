@@ -26,11 +26,100 @@ const MAX_HOST_EVENTS: usize = 8192;
 /// The fixed, root-owned paths `git` is taken from, in order: where
 /// distributions install it, then NixOS's system profile. Like the
 /// boundary's `bwrap`, it is never searched for on `PATH`.
+#[cfg(not(windows))]
 pub const GIT_PATHS: [&str; 2] = ["/usr/bin/git", "/run/current-system/sw/bin/git"];
+
+/// The fixed paths `git` is taken from on Windows: Git for Windows'
+/// machine-wide install, never a search of `PATH`.
+#[cfg(windows)]
+pub const GIT_PATHS: [&str; 3] = [
+    r"C:\Program Files\Git\cmd\git.exe",
+    r"C:\Program Files\Git\ucrt64\bin\git.exe",
+    r"C:\Program Files\Git\mingw64\bin\git.exe",
+];
 
 /// The `PATH` owned commands run with: the system directories, then NixOS's
 /// root-owned system profile, which exists only there.
+#[cfg(not(windows))]
 pub const SYSTEM_PATH: &str = "/usr/bin:/bin:/run/current-system/sw/bin";
+
+/// The `PATH` owned commands run with on Windows: Git for Windows' Unix
+/// tools and `git`, then the system directories.
+#[cfg(windows)]
+pub const SYSTEM_PATH: &str = r"C:\Program Files\Git\usr\bin;C:\Program Files\Git\ucrt64\bin;C:\Program Files\Git\mingw64\bin;C:\Program Files\Git\cmd;C:\Windows\System32;C:\Windows;C:\Windows\System32\Wbem";
+
+/// The canonical system shells a repository grant may name. On Windows
+/// that is Git for Windows' `bash` (its MSYS build, then its launcher),
+/// installed machine-wide: the engine writes bash scripts everywhere.
+#[cfg(not(windows))]
+pub const SYSTEM_SHELLS: [&str; 2] = ["/bin/bash", "/bin/sh"];
+
+/// The canonical system shells a repository grant may name. On Windows
+/// that is Git for Windows' `bash` (its MSYS build, then its launcher),
+/// installed machine-wide: the engine writes bash scripts everywhere.
+#[cfg(windows)]
+pub const SYSTEM_SHELLS: [&str; 2] = [
+    r"C:\Program Files\Git\usr\bin\bash.exe",
+    r"C:\Program Files\Git\bin\bash.exe",
+];
+
+/// The variable a Windows shell command reads its script from; see
+/// [`shell_arguments`].
+pub const SCRIPT_VARIABLE: &str = "OPENAGENTS_SCRIPT";
+
+/// What a bash started on Windows runs: the script from
+/// [`SCRIPT_VARIABLE`], which it then unsets. It holds no backslash, so
+/// the C runtime and Cygwin read its quoting the same way.
+pub const SCRIPT_RUNNER: &str = r#"__openagents_script=$OPENAGENTS_SCRIPT; unset OPENAGENTS_SCRIPT; eval "$__openagents_script""#;
+
+/// The variables [`shell_arguments`] sets for a command: the script, on
+/// Windows.
+pub type ScriptVariables = Vec<(&'static str, String)>;
+
+/// The most UTF-16 units a Windows environment variable holds.
+pub const WINDOWS_SCRIPT_MAX: usize = 32_000;
+
+/// The arguments that make the system shell run `script`, and the
+/// variables it needs set for that. On Unix it is `-c SCRIPT`. A Windows
+/// program splits its own command line, and Git for Windows' `bash`
+/// splits it by Cygwin's rules, which differ from the C runtime's for
+/// backslashes before a quote; so there the script travels in
+/// [`SCRIPT_VARIABLE`], which no one parses, and the command line holds
+/// only [`SCRIPT_RUNNER`].
+///
+/// # Errors
+///
+/// A script too long for a Windows environment variable.
+pub fn shell_arguments(script: &str) -> Result<(Vec<String>, ScriptVariables), Error> {
+    if cfg!(windows) {
+        if script.encode_utf16().count() > WINDOWS_SCRIPT_MAX {
+            return Err(Error::InvalidCommand(
+                "a command script on Windows is at most 32000 characters; split it",
+            ));
+        }
+        Ok((
+            vec!["-c".into(), SCRIPT_RUNNER.into()],
+            vec![(SCRIPT_VARIABLE, script.into())],
+        ))
+    } else {
+        Ok((vec!["-c".into(), script.into()], Vec::new()))
+    }
+}
+
+/// The variables a Windows program cannot start without, from this
+/// process's own environment, for a command whose environment is
+/// otherwise cleared: `SystemRoot` (Winsock and much else load from it),
+/// `windir`, `SystemDrive`, `ComSpec`, and `PATHEXT`. Unix needs none.
+#[must_use]
+pub fn base_environment() -> Vec<(&'static str, std::ffi::OsString)> {
+    if !cfg!(windows) {
+        return Vec::new();
+    }
+    ["SystemRoot", "windir", "SystemDrive", "ComSpec", "PATHEXT"]
+        .into_iter()
+        .filter_map(|name| std::env::var_os(name).map(|value| (name, value)))
+        .collect()
+}
 
 /// Explicit local authority. This is supplied by the operator, never the model.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -97,6 +186,8 @@ impl Grant {
 pub(super) fn network_policy() -> &'static str {
     if cfg!(target_os = "macos") {
         "external_ip_denied_localhost_allowed"
+    } else if cfg!(windows) {
+        "appcontainer_without_network_capabilities"
     } else {
         "network_namespace_isolated"
     }
@@ -451,7 +542,7 @@ impl Owner {
             Err(std::fs::TryLockError::Error(error)) => return Err(error.into()),
         }
         lock.sync_all()?;
-        File::open(&store.dir)?.sync_all()?;
+        super::sync_directory(&store.dir)?;
         Ok(Self {
             dir: store.dir.clone(),
             task_id: id.into(),
@@ -519,11 +610,12 @@ pub(super) async fn git(workspace: &Path, arguments: &[&str]) -> Result<String, 
     let mut command = std::process::Command::new(git);
     command
         .env_clear()
+        .envs(base_environment())
         .env("PATH", SYSTEM_PATH)
         .env("GIT_CONFIG_NOSYSTEM", "1")
         .env("GIT_CONFIG_GLOBAL", "/dev/null")
         .args(arguments)
-        .current_dir(workspace);
+        .current_dir(coder_boundary::plain_path(workspace));
     let ended = Job::from_command(command)
         .bounded(Limits::within(Duration::from_secs(10)).keeping(64 * 1024))
         .run()
@@ -675,8 +767,9 @@ pub async fn execute(directory: &Path, bytes: &[u8]) -> Result<Task, Error> {
             .command(&program, &grant.arguments)
             .map_err(refused)?;
         command
-            .current_dir(&workspace)
+            .current_dir(coder_boundary::plain_path(&workspace))
             .env_clear()
+            .envs(base_environment())
             .env("PATH", SYSTEM_PATH);
         let live = {
             let mut dispatch = Store::open_for_owner(&owner.dir)?;

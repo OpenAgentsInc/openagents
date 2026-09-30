@@ -134,7 +134,11 @@ On Windows ([#9980](https://github.com/OpenAgentsInc/openagents/issues/9980)),
 Credential Manager) call Win32 through `windows-sys` 0.61, which the graph
 already resolved for `tokio` and `iroh`; `knowledge` and `ext-eval` take
 their random bytes from `getrandom` 0.3, also already resolved. The
-resolved graph gains no registry package.
+resolved graph gains no registry package. `coder-boundary`'s Windows
+backend ([#9983](https://github.com/OpenAgentsInc/openagents/issues/9983)):
+the AppContainer profile, its DACL entries, the launcher's
+`CreateProcessW`, and the snapshot's `NtCreateFile` opens, also calls
+`windows-sys` 0.61 directly and adds no package.
 - On glibc the crate links `libutil`, which holds `openpty` before glibc 2.34
   and remains as an empty compatibility library afterwards.
 - macOS implements `openpty` with the non-reentrant `ptsname`, and concurrent

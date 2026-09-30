@@ -15,6 +15,8 @@ acp-client = { path = "../acp-client" }
 coder-history = { path = "../coder-history", default-features = false, features = ["opencode", "devin"] }
 atif = { path = "../atif" }
 coder = { path = "../coder" }
+# The plain spelling of a Windows path, for the detached owner it starts.
+coder-boundary = { path = "../coder-boundary" }
 futures-util = "0.3"
 jev = { path = "../jev" }
 libc = "0.2"

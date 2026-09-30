@@ -16,8 +16,12 @@
 //! its parent's descriptor under `O_NOFOLLOW`, directories are opened
 //! with `O_DIRECTORY` before they are listed, and a file is stat'd again
 //! after it is hashed — a link swapped into place mid-walk is a fault,
-//! not a followed link. On a platform where that cannot be promised,
-//! every observation is refused rather than taken unsafely.
+//! not a followed link. On Windows the same walk opens each entry with
+//! `NtCreateFile` relative to its parent directory's handle under
+//! `FILE_OPEN_REPARSE_POINT`, and records a symbolic link, junction, or
+//! other reparse point by what it holds, never by what it names. On a
+//! platform where that cannot be promised, every observation is refused
+//! rather than taken unsafely.
 //!
 //! [`compare`] then reports a [`Verdict`]: [`Verdict::Changed`] with a
 //! deterministic list, [`Verdict::Clean`] only when two complete
@@ -70,8 +74,9 @@ type Id = (u64, u64);
 
 /// One observed path: what it is, and enough of it to tell a change from
 /// a rewrite.
-// Off Unix every walk is refused, so no entry is ever made.
-#[cfg_attr(not(unix), allow(dead_code))]
+// Where no walk exists every observation is refused, so no entry is
+// ever made.
+#[cfg_attr(not(any(unix, windows)), allow(dead_code))]
 #[derive(Clone, Debug)]
 enum Entry {
     Directory {
@@ -93,6 +98,9 @@ enum Entry {
         target: OsString,
         mode: Option<u32>,
     },
+    /// A fifo, socket, or device. Windows lists none of these in a
+    /// directory, so its walk never makes one.
+    #[cfg_attr(windows, allow(dead_code))]
     Other {
         id: Option<Id>,
         kind: &'static str,
@@ -525,18 +533,24 @@ mod observe;
 #[cfg(unix)]
 use observe::walk;
 
-/// A platform without descriptor-relative no-follow opens cannot promise
+#[cfg(windows)]
+mod windows;
+
+#[cfg(windows)]
+use windows::walk;
+
+/// A platform without handle-relative no-follow opens cannot promise
 /// that a link raced into place is never followed, so it observes
 /// nothing rather than observe unsafely: every snapshot on one is
 /// refused, and no observation there can read as clean.
-#[cfg(not(unix))]
+#[cfg(not(any(unix, windows)))]
 fn walk(root: &Path, _limits: Limits) -> Snapshot {
     Snapshot {
         root: root.to_path_buf(),
         entries: BTreeMap::new(),
         faults: vec![Fault::Root {
             path: root.to_path_buf(),
-            error: "filesystem observation needs Unix no-follow semantics".to_string(),
+            error: "filesystem observation needs no-follow opens".to_string(),
         }],
     }
 }

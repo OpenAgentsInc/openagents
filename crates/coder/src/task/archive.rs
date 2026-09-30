@@ -176,7 +176,7 @@ fn write(dir: &Path, record: &Record) -> Result<(), Error> {
         file.sync_all()?;
         regular_or_absent(&dir.join(FILE))?;
         std::fs::rename(&pending, dir.join(FILE))?;
-        std::fs::File::open(dir)?.sync_all()?;
+        super::sync_directory(dir)?;
         Ok(())
     })();
     if result.is_err() {
@@ -203,7 +203,12 @@ mod tests {
                     title: "Title".into(),
                     prompt: "Prompt".into(),
                     workspace: Workspace {
-                        path: "/tmp/checkout".into(),
+                        path: if cfg!(windows) {
+                            r"C:\tmp\checkout"
+                        } else {
+                            "/tmp/checkout"
+                        }
+                        .into(),
                         source_revision: None,
                     },
                     configuration: RequestedConfiguration {

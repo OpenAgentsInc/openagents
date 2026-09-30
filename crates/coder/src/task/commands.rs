@@ -1022,7 +1022,7 @@ fn write(dir: &Path, journal: &Journal) -> Result<(), Error> {
         file.sync_all()?;
         regular_or_absent(&dir.join(FILE))?;
         std::fs::rename(&pending, dir.join(FILE))?;
-        std::fs::File::open(dir)?.sync_all()?;
+        super::sync_directory(dir)?;
         Ok(())
     })();
     if result.is_err() {

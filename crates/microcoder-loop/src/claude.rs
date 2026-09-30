@@ -177,6 +177,15 @@ impl ClaudeGenerator {
     }
 }
 
+/// Claude Code's executable name. On Windows that is the native
+/// installer's `claude.exe`; npm's `claude.cmd` shim is a batch file, which
+/// cannot carry the multi-line arguments a call passes, so it is not used.
+pub const BINARY_NAME: &str = if cfg!(windows) {
+    "claude.exe"
+} else {
+    "claude"
+};
+
 fn find_binary() -> Result<PathBuf, String> {
     if let Some(named) = std::env::var_os(BIN_VAR).filter(|v| !v.is_empty()) {
         let path = PathBuf::from(named);
@@ -257,7 +266,7 @@ fn search(
     }
     let found = |dirs: &mut dyn Iterator<Item = PathBuf>| {
         dirs.filter(|dir| dir.is_absolute())
-            .map(|dir| dir.join("claude"))
+            .map(|dir| dir.join(BINARY_NAME))
             .find(|candidate| candidate.is_file())
     };
     found(&mut dirs.into_iter()).or_else(|| {

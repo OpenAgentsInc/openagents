@@ -189,7 +189,12 @@ fn ended_task(dir: &Path) {
                 title: "Chat".into(),
                 prompt: "Explain the parser.".into(),
                 workspace: Workspace {
-                    path: "/example/checkout".into(),
+                    path: if cfg!(windows) {
+                        r"C:\example\checkout"
+                    } else {
+                        "/example/checkout"
+                    }
+                    .into(),
                     source_revision: None,
                 },
                 configuration: RequestedConfiguration {

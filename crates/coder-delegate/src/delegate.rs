@@ -1797,22 +1797,49 @@ pub fn binary(agent: Agent, env: impl Fn(&str) -> Option<String>) -> Option<Path
     if let Some(path) = env(agent.binary_variable()).filter(|path| !path.trim().is_empty()) {
         return Some(PathBuf::from(path));
     }
+    let program = format!("{}{}", agent.program(), std::env::consts::EXE_SUFFIX);
     if let Some(path) = env("PATH") {
         for dir in std::env::split_paths(&path) {
-            let candidate = dir.join(agent.program());
+            let candidate = dir.join(&program);
             if candidate.is_file() {
                 return Some(candidate);
+            }
+            if let Some(native) = npm_native(&dir, agent) {
+                return Some(native);
             }
         }
     }
     let home = PathBuf::from(env("HOME")?);
-    let local = home.join(".local/bin").join(agent.program());
+    let local = home.join(".local").join("bin").join(&program);
     if agent == Agent::OpenCode && !local.is_file() {
         // OpenCode's installer puts it in `~/.opencode/bin`.
-        let installed = home.join(".opencode/bin").join(agent.program());
+        let installed = home.join(".opencode").join("bin").join(&program);
         return installed.is_file().then_some(installed);
     }
     local.is_file().then_some(local)
+}
+
+/// On Windows, npm installs an agent as a `.cmd` shim, a batch file that
+/// cannot carry a multi-line argument; Codex's package holds its native
+/// `codex.exe` beneath the shim's directory, which is what runs instead.
+fn npm_native(dir: &std::path::Path, agent: Agent) -> Option<PathBuf> {
+    if !cfg!(windows) || agent != Agent::Codex || !dir.join("codex.cmd").is_file() {
+        return None;
+    }
+    let triple = if cfg!(target_arch = "aarch64") {
+        "aarch64-pc-windows-msvc"
+    } else {
+        "x86_64-pc-windows-msvc"
+    };
+    let native = dir
+        .join("node_modules")
+        .join("@openai")
+        .join("codex")
+        .join("vendor")
+        .join(triple)
+        .join("codex")
+        .join("codex.exe");
+    native.is_file().then_some(native)
 }
 
 /// A delegate run's report: the status, the stream's summary, and where

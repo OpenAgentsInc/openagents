@@ -29,6 +29,8 @@ host = [
 # The `coder-host:` layout of a connect code's invitation.
 base64 = "0.22"
 coder-access = { path = "../coder-access", default-features = false }
+# The plain spelling of a Windows path, which Git needs for a project.
+coder-boundary = { path = "../coder-boundary" }
 coder-connect = { path = "../coder-connect", default-features = false }
 # Chat invitations handed out by tailnet admission (host feature only).
 coder-history = { path = "../coder-history", default-features = false }

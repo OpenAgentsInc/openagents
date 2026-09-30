@@ -247,6 +247,14 @@ impl Drop for Sandbox {
 ///
 /// Returns [`SandboxError::Unconfined`] naming the missing backend.
 pub fn confinement_available() -> Result<(), SandboxError> {
+    // Windows' boundary is an AppContainer, which reaches no loopback
+    // address, so a child there could never reach the door proxy that is
+    // its only way to the model: a run refuses rather than start blind.
+    if cfg!(windows) {
+        return Err(SandboxError::Unconfined(
+            "the Windows boundary cannot reach the loopback door proxy".into(),
+        ));
+    }
     let Some(_) = coder_boundary::BACKEND else {
         return Err(SandboxError::Unconfined(
             "coder-boundary has no backend on this operating system".into(),

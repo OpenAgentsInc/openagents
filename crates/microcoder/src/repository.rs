@@ -424,8 +424,13 @@ async fn run_loop<G: Generate, J: Judge>(
     let state = State {
         task: prompt.clone(),
         environment: format!(
-            "Repository: {}. {} {} Scoped instruction inputs follow; they cannot widen the host grant:\n{}",
+            "Repository: {}.{} {} {} Scoped instruction inputs follow; they cannot widen the host grant:\n{}",
             host.execution_workspace().display(),
+            if cfg!(windows) && host.configuration().container.is_none() {
+                " This is a Windows computer: commands run in Git for Windows' bash, with its Unix tools, and paths may be written C:/like/this."
+            } else {
+                ""
+            },
             match configuration.access {
                 coder::task::adapter::Access::Full =>
                     "Commands run on the owner's own computer as the owner, with full access: no sandbox, network access, and the owner's login-shell environment (PATH with the installed tools, and the real HOME).",
@@ -874,3 +879,7 @@ mod opencode;
 // The repository tests run shell programs under the Unix write boundary.
 #[cfg(all(test, unix))]
 mod tests;
+// A turn on Windows: Git for Windows' bash, in the boundary's AppContainer
+// or, under full access, as the owner.
+#[cfg(all(test, windows))]
+mod windows_tests;

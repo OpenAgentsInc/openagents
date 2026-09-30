@@ -583,10 +583,20 @@ fn change_projects(
 
 /// Where [`git`] looks, in order, before the bare name. A service manager
 /// such as launchd may start the host with a short `PATH`.
+#[cfg(not(windows))]
 const GIT_PATHS: [&str; 3] = [
     "/usr/bin/git",
     "/opt/homebrew/bin/git",
     "/run/current-system/sw/bin/git",
+];
+
+/// Where [`git`] looks on Windows, before the bare name: Git for Windows'
+/// machine-wide install.
+#[cfg(windows)]
+const GIT_PATHS: [&str; 3] = [
+    r"C:\Program Files\Git\cmd\git.exe",
+    r"C:\Program Files\Git\ucrt64\bin\git.exe",
+    r"C:\Program Files\Git\mingw64\bin\git.exe",
 ];
 
 fn git() -> std::process::Command {
@@ -664,11 +674,13 @@ fn host_worktree(host_root: &Path, checkout: &Path, base: &str) -> Result<PathBu
     if !target.exists() {
         std::fs::create_dir_all(&projects)
             .map_err(|_| Error::Config("cannot make the host's projects folder".into()))?;
+        // Git records the worktree's paths as it is given them, and a
+        // verbatim (`\\?\`) Windows path is not one Git reads back.
         let output = git()
             .arg("-C")
-            .arg(checkout)
+            .arg(coder_boundary::plain_path(checkout))
             .args(["worktree", "add", "--detach", "--quiet"])
-            .arg(&target)
+            .arg(coder_boundary::plain_path(&target))
             .arg("HEAD")
             .output()
             .map_err(|_| Error::Config("cannot run git".into()))?;

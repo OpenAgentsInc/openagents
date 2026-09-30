@@ -6,7 +6,8 @@
 //! denies `file-write*` everywhere and then permits exactly the paths the
 //! caller named, and on Linux by wrapping it in `bwrap` (bubblewrap) with
 //! a mount namespace that binds the whole filesystem read-only and then
-//! binds exactly those paths writable. On a platform with no backend,
+//! binds exactly those paths writable. On Windows it keeps it with an
+//! AppContainer; see [Windows](#windows). On a platform with no backend,
 //! [`Spec::build`] refuses — there is no path from here to an unrestricted
 //! [`Command`], because a boundary that quietly stopped bounding is worse
 //! than no boundary.
@@ -33,6 +34,25 @@
 //! readable everywhere, because the loader needs it, so a command there
 //! can test whether a path exists but can't list a directory or read a
 //! file outside the set.
+//!
+//! # Windows
+//!
+//! [`Spec::build`] makes an AppContainer profile of the boundary's own,
+//! under a name never used before, and adds an inheritable entry for it
+//! to the DACL of exactly the paths the policy names: full access to the
+//! checkout, the writable paths, and the owned scratch, and read and
+//! execute to the readable paths (and, for a boundary that does not
+//! confine reads, to the protected paths). The backend is the launcher
+//! `coder-boundary.exe` beside this program, which starts the command in
+//! the container ([`crate::windows::launch`]); a process there reaches
+//! only what names the container, plus what Windows lets every
+//! AppContainer read (the Windows and Program Files trees). So on Windows
+//! reads are always confined, whether or not the policy asked, and a
+//! sealed path is never granted at all. An offline container holds no
+//! network capability, which denies loopback too; an online one holds
+//! `internetClient`, `internetClientServer`, and
+//! `privateNetworkClientServer`. Dropping the boundary (or its [`Held`]
+//! half) removes the entries and deletes the profile.
 //!
 //! # The two policies
 //!
@@ -109,7 +129,15 @@ pub const BUBBLEWRAP_PATHS: [&str; 2] = [BUBBLEWRAP, BUBBLEWRAP_NIXOS];
 /// directory, or a workspace. A path that doesn't exist on the host is
 /// left out; on Linux a path that is a symbolic link, such as `/bin` on a
 /// merged-`/usr` system, is recreated as the same link rather than bound.
-pub const SYSTEM_READS: &[&str] = if cfg!(target_os = "macos") {
+/// On Windows these are the trees Windows itself lets every AppContainer
+/// read; the boundary grants nothing there.
+pub const SYSTEM_READS: &[&str] = if cfg!(windows) {
+    &[
+        r"C:\Windows",
+        r"C:\Program Files",
+        r"C:\Program Files (x86)",
+    ]
+} else if cfg!(target_os = "macos") {
     &[
         "/usr",
         "/bin",
@@ -140,9 +168,17 @@ pub const SYSTEM_READS: &[&str] = if cfg!(target_os = "macos") {
     ]
 };
 
+/// The backend binary this host would use: on Windows, the launcher
+/// beside this program.
+#[cfg(windows)]
+pub fn backend_path() -> &'static str {
+    crate::windows::launcher_path()
+}
+
 /// The backend binary this host would use: on Linux, the first of
 /// [`BUBBLEWRAP_PATHS`] that exists, else [`BUBBLEWRAP`] so the refusal
 /// names the conventional path.
+#[cfg(not(windows))]
 pub fn backend_path() -> &'static str {
     if cfg!(target_os = "linux") {
         BUBBLEWRAP_PATHS
@@ -155,10 +191,13 @@ pub fn backend_path() -> &'static str {
 }
 
 /// The backend this platform enforces with, or `None` where there is none.
+/// On Windows it is the launcher's file name; [`backend_path`] says where.
 pub const BACKEND: Option<&str> = if cfg!(target_os = "macos") {
     Some(SANDBOX_EXEC)
 } else if cfg!(target_os = "linux") {
     Some(BUBBLEWRAP)
+} else if cfg!(windows) {
+    Some("coder-boundary.exe")
 } else {
     None
 };
@@ -461,12 +500,16 @@ impl Spec {
         if cfg!(target_os = "linux") {
             operable(&self.backend)?;
         }
+        #[cfg(windows)]
+        let container = self.contain(checkout.as_deref(), &writable, &readable, &protected)?;
 
         let mut file = NamedTempFile::new().map_err(Error::Io)?;
         file.write_all(profile.as_bytes()).map_err(Error::Io)?;
         file.flush().map_err(Error::Io)?;
 
         Ok(Boundary {
+            #[cfg(windows)]
+            container,
             backend: self.backend,
             profile,
             file,
@@ -482,6 +525,43 @@ impl Spec {
     }
 }
 
+#[cfg(windows)]
+impl Spec {
+    /// The AppContainer this boundary runs its command in, with entries
+    /// for exactly the paths the policy names. A failure removes what was
+    /// granted and deletes the container before the refusal returns.
+    fn contain(
+        &self,
+        checkout: Option<&Path>,
+        writable: &[PathBuf],
+        readable: &[PathBuf],
+        protected: &[PathBuf],
+    ) -> Result<crate::windows::container::Container, Error> {
+        let container =
+            crate::windows::container::Container::create().map_err(|error| Error::Inoperable {
+                backend: self.backend.clone(),
+                error: error.to_string(),
+            })?;
+        // A boundary that does not confine reads still gets them only
+        // where a policy path is: the protected paths (the checkout a
+        // delegate reads) as well as the rest. A sealed path is never
+        // granted.
+        let reads = readable
+            .iter()
+            .chain(if self.confined { &[][..] } else { protected });
+        for path in reads {
+            container.grant(path, false).map_err(Error::Io)?;
+        }
+        for path in checkout
+            .into_iter()
+            .chain(writable.iter().map(PathBuf::as_path))
+        {
+            container.grant(path, true).map_err(Error::Io)?;
+        }
+        Ok(container)
+    }
+}
+
 /// An enforceable boundary: a written profile, the resolved paths it
 /// names, and whatever scratch it owns.
 ///
@@ -492,6 +572,9 @@ impl Spec {
 /// supervised child.
 #[derive(Debug)]
 pub struct Boundary {
+    /// Dropped first, so the entries come off before the scratch goes.
+    #[cfg(windows)]
+    container: crate::windows::container::Container,
     backend: PathBuf,
     profile: String,
     file: NamedTempFile,
@@ -536,6 +619,11 @@ impl Boundary {
         if !program.is_absolute() {
             return Err(Error::Relative(program.to_path_buf()));
         }
+        // The container must be able to read and run the program; one
+        // outside the system trees and the policy's paths is granted
+        // read and execute, as itself.
+        #[cfg(windows)]
+        self.container.grant(program, false).map_err(Error::Io)?;
         let mut command = Command::new(&self.backend);
         command.args(self.arguments()).arg(program).args(arguments);
         Ok(command)
@@ -547,12 +635,28 @@ impl Boundary {
         &self.backend
     }
 
+    /// The launcher's arguments, which come before the program: `run
+    /// --sid <container> [--network] --`. Valid only while the boundary is
+    /// held.
+    #[must_use]
+    #[cfg(windows)]
+    pub fn arguments(&self) -> Vec<std::ffi::OsString> {
+        let mut args: Vec<std::ffi::OsString> =
+            vec!["run".into(), "--sid".into(), self.container.sid().into()];
+        if !self.offline {
+            args.push("--network".into());
+        }
+        args.push("--".into());
+        args
+    }
+
     /// The backend's arguments, which come before the program: `-f
     /// <profile>` for `sandbox-exec`; the read-only root, the device
     /// tree, the writable binds, and `--` for `bwrap`. For a caller that
     /// builds its own supervised argv over [`Boundary::backend`]. Valid
     /// only while the boundary is held.
     #[must_use]
+    #[cfg(not(windows))]
     pub fn arguments(&self) -> Vec<std::ffi::OsString> {
         if cfg!(target_os = "linux") && self.confined {
             self.confined_arguments()
@@ -595,6 +699,7 @@ impl Boundary {
     /// before. `/tmp` is a fresh, empty file system, and the command gets
     /// a process namespace of its own, so `/proc` names no process
     /// outside it and no other process's working directory.
+    #[cfg(not(windows))]
     fn confined_arguments(&self) -> Vec<std::ffi::OsString> {
         let mut args: Vec<std::ffi::OsString> = [
             "--die-with-parent",
@@ -760,6 +865,8 @@ impl Boundary {
     #[must_use]
     pub fn hold(self) -> Held {
         Held {
+            #[cfg(windows)]
+            _container: self.container,
             file: self.file,
             scratch: self.scratch,
         }
@@ -772,6 +879,9 @@ impl Boundary {
 /// has reaped the child rather than until the caller stops waiting.
 #[derive(Debug)]
 pub struct Held {
+    /// Kept for its drop, which removes the container's entries.
+    #[cfg(windows)]
+    _container: crate::windows::container::Container,
     file: NamedTempFile,
     scratch: Option<TempDir>,
 }
@@ -971,7 +1081,11 @@ mod tests {
     fn a_read_confined_spec_with_a_missing_backend_is_refused() {
         let dir = tempfile::tempdir().unwrap();
         let mut spec = Boundary::readonly().readable(dir.path());
-        spec.backend = PathBuf::from("/nonexistent/backend");
+        spec.backend = PathBuf::from(if cfg!(windows) {
+            r"C:\nonexistent\backend"
+        } else {
+            "/nonexistent/backend"
+        });
         let error = spec.build().unwrap_err();
         assert!(
             matches!(error, Error::Unavailable(_) | Error::Unsupported(_)),
@@ -997,7 +1111,11 @@ mod tests {
     fn a_missing_backend_is_a_refusal() {
         let dir = tempfile::tempdir().unwrap();
         let mut spec = Boundary::readonly().protecting(dir.path());
-        spec.backend = PathBuf::from("/nonexistent/backend");
+        spec.backend = PathBuf::from(if cfg!(windows) {
+            r"C:\nonexistent\backend"
+        } else {
+            "/nonexistent/backend"
+        });
         let error = spec.build().unwrap_err();
         assert!(
             matches!(error, Error::Unavailable(_) | Error::Unsupported(_)),

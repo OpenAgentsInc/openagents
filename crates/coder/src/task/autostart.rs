@@ -523,6 +523,7 @@ impl Launch for Process {
         let mut command = std::process::Command::new(&engine.controller);
         command
             .env_clear()
+            .envs(owner::base_environment())
             .env("PATH", owner::SYSTEM_PATH)
             .arg("repository")
             .arg("--grant")
@@ -1217,20 +1218,20 @@ pub fn spawn_sweeper(autostart: Arc<Autostart>) {
         });
 }
 
-/// The canonical system shell the repository adapter admits.
-/// The task owner's program runs under the Unix write boundary, which
-/// Windows does not have, so auto-start refuses there.
-#[cfg(not(unix))]
+/// The canonical system shell the repository adapter admits: the first of
+/// [`owner::SYSTEM_SHELLS`] that exists, canonicalized.
 fn shell() -> std::result::Result<PathBuf, String> {
-    Err("repository tasks need the Unix write boundary, which this computer does not have".into())
-}
-
-#[cfg(unix)]
-fn shell() -> std::result::Result<PathBuf, String> {
-    ["/bin/bash", "/bin/sh"]
+    owner::SYSTEM_SHELLS
         .iter()
         .find_map(|path| Path::new(path).canonicalize().ok())
-        .ok_or_else(|| "no system shell at /bin/bash or /bin/sh".into())
+        .ok_or_else(|| {
+            if cfg!(windows) {
+                "no system shell: install Git for Windows for all users (C:\\Program Files\\Git)"
+                    .into()
+            } else {
+                "no system shell at /bin/bash or /bin/sh".into()
+            }
+        })
 }
 
 fn write_private(path: &Path, bytes: &[u8]) -> std::result::Result<(), String> {
@@ -1581,7 +1582,7 @@ fn isolated_worktree(path: &Path) -> std::result::Result<(), String> {
         .unwrap_or("git");
     let output = std::process::Command::new(git)
         .arg("-C")
-        .arg(path)
+        .arg(coder_boundary::plain_path(path))
         .args([
             "rev-parse",
             "--path-format=absolute",
@@ -1621,14 +1622,21 @@ fn isolated_worktree(path: &Path) -> std::result::Result<(), String> {
     Ok(())
 }
 
+/// The engine's file name on this platform.
+const MICROCODER: &str = if cfg!(windows) {
+    "microcoder.exe"
+} else {
+    "microcoder"
+};
+
 fn default_controller() -> std::result::Result<PathBuf, String> {
     let beside = std::env::current_exe()
         .ok()
         .and_then(|exe| exe.canonicalize().ok())
-        .and_then(|exe| exe.parent().map(|dir| dir.join("microcoder")))
+        .and_then(|exe| exe.parent().map(|dir| dir.join(MICROCODER)))
         .filter(|path| path.is_file());
     let installed = std::env::var_os("HOME")
-        .map(|home| PathBuf::from(home).join(".openagents/bin/microcoder"))
+        .map(|home| PathBuf::from(home).join(".openagents/bin").join(MICROCODER))
         .filter(|path| path.is_file());
     beside.or(installed).ok_or_else(|| {
         "no microcoder beside coder or in ~/.openagents/bin; pass --controller".into()
@@ -1772,6 +1780,13 @@ mod tests {
         }
     }
 
+    /// An absolute controller path on this platform.
+    const CONTROLLER: &str = if cfg!(windows) {
+        r"C:\opt\coder\microcoder.exe"
+    } else {
+        "/opt/coder/microcoder"
+    };
+
     fn policy(max_running: u32) -> Policy {
         Policy {
             schema: POLICY_SCHEMA.into(),
@@ -1780,7 +1795,7 @@ mod tests {
             max_running,
             engine: Engine {
                 adapter: adapter::NAME.into(),
-                controller: PathBuf::from("/opt/coder/microcoder"),
+                controller: PathBuf::from(CONTROLLER),
                 model: "gpt-6-luna".into(),
                 effort: Some("medium".into()),
                 max_steps: 24,
@@ -2192,9 +2207,14 @@ mod tests {
         let checkout = dir.path().join("checkout");
         let empty = repo.join("empty");
         std::fs::create_dir_all(&empty).unwrap();
+        let program = owner::GIT_PATHS
+            .iter()
+            .find(|path| Path::new(path).exists())
+            .copied()
+            .unwrap_or("git");
         let git = |args: &[&str], cwd: &Path| {
             assert!(
-                std::process::Command::new("git")
+                std::process::Command::new(program)
                     .args(args)
                     .current_dir(cwd)
                     .status()
@@ -2281,7 +2301,11 @@ mod tests {
         // A policy written before routes existed, byte for byte.
         let dir = tempfile::tempdir().unwrap();
         let old = r#"{"schema":"openagents.coder.host-autostart.v1","enabled":true,"workspaces":["allowed"],"max_running":1,"engine":{"adapter":"microcoder-repository","controller":"/opt/coder/microcoder","model":"gpt-6-luna","effort":"medium","max_steps":24,"wall_seconds":1800,"memory_bytes":4294967296,"write_workspace":true,"decision_endpoint":"https://api.typesafe.ai","decision_model":"jev-1.13.0"},"changed_at":1}"#;
-        std::fs::write(dir.path().join(POLICY_FILE), old).unwrap();
+        let old = old.replace(
+            "\"/opt/coder/microcoder\"",
+            &serde_json::to_string(CONTROLLER).unwrap(),
+        );
+        std::fs::write(dir.path().join(POLICY_FILE), &old).unwrap();
         let policy = Policy::load(dir.path()).unwrap().unwrap();
         assert_eq!(
             policy.routes(),
@@ -2298,7 +2322,7 @@ mod tests {
             serde_json::from_slice(&std::fs::read(dir.path().join(POLICY_FILE)).unwrap()).unwrap();
         assert_eq!(
             saved,
-            serde_json::from_str::<serde_json::Value>(old).unwrap()
+            serde_json::from_str::<serde_json::Value>(&old).unwrap()
         );
         let configuration = serde_json::to_value(policy.configuration(&policy.routes())).unwrap();
         assert_eq!(

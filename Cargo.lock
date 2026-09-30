@@ -1400,6 +1400,7 @@ dependencies = [
  "sha2 0.10.9",
  "supervise",
  "tempfile",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1574,6 +1575,7 @@ version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
  "coder-access",
+ "coder-boundary",
  "coder-connect",
  "coder-history",
  "coder-link",
@@ -5682,6 +5684,7 @@ dependencies = [
  "acp-client",
  "atif",
  "coder",
+ "coder-boundary",
  "coder-history",
  "codex-transport",
  "futures-util",

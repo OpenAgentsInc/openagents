@@ -629,7 +629,9 @@ impl Store {
                 "injected reopen sync failure",
             )));
         }
-        private_open(&store.dir.join(STORE_FILE), false, false)?.sync_all()?;
+        // Windows flushes only a handle opened for writing; the open never
+        // truncates or creates.
+        private_open(&store.dir.join(STORE_FILE), false, cfg!(windows))?.sync_all()?;
         store.lock.sync_all()?;
         sync_directory_ancestry(&store.dir)?;
         Ok(store)

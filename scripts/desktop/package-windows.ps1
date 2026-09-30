@@ -58,11 +58,15 @@ $Binaries = [ordered]@{
     "openagents-desktop.exe" = "OpenAgents.exe"
     "coder.exe"              = "coder.exe"
     "microcoder.exe"         = "microcoder.exe"
+    # The repository tasks' write boundary: it starts a task's commands in
+    # an AppContainer, and coder.exe and microcoder.exe find it beside them.
+    "coder-boundary.exe"     = "coder-boundary.exe"
 }
 
 if ($SkipCoder) {
     $Binaries.Remove("coder.exe")
     $Binaries.Remove("microcoder.exe")
+    $Binaries.Remove("coder-boundary.exe")
 }
 
 function Fail([string]$Message) {
@@ -96,7 +100,7 @@ try {
         $cargoArgs = @("build", "--release", "--locked", "--target", $Target,
             "--manifest-path", (Join-Path $Root "Cargo.toml"),
             "-p", "openagents-desktop")
-        if (-not $SkipCoder) { $cargoArgs += @("-p", "coder", "-p", "microcoder") }
+        if (-not $SkipCoder) { $cargoArgs += @("-p", "coder", "-p", "microcoder", "-p", "coder-boundary") }
         foreach ($exe in $Binaries.Keys) { $cargoArgs += @("--bin", [IO.Path]::GetFileNameWithoutExtension($exe)) }
         & cargo @cargoArgs
         if ($LASTEXITCODE -ne 0) { Fail "cargo build failed" }

@@ -18,10 +18,23 @@ tempfile = "3"
 libc = "0.2"
 errno = "0.3"
 
+# The Windows backend: an AppContainer per boundary (userenv), DACL
+# entries for it, the launcher's CreateProcessW with security
+# capabilities, and the snapshot's handle-relative NtCreateFile opens.
+# The same version `supervise` and `private-fs` already pin.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Wdk_Foundation", "Wdk_Storage_FileSystem", "Win32_Foundation", "Win32_Security", "Win32_Security_Authorization", "Win32_Security_Isolation", "Win32_Storage_FileSystem", "Win32_System_Console", "Win32_System_IO", "Win32_System_Ioctl", "Win32_System_SystemServices", "Win32_System_Threading"] }
+
+# The launcher a Windows boundary wraps its command in. It is installed
+# beside `coder.exe` and `microcoder.exe`; elsewhere it only says so.
+[[bin]]
+name = "coder-boundary"
+path = "src/bin/coder-boundary.rs"
+
 # The supervised tests spawn the wrapped command through the supervisor's
 # blocking half, which exists only on Unix. The boundary's validation and
 # refusal tests need no supervisor and run on every platform.
-[target.'cfg(unix)'.dev-dependencies]
+[target.'cfg(any(unix, windows))'.dev-dependencies]
 supervise = { path = "../supervise", default-features = false }
 
 [lints]

@@ -258,8 +258,11 @@ async fn a_project_change_is_recorded_and_asks_the_host_to_start_again() {
                 .as_str()
         )
     );
+    // Git for Windows checks text out with CRLF line ends by default.
     assert_eq!(
-        std::fs::read_to_string(admitted.join("README.md")).unwrap(),
+        std::fs::read_to_string(admitted.join("README.md"))
+            .unwrap()
+            .replace("\r\n", "\n"),
         "site\n"
     );
     // Picking the same folder again admits the same worktree.

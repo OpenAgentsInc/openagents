@@ -1,15 +1,14 @@
 //! Detach the common task owner while retaining the exact operator grant.
-#[cfg(unix)]
 use std::io::Write;
 #[cfg(unix)]
 use std::os::unix::fs::OpenOptionsExt;
 #[cfg(unix)]
 use std::os::unix::process::CommandExt;
+#[cfg(windows)]
+use std::os::windows::process::CommandExt as _;
 use std::path::{Path, PathBuf};
-#[cfg(unix)]
 use std::process::{Command, Stdio};
 
-#[cfg(unix)]
 use coder::task::{self, Store};
 use serde::Serialize;
 
@@ -22,11 +21,128 @@ pub struct Launched {
     pub diagnostic_path: PathBuf,
 }
 
-/// A repository task runs under the Unix write boundary, which Windows does
-/// not have, so no task owner starts there.
-#[cfg(not(unix))]
+/// A platform with neither the Unix nor the Windows write boundary starts
+/// no task owner.
+#[cfg(not(any(unix, windows)))]
 pub fn start(_directory: &Path, _bytes: &[u8]) -> Result<Launched, String> {
-    Err("repository tasks need the Unix write boundary, which this computer does not have".into())
+    Err("repository tasks need a write boundary, which this computer does not have".into())
+}
+
+/// What the launcher checks before it starts an owner, on every platform:
+/// the grant, its task, and the executable it pins. Returns the task ID.
+#[cfg(any(unix, windows))]
+fn admit(directory: &Path, bytes: &[u8]) -> Result<(String, PathBuf), Box<dyn std::error::Error>> {
+    let grant = task::owner::Grant::parse(bytes)?;
+    let configuration = grant
+        .adapter_configuration
+        .as_ref()
+        .ok_or("repository launch requires an adapter configuration")?;
+    if !matches!(configuration.provider.as_str(), "codex" | "claude") {
+        return Err("the detached repository CLI requires the codex or claude provider".into());
+    }
+    // The launcher, like the owner it starts, waits out a busy store.
+    let store = Store::open_for_owner(directory)?;
+    let task = store.show(&grant.task_id)?;
+    if task.status != task::Status::Queued || task.run.is_some() {
+        return Err(task::Error::InvalidTransition.into());
+    }
+    if task.intent_digest != grant.intent_digest || task.revision != grant.expected_revision {
+        return Err(task::Error::RevisionMismatch.into());
+    }
+    if task.intent.configuration.adapter != task::adapter::NAME
+        || !task
+            .intent
+            .configuration
+            .model
+            .as_deref()
+            .is_some_and(|model| configuration.admits_model(model))
+    {
+        return Err("task and repository launch configuration differ".into());
+    }
+    let executable = std::env::current_exe()?.canonicalize()?;
+    let controller_digest = nostr::contracts::digest_bytes(&std::fs::read(&executable)?);
+    if configuration
+        .expected_controller_digest
+        .as_ref()
+        .is_some_and(|pin| pin != &controller_digest)
+    {
+        return Err("repository controller differs from the pinned executable".into());
+    }
+    Ok((task.task_id, executable))
+}
+
+/// The Windows launcher: the same checks and retained grant as on Unix,
+/// and an owner started in a process group of its own with no console
+/// window, which outlives this process as `setsid` makes it do on Unix.
+/// Its environment is cleared but for the account and profile variables a
+/// Windows program needs, and the model host's own.
+#[cfg(windows)]
+pub fn start(directory: &Path, bytes: &[u8]) -> Result<Launched, String> {
+    /// `CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW`.
+    const DETACHED: u32 = 0x0000_0200 | 0x0800_0000;
+    let attempt = || -> Result<Launched, Box<dyn std::error::Error>> {
+        let (task_id, executable) = admit(directory, bytes)?;
+        let directory = directory.canonicalize()?;
+        let identity = format!(
+            "repository-launch-{task_id}-{}-{}",
+            std::process::id(),
+            atif::now_ms()
+        );
+        // The store directory admits only this user, and what is created
+        // in it inherits that.
+        let saved_grant = directory.join(format!("{identity}.grant.json"));
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&saved_grant)?;
+        file.write_all(bytes)?;
+        file.sync_all()?;
+        let diagnostic_path = directory.join(format!("{identity}.jsonl"));
+        let diagnostic = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&diagnostic_path)?;
+        let mut process = Command::new(coder_boundary::plain_path(&executable));
+        process
+            .env_clear()
+            .envs(task::owner::base_environment())
+            .env("PATH", task::owner::SYSTEM_PATH);
+        for key in [
+            "HOME",
+            "USERPROFILE",
+            "USERNAME",
+            "USERDOMAIN",
+            "APPDATA",
+            "LOCALAPPDATA",
+            "ProgramData",
+            crate::claude::BIN_VAR,
+            "TYPESAFE_API_KEY",
+            "TYPESAFE_BASE_URL",
+            "TYPESAFE_DEFAULT_MODEL",
+        ] {
+            if let Some(value) = std::env::var_os(key) {
+                process.env(key, value);
+            }
+        }
+        process
+            .args(["repository", "--store"])
+            .arg(&directory)
+            .arg("--grant")
+            .arg(&saved_grant)
+            .stdin(Stdio::null())
+            .stdout(Stdio::from(diagnostic.try_clone()?))
+            .stderr(Stdio::from(diagnostic))
+            .creation_flags(DETACHED);
+        let child = process.spawn()?;
+        Ok(Launched {
+            task_id,
+            owner_process: child.id(),
+            admission: "pending",
+            grant_digest: nostr::contracts::digest_bytes(bytes),
+            diagnostic_path,
+        })
+    };
+    attempt().map_err(|error| error.to_string())
 }
 
 /// A launch receipt means a host process started, not that it admitted the task.
@@ -34,46 +150,11 @@ pub fn start(_directory: &Path, _bytes: &[u8]) -> Result<Launched, String> {
 #[cfg(unix)]
 pub fn start(directory: &Path, bytes: &[u8]) -> Result<Launched, String> {
     let attempt = || -> Result<Launched, Box<dyn std::error::Error>> {
-        let grant = task::owner::Grant::parse(bytes)?;
-        let configuration = grant
-            .adapter_configuration
-            .as_ref()
-            .ok_or("repository launch requires an adapter configuration")?;
-        if !matches!(configuration.provider.as_str(), "codex" | "claude") {
-            return Err("the detached repository CLI requires the codex or claude provider".into());
-        }
-        // The launcher, like the owner it starts, waits out a busy store.
-        let store = Store::open_for_owner(directory)?;
-        let task = store.show(&grant.task_id)?;
-        if task.status != task::Status::Queued || task.run.is_some() {
-            return Err(task::Error::InvalidTransition.into());
-        }
-        if task.intent_digest != grant.intent_digest || task.revision != grant.expected_revision {
-            return Err(task::Error::RevisionMismatch.into());
-        }
-        if task.intent.configuration.adapter != task::adapter::NAME
-            || !task
-                .intent
-                .configuration
-                .model
-                .as_deref()
-                .is_some_and(|model| configuration.admits_model(model))
-        {
-            return Err("task and repository launch configuration differ".into());
-        }
+        let (task_id, executable) = admit(directory, bytes)?;
         let directory = directory.canonicalize()?;
-        let executable = std::env::current_exe()?.canonicalize()?;
-        let controller_digest = nostr::contracts::digest_bytes(&std::fs::read(&executable)?);
-        if configuration
-            .expected_controller_digest
-            .as_ref()
-            .is_some_and(|pin| pin != &controller_digest)
-        {
-            return Err("repository controller differs from the pinned executable".into());
-        }
         let identity = format!(
             "repository-launch-{}-{}-{}",
-            task.task_id,
+            task_id,
             std::process::id(),
             atif::now_ms()
         );
@@ -140,7 +221,7 @@ pub fn start(directory: &Path, bytes: &[u8]) -> Result<Launched, String> {
         }
         let child = process.spawn()?;
         Ok(Launched {
-            task_id: task.task_id,
+            task_id,
             owner_process: child.id(),
             admission: "pending",
             grant_digest: nostr::contracts::digest_bytes(bytes),

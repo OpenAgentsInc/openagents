@@ -1,6 +1,6 @@
-//! What a boundary refuses at build time, and — on macOS and Linux, where
-//! a backend exists — what the built boundary enforces in a spawned,
-//! supervised child.
+//! What a boundary refuses at build time, and — on macOS, Linux, and
+//! Windows, where a backend exists — what the built boundary enforces in
+//! a spawned, supervised child.
 
 use coder_boundary::{Boundary, Error};
 use tempfile::TempDir;
@@ -126,7 +126,10 @@ fn a_checkout_may_nest_under_the_protected_checkout() {
     let checkout = main.join("isolated/worktree");
     std::fs::create_dir_all(&checkout).unwrap();
     match Boundary::writing(&checkout).protecting(&main).build() {
-        Ok(_) | Err(Error::Unsupported(_)) | Err(Error::Unavailable(_)) => {}
+        Ok(_)
+        | Err(Error::Unsupported(_))
+        | Err(Error::Unavailable(_))
+        | Err(Error::Inoperable { .. }) => {}
         Err(error) => panic!("the nested checkout was refused: {error}"),
     }
 }
@@ -223,7 +226,7 @@ fn a_path_with_a_control_character_has_no_safe_spelling() {
     assert!(matches!(error, Error::Unsafe(_)), "{error}");
 }
 
-#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+#[cfg(not(any(target_os = "macos", target_os = "linux", windows)))]
 #[test]
 fn a_platform_without_a_backend_refuses() {
     let dir = TempDir::new().unwrap();
@@ -234,7 +237,7 @@ fn a_platform_without_a_backend_refuses() {
     assert!(matches!(error, Error::Unsupported(_)), "{error}");
 }
 
-#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+#[cfg(not(any(target_os = "macos", target_os = "linux", windows)))]
 #[test]
 fn a_platform_without_a_backend_refuses_to_confine_reads() {
     let dir = TempDir::new().unwrap();
@@ -639,5 +642,125 @@ mod enforced {
         let boundary = Boundary::readonly().build().unwrap();
         let error = boundary.command("sh", ["-c", "true"]).unwrap_err();
         assert!(matches!(error, Error::Relative(_)), "{error}");
+    }
+}
+
+/// The Windows half: the launcher starts the command in the boundary's
+/// AppContainer. Where no AppContainer can be made (Wine has none), the
+/// build refuses as inoperable, never as an open command, and the
+/// enforcement cases have nothing to run.
+#[cfg(windows)]
+mod enforced_windows {
+    use std::path::{Path, PathBuf};
+    use std::process::Stdio;
+    use std::time::Duration;
+
+    use coder_boundary::backend_path;
+    use supervise::Ending;
+    use supervise::blocking::wait;
+
+    use super::*;
+
+    fn cmd() -> PathBuf {
+        let root = std::env::var_os("SystemRoot").unwrap_or_else(|| r"C:\Windows".into());
+        Path::new(&root).join(r"System32\cmd.exe")
+    }
+
+    /// A boundary, or why this machine cannot build one. The only
+    /// refusals a machine with the launcher may give are these two.
+    fn built(spec: coder_boundary::Spec) -> Option<Boundary> {
+        match spec.build() {
+            Ok(boundary) => Some(boundary),
+            Err(Error::Inoperable { .. } | Error::Unavailable(_)) => {
+                eprintln!("skipped: no AppContainer here ({})", backend_path());
+                None
+            }
+            Err(error) => panic!("{error}"),
+        }
+    }
+
+    fn run(boundary: &Boundary, script: &str, dir: &Path) -> Ending {
+        let mut command = boundary.command(cmd(), ["/d", "/c", script]).unwrap();
+        command
+            .current_dir(dir)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        let mut child = command.spawn().unwrap();
+        wait(&mut child, Duration::from_secs(30))
+    }
+
+    #[test]
+    fn the_backend_is_the_launcher_beside_this_program() {
+        assert!(
+            backend_path().ends_with("coder-boundary.exe"),
+            "{}",
+            backend_path()
+        );
+    }
+
+    #[test]
+    fn a_readonly_boundary_denies_writes_outside_its_scratch() {
+        let dir = TempDir::new().unwrap();
+        let outside = TempDir::new().unwrap();
+        let Some(boundary) = built(
+            Boundary::readonly()
+                .protecting(dir.path())
+                .owned_scratch_under(outside.path()),
+        ) else {
+            return;
+        };
+        let scratch = boundary.scratch().unwrap().to_path_buf();
+        let denied = dir.path().join("marker");
+        let allowed = scratch.join("marker");
+        run(
+            &boundary,
+            &format!("echo x> {}", denied.display()),
+            dir.path(),
+        );
+        let ending = run(
+            &boundary,
+            &format!("echo x> {}", allowed.display()),
+            dir.path(),
+        );
+        assert_eq!(ending, Ending::Exited(Some(0)));
+        assert!(!denied.exists(), "a readonly boundary let a write through");
+        assert!(allowed.exists(), "the scratch was not writable");
+    }
+
+    #[test]
+    fn a_writing_boundary_allows_its_checkout_inside_the_protected_one() {
+        let main = TempDir::new().unwrap();
+        let checkout = main.path().join("worktree");
+        std::fs::create_dir(&checkout).unwrap();
+        let Some(boundary) = built(Boundary::writing(&checkout).protecting(main.path())) else {
+            return;
+        };
+        run(
+            &boundary,
+            &format!("echo x> {}", main.path().join("denied").display()),
+            &checkout,
+        );
+        run(
+            &boundary,
+            &format!("echo x> {}", checkout.join("allowed").display()),
+            &checkout,
+        );
+        assert!(!main.path().join("denied").exists());
+        assert!(checkout.join("allowed").exists());
+        // Dropping the boundary takes the container's entries off again.
+        drop(boundary);
+    }
+
+    #[test]
+    fn the_commands_exit_code_comes_back() {
+        let dir = TempDir::new().unwrap();
+        let Some(boundary) = built(Boundary::readonly().protecting(dir.path())) else {
+            return;
+        };
+        assert_eq!(
+            run(&boundary, "exit 7", dir.path()),
+            Ending::Exited(Some(7))
+        );
     }
 }

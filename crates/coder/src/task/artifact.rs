@@ -165,7 +165,7 @@ pub(super) fn retain(
         file.write_all(&bytes)?;
         file.sync_all()?;
     }
-    File::open(directory)?.sync_all()?;
+    super::sync_directory(directory)?;
     Ok((filename, digest))
 }
 
@@ -244,14 +244,22 @@ pub fn faults(directory: &Path, manifest: &Manifest) -> Vec<String> {
         .collect()
 }
 
-/// Windows has no descriptor-relative no-follow open in the standard
-/// library, so an artifact is never read there rather than read through a
-/// link raced into place, as the workspace snapshot refuses.
-#[cfg(not(unix))]
+/// Resolve each component relative to its parent's handle, refusing links
+/// at every level, as the Unix form does with `openat`: on Windows that is
+/// `NtCreateFile` with `FILE_OPEN_REPARSE_POINT`
+/// ([`coder_boundary::windows::open_beneath`]).
+#[cfg(windows)]
+pub(super) fn confined_file(root: &Path, relative: &Path) -> std::io::Result<File> {
+    coder_boundary::windows::open_beneath(root, relative)
+}
+
+/// A platform without handle-relative no-follow opens never reads an
+/// artifact, rather than read one through a link raced into place.
+#[cfg(not(any(unix, windows)))]
 pub(super) fn confined_file(_root: &Path, _relative: &Path) -> std::io::Result<File> {
     Err(std::io::Error::new(
         std::io::ErrorKind::Unsupported,
-        "artifact reads need Unix no-follow opens",
+        "artifact reads need no-follow opens",
     ))
 }
 

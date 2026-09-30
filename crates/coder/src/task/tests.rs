@@ -14,6 +14,13 @@ fn private_dir() -> tempfile::TempDir {
     dir
 }
 
+/// An absolute workspace path on this platform.
+const EXAMPLE_WORKSPACE: &str = if cfg!(windows) {
+    r"C:\example\workspace"
+} else {
+    "/example/workspace"
+};
+
 fn submit(command_id: &str, task_id: &str) -> Vec<u8> {
     serde_json::to_vec(&Command {
         schema: COMMAND_SCHEMA.into(),
@@ -25,7 +32,7 @@ fn submit(command_id: &str, task_id: &str) -> Vec<u8> {
                 title: "Repair a test".into(),
                 prompt: "Inspect the failing test and propose a fix.".into(),
                 workspace: Workspace {
-                    path: "/example/workspace".into(),
+                    path: EXAMPLE_WORKSPACE.into(),
                     source_revision: None,
                 },
                 configuration: RequestedConfiguration {
@@ -286,7 +293,12 @@ fn missing_document_is_never_recreated_in_an_initialized_store() {
         store.apply(&submit("create", "task-one")).unwrap();
     }
     std::fs::remove_file(dir.path().join(STORE_FILE)).unwrap();
-    assert!(matches!(Store::open(dir.path()), Err(Error::Corrupt(_))));
+    let reopened = Store::open(dir.path());
+    assert!(
+        matches!(reopened, Err(Error::Corrupt(_))),
+        "{:?}",
+        reopened.err()
+    );
     assert!(!dir.path().join(STORE_FILE).exists());
 }
 
@@ -659,4 +671,25 @@ fn follow_ups_are_bounded_per_task() {
         store.apply(&continue_with("empty", "task", revision, "  ")),
         Err(Error::InvalidCommand(_))
     ));
+}
+
+/// A shell command's script is `-c SCRIPT` on Unix. On Windows it travels
+/// in the environment, never on a command line that Cygwin and the C
+/// runtime would split differently, and the command line holds only the
+/// fixed runner, which has no backslash.
+#[test]
+fn a_shell_script_never_rides_a_windows_command_line() {
+    let script = "printf '%s' \"a\\\"b\\\\c\"\necho done";
+    let (arguments, variables) = owner::shell_arguments(script).unwrap();
+    if cfg!(windows) {
+        assert_eq!(arguments, ["-c", owner::SCRIPT_RUNNER]);
+        assert_eq!(variables, [(owner::SCRIPT_VARIABLE, script.to_owned())]);
+        assert!(!owner::SCRIPT_RUNNER.contains('\\'));
+        let long = "x".repeat(owner::WINDOWS_SCRIPT_MAX + 1);
+        assert!(owner::shell_arguments(&long).is_err());
+    } else {
+        assert_eq!(arguments, ["-c", script]);
+        assert!(variables.is_empty());
+    }
+    assert!(owner::SCRIPT_RUNNER.contains(owner::SCRIPT_VARIABLE));
 }

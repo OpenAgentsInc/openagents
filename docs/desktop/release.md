@@ -217,8 +217,13 @@ The same app builds for Linux and Windows
   kept on this computer only), and its state files admit only the user
   (an owner-only DACL where Unix has `0700` and `0600`). A task's
   processes run in a job object that ends with the task, and terminals are
-  ConPTY consoles running `%ComSpec%`. Repository tasks and auto-start
-  refuse on Windows for now: they run under the write boundary and the
-  workspace snapshot, which have no Windows implementation yet
-  ([#9983](https://github.com/OpenAgentsInc/openagents/issues/9983)).
-  `-SkipCoder` still packages the window alone.
+  ConPTY consoles running `%ComSpec%`. Repository tasks and auto-start run
+  there too ([#9983](https://github.com/OpenAgentsInc/openagents/issues/9983)):
+  a task's commands run in Git for Windows' `bash`, which must be installed
+  for all users (`C:\Program Files\Git`), inside an AppContainer that
+  `coder-boundary.exe` (packaged beside `coder.exe`) starts. The container
+  is made for the one run and removed after it; its only file access is the
+  entries the boundary adds for it to the workspace (and its checkout and
+  scratch), and it holds no network capability. The workspace snapshot
+  opens every entry relative to its parent's handle and never follows a
+  link or junction. `-SkipCoder` still packages the window alone.

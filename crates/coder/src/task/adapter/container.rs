@@ -134,16 +134,14 @@ async fn control(
     if seconds == 0 {
         return Err(Error::LimitExceeded);
     }
-    let observed = Job::from_command(
-        profile.process(host.boundary.scratch().ok_or(Error::UnsafePath)?, &args),
-    )
-    .bounded(
-        Limits::within(Duration::from_secs(seconds))
-            .keeping(128 * 1024)
-            .memory(Some(host.admission.grant.memory_bytes)),
-    )
-    .run()
-    .await;
+    let observed = Job::from_command(profile.process(host.scratch()?, &args))
+        .bounded(
+            Limits::within(Duration::from_secs(seconds))
+                .keeping(128 * 1024)
+                .memory(Some(host.admission.grant.memory_bytes)),
+        )
+        .run()
+        .await;
     let retained = host.append(
         &Step::said(Source::System, "Container control result retained.").noting(
             "container_control_result",
@@ -375,17 +373,14 @@ async fn run_started(
         if store.show(&host.task.task_id)?.status != Status::Running {
             return Err(Error::InvalidTransition);
         }
-        Job::from_command(profile.process(
-            host.boundary.scratch().ok_or(Error::UnsafePath)?,
-            &strings(&["start", "--attach", id]),
-        ))
-        .bounded(
-            Limits::within(deadline.min(remaining))
-                .keeping(host.admission.grant.stream_bytes)
-                .memory(Some(host.admission.grant.memory_bytes)),
-        )
-        .start(Input::Null)
-        .map_err(|_| Error::InvalidTransition)?
+        Job::from_command(profile.process(host.scratch()?, &strings(&["start", "--attach", id])))
+            .bounded(
+                Limits::within(deadline.min(remaining))
+                    .keeping(host.admission.grant.stream_bytes)
+                    .memory(Some(host.admission.grant.memory_bytes)),
+            )
+            .start(Input::Null)
+            .map_err(|_| Error::InvalidTransition)?
     };
     host.append(
         &Step::said(Source::System, "Container command started.").noting(

@@ -1,15 +1,15 @@
 //! What a pair of snapshots establishes: writes seen, and partial
 //! observations that read as unverifiable rather than clean.
 //!
-//! The observation is descriptor-relative and never follows a link,
-//! which exists on Unix only — so every behavioral test here is a Unix
-//! test, and a platform without it gets a refusal instead.
+//! The observation is handle-relative and never follows a link, which
+//! Unix and Windows both provide — so the behavioral tests run on both,
+//! and a platform without it gets a refusal instead.
 
 use std::path::Path;
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 use std::path::PathBuf;
 
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 use coder_boundary::snapshot::{Change, Fault, Limits, Verdict};
 use coder_boundary::snapshot::{Snapshot, compare};
 use tempfile::TempDir;
@@ -18,7 +18,7 @@ fn write(dir: &Path, rel: &str, text: &str) {
     std::fs::write(dir.join(rel), text).unwrap();
 }
 
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 fn changes(verdict: &Verdict) -> &[Change] {
     match verdict {
         Verdict::Changed(changes) => changes,
@@ -26,7 +26,7 @@ fn changes(verdict: &Verdict) -> &[Change] {
     }
 }
 
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 #[test]
 fn an_unchanged_tree_observes_clean() {
     let dir = TempDir::new().unwrap();
@@ -39,7 +39,7 @@ fn an_unchanged_tree_observes_clean() {
     assert_eq!(compare(&before, &after), Verdict::Clean);
 }
 
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 #[test]
 fn creation_removal_and_modification_are_seen() {
     let dir = TempDir::new().unwrap();
@@ -71,7 +71,7 @@ fn creation_removal_and_modification_are_seen() {
 
 /// A file already dirty before the first observation is still compared
 /// by content — the case a `git status` string cannot see.
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 #[test]
 fn a_content_change_to_an_already_dirty_file_is_seen() {
     let dir = TempDir::new().unwrap();
@@ -88,7 +88,7 @@ fn a_content_change_to_an_already_dirty_file_is_seen() {
 }
 
 /// A rewrite that changes only the modification time is still a write.
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 #[test]
 fn a_rewrite_with_identical_content_is_seen() {
     let dir = TempDir::new().unwrap();
@@ -138,7 +138,7 @@ fn a_change_to_the_roots_own_metadata_is_seen() {
     );
 }
 
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 #[test]
 fn a_rename_is_a_rename_not_a_delete_and_create() {
     let dir = TempDir::new().unwrap();
@@ -156,7 +156,7 @@ fn a_rename_is_a_rename_not_a_delete_and_create() {
     );
 }
 
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 #[test]
 fn a_renamed_and_altered_file_reports_both() {
     let dir = TempDir::new().unwrap();
@@ -178,7 +178,7 @@ fn a_renamed_and_altered_file_reports_both() {
 
 /// A directory rename pairs on inode, so the whole moved subtree reads
 /// as renames rather than as a delete-and-create of everything in it.
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 #[test]
 fn a_renamed_directory_carries_its_entries_with_it() {
     let dir = TempDir::new().unwrap();
@@ -342,7 +342,7 @@ fn failed_entries_count_against_the_bound_too() {
     );
 }
 
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 #[test]
 fn an_entry_bound_is_unverifiable_not_truncated_clean() {
     let dir = TempDir::new().unwrap();
@@ -361,7 +361,7 @@ fn an_entry_bound_is_unverifiable_not_truncated_clean() {
     assert!(compare(&snapshot, &again).is_unverifiable());
 }
 
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 #[test]
 fn a_byte_bound_is_unverifiable() {
     let dir = TempDir::new().unwrap();
@@ -375,7 +375,7 @@ fn a_byte_bound_is_unverifiable() {
     );
 }
 
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 #[test]
 fn a_missing_root_is_unverifiable() {
     let dir = TempDir::new().unwrap();
@@ -388,7 +388,7 @@ fn a_missing_root_is_unverifiable() {
 
 /// The observation is deterministic: the same tree, walked again, names
 /// itself the same way and compares clean.
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 #[test]
 fn observation_is_deterministic() {
     let dir = TempDir::new().unwrap();
@@ -404,7 +404,7 @@ fn observation_is_deterministic() {
 
 /// Where no-follow cannot be promised there is no observation at all —
 /// a refusal, not a quiet partial walk.
-#[cfg(not(unix))]
+#[cfg(not(any(unix, windows)))]
 #[test]
 fn observation_is_refused_where_no_follow_cannot_be_promised() {
     let dir = TempDir::new().unwrap();
@@ -414,7 +414,7 @@ fn observation_is_refused_where_no_follow_cannot_be_promised() {
     assert!(compare(&snapshot, &snapshot).is_unverifiable());
 }
 
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 #[test]
 fn replacing_a_file_with_identical_content_and_mtime_is_seen() {
     let dir = TempDir::new().unwrap();
@@ -431,6 +431,8 @@ fn replacing_a_file_with_identical_content_and_mtime_is_seen() {
         .open(&replacement)
         .unwrap();
     file.set_modified(metadata.modified().unwrap()).unwrap();
+    // Windows renames over a file only when no handle holds it open.
+    drop((file, original));
     std::fs::set_permissions(&replacement, metadata.permissions()).unwrap();
     std::fs::rename(&replacement, &path).unwrap();
     let after = Snapshot::observe(dir.path());
@@ -438,6 +440,90 @@ fn replacing_a_file_with_identical_content_and_mtime_is_seen() {
         changes(&compare(&before, &after)),
         &[Change::Modified {
             path: Path::new("same.rs").to_path_buf()
+        }]
+    );
+}
+
+/// The root's own attributes are part of its entry on Windows, as its
+/// mode is on Unix.
+#[cfg(windows)]
+#[test]
+// On Windows this clears only the read-only attribute.
+#[allow(clippy::permissions_set_readonly_false)]
+fn a_change_to_the_roots_own_attributes_is_seen() {
+    let dir = TempDir::new().unwrap();
+    let before = Snapshot::observe(dir.path());
+    let mut permissions = std::fs::metadata(dir.path()).unwrap().permissions();
+    permissions.set_readonly(true);
+    std::fs::set_permissions(dir.path(), permissions.clone()).unwrap();
+    if !std::fs::metadata(dir.path())
+        .unwrap()
+        .permissions()
+        .readonly()
+    {
+        // Wine keeps no attributes on a directory.
+        eprintln!("skipped: this file system keeps no directory attributes");
+        return;
+    }
+    let after = Snapshot::observe(dir.path());
+    permissions.set_readonly(false);
+    std::fs::set_permissions(dir.path(), permissions).unwrap();
+    assert_eq!(
+        changes(&compare(&before, &after)),
+        &[Change::Modified {
+            path: PathBuf::new()
+        }]
+    );
+}
+
+/// A directory symbolic link is recorded as a link and never entered, and
+/// retargeting it is a change to the link. Creating one needs Developer
+/// Mode or the privilege; a computer without either skips the case.
+#[cfg(windows)]
+#[test]
+fn a_windows_link_is_observed_not_followed() {
+    let outside = TempDir::new().unwrap();
+    write(outside.path(), "secret.txt", "not the walk's business");
+    let dir = TempDir::new().unwrap();
+    if std::os::windows::fs::symlink_dir(outside.path(), dir.path().join("link")).is_err() {
+        eprintln!("skipped: this account cannot create symbolic links");
+        return;
+    }
+    let before = Snapshot::observe(dir.path());
+    assert!(before.is_complete(), "{:?}", before.faults());
+    assert_eq!(before.len(), 2, "the walk descended into the link");
+    write(outside.path(), "secret.txt", "rewritten");
+    let after = Snapshot::observe(dir.path());
+    assert_eq!(compare(&before, &after), Verdict::Clean);
+    std::fs::remove_dir(dir.path().join("link")).unwrap();
+    std::os::windows::fs::symlink_dir(r"C:\nonexistent", dir.path().join("link")).unwrap();
+    let retargeted = Snapshot::observe(dir.path());
+    assert_eq!(
+        changes(&compare(&after, &retargeted)),
+        &[Change::Modified {
+            path: Path::new("link").to_path_buf()
+        }]
+    );
+}
+
+/// A file replaced by a link is a change of kind, not of contents.
+#[cfg(windows)]
+#[test]
+fn a_file_replaced_by_a_link_is_retyped() {
+    let dir = TempDir::new().unwrap();
+    write(dir.path(), "thing", "was a file");
+    let before = Snapshot::observe(dir.path());
+    std::fs::remove_file(dir.path().join("thing")).unwrap();
+    if std::os::windows::fs::symlink_file(r"C:\Windows\win.ini", dir.path().join("thing")).is_err()
+    {
+        eprintln!("skipped: this account cannot create symbolic links");
+        return;
+    }
+    let after = Snapshot::observe(dir.path());
+    assert_eq!(
+        changes(&compare(&before, &after)),
+        &[Change::Retyped {
+            path: Path::new("thing").to_path_buf()
         }]
     );
 }

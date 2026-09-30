@@ -438,7 +438,9 @@ pub struct Host {
     task: Task,
     admission: owner::Admission,
     before: Snapshot,
-    boundary: Boundary,
+    /// The command boundary, for a run under it; a full-access run has
+    /// none, since its commands run as the owner with no sandbox.
+    boundary: Option<Boundary>,
     /// The owner's login-shell environment, for a full-access run: read
     /// beside admission, and waited for by the first command that runs
     /// with it ([`Host::login_environment`]). Set to `None` at admission
@@ -513,9 +515,9 @@ impl Host {
         }
         let program = grant.program.canonicalize()?;
         if program != grant.program
-            || ![Path::new("/bin/bash"), Path::new("/bin/sh")]
+            || !owner::SYSTEM_SHELLS
                 .iter()
-                .filter_map(|path| path.canonicalize().ok())
+                .filter_map(|path| Path::new(path).canonicalize().ok())
                 .any(|path| path == program)
         {
             return Err(Error::InvalidCommand(
@@ -594,15 +596,26 @@ impl Host {
         } else {
             Boundary::readonly()
         };
-        let boundary = spec
-            .readable(&workspace)
-            .readable(&program)
-            .sealed(&owner.dir)
-            .sealed(&git_directory)
-            .owned_scratch_under(std::env::temp_dir())
-            .offline()
-            .build()
-            .map_err(|_| Error::InvalidCommand("the repository boundary cannot be enforced"))?;
+        // A full-access run's commands run with no sandbox. Unix builds the
+        // boundary for it anyway, as it always has; Windows builds none, so
+        // a computer there that cannot make an AppContainer still runs the
+        // owner's own full-access tasks.
+        let boundary = if configuration.access == Access::Boundary || cfg!(unix) {
+            Some(
+                spec.readable(&workspace)
+                    .readable(&program)
+                    .sealed(&owner.dir)
+                    .sealed(&git_directory)
+                    .owned_scratch_under(std::env::temp_dir())
+                    .offline()
+                    .build()
+                    .map_err(|_| {
+                        Error::InvalidCommand("the repository boundary cannot be enforced")
+                    })?,
+            )
+        } else {
+            None
+        };
         if let Some(container) = &configuration.container {
             container.admit(&workspace, &owner.dir).await?;
         }
@@ -727,6 +740,14 @@ impl Host {
             output_incomplete: Cell::new(false),
             fault: RefCell::new(None),
         })
+    }
+
+    /// The private scratch directory of the command boundary.
+    fn scratch(&self) -> Result<&Path, Error> {
+        self.boundary
+            .as_ref()
+            .and_then(Boundary::scratch)
+            .ok_or(Error::UnsafePath)
     }
 
     pub fn configuration(&self) -> &Configuration {
@@ -990,34 +1011,45 @@ impl Host {
             self.fail("the admitted shell changed");
             return Err(Error::InvalidTransition);
         }
+        let (arguments, script_variables) = owner::shell_arguments(script)?;
         let login = self.login_environment().await;
         let sequence = self.effect("command", json!({"script":script}))?;
+        // Windows programs refuse a verbatim (`\\?\`) working directory.
+        let directory = coder_boundary::plain_path(self.workspace());
         let command = match login {
             // Full access: the owner's own shell, with no sandbox, the
             // network, and the owner's login environment.
             Some(login) => {
-                let mut command = std::process::Command::new(&self.admission.grant.program);
+                let mut command = std::process::Command::new(coder_boundary::plain_path(
+                    &self.admission.grant.program,
+                ));
                 command
-                    .args(["-c", script])
-                    .current_dir(self.workspace())
+                    .args(&arguments)
+                    .current_dir(&directory)
                     .env_clear()
-                    .envs(login.variables.iter().map(|(key, value)| (key, value)));
+                    .envs(login.variables.iter().map(|(key, value)| (key, value)))
+                    .envs(script_variables);
                 command
             }
             None => {
-                let mut command = self
-                    .boundary
-                    .command(&self.admission.grant.program, ["-c", script])
+                let boundary = self.boundary.as_ref().ok_or(Error::UnsafePath)?;
+                let mut command = boundary
+                    .command(&self.admission.grant.program, &arguments)
                     .map_err(|_| Error::UnsafePath)?;
-                let scratch = self.boundary.scratch().ok_or(Error::UnsafePath)?;
+                let scratch = self.scratch()?;
                 command
-                    .current_dir(self.workspace())
+                    .current_dir(&directory)
                     .env_clear()
+                    .envs(owner::base_environment())
                     .env("PATH", owner::SYSTEM_PATH)
                     .env("HOME", scratch)
                     .env("TMPDIR", scratch)
                     .env("TMP", scratch)
-                    .env("TEMP", scratch);
+                    .env("TEMP", scratch)
+                    .envs(script_variables);
+                if cfg!(windows) {
+                    command.env("USERPROFILE", scratch);
+                }
                 command
             }
         };

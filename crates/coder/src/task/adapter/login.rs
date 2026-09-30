@@ -331,6 +331,15 @@ mod tests {
             .unwrap()
             .to_string_lossy()
             .into_owned();
+        // Windows has no login shell; the host's own environment is the
+        // login environment, whose `PATH` holds the system directory.
+        #[cfg(windows)]
+        assert!(
+            path.split(';')
+                .any(|dir| dir.to_ascii_lowercase().ends_with(r"\system32")),
+            "{path}"
+        );
+        #[cfg(not(windows))]
         assert!(path.split(':').any(|dir| dir == "/usr/bin"), "{path}");
         assert!(environment.get("HOME").is_some());
     }

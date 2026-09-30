@@ -8,7 +8,10 @@
 //!   that is a `sandbox-exec` profile that denies `file-write*` everywhere
 //!   and then permits exactly the checkout, scratch, and adapter-state
 //!   paths the caller named; on Linux it is a `bwrap` mount namespace
-//!   with a read-only root and those same paths bound writable.
+//!   with a read-only root and those same paths bound writable; on
+//!   Windows it is an AppContainer of the boundary's own, started by the
+//!   `coder-boundary` launcher, whose only file access is the entries the
+//!   boundary adds for it to those paths.
 //!   Everywhere else the boundary refuses to exist, because a boundary
 //!   that silently stopped bounding is worse than none.
 //! - [`snapshot`] observes a directory tree before and after a run and
@@ -24,10 +27,14 @@
 //! `crates/supervise`.
 
 pub mod boundary;
+pub mod cmdline;
 pub mod snapshot;
+#[cfg(windows)]
+pub mod windows;
 
 pub use boundary::{
     BACKEND, BUBBLEWRAP, BUBBLEWRAP_NIXOS, BUBBLEWRAP_PATHS, Boundary, Error, Held, SANDBOX_EXEC,
     SYSTEM_READS, Spec, backend_path,
 };
+pub use cmdline::plain_path;
 pub use snapshot::{Change, Fault, Limits, Snapshot, Verdict, compare};
