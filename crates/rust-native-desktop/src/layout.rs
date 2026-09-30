@@ -625,6 +625,9 @@ fn button_padding(style: &Style) -> (f32, f32) {
 /// Whether a node keeps its own width in a stack rather than sharing the
 /// stack's.
 fn keeps_width<I>(node: &Node<I>) -> bool {
+    if let Some(intrinsic) = node.style.intrinsic_width {
+        return intrinsic;
+    }
     if matches!(node.element, Element::Button { .. }) && node.style.align == Some(TextAlign::Start)
     {
         return false;
@@ -1612,17 +1615,38 @@ impl Engine<'_> {
                 color: fill,
             });
             if let Some(icon) = icon {
-                self.scene.ops.push(Op::Glyph {
-                    rect: Rect {
-                        x: x + button_pad.0,
-                        y: y + (rect.h - f32::from(node.style.glyph_size.unwrap_or(16))) / 2.0,
-                        w: f32::from(node.style.glyph_size.unwrap_or(16)),
-                        h: f32::from(node.style.glyph_size.unwrap_or(16)),
-                    },
-                    glyph: icon.glyph,
-                    set: theme.icons,
-                    color: node.style.glyph_color.unwrap_or(color),
-                });
+                if icon.glyph == rust_native::Glyph::ArrowDown {
+                    let arrow = self.paragraph(
+                        "↓",
+                        TextRole::Body,
+                        &Style {
+                            weight: Some(TextWeight::Normal),
+                            ..node.style
+                        },
+                        None,
+                    );
+                    let arrow_y = y + (rect.h - arrow.height) / 2.0;
+                    self.text(
+                        arrow,
+                        x + button_pad.0,
+                        arrow_y,
+                        f32::from(node.style.glyph_size.unwrap_or(16)),
+                        TextAlign::Center,
+                        node.style.glyph_color.unwrap_or(color),
+                    );
+                } else {
+                    self.scene.ops.push(Op::Glyph {
+                        rect: Rect {
+                            x: x + button_pad.0,
+                            y: y + (rect.h - f32::from(node.style.glyph_size.unwrap_or(16))) / 2.0,
+                            w: f32::from(node.style.glyph_size.unwrap_or(16)),
+                            h: f32::from(node.style.glyph_size.unwrap_or(16)),
+                        },
+                        glyph: icon.glyph,
+                        set: theme.icons,
+                        color: node.style.glyph_color.unwrap_or(color),
+                    });
+                }
             }
             let text_y = y + (rect.h - paragraph.height) / 2.0;
             self.text(

@@ -2911,6 +2911,8 @@ mod command_fixtures {
             let pill = reading.bounds["chat-latest-pill"];
             let composer = reading.bounds["chat-composer-card"];
             assert_eq!(pill.h, 30.0);
+            assert!(reading.ops.iter().any(|op| matches!(op, rust_native_desktop::layout::Op::Text {paragraph,color,..} if paragraph.text == "↓" && *color == openagents_chat_app::visual::MUTED && paragraph.font.size == 13.0)));
+            assert!(reading.ops.iter().any(|op| matches!(op, rust_native_desktop::layout::Op::Text {paragraph,..} if paragraph.text == "Scroll to bottom" && paragraph.font.weight == rust_native::layout::display::Weight::Regular)));
             assert!((pill.y + pill.h + 6.0 - composer.y).abs() < 0.01);
             assert!((pill.x + pill.w / 2.0 - composer.x - composer.w / 2.0).abs() < 0.01);
             assert_eq!(
@@ -2933,6 +2935,11 @@ mod command_fixtures {
             }
             let card = palette.bounds["command-panel"];
             assert_eq!(card.w, 560.0);
+            let navigation = palette.bounds["command-navigation-cap"];
+            assert_eq!(navigation.h, 16.0);
+            assert_eq!(navigation.y, palette.bounds["command-selection-cap"].y);
+            assert_eq!(navigation.y, palette.bounds["command-close-cap"].y);
+            assert!(palette.ops.iter().any(|op| matches!(op, rust_native_desktop::layout::Op::Text {paragraph,..} if paragraph.text == "Navigate" && paragraph.lines.len() == 1)));
             assert!((card.x + card.w / 2.0 - width / 2.0).abs() < 0.01);
             assert_eq!(palette.bounds["chat-composer-card"], composer);
             assert_eq!(

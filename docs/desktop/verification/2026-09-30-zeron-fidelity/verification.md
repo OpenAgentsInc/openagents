@@ -262,3 +262,26 @@ colors against UTF-8 source ranges. Both syntax core tests, the rich-text
 fixture, the shared visual geometry tests, scoped formatting, and strict
 all-target Clippy pass. The earlier full core run passes 88 tests with one
 ignored. Issue #10029 remains open for the remaining chat chrome and surfaces.
+
+## Palette keycaps and jump pill
+
+The palette header now shows the platform command shortcut. Its footer uses
+separate 16-point keycaps, 10-point labels, 5-point gaps inside each hint, and
+12-point gaps between hints. Header and footer separators use the reference's
+6% white hairline. Native horizontal stacks can preserve an explicitly
+measured content width, which prevents keycaps and short labels from
+wrapping during the final layout pass. The regression checks that all three
+legends stay on one row at both window sizes.
+
+The jump pill uses a separate muted 13-point down arrow, a regular 13-point
+label, a 6-point gap, and 11/13-point left/right insets. Its 30-point height
+and 6-point composer clearance remain unchanged. Retained painting matches
+complete frames at both scales through opening, filtering, navigation, and
+dismissal. Five desktop command fixtures, 88 core tests with one ignored,
+59 adapter tests, scoped formatting, and strict all-target Clippy pass.
+
+Retained captures: [palette at 1,200 points](keycaps-palette-1200.png),
+[palette at 760 points](keycaps-palette-760.png),
+[jump pill at 1,200 points](jump-pill-1200.png), and
+[jump pill at 760 points](jump-pill-760.png). Frosted surfaces, empty-chat
+docking, tabs, and the sidebar profile remain open fidelity work.

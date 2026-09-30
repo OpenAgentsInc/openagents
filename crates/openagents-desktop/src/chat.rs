@@ -1967,7 +1967,7 @@ impl Panel {
     pub fn version(&self, resource: &str) -> Option<u64> {
         match resource {
             COMMAND_QUERY => Some(self.command_query.version()),
-            "glyph:command-search" => Some(0),
+            "glyph:command-search" | "glyph:command-shortcut" | "glyph:command-rule" => Some(0),
             SEARCH => Some(self.search.version()),
             RENAME => self.rename.as_ref().map(|(_, field)| field.version()),
             TRANSCRIPT => Some(self.transcript.version()),
@@ -2020,6 +2020,15 @@ impl Panel {
             SEARCH => Some((available, 28.0)),
             COMMAND_QUERY => Some((available, 28.0)),
             "glyph:command-search" => Some((16.0, 16.0)),
+            "glyph:command-shortcut" => Some((
+                if cfg!(target_os = "macos") {
+                    22.0
+                } else {
+                    46.0
+                },
+                16.0,
+            )),
+            "glyph:command-rule" => Some((available, 1.0)),
             RENAME => Some((available, 56.0)),
             TRANSCRIPT => Some((
                 available,
@@ -2048,6 +2057,71 @@ impl Panel {
     }
     pub fn paint(&mut self, resource: &str, frame: &mut Frame, rect: PxRect) -> bool {
         let scale = self.viewport.2;
+        if resource == "glyph:command-rule" {
+            frame.fill(
+                rect,
+                0.0,
+                Color {
+                    red: 255,
+                    green: 255,
+                    blue: 255,
+                    alpha: 15,
+                },
+            );
+            return true;
+        }
+        if resource == "glyph:command-shortcut" {
+            use rust_native::layout::display::{Font, FontFamily, Weight};
+            frame.fill(
+                rect,
+                5.0 * scale,
+                Color {
+                    red: 255,
+                    green: 255,
+                    blue: 255,
+                    alpha: 13,
+                },
+            );
+            let font = Font {
+                size: 10.0,
+                weight: Weight::Regular,
+                family: FontFamily::Geist,
+                mono: true,
+                italic: false,
+            };
+            let parts = if cfg!(target_os = "macos") {
+                vec![
+                    (
+                        "⌘",
+                        Font {
+                            family: FontFamily::Inter,
+                            ..font
+                        },
+                    ),
+                    ("K", font),
+                ]
+            } else {
+                vec![("Ctrl+K", font)]
+            };
+            let mut x = rect.x + 5.0 * scale;
+            for (value, font) in parts {
+                let paragraph =
+                    self.fonts
+                        .paragraph_with_line_height(value, font, None, Some(14.0));
+                self.fonts.draw(
+                    frame,
+                    &paragraph,
+                    x,
+                    rect.y + scale,
+                    paragraph.width,
+                    rust_native::style::TextAlign::Start,
+                    scale,
+                    openagents_chat_app::visual::MUTED,
+                );
+                x += paragraph.width * scale;
+            }
+            return true;
+        }
         if resource == "glyph:command-search" {
             rust_native_desktop::paint_icon(
                 frame,
@@ -2201,16 +2275,30 @@ impl Panel {
             return Some(self.command_panel());
         }
         self.overlay_layout()?;
-        let mut button = button("chat-latest", "↓  Scroll to bottom", Action::Latest, true);
+        let mut button = button("chat-latest", "Scroll to bottom", Action::Latest, true);
+        if let Element::Button { icon, .. } = &mut button.element {
+            *icon = Some(Icon {
+                glyph: Glyph::ArrowDown,
+                circular: false,
+                pill: false,
+            });
+        }
         button.style.background = Some(Color::rgb(32, 32, 32));
+        button.style.foreground = Some(openagents_chat_app::visual::TEXT);
+        button.style.weight = Some(TextWeight::Normal);
+        button.style.glyph_size = Some(13);
+        button.style.glyph_gap = Some(6);
+        button.style.glyph_color = Some(openagents_chat_app::visual::MUTED);
         button.style.text_size = Some(13);
         button.style.line_height = Some(18);
-        button.style.button_padding = Some([12, 5]);
+        button.style.button_padding = Some([10, 5]);
         button.style.radius = Some(15);
         let mut pill = stack("chat-latest-pill", Axis::Vertical, vec![button]);
         pill.style.gap = Some(Space::None);
         pill.style.radius = Some(15);
         pill.style.border = Some(openagents_chat_app::visual::BORDER);
+        pill.style.padding_points = Some([0, 2, 0, 0]);
+        pill.style.background = Some(Color::rgb(32, 32, 32));
         Some(pill)
     }
     fn command_panel(&mut self) -> Node<Intent> {
@@ -2254,15 +2342,11 @@ impl Panel {
                         focus: true,
                     },
                 };
-                let mut escape = button("command-close", "Esc", Action::DismissOverlay, true);
-                escape.style.text_size = Some(10);
-                escape.style.monospace = Some(true);
-                escape.style.weight = Some(TextWeight::Normal);
-                escape.style.line_height = Some(14);
-                escape.style.button_padding = Some([5, 1]);
-                escape.style.radius = Some(5);
-                escape.style.foreground = Some(openagents_chat_app::visual::MUTED);
-                escape.style.background = Some(Color::rgb(32, 32, 32));
+                let badge = command_surface(
+                    "command-shortcut",
+                    "Command palette shortcut",
+                    "glyph:command-shortcut",
+                );
                 let mut header = stack(
                     "command-search-header",
                     Axis::Horizontal,
@@ -2276,12 +2360,17 @@ impl Panel {
                             },
                         },
                         query,
-                        escape,
+                        badge,
                     ],
                 );
-                header.style.padding_points = Some([8, 16, 8, 16]);
+                header.style.padding_points = Some([8, 16, 7, 16]);
                 header.style.gap_points = Some(10);
                 rows.push(header);
+                rows.push(command_surface(
+                    "command-header-rule",
+                    "Header separator",
+                    "glyph:command-rule",
+                ));
             }
             let mut items = vec![];
             if entries.is_empty() {
@@ -2381,14 +2470,22 @@ impl Panel {
             results.style.gap_points = Some(2);
             rows.push(results);
             if *kind == openagents_chat_app::commands::Kind::Palette {
-                let mut hint = text(
-                    "command-navigation-hint",
-                    "↑↓ Navigate    ↵ Select    Esc Close",
-                    TextRole::Status,
+                rows.push(command_surface(
+                    "command-footer-rule",
+                    "Footer separator",
+                    "glyph:command-rule",
+                ));
+                let mut hint = stack(
+                    "command-footer",
+                    Axis::Wrap,
+                    vec![
+                        command_key_hint("navigation", "↑ ↓", "Navigate"),
+                        command_key_hint("selection", "↵", "Select"),
+                        command_key_hint("close", "Esc", "Close"),
+                    ],
                 );
-                hint.style.text_size = Some(11);
-                hint.style.line_height = Some(16);
                 hint.style.padding_points = Some([7, 16, 7, 16]);
+                hint.style.gap_points = Some(12);
                 rows.push(hint);
             }
             let mut panel = stack("command-panel", Axis::Vertical, rows);
@@ -3106,6 +3203,43 @@ fn message(key: String, turn: &Turn) -> Node<()> {
         rust_native::markdown::parse(&turn.text),
         &appearance(),
     )
+}
+fn command_surface(key: &str, label: &str, resource: &str) -> Node<Intent> {
+    Node {
+        key: key.into(),
+        style: Style::default(),
+        element: Element::Surface {
+            label: label.into(),
+            resource: resource.into(),
+        },
+    }
+}
+fn command_key_hint(key: &str, keys: &str, label: &str) -> Node<Intent> {
+    let mut caption = text(&format!("command-{key}-label"), label, TextRole::Status);
+    caption.style.text_size = Some(10);
+    caption.style.line_height = Some(14);
+    caption.style.intrinsic_width = Some(true);
+    let mut keys = text(&format!("command-{key}-keys"), keys, TextRole::Code);
+    keys.style.text_size = Some(10);
+    keys.style.line_height = Some(14);
+    keys.style.foreground = Some(openagents_chat_app::visual::MUTED);
+    let mut cap = stack(&format!("command-{key}-cap"), Axis::Vertical, vec![keys]);
+    cap.style.padding_points = Some([1, 5, 1, 5]);
+    cap.style.intrinsic_width = Some(true);
+    cap.style.background = Some(Color {
+        red: 255,
+        green: 255,
+        blue: 255,
+        alpha: 13,
+    });
+    cap.style.radius = Some(5);
+    let mut hint = stack(
+        &format!("command-{key}-hint"),
+        Axis::Horizontal,
+        vec![cap, caption],
+    );
+    hint.style.gap_points = Some(5);
+    hint
 }
 fn stack(key: &str, axis: Axis, children: Vec<Node<Intent>>) -> Node<Intent> {
     Node {

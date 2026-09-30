@@ -207,6 +207,8 @@ pub enum Glyph {
     Add,
     /// Submit or move up.
     ArrowUp,
+    /// Return to the latest content below the viewport.
+    ArrowDown,
     /// Stop the current work.
     Stop,
     /// Attach a file.

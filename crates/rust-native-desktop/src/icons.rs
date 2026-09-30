@@ -31,6 +31,11 @@ pub(crate) fn draw(frame: &mut Frame, rect: PxRect, glyph: Glyph, color: Color) 
             line((0.2, 0.45), (0.5, 0.15));
             line((0.5, 0.15), (0.8, 0.45));
         }
+        Glyph::ArrowDown => {
+            line((0.5, 0.15), (0.5, 0.85));
+            line((0.2, 0.55), (0.5, 0.85));
+            line((0.5, 0.85), (0.8, 0.55));
+        }
         Glyph::Stop => frame.fill(
             PxRect {
                 x: rect.x + rect.w * 0.2,

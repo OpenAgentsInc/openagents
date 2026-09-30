@@ -108,6 +108,9 @@ pub struct Style {
     /// Fill the remaining height of a bounded vertical container.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fill_height: Option<bool>,
+    /// Keep measured content width in a horizontal stack instead of sharing space.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub intrinsic_width: Option<bool>,
     /// Exact top, end, bottom, and start padding in logical points.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub padding_points: Option<[u16; 4]>,
@@ -156,6 +159,7 @@ pub struct StylePatch {
     pub radius: Patch<u16>,
     pub border: Patch<Color>,
     pub fill_height: Patch<bool>,
+    pub intrinsic_width: Patch<bool>,
     pub padding_points: Patch<[u16; 4]>,
     pub gap_points: Patch<u16>,
     pub text_size: Patch<u16>,
@@ -195,6 +199,7 @@ impl StylePatch {
             radius: self.radius.overlay(later.radius),
             border: self.border.overlay(later.border),
             fill_height: self.fill_height.overlay(later.fill_height),
+            intrinsic_width: self.intrinsic_width.overlay(later.intrinsic_width),
             padding_points: self.padding_points.overlay(later.padding_points),
             gap_points: self.gap_points.overlay(later.gap_points),
             text_size: self.text_size.overlay(later.text_size),
@@ -224,6 +229,7 @@ impl StylePatch {
             radius: self.radius.resolve(defaults.radius),
             border: self.border.resolve(defaults.border),
             fill_height: self.fill_height.resolve(defaults.fill_height),
+            intrinsic_width: self.intrinsic_width.resolve(defaults.intrinsic_width),
             padding_points: self.padding_points.resolve(defaults.padding_points),
             gap_points: self.gap_points.resolve(defaults.gap_points),
             text_size: self.text_size.resolve(defaults.text_size),
