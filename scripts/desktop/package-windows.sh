@@ -39,7 +39,8 @@
 # progress-bar install finishes (the updater installs with /passive).
 # Writes OpenAgents-VERSION-x64.msi, OpenAgents-VERSION-windows-x64.zip,
 # SHA256SUMS, and BUILDINFO (OPENAGENTS_BUILD_COMMIT names the commit when
-# the script runs outside the checkout the binaries came from). scripts/desktop/sign-manifest-windows.sh then
+# the script runs outside the checkout the binaries came from, and
+# OPENAGENTS_BUILD_RUSTC the compiler that built --bin-dir). scripts/desktop/sign-manifest-windows.sh then
 # signs the update manifest and publishes them.
 set -euo pipefail
 
@@ -111,6 +112,10 @@ mkdir -p "$stage"
 built=(openagents-desktop.exe coder.exe microcoder.exe coder-boundary.exe)
 installed=(OpenAgents.exe coder.exe microcoder.exe coder-boundary.exe)
 
+rustc_used="$(rustc --version 2>/dev/null || echo unknown)"
+if [[ -n "$bin_dir" ]]; then
+  rustc_used="${OPENAGENTS_BUILD_RUSTC:-prebuilt}"
+fi
 if [[ -z "$bin_dir" ]]; then
   (cd "$root" && cargo build --release --locked --target "$target" \
     -p openagents-desktop -p coder -p microcoder -p coder-boundary \
@@ -228,7 +233,7 @@ done
   echo "version $version"
   echo "commit ${OPENAGENTS_BUILD_COMMIT:-$(git -C "$root" rev-parse HEAD 2>/dev/null || echo unknown)}"
   echo "target $target"
-  echo "rustc $(rustc --version 2>/dev/null || echo unknown)"
+  echo "rustc $rustc_used"
   echo "signed $([[ -n "$pfx" ]] && echo yes || echo no)"
 } >"$out/BUILDINFO"
 for file in "${artifacts[@]}"; do echo "package-windows: wrote $file"; done
