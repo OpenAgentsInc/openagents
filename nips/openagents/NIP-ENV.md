@@ -1,4 +1,4 @@
-# NIP-ENV — Environment leases and runtime attachment
+# NIP-ENV — Environments
 
 `draft` `optional` — v1, 2026-09-26. The [shared contracts](contracts.md)
 are normative. This profile defines admitted environment allocation, exact

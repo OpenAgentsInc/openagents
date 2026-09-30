@@ -1,4 +1,4 @@
-# NIP-EVAL — Workload evaluation evidence
+# NIP-EVAL — Evaluations
 
 `draft` `optional` — v1, 2026-09-21. The [shared contracts](contracts.md)
 are normative. This NIP lets hosts compare attributable workload evidence

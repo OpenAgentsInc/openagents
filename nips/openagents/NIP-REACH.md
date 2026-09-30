@@ -1,4 +1,4 @@
-# NIP-REACH — Host directory, presence, reachability, and direct channels
+# NIP-REACH — Reachability
 
 `draft` `optional` — v1, 2026-09-26; amended 2026-09-29 with
 [iroh hints](#iroh-hints) and the [iroh mapping](#iroh-mapping) of the direct

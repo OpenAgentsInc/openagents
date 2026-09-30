@@ -1,4 +1,4 @@
-# NIP-EXT — Extension distribution
+# NIP-EXT — Extensions
 
 `draft` `optional` — v1. The [shared contracts](contracts.md) are normative.
 

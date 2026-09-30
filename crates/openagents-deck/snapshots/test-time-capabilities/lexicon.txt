@@ -2,7 +2,7 @@ kicker at 40,26 720x17
   PART I · THE IDEA
 title at 40,49 720x34 ×1.5
   Words for the parts of a capability's life
-table at 40,106 720x310
+table at 122,106 720x310 ×1.0016129
    | Term | What it names
   Admit | Admission | A locked component let into one run
   Measure | Delta | With minus without, same tests, repeated

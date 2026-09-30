@@ -1,4 +1,4 @@
-# NIP-CJ — Agent jobs
+# NIP-CJ — Agent Jobs
 
 `draft` `optional` — v1. The [shared contracts](contracts.md) are normative.
 

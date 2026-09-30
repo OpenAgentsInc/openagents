@@ -47,6 +47,8 @@ const NUMBER: f32 = 2.5;
 const STATEMENT: f32 = 1.5;
 /// The most a figure (`$0`) is magnified: as large as the slide allows.
 const FIGURE: f32 = 14.0;
+/// The most a narrow comparison table is magnified to fill the column.
+const TABLE: f32 = 1.4;
 /// A figure slide's title, a little larger than body type.
 const FIGURE_TITLE: f32 = 1.35;
 
@@ -463,8 +465,26 @@ fn body(slide: &Slide) -> Vec<Part> {
         Layout::Compare => {
             kicker(&mut column, false);
             title(&mut column);
-            let table = compare_table(slide.corner.as_deref(), &slide.columns, &slide.rows);
-            column.push(left("table", prose("table", table), 1.0), BODY_GAP);
+            let table = prose(
+                "table",
+                compare_table(slide.corner.as_deref(), &slide.columns, &slide.rows),
+            );
+            // A narrow table grows to fill the column (up to TABLE) and
+            // centers; a wide one stays at body size. It never outgrows
+            // the room under the title.
+            let gap = if column.parts.is_empty() {
+                0.0
+            } else {
+                BODY_GAP
+            };
+            let room = CONTENT_BOTTOM - MARGIN_Y - column.height - gap;
+            let mut magnification = fitting(&table, COLUMN, TABLE);
+            let mut placed = centered("table", table.clone(), magnification);
+            if placed.height() > room && magnification > 1.0 {
+                magnification = (magnification * room / placed.height()).max(1.0);
+                placed = centered("table", table, magnification);
+            }
+            column.push(placed, BODY_GAP);
             if !slide.body.is_empty() {
                 column.push(left("body", prose("body", prose_blocks()), 1.0), NOTE_GAP);
             }

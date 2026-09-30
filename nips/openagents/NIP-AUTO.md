@@ -1,4 +1,4 @@
-# NIP-AUTO — Bounded automation and continuation
+# NIP-AUTO — Automation
 
 `draft` `optional` — v1, 2026-09-26. The [shared contracts](contracts.md)
 are normative. This profile defines durable scheduled work, source-triggered

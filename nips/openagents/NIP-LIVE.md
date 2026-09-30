@@ -1,4 +1,4 @@
-# NIP-LIVE — Live media and device interaction
+# NIP-LIVE — Live Media
 
 `draft` `optional` — v1, 2026-09-26. The [shared contracts](contracts.md)
 are normative. This profile binds voice, camera, screen, browser, and device

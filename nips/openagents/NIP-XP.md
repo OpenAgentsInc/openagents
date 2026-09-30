@@ -1,4 +1,4 @@
-# NIP-XP — Quests, acceptance, and experience points
+# NIP-XP — Experience Points
 
 `draft` `optional` — v1, 2026-09-26; the `reproduce` rule added
 2026-09-28; the `playtest` rule added 2026-09-28; the `per-awardee`

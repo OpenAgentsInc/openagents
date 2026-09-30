@@ -1,4 +1,4 @@
-# NIP-MKT — Negotiated agent markets
+# NIP-MKT — Markets
 
 `draft` `optional` — v1. The [shared contracts](contracts.md) are normative.
 This is a new specification in this repository, not a claim of implemented

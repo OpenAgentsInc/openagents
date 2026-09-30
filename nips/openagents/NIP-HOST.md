@@ -1,4 +1,4 @@
-# NIP-HOST — Host-wide device enrollment and scoped access
+# NIP-HOST — Host Access
 
 `draft` `optional` — v1, 2026-09-26; amended 2026-09-29 with
 [connect codes](#connect-codes), [enrollment over iroh](#enrollment-over-iroh),

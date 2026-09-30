@@ -1,11 +1,11 @@
-kicker at 40,85 720x17
+kicker at 40,58 720x17
   PART II · OUR IMPLEMENTATION
-title at 40,108 720x34 ×1.5
+title at 40,81 720x34 ×1.5
   Gym evals: the same six tests, with the tool and without it
-table at 40,164 720x137
+table at 131,138 720x192 ×1.4
    | With the tool | Without it | Verdict
   Project map | 5 of 6 | 2 of 6 | Better
   Code finder | 4 of 6 | 2 of 6 | Better
   Test reader | 5 of 6 | 2 of 6 | Better
-note at 40,320 720x37
+note at 40,347 720x37
   Hosted runs, three per arm. The grant has no shell, so without the tool Coder cannot read the files at all: the delta is what each tool adds under that grant, not on top of a shell.

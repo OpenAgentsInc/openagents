@@ -1,4 +1,4 @@
-# NIP-CTRL — Scoped task control across clients
+# NIP-CTRL — Task Control
 
 `draft` `optional` — v1, 2026-09-26. The [shared contracts](contracts.md)
 are normative. This profile binds additional clients to an existing task

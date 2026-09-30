@@ -1,4 +1,4 @@
-# NIP-LAB — Bounded agent labor
+# NIP-LAB — Agent Labor
 
 `draft` `optional` — v1. The [shared contracts](contracts.md) and
 [NIP-MKT](NIP-MKT.md) are normative. This is the

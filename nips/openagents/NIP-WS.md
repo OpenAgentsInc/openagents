@@ -1,4 +1,4 @@
-# NIP-WS — Workspace resources and synchronized views
+# NIP-WS — Workspaces
 
 `draft` `optional` — v1, 2026-09-26. The [shared contracts](contracts.md)
 are normative. This profile binds projects, resources, documents, checkpoints,

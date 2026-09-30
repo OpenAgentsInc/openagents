@@ -1,4 +1,4 @@
-# NIP-X402 — Lightning-paid operations
+# NIP-X402 — Lightning Payments
 
 `draft` `optional` — v1. The [shared contracts](contracts.md) are normative.
 This specification is **Designed**, not implemented. It assigns no event

@@ -1,4 +1,4 @@
-# NIP-OPT — AI contracts and optimization studies
+# NIP-OPT — Model Optimization
 
 `draft` `optional` — v1, 2026-09-21. The [shared contracts](contracts.md)
 are normative. This specification separates an AI task's meaning from the

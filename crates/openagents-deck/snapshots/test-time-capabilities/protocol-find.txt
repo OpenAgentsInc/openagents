@@ -1,6 +1,6 @@
-title at 40,38 720x34 ×1.5
+title at 40,26 720x34 ×1.5
   The NIPs: from finding a capability to delegating
-table at 40,94 720x310
+table at 99,82 720x334 ×1.0758065
    | Carries | Why it matters | Status
   EXT | releases | the exact version tested | Partial
   CAP | grants | describing never grants use | Partial

@@ -1,4 +1,4 @@
-# NIP-CAP — Execution capabilities
+# NIP-CAP — Capabilities
 
 `draft` `optional` — v1.
 

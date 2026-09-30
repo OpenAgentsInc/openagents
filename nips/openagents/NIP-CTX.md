@@ -1,4 +1,4 @@
-# NIP-CTX — Task state and context views
+# NIP-CTX — Task Context
 
 `draft` `optional` — v1. The [shared contracts](contracts.md) are normative.
 [NIP-RUN](NIP-RUN.md) records execution; this NIP describes its supplied state.

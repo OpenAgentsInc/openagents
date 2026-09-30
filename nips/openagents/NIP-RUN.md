@@ -1,4 +1,4 @@
-# NIP-RUN — Durable runs and evidence
+# NIP-RUN — Durable Runs
 
 `draft` `optional` — v1.
 The [shared contracts](contracts.md) and [NIP-CJ](NIP-CJ.md) define payload

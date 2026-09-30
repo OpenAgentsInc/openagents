@@ -1,4 +1,4 @@
-# NIP-TERM — Interactive terminal sessions
+# NIP-TERM — Terminal Sessions
 
 `draft` `optional` — v1, 2026-09-26. The [shared contracts](contracts.md)
 are normative. This profile lets an enrolled device open a terminal on a

@@ -76,11 +76,11 @@ column: Title
 column: NIP
 column: Title
 source: nips/openagents/*.md, each NIP's heading; the test-time-capabilities deck's protocol-find and protocol-prove slides
-row: ATIF | Agent trajectories | **POL** | Scoped instructions, admission, and routing records
-row: CAP | Execution capabilities | **PRG** | Programs
-row: CJ | Agent jobs | **RUN** | Durable runs and evidence
-row: CTX | Task state and context views | **SESS** | Engine sessions and turn control
-row: EVAL | Workload evaluation evidence | **WORK** | Tracked objectives and planning
-row: EXT | Extension distribution | **XP** | Quests, acceptance, and experience points
-row: KB | Shared knowledge entries |  | 
-row: MV | Shared 3D worlds |  | 
+row: ATIF | Agent Trajectories | **OPT** | Model Optimization
+row: CAP | Capabilities | **POL** | Policy
+row: CJ | Agent Jobs | **PRG** | Programs
+row: CTX | Task Context | **RUN** | Durable Runs
+row: EVAL | Evaluations | **SESS** | Engine Sessions
+row: EXT | Extensions | **WORK** | Work Tracking
+row: KB | Knowledge Base | **XP** | Experience Points
+row: MV | Metaverse |  | 

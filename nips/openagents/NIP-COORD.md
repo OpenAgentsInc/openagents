@@ -1,4 +1,4 @@
-# NIP-COORD — Shared tasks and background work
+# NIP-COORD — Coordination
 
 `draft` `optional` — v1, 2026-09-21. The [shared contracts](contracts.md)
 are normative. [NIP-RUN](NIP-RUN.md) supplies the authoritative journal and

@@ -1,4 +1,4 @@
-# NIP-MV — Shared 3D worlds
+# NIP-MV — Metaverse
 
 `draft` `optional` — v1.
 

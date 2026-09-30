@@ -1,4 +1,4 @@
-# NIP-SESS — Engine sessions and turn control
+# NIP-SESS — Engine Sessions
 
 `draft` `optional` — v1, 2026-09-26. The [shared contracts](contracts.md)
 are normative. This profile gives clients a common session contract while

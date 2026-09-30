@@ -1,4 +1,4 @@
-# NIP-ATIF — Agent trajectories
+# NIP-ATIF — Agent Trajectories
 
 `draft` `optional` — v1, 2026-09-28. **Designed.** The
 [shared contracts](contracts.md) are normative.

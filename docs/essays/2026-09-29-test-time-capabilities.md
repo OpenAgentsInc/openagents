@@ -2251,7 +2251,7 @@ running agent underneath it. Status: Designed.
 
 #### NIP-OPT
 
-NIP-OPT (AI contracts and optimization studies) records searches for a better
+NIP-OPT (Model Optimization) records searches for a better
 implementation of a fixed task, such as a tuned prompt or program. Its result
 reaches an agent only through NIP-EVAL admission and a new NIP-EXT release.
 Without that rule, an optimizer could swap in an unmeasured change; with it,

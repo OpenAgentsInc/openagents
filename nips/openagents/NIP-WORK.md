@@ -1,4 +1,4 @@
-# NIP-WORK — Tracked objectives and planning
+# NIP-WORK — Work Tracking
 
 `draft` `optional` — v1. The [shared contracts](contracts.md) are normative.
 This NIP defines tracked work that can outlive a conversation, execution,

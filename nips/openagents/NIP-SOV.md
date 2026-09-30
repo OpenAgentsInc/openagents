@@ -1,4 +1,4 @@
-# NIP-SOV — Sovereign agents
+# NIP-SOV — Sovereign Agents
 
 `draft` `optional` — v1, 2026-09-26. **Designed; no SOV host, custody
 adapter, guardian service, or treasury is implemented by this specification.**

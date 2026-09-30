@@ -1,10 +1,10 @@
-table at 40,56 720x331
+table at 133,26 720x390 ×1.2580645
   NIP | Title | NIP | Title
-  ATIF | Agent trajectories | POL | Scoped instructions, admission, and routing records
-  CAP | Execution capabilities | PRG | Programs
-  CJ | Agent jobs | RUN | Durable runs and evidence
-  CTX | Task state and context views | SESS | Engine sessions and turn control
-  EVAL | Workload evaluation evidence | WORK | Tracked objectives and planning
-  EXT | Extension distribution | XP | Quests, acceptance, and experience points
-  KB | Shared knowledge entries |  | 
-  MV | Shared 3D worlds |  | 
+  ATIF | Agent Trajectories | OPT | Model Optimization
+  CAP | Capabilities | POL | Policy
+  CJ | Agent Jobs | PRG | Programs
+  CTX | Task Context | RUN | Durable Runs
+  EVAL | Evaluations | SESS | Engine Sessions
+  EXT | Extensions | WORK | Work Tracking
+  KB | Knowledge Base | XP | Experience Points
+  MV | Metaverse |  | 

@@ -1,4 +1,4 @@
-table at 40,101 720x241
+table at 40,100 720x242 ×1.0027856
    | Test-time compute | Test-time capabilities
   What changes | How much the model computes | What the running agent can do
   The weights | Fixed | Fixed

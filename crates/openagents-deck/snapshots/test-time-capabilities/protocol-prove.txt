@@ -1,6 +1,6 @@
-title at 40,55 720x34 ×1.5
+title at 40,26 720x34 ×1.5
   The NIPs: from the run to the shared result
-table at 40,112 720x275
+table at 79,82 720x334 ×1.2127273
    | Carries | Why it matters | Status
   RUN | run journal | lock, grant, baseline agent | Partial
   ATIF | trajectories | each arm, step by step | Designed

@@ -1,4 +1,4 @@
-# NIP-POL — Scoped instructions, admission, and routing records
+# NIP-POL — Policy
 
 `draft` `optional` — v1, 2026-09-21. The [shared contracts](contracts.md)
 are normative. This NIP makes host decisions inspectable across clients. It

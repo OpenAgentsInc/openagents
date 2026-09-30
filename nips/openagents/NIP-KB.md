@@ -1,4 +1,4 @@
-# NIP-KB — Shared knowledge entries
+# NIP-KB — Knowledge Base
 
 `draft` `optional` — v1, 2026-09-25. The [shared contracts](contracts.md)
 are normative.
