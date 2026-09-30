@@ -185,3 +185,36 @@ answering. On `oa-coder-worker-1`:
 2. `open lane refused … quota_exhausted` lines mean callers are spending
    the day; the transcript says `Jev refused: quota`.
 3. `sudo systemctl restart decision-worker` and run the live check.
+
+## Deploy record
+
+Release `04113fec9d` (2026-09-30,
+[#10044](https://github.com/OpenAgentsInc/openagents/issues/10044)) is the
+first deploy. It was built with `cargo zigbuild` as above, installed as
+`/opt/decision-worker/releases/04113fec9d` with `current` pointing at it,
+and started as `decision-worker.service`; the environment file holds a new
+worker secret (kept as the owner's `decision-worker.env`) and the owner's
+TypeSafe key. `coder-worker.service`, `coder-worker-chat.service`, and
+`/opt/coder-worker` were not touched. The journal names pubkey
+`ad6b4d91…`, upstream `https://api.typesafe.ai`, and `open lane under
+$TYPESAFE_API_KEY, models jev-1.13.0,jev-latest, quota 2000/key/day
+60/key/min 20000/day total`.
+
+Live checks the same day, each in a temporary `HOME` with the owner's
+Codex login linked in and a scratch Python checkout in `$TMPDIR`:
+
+- `live_hosted_decision_answers` with no key: `model jev-1.13.0
+  passed=0.990 service={"door":"https://api.typesafe.ai","version":"decision-worker@04113fec9d"}
+  input_tokens=Some(286) in 673 ms`.
+- `openagents chat --local "add a unit test for slugify"` with no key: the
+  run recorded `decision_service` `via: hosted` and six `decision_response`
+  steps answered by the deployed worker (650 to 1,208 ms each, 735 to 2,012
+  input tokens), and no "no Jev key" line. The worker's quota file counted
+  the jobs against the run's decision key.
+- The same run against a second worker with a two-job day (run on the
+  development Mac against the production relay, so production limits did
+  not change): two answers, then `Coder runs without Jev's judgments for
+  the rest of this task: Jev refused: quota (This key used today's decision
+  jobs on this worker.)`, and the task finished.
+- With `TYPESAFE_API_KEY` set: `decision_service` `via: direct`, seven
+  direct answers (130 to 889 ms), and no decision key made.
