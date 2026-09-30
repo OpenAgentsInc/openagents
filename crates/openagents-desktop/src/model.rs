@@ -90,6 +90,8 @@ pub enum Screen {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Intent {
+    /// A local hosted-chat action; the shell checks its current conversation.
+    Chat { action: crate::chat_action::Action },
     /// Navigate the desktop shell without starting work.
     Navigate { action: crate::chrome::Action },
     /// "Can't scan? Copy a code instead".
@@ -125,6 +127,10 @@ pub enum Intent {
 /// A request for the shell to run.
 #[derive(Clone, PartialEq, Eq)]
 pub enum Request {
+    Chat {
+        ticket: u64,
+        command: openagents_chat::service::Command,
+    },
     /// Status, devices, projects, and the auto-start policy together.
     Refresh,
     Code(Action),
@@ -165,6 +171,7 @@ pub enum Request {
 impl std::fmt::Debug for Request {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Request::Chat { ticket, .. } => write!(f, "Chat {{ ticket: {ticket}, .. }}"),
             Request::Copy { .. } => f.write_str("Copy { .. }"),
             Request::ClearClipboard { .. } => f.write_str("ClearClipboard { .. }"),
             Request::Refresh => f.write_str("Refresh"),
@@ -239,6 +246,10 @@ pub struct Started {
 /// A finished request.
 #[derive(Clone, PartialEq, Eq)]
 pub enum Outcome {
+    Chat {
+        ticket: u64,
+        result: crate::control::ControlResult<openagents_chat::service::Snapshot>,
+    },
     /// The host's state, or `None` when it does not answer.
     Refreshed(Option<Box<Refreshed>>),
     Created {
@@ -276,6 +287,7 @@ impl std::fmt::Debug for Outcome {
 
 fn outcome_name(outcome: &Outcome) -> &'static str {
     match outcome {
+        Outcome::Chat { .. } => "Chat",
         Outcome::Refreshed(_) => "Refreshed",
         Outcome::Created { .. } => "Created",
         Outcome::CreateFailed { .. } => "CreateFailed",
@@ -536,6 +548,7 @@ impl Model {
     pub fn activate(&mut self, intent: Intent, now: Instant) -> Vec<Request> {
         self.codes.input(now);
         match intent {
+            Intent::Chat { .. } => Vec::new(),
             Intent::Navigate { .. } => Vec::new(),
             Intent::CopyCode => match self.codes.shown() {
                 Some(shown) => {
@@ -633,6 +646,7 @@ impl Model {
     /// Applies a finished request.
     pub fn outcome(&mut self, outcome: Outcome, now: Instant) -> Vec<Request> {
         match outcome {
+            Outcome::Chat { .. } => Vec::new(),
             Outcome::Refreshed(Some(state)) => {
                 let state = *state;
                 self.reached = true;
@@ -833,6 +847,7 @@ mod tests {
             let mut queue: std::collections::VecDeque<Request> = requests.into();
             while let Some(request) = queue.pop_front() {
                 let outcome = match request {
+                    Request::Chat { .. } => panic!("computer model does not dispatch chat"),
                     Request::Refresh => {
                         let mut host = self.host.clone();
                         let state = host.status().ok().map(|status| {

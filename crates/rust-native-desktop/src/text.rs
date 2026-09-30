@@ -307,6 +307,14 @@ impl Fonts {
                 TextAlign::End => (width - line.width).max(0.0),
             } * scale;
             let top = y + index as f32 * line_height;
+            if !frame.visible(crate::PxRect {
+                x: 0.0,
+                y: top - 4.0 * scale,
+                w: frame.width as f32,
+                h: line_height + 8.0 * scale,
+            }) {
+                continue;
+            }
             let baseline =
                 (top + (line_height - (metrics.ascent + metrics.descent)) / 2.0 + metrics.ascent)
                     .round();

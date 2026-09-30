@@ -176,6 +176,7 @@ fn run_shell<A: App>(
         hold: None,
         resizing: false,
         timings: Timings::from_env(),
+        captured_surface: None,
     };
     event_loop
         .run_app(&mut shell)
@@ -283,6 +284,7 @@ struct Shell<A: App> {
     hold: Option<Instant>,
     resizing: bool,
     timings: Timings,
+    captured_surface: Option<(String, crate::layout::Rect)>,
 }
 
 impl<A: App> Shell<A> {
@@ -336,7 +338,11 @@ impl<A: App> Shell<A> {
             let cursor = self.app.ime_cursor();
             window.set_ime_allowed(cursor.is_some());
             if let Some((x, y)) = cursor {
-                window.set_ime_cursor_area(LogicalPosition::new(x, y), LogicalSize::new(2.0, 20.0));
+                let zoom = f64::from(self.scale()) / window.scale_factor();
+                window.set_ime_cursor_area(
+                    LogicalPosition::new(x * zoom, y * zoom),
+                    LogicalSize::new(2.0 * zoom, 20.0 * zoom),
+                );
             }
         }
         let surface_changed = self.scene.as_ref().is_some_and(|scene| {
@@ -533,9 +539,31 @@ impl<A: App> Shell<A> {
                 _ => {}
             }
         }
+        let mut target = self.captured_surface.clone().or(target);
+        if let Some((resource, rect)) = &mut target
+            && let Some(scene) = &self.scene
+            && let Some(current) = scene.ops.iter().find_map(|op| match op {
+                crate::layout::Op::Surface {
+                    resource: name,
+                    rect,
+                    ..
+                } if name == resource => Some(*rect),
+                _ => None,
+            })
+        {
+            *rect = current;
+        }
         let handled = if let Some((resource, rect)) = target {
-            self.app
-                .surface_input(&resource, make(x - rect.x, y - rect.y), Instant::now())
+            let event = make(x - rect.x, y - rect.y);
+            let handled = self.app.surface_input(&resource, event, Instant::now());
+            if matches!(event, SurfaceInput::Up { .. }) {
+                self.captured_surface = None;
+            }
+            if handled && matches!(event, SurfaceInput::Down { .. }) {
+                self.captured_surface = Some((resource, rect));
+                self.interaction.pressed = None;
+            }
+            handled
         } else {
             false
         };
@@ -921,6 +949,7 @@ impl<A: App> ApplicationHandler<()> for Shell<A> {
             WindowEvent::Focused(false) => {
                 self.app.text_input(TextInput::FocusLost, Instant::now());
                 self.resizing = false;
+                self.captured_surface = None;
                 self.interaction.pressed = None;
                 self.modifiers = ModifiersState::empty();
                 self.redraw();
@@ -1015,12 +1044,13 @@ impl<A: App> ApplicationHandler<()> for Shell<A> {
                     MouseScrollDelta::LineDelta(_, y) => y * 40.0,
                     MouseScrollDelta::PixelDelta(position) => position.y as f32 / self.scale(),
                 };
+                let scale = self.scale();
                 if self.surface(|x, y| SurfaceInput::Wheel {
                     x,
                     y,
                     dx: match delta {
                         MouseScrollDelta::LineDelta(x, _) => x * 40.0,
-                        MouseScrollDelta::PixelDelta(p) => p.x as f32,
+                        MouseScrollDelta::PixelDelta(p) => p.x as f32 / scale,
                     },
                     dy: lines,
                 }) {

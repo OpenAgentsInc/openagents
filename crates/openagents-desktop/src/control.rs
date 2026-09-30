@@ -81,6 +81,18 @@ pub type ControlResult<T> = Result<T, ControlError>;
 
 /// The operations the window uses, over any transport.
 pub trait HostControl: Send {
+    /// Hosted chat data over the same local authority as pairing operations.
+    fn chat(
+        &mut self,
+        command: openagents_chat::service::Command,
+    ) -> ControlResult<openagents_chat::service::Snapshot> {
+        let _ = command;
+        Err(ControlError::Refused {
+            code: "unsupported".into(),
+            message: "This host does not support desktop chat yet. Update the host.".into(),
+        })
+    }
+
     fn status(&mut self) -> ControlResult<Status>;
     fn invite(&mut self) -> ControlResult<Invite>;
     fn cancel(&mut self, invitation: &str) -> ControlResult<u32>;

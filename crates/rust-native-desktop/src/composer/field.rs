@@ -160,6 +160,7 @@ impl Field {
             TextInput::FocusLost => {
                 self.apply(Input::CancelComposition, at_ms);
                 self.focused = false;
+                self.dragging = false;
             }
             TextInput::CancelComposition => self.apply(Input::CancelComposition, at_ms),
             TextInput::Preedit { text: "", .. } => self.apply(Input::CancelComposition, at_ms),
@@ -575,6 +576,118 @@ mod tests {
         );
         assert!(field.draft.editor().unwrap().selected_text().ends_with(' '));
     }
+    #[test]
+    fn scripted_editing_preserves_composition_and_grows_multiline_input() {
+        let mut field = field();
+        let single = field.height(400.0);
+        field.input(TextInput::Commit("first"), 0);
+        field.input(
+            TextInput::Preedit {
+                text: "にほん",
+                selection: Some((9, 9)),
+            },
+            1,
+        );
+        assert_eq!(
+            field.input(
+                TextInput::Key {
+                    key: "Enter",
+                    text: Some("\r"),
+                    command: false,
+                    alt: false,
+                    shift: false
+                },
+                2
+            ),
+            Action::Edited
+        );
+        assert!(field.draft.editor().unwrap().is_composing());
+        field.input(TextInput::Commit("日本"), 3);
+        assert!(!field.draft.editor().unwrap().is_composing());
+        assert_eq!(field.text(), "first日本");
+        field.input(
+            TextInput::Key {
+                key: "Enter",
+                text: Some("\r"),
+                command: false,
+                alt: false,
+                shift: true,
+            },
+            4,
+        );
+        field.input(TextInput::Commit("second\nthird"), 5);
+        assert!(field.height(400.0) > single);
+        assert_eq!(
+            field.input(
+                TextInput::Key {
+                    key: "Enter",
+                    text: Some("\r"),
+                    command: false,
+                    alt: false,
+                    shift: false
+                },
+                6
+            ),
+            Action::Send
+        );
+        field.input(
+            TextInput::Key {
+                key: "z",
+                text: None,
+                command: true,
+                alt: false,
+                shift: false,
+            },
+            7,
+        );
+        assert_eq!(field.text(), "first日本\n");
+        field.input(
+            TextInput::Key {
+                key: "z",
+                text: None,
+                command: true,
+                alt: false,
+                shift: true,
+            },
+            8,
+        );
+        assert_eq!(field.text(), "first日本\nsecond\nthird");
+        let mut fonts = Fonts::new();
+        field.paint(
+            &mut Frame::transparent(400, 196),
+            PxRect {
+                x: 0.0,
+                y: 0.0,
+                w: 400.0,
+                h: 196.0,
+            },
+            1.0,
+            &mut fonts,
+        );
+        field.pointer(
+            SurfaceInput::Down {
+                x: 14.0,
+                y: 14.0,
+                shift: false,
+            },
+            &mut fonts,
+            9,
+        );
+        field.pointer(SurfaceInput::Up { x: 400.0, y: 190.0 }, &mut fonts, 10);
+        assert_eq!(field.draft.editor().unwrap().selected_text(), field.text());
+        field.input(
+            TextInput::Preedit {
+                text: "仮",
+                selection: Some((3, 3)),
+            },
+            11,
+        );
+        field.input(TextInput::FocusLost, 12);
+        assert_eq!(field.text(), "first日本\nsecond\nthird");
+        assert!(!field.focused);
+        assert_eq!(field.height(400.0), field.height(400.0));
+    }
+
     #[test]
     fn delayed_paste_cannot_replace_a_newer_edit() {
         let mut field = field();

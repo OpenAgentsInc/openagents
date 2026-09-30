@@ -55,6 +55,7 @@ impl Issued {
 
 #[derive(Debug, Default)]
 struct State {
+    chats: Option<FakeChat>,
     now: u64,
     online: bool,
     down: bool,
@@ -251,6 +252,24 @@ impl FakeHost {
 }
 
 impl HostControl for FakeHost {
+    fn chat(
+        &mut self,
+        command: openagents_chat::service::Command,
+    ) -> ControlResult<openagents_chat::service::Snapshot> {
+        let mut state = self.0.lock().unwrap_or_else(|poison| poison.into_inner());
+        if state.down {
+            return Err(ControlError::Unreachable);
+        }
+        let now = state.now;
+        let chat = state.chats.get_or_insert_with(FakeChat::new);
+        openagents_chat::service::apply(&mut chat.chats, command, now).map_err(|message| {
+            ControlError::Refused {
+                code: "chat".into(),
+                message,
+            }
+        })
+    }
+
     fn status(&mut self) -> ControlResult<Status> {
         let mut state = self.state();
         if state.away() {
@@ -466,5 +485,53 @@ impl HostControl for FakeHost {
         state.nearby = None;
         state.answers.push((id, connect));
         Ok(())
+    }
+}
+
+/// An isolated offline fixture. It writes no files and reaches no network.
+struct FakeChat {
+    chats: openagents_chat::basic_chats::BasicChats,
+    _runtime: tokio::runtime::Runtime,
+}
+impl std::fmt::Debug for FakeChat {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("FakeChat")
+    }
+}
+impl FakeChat {
+    fn new() -> Self {
+        let runtime = tokio::runtime::Runtime::new().expect("fixture runtime");
+        let chats = openagents_chat::basic_chats::BasicChats::new(
+            Some(runtime.handle().clone()),
+            Some(Arc::new(FixtureDoor)),
+            None,
+        );
+        Self {
+            chats,
+            _runtime: runtime,
+        }
+    }
+}
+struct FixtureDoor;
+impl openagents_chat::basic_coder::Door for FixtureDoor {
+    fn ask(
+        &self,
+        turns: Vec<openagents_chat::basic_coder::Turn>,
+        _: openagents_chat::router::Context,
+        reply: Arc<Mutex<openagents_chat::basic_coder::Reply>>,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
+        Box::pin(async move {
+            let words = turns.last().map_or("", |turn| turn.text.as_str());
+            let text = format!(
+                "This is an **offline chat fixture**. Your message was:\n\n> {words}\n\nWe can render paragraphs, **bold**, *italic*, `inline code`, and [OpenAgents](https://openagents.com).\n\n```rust\nfn main() {{\n    println!(\"Hello, chat!\");\n}}\n```\n\n| Component | State |\n| --- | --- |\n| Composer | Editable |\n| Transcript | Streaming |\n\n- Send another message.\n- Select text and copy it.\n- Scroll back while a reply arrives."
+            );
+            for end in (1..=text.len()).filter(|end| text.is_char_boundary(*end)) {
+                if end % 24 == 0 || end == text.len() {
+                    openagents_chat::basic_coder::lock(&reply).text = text[..end].into();
+                    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                }
+            }
+            openagents_chat::basic_coder::lock(&reply).done = true;
+        })
     }
 }

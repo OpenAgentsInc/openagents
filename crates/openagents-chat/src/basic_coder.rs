@@ -74,6 +74,9 @@ pub struct Turn {
     /// worker.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub meta: Option<Meta>,
+    /// The local send command that created this turn; never sent to the worker.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub request: Option<String>,
 }
 
 impl Turn {
@@ -82,6 +85,7 @@ impl Turn {
             role: Role::User,
             text: text.into(),
             meta: None,
+            request: None,
         }
     }
 
@@ -90,6 +94,7 @@ impl Turn {
             role: Role::Assistant,
             text: text.into(),
             meta,
+            request: None,
         }
     }
 }

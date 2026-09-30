@@ -5,6 +5,7 @@ pub mod basic_coder;
 pub mod basic_link;
 pub mod cache;
 pub mod router;
+pub mod service;
 
 fn public(secret: &secp256k1::SecretKey) -> String {
     let key = secp256k1::Keypair::from_secret_key(&secp256k1::Secp256k1::new(), secret)

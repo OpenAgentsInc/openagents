@@ -46,6 +46,8 @@ pub struct Summary {
     pub updated: u64,
     #[serde(default)]
     pub coder: Option<Spawned>,
+    #[serde(default)]
+    pub archived: bool,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -73,6 +75,8 @@ pub enum Tail {
 
 pub struct BasicChats {
     wake: crate::Wake,
+    /// The last encrypted storage failure, if any.
+    pub storage_error: Option<String>,
     runtime: Option<Handle>,
     door: Option<Arc<dyn Door>>,
     store: Option<Cache>,
@@ -156,6 +160,7 @@ impl BasicChats {
             .unwrap_or_default();
         Self {
             wake: Arc::new(|| {}),
+            storage_error: None,
             runtime,
             door,
             store,
@@ -350,6 +355,52 @@ impl BasicChats {
         self.streams.contains_key(id)
     }
 
+    /// Create an empty local conversation with a caller-selected stable ID.
+    pub fn create(&mut self, id: &str, now: u64) -> bool {
+        if self.get(id).is_some() || self.index.len() >= MAX_TALKS {
+            return false;
+        }
+        self.index.insert(
+            0,
+            Summary {
+                id: id.into(),
+                title: "New chat".into(),
+                started: now,
+                updated: now,
+                coder: None,
+                archived: false,
+            },
+        );
+        self.turns.insert(id.into(), vec![]);
+        self.save(id);
+        self.storage_error.is_none()
+    }
+
+    /// Archive locally without deleting the encrypted conversation.
+    pub fn archive(&mut self, id: &str, now: u64) {
+        self.stop(id, now);
+        if let Some(summary) = self.index.iter_mut().find(|summary| summary.id == id) {
+            summary.archived = true;
+        }
+        self.save_index();
+    }
+
+    /// Restore an archived conversation to the current list.
+    pub fn restore(&mut self, id: &str) {
+        if let Some(summary) = self.index.iter_mut().find(|summary| summary.id == id) {
+            summary.archived = false;
+        }
+        self.save_index();
+    }
+
+    /// The current reply text, without completing the turn.
+    pub fn partial(&self, id: &str) -> String {
+        self.streams
+            .get(id)
+            .map(|stream| lock(&stream.reply).text.clone())
+            .unwrap_or_default()
+    }
+
     /// Start a conversation with `text` and ask for the reply.
     pub fn start(&mut self, text: &str, now: u64) -> Option<String> {
         let text = text.trim();
@@ -372,6 +423,7 @@ impl BasicChats {
                 started: now,
                 updated: now,
                 coder: None,
+                archived: false,
             },
         );
         while self.index.len() > MAX_TALKS {
@@ -392,20 +444,41 @@ impl BasicChats {
     /// Add the user's message to `id` and ask for the reply. A message
     /// while a reply streams waits for it: the composer is busy then.
     pub fn send(&mut self, id: &str, text: &str, now: u64) -> bool {
+        self.send_tagged(id, text, now, None)
+    }
+
+    /// Send once for a local command ID, also remembered across a relaunch.
+    pub fn send_tagged(&mut self, id: &str, text: &str, now: u64, request: Option<String>) -> bool {
         let text = text.trim();
-        if text.is_empty() || self.busy(id) || self.get(id).is_none() {
+        if text.is_empty() || text.len() > 32 * 1024 || self.busy(id) || self.get(id).is_none() {
             return false;
         }
         self.turns(id);
         if let Some(turns) = self.turns.get_mut(id) {
-            turns.push(Turn::user(text));
+            let mut turn = Turn::user(text);
+            turn.request = request;
+            turns.push(turn);
         }
         // Words sent are a suggestion used, tapped or typed.
         if let Some(mark) = words_mark(text) {
             self.mark(mark);
         }
+        if self.turns.get(id).is_some_and(|turns| turns.len() == 1)
+            && let Some(summary) = self.index.iter_mut().find(|summary| summary.id == id)
+        {
+            summary.title = text
+                .lines()
+                .next()
+                .unwrap_or(text)
+                .chars()
+                .take(80)
+                .collect();
+        }
         self.touch(id, now);
         self.save(id);
+        if self.storage_error.is_some() {
+            return false;
+        }
         self.ask(id);
         true
     }
@@ -571,20 +644,24 @@ impl BasicChats {
                 turns.remove(0);
             }
             if let Some(store) = &self.store {
-                let _ = store.write(
-                    &item(id),
-                    &Saved {
-                        turns: turns.clone(),
-                    },
-                );
+                let _ = store
+                    .write(
+                        &item(id),
+                        &Saved {
+                            turns: turns.clone(),
+                        },
+                    )
+                    .map_err(|error| self.storage_error = Some(error));
             }
         }
         self.save_index();
     }
 
-    fn save_index(&self) {
-        if let Some(store) = &self.store {
-            let _ = store.write("basic-index", &self.index);
+    fn save_index(&mut self) {
+        if let Some(store) = &self.store
+            && let Err(error) = store.write("basic-index", &self.index)
+        {
+            self.storage_error = Some(error);
         }
     }
 }
@@ -672,6 +749,16 @@ pub fn handoff(title: &str, turns: &[Turn], limit: usize) -> String {
 async fn rung(job: impl std::future::Future<Output = ()>, wake: crate::Wake) {
     job.await;
     wake();
+}
+
+impl Drop for BasicChats {
+    fn drop(&mut self) {
+        for stream in self.streams.values_mut() {
+            if let Some(handle) = stream.handle.take() {
+                handle.abort();
+            }
+        }
+    }
 }
 
 #[cfg(test)]

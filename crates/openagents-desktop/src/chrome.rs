@@ -88,6 +88,7 @@ pub struct Chat {
 /// Presentation state for the shell. Computer state remains in `Model`.
 #[derive(Clone, Debug)]
 pub struct State {
+    pub live: bool,
     pub page: Page,
     pub sidebar_width: f32,
     pub collapsed: bool,
@@ -174,6 +175,7 @@ impl Default for State {
             ),
         ];
         Self {
+            live: false,
             page: Page::Chat(1),
             sidebar_width: SIDEBAR_DEFAULT,
             collapsed: false,
@@ -194,6 +196,24 @@ impl Default for State {
 }
 
 impl State {
+    /// A live shell starts with no fabricated conversations.
+    pub fn empty() -> Self {
+        Self {
+            live: true,
+            chats: vec![],
+            page: Page::Chat(0),
+            ..Self::default()
+        }
+    }
+
+    /// Replace the sidebar with persisted host conversations.
+    pub fn sync_chats(&mut self, chats: Vec<Chat>, selected: Option<u64>) {
+        self.chats = chats;
+        if let Some(id) = selected {
+            self.page = Page::Chat(id);
+        }
+    }
+
     pub fn activate(&mut self, action: Action) {
         match action {
             Action::ToggleSidebar => self.collapsed = !self.collapsed,
@@ -417,7 +437,11 @@ fn sidebar(state: &State) -> Node<Intent> {
             ),
             text(
                 "sidebar-preview",
-                "Sample chats · on this computer",
+                if state.live {
+                    "Chats · on this computer"
+                } else {
+                    "Sample chats · on this computer"
+                },
                 TextRole::Status,
             ),
         ],
@@ -589,7 +613,11 @@ pub fn root(state: &State, model: &Model, now: u64) -> Node<Intent> {
                     ),
                     text(
                         "shell-settings-line",
-                        "Chats in this preview are examples. Your connected phones and computers use your existing setup.",
+                        if state.live {
+                            "Chats are encrypted on this computer. Your connected phones and computers use your existing setup."
+                        } else {
+                            "Chats in this preview are examples. Your connected phones and computers use your existing setup."
+                        },
                         TextRole::Body,
                     ),
                     action(

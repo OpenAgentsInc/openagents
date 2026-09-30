@@ -32,6 +32,9 @@ app = [
 ]
 
 [dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "time"] }
+openagents-chat = { path = "../openagents-chat" }
+uuid = { version = "1", features = ["v4"] }
 base64 = "0.22"
 # The control protocol's messages.
 openagents-connect = { path = "../openagents-connect" }

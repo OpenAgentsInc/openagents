@@ -52,3 +52,7 @@ pub mod words;
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(feature = "app")]
+pub mod chat;
+pub mod chat_action;

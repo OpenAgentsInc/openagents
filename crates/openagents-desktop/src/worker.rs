@@ -76,6 +76,10 @@ fn local(request: &Request) -> bool {
 }
 
 impl Context {
+    pub fn is_fixture(&self) -> bool {
+        self.local.fake
+    }
+
     pub fn new(
         control: Box<dyn HostControl>,
         fake: Option<FakeHost>,
@@ -157,6 +161,10 @@ impl LocalLane {
 impl HostLane {
     fn run(&mut self, request: Request) -> Option<Outcome> {
         match request {
+            Request::Chat { ticket, command } => Some(Outcome::Chat {
+                ticket,
+                result: self.control.chat(command),
+            }),
             Request::Refresh => {
                 self.fake_scan_if_due();
                 Some(Outcome::Refreshed(self.refresh().map(Box::new)))

@@ -32,8 +32,10 @@ pub struct DesktopApp {
     modules: Option<(String, Modules)>,
     /// Whether this is a window (it checks the screen lock) or a capture.
     live: bool,
+    fixture: bool,
     screen_lock: Option<ScreenLock>,
     navigation: Option<State>,
+    chat: Option<openagents_desktop::chat::Panel>,
 }
 
 pub fn unix_now() -> u64 {
@@ -53,6 +55,16 @@ impl DesktopApp {
         DesktopApp::new(model, Runner::Inline(context), false, false)
     }
 
+    /// An isolated chat acceptance window with requests answered inline.
+    #[cfg(test)]
+    pub fn inline_chat(model: Model, context: Context) -> DesktopApp {
+        let mut app = DesktopApp::new(model, Runner::Inline(context), false, true);
+        app.navigation = Some(State::empty());
+        app.chat = Some(openagents_desktop::chat::Panel::new(Instant::now()));
+        app.present();
+        app
+    }
+
     /// A capture of the desktop shell with sample chats and an inline host.
     pub fn inline_shell(model: Model, context: Context) -> DesktopApp {
         DesktopApp::new(model, Runner::Inline(context), false, true)
@@ -63,14 +75,26 @@ impl DesktopApp {
         if chrome && model.screen == openagents_desktop::model::Screen::Connect {
             model.screen = openagents_desktop::model::Screen::Home;
         }
+        let fixture = match &runner {
+            Runner::Pending(Some(context)) | Runner::Inline(context) => context.is_fixture(),
+            _ => false,
+        };
         let mut app = DesktopApp {
+            fixture,
             model,
             presenter: Presenter::new("openagents-desktop"),
             runner,
             modules: None,
             live,
             screen_lock: None,
-            navigation: chrome.then(State::default),
+            navigation: chrome.then(|| {
+                if live {
+                    State::empty()
+                } else {
+                    State::default()
+                }
+            }),
+            chat: (live && chrome).then(|| openagents_desktop::chat::Panel::new(Instant::now())),
         };
         app.present();
         app
@@ -81,11 +105,30 @@ impl DesktopApp {
     }
 
     fn present(&mut self) {
-        let root = self.navigation.as_ref().map_or_else(
+        if let (Some(chat), Some(state)) = (&mut self.chat, &mut self.navigation) {
+            chat.sync_sidebar(state);
+        }
+        let mut root = self.navigation.as_ref().map_or_else(
             || root(&self.model, unix_now()),
             |state| chrome::root(state, &self.model, unix_now()),
         );
+        if self.model.nearby().is_none()
+            && self
+                .navigation
+                .as_ref()
+                .is_some_and(|state| matches!(state.page, Page::Chat(_)))
+            && let Some(chat) = &mut self.chat
+            && let rust_native::Element::Stack { children, .. } = &mut root.element
+            && let Some(content) = children.get_mut(1)
+            && let rust_native::Element::Stack { children, .. } = &mut content.element
+        {
+            children[1] = chat.body();
+            children[2] = chat.footer();
+        }
         self.presenter.present(root);
+        if let Some(chat) = &mut self.chat {
+            chat.mounted(self.presenter.view());
+        }
     }
 
     /// Sends requests; inline, runs them and applies what comes back.
@@ -96,7 +139,13 @@ impl DesktopApp {
                 Runner::Background(worker) => worker.send(request),
                 Runner::Inline(context) => {
                     if let Some(outcome) = context.run(request) {
-                        queue.extend(self.model.outcome(outcome, now));
+                        if let Outcome::Chat { ticket, result } = outcome {
+                            if let Some(chat) = &mut self.chat {
+                                chat.outcome(ticket, result);
+                            }
+                        } else {
+                            queue.extend(self.model.outcome(outcome, now));
+                        }
                     }
                 }
                 Runner::Pending(_) => {}
@@ -106,6 +155,12 @@ impl DesktopApp {
 
     fn apply(&mut self, outcomes: Vec<Outcome>, now: Instant) {
         for outcome in outcomes {
+            if let Outcome::Chat { ticket, result } = outcome {
+                if let Some(chat) = &mut self.chat {
+                    chat.outcome(ticket, result);
+                }
+                continue;
+            }
             let requests = self.model.outcome(outcome, now);
             self.send(requests, now);
         }
@@ -122,7 +177,11 @@ impl App for DesktopApp {
     type Intent = Intent;
 
     fn title(&self) -> String {
-        "OpenAgents".into()
+        if self.fixture {
+            "OpenAgents — offline chat fixture".into()
+        } else {
+            "OpenAgents".into()
+        }
     }
 
     fn theme(&self) -> Theme {
@@ -185,6 +244,9 @@ impl App for DesktopApp {
     }
 
     fn start(&mut self, waker: Waker) {
+        if let Some(chat) = &mut self.chat {
+            chat.start(waker.clone());
+        }
         crate::menubar::start(waker.clone());
         if self.live {
             self.screen_lock = Some(ScreenLock::start(waker.clone()));
@@ -209,8 +271,17 @@ impl App for DesktopApp {
             .for_each(|intent| self.activate(intent, now));
         let requests = self.model.tick(now);
         self.send(requests, now);
+        if let Some(request) = self.chat.as_mut().and_then(|chat| chat.tick(now)) {
+            self.send(vec![request], now);
+        }
         self.present();
-        Some(self.model.next_wake())
+        Some(
+            self.model.next_wake().min(
+                self.chat
+                    .as_ref()
+                    .map_or(self.model.next_wake(), |chat| chat.next_wake(now)),
+            ),
+        )
     }
 
     fn view(&self) -> &ValidatedView<Intent> {
@@ -218,9 +289,32 @@ impl App for DesktopApp {
     }
 
     fn activate(&mut self, intent: Intent, now: Instant) {
+        if let Intent::Chat { action } = intent {
+            let request = self
+                .chat
+                .as_mut()
+                .and_then(|chat| chat.action(action, self.presenter.view(), now));
+            if let Some(request) = request {
+                self.send(vec![request], now);
+            }
+            self.present();
+            return;
+        }
         if let Intent::Navigate { action } = intent {
+            let mut chat_request = None;
+            if let Some(chat) = &mut self.chat {
+                chat_request = match &action {
+                    chrome::Action::NewChat => Some(chat.new_chat()),
+                    chrome::Action::SelectChat { id } => chat.select_numeric(*id),
+                    _ => None,
+                };
+            }
             if let Some(state) = &mut self.navigation {
-                state.activate(action);
+                if chat_request.is_some() {
+                    state.page = Page::Chat(0);
+                } else {
+                    state.activate(action);
+                }
                 if state.page != Page::Computers
                     && self.model.screen == openagents_desktop::model::Screen::Connect
                 {
@@ -229,6 +323,9 @@ impl App for DesktopApp {
                     let requests = self.model.tick(now);
                     self.send(requests, now);
                 }
+            }
+            if let Some(request) = chat_request {
+                self.send(vec![request], now);
             }
             self.present();
             return;
@@ -252,7 +349,90 @@ impl App for DesktopApp {
         self.model.input(now);
     }
 
+    fn text_input(
+        &mut self,
+        event: rust_native_desktop::input::TextInput<'_>,
+        now: Instant,
+    ) -> bool {
+        if !self
+            .navigation
+            .as_ref()
+            .is_some_and(|state| matches!(state.page, Page::Chat(_)))
+        {
+            return false;
+        }
+        let Some(chat) = &mut self.chat else {
+            return false;
+        };
+        let action = chat.input(event, now);
+        if action == rust_native_desktop::composer::field::Action::Send {
+            let request = chat.action(
+                openagents_desktop::chat_action::Action::Send,
+                self.presenter.view(),
+                now,
+            );
+            if let Some(request) = request {
+                self.send(vec![request], now);
+            }
+        }
+        if action != rust_native_desktop::composer::field::Action::Unhandled {
+            self.present();
+            return true;
+        }
+        false
+    }
+
+    fn surface_version(&self, resource: &str) -> Option<u64> {
+        if resource == chrome::MARK {
+            return Some(0);
+        }
+        self.chat.as_ref().and_then(|chat| chat.version(resource))
+    }
+
+    fn surface_input(
+        &mut self,
+        resource: &str,
+        event: rust_native_desktop::input::SurfaceInput,
+        now: Instant,
+    ) -> bool {
+        let handled = self
+            .chat
+            .as_mut()
+            .is_some_and(|chat| chat.surface(resource, event, now));
+        if handled {
+            self.present();
+        }
+        handled
+    }
+
+    fn viewport(&mut self, width: f32, height: f32, scale: f32) {
+        if let Some(chat) = &mut self.chat
+            && chat.viewport != (width, height, scale)
+        {
+            chat.viewport = (width, height, scale);
+            self.present();
+        }
+    }
+
+    fn ime_cursor(&self) -> Option<(f64, f64)> {
+        if !self
+            .navigation
+            .as_ref()
+            .is_some_and(|state| matches!(state.page, Page::Chat(_)))
+        {
+            return None;
+        }
+        self.chat.as_ref().and_then(|chat| chat.cursor())
+    }
+
     fn surface_size(&self, resource: &str, available: f32) -> Option<(f32, f32)> {
+        if let Some(size) = self
+            .chat
+            .as_ref()
+            .and_then(|chat| chat.size(resource, available))
+        {
+            return Some(size);
+        }
         if resource == chrome::MARK {
             return Some((64.0_f32.min(available), 64.0));
         }
@@ -263,6 +443,13 @@ impl App for DesktopApp {
     }
 
     fn paint_surface(&mut self, resource: &str, frame: &mut Frame, rect: PxRect) {
+        if self
+            .chat
+            .as_mut()
+            .is_some_and(|chat| chat.paint(resource, frame, rect))
+        {
+            return;
+        }
         if resource == chrome::MARK {
             frame.fill(rect, rect.w * 0.25, Color::rgb(29, 32, 38));
             frame.stroke(rect, rect.w * 0.25, rect.w / 64.0, Color::rgb(58, 64, 73));
@@ -509,6 +696,265 @@ mod tests {
                 .title,
             "New chat"
         );
+    }
+
+    fn chat_fixture(rows: usize) -> (DesktopApp, Instant) {
+        use openagents_chat::{
+            basic_coder::Turn,
+            service::{Command, Snapshot},
+        };
+        let fake = FakeHost::new("Test computer", unix_now());
+        let context = Context::new(
+            Box::new(fake.clone()),
+            Some(fake),
+            None,
+            None,
+            std::env::temp_dir(),
+        );
+        let now = Instant::now();
+        let mut app =
+            DesktopApp::inline_chat(Model::new(now, Screen::Connect, Agent::Enabled), context);
+        let panel = app.chat.as_mut().unwrap();
+        let Request::Chat {
+            ticket,
+            command: Command::Create { chat },
+        } = panel.new_chat()
+        else {
+            panic!("create")
+        };
+        panel.outcome(ticket, Ok(Snapshot { chat: Some(chat), total: rows,
+            turns: (0..rows).map(|i| if i % 2 == 0 { Turn::user(format!("Question {i}: how does this work?")) } else { Turn::assistant(format!("Reply {i} with **bold**, *italic*, and `inline code`.\n\n- First item\n- Second item\n\n```rust\nlet answer = 42;\n```"), None) }).collect(), ..Snapshot::default() }));
+        app.present();
+        (app, now)
+    }
+
+    #[test]
+    fn composer_submits_once_and_keeps_a_draft_when_the_host_refuses() {
+        use rust_native_desktop::input::TextInput;
+        let fake = FakeHost::new("Test computer", unix_now());
+        let context = Context::new(
+            Box::new(fake.clone()),
+            Some(fake.clone()),
+            None,
+            None,
+            std::env::temp_dir(),
+        );
+        let now = Instant::now();
+        let mut app =
+            DesktopApp::inline_chat(Model::new(now, Screen::Connect, Agent::Enabled), context);
+        app.activate(
+            Intent::Navigate {
+                action: Action::NewChat,
+            },
+            now,
+        );
+        assert!(app.text_input(TextInput::Commit("Hello"), now));
+        assert_eq!(app.chat.as_ref().unwrap().draft(), "Hello");
+        assert!(app.text_input(
+            TextInput::Key {
+                key: "Enter",
+                text: Some("\r"),
+                command: false,
+                alt: false,
+                shift: false
+            },
+            now
+        ));
+        assert_eq!(app.chat.as_ref().unwrap().draft(), "");
+        app.activate(
+            Intent::Chat {
+                action: openagents_desktop::chat_action::Action::Stop,
+            },
+            now,
+        );
+        fake.set_down(true);
+        assert!(app.text_input(TextInput::Commit("Keep this draft"), now));
+        assert!(app.text_input(
+            TextInput::Key {
+                key: "Enter",
+                text: Some("\r"),
+                command: false,
+                alt: false,
+                shift: false
+            },
+            now
+        ));
+        assert_eq!(app.chat.as_ref().unwrap().draft(), "Keep this draft");
+    }
+
+    #[test]
+    #[ignore = "reports idle tick cost for a 1,000-line draft; run with --ignored --nocapture"]
+    fn composer_idle_benchmark() {
+        use rust_native_desktop::input::TextInput;
+        let (mut app, now) = chat_fixture(0);
+        app.text_input(TextInput::Commit(&"draft line\n".repeat(1000)), now);
+        app.viewport(1200.0, 840.0, 2.0);
+        rust_native_desktop::capture(&mut app, 1200.0, 840.0, 2.0);
+        let before = app.view().view().revision;
+        let start = Instant::now();
+        for _ in 0..1000 {
+            app.tick(now);
+        }
+        let average = start.elapsed().as_secs_f64() / 1000.0;
+        assert_eq!(app.view().view().revision, before);
+        // One idle tick per second. This measures callback work, not process CPU.
+        eprintln!(
+            "composer 1000-line idle tick average={:.3}ms; callback CPU at 1Hz={:.4}%",
+            average * 1000.0,
+            average * 100.0
+        );
+        assert!(average < 0.01, "idle callback exceeds 1% of one CPU at 1Hz");
+    }
+
+    #[test]
+    fn idle_chat_pointer_and_draft_edit_leave_transcript_unchanged() {
+        use rust_native_desktop::input::{SurfaceInput, TextInput};
+        let (mut app, now) = chat_fixture(30);
+        let before = app.surface_version(openagents_desktop::chat::TRANSCRIPT);
+        for _ in 0..20 {
+            assert!(!app.surface_input(
+                openagents_desktop::chat::TRANSCRIPT,
+                SurfaceInput::Move { x: 20.0, y: 30.0 },
+                now
+            ));
+            assert!(!app.surface_input(
+                openagents_desktop::chat::COMPOSER,
+                SurfaceInput::Move { x: 20.0, y: 30.0 },
+                now
+            ));
+        }
+        assert!(app.text_input(
+            TextInput::Key {
+                key: "h",
+                text: Some("h"),
+                command: false,
+                alt: false,
+                shift: false
+            },
+            now
+        ));
+        assert_eq!(
+            app.surface_version(openagents_desktop::chat::TRANSCRIPT),
+            before
+        );
+    }
+
+    #[test]
+    #[ignore = "reports end-to-end chat interaction timing; run with --ignored --nocapture"]
+    fn chat_paint_benchmark() {
+        use rust_native_desktop::{
+            input::{SurfaceInput, TextInput},
+            layout, paint,
+            text::Fonts,
+        };
+        for (width, height, scale) in [
+            (1200.0, 840.0, 1.0),
+            (1200.0, 840.0, 2.0),
+            (1414.0, 891.0, 2.2),
+        ] {
+            for scenario in ["hover", "typing", "scroll"] {
+                let cold = Instant::now();
+                let (mut app, now) = chat_fixture(3300);
+                app.viewport(width, height, scale);
+                let mut fonts = Fonts::new();
+                let mut retained = paint::Retained::default();
+                let mut timings = Vec::new();
+                let mut uploads = Vec::new();
+                for iteration in 0..24 {
+                    let start = Instant::now();
+                    if scenario == "typing" {
+                        app.text_input(
+                            TextInput::Key {
+                                key: "h",
+                                text: Some("h"),
+                                command: false,
+                                alt: false,
+                                shift: false,
+                            },
+                            now,
+                        );
+                    }
+                    if scenario == "scroll" && iteration > 0 {
+                        let before = app.surface_version(openagents_desktop::chat::TRANSCRIPT);
+                        assert!(app.surface_input(
+                            openagents_desktop::chat::TRANSCRIPT,
+                            SurfaceInput::Wheel {
+                                x: 100.0,
+                                y: 100.0,
+                                dx: 0.0,
+                                dy: 80.0
+                            },
+                            now
+                        ));
+                        assert_ne!(
+                            before,
+                            app.surface_version(openagents_desktop::chat::TRANSCRIPT),
+                            "scroll changes drawing revision"
+                        );
+                    }
+                    app.present();
+                    let interaction = layout::Interaction {
+                        hover: (scenario == "hover").then(|| {
+                            if iteration % 2 == 0 {
+                                "sidebar-grid".into()
+                            } else {
+                                "sidebar-new-chat".into()
+                            }
+                        }),
+                        ..Default::default()
+                    };
+                    let mut scene = layout::lay_out_with_layout(
+                        app.view().view(),
+                        &app.theme(),
+                        &mut fonts,
+                        &|resource, available| app.surface_size(resource, available),
+                        &interaction,
+                        width,
+                        height,
+                        app.window_layout(),
+                    );
+                    for op in &mut scene.ops {
+                        if let layout::Op::Surface {
+                            resource, version, ..
+                        } = op
+                        {
+                            *version = app.surface_version(resource);
+                        }
+                    }
+                    let damage = retained.update(
+                        &scene,
+                        ((width * scale) as usize, (height * scale) as usize),
+                        scale,
+                        0.0,
+                        None,
+                        &mut fonts,
+                        &mut |resource, frame, rect| app.paint_surface(resource, frame, rect),
+                    );
+                    if iteration == 0 {
+                        assert_eq!(app.chat.as_ref().unwrap().transcript.rows(), 3300);
+                        eprintln!(
+                            "rows height={}",
+                            app.chat.as_ref().unwrap().transcript.height()
+                        );
+                        eprintln!(
+                            "chat {scenario} {width}x{height} scale={scale}: cold3300={:.2}ms",
+                            cold.elapsed().as_secs_f64() * 1000.0
+                        );
+                    }
+                    if iteration >= 4 {
+                        timings.push(start.elapsed().as_secs_f64() * 1000.0);
+                        uploads.push(damage.iter().map(|rect| rect.w * rect.h * 4.0).sum::<f32>());
+                    }
+                    std::hint::black_box(retained.frame());
+                }
+                timings.sort_by(f64::total_cmp);
+                uploads.sort_by(f32::total_cmp);
+                eprintln!(
+                    "chat {scenario} {width}x{height} scale={scale}: input+projection+layout+paint p50={:.2}ms p95={:.2}ms, upload p95={:.0}bytes",
+                    timings[10], timings[19], uploads[19]
+                );
+            }
+        }
     }
 
     #[test]
