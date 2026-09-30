@@ -5293,6 +5293,7 @@ dependencies = [
  "image",
  "nostr",
  "openagents-chat",
+ "openagents-connect",
  "playtest",
  "rust-native",
  "secp256k1 0.31.1",
