@@ -165,9 +165,12 @@ metadata; typed application intents and key admission own execution.
 
 ## Skipped native frames
 
-The renderer acquires a native surface before painting or uploading changed
-foreground pixels. A skipped acquisition leaves the last submitted texture
-intact and queues no upload. `App::frame_skipped` reports the closed failure
+The renderer paints changed foreground pixels on the CPU before acquiring a
+native surface, allowing that work to overlap the previous frame's display.
+It acquires before uploading: a skipped acquisition leaves the last submitted
+texture intact and queues no upload. The retry invalidates the CPU painter's
+submission state so unchanged scenes still replace stale GPU pixels.
+`App::frame_skipped` reports the closed failure
 reason and acquisition duration; `App::frame_presented` reports successful
 CPU work and submission. Neither callback measures GPU completion or scanout.
 The opt-in timings log records each acquisition outcome without application

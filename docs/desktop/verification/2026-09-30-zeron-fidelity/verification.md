@@ -20,6 +20,36 @@ draft preservation, menu input admission, and profile navigation. This fixes
 the selection-driven layout shifts; the native acquisition stalls recorded
 below remain a separate unresolved latency failure.
 
+## Paint before waiting for a drawable
+
+Move CPU foreground painting before native surface acquisition. Keep texture
+uploads after successful acquisition, preserving the occlusion memory fix.
+A skipped acquisition invalidates the prepared CPU submission so the next
+successful frame uploads the complete foreground even when its scene stays
+unchanged. The recovery regression removes a card before a skipped submission
+and verifies that its stale pixels are cleared on retry.
+
+Both native runs retain all 690 active samples and the first opening frames.
+They use 3,300 rows, 500 chats, a 1,200 × 840 point window at 2×, and the Grid
+backdrop. Against the earlier acquire-first run, palette first-frame submission
+falls from 33.155 ms to 10.638 ms and 17.004 ms; chat-menu first-frame submission
+falls from 27.089 ms to 12.590 ms and 20.303 ms. These are separate runs, not
+paired samples. The repeat still misses the 8.3 ms target: frame p99 is
+24.382 ms for scroll, 22.670 ms for streaming, 22.756 ms for sidebar, 21.010 ms
+for composer, 20.421 ms for commands, and 20.907 ms for chat-menu selection.
+The first run's low acquisition times in sidebar and composer do not recur
+consistently. Idle CPU is 3.57% and 4.01% of one core; peak RSS is 209.3 MiB
+and 202.8 MiB. Six and three skipped acquisitions leave bounded memory and
+recover to complete coverage.
+
+Retain the [first run](native-paint-before-acquire.json) and
+[repeat](native-paint-before-acquire-repeat.json), including their failures.
+Adapter checks: 82 tests passed; the separate GPU menu upload/readback check
+also passed. All ten desktop command
+fixtures, strict all-target adapter Clippy, scoped formatting, and the
+optimized desktop build pass. This improves opening latency without claiming
+the full performance acceptance or display scanout timing.
+
 ## Reference and scope
 
 The design reference is the public MIT [Zeron source](https://github.com/zeronsh/zeron/tree/50cf9e97a32e54a8ea7e1174b80b5adc3b1d2ef4),

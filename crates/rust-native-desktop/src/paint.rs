@@ -307,6 +307,91 @@ fn paint_clipped(
 mod tests {
     use super::*;
     #[test]
+    fn a_skipped_submission_retries_pixels_even_when_the_scene_stays_unchanged() {
+        let mut retained = Retained::default();
+        let mut fonts = Fonts::new();
+        let mut scene = Scene {
+            ops: vec![Op::Fill {
+                rect: Rect {
+                    x: 10.0,
+                    y: 10.0,
+                    w: 30.0,
+                    h: 20.0,
+                },
+                radius: 4.0,
+                color: Color::rgb(120, 150, 180),
+            }],
+            ..Scene::default()
+        };
+        retained.update(
+            &scene,
+            (70, 50),
+            1.0,
+            0.0,
+            None,
+            &mut fonts,
+            &mut |_, _, _| {},
+        );
+        let submitted = retained.frame().unwrap().pixels.clone();
+        scene.ops.clear();
+        // CPU painting removed the old card, but acquisition skipped the
+        // submission. Its old pixels still exist on the GPU.
+        assert!(
+            !retained
+                .update(
+                    &scene,
+                    (70, 50),
+                    1.0,
+                    0.0,
+                    None,
+                    &mut fonts,
+                    &mut |_, _, _| {}
+                )
+                .is_empty()
+        );
+        assert_ne!(retained.frame().unwrap().pixels, submitted);
+        retained.invalidate();
+        let retry = retained.update(
+            &scene,
+            (70, 50),
+            1.0,
+            0.0,
+            None,
+            &mut fonts,
+            &mut |_, _, _| {},
+        );
+        assert_eq!(
+            retry,
+            vec![PxRect {
+                x: 0.0,
+                y: 0.0,
+                w: 70.0,
+                h: 50.0
+            }]
+        );
+        assert!(
+            retained
+                .frame()
+                .unwrap()
+                .pixels
+                .iter()
+                .all(|byte| *byte == 0)
+        );
+        assert!(
+            retained
+                .update(
+                    &scene,
+                    (70, 50),
+                    1.0,
+                    0.0,
+                    None,
+                    &mut fonts,
+                    &mut |_, _, _| {}
+                )
+                .is_empty()
+        );
+    }
+    #[test]
     fn unchanged_surface_skips_paint_and_upload_and_changed_surface_matches_full_paint() {
         let rect = Rect {
             x: 20.0,
