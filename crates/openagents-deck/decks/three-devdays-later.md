@@ -53,16 +53,16 @@ source: replies on X, 2026-09-29; screenshots in decks/assets/tweet-*.png
 ---
 
 layout: image
+id: marketplace
+source: OpenAI DevDay keynote stage; screenshot in decks/assets/marketplace.png
+
+![OpenAI DevDay stage: "OpenAI Marketplace" above a wall of partner logos, from Adobe to Zendesk](assets/marketplace.png)
+
+---
+
+layout: image
 id: demetrius-taylor
 scale: 2
 source: x.com/Dee_Tay_ler, 2026-09-29; screenshot in decks/assets/tweet-demetrius-taylor.png
 
 ![Demetrius Taylor (@Dee_Tay_ler): "What is different between now and the past attempts at this? My previous experience with submitting apps/extensions has been horrible."](assets/tweet-demetrius-taylor.png)
-
----
-
-layout: image
-id: marketplace
-source: OpenAI DevDay keynote stage; screenshot in decks/assets/marketplace.png
-
-![OpenAI DevDay stage: "OpenAI Marketplace" above a wall of partner logos, from Adobe to Zendesk](assets/marketplace.png)
