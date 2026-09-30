@@ -590,3 +590,18 @@ probabilities`. With `live_basic_coder_streams_a_reply` and
   `general` (1.0) with the "Here's a draft." opener and a haiku.
 
 No reply contained `[openagents.`.
+
+TestFlight build 33 (1.0.0, archived from `3406cb3c49`, 2026-09-30)
+changes no worker release. It is the first build whose hosted chat
+transport, router fields, lifecycle, and encrypted chat cache come from the
+shared `crates/openagents-chat` crate (`50faac3392`) instead of
+`openagents-mobile`. On a fresh iPhone 17 Pro simulator (iOS 26.5, deleted
+afterwards) against the live chat worker (`7ae2a4dd41`): "Who are you"
+answered "We are OpenAgents. …"; "How do I connect a phone" answered
+"Open OpenAgents for Mac and it shows a QR code. …" with the QR-code steps and no
+`[openagents.` tag, showing Working with a stop button before the reply; a
+model reply ("Explain in three short paragraphs how HTTP caching works")
+arrived piece by piece; and after the app was quit and relaunched, the
+chat was in Chats and opened with both replies. Build 33 was uploaded
+with `build.sh upload` at 2026-09-29T22:17:14-07:00 and is `VALID`, in
+Internal Testers (`IN_BETA_TESTING`).
