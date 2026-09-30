@@ -2728,6 +2728,82 @@ mod command_fixtures {
     use openagents_desktop::chat_action::Action as ChatAction;
     use rust_native_desktop::{App, input::TextInput};
     #[test]
+    fn floating_menu_repaints_match_complete_frames() {
+        use rust_native_desktop::{layout, paint, text::Fonts};
+        for scale in [1.0, 2.0] {
+            let (mut app, now) = super::tests::chat_fixture(0);
+            let mut fonts = Fonts::new();
+            let mut retained = paint::Retained::default();
+            app.viewport(760.0, 540.0, scale);
+            for step in 0..24 {
+                match step {
+                    1 | 14 => key(&mut app, now, "k", true, false),
+                    3 | 5 | 15 => {
+                        key(&mut app, now, "a", true, false);
+                        app.text_input(TextInput::Commit(if step == 3 { "chat" } else { "" }), now);
+                    }
+                    6 | 12 | 17 => key(&mut app, now, "Escape", false, false),
+                    7 | 18 => app.activate(
+                        Intent::Chat {
+                            action: ChatAction::Menu,
+                        },
+                        now,
+                    ),
+                    9 | 10 | 19 => key(&mut app, now, "ArrowDown", false, false),
+                    _ => {}
+                }
+                let interaction = layout::Interaction {
+                    hover: (step % 2 == 0).then(|| "command-pin".into()),
+                    ..Default::default()
+                };
+                let mut scene = layout::lay_out_with_overlay(
+                    app.view().view(),
+                    &app.theme(),
+                    &mut fonts,
+                    &|resource, available| app.surface_size(resource, available),
+                    &interaction,
+                    760.0,
+                    540.0,
+                    app.window_layout(),
+                    app.overlay_layout(),
+                );
+                for op in &mut scene.ops {
+                    if let layout::Op::Surface {
+                        resource, version, ..
+                    } = op
+                    {
+                        *version = app.surface_version(resource);
+                    }
+                }
+                let size = ((760.0 * scale) as usize, (540.0 * scale) as usize);
+                retained.update(
+                    &scene,
+                    size,
+                    scale,
+                    0.0,
+                    None,
+                    &mut fonts,
+                    &mut |resource, frame, rect| app.paint_surface(resource, frame, rect),
+                );
+                let mut complete = Frame::transparent(size.0, size.1);
+                paint::paint(
+                    &scene,
+                    &mut complete,
+                    scale,
+                    0.0,
+                    &mut fonts,
+                    &mut |resource, frame, rect| app.paint_surface(resource, frame, rect),
+                );
+                assert_eq!(
+                    retained.frame().unwrap().pixels,
+                    complete.pixels,
+                    "menu step {step} at scale {scale}"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn floating_controls_preserve_the_reader_and_composer_geometry() {
         let now = Instant::now();
         let (mut app, _) = DesktopApp::performance_fixture(100, 1, now);

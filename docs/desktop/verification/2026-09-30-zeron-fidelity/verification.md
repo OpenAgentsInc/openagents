@@ -113,3 +113,31 @@ The titlebar's tab and navigation controls, exact Markdown headings and code chr
 activity chips, new-chat composition, model badge, project footer, vector
 icons, and menu geometry still need comparison and implementation. These are
 tracked within #10029 before the next epic feature.
+
+## Menu repaint stability
+
+The owner reported flickering menus. The open preview was still running the
+older replacement-panel build; a separate scratch window uses the floating
+menu build without discarding that preview's conversations or draft.
+
+Fix a foreground invalidation defect in the native compositor: when a backdrop
+change replaces the GPU foreground texture without resizing the CPU frame,
+the retained painter must upload the entire frame. Otherwise an unchanged
+scene can leave the new texture blank. The regression verifies full damage
+after invalidation and returns to no damage on the next unchanged update.
+A second regression compares retained and complete frames through 24 menu
+opening, query, hover, keyboard selection, and dismissal steps at 1× and 2×.
+It passes with the actual overlay layout and surface revision keys.
+Desktop adapter: 56 tests passed; five command fixtures passed; strict
+all-target Clippy and scoped formatting passed. Native checks follow after
+building the merged commit. These checks do not establish the cause of every
+flicker seen in the older preview.
+
+The extended latency fixture also measures composer editing, command filtering,
+and chat-menu keyboard selection. The uncovered repeat records 115 frames
+for scroll, streaming, sidebar, composer, and commands, and 25 changed frames
+for the chat menu. Frame submission p50/p99: scroll 3.105/3.674 ms, streaming
+3.521/3.962 ms, sidebar 2.268/5.825 ms, composer 1.157/3.049 ms, commands
+5.584/6.406 ms, and chat menu 0.984/1.073 ms. Idle CPU is 2.22% of one core;
+peak RSS is 206.2 MiB. This is CPU submission timing, not GPU completion or
+scanout. [Retained report](native-controls.json).

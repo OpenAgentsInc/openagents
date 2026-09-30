@@ -17,6 +17,11 @@ pub struct Retained {
 }
 
 impl Retained {
+    /// Repaints and uploads the complete foreground after its GPU texture is replaced.
+    pub fn invalidate(&mut self) {
+        self.transform = None;
+    }
+
     /// The most recently painted frame.
     pub fn frame(&self) -> Option<&Frame> {
         self.frame.as_ref()
@@ -278,9 +283,9 @@ mod tests {
         };
         let mut retained = Retained::default();
         let mut fonts = Fonts::new();
-        let mut calls = 0;
+        let calls = std::cell::Cell::new(0);
         let mut draw = |_: &str, frame: &mut Frame, rect: PxRect| {
-            calls += 1;
+            calls.set(calls.get() + 1);
             frame.fill(rect, 3.0, Color::rgb(120, 150, 180));
         };
         assert_eq!(
@@ -300,7 +305,7 @@ mod tests {
         let damage = retained.update(&scene, (100, 70), 1.0, 0.0, None, &mut fonts, &mut draw);
         assert_eq!(damage.len(), 1);
         assert!(damage[0].w * damage[0].h < 100.0 * 70.0);
-        assert_eq!(calls, 2);
+        assert_eq!(calls.get(), 2);
         let mut expected = Frame::transparent(100, 70);
         paint(
             &scene,
@@ -311,5 +316,22 @@ mod tests {
             &mut |_, frame, rect| frame.fill(rect, 3.0, Color::rgb(120, 150, 180)),
         );
         assert_eq!(retained.frame().unwrap().pixels, expected.pixels);
+        retained.invalidate();
+        let damage = retained.update(&scene, (100, 70), 1.0, 0.0, None, &mut fonts, &mut draw);
+        assert_eq!(
+            damage,
+            vec![PxRect {
+                x: 0.0,
+                y: 0.0,
+                w: 100.0,
+                h: 70.0
+            }]
+        );
+        assert_eq!(retained.frame().unwrap().pixels, expected.pixels);
+        assert!(
+            retained
+                .update(&scene, (100, 70), 1.0, 0.0, None, &mut fonts, &mut draw)
+                .is_empty()
+        );
     }
 }

@@ -827,6 +827,7 @@ impl<A: App> Shell<A> {
             let compositor = self.compositor.as_mut().expect("a compositor");
             if compositor.fit(&gpu.device, width, height, look, pixels) {
                 self.painted = false;
+                self.foreground.invalidate();
             }
         }
         if !self.painted {
