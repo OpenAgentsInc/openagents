@@ -251,6 +251,7 @@ pub fn lay_out_window<I>(
         sizes,
         interaction,
         scene: Scene::default(),
+        paint_clip: None,
     };
     let (_, content) = engine.size(&view.root, column);
     let top = if content + 2.0 * theme.margin <= height {
@@ -304,6 +305,7 @@ pub fn lay_out_with_layout<I>(
         sizes,
         interaction,
         scene: Scene::default(),
+        paint_clip: None,
     };
     let leading = if leading_width > 0.0 {
         engine.docked_pane(
@@ -365,6 +367,7 @@ struct Engine<'a> {
     sizes: &'a SurfaceSizes<'a>,
     interaction: &'a Interaction,
     scene: Scene,
+    paint_clip: Option<Rect>,
 }
 
 /// Padding: top, end, bottom, start.
@@ -462,12 +465,14 @@ impl Engine<'_> {
         };
         self.scene.ops.push(Op::PushClip(body_rect));
         let first_hit = self.scene.hits.len();
+        let previous_clip = self.paint_clip.replace(body_rect);
         self.place(
             &children[1],
             body_rect.x + (width - body_width) / 2.0,
             body_rect.y + top - offset,
             body_width,
         );
+        self.paint_clip = previous_clip;
         for hit in &mut self.scene.hits[first_hit..] {
             hit.clip = Some(body_rect);
         }
@@ -725,6 +730,31 @@ impl Engine<'_> {
         let [top, end, bottom, start] = padding(&node.style);
         let inner = (width - start - end).max(1.0);
         let (ix, iy) = (x + start, y + top);
+        if self
+            .paint_clip
+            .is_some_and(|clip| y + height <= clip.y || y >= clip.y + clip.h)
+        {
+            match &node.element {
+                Element::Button { enabled, .. } => {
+                    // Retain keyboard order and scroll targets without creating
+                    // foreground operations for rows outside the viewport.
+                    self.scene.hits.push(Hit {
+                        rect: Rect {
+                            x: ix,
+                            y: iy,
+                            w: inner,
+                            h: (height - top - bottom).max(1.0),
+                        },
+                        key: node.key.clone(),
+                        enabled: *enabled,
+                        clip: self.paint_clip,
+                    });
+                    return;
+                }
+                Element::Text { .. } | Element::Surface { .. } => return,
+                _ => {}
+            }
+        }
         let is_stack = matches!(node.element, Element::Stack { .. } | Element::List { .. });
         if is_stack
             && let Some(background) = node.style.background

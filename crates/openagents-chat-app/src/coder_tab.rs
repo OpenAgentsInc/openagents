@@ -76,10 +76,11 @@ use serde::{Deserialize, Serialize};
 const MAX_PROMPT_BYTES: usize = 16 * 1024;
 const SHOWN_TASKS: usize = 50;
 /// The most basic conversations the list shows.
-const SHOWN_TALKS: usize = 50;
+const SHOWN_TALKS: usize = 512;
 /// One chat in the previous chats: its last message time and summary time,
 /// for ordering, and its row.
 struct Recent {
+    group: crate::chat_list::Group,
     last: Option<u64>,
     updated: u64,
     row: Node<Intent>,
@@ -1834,7 +1835,8 @@ impl CoderTab {
                 self.list.list.sent.insert(task.clone(), now);
                 self.list.list.used.insert(used_key(&host, &workspace), now);
                 self.list.save();
-                self.basic.spawned(&id, &host, &task, now);
+                self.basic
+                    .spawned_in(&id, &host, &task, Some(&workspace), now);
                 self.notice = None;
                 self.talk = None;
                 self.open(host, task.clone(), chats);
@@ -2106,10 +2108,8 @@ impl CoderTab {
     fn recent(&self, computers: Option<&Computers>, chats: &Chats) -> Vec<Recent> {
         let availability = self.availability(computers);
         let now = computers.map_or_else(unix_now, |c| c.snapshot().now);
-        let mut rows: Vec<Recent> = self
-            .basic
-            .list()
-            .iter()
+        let mut rows: Vec<Recent> = crate::chat_list::search(self.basic.list(), "")
+            .into_iter()
             .map(|summary| {
                 let place = match &summary.coder {
                     Some(spawned) => {
@@ -2121,11 +2121,22 @@ impl CoderTab {
                     None => "OpenAgents".to_owned(),
                 };
                 Recent {
+                    group: crate::chat_list::group(summary),
                     last: Some(summary.updated),
                     updated: summary.updated,
                     row: button(
                         &format!("talk-{}", &summary.id[..16.min(summary.id.len())]),
-                        &format!("{}\n{place} · {}", summary.title, ago(now, summary.updated)),
+                        &format!(
+                            "{}\n{place} · {} · {}",
+                            summary.title,
+                            ago(now, summary.updated),
+                            match crate::chat_list::group(summary) {
+                                crate::chat_list::Group::Pinned => "Pinned".into(),
+                                crate::chat_list::Group::Archived => "Archived".into(),
+                                crate::chat_list::Group::Project(p) => p,
+                                crate::chat_list::Group::Recent => "Saved".into(),
+                            }
+                        ),
                         Intent::OpenTalk {
                             id: summary.id.clone(),
                         },
@@ -2146,10 +2157,20 @@ impl CoderTab {
                     &saved,
                 )
                 .into_iter()
-                .map(|(last, updated, _, row)| Recent { last, updated, row }),
+                .map(|(last, updated, _, row)| Recent {
+                    group: crate::chat_list::Group::Recent,
+                    last,
+                    updated,
+                    row,
+                }),
             );
         }
-        rows.sort_by_key(|recent| std::cmp::Reverse((recent.last, recent.updated)));
+        rows.sort_by_key(|recent| {
+            (
+                recent.group.clone(),
+                std::cmp::Reverse((recent.last, recent.updated)),
+            )
+        });
         rows.truncate(SHOWN_TASKS + SHOWN_TALKS);
         rows
     }

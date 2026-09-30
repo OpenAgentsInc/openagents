@@ -105,7 +105,7 @@ impl DesktopApp {
         };
         let snapshot = Snapshot {
             chat: Some(chat.clone()), total:rows,
-            chats:(0..chats).map(|index| Summary{id:if index==0 {chat.clone()} else {format!("{:032x}",index)},title:format!("Saved conversation {index}"),started:1,updated:1,coder:None,archived:false}).collect(),
+            chats:(0..chats).map(|index| Summary{id:if index==0 {chat.clone()} else {format!("{:032x}",index)},title:format!("Saved conversation {index}"),started:1,updated:1,coder:None,archived:false,pinned:false,named:false}).collect(),
             turns:(0..rows).map(|index| if index%2==0 {Turn::user(format!("Question {index}: explain the next step."))} else {Turn::assistant(format!("Reply {index} with **bold**, *italic*, and `inline code`.\n\n- First item\n- Second item\n\n```rust\nlet answer = 42;\n```"),None)}).collect(),
             ..Snapshot::default()
         };
@@ -490,6 +490,11 @@ impl App for DesktopApp {
             }
         }
         if action != rust_native_desktop::composer::field::Action::Unhandled {
+            let requests = self
+                .chat
+                .as_mut()
+                .map_or_else(Vec::new, |chat| chat.take_requests());
+            self.send(requests, now);
             self.present();
             return true;
         }
@@ -1795,5 +1800,174 @@ mod image_fixtures {
         );
         assert_eq!(app.chat.as_ref().unwrap().images().len(), 3);
         assert_eq!(app.chat.as_ref().unwrap().draft(), "Keep this caption");
+    }
+}
+
+#[cfg(test)]
+mod chat_management {
+    use super::*;
+    use openagents_desktop::chat_action::Action as ChatAction;
+    use rust_native_desktop::{
+        App,
+        input::{SurfaceInput, TextInput},
+    };
+    #[test]
+    fn a_512_chat_sidebar_paints_only_its_viewport() {
+        let (mut app, _) = DesktopApp::performance_fixture(0, 512, Instant::now());
+        let (frame, scene) = rust_native_desktop::capture(&mut app, 1200.0, 840.0, 2.0);
+        let visible = scene
+            .hits
+            .iter()
+            .filter(|hit| {
+                hit.key.starts_with("sidebar-chat-")
+                    && hit.clip.is_none_or(|clip| {
+                        hit.rect.y + hit.rect.h > clip.y && hit.rect.y < clip.y + clip.h
+                    })
+            })
+            .count();
+        assert!(visible > 0 && visible < 20, "{visible}");
+        assert!(scene.ops.len() < 300, "{} operations", scene.ops.len());
+        if let Some(path) = std::env::var_os("OPENAGENTS_LIST_CAPTURE_DIR") {
+            let path = std::path::PathBuf::from(path);
+            std::fs::create_dir_all(&path).unwrap();
+            std::fs::write(path.join("512-chats.png"), frame.png().unwrap()).unwrap();
+        }
+    }
+    #[test]
+    fn pin_rename_search_archive_and_restore_use_real_host_state() {
+        let (mut app, now) = super::tests::chat_fixture(0);
+        let request = app.chat.as_mut().unwrap().new_chat();
+        app.send(vec![request], now);
+        app.present();
+        app.activate(
+            Intent::Chat {
+                action: ChatAction::Pin,
+            },
+            now,
+        );
+        assert!(
+            app.navigation
+                .as_ref()
+                .unwrap()
+                .chats
+                .iter()
+                .any(|s| s.section == chrome::Section::Pinned)
+        );
+        app.activate(
+            Intent::Chat {
+                action: ChatAction::Rename,
+            },
+            now,
+        );
+        app.text_input(
+            TextInput::Key {
+                key: "a",
+                text: None,
+                command: true,
+                alt: false,
+                shift: false,
+            },
+            now,
+        );
+        app.text_input(TextInput::Commit("Rocket plan"), now);
+        app.text_input(
+            TextInput::Key {
+                key: "Enter",
+                text: None,
+                command: false,
+                alt: false,
+                shift: false,
+            },
+            now,
+        );
+        assert!(
+            app.navigation
+                .as_ref()
+                .unwrap()
+                .chats
+                .iter()
+                .any(|s| s.title == "Rocket plan")
+        );
+        app.surface_input(
+            openagents_desktop::chat::SEARCH,
+            SurfaceInput::Down {
+                x: 10.0,
+                y: 10.0,
+                shift: false,
+            },
+            now,
+        );
+        app.text_input(TextInput::Commit("roCKet"), now);
+        assert_eq!(app.navigation.as_ref().unwrap().chats.len(), 1);
+        app.text_input(
+            TextInput::Key {
+                key: "a",
+                text: None,
+                command: true,
+                alt: false,
+                shift: false,
+            },
+            now,
+        );
+        app.text_input(TextInput::Commit("missing"), now);
+        assert!(app.navigation.as_ref().unwrap().chats.is_empty());
+        app.text_input(
+            TextInput::Key {
+                key: "a",
+                text: None,
+                command: true,
+                alt: false,
+                shift: false,
+            },
+            now,
+        );
+        app.text_input(TextInput::Commit("Rocket"), now);
+        app.activate(
+            Intent::Chat {
+                action: ChatAction::Archive,
+            },
+            now,
+        );
+        let row = app.navigation.as_ref().unwrap().chats[0].clone();
+        assert_eq!(row.section, chrome::Section::Archived);
+        app.activate(
+            Intent::Navigate {
+                action: chrome::Action::SelectChat { id: row.id },
+            },
+            now,
+        );
+        app.activate(
+            Intent::Chat {
+                action: ChatAction::Restore,
+            },
+            now,
+        );
+        assert_eq!(
+            app.navigation.as_ref().unwrap().chats[0].section,
+            chrome::Section::Pinned
+        );
+        app.activate(
+            Intent::Chat {
+                action: ChatAction::Pin,
+            },
+            now,
+        );
+        assert_eq!(
+            app.navigation.as_ref().unwrap().chats[0].section,
+            chrome::Section::Recent
+        );
+        for (width, height, scale) in [(1200.0, 840.0, 2.0), (760.0, 540.0, 1.0)] {
+            let (frame, scene) = rust_native_desktop::capture(&mut app, width, height, scale);
+            for key in ["chat-attach", "chat-pin", "chat-rename-start"] {
+                let hit = scene.hits.iter().find(|h| h.key == key).unwrap();
+                assert!(hit.rect.y + hit.rect.h <= height, "{key}");
+            }
+            if let Some(path) = std::env::var_os("OPENAGENTS_LIST_CAPTURE_DIR") {
+                let path = std::path::PathBuf::from(path);
+                std::fs::create_dir_all(&path).unwrap();
+                std::fs::write(path.join(format!("list-{width}.png")), frame.png().unwrap())
+                    .unwrap();
+            }
+        }
     }
 }

@@ -22,7 +22,7 @@ use tokio::runtime::Handle;
 use tokio::task::JoinHandle;
 
 /// The most conversations kept; the oldest go first.
-const MAX_TALKS: usize = 200;
+const MAX_TALKS: usize = 512;
 /// The most turns one conversation keeps; the oldest go first.
 const MAX_TURNS: usize = 400;
 /// The most bytes of turns one conversation keeps, inside the store's
@@ -34,6 +34,8 @@ const MAX_TALK_BYTES: usize = 150 * 1024;
 pub struct Spawned {
     pub host: String,
     pub task: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project: Option<String>,
 }
 
 /// One conversation's row in the list.
@@ -48,6 +50,10 @@ pub struct Summary {
     pub coder: Option<Spawned>,
     #[serde(default)]
     pub archived: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub pinned: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub named: bool,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -462,6 +468,8 @@ impl BasicChats {
                 updated: now,
                 coder: None,
                 archived: false,
+                pinned: false,
+                named: false,
             },
         );
         self.turns.insert(id.into(), vec![]);
@@ -477,6 +485,37 @@ impl BasicChats {
         }
         self.turns(id);
         self.save(id);
+    }
+
+    /// Save a title independently of the first message.
+    pub fn rename(&mut self, id: &str, title: &str) -> Result<(), String> {
+        let title = title.trim();
+        if title.is_empty() || title.len() > 160 || title.chars().any(char::is_control) {
+            return Err("Choose a title of 1 to 160 bytes without line breaks.".into());
+        }
+        self.turns(id);
+        let summary = self
+            .index
+            .iter_mut()
+            .find(|summary| summary.id == id)
+            .ok_or("Chat not found.")?;
+        summary.title = title.into();
+        summary.named = true;
+        self.save(id);
+        self.storage_error.clone().map_or(Ok(()), Err)
+    }
+
+    /// Pinning affects list presentation and grants no task authority.
+    pub fn pin(&mut self, id: &str, pinned: bool) -> Result<(), String> {
+        self.turns(id);
+        let summary = self
+            .index
+            .iter_mut()
+            .find(|summary| summary.id == id)
+            .ok_or("Chat not found.")?;
+        summary.pinned = pinned;
+        self.save(id);
+        self.storage_error.clone().map_or(Ok(()), Err)
     }
 
     /// Restore an archived conversation to the current list.
@@ -508,6 +547,10 @@ impl BasicChats {
             .next()
             .unwrap_or(text)
             .chars()
+            .scan(0, |bytes, ch| {
+                *bytes += ch.len_utf8();
+                (*bytes <= 160).then_some(ch)
+            })
             .take(80)
             .collect();
         self.index.insert(
@@ -519,6 +562,8 @@ impl BasicChats {
                 updated: now,
                 coder: None,
                 archived: false,
+                pinned: false,
+                named: false,
             },
         );
         while self.index.len() > MAX_TALKS {
@@ -561,7 +606,8 @@ impl BasicChats {
         if let Some(mark) = words_mark(text) {
             self.mark(mark);
         }
-        if self.turns.get(id).is_some_and(|turns| turns.len() == 1)
+        if self.get(id).is_some_and(|summary| !summary.named)
+            && self.turns.get(id).is_some_and(|turns| turns.len() == 1)
             && let Some(summary) = self.index.iter_mut().find(|summary| summary.id == id)
         {
             summary.title = text
@@ -569,6 +615,10 @@ impl BasicChats {
                 .next()
                 .unwrap_or(text)
                 .chars()
+                .scan(0, |bytes, ch| {
+                    *bytes += ch.len_utf8();
+                    (*bytes <= 160).then_some(ch)
+                })
                 .take(80)
                 .collect();
         }
@@ -759,10 +809,23 @@ impl BasicChats {
 
     /// Remember the task `id` started on a computer.
     pub fn spawned(&mut self, id: &str, host: &str, task: &str, now: u64) {
+        self.spawned_in(id, host, task, None, now);
+    }
+
+    /// Remember the host's workspace label for list grouping.
+    pub fn spawned_in(
+        &mut self,
+        id: &str,
+        host: &str,
+        task: &str,
+        project: Option<&str>,
+        now: u64,
+    ) {
         if let Some(summary) = self.index.iter_mut().find(|summary| summary.id == id) {
             summary.coder = Some(Spawned {
                 host: host.to_owned(),
                 task: task.to_owned(),
+                project: project.map(|s| s.chars().take(48).collect()),
             });
         }
         self.touch(id, now);
@@ -832,13 +895,13 @@ impl BasicChats {
         self.save_index();
     }
 
+    // Records contain their own summary. The bounded index is a warm head;
+    // opening the cache recovers the remaining summaries from those records.
     fn save_index(&mut self) {
         if !self.corrupt_index {
-            match self
-                .store
-                .as_ref()
-                .map_or(Ok(()), |store| store.write("basic-index", &self.index))
-            {
+            match self.store.as_ref().map_or(Ok(()), |store| {
+                store.write("basic-index", &self.index[..self.index.len().min(128)])
+            }) {
                 Ok(()) => {
                     self.storage_errors.remove("basic-index");
                     self.dirty_index = false;

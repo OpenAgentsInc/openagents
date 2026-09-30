@@ -89,7 +89,7 @@ impl Cache {
 
     /// Persist before publishing a cursor that depends on these bytes. Eviction
     /// affects presentation only: missing pages are reported and can be reloaded.
-    pub fn write<T: Serialize>(&self, key: &str, value: &T) -> Result<(), String> {
+    pub fn write<T: Serialize + ?Sized>(&self, key: &str, value: &T) -> Result<(), String> {
         let path = self.path(key)?;
         let plaintext = serde_json::to_string(&serde_json::json!({"key":key,"value":value}))
             .map_err(|_| "cache encoding failed")?;

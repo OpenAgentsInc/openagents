@@ -29,6 +29,8 @@ pub struct Session {
     listed: bool,
     observed: BTreeMap<String, u64>,
     list_ticket: u64,
+    list_version: u64,
+    list_more: Option<usize>,
 }
 
 impl Session {
@@ -49,6 +51,8 @@ impl Session {
             listed: false,
             observed: BTreeMap::new(),
             list_ticket: 0,
+            list_version: 0,
+            list_more: None,
         }
     }
     pub fn request(&mut self, command: Command) -> (u64, Command) {
@@ -84,14 +88,22 @@ impl Session {
     }
     pub fn tick(&mut self, now: Instant) -> Option<(u64, Command)> {
         if now < self.poll
-            || self
-                .pending
-                .values()
-                .any(|command| matches!(command, Command::List { .. } | Command::Read { .. }))
+            || self.pending.values().any(|command| {
+                matches!(
+                    command,
+                    Command::List { .. } | Command::ListMore { .. } | Command::Read { .. }
+                )
+            })
         {
             return None;
         }
         self.poll = now + Duration::from_millis(if self.busy() { 100 } else { 1000 });
+        if let Some(after) = self.list_more.take() {
+            return Some(self.request(Command::ListMore {
+                after,
+                version: self.list_version,
+            }));
+        }
         if self.listed && self.selected.is_none() && self.error.is_none() {
             return Some(self.new_chat());
         }
@@ -171,14 +183,19 @@ impl Session {
         };
         match result {
             Err(error) => {
+                if matches!(command, Command::ListMore { .. }) {
+                    self.list_more = None;
+                }
                 let target = match &command {
-                    Command::List {} => None,
+                    Command::List {} | Command::ListMore { .. } => None,
                     Command::UseSuggestion { chat, .. }
                     | Command::Create { chat }
                     | Command::Read { chat, .. }
                     | Command::Send { chat, .. }
                     | Command::Retry { chat }
                     | Command::Stop { chat }
+                    | Command::Rename { chat, .. }
+                    | Command::Pin { chat, .. }
                     | Command::Archive { chat }
                     | Command::Restore { chat } => Some(chat),
                 };
@@ -213,7 +230,30 @@ impl Session {
                         .map(|_| "Couldn't save chat. Check available disk space.".into());
                 }
                 if ticket >= self.list_ticket {
-                    self.summaries = snapshot.chats.clone();
+                    if snapshot.list_start == 0 {
+                        if snapshot.list_version != self.list_version || snapshot.list_total == 0 {
+                            self.summaries = snapshot.chats.clone();
+                        } else {
+                            for summary in &snapshot.chats {
+                                if let Some(old) =
+                                    self.summaries.iter_mut().find(|s| s.id == summary.id)
+                                {
+                                    *old = summary.clone();
+                                }
+                            }
+                        }
+                        self.list_version = snapshot.list_version;
+                    } else if snapshot.list_version == self.list_version
+                        && snapshot.list_start == self.summaries.len()
+                    {
+                        self.summaries.extend(snapshot.chats.clone());
+                    } else {
+                        self.list_more = None;
+                        return accepted;
+                    }
+                    if self.summaries.len() < snapshot.list_total {
+                        self.list_more = Some(self.summaries.len());
+                    }
                     self.list_ticket = ticket;
                 }
                 if let Some(id) = snapshot.chat.clone() {
@@ -319,6 +359,45 @@ mod tests {
                 .collect(),
             ..Snapshot::default()
         }
+    }
+
+    #[test]
+    fn a_large_catalog_loads_all_revision_bound_pages_and_refreshes_metadata() {
+        let mut host = openagents_chat::basic_chats::BasicChats::new(None, None, None);
+        for n in 0..512 {
+            assert!(host.create(&format!("{n:032x}"), n));
+        }
+        let now = Instant::now();
+        let mut session = Session::new(now);
+        for step in 0..4 {
+            let (ticket, command) = session.tick(now + Duration::from_secs(step)).unwrap();
+            let result = openagents_chat::service::apply(&mut host, command, 600);
+            session.outcome(ticket, result);
+        }
+        assert_eq!(session.summaries.len(), 512);
+        assert_eq!(
+            session
+                .summaries
+                .iter()
+                .map(|s| &s.id)
+                .collect::<std::collections::BTreeSet<_>>()
+                .len(),
+            512
+        );
+        let id = session.summaries[400].id.clone();
+        host.rename(&id, "Phone and desktop see this title")
+            .unwrap();
+        host.pin(&id, true).unwrap();
+        for step in 4..8 {
+            let (ticket, command) = session.tick(now + Duration::from_secs(step)).unwrap();
+            session.outcome(
+                ticket,
+                openagents_chat::service::apply(&mut host, command, 600),
+            );
+        }
+        let row = session.summaries.iter().find(|s| s.id == id).unwrap();
+        assert_eq!(row, host.get(&id).unwrap());
+        assert_eq!(crate::chat_list::search(&session.summaries, "")[0].id, id);
     }
 
     #[test]

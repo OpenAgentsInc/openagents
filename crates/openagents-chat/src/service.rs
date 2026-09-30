@@ -9,6 +9,10 @@ use serde::{Deserialize, Serialize};
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Command {
     List {},
+    ListMore {
+        after: usize,
+        version: u64,
+    },
     UseSuggestion {
         chat: String,
         id: String,
@@ -31,6 +35,14 @@ pub enum Command {
     Stop {
         chat: String,
     },
+    Rename {
+        chat: String,
+        title: String,
+    },
+    Pin {
+        chat: String,
+        pinned: bool,
+    },
     Archive {
         chat: String,
     },
@@ -44,6 +56,12 @@ pub enum Command {
 #[serde(deny_unknown_fields)]
 pub struct Snapshot {
     pub chats: Vec<Summary>,
+    #[serde(default)]
+    pub list_start: usize,
+    #[serde(default)]
+    pub list_total: usize,
+    #[serde(default)]
+    pub list_version: u64,
     /// Bounded digests shared with the phone's non-repeated suggestion policy.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub used: Vec<String>,
@@ -78,6 +96,16 @@ pub fn apply(chats: &mut BasicChats, command: Command, now: u64) -> Result<Snaps
     chats.settle(now);
     let (id, before) = match command {
         Command::List {} => (None, None),
+        Command::ListMore { after, version } => {
+            let mut page = snapshot(chats, None, None)?;
+            if page.list_version != version || after > chats.list().len() {
+                return Err("Chat list changed. Refresh it and try again.".into());
+            }
+            page.list_start = after;
+            page.chats =
+                chats.list()[after..chats.list().len().min(after.saturating_add(128))].to_vec();
+            return Ok(page);
+        }
         Command::UseSuggestion { chat, id } => {
             if !identity(&chat) || chats.get(&chat).is_none() {
                 return Err("Chat not found.".into());
@@ -147,6 +175,20 @@ pub fn apply(chats: &mut BasicChats, command: Command, now: u64) -> Result<Snaps
             chats.stop(&chat, now);
             (Some(chat), None)
         }
+        Command::Rename { chat, title } => {
+            if !identity(&chat) {
+                return Err("Invalid chat ID.".into());
+            }
+            chats.rename(&chat, &title)?;
+            (Some(chat), None)
+        }
+        Command::Pin { chat, pinned } => {
+            if !identity(&chat) {
+                return Err("Invalid chat ID.".into());
+            }
+            chats.pin(&chat, pinned)?;
+            (Some(chat), None)
+        }
         Command::Archive { chat } => {
             if !identity(&chat) {
                 return Err("Invalid chat ID.".into());
@@ -170,8 +212,16 @@ fn snapshot(
     id: Option<String>,
     before: Option<usize>,
 ) -> Result<Snapshot, String> {
+    use std::hash::{Hash, Hasher};
+    let mut digest = std::collections::hash_map::DefaultHasher::new();
+    serde_json::to_vec(chats.list())
+        .map_err(|_| "Couldn't read chat list.")?
+        .hash(&mut digest);
     let mut snapshot = Snapshot {
-        chats: chats.list().to_vec(),
+        chats: chats.list()[..chats.list().len().min(128)].to_vec(),
+        list_total: chats.list().len(),
+        list_start: 0,
+        list_version: digest.finish(),
         used: chats.used_markers().to_vec(),
         storage_error: chats.storage_error.clone(),
         ..Snapshot::default()
@@ -256,6 +306,95 @@ mod tests {
             self.calls.lock().unwrap().push((turns, reply));
             Box::pin(std::future::pending())
         }
+    }
+
+    #[test]
+    fn management_survives_restart_and_list_pages_bind_to_one_revision() {
+        let dir = tempfile::tempdir().unwrap();
+        let secret = secp256k1::SecretKey::from_byte_array([7; 32]).unwrap();
+        let mut chats =
+            BasicChats::new(None, None, Some(Cache::open(dir.path(), &secret).unwrap()));
+        for n in 0..512 {
+            assert!(chats.create(&format!("{n:032x}"), n));
+        }
+        let id = format!("{:032x}", 15);
+        apply(
+            &mut chats,
+            Command::Rename {
+                chat: id.clone(),
+                title: "Plan the Rocket".into(),
+            },
+            513,
+        )
+        .unwrap();
+        apply(
+            &mut chats,
+            Command::Pin {
+                chat: id.clone(),
+                pinned: true,
+            },
+            513,
+        )
+        .unwrap();
+        apply(&mut chats, Command::Archive { chat: id.clone() }, 513).unwrap();
+        drop(chats);
+        let mut chats =
+            BasicChats::new(None, None, Some(Cache::open(dir.path(), &secret).unwrap()));
+        assert_eq!(chats.list().len(), 512);
+        let row = chats.get(&id).unwrap();
+        assert_eq!(row.title, "Plan the Rocket");
+        assert!(row.pinned && row.named && row.archived);
+        apply(&mut chats, Command::Restore { chat: id.clone() }, 514).unwrap();
+        assert!(chats.send(&id, "First message must not replace the name", 514));
+        assert_eq!(chats.get(&id).unwrap().title, "Plan the Rocket");
+        let first = apply(&mut chats, Command::List {}, 514).unwrap();
+        assert_eq!(first.list_total, 512);
+        assert_eq!(first.chats.len(), 128);
+        let mut ids: std::collections::BTreeSet<_> =
+            first.chats.iter().map(|s| s.id.clone()).collect();
+        for after in [128, 256, 384] {
+            let page = apply(
+                &mut chats,
+                Command::ListMore {
+                    after,
+                    version: first.list_version,
+                },
+                514,
+            )
+            .unwrap();
+            assert_eq!(page.list_start, after);
+            assert!(serde_json::to_vec(&page).unwrap().len() < 220 * 1024);
+            ids.extend(page.chats.into_iter().map(|s| s.id));
+        }
+        assert_eq!(ids.len(), 512);
+        apply(
+            &mut chats,
+            Command::Pin {
+                chat: id.clone(),
+                pinned: false,
+            },
+            514,
+        )
+        .unwrap();
+        assert!(
+            apply(
+                &mut chats,
+                Command::ListMore {
+                    after: 128,
+                    version: first.list_version
+                },
+                514
+            )
+            .is_err()
+        );
+        for title in ["", "bad\nname", &"x".repeat(161)] {
+            assert!(chats.rename(&id, title).is_err());
+        }
+        assert!(
+            chats
+                .get(&id)
+                .is_some_and(|row| !row.archived && !row.pinned)
+        );
     }
 
     #[test]

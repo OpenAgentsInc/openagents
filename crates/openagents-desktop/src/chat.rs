@@ -26,7 +26,14 @@ use std::time::Instant;
 pub const TRANSCRIPT: &str = "chat-transcript";
 pub const COMPOSER: &str = "composer:chat-composer";
 
+pub const SEARCH: &str = "composer:chat-search";
+pub const RENAME: &str = "composer:chat-rename";
+
 pub struct Panel {
+    search: Field,
+    rename: Option<(String, Field)>,
+    rename_pending: Option<(u64, String, String)>,
+    aux_rect: Option<PxRect>,
     session: Session,
     ids: BTreeMap<String, u64>,
     fields: BTreeMap<String, Field>,
@@ -56,6 +63,10 @@ pub struct Panel {
 impl Panel {
     pub fn new(now: Instant) -> Self {
         Self {
+            search: Field::with_placeholder("Search chats…"),
+            rename: None,
+            rename_pending: None,
+            aux_rect: None,
             session: Session::new(now),
             ids: BTreeMap::new(),
             fields: BTreeMap::new(),
@@ -152,6 +163,7 @@ impl Panel {
         request(self.session.request(command))
     }
     pub fn start(&mut self, waker: rust_native_desktop::Waker) {
+        self.search.start(waker.clone());
         for field in self.fields.values_mut() {
             field.start(waker.clone());
         }
@@ -163,6 +175,10 @@ impl Panel {
         self.transcript.poll_highlights();
         let at_ms = now.saturating_duration_since(self.born).as_millis() as u64;
         self.poll_images(at_ms);
+        self.search.poll_clipboard(at_ms);
+        if let Some((_, field)) = &mut self.rename {
+            field.poll_clipboard(at_ms);
+        }
         for field in self.fields.values_mut() {
             field.poll_clipboard(at_ms);
         }
@@ -210,11 +226,16 @@ impl Panel {
         }
     }
     fn selected_changed(&mut self, previous: Option<String>) {
+        self.rename = None;
+        self.rename_pending = None;
         if let Some(field) = previous.and_then(|id| self.fields.get_mut(&id)) {
             field.input(TextInput::FocusLost, 0);
         }
         if let Some(id) = &self.session.selected {
-            let field = self.fields.entry(id.clone()).or_default();
+            let field = self
+                .fields
+                .entry(id.clone())
+                .or_insert_with(|| Field::with_placeholder("Message OpenAgents…"));
             field.focused = true;
             if let Some(waker) = &self.waker {
                 field.start(waker.clone());
@@ -245,10 +266,11 @@ impl Panel {
         }))
     }
     pub fn sync_sidebar(&mut self, state: &mut State) {
+        let mut next = self.ids.values().max().copied().unwrap_or(0) + 1;
         for summary in &self.session.summaries {
             if !self.ids.contains_key(&summary.id) {
-                let id = self.ids.values().max().copied().unwrap_or(0) + 1;
-                self.ids.insert(summary.id.clone(), id);
+                self.ids.insert(summary.id.clone(), next);
+                next += 1;
             }
         }
         if let Some(selected) = &self.session.selected
@@ -257,16 +279,26 @@ impl Panel {
             let id = self.ids.values().max().copied().unwrap_or(0) + 1;
             self.ids.insert(selected.clone(), id);
         }
-        let chats = self
-            .session
-            .summaries
-            .iter()
+        state.search = self.search.text().into();
+        state.projects.clear();
+        let listed = openagents_chat_app::chat_list::search(&self.session.summaries, &state.search);
+        for summary in &listed {
+            if let openagents_chat_app::chat_list::Group::Project(project) =
+                openagents_chat_app::chat_list::group(summary)
+            {
+                state.projects.insert(self.ids[&summary.id], project);
+            }
+        }
+        let chats = listed
+            .into_iter()
             .map(|summary| Chat {
                 id: self.ids[&summary.id],
                 title: summary.title.clone(),
                 detail: "OpenAgents · Saved",
                 section: if summary.archived {
                     Section::Archived
+                } else if summary.pinned {
+                    Section::Pinned
                 } else {
                     Section::Recent
                 },
@@ -284,6 +316,24 @@ impl Panel {
         );
     }
     pub fn outcome(&mut self, ticket: u64, result: ControlResult<Snapshot>) {
+        if self
+            .rename_pending
+            .as_ref()
+            .is_some_and(|(pending, _, _)| *pending == ticket)
+        {
+            let (_, chat, title) = self.rename_pending.take().expect("matched pending rename");
+            if result
+                .as_ref()
+                .is_ok_and(|snapshot| snapshot.storage_error.is_none())
+                && self.session.selected.as_deref() == Some(&chat)
+                && self
+                    .rename
+                    .as_ref()
+                    .is_some_and(|(_, field)| field.text().trim() == title.trim())
+            {
+                self.rename = None;
+            }
+        }
         let previous = self.session.selected.clone();
         let revision = self.session.revision;
         let accepted = self
@@ -317,6 +367,10 @@ impl Panel {
         self.notice = Some(notice);
     }
     pub fn mounted(&mut self, view: &ValidatedView<Intent>) {
+        let _ = self.search.draft.mount(view, "chat-search");
+        if let Some((_, field)) = &mut self.rename {
+            let _ = field.draft.mount(view, "chat-rename");
+        }
         if let Some(field) = self.field()
             && let Ok(mount) = field.draft.mount(view, "chat-composer")
             && mount.focus
@@ -400,6 +454,44 @@ impl Panel {
                 self.submissions.insert(send_id, (id, submission));
                 Some(request(command))
             }
+            Action::Pin => {
+                let pinned = !self
+                    .session
+                    .summaries
+                    .iter()
+                    .find(|row| row.id == id)
+                    .is_some_and(|row| row.pinned);
+                Some(self.request(Command::Pin { chat: id, pinned }))
+            }
+            Action::Rename => {
+                let title = self
+                    .session
+                    .summaries
+                    .iter()
+                    .find(|row| row.id == id)
+                    .map_or("", |row| row.title.as_str())
+                    .to_owned();
+                if let Some(field) = self.field() {
+                    field.focused = false;
+                }
+                self.search.focused = false;
+                let mut field = Field::with_placeholder("Chat title");
+                if let Some(wake) = self.waker.clone() {
+                    field.start(wake);
+                }
+                field.focused = true;
+                // The initial title mounts with the next semantic view.
+                self.rename = Some((title, field));
+                None
+            }
+            Action::CancelRename => {
+                self.rename = None;
+                None
+            }
+            Action::SaveName => {
+                let title = self.rename.as_ref()?.1.text().to_owned();
+                self.save_name(id, title)
+            }
             Action::Stop => Some(self.request(Command::Stop { chat: id })),
             Action::Retry => self.session.retry().map(request),
             Action::Restore => Some(self.request(Command::Restore { chat: id })),
@@ -426,7 +518,45 @@ impl Panel {
             }
         }
     }
+    fn save_name(&mut self, chat: String, title: String) -> Option<Request> {
+        if self.rename_pending.is_some() {
+            return None;
+        }
+        let request = self.request(Command::Rename {
+            chat: chat.clone(),
+            title: title.clone(),
+        });
+        if let Request::Chat { ticket, .. } = &request {
+            self.rename_pending = Some((*ticket, chat, title));
+        }
+        Some(request)
+    }
     pub fn input(&mut self, event: TextInput<'_>, now: Instant) -> FieldAction {
+        let at = now.duration_since(self.born).as_millis() as u64;
+        if self.search.focused {
+            let result = self.search.input(event, at);
+            return if result == FieldAction::Send {
+                FieldAction::Edited
+            } else {
+                result
+            };
+        }
+        if let Some((_, field)) = &mut self.rename {
+            let result = field.input(event, at);
+            if result == FieldAction::Send {
+                if let Some(chat) = self.session.selected.clone() {
+                    let title = field.text().to_owned();
+                    if let Some(request) = self.save_name(chat, title) {
+                        self.queued.push(request);
+                    }
+                }
+                return FieldAction::Edited;
+            }
+            if result != FieldAction::Unhandled {
+                return result;
+            }
+            return FieldAction::Unhandled;
+        }
         if let TextInput::Key {
             key, command: true, ..
         } = &event
@@ -457,6 +587,41 @@ impl Panel {
             .map_or(FieldAction::Unhandled, |field| field.input(event, at))
     }
     pub fn surface(&mut self, resource: &str, event: SurfaceInput, now: Instant) -> bool {
+        if matches!(event, SurfaceInput::Down { .. }) {
+            let at = now.duration_since(self.born).as_millis() as u64;
+            if resource != SEARCH {
+                self.search.input(TextInput::FocusLost, at);
+            }
+            if resource != RENAME
+                && let Some((_, field)) = &mut self.rename
+            {
+                field.input(TextInput::FocusLost, at);
+            }
+            if resource != COMPOSER
+                && let Some(field) = self.field()
+            {
+                field.input(TextInput::FocusLost, at);
+            }
+        }
+        if resource == SEARCH || resource == RENAME {
+            let field = if resource == SEARCH {
+                Some(&mut self.search)
+            } else {
+                self.rename.as_mut().map(|(_, f)| f)
+            };
+            if let Some(field) = field {
+                if matches!(event, SurfaceInput::Move { .. }) && !field.dragging() {
+                    return false;
+                }
+                field.pointer(
+                    event,
+                    &mut self.fonts,
+                    now.duration_since(self.born).as_millis() as u64,
+                );
+                return true;
+            }
+            return false;
+        }
         if resource == TRANSCRIPT {
             let version = self.transcript.version();
             let moved = matches!(event, SurfaceInput::Move { .. });
@@ -539,6 +704,8 @@ impl Panel {
     }
     pub fn version(&self, resource: &str) -> Option<u64> {
         match resource {
+            SEARCH => Some(self.search.version()),
+            RENAME => self.rename.as_ref().map(|(_, field)| field.version()),
             TRANSCRIPT => Some(self.transcript.version()),
             COMPOSER => self
                 .session
@@ -581,10 +748,14 @@ impl Panel {
             .and_then(|id| self.fields.get(id))
             .map_or(56.0, |field| field.height(available));
         match resource {
+            SEARCH | RENAME => Some((available, 56.0)),
             TRANSCRIPT => Some((
                 available,
-                (self.viewport.1 - 240.0 - composer_height - self.image_height(available))
-                    .max(40.0),
+                (self.viewport.1
+                    - if available < 620.0 { 288.0 } else { 240.0 }
+                    - composer_height
+                    - self.image_height(available))
+                .max(40.0),
             )),
             COMPOSER => Some((available, composer_height)),
             resource if resource.starts_with("image:") => self
@@ -604,6 +775,18 @@ impl Panel {
     }
     pub fn paint(&mut self, resource: &str, frame: &mut Frame, rect: PxRect) -> bool {
         let scale = self.viewport.2;
+        if resource == SEARCH || resource == RENAME {
+            let field = if resource == SEARCH {
+                Some(&mut self.search)
+            } else {
+                self.rename.as_mut().map(|(_, f)| f)
+            };
+            if let Some(field) = field {
+                field.paint(frame, rect, scale, &mut self.fonts);
+                self.aux_rect = Some(rect);
+                return true;
+            }
+        }
         if let Some(image) = self.session.selected.as_ref().and_then(|id| {
             self.session
                 .images
@@ -660,6 +843,19 @@ impl Panel {
         false
     }
     pub fn cursor(&self) -> Option<(f64, f64)> {
+        let aux = if self.search.focused {
+            Some(&self.search)
+        } else {
+            self.rename.as_ref().map(|(_, f)| f).filter(|f| f.focused)
+        };
+        if let Some(field) = aux {
+            let rect = self.aux_rect?;
+            let scale = self.viewport.2;
+            return Some((
+                (rect.x / scale + field.caret.0) as f64,
+                (rect.y / scale + field.caret.1 + 20.0) as f64,
+            ));
+        }
         let field = self
             .session
             .selected
@@ -753,6 +949,44 @@ impl Panel {
         stack("chat-body", Axis::Vertical, children)
     }
     pub fn footer(&mut self) -> Node<Intent> {
+        if let Some((title, field)) = &self.rename {
+            return stack(
+                "chat-rename-controls",
+                Axis::Vertical,
+                vec![
+                    Node {
+                        key: "chat-rename".into(),
+                        style: Style::default(),
+                        element: Element::Composer {
+                            token: format!(
+                                "rename-{}",
+                                self.session.selected.as_deref().unwrap_or("")
+                            ),
+                            placeholder: "Chat title".into(),
+                            max_bytes: 160,
+                            enabled: true,
+                            busy: false,
+                            stop: None,
+                            choices: vec![],
+                            draft: Some(if field.draft.editor().is_some() {
+                                field.text().into()
+                            } else {
+                                title.clone()
+                            }),
+                            focus: true,
+                        },
+                    },
+                    stack(
+                        "chat-rename-buttons",
+                        Axis::Horizontal,
+                        vec![
+                            button("chat-save-name", "Save title", Action::SaveName, true),
+                            button("chat-cancel-name", "Cancel", Action::CancelRename, true),
+                        ],
+                    ),
+                ],
+            );
+        }
         let Some(id) = self.session.selected.clone() else {
             return text(
                 "chat-no-selection",
@@ -814,6 +1048,23 @@ impl Panel {
             !busy,
         ));
         buttons.push(button("chat-archive", "Archive", Action::Archive, true));
+        buttons.push(button(
+            "chat-pin",
+            if self
+                .session
+                .summaries
+                .iter()
+                .find(|s| s.id == id)
+                .is_some_and(|s| s.pinned)
+            {
+                "Unpin"
+            } else {
+                "Pin"
+            },
+            Action::Pin,
+            true,
+        ));
+        buttons.push(button("chat-rename-start", "Rename", Action::Rename, true));
         let mut previews = vec![];
         for image in self.session.images.get(&id) {
             let short: String = image.name.chars().take(10).collect();

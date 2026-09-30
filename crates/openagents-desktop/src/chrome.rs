@@ -94,6 +94,8 @@ pub struct State {
     pub collapsed: bool,
     pub closed_sections: BTreeSet<Section>,
     pub chats: Vec<Chat>,
+    pub search: String,
+    pub projects: std::collections::BTreeMap<u64, String>,
     next_chat: u64,
 }
 
@@ -176,6 +178,8 @@ impl Default for State {
         ];
         Self {
             live: false,
+            search: String::new(),
+            projects: std::collections::BTreeMap::new(),
             page: Page::Chat(1),
             sidebar_width: SIDEBAR_DEFAULT,
             collapsed: false,
@@ -353,12 +357,24 @@ fn sidebar(state: &State) -> Node<Intent> {
     );
     new.style.background = Some(Color::rgb(33, 36, 41));
     new.style.foreground = Some(TEXT);
-    let header = stack(
-        "sidebar-header",
-        Axis::Vertical,
-        Space::Sm,
-        vec![title, new],
-    );
+    let mut header_rows = vec![title, new];
+    if state.live {
+        header_rows.push(node(
+            "chat-search",
+            Element::Composer {
+                token: "chat-search".into(),
+                placeholder: "Search chats…".into(),
+                max_bytes: 128,
+                enabled: true,
+                busy: false,
+                stop: None,
+                choices: vec![],
+                draft: Some(state.search.clone()),
+                focus: false,
+            },
+        ));
+    }
+    let header = stack("sidebar-header", Axis::Vertical, Space::Sm, header_rows);
     let mut groups = vec![action(
         "sidebar-grid",
         "The Grid",
@@ -373,11 +389,45 @@ fn sidebar(state: &State) -> Node<Intent> {
         Section::Recent,
         Section::Archived,
     ] {
+        if state.live && matches!(section, Section::OpenAgents | Section::Website) {
+            continue;
+        }
+        if state.live && section == Section::Recent {
+            let projects: BTreeSet<_> = state.projects.values().collect();
+            for project in projects {
+                let mut rows = vec![text(
+                    &format!("project-{}", groups.len()),
+                    project,
+                    TextRole::Heading,
+                )];
+                rows.extend(
+                    state
+                        .chats
+                        .iter()
+                        .filter(|chat| state.projects.get(&chat.id) == Some(project))
+                        .map(|chat| {
+                            action(
+                                &format!("sidebar-chat-{}", chat.id),
+                                format!("{}\n{}", chat.title, chat.detail),
+                                Action::SelectChat { id: chat.id },
+                                None,
+                                state.page == Page::Chat(chat.id),
+                            )
+                        }),
+                );
+                groups.push(stack(
+                    &format!("project-group-{}", groups.len()),
+                    Axis::Vertical,
+                    Space::Xs,
+                    rows,
+                ));
+            }
+        }
         let closed = state.closed_sections.contains(&section);
         let count = state
             .chats
             .iter()
-            .filter(|chat| chat.section == section)
+            .filter(|chat| chat.section == section && !state.projects.contains_key(&chat.id))
             .count();
         let label = format!(
             "{}  {}  {count}",
@@ -396,7 +446,9 @@ fn sidebar(state: &State) -> Node<Intent> {
                 state
                     .chats
                     .iter()
-                    .filter(|chat| chat.section == section)
+                    .filter(|chat| {
+                        chat.section == section && !state.projects.contains_key(&chat.id)
+                    })
                     .map(|chat| {
                         action(
                             &format!("sidebar-chat-{}", chat.id),

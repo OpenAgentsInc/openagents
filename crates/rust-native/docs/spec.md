@@ -146,12 +146,11 @@ and byte bound. An accepted submission clears only its exact editing sequence,
 so it never discards text typed afterwards. Domain admission and message
 idempotency remain application responsibilities.
 
-These APIs establish the editing foundation for
-[#9996](https://github.com/OpenAgentsInc/openagents/issues/9996). Native window
-key/IME events, clipboard access, caret and selection painting, visual line
-movement, platform accessibility, and phone editing adapters remain pending.
-The desktop window still reports `Composer` as unsupported until those parts
-are connected.
+The desktop adapter connects these APIs to native key and IME events,
+clipboard access, caret and selection painting, and visual line movement.
+Its reusable `Field` takes an application-provided placeholder. Search and
+title fields use the same editor with separate editing lifetimes. Platform
+accessibility and phone editor adoption remain separate work under #10003.
 
 ## Transcript layout
 

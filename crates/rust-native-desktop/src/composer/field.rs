@@ -26,6 +26,7 @@ enum ClipboardResult {
 pub struct Field {
     pub draft: ComposerDraft,
     pub focused: bool,
+    placeholder: String,
     paragraph: Option<Rc<Paragraph>>,
     offset: f32,
     dragging: bool,
@@ -36,6 +37,12 @@ pub struct Field {
 }
 
 impl Field {
+    pub fn with_placeholder(placeholder: &str) -> Self {
+        Self {
+            placeholder: placeholder.into(),
+            ..Self::default()
+        }
+    }
     /// Grow from one line to eight lines, then scroll within the field.
     pub fn height(&self, width: f32) -> f32 {
         let text = self.text();
@@ -407,7 +414,7 @@ impl Field {
             }
         }
         if text.is_empty() {
-            let placeholder = fonts.paragraph("Message OpenAgents…", font, None);
+            let placeholder = fonts.paragraph(&self.placeholder, font, None);
             fonts.draw(
                 frame,
                 &placeholder,

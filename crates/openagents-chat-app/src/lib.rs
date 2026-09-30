@@ -23,3 +23,5 @@ pub mod projection;
 pub mod session;
 
 pub mod attachments;
+
+pub mod chat_list;
