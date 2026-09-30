@@ -5,7 +5,7 @@ openagents.com serves, the terms of service and the privacy policy, the one
 install page, and the landing page for the pairing QR code. It also serves a
 local, read-only task browser at `/app`.
 
-The site is a terminal in a browser, drawn in four intensities of white on
+The site is drawn in four intensities of white on
 near-black (`src/palette.rs`). No page runs a script, and every response
 carries a content security policy that allows none.
 
@@ -39,8 +39,7 @@ everything it serves is compiled in or read from this repository.
 
 | Route | Source | Development server |
 | --- | --- | --- |
-| `/` | Welcome card, one `[ Install OpenAgents ]` link, ask box | Renders. |
-| `/ask?q=` | Commands (`download`, `install`, `desktop`, `mac`, `iphone`, `help`, `clear`) and questions | The install commands print a short summary that links `/install`; a question says chat isn't connected. |
+| `/` | What OpenAgents is, one `[ Install OpenAgents ]` link, and a screenshot of the Verse (`static/verse-grid.jpg`, the Grid from above, captured from the live relay with `crates/verse/examples/overlook_capture.rs`) | Renders. |
 | `/install` | Everything OpenAgents is launching, in order: the notarized OpenAgents for Mac `.dmg` in `openagentsgemini-oa-updates`, the iPhone app on TestFlight, pairing by QR code, and signing in to Codex or Claude Code on the Mac so the phone can run Coder | Renders. |
 | `/desktop` | Permanent redirect to `/install` | Redirects. |
 | `/terms`, `/privacy` | `content/legal/*.md`, the published text (2026-09-03), compiled in | Renders. |
@@ -84,7 +83,7 @@ cargo test -p openagents-web
 
 The tests check that every public page answers `200` on a development
 server with the header, the footer's links to the terms and the policy, and
-no script; the homepage's single install link and the ask box's commands;
+no script; the homepage's single install link and its Verse screenshot;
 the install page and the `/desktop` redirect; that the legal pages carry the
 published text; that every color in the stylesheet is a gray and that the
 text steps meet WCAG AA; the `/connect` page's policy and the association

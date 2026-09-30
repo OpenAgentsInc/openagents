@@ -86,6 +86,7 @@ pub fn router(config: Config) -> Router {
     Router::new()
         .route("/health", get(|| async { "ok" }))
         .route("/static/site.css", get(stylesheet))
+        .route("/static/verse-grid.jpg", get(verse_grid))
         .route("/favicon.svg", get(favicon))
         .route("/favicon.ico", get(favicon))
         .merge(pages::routes())
@@ -163,6 +164,18 @@ async fn stylesheet() -> Response {
             (header::CACHE_CONTROL, "public, max-age=300"),
         ],
         css(),
+    )
+        .into_response()
+}
+
+/// The homepage's Verse screenshot.
+async fn verse_grid() -> Response {
+    (
+        [
+            (header::CONTENT_TYPE, "image/jpeg"),
+            (header::CACHE_CONTROL, "public, max-age=86400"),
+        ],
+        &include_bytes!("../static/verse-grid.jpg")[..],
     )
         .into_response()
 }

@@ -3,6 +3,9 @@
 //! window (half its pixels).
 //! Usage: overlook_capture OUTPUT.png [ORBIT_SECONDS] [RELAY_URL WATCH_SECONDS]
 //!
+//! `OVERLOOK_SIZE=WIDTHxHEIGHT` draws another size (the website's Grid
+//! image is 1600x900).
+//!
 //! ORBIT_SECONDS (default 0) is how far into its slow turn the camera is.
 //! With a relay, it watches the Grid there for WATCH_SECONDS first, as a
 //! spectator that publishes nothing, and draws who is there.
@@ -39,7 +42,13 @@ fn main() -> Result<(), String> {
     let now = Instant::now();
     overlook.tick(now);
     let mesh = overlook.mesh(now, 1.0 / 30.0);
-    let (width, height) = (560, 720);
+    let (width, height) = match std::env::var("OVERLOOK_SIZE") {
+        Ok(size) => size
+            .split_once('x')
+            .and_then(|(w, h)| Some((w.parse::<u32>().ok()?, h.parse::<u32>().ok()?)))
+            .ok_or_else(|| format!("OVERLOOK_SIZE={size} is not WIDTHxHEIGHT"))?,
+        Err(_) => (560, 720),
+    };
     verse::render::capture_with_atmosphere(
         &output,
         width,

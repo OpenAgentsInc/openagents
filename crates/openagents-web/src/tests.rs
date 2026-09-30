@@ -40,27 +40,32 @@ async fn get_with(
     (status, headers, String::from_utf8_lossy(&body).into_owned())
 }
 
+async fn get_bytes(router: Router, uri: &str) -> (StatusCode, axum::http::HeaderMap, Vec<u8>) {
+    let response = router
+        .oneshot(
+            Request::builder()
+                .uri(uri)
+                .header(header::HOST, LOCAL)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let status = response.status();
+    let headers = response.headers().clone();
+    let body = to_bytes(response.into_body(), 16 * 1024 * 1024)
+        .await
+        .unwrap();
+    (status, headers, body.to_vec())
+}
+
 async fn get(router: Router, uri: &str) -> (StatusCode, String) {
     let (status, _, body) = get_with(router, uri, LOCAL).await;
     (status, body)
 }
 
 /// Every public HTML page a development server serves.
-const PAGES: [&str; 13] = [
-    "/",
-    "/ask?q=help",
-    "/ask?q=download",
-    "/ask?q=install",
-    "/ask?q=desktop",
-    "/ask?q=mac",
-    "/ask?q=iphone",
-    "/ask?q=what+is+openagents",
-    "/ask?q=docs",
-    "/install",
-    "/terms",
-    "/privacy",
-    "/connect",
-];
+const PAGES: [&str; 5] = ["/", "/install", "/terms", "/privacy", "/connect"];
 
 #[tokio::test]
 async fn every_public_page_answers_in_development() {
@@ -99,44 +104,25 @@ async fn the_legal_pages_carry_the_published_text() {
 }
 
 #[tokio::test]
-async fn the_homepage_links_one_install_page_and_the_ask_box() {
+async fn the_homepage_links_one_install_page_and_shows_the_verse() {
     let root = tempfile::tempdir().unwrap();
     let (_, home) = get(router(config(root.path().into())), "/").await;
-    assert!(home.contains("Welcome to OpenAgents."));
     assert!(home.contains("<a class=\"button\" href=\"/install\">[ Install OpenAgents ]</a>"));
     assert!(
         !home.contains(pages::MAC_DMG),
         "the download lives on /install"
     );
     assert!(!home.contains("curl ") && !home.contains("irm "));
-    assert!(home.contains("action=\"/ask\""));
-    for command in ["download", "install", "desktop", "mac", "iphone"] {
-        let (_, answer) = get(
-            router(config(root.path().into())),
-            &format!("/ask?q={command}"),
-        )
-        .await;
-        assert!(answer.contains("href=\"/install\""), "{command}");
-        assert!(answer.contains("TestFlight"), "{command}");
-    }
-    for command in ["help", "docs", "blog", "why"] {
-        let (_, answer) = get(
-            router(config(root.path().into())),
-            &format!("/ask?q={command}"),
-        )
-        .await;
-        for word in ["Terminal", "href=\"/docs", "href=\"/blog", "blog", "docs"] {
-            let shown = answer.replace(&format!("value=\"{command}\""), "");
-            let shown = shown.replace(&format!("<p class=\"typed\">{command}</p>"), "");
-            assert!(!shown.contains(word), "{command} mentions {word}");
-        }
-    }
-    let (_, answer) = get(router(config(root.path().into())), "/ask?q=%3Cb%3Ehi").await;
-    assert!(answer.contains("&lt;b&gt;hi"), "{answer}");
-    assert!(!answer.contains("<b>hi"), "{answer}");
-    assert!(answer.contains("isn&#39;t connected") || answer.contains("isn't connected"));
-    let (status, _) = get(router(config(root.path().into())), "/ask?q=clear").await;
-    assert_eq!(status, StatusCode::SEE_OTHER);
+    assert!(!home.contains("class=\"terminal\"") && !home.contains("<form"));
+    assert!(home.contains("<img src=\"/static/verse-grid.jpg\""));
+    assert!(home.contains("alt=\"The Grid, the OpenAgents Verse world"));
+    let (status, headers, image) =
+        get_bytes(router(config(root.path().into())), "/static/verse-grid.jpg").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(headers[header::CONTENT_TYPE], "image/jpeg");
+    assert!(image.starts_with(&[0xff, 0xd8, 0xff]), "a JPEG");
+    let (status, _) = get(router(config(root.path().into())), "/ask?q=help").await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "the ask box is gone");
 }
 
 #[tokio::test]
@@ -326,9 +312,6 @@ impl backend::Backend for Connected {
     fn new_account_credit_cents(&self) -> Option<u64> {
         Some(2500)
     }
-    fn answer<'a>(&'a self, question: &'a str) -> BoxFuture<'a, Option<String>> {
-        Box::pin(async move { Some(format!("You asked **{question}**.")) })
-    }
     fn profile<'a>(&'a self, login: &'a str) -> BoxFuture<'a, Option<Profile>> {
         Box::pin(async move {
             (login == "tester").then(|| Profile {
@@ -352,8 +335,6 @@ async fn a_connected_backend_fills_the_pages_and_escapes_what_it_returns() {
     let dir = root.path();
     let (_, home) = get(router(connected(dir)), "/").await;
     assert!(home.contains("Every new account starts with $25 of credit."));
-    let (_, answer) = get(router(connected(dir)), "/ask?q=why").await;
-    assert!(answer.contains("<strong>why</strong>"), "{answer}");
     let (_, profile) = get(router(connected(dir)), "/u/tester").await;
     assert!(profile.contains("Test Person") && profile.contains("https://github.com/tester"));
     for uri in ["/u/nobody"] {

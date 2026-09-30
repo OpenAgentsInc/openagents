@@ -1,5 +1,5 @@
 //! Where the pages that show accounts read their rows: profiles, and the
-//! homepage's answers and credit line.
+//! homepage's credit line.
 //!
 //! The production site reads these from its account store. None of that is
 //! in this repository, so
@@ -34,9 +34,6 @@ pub trait Backend: Send + Sync {
         None
     }
 
-    /// An answer to a question typed on the homepage, as Markdown.
-    fn answer<'a>(&'a self, question: &'a str) -> BoxFuture<'a, Option<String>>;
-
     fn profile<'a>(&'a self, login: &'a str) -> BoxFuture<'a, Option<Profile>>;
 }
 
@@ -47,10 +44,6 @@ pub struct Development;
 impl Backend for Development {
     fn connected(&self) -> bool {
         false
-    }
-
-    fn answer<'a>(&'a self, _question: &'a str) -> BoxFuture<'a, Option<String>> {
-        Box::pin(async { None })
     }
 
     fn profile<'a>(&'a self, _login: &'a str) -> BoxFuture<'a, Option<Profile>> {

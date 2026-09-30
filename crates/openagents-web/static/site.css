@@ -1,4 +1,4 @@
-/* The OpenAgents site: a terminal in a browser, in four intensities of
+/* The OpenAgents site, in four intensities of
    white on near-black. `src/palette.rs` writes the :root block above this
    file, so every color here is a custom property from that ladder. Boxes
    are drawn with one-cell borders and a title set into the top rule, the
@@ -47,7 +47,8 @@ main{flex:1 0 auto;padding:2rem 0 3rem}
 main:focus{outline:none}
 
 /* The footer: the documents a visitor agrees to, then the rest. */
-.site-footer{flex:none;border-top:1px solid var(--w25);display:flex;flex-wrap:wrap;justify-content:space-between;gap:.5rem 2ch;padding:1rem 0 2rem;color:var(--w50);font-size:.9rem}
+.site-footer{flex:none;border-top:1px solid var(--w25);display:flex;flex-wrap:wrap;justify-content:space-between;gap:.5rem 2ch;padding:1rem 0 2rem;color:var(--w50)}
+.site-footer>*{font-size:.9rem}
 .site-footer nav{display:flex;flex-wrap:wrap;gap:.25rem 1.5ch}
 .site-footer a{color:var(--w75)}
 .sep{color:var(--w50)}
@@ -64,20 +65,15 @@ main:focus{outline:none}
 .error{color:var(--w100);border-left:2px solid var(--w100);padding-left:1ch}
 .notice{border:1px dashed var(--w50);padding:.75rem 2ch;color:var(--w75);margin:0 0 1.5rem}
 
-/* The homepage terminal. */
-.terminal{border:1px solid var(--w100);padding:1.5rem 2ch 1rem}
-.terminal .line{margin:0 0 .75rem}
-.prompt{color:var(--w100);font-weight:700}
-.command{display:block;border:1px solid var(--w25);padding:.5rem 1ch;margin:.25rem 0 .5rem;color:var(--w100);overflow-x:auto;white-space:pre}
-.composer{display:flex;align-items:center;gap:1ch;border:1px solid var(--w50);padding:.5rem 1ch;margin-top:1rem}
-.composer:focus-within{border-color:var(--w100)}
-.composer input{flex:1;min-width:0;background:transparent;border:0;color:var(--w100);font:inherit;outline:none;caret-color:var(--w100)}
-.composer input::placeholder{color:var(--w50)}
+/* The homepage: the intro, then the Verse screenshot. */
+.intro{margin:0 0 2rem}
+.intro h1{font-size:2rem;margin:0 0 .75rem}
+.lede{color:var(--w100);font-size:1.1rem;max-width:60ch}
+.shot{margin:0}
+.shot img{display:block;width:100%;height:auto;border:1px solid var(--w25)}
+.shot figcaption{color:var(--w50);font-size:.9rem;margin-top:.5rem}
 button,.button{background:transparent;border:0;color:var(--w100);font:inherit;cursor:pointer;padding:0;text-decoration:none;white-space:nowrap}
 button:hover,.button:hover{background:var(--tint)}
-.typed{color:var(--w100)}
-.typed::before{content:"> ";color:var(--w50)}
-.answer{border-left:1px solid var(--w25);padding-left:1.5ch;margin:0 0 1rem}
 
 .grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 2ch}
 
@@ -127,5 +123,4 @@ details summary{cursor:pointer;color:var(--w75)}
   .grid2{grid-template-columns:1fr}
   .facts{grid-template-columns:repeat(2,minmax(0,1fr))}
   .box{padding:1.25rem 1.5ch 1rem}
-  .terminal{padding:1.25rem 1.5ch 1rem}
 }
