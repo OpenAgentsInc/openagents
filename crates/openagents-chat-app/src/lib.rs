@@ -21,3 +21,5 @@ mod gym_fixture {
 pub mod cards;
 pub mod projection;
 pub mod session;
+
+pub mod attachments;

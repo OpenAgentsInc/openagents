@@ -980,6 +980,11 @@ impl<A: App> ApplicationHandler<()> for Shell<A> {
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _: WindowId, event: WindowEvent) {
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
+            WindowEvent::DroppedFile(path) => {
+                if self.app.dropped_file(path, Instant::now()) {
+                    self.redraw();
+                }
+            }
             WindowEvent::Resized(size) => self.resize(size.width, size.height),
             WindowEvent::Occluded(occluded) => {
                 self.set_visible(!occluded);

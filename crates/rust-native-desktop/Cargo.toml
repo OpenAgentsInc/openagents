@@ -13,7 +13,7 @@ description = "A desktop adapter for Rust Native views: layout, software paintin
 default = ["window"]
 # The native window. Without it the crate still lays out and paints views
 # into frames, which is what tests and captures use.
-window = ["dep:winit", "dep:wgpu", "dep:pollster", "dep:objc2", "dep:objc2-app-kit", "dep:objc2-foundation"]
+window = ["dep:winit", "dep:wgpu", "dep:pollster", "dep:rfd", "dep:arboard", "dep:objc2", "dep:objc2-app-kit", "dep:objc2-foundation"]
 
 [dependencies]
 # The semantic views, and the bundled faces and line breaking it shapes with.
@@ -21,6 +21,8 @@ rust-native = { path = "../rust-native", features = ["shaping"] }
 serde = { version = "1", features = ["derive"] }
 swash = "0.2.10"
 png = "0.18.1"
+rfd = { version = "0.17.2", optional = true }
+arboard = { version = "3.6.1", features = ["wayland-data-control"], optional = true }
 pollster = { version = "0.4", optional = true }
 wgpu = { version = "29.0.4", optional = true }
 winit = { version = "0.30.13", default-features = false, features = ["rwh_06", "x11", "wayland", "wayland-dlopen"], optional = true }

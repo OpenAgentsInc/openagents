@@ -529,6 +529,13 @@ impl crate::session::Session {
                 }
             }
         };
+        if let Some(reason) = self
+            .selected
+            .as_ref()
+            .and_then(|chat| self.images.hosted_send_refusal(chat))
+        {
+            return Effect::Notice(reason.into());
+        }
         let mut requests = vec![];
         if let Some(id) = suggestion_id
             && let Some(chat) = &self.selected

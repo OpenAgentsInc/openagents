@@ -56,3 +56,6 @@ mod tests;
 #[cfg(feature = "app")]
 pub mod chat;
 pub mod chat_action;
+
+#[cfg(feature = "app")]
+mod chat_images;

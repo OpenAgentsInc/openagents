@@ -319,3 +319,18 @@ with `unicode-width` 0.2. Reviewed on 2026-09-27:
 - Writing a parser here would duplicate a small, well-tested state machine
   used by a widely deployed terminal. A full emulator crate such as
   `alacritty_terminal` would bring its own event loop, PTY, and configuration.
+
+## Desktop image input
+
+Reviewed on 2026-09-30: desktop image input uses `rfd` 0.17.2 for native file
+pickers and `arboard` 3.6.1 for image clipboard access. Linux enables the
+XDG portal and Wayland clipboard paths. Shared decoding uses `image` 0.25.10
+with PNG and JPEG only. macOS clipboard decoding adds TIFF through `arboard`.
+
+The Windows-only `arboard` helpers `clipboard-win` 5.4.1 and `error-code` 3.4.0
+declare `BSL-1.0`. The Boost Software License permits use, modification,
+distribution, and sublicensing, with its notice retained in source copies;
+compiled object code is exempt from that notice condition. `deny.toml` admits
+only these two reviewed versions. It does not add a graph-wide license waiver
+or an advisory exception. The dependency gate retains the same 29 errors that
+precede this slice.

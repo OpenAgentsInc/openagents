@@ -15,6 +15,7 @@ pub struct PendingSend {
 /// Native drafts, focus, and signing credentials are adapter responsibilities.
 pub struct Session {
     pub cards: crate::cards::Cards,
+    pub images: crate::attachments::Drafts,
     pub selected: Option<String>,
     pub states: BTreeMap<String, Snapshot>,
     pub summaries: Vec<Summary>,
@@ -34,6 +35,7 @@ impl Session {
     pub fn new(now: Instant) -> Self {
         Self {
             cards: crate::cards::Cards::default(),
+            images: crate::attachments::Drafts::default(),
             selected: None,
             states: BTreeMap::new(),
             summaries: vec![],
@@ -110,6 +112,10 @@ impl Session {
     /// Bind a send to its exact bytes until a durable host acknowledgment arrives.
     pub fn submit(&mut self, request: String, text: String) -> Option<(u64, Command)> {
         let chat = self.selected.clone()?;
+        if let Some(reason) = self.images.hosted_send_refusal(&chat) {
+            self.error = Some(reason.into());
+            return None;
+        }
         if self.busy() || text.trim().is_empty() {
             return None;
         }
@@ -315,6 +321,27 @@ mod tests {
         }
     }
 
+    #[test]
+    fn image_drafts_cannot_be_silently_dropped_by_a_text_send() {
+        let mut session = Session::new(Instant::now());
+        session.select("a");
+        let image = crate::attachments::Image::pixels(1, 1, vec![0; 4]).unwrap();
+        let id = image.id.clone();
+        session.images.add("a", image).unwrap();
+        assert!(session.submit("one".into(), "Draft text".into()).is_none());
+        assert!(session.error.as_deref().unwrap().contains("text only"));
+        assert!(session.send.is_empty());
+        assert_eq!(session.images.get("a").len(), 1);
+        session.select("b");
+        assert!(session.submit("two".into(), "Other chat".into()).is_some());
+        session.select("a");
+        session.images.remove("a", &id);
+        assert!(
+            session
+                .submit("three".into(), "Draft text".into())
+                .is_some()
+        );
+    }
     #[test]
     fn late_acknowledgment_and_archive_stay_bound_to_their_conversation() {
         let mut state = Session::new(Instant::now());

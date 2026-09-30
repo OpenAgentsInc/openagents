@@ -32,6 +32,9 @@ allow = [
 # docs/dependencies.md, "iroh transport". No identifier here is allowed
 # graph-wide.
 exceptions = [
+    # Windows clipboard helpers; reviewed permissive Boost license.
+    { crate = "clipboard-win@5.4.1", allow = ["BSL-1.0"] },
+    { crate = "error-code@3.4.0", allow = ["BSL-1.0"] },
     # A proc macro under iroh's n0-error; builds nothing into the binary.
     { crate = "spez@0.1.2", allow = ["BSD-2-Clause"] },
     # wasm32-only dependencies of iroh-relay's browser WebSocket client.

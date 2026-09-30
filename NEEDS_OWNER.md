@@ -18,3 +18,13 @@ On Linux with a native Wayland or X11 session, run the matrix in
 result directory. Confirm transcript scrolling, tool expansion, and code copy.
 The eight Mac cases pass; Linux hardware is unavailable in this worktree.
 Open a follow-up issue if the Linux run finds a defect or exceeds 8.3 ms.
+
+## Desktop image input (#10011)
+
+On Linux in a native Wayland or X11 session, attach a generated PNG or JPEG
+through **Attach image**, clipboard paste, and file drop. Confirm that each
+preview appears, **Remove** preserves the caption, and **Send** preserves the
+draft while explaining the current hosted text-only limit. A missing portal or
+clipboard facility must report a reason. Repeat image clipboard paste on macOS.
+The real macOS picker and scripted decoder, clipboard pixel, drop, removal,
+and refusal checks pass. Open a follow-up issue if a native adapter check fails.

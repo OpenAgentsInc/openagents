@@ -155,6 +155,12 @@ pub trait App {
         false
     }
 
+    /// Files explicitly dropped into this window. Applications admit their destination.
+    fn dropped_file(&mut self, path: std::path::PathBuf, now: Instant) -> bool {
+        let _ = (path, now);
+        false
+    }
+
     /// The logical viewport changed. Application surfaces can reserve its height.
     fn viewport(&mut self, width: f32, height: f32, scale: f32) {
         let _ = (width, height, scale);

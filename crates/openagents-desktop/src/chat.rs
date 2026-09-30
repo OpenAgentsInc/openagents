@@ -46,6 +46,11 @@ pub struct Panel {
     navigation: Option<openagents_chat::router::Screen>,
     notice: Option<String>,
     waker: Option<rust_native_desktop::Waker>,
+    image_input: Option<(
+        String,
+        rust_native_desktop::composer::Stamp,
+        std::sync::mpsc::Receiver<crate::chat_images::Result>,
+    )>,
 }
 
 impl Panel {
@@ -70,6 +75,77 @@ impl Panel {
             navigation: None,
             notice: None,
             waker: None,
+            image_input: None,
+        }
+    }
+    fn import_image(&mut self, source: crate::chat_images::Source) {
+        if self.image_input.is_some() {
+            self.notice =
+                Some("An image is already being imported. Try again when it finishes.".into());
+            return;
+        }
+        let Some(chat) = self.session.selected.clone() else {
+            return;
+        };
+        let Some(stamp) = self
+            .fields
+            .get(&chat)
+            .and_then(|field| field.draft.stamp().ok())
+        else {
+            return;
+        };
+        let (send, receive) = std::sync::mpsc::sync_channel(1);
+        let wake = self.waker.clone();
+        if std::thread::Builder::new()
+            .name("chat-image-input".into())
+            .spawn(move || {
+                let result = crate::chat_images::read(source);
+                let _ = send.send(result);
+                if let Some(wake) = wake {
+                    wake.wake();
+                }
+            })
+            .is_ok()
+        {
+            self.image_input = Some((chat, stamp, receive));
+        }
+    }
+    pub fn dropped_file(&mut self, path: std::path::PathBuf) {
+        self.import_image(crate::chat_images::Source::File(path));
+    }
+    fn poll_images(&mut self, at_ms: u64) {
+        let Some((_, _, receiver)) = &self.image_input else {
+            return;
+        };
+        let result = match receiver.try_recv() {
+            Ok(result) => result,
+            Err(std::sync::mpsc::TryRecvError::Empty) => return,
+            Err(_) => crate::chat_images::Result::Failed("Image import stopped. Try again.".into()),
+        };
+        let Some((chat, stamp, _)) = self.image_input.take() else {
+            return;
+        };
+        match result {
+            crate::chat_images::Result::Image(image) => {
+                let result = self.session.images.add(&chat, image);
+                if self.session.selected.as_deref() == Some(&chat) {
+                    self.notice =
+                        Some(result.err().unwrap_or_else(|| {
+                            "Image added. Hosted chat accepts text only.".into()
+                        }));
+                }
+            }
+            crate::chat_images::Result::Text(text) => {
+                if let Some(field) = self.fields.get_mut(&chat) {
+                    let _ = field.draft.apply(
+                        &stamp,
+                        rust_native_desktop::composer::Input::Paste(&text),
+                        at_ms,
+                    );
+                }
+            }
+            crate::chat_images::Result::Failed(error) => self.notice = Some(error),
+            crate::chat_images::Result::Cancelled => {}
         }
     }
     fn request(&mut self, command: Command) -> Request {
@@ -86,6 +162,7 @@ impl Panel {
     pub fn tick(&mut self, now: Instant) -> Option<Request> {
         self.transcript.poll_highlights();
         let at_ms = now.saturating_duration_since(self.born).as_millis() as u64;
+        self.poll_images(at_ms);
         for field in self.fields.values_mut() {
             field.poll_clipboard(at_ms);
         }
@@ -98,6 +175,12 @@ impl Panel {
     }
     fn busy(&self) -> bool {
         self.session.busy()
+    }
+    pub fn images(&self) -> &[openagents_chat_app::attachments::Image] {
+        self.session
+            .selected
+            .as_ref()
+            .map_or(&[], |id| self.session.images.get(id))
     }
     pub fn state(&self) -> Option<&Snapshot> {
         self.session.state()
@@ -288,7 +371,24 @@ impl Panel {
                     openagents_chat_app::cards::Effect::None => None,
                 }
             }
+            Action::AttachImage => {
+                self.import_image(crate::chat_images::Source::Picker);
+                None
+            }
+            Action::PasteImage => {
+                self.import_image(crate::chat_images::Source::Clipboard);
+                None
+            }
+            Action::RemoveImage { id: image } => {
+                self.session.images.remove(&id, &image);
+                self.notice = None;
+                None
+            }
             Action::Send => {
+                if let Some(reason) = self.session.images.hosted_send_refusal(&id) {
+                    self.notice = Some(reason.into());
+                    return None;
+                }
                 let field = self.field()?;
                 let stamp = field.draft.stamp().ok()?;
                 let submission = field.draft.submission(view, &stamp, None).ok()?;
@@ -327,6 +427,15 @@ impl Panel {
         }
     }
     pub fn input(&mut self, event: TextInput<'_>, now: Instant) -> FieldAction {
+        if let TextInput::Key {
+            key, command: true, ..
+        } = &event
+            && matches!(*key, "v" | "V")
+            && self.field().is_some_and(|field| field.focused)
+        {
+            self.import_image(crate::chat_images::Source::Clipboard);
+            return FieldAction::Edited;
+        }
         if let TextInput::Key {
             key, command: true, ..
         } = &event
@@ -437,8 +546,32 @@ impl Panel {
                 .as_ref()
                 .and_then(|id| self.fields.get(id))
                 .map(Field::version),
+            resource if resource.starts_with("image:") => self
+                .session
+                .selected
+                .as_ref()
+                .and_then(|id| {
+                    self.session
+                        .images
+                        .get(id)
+                        .iter()
+                        .find(|image| resource == format!("image:{}", image.id))
+                })
+                .map(|_| 1),
             _ => None,
         }
+    }
+    fn image_height(&self, available: f32) -> f32 {
+        let count = self
+            .session
+            .selected
+            .as_ref()
+            .map_or(0, |id| self.session.images.get(id).len());
+        if count == 0 {
+            return 0.0;
+        }
+        let columns = ((available + 8.0) / 128.0).floor().max(1.0) as usize;
+        count.div_ceil(columns) as f32 * 112.0
     }
     pub fn size(&self, resource: &str, available: f32) -> Option<(f32, f32)> {
         let composer_height = self
@@ -450,14 +583,55 @@ impl Panel {
         match resource {
             TRANSCRIPT => Some((
                 available,
-                (self.viewport.1 - 240.0 - composer_height).max(40.0),
+                (self.viewport.1 - 240.0 - composer_height - self.image_height(available))
+                    .max(40.0),
             )),
             COMPOSER => Some((available, composer_height)),
+            resource if resource.starts_with("image:") => self
+                .session
+                .selected
+                .as_ref()
+                .and_then(|id| {
+                    self.session
+                        .images
+                        .get(id)
+                        .iter()
+                        .find(|image| resource == format!("image:{}", image.id))
+                })
+                .map(|image| (image.preview_width as f32, image.preview_height as f32)),
             _ => None,
         }
     }
     pub fn paint(&mut self, resource: &str, frame: &mut Frame, rect: PxRect) -> bool {
         let scale = self.viewport.2;
+        if let Some(image) = self.session.selected.as_ref().and_then(|id| {
+            self.session
+                .images
+                .get(id)
+                .iter()
+                .find(|image| resource == format!("image:{}", image.id))
+        }) {
+            let width = (image.preview_width as f32 * scale).round() as usize;
+            let height = (image.preview_height as f32 * scale).round() as usize;
+            for y in 0..height {
+                for x in 0..width {
+                    let sx = (x as f32 / scale) as usize;
+                    let sy = (y as f32 / scale) as usize;
+                    let at = (sy.min(image.preview_height as usize - 1)
+                        * image.preview_width as usize
+                        + sx.min(image.preview_width as usize - 1))
+                        * 4;
+                    let p = &image.preview[at..at + 4];
+                    frame.blend(
+                        rect.x as i64 + x as i64,
+                        rect.y as i64 + y as i64,
+                        rust_native::style::Color::rgb(p[0], p[1], p[2]),
+                        f32::from(p[3]) / 255.0,
+                    );
+                }
+            }
+            return true;
+        }
         if resource == TRANSCRIPT {
             let size = (rect.w / scale, rect.h / scale);
             if size != self.transcript_size {
@@ -597,7 +771,8 @@ impl Panel {
         }
         let busy = self.busy();
         let draft = self.fields.get(&id).map(|field| field.text().to_owned());
-        let enabled = draft.as_ref().is_some_and(|text| !text.trim().is_empty());
+        let enabled = draft.as_ref().is_some_and(|text| !text.trim().is_empty())
+            || !self.session.images.get(&id).is_empty();
         let composer = Node {
             key: "chat-composer".into(),
             style: Style::default(),
@@ -615,11 +790,7 @@ impl Panel {
                 focus: self.fields.get(&id).is_some_and(|field| field.focused),
             },
         };
-        let mut buttons = vec![text(
-            "chat-key-hint",
-            "Enter to send · Shift+Enter for a new line",
-            TextRole::Status,
-        )];
+        let mut buttons = vec![];
         buttons.push(if busy {
             button(
                 "chat-stop",
@@ -630,15 +801,57 @@ impl Panel {
         } else {
             button("chat-send", "Send", Action::Send, enabled)
         });
+        buttons.push(button(
+            "chat-attach",
+            "Attach image",
+            Action::AttachImage,
+            !busy,
+        ));
+        buttons.push(button(
+            "chat-paste-image",
+            "Paste",
+            Action::PasteImage,
+            !busy,
+        ));
         buttons.push(button("chat-archive", "Archive", Action::Archive, true));
-        stack(
-            "chat-footer",
-            Axis::Vertical,
-            vec![
-                composer,
-                stack("chat-send-controls", Axis::Horizontal, buttons),
-            ],
-        )
+        let mut previews = vec![];
+        for image in self.session.images.get(&id) {
+            let short: String = image.name.chars().take(10).collect();
+            previews.push(stack(
+                &format!("image-row-{}", image.id),
+                Axis::Vertical,
+                vec![
+                    Node {
+                        key: format!("preview-{}", image.id),
+                        style: Style::default(),
+                        element: Element::Surface {
+                            label: format!("{} · {} × {}", image.name, image.width, image.height),
+                            resource: format!("image:{}", image.id),
+                        },
+                    },
+                    button(
+                        &format!("image-remove-{}", image.id),
+                        &format!("Remove {short}"),
+                        Action::RemoveImage {
+                            id: image.id.clone(),
+                        },
+                        true,
+                    ),
+                ],
+            ));
+        }
+        let mut content = vec![];
+        if !previews.is_empty() {
+            content.push(stack("image-previews", Axis::Wrap, previews));
+        }
+        content.push(composer);
+        content.push(stack("chat-send-controls", Axis::Wrap, buttons));
+        content.push(text(
+            "chat-key-hint",
+            "Enter to send · Shift+Enter for a new line",
+            TextRole::Status,
+        ));
+        stack("chat-footer", Axis::Vertical, content)
     }
 }
 fn appearance() -> Appearance<'static> {
@@ -700,4 +913,45 @@ fn button(key: &str, label: &str, action: Action, enabled: bool) -> Node<Intent>
 
 fn request((ticket, command): (u64, Command)) -> Request {
     Request::Chat { ticket, command }
+}
+
+#[cfg(test)]
+mod image_tests {
+    use super::*;
+    #[test]
+    fn a_delayed_image_keeps_its_original_conversation_and_text_paste_is_stamped() {
+        let now = Instant::now();
+        let mut panel = Panel::new(now);
+        panel.session.select("original");
+        panel.fields.insert("original".into(), Field::default());
+        let view = rust_native::View::new("image-test", 1, panel.footer())
+            .validate()
+            .unwrap();
+        let field = panel.fields.get_mut("original").unwrap();
+        field.draft.mount(&view, "chat-composer").unwrap();
+        let stamp = field.draft.stamp().unwrap();
+        let (send, receiver) = std::sync::mpsc::sync_channel(1);
+        panel.image_input = Some(("original".into(), stamp, receiver));
+        panel.session.select("other");
+        send.send(crate::chat_images::Result::Image(
+            openagents_chat_app::attachments::Image::pixels(1, 1, vec![0; 4]).unwrap(),
+        ))
+        .unwrap();
+        panel.poll_images(0);
+        assert!(panel.images().is_empty());
+        panel.session.select("original");
+        assert_eq!(panel.images().len(), 1);
+        let field = panel.fields.get_mut("original").unwrap();
+        let old = field.draft.stamp().unwrap();
+        field
+            .draft
+            .apply(&old, rust_native_desktop::composer::Input::Text("newer"), 1)
+            .unwrap();
+        let (send, receiver) = std::sync::mpsc::sync_channel(1);
+        panel.image_input = Some(("original".into(), old, receiver));
+        send.send(crate::chat_images::Result::Text("stale clipboard".into()))
+            .unwrap();
+        panel.poll_images(2);
+        assert_eq!(panel.draft(), "newer");
+    }
 }

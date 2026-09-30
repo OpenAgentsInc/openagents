@@ -5,6 +5,9 @@ use serde::Serialize;
 pub enum Action {
     Card { key: String },
     Send,
+    AttachImage,
+    PasteImage,
+    RemoveImage { id: String },
     Stop,
     Retry,
     Archive,

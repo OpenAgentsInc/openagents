@@ -118,3 +118,34 @@ fn clipboard_command(write: bool) -> Option<std::process::Command> {
         None
     }
 }
+
+/// Native image-picker output stays local until the application admits it.
+#[cfg(feature = "window")]
+pub fn pick_image() -> Option<std::path::PathBuf> {
+    rfd::FileDialog::new()
+        .set_title("Attach an image")
+        .add_filter("Images", &["png", "jpg", "jpeg"])
+        .pick_file()
+}
+
+/// Image pixels read after an explicit paste action, on the input worker.
+#[cfg(feature = "window")]
+pub struct ClipboardImage {
+    pub width: usize,
+    pub height: usize,
+    pub rgba: Vec<u8>,
+}
+#[cfg(feature = "window")]
+pub fn paste_image() -> Result<Option<ClipboardImage>, String> {
+    let mut clipboard = arboard::Clipboard::new()
+        .map_err(|_| "Couldn't reach the image clipboard on this desktop.")?;
+    match clipboard.get_image() {
+        Ok(image) => Ok(Some(ClipboardImage {
+            width: image.width,
+            height: image.height,
+            rgba: image.bytes.into_owned(),
+        })),
+        Err(arboard::Error::ContentNotAvailable) => Ok(None),
+        Err(_) => Err("Couldn't read an image from the clipboard.".into()),
+    }
+}

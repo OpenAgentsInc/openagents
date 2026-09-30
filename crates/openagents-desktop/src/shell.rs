@@ -496,6 +496,22 @@ impl App for DesktopApp {
         false
     }
 
+    fn dropped_file(&mut self, path: std::path::PathBuf, _now: Instant) -> bool {
+        if !self
+            .navigation
+            .as_ref()
+            .is_some_and(|state| matches!(state.page, Page::Chat(_)))
+        {
+            return false;
+        }
+        let Some(chat) = &mut self.chat else {
+            return false;
+        };
+        chat.dropped_file(path);
+        self.present();
+        true
+    }
+
     fn surface_version(&self, resource: &str) -> Option<u64> {
         if resource == chrome::MARK {
             return Some(0);
@@ -1675,5 +1691,109 @@ mod card_fixtures {
                     .unwrap();
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod image_fixtures {
+    use super::*;
+    use openagents_chat_app::attachments::Image;
+    use rust_native_desktop::{App, input::TextInput};
+    use std::time::Duration;
+    #[test]
+    fn dropped_images_preview_remove_and_refuse_unsupported_send_without_losing_text() {
+        let (mut app, now) = super::tests::chat_fixture(0);
+        let create = app.chat.as_mut().unwrap().new_chat();
+        app.send(vec![create], now);
+        app.present();
+        app.text_input(TextInput::Commit("Keep this caption"), now);
+        let root = tempfile::tempdir().unwrap();
+        let image = Image::pixels(
+            96,
+            60,
+            (0..96 * 60)
+                .flat_map(|i| {
+                    if i % 96 < 48 {
+                        [255, 0, 0, 255]
+                    } else {
+                        [0, 255, 0, 255]
+                    }
+                })
+                .collect(),
+        )
+        .unwrap();
+        let path = root.path().join("example.png");
+        std::fs::write(&path, image.bytes.as_slice()).unwrap();
+        assert!(app.dropped_file(path.clone(), now));
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while app.chat.as_ref().unwrap().images().is_empty() {
+            assert!(Instant::now() < deadline);
+            app.tick(Instant::now());
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        for count in 2..=4 {
+            assert!(app.dropped_file(path.clone(), now));
+            while app.chat.as_ref().unwrap().images().len() < count {
+                assert!(Instant::now() < deadline);
+                app.tick(Instant::now());
+                std::thread::sleep(Duration::from_millis(5));
+            }
+        }
+        let id = app.chat.as_ref().unwrap().images()[0].id.clone();
+        app.activate(
+            Intent::Chat {
+                action: openagents_desktop::chat_action::Action::Send,
+            },
+            now,
+        );
+        assert_eq!(app.chat.as_ref().unwrap().draft(), "Keep this caption");
+        assert_eq!(app.chat.as_ref().unwrap().state().unwrap().total, 0);
+        assert!(
+            serde_json::to_string(app.view().view())
+                .unwrap()
+                .contains("text only")
+        );
+        for (width, height, scale, name) in [
+            (1200.0, 840.0, 2.0, "default"),
+            (760.0, 540.0, 1.0, "minimum"),
+        ] {
+            app.viewport(width, height, scale);
+            app.present();
+            let (frame, scene) = rust_native_desktop::capture(&mut app, width, height, scale);
+            let remove = scene
+                .hits
+                .iter()
+                .find(|hit| hit.key == format!("image-remove-{id}"))
+                .unwrap();
+            assert!(remove.rect.y >= 0.0 && remove.rect.y + remove.rect.h <= height);
+            assert!(
+                frame
+                    .pixels
+                    .chunks_exact(4)
+                    .any(|pixel| pixel == [255, 0, 0, 255])
+            );
+            assert!(
+                frame
+                    .pixels
+                    .chunks_exact(4)
+                    .any(|pixel| pixel == [0, 255, 0, 255])
+            );
+            if let Ok(path) = std::env::var("OPENAGENTS_IMAGE_CAPTURE_DIR") {
+                std::fs::create_dir_all(&path).unwrap();
+                std::fs::write(
+                    std::path::Path::new(&path).join(format!("{name}.png")),
+                    frame.png().unwrap(),
+                )
+                .unwrap();
+            }
+        }
+        app.activate(
+            Intent::Chat {
+                action: openagents_desktop::chat_action::Action::RemoveImage { id },
+            },
+            now,
+        );
+        assert_eq!(app.chat.as_ref().unwrap().images().len(), 3);
+        assert_eq!(app.chat.as_ref().unwrap().draft(), "Keep this caption");
     }
 }
