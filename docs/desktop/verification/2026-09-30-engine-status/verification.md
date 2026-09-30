@@ -1,5 +1,6 @@
 # Engine and usage verification
 
+Code: `413e6e82c4`. The strip sits under the 38-point titlebar in `f743bee7e6`.
 Implements [#10018](https://github.com/OpenAgentsInc/openagents/issues/10018),
 part of [#10003](https://github.com/OpenAgentsInc/openagents/issues/10003).
 
