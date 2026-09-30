@@ -167,29 +167,51 @@ fn corpus() -> Vec<(String, Vec<MeasureRun>, Option<f32>)> {
         .collect()
 }
 
-fn corpus_json() -> Value {
-    let cases: Vec<Value> = corpus()
+/// A corpus case as `tools/coretext-lines.swift` reads it.
+///
+/// A struct, not a `json!` object, so the bytes the digest covers do not
+/// depend on the build: another crate in the same build can turn on
+/// serde_json's `preserve_order`, which keeps a `json!` object's keys in
+/// insertion order instead of sorting them. The fields are declared in the
+/// sorted order the ground truth's digest was taken over, and the numbers
+/// are widened to `f64` as `json!` widened them.
+#[derive(serde::Serialize)]
+struct Case {
+    /// Face, size, `wght`, `opsz`, `calt`, and the run's UTF-16 range.
+    runs: Vec<(usize, f64, f64, f64, bool, u32, u32)>,
+    text: String,
+    width: f64,
+}
+
+#[derive(serde::Serialize)]
+struct Corpus {
+    cases: Vec<Case>,
+}
+
+fn corpus_json() -> Corpus {
+    let cases = corpus()
         .into_iter()
-        .map(|(text, runs, width)| {
-            let runs: Vec<Value> = runs
+        .map(|(text, runs, width)| Case {
+            runs: runs
                 .iter()
                 .map(|r| {
                     let spec = FontSpec::of(r.font);
-                    json!([
+                    (
                         spec.face,
-                        spec.size,
-                        spec.weight,
-                        spec.optical,
+                        f64::from(spec.size),
+                        f64::from(spec.weight),
+                        f64::from(spec.optical),
                         spec.calt,
                         r.start16,
-                        r.end16
-                    ])
+                        r.end16,
+                    )
                 })
-                .collect();
-            json!({"text": text, "runs": runs, "width": width.unwrap_or(0.0)})
+                .collect(),
+            text,
+            width: width.map_or(0.0, f64::from),
         })
         .collect();
-    json!({ "cases": cases })
+    Corpus { cases }
 }
 
 /// FNV-1a, stable across Rust versions, to tie the ground truth to its
@@ -211,7 +233,7 @@ fn write_corpus() {
     std::fs::write(&path, &bytes).unwrap();
     eprintln!(
         "wrote {} cases, digest {}",
-        corpus_json()["cases"].as_array().unwrap().len(),
+        corpus_json().cases.len(),
         digest(&bytes)
     );
 }
