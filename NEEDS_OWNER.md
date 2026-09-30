@@ -28,3 +28,13 @@ draft while explaining the current hosted text-only limit. A missing portal or
 clipboard facility must report a reason. Repeat image clipboard paste on macOS.
 The real macOS picker and scripted decoder, clipboard pixel, drop, removal,
 and refusal checks pass. Open a follow-up issue if a native adapter check fails.
+
+## Installed local Coder broker (#10014)
+
+After installing the desktop bundle and its Coder built from current `main`,
+exercise the **Run Coder** flow added by #10015 against this computer. Confirm
+that the normal OS key source remains in the resident host, saved device
+pairings remain available after restart, and the task can be read and stopped.
+Archive every verification task afterward. The scratch same-user socket,
+portable client, durable inbox, restart, history, admission, and cancellation
+checks pass without accessing the owner’s computer state.

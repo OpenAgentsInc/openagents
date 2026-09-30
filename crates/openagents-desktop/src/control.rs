@@ -280,6 +280,68 @@ impl SocketControl {
         SocketControl { path, next: 1 }
     }
 
+    /// Run one task operation through the same portable client as a phone.
+    /// The caller keeps `request` stable when retrying an uncertain response.
+    pub fn task_operation(
+        &mut self,
+        request: &str,
+        operation: coder_access::protocol::Operation,
+    ) -> coder_access::Result<coder_access::protocol::Outcome> {
+        use coder_access::{Code, Error};
+        operation.validate()?;
+        match self.call(Op::Task {
+            request: request.into(),
+            operation: operation.clone(),
+        }) {
+            Ok(Reply::Task { outcome }) if outcome.answers(&operation) => {
+                outcome.validate()?;
+                Ok(outcome)
+            }
+            Ok(_) => Err(Error::new(
+                Code::Malformed,
+                "Coder answered another operation",
+            )),
+            Err(ControlError::Refused { code, message }) => Err(Error::new(
+                serde_json::from_value(serde_json::Value::String(code))
+                    .unwrap_or(Code::Unavailable),
+                message,
+            )),
+            Err(_) => Err(Error::new(Code::Unavailable, "Coder could not be reached")),
+        }
+    }
+
+    pub fn create_task(
+        &mut self,
+        request: &str,
+        task: coder_access::protocol::TaskCreate,
+    ) -> coder_access::Result<String> {
+        coder_access::client::tasks::Tasks::new(|operation| self.task_operation(request, operation))
+            .create(task)
+    }
+
+    pub fn cancel_task(
+        &mut self,
+        request: &str,
+        task: &str,
+        revision: u64,
+        reason: &str,
+    ) -> coder_access::Result<()> {
+        coder_access::client::tasks::Tasks::new(|operation| self.task_operation(request, operation))
+            .cancel(task, revision, reason)
+    }
+
+    /// Read a bounded source-bound catalog or transcript page. The broker
+    /// uses the same observer client as the phones and exposes no key.
+    pub fn task_history(
+        &mut self,
+        query: coder_connect::protocol::Query,
+    ) -> ControlResult<coder_connect::protocol::Observation> {
+        match self.call(Op::TaskHistory { query })? {
+            Reply::TaskHistory { observation } => Ok(observation),
+            _ => Err(ControlError::Malformed),
+        }
+    }
+
     /// Sends `op` and returns the host's reply; a `refused` reply is an
     /// error.
     pub fn call(&mut self, op: Op) -> ControlResult<Reply> {

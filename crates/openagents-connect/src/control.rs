@@ -73,6 +73,16 @@ impl Request {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Op {
+    /// Same-user broker for a typed NIP-HOST task operation. The host signs;
+    /// the caller supplies a stable 64-character hexadecimal identity.
+    Task {
+        request: String,
+        operation: coder_access::protocol::Operation,
+    },
+    /// Read only the resident host's configured Coder transcript source.
+    TaskHistory {
+        query: coder_connect::protocol::Query,
+    },
     /// Hosted chat; admitted only as this machine's local operator.
     Chat {
         command: openagents_chat::service::Command,
@@ -138,6 +148,12 @@ impl Response {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Reply {
+    Task {
+        outcome: coder_access::protocol::Outcome,
+    },
+    TaskHistory {
+        observation: coder_connect::protocol::Observation,
+    },
     /// A bounded hosted chat page and current streaming state.
     Chat {
         snapshot: openagents_chat::service::Snapshot,

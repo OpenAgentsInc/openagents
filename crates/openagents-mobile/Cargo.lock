@@ -5307,6 +5307,8 @@ name = "openagents-connect"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
+ "coder-access",
+ "coder-connect",
  "coder-reach",
  "futures-util",
  "getrandom 0.3.4",

@@ -1371,7 +1371,9 @@ dependencies = [
  "atif",
  "capability",
  "coder-boundary",
+ "coder-connect",
  "coder-delegate",
+ "coder-history",
  "coder-host",
  "coder-terminal",
  "coderbench",
@@ -1387,6 +1389,8 @@ dependencies = [
  "microcoder-loop",
  "nostr",
  "nostr-transport",
+ "openagents-connect",
+ "openagents-desktop",
  "openrouter",
  "plugin",
  "private-fs",
@@ -7165,6 +7169,8 @@ name = "openagents-connect"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
+ "coder-access",
+ "coder-connect",
  "coder-reach",
  "futures-util",
  "getrandom 0.3.4",
@@ -7196,6 +7202,8 @@ name = "openagents-desktop"
 version = "1.0.0"
 dependencies = [
  "base64 0.22.1",
+ "coder-access",
+ "coder-connect",
  "core-foundation 0.9.4",
  "libc",
  "objc2 0.6.4",

@@ -8,6 +8,7 @@ use secp256k1::SecretKey;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::time::Duration;
+pub mod tasks;
 
 /// The exact signed packet. Retry it unchanged; a new request ID is a new operation.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -70,6 +71,11 @@ impl Client {
         &self.secret
     }
     pub fn prepare(&self, op: Operation, now: u64) -> Result<Pending> {
+        self.prepare_with_id(op, now, random_id())
+    }
+    /// Prepare a caller-owned identity. Persist and retry the exact returned
+    /// packet; preparing it again changes its signed event identity.
+    pub fn prepare_with_id(&self, op: Operation, now: u64, id: String) -> Result<Pending> {
         if matches!(op, Operation::Redeem { .. }) {
             return fail(Code::Malformed, "redeem an invitation with `redeem`");
         }
@@ -81,7 +87,7 @@ impl Client {
         let request = Request {
             v: REQUEST.into(),
             requires: vec![],
-            request: random_id(),
+            request: id,
             host: self.host.clone(),
             grant: self.access.as_ref().map(|a| a.grant.grant.clone()),
             epoch: self.access.as_ref().map(|a| a.grant.epoch),

@@ -33,6 +33,7 @@ use crate::{Error, Result};
 
 #[cfg(unix)]
 pub mod socket;
+mod tasks;
 pub mod windows;
 
 #[cfg(unix)]
@@ -218,6 +219,9 @@ async fn connection<S: AsyncRead + AsyncWrite + Unpin>(shared: Arc<Shared>, mut 
 
 async fn handle(shared: &Arc<Shared>, request: Request) -> Response {
     let Request { id, op, .. } = request;
+    if let Op::Task { request, operation } = op {
+        return Response::new(id, tasks::call(shared.clone(), request, operation).await);
+    }
     let worker = shared.clone();
     let revoking = matches!(op, Op::DeviceRevoke { .. });
     let reply = tokio::task::spawn_blocking(move || answer(&worker, op))
@@ -265,6 +269,8 @@ fn host_refused(error: &Error) -> Reply {
 fn answer(shared: &Shared, op: Op) -> Reply {
     match op {
         Op::Chat { command } => chat(shared, command),
+        Op::Task { .. } => refused("unavailable", "task broker requires its own lane"),
+        Op::TaskHistory { query } => tasks::history(shared, query),
         Op::Status {} => status(shared),
         Op::InviteCreate {} => invite(shared),
         Op::InviteCancel { invitation } => {

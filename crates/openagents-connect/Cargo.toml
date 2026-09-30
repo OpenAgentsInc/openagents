@@ -8,6 +8,8 @@ description = "Connect a phone to a computer over iroh: the endpoint, the enroll
 
 [dependencies]
 openagents-chat = { path = "../openagents-chat" }
+coder-access = { path = "../coder-access", default-features = false }
+coder-connect = { path = "../coder-connect", default-features = false }
 base64 = "0.22"
 coder-reach = { path = "../coder-reach" }
 iroh = { workspace = true }

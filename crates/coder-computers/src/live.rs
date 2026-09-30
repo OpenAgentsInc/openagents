@@ -612,16 +612,12 @@ impl Live {
     /// host publishes the task's new summary after it replies, so the next
     /// catch-up is asked for at once.
     fn dispatched(&self, host: &str, op: Operation) -> Result<String> {
-        let Outcome::Dispatched { receipt } = self.call(host, op)? else {
-            return Err(Error::new(
-                Code::Malformed,
-                "the host did not dispatch the operation",
-            ));
-        };
+        let reference =
+            coder_access::client::tasks::Tasks::new(|op| self.call(host, op)).dispatch(op)?;
         if let Some(live) = lock(&self.shared.state).hosts.get_mut(host) {
             live.nudged = true;
         }
-        Ok(receipt.reference)
+        Ok(reference)
     }
 
     fn save(&self) -> Result<()> {

@@ -538,6 +538,15 @@ command, and the host records itself as the issuer of what they create.
   implementation; this profile fixes only who may use the socket and what
   it can change.
 
+The socket may also broker typed task operations as the locally established
+owner. The resident host prepares the signed NIP-HOST request and verifies
+the reply with the portable client, and routes it through the same request
+admission and task-owner dispatch as a device request. The window holds no
+signing secret. A broker must preserve request identities and exact pending
+packets across retries, and must not bypass operation validation, current
+owner checks, retained replies, or task execution policy. Read-only task
+history remains under the separate observer profile and its source bounds.
+
 A device never gains operator authority: no grant, right, or channel opens
 the socket, and a device request cannot turn auto-start on or widen it.
 
