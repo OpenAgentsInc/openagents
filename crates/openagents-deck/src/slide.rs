@@ -35,6 +35,9 @@ pub enum Layout {
     /// One image, centered and as large as fits without losing sharpness,
     /// under the kicker and title when the slide has them.
     Image,
+    /// Several images clustered in a centered grid, two to a row, each as
+    /// large as its cell allows: a slide's `![alt](path)` lines, in order.
+    Gallery,
 }
 
 impl Layout {
@@ -51,6 +54,7 @@ impl Layout {
             "quote" => Some(Layout::Quote),
             "ask" => Some(Layout::Ask),
             "image" => Some(Layout::Image),
+            "gallery" => Some(Layout::Gallery),
             _ => None,
         }
     }
@@ -68,6 +72,7 @@ impl Layout {
             Layout::Quote => "quote",
             Layout::Ask => "ask",
             Layout::Image => "image",
+            Layout::Gallery => "gallery",
         }
     }
 }
@@ -130,6 +135,8 @@ pub struct Slide {
     pub notes: Vec<String>,
     /// The image an image slide shows.
     pub image: Option<SlideImage>,
+    /// The images a gallery slide clusters, in order.
+    pub images: Vec<SlideImage>,
     /// How many times its native size an image slide's image may grow,
     /// when the slide has room (`scale: 2`); `None` is 1, never enlarged.
     pub scale: Option<u8>,
@@ -150,6 +157,30 @@ pub const ASSETS: &[(&str, &[u8])] = &[
     (
         "assets/important.png",
         include_bytes!("../decks/assets/important.png"),
+    ),
+    (
+        "assets/tweet-tibo-open.png",
+        include_bytes!("../decks/assets/tweet-tibo-open.png"),
+    ),
+    (
+        "assets/tweet-david-lamond.png",
+        include_bytes!("../decks/assets/tweet-david-lamond.png"),
+    ),
+    (
+        "assets/tweet-zach.png",
+        include_bytes!("../decks/assets/tweet-zach.png"),
+    ),
+    (
+        "assets/tweet-sami.png",
+        include_bytes!("../decks/assets/tweet-sami.png"),
+    ),
+    (
+        "assets/tweet-demetrius-taylor.png",
+        include_bytes!("../decks/assets/tweet-demetrius-taylor.png"),
+    ),
+    (
+        "assets/tweet-monet.png",
+        include_bytes!("../decks/assets/tweet-monet.png"),
     ),
     (
         "assets/marketplace.png",
@@ -317,6 +348,7 @@ mod tests {
             Layout::Quote,
             Layout::Ask,
             Layout::Image,
+            Layout::Gallery,
         ] {
             assert_eq!(Layout::named(layout.name()), Some(layout));
         }

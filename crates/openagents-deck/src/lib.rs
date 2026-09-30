@@ -64,7 +64,7 @@ mod tests {
                     "{name}/{} names no source",
                     slide.id
                 );
-                if let Some(image) = &slide.image {
+                for image in slide.image.iter().chain(&slide.images) {
                     let bytes = slide::asset(&image.path).unwrap_or_else(|| {
                         panic!(
                             "{name}/{} shows {}, which is not in ASSETS",
@@ -115,7 +115,7 @@ mod tests {
             let mut presenter = Presenter::new(deck.clone(), 0);
             for index in 0..deck.len() {
                 // An image keeps its own colors; the test is of the deck's.
-                if deck.slides[index].image.is_some() {
+                if deck.slides[index].image.is_some() || !deck.slides[index].images.is_empty() {
                     continue;
                 }
                 presenter.key("Home", false);

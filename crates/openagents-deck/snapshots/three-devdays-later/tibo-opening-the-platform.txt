@@ -1,0 +1,3 @@
+image at 40,26 720x390
+  image 1484 x 649 pixels
+  Tibo (@thsottiaux) on X: "We are opening up our platform and you can now build full native apps with plugin extensions, and ship them right in ChatGPT. We have over 1.2B weekly users and will surface relevant plugins right in the conversations."

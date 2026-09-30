@@ -84,6 +84,26 @@ fn slide(text: &str, number: usize) -> Result<Slide, String> {
     if slide.id.is_empty() {
         return Err(format!("slide {number} carries no id"));
     }
+    if slide.layout == Some(Layout::Gallery) {
+        let lines: Vec<&str> = body
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty())
+            .collect();
+        for line in &lines {
+            let shown = image(line).ok_or_else(|| {
+                format!("slide {number} is a gallery; every line must be ![alt](path): {line}")
+            })?;
+            slide.images.push(shown);
+        }
+        if !(2..=8).contains(&slide.images.len()) {
+            return Err(format!(
+                "slide {number} is a gallery of {} images; it takes 2 to 8",
+                slide.images.len()
+            ));
+        }
+        return Ok(slide);
+    }
     slide.image = image(body.trim());
     if slide.layout.is_none() && slide.image.is_some() {
         slide.layout = Some(Layout::Image);

@@ -512,6 +512,17 @@ fn body(slide: &Slide) -> Vec<Part> {
             column.push(image_part(slide, room), gap);
             note(&mut column, false);
         }
+        Layout::Gallery => {
+            kicker(&mut column, false);
+            title(&mut column);
+            let gap = if column.parts.is_empty() {
+                0.0
+            } else {
+                BODY_GAP
+            };
+            let room = CONTENT_BOTTOM - MARGIN_Y - column.height - gap;
+            gallery(&mut column, slide, room, gap);
+        }
         Layout::Ask => {
             kicker(&mut column, false);
             title(&mut column);
@@ -562,6 +573,65 @@ fn image_part(slide: &Slide, height: f32) -> Part {
                 image: Arc::new(image),
                 width: COLUMN,
                 height: height.max(1.0),
+                grow: f32::from(slide.scale.unwrap_or(1)),
+            },
+            magnification: 1.0,
+            x: MARGIN_X,
+            y: 0.0,
+        },
+        Err(complaint) => left(
+            "body",
+            text(
+                "body",
+                &format!("Missing image: {complaint}"),
+                TextRole::Body,
+                None,
+            ),
+            1.0,
+        ),
+    }
+}
+
+/// The space between two images of a gallery, in points.
+const GALLERY_GAP: f32 = 14.0;
+
+/// A gallery's images, two to a row (a lone last image centered), each
+/// fitted into its cell: `room` points tall in all.
+fn gallery(column: &mut Column, slide: &Slide, room: f32, gap: f32) {
+    let per_row = 2usize;
+    let rows = slide.images.len().div_ceil(per_row).max(1);
+    let cell_w = (COLUMN - GALLERY_GAP * (per_row as f32 - 1.0)) / per_row as f32;
+    let cell_h = ((room - GALLERY_GAP * (rows as f32 - 1.0)) / rows as f32).max(1.0);
+    for (row, shown) in slide.images.chunks(per_row).enumerate() {
+        let used = cell_w * shown.len() as f32 + GALLERY_GAP * (shown.len() as f32 - 1.0);
+        let left = MARGIN_X + (COLUMN - used) / 2.0;
+        let parts = shown
+            .iter()
+            .enumerate()
+            .map(|(index, image)| {
+                let mut part = image_cell(image, slide, cell_w, cell_h);
+                part.x = left + index as f32 * (cell_w + GALLERY_GAP);
+                part
+            })
+            .collect();
+        column.push_row(parts, if row == 0 { gap } else { GALLERY_GAP });
+    }
+}
+
+/// One image in a box `width` by `height` points, or a line saying what is
+/// missing.
+fn image_cell(shown: &crate::slide::SlideImage, slide: &Slide, width: f32, height: f32) -> Part {
+    match crate::slide::asset(&shown.path)
+        .ok_or_else(|| format!("{} is not in the deck", shown.path))
+        .and_then(Image::png)
+    {
+        Ok(image) => Part {
+            kind: "image",
+            text: shown.alt.clone(),
+            content: Content::Image {
+                image: Arc::new(image),
+                width,
+                height,
                 grow: f32::from(slide.scale.unwrap_or(1)),
             },
             magnification: 1.0,
