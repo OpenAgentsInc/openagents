@@ -229,6 +229,77 @@ impl Frame {
         self.shape(rect, radius, Some(width), color);
     }
 
+    /// Fills a rectangle whose corners may differ: `radii` are top left,
+    /// top right, bottom right, bottom left, in pixels (the layout's top
+    /// leading, top trailing, bottom trailing, bottom leading).
+    pub fn fill_corners(&mut self, rect: PxRect, radii: [f32; 4], color: Color) {
+        self.corners(rect, radii, None, color);
+    }
+
+    /// Strokes a rectangle whose corners may differ; see [`Frame::fill_corners`].
+    pub fn stroke_corners(&mut self, rect: PxRect, radii: [f32; 4], width: f32, color: Color) {
+        self.corners(rect, radii, Some(width), color);
+    }
+
+    /// Draws each quadrant with its own corner's radius, clipped to that
+    /// quadrant, so no pixel is painted twice and a translucent color stays
+    /// even. Equal radii take the single-shape path.
+    fn corners(&mut self, rect: PxRect, radii: [f32; 4], stroke: Option<f32>, color: Color) {
+        if radii.iter().all(|r| (r - radii[0]).abs() < f32::EPSILON) {
+            self.shape(rect, radii[0], stroke, color);
+            return;
+        }
+        let mid_x = (rect.x + rect.w / 2.0).round();
+        let mid_y = (rect.y + rect.h / 2.0).round();
+        let (right, bottom) = (rect.x + rect.w, rect.y + rect.h);
+        let quadrants = [
+            (
+                PxRect {
+                    x: rect.x,
+                    y: rect.y,
+                    w: mid_x - rect.x,
+                    h: mid_y - rect.y,
+                },
+                radii[0],
+            ),
+            (
+                PxRect {
+                    x: mid_x,
+                    y: rect.y,
+                    w: right - mid_x,
+                    h: mid_y - rect.y,
+                },
+                radii[1],
+            ),
+            (
+                PxRect {
+                    x: mid_x,
+                    y: mid_y,
+                    w: right - mid_x,
+                    h: bottom - mid_y,
+                },
+                radii[2],
+            ),
+            (
+                PxRect {
+                    x: rect.x,
+                    y: mid_y,
+                    w: mid_x - rect.x,
+                    h: bottom - mid_y,
+                },
+                radii[3],
+            ),
+        ];
+        for (quadrant, radius) in quadrants {
+            if quadrant.w <= 0.0 || quadrant.h <= 0.0 {
+                continue;
+            }
+            let previous = self.clip_to(quadrant);
+            self.shape(rect, radius, stroke, color);
+            self.restore_clip(previous);
+        }
+    }
+
     fn shape(&mut self, rect: PxRect, radius: f32, stroke: Option<f32>, color: Color) {
         if rect.w <= 0.0 || rect.h <= 0.0 || color.alpha == 0 {
             return;
@@ -363,6 +434,40 @@ fn repeat_pixel(row: &mut [u8], pixel: [u8; 4]) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A table header rounds only its top corners: its bottom corners
+    /// are square and filled to the edge, and each pixel is painted once.
+    #[test]
+    fn corners_round_only_where_asked() {
+        let mut frame = Frame::new(20, 20, Color::rgb(0, 0, 0));
+        let rect = PxRect {
+            x: 2.0,
+            y: 2.0,
+            w: 16.0,
+            h: 16.0,
+        };
+        frame.fill_corners(rect, [6.0, 6.0, 0.0, 0.0], Color::rgb(255, 255, 255));
+        assert_eq!(frame.pixel(2, 2), [0, 0, 0], "top left is rounded");
+        assert_eq!(frame.pixel(17, 2), [0, 0, 0], "top right is rounded");
+        assert_eq!(frame.pixel(2, 17), [255, 255, 255], "bottom left is square");
+        assert_eq!(
+            frame.pixel(17, 17),
+            [255, 255, 255],
+            "bottom right is square"
+        );
+        assert_eq!(frame.pixel(10, 10), [255, 255, 255]);
+        // Half-transparent: the seams between quadrants are painted once.
+        let mut frame = Frame::new(20, 20, Color::rgb(0, 0, 0));
+        let half = Color {
+            alpha: 128,
+            ..Color::rgb(200, 200, 200)
+        };
+        frame.fill_corners(rect, [6.0, 6.0, 0.0, 0.0], half);
+        let middle = frame.pixel(10, 10);
+        for (x, y) in [(9, 10), (10, 9), (9, 9), (10, 17), (17, 10)] {
+            assert_eq!(frame.pixel(x, y), middle, "({x},{y}) painted once");
+        }
+    }
 
     #[test]
     fn a_fill_covers_its_inside_and_softens_its_corner() {

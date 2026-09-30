@@ -607,10 +607,15 @@ impl Transcript {
                     h: shape.h * scale,
                 };
                 if let Some(fill) = shape.fill {
-                    frame.fill(bounds, shape.radii[0] * scale, self.ink(fill));
+                    frame.fill_corners(bounds, shape.radii.map(|r| r * scale), self.ink(fill));
                 }
                 if let Some(stroke) = shape.stroke {
-                    frame.stroke(bounds, shape.radii[0] * scale, scale, self.ink(stroke));
+                    frame.stroke_corners(
+                        bounds,
+                        shape.radii.map(|r| r * scale),
+                        scale,
+                        self.ink(stroke),
+                    );
                 }
                 if let Some(clip) = clip {
                     frame.restore_clip(clip);
