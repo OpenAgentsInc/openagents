@@ -50,6 +50,28 @@ fixtures, strict all-target adapter Clippy, scoped formatting, and the
 optimized desktop build pass. This improves opening latency without claiming
 the full performance acceptance or display scanout timing.
 
+## Rename dialog
+
+Reimplement the public reference's centered rename dialog: 360-point card,
+20-point insets, 16-point corners, 15-point semibold title, and a framed
+14/22.75 field. The field follows a 12-point top margin; the trailing action
+row follows a 16-point margin with an eight-point gap. Cancel is a quiet ghost
+button, followed by the single primary Rename button. Both use 13-point type,
+12×6-point content insets, and eight-point corners. The surrounding scrim
+consumes outside presses; Cancel, Escape, and a successful rename dismiss it.
+The first Escape during composition cancels the composition.
+
+The conversation and composer remain mounted, including the centered empty
+composer. The geometry, draft, IME, and keyboard-order fixture passes at both
+window sizes and scales. The retained-versus-complete repaint fixture now
+covers 28 steps, including dialog opening, editing, and dismissal. Desktop
+checks: 132 library tests, 95 binary tests, and three version checks pass;
+five opt-in checks remain ignored.
+
+Captures: [default 1×](rename-1200x840-1x.png),
+[default 2×](rename-1200x840-2x.png), [minimum 1×](rename-760x540-1x.png),
+and [minimum 2×](rename-760x540-2x.png).
+
 ## Reference and scope
 
 The design reference is the public MIT [Zeron source](https://github.com/zeronsh/zeron/tree/50cf9e97a32e54a8ea7e1174b80b5adc3b1d2ef4),
