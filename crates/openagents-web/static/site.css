@@ -107,6 +107,17 @@ button:hover,.button:hover{background:var(--tint)}
 .steps pre{margin:.5rem 0 0;white-space:pre-wrap;overflow-wrap:anywhere}
 details summary{cursor:pointer;color:var(--w75)}
 
+/* The download page: numbered sections of platform rows. */
+.dl-section{margin:0 0 2.5rem}
+.dl-section h2{margin:0 0 .25rem}
+.dl-list{list-style:none;margin:.75rem 0 1rem;padding:0;border:1px solid var(--w25)}
+.dl-row{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:.5rem 2ch;padding:.75rem 2ch;border-top:1px solid var(--w25)}
+.dl-row:first-child{border-top:0}
+.dl-name strong{color:var(--w100)}
+.soon{color:var(--w50)}
+.faq dt{color:var(--w100);font-weight:700;margin:1rem 0 .25rem}
+.faq dd{margin:0}
+
 /* The local task browser. */
 .facts{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:1ch;margin:1rem 0 2rem}
 .facts div{border-top:1px solid var(--w50);padding-top:.5rem;min-width:0}

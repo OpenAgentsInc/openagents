@@ -177,6 +177,21 @@ async fn the_install_page_covers_the_mac_the_iphone_and_pairing() {
     assert!(body.contains("iPhone Camera"));
     assert!(body.contains("Codex or Claude Code"));
     assert!(body.contains("Android") && body.contains("Linux") && body.contains("Windows"));
+    // One row per platform: macOS and iPhone link a real build; Windows,
+    // both Linux formats, and Android are unpublished and link nowhere.
+    assert_eq!(body.matches("class=\"dl-row\"").count(), 6, "{body}");
+    assert_eq!(body.matches("Coming soon").count(), 4, "{body}");
+    for row in body.split("<li class=\"dl-row\">").skip(1) {
+        let row = &row[..row.find("</li>").unwrap()];
+        assert_eq!(row.contains("Coming soon"), !row.contains("href="), "{row}");
+    }
+    for heading in [
+        "[1]</span> OpenAgents Desktop",
+        "[2]</span> OpenAgents Mobile",
+        "[3]</span> Connect them",
+    ] {
+        assert!(body.contains(heading), "{heading}");
+    }
     assert!(body.contains("<a href=\"/install\" aria-current=\"page\">Install</a>"));
     let (status, headers, _) =
         get_with(router(config(root.path().into())), "/desktop", LOCAL).await;

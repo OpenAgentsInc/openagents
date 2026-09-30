@@ -1,7 +1,8 @@
-//! `/install`: the one page that installs everything OpenAgents is
-//! launching, in order: OpenAgents for Mac, the iPhone app, pairing the
-//! two, and, to let the phone run Coder, signing in to Codex or Claude Code
-//! on the Mac. `/desktop` redirects here.
+//! `/install`: the one download page, laid out like opencode.ai/download:
+//! numbered sections for the desktop apps (macOS, Windows, Linux) and the
+//! mobile apps (iPhone, Android), each a row with its button, then how to
+//! connect them and a short FAQ. A platform with nothing published says
+//! "Coming soon" and links nowhere. `/desktop` redirects here.
 //!
 //! The `.dmg` is the one `scripts/desktop/package-macos.sh` builds (signed
 //! with the OpenAgents Developer ID, notarized, stapled) and that the
@@ -16,7 +17,7 @@ use axum::response::{Redirect, Response};
 use axum::routing::get;
 
 use crate::App;
-use crate::layout::{boxed, page};
+use crate::layout::page;
 
 /// The published desktop version this page links.
 pub(crate) const MAC_VERSION: &str = "1.0.0";
@@ -31,35 +32,84 @@ pub(crate) fn routes() -> Router<App> {
     )
 }
 
+/// One download row: the platform, what it is, and its button, or
+/// "Coming soon" when nothing is published for it yet.
+fn row(platform: &str, detail: &str, link: Option<(&str, &str)>) -> String {
+    let action = match link {
+        Some((href, label)) => format!("<a class=\"button\" href=\"{href}\">[ {label} ]</a>"),
+        None => "<span class=\"soon\">Coming soon</span>".to_owned(),
+    };
+    format!(
+        "<li class=\"dl-row\"><span class=\"dl-name\"><strong>{platform}</strong> \
+<span class=\"dim\">({detail})</span></span>{action}</li>"
+    )
+}
+
+/// A numbered section: `[1] Title`, a line under it, and its body.
+fn section(number: u8, title: &str, lead: &str, body: &str) -> String {
+    format!(
+        "<section class=\"dl-section\"><h2><span class=\"dim\">[{number}]</span> {title}</h2>\
+<p class=\"label\">{lead}</p>{body}</section>"
+    )
+}
+
 async fn install() -> Response {
-    let mac = format!(
-        "<p>OpenAgents for Mac runs on your Mac and connects your phone to it.</p>\
-<p><a class=\"button\" href=\"{MAC_DMG}\">[ Download OpenAgents {MAC_VERSION} for Mac (.dmg) ]</a></p>\
-<p class=\"hint\">macOS 13 or later. One universal build for Apple silicon and Intel, \
-signed by OpenAgents, Inc. and notarized by Apple.</p>\
-<ol><li>Open the downloaded <code>.dmg</code>.</li>\
-<li>Drag <strong>OpenAgents</strong> onto <strong>Applications</strong>.</li></ol>"
+    let desktop = format!(
+        "<ul class=\"dl-list\">{}{}{}{}</ul>\
+<p class=\"hint\">OpenAgents {MAC_VERSION} for Mac is one universal build, macOS 13 or later, \
+signed by OpenAgents, Inc. and notarized by Apple. Open the <code>.dmg</code> and drag \
+<strong>OpenAgents</strong> onto <strong>Applications</strong>. It updates itself.</p>",
+        row(
+            "macOS",
+            "Apple silicon and Intel",
+            Some((MAC_DMG, "Download .dmg"))
+        ),
+        row("Windows", "x64, .msi", None),
+        row("Linux", ".deb", None),
+        row("Linux", "AppImage", None),
     );
-    let iphone = format!(
-        "<p>The OpenAgents iPhone app is in testing on TestFlight.</p>\
-<p><a class=\"button\" href=\"{}\">[ Get OpenAgents on TestFlight ]</a></p>",
-        super::TESTFLIGHT
+    let mobile = format!(
+        "<ul class=\"dl-list\">{}{}</ul>",
+        row(
+            "iPhone",
+            "TestFlight beta",
+            Some((super::TESTFLIGHT, "Join on TestFlight"))
+        ),
+        row("Android", "in testing", None),
     );
-    let connect = "<ol><li>Open OpenAgents from Applications on your Mac. It shows a QR code.</li>\
-<li>Scan the code with the iPhone Camera, or in the OpenAgents app: tap \
-<strong>Account</strong>, <strong>Computers</strong>, <strong>Connect a computer</strong>, \
-and point it at the code.</li></ol>\
-<p>Your phone can now chat with the agents on your Mac.</p>";
-    let coder = "<p>To let your phone run Coder in your projects on the Mac, sign in \
-to Codex or Claude Code at the terminal on the Mac first.</p>";
-    let later = "<p class=\"hint\">Not yet: the Android app is in testing and not public, and \
-desktop builds for Linux and Windows aren't published.</p>";
+    let connect = "<ol><li>Open OpenAgents on your computer. It shows a QR code.</li>\
+<li>Scan it with the iPhone Camera, or in the app tap <strong>Account</strong>, \
+<strong>Computers</strong>, <strong>Connect a computer</strong>.</li>\
+<li>To let your phone run Coder there, sign in to Codex or Claude Code on the computer.</li></ol>\
+<p class=\"hint\">More in <a href=\"/docs/connect-a-computer\">Connect a computer</a> and \
+<a href=\"/docs/coder\">Coder</a>.</p>";
+    let faq = "<dl class=\"faq\">\
+<dt>Do I need Tailscale?</dt><dd>No. Your phone connects to your computer by scanning its QR \
+code, directly when it can and through our relay when it can't.</dd>\
+<dt>Do I need an account or a model key?</dt><dd>No. The app makes its own key the first time \
+it opens. Coder uses the Codex or Claude Code sign-in already on your computer.</dd>\
+<dt>Does my code leave my computer?</dt><dd>Coder works in your projects on your computer. \
+Like Codex and Claude Code on their own, it sends what it reads to the model provider you \
+signed in to. See <a href=\"/docs/privacy-and-security\">Privacy and security</a>.</dd>\
+</dl>";
     let body = format!(
-        "<h1>Install OpenAgents</h1>{}{}{}{}{later}",
-        boxed("1. Get OpenAgents for Mac", &mac),
-        boxed("2. Get the iPhone app", &iphone),
-        boxed("3. Connect them", connect),
-        boxed("4. Run Coder from your phone (optional)", coder),
+        "<h1>Download OpenAgents</h1>\
+<p class=\"lede\">Chat with OpenAgents on your phone and your computer, and let Coder work \
+in your projects.</p>{}{}{}{}",
+        section(
+            1,
+            "OpenAgents Desktop",
+            "Runs on your computer and connects your phone to it.",
+            &desktop
+        ),
+        section(
+            2,
+            "OpenAgents Mobile",
+            "Chat with OpenAgents and send work to your computers.",
+            &mobile
+        ),
+        section(3, "Connect them", "Once, with a QR code.", connect),
+        section(4, "FAQ", "", faq),
     );
-    page("Install OpenAgents", Some("/install"), &body)
+    page("Download OpenAgents", Some("/install"), &body)
 }

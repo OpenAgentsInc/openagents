@@ -96,15 +96,6 @@ pub fn problem(status: StatusCode, title: &str, text: &str, back: (&str, &str)) 
     (status, Html(document(title, None, &body))).into_response()
 }
 
-/// A box: a frame with `title` set into its top rule.
-#[must_use]
-pub fn boxed(title: &str, inner: &str) -> String {
-    format!(
-        "<section class=\"box\"><h2 class=\"box-title\">{}</h2>{inner}</section>",
-        escape(title)
-    )
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
