@@ -277,7 +277,21 @@ mod tests {
         destroy(id);
         assert!(update(id, "{}").is_err());
         assert_eq!(font_spec(14.4, 0, false, true), [2.0, 400.0, 0.0, 0.0]);
-        assert!(font(3).unwrap().len() > 100_000 && font(4).is_err());
+        // The phone's fonts are the four default variable faces: every
+        // weight, italic, and mono combination the host asks for maps into
+        // them. The bundled table also holds the desktop's Geist faces, which
+        // the host never selects but can still fetch by index.
+        for weight in 0..4 {
+            for italic in [false, true] {
+                for mono in [false, true] {
+                    let face = font_spec(15.0, weight, italic, mono)[0];
+                    assert!((0.0..4.0).contains(&face), "phone face {face}");
+                }
+            }
+        }
+        assert!((0..4).all(|face| font(face).unwrap().len() > 100_000));
+        assert_eq!(FACES.len(), 20);
+        assert!(font(19).is_ok() && font(20).is_err() && font(-1).is_err());
         rust_native::layout::source::retire("android-test:chat");
     }
 }
