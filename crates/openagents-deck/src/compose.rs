@@ -47,6 +47,8 @@ const NUMBER: f32 = 2.5;
 const STATEMENT: f32 = 1.5;
 /// The most a figure (`$0`) is magnified: as large as the slide allows.
 const FIGURE: f32 = 14.0;
+/// A figure slide's title, a little larger than body type.
+const FIGURE_TITLE: f32 = 1.35;
 
 /// The space between a kicker and its title, a title and the body, and the
 /// body and the note, in points.
@@ -520,8 +522,8 @@ fn body(slide: &Slide) -> Vec<Part> {
             let mut parts = vec![];
             if let Some(title) = &slide.title {
                 let node = text("title", title, TextRole::Heading, None);
-                let mut heading = centered("title", node, 1.0);
-                heading.y = MARGIN_Y + 16.0;
+                let mut heading = centered("title", node, FIGURE_TITLE);
+                heading.y = MARGIN_Y + 44.0;
                 parts.push(heading);
             }
             let node = text("figure", slide.body.trim(), TextRole::Heading, None);
@@ -617,19 +619,23 @@ fn image_part(slide: &Slide, height: f32) -> Part {
 }
 
 /// The space between two images of a gallery, in points.
-const GALLERY_GAP: f32 = 14.0;
+const GALLERY_GAP: f32 = 10.0;
+/// A gallery reaches this close to the slide's edges, wider than the text
+/// column, so each image is as large as it can be.
+const GALLERY_MARGIN_X: f32 = 18.0;
 
 /// A gallery's images, two to a row (a lone last image centered), each
 /// fitted into its cell: `room` points tall in all.
 fn gallery(column: &mut Column, slide: &Slide, room: f32, gap: f32) {
     let per_row = 2usize;
     let rows = slide.images.len().div_ceil(per_row).max(1);
-    let cell_w = (COLUMN - GALLERY_GAP * (per_row as f32 - 1.0)) / per_row as f32;
+    let span = WIDTH - 2.0 * GALLERY_MARGIN_X;
+    let cell_w = (span - GALLERY_GAP * (per_row as f32 - 1.0)) / per_row as f32;
     let cell_h = ((room - GALLERY_GAP * (rows as f32 - 1.0)) / rows as f32).max(1.0);
     for (row, shown) in slide.images.chunks(per_row).enumerate() {
         let used = cell_w * shown.len() as f32 + GALLERY_GAP * (shown.len() as f32 - 1.0);
-        let left = MARGIN_X + (COLUMN - used) / 2.0;
-        let parts = shown
+        let left = GALLERY_MARGIN_X + (span - used) / 2.0;
+        let mut parts: Vec<Part> = shown
             .iter()
             .enumerate()
             .map(|(index, image)| {
@@ -638,6 +644,24 @@ fn gallery(column: &mut Column, slide: &Slide, room: f32, gap: f32) {
                 part
             })
             .collect();
+        // A row is as tall as its tallest fitted image, not a fixed share
+        // of the slide, so the grid sits together and centers as a whole.
+        let row_h = parts
+            .iter()
+            .filter_map(|part| match &part.content {
+                Content::Image { image, .. } => {
+                    Some((cell_w * image.height as f32 / image.width.max(1) as f32).min(cell_h))
+                }
+                Content::Rich(_) => None,
+            })
+            .fold(0.0_f32, f32::max);
+        if row_h > 0.0 {
+            for part in &mut parts {
+                if let Content::Image { height, .. } = &mut part.content {
+                    *height = row_h;
+                }
+            }
+        }
         column.push_row(parts, if row == 0 { gap } else { GALLERY_GAP });
     }
 }

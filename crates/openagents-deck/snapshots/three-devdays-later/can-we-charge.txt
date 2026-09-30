@@ -1,15 +1,12 @@
-image at 40,26 353x121
+image at 18,82 377x149
   image 1484 x 587 pixels
   David Lamond (@AvLabspro): "Two questions: can apps charge users directly (subscriptions or one-time) inside ChatGPT, and what's the revenue share? And can we link out to our own checkout, or is it ChatGPT payments only?"
-image at 407,26 353x121
+image at 405,82 377x149
   image 1484 x 469 pixels
   Zach (@zschwendi): "Can we charge for them?"
-image at 40,161 353x121
+image at 18,241 377x119
   image 1484 x 469 pixels
   Sami (@TheXSami): "Can those plugins be monetised by the creator?"
-image at 407,161 353x121
-  image 1484 x 528 pixels
-  Demetrius Taylor (@Dee_Tay_ler): "What is different between now and the past attempts at this? My previous experience with submitting apps/extensions has been horrible."
-image at 224,295 353x121
+image at 405,241 377x119
   image 1484 x 469 pixels
   Monet (@IAmMonetApp): "So we can build and sell via an OpenAI store?"

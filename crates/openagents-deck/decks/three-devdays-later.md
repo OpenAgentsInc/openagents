@@ -16,7 +16,7 @@ source: OpenAI DevDay opening keynote on YouTube; screenshot in decks/assets/imp
 
 layout: figure
 id: revenue-shared
-title: Revenue shared with developers
+title: OpenAI Revenue Shared to Developers
 source: the owner's claim for the talk, 2026-09-30
 
 $0
@@ -48,8 +48,16 @@ source: replies on X, 2026-09-29; screenshots in decks/assets/tweet-*.png
 ![David Lamond (@AvLabspro): "Two questions: can apps charge users directly (subscriptions or one-time) inside ChatGPT, and what's the revenue share? And can we link out to our own checkout, or is it ChatGPT payments only?"](assets/tweet-david-lamond.png)
 ![Zach (@zschwendi): "Can we charge for them?"](assets/tweet-zach.png)
 ![Sami (@TheXSami): "Can those plugins be monetised by the creator?"](assets/tweet-sami.png)
-![Demetrius Taylor (@Dee_Tay_ler): "What is different between now and the past attempts at this? My previous experience with submitting apps/extensions has been horrible."](assets/tweet-demetrius-taylor.png)
 ![Monet (@IAmMonetApp): "So we can build and sell via an OpenAI store?"](assets/tweet-monet.png)
+
+---
+
+layout: image
+id: demetrius-taylor
+scale: 2
+source: x.com/Dee_Tay_ler, 2026-09-29; screenshot in decks/assets/tweet-demetrius-taylor.png
+
+![Demetrius Taylor (@Dee_Tay_ler): "What is different between now and the past attempts at this? My previous experience with submitting apps/extensions has been horrible."](assets/tweet-demetrius-taylor.png)
 
 ---
 

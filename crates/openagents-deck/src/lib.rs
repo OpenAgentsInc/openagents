@@ -79,8 +79,9 @@ mod tests {
         }
     }
 
-    /// Every part of every slide stays inside the canvas's margins, above
-    /// the foot, and nothing is so wide that it scrolls sideways.
+    /// Every part of every slide stays inside the canvas's margins (an image
+    /// may use the full width), and nothing is so wide that it scrolls
+    /// sideways.
     #[test]
     fn every_slide_fits_its_canvas() {
         for deck in Deck::all() {
@@ -89,9 +90,12 @@ mod tests {
                 for part in &composed.parts {
                     let at = format!("{}/{} {}", deck.name, slide.id, part.kind);
                     assert!(!part.scrolls(), "{at} scrolls sideways");
-                    assert!(part.x >= MARGIN_X - 0.5, "{at} starts at {}", part.x);
+                    // Text keeps the margins; an image may reach wider, as
+                    // a gallery does, but never off the canvas.
+                    let margin = if part.kind == "image" { 0.0 } else { MARGIN_X };
+                    assert!(part.x >= margin - 0.5, "{at} starts at {}", part.x);
                     let right = part.x + part.natural_width();
-                    assert!(right <= WIDTH - MARGIN_X + 0.5, "{at} ends at {right}");
+                    assert!(right <= WIDTH - margin + 0.5, "{at} ends at {right}");
                     if part.kind == "foot" {
                         continue;
                     }

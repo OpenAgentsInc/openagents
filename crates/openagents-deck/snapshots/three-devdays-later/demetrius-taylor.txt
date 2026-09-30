@@ -1,0 +1,3 @@
+image at 40,26 720x390
+  image 1484 x 528 pixels
+  Demetrius Taylor (@Dee_Tay_ler): "What is different between now and the past attempts at this? My previous experience with submitting apps/extensions has been horrible."
