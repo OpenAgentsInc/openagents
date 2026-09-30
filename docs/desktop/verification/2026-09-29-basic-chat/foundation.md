@@ -81,3 +81,17 @@ the desktop transcript painter over the existing immutable layout frames and
 measure visible-row painting. Then extract and bind shared chat state and
 the host-backed hosted-chat transport, followed by the remaining Zeron basic
 chat components. The issue stays open until its full chat acceptance passes.
+
+## Shared chat checkpoint
+
+The hosted phone chat implementation now lives in `crates/openagents-chat`.
+The phone re-exports the same transport, router, and lifecycle, with injected
+wake callbacks; `coder-computers` re-exports the same cache. Storage paths and
+wire fields remain compatible. The shared crate avoids the mobile wallet
+workspace and gives the desktop host one implementation to call.
+
+`cargo test --offline -p openagents-chat` passed 21 tests, with the live test
+ignored. This includes a local NIP-42 relay, authenticated and encrypted
+answers, connection reuse, ordered streaming, refusal, retry, and encrypted
+relaunch. The mobile consumer passed `cargo check --offline --manifest-path
+crates/openagents-mobile/Cargo.toml`.

@@ -79,16 +79,16 @@ struct Inner {
 
 /// The basic Coder's kept relay connection. Cloning shares it.
 #[derive(Clone)]
-pub(crate) struct Link {
+pub struct Link {
     inner: Arc<Inner>,
 }
 
 /// A job's registration: its frames arrive on `frames`, and dropping it
 /// forgets the job, as when the person stops a reply.
-pub(crate) struct Job {
+pub struct Job {
     link: Link,
     request: String,
-    pub(crate) frames: mpsc::UnboundedReceiver<Value>,
+    pub frames: mpsc::UnboundedReceiver<Value>,
 }
 
 impl Drop for Job {
@@ -98,12 +98,12 @@ impl Drop for Job {
 }
 
 impl Link {
-    pub(crate) fn new(url: &str, secret: SecretKey) -> Self {
+    pub fn new(url: &str, secret: SecretKey) -> Self {
         Self {
             inner: Arc::new(Inner {
                 url: url.to_owned(),
                 secret,
-                me: crate::account::public(&secret).0,
+                me: crate::public(&secret),
                 state: Mutex::new(State::default()),
                 changed: Notify::new(),
             }),
@@ -116,12 +116,12 @@ impl Link {
 
     /// How many connections the link has opened.
     #[cfg(test)]
-    pub(crate) fn opened(&self) -> usize {
+    pub fn opened(&self) -> usize {
         self.state().opened
     }
 
     /// Keep a connection open, and open it now if none is.
-    pub(crate) fn warm(&self, runtime: &Handle) {
+    pub fn warm(&self, runtime: &Handle) {
         let mut state = self.state();
         state.wanted = true;
         if !state.kept {
@@ -133,7 +133,7 @@ impl Link {
     }
 
     /// Stop keeping a connection: close it once no job waits on it.
-    pub(crate) fn rest(&self) {
+    pub fn rest(&self) {
         let mut state = self.state();
         state.wanted = false;
         if state.jobs.is_empty() {
@@ -299,7 +299,7 @@ impl Link {
     /// Publish `request` on a connection whose subscription is placed,
     /// opening one when none is, within `wait`. Its answers arrive on the
     /// returned job.
-    pub(crate) async fn publish(&self, request: &Event, wait: Duration) -> Result<Job, String> {
+    pub async fn publish(&self, request: &Event, wait: Duration) -> Result<Job, String> {
         let (sender, frames) = mpsc::unbounded_channel();
         self.state().jobs.insert(request.id.clone(), sender);
         let job = Job {

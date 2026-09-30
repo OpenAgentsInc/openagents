@@ -134,7 +134,10 @@ fn basic_door(launch: &Launch, secret: SecretKey) -> Option<Arc<dyn crate::basic
         .unwrap_or(crate::basic_coder::WORKER);
     crate::basic_coder::Relay::new(relay, worker, secret)
         .ok()
-        .map(|door| Arc::new(door) as Arc<dyn crate::basic_coder::Door>)
+        .map(|door| {
+            Arc::new(door.with_wake(Arc::new(crate::wake::ring)))
+                as Arc<dyn crate::basic_coder::Door>
+        })
 }
 
 /// The hosted eval runner this build sends test runs to
@@ -892,7 +895,8 @@ impl App {
                 &secret,
             )
             .ok(),
-        );
+        )
+        .with_wake(Arc::new(crate::wake::ring));
         let mut gym = crate::gym::Gym::new(
             Cache::open(&config.state_dir.join(format!("gym{recorded}")), &secret).ok(),
             hosted_runner(&launch, secret),
