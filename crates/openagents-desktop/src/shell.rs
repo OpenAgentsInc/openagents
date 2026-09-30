@@ -3326,6 +3326,58 @@ mod command_fixtures {
         }
     }
     #[test]
+    fn hovering_palette_edges_never_moves_rows_under_the_pointer() {
+        for (width, height) in [(1200.0, 840.0), (760.0, 540.0)] {
+            for scale in [1.0, 2.0] {
+                let now = Instant::now();
+                let (mut app, _) = DesktopApp::performance_fixture(0, 500, now);
+                key(&mut app, now, "k", true, false);
+                let (_, initial) = rust_native_desktop::capture(&mut app, width, height, scale);
+                let rows = |scene: &rust_native_desktop::layout::Scene| {
+                    scene
+                        .hits
+                        .iter()
+                        .filter(|hit| hit.key.starts_with("command-"))
+                        .map(|hit| (hit.key.clone(), hit.rect))
+                        .collect::<Vec<_>>()
+                };
+                let initial_rows = rows(&initial);
+                let edge = initial
+                    .hits
+                    .iter()
+                    .rev()
+                    .find(|hit| hit.key.starts_with("command-") && hit.enabled)
+                    .unwrap()
+                    .key
+                    .clone();
+                assert!(app.pointer_hover(Some(&edge), now));
+                for _ in 0..8 {
+                    let (_, scene) = rust_native_desktop::capture(&mut app, width, height, scale);
+                    assert_eq!(rows(&scene), initial_rows);
+                    assert_eq!(
+                        scene.bounds["command-panel"],
+                        initial.bounds["command-panel"]
+                    );
+                    assert!(!app.pointer_hover(Some(&edge), now));
+                }
+                key(&mut app, now, "ArrowDown", false, false);
+                let (_, scrolled) = rust_native_desktop::capture(&mut app, width, height, scale);
+                let scrolled_rows = rows(&scrolled);
+                assert_ne!(scrolled_rows[0].0, initial_rows[0].0);
+                // The next row is revealed with one row's movement, rather
+                // than recentering the selection in the whole list.
+                assert_eq!(scrolled_rows[0].0, initial_rows[1].0);
+                let edge = scrolled_rows.last().unwrap().0.clone();
+                app.pointer_hover(Some(&edge), now);
+                let (_, repeated) = rust_native_desktop::capture(&mut app, width, height, scale);
+                assert_eq!(rows(&repeated), scrolled_rows);
+                key(&mut app, now, "ArrowUp", false, false);
+                let (_, backwards) = rust_native_desktop::capture(&mut app, width, height, scale);
+                assert_eq!(rows(&backwards), scrolled_rows);
+            }
+        }
+    }
+    #[test]
     fn pointer_motion_and_keys_share_one_palette_selection() {
         let (mut app, now) = super::tests::chat_fixture(0);
         key(&mut app, now, "n", true, false);

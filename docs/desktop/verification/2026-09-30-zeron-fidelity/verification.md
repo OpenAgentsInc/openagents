@@ -4,6 +4,22 @@ Progress on [#10029](https://github.com/OpenAgentsInc/openagents/issues/10029).
 This issue remains open. These slices establish matching component values;
 they do not claim pixel-for-pixel fidelity for the completed screen.
 
+## Stable palette hover
+
+Keep the palette's visible range separate from its selected row. Previously,
+hovering a row near the list edge recentered the range, moving another row
+under the pointer. Subsequent pointer movement could change selection and move
+the rows again. Hover now changes only selection. Arrow keys reveal the next
+row with the minimum necessary movement; opening and filtering reset the range.
+
+The regression uses 500 chats at 1,200 × 840 and 760 × 540 points, at both
+1× and 2×. It checks unchanged row rectangles and menu bounds through repeated
+edge hover, then verifies forward and backward keyboard navigation. All ten
+command fixtures pass, including retained-versus-complete repaint comparisons,
+draft preservation, menu input admission, and profile navigation. This fixes
+the selection-driven layout shifts; the native acquisition stalls recorded
+below remain a separate unresolved latency failure.
+
 ## Reference and scope
 
 The design reference is the public MIT [Zeron source](https://github.com/zeronsh/zeron/tree/50cf9e97a32e54a8ea7e1174b80b5adc3b1d2ef4),

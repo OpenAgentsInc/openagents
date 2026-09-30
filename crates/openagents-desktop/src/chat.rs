@@ -42,6 +42,8 @@ pub const RENAME: &str = "composer:chat-rename";
 pub struct Panel {
     commands: openagents_chat_app::commands::Overlay,
     command_rows: BTreeMap<String, usize>,
+    command_start: usize,
+    command_reveal: bool,
     saved: openagents_chat_app::retained::Session,
     saved_visible: bool,
     saved_project: Option<String>,
@@ -140,6 +142,8 @@ impl Panel {
         Self {
             commands: openagents_chat_app::commands::Overlay::default(),
             command_rows: BTreeMap::new(),
+            command_start: 0,
+            command_reveal: false,
             saved: openagents_chat_app::retained::Session::default(),
             saved_visible: false,
             saved_project: None,
@@ -1654,6 +1658,8 @@ impl Panel {
         let searchable = kind == openagents_chat_app::commands::Kind::Palette;
         self.menu_point = None;
         self.menu_navigation = false;
+        self.command_start = 0;
+        self.command_reveal = false;
         self.rename = None;
         self.search.focused = false;
         if let Some(field) = self.field() {
@@ -1958,6 +1964,7 @@ impl Panel {
                 if self.commands.kind == Some(openagents_chat_app::commands::Kind::Palette) {
                     self.commands.query = self.command_query.text().to_owned();
                     self.commands.selected = 0;
+                    self.command_start = 0;
                 }
                 return FieldAction::Edited;
             }
@@ -1984,6 +1991,7 @@ impl Panel {
                     let entries = self.commands.entries(&self.registry());
                     self.commands
                         .navigate_entries(*key == "ArrowUp" || (*key == "Tab" && *shift), &entries);
+                    self.command_reveal = true;
                     return FieldAction::Edited;
                 }
                 if *key == "Enter" {
@@ -2004,6 +2012,7 @@ impl Panel {
             if self.commands.query != query {
                 self.commands.query = query;
                 self.commands.selected = 0;
+                self.command_start = 0;
             }
             return if result == FieldAction::Unhandled {
                 FieldAction::Edited
@@ -2702,8 +2711,26 @@ impl Panel {
             };
             let mut actions_shown = false;
             let mut history_started = false;
-            for index in self.commands.window_at(entries.len(), visible) {
-                let entry = &entries[index];
+            // Scrolling belongs to keyboard navigation, not hover selection.
+            // Recentring on hover moves another row under the same pointer.
+            self.command_start = self
+                .command_start
+                .min(entries.len().saturating_sub(visible));
+            if self.command_reveal {
+                if self.commands.selected < self.command_start {
+                    self.command_start = self.commands.selected;
+                } else if self.commands.selected >= self.command_start + visible {
+                    self.command_start = self.commands.selected + 1 - visible;
+                }
+                self.command_reveal = false;
+            }
+            let end = (self.command_start + visible).min(entries.len());
+            for (index, entry) in entries
+                .iter()
+                .enumerate()
+                .take(end)
+                .skip(self.command_start)
+            {
                 if entry.enabled {
                     self.command_rows.insert(entry.key.clone(), index);
                 }
