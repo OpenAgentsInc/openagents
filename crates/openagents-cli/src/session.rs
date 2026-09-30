@@ -24,8 +24,8 @@ use coder::cli_route::tree::{Declared, Effect};
 
 pub(crate) const USAGE: &str = "usage: openagents session COMMAND [OPTIONS]
   pair INVITATION [--relay URL] [--timeout SECONDS] [--as PROFILE]
-        Redeem a `coder-pair:` invitation from `openagents pair` or `coder
-        pair` and keep the connection. --relay must match the invitation.
+        Redeem a `coder-pair:` invitation from `openagents pair` and keep
+        the connection. --relay must match the invitation.
   list [--host PUBKEY] [--relay URL] [--timeout SECONDS] [--limit N]
         List the chats every paired computer discloses.
   read SESSION [--limit N] [--host PUBKEY] [--relay URL] [--timeout SECONDS]

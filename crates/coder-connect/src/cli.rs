@@ -403,19 +403,19 @@ fn update_display(host: &Host, display: &mut Option<pairing_ui::Display>) -> Res
         display.clear();
         return Err(Error::new(
             ErrorCode::Expired,
-            "pairing invitation expired; run ./pair or coder pair again",
+            "pairing invitation expired; run openagents pair again",
         ));
     }
     Ok(())
 }
 
-/// Show a read-only phone invitation through the installed `coder pair` command.
+/// Show a read-only phone invitation through the installed `openagents pair` command.
 ///
 /// This accepts connection options only; it cannot dispatch another host command.
 pub async fn pair(arguments: &[String]) -> Result<()> {
     if arguments.len() == 1 && matches!(arguments[0].as_str(), "--help" | "-h" | "help") {
         println!(
-            "coder pair [--relay URL] [--codex-root PATH] [--claude-root PATH] [--coder-root PATH] [--no-codex] [--no-claude] [--expires-secs 86400] [--no-browser] [--state PATH]\nShow a QR code for read-only phone access to existing Codex and Claude chats. Keep this command running after pairing."
+            "openagents pair [--relay URL] [--codex-root PATH] [--claude-root PATH] [--coder-root PATH] [--no-codex] [--no-claude] [--expires-secs 86400] [--no-browser] [--state PATH]\nShow a QR code for read-only phone access to existing Codex and Claude chats. Keep this command running after pairing."
         );
         return Ok(());
     }

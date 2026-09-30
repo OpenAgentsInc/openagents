@@ -53,19 +53,11 @@ A failed build leaves the link unchanged. The script expects
 
 ## Pair a phone
 
-The installed binary includes the read-only history observer:
-
-```sh
-coder pair
-```
-
-Scan its QR code in the Coder mobile app. Keep the command running while reading
-chats. No separate helper binary or model credential is required. This grants
-read-only access to the displayed retained Codex and Claude roots; it cannot run
-an agent. See [the mobile reader guide](mobile-readonly.md) for scope and expiry.
-
-From a source checkout, `./pair` starts the same observer without installing the
-full Coder CLI. It requires the Rust toolchain.
+Connect the computer with the OpenAgents desktop app or `openagents connect`;
+see [Link your devices](link-devices.md). A phone connected that way reads
+this computer's chats through its host grant. For the read-only history
+observer alone, `openagents pair` shows its QR code; see
+[the mobile reader guide](mobile-readonly.md).
 
 ## Roll back
 

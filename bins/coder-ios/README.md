@@ -69,7 +69,7 @@ route. Tap the companion for a brief wiggle and hop. Near a gate, choose a
 demo item, tap to inspect its destination, then tap again to walk there. Item
 and gate memory survive relaunch; they provide no service or payment authority.
 
-The same update adds `./pair` / `coder pair`, automatic chat loading after
+The same update adds a one-command computer pairing, automatic chat loading after
 pairing, concise chat panels, a remembered world relay, and composed left-side
 movement with right-side look or double-tap jump. Camera mode and **Recenter**
 use labeled icons. [Connection evidence](../../docs/coder/verification/2026-09-26-mobile-connections.md)
@@ -205,8 +205,7 @@ cached view before it requests a refresh.
    world HUD; see [the world computer](../../docs/verse/mobile.md#the-computers-screen)
    and [its verification](../../docs/coder/verification/2026-09-27-verse-computer-hud.md).)
    On your physical
-   computer, run `./pair` in an updated OpenAgents checkout, or `coder pair`
-   with current Coder installed. Keep the command running.
+   computer, run `openagents pair`. Keep the command running.
 2. Tap **Scan QR code** and scan the computer's invitation. **Paste code**
    accepts the same `coder-pair:` string. Camera permission is requested only
    after choosing to scan; declining it leaves the paste path available.

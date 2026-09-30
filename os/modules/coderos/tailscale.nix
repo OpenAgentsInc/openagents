@@ -1,11 +1,11 @@
 # Tailscale: a name for this host that survives a network change.
 #
-# Other machines reach a host by name over ssh, and `coder link` in
-# `crates/coder-setup` reaches Coder hosts over Tailscale. On a LAN a name
-# works through mDNS or a `.lan` suffix, and both break the moment a host
-# moves to another network or the router hands out a different name. On
-# 2026-09-11 a CoderOS host could not resolve a Mac's `.local` name at all,
-# because it carries no mDNS resolver, and reached it only by `.lan`.
+# Other machines reach a host by name over ssh, and Coder hosts can serve a
+# direct listener on the tailnet. On a LAN a name works through mDNS or a
+# `.lan` suffix, and both break the moment a host moves to another network
+# or the router hands out a different name. On 2026-09-11 a CoderOS host
+# could not resolve a Mac's `.local` name at all, because it carries no mDNS
+# resolver, and reached it only by `.lan`.
 #
 # A tailnet replaces "same LAN" with "same tailnet" and gives every host a
 # stable name. It is transport, not authority: it changes who can route to

@@ -25,7 +25,7 @@ struct ComputerPanel: View {
     @State private var relay = ""
     @State private var settings = false
     @State private var aboutVerse = false
-    private let command = "./pair"
+    private let command = "openagents pair"
     private var paired: Bool { reader.packet?.paired == true }
     private var reading: Bool { reader.packet?.reading == true && !pairing }
 
@@ -177,7 +177,7 @@ struct ComputerPanel: View {
     private var pairingControls: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
-                Text("In your OpenAgents folder:")
+                Text("In a terminal on the computer:")
                 Text(command).font(.system(.caption, design: .monospaced)).textSelection(.enabled)
                     .accessibilityIdentifier("computer-command")
                 Button(copied ? "Copied" : "Copy command", systemImage: "doc.on.doc") {
@@ -214,7 +214,7 @@ struct ComputerPanel: View {
                 Text("Read-only chat access.")
                     .font(.caption).foregroundStyle(.secondary)
                 DisclosureGroup("Setup help") {
-                    Text("Update this checkout first. With Coder installed, run coder pair instead. Keep the command running while you read chats.")
+                    Text("Install the openagents command on the computer first. Keep the command running while you read chats.")
                         .font(.caption).textSelection(.enabled)
                 }.font(.caption)
                 if paired {

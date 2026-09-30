@@ -434,8 +434,8 @@ class MainActivity : ComponentActivity() {
     private fun buildPairing(paired: Boolean) {
         val body = column()
         panelBody.addView(ScrollView(this).apply { addView(body) }, LinearLayout.LayoutParams(-1, 0, 1f))
-        body.addView(label("In your OpenAgents folder:"))
-        val command = "./pair"
+        body.addView(label("In a terminal on the computer:"))
+        val command = "openagents pair"
         body.addView(label(command, "computer-command", 12f))
         body.addView(button("Copy command", "computer-copy-command") { copy("Connect command", command) })
         body.addView(button("Scan QR code", "computer-scan") {

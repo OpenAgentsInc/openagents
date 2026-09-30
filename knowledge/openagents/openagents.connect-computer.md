@@ -37,7 +37,7 @@ Coder needs your own Mac or Linux computer. The quickest way: put the computer a
 ## Details
 
 - With tailnet admission, the app asks every device on the tailnet for an invitation; a host answers only a device that `tailscale whois` names as its own Tailscale user.
-- The app redeems the invitation through normal NIP-HOST enrollment, so revocation and the device list work as usual, and the computer's Coder chats appear without `coder pair`.
+- The app redeems the invitation through normal NIP-HOST enrollment, so revocation and the device list work as usual, and the computer's Coder chats appear without a separate chat pairing.
 - The phone must be on the tailnet, through the Tailscale app, to reach the computer.
 
 ## Sources

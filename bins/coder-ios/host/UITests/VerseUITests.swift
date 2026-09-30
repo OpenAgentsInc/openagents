@@ -89,7 +89,7 @@ final class VerseUITests: XCTestCase {
         attach("Synthetic anchored computer catalog")
         app.buttons["computer-settings"].tap()
         app.buttons["computer-pair"].tap()
-        XCTAssertEqual(app.staticTexts["computer-command"].label, "./pair")
+        XCTAssertEqual(app.staticTexts["computer-command"].label, "openagents pair")
         XCTAssertTrue(app.staticTexts["computer-command"].exists)
         app.buttons["computer-scan"].tap()
         XCTAssertTrue(app.staticTexts["camera-status"].waitForExistence(timeout: 5))

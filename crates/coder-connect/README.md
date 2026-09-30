@@ -15,21 +15,18 @@ sources it can project.
 
 ## Connect a phone
 
-From the OpenAgents checkout on the computer:
+A phone connected with the OpenAgents desktop app's QR code or `openagents
+connect` reads this computer's chats through its NIP-HOST grant's `observe`
+right; see [Link your devices](../../docs/coder/guides/link-devices.md).
+
+For the read-only observer alone, run on the computer:
 
 ```sh
-./pair
+openagents pair
 ```
 
-The launcher builds the observer with the pinned Rust toolchain, then starts it.
-It uses `~/.cache/openagents/target-pair` (under `XDG_CACHE_HOME` when set), or
-`CARGO_TARGET_DIR` if supplied. You can invoke the launcher by its absolute path
-from another directory. It forwards connection options without changing them.
-
-If you have [installed Coder](../../docs/coder/guides/install.md), run `coder pair`
-from any directory. It uses the same observer in the installed binary. Update
-an older installation with `./scripts/install-coder.sh`. `coder pair --help`
-shows its options. No model account or model call is required.
+`openagents pair --help` shows its options. No model account or model call is
+required.
 
 The command lists existing `~/.codex` and `~/.claude` roots, displays a QR code
 and equivalent `coder-pair:` paste string, opens a private local QR page, and

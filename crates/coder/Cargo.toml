@@ -10,13 +10,10 @@ publish.workspace = true
 atif = { path = "../atif" }
 capability = { path = "../capability" }
 coder-boundary = { path = "../coder-boundary" }
-coder-connect = { path = "../coder-connect" }
 coder-host = { path = "../coder-host" }
 coder-delegate = { path = "../coder-delegate" }
 # OpenCode route models (`acp_client::opencode::Model`).
 acp-client = { path = "../acp-client" }
-# `coder link`: set up a serving host and link devices.
-coder-setup = { path = "../coder-setup" }
 coder-terminal = { path = "../coder-terminal" }
 jev = { path = "../jev" }
 # The authoring interview's machine (`ext_eval::author`), which

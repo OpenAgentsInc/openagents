@@ -137,7 +137,7 @@ and is skipped otherwise.
   sensor keeps touch controls available.
 - Approach the world computer, select **Use computer**, and follow the
   [pairing guide](../../docs/coder/guides/mobile-readonly.md). Scan the QR code
-  from `./pair` in an updated checkout (or installed `coder pair`), or paste the full
+  from `openagents pair`, or paste the full
   invitation. Camera access is requested only for scanning.
 - In the computer panel, open **Settings → Computers** to list the hosts this phone enrolled
   with a `coder-host:` invitation from `coder host invite`, each with its

@@ -127,7 +127,7 @@ install() {
   say "installed: $link now points to $installed"
   say "previous:  $was"
   say "history:   $history"
-  say "to pair your phone, run coder pair"
+  say "to connect your phone, see docs/coder/guides/link-devices.md"
   if test "$was" != none && test "$was" != "$installed"; then
     say "to go back to the previous build, run scripts/install-coder.sh --rollback (or ln -sfn '$was' '$link')"
   fi

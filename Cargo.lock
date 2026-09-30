@@ -1335,10 +1335,8 @@ dependencies = [
  "atif",
  "capability",
  "coder-boundary",
- "coder-connect",
  "coder-delegate",
  "coder-host",
- "coder-setup",
  "coder-terminal",
  "coderbench",
  "codex-transport",
@@ -1757,28 +1755,6 @@ dependencies = [
  "sha2 0.10.9",
  "supervise",
  "tempfile",
-]
-
-[[package]]
-name = "coder-setup"
-version = "0.1.0"
-dependencies = [
- "coder-access",
- "coder-computers",
- "coder-connect",
- "coder-host",
- "coder-reach",
- "coder-service",
- "futures-util",
- "libc",
- "nostr",
- "private-fs",
- "secp256k1 0.31.1",
- "serde",
- "serde_json",
- "tempfile",
- "tokio",
- "tokio-tungstenite",
 ]
 
 [[package]]

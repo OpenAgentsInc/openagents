@@ -24,7 +24,7 @@ coder host autostart on --workspace openagents --max-running 1
 
 | Option | Default | Meaning |
 | --- | --- | --- |
-| `--workspace LABEL` | Required | A workspace label the host admits, from `coder host init` or `coder link setup --workspace`. Repeat for more. |
+| `--workspace LABEL` | Required | A workspace label the host admits, from `coder host init --workspace`. Repeat for more. |
 | `--max-running N` | `1` | At most N auto-started tasks run at once, 1 to 8. The rest wait queued. |
 | `--model ID` | `gpt-6-luna` | The Codex model each eligible task records and its grant admits, when no `--route` is given. |
 | `--route PROVIDER:MODEL` | None | An admitted provider (`codex`, `claude`, `devin`, or `opencode`; repository runs don't generate through `vertex`, the OpenAgents cloud fallback, which answers terminal and phone turns only) and model, in preference order. A `devin` route hands the whole turn to the local Devin CLI; see [the Devin route](devin.md). An `opencode` route names OpenCode's `PROVIDER/MODEL` and hands the whole turn to OpenCode; see [the OpenCode route](opencode.md). Repeat for more, up to five. The first route's model is the one each task records. Use instead of `--model`. See [Routes and capacity](#routes-and-capacity). |
@@ -46,7 +46,8 @@ worktree for the host instead:
 
 ```sh
 git -C ~/work/openagents worktree add --detach ~/work/openagents-host-tasks origin/main
-coder link setup --workspace openagents=$HOME/work/openagents-host-tasks
+coder host init --owner OWNER_PUBKEY --relay wss://relay.openagents.com/ \
+  --workspace openagents=$HOME/work/openagents-host-tasks
 ```
 
 ### The task workspace

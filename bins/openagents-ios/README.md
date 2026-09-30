@@ -288,7 +288,7 @@ whois` names as its own Tailscale user, so your phone gets one and nobody
 else's does. The app redeems it through the normal NIP-HOST enrollment, and
 the host signs the grant, so revocation and the device list work as usual.
 The same answer carries a chat invitation, so the computer's Coder chats
-appear without running `coder pair`. The phone must be on the tailnet, through the
+appear without a separate chat pairing. The phone must be on the tailnet, through the
 Tailscale app, to reach the computer.
 
 A computer without tailnet admission can still be added from **Computers >

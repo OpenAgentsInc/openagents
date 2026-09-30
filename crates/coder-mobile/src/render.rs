@@ -175,7 +175,7 @@ fn catalog(app: &App) -> Vec<Node<Intent>> {
             if app.catalog_state.pages > 0 {
                 "No saved chats found on this computer."
             } else if app.error.is_some() {
-                "Chats unavailable. Keep ./pair running and retry."
+                "Chats unavailable. Keep openagents pair running and retry."
             } else {
                 "Loading chats…"
             },

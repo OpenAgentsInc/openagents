@@ -450,10 +450,10 @@ same.
 | --- | --- |
 | **OpenAgents** desktop app, and **Connect a computer** on the phone | The one path the app and the docs show. |
 | `openagents connect` (`invite`, `devices`, `remove`, `status`, `owner import`) | The power-user and headless path; talks to the same local socket. |
-| `coder link *`, `scripts/link-device.sh` | Deprecated when the migration step lands: they print the replacement and still work for one release, then go. |
-| `coder pair` and `./pair` (the chat-history observer's pairing) | Deprecated the same way; a QR-paired phone reads chats through its NIP-HOST grant's `observe`. |
+| `coder link *`, `scripts/link-device.sh` | Deprecated when the migration step landed, kept for the release that shipped the desktop app and phone scanner ([#9974](https://github.com/OpenAgentsInc/openagents/issues/9974)), then removed ([#9978](https://github.com/OpenAgentsInc/openagents/issues/9978)). |
+| `coder pair` and `./pair` (the chat-history observer's pairing) | Removed the same way; a QR-paired phone reads chats through its NIP-HOST grant's `observe`. `openagents pair` keeps the read-only observer. |
 | Tailnet admission (`--tailnet-admission`, port 47109) and the phone's Tailscale device list (`crates/openagents-mobile/src/tailnet.rs`) | Kept as an optional path, not deprecated, alongside QR pairing and iroh. |
-| Phone: **Add a computer > Scan invitation / Paste invitation**, **Enter owner key** | Replaced by **Connect a computer** (scanner, nearby list, **Paste a code**). The owner directory moves under Advanced. |
+| Phone: **Add a computer > Scan invitation / Paste invitation**, **Enter owner key** | Replaced by **Connect a computer** (scanner, nearby list, **Paste a code**) as the path the app shows. **Add a computer** stays for `coder-host:` invitations from `coder host invite`, which still redeem, and **Enter owner key** for the owner directory, under Advanced. |
 
 ### Chat on the phone
 

@@ -19,14 +19,11 @@ describe the build and the checks actually performed.
 
 1. Open Coder on the phone. Verse is the home screen and starts offline.
    Walk toward the computer in front of you, then tap its screen.
-2. In the OpenAgents checkout on your computer, run:
+2. On your computer, run:
 
    ```sh
-   ./pair
+   openagents pair
    ```
-
-   Update the checkout first if it does not have `pair`. With Coder installed,
-   you can run `coder pair` from any folder instead.
 
    The command selects the existing `~/.codex` and `~/.claude` history folders,
    prints the selected folders, and displays a QR code and an equivalent
@@ -43,7 +40,7 @@ describe the build and the checks actually performed.
 
 A valid pairing remains saved if the first read fails. The app shows the error
 and retries; you do not need to pair again. An empty successful catalog says
-**No saved chats found on this computer**. Keep `./pair` running and the computer
+**No saved chats found on this computer**. Keep `openagents pair` running and the computer
 awake for new reads.
 
 The QR invitation expires after five minutes and binds to the first device

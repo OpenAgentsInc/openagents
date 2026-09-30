@@ -1,7 +1,7 @@
 //! Adopting a computer set up the old way.
 //!
-//! Before the desktop app, a Coder host was set up by `coder link setup`
-//! (`scripts/link-device.sh`): the host key is a file in the access store
+//! Before the desktop app, a Coder host was set up by a setup command that
+//! has since been removed (#9978): the host key is a file in the access store
 //! (`~/.openagents/coder-access/host.key`), the owner key a file in
 //! `~/.openagents/coder-owner/owner.key`, and the host runs under the
 //! launchd agent or systemd unit that [`crate::service::install`] wrote.
@@ -494,8 +494,8 @@ fn lock(path: &Path) -> Result<fs::File> {
 enum Format {
     /// 32 raw bytes, as the access store writes `host.key`.
     Raw,
-    /// 64 hexadecimal characters and optional whitespace, as `coder link
-    /// owner init` writes `owner.key`.
+    /// 64 hexadecimal characters and optional whitespace, as the old setup
+    /// command wrote `owner.key`.
     Hex,
 }
 

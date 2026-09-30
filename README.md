@@ -139,7 +139,7 @@ resident host on your computers, and as the cloud chat worker.
 | --- | --- | --- |
 | Coder | [`crates/coder`](crates/coder/) | The `coder` terminal and headless turns, tasks, the chat router, and the `coder-worker` relay worker. |
 | Microcoder | [`crates/microcoder`](crates/microcoder/), [`crates/microcoder-loop`](crates/microcoder-loop/) | The coding loop: Jev judges the state, one model call returns the next commands, the host runs them. Fails over between providers with capacity. It replaced Microluna. |
-| Coder host | [`crates/coder-host`](crates/coder-host/README.md), [`crates/coder-setup`](crates/coder-setup/README.md) | The resident host: enrollment, reach, terminals, and tasks behind one process. `coder link` sets it up. |
+| Coder host | [`crates/coder-host`](crates/coder-host/README.md) | The resident host: enrollment, reach, terminals, and tasks behind one process. The OpenAgents desktop app or `openagents connect` sets it up. |
 | Coder Connect and history | [`crates/coder-connect`](crates/coder-connect/README.md), [`crates/coder-history`](crates/coder-history/README.md) | Paired, encrypted, read-only access to Coder chats. The host serves only Coder task chats, and streams replies as they're written. |
 | Delegation | [`crates/coder-delegate`](crates/coder-delegate/), [`crates/acp-client`](crates/acp-client/) | Hands a turn to Claude Code, Codex, [OpenCode](docs/coder/runtime/opencode.md), or [Devin](docs/coder/runtime/devin.md). With none available, a [cloud fallback](docs/coder/runtime/cloud-fallback.md) answers. |
 | Coder One | [`crates/coder-one`](crates/coder-one/) | Configurable agent components used in Terminal-Bench experiments. |
@@ -156,8 +156,10 @@ coder doctor                 # what will run, which credentials it found
 Then follow these guides:
 
 1. [Install Coder](docs/coder/guides/install.md), including rollback.
-2. [Link your devices](docs/coder/guides/link-devices.md) with `coder link`
-   so your phone reaches the computer over Tailscale or the relay.
+2. [Link your devices](docs/coder/guides/link-devices.md) with the
+   OpenAgents desktop app's QR code, or `openagents connect` on a computer
+   without a screen, so your phone reaches the computer directly or through
+   the relay (Tailscale is optional).
 3. [Turn on auto-start](docs/coder/runtime/host-autostart.md) so tasks from
    your phone start on their own, within the bounds you set.
 4. [Run the host as a service](docs/coder/runtime/host-service.md).
@@ -324,7 +326,7 @@ cargo run -p gym --features tui --bin gym-terminal -- --terminal-bench
 | [`crates/coder-one`](crates/coder-one/) | Issue-to-PR agent and reusable Terminal-Bench components. |
 | [`crates/coder-delegate`](crates/coder-delegate/), [`crates/acp-client`](crates/acp-client/) | Delegation to Claude Code, Codex, OpenCode, and Devin. |
 | [`crates/codex-transport`](crates/codex-transport/) | The Codex login and Responses transport. |
-| [`crates/coder-host`](crates/coder-host/README.md), [`crates/coder-setup`](crates/coder-setup/README.md), [`crates/coder-service`](crates/coder-service/) | The resident host, `coder link`, and its background service. |
+| [`crates/coder-host`](crates/coder-host/README.md), [`crates/coder-service`](crates/coder-service/) | The resident host and its background service. |
 | [`crates/coder-access`](crates/coder-access/README.md), [`crates/coder-reach`](crates/coder-reach/README.md), [`crates/coder-link`](crates/coder-link/README.md), [`crates/coder-control`](crates/coder-control/) | Device enrollment, host reachability, connection supervision, and task control. |
 | [`crates/coder-connect`](crates/coder-connect/README.md), [`crates/coder-history`](crates/coder-history/README.md) | Paired read-only chat history. |
 | [`crates/coder-computers`](crates/coder-computers/README.md) | The shared Computers screens. |

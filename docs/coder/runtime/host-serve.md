@@ -37,8 +37,8 @@ names the label, and a terminal names the workspace ID derived from it.
 no arguments: `--listen-websocket ADDR`, `--allow-nonloopback`,
 `--advertise CLASS=HOST:PORT|URL`, and the three `--websocket-tls-*` options
 take the values `serve` takes, and `init` refuses a combination `serve` would
-refuse. [`coder link setup`](../guides/link-devices.md) writes these for a
-tailnet listener. A `serve` option replaces the recorded value for that
+refuse. [Using Tailscale](../guides/link-devices.md#using-tailscale-optional)
+shows them for a tailnet listener. A `serve` option replaces the recorded value for that
 start; `--listen-websocket` and the TLS options replace the recorded
 listener together.
 

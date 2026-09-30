@@ -391,7 +391,7 @@ class MobileAcceptanceTest {
         openSettings()
         click("computer-pair")
         waitFor { exists("computer-paste") }
-        assertEquals("./pair", text("computer-command"))
+        assertEquals("openagents pair", text("computer-command"))
         assertTrue(exists("computer-scan"))
         click("computer-paste")
         waitFor { exists("computer-code") }

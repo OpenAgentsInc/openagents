@@ -1293,7 +1293,7 @@ fn cli_inner(args: &[String]) -> std::result::Result<(), String> {
                 coder_host::settings::ServeSettings::load(&root).map_err(|e| e.to_string())?;
             for label in &workspaces {
                 let path = settings.workspaces.get(label).ok_or_else(|| {
-                    format!("the host admits no workspace labelled {label}; add it with coder link setup --workspace")
+                    format!("the host admits no workspace labelled {label}; add it with coder host init --workspace")
                 })?;
                 if policy.engine.write_workspace {
                     isolated_worktree(path)?;

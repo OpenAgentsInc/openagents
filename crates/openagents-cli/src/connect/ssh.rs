@@ -338,7 +338,7 @@ fn local_owner() -> Result<String, Failure> {
     };
     let text = std::fs::read_to_string(&path).map_err(|_| {
         refused(format!(
-            "--import-owner: no owner key at {}; create one with `coder link owner init`, or pass --owner PUBKEY",
+            "--import-owner: no owner key at {}; pass --owner PUBKEY, or leave both off and the new host makes its own owner key",
             path.display()
         ))
     })?;

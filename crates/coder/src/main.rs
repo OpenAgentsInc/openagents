@@ -332,25 +332,6 @@ fn main() -> ExitCode {
 
 async fn start() -> ExitCode {
     let arguments: Vec<String> = std::env::args().skip(1).collect();
-    if arguments.first().is_some_and(|argument| argument == "pair") {
-        // Deprecated with coder link (#9978): the desktop app's QR code
-        // replaces both.
-        if std::env::var_os("OPENAGENTS_LINK_NOTICE_SHOWN").is_none_or(|shown| shown != "1") {
-            eprintln!(
-                "coder pair is deprecated and will be removed. Connect a computer with the \
-                 OpenAgents desktop app: tap Connect a computer on your phone and scan the code \
-                 the app shows. On a computer without a screen, use `openagents connect`. Until \
-                 those reach you, coder pair keeps working. See docs/coder/guides/link-devices.md."
-            );
-        }
-        return match coder_connect::cli::pair(&arguments[1..]).await {
-            Ok(()) => ExitCode::SUCCESS,
-            Err(error) => {
-                eprintln!("coder pair: {error}");
-                ExitCode::FAILURE
-            }
-        };
-    }
     if arguments
         .first()
         .is_some_and(|argument| argument == "activity")
@@ -359,9 +340,6 @@ async fn start() -> ExitCode {
     }
     if arguments.first().is_some_and(|argument| argument == "task") {
         return ExitCode::from(coder::task::cli::run(&arguments[1..]).await);
-    }
-    if arguments.first().is_some_and(|argument| argument == "link") {
-        return ExitCode::from(coder_setup::cli::run(&arguments[1..]).await);
     }
     if arguments.first().is_some_and(|argument| argument == "host") {
         if arguments

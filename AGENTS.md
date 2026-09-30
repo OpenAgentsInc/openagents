@@ -53,11 +53,13 @@ and prerequisites. Use a separate Cargo target directory per worktree, and keep
 workspace formatting changes separate from behavior changes.
 
 Deploy host builds only from a commit rebased on current `origin/main`, and
-give each checkout its own install build directory: `scripts/link-device.sh`
-shares `~/.cache/openagents/target-install-coder` unless
-`CODER_INSTALL_TARGET_DIR` is set, so an older checkout can overwrite a newer
-build there, and a deploy of an older commit rolls the host back. After a
-deploy, check the host's running commit.
+give each checkout its own Cargo target directory, so an older checkout
+cannot overwrite a newer build and a deploy of an older commit does not roll
+the host back. A headless host is deployed with `openagents connect --ssh
+DEST --binary PATH`, PATH being `openagents` built from that commit: it
+installs the build when it differs and restarts the host it started. On a
+Mac the desktop app runs the host. After a deploy, check the host's running
+commit.
 
 Live tests and smokes against the owner's real computers must not leave
 chats in the owner's lists. Archive every Coder task a smoke creates when it
@@ -364,12 +366,11 @@ uses, and marks which are implemented and which are only specified.
   Read its README, `docs/coder/runtime/host-serve.md`, and
   `docs/coder/runtime/host-autostart.md` before changing a binding or its
   authority.
-- `crates/coder-setup` — `coder link`: makes a computer a serving host over
-  Tailscale with relay fallback (host settings, `tailscale cert` TLS, the
-  host service, the owner directory), mints invitations with explicit rights,
-  and joins and checks other hosts, locally or over SSH.
-  `scripts/link-device.sh` builds, stages, and runs it. Read its README and
-  `docs/coder/guides/link-devices.md`.
+- Connecting devices: the OpenAgents desktop app and `openagents connect`
+  (`crates/openagents-cli/src/connect.rs`, `--ssh` for a headless computer)
+  pair a phone or computer with a host over its same-user control socket.
+  Tailscale stays an optional route (`coder host serve --listen-websocket`,
+  `--tailnet-admission`). Read `docs/coder/guides/link-devices.md`.
 - `crates/push-gateway` — the NIP-PL push gateway: holds APNs and FCM
   credentials for the relay's PL executor, resolves relay-presented delivery
   grants to sealed device tokens, and sends only the registered wake constants.

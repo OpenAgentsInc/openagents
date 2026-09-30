@@ -102,7 +102,7 @@ fn old_home() -> OldHome {
     let paths = Paths::under(&home);
     private(&home.join(".openagents"));
 
-    // The owner key, as `coder link owner init` writes it.
+    // The owner key, as the old setup command wrote it.
     let owner = SecretKey::new(&mut secp256k1::rand::rng());
     private(paths.owner_key.parent().unwrap());
     write_private(
@@ -110,7 +110,7 @@ fn old_home() -> OldHome {
         format!("{}\n", owner.display_secret()).as_bytes(),
     );
 
-    // The access store, as `coder link setup` leaves it, and a phone
+    // The access store, as the old setup command left it, and a phone
     // enrolled through an invitation.
     let access = Host::new(&paths.access, POLICY);
     let host = access.init(&pubkey(&owner)).unwrap();

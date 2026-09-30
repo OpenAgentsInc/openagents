@@ -2682,7 +2682,7 @@
                 ]
               }
             ],
-            "summary": "Redeem a `coder-pair:` invitation from `openagents pair` or `coder pair` and keep the connection. --relay must match the invitation.",
+            "summary": "Redeem a `coder-pair:` invitation from `openagents pair` and keep the connection. --relay must match the invitation.",
             "effect": "grants",
             "runs_on": "screen",
             "screen": "account.computers"

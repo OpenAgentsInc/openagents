@@ -11,9 +11,10 @@ production relay. No phone took part; the iPhone enrolls in a later step.
 
 ## Delivered behavior
 
-- `coder link` ([`crates/coder-setup`](../../../crates/coder-setup/README.md))
-  and `scripts/link-device.sh`, described in the
-  [link your devices guide](../guides/link-devices.md).
+- `coder link` (`crates/coder-setup`) and `scripts/link-device.sh`, since
+  removed ([#9978](https://github.com/OpenAgentsInc/openagents/issues/9978));
+  the [link your devices guide](../guides/link-devices.md) has the current
+  path.
 - `coder host init` records WebSocket listener settings in `serve.json`, so
   the host service serves them. An advertised endpoint that repeats a
   listener's own address now replaces that listener's hint; before, the
