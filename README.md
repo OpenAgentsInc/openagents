@@ -384,7 +384,6 @@ cargo run -p gym --features tui --bin gym-terminal -- --terminal-bench
 | [`scripts/`](scripts/) | Build, install, and verification scripts. |
 | [`swift/`](swift/) | The Swift bridge to Apple's on-device model. |
 | [`tests/`](tests/) | Shared test fixtures. |
-| [`pair`](pair) | Shows a phone-pairing QR code from this checkout. |
 
 ## Build and test
 
