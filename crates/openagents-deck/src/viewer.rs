@@ -10,54 +10,17 @@
 //! [`crate::present::Presenter`], is a thin wrapper around the same type.
 
 use crate::compose::{self, Composed, Content, HEIGHT, WIDTH};
-use crate::slide::{Deck, SCRIPTS};
+use crate::slide::Deck;
 use rust_native::layout::display::ColorRole;
 use rust_native::style::Color;
 use rust_native_desktop::rich::{self, Rich};
 use rust_native_desktop::text::Fonts;
 use rust_native_desktop::{Frame, PxRect, Theme};
-use std::fmt;
 
 /// The share of the area's height the slide keeps when the notes show.
 const SLIDE_SHARE_WITH_NOTES: f32 = 0.66;
 
-/// A deck the repository ships: the id [`Viewer::open`] takes, and the
-/// title a host shows for it.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct DeckEntry {
-    pub id: &'static str,
-    pub title: String,
-}
-
-/// The decks the repository ships, in the order they are filed: the
-/// default deck, `three-devdays-later`, first.
-pub fn decks() -> Vec<DeckEntry> {
-    SCRIPTS
-        .iter()
-        .map(|(id, _)| DeckEntry {
-            id,
-            title: Deck::named(id).map(|deck| deck.title()).unwrap_or_default(),
-        })
-        .collect()
-}
-
-/// A deck id the repository ships no script for.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct UnknownDeck(pub String);
-
-impl fmt::Display for UnknownDeck {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let known: Vec<&str> = SCRIPTS.iter().map(|(id, _)| *id).collect();
-        write!(
-            f,
-            "no deck named {}; the decks are: {}",
-            self.0,
-            known.join(", ")
-        )
-    }
-}
-
-impl std::error::Error for UnknownDeck {}
+pub use crate::catalog::{DeckEntry, UnknownDeck, decks};
 
 /// What a key asks of the host.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -482,7 +445,7 @@ pub fn overview_cells(count: usize, width: f32, height: f32) -> Vec<Cell> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::slide::DEFAULT;
+    use crate::slide::{DEFAULT, SCRIPTS};
 
     /// A viewer opens by deck id, and an unknown id is an error that
     /// names the decks there are.

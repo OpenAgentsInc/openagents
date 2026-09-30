@@ -208,3 +208,88 @@ fn captures_mid_open_viewer_and_full_screen() {
     let full = write(&mut app, "slides-full-screen");
     assert_ne!(open.pixels, full.pixels);
 }
+
+fn offer(deck: &str) -> openagents_chat::router::Meta {
+    openagents_chat::router::Meta {
+        offers: vec![openagents_chat::router::Offer::OpenPresentation { deck: deck.into() }],
+        ..Default::default()
+    }
+}
+
+/// A chat reply's typed `open_presentation` offer, parsed from the
+/// worker's NIP-CJ body, is dispatched to `open_presentation` with the
+/// deck it names (#10058).
+#[test]
+fn a_typed_open_presentation_offer_opens_that_deck() {
+    let (mut app, now) = shell();
+    app.chat = Some(openagents_desktop::chat::Panel::new(now));
+    let mut meta = openagents_chat::router::Meta::default();
+    meta.offered(&serde_json::json!({
+        "v": 2, "requires": [], "type": "offer", "offer": "open_presentation",
+        "deck": "test-time-capabilities", "label": "Open Test-Time Capabilities"
+    }));
+    app.chat
+        .as_mut()
+        .expect("the chat panel")
+        .receive_offers(Some(&meta));
+    app.chat_presentation(now);
+    assert_eq!(
+        app.presentation().expect("the viewer shows").deck_id(),
+        "test-time-capabilities"
+    );
+    assert!(
+        app.chat.as_mut().unwrap().take_presentation().is_none(),
+        "taken once"
+    );
+}
+
+/// A deck `openagents_deck::decks()` doesn't list gets a plain refusal
+/// that names the decks there are, and no viewer (#10058).
+#[test]
+fn an_unknown_deck_gets_a_plain_refusal() {
+    let (mut app, now) = shell();
+    app.chat = Some(openagents_desktop::chat::Panel::new(now));
+    app.chat
+        .as_mut()
+        .unwrap()
+        .receive_offers(Some(&offer("no-such-deck")));
+    app.chat_presentation(now);
+    assert!(app.presentation().is_none());
+    let notice = app.chat.as_ref().unwrap().notice().expect("the refusal");
+    assert!(notice.starts_with("We can't find that deck."), "{notice}");
+    for deck in openagents_deck::decks() {
+        assert!(notice.contains(&deck.title), "{notice}");
+    }
+}
+
+/// Words alone never open the viewer: a reply with no offer, or another
+/// offer, opens nothing, and a sentence naming a deck is not an offer.
+#[test]
+fn no_string_match_path_opens_the_viewer() {
+    let (mut app, now) = shell();
+    app.chat = Some(openagents_desktop::chat::Panel::new(now));
+    let other = openagents_chat::router::Meta {
+        offers: vec![openagents_chat::router::Offer::OpenScreen {
+            screen: openagents_chat::router::Screen::Wallet,
+        }],
+        ..Default::default()
+    };
+    for meta in [
+        None,
+        Some(openagents_chat::router::Meta::default()),
+        Some(other),
+    ] {
+        app.chat.as_mut().unwrap().receive_offers(meta.as_ref());
+        app.chat_presentation(now);
+        assert!(app.presentation().is_none());
+    }
+    let mut words = openagents_chat::router::Meta::default();
+    words.offered(&serde_json::json!(
+        "open the three-devdays-later presentation"
+    ));
+    words.offered(&serde_json::json!({"text": "Opening three-devdays-later."}));
+    assert!(words.offers.is_empty());
+    app.chat.as_mut().unwrap().receive_offers(Some(&words));
+    app.chat_presentation(now);
+    assert!(app.presentation().is_none());
+}

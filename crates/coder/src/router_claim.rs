@@ -8,7 +8,7 @@
 //! as a decision service: its `configuration` pins the question set as
 //! [`crate::router::set_id`] and the bank as [`crate::router::Bank::id`],
 //! its suite is the labeled route set as the Gym holds it
-//! (`crates/gym/suites/chat-router-v3.json`), its partition is the locked
+//! (`crates/gym/suites/chat-router-v4.json`), its partition is the locked
 //! (held-out) rows, and its policy is the `router-v1` gate
 //! (`crates/gym/gates/router-v1.json`). The measurements are the ones
 //! NIP-EVAL asks of a "better semantic decisions" claim: per-route

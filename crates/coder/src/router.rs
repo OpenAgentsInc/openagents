@@ -61,15 +61,16 @@ pub use seams::Seams;
 /// The question set's name, for evidence and for the wire. The route
 /// list is part of it: `chat-router-v2` added the Gym and eval routes, and
 /// `chat-router-v3` the `capability.missing` route and the `capability`
-/// question over the admitted set ([`capability`]). Its identity on the
-/// wire is [`set_id`], the name with the digest of the `route` question it
-/// asks.
-pub const SET: &str = "chat-router-v3";
+/// question over the admitted set ([`capability`]), and `chat-router-v4`
+/// the `presentation.open` route and the `deck` question a desktop turn
+/// asks (#10058). Its identity on the wire is [`set_id`], the name with the
+/// digest of the `route` question it asks.
+pub const SET: &str = "chat-router-v4";
 
 /// The digest of the question set: SHA-256, in hex, of the canonical JSON
 /// of the `route` question ([`judge::route`]), computed the way the Gym
 /// digests a question set (`gym::questions::QuestionSet::digest`), so the
-/// committed `crates/gym/questions/chat-router-route-v4.json` and a
+/// committed `crates/gym/questions/chat-router-route-v5.json` and a
 /// running worker name the same digest for the same question, and a
 /// changed route list or rubric is a changed set. The bank, the facts,
 /// the command groups, and the tools are outside it: the route question
@@ -97,6 +98,11 @@ pub fn set_id() -> String {
     format!("{SET}@{}", &set_digest()[..12])
 }
 
+/// The third question set. A request that names it is routed with
+/// [`SET`]; a judgment recorded under it reads with [`RouteId::parse`],
+/// since its nineteen route words are all still routes.
+pub const SET_V3: &str = "chat-router-v3";
+
 /// The question set build 21 names in its requests. A request that names
 /// it is routed with [`SET`]; a judgment recorded under it reads with
 /// [`RouteId::parse`], since its eighteen route words are all still routes.
@@ -109,10 +115,19 @@ pub const SET_V2: &str = "chat-router-v2";
 pub const SET_V1: &str = "chat-router-v1";
 
 /// Whether a request's `router` field asks for routing: it names [`SET`],
-/// [`SET_V2`], or [`SET_V1`]. An exact enum value, not text.
+/// [`SET_V3`], [`SET_V2`], or [`SET_V1`]. An exact enum value, not text.
 #[must_use]
 pub fn asks_router(value: &serde_json::Value) -> bool {
-    matches!(value.as_str(), Some(SET | SET_V2 | SET_V1))
+    matches!(value.as_str(), Some(SET | SET_V3 | SET_V2 | SET_V1))
+}
+
+/// The decks the desktop app ships (`openagents_deck::decks()`), read
+/// once: the options of the `deck` question a desktop turn asks, and the
+/// only ids an `open_presentation` offer may name (#10058).
+#[must_use]
+pub fn decks() -> &'static [openagents_deck::DeckEntry] {
+    static DECKS: std::sync::OnceLock<Vec<openagents_deck::DeckEntry>> = std::sync::OnceLock::new();
+    DECKS.get_or_init(openagents_deck::decks)
 }
 
 /// The least Jev relevance at which a retrieved passage is used.
@@ -167,6 +182,9 @@ pub enum RouteId {
     /// The user asks for something a capability could do, and none of
     /// the admitted ones does it (#9960).
     CapabilityMissing,
+    /// Open, show, or present one of our decks in the desktop app's slide
+    /// viewer (#10058).
+    PresentationOpen,
     /// The judge chose `none`, or did not answer.
     Unknown,
 }
@@ -200,8 +218,9 @@ impl RouteId {
     ];
 
     /// Every route the `route` question offers, in order (`Unknown` is its
-    /// `none`). `chat-router-v3` added the last.
-    pub const ALL: [RouteId; 19] = [
+    /// `none`). `chat-router-v3` added `capability.missing`, and
+    /// `chat-router-v4` `presentation.open`.
+    pub const ALL: [RouteId; 20] = [
         RouteId::Meta,
         RouteId::Smalltalk,
         RouteId::General,
@@ -221,6 +240,7 @@ impl RouteId {
         RouteId::EvalResult,
         RouteId::EvalCredit,
         RouteId::CapabilityMissing,
+        RouteId::PresentationOpen,
     ];
 
     /// Whether this is one of the Gym and eval routes.
@@ -252,6 +272,7 @@ impl RouteId {
             RouteId::EvalResult => "eval.result",
             RouteId::EvalCredit => "eval.credit",
             RouteId::CapabilityMissing => "capability.missing",
+            RouteId::PresentationOpen => "presentation.open",
             RouteId::Unknown => "none",
         }
     }
@@ -358,6 +379,11 @@ impl RouteId {
                  messages, use their calendar or another account or service, browse or open a \
                  site, control a device, or fetch live data; not a question about whether we \
                  can, and not work on their code, which Coder does"
+            }
+            RouteId::PresentationOpen => {
+                "The user wants one of our presentations or slide decks opened, shown, or \
+                 presented now; not a question about what a deck or talk says, and not making \
+                 a new deck"
             }
             RouteId::Unknown => "None of these fits the message",
         }
@@ -627,6 +653,11 @@ pub enum Offer {
         report: nostr::contracts::ArtifactRef,
         label: String,
     },
+    /// Open one of the desktop app's decks in its slide viewer (#10058).
+    /// `deck` is an id from `openagents_deck::decks()` the `deck` reading
+    /// chose, never text from the message; the desktop opens it only when
+    /// its own list has it.
+    OpenPresentation { deck: String, label: String },
 }
 
 impl Offer {
@@ -639,6 +670,7 @@ impl Offer {
             Offer::Cli { .. } => "cli",
             Offer::StartEval { .. } => "start_eval",
             Offer::PublishEval { .. } => "publish_eval",
+            Offer::OpenPresentation { .. } => "open_presentation",
         }
     }
 
@@ -688,6 +720,10 @@ impl Offer {
             },
             Offer::PublishEval { report, label } => cj::Offer::PublishEval {
                 report: report.clone(),
+                label: label.clone(),
+            },
+            Offer::OpenPresentation { deck, label } => cj::Offer::OpenPresentation {
+                deck: deck.clone(),
                 label: label.clone(),
             },
         })

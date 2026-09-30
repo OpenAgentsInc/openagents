@@ -1,93 +1,93 @@
 {
   "schema": "openagents.chat-router.calibration.v1",
-  "set": "chat-router-v3@c86d4a2ebeb2",
-  "bank": "chat-answers-v1@a04859020455",
+  "set": "chat-router-v4@12ea6aac036f",
+  "bank": "chat-answers-v1@f1b498639ec6",
   "created": "2026-09-30",
   "fitted_on": "calibration",
-  "fitted_rows": 264,
+  "fitted_rows": 281,
   "route": {
     "map": {
       "bins": [
         {
           "lo": 0.0,
           "hi": 0.1,
-          "fitted": 0.9166666666666666,
+          "fitted": 0.9288256227758007,
           "count": 0
         },
         {
           "lo": 0.1,
           "hi": 0.2,
-          "fitted": 0.9166666666666666,
+          "fitted": 0.9288256227758007,
           "count": 0
         },
         {
           "lo": 0.2,
           "hi": 0.3,
-          "fitted": 0.9166666666666666,
+          "fitted": 0.9288256227758007,
           "count": 0
         },
         {
           "lo": 0.3,
           "hi": 0.4,
           "fitted": 0.5,
-          "count": 4
+          "count": 2
         },
         {
           "lo": 0.4,
           "hi": 0.5,
-          "fitted": 0.2777777777777778,
-          "count": 8
+          "fitted": 0.55,
+          "count": 9
         },
         {
           "lo": 0.5,
           "hi": 0.6,
-          "fitted": 0.6111111111111112,
-          "count": 8
+          "fitted": 0.5909090909090909,
+          "count": 10
         },
         {
           "lo": 0.6,
           "hi": 0.7,
-          "fitted": 0.75,
-          "count": 9
+          "fitted": 0.7083333333333334,
+          "count": 11
         },
         {
           "lo": 0.7,
           "hi": 0.8,
-          "fitted": 0.8611111111111112,
-          "count": 17
+          "fitted": 0.8846153846153846,
+          "count": 12
         },
         {
           "lo": 0.8,
           "hi": 0.9,
-          "fitted": 0.8809523809523809,
-          "count": 20
+          "fitted": 0.8913043478260869,
+          "count": 22
         },
         {
           "lo": 0.9,
           "hi": 1.0,
-          "fitted": 0.9723618090452262,
-          "count": 198
+          "fitted": 0.9745370370370371,
+          "count": 215
         }
       ],
-      "base_rate": 0.9166666666666666,
-      "fitted_on": 264
+      "base_rate": 0.9288256227758007,
+      "fitted_on": 281
     },
-    "held_out_items": 207,
+    "held_out_items": 220,
     "raw": {
-      "accuracy": 0.8888888888888888,
-      "ece": 0.040193236714975954,
-      "brier": 0.07874685990338164,
-      "nll": 0.2504851126660655,
-      "confident_errors": 1,
-      "items": 207
+      "accuracy": 0.9045454545454545,
+      "ece": 0.04731818181818204,
+      "brier": 0.07344318181818185,
+      "nll": 0.2338865853287856,
+      "confident_errors": 2,
+      "items": 220
     },
     "calibrated": {
-      "accuracy": 0.8888888888888888,
-      "ece": 0.040842969544448535,
-      "brier": 0.07993625895619677,
-      "nll": 0.2543838929848656,
-      "confident_errors": 1,
-      "items": 207
+      "accuracy": 0.9045454545454545,
+      "ece": 0.023535300978807492,
+      "brier": 0.07432372310924933,
+      "nll": 0.24696811831238366,
+      "confident_errors": 3,
+      "items": 220
     },
     "verdict": "failed",
     "gate": "gate:5bdfd1423c6c2d305a12d8f9f16e7e83a594f8548f1b605de0f77c1ef639e758"
@@ -98,14 +98,14 @@
         {
           "lo": 0.0,
           "hi": 0.1,
-          "fitted": 0.5894736842105263,
+          "fitted": 0.5885416666666666,
           "count": 0
         },
         {
           "lo": 0.1,
           "hi": 0.2,
-          "fitted": 0.25,
-          "count": 1
+          "fitted": 0.5885416666666666,
+          "count": 0
         },
         {
           "lo": 0.2,
@@ -116,65 +116,65 @@
         {
           "lo": 0.3,
           "hi": 0.4,
-          "fitted": 0.0625,
-          "count": 7
+          "fitted": 0.21428571428571427,
+          "count": 6
         },
         {
           "lo": 0.4,
           "hi": 0.5,
-          "fitted": 0.17307692307692307,
-          "count": 25
+          "fitted": 0.140625,
+          "count": 31
         },
         {
           "lo": 0.5,
           "hi": 0.6,
-          "fitted": 0.22916666666666666,
-          "count": 23
+          "fitted": 0.14705882352941177,
+          "count": 16
         },
         {
           "lo": 0.6,
           "hi": 0.7,
-          "fitted": 0.2647058823529412,
-          "count": 16
+          "fitted": 0.325,
+          "count": 19
         },
         {
           "lo": 0.7,
           "hi": 0.8,
-          "fitted": 0.5,
-          "count": 14
+          "fitted": 0.53125,
+          "count": 15
         },
         {
           "lo": 0.8,
           "hi": 0.9,
-          "fitted": 0.6944444444444444,
-          "count": 17
+          "fitted": 0.7105263157894737,
+          "count": 18
         },
         {
           "lo": 0.9,
           "hi": 1.0,
-          "fitted": 0.9698795180722891,
+          "fitted": 0.9578313253012049,
           "count": 82
         }
       ],
-      "base_rate": 0.5894736842105263,
-      "fitted_on": 190
+      "base_rate": 0.5885416666666666,
+      "fitted_on": 192
     },
-    "held_out_items": 155,
+    "held_out_items": 163,
     "raw": {
-      "accuracy": 0.6258064516129033,
-      "ece": 0.12922580645161297,
-      "brier": 0.15429225806451605,
-      "nll": 0.45061922960209544,
-      "confident_errors": 2,
-      "items": 155
+      "accuracy": 0.6134969325153374,
+      "ece": 0.13325153374233145,
+      "brier": 0.1586981595092024,
+      "nll": 0.45966570677160157,
+      "confident_errors": 1,
+      "items": 163
     },
     "calibrated": {
-      "accuracy": 0.6258064516129033,
-      "ece": 0.039659609097607906,
-      "brier": 0.1281097318481929,
-      "nll": 0.3972058999864041,
-      "confident_errors": 2,
-      "items": 155
+      "accuracy": 0.6134969325153374,
+      "ece": 0.07008186741888067,
+      "brier": 0.13881694009328774,
+      "nll": 0.42678642256518373,
+      "confident_errors": 1,
+      "items": 163
     },
     "verdict": "passed",
     "gate": "gate:5bdfd1423c6c2d305a12d8f9f16e7e83a594f8548f1b605de0f77c1ef639e758"

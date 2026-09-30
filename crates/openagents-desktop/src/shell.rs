@@ -59,6 +59,21 @@ pub fn unix_now() -> u64 {
         .map_or(0, |elapsed| elapsed.as_secs())
 }
 
+/// The plain refusal for a deck a chat reply named that this app doesn't
+/// ship: the worker's words for it, with the decks there are (#10058).
+pub(crate) fn unknown_deck() -> String {
+    let titles: Vec<String> = openagents_deck::decks()
+        .into_iter()
+        .map(|deck| deck.title)
+        .collect();
+    let list = match titles.as_slice() {
+        [] => return "We can't find that deck.".to_string(),
+        [one] => one.clone(),
+        [rest @ .., last] => format!("{} and {last}", rest.join(", ")),
+    };
+    format!("We can't find that deck. The decks we can open are {list}.")
+}
+
 impl DesktopApp {
     /// A window over `context`; the worker starts with the event loop.
     pub fn window(model: Model, context: Context) -> DesktopApp {
@@ -235,6 +250,20 @@ impl DesktopApp {
         self.slides = Some(slides);
         self.present();
         Ok(())
+    }
+
+    /// Opens the deck a chat reply's typed `open_presentation` offer names
+    /// (#10058); a deck `openagents_deck::decks()` doesn't list gets a plain
+    /// refusal and no viewer.
+    fn chat_presentation(&mut self, now: Instant) {
+        let Some(deck) = self.chat.as_mut().and_then(|chat| chat.take_presentation()) else {
+            return;
+        };
+        if self.open_presentation(&deck, now).is_err()
+            && let Some(chat) = &mut self.chat
+        {
+            chat.navigation_notice(unknown_deck());
+        }
     }
 
     /// The slide viewer, while it shows.
@@ -424,6 +453,7 @@ impl DesktopApp {
             state.page = Page::Chat(0);
         }
         self.send(requests, now);
+        self.chat_presentation(now);
         if let Some(screen) = self.chat.as_mut().and_then(|chat| chat.take_navigation()) {
             use openagents_chat::router::Screen;
             let action = match screen {
@@ -792,6 +822,7 @@ impl App for DesktopApp {
                 state.page = Page::Chat(0);
             }
             self.send(requests, now);
+            self.chat_presentation(now);
             if let Some(action) = self
                 .chat
                 .as_mut()

@@ -219,7 +219,19 @@ pub enum Offer {
     StartEval { body: Value },
     /// Add a result the phone holds to the Gym, after `SCR-20`'s button.
     PublishEval { body: Value },
+    /// Open a deck in the desktop app's slide viewer (`open_presentation`,
+    /// #10058). The worker's `presentation.open` route and its `deck`
+    /// reading chose `deck`, a bounded id; the desktop opens it only when
+    /// `openagents_deck::decks()` lists it. A surface with no slide viewer
+    /// says [`PRESENTATION_ELSEWHERE`] instead.
+    OpenPresentation { deck: String },
 }
+
+/// What a surface without the slide viewer says to an
+/// [`Offer::OpenPresentation`]: the worker's own `presentation.elsewhere`
+/// line.
+pub const PRESENTATION_ELSEWHERE: &str =
+    "Decks open in the OpenAgents desktop app, so we can't show one here.";
 
 impl Offer {
     /// The worker payload [`Offer::parse`] accepts. A page carries this
@@ -239,6 +251,15 @@ impl Offer {
                 },
             }),
             Self::StartEval { body } | Self::PublishEval { body } => body.clone(),
+            // NIP-CJ's own body, as the worker sends it, so it parses back.
+            Self::OpenPresentation { deck } => nostr::cj_conversation::offer_feedback(
+                &nostr::cj_conversation::Offer::OpenPresentation {
+                    deck: deck.clone(),
+                    label: "Open the deck".into(),
+                },
+                2,
+            )
+            .unwrap_or(Value::Null),
         }
     }
 
@@ -283,6 +304,14 @@ impl Offer {
                     Some(Offer::PublishEval {
                         body: bare(payload),
                     })
+                }
+                _ => None,
+            },
+            // Read by NIP-CJ's own parser: a deck id it refuses is set
+            // aside.
+            "open_presentation" => match nostr::cj_conversation::parse_offer(payload).ok()? {
+                (_, nostr::cj_conversation::Offer::OpenPresentation { deck, .. }) => {
+                    Some(Offer::OpenPresentation { deck })
                 }
                 _ => None,
             },
@@ -570,6 +599,41 @@ mod tests {
         );
     }
 
+    /// `open_presentation` is a typed offer read by NIP-CJ's parser: the
+    /// worker's feedback body parses to its deck id, and a deck that is
+    /// not a bounded id, or a body NIP-CJ refuses, is set aside (#10058).
+    #[test]
+    fn open_presentation_is_a_typed_offer_with_a_bounded_deck() {
+        let body = |deck: &str| {
+            json!({"v": 2, "requires": [], "type": "offer", "offer": "open_presentation",
+                   "deck": deck, "label": "Open the deck"})
+        };
+        let offer = Offer::parse(&body("three-devdays-later"));
+        assert_eq!(
+            offer,
+            Some(Offer::OpenPresentation {
+                deck: "three-devdays-later".into()
+            })
+        );
+        let long = "a".repeat(65);
+        for deck in ["", "Three Days", "../etc", long.as_str()] {
+            assert_eq!(Offer::parse(&body(deck)), None, "{deck}");
+        }
+        // The bare form, with no NIP-CJ envelope, is not an offer.
+        assert_eq!(
+            Offer::parse(&json!({"offer": "open_presentation", "deck": "three-devdays-later"})),
+            None
+        );
+        let mut meta = Meta::default();
+        meta.offered(&body("test-time-capabilities"));
+        assert_eq!(
+            meta.offers,
+            [Offer::OpenPresentation {
+                deck: "test-time-capabilities".into()
+            }]
+        );
+    }
+
     /// Offers are read against the phone's own tables: a screen it does
     /// not know, a command that is not read-only, or an effect other than
     /// `read_only` is set aside, and the worker's label is ignored.
@@ -737,6 +801,10 @@ mod tests {
             runs_on: RunsOn::ConnectedComputer,
         };
         assert_eq!(Offer::parse(&command.wire()), Some(command));
+        let deck = Offer::OpenPresentation {
+            deck: "three-devdays-later".into(),
+        };
+        assert_eq!(Offer::parse(&deck.wire()), Some(deck));
     }
 }
 

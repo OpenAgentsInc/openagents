@@ -109,6 +109,10 @@ fn offers() -> Vec<Offer> {
             report: report_ref(),
             label: "Add to the Gym".into(),
         },
+        Offer::OpenPresentation {
+            deck: "three-devdays-later".into(),
+            label: "Open the deck".into(),
+        },
     ]
 }
 
@@ -271,6 +275,29 @@ fn an_offer_the_client_doesnt_know_refuses() {
     let mut unconfirmed = offer_feedback(&offers()[3], 2).unwrap();
     unconfirmed["confirm"] = json!(false);
     assert_eq!(code(parse_offer(&unconfirmed)), RefusalCode::Malformed);
+}
+
+/// An `open_presentation` offer names a bounded deck id and nothing else:
+/// a title, a path, or an overlong id is malformed (#10058).
+#[test]
+fn an_open_presentation_offer_names_only_a_bounded_deck_id() {
+    let body = offer_feedback(&offers()[7], 2).unwrap();
+    assert_eq!(body["deck"], "three-devdays-later");
+    let long = "a".repeat(MAX_DECK_BYTES + 1);
+    for deck in [
+        "",
+        "Three DevDays Later",
+        "../decks",
+        "deck.md",
+        long.as_str(),
+    ] {
+        let mut odd = body.clone();
+        odd["deck"] = json!(deck);
+        assert_eq!(code(parse_offer(&odd)), RefusalCode::Malformed, "{deck}");
+    }
+    let mut extra = body.clone();
+    extra["slide"] = json!(3);
+    assert_eq!(code(parse_offer(&extra)), RefusalCode::UnsupportedFeature);
 }
 
 #[test]

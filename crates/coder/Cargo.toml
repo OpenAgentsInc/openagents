@@ -25,6 +25,10 @@ ext-eval = { path = "../ext-eval", default-features = false }
 # the labeled route set is exported as a Gym suite (`tests/router_suite`).
 gym = { path = "../gym" }
 knowledge = { path = "../knowledge" }
+# The decks the desktop app ships, by id and title: the `deck` question a
+# desktop turn asks, so `presentation.open` offers one of them (#10058).
+# The list only, without the viewer.
+openagents-deck = { path = "../openagents-deck", default-features = false }
 # T1 personalization's OpenRouter lane (`coder::router::personalize`),
 # and the codebase route's OpenRouter composer.
 openrouter = { path = "../openrouter" }

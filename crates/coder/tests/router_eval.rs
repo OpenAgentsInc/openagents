@@ -12,8 +12,11 @@
 //! `ROUTER_EVAL_SPLIT` is `held_out` (the default), `tune`, or `all`.
 //! `ROUTER_EVAL_ROWS` is `all` (the default), `v1` (the rows of
 //! `routes-v1.json`, for comparing with the v1 measurements), `gym` (the
-//! rows `routes-v2.json` added), or `capability` (the rows `routes-v3.json`
-//! added).
+//! rows `routes-v2.json` added), `capability` (the rows `routes-v3.json`
+//! added), or `presentation` (the rows `routes-v4.json` added).
+//! `ROUTER_EVAL_SURFACE=desktop` asks as the desktop app does, with the
+//! `deck` question over the decks it ships; unset is the set's default
+//! phone context.
 //! Each system prints a Markdown report ([`coder::router_eval::Report`]) and
 //! writes its JSON to `ROUTER_EVAL_OUT` (default `target/router-eval/`).
 //!
@@ -29,7 +32,7 @@
 //!
 //! Systems:
 //!
-//! - `chat-router-v3` (`live_router`): the router's Jev question set and
+//! - `chat-router-v4` (`live_router`): the router's Jev question set and
 //!   policy table, in `Mode::Router`, with the `tool` question over the
 //!   product corpus's tool catalog as the deployed worker asks it
 //!   (`ROUTER_EVAL_GYM=off` leaves it out) and the `capability` question
@@ -85,10 +88,11 @@ fn rows<'a>(set: &'a Set, split: &str) -> (Vec<&'a Row>, String) {
     let rows = set.rows(split);
     let gym = |row: &Row| row.tags.iter().any(|tag| tag == "gym");
     let capability = |row: &Row| row.tags.iter().any(|tag| tag == "capability");
+    let presentation = |row: &Row| row.tags.iter().any(|tag| tag == "presentation");
     match which.as_str() {
         "v1" => (
             rows.into_iter()
-                .filter(|r| !gym(r) && !capability(r))
+                .filter(|r| !gym(r) && !capability(r) && !presentation(r))
                 .collect(),
             format!("{split}-v1-rows"),
         ),
@@ -99,6 +103,10 @@ fn rows<'a>(set: &'a Set, split: &str) -> (Vec<&'a Row>, String) {
         "capability" => (
             rows.into_iter().filter(|r| capability(r)).collect(),
             format!("{split}-capability-rows"),
+        ),
+        "presentation" => (
+            rows.into_iter().filter(|r| presentation(r)).collect(),
+            format!("{split}-presentation-rows"),
         ),
         _ => (rows, split.to_string()),
     }
@@ -163,7 +171,12 @@ async fn run_router(name: &str, mode: router::Mode) {
         coder::gym_kb::tools(&corpus)
     };
     let admitted = router::Admitted::of(&tools, &[]);
-    let context = router::Context::default();
+    let desktop = std::env::var("ROUTER_EVAL_SURFACE").as_deref() == Ok("desktop");
+    let context = router::Context {
+        surface: desktop.then_some(router::Surface::Desktop),
+        ..router::Context::default()
+    };
+    let decks: &[openagents_deck::DeckEntry] = if desktop { router::decks() } else { &[] };
     let situation = router::Situation {
         mode,
         context: &context,
@@ -202,6 +215,8 @@ async fn run_router(name: &str, mode: router::Mode) {
                 &seams.cli.groups(),
                 &tools,
                 &admitted,
+                // The set's default phone context asks no `deck` question.
+                decks,
             ))
             .await;
         let ms = started.elapsed().as_millis();
@@ -486,6 +501,7 @@ fn trace(row: &Row, routing: &router::Routing, tier: &router::Tier) -> serde_jso
         "capability": routing.capability.as_ref().map(|(c, p)| (c.id.clone(), *p)),
         "capability_missing_p": routing.capability_missing_p,
         "capability_closest": routing.capability_closest.as_ref().map(|(c, p)| (c.id.clone(), *p)),
+        "deck": routing.deck,
         "risk": routing.risk.word(),
         "risk_p": routing.risk_p,
         "tier": tier.word(),
@@ -508,7 +524,7 @@ fn write_traces(name: &str, split: &str, traces: &[serde_json::Value]) {
 #[tokio::test]
 #[ignore = "calls the live judge"]
 async fn live_router() {
-    run_router("chat-router-v3", router::Mode::Router).await;
+    run_router("chat-router-v4", router::Mode::Router).await;
 }
 
 #[tokio::test]

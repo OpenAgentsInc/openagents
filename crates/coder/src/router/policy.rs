@@ -49,6 +49,15 @@
 //!    `eval.credit.mine`, and the rest read the Gym's verified records
 //!    ([`Tier::Gym`]), which [`super::gym::reply`] turns into a bank line,
 //!    a card, and an offer, or a grounded reply for news.
+//!
+//!    **A deck** (#10058, rule 9b in the code). `route` =
+//!    `presentation.open` at [`PRESENTATION_ROUTE`]: off the desktop, the
+//!    bank's `presentation.elsewhere` line; on it, when the `deck` reading
+//!    names one of the decks the app ships at [`DECK_CONFIDENCE`], the
+//!    bank's `presentation.open` line with an `open_presentation` offer for
+//!    that deck, and otherwise the plain `presentation.unknown` refusal,
+//!    which lists the decks. The deck is an id the reading chose from the
+//!    list, never text from the message.
 //! 10. **Missing capability** (#9960). `route` = `capability.missing` at
 //!     [`CAPABILITY_ROUTE`] and, independently, the `capability` reading
 //!     names no admitted entry and reads `none` at [`CAPABILITY_MISSING`]:
@@ -83,7 +92,7 @@
 use super::bank::{Bank, Entry, Facts};
 use super::capability::{Capability, Reach};
 use super::judge::Routing;
-use super::{Context, Corpus, Offer, Risk, RouteId};
+use super::{Context, Corpus, Offer, Risk, RouteId, Surface};
 use crate::first::Lane;
 
 /// The least `route` probability for a whole prepared answer or `end`.
@@ -152,6 +161,12 @@ pub const CAPABILITY_CONFIDENCE: f64 = 0.60;
 /// The least probability of an admitted entry, beside a `none` argmax,
 /// for the missing-capability line to name it as the closest one.
 pub const CAPABILITY_CLOSEST: f64 = 0.20;
+/// The least `presentation.open` probability for a deck line: like an
+/// eval card, a wrong one costs a viewer the person closes.
+pub const PRESENTATION_ROUTE: f64 = 0.70;
+/// The least `deck` probability at which the reading names the deck to
+/// open.
+pub const DECK_CONFIDENCE: f64 = 0.60;
 /// The routes a message may take and still continue an open authoring
 /// interview: the interview's own, running or reading its pilot, and the
 /// short replies ("looks good", "change it") that answer its questions.
@@ -483,6 +498,58 @@ fn dispatch(routing: &Routing, bank: &Bank, facts: &Facts, situation: &Situation
     stem_of(entry, facts, situation.personalize)
 }
 
+/// Rule 9b: a deck. Off the desktop, where no slide viewer is, the line
+/// that says where decks open; on it, the deck the `deck` reading named
+/// with an `open_presentation` offer, or a plain refusal that lists the
+/// decks there are.
+fn presentation(
+    routing: &Routing,
+    bank: &Bank,
+    facts: &Facts,
+    situation: &Situation,
+) -> Option<Tier> {
+    if routing.route != RouteId::PresentationOpen || routing.route_p < PRESENTATION_ROUTE {
+        return None;
+    }
+    if situation.context.surface() != Surface::Desktop {
+        return final_of(bank, facts, "presentation.elsewhere");
+    }
+    let decks = super::decks();
+    let named = routing
+        .deck
+        .as_ref()
+        .filter(|(_, p)| *p >= DECK_CONFIDENCE)
+        .and_then(|(id, _)| decks.iter().find(|deck| deck.id == id));
+    let Some(deck) = named else {
+        let titles: Vec<&str> = decks.iter().map(|deck| deck.title.as_str()).collect();
+        let list = match titles.as_slice() {
+            [] => return None,
+            [one] => (*one).to_string(),
+            [rest @ .., last] => format!("{} and {last}", rest.join(", ")),
+        };
+        return final_of(
+            bank,
+            &facts.clone().set("deck.list", list),
+            "presentation.unknown",
+        );
+    };
+    let entry = bank.entry("presentation.open")?;
+    let label = format!("Open {}", deck.title);
+    let label = if label.chars().count() <= nostr::cj_conversation::MAX_LABEL_CHARS {
+        label
+    } else {
+        "Open the deck".to_string()
+    };
+    Some(Tier::CannedFinal {
+        text: entry.render(&facts.clone().set("deck.title", deck.title.clone()))?,
+        offer: Some(Offer::OpenPresentation {
+            deck: deck.id.to_string(),
+            label,
+        }),
+        answer: entry.clone(),
+    })
+}
+
 /// Rule 10: the missing-capability line, when both readings agree that
 /// the request calls for a capability none of the admitted ones covers.
 fn missing(routing: &Routing, bank: &Bank, facts: &Facts) -> Option<Tier> {
@@ -672,6 +739,11 @@ pub fn decide(routing: &Routing, bank: &Bank, facts: &Facts, situation: &Situati
         return tier;
     }
 
+    // 9b. A deck.
+    if let Some(tier) = presentation(routing, bank, facts, situation) {
+        return tier;
+    }
+
     // 10. A missing capability, when the route and the capability reading
     // agree; or the admitted Coder-run capability the route missed.
     if let Some(tier) = missing(routing, bank, facts) {
@@ -770,6 +842,7 @@ mod tests {
             capability: None,
             capability_missing_p: 0.0,
             capability_closest: None,
+            deck: None,
             risk: Risk::Ok,
             risk_p: 0.95,
         }
@@ -1339,6 +1412,110 @@ mod tests {
                 crate::router::gate(effect, Surface::Phone),
                 crate::router::CliGate::Offer
             );
+        }
+    }
+
+    /// `presentation.open` on the desktop: the deck the `deck` reading
+    /// named, with a typed `open_presentation` offer for its id; no deck,
+    /// or an unsure one, a plain refusal listing the decks; off the
+    /// desktop, the line that says where decks open, with no offer
+    /// (#10058).
+    #[test]
+    fn a_deck_is_offered_on_the_desktop_and_refused_plainly_elsewhere() {
+        let decks = crate::router::decks();
+        let desktop = Context {
+            surface: Some(Surface::Desktop),
+            ..Context::default()
+        };
+        let mut routing = routed(RouteId::PresentationOpen, 0.9, "none", 0.0, 0.2);
+        routing.deck = Some((decks[1].id.to_string(), 0.85));
+        let tier = decided(&routing, &desktop, false);
+        let Tier::CannedFinal {
+            answer,
+            text,
+            offer: Some(Offer::OpenPresentation { deck, label }),
+        } = &tier
+        else {
+            panic!("{tier:?}");
+        };
+        assert_eq!(answer.id, "presentation.open");
+        assert_eq!(deck, decks[1].id);
+        assert_eq!(text, &format!("Opening {}.", decks[1].title));
+        assert_eq!(label, &format!("Open {}", decks[1].title));
+        assert_eq!((tier.word(), tier.number()), ("canned", 0));
+        assert!(!tier.keeps_model());
+        let offer = tier_offer(&tier).feedback(2).expect("NIP-CJ writes it");
+        assert_eq!(offer["offer"], "open_presentation");
+        assert_eq!(offer["deck"], decks[1].id);
+
+        // No deck named, or one below the floor: the plain refusal, which
+        // lists every deck and offers nothing.
+        for deck in [None, Some((decks[0].id.to_string(), 0.4))] {
+            routing.deck = deck;
+            let tier = decided(&routing, &desktop, false);
+            let Tier::CannedFinal {
+                answer,
+                text,
+                offer,
+            } = &tier
+            else {
+                panic!("{tier:?}");
+            };
+            assert_eq!(answer.id, "presentation.unknown");
+            assert_eq!(offer, &None);
+            assert!(text.starts_with("We can't find that deck."), "{text}");
+            for deck in decks {
+                assert!(text.contains(&deck.title), "{text}");
+            }
+        }
+
+        // The phone and the terminal have no slide viewer.
+        routing.deck = Some((decks[0].id.to_string(), 0.95));
+        for surface in [None, Some(Surface::Phone), Some(Surface::Terminal)] {
+            let context = Context {
+                surface,
+                ..Context::default()
+            };
+            let tier = decided(&routing, &context, false);
+            let Tier::CannedFinal {
+                answer,
+                text,
+                offer,
+            } = &tier
+            else {
+                panic!("{tier:?}");
+            };
+            assert_eq!(answer.id, "presentation.elsewhere");
+            assert_eq!(offer, &None);
+            assert_eq!(
+                text,
+                "Decks open in the OpenAgents desktop app, so we can't show one here."
+            );
+        }
+
+        // An unsure route reading is the model's, deck or not.
+        let mut unsure = routed(RouteId::PresentationOpen, 0.65, "none", 0.0, 0.2);
+        unsure.runner_up = Some((RouteId::General, 0.2));
+        unsure.deck = Some((decks[0].id.to_string(), 0.95));
+        assert!(matches!(
+            decided(&unsure, &desktop, false),
+            Tier::Model { .. }
+        ));
+        // A deck reading on another route opens nothing.
+        let mut other = routed(RouteId::General, 0.9, "none", 0.0, 0.9);
+        other.deck = Some((decks[0].id.to_string(), 0.95));
+        assert!(matches!(
+            decided(&other, &desktop, false),
+            Tier::Model { .. }
+        ));
+    }
+
+    fn tier_offer(tier: &Tier) -> &Offer {
+        match tier {
+            Tier::CannedFinal {
+                offer: Some(offer), ..
+            } => offer,
+            other => panic!("{other:?}"),
         }
     }
 }

@@ -380,7 +380,8 @@ pub fn route(route: RouteId) -> Value {
                  own code, repository, files, or a computer they connected, which Coder does \
                  (work.dispatch); an openagents command for their own account or devices \
                  (cli); the wallet (wallet); advice or an explanation with nothing to do now \
-                 (general); making a new capability with us (eval.author)",
+                 (general); making a new capability with us (eval.author); opening, showing, \
+                 or presenting one of our decks or slide presentations (presentation.open)",
             ),
             &[
                 "Book me a flight to Denver next Friday",
@@ -391,8 +392,64 @@ pub fn route(route: RouteId) -> Value {
                 "join my zoom meeting and take notes",
             ],
         ),
+        RouteId::PresentationOpen => option(
+            "The user asks us to open, show, pull up, or present a presentation, a slide \
+             deck, or a talk's slides now, whether they name one of our decks, describe it, \
+             name a deck we may not have, or name none",
+            Some(
+                "Writing, outlining, or advice about a talk or slides (general); opening a \
+                 site, another app, or a file, or sharing a screen (capability.missing); \
+                 slides or files in the user's own repository (work.dispatch); where our deck \
+                 or slide viewer code lives (codebase.kb)",
+            ),
+            &[
+                "open the three devdays later deck",
+                "show me the test-time capabilities presentation",
+                "can you pull up the deck",
+                "let's run through the deck",
+                "open the pitch deck",
+                "present the slides please",
+            ],
+        ),
         RouteId::Unknown => Value::from(RouteId::Unknown.description()),
     }
+}
+
+/// The `deck` question's instructions.
+#[must_use]
+pub fn deck_instructions() -> Value {
+    instructions(
+        "Which of our decks, if any, does the user's latest message ask to open, show, or \
+         present?",
+        "Pick the deck the message names or describes: by its whole title, by a word or two \
+         of it, or by an informal form of it (in any case, spacing, or language), as a deck, \
+         slides, a presentation, or a talk. Earlier messages only resolve what the latest one \
+         refers to. Pick `none` when the message names or describes no deck, or one that is \
+         not listed.",
+    )
+}
+
+/// A deck's option: its title, from the deck list the desktop app ships.
+#[must_use]
+pub fn deck(deck: &openagents_deck::DeckEntry) -> Value {
+    json!({
+        "what": format!(
+            "Our deck titled \"{}\" (filed as {}). A message means it when it names the \
+             whole title or any distinctive word of it, such as a coined or capitalized name \
+             in the title, even alone",
+            deck.title, deck.id
+        ),
+    })
+}
+
+/// The `deck` question's `none`.
+#[must_use]
+pub fn deck_none() -> Value {
+    json!({
+        "what": "The message names no deck at all (\"open the slides\"), names one that \
+                 shares no distinctive word or subject with any listed title (\"the pitch \
+                 deck\"), or asks for no deck",
+    })
 }
 
 /// The `capability` question's instructions.

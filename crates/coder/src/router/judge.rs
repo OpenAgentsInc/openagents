@@ -1,4 +1,4 @@
-//! The `chat-router-v3` question set and what its answer reads as.
+//! The `chat-router-v4` question set and what its answer reads as.
 //!
 //! One System One request, independent questions over the same state
 //! (the bounded transcript and latest message, as `coder::first` builds
@@ -7,7 +7,7 @@
 //! | Id | Type | Reads |
 //! | --- | --- | --- |
 //! | `action` | Choice | Classify's measured `coder-turns-v2` wording, unchanged |
-//! | `route` | Choice | the [`RouteId`] catalog (19 routes in `chat-router-v3`), each with its rubric, plus `none` |
+//! | `route` | Choice | the [`RouteId`] catalog (20 routes in `chat-router-v4`), each with its rubric, plus `none` |
 //! | `answer` | Choice | every selectable bank entry with its `when`, plus `none` |
 //! | `needs_specifics` | Noul | whether a good reply must refer to the user's particulars |
 //! | `lane` | Choice | `coder::first`'s wording: chat, computer, or none |
@@ -15,6 +15,7 @@
 //! | `cli_group` | Choice | the command groups a [`CliRoute`](super::seams::CliRoute) lists, plus `none`; asked only when it lists any |
 //! | `tool` | Choice | the tool catalog a [`GymKb`](super::seams::GymKb) lists, plus `none`; asked only when it lists any |
 //! | `capability` | Choice | the admitted-capability set ([`Admitted`]), plus `none` (a request none covers) and `not-a-capability-request`; asked on every turn |
+//! | `deck` | Choice | the decks the desktop app ships (`openagents_deck::decks()`), by title, plus `none`; asked only on a desktop turn |
 //! | `risk` | Choice | ok, secret shared, asks for a secret, harmful, money movement, none |
 //!
 //! No question consumes another's answer, so they cost one round trip.
@@ -31,6 +32,7 @@ use super::{Risk, RouteId};
 use crate::classify::Route;
 use crate::first::Lane;
 use crate::generate::Message;
+use openagents_deck::DeckEntry;
 
 /// The `route` question: the [`RouteId`] catalog, each option with its
 /// rubric, plus `none`. It reads no bank or facts, so the Gym suite
@@ -79,10 +81,32 @@ pub fn capability(admitted: &Admitted) -> Choice {
     Choice::new(super::rubric::capability_instructions(), options)
 }
 
+/// The `deck` question: each deck the desktop app ships, by its title,
+/// then `none`. The option ids are the deck ids, so the reading is one of
+/// them or `none`, never text.
+#[must_use]
+pub fn deck(decks: &[DeckEntry]) -> Choice {
+    let mut options: IndexMap<String, Option<Criterion>> = decks
+        .iter()
+        .map(|deck| {
+            (
+                deck.id.to_string(),
+                Some(Criterion::from(super::rubric::deck(deck))),
+            )
+        })
+        .collect();
+    options.insert(
+        "none".to_string(),
+        Some(Criterion::from(super::rubric::deck_none())),
+    );
+    Choice::new(super::rubric::deck_instructions(), options)
+}
+
 /// The questions, from one state. Only entries selectable under `facts`
 /// are offered, `cli_group` only when `groups` is not empty, `tool` only
-/// when `tools` is not empty, and `capability` only when `admitted` has
-/// an entry (it always has the built-ins).
+/// when `tools` is not empty, `capability` only when `admitted` has an
+/// entry (it always has the built-ins), and `deck` only when `decks` is
+/// not empty (a desktop turn).
 #[must_use]
 pub fn questions(
     bank: &Bank,
@@ -90,6 +114,7 @@ pub fn questions(
     groups: &[CliGroup],
     tools: &[Tool],
     admitted: &Admitted,
+    decks: &[DeckEntry],
 ) -> Questions {
     let action = crate::classify::questions()
         .get("action")
@@ -223,6 +248,9 @@ pub fn questions(
     if !admitted.is_empty() {
         questions = questions.with("capability", capability(admitted));
     }
+    if !decks.is_empty() {
+        questions = questions.with("deck", deck(decks));
+    }
     questions.with(
         "risk",
         Choice::new(super::rubric::risk_instructions(), risks),
@@ -242,8 +270,10 @@ pub fn state(task: &str, transcript: &[Message]) -> Value {
     crate::first::state(task, transcript)
 }
 
-/// The request the worker sends, bounded by `coder::first::BUDGET`.
+/// The request the worker sends, bounded by `coder::first::BUDGET`. Each
+/// list is one question's options, so they stay separate arguments.
 #[must_use]
+#[allow(clippy::too_many_arguments)]
 pub fn request(
     task: &str,
     transcript: &[Message],
@@ -252,10 +282,11 @@ pub fn request(
     groups: &[CliGroup],
     tools: &[Tool],
     admitted: &Admitted,
+    decks: &[DeckEntry],
 ) -> jev::SystemOneRequest {
     jev::SystemOneRequest::new(
         state(task, transcript),
-        questions(bank, facts, groups, tools, admitted),
+        questions(bank, facts, groups, tools, admitted, decks),
     )
     .retry(crate::first::retry())
     .timeout(crate::first::BUDGET)
@@ -303,6 +334,10 @@ pub struct Routing {
     /// likely admitted entry and its probability: the closest capability
     /// the missing-capability card may name.
     pub capability_closest: Option<(Capability, f64)>,
+    /// The deck the `deck` reading named, by id, with its probability;
+    /// `None` for `none` or not asked. The id is one of the decks the
+    /// question listed.
+    pub deck: Option<(String, f64)>,
     pub risk: Risk,
     pub risk_p: f64,
 }
@@ -412,6 +447,10 @@ pub fn reading(
                     .filter_map(|(id, p)| admitted.get(id).map(|entry| (entry.clone(), finite(*p))))
                     .max_by(|a, b| a.1.total_cmp(&b.1).then(b.0.id.cmp(&a.0.id)))
             });
+    let deck = choice(response, "deck")
+        .filter(|deck| deck.choice != "none")
+        .filter(|deck| super::decks().iter().any(|known| known.id == deck.choice))
+        .map(|deck| (deck.choice.clone(), finite(deck.confidence)));
     let risk_answer = choice(response, "risk");
     Routing {
         action: crate::classify::route(&judgment),
@@ -430,6 +469,7 @@ pub fn reading(
         capability,
         capability_missing_p,
         capability_closest,
+        deck,
         risk: risk_answer.map_or(Risk::Unknown, |risk| Risk::parse(&risk.choice)),
         risk_p: risk_answer.map_or(0.0, |risk| finite(risk.confidence)),
     }
@@ -455,7 +495,7 @@ mod tests {
     fn the_set_asks_independent_typed_questions_and_validates() {
         let bank = Bank::builtin();
         let admitted = Admitted::builtin();
-        let questions = questions(bank, &facts(), &[], &[], &admitted);
+        let questions = questions(bank, &facts(), &[], &[], &admitted, &[]);
         questions.validate().expect("a valid set");
         let asked: Vec<&str> = questions.iter().map(|(id, _)| id).collect();
         assert_eq!(
@@ -484,7 +524,7 @@ mod tests {
         expected.extend([NONE, NOT_A_REQUEST]);
         assert_eq!(options, expected);
         // Without any admitted entry the question is not asked.
-        let bare = super::questions(bank, &facts(), &[], &[], &Admitted::default());
+        let bare = super::questions(bank, &facts(), &[], &[], &Admitted::default(), &[]);
         assert!(bare.get("capability").is_none());
         // The action wording is Classify's, so its answer means the same.
         assert_eq!(
@@ -513,7 +553,7 @@ mod tests {
             summary: "List, check, and manage your computers".into(),
             tree: None,
         }];
-        let with_cli = super::questions(bank, &facts(), &groups, &[], &admitted);
+        let with_cli = super::questions(bank, &facts(), &groups, &[], &admitted, &[]);
         with_cli.validate().expect("a valid set");
         let cli = serde_json::to_value(with_cli.get("cli_group")).unwrap();
         assert_eq!(cli["criteria"].as_object().unwrap().len(), 2);
@@ -522,7 +562,7 @@ mod tests {
             "project-map",
             "Project map",
         )];
-        let with_tools = super::questions(bank, &facts(), &[], &tools, &admitted);
+        let with_tools = super::questions(bank, &facts(), &[], &tools, &admitted, &[]);
         with_tools.validate().expect("a valid set");
         let tool = serde_json::to_value(with_tools.get("tool")).unwrap();
         assert_eq!(tool["criteria"].as_object().unwrap().len(), 2);
@@ -540,7 +580,7 @@ mod tests {
             None,
             &crate::router::Seams::default(),
         );
-        questions(Bank::builtin(), &facts, &[], &[], &Admitted::builtin())
+        questions(Bank::builtin(), &facts, &[], &[], &Admitted::builtin(), &[])
     }
 
     fn response(answers: serde_json::Value) -> jev::SystemOneResponse {
@@ -552,6 +592,53 @@ mod tests {
                 .into_bytes(),
         })
         .expect("a readable response")
+    }
+
+    /// A desktop turn asks `deck` over the decks the app ships, each by its
+    /// title, plus `none`; the reading is a listed deck id or nothing.
+    #[test]
+    fn the_deck_question_lists_the_shipped_decks_and_reads_only_their_ids() {
+        let bank = Bank::builtin();
+        let decks = crate::router::decks();
+        assert!(decks.len() >= 2, "{decks:?}");
+        let asked = super::questions(bank, &facts(), &[], &[], &Admitted::builtin(), decks);
+        asked.validate().expect("a valid set");
+        let deck = serde_json::to_value(asked.get("deck")).unwrap();
+        let options: Vec<&str> = deck["criteria"]
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect();
+        let mut expected: Vec<&str> = decks.iter().map(|deck| deck.id).collect();
+        expected.push("none");
+        assert_eq!(options, expected);
+        let admitted = Admitted::builtin();
+        let other = |choice: &str| {
+            if choice == "none" {
+                decks[0].id
+            } else {
+                "none"
+            }
+        };
+        let read = |choice: &str| {
+            reading(
+                &response(json!({
+                    "deck": {"type": "choice", "choice": choice, "confidence": 0.9,
+                             "probabilities": {choice: 0.9, other(choice): 0.1}},
+                })),
+                bank,
+                &facts(),
+                &admitted,
+            )
+            .deck
+        };
+        assert_eq!(read(decks[0].id), Some((decks[0].id.to_string(), 0.9)));
+        assert_eq!(read("none"), None);
+        assert_eq!(read("no-such-deck"), None);
+        // No deck question, no deck reading.
+        let routing = reading(&response(json!({})), bank, &facts(), &admitted);
+        assert_eq!(routing.deck, None);
     }
 
     /// The reading is each answer's argmax and probability; a missing
@@ -774,6 +861,7 @@ mod tests {
                     &groups,
                     &[],
                     &Admitted::builtin(),
+                    &[],
                 ))
                 .await
                 .expect("the judge answers");

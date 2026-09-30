@@ -1727,6 +1727,15 @@ impl Job {
         // The admitted-capability set for the turn: the built-ins, the
         // catalog, and Coder's adoptions (#9960).
         let admitted = router::Admitted::of(&tools, &routing.seams.gym.adoptions());
+        // A desktop turn also asks which of the app's decks the message
+        // means, for `presentation.open` (#10058); elsewhere there is no
+        // slide viewer to open one in.
+        let decks: &[openagents_deck::DeckEntry] =
+            if turn.context.surface() == router::Surface::Desktop {
+                router::decks()
+            } else {
+                &[]
+            };
         let request = router::request(
             &turn.message,
             input,
@@ -1735,6 +1744,7 @@ impl Job {
             &groups,
             &tools,
             &admitted,
+            decks,
         );
         let (mode, shadow, context) = (turn.mode, turn.shadow, turn.context.clone());
         let draft = turn.draft.is_some();

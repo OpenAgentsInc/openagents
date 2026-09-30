@@ -113,6 +113,9 @@ pub struct Panel {
     queued: Vec<Request>,
     navigation: Option<openagents_chat::router::Screen>,
     desktop_navigation: Option<crate::chrome::Action>,
+    /// The deck a reply's typed `open_presentation` offer names, for the
+    /// shell's slide viewer.
+    presentation: Option<String>,
     sidebar_width: f32,
     notice: Option<String>,
     waker: Option<rust_native_desktop::Waker>,
@@ -209,6 +212,7 @@ impl Panel {
             queued: vec![],
             navigation: None,
             desktop_navigation: None,
+            presentation: None,
             sidebar_width: crate::chrome::SIDEBAR_DEFAULT,
             notice: None,
             waker: None,
@@ -1312,6 +1316,14 @@ impl Panel {
                 continue;
             };
             self.sent.remove(&(chat.clone(), request));
+            // The router's typed `open_presentation` offer, never the
+            // reply's words, opens a deck (#10058).
+            if reply.role == Role::Assistant
+                && !reply.stopped
+                && let Some(deck) = presentation_offer(reply.meta.as_ref())
+            {
+                self.presentation = Some(deck);
+            }
             if reply.role == Role::Assistant
                 && !reply.stopped
                 && openagents_chat::delegation::offered(reply.meta.as_ref(), snapshot.computer)
@@ -1342,11 +1354,27 @@ impl Panel {
     pub fn take_desktop_navigation(&mut self) -> Option<crate::chrome::Action> {
         self.desktop_navigation.take()
     }
+    /// Takes a finished reply's typed offers: an `open_presentation` offer
+    /// holds its deck for the shell's slide viewer, as a finished reply to
+    /// a message sent from this window does ([`presentation_offer`]).
+    pub fn receive_offers(&mut self, meta: Option<&openagents_chat::router::Meta>) {
+        if let Some(deck) = presentation_offer(meta) {
+            self.presentation = Some(deck);
+        }
+    }
+    /// The deck a reply's typed `open_presentation` offer asked for.
+    pub fn take_presentation(&mut self) -> Option<String> {
+        self.presentation.take()
+    }
     pub fn take_navigation(&mut self) -> Option<openagents_chat::router::Screen> {
         self.navigation.take()
     }
     pub fn navigation_notice(&mut self, notice: String) {
         self.notice = Some(notice);
+    }
+    /// The line the panel shows under the transcript, if any.
+    pub fn notice(&self) -> Option<&str> {
+        self.notice.as_deref()
     }
     pub fn mounted(&mut self, view: &ValidatedView<Intent>) {
         let _ = self.search.draft.mount(view, "chat-search");
@@ -4104,6 +4132,99 @@ mod image_tests {
             .unwrap();
         panel.poll_images(2);
         assert_eq!(panel.draft(), "newer");
+    }
+}
+
+/// The deck a reply's typed `open_presentation` offer names. Only the
+/// router's typed offer counts; the reply's words never open a deck.
+pub fn presentation_offer(meta: Option<&openagents_chat::router::Meta>) -> Option<String> {
+    meta?.offers.iter().find_map(|offer| match offer {
+        openagents_chat::router::Offer::OpenPresentation { deck } => Some(deck.clone()),
+        _ => None,
+    })
+}
+
+#[cfg(test)]
+mod presentation_tests {
+    use super::*;
+    use openagents_chat::basic_coder::Turn;
+    use openagents_chat::router::{Meta, Offer};
+    use openagents_chat::service::Snapshot;
+
+    /// A reply to "open the deck", sent from this window, with `meta`.
+    fn replied(text: &str, meta: Option<Meta>, sent: bool) -> Panel {
+        let mut panel = Panel::new(Instant::now());
+        let chat = "d".repeat(32);
+        let mut user = Turn::user("open the three devdays later deck");
+        user.request = Some("r1".into());
+        panel.session.states.insert(
+            chat.clone(),
+            Snapshot {
+                chat: Some(chat.clone()),
+                turns: vec![user, Turn::assistant(text, meta)],
+                ..Default::default()
+            },
+        );
+        panel.session.select(&chat);
+        if sent {
+            panel.sent.insert((chat, "r1".into()));
+        }
+        panel.run_if_coding();
+        panel
+    }
+
+    fn offered(deck: &str) -> Option<Meta> {
+        Some(Meta {
+            tier: Some("canned".into()),
+            answer: Some("presentation.open@1".into()),
+            route: Some("presentation.open".into()),
+            offers: vec![Offer::OpenPresentation { deck: deck.into() }],
+            ..Meta::default()
+        })
+    }
+
+    /// A finished reply's typed `open_presentation` offer holds its deck
+    /// for the shell, once (#10058).
+    #[test]
+    fn a_replys_typed_offer_holds_its_deck_for_the_viewer() {
+        let mut panel = replied(
+            "Opening Three DevDays Later.",
+            offered("three-devdays-later"),
+            true,
+        );
+        assert_eq!(
+            panel.take_presentation().as_deref(),
+            Some("three-devdays-later")
+        );
+        assert_eq!(panel.take_presentation(), None, "taken once");
+        // A reply to a message another device sent opens nothing here.
+        let mut elsewhere = replied(
+            "Opening Three DevDays Later.",
+            offered("three-devdays-later"),
+            false,
+        );
+        assert_eq!(elsewhere.take_presentation(), None);
+    }
+
+    /// Words never open the viewer: a reply that names a deck, with no
+    /// offer or with another offer, holds nothing (#10058).
+    #[test]
+    fn a_reply_that_only_names_a_deck_opens_nothing() {
+        for meta in [
+            None,
+            Some(Meta::default()),
+            Some(Meta {
+                offers: vec![Offer::RunCoder],
+                ..Meta::default()
+            }),
+        ] {
+            let mut panel = replied(
+                "Opening three-devdays-later, the Three DevDays Later presentation.",
+                meta,
+                true,
+            );
+            assert_eq!(panel.take_presentation(), None);
+        }
     }
 }
 

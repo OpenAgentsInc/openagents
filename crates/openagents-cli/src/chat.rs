@@ -876,6 +876,9 @@ fn notes(id: &str, meta: &Meta, computer: bool, running: bool) {
             Offer::PublishEval { .. } => {
                 eprintln!("offer: add this result to the Gym from the OpenAgents app")
             }
+            Offer::OpenPresentation { .. } => {
+                eprintln!("{}", openagents_chat::router::PRESENTATION_ELSEWHERE)
+            }
         }
     }
     if coder {

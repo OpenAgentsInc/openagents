@@ -615,6 +615,43 @@ sources = ["crates/coder/src/router/capability.rs", "docs/essays/2026-09-29-test
 followups = ["gym.what", "eval.credit.how"]
 
 # ---------------------------------------------------------------------------
+# presentation.open (#10058): the user asked to open, show, or present one
+# of our decks. Picked by code from the `deck` reading on a desktop turn;
+# the {deck} and {decks} slots come from the decks the desktop app ships
+# (`openagents_deck::decks()`), never from the message. The desktop opens
+# the deck from the `open_presentation` offer beside the line.
+# ---------------------------------------------------------------------------
+
+[[answer]]
+id = "presentation.open"
+version = 1
+routes = ["presentation.open"]
+records = true
+when = "Picked by code: the user asks to open, show, or present one of our decks on the desktop, and the deck reading names it"
+text = "Opening {deck}."
+facts = { deck = "deck.title" }
+sources = ["crates/openagents-deck/src/catalog.rs", "crates/openagents-desktop/src/shell.rs"]
+
+[[answer]]
+id = "presentation.unknown"
+version = 1
+routes = ["presentation.open"]
+records = true
+when = "Picked by code: the user asks to open a deck on the desktop, and the deck reading names none of the decks we have"
+text = "We can't find that deck. The decks we can open are {decks}."
+facts = { decks = "deck.list" }
+sources = ["crates/openagents-deck/src/catalog.rs"]
+
+[[answer]]
+id = "presentation.elsewhere"
+version = 1
+routes = ["presentation.open"]
+records = true
+when = "Picked by code: the user asks to open, show, or present a deck anywhere but the desktop app"
+text = "Decks open in the OpenAgents desktop app, so we can't show one here."
+sources = ["crates/openagents-desktop/src/shell.rs"]
+
+# ---------------------------------------------------------------------------
 # refuse, warn, and clarify
 # ---------------------------------------------------------------------------
 

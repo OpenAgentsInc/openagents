@@ -17,25 +17,36 @@
 //!   canvas.
 //! - [`viewer`]: the presentation as a view another Rust Native app can
 //!   embed: the keys, the overview, the notes, the black screen, and the
-//!   painting, in whatever rectangle the host gives. [`decks`] lists the
-//!   decks a host can open.
+//!   painting, in whatever rectangle the host gives.
+//! - [`catalog`]: [`decks`], the decks a host can open, by id and title.
+//!   It is all this crate builds without its default `viewer` feature, for
+//!   a crate (the chat worker) that only needs the list.
 //! - [`present`]: the presentation as its own window, a thin
 //!   [`rust_native_desktop::App`] around a [`Viewer`].
 //! - [`snapshot`]: the golden outlines this crate's tests check.
 
+pub mod catalog;
+#[cfg(feature = "viewer")]
 pub mod compose;
+#[cfg(feature = "viewer")]
 pub mod present;
 pub mod script;
 pub mod slide;
+#[cfg(feature = "viewer")]
 pub mod snapshot;
+#[cfg(feature = "viewer")]
 pub mod viewer;
 
+pub use catalog::{DeckEntry, UnknownDeck, decks};
+#[cfg(feature = "viewer")]
 pub use compose::{Composed, compose};
+#[cfg(feature = "viewer")]
 pub use present::Presenter;
 pub use slide::{Deck, Layout, Metric, Slide};
-pub use viewer::{DeckEntry, Outcome, UnknownDeck, Viewer, decks};
+#[cfg(feature = "viewer")]
+pub use viewer::{Outcome, Viewer};
 
-#[cfg(test)]
+#[cfg(all(test, feature = "viewer"))]
 mod tests {
     use super::*;
     use compose::{CONTENT_BOTTOM, MARGIN_X, MARGIN_Y, WIDTH};

@@ -6,6 +6,7 @@ Recorded measurements and task-selection studies, with supporting evidence.
 
 | Document | Topic |
 | --- | --- |
+| [2026-09-30-presentation-route](2026-09-30-presentation-route.md) | The chat router's `presentation.open` route (`chat-router-v4`) on the labeled set's held-out split, and the desktop `deck` question on every deck row |
 | [2026-09-29-missing-capability](2026-09-29-missing-capability.md) | The chat router's `capability.missing` route and `capability` question (`chat-router-v3`) on the labeled set's held-out split: precision of the missing-capability card, and no false card on a canned or dispatch row |
 | [2026-09-28-chat-router-eval](2026-09-28-chat-router-eval.md) | The chat router on its 457-row labeled route set against two baselines, and codebase knowledge on 52 held-out questions |
 | [2026-09-28-product-kb](2026-09-28-product-kb.md) | The product knowledge base on 110 held-out questions: retrieval, T0 answers, and grounded replies |

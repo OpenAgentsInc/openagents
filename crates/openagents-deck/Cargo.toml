@@ -10,12 +10,19 @@ rust-version.workspace = true
 publish.workspace = true
 description = "The OpenAgents presentation deck: Rust Native slides in the desktop app's window."
 
+[features]
+default = ["viewer"]
+# The slides as Rust Native nodes, the viewer, and the window. Without it
+# the crate is the scripts, their parser, and the deck list (`catalog`),
+# which the chat worker reads to offer a deck.
+viewer = ["dep:rust-native", "dep:rust-native-desktop"]
+
 [dependencies]
 # Slides are Rust Native nodes, laid out by its row layout.
-rust-native = { path = "../rust-native" }
+rust-native = { path = "../rust-native", optional = true }
 # The desktop adapter: the transcript painter, the fonts, the theme, and
 # the window.
-rust-native-desktop = { path = "../rust-native-desktop" }
+rust-native-desktop = { path = "../rust-native-desktop", optional = true }
 
 [lints]
 workspace = true
@@ -23,3 +30,4 @@ workspace = true
 [[bin]]
 name = "openagents-deck"
 path = "src/main.rs"
+required-features = ["viewer"]

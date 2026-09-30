@@ -13,6 +13,9 @@ the chat worker (release `0546032e17`) and serves build 21's Gym in chat
 became `chat-router-v3`, with the `capability.missing` route and the
 `capability` question over the admitted-capability set
 ([The admitted-capability set and `capability.missing`](#the-admitted-capability-set-and-capabilitymissing-2026-09-29)).
+On 2026-09-30 it became `chat-router-v4`, with the `presentation.open` route
+and, on a desktop turn, the `deck` question over the decks the desktop app
+ships ([Opening a deck](#opening-a-deck-presentationopen-2026-09-30)).
 It extends the first response that shipped in `95c7eda2e3` (`crates/coder/src/first.rs`,
 [the first-reply measurement](../measurements/2026-09-28-first-reply.md)) and
 the product change in `820bc02ce4` (the first tab is **Chat**, the assistant
@@ -1490,6 +1493,56 @@ served knowledge entry as `served_answer`, and a delegated Coder task as a
 `subagent_trajectory_ref`. `openagents chat export --thread ID` prints it.
 To support that, a saved turn now keeps when it was saved (`at`) and, for a
 reply, the model the worker named (`model`); neither is sent to the worker.
+
+## Opening a deck: `presentation.open` (2026-09-30)
+
+Implemented in [#10058](https://github.com/OpenAgentsInc/openagents/issues/10058),
+part 3 of [#10055](https://github.com/OpenAgentsInc/openagents/issues/10055)
+(the deck list and the desktop's `open_presentation` are parts 1 and 2).
+Measured in
+[the presentation route measurement](../measurements/2026-09-30-presentation-route.md).
+
+### The question set: `chat-router-v4`
+
+The route list changed, so it is a new set; requests naming v1, v2, or v3
+are routed with it. It adds:
+
+- `presentation.open` to `route` (20 routes), with a `{what, not_for,
+  examples}` rubric, and a `not_for` line on `capability.missing` that
+  sends opening one of our decks to it;
+- `deck`, a Choice over the decks the desktop app ships
+  (`openagents_deck::decks()`, read by `router::decks`: the deck crate's
+  list without its viewer), each by its title, plus `none`. It is asked
+  only when the request's `context.surface` is `desktop`; the reading is a
+  listed id or nothing.
+
+### Policy
+
+Rule 9b of `router::policy::decide`, after the Gym and eval routes:
+`route` = `presentation.open` at 0.70 (`PRESENTATION_ROUTE`). Off the
+desktop, the bank's `presentation.elsewhere` line ("Decks open in the
+OpenAgents desktop app, so we can't show one here."). On it, a `deck`
+reading at 0.60 (`DECK_CONFIDENCE`) serves `presentation.open` ("Opening
+{deck}.") with an `open_presentation` offer naming that id; no deck, or an
+unsure one, serves the plain `presentation.unknown` refusal, which lists
+the decks there are. All three lines are records entries, picked by code;
+the `answer` question never offers them. The model call is dropped.
+
+### The offer and the desktop
+
+`open_presentation` is a NIP-CJ offer with a bounded `deck` id and a
+`label` (`nostr::cj_conversation`; fixture
+`crates/coder/fixtures/nip-cj/router-offer-open-presentation.json`). The
+desktop reads it with NIP-CJ's parser into
+`openagents_chat::router::Offer::OpenPresentation`, and, for a reply to a
+message sent from its own window, calls `open_presentation(deck)` at once,
+as a coding reply starts Coder at once. A deck its own list does not have
+gets the same refusal, as the chat's notice, and no viewer. Nothing reads
+the reply's words to open anything. `openagents chat` prints the
+`presentation.elsewhere` line for the offer; a turn it sends in process says
+`surface: "terminal"` and gets that line from the worker. A message sent
+through a computer's host from another device reads as a desktop turn: it
+gets the offer, which that device does not act on.
 
 ## Open questions for the owner
 

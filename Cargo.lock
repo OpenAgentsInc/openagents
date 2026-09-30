@@ -1544,6 +1544,7 @@ dependencies = [
  "openagents-chat",
  "openagents-chat-app",
  "openagents-connect",
+ "openagents-deck",
  "openagents-desktop",
  "openrouter",
  "plugin",

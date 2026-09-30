@@ -59,7 +59,7 @@ pub fn line(routing: &Routing, tier: &Tier) -> String {
 /// `lane_p`, `risk`, `risk_p`, `cli_group`, `tool`, `capability` (the
 /// admitted capability the turn calls for, an id from the typed set, or
 /// null), `capability_p`, and `capability_missing_p` are the router's.
-/// `set` is the question set's identity, `chat-router-v3@<digest>`
+/// `set` is the question set's identity, `chat-router-v4@<digest>`
 /// ([`set_id`]), whichever set the request named, and `bank` the bank's,
 /// so a judgment names the exact question and answers it was decided
 /// with, as an eval report pins them (#9959). In shadow mode `tier` is
@@ -310,14 +310,14 @@ mod tests {
 
     /// The bank's digest moves with every reviewed text change and the
     /// set's with every change to the route question, so the fixtures name
-    /// them as `chat-answers-v1@DIGEST` and `chat-router-v3@DIGEST`.
+    /// them as `chat-answers-v1@DIGEST` and `chat-router-v4@DIGEST`.
     fn undigested(mut body: Value) -> Value {
         if body["bank"].is_string() {
             body["bank"] = json!("chat-answers-v1@DIGEST");
         }
         if body["set"].is_string() {
             assert_eq!(body["set"], set_id());
-            body["set"] = json!("chat-router-v3@DIGEST");
+            body["set"] = json!("chat-router-v4@DIGEST");
         }
         body
     }
@@ -328,9 +328,9 @@ mod tests {
     #[test]
     fn the_set_is_named_with_its_digest() {
         let id = set_id();
-        assert!(id.starts_with("chat-router-v3@"), "{id}");
-        assert_eq!(id.len(), "chat-router-v3@".len() + 12);
-        assert!(crate::router::set_digest().starts_with(&id["chat-router-v3@".len()..]));
+        assert!(id.starts_with("chat-router-v4@"), "{id}");
+        assert_eq!(id.len(), "chat-router-v4@".len() + 12);
+        assert!(crate::router::set_digest().starts_with(&id["chat-router-v4@".len()..]));
         let committed = ::gym::questions::load(crate::router_eval::SUITE_QUESTIONS)
             .expect("the committed question set reads");
         assert_eq!(committed.digest(), crate::router::set_digest());
@@ -364,6 +364,7 @@ mod tests {
             capability: None,
             capability_missing_p: 0.02,
             capability_closest: None,
+            deck: None,
             risk: Risk::Ok,
             risk_p: 0.99,
         }
@@ -452,6 +453,15 @@ mod tests {
             .feedback(2)
             .unwrap(),
             fixture("router-offer-cli.json")
+        );
+        assert_eq!(
+            Offer::OpenPresentation {
+                deck: "three-devdays-later".into(),
+                label: "Open Three DevDays Later".into()
+            }
+            .feedback(2)
+            .unwrap(),
+            fixture("router-offer-open-presentation.json")
         );
     }
 

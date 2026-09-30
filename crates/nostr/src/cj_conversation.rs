@@ -41,6 +41,8 @@ pub const MAX_DRAFT_GRADERS: usize = 16;
 pub const MAX_USES: usize = 8;
 /// The most characters a label may have.
 pub const MAX_LABEL_CHARS: usize = 80;
+/// The longest deck id an `open_presentation` offer names, in bytes.
+pub const MAX_DECK_BYTES: usize = 64;
 /// The most items a news card may carry.
 pub const MAX_NEWS: usize = 5;
 /// The most awards a credit card may list.
@@ -261,6 +263,10 @@ pub enum Offer {
     /// Publish a result the caller holds: the tap opens a confirmation
     /// first.
     PublishEval { report: ArtifactRef, label: String },
+    /// Open a deck in the desktop app's slide viewer: `deck` is a deck id
+    /// (lowercase ASCII letters, digits, and hyphens), which the client
+    /// opens only when its own deck list has it.
+    OpenPresentation { deck: String, label: String },
 }
 
 impl Offer {
@@ -273,8 +279,20 @@ impl Offer {
             Offer::Cli { .. } => "cli",
             Offer::StartEval { .. } => "start_eval",
             Offer::PublishEval { .. } => "publish_eval",
+            Offer::OpenPresentation { .. } => "open_presentation",
         }
     }
+}
+
+/// Whether `deck` is a deck id an `open_presentation` offer may name:
+/// lowercase ASCII letters, digits, and hyphens, at most
+/// [`MAX_DECK_BYTES`].
+#[must_use]
+pub fn deck_like(deck: &str) -> bool {
+    (1..=MAX_DECK_BYTES).contains(&deck.len())
+        && deck
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
 }
 
 fn label(object: &Map<String, Value>) -> Result<String, ContractError> {
@@ -434,6 +452,17 @@ pub fn parse_offer(value: &Value) -> Result<(u64, Offer), ContractError> {
             }
             Offer::PublishEval {
                 report,
+                label: label(object)?,
+            }
+        }
+        "open_presentation" => {
+            allow(&["deck", "label"])?;
+            let deck = text(object, "deck")?;
+            if !deck_like(&deck) {
+                return Err(malformed("deck"));
+            }
+            Offer::OpenPresentation {
+                deck,
                 label: label(object)?,
             }
         }
@@ -1193,6 +1222,10 @@ pub fn offer_feedback(offer: &Offer, version: u64) -> Result<Value, ContractErro
         }
         Offer::PublishEval { report, label } => {
             value["report"] = artifact_value(report);
+            value["label"] = json!(label);
+        }
+        Offer::OpenPresentation { deck, label } => {
+            value["deck"] = json!(deck);
             value["label"] = json!(label);
         }
     }

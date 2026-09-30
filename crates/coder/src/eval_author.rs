@@ -672,7 +672,7 @@ pub fn router_offer(offer: Offer) -> Option<crate::router::Offer> {
             label,
         }),
         Offer::PublishEval { report, label } => Some(Routed::PublishEval { report, label }),
-        Offer::OpenScreen { .. } | Offer::Cli { .. } => None,
+        Offer::OpenScreen { .. } | Offer::Cli { .. } | Offer::OpenPresentation { .. } => None,
     }
 }
 

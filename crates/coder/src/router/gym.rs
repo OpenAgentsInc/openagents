@@ -815,7 +815,7 @@ pub fn check_step(step: &super::seams::AuthorStep) -> Result<super::seams::Autho
         // computer: the interview hands off with Run Coder (the phone shows
         // Connect a computer when none is ready).
         Offer::RunCoder { .. } => true,
-        Offer::Cli { .. } => false,
+        Offer::Cli { .. } | Offer::OpenPresentation { .. } => false,
     });
     Ok(super::seams::AuthorStep {
         text: text.to_string(),
