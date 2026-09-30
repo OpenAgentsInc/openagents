@@ -382,6 +382,7 @@ async fn start() -> ExitCode {
         // A coding request in a chat runs Coder here when a coding agent
         // is signed in, with no registered project.
         coder_host::control::set_local_coder(coder::task::local::ready_here);
+        coder_host::control::set_local_runner(coder::task::local::runner_here);
         return ExitCode::from(coder_host::cli::run(&arguments[1..], open).await);
     }
     match cli::parse(&arguments) {

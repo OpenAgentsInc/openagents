@@ -38,6 +38,15 @@ fn runner(backend: &Backend, thread: &str) -> Local {
     Local::here(store(backend, thread))
 }
 
+/// Who a Coder run for this thread would use now, and why: the runner's
+/// own choice ([`Local::predict`]) over the thread's store and settings.
+pub(super) fn predict(
+    backend: &Backend,
+    thread: &str,
+) -> Option<openagents_chat::coder_events::Runner> {
+    runner(backend, thread).predict()
+}
+
 /// Whether a coding reply waits for `openagents chat run-coder` instead of
 /// running at once: the settings' `coder.start` is `ask_first`, or they
 /// cannot be read (the refusal then shows when the person accepts).

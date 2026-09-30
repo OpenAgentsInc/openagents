@@ -696,6 +696,12 @@ async fn send(
             // The router judged this is coding: Coder runs here at once,
             // unless the person asked only for the offer.
             coding = openagents_chat::delegation::offered(reply.meta.as_ref(), snapshot.computer);
+            // Say who will run it, from what the run itself reads here.
+            let mut turns = [reply];
+            openagents_chat::delegation::attach_runner(&mut turns, snapshot.computer, || {
+                coder_run::predict(backend, id)
+            });
+            let [reply] = turns;
             finish(
                 output,
                 id,
@@ -778,13 +784,22 @@ fn finish(
             "computer": computer,
             "followups": meta.followups,
             "cards": meta.cards,
+            // Who would run Coder on this computer for this reply.
+            "runner": meta.runner,
+            "runner_text": meta.runner.as_ref().map(|runner| runner.text()),
         }),
     );
     for offer in &meta.offers {
-        event(
-            output,
-            json!({"event": "offer", "thread": id, "offer": offer, "accept": accept(id, offer)}),
-        );
+        let mut line =
+            json!({"event": "offer", "thread": id, "offer": offer, "accept": accept(id, offer)});
+        // Who will run Coder on this computer, typed and in words.
+        if *offer == Offer::RunCoder
+            && let Some(runner) = &meta.runner
+        {
+            line["runner"] = json!(runner);
+            line["runner_text"] = json!(runner.text());
+        }
+        event(output, line);
     }
     event(
         output,
@@ -845,6 +860,9 @@ fn notes(id: &str, meta: &Meta, computer: bool, running: bool) {
         eprintln!(
             "offer: run Coder on this computer for this thread: openagents chat run-coder --thread {id}"
         );
+    }
+    if let Some(runner) = &meta.runner {
+        eprintln!("coder: {}", runner.text());
     }
     for followup in &meta.followups {
         eprintln!("suggestion: {}", followup.label);

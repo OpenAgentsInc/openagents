@@ -21,7 +21,9 @@
 //!   credential read), skipping one with a refusal that still holds in the
 //!   store's capacity book and, when the store holds a fresh usage
 //!   reading, one near its limit ([`Policy::choose`]). The start says which
-//!   provider it chose and why.
+//!   provider it chose and why. [`Local::predict`] makes the same choice
+//!   without starting, so a chat's offer says who will run before it runs
+//!   ([`coder_events::Runner`]), and `coder_started` carries it.
 //! - **The person's settings.** [`Local::here`] reads the local capability
 //!   settings ([`settings`]): which providers may run and in what order,
 //!   the usage threshold, which folders are projects, and what commands
@@ -39,7 +41,9 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use openagents_chat::coder_events::{self, CoderEvent, FileChange, Line, Mapper, Started};
+use openagents_chat::coder_events::{
+    self, CoderEvent, FileChange, Line, Mapper, Passed, PassedOver, Runner, Started,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
@@ -191,6 +195,9 @@ pub struct TurnStart {
     pub fallbacks: Vec<String>,
     /// Unix seconds.
     pub at: u64,
+    /// The prediction the turn started on, which names the same provider.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runner: Option<Runner>,
 }
 
 /// What a local run keeps beside its task, in `<store>/local/<task>.json`:
@@ -228,6 +235,7 @@ impl Record {
             reason: start.reason.clone(),
             fallbacks: start.fallbacks.clone(),
             via: LOCAL_HOST.into(),
+            runner: start.runner.clone(),
         }))
     }
 }
@@ -392,6 +400,10 @@ impl Local {
             Some(path) => path.clone(),
             None => controller()?,
         };
+        self.policy_with(label, controller)
+    }
+
+    fn policy_with(&self, label: &str, controller: PathBuf) -> Result<Policy, String> {
         let settings = self.settings()?;
         let routes: Vec<Route> = settings.routes()?;
         let policy = Policy {
@@ -424,42 +436,70 @@ impl Local {
         Ok(policy)
     }
 
-    /// The routes to start on, first one first, and why that one.
-    ///
-    /// # Errors
-    /// Why no provider can start: none is signed in here, or every one
-    /// signed in has a refusal that holds.
-    pub fn choose(&self, policy: &Policy) -> Result<(Vec<Route>, String), String> {
+    /// Who a run started now would use, and why ([`Runner`]): the same
+    /// choice [`Local::start`] makes, from the same probe, capacity book,
+    /// and usage readings, so the prediction names what then runs. `None`
+    /// only when the local policy cannot be built. Reads only; no
+    /// credential is read.
+    #[must_use]
+    pub fn predict(&self) -> Option<Runner> {
+        // Which engine runs a turn does not change who runs it.
+        let controller = self
+            .controller
+            .clone()
+            .or_else(|| controller().ok())
+            .unwrap_or_else(|| PathBuf::from("/"));
+        let policy = self.policy_with("project", controller).ok()?;
+        Some(self.forecast(&policy).0)
+    }
+
+    /// The prediction for `policy` now, and the routes to start on when one
+    /// can start.
+    fn forecast(&self, policy: &Policy) -> (Runner, Option<Vec<Route>>) {
         let now = (self.now)();
         let book = capacity::Book::load(&self.store);
         let readings = usage::Book::load(&self.store);
         let probe = self.probe;
         let routes = policy.routes();
-        let names: Vec<Provider> = routes.iter().fold(Vec::new(), |mut out, route| {
-            if !out.contains(&route.provider) {
-                out.push(route.provider);
-            }
-            out
-        });
+        let unconnected = || Runner::NotSignedIn {
+            providers: names(policy)
+                .iter()
+                .map(|provider| provider.as_str().to_owned())
+                .collect(),
+        };
         // A one-route policy starts without probing (`Policy::choose`); a
         // person's own run says plainly that its one provider is missing.
         if routes.len() == 1
             && let Connection::Missing(_) = probe(routes[0].provider)
         {
-            return Err(unconnected(&names));
+            return (unconnected(), None);
         }
         match policy.choose(&book, &readings, &probe, now) {
-            Choice::Start { order } => {
-                let reason = reason(policy, &order, &book, &readings, probe, now);
-                Ok((order, reason))
-            }
-            Choice::NoCapacity { until } => Err(format!(
+            Choice::Start { order } => (
+                runner(policy, &order, &book, &readings, probe, now),
+                Some(order),
+            ),
+            Choice::NoCapacity { until } => (Runner::NoCapacity { until }, None),
+            Choice::Unconnected { .. } => (unconnected(), None),
+        }
+    }
+
+    /// The routes to start on, first one first, and the prediction that
+    /// names the first one and why.
+    ///
+    /// # Errors
+    /// Why no provider can start: none is signed in here, or every one
+    /// signed in has a refusal that holds.
+    pub fn choose(&self, policy: &Policy) -> Result<(Vec<Route>, Runner), String> {
+        match self.forecast(policy) {
+            (runner, Some(order)) => Ok((order, runner)),
+            (Runner::NoCapacity { until }, None) => Err(format!(
                 "No coding agent signed in here has capacity{}.",
                 until
                     .map(|at| format!("; the earliest resets {}", coder_events::utc(at)))
                     .unwrap_or_default()
             )),
-            Choice::Unconnected { .. } => Err(unconnected(&names)),
+            (_, None) => Err(unconnected(&names(policy))),
         }
     }
 
@@ -487,7 +527,7 @@ impl Local {
     ) -> Result<Record, String> {
         let checkout = self.project(dir)?;
         let policy = self.policy(&checkout.name)?;
-        let (order, reason) = self.choose(&policy)?;
+        let (order, runner) = self.choose(&policy)?;
         let now = (self.now)();
         let task = identity(&format!(
             "task:{}:{}:{}:{}",
@@ -539,7 +579,7 @@ impl Local {
             turns: Vec::new(),
             ends: BTreeMap::new(),
         };
-        self.launch(&policy, &order, reason, &submitted, &mut record)?;
+        self.launch(&policy, &order, runner, &submitted, &mut record)?;
         Ok(record)
     }
 
@@ -547,7 +587,7 @@ impl Local {
         &self,
         policy: &Policy,
         order: &[Route],
-        reason: String,
+        runner: Runner,
         task: &super::Task,
         record: &mut Record,
     ) -> Result<(), String> {
@@ -556,9 +596,10 @@ impl Local {
             revision: task.revision,
             provider: order[0].provider.as_str().into(),
             model: order[0].model.clone(),
-            reason,
+            reason: started_reason(&runner),
             fallbacks: order[1..].iter().map(ToString::to_string).collect(),
             at: (self.now)(),
+            runner: Some(runner),
         });
         // The record first, so a follower always knows how the turn began.
         save(&self.store, record)?;
@@ -593,7 +634,7 @@ impl Local {
             return Err("Coder is still working on this task; wait for it to ask.".into());
         }
         let policy = self.policy(&record.project)?;
-        let (order, reason) = self.choose(&policy)?;
+        let (order, runner) = self.choose(&policy)?;
         let command = Command {
             schema: COMMAND_SCHEMA.into(),
             command_id: identity(&format!("continue:{task}:{}:{}", current.revision, nonce())),
@@ -607,7 +648,7 @@ impl Local {
         let next = Store::open(&self.store)
             .and_then(|store| store.show(task))
             .map_err(|e| e.to_string())?;
-        self.launch(&policy, &order, reason, &next, &mut record)?;
+        self.launch(&policy, &order, runner, &next, &mut record)?;
         Ok(record)
     }
 
@@ -701,6 +742,16 @@ impl Local {
     }
 }
 
+/// The policy's providers, once each, in preference order.
+fn names(policy: &Policy) -> Vec<Provider> {
+    policy.routes().iter().fold(Vec::new(), |mut out, route| {
+        if !out.contains(&route.provider) {
+            out.push(route.provider);
+        }
+        out
+    })
+}
+
 /// Why no admitted provider can start: none of `providers` is signed in.
 fn unconnected(providers: &[Provider]) -> String {
     let how = |provider: Provider| match provider {
@@ -740,65 +791,121 @@ fn unconnected(providers: &[Provider]) -> String {
 /// registered project.
 #[must_use]
 pub fn ready_here() -> bool {
+    here().0
+}
+
+/// Who a Coder run on this computer would use now over [`default_store`]
+/// ([`Local::predict`]), read at most every [`READY_EVERY`] seconds. A
+/// host's chat puts it on a reply that offers Coder.
+#[must_use]
+pub fn runner_here() -> Option<Runner> {
+    here().1
+}
+
+fn here() -> (bool, Option<Runner>) {
     use std::sync::Mutex;
-    static CACHE: Mutex<Option<(u64, bool)>> = Mutex::new(None);
+    type Cached = Option<(u64, bool, Option<Runner>)>;
+    static CACHE: Mutex<Cached> = Mutex::new(None);
     let now = autostart::unix_now();
     let mut cache = CACHE.lock().unwrap_or_else(|poison| poison.into_inner());
-    if let Some((at, ready)) = *cache
-        && now.saturating_sub(at) < READY_EVERY
+    if let Some((at, ready, runner)) = cache.as_ref()
+        && now.saturating_sub(*at) < READY_EVERY
     {
-        return ready;
+        return (*ready, runner.clone());
     }
-    let ready = Local::here(default_store()).ready();
-    *cache = Some((now, ready));
-    ready
+    let run = Local::here(default_store());
+    let runner = run.predict();
+    // `ready` is `choose` succeeding under a policy with a real engine.
+    let ready =
+        run.policy("project").is_ok() && runner.as_ref().is_some_and(|r| r.provider().is_some());
+    *cache = Some((now, ready, runner.clone()));
+    (ready, runner)
 }
 
 /// How long [`ready_here`] keeps its answer, in seconds.
 pub const READY_EVERY: u64 = 15;
 
-/// Why the first route of `order` was chosen, in a sentence.
-fn reason(
+/// Who runs first in `order`, and why each route before it in the
+/// policy's preference order was passed over: the checks
+/// [`Policy::choose`] made, in its order.
+fn runner(
     policy: &Policy,
     order: &[Route],
     book: &capacity::Book,
     readings: &usage::Book,
     probe: fn(Provider) -> Connection,
     now: u64,
-) -> String {
-    let chosen = order[0].provider;
-    let threshold = policy.engine.usage_probe.as_ref().map(|p| p.threshold_percent);
-    let name = |provider: Provider| coder_events::provider_name(&json!(provider.as_str()));
+) -> Runner {
+    let chosen = &order[0];
+    let threshold = policy
+        .engine
+        .usage_probe
+        .as_ref()
+        .map(|p| p.threshold_percent);
     let mut passed = Vec::new();
     for route in policy.routes() {
-        if route.provider == chosen {
+        if route.provider == chosen.provider {
             break;
         }
-        let who = name(route.provider);
-        if let Connection::Missing(_) = probe(route.provider) {
-            passed.push(format!("{who} is not signed in here"));
+        let why = if let Connection::Missing(_) = probe(route.provider) {
+            PassedOver::NotSignedIn
         } else if let Some(refusal) = book.blocking(route.provider, now) {
-            passed.push(format!(
-                "{who} reached its {} until {}",
-                serde_json::to_value(refusal.kind)
+            PassedOver::Refused {
+                kind: serde_json::to_value(refusal.kind)
                     .ok()
-                    .and_then(|kind| kind.as_str().map(|k| k.replace('_', " ")))
+                    .and_then(|kind| kind.as_str().map(str::to_owned))
                     .unwrap_or_else(|| "limit".into()),
-                coder_events::utc(refusal.until)
-            ));
+                until: refusal.until,
+            }
         } else if let Some(threshold) = threshold
+            && let Some(reading) = readings.reading(route.provider, now)
             && readings.near_limit(route.provider, threshold, now)
         {
-            passed.push(format!(
-                "{who} is near its usage limit ({})",
-                readings.describe(route.provider, now)
-            ));
+            PassedOver::NearLimit {
+                used_percent: reading.fullest().map_or(100, |window| {
+                    // Clamped to 0..=100 before the cast.
+                    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+                    {
+                        (window.used_fraction * 100.0).round().clamp(0.0, 100.0) as u8
+                    }
+                }),
+            }
+        } else {
+            continue;
+        };
+        if !passed
+            .iter()
+            .any(|p: &Passed| p.provider == route.provider.as_str())
+        {
+            passed.push(Passed {
+                provider: route.provider.as_str().into(),
+                why,
+            });
         }
     }
+    Runner::Runs {
+        provider: chosen.provider.as_str().into(),
+        model: chosen.model.clone(),
+        passed,
+    }
+}
+
+/// Why the run started where it did, in the sentence `coder_started`
+/// has always carried: "Codex is signed in and has capacity." or
+/// "Codex reached its usage limit until …; using Claude Code."
+fn started_reason(runner: &Runner) -> String {
+    let Runner::Runs {
+        provider, passed, ..
+    } = runner
+    else {
+        return runner.text();
+    };
+    let name = coder_events::provider_name(&json!(provider));
     if passed.is_empty() {
-        format!("{} is signed in and has capacity.", name(chosen))
+        format!("{name} is signed in and has capacity.")
     } else {
-        format!("{}; using {}.", passed.join("; "), name(chosen))
+        let why: Vec<String> = passed.iter().map(Passed::text).collect();
+        format!("{}; using {name}.", why.join("; "))
     }
 }
 
@@ -1339,10 +1446,13 @@ mod tests {
         let policy = run.policy("proj").unwrap();
         // A person's own run uses this computer's tools (#10045).
         assert_eq!(policy.engine.access, adapter::Access::Toolchains);
-        let (order, reason) = run.choose(&policy).unwrap();
+        let (order, runner) = run.choose(&policy).unwrap();
         assert_eq!(order[0].provider, Provider::Codex);
         assert_eq!(order[1].provider, Provider::Claude);
-        assert_eq!(reason, "Codex is signed in and has capacity.");
+        assert_eq!(
+            started_reason(&runner),
+            "Codex is signed in and has capacity."
+        );
 
         // A refusal that holds in this store's book passes Codex over.
         let now = autostart::unix_now();
@@ -1356,19 +1466,23 @@ mod tests {
             ),
         )
         .unwrap();
-        let (order, reason) = run.choose(&policy).unwrap();
+        let (order, runner) = run.choose(&policy).unwrap();
+        let why = started_reason(&runner);
         assert_eq!(order[0].provider, Provider::Claude);
         assert!(
-            reason.starts_with("Codex reached its usage limit until "),
-            "{reason}"
+            why.starts_with("Codex reached its usage limit until "),
+            "{why}"
         );
-        assert!(reason.ends_with("; using Claude Code."), "{reason}");
+        assert!(why.ends_with("; using Claude Code."), "{why}");
 
         let run = local(dir.path(), only_claude);
         let fresh = tempfile::tempdir().unwrap();
         let run2 = local(fresh.path(), only_claude);
-        let (_, reason) = run2.choose(&run2.policy("proj").unwrap()).unwrap();
-        assert_eq!(reason, "Codex is not signed in here; using Claude Code.");
+        let (_, runner) = run2.choose(&run2.policy("proj").unwrap()).unwrap();
+        assert_eq!(
+            started_reason(&runner),
+            "Codex is not signed in here; using Claude Code."
+        );
         // Claude Code alone, with Codex refused: still Claude Code.
         assert!(run.choose(&policy).is_ok());
 
@@ -1415,7 +1529,11 @@ mod tests {
             );
             assert_eq!(policy.engine.model, ROUTES[0].1);
             assert_eq!(
-                policy.engine.usage_probe.as_ref().map(|p| p.threshold_percent),
+                policy
+                    .engine
+                    .usage_probe
+                    .as_ref()
+                    .map(|p| p.threshold_percent),
                 Some(usage::DEFAULT_THRESHOLD_PERCENT)
             );
             assert_eq!(policy.engine.access, adapter::Access::Toolchains);
@@ -1433,7 +1551,8 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let run = local(dir.path(), both).with_settings(claude_only());
         let policy = run.policy("proj").unwrap();
-        let (order, reason) = run.choose(&policy).unwrap();
+        let (order, runner) = run.choose(&policy).unwrap();
+        let reason = started_reason(&runner);
         assert_eq!(order.len(), 1);
         assert_eq!(order[0].provider, Provider::Claude);
         assert_eq!(order[0].model, "claude-opus-5-5");
@@ -1451,7 +1570,9 @@ mod tests {
             .choose(&refused.policy("proj").unwrap())
             .unwrap_err();
         assert!(
-            why.starts_with("Claude Code is not signed in on this computer, and your settings allow only it."),
+            why.starts_with(
+                "Claude Code is not signed in on this computer, and your settings allow only it."
+            ),
             "{why}"
         );
         assert!(!refused.ready());
@@ -1483,7 +1604,8 @@ mod tests {
         };
         let run = local(dir.path(), both).with_settings(agents);
         let policy = run.policy("proj").unwrap();
-        let (order, reason) = run.choose(&policy).unwrap();
+        let (order, runner) = run.choose(&policy).unwrap();
+        let reason = started_reason(&runner);
         assert_eq!(order[0].provider, Provider::OpenCode);
         assert_eq!(order[1].provider, Provider::Devin);
         assert_eq!(order[1].model, acp_client::devin::DEFAULT_MODEL);
@@ -1536,17 +1658,22 @@ mod tests {
             });
             let policy = run.policy("proj").unwrap();
             assert_eq!(
-                policy.engine.usage_probe.as_ref().map(|p| p.threshold_percent),
+                policy
+                    .engine
+                    .usage_probe
+                    .as_ref()
+                    .map(|p| p.threshold_percent),
                 threshold
             );
-            let (order, reason) = run.choose(&policy).unwrap();
+            let (order, runner) = run.choose(&policy).unwrap();
+            let reason = started_reason(&runner);
             (order[0].provider, reason)
         };
         // 80% used: under the default 90%, Codex still runs.
         assert_eq!(first(Some(90)).0, Provider::Codex);
         let (provider, reason) = first(Some(75));
         assert_eq!(provider, Provider::Claude);
-        assert!(reason.starts_with("Codex is near its usage limit"), "{reason}");
+        assert_eq!(reason, "Codex is at 80% of its window; using Claude Code.");
         assert_eq!(first(None).0, Provider::Codex);
     }
 
@@ -1565,7 +1692,10 @@ mod tests {
             .with_settings(only_elsewhere)
             .with_launcher(Box::new(Held));
         let why = run.start(&top, "t", "add a test", None).unwrap_err();
-        assert!(why.contains("is not in one of your project folders"), "{why}");
+        assert!(
+            why.contains("is not in one of your project folders"),
+            "{why}"
+        );
         assert!(!dir.path().join("worktrees").exists());
         let inside = settings::Coder {
             projects: vec![dir.path().canonicalize().unwrap()],
@@ -1604,6 +1734,122 @@ mod tests {
         assert!(broken.asks_first());
         assert!(!broken.ready());
         assert_eq!(broken.policy("proj").unwrap_err(), "bad file");
+    }
+
+    /// Write a fresh usage reading that puts `provider` at `fraction`.
+    fn reading(store: &Path, provider: Provider, fraction: f64) {
+        let now = autostart::unix_now();
+        let book = usage::Book {
+            schema: usage::SCHEMA.into(),
+            entries: vec![usage::Entry {
+                provider,
+                attempted_at: now,
+                next_probe_at: now + 60,
+                reading: Some(usage::Reading {
+                    provider,
+                    observed_at: now,
+                    windows: vec![usage::Window {
+                        window: usage::WindowName::FiveHour,
+                        used_fraction: fraction,
+                        resets_at: Some(now + 3600),
+                        length_seconds: None,
+                    }],
+                    limit_reached: false,
+                    plan: None,
+                }),
+                failure: None,
+            }],
+        };
+        autostart::write_private(
+            &store.join(usage::FILE),
+            &serde_json::to_vec(&book).unwrap(),
+        )
+        .unwrap();
+    }
+
+    /// The three things an offer says, each from the store's own books
+    /// and this computer's logins.
+    #[test]
+    fn the_prediction_names_codex_claude_code_or_nobody() {
+        let dir = tempfile::tempdir().unwrap();
+        let run = local(dir.path(), both);
+        assert_eq!(run.predict().unwrap().text(), "Codex will do this.");
+
+        reading(run.store(), Provider::Codex, 0.92);
+        let runner = run.predict().unwrap();
+        assert_eq!(
+            runner.text(),
+            "Codex is at 92% of its window; Claude Code will do this."
+        );
+        assert_eq!(runner.provider(), Some("claude"));
+
+        let none = local(dir.path(), nobody);
+        assert_eq!(
+            none.predict().unwrap(),
+            Runner::NotSignedIn {
+                providers: vec!["codex".into(), "claude".into()]
+            },
+            "no login, whatever the books say"
+        );
+        assert_eq!(
+            none.predict().unwrap().text(),
+            "Neither Codex nor Claude Code is signed in on this computer. \
+             Sign in to one to run Coder here."
+        );
+    }
+
+    /// What the offer predicted is what starts: the same provider, model,
+    /// and prediction, recorded on the turn and its `coder_started`.
+    #[test]
+    fn the_prediction_is_what_the_run_starts_on() {
+        let dir = tempfile::tempdir().unwrap();
+        let top = repo(dir.path());
+        type Probe = fn(Provider) -> Connection;
+        let cases: [(Probe, Option<f64>, bool); 4] = [
+            (both, None, false),
+            (both, Some(0.95), false),
+            (both, None, true),
+            (only_claude, None, false),
+        ];
+        for (index, (probe, near, refused)) in cases.into_iter().enumerate() {
+            let home = dir.path().join(format!("case{index}"));
+            let run = local(&home, probe).with_launcher(Box::new(Held));
+            if let Some(fraction) = near {
+                reading(run.store(), Provider::Codex, fraction);
+            }
+            if refused {
+                let now = autostart::unix_now();
+                capacity::record(
+                    run.store(),
+                    capacity::Refusal::new(
+                        Provider::Codex,
+                        capacity::Kind::UsageLimit,
+                        now,
+                        Some(now + 3600),
+                    ),
+                )
+                .unwrap();
+            }
+            let predicted = run.predict().unwrap();
+            let record = run
+                .start(&top, "Fix the parser", "Fix the parser.", None)
+                .unwrap();
+            let start = &record.turns[0];
+            assert_eq!(
+                Some(start.provider.as_str()),
+                predicted.provider(),
+                "case {index}"
+            );
+            assert_eq!(start.runner.as_ref(), Some(&predicted), "case {index}");
+            let Some(CoderEvent::CoderStarted(started)) = record.started(1) else {
+                panic!("no start")
+            };
+            assert_eq!(started.runner, Some(predicted.clone()));
+            let Runner::Runs { model, .. } = &predicted else {
+                panic!("{predicted:?}")
+            };
+            assert_eq!(&started.model, model);
+        }
     }
 
     #[test]

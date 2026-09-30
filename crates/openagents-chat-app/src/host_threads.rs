@@ -1277,6 +1277,11 @@ fn meta_of(
             && meta.offers.len() < coder_host::access::thread::MAX_OFFERS
             && !meta.offers.contains(&offer)
         {
+            // The computer's own prediction of who runs Coder there rides
+            // on its Run Coder offer, as a typed value or not at all.
+            if offer == openagents_chat::router::Offer::RunCoder {
+                meta.runner = serde_json::from_value(value["runner"].clone()).ok();
+            }
             meta.offers.push(offer);
         }
     }
@@ -1823,7 +1828,10 @@ mod tests {
             let mut reply = user("Rain on the roof.", None);
             reply.role = ThreadRole::Assistant;
             reply.extras = coder_host::access::thread::ThreadExtras {
-                offers: vec![serde_json::json!({"offer": "run_coder"})],
+                offers: vec![serde_json::json!({"offer": "run_coder", "runner": {
+                    "state": "runs", "provider": "claude", "model": "claude-opus-5-5",
+                    "passed": [{"provider": "codex", "why": "near_limit", "used_percent": 92}]
+                }})],
                 followups: vec![coder_host::access::thread::ThreadFollowup {
                     answer: None,
                     label: "Say it shorter".into(),
@@ -1851,6 +1859,10 @@ mod tests {
         assert!(
             meta.offers
                 .contains(&openagents_chat::router::Offer::RunCoder)
+        );
+        assert_eq!(
+            meta.runner.as_ref().map(|runner| runner.text()).as_deref(),
+            Some("Codex is at 92% of its window; Claude Code will do this.")
         );
         assert_eq!(meta.followups[0].label, "Say it shorter");
         assert_eq!(meta.cards[0]["card"], "news");

@@ -977,6 +977,19 @@ pub fn set_local_coder(ready: fn() -> bool) {
     let _ = LOCAL_CODER.set(ready);
 }
 
+/// Who a Coder run on this computer would use now: set once by the
+/// program serving the host (`coder::task::local::runner_here`). The host
+/// puts it on a reply that offers Coder, so the desktop and a phone show
+/// what will run before it runs. Unset, replies carry no prediction.
+static LOCAL_RUNNER: std::sync::OnceLock<fn() -> Option<openagents_chat::coder_events::Runner>> =
+    std::sync::OnceLock::new();
+
+/// Tell the host's chats how to predict who runs Coder here
+/// ([`LOCAL_RUNNER`]). The first call wins.
+pub fn set_local_runner(predict: fn() -> Option<openagents_chat::coder_events::Runner>) {
+    let _ = LOCAL_RUNNER.set(predict);
+}
+
 /// Whether a coding request in a chat can run on this computer: a
 /// registered project with the host's keys, or Coder's local run.
 fn computer_ready(shared: &Shared) -> bool {
@@ -1097,6 +1110,12 @@ pub(crate) fn apply_chat(
             .map_or(0, |elapsed| elapsed.as_secs()),
     )
     .map_err(ChatRefusal::Chat)?;
+    if snapshot.coder.is_none()
+        && let Some(predict) = LOCAL_RUNNER.get()
+    {
+        let lane = snapshot.computer;
+        openagents_chat::delegation::attach_runner(&mut snapshot.turns, lane, *predict);
+    }
     snapshot.ready_computer = computer_ready(shared).then(|| {
         if shared.config.label.is_empty() {
             "This computer".into()

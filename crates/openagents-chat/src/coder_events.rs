@@ -112,6 +112,141 @@ pub struct Started {
     /// `local` when this computer started it for the person at it, `host`
     /// when a host's auto-start did.
     pub via: String,
+    /// Who runs the turn and why, as the same prediction the offer showed
+    /// ([`Runner`]). Absent from a start recorded before it existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runner: Option<Runner>,
+}
+
+/// Which coding agent a Coder run on this computer will use, predicted
+/// before it runs from what the run itself reads: which agents are signed
+/// in here, the capacity book's refusals, and a fresh usage reading. The
+/// chat shows it beside an offer to run Coder and on `coder_started`, so
+/// every surface says the same thing with [`Runner::text`]. It names
+/// providers, models, percents, and reset times; never a credential or an
+/// account.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "state", rename_all = "snake_case")]
+pub enum Runner {
+    /// `provider` will do the work. The routes before it in preference
+    /// order were passed over, each with why.
+    Runs {
+        /// `codex` or `claude`.
+        provider: String,
+        model: String,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        passed: Vec<Passed>,
+    },
+    /// None of the coding agents a run here may use (`providers`, in
+    /// preference order) is signed in on this computer.
+    NotSignedIn {
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        providers: Vec<String>,
+    },
+    /// Every agent signed in here has a refusal that still holds; the
+    /// earliest ends at `until`, Unix seconds.
+    NoCapacity { until: Option<u64> },
+}
+
+/// A route passed over before the one that runs.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Passed {
+    /// `codex` or `claude`.
+    pub provider: String,
+    #[serde(flatten)]
+    pub why: PassedOver,
+}
+
+/// Why a route was passed over.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "why", rename_all = "snake_case")]
+pub enum PassedOver {
+    /// Its agent is not signed in on this computer.
+    NotSignedIn,
+    /// It refused for a usage or rate limit (`kind`, as the capacity book
+    /// names it) that holds until `until`, Unix seconds.
+    Refused { kind: String, until: u64 },
+    /// A fresh usage reading puts its fullest window at `used_percent`,
+    /// at or above the threshold.
+    NearLimit { used_percent: u8 },
+}
+
+impl Passed {
+    /// `Codex is at 92% of its window`, without a full stop.
+    #[must_use]
+    pub fn text(&self) -> String {
+        let who = provider_name(&Value::String(self.provider.clone()));
+        match &self.why {
+            PassedOver::NotSignedIn => format!("{who} is not signed in here"),
+            PassedOver::Refused { kind, until } => format!(
+                "{who} reached its {} until {}",
+                kind.replace('_', " "),
+                utc(*until)
+            ),
+            PassedOver::NearLimit { used_percent } => {
+                format!("{who} is at {used_percent}% of its window")
+            }
+        }
+    }
+}
+
+impl Runner {
+    /// The provider that will run, when one will.
+    #[must_use]
+    pub fn provider(&self) -> Option<&str> {
+        match self {
+            Runner::Runs { provider, .. } => Some(provider),
+            _ => None,
+        }
+    }
+
+    /// The sentence every surface shows: "Codex will do this.", "Codex is
+    /// at 92% of its window; Claude Code will do this.", or why nothing
+    /// can run here.
+    #[must_use]
+    pub fn text(&self) -> String {
+        match self {
+            Runner::Runs {
+                provider, passed, ..
+            } => {
+                let who = provider_name(&Value::String(provider.clone()));
+                if passed.is_empty() {
+                    format!("{who} will do this.")
+                } else {
+                    let why: Vec<String> = passed.iter().map(Passed::text).collect();
+                    format!("{}; {who} will do this.", why.join("; "))
+                }
+            }
+            Runner::NotSignedIn { providers } => {
+                let names: Vec<String> = providers
+                    .iter()
+                    .map(|p| provider_name(&Value::String(p.clone())))
+                    .collect();
+                match names.as_slice() {
+                    [] => "Neither Codex nor Claude Code is signed in on this computer. \
+                           Sign in to one to run Coder here."
+                        .into(),
+                    [one] => format!(
+                        "{one} is not signed in on this computer. Sign in to it to run Coder here."
+                    ),
+                    [a, b] => format!(
+                        "Neither {a} nor {b} is signed in on this computer. \
+                         Sign in to one to run Coder here."
+                    ),
+                    many => format!(
+                        "None of {} is signed in on this computer. Sign in to one to run Coder here.",
+                        many.join(", ")
+                    ),
+                }
+            }
+            Runner::NoCapacity { until } => format!(
+                "No coding agent signed in on this computer has room now{}.",
+                until
+                    .map(|at| format!("; the earliest resets {}", utc(at)))
+                    .unwrap_or_default()
+            ),
+        }
+    }
 }
 
 /// What a [`Step`] is.
@@ -955,5 +1090,85 @@ mod tests {
         assert!(output.truncated && output.text.len() <= MAX_OUTPUT + 3);
         assert_eq!(parse_iso("1970-01-01T00:00:01.500Z"), Some(1500));
         assert_eq!(utc(1_791_050_823), "2026-10-03 18:07 UTC");
+    }
+
+    /// The three things an offer can say, from their typed fields, and
+    /// the wire form a phone reads back.
+    #[test]
+    fn a_runner_says_who_will_run_or_why_none_can() {
+        let codex = Runner::Runs {
+            provider: "codex".into(),
+            model: "gpt-6-luna".into(),
+            passed: vec![],
+        };
+        assert_eq!(codex.text(), "Codex will do this.");
+        assert_eq!(codex.provider(), Some("codex"));
+        assert_eq!(
+            serde_json::to_value(&codex).unwrap(),
+            json!({"state": "runs", "provider": "codex", "model": "gpt-6-luna"})
+        );
+
+        let claude = Runner::Runs {
+            provider: "claude".into(),
+            model: "claude-opus-5-5".into(),
+            passed: vec![Passed {
+                provider: "codex".into(),
+                why: PassedOver::NearLimit { used_percent: 92 },
+            }],
+        };
+        assert_eq!(
+            claude.text(),
+            "Codex is at 92% of its window; Claude Code will do this."
+        );
+        let wire = serde_json::to_value(&claude).unwrap();
+        assert_eq!(
+            wire["passed"],
+            json!([{"provider": "codex", "why": "near_limit", "used_percent": 92}])
+        );
+        assert_eq!(serde_json::from_value::<Runner>(wire).unwrap(), claude);
+        let refused = Runner::Runs {
+            provider: "claude".into(),
+            model: "claude-opus-5-5".into(),
+            passed: vec![Passed {
+                provider: "codex".into(),
+                why: PassedOver::Refused {
+                    kind: "usage_limit".into(),
+                    until: 1_791_050_823,
+                },
+            }],
+        };
+        assert_eq!(
+            refused.text(),
+            "Codex reached its usage limit until 2026-10-03 18:07 UTC; Claude Code will do this."
+        );
+
+        let nobody = Runner::NotSignedIn {
+            providers: vec!["codex".into(), "claude".into()],
+        };
+        assert_eq!(
+            nobody.text(),
+            "Neither Codex nor Claude Code is signed in on this computer. \
+             Sign in to one to run Coder here."
+        );
+        assert_eq!(nobody.provider(), None);
+        assert_eq!(
+            serde_json::to_value(&nobody).unwrap(),
+            json!({"state": "not_signed_in", "providers": ["codex", "claude"]})
+        );
+        assert_eq!(
+            Runner::NotSignedIn {
+                providers: vec!["claude".into()]
+            }
+            .text(),
+            "Claude Code is not signed in on this computer. Sign in to it to run Coder here."
+        );
+        assert_eq!(
+            Runner::NoCapacity {
+                until: Some(1_791_050_823)
+            }
+            .text(),
+            "No coding agent signed in on this computer has room now; \
+             the earliest resets 2026-10-03 18:07 UTC."
+        );
     }
 }

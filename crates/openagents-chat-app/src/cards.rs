@@ -100,6 +100,14 @@ pub fn reply_actions_for(
         }
         _ => {}
     }
+    // What the computer says will run it, in the shared words
+    // (`Runner::text`), beside the offer and before anything runs.
+    if judged
+        && output.notice.is_none()
+        && let Some(runner) = &meta.runner
+    {
+        output.notice = Some(("coder-runner".into(), runner.text()));
+    }
     for (index, offer) in meta.offers.iter().enumerate() {
         let Offer::OpenScreen { screen } = offer else {
             continue;
@@ -661,6 +669,71 @@ mod tests {
             .iter()
             .any(|chip| matches!(chip.action, Action::Followup { .. }))
         );
+    }
+
+    /// The desktop and the phone both draw reply actions from here, so
+    /// both show the computer's prediction in the same words.
+    #[test]
+    fn an_offer_to_run_coder_says_who_will_run_it() {
+        use openagents_chat::coder_events::{Passed, PassedOver, Runner};
+        let states = [
+            (
+                Runner::Runs {
+                    provider: "codex".into(),
+                    model: "gpt-6-luna".into(),
+                    passed: vec![],
+                },
+                "Codex will do this.",
+            ),
+            (
+                Runner::Runs {
+                    provider: "claude".into(),
+                    model: "claude-opus-5-5".into(),
+                    passed: vec![Passed {
+                        provider: "codex".into(),
+                        why: PassedOver::NearLimit { used_percent: 92 },
+                    }],
+                },
+                "Codex is at 92% of its window; Claude Code will do this.",
+            ),
+            (
+                Runner::NotSignedIn { providers: vec![] },
+                "Neither Codex nor Claude Code is signed in on this computer. \
+                 Sign in to one to run Coder here.",
+            ),
+        ];
+        for (runner, words) in states {
+            let meta = Meta {
+                offers: vec![Offer::RunCoder],
+                runner: Some(runner),
+                ..Meta::default()
+            };
+            let actions =
+                reply_actions_for(Some(&meta), &[], false, &Target::Ready("Studio Mac"), false);
+            assert_eq!(actions.notice, Some(("coder-runner".into(), words.into())));
+            assert!(
+                actions
+                    .chips
+                    .iter()
+                    .any(|chip| chip.action == Action::RunCoder)
+            );
+            // A reply that does not offer Coder says nothing about it.
+            let quiet = Meta {
+                offers: vec![],
+                ..meta.clone()
+            };
+            assert!(
+                reply_actions_for(
+                    Some(&quiet),
+                    &[],
+                    false,
+                    &Target::Ready("Studio Mac"),
+                    false
+                )
+                .notice
+                .is_none()
+            );
+        }
     }
 
     #[test]

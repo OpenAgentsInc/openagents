@@ -276,7 +276,17 @@ fn extras(turn: &Turn) -> thread::ThreadExtras {
         .offers
         .iter()
         .filter_map(|offer| {
-            let value = offer.wire();
+            let mut value = offer.wire();
+            // The computer's prediction rides on its own offer; a phone
+            // that does not know the field reads the offer as before.
+            if *offer == openagents_chat::router::Offer::RunCoder
+                && let Some(runner) = meta
+                    .runner
+                    .as_ref()
+                    .and_then(|runner| serde_json::to_value(runner).ok())
+            {
+                value["runner"] = runner;
+            }
             let fits = serde_json::to_vec(&value)
                 .is_ok_and(|bytes| bytes.len() <= thread::MAX_EXTRA_VALUE);
             (fits && openagents_chat::router::Offer::parse(&value).is_some()).then_some(value)

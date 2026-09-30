@@ -431,6 +431,13 @@ pub struct Meta {
     /// parser accepted it; a newer card of one kind replaces the older.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub cards: Vec<Value>,
+    /// Who would run Coder on the computer this reply offers it on
+    /// ([`crate::coder_events::Runner`]), as that computer predicts it now.
+    /// The computer sets it when it shows the reply
+    /// ([`crate::delegation::attach_runner`]); nothing the worker sends
+    /// sets it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runner: Option<crate::coder_events::Runner>,
 }
 
 impl Meta {
