@@ -41,12 +41,24 @@ pub enum Surface {
     #[default]
     Phone,
     Desktop,
+    /// The `openagents chat` command running without a host.
+    Terminal,
 }
 impl Surface {
     pub fn word(self) -> &'static str {
         match self {
             Self::Phone => "phone",
             Self::Desktop => "desktop",
+            Self::Terminal => "terminal",
+        }
+    }
+
+    /// The request's `client` word for this surface.
+    pub fn client(self) -> &'static str {
+        match self {
+            Self::Phone => "openagents-mobile",
+            Self::Desktop => "openagents-desktop",
+            Self::Terminal => "openagents-cli",
         }
     }
 }

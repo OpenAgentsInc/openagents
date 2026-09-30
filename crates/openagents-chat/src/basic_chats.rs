@@ -607,6 +607,7 @@ impl BasicChats {
         if let Some(turns) = self.turns.get_mut(id) {
             let mut turn = Turn::user(text);
             turn.request = request;
+            turn.at = Some(now);
             turns.push(turn);
         }
         // Words sent are a suggestion used, tapped or typed.
@@ -675,16 +676,17 @@ impl BasicChats {
         if let Some(handle) = stream.handle.take() {
             handle.abort();
         }
-        let (text, meta, complete) = {
+        let (text, meta, model, complete) = {
             let reply = lock(&stream.reply);
             (
                 reply.text.clone(),
                 reply.meta.clone(),
+                reply.model.clone(),
                 reply.done && reply.failure.is_none(),
             )
         };
         if !text.trim().is_empty() {
-            self.answer(id, text, meta, now);
+            self.answer(id, text, meta, model, now);
             if !complete {
                 if let Some(turn) = self.turns.get_mut(id).and_then(|turns| turns.last_mut()) {
                     turn.stopped = true;
@@ -755,7 +757,7 @@ impl BasicChats {
             self.streams.remove(&id);
             changed = true;
             match reply.failure {
-                None => self.answer(&id, reply.text, reply.meta, now),
+                None => self.answer(&id, reply.text, reply.meta, reply.model, now),
                 Some(failure) => {
                     self.failures.insert(id, failure.describe());
                 }
@@ -764,7 +766,7 @@ impl BasicChats {
         changed
     }
 
-    fn answer(&mut self, id: &str, text: String, meta: Meta, now: u64) {
+    fn answer(&mut self, id: &str, text: String, meta: Meta, model: Option<String>, now: u64) {
         // A prepared answer shown is its suggestion used: the chip for it
         // would only show the same answer again.
         if let Some(answer) = meta.answer.as_deref() {
@@ -772,7 +774,10 @@ impl BasicChats {
         }
         self.turns(id);
         if let Some(turns) = self.turns.get_mut(id) {
-            turns.push(Turn::assistant(text, (!meta.is_empty()).then_some(meta)));
+            let mut turn = Turn::assistant(text, (!meta.is_empty()).then_some(meta));
+            turn.at = Some(now);
+            turn.model = model;
+            turns.push(turn);
         }
         self.touch(id, now);
         self.save(id);

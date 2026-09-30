@@ -80,6 +80,13 @@ pub struct Turn {
     /// Local observation stopped before the worker's terminal result arrived.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub stopped: bool,
+    /// When this device saved the turn, in Unix seconds; older turns omit
+    /// it. Kept locally for the thread's trajectory; never sent to the worker.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub at: Option<u64>,
+    /// The model the worker named for a reply, an attribution claim.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
 }
 
 impl Turn {
@@ -90,6 +97,8 @@ impl Turn {
             meta: None,
             request: None,
             stopped: false,
+            at: None,
+            model: None,
         }
     }
 
@@ -100,6 +109,8 @@ impl Turn {
             meta,
             request: None,
             stopped: false,
+            at: None,
+            model: None,
         }
     }
 }
@@ -380,7 +391,7 @@ pub fn payload(turns: &[Turn], context: &Context) -> Value {
             }))
             .collect::<Vec<_>>(),
         "instructions": INSTRUCTIONS,
-        "client": match context.surface { crate::router::Surface::Phone => "openagents-mobile", crate::router::Surface::Desktop => "openagents-desktop" },
+        "client": context.surface.client(),
         "opener": true,
         "router": ROUTER,
         "context": context.json(),

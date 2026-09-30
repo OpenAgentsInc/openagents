@@ -260,6 +260,8 @@ impl Session {
                 meta: None,
                 request: None,
                 stopped: false,
+                at: None,
+                model: None,
             },
             Entry::Tool { name, detail, body } => {
                 Turn::assistant(format!("Tool: {name}\n{detail}\n{body}"), None)

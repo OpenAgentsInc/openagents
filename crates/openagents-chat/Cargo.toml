@@ -7,6 +7,8 @@ publish.workspace = true
 description = "Shared OpenAgents hosted chat transport, state, and encrypted storage."
 
 [dependencies]
+# Each thread renders as one ATIF trajectory (`thread`).
+atif = { path = "../atif" }
 nostr = { path = "../nostr" }
 nostr-transport = { path = "../nostr-transport" }
 playtest = { path = "../playtest" }
