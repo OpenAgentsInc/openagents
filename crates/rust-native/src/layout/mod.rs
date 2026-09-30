@@ -150,6 +150,17 @@ pub struct MarkdownMetrics {
     pub code_label_size: u16,
     pub code_padding_y: u16,
     pub copy_icon: bool,
+    pub inline_code: Option<InlineCodeMetrics>,
+    pub strong_weight: Option<display::Weight>,
+}
+
+/// Scoped inline-code typography, paint geometry, and sRGB text color.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct InlineCodeMetrics {
+    pub size_percent: u16,
+    pub inset_y: u16,
+    pub radius_half_points: u16,
+    pub color: [u8; 4],
 }
 impl MarkdownMetrics {
     fn valid(self) -> bool {
@@ -161,6 +172,11 @@ impl MarkdownMetrics {
             && (24..=128).contains(&self.code_header_height)
             && (1..=128).contains(&self.code_label_size)
             && self.code_padding_y <= 128
+            && self.inline_code.is_none_or(|code| {
+                (1..=400).contains(&code.size_percent)
+                    && code.inset_y <= 128
+                    && code.radius_half_points <= 256
+            })
     }
 }
 impl Default for Metrics {

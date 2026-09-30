@@ -311,6 +311,12 @@ and line height, row spacing, and bubble geometry for a mounted reader. The
 next update invalidates affected measurements. The defaults preserve existing
 reader geometry. A native field can likewise select bounded font, line,
 padding, and height metrics without changing editing or IME state.
+Optional Markdown metrics can select inline-code size, vertical paint inset,
+corner radius in half points, and explicit sRGB text color. These affect
+presentation only; source ranges, selection, and inert link destinations stay
+in the same display list. Without them, existing inline-code rendering remains.
+An optional strong-emphasis weight preserves a heavier heading or table-header
+weight instead of replacing it.
 
 For measured designs, optional `Style.padding_points`, `gap_points`,
 `text_size`, `line_height`, `min_height`, and `button_padding` select exact

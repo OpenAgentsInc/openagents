@@ -1,6 +1,6 @@
 //! Main chat values reimplemented from Zeron's public dark theme and components.
 //! Reference: zeronsh/zeron 50cf9e97a32e54a8ea7e1174b80b5adc3b1d2ef4 (MIT).
-use rust_native::layout::{MarkdownMetrics, Metrics, display::ColorRole};
+use rust_native::layout::{InlineCodeMetrics, MarkdownMetrics, Metrics, display::ColorRole};
 use rust_native::style::Color;
 
 pub const CANVAS: Color = Color::rgb(6, 6, 6);
@@ -9,19 +9,28 @@ pub const COMPOSER: Color = Color::rgb(13, 13, 13);
 pub const TEXT: Color = Color::rgb(229, 229, 229);
 pub const MUTED: Color = Color::rgb(163, 163, 163);
 pub const FAINT: Color = Color::rgb(115, 115, 115);
-pub const SELECTED: Color = Color::rgb(37, 37, 37);
-pub const BORDER: Color = Color::rgb(26, 26, 26);
-pub const COMPOSER_BORDER: Color = Color::rgb(29, 30, 31);
+pub const SELECTED: Color = rgba(235, 235, 235, 28);
+pub const BORDER: Color = rgba(255, 255, 255, 20);
+pub const COMPOSER_BORDER: Color = rgba(189, 199, 209, 23);
+pub const ACCENT: Color = Color::rgb(124, 134, 255);
+const fn rgba(red: u8, green: u8, blue: u8, alpha: u8) -> Color {
+    Color {
+        red,
+        green,
+        blue,
+        alpha,
+    }
+}
 pub const COLORS: [(ColorRole, Color); 9] = [
     (ColorRole::Primary, TEXT),
     (ColorRole::Secondary, MUTED),
     (ColorRole::Tertiary, FAINT),
-    (ColorRole::Link, Color::rgb(129, 140, 248)),
-    (ColorRole::Bubble, Color::rgb(26, 26, 26)),
+    (ColorRole::Link, TEXT),
+    (ColorRole::Bubble, rgba(235, 235, 235, 20)),
     (ColorRole::Surface, Color::rgb(14, 14, 14)),
-    (ColorRole::Raised, Color::rgb(32, 32, 32)),
+    (ColorRole::Raised, Color::rgb(30, 30, 30)),
     (ColorRole::Border, BORDER),
-    (ColorRole::InlineCode, Color::rgb(26, 26, 26)),
+    (ColorRole::InlineCode, rgba(124, 134, 255, 31)),
 ];
 /// Zeron's dark syntax colors after its 72% HSL saturation treatment.
 pub const SYNTAX: rust_native::syntax::Palette =
@@ -90,6 +99,13 @@ pub const TRANSCRIPT: Metrics = Metrics {
         code_label_size: 11,
         code_padding_y: 10,
         copy_icon: true,
+        strong_weight: Some(rust_native::layout::display::Weight::Semibold),
+        inline_code: Some(InlineCodeMetrics {
+            size_percent: 100,
+            inset_y: 2,
+            radius_half_points: 9,
+            color: [ACCENT.red, ACCENT.green, ACCENT.blue, ACCENT.alpha],
+        }),
     }),
 };
 
@@ -103,6 +119,68 @@ mod tests {
     };
     use rust_native::style::Style;
     use rust_native::{Element, MessageRole, Node};
+
+    #[test]
+    fn reference_inline_code_keeps_text_ranges_and_scales_its_inset_wash() {
+        for scale in [1.0, 2.0] {
+            let mut layout = TranscriptLayout::new();
+            layout.set_metrics(TRANSCRIPT).unwrap();
+            layout
+                .update(
+                    Update {
+                        width: 768.0,
+                        scale,
+                        rows: vec![Node {
+                            key: "inline".into(),
+                            style: Style::default(),
+                            element: Element::Markdown {
+                                blocks: rust_native::markdown::parse(
+                                    "Use **strong** `café` and [the guide](https://example.com).",
+                                ),
+                            },
+                        }],
+                        order: Some(vec!["inline".into()]),
+                        ..Update::default()
+                    },
+                    &mut FixedMeasurer::default(),
+                )
+                .unwrap();
+            let frame = layout.frame();
+            let row = frame.display(0).unwrap();
+            let run = row
+                .runs
+                .iter()
+                .find(|run| {
+                    let text = &row.texts[run.text as usize];
+                    &text[run.start8 as usize..(run.start8 + run.len8) as usize] == "café"
+                })
+                .unwrap();
+            let style = row.styles[run.style as usize];
+            assert!(style.font.mono);
+            assert_eq!(style.font.size, 14.0 * scale);
+            assert_eq!(style.ink, Ink::Rgba([124, 134, 255, 255]));
+            let wash = row
+                .rects
+                .iter()
+                .find(|rect| rect.fill == Some(Ink::Role(ColorRole::InlineCode)))
+                .unwrap();
+            assert_eq!(wash.h, 18.0 * scale);
+            assert_eq!(wash.radii, [4.5 * scale; 4]);
+            assert_eq!(row.links[0].destination, "https://example.com");
+            let strong = row
+                .runs
+                .iter()
+                .find(|run| {
+                    let text = &row.texts[run.text as usize];
+                    &text[run.start8 as usize..(run.start8 + run.len8) as usize] == "strong"
+                })
+                .unwrap();
+            assert_eq!(
+                row.styles[strong.style as usize].font.weight,
+                rust_native::layout::display::Weight::Semibold
+            );
+        }
+    }
 
     #[test]
     fn reference_syntax_colors_preserve_utf8_source_ranges() {

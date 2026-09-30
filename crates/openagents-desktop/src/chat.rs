@@ -2548,15 +2548,19 @@ impl Panel {
                 } else {
                     7
                 });
-                row.style.background = Some(
-                    if index == self.commands.selected
-                        && (*kind != Kind::Menu || self.menu_navigation)
-                    {
-                        openagents_chat_app::visual::SELECTED
-                    } else {
-                        Color::rgb(16, 16, 16)
-                    },
-                );
+                let selected = index == self.commands.selected
+                    && (*kind != Kind::Menu || self.menu_navigation);
+                if history.is_none() && !selected {
+                    row.style.foreground = Some(Color {
+                        alpha: 230,
+                        ..openagents_chat_app::visual::TEXT
+                    });
+                }
+                row.style.background = Some(if selected {
+                    openagents_chat_app::visual::SELECTED
+                } else {
+                    Color::rgb(16, 16, 16)
+                });
                 // Pointer motion and keys choose one row; a resting pointer
                 // does not add a second highlight after keyboard navigation.
                 row.style.hover_background = row.style.background;

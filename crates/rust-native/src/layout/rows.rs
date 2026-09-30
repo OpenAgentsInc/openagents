@@ -281,7 +281,20 @@ impl Ctx<'_> {
                 let run_x = x + dx + x0;
                 let run_width = truncate.unwrap_or(x1 - x0);
                 if piece.code {
-                    let mut background = rect(run_x - 2.0, top, run_width + 4.0, height, 4.0);
+                    let code = self.typography.metrics.markdown.and_then(|m| m.inline_code);
+                    let inset = code
+                        .map_or(0.0, |c| self.typography.size(f32::from(c.inset_y)))
+                        .min(height / 2.0);
+                    let radius = code.map_or(4.0, |c| {
+                        self.typography.size(f32::from(c.radius_half_points) / 2.0)
+                    });
+                    let mut background = rect(
+                        run_x - 2.0,
+                        top + inset,
+                        run_width + 4.0,
+                        height - 2.0 * inset,
+                        radius,
+                    );
                     background.fill = Some(Ink::Role(ColorRole::InlineCode));
                     self.out.rects.push(background);
                 }
@@ -316,24 +329,43 @@ impl Ctx<'_> {
     fn spans(&self, spans: &[Span], size: f32, weight: Weight, ink: Ink, opacity: f32) -> Para {
         let mut para = Para::default();
         for span in spans {
+            let code = self.typography.metrics.markdown.and_then(|m| m.inline_code);
+            let strong = self
+                .typography
+                .metrics
+                .markdown
+                .and_then(|m| m.strong_weight);
+            let emphasis = if span.bold {
+                let strong = strong.unwrap_or(Weight::Bold);
+                if weight as u8 > strong as u8 {
+                    weight
+                } else {
+                    strong
+                }
+            } else {
+                weight
+            };
             let font = if span.code {
                 self.font(
-                    size * 0.9,
-                    if span.bold { Weight::Semibold } else { weight },
+                    size * code.map_or(0.9, |c| f32::from(c.size_percent) / 100.0),
+                    if span.bold && strong.is_none() {
+                        Weight::Semibold
+                    } else {
+                        emphasis
+                    },
                     span.italic,
                     true,
                 )
             } else {
-                self.font(
-                    size,
-                    if span.bold { Weight::Bold } else { weight },
-                    span.italic,
-                    false,
-                )
+                self.font(size, emphasis, span.italic, false)
             };
             let mut style = TextStyle::new(
                 font,
-                if span.link.is_some() {
+                if span.code
+                    && let Some(code) = code
+                {
+                    Ink::Rgba(code.color)
+                } else if span.link.is_some() {
                     Ink::Role(ColorRole::Link)
                 } else {
                     ink

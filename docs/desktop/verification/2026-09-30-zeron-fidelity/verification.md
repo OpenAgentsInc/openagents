@@ -430,3 +430,29 @@ closing render correctly. The original morning fixture remains open with its
 temporary chats. The updated preview enables the existing local, content-free
 timing log. GPU readback and software repaint parity remain the automated
 checks for texture preservation; screenshots do not prove display scanout.
+
+## Authored colors and inline typography
+
+Reimplemented the reference's authored translucent colors: soft-white
+selection wash at 11%, user-bubble wash at 8%, white hairlines at 8%, and the
+cool composer border at 9%. These blend against their actual destination,
+rather than using one opaque approximation across different backgrounds.
+The raw accent is RGB 124/134/255, matching the public source's independently
+checked OKLCH conversion. Inline code uses that text color and its 12% wash,
+14-point monospace type, a 2-point vertical inset, and a 4.5-point radius.
+Links retain monochrome text and their inert destinations. Strong Markdown
+uses semibold, preserving heavier table-header text. Ordinary menu labels use
+90% text coverage and brighten when selected.
+
+These are optional shared layout metrics; the defaults preserve existing
+readers. The UTF-8/UTF-16 source ranges and copy text stay unchanged. Core:
+88 passed, one timing benchmark ignored. Four reference typography checks
+pass, including non-ASCII inline code at both text scales. The full desktop
+binary suite passes: 60 tests, five native/network/timing checks ignored.
+Repeated-menu repaint parity and pointer/keyboard selection pass with the new
+translucent washes. Captures: [default palette](authored-inks-palette-1200.png),
+[minimum palette](authored-inks-palette-760.png),
+[chat menu](authored-inks-chat-menu-760.png), and
+[transcript](authored-inks-transcript-760.png).
+Scoped formatting and strict all-target Clippy pass for the core, shared
+chat presentation, and desktop.
