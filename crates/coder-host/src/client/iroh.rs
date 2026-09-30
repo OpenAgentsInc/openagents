@@ -21,7 +21,7 @@ use std::time::Duration;
 
 use coder_access::client::{finish_redeem, prepare_redeem};
 use coder_access::protocol::{HostInvitation, INVITATION_PREFIX};
-use coder_access::{Access, RelayPolicy, Right, Rights};
+use coder_access::{Access, RelayPolicy, Rights};
 use nostr::domain::Event;
 use openagents_connect::code::ConnectCode;
 use openagents_connect::endpoint::{ConnectEndpoint, EndpointConfig};
@@ -395,15 +395,11 @@ pub async fn open_link(
     Link::direct(device, stream, route.address(), generation, timeout).await
 }
 
-/// The connect-code rights: [`Rights::pairing`], every right. A computer
-/// not yet updated grants what codes carried before, `observe,operate`
-/// with or without `terminal`, and those are kept too. Any other set is
-/// not a pairing's.
+/// The connect-code rights: exactly [`Rights::pairing`], every right. Any
+/// other set, including the narrower ones earlier codes carried, is not a
+/// pairing's.
 pub(crate) fn connect_rights(rights: &Rights) -> bool {
-    let earlier = |list: &[Right]| Rights::new(list.iter().copied()).ok();
     *rights == Rights::pairing()
-        || Some(rights) == earlier(&[Right::Observe, Right::Operate]).as_ref()
-        || Some(rights) == earlier(&[Right::Observe, Right::Operate, Right::Terminal]).as_ref()
 }
 
 /// Keep a grant only when it names the code's host key and carries the
@@ -506,6 +502,7 @@ fn unhex32(text: &str) -> Option<[u8; 32]> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use coder_access::Right;
 
     #[test]
     fn a_route_round_trips_and_names_its_endpoint() {
@@ -535,8 +532,8 @@ mod tests {
         let rights = |list: &[Right]| Rights::new(list.iter().copied()).unwrap();
         assert!(connect_rights(&Rights::pairing()));
         assert!(!connect_rights(&Rights::standard()));
-        assert!(connect_rights(&rights(&[Right::Observe, Right::Operate])));
-        assert!(connect_rights(&rights(&[
+        assert!(!connect_rights(&rights(&[Right::Observe, Right::Operate])));
+        assert!(!connect_rights(&rights(&[
             Right::Observe,
             Right::Operate,
             Right::Terminal
@@ -601,14 +598,6 @@ mod pairing {
         SecretKey::new(&mut secp256k1::rand::rng())
     }
 
-    fn rights(terminal: bool) -> Rights {
-        let mut rights = vec![Right::Observe, Right::Operate];
-        if terminal {
-            rights.push(Right::Terminal);
-        }
-        Rights::new(rights).unwrap()
-    }
-
     async fn computer(answer: Answer, phone: SecretKey) -> Computer {
         let owner = coder_reach::pubkey(&device());
         let dir = tempfile::tempdir().unwrap();
@@ -645,7 +634,7 @@ mod pairing {
                     // its own grant for the same phone.
                     Answer::OtherKey => {
                         let issued = other
-                            .invite(DEFAULT_RELAY, rights(false), now(), now() + 86_400)
+                            .invite(DEFAULT_RELAY, Rights::pairing(), now(), now() + 86_400)
                             .unwrap();
                         let invitation =
                             HostInvitation::parse(&issued.code, now(), RelayPolicy::Production)
@@ -673,12 +662,12 @@ mod pairing {
 
     impl Computer {
         /// A connect code for a new invitation issued at `issued_at`.
-        fn code(&self, issued_at: u64, terminal: bool) -> String {
+        fn code(&self, issued_at: u64) -> String {
             let issued = self
                 .host
                 .invite(
                     DEFAULT_RELAY,
-                    rights(terminal),
+                    Rights::pairing(),
                     issued_at,
                     issued_at + 86_400,
                 )
@@ -718,7 +707,7 @@ mod pairing {
     async fn a_phone_pairs_over_loopback_iroh_and_keeps_the_grant_and_route() {
         let phone = device();
         let computer = computer(Answer::Honest, phone).await;
-        let code = computer.code(now(), true);
+        let code = computer.code(now());
         let dialer = phone_dialer();
         let enrolled = enroll(
             &dialer,
@@ -734,7 +723,7 @@ mod pairing {
             computer.host.public_key().unwrap()
         );
         assert_eq!(enrolled.access.grant.device, coder_reach::pubkey(&phone));
-        assert_eq!(enrolled.access.grant.rights, rights(true));
+        assert_eq!(enrolled.access.grant.rights, Rights::pairing());
         assert_eq!(enrolled.label, "Studio Mac");
         assert_eq!(enrolled.clock_off, None);
         assert_eq!(
@@ -765,7 +754,7 @@ mod pairing {
     async fn an_answer_signed_by_another_host_key_is_refused() {
         let phone = device();
         let computer = computer(Answer::OtherKey, phone).await;
-        let code = computer.code(now(), false);
+        let code = computer.code(now());
         let outcome = enroll(
             &phone_dialer(),
             &code,
@@ -781,7 +770,7 @@ mod pairing {
     async fn an_expired_code_is_refused_as_expired() {
         let phone = device();
         let computer = computer(Answer::Honest, phone).await;
-        let code = computer.code(now() - 400, false);
+        let code = computer.code(now() - 400);
         match enroll(
             &phone_dialer(),
             &code,
@@ -806,7 +795,7 @@ mod pairing {
     async fn a_computer_iroh_cannot_reach_is_unreachable_so_the_relay_is_tried() {
         let phone = device();
         let computer = computer(Answer::Honest, phone).await;
-        let code = computer.code(now(), false);
+        let code = computer.code(now());
         computer.endpoint.close().await;
         let outcome = enroll(
             &phone_dialer(),
