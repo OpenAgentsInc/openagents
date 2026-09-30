@@ -1,0 +1,3 @@
+image at 40,26 720x390
+  image 1185 x 1523 pixels
+  OpenAgents (@OpenAgentsInc) on X, Nov 7, 2023: "OPEN AGENTS. A new video series in which we build an open platform for AI agents. 100% open-source. Open models & data. Open compute via GPUtopia. Open money aka #bitcoin. Open agent marketplace with rev-share."

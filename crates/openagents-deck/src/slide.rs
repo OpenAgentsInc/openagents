@@ -167,6 +167,10 @@ pub const ASSETS: &[(&str, &[u8])] = &[
         include_bytes!("../decks/assets/important.png"),
     ),
     (
+        "assets/tweet-openagents-2023.png",
+        include_bytes!("../decks/assets/tweet-openagents-2023.png"),
+    ),
+    (
         "assets/tweet-tibo-open.png",
         include_bytes!("../decks/assets/tweet-tibo-open.png"),
     ),

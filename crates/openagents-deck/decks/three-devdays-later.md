@@ -14,6 +14,15 @@ source: OpenAI DevDay opening keynote on YouTube; screenshot in decks/assets/imp
 
 ---
 
+layout: image
+id: openagents-2023
+scale: 2
+source: x.com/OpenAgentsInc/status/1721942435125715086, 2023-11-07; screenshot in decks/assets/tweet-openagents-2023.png
+
+![OpenAgents (@OpenAgentsInc) on X, Nov 7, 2023: "OPEN AGENTS. A new video series in which we build an open platform for AI agents. 100% open-source. Open models & data. Open compute via GPUtopia. Open money aka #bitcoin. Open agent marketplace with rev-share."](assets/tweet-openagents-2023.png)
+
+---
+
 layout: figure
 id: revenue-shared
 title: OpenAI Revenue Shared to Developers
