@@ -71,15 +71,16 @@ source: x.com/Dee_Tay_ler, 2026-09-29; screenshot in decks/assets/tweet-demetriu
 
 layout: compare
 id: the-nips
+corner: NIP
 column: Title
 column: NIP
 column: Title
 source: nips/openagents/*.md, each NIP's heading; the test-time-capabilities deck's protocol-find and protocol-prove slides
-row: EXT | Extension distribution | RUN | Durable runs and evidence
-row: CAP | Execution capabilities | ATIF | Agent trajectories
-row: KB | Shared knowledge entries | EVAL | Workload evaluation evidence
-row: CJ | Agent jobs | XP | Quests, acceptance, and experience points
-row: PRG | Programs | POL | Scoped instructions, admission, and routing records
-row: CTX | Task state and context views | OPT | AI contracts and optimization studies
-row: SESS | Engine sessions and turn control | MV | Shared 3D worlds
-row: WORK | Tracked objectives and planning |  | 
+row: ATIF | Agent trajectories | **POL** | Scoped instructions, admission, and routing records
+row: CAP | Execution capabilities | **PRG** | Programs
+row: CJ | Agent jobs | **RUN** | Durable runs and evidence
+row: CTX | Task state and context views | **SESS** | Engine sessions and turn control
+row: EVAL | Workload evaluation evidence | **WORK** | Tracked objectives and planning
+row: EXT | Extension distribution | **XP** | Quests, acceptance, and experience points
+row: KB | Shared knowledge entries |  | 
+row: MV | Shared 3D worlds |  | 

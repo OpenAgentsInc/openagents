@@ -463,7 +463,7 @@ fn body(slide: &Slide) -> Vec<Part> {
         Layout::Compare => {
             kicker(&mut column, false);
             title(&mut column);
-            let table = compare_table(&slide.columns, &slide.rows);
+            let table = compare_table(slide.corner.as_deref(), &slide.columns, &slide.rows);
             column.push(left("table", prose("table", table), 1.0), BODY_GAP);
             if !slide.body.is_empty() {
                 column.push(left("body", prose("body", prose_blocks()), 1.0), NOTE_GAP);
@@ -707,13 +707,18 @@ fn plain_facts(metrics: &[Metric]) -> String {
         .collect()
 }
 
-/// A comparison as a Markdown table: an empty corner, then the columns;
-/// each row's label in bold.
-fn compare_table(columns: &[String], rows: &[crate::slide::Row]) -> Vec<MarkdownBlock> {
+/// A comparison as a Markdown table: the corner (empty unless the slide
+/// names one), then the columns; each row's label in bold.
+fn compare_table(
+    corner: Option<&str>,
+    columns: &[String],
+    rows: &[crate::slide::Row],
+) -> Vec<MarkdownBlock> {
     let cell = |value: &str| value.replace('|', "\\|");
     let width = columns.len();
     let mut source = format!(
-        "| |{}|\n|---|{}|\n",
+        "|{}|{}|\n|---|{}|\n",
+        corner.map_or_else(|| " ".to_owned(), cell),
         columns
             .iter()
             .map(|c| cell(c))
@@ -899,6 +904,7 @@ mod tests {
     #[test]
     fn a_comparison_is_a_table_with_a_corner() {
         let blocks = compare_table(
+            None,
             &["A".into(), "B".into()],
             &[crate::slide::Row {
                 label: "Row".into(),

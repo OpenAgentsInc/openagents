@@ -1,10 +1,10 @@
 table at 40,56 720x331
-   | Title | NIP | Title
-  EXT | Extension distribution | RUN | Durable runs and evidence
-  CAP | Execution capabilities | ATIF | Agent trajectories
-  KB | Shared knowledge entries | EVAL | Workload evaluation evidence
-  CJ | Agent jobs | XP | Quests, acceptance, and experience points
-  PRG | Programs | POL | Scoped instructions, admission, and routing records
-  CTX | Task state and context views | OPT | AI contracts and optimization studies
-  SESS | Engine sessions and turn control | MV | Shared 3D worlds
-  WORK | Tracked objectives and planning |  | 
+  NIP | Title | NIP | Title
+  ATIF | Agent trajectories | POL | Scoped instructions, admission, and routing records
+  CAP | Execution capabilities | PRG | Programs
+  CJ | Agent jobs | RUN | Durable runs and evidence
+  CTX | Task state and context views | SESS | Engine sessions and turn control
+  EVAL | Workload evaluation evidence | WORK | Tracked objectives and planning
+  EXT | Extension distribution | XP | Quests, acceptance, and experience points
+  KB | Shared knowledge entries |  | 
+  MV | Shared 3D worlds |  | 

@@ -142,6 +142,9 @@ pub struct Slide {
     pub image: Option<SlideImage>,
     /// The images a gallery slide clusters, in order.
     pub images: Vec<SlideImage>,
+    /// A comparison's top-left header cell, over the row labels; empty
+    /// when the script names none.
+    pub corner: Option<String>,
     /// How many times its native size an image slide's image may grow,
     /// when the slide has room (`scale: 2`); `None` is 1, never enlarged.
     pub scale: Option<u8>,
