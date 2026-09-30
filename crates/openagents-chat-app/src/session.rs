@@ -24,6 +24,7 @@ pub struct Session {
     pub revision: u64,
     pub reading: bool,
     pending: BTreeMap<u64, Command>,
+    handoff_errors: BTreeMap<String, String>,
     next_ticket: u64,
     poll: Instant,
     listed: bool,
@@ -46,6 +47,7 @@ impl Session {
             revision: 0,
             reading: false,
             pending: BTreeMap::new(),
+            handoff_errors: BTreeMap::new(),
             next_ticket: 1,
             poll: now,
             listed: false,
@@ -147,7 +149,9 @@ impl Session {
     pub fn retry(&mut self) -> Option<(u64, Command)> {
         let chat = self.selected.clone()?;
         self.error = None;
-        let default = if self.states.contains_key(&chat) {
+        let default = if self.handoff_errors.contains_key(&chat) {
+            Command::RunCoder { chat: chat.clone() }
+        } else if self.states.contains_key(&chat) {
             Command::Retry { chat: chat.clone() }
         } else {
             Command::Create { chat: chat.clone() }
@@ -158,6 +162,21 @@ impl Session {
             text: send.text.clone(),
         });
         Some(self.request(command))
+    }
+    pub fn run_coder(&mut self) -> Option<(u64, Command)> {
+        let chat = self.selected.clone()?;
+        if self.busy()
+            || self.state()?.ready_computer.is_none()
+            || self.state()?.coder.is_some()
+            || self
+                .pending
+                .values()
+                .any(|command| matches!(command, Command::RunCoder { chat: id } if id == &chat))
+        {
+            return None;
+        }
+        self.error = None;
+        Some(self.request(Command::RunCoder { chat }))
     }
     pub fn earlier(&mut self) -> Option<(u64, Command)> {
         let chat = self.selected.clone()?;
@@ -189,6 +208,7 @@ impl Session {
                 let target = match &command {
                     Command::List {} | Command::ListMore { .. } => None,
                     Command::UseSuggestion { chat, .. }
+                    | Command::RunCoder { chat }
                     | Command::Create { chat }
                     | Command::Read { chat, .. }
                     | Command::Send { chat, .. }
@@ -202,6 +222,9 @@ impl Session {
                 if target.is_some_and(|id| self.observed.get(id).is_some_and(|seen| *seen > ticket))
                 {
                     return accepted;
+                }
+                if let Command::RunCoder { chat } = &command {
+                    self.handoff_errors.insert(chat.clone(), error.clone());
                 }
                 if target.is_none() || target == self.selected.as_ref() {
                     self.error = Some(error);
@@ -223,11 +246,23 @@ impl Session {
                 if stale && !earlier {
                     return accepted;
                 }
+                if !stale
+                    && let Some(id) = &snapshot.chat
+                    && snapshot.coder.is_some()
+                {
+                    self.handoff_errors.remove(id);
+                }
                 if !stale && (snapshot.chat.is_none() || snapshot.chat == self.selected) {
                     self.error = snapshot
                         .storage_error
                         .as_ref()
-                        .map(|_| "Couldn't save chat. Check available disk space.".into());
+                        .map(|_| "Couldn't save chat. Check available disk space.".into())
+                        .or_else(|| {
+                            snapshot
+                                .chat
+                                .as_ref()
+                                .and_then(|id| self.handoff_errors.get(id).cloned())
+                        });
                 }
                 if ticket >= self.list_ticket {
                     if snapshot.list_start == 0 {
@@ -274,6 +309,9 @@ impl Session {
                                 snapshot.partial = previous.partial.clone();
                                 snapshot.failure = previous.failure.clone();
                                 snapshot.storage_error = previous.storage_error.clone();
+                                snapshot.coder = previous.coder.clone();
+                                snapshot.ready_computer = previous.ready_computer.clone();
+                                snapshot.computer = previous.computer;
                             }
                         } else if stale {
                             return accepted;
@@ -310,6 +348,8 @@ impl Session {
                                 || previous.storage_error != snapshot.storage_error
                                 || previous.used != snapshot.used
                                 || previous.computer != snapshot.computer
+                                || previous.ready_computer != snapshot.ready_computer
+                                || previous.coder != snapshot.coder
                         })
                     {
                         self.revision += 1;
@@ -359,6 +399,58 @@ mod tests {
                 .collect(),
             ..Snapshot::default()
         }
+    }
+
+    #[test]
+    fn handoff_failure_retries_dispatch_and_binding_rebuilds_cards() {
+        let mut session = Session::new(Instant::now());
+        let id = "a".repeat(32);
+        session.select(&id);
+        let ready = Snapshot {
+            chat: Some(id.clone()),
+            ready_computer: Some("Studio Mac".into()),
+            ..Default::default()
+        };
+        let (ticket, _) = session.request(Command::Read {
+            chat: id.clone(),
+            before: None,
+        });
+        session.outcome(ticket, Ok(ready.clone()));
+        let revision = session.revision;
+        let (ticket, _) = session.run_coder().unwrap();
+        assert!(session.run_coder().is_none());
+        session.outcome(ticket, Err("Connection lost".into()));
+        let (ticket, _) = session.request(Command::Read {
+            chat: id.clone(),
+            before: None,
+        });
+        session.outcome(ticket, Ok(ready.clone()));
+        assert_eq!(session.error.as_deref(), Some("Connection lost"));
+        let (ticket, command) = session.retry().unwrap();
+        assert_eq!(command, Command::RunCoder { chat: id });
+        let bound = Snapshot {
+            coder: Some(openagents_chat::basic_chats::Spawned {
+                host: "b".repeat(64),
+                task: "c".repeat(64),
+                project: Some("openagents".into()),
+                at: Some(10),
+            }),
+            ..ready
+        };
+        session.outcome(ticket, Ok(bound));
+        assert!(session.error.is_none());
+        assert!(session.revision > revision);
+        assert!(session.run_coder().is_none());
+        session
+            .cards
+            .rows(session.state().cloned().as_ref().unwrap());
+        assert!(
+            !session
+                .cards
+                .actions
+                .values()
+                .any(|action| *action == crate::cards::Action::RunCoder)
+        );
     }
 
     #[test]

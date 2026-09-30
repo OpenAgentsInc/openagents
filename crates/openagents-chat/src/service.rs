@@ -8,6 +8,10 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Command {
+    /// A resident host handles this through its admitted Coder broker.
+    RunCoder {
+        chat: String,
+    },
     List {},
     ListMore {
         after: usize,
@@ -55,6 +59,10 @@ pub enum Command {
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Snapshot {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub coder: Option<crate::basic_chats::Spawned>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ready_computer: Option<String>,
     pub chats: Vec<Summary>,
     #[serde(default)]
     pub list_start: usize,
@@ -95,6 +103,9 @@ pub fn apply(chats: &mut BasicChats, command: Command, now: u64) -> Result<Snaps
     chats.flush_pending();
     chats.settle(now);
     let (id, before) = match command {
+        Command::RunCoder { .. } => {
+            return Err("This chat service has no admitted Coder broker.".into());
+        }
         Command::List {} => (None, None),
         Command::ListMore { after, version } => {
             let mut page = snapshot(chats, None, None)?;
@@ -237,6 +248,7 @@ fn snapshot(
         snapshot.turns = turns[snapshot.start..end].to_vec();
         snapshot.storage_error = chats.storage_error.clone();
         snapshot.computer = chats.lane(&id) == Some(crate::basic_coder::Lane::Computer);
+        snapshot.coder = chats.get(&id).and_then(|summary| summary.coder.clone());
         snapshot.busy = chats.busy(&id);
         snapshot.partial = chats.partial(&id);
         if let Tail::Failed(why) = chats.tail(&id) {

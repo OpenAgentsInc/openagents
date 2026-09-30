@@ -33,3 +33,12 @@ state for a caller already authenticated by the operating system. The local
 owner broker preserves the existing boundary and shares protocol admission
 without adding those credentials. Remote computers continue through their
 existing device grants and connections.
+
+
+A desktop chat delegates with the shared `openagents_chat::delegation` prompt
+and project rules. The host keeps an encrypted plan before dispatch and binds
+the task receipt to the conversation afterward. A lost acknowledgment retries
+the same admitted request. The native **Run Coder** action does not enable
+execution: the configured auto-start policy still decides whether the accepted
+task starts. Full project labels and computer judgments remain in encrypted
+chat records across a restart.

@@ -29,7 +29,7 @@ clipboard facility must report a reason. Repeat image clipboard paste on macOS.
 The real macOS picker and scripted decoder, clipboard pixel, drop, removal,
 and refusal checks pass. Open a follow-up issue if a native adapter check fails.
 
-## Installed local Coder broker (#10014)
+## Installed local Coder broker and chat handoff (#10014, #10015)
 
 After installing the desktop bundle and its Coder built from current `main`,
 exercise the **Run Coder** flow added by #10015 against this computer. Confirm

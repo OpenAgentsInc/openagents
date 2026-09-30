@@ -404,33 +404,51 @@ fn sidebar(state: &State) -> Node<Intent> {
             continue;
         }
         if state.live && section == Section::Recent {
-            let projects: BTreeSet<_> = state.projects.values().collect();
-            for project in projects {
-                let mut rows = vec![text(
-                    &format!("project-{}", groups.len()),
-                    project,
-                    TextRole::Heading,
-                )];
-                rows.extend(
-                    state
-                        .chats
-                        .iter()
-                        .filter(|chat| state.projects.get(&chat.id) == Some(project))
-                        .map(|chat| {
-                            action(
-                                &format!("sidebar-chat-{}", chat.id),
-                                format!("{}\n{}", chat.title, chat.detail),
-                                Action::SelectChat { id: chat.id },
-                                None,
-                                state.page == Page::Chat(chat.id),
-                            )
-                        }),
-                );
+            // Bound headings as well as chat rows within the semantic node budget.
+            let mut projects = std::collections::BTreeMap::<&str, Vec<&Chat>>::new();
+            for chat in &state.chats {
+                if let Some(project) = state.projects.get(&chat.id) {
+                    projects.entry(project).or_default().push(chat);
+                }
+            }
+            let mut overflow = vec![text("project-more", "More projects", TextRole::Heading)];
+            for (index, (project, chats)) in projects.into_iter().enumerate() {
+                let rows = chats.into_iter().map(|chat| {
+                    action(
+                        &format!("sidebar-chat-{}", chat.id),
+                        if index < 64 {
+                            format!("{}\n{}", chat.title, chat.detail)
+                        } else {
+                            format!("{} · {project}\n{}", chat.title, chat.detail)
+                        },
+                        Action::SelectChat { id: chat.id },
+                        None,
+                        state.page == Page::Chat(chat.id),
+                    )
+                });
+                if index < 64 {
+                    let mut group = vec![text(
+                        &format!("project-{}", groups.len()),
+                        project,
+                        TextRole::Heading,
+                    )];
+                    group.extend(rows);
+                    groups.push(stack(
+                        &format!("project-group-{}", groups.len()),
+                        Axis::Vertical,
+                        Space::Xs,
+                        group,
+                    ));
+                } else {
+                    overflow.extend(rows);
+                }
+            }
+            if overflow.len() > 1 {
                 groups.push(stack(
-                    &format!("project-group-{}", groups.len()),
+                    "project-more-group",
                     Axis::Vertical,
                     Space::Xs,
-                    rows,
+                    overflow,
                 ));
             }
         }

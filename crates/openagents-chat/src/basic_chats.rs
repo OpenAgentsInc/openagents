@@ -36,6 +36,8 @@ pub struct Spawned {
     pub task: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub project: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub at: Option<u64>,
 }
 
 /// One conversation's row in the list.
@@ -62,6 +64,8 @@ struct Saved {
     /// The record and its list metadata commit together. Older records omit it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     summary: Option<Summary>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    lane: Option<Lane>,
 }
 
 /// A reply streaming into a conversation.
@@ -324,6 +328,9 @@ impl BasicChats {
                     return &[];
                 }
             };
+            if let Some(lane) = saved.lane {
+                self.lanes.insert(id.to_owned(), lane);
+            }
             self.turns.insert(id.to_owned(), saved.turns);
         }
         self.turns.get(id).map_or(&[], Vec::as_slice)
@@ -825,7 +832,14 @@ impl BasicChats {
             summary.coder = Some(Spawned {
                 host: host.to_owned(),
                 task: task.to_owned(),
-                project: project.map(|s| s.chars().take(48).collect()),
+                project: project.map(|label| {
+                    let mut end = label.len().min(128);
+                    while !label.is_char_boundary(end) {
+                        end -= 1;
+                    }
+                    label[..end].to_owned()
+                }),
+                at: Some(now),
             });
         }
         self.touch(id, now);
@@ -861,6 +875,7 @@ impl BasicChats {
             let overhead = serde_json::to_vec(&Saved {
                 turns: vec![],
                 summary: summary.clone(),
+                lane: self.lanes.get(id).copied(),
             })
             .map_or(MAX_TALK_BYTES, |bytes| bytes.len());
             let mut bytes = sizes.iter().sum::<usize>() + overhead + turns.len().saturating_sub(1);
@@ -879,6 +894,7 @@ impl BasicChats {
                     &Saved {
                         turns: turns.clone(),
                         summary,
+                        lane: self.lanes.get(id).copied(),
                     },
                 )
             });
@@ -1114,6 +1130,56 @@ mod tests {
         assert_eq!(
             texts,
             ["hello\nsecond line", "enil dnoces\nolleh", "abc", "cba"]
+        );
+    }
+
+    #[test]
+    fn computer_judgment_and_full_project_binding_survive_restart() {
+        let dir = tempfile::tempdir().unwrap();
+        let secret = secp256k1::SecretKey::new(&mut secp256k1::rand::rng());
+        let store = || Cache::open(dir.path(), &secret).ok();
+        let mut chats = BasicChats::new(None, None, store());
+        let id = "b".repeat(32);
+        chats.create(&id, 1);
+        chats.turns.insert(
+            id.clone(),
+            vec![
+                Turn::user("fix the flaky test in openagents"),
+                Turn::assistant("Ready for Coder.", None),
+            ],
+        );
+        chats.lanes.insert(id.clone(), Lane::Computer);
+        let project = "project-".to_owned() + &"長".repeat(35);
+        chats.spawned_in(&id, &"a".repeat(64), &"c".repeat(64), Some(&project), 10);
+        assert!(chats.storage_error.is_none());
+        drop(chats);
+        let mut chats = BasicChats::new(None, None, store());
+        let snapshot = crate::service::apply(
+            &mut chats,
+            crate::service::Command::Read {
+                chat: id.clone(),
+                before: None,
+            },
+            11,
+        )
+        .unwrap();
+        assert!(snapshot.computer);
+        let coder = snapshot.coder.unwrap();
+        assert_eq!(coder.project.as_deref(), Some(project.as_str()));
+        assert_eq!(coder.at, Some(10));
+        chats.spawned_in(&id, &coder.host, &coder.task, Some(&"長".repeat(100)), 12);
+        assert_eq!(
+            chats
+                .get(&id)
+                .unwrap()
+                .coder
+                .as_ref()
+                .unwrap()
+                .project
+                .as_ref()
+                .unwrap()
+                .len(),
+            126
         );
     }
 

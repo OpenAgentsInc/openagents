@@ -1389,6 +1389,7 @@ dependencies = [
  "microcoder-loop",
  "nostr",
  "nostr-transport",
+ "openagents-chat",
  "openagents-connect",
  "openagents-desktop",
  "openrouter",

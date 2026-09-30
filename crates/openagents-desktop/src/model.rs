@@ -248,7 +248,7 @@ pub struct Started {
 pub enum Outcome {
     Chat {
         ticket: u64,
-        result: crate::control::ControlResult<openagents_chat::service::Snapshot>,
+        result: Box<crate::control::ControlResult<openagents_chat::service::Snapshot>>,
     },
     /// The host's state, or `None` when it does not answer.
     Refreshed(Option<Box<Refreshed>>),

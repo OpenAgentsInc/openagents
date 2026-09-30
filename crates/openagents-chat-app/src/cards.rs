@@ -35,7 +35,15 @@ pub struct ReplyActions {
 
 /// The worker's judgment is an observation; the target still needs authority.
 pub fn wants_coder(meta: Option<&Meta>, computer_lane: bool) -> bool {
-    computer_lane || meta.is_some_and(|meta| meta.offers.contains(&Offer::RunCoder))
+    openagents_chat::delegation::offered(meta, computer_lane)
+}
+
+/// A presentation target contains no credential or execution authority.
+pub enum Target<'a> {
+    NotConfigured,
+    Connecting(&'a str),
+    Offline(&'a str),
+    Ready(&'a str),
 }
 
 pub fn reply_actions(
@@ -43,6 +51,22 @@ pub fn reply_actions(
     used: &[String],
     computer_lane: bool,
     availability: &Availability<'_>,
+    has_result: bool,
+) -> ReplyActions {
+    let target = match availability {
+        Availability::NotConfigured => Target::NotConfigured,
+        Availability::Connecting(host) => Target::Connecting(&host.label),
+        Availability::Offline(host) => Target::Offline(&host.label),
+        Availability::Ready(host) => Target::Ready(&host.label),
+    };
+    reply_actions_for(meta, used, computer_lane, &target, has_result)
+}
+
+pub fn reply_actions_for(
+    meta: Option<&Meta>,
+    used: &[String],
+    computer_lane: bool,
+    availability: &Target<'_>,
     has_result: bool,
 ) -> ReplyActions {
     let mut output = ReplyActions {
@@ -53,29 +77,26 @@ pub fn reply_actions(
     let meta = meta.unwrap_or(&empty);
     let judged = wants_coder(Some(meta), computer_lane);
     match availability {
-        Availability::Ready(host) if judged => output.chips.push(Chip {
+        Target::Ready(host) if judged => output.chips.push(Chip {
             key: "coder-run".into(),
-            label: format!("Run Coder on {}", host.label),
+            label: format!("Run Coder on {}", host),
             glyph: Glyph::Computer,
             action: Action::RunCoder,
         }),
-        Availability::NotConfigured if judged => output.chips.push(Chip {
+        Target::NotConfigured if judged => output.chips.push(Chip {
             key: "coder-connect".into(),
             label: "Connect a computer".into(),
             glyph: Glyph::Add,
             action: Action::ConnectComputer,
         }),
-        Availability::Connecting(host) if judged => {
+        Target::Connecting(host) if judged => {
             output.notice = Some((
                 "coder-connecting".into(),
-                format!("Connecting to {}…", host.label),
+                format!("Connecting to {}…", host),
             ))
         }
-        Availability::Offline(host) if judged => {
-            output.notice = Some((
-                "coder-offline".into(),
-                format!("{} is offline.", host.label),
-            ))
+        Target::Offline(host) if judged => {
+            output.notice = Some(("coder-offline".into(), format!("{} is offline.", host)))
         }
         _ => {}
     }
@@ -87,7 +108,7 @@ pub fn reply_actions(
             continue;
         }
         let connecting =
-            *screen == Screen::Computers && matches!(availability, Availability::NotConfigured);
+            *screen == Screen::Computers && matches!(availability, Target::NotConfigured);
         if connecting && judged {
             continue;
         }
@@ -346,13 +367,31 @@ impl Cards {
             }
         }
         let meta = crate::projection::actionable(&snapshot.turns, busy, failed);
-        let reply = reply_actions(
+        let mut reply = reply_actions_for(
             meta,
             &snapshot.used,
             snapshot.computer && crate::projection::completed(&snapshot.turns, busy, failed),
-            &Availability::NotConfigured,
+            &snapshot
+                .ready_computer
+                .as_deref()
+                .map_or(Target::NotConfigured, Target::Ready),
             self.gym.latest_result().is_some(),
         );
+        if let Some(coder) = &snapshot.coder {
+            reply
+                .chips
+                .retain(|chip| !matches!(chip.action, Action::RunCoder | Action::ConnectComputer));
+            reply.notice = Some((
+                "coder-dispatched".into(),
+                format!(
+                    "Task sent to Coder{}. The computer's auto-start policy controls execution.",
+                    coder
+                        .project
+                        .as_ref()
+                        .map_or(String::new(), |project| format!(" in {project}")),
+                ),
+            ));
+        }
         if let Some((key, value)) = reply.notice {
             rows.push(Node {
                 key,
@@ -492,7 +531,12 @@ impl crate::session::Session {
                 };
                 (suggestion.message.into(), Some(suggestion.id.into()))
             }
-            Action::ConnectComputer | Action::RunCoder => {
+            Action::RunCoder => {
+                return self
+                    .run_coder()
+                    .map_or(Effect::None, |request| Effect::Requests(vec![request]));
+            }
+            Action::ConnectComputer => {
                 return Effect::Navigate(Screen::Computers);
             }
             Action::OpenScreen { screen } => return Effect::Navigate(screen),

@@ -4,6 +4,7 @@ pub mod basic_chats;
 pub mod basic_coder;
 pub mod basic_link;
 pub mod cache;
+pub mod delegation;
 pub mod router;
 pub mod service;
 

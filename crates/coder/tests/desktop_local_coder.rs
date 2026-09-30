@@ -164,3 +164,226 @@ async fn desktop_creates_retries_reads_and_cancels_through_the_phone_clients() {
     running.shutdown().await;
     relay_task.abort();
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn desktop_handoff_keeps_the_phone_prompt_project_policy_and_restart_identity() {
+    use coder::task::{adapter, autostart, capacity};
+    use openagents_chat::{
+        basic_chats::BasicChats, basic_coder::Turn, cache::Cache, service::Command,
+    };
+    use openagents_connect::keys::{KeyName, KeySource, Secret};
+    use openagents_desktop::control::HostControl;
+    use std::{
+        path::{Path, PathBuf},
+        sync::Mutex,
+    };
+    #[derive(Clone)]
+    struct Launcher(Arc<Mutex<Vec<String>>>);
+    impl autostart::Launch for Launcher {
+        fn launch(
+            &self,
+            _: &autostart::Engine,
+            grant: &Path,
+            _: &Path,
+        ) -> Result<autostart::Launched, String> {
+            let grant = coder::task::owner::Grant::parse(&std::fs::read(grant).unwrap()).unwrap();
+            self.0.lock().unwrap().push(grant.task_id);
+            Ok(autostart::Launched {
+                owner_process: std::process::id(),
+                grant_digest: "sha256:fixture".into(),
+            })
+        }
+    }
+    let temp = tempfile::tempdir().unwrap();
+    let (relay, relay_task, _) = relay::start().await;
+    let root = temp.path().join("host");
+    std::fs::create_dir_all(&root).unwrap();
+    let tasks = temp.path().join("tasks");
+    drop(coder::task::Store::open(&tasks).unwrap());
+    let project = temp.path().join("project");
+    std::fs::create_dir_all(&project).unwrap();
+    let projects = BTreeMap::from([("openagents".into(), project)]);
+    let keys = Arc::new(FileKeySource::new(temp.path().join("keys")));
+    let secret = secp256k1::SecretKey::new(&mut secp256k1::rand::rng());
+    keys.store(KeyName::Host, &Secret::from_bytes(secret.secret_bytes()))
+        .unwrap();
+    let cache = Cache::open(&root.join("basic-chats"), &secret).unwrap();
+    let id = "a".repeat(32);
+    let archived = "b".repeat(32);
+    let plain = "c".repeat(32);
+    let turns = vec![
+        Turn::user("fix the flaky test in openagents"),
+        Turn::assistant("I'll hand this conversation to Coder.", None),
+    ];
+    let mut chats = BasicChats::new(
+        None,
+        None,
+        Some(Cache::open(&root.join("basic-chats"), &secret).unwrap()),
+    );
+    for chat in [&id, &archived, &plain] {
+        assert!(chats.create(chat, 1));
+    }
+    chats.rename(&id, "Fix flaky test").unwrap();
+    chats.archive(&archived, 2);
+    let summary = chats.get(&id).unwrap().clone();
+    drop(chats);
+    cache
+        .write(
+            &format!("basic-{id}"),
+            &serde_json::json!({"summary":summary, "turns":turns, "lane":"computer"}),
+        )
+        .unwrap();
+    let expected = openagents_chat::delegation::prompt("Fix flaky test", &turns);
+    let launched = Arc::new(Mutex::new(vec![]));
+    let autostart = Arc::new(
+        autostart::Autostart::new(
+            root.clone(),
+            tasks.clone(),
+            projects.clone(),
+            Box::new(Launcher(launched.clone())),
+            || 1000,
+        )
+        .with_probe(|_| capacity::Connection::Connected)
+        .with_usage_fetch(|_| Err(coder::task::usage::Failure::Network))
+        .foreground(),
+    );
+    let policy = autostart::Policy {
+        schema: autostart::POLICY_SCHEMA.into(),
+        enabled: true,
+        workspaces: vec!["openagents".into()],
+        max_running: 1,
+        changed_at: 1,
+        engine: autostart::Engine {
+            adapter: adapter::NAME.into(),
+            controller: PathBuf::from("/synthetic/microcoder"),
+            model: "gpt-6-luna".into(),
+            effort: None,
+            max_steps: 4,
+            wall_seconds: 60,
+            memory_bytes: 1024 * 1024 * 1024,
+            write_workspace: false,
+            decision_endpoint: "https://api.typesafe.ai".into(),
+            decision_model: "jev-1.13.0".into(),
+            routes: vec![],
+            usage_probe: None,
+            access: adapter::Access::Boundary,
+        },
+    };
+    policy.save(&root).unwrap();
+    let inbox = Arc::new(
+        coder::task::remote::Inbox::new(&tasks, projects.clone()).with_autostart(autostart),
+    );
+    let socket = temp.path().join("c/control.sock");
+    let mut config = Config::new(temp.path().join("access"), vec![relay], 1);
+    config.label = "Scratch Mac".into();
+    config.policy = RelayPolicy::LoopbackTest;
+    config.keys = Some(Keys(keys));
+    config.workspaces = projects;
+    config.control = Some(Control {
+        path: socket.clone(),
+        root: root.clone(),
+        autostart: Some(root.clone()),
+        uid: coder_host::control::own_uid(),
+    });
+    let running = coder_host::start(config.clone(), inbox.clone())
+        .await
+        .unwrap();
+    let first_socket = socket.clone();
+    let first_id = id.clone();
+    let first_tasks = tasks.clone();
+    let (binding, original_record) = tokio::task::spawn_blocking(move || {
+        let mut client = SocketControl::new(first_socket);
+        let snapshot = client
+            .chat(Command::Read {
+                chat: first_id.clone(),
+                before: None,
+            })
+            .unwrap();
+        assert_eq!(snapshot.ready_computer.as_deref(), Some("Scratch Mac"));
+        assert!(snapshot.computer);
+        assert!(client.chat(Command::RunCoder { chat: archived }).is_err());
+        assert!(client.chat(Command::RunCoder { chat: plain }).is_err());
+        let original = cache
+            .read::<serde_json::Value>(&format!("basic-{first_id}"))
+            .unwrap()
+            .unwrap();
+        let snapshot = client
+            .chat(Command::RunCoder {
+                chat: first_id.clone(),
+            })
+            .unwrap();
+        let binding = snapshot.coder.unwrap();
+        assert_eq!(binding.project.as_deref(), Some("openagents"));
+        assert_eq!(
+            client
+                .chat(Command::RunCoder { chat: first_id })
+                .unwrap()
+                .coder
+                .as_ref(),
+            Some(&binding)
+        );
+        let store = coder::task::Store::open(&first_tasks).unwrap();
+        assert_eq!(store.list().unwrap().len(), 1);
+        let task = store.show(&binding.task).unwrap();
+        assert_eq!(task.intent.prompt, expected);
+        assert_eq!(
+            task.intent.title,
+            coder_host::access::client::tasks::title(&expected)
+        );
+        assert_eq!(
+            task.intent.configuration.model.as_deref(),
+            Some("gpt-6-luna")
+        );
+        (binding, original)
+    })
+    .await
+    .unwrap();
+    assert_eq!(*launched.lock().unwrap(), vec![binding.task.clone()]);
+    assert!(
+        autostart::journal(&root)
+            .iter()
+            .any(|entry| entry.event == "started" && entry.task.as_deref() == Some(&binding.task))
+    );
+    running.shutdown().await;
+    // Lose only the local binding acknowledgment. The persisted handoff and
+    // admitted request still return the original task after a host restart.
+    let cache = Cache::open(&root.join("basic-chats"), &secret).unwrap();
+    cache
+        .write(&format!("basic-{id}"), &original_record)
+        .unwrap();
+    let mut index: Vec<openagents_chat::basic_chats::Summary> =
+        cache.read("basic-index").unwrap().unwrap();
+    let row = index.iter_mut().find(|row| row.id == id).unwrap();
+    row.coder = None;
+    row.updated = 1;
+    cache.write("basic-index", &index).unwrap();
+    let running = coder_host::start(config, inbox).await.unwrap();
+    tokio::task::spawn_blocking(move || {
+        let mut client = SocketControl::new(socket);
+        assert!(
+            client
+                .chat(Command::Read {
+                    chat: id.clone(),
+                    before: None
+                })
+                .unwrap()
+                .coder
+                .is_none()
+        );
+        let snapshot = client.chat(Command::RunCoder { chat: id }).unwrap();
+        assert_eq!(snapshot.coder.unwrap().task, binding.task);
+        assert_eq!(
+            coder::task::Store::open(&tasks)
+                .unwrap()
+                .list()
+                .unwrap()
+                .len(),
+            1
+        );
+    })
+    .await
+    .unwrap();
+    assert_eq!(launched.lock().unwrap().len(), 1);
+    running.shutdown().await;
+    relay_task.abort();
+}

@@ -222,6 +222,12 @@ async fn handle(shared: &Arc<Shared>, request: Request) -> Response {
     if let Op::Task { request, operation } = op {
         return Response::new(id, tasks::call(shared.clone(), request, operation).await);
     }
+    if let Op::Chat {
+        command: openagents_chat::service::Command::RunCoder { chat },
+    } = op
+    {
+        return Response::new(id, tasks::handoff(shared.clone(), chat).await);
+    }
     let worker = shared.clone();
     let revoking = matches!(op, Op::DeviceRevoke { .. });
     let reply = tokio::task::spawn_blocking(move || answer(&worker, op))
@@ -876,6 +882,7 @@ fn chat(shared: &Shared, command: openagents_chat::service::Command) -> Reply {
     let chats = state.as_mut().expect("initialized chat state");
     chats.set_context(openagents_chat::router::Context {
         surface: openagents_chat::router::Surface::Desktop,
+        computer_ready: shared.config.keys.is_some() && !shared.config.workspaces.is_empty(),
         ..openagents_chat::router::Context::default()
     });
     match openagents_chat::service::apply(
@@ -885,7 +892,17 @@ fn chat(shared: &Shared, command: openagents_chat::service::Command) -> Reply {
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0, |elapsed| elapsed.as_secs()),
     ) {
-        Ok(snapshot) => Reply::Chat { snapshot },
+        Ok(mut snapshot) => {
+            snapshot.ready_computer =
+                (shared.config.keys.is_some() && !shared.config.workspaces.is_empty()).then(|| {
+                    if shared.config.label.is_empty() {
+                        "This computer".into()
+                    } else {
+                        shared.config.label.clone()
+                    }
+                });
+            Reply::Chat { snapshot }
+        }
         Err(message) => refused("chat", message),
     }
 }

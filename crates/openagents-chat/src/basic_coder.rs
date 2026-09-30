@@ -108,7 +108,8 @@ impl Turn {
 /// `judgment`, its `lane`) says: an optional observation that grants
 /// nothing. The phone offers Run Coder on a computer beside a reply the
 /// judgment placed on a computer.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Lane {
     Chat,
     Computer,

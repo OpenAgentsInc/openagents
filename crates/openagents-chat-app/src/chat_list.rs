@@ -69,6 +69,7 @@ mod tests {
             });
         }
         rows[3].coder = Some(openagents_chat::basic_chats::Spawned {
+            at: None,
             host: "host".into(),
             task: "task".into(),
             project: Some("Rocket".into()),

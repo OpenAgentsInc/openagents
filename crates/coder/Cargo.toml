@@ -53,6 +53,7 @@ receipts = { path = "../receipts" }
 private-fs = { path = "../private-fs" }
 
 [dev-dependencies]
+openagents-chat = { path = "../openagents-chat" }
 openagents-connect = { path = "../openagents-connect" }
 openagents-desktop = { path = "../openagents-desktop", default-features = false }
 coder-history = { path = "../coder-history" }

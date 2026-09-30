@@ -278,7 +278,7 @@ impl DesktopApp {
                     if let Some(outcome) = context.run(request) {
                         if let Outcome::Chat { ticket, result } = outcome {
                             if let Some(chat) = &mut self.chat {
-                                chat.outcome(ticket, result);
+                                chat.outcome(ticket, *result);
                             }
                         } else {
                             queue.extend(self.model.outcome(outcome, now));
@@ -294,7 +294,7 @@ impl DesktopApp {
         for outcome in outcomes {
             if let Outcome::Chat { ticket, result } = outcome {
                 if let Some(chat) = &mut self.chat {
-                    chat.outcome(ticket, result);
+                    chat.outcome(ticket, *result);
                 }
                 continue;
             }
@@ -1718,6 +1718,90 @@ mod card_fixtures {
     use rust_native_desktop::input::SurfaceInput;
 
     #[test]
+    fn coder_offer_dispatch_and_binding_mount_at_default_and_minimum_sizes() {
+        let mut app = super::tests::chat_fixture(0).0;
+        let panel = app.chat.as_mut().unwrap();
+        let Request::Chat {
+            ticket,
+            command: Command::Create { chat },
+        } = panel.new_chat()
+        else {
+            panic!("create")
+        };
+        let snapshot = Snapshot {
+            chat: Some(chat.clone()),
+            computer: true,
+            ready_computer: Some("Scratch Mac".into()),
+            total: 2,
+            turns: vec![
+                Turn::user("fix the flaky test in openagents"),
+                Turn::assistant("Ready for Coder.", None),
+            ],
+            ..Default::default()
+        };
+        panel.outcome(ticket, Ok(snapshot.clone()));
+        let directory =
+            std::env::var_os("OPENAGENTS_HANDOFF_CAPTURE_DIR").map(std::path::PathBuf::from);
+        for (name, width, height) in [("offer", 1200.0, 840.0), ("offer-minimum", 760.0, 540.0)] {
+            app.present();
+            let (frame, _) = rust_native_desktop::capture(&mut app, width, height, 1.0);
+            assert!(
+                app.chat
+                    .as_ref()
+                    .unwrap()
+                    .transcript
+                    .control_bounds("coder-run")
+                    .is_some()
+            );
+            if let Some(directory) = &directory {
+                std::fs::create_dir_all(directory).unwrap();
+                std::fs::write(directory.join(format!("{name}.png")), frame.png().unwrap())
+                    .unwrap();
+            }
+        }
+        let view = app.view().clone();
+        let panel = app.chat.as_mut().unwrap();
+        let Request::Chat { ticket, command } = panel
+            .action(
+                openagents_desktop::chat_action::Action::Card {
+                    key: "coder-run".into(),
+                },
+                &view,
+                Instant::now(),
+            )
+            .unwrap()
+        else {
+            panic!("dispatch")
+        };
+        assert_eq!(command, Command::RunCoder { chat });
+        panel.outcome(
+            ticket,
+            Ok(Snapshot {
+                coder: Some(openagents_chat::basic_chats::Spawned {
+                    host: "a".repeat(64),
+                    task: "b".repeat(64),
+                    project: Some("openagents".into()),
+                    at: Some(10),
+                }),
+                ..snapshot
+            }),
+        );
+        app.present();
+        let (frame, _) = rust_native_desktop::capture(&mut app, 760.0, 540.0, 1.0);
+        assert!(
+            app.chat
+                .as_ref()
+                .unwrap()
+                .transcript
+                .control_bounds("coder-run")
+                .is_none()
+        );
+        if let Some(directory) = directory {
+            std::fs::write(directory.join("dispatched.png"), frame.png().unwrap()).unwrap();
+        }
+    }
+
+    #[test]
     fn cards_mount_paint_and_admit_only_their_current_buttons() {
         let mut app = super::tests::chat_fixture(0).0;
         let now = Instant::now();
@@ -1928,6 +2012,35 @@ mod chat_management {
         App,
         input::{SurfaceInput, TextInput},
     };
+    #[test]
+    fn a_512_project_sidebar_keeps_every_chat_within_the_node_budget() {
+        let now = Instant::now();
+        let (mut app, mut snapshot) = DesktopApp::performance_fixture(0, 512, now);
+        for (index, row) in snapshot.chats.iter_mut().enumerate() {
+            row.coder = Some(openagents_chat::basic_chats::Spawned {
+                host: "a".repeat(64),
+                task: format!("{index:064x}"),
+                project: Some(format!("Project {index:03}")),
+                at: Some(1),
+            });
+        }
+        snapshot.list_total = 512;
+        snapshot.list_version = 2;
+        app.performance_stream(snapshot, now + std::time::Duration::from_secs(2));
+        let (_, scene) = rust_native_desktop::capture(&mut app, 1200.0, 840.0, 1.0);
+        assert_eq!(
+            scene
+                .hits
+                .iter()
+                .filter(|hit| hit.key.starts_with("sidebar-chat-"))
+                .count(),
+            512
+        );
+        assert!(scene.bounds.contains_key("project-more-group"));
+        assert!(scene.bounds.len() < rust_native::view::MAX_NODES);
+        assert!(scene.ops.len() < 300);
+    }
+
     #[test]
     fn a_512_chat_sidebar_paints_only_its_viewport() {
         let (mut app, _) = DesktopApp::performance_fixture(0, 512, Instant::now());

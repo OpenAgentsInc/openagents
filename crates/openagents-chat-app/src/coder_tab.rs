@@ -50,7 +50,7 @@
 
 use std::sync::{Arc, Mutex};
 
-use crate::basic_chats::{BasicChats, Tail, handoff};
+use crate::basic_chats::{BasicChats, Tail};
 use crate::chats::{Chats, Head};
 use crate::cli_run::{self, RemoteCli};
 use crate::coder_list::{List, Row, Store};
@@ -899,14 +899,7 @@ impl CoderTab {
     /// there last, else `openagents`, else the computer's first.
     fn workspace(&self, host: &HostRecord) -> Option<String> {
         let listed = host.workspaces.as_ref()?;
-        listed
-            .iter()
-            .filter_map(|label| Some((self.used(&host.key, label)?, label)))
-            .max()
-            .map(|(_, label)| label)
-            .or_else(|| listed.iter().find(|label| *label == "openagents"))
-            .or_else(|| listed.first())
-            .cloned()
+        openagents_chat::delegation::project(listed, |label| self.used(&host.key, label))
     }
 
     /// When this device last started a chat in `workspace` on `host`.
@@ -1827,7 +1820,7 @@ impl CoderTab {
             .basic
             .get(&id)
             .map_or_else(|| "Chat".to_owned(), |summary| summary.title.clone());
-        let prompt = handoff(&title, self.basic.turns(&id), MAX_PROMPT_BYTES);
+        let prompt = openagents_chat::delegation::prompt(&title, self.basic.turns(&id));
         match computers.start_task(&host, &workspace, &prompt) {
             Ok(task) => {
                 let now = computers.snapshot().now;

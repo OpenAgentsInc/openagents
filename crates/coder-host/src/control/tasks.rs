@@ -8,6 +8,173 @@ use secp256k1::SecretKey;
 
 use crate::serve::{Shared, dispatch::Dispatcher};
 
+#[derive(serde::Serialize, serde::Deserialize)]
+struct Handoff {
+    request: String,
+    host: String,
+    task: coder_access::protocol::TaskCreate,
+}
+
+pub(super) async fn handoff(shared: Arc<Shared>, chat: String) -> Reply {
+    let _serial = shared.local_handoffs.lock().await;
+    let worker = shared.clone();
+    let id = chat.clone();
+    let prepared = tokio::task::spawn_blocking(move || prepare_handoff(&worker, &id)).await;
+    let plan = match prepared {
+        Ok(Ok(Some(plan))) => plan,
+        Ok(Ok(None)) => {
+            let worker = shared.clone();
+            return tokio::task::spawn_blocking(move || {
+                super::chat(
+                    &worker,
+                    openagents_chat::service::Command::Read { chat, before: None },
+                )
+            })
+            .await
+            .unwrap_or_else(|_| super::refused("unavailable", "Coder could not read this chat"));
+        }
+        Ok(Err(message)) => return super::refused("chat", message),
+        Err(_) => {
+            return super::refused("unavailable", "Coder could not prepare this conversation");
+        }
+    };
+    let result = call(
+        shared.clone(),
+        plan.request,
+        Operation::CreateTask {
+            task: plan.task.clone(),
+        },
+    )
+    .await;
+    let Reply::Task {
+        outcome: coder_access::protocol::Outcome::Dispatched { receipt },
+    } = result
+    else {
+        return result;
+    };
+    let worker = shared.clone();
+    tokio::task::spawn_blocking(move || {
+        let now = crate::unix_time().unwrap_or_default();
+        {
+            let mut state = worker
+                .chats
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let Some(chats) = state.as_mut() else {
+                return super::refused("chat", "The conversation is unavailable");
+            };
+            chats.spawned_in(
+                &chat,
+                &plan.host,
+                &receipt.reference,
+                Some(&plan.task.workspace),
+                now,
+            );
+        }
+        super::chat(
+            &worker,
+            openagents_chat::service::Command::Read { chat, before: None },
+        )
+    })
+    .await
+    .unwrap_or_else(|_| super::refused("unavailable", "Coder accepted the task; refresh this chat"))
+}
+
+fn prepare_handoff(shared: &Shared, id: &str) -> Result<Option<Handoff>, String> {
+    let Reply::Chat { snapshot } = super::chat(
+        shared,
+        openagents_chat::service::Command::Read {
+            chat: id.into(),
+            before: None,
+        },
+    ) else {
+        return Err("This conversation could not be read.".into());
+    };
+    if snapshot
+        .chats
+        .iter()
+        .any(|row| row.id == id && row.archived)
+    {
+        return Err("Restore this chat before running Coder.".into());
+    }
+    if snapshot.coder.is_some() {
+        return Ok(None);
+    }
+    if snapshot.busy || snapshot.failure.is_some() || snapshot.storage_error.is_some() {
+        return Err("Wait for a complete saved reply before running Coder.".into());
+    }
+    if shared.config.keys.is_none() || shared.config.workspaces.is_empty() {
+        return Err("Choose a project in Settings before running Coder.".into());
+    }
+    let control = shared
+        .config
+        .control
+        .as_ref()
+        .ok_or("This computer has no local chat storage.")?;
+    let cache =
+        openagents_chat::cache::Cache::open(&control.root.join("handoffs"), &shared.secret)?;
+    if let Some(plan) = cache.read::<Handoff>(id)? {
+        if plan.host != shared.host_key
+            || !shared.config.workspaces.contains_key(&plan.task.workspace)
+        {
+            return Err("The saved Coder project is unavailable. Restore it in Settings.".into());
+        }
+        return Ok(Some(plan));
+    }
+    let mut state = shared
+        .chats
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let chats = state.as_mut().ok_or("This conversation is unavailable.")?;
+    let summary = chats
+        .get(id)
+        .cloned()
+        .ok_or("This conversation is unavailable.")?;
+    if summary.archived {
+        return Err("Restore this chat before running Coder.".into());
+    }
+    let turns = chats.turns(id).to_vec();
+    if !turns.last().is_some_and(|turn| {
+        turn.role == openagents_chat::basic_coder::Role::Assistant && !turn.stopped
+    }) || !openagents_chat::delegation::offered(
+        turns.last().and_then(|turn| turn.meta.as_ref()),
+        snapshot.computer,
+    ) {
+        return Err("This reply has no current Coder offer.".into());
+    }
+    let listed: Vec<String> = shared.config.workspaces.keys().cloned().collect();
+    let project = openagents_chat::delegation::project(&listed, |label| {
+        chats
+            .list()
+            .iter()
+            .filter_map(|row| {
+                row.coder
+                    .as_ref()
+                    .filter(|coder| {
+                        coder.host == shared.host_key && coder.project.as_deref() == Some(label)
+                    })
+                    .map(|coder| coder.at.unwrap_or(row.updated))
+            })
+            .max()
+    })
+    .ok_or("Choose a project in Settings.")?;
+    let prompt = openagents_chat::delegation::prompt(&summary.title, &turns);
+    use sha2::{Digest, Sha256};
+    let request = Sha256::digest(
+        format!("openagents.desktop.handoff.v1:{}:{id}", shared.host_key).as_bytes(),
+    )
+    .iter()
+    .map(|byte| format!("{byte:02x}"))
+    .collect();
+    let plan = Handoff {
+        request,
+        host: shared.host_key.clone(),
+        task: coder_access::client::tasks::input(&prompt, &project),
+    };
+    cache.write(id, &plan)?;
+    Ok(Some(plan))
+}
+
 fn error(error: coder_access::Error) -> Reply {
     super::access_refused(&error)
 }

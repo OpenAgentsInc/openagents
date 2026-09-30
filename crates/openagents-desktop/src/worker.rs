@@ -163,7 +163,7 @@ impl HostLane {
         match request {
             Request::Chat { ticket, command } => Some(Outcome::Chat {
                 ticket,
-                result: self.control.chat(command),
+                result: Box::new(self.control.chat(command)),
             }),
             Request::Refresh => {
                 self.fake_scan_if_due();

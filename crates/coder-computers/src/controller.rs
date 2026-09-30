@@ -37,22 +37,7 @@ pub(crate) struct OrderDraft {
 /// The title a task gets from its prompt: the first line with text, with
 /// control characters replaced, at most 80 characters.
 pub(crate) fn task_title(prompt: &str) -> String {
-    let line = prompt
-        .lines()
-        .map(str::trim)
-        .find(|line| !line.is_empty())
-        .unwrap_or("Task");
-    let title: String = line
-        .chars()
-        .map(|c| if c.is_control() { ' ' } else { c })
-        .take(80)
-        .collect();
-    let title = title.trim();
-    if title.is_empty() {
-        "Task".into()
-    } else {
-        title.into()
-    }
+    coder_access::client::tasks::title(prompt)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -472,11 +457,7 @@ impl Computers {
         prompt: &str,
     ) -> Result<String, Refusal> {
         self.allow(Action::Operate { host })?;
-        let task = coder_access::protocol::TaskCreate {
-            title: task_title(prompt),
-            prompt: prompt.to_owned(),
-            workspace: workspace.to_owned(),
-        };
+        let task = coder_access::client::tasks::input(prompt, workspace);
         let id = self
             .service
             .create_task(host, &task)
