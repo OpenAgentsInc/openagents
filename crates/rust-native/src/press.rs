@@ -107,6 +107,7 @@ mod tests {
             key: key.into(),
             style: Style::default(),
             element: Element::Button {
+                shortcut: None,
                 label: "Go".into(),
                 enabled: true,
                 icon: None,
