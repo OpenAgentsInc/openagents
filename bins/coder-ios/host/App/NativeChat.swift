@@ -918,11 +918,16 @@ private struct NativeComposer: View {
         .onChange(of: props.token) { _, _ in takeDraft() }
     }
 
-    private var controlEnabled: Bool { props.busy ? props.stoppable : canSend }
+    /// The control stops only when the view carries a stop intent. A busy
+    /// composer without one (a computer that cannot stop its reply) shows
+    /// the send arrow, disabled, never a stop icon that does nothing.
+    private var stops: Bool { props.busy && props.stoppable }
+
+    private var controlEnabled: Bool { stops || canSend }
 
     private var controlImage: some View {
-        Image(systemName: props.busy ? "stop.fill" : "arrow.up")
-            .font(.system(size: props.busy ? 11 : 15, weight: .bold))
+        Image(systemName: stops ? "stop.fill" : "arrow.up")
+            .font(.system(size: stops ? 11 : 15, weight: .bold))
             .foregroundStyle(controlEnabled ? Color(uiColor: .systemBackground)
                                             : Color(uiColor: .tertiaryLabel))
             .frame(width: 34, height: 34)
@@ -951,11 +956,11 @@ private struct NativeComposer: View {
             .accessibilityHint("Touch and hold for other ways to send.")
             .accessibilityIdentifier("\(key)-send")
         } else {
-            Button(action: props.busy ? stop : send) { controlImage }
+            Button(action: stops ? stop : send) { controlImage }
                 .buttonStyle(.plain)
                 .disabled(!controlEnabled)
-                .accessibilityLabel(props.busy ? "Stop" : "Send")
-                .accessibilityIdentifier("\(key)-\(props.busy ? "stop" : "send")")
+                .accessibilityLabel(stops ? "Stop" : "Send")
+                .accessibilityIdentifier("\(key)-\(stops ? "stop" : "send")")
         }
     }
 

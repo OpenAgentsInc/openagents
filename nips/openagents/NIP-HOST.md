@@ -1201,3 +1201,10 @@ is answered in full, and an `observe`-only device is refused the stop. The OpenA
 threads beside its own, labelled with the computer, opens one to read its
 turns as the reply streams, and sends a follow-up through the computer
 ([`crates/openagents-chat-app/src/host_threads.rs`](../../crates/openagents-chat-app/src/host_threads.rs)).
+When a thread opens, the phone sends the no-op `thread.stop` under a fresh
+send ID, once per computer while it runs; only after a `dispatched` answer
+does its composer carry a stop while a reply streams, and the stop names
+the message being answered. An older computer, or a phone without
+`operate`, gets a composer with no stop icon, never a dead one. After a
+stop, a thread whose Coder task is still running offers **Stop Coder too**,
+which sends that task's own interrupt.

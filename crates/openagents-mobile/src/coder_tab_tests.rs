@@ -1881,10 +1881,18 @@ fn a_task_the_computer_could_not_start_says_why() {
 }
 
 /// A computer's own threads, as NIP-HOST `thread.*` answers them: Studio
-/// Mac keeps one thread, and a follow-up is answered on the next read.
+/// Mac keeps one thread, and a follow-up is answered on the next read, or
+/// with `slow`, streams until it is stopped.
+#[derive(Default)]
 struct HostThreadsFake {
     host: String,
     sent: std::sync::Mutex<Vec<(String, String)>>,
+    slow: bool,
+    /// A computer from before `thread.stop`.
+    old: bool,
+    /// Every stop asked, by send ID.
+    stops: std::sync::Mutex<Vec<Option<String>>>,
+    coder: Option<coder_host::access::thread::ThreadCoder>,
 }
 
 impl openagents_chat_app::host_threads::Link for HostThreadsFake {
@@ -1928,9 +1936,18 @@ impl openagents_chat_app::host_threads::Link for HostThreadsFake {
             turn(ThreadRole::User, "Write a haiku about rain", None),
             turn(ThreadRole::Assistant, "Rain on the roof.", None),
         ];
+        let (mut busy, stops) = (false, self.stops.lock().unwrap().clone());
         for (request, text) in self.sent.lock().unwrap().iter() {
             turns.push(turn(ThreadRole::User, text, Some(request.clone())));
-            turns.push(turn(ThreadRole::Assistant, "Snow on the pines.", None));
+            if !self.slow {
+                turns.push(turn(ThreadRole::Assistant, "Snow on the pines.", None));
+            } else if stops.contains(&Some(request.clone())) {
+                let mut stopped = turn(ThreadRole::Assistant, "Snow on", None);
+                stopped.stopped = true;
+                turns.push(stopped);
+            } else {
+                busy = true;
+            }
         }
         Ok(coder_host::access::thread::ThreadPage {
             thread: thread.into(),
@@ -1938,10 +1955,14 @@ impl openagents_chat_app::host_threads::Link for HostThreadsFake {
             start: 0,
             total: turns.len() as u64,
             turns,
-            busy: false,
-            partial: String::new(),
+            busy,
+            partial: if busy {
+                "Snow on".into()
+            } else {
+                String::new()
+            },
             failure: None,
-            coder: None,
+            coder: self.coder.clone(),
         })
     }
 
@@ -1956,6 +1977,19 @@ impl openagents_chat_app::host_threads::Link for HostThreadsFake {
             .lock()
             .unwrap()
             .push((request.to_owned(), text.to_owned()));
+        Ok(())
+    }
+
+    fn stop(
+        &self,
+        _host: &str,
+        _thread: &str,
+        request: Option<&str>,
+    ) -> Result<(), openagents_chat_app::host_threads::Refusal> {
+        if self.old {
+            return Err(openagents_chat_app::host_threads::Refusal::NotServed);
+        }
+        self.stops.lock().unwrap().push(request.map(str::to_owned));
         Ok(())
     }
 }
@@ -1974,7 +2008,7 @@ fn a_computers_own_threads_list_beside_the_phones_and_continue_through_it() {
         .clone();
     let fake = std::sync::Arc::new(HostThreadsFake {
         host: studio,
-        sent: std::sync::Mutex::default(),
+        ..HostThreadsFake::default()
     });
     let coder = std::mem::replace(&mut fixture.coder, CoderTab::new("coder:none".into()));
     fixture.coder = coder.with_threads(
@@ -2047,4 +2081,143 @@ fn a_computers_own_threads_list_beside_the_phones_and_continue_through_it() {
         node(&fresh, "coder-suggestions").is_some()
             || node(&fresh, "coder-new-transcript").is_some()
     );
+}
+
+/// Open Studio Mac's thread with `fake`, send a follow-up whose reply
+/// streams, and return the view while it streams.
+fn stream_a_computers_reply(fixture: &mut Fixture, fake: std::sync::Arc<HostThreadsFake>) -> Value {
+    let coder = std::mem::replace(&mut fixture.coder, CoderTab::new("coder:none".into()));
+    fixture.coder = coder.with_threads(
+        openagents_chat_app::host_threads::HostThreads::default(),
+        Some(fake),
+    );
+    let until = |fixture: &mut Fixture, what: &str, done: &dyn Fn(&Value) -> bool| {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        loop {
+            let view = fixture.render();
+            if done(&view) {
+                return view;
+            }
+            assert!(std::time::Instant::now() < deadline, "{what}");
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+    };
+    let row = loop {
+        let list = fixture.list();
+        if let Some(row) = keys(&list)
+            .into_iter()
+            .find(|key| key.starts_with("thread-"))
+        {
+            break row;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    };
+    fixture.tap(&row);
+    let chat = until(fixture, "the thread never opened", &|view| {
+        node(view, "thread-m1").is_some()
+    });
+    fixture.send(&chat, None, "Tell me slowly about snow");
+    until(fixture, "the reply never streamed", &|view| {
+        node(view, "coder-composer").unwrap()["element"]["props"]["busy"] == true
+            && keys(view).iter().any(|key| key == "thread-m3")
+    })
+}
+
+#[test]
+fn a_computers_streaming_reply_stops_from_the_phone_and_offers_to_stop_its_coder() {
+    use nostr::activity_summary::{Attention, Phase};
+    // A running Coder task, which the thread started.
+    let (mut fixture, script, _) = Fixture::scripted(Phase::Running, Attention::None);
+    let (host, task) = fixture.coder.open_task().expect("an open task");
+    let studio = fixture
+        .computers
+        .snapshot()
+        .hosts
+        .iter()
+        .find(|host| host.label == "Studio Mac")
+        .expect("Studio Mac")
+        .key
+        .clone();
+    let fake = std::sync::Arc::new(HostThreadsFake {
+        host: studio,
+        slow: true,
+        coder: Some(coder_host::access::thread::ThreadCoder {
+            host,
+            task,
+            project: None,
+            at: None,
+        }),
+        ..HostThreadsFake::default()
+    });
+    let chat = stream_a_computers_reply(&mut fixture, fake.clone());
+    // The computer answered the phone's no-op stop, so the stop control
+    // shows while the reply streams, and Coder is not offered yet.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    let mut chat = chat;
+    while node(&chat, "coder-composer").unwrap()["element"]["props"]["stop"].is_null() {
+        assert!(std::time::Instant::now() < deadline, "no stop control");
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        chat = fixture.render();
+    }
+    assert!(node(&chat, "thread-coder-stop").is_none());
+    assert_eq!(fake.stops.lock().unwrap().len(), 1, "only the probe");
+    fixture.tap("coder-composer");
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    let chat = loop {
+        let chat = fixture.render();
+        if node(&chat, "thread-coder-stop").is_some()
+            && chat["root"]
+                .to_string()
+                .contains("Stopped receiving this reply")
+        {
+            break chat;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the reply never showed stopped: {:?}",
+            keys(&chat)
+        );
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    };
+    // The stop named the phone's own follow-up, and the partial stays.
+    let stops = fake.stops.lock().unwrap().clone();
+    let sent = fake.sent.lock().unwrap()[0].0.clone();
+    assert_eq!(stops.last().unwrap().as_deref(), Some(sent.as_str()));
+    let composer = &node(&chat, "coder-composer").unwrap()["element"]["props"];
+    assert_eq!(composer["busy"], false);
+    assert!(composer["stop"].is_null());
+    // Stopping the reply stopped nothing on Coder; the offer does, through
+    // the task's own stop.
+    assert!(script.lock().unwrap().commands.is_empty());
+    fixture.tap("thread-coder-stop");
+    let commands = script.lock().unwrap().commands.clone();
+    assert_eq!(commands.len(), 1, "{commands:?}");
+    assert_eq!(commands[0].0, coder_host::CommandAction::Interrupt);
+}
+
+#[test]
+fn an_older_computer_shows_no_stop_control_while_its_reply_streams() {
+    let mut fixture = Fixture::hosts();
+    let studio = fixture
+        .computers
+        .snapshot()
+        .hosts
+        .iter()
+        .find(|host| host.label == "Studio Mac")
+        .expect("Studio Mac")
+        .key
+        .clone();
+    let fake = std::sync::Arc::new(HostThreadsFake {
+        host: studio,
+        slow: true,
+        old: true,
+        ..HostThreadsFake::default()
+    });
+    let chat = stream_a_computers_reply(&mut fixture, fake);
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    let chat = fixture.render();
+    let composer = &node(&chat, "coder-composer").unwrap()["element"]["props"];
+    assert_eq!(composer["busy"], true);
+    assert!(composer["stop"].is_null(), "no stop control: {composer}");
+    let _ = chat;
 }

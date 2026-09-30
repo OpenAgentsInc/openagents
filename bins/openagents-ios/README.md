@@ -75,7 +75,12 @@ The app has four tabs, shown as icons:
   started), labelled with the computer (NIP-HOST `thread.*`, #10035). One
   of those opens with its turns; a message sent there goes through the
   computer, which answers it, so the desktop and `openagents chat read`
-  show it too, and the reply streams in. They are read again while the
+  show it too, and the reply streams in. The stop button stops receiving
+  that reply through the computer (`thread.stop`, #10039): what streamed
+  stays, marked stopped, and if the chat started Coder work that is still
+  running, **Stop Coder too** stops the task as well. A computer too old to
+  stop a reply, or a phone that may only read it, shows no stop button at
+  all. They are read again while the
   phone reaches the computer; the phone's own chats need no computer. Only Coder's
   chats show; the phone does not list Claude Code, Codex, OpenCode, or
   Devin sessions. A session a Coder task delegated to OpenCode or Devin

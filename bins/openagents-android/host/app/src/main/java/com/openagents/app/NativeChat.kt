@@ -510,11 +510,14 @@ class Composer(private val context: Context, private val send: (String, String) 
         field.text.toString().toByteArray().size <= maxBytes
 
     private fun refresh() {
-        val active = if (busy) stoppable else canSend
-        control.text = if (busy) "■" else "↑"
-        control.contentDescription = if (busy) "Stop" else "Send"
+        // A busy composer without a stop intent shows the send arrow,
+        // disabled, never a stop that does nothing.
+        val stops = busy && stoppable
+        val active = stops || canSend
+        control.text = if (stops) "■" else "↑"
+        control.contentDescription = if (stops) "Stop" else "Send"
         control.isLongClickable = !busy && choices.isNotEmpty()
-        control.tag = if (busy) "composer-stop" else "composer-send"
+        control.tag = if (stops) "composer-stop" else "composer-send"
         control.isEnabled = active
         control.alpha = if (active) 1f else 0.3f
     }

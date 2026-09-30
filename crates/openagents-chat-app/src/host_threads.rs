@@ -4,12 +4,20 @@
 //! A computer's host keeps its own threads (`<host root>/basic-chats`): the
 //! ones started in its desktop app or with `openagents chat` there. This
 //! device lists them beside its own with NIP-HOST `thread.list`, reads the
-//! open one with `thread.read`, and sends a follow-up with `thread.send`,
-//! all on the computer's current host link (iroh or the relay) under the
-//! device's grant: `observe` to read, `operate` to send. The host appends
+//! open one with `thread.read`, sends a follow-up with `thread.send`, and
+//! stops a reply with `thread.stop`, all on the computer's current host
+//! link (iroh or the relay) under the device's grant: `observe` to read,
+//! `operate` to send or stop. The host appends
 //! the follow-up and asks OpenAgents for the reply, so the desktop and
 //! `openagents chat read` show it too, and this device reads the reply as
 //! it streams by reading the thread again while the host answers.
+//!
+//! A stop control shows only once the computer has shown it can stop: when
+//! a thread opens, this device asks it to stop the reply to a send ID it
+//! just minted, which no message holds and so changes nothing. A computer
+//! that answers is one that stops; an older one, or a grant without
+//! `operate`, refuses, and then no stop control shows at all, never one
+//! that does nothing.
 //!
 //! Nothing here is kept across a relaunch, and nothing here touches this
 //! device's own threads, which need no computer: when a computer is
@@ -66,6 +74,9 @@ pub trait Link: Send + Sync {
     fn read(&self, host: &str, thread: &str, before: Option<u64>) -> Result<ThreadPage, Refusal>;
     /// `thread.send` on `host` under the send ID `request`.
     fn send(&self, host: &str, thread: &str, request: &str, text: &str) -> Result<(), Refusal>;
+    /// `thread.stop` on `host`: stop the reply to the message whose send
+    /// ID is `request`. A computer that predates it refuses as not served.
+    fn stop(&self, host: &str, thread: &str, request: Option<&str>) -> Result<(), Refusal>;
 }
 
 /// The live link: the Computers service's current link to each host.
@@ -136,6 +147,19 @@ impl Link for Live {
             _ => Err(Refusal::Failed),
         }
     }
+
+    fn stop(&self, host: &str, thread: &str, request: Option<&str>) -> Result<(), Refusal> {
+        match self.call(
+            host,
+            Operation::StopThread {
+                thread: thread.to_owned(),
+                request: request.map(str::to_owned),
+            },
+        )? {
+            Outcome::Dispatched { .. } => Ok(()),
+            _ => Err(Refusal::Failed),
+        }
+    }
 }
 
 /// One computer's threads as last read.
@@ -171,12 +195,35 @@ struct Opened {
     turns_start: u64,
     loading_earlier: bool,
     sending: Option<Sending>,
+    /// The computer stops replies for this device: unknown until it
+    /// answers.
+    can_stop: Option<bool>,
+    /// A stop is on its way.
+    stopping: bool,
+    /// This device stopped a reply in this thread since it opened.
+    stopped_here: bool,
     error: Option<String>,
+}
+
+impl Opened {
+    /// The message whose reply is streaming, by its send ID (`None` for
+    /// one sent without an ID): the follow-up this device sent, once the
+    /// computer accepted it, else the last turn while the thread answers.
+    fn answering(&self) -> Option<Option<String>> {
+        if let Some(sending) = &self.sending {
+            return sending.accepted.then(|| Some(sending.request.clone()));
+        }
+        let page = self.page.as_ref().filter(|page| page.busy)?;
+        let last = page.turns.last()?;
+        (last.role == ThreadRole::User).then(|| last.request.clone())
+    }
 }
 
 #[derive(Default)]
 struct Inner {
     lists: BTreeMap<String, Listed>,
+    /// Whether each computer stops replies, once it answered a stop.
+    stops: BTreeMap<String, bool>,
     listing: BTreeSet<String>,
     next: BTreeMap<String, Instant>,
     open: Option<Opened>,
@@ -218,6 +265,11 @@ pub struct Shown {
     /// Earlier turns are loading.
     pub loading_earlier: bool,
     pub coder: Option<coder_host::access::thread::ThreadCoder>,
+    /// A reply streams and the computer can stop it for this device: the
+    /// stop control shows only then.
+    pub stoppable: bool,
+    /// This device stopped a reply here since the thread opened.
+    pub stopped_here: bool,
 }
 
 impl HostThreads {
@@ -328,6 +380,7 @@ impl HostThreads {
             let mut inner = self.lock();
             inner.generation += 1;
             let generation = inner.generation;
+            let can_stop = inner.stops.get(host).copied();
             inner.open = Some(Opened {
                 host: host.to_owned(),
                 thread: thread.to_owned(),
@@ -337,14 +390,98 @@ impl HostThreads {
                 turns_start: 0,
                 loading_earlier: false,
                 sending: None,
+                can_stop,
+                stopping: false,
+                stopped_here: false,
                 error: None,
             });
             self.changed(&mut inner);
-            generation
+            (generation, can_stop.is_none())
         };
+        let (generation, probe) = generation;
+        if probe {
+            let threads = self.clone();
+            let (host, thread, link) = (host.to_owned(), thread.to_owned(), link.clone());
+            std::thread::spawn(move || threads.probe(&host, &thread, generation, &*link));
+        }
         let threads = self.clone();
         let (host, thread) = (host.to_owned(), thread.to_owned());
         std::thread::spawn(move || threads.follow(&host, &thread, generation, &*link));
+    }
+
+    /// Learn whether `host` stops replies: a stop under a send ID minted
+    /// here, which no message holds, changes nothing on a computer that
+    /// stops and is refused by one that does not.
+    fn probe(&self, host: &str, thread: &str, generation: u64, link: &dyn Link) {
+        let fresh = uuid::Uuid::new_v4().simple().to_string();
+        let answer = link.stop(host, thread, Some(&fresh));
+        let known = match answer {
+            Ok(()) => Some(true),
+            // An older computer: it will not stop until it is updated.
+            Err(Refusal::NotServed) => Some(false),
+            // No `operate`, or unreachable: no stop now; ask again next
+            // time a thread opens.
+            Err(_) => None,
+        };
+        let mut inner = self.lock();
+        if let Some(known) = known {
+            inner.stops.insert(host.to_owned(), known);
+        }
+        if let Some(open) = inner.open.as_mut().filter(|o| o.generation == generation) {
+            open.can_stop = Some(known.unwrap_or(false));
+            self.changed(&mut inner);
+        }
+    }
+
+    /// Stop the reply streaming into the open thread, through its
+    /// computer. False when there is nothing this device can stop: no
+    /// reply streams, the computer cannot stop, or a stop is on its way.
+    pub fn stop(&self, link: Arc<dyn Link>) -> bool {
+        let (host, thread, request, generation) = {
+            let mut inner = self.lock();
+            let Some(open) = inner.open.as_mut() else {
+                return false;
+            };
+            if open.stopping || open.can_stop != Some(true) {
+                return false;
+            }
+            let Some(request) = open.answering() else {
+                return false;
+            };
+            open.stopping = true;
+            open.error = None;
+            let found = (
+                open.host.clone(),
+                open.thread.clone(),
+                request,
+                open.generation,
+            );
+            self.changed(&mut inner);
+            found
+        };
+        let threads = self.clone();
+        std::thread::spawn(move || {
+            let since = Instant::now();
+            let answer = loop {
+                match link.stop(&host, &thread, request.as_deref()) {
+                    Err(Refusal::Failed) if since.elapsed() < SEND_PATIENCE => {
+                        std::thread::sleep(RESEND);
+                    }
+                    answer => break answer,
+                }
+            };
+            let mut inner = threads.lock();
+            let Some(open) = inner.open.as_mut().filter(|o| o.generation == generation) else {
+                return;
+            };
+            open.stopping = false;
+            match answer {
+                Ok(()) => open.stopped_here = true,
+                Err(refusal) => open.error = Some(words(&refusal)),
+            }
+            threads.changed(&mut inner);
+        });
+        true
     }
 
     /// Close the open thread; its reader stops.
@@ -474,6 +611,8 @@ impl HostThreads {
             loading: page.is_none() && open.error.is_none(),
             loading_earlier: open.loading_earlier,
             coder: page.and_then(|page| page.coder.clone()),
+            stoppable: open.can_stop == Some(true) && !open.stopping && open.answering().is_some(),
+            stopped_here: open.stopped_here,
         })
     }
 
@@ -611,6 +750,11 @@ mod tests {
         state: Mutex<FakeState>,
         sends: AtomicUsize,
         offline: std::sync::atomic::AtomicBool,
+        /// Replies stream until stopped.
+        slow: std::sync::atomic::AtomicBool,
+        /// A computer from before `thread.stop`.
+        old: std::sync::atomic::AtomicBool,
+        stops: AtomicUsize,
     }
 
     #[derive(Default)]
@@ -660,7 +804,7 @@ mod tests {
             if let Some(step) = state.streaming.as_mut() {
                 *step += 1;
                 partial = "Snow ".repeat(*step);
-                if *step == 3 {
+                if *step == 3 && !self.slow.load(Ordering::SeqCst) {
                     state.streaming = None;
                     state.turns.push(ThreadTurn {
                         role: ThreadRole::Assistant,
@@ -702,6 +846,25 @@ mod tests {
                 self.sends.fetch_add(1, Ordering::SeqCst);
                 state.turns.push(user(text, Some(request)));
                 state.streaming = Some(0);
+            }
+            Ok(())
+        }
+        fn stop(&self, _host: &str, _thread: &str, request: Option<&str>) -> Result<(), Refusal> {
+            self.stops.fetch_add(1, Ordering::SeqCst);
+            if self.old.load(Ordering::SeqCst) {
+                return Err(Refusal::NotServed);
+            }
+            let mut state = self.state.lock().unwrap();
+            let answering = state.turns.last().and_then(|t| t.request.clone());
+            if let Some(step) = state.streaming
+                && answering.as_deref() == request
+            {
+                state.streaming = None;
+                state.turns.push(ThreadTurn {
+                    role: ThreadRole::Assistant,
+                    stopped: true,
+                    ..user(&"Snow ".repeat(step), None)
+                });
             }
             Ok(())
         }
@@ -796,5 +959,65 @@ mod tests {
                 .is_some_and(|shown| shown.turns.last().is_some_and(|t| t.text == "Snow falls."))
         });
         assert_eq!(fake.sends.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn a_streaming_reply_stops_through_the_computer_and_keeps_its_partial() {
+        let fake = Arc::new(Fake::default());
+        fake.slow.store(true, Ordering::SeqCst);
+        let link: Arc<dyn Link> = fake.clone();
+        let threads = HostThreads::default();
+        threads.open("host", THREAD, link.clone());
+        until("the computer says it can stop", || {
+            threads.lock().stops.get("host") == Some(&true)
+        });
+        // The probe changed nothing.
+        assert!(fake.state.lock().unwrap().turns.is_empty());
+        assert!(!threads.shown().unwrap().stoppable, "nothing streams yet");
+        assert!(!threads.stop(link.clone()));
+        assert!(threads.send("Tell me about snow"));
+        until("the reply streams and can stop", || {
+            threads
+                .shown()
+                .is_some_and(|shown| shown.stoppable && !shown.partial.is_empty())
+        });
+        assert!(threads.stop(link.clone()));
+        until("the stopped reply shows", || {
+            threads.shown().is_some_and(|shown| {
+                !shown.busy && shown.turns.last().is_some_and(|turn| turn.stopped)
+            })
+        });
+        let shown = threads.shown().unwrap();
+        assert!(shown.stopped_here && !shown.stoppable);
+        assert!(shown.turns.last().unwrap().text.starts_with("Snow"));
+        // One probe and one stop.
+        assert_eq!(fake.stops.load(Ordering::SeqCst), 2);
+        // Another thread opened on the same computer asks no probe again.
+        threads.open("host", THREAD, link);
+        std::thread::sleep(Duration::from_millis(100));
+        assert_eq!(fake.stops.load(Ordering::SeqCst), 2);
+    }
+
+    #[test]
+    fn an_older_computer_shows_no_stop_control() {
+        let fake = Arc::new(Fake::default());
+        fake.slow.store(true, Ordering::SeqCst);
+        fake.old.store(true, Ordering::SeqCst);
+        let link: Arc<dyn Link> = fake.clone();
+        let threads = HostThreads::default();
+        threads.open("host", THREAD, link.clone());
+        until("the computer refused the probe", || {
+            threads.lock().stops.get("host") == Some(&false)
+        });
+        assert!(threads.send("Tell me about snow"));
+        until("the reply streams", || {
+            threads
+                .shown()
+                .is_some_and(|shown| shown.busy && !shown.partial.is_empty())
+        });
+        let shown = threads.shown().unwrap();
+        assert!(!shown.stoppable, "no stop control on an older computer");
+        assert!(!threads.stop(link));
+        assert_eq!(fake.stops.load(Ordering::SeqCst), 1, "only the probe");
     }
 }

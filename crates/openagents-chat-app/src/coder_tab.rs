@@ -137,6 +137,12 @@ pub enum Intent {
         host: String,
         thread: String,
     },
+    /// Stop the Coder task a computer's thread started, through the
+    /// task's own stop, after its reply was stopped here.
+    StopThreadCoder {
+        host: String,
+        task: String,
+    },
     /// Run Coder on the chosen computer with the open conversation.
     RunCoder,
     /// Send the person to connect a computer.
@@ -855,9 +861,23 @@ impl CoderTab {
         computers: &mut Computers,
     ) -> bool {
         let Some(open) = &self.open else { return false };
-        let based_on = Self::summary(computers.snapshot(), &open.host, &open.task)
-            .map_or(1, |summary| summary.sequence);
         let (host, task) = (open.host.clone(), open.task.clone());
+        self.command_on(&host, &task, action, text, emulate, computers)
+    }
+
+    /// Send a command to `task` on `host`, open here or not.
+    fn command_on(
+        &mut self,
+        host: &str,
+        task: &str,
+        action: CommandAction,
+        text: &str,
+        emulate: bool,
+        computers: &mut Computers,
+    ) -> bool {
+        let based_on =
+            Self::summary(computers.snapshot(), host, task).map_or(1, |summary| summary.sequence);
+        let (host, task) = (host.to_owned(), task.to_owned());
         let now = computers.snapshot().now;
         let draft = Draft {
             task: &task,
@@ -1156,9 +1176,25 @@ impl CoderTab {
                     self.threads.earlier(link);
                 }
             }
-            // A computer's thread answers on the computer; nothing here
-            // stops it.
-            Intent::Stop if self.threads.opened().is_some() => {}
+            // A computer's thread answers on the computer, which stops it
+            // (NIP-HOST `thread.stop`); the control shows only when it can.
+            Intent::Stop if self.threads.opened().is_some() => {
+                if let Some(link) = self.thread_link.clone() {
+                    self.threads.stop(link);
+                }
+            }
+            Intent::StopThreadCoder { host, task } => {
+                let Some(computers) = computers else { return };
+                let reason = "Stopped from a phone.";
+                self.command_on(
+                    &host,
+                    &task,
+                    CommandAction::Interrupt,
+                    reason,
+                    false,
+                    computers,
+                );
+            }
             Intent::Earlier => {
                 if let Some(conversation) = self.open.as_ref().and_then(|o| o.conversation.as_ref())
                 {
@@ -2685,21 +2721,36 @@ impl CoderTab {
         // Coder work the thread started opens as that task's chat, read
         // through the computer's history observer like any Coder chat.
         if let Some(coder) = &shown.coder {
-            children.push(wrap(
-                "thread-coder",
-                vec![pill(
-                    "thread-coder-open",
-                    &coder
-                        .project
-                        .as_ref()
-                        .map_or_else(|| "Open Coder".to_owned(), |p| format!("Open Coder · {p}")),
-                    Glyph::Ask,
-                    Intent::Open {
+            // A stopped reply does not stop Coder: while the task runs, the
+            // phone that stopped the reply offers to stop it too.
+            let running = computers
+                .and_then(|c| Self::summary(c.snapshot(), &coder.host, &coder.task))
+                .is_some_and(|summary| Self::running(summary.phase));
+            let mut pills = vec![];
+            if shown.stopped_here && running && Self::operates(computers, &coder.host) {
+                pills.push(pill(
+                    "thread-coder-stop",
+                    "Stop Coder too",
+                    Glyph::Stop,
+                    Intent::StopThreadCoder {
                         host: coder.host.clone(),
                         task: coder.task.clone(),
                     },
-                )],
+                ));
+            }
+            pills.push(pill(
+                "thread-coder-open",
+                &coder
+                    .project
+                    .as_ref()
+                    .map_or_else(|| "Open Coder".to_owned(), |p| format!("Open Coder · {p}")),
+                Glyph::Ask,
+                Intent::Open {
+                    host: coder.host.clone(),
+                    task: coder.task.clone(),
+                },
             ));
+            children.push(wrap("thread-coder", pills));
         }
         let operates = Self::operates(computers, &shown.host);
         let (token, _) = self.tokens(&[]);
@@ -2715,8 +2766,10 @@ impl CoderTab {
                 max_bytes: MAX_PROMPT_BYTES,
                 enabled: operates,
                 busy: shown.busy,
-                // The computer answers; this phone cannot stop it.
-                stop: None,
+                // The computer stops the reply (`thread.stop`). A computer
+                // that cannot, or a phone that may not operate it, gets no
+                // stop control at all, never one that does nothing.
+                stop: (shown.busy && shown.stoppable && operates).then_some(Intent::Stop),
                 choices: vec![],
                 draft: None,
                 focus: false,
