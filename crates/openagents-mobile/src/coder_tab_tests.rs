@@ -2235,7 +2235,7 @@ fn an_older_computer_shows_no_stop_control_while_its_reply_streams() {
         old: true,
         ..HostThreadsFake::default()
     });
-    let chat = stream_a_computers_reply(&mut fixture, fake);
+    let _ = stream_a_computers_reply(&mut fixture, fake);
     std::thread::sleep(std::time::Duration::from_millis(200));
     let chat = fixture.render();
     let composer = &node(&chat, "coder-composer").unwrap()["element"]["props"];
