@@ -428,6 +428,14 @@ finite read requests and their replies travel as original signed private
 and no generic CAP/CJ execution support is advertised. A host that needs
 mutation or managed-session semantics uses separately admitted contracts.
 
+A host's chat threads with OpenAgents (the desktop app's and `openagents
+chat`'s, kept in the host's own chat store) are not engine history and are
+not a source of this profile. A device reads and continues them with
+NIP-HOST [`thread.list`, `thread.read`, and `thread.send`](NIP-HOST.md#operations)
+under its host grant. A Coder task such a thread started is read here like
+any Coder task: the thread names the task, and the device opens its
+transcript through this profile's `coder` source.
+
 ### Local pairing and source authority
 
 The client creates its own key in its local protected store. It can supply its

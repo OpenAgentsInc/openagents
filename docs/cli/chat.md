@@ -52,6 +52,10 @@ desktop use.
    list, and one started in the app is readable here. The host holds the
    device key and the encrypted store (`<host root>/basic-chats`).
    `--socket PATH` names another host's socket and fails if nothing answers.
+   A phone paired with this computer lists these threads beside its own,
+   labelled with the computer, and can continue one: its follow-up and the
+   reply show here and in the app (NIP-HOST `thread.*`,
+   [#10035](https://github.com/OpenAgentsInc/openagents/issues/10035)).
 2. **In process.** Without a host, or with `--local`, the chat service runs
    inside the command with its own device key, `~/.openagents/chat/device.key`
    (created on first use, mode `0600`, never printed), and its own encrypted

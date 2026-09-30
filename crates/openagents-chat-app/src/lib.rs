@@ -10,6 +10,7 @@ pub mod conversation;
 pub mod eval_cards;
 pub mod first_run;
 pub mod gym;
+pub mod host_threads;
 pub mod outbox;
 pub mod transcripts;
 pub mod wake;

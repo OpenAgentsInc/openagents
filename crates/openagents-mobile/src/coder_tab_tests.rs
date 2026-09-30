@@ -1879,3 +1879,172 @@ fn a_task_the_computer_could_not_start_says_why() {
     );
     assert!(labels.contains(&expected), "{labels:?}");
 }
+
+/// A computer's own threads, as NIP-HOST `thread.*` answers them: Studio
+/// Mac keeps one thread, and a follow-up is answered on the next read.
+struct HostThreadsFake {
+    host: String,
+    sent: std::sync::Mutex<Vec<(String, String)>>,
+}
+
+impl openagents_chat_app::host_threads::Link for HostThreadsFake {
+    fn list(
+        &self,
+        host: &str,
+    ) -> Result<
+        Vec<coder_host::access::thread::ThreadRow>,
+        openagents_chat_app::host_threads::Refusal,
+    > {
+        if host != self.host {
+            return Err(openagents_chat_app::host_threads::Refusal::NotServed);
+        }
+        Ok(vec![coder_host::access::thread::ThreadRow {
+            thread: "4a".repeat(16),
+            title: "Write a haiku about rain".into(),
+            started: NOW - 600,
+            updated: NOW - 60,
+            pinned: false,
+            coder: None,
+        }])
+    }
+
+    fn read(
+        &self,
+        _host: &str,
+        thread: &str,
+        _before: Option<u64>,
+    ) -> Result<coder_host::access::thread::ThreadPage, openagents_chat_app::host_threads::Refusal>
+    {
+        use coder_host::access::thread::{ThreadRole, ThreadTurn};
+        let turn = |role, text: &str, request: Option<String>| ThreadTurn {
+            role,
+            text: text.into(),
+            at: Some(NOW - 60),
+            stopped: false,
+            model: None,
+            request,
+        };
+        let mut turns = vec![
+            turn(ThreadRole::User, "Write a haiku about rain", None),
+            turn(ThreadRole::Assistant, "Rain on the roof.", None),
+        ];
+        for (request, text) in self.sent.lock().unwrap().iter() {
+            turns.push(turn(ThreadRole::User, text, Some(request.clone())));
+            turns.push(turn(ThreadRole::Assistant, "Snow on the pines.", None));
+        }
+        Ok(coder_host::access::thread::ThreadPage {
+            thread: thread.into(),
+            title: "Write a haiku about rain".into(),
+            start: 0,
+            total: turns.len() as u64,
+            turns,
+            busy: false,
+            partial: String::new(),
+            failure: None,
+            coder: None,
+        })
+    }
+
+    fn send(
+        &self,
+        _host: &str,
+        _thread: &str,
+        request: &str,
+        text: &str,
+    ) -> Result<(), openagents_chat_app::host_threads::Refusal> {
+        self.sent
+            .lock()
+            .unwrap()
+            .push((request.to_owned(), text.to_owned()));
+        Ok(())
+    }
+}
+
+#[test]
+fn a_computers_own_threads_list_beside_the_phones_and_continue_through_it() {
+    let mut fixture = Fixture::hosts();
+    let studio = fixture
+        .computers
+        .snapshot()
+        .hosts
+        .iter()
+        .find(|host| host.label == "Studio Mac")
+        .expect("Studio Mac")
+        .key
+        .clone();
+    let fake = std::sync::Arc::new(HostThreadsFake {
+        host: studio,
+        sent: std::sync::Mutex::default(),
+    });
+    let coder = std::mem::replace(&mut fixture.coder, CoderTab::new("coder:none".into()));
+    fixture.coder = coder.with_threads(
+        openagents_chat_app::host_threads::HostThreads::default(),
+        Some(fake.clone()),
+    );
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    let row = loop {
+        let list = fixture.list();
+        if let Some(row) = keys(&list)
+            .into_iter()
+            .find(|key| key.starts_with("thread-"))
+        {
+            let label = node(&list, &row).unwrap()["element"]["props"]["label"]
+                .as_str()
+                .unwrap()
+                .to_owned();
+            assert!(
+                label.starts_with("Write a haiku about rain\nStudio Mac · "),
+                "{label}"
+            );
+            break row;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "no computer thread listed"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    };
+    fixture.tap(&row);
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    let chat = loop {
+        let chat = fixture.render();
+        if node(&chat, "thread-m1").is_some() {
+            break chat;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the thread never opened"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    };
+    assert_eq!(
+        node(&chat, "coder-chat-place").unwrap()["element"]["props"]["value"],
+        "Studio Mac"
+    );
+    let composer = &node(&chat, "coder-composer").unwrap()["element"]["props"];
+    assert_eq!(composer["enabled"], true);
+    assert_eq!(composer["placeholder"], "Message OpenAgents on Studio Mac");
+    fixture.send(&chat, None, "And in the snow?");
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    loop {
+        let chat = fixture.render();
+        if node(&chat, "thread-m3").is_some() {
+            break;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the follow-up never showed"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    let sent = fake.sent.lock().unwrap().clone();
+    assert_eq!(sent.len(), 1);
+    assert_eq!(sent[0].1, "And in the snow?");
+    assert_eq!(sent[0].0.len(), 32);
+    // The phone's own chats are untouched, and New chat leaves the thread.
+    let fresh = fixture.tap("coder-new");
+    assert!(
+        node(&fresh, "coder-suggestions").is_some()
+            || node(&fresh, "coder-new-transcript").is_some()
+    );
+}

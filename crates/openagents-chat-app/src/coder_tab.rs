@@ -131,6 +131,12 @@ pub enum Intent {
     OpenTalk {
         id: String,
     },
+    /// Open a computer's own thread: one its desktop app or `openagents
+    /// chat` started there.
+    OpenThread {
+        host: String,
+        thread: String,
+    },
     /// Run Coder on the chosen computer with the open conversation.
     RunCoder,
     /// Send the person to connect a computer.
@@ -383,6 +389,12 @@ pub struct CoderTab {
     /// The computer this device connected last: **Run Coder** goes there
     /// while it is ready.
     preferred: Option<String>,
+    /// The computers' own threads, and the one open here.
+    threads: crate::host_threads::HostThreads,
+    /// How those threads are reached; `None` without the live client.
+    thread_link: Option<Arc<dyn crate::host_threads::Link>>,
+    /// The open computer thread's rendered turns.
+    thread_projection: crate::projection::Projection,
 }
 
 /// The most turns an open basic conversation shows at first.
@@ -420,7 +432,57 @@ impl CoderTab {
             gym: crate::gym::Gym::empty(),
             compose: None,
             preferred: None,
+            threads: crate::host_threads::HostThreads::default(),
+            thread_link: None,
+            thread_projection: crate::projection::Projection::default(),
         }
+    }
+
+    /// Read the computers' own threads through `link`, ringing `threads`'
+    /// wake when they change.
+    pub fn with_threads(
+        mut self,
+        threads: crate::host_threads::HostThreads,
+        link: Option<Arc<dyn crate::host_threads::Link>>,
+    ) -> Self {
+        self.threads = threads;
+        self.thread_link = link;
+        self
+    }
+
+    /// Read each computer this device may observe for its threads, when
+    /// due.
+    fn poll_threads(&self, computers: Option<&Computers>) {
+        let (Some(link), Some(computers)) = (&self.thread_link, computers) else {
+            return;
+        };
+        let hosts = computers
+            .snapshot()
+            .hosts
+            .iter()
+            .filter(|host| {
+                matches!(
+                    &host.enrollment,
+                    coder_computers::Enrollment::Enrolled { rights, .. }
+                        if rights.contains(coder_host::access::Right::Observe)
+                )
+            })
+            .map(|host| (host.key.clone(), host.label.clone()))
+            .collect();
+        self.threads.poll(hosts, link);
+    }
+
+    /// Whether this device may send to `host`'s threads.
+    fn operates(computers: Option<&Computers>, host: &str) -> bool {
+        computers
+            .and_then(|c| c.snapshot().host(host))
+            .is_some_and(|record| {
+                matches!(
+                    &record.enrollment,
+                    coder_computers::Enrollment::Enrolled { rights, .. }
+                        if rights.contains(coder_host::access::Right::Operate)
+                )
+            })
     }
 
     /// Send **Run Coder** to `host` while it is ready, as after the person
@@ -605,12 +667,12 @@ impl CoderTab {
 
     pub fn streaming(&self) -> bool {
         // A screenshot script waiting for its next step keeps packets coming.
-        self.basic.streaming() || !self.script.is_empty()
+        self.basic.streaming() || !self.script.is_empty() || self.threads.live()
     }
 
     /// Whether a chat, basic or on a computer, is open.
     pub fn in_chat(&self) -> bool {
-        self.open.is_some() || self.talk.is_some()
+        self.open.is_some() || self.talk.is_some() || self.threads.opened().is_some()
     }
 
     /// Publish each chat's rows for the host's transcript layout instead of
@@ -866,7 +928,7 @@ impl CoderTab {
     /// ask for a new packet sooner: its task runs, its ending has not been
     /// read yet, or a message it sent does not show yet.
     pub fn live(&self, computers: Option<&Computers>) -> bool {
-        if self.basic.streaming() || self.running.is_some() {
+        if self.basic.streaming() || self.running.is_some() || self.threads.live() {
             return true;
         }
         let Some(open) = &self.open else {
@@ -938,6 +1000,7 @@ impl CoderTab {
             Intent::Open { host, task } => {
                 self.drawer = false;
                 self.talk = None;
+                self.threads.close();
                 self.open(host, task, chats);
             }
             // Back from the previous chats: the screen under them.
@@ -947,6 +1010,7 @@ impl CoderTab {
                 self.keep(true);
                 self.open = None;
                 self.talk = None;
+                self.threads.close();
                 self.drawer = false;
                 self.notice = None;
                 self.intro_reopened = true;
@@ -957,8 +1021,22 @@ impl CoderTab {
                 self.drawer = true;
                 self.notice = None;
             }
+            Intent::OpenThread { host, thread } => {
+                let Some(link) = self.thread_link.clone() else {
+                    return;
+                };
+                self.keep(true);
+                self.open = None;
+                self.talk = None;
+                self.drawer = false;
+                self.notice = None;
+                self.composers += 1;
+                self.thread_projection = crate::projection::Projection::default();
+                self.threads.open(&host, &thread, link);
+            }
             Intent::OpenTalk { id } => {
                 self.keep(true);
+                self.threads.close();
                 self.open = None;
                 self.drawer = false;
                 self.notice = None;
@@ -1073,6 +1151,14 @@ impl CoderTab {
                 };
                 self.run_coder(computers, chats);
             }
+            Intent::Earlier if self.threads.opened().is_some() => {
+                if let Some(link) = self.thread_link.clone() {
+                    self.threads.earlier(link);
+                }
+            }
+            // A computer's thread answers on the computer; nothing here
+            // stops it.
+            Intent::Stop if self.threads.opened().is_some() => {}
             Intent::Earlier => {
                 if let Some(conversation) = self.open.as_ref().and_then(|o| o.conversation.as_ref())
                 {
@@ -1167,6 +1253,7 @@ impl CoderTab {
         self.keep(true);
         self.open = None;
         self.talk = None;
+        self.threads.close();
         self.drawer = false;
         self.notice = None;
         self.go = Some(Go::Gym);
@@ -1175,6 +1262,7 @@ impl CoderTab {
     /// A new chat with OpenAgents, starting with `text`.
     fn start_talk(&mut self, text: &str, computers: Option<&Computers>) {
         self.keep(true);
+        self.threads.close();
         self.open = None;
         self.drawer = false;
         self.talk = None;
@@ -1226,6 +1314,7 @@ impl CoderTab {
         self.keep(true);
         self.open = None;
         self.talk = None;
+        self.threads.close();
         self.drawer = false;
         self.notice = None;
         self.go = Some(Go::Chat);
@@ -1717,6 +1806,14 @@ impl CoderTab {
         if prompt.is_empty() {
             return;
         }
+        // A computer's own thread: the computer appends it and answers.
+        if self.threads.opened().is_some() {
+            if self.threads.send(prompt) {
+                self.composers += 1;
+                self.notice = None;
+            }
+            return;
+        }
         // A basic conversation, open or new, needs no computer.
         let context = self.router_context(computers.as_deref());
         self.basic.set_context(context);
@@ -1922,6 +2019,7 @@ impl CoderTab {
             self.remember(computers, chats);
         }
         self.basic.settle(unix_now());
+        self.poll_threads(computers);
         self.poll_cli();
         self.gym.begin();
         let phase = |host: &str, task: &str| {
@@ -1942,6 +2040,7 @@ impl CoderTab {
             && self.gym.first_run() == crate::gym::FirstRun::Chat
             && self.open.is_none()
             && self.talk.is_none()
+            && self.threads.opened().is_none()
             && !self.drawer
             && let Some(first) = self.gym.first_talk().map(str::to_owned)
             && self.basic.get(&first).is_some()
@@ -1957,7 +2056,11 @@ impl CoderTab {
             .as_ref()
             .is_some_and(|open| open.seen.is_some() && open.settled == open.seen);
         self.keep(ended);
-        if self.open.is_none() && self.talk.is_none() && !self.drawer {
+        if self.open.is_none()
+            && self.talk.is_none()
+            && self.threads.opened().is_none()
+            && !self.drawer
+        {
             let candidates = self
                 .candidates()
                 .into_iter()
@@ -1972,6 +2075,7 @@ impl CoderTab {
         let view = loop {
             let mut root = match (&self.open, &self.talk) {
                 _ if self.drawer => self.previous(computers, chats),
+                _ if self.threads.opened().is_some() => self.thread_view(computers),
                 (Some(open), _) => self.chat(open, computers),
                 (None, Some(id)) => {
                     let id = id.clone();
@@ -1988,7 +2092,7 @@ impl CoderTab {
                 Some(view) => break view,
                 // A long chat can outgrow one view: show less of each tool's
                 // output, then keep its newest half.
-                None if self.drawer => return None,
+                None if self.drawer || self.threads.opened().is_some() => return None,
                 None if self.open.is_none() && self.talk.is_some() => {
                     if self.talk_turns <= 1 {
                         return None;
@@ -2137,6 +2241,40 @@ impl CoderTab {
                 }
             })
             .collect();
+        // Each computer's own threads, started in its desktop app or with
+        // `openagents chat` there, labelled with the computer.
+        rows.extend(self.threads.rows().into_iter().map(|(host, listed, row)| {
+            let label = computers
+                .and_then(|c| c.snapshot().host(&host))
+                .map_or(listed, |record| record.label.clone());
+            let group = if row.pinned {
+                crate::chat_list::Group::Pinned
+            } else {
+                crate::chat_list::Group::Recent
+            };
+            let title = if row.title.is_empty() {
+                "New chat"
+            } else {
+                row.title.as_str()
+            };
+            Recent {
+                group,
+                last: Some(row.updated),
+                updated: row.updated,
+                row: button(
+                    &format!(
+                        "thread-{}-{}",
+                        &host[..8.min(host.len())],
+                        &row.thread[..16.min(row.thread.len())]
+                    ),
+                    &format!("{title}\n{label} · {}", ago(now, row.updated)),
+                    Intent::OpenThread {
+                        host: host.clone(),
+                        thread: row.thread.clone(),
+                    },
+                ),
+            }
+        }));
         if let Some(computers) =
             computers.filter(|_| !matches!(availability, Availability::NotConfigured))
         {
@@ -2474,6 +2612,115 @@ impl CoderTab {
             &[],
             compose,
             focus,
+        ));
+        page(children)
+    }
+
+    /// An open thread of a computer's: its turns, the reply as it streams,
+    /// the Coder work it started, and a composer that sends through the
+    /// computer when this device may operate it.
+    fn thread_view(&mut self, computers: Option<&Computers>) -> Node<Intent> {
+        let Some(shown) = self.threads.shown() else {
+            return self.landing();
+        };
+        let label = computers
+            .and_then(|c| c.snapshot().host(&shown.host))
+            .map(|host| host.label.clone())
+            .or_else(|| self.threads.label(&shown.host))
+            .unwrap_or_else(|| "A computer".to_owned());
+        let mut children = vec![chat_header(status("coder-chat-place", &label))];
+        if let Some(notice) = &self.notice {
+            children.push(status("coder-notice", notice));
+        }
+        if let Some(error) = &shown.error {
+            children.push(status("thread-error", error));
+        }
+        let rows: Vec<Node<Intent>> = if shown.loading {
+            vec![node(
+                "thread-loading",
+                Element::Working {
+                    label: "Loading the chat…".into(),
+                },
+            )]
+        } else {
+            self.thread_projection.rows(
+                &shown.turns,
+                usize::try_from(shown.start).unwrap_or(0),
+                crate::projection::Reply {
+                    busy: shown.busy,
+                    partial: &shown.partial,
+                    failure: shown.failure.as_deref(),
+                },
+                &crate::projection::Appearance {
+                    prefix: "thread-m",
+                    body_suffix: "-md",
+                    streaming_key: format!("thread-m{}", shown.start as usize + shown.turns.len()),
+                    working_key: "thread-working",
+                    working_label: "Working…",
+                    failed_key: "thread-failed",
+                    status_style: Style {
+                        foreground: Some(GRAY),
+                        ..Style::default()
+                    },
+                    markdown_style: Style {
+                        foreground: Some(WHITE),
+                        ..Style::default()
+                    },
+                },
+            )
+        };
+        children.push(node(
+            "coder-transcript",
+            Element::Transcript {
+                label: "Messages".into(),
+                children: rows,
+                earlier: (shown.start > 0).then(|| rust_native::view::Earlier {
+                    label: "Load earlier".into(),
+                    loading: shown.loading_earlier,
+                    intent: Intent::Earlier,
+                }),
+                source: None,
+            },
+        ));
+        // Coder work the thread started opens as that task's chat, read
+        // through the computer's history observer like any Coder chat.
+        if let Some(coder) = &shown.coder {
+            children.push(wrap(
+                "thread-coder",
+                vec![pill(
+                    "thread-coder-open",
+                    &coder
+                        .project
+                        .as_ref()
+                        .map_or_else(|| "Open Coder".to_owned(), |p| format!("Open Coder · {p}")),
+                    Glyph::Ask,
+                    Intent::Open {
+                        host: coder.host.clone(),
+                        task: coder.task.clone(),
+                    },
+                )],
+            ));
+        }
+        let operates = Self::operates(computers, &shown.host);
+        let (token, _) = self.tokens(&[]);
+        children.push(node(
+            "coder-composer",
+            Element::Composer {
+                token,
+                placeholder: if operates {
+                    format!("Message OpenAgents on {label}")
+                } else {
+                    "This phone can only read this chat".to_owned()
+                },
+                max_bytes: MAX_PROMPT_BYTES,
+                enabled: operates,
+                busy: shown.busy,
+                // The computer answers; this phone cannot stop it.
+                stop: None,
+                choices: vec![],
+                draft: None,
+                focus: false,
+            },
         ));
         page(children)
     }

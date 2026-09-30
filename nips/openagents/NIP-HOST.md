@@ -1167,4 +1167,7 @@ follow-up whose reply it reads as it streams, replays the send without a
 second message, is refused `conflict` for other text under its send ID, and
 the owner reads the follow-up back; an `observe`-only device reads but is
 refused the send as `missing_right`; and polling reads leaves the access
-store's size unchanged.
+store's size unchanged. The OpenAgents phone lists each paired computer's
+threads beside its own, labelled with the computer, opens one to read its
+turns as the reply streams, and sends a follow-up through the computer
+([`crates/openagents-chat-app/src/host_threads.rs`](../../crates/openagents-chat-app/src/host_threads.rs)).

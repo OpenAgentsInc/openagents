@@ -865,6 +865,13 @@ impl App {
                 runtime.handle().clone(),
             )) as Arc<dyn crate::chat_invites::Asker>
         });
+        // Each paired computer's own threads, read on its current link.
+        let thread_link = terminals.clone().map(|terminals| {
+            Arc::new(openagents_chat_app::host_threads::Live::new(
+                terminals,
+                runtime.handle().clone(),
+            )) as Arc<dyn openagents_chat_app::host_threads::Link>
+        });
         let remote_cli = terminals.clone().map(|terminals| {
             Arc::new(crate::cli_run::Live::new(
                 terminals,
@@ -938,6 +945,12 @@ impl App {
                 .with_script(launch.chat_script.clone())
                 .with_pulled_transcripts(launch.pulled_transcripts)
                 .with_basic(basic)
+                .with_threads(
+                    openagents_chat_app::host_threads::HostThreads::new(Arc::new(
+                        crate::wake::ring,
+                    )),
+                    thread_link,
+                )
                 .with_list(crate::coder_list::Store::open(
                     Cache::open(&config.state_dir.join("coder-list"), &secret).ok(),
                 ))

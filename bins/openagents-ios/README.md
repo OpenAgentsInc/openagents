@@ -70,7 +70,13 @@ The app has four tabs, shown as icons:
   this chat**, off by default.
   The menu button at the top left opens the previous chats, newest first:
   basic conversations and Coder's tasks on your computers, painted from
-  what the phone kept while the computers are read again. Only Coder's
+  what the phone kept while the computers are read again, and each paired
+  computer's own chats (the ones its desktop app or `openagents chat`
+  started), labelled with the computer (NIP-HOST `thread.*`, #10035). One
+  of those opens with its turns; a message sent there goes through the
+  computer, which answers it, so the desktop and `openagents chat read`
+  show it too, and the reply streams in. They are read again while the
+  phone reaches the computer; the phone's own chats need no computer. Only Coder's
   chats show; the phone does not list Claude Code, Codex, OpenCode, or
   Devin sessions. A session a Coder task delegated to OpenCode or Devin
   shows inside its chat, where the task's transcript notes it, as a
