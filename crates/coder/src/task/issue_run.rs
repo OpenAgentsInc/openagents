@@ -19,7 +19,10 @@
 //!    boundary, and, as the repository's policy asks, `cargo fmt --check`
 //!    and Clippy, plus the issue flow's diff checks; when they find
 //!    problems, a fix turn continues the same task, up to
-//!    [`Policy::fix_rounds`] times;
+//!    [`Policy::fix_rounds`] times; a turn that ran out of its own budget
+//!    (its step or time limit) while the loop's own judgments say it was
+//!    progressing ([`Momentum`]) is continued in the same worktree, up to
+//!    [`Policy::continue_turns`] times;
 //! 4. commits, and lands as the repository's [`Policy`] says: onto the
 //!    default branch after a rebase, running the checks again whenever the
 //!    rebase moved the base (this repository's policy), or as a pull
@@ -73,6 +76,14 @@ const LINKED_MAX: usize = 3;
 const LINKED_BYTES: usize = 1_500;
 /// The most bytes of failing output a failure comment quotes.
 const FAILING_MAX: usize = 6_000;
+/// The most bytes of a diff stat a comment or a continuation quotes.
+const STAT_MAX: usize = 3_000;
+/// How many of a turn's last judged steps decide whether it was
+/// progressing when it ran out of budget.
+pub const MOMENTUM_STEPS: usize = 5;
+/// The loop endings that mean a turn ran out of its own budget, not that
+/// it failed: only these are continued.
+const BUDGET_ENDINGS: [&str; 2] = ["step_limit", "time_limit"];
 
 // ---------------------------------------------------------------------------
 // The flow file: what followers read.
@@ -258,6 +269,12 @@ pub struct Policy {
     /// Steps each turn may take.
     #[serde(default = "Policy::steps")]
     pub max_steps: usize,
+    /// Continuation turns after a turn runs out of its step or time limit
+    /// while the loop judged it progressing, across the whole flow. With
+    /// the fix turns they bound the flow's turns: at most
+    /// `1 + fix_rounds + continue_turns`.
+    #[serde(default = "Policy::two")]
+    pub continue_turns: usize,
     /// A line appended to each commit message, such as a trailer.
     #[serde(default)]
     pub trailer: Option<String>,
@@ -273,6 +290,7 @@ impl Default for Policy {
             fmt: false,
             clippy: false,
             max_steps: Policy::steps(),
+            continue_turns: Policy::two(),
             trailer: None,
         }
     }
@@ -287,6 +305,9 @@ impl Policy {
     }
     fn three() -> usize {
         3
+    }
+    fn two() -> usize {
+        2
     }
     fn steps() -> usize {
         60
@@ -1080,10 +1101,165 @@ fn prompt(issue: &Issue, linked: &[Issue]) -> String {
 
 /// How one turn ended, as the flow reads it.
 enum Turn {
-    Finished { summary: String },
+    Finished {
+        summary: String,
+    },
     Asked(String),
     Stopped(String),
     Failed(String),
+    /// The loop ended before finishing (`loop_incomplete`): `why` in a
+    /// sentence, the loop's own ending reason, and what its judgments said
+    /// about its last steps.
+    Incomplete {
+        why: String,
+        reason: Option<String>,
+        momentum: Option<Momentum>,
+    },
+}
+
+/// What the loop's own per-step judgments said about a turn's last
+/// [`MOMENTUM_STEPS`] judged steps: Jev's mean probability that a step
+/// moved the work forward (`progress`) and that the recent steps repeat an
+/// approach that already failed (`repeating`), from the turn's trajectory.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Momentum {
+    /// How many judged steps the means cover.
+    pub judged: usize,
+    pub progress: f64,
+    pub repeating: f64,
+}
+
+impl Momentum {
+    /// Progressing: more likely than not moving forward, and more likely
+    /// than not not repeating itself.
+    #[must_use]
+    pub fn progressing(&self) -> bool {
+        self.progress >= 0.5 && self.repeating < 0.5
+    }
+}
+
+/// The loop's ending reason and its momentum, read from a turn's
+/// trajectory steps (the loop's `judged` and `ended` records).
+#[must_use]
+pub fn momentum(steps: &[Value]) -> (Option<String>, Option<Momentum>) {
+    let mut reason = None;
+    let mut judged: Vec<(f64, f64)> = Vec::new();
+    for step in steps {
+        let extra = step
+            .get("extra")
+            .filter(|extra| extra.is_object())
+            .or_else(|| step.get("extensions"));
+        let Some(event) = extra.and_then(|extra| extra.pointer("/microcoder/event")) else {
+            continue;
+        };
+        match event["event"].as_str() {
+            Some("judged") => {
+                let answer = |id: &str| {
+                    event["judgment"]["answers"]
+                        .as_array()
+                        .into_iter()
+                        .flatten()
+                        .find(|pair| pair[0] == id)
+                        .and_then(|pair| pair[1].as_f64())
+                };
+                if let (Some(progress), Some(repeating)) = (answer("progress"), answer("repeating"))
+                {
+                    judged.push((progress, repeating));
+                }
+            }
+            Some("ended") => {
+                let ending = &event["outcome"]["ending"];
+                reason = ending["reason"]
+                    .as_str()
+                    .or_else(|| ending.as_str())
+                    .map(str::to_owned);
+            }
+            _ => {}
+        }
+    }
+    let last = &judged[judged.len().saturating_sub(MOMENTUM_STEPS)..];
+    let momentum = (!last.is_empty()).then(|| {
+        #[allow(clippy::cast_precision_loss)]
+        let count = last.len() as f64;
+        Momentum {
+            judged: last.len(),
+            progress: last.iter().map(|(p, _)| p).sum::<f64>() / count,
+            repeating: last.iter().map(|(_, r)| r).sum::<f64>() / count,
+        }
+    });
+    (reason, momentum)
+}
+
+/// Whether the flow continues a turn that ended `reason` with `momentum`,
+/// having continued `used` of the `allowed` times: `Ok` to continue, or
+/// why not, in a sentence (empty when the ending was not a budget, so the
+/// failure reads as before).
+///
+/// # Errors
+/// Why the turn is not continued.
+pub fn continuable(
+    reason: Option<&str>,
+    momentum: Option<Momentum>,
+    used: usize,
+    allowed: usize,
+) -> Result<(), String> {
+    if !reason.is_some_and(|reason| BUDGET_ENDINGS.contains(&reason)) {
+        return Err(String::new());
+    }
+    let Some(momentum) = momentum else {
+        return Err(
+            "The loop recorded no judgment of its progress, so Coder did not continue it.".into(),
+        );
+    };
+    if !momentum.progressing() {
+        return Err(format!(
+            "The loop judged its last {} step(s) not progressing (progress {:.2}, repeating \
+             {:.2}), so Coder did not continue it.",
+            momentum.judged, momentum.progress, momentum.repeating
+        ));
+    }
+    if used >= allowed {
+        return Err(format!(
+            "Coder already continued it {used} time(s), the policy's `continue_turns` bound."
+        ));
+    }
+    Ok(())
+}
+
+/// The continuation turn's request: where the work stands, and to go on.
+fn continue_request(number: u64, reason: &str, stat: &str, problems: &[String]) -> String {
+    let limit = if reason == "time_limit" {
+        "time limit"
+    } else {
+        "step limit"
+    };
+    let mut text = format!(
+        "# Continue the work on issue #{number}\n\nThe last turn reached its {limit} while it was \
+         making progress. Your work so far is in this worktree; continue from where it stands, \
+         finish the issue, and run the relevant checks before you say you are done. Do not start \
+         over.\n\n## What changed so far\n\n"
+    );
+    if stat.trim().is_empty() {
+        text.push_str("Nothing in the worktree changed yet.\n");
+    } else {
+        text.push_str(&format!("```text\n{}\n```\n", clip(stat.trim(), STAT_MAX)));
+    }
+    if problems.is_empty() {
+        text.push_str(
+            "\nThe repository's checks have not run on this change yet; they run when you \
+             finish.\n",
+        );
+    } else {
+        text.push_str(&format!(
+            "\n## What the checks found before the last turn\n\n{}\n",
+            problems
+                .iter()
+                .map(|problem| format!("- {}", clip(problem, FAILING_MAX / 4)))
+                .collect::<Vec<_>>()
+                .join("\n")
+        ));
+    }
+    text
 }
 
 impl Started {
@@ -1128,6 +1304,7 @@ impl Started {
             summaries: Vec::new(),
             checked: Checked::default(),
             rounds: 0,
+            continued: 0,
         };
         run.drive();
         flow
@@ -1146,6 +1323,8 @@ struct Run<'a> {
     summaries: Vec<String>,
     checked: Checked,
     rounds: usize,
+    /// Continuation turns so far.
+    continued: usize,
 }
 
 impl Run<'_> {
@@ -1180,6 +1359,44 @@ impl Run<'_> {
                     );
                 }
                 Turn::Failed(why) => return self.failed(&why, None),
+                Turn::Incomplete {
+                    why,
+                    reason,
+                    momentum,
+                } => {
+                    let allowed = self.work.policy.continue_turns;
+                    if let Err(not) =
+                        continuable(reason.as_deref(), momentum, self.continued, allowed)
+                    {
+                        return self.failed(format!("{why} {not}").trim(), None);
+                    }
+                    if self.stopping() {
+                        return self.stopped("Stopped by the person who started it.");
+                    }
+                    self.continued += 1;
+                    let stat = self.diff_stat();
+                    let reason = reason.unwrap_or_default();
+                    self.note(format!(
+                        "Coder reached its {} while making progress; it continues in the same \
+                         worktree (continuation turn {} of {allowed}).",
+                        reason.replace('_', " "),
+                        self.continued
+                    ));
+                    let request =
+                        continue_request(self.issue.number, &reason, &stat, &self.checked.problems);
+                    match self.work.local.answer(&self.record.task, &request) {
+                        Ok(_) => {
+                            self.turn += 1;
+                            continue;
+                        }
+                        Err(why) => {
+                            return self.failed(
+                                &format!("The continuation turn could not start: {why}"),
+                                None,
+                            );
+                        }
+                    }
+                }
             }
             if self.stopping() {
                 return self.stopped("Stopped by the person who started it.");
@@ -1271,16 +1488,26 @@ impl Run<'_> {
                     if let Some(result) = &run.result {
                         let trace = store.join(&run.admission.trace_file);
                         let mut mapper = Mapper::new(self.turn, None);
-                        if let Ok(recording) = atif::log::read(&trace) {
-                            for step in recording.document()["steps"]
-                                .as_array()
-                                .into_iter()
-                                .flatten()
-                            {
-                                let _ = mapper.step(step);
-                            }
+                        let steps: Vec<Value> = atif::log::read(&trace)
+                            .map(|recording| {
+                                recording.document()["steps"]
+                                    .as_array()
+                                    .cloned()
+                                    .unwrap_or_default()
+                            })
+                            .unwrap_or_default();
+                        for step in &steps {
+                            let _ = mapper.step(step);
                         }
                         return match mapper.end(&result.ending, Vec::new(), "", "", None) {
+                            CoderEvent::Failure(failed) if result.ending == "loop_incomplete" => {
+                                let (reason, momentum) = momentum(&steps);
+                                Turn::Incomplete {
+                                    why: failed.message,
+                                    reason,
+                                    momentum,
+                                }
+                            }
                             CoderEvent::Result(finished) => Turn::Finished {
                                 summary: finished.summary,
                             },
@@ -1557,15 +1784,44 @@ impl Run<'_> {
             .into_iter()
             .collect();
         format!(
-            "**Run**: task `{}`, {turns} turn(s) ({} fix turn(s)) on {}, from an OpenAgents chat \
-             on the owner's computer.",
+            "**Run**: task `{}`, {turns} turn(s) ({} fix turn(s), {} continuation turn(s)) on {}, \
+             from an OpenAgents chat on the owner's computer.",
             &self.record.task[..12],
             self.rounds,
+            self.continued,
             if providers.is_empty() {
                 "a local provider".to_owned()
             } else {
                 providers.join(", ")
             }
+        )
+    }
+
+    /// What the worktree changed from the branch it started on, as
+    /// `git diff --stat` shows it; empty when nothing changed.
+    fn diff_stat(&self) -> String {
+        let _ = local::git_out(self.worktree, &["add", "-A"]);
+        let upstream = format!("origin/{}", self.work.branch);
+        let base = local::git_out(self.worktree, &["merge-base", "HEAD", &upstream])
+            .map(|base| base.trim().to_owned())
+            .ok()
+            .filter(|base| !base.is_empty())
+            .unwrap_or_else(|| self.record.base.clone());
+        local::git_out(self.worktree, &["diff", "--cached", "--stat", &base])
+            .unwrap_or_default()
+            .trim_end()
+            .to_owned()
+    }
+
+    /// How far the run got, for a comment that leaves the issue open.
+    fn how_far(&self) -> String {
+        let stat = self.diff_stat();
+        if stat.trim().is_empty() {
+            return "**How far it got**: the worktree has no change.\n\n".to_owned();
+        }
+        format!(
+            "**How far it got** (`git diff --stat` against the branch it started on)\n\n```text\n{}\n```\n\n",
+            clip(&stat, STAT_MAX).replace("```", "'''")
         )
     }
 
@@ -1596,8 +1852,9 @@ impl Run<'_> {
         self.flow.link.outcome = "stopped".into();
         let comment = format!(
             "Coder stopped working on this before it landed anything: {why} The issue stays \
-             open. Any partial change is in Coder's worktree `{}` on the computer that ran it.\n\n{}\n\n{RELEASE_MARK}",
+             open. Any partial change is in Coder's worktree `{}` on the computer that ran it.\n\n{}{}\n\n{RELEASE_MARK}",
             self.worktree.display(),
+            self.how_far(),
             self.run_line()
         );
         let _ = self
@@ -1624,6 +1881,7 @@ impl Run<'_> {
             comment.push_str(&clip(&problems.join("\n\n"), FAILING_MAX).replace("```", "'''"));
             comment.push_str("\n```\n\n");
         }
+        comment.push_str(&self.how_far());
         comment.push_str(&format!(
             "Nothing was pushed, and the issue stays open. The change is in Coder's worktree \
              `{}` on the computer that ran it.\n\n{}\n\n{RELEASE_MARK}",

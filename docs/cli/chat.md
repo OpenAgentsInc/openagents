@@ -205,6 +205,19 @@ the desktop's chat runs the same flow.
    wording), and, when the policy asks, `cargo fmt --check` and Clippy with
    warnings denied. When they find problems, a fix turn continues the same
    task with the problems and the diff, up to `fix_rounds` times.
+   **Continue.** A turn that ends on its own budget (`loop_incomplete` with
+   the loop's `step_limit` or `time_limit`) is not the end of the flow when
+   the loop's own judgments say it was progressing: over the turn's last
+   five judged steps, Jev's mean `progress` is at least 0.5 and its mean
+   `repeating` below 0.5. The flow then continues Coder in the same
+   worktree with a continuation turn that says where the work stands (the
+   diff stat, and the checks' last findings when a fix turn ran out), up to
+   `continue_turns` times across the flow
+   ([#10063](https://github.com/OpenAgentsInc/openagents/issues/10063)).
+   A turn judged repeating or not progressing, one with no judgments (no
+   Jev), any other failure ending, and a turn past the bound fail as
+   before. With the fix turns, a flow runs at most
+   `1 + fix_rounds + continue_turns` turns.
 4. **Land.** It commits (the issue's title, Coder's summary, and the issue
    link) and lands as the repository's policy says. `main`: fetch, rebase
    onto the newer `main` when it moved and run the checks again, then push;
@@ -219,15 +232,24 @@ turns, a rebase conflicts, the run doesn't converge within its bounds (a
 failure ending), Coder asks a question instead of finishing, nothing
 changed, or the person stops it, the flow comments what it tried and the
 failing output, releases its claim, and leaves the issue open with the
-change in Coder's worktree.
+change in Coder's worktree. The comment says how far the run got (`git diff
+--stat` of the worktree against the branch it started on) and the run's
+turns, fix turns, and continuation turns, so a person can pick up there.
 
 The repository's policy is `.openagents/coder-issues.json` at its top
 level; without one a flow opens a pull request and runs only the tests and
 diff checks. This repository's:
 
 ```json
-{ "land": "main", "claim_hours": 6, "fix_rounds": 3, "fmt": true, "clippy": true, "max_steps": 60 }
+{ "land": "main", "claim_hours": 6, "fix_rounds": 3, "fmt": true, "clippy": true, "max_steps": 100, "continue_turns": 2 }
 ```
+
+The defaults are `max_steps` 60 and `continue_turns` 2. This repository
+raises `max_steps` to 100: dogfooding at 60, two UI issues (#10057, #10058)
+ran out of steps with a large, correct partial change and a smaller one
+(#10056) landed in one turn. A continuation turn spends steps finding its
+place again, so a larger turn wastes fewer; the continuation turns cover
+what 100 still does not. Each turn keeps its 30-minute wall limit.
 
 `branch` names another branch than `origin/HEAD`'s, and `trailer` adds a
 line to each commit message.

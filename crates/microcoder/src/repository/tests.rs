@@ -1661,13 +1661,35 @@ mod local_run {
     type Script = Vec<Result<NextAction, Refusal>>;
 
     /// Runs each launched turn in this process with the next scripted
-    /// Codex and Claude Code replies.
-    struct Scripted(Mutex<VecDeque<(Script, Script)>>);
+    /// Codex and Claude Code replies, and Jev answering `progress` and
+    /// `repeating` with the given probabilities (or nothing).
+    struct Scripted(Mutex<VecDeque<(Script, Script)>>, Option<(f64, f64)>);
+
+    /// Jev answering every step the same, or nothing.
+    #[derive(Clone, Copy)]
+    struct Answering(Option<(f64, f64)>);
+
+    impl Judge for Answering {
+        async fn judge(&self, _set: &QuestionSet, _state: &Value) -> Judgment {
+            match self.0 {
+                None => Judgment::free(),
+                Some((progress, repeating)) => Judgment {
+                    answers: vec![
+                        ("done".into(), 0.1),
+                        ("progress".into(), progress),
+                        ("repeating".into(), repeating),
+                    ],
+                    ..Judgment::free()
+                },
+            }
+        }
+    }
 
     impl Launch for Scripted {
         fn launch(&self, _: &Engine, grant: &Path, store: &Path) -> Result<Launched, String> {
             let bytes = std::fs::read(grant).map_err(|e| e.to_string())?;
             let (codex, claude) = self.0.lock().unwrap().pop_front().ok_or("no script")?;
+            let judge = Answering(self.1);
             let store = store.to_path_buf();
             std::thread::spawn(move || {
                 let runtime = tokio::runtime::Builder::new_current_thread()
@@ -1685,7 +1707,7 @@ mod local_run {
                             (route("codex", "gpt-6-luna"), &codex),
                             (route("claude", "claude-opus-5-5"), &claude),
                         ],
-                        &JudgeFixture,
+                        &judge,
                         during_limit,
                     )
                     .await
@@ -1845,7 +1867,7 @@ mod local_run {
         let local = Local::new(store.clone())
             .with_probe(signed_in)
             .with_controller(std::env::current_exe().unwrap())
-            .with_launcher(Box::new(Scripted(Mutex::new(script))));
+            .with_launcher(Box::new(Scripted(Mutex::new(script), None)));
         let record = local
             .start(
                 &top,
@@ -1961,7 +1983,7 @@ mod local_run {
         let local = Local::new(root.path().join("tasks"))
             .with_probe(signed_in)
             .with_controller(std::env::current_exe().unwrap())
-            .with_launcher(Box::new(Scripted(Mutex::new(script))));
+            .with_launcher(Box::new(Scripted(Mutex::new(script), None)));
         let approval = local.start(&top, "tidy", "tidy up", None).unwrap();
         let (lines, state) = drain(&local, &approval.task);
         assert_eq!(
@@ -1986,7 +2008,7 @@ mod local_run {
         let idle = Local::new(root.path().join("tasks-idle"))
             .with_probe(signed_in)
             .with_controller(std::env::current_exe().unwrap())
-            .with_launcher(Box::new(Scripted(Mutex::new(VecDeque::new()))));
+            .with_launcher(Box::new(Scripted(Mutex::new(VecDeque::new()), None)));
         assert!(
             idle.start(&top, "tidy", "tidy up", None).is_err(),
             "no script, no start"
@@ -2231,10 +2253,22 @@ mod local_run {
             checks: Answers,
             github: Arc<FakeGitHub>,
         ) -> Runner {
+            judged_runner(root, script, checks, github, None)
+        }
+
+        /// [`runner`] with Jev answering `progress` and `repeating` on
+        /// every step.
+        fn judged_runner(
+            root: &Path,
+            script: VecDeque<(Script, Script)>,
+            checks: Answers,
+            github: Arc<FakeGitHub>,
+            judged: Option<(f64, f64)>,
+        ) -> Runner {
             let local = Local::new(root.join("tasks"))
                 .with_probe(signed_in)
                 .with_controller(std::env::current_exe().unwrap())
-                .with_launcher(Box::new(Scripted(Mutex::new(script))));
+                .with_launcher(Box::new(Scripted(Mutex::new(script), judged)));
             Runner {
                 local: Arc::new(local),
                 tracker: github,
@@ -2488,6 +2522,196 @@ mod local_run {
                 refused.to_string().contains("another repository"),
                 "{refused}"
             );
+        }
+
+        /// Each step writes one more line: steady work that never says
+        /// it finished.
+        fn working(steps: usize, from: usize) -> Script {
+            (from..from + steps)
+                .map(|n| Ok(write(&format!("printf '{n}\\n' >> helper.py"))))
+                .collect()
+        }
+
+        fn main_of(top: &Path, origin: &Path) -> String {
+            git(
+                top,
+                &["ls-remote", origin.to_str().unwrap(), "refs/heads/main"],
+            )
+        }
+
+        fn turns(runner: &Runner, task: &str) -> usize {
+            coder::task::local::record(runner.local.store(), task)
+                .unwrap()
+                .turns
+                .len()
+        }
+
+        /// #10063: a turn that reaches its step limit while the loop
+        /// judges it progressing is continued in the same worktree, which
+        /// then finishes, passes the checks, and lands.
+        #[test]
+        fn a_progressing_run_past_its_step_limit_continues_and_lands() {
+            let root = tempfile::tempdir().unwrap();
+            let (top, origin) = published(
+                root.path(),
+                r#"{"land": "main", "max_steps": 3, "continue_turns": 2}"#,
+            );
+            let script = VecDeque::from([
+                (working(3, 1), vec![]),
+                (
+                    vec![
+                        Ok(write("printf 'done\\n' >> helper.py")),
+                        Ok(finished("I finished helper.py.")),
+                    ],
+                    vec![],
+                ),
+            ]);
+            let github = Arc::new(FakeGitHub::default());
+            let runner = judged_runner(
+                root.path(),
+                script,
+                Answers(Mutex::new(VecDeque::new())),
+                github.clone(),
+                Some((0.8, 0.1)),
+            );
+            let reference = Reference {
+                repository: None,
+                number: 11,
+            };
+            let started = runner.begin(&top, &reference, None).unwrap();
+            let task = started.record.task.clone();
+            let worktree = started.record.worktree.clone();
+            let flow = started.finish();
+            assert_eq!(flow.link.outcome, "landed", "{flow:#?}");
+            assert!(flow.link.closed);
+            let record = coder::task::local::record(runner.local.store(), &task).unwrap();
+            assert_eq!(record.turns.len(), 2, "one continuation turn");
+            assert_eq!(record.worktree, worktree, "the same worktree");
+            let landed = main_of(&top, &origin);
+            let landed = landed.split_whitespace().next().unwrap();
+            assert_eq!(
+                git(
+                    &top,
+                    &[
+                        "--git-dir",
+                        origin.to_str().unwrap(),
+                        "show",
+                        &format!("{landed}:helper.py")
+                    ]
+                ),
+                "1\n2\n3\ndone",
+                "the continuation built on the first turn's work"
+            );
+            assert!(
+                flow.notes
+                    .iter()
+                    .any(|n| n.text.contains("continuation turn 1 of 2")),
+                "{:#?}",
+                flow.notes
+            );
+            let comments = github.comments.lock().unwrap().clone();
+            assert!(
+                comments[1].contains("1 continuation turn(s)"),
+                "{}",
+                comments[1]
+            );
+            let (lines, state) = drain(&runner.local, &task);
+            assert_eq!(state, State::Ended);
+            let CoderEvent::Result(last) = &lines.last().unwrap().event else {
+                panic!("{:?}", lines.last())
+            };
+            assert_eq!(last.issue.as_ref().unwrap().outcome, "landed");
+        }
+
+        /// A run that reaches its step limit while the loop judges it
+        /// repeating itself fails as before, with no continuation, and
+        /// the comment says how far it got.
+        #[test]
+        fn a_repeating_run_past_its_step_limit_fails_without_continuing() {
+            let root = tempfile::tempdir().unwrap();
+            let (top, origin) = published(
+                root.path(),
+                r#"{"land": "main", "max_steps": 3, "continue_turns": 2}"#,
+            );
+            let before = main_of(&top, &origin);
+            let script = VecDeque::from([(working(3, 1), vec![])]);
+            let github = Arc::new(FakeGitHub::default());
+            let runner = judged_runner(
+                root.path(),
+                script,
+                Answers(Mutex::new(VecDeque::new())),
+                github.clone(),
+                Some((0.2, 0.9)),
+            );
+            let reference = Reference {
+                repository: None,
+                number: 12,
+            };
+            let started = runner.begin(&top, &reference, None).unwrap();
+            let task = started.record.task.clone();
+            let flow = started.finish();
+            assert_eq!(flow.link.outcome, "failed", "{flow:#?}");
+            assert_eq!(turns(&runner, &task), 1, "no continuation");
+            assert_eq!(main_of(&top, &origin), before, "nothing pushed");
+            let comments = github.comments.lock().unwrap().clone();
+            assert_eq!(comments.len(), 2);
+            let failure = &comments[1];
+            assert!(failure.contains("step limit"), "{failure}");
+            assert!(failure.contains("not progressing"), "{failure}");
+            assert!(
+                failure.contains("**How far it got**") && failure.contains("helper.py"),
+                "{failure}"
+            );
+            assert!(failure.contains(RELEASE_MARK));
+            assert!(github.closed.lock().unwrap().is_empty());
+        }
+
+        /// Continuation turns stop at the policy's bound: a run still
+        /// short of finished after them fails, pushes nothing, and says
+        /// how far it got.
+        #[test]
+        fn continuation_turns_stop_at_the_policys_bound() {
+            let root = tempfile::tempdir().unwrap();
+            let (top, origin) = published(
+                root.path(),
+                r#"{"land": "main", "max_steps": 2, "continue_turns": 1}"#,
+            );
+            let before = main_of(&top, &origin);
+            let script = VecDeque::from([(working(2, 1), vec![]), (working(2, 3), vec![])]);
+            let github = Arc::new(FakeGitHub::default());
+            let runner = judged_runner(
+                root.path(),
+                script,
+                Answers(Mutex::new(VecDeque::new())),
+                github.clone(),
+                Some((0.9, 0.0)),
+            );
+            let reference = Reference {
+                repository: None,
+                number: 13,
+            };
+            let started = runner.begin(&top, &reference, None).unwrap();
+            let task = started.record.task.clone();
+            let worktree = std::path::PathBuf::from(&started.record.worktree);
+            let flow = started.finish();
+            assert_eq!(flow.link.outcome, "failed", "{flow:#?}");
+            assert_eq!(turns(&runner, &task), 2, "one continuation, then the bound");
+            assert_eq!(main_of(&top, &origin), before, "nothing pushed");
+            assert_eq!(
+                std::fs::read_to_string(worktree.join("helper.py")).unwrap(),
+                "1\n2\n3\n4\n"
+            );
+            let comments = github.comments.lock().unwrap().clone();
+            let failure = &comments[1];
+            assert!(failure.contains("`continue_turns`"), "{failure}");
+            assert!(failure.contains("helper.py"), "{failure}");
+            assert!(failure.contains("1 continuation turn(s)"), "{failure}");
+            let (lines, state) = drain(&runner.local, &task);
+            assert_eq!(state, State::Ended);
+            let CoderEvent::Failure(last) = &lines.last().unwrap().event else {
+                panic!("{:?}", lines.last())
+            };
+            assert_eq!(last.issue.as_ref().unwrap().outcome, "failed");
         }
     }
 }
