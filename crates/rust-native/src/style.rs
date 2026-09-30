@@ -369,6 +369,37 @@ mod tests {
     use super::*;
 
     #[test]
+    fn avatar_and_hover_ink_follow_property_composition_and_reset() {
+        let avatar = ButtonAvatar {
+            initial: 'L',
+            size: 16,
+            text_size: 10,
+            weight: TextWeight::Semibold,
+            background: Color::rgb(229, 229, 229),
+            foreground: Color::rgb(13, 13, 13),
+        };
+        let base = StylePatch {
+            button_avatar: Patch::Set(avatar),
+            hover_foreground: Patch::Set(Color::rgb(229, 229, 229)),
+            ..StylePatch::default()
+        };
+        let reset = StylePatch {
+            button_avatar: Patch::Reset,
+            hover_foreground: Patch::Reset,
+            ..StylePatch::default()
+        };
+        assert_eq!(base.resolve(Style::default()).button_avatar, Some(avatar));
+        assert_eq!(
+            base.then(reset).resolve(Style::default()).button_avatar,
+            None
+        );
+        assert_eq!(
+            base.then(reset).resolve(Style::default()).hover_foreground,
+            None
+        );
+    }
+
+    #[test]
     fn explicit_leaf_order_and_reset_survive_composition() {
         let base = StylePatch::padding(Space::Md).then(StylePatch {
             foreground: Patch::Set(Color::rgb(240, 240, 240)),

@@ -847,3 +847,62 @@ fn context_menu_cards_offer_buttons_that_activate_through_the_view() {
     lone.style.menu = Some(crate::style::Menu::Context);
     assert!(View::new("chats", 1, lone).validate().is_err());
 }
+
+#[test]
+fn button_avatars_are_bounded_serializable_presentation() {
+    use crate::style::{ButtonAvatar, Color, TextWeight};
+    let avatar = ButtonAvatar {
+        initial: 'L',
+        size: 16,
+        text_size: 10,
+        weight: TextWeight::Semibold,
+        background: Color::rgb(229, 229, 229),
+        foreground: Color::rgb(13, 13, 13),
+    };
+    let view = View::new(
+        "avatar",
+        1,
+        Node {
+            key: "profile".into(),
+            style: Style {
+                button_avatar: Some(avatar),
+                weight: Some(TextWeight::Medium),
+                ..Style::default()
+            },
+            element: Element::Button {
+                label: "Local".into(),
+                enabled: true,
+                icon: None,
+                shortcut: None,
+                intent: (),
+            },
+        },
+    );
+    let validated = view.clone().validate().unwrap();
+    let decoded = View::<()>::from_json(&validated.to_json().unwrap()).unwrap();
+    assert_eq!(decoded.view().root.style.button_avatar, Some(avatar));
+    assert_eq!(decoded.view().root.style.weight, Some(TextWeight::Medium));
+    for bad in [
+        ButtonAvatar { size: 0, ..avatar },
+        ButtonAvatar {
+            size: 129,
+            ..avatar
+        },
+        ButtonAvatar {
+            text_size: 0,
+            ..avatar
+        },
+        ButtonAvatar {
+            initial: '\n',
+            ..avatar
+        },
+        ButtonAvatar {
+            initial: ' ',
+            ..avatar
+        },
+    ] {
+        let mut invalid = view.clone();
+        invalid.root.style.button_avatar = Some(bad);
+        assert_eq!(invalid.validate().unwrap_err(), ViewError::StyleBounds);
+    }
+}

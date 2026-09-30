@@ -374,3 +374,18 @@ Control styles can set `glyph_size`, `glyph_gap`, and `glyph_color` independentl
 of the button's hit area. `monospace` selects the monospaced member of the
 application's font family. These tokens compose and reset through `StylePatch`;
 adapters document their support and preserve the control label as a fallback.
+
+
+## Button initials and text weights
+
+An optional `Style.button_avatar` places a circular initial before a button's
+label. The application supplies the initial, diameter, text size, weight, and
+colors. The initial must be a visible character, and both sizes are bounded to
+1–128 logical points. The semantic button retains one label and one action;
+its avatar carries no separate interaction or account state. Adapters without
+avatar painting preserve the button label and action.
+
+Text weights are `normal` (400), `medium` (500), `semibold` (600), and `bold`
+(700). An explicit weight overrides the role's default. Optional hover foreground
+and background colors apply to an enabled button; unset properties preserve
+adapter defaults. These properties compose and reset independently.
