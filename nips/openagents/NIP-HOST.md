@@ -1248,7 +1248,17 @@ the same **Run Coder** chip and follow-up chips it shows on its own
 threads, from the shared card code, and the cards on that turn. Accepting
 **Run Coder** sends `thread.run`. Accepting a follow-up chip sends
 `thread.send` with that chip's label. The phone does not probe
-`thread.run` when a thread opens. An older computer refuses `thread.run`
+`thread.run` when a thread opens. The phone keeps each computer's
+`thread.list` answer and each thread's settled turns as last read in its
+own encrypted store, so a relaunch lists and opens them with the computer
+off, marked with when they were read, and any read that answers replaces
+the kept copy. A kept copy grants nothing: every send, stop, and run still
+goes to the computer under the device's grant. A follow-up typed while the
+computer is unreachable waits in a durable outbox under the send ID minted
+when it was typed, and goes, from the open thread or after the computer's
+next `thread.list` answer, until the computer accepts or refuses it; since
+`thread.send` appends at most one message per send ID, a resend after a
+crash or a relaunch is never a second message. An older computer refuses `thread.run`
 as `malformed` or `unsupported`, and the phone drops the chip. A thread
 that already names a Coder task shows no second **Run Coder** chip.
 `crates/coder-host/tests/threads.rs` also runs that offer: the phone reads

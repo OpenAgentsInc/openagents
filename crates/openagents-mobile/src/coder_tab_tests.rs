@@ -1894,6 +1894,18 @@ struct HostThreadsFake {
     stops: std::sync::Mutex<Vec<Option<String>>>,
     coder: Option<coder_host::access::thread::ThreadCoder>,
     outside: Option<coder_host::access::thread::ThreadOutside>,
+    /// The computer is off: nothing reaches it.
+    offline: std::sync::atomic::AtomicBool,
+}
+
+impl HostThreadsFake {
+    fn reached(&self) -> Result<(), openagents_chat_app::host_threads::Refusal> {
+        if self.offline.load(std::sync::atomic::Ordering::SeqCst) {
+            Err(openagents_chat_app::host_threads::Refusal::Failed)
+        } else {
+            Ok(())
+        }
+    }
 }
 
 impl openagents_chat_app::host_threads::Link for HostThreadsFake {
@@ -1907,6 +1919,7 @@ impl openagents_chat_app::host_threads::Link for HostThreadsFake {
         if host != self.host {
             return Err(openagents_chat_app::host_threads::Refusal::NotServed);
         }
+        self.reached()?;
         Ok(vec![coder_host::access::thread::ThreadRow {
             thread: "4a".repeat(16),
             title: "Write a haiku about rain".into(),
@@ -1925,6 +1938,7 @@ impl openagents_chat_app::host_threads::Link for HostThreadsFake {
     ) -> Result<coder_host::access::thread::ThreadPage, openagents_chat_app::host_threads::Refusal>
     {
         use coder_host::access::thread::{ThreadRole, ThreadTurn};
+        self.reached()?;
         let turn = |role, text: &str, request: Option<String>| ThreadTurn {
             role,
             text: text.into(),
@@ -1976,10 +1990,12 @@ impl openagents_chat_app::host_threads::Link for HostThreadsFake {
         request: &str,
         text: &str,
     ) -> Result<(), openagents_chat_app::host_threads::Refusal> {
-        self.sent
-            .lock()
-            .unwrap()
-            .push((request.to_owned(), text.to_owned()));
+        self.reached()?;
+        // Once per send ID, as the host appends it.
+        let mut sent = self.sent.lock().unwrap();
+        if !sent.iter().any(|(held, _)| held == request) {
+            sent.push((request.to_owned(), text.to_owned()));
+        }
         Ok(())
     }
 
@@ -1992,6 +2008,7 @@ impl openagents_chat_app::host_threads::Link for HostThreadsFake {
         if self.old {
             return Err(openagents_chat_app::host_threads::Refusal::NotServed);
         }
+        self.reached()?;
         self.stops.lock().unwrap().push(request.map(str::to_owned));
         Ok(())
     }
@@ -2092,6 +2109,148 @@ fn a_computers_own_threads_list_beside_the_phones_and_continue_through_it() {
         node(&fresh, "coder-suggestions").is_some()
             || node(&fresh, "coder-new-transcript").is_some()
     );
+}
+
+#[test]
+fn a_computers_threads_survive_a_relaunch_with_it_off_and_a_queued_follow_up_goes_once() {
+    use std::sync::atomic::Ordering;
+    let mut fixture = Fixture::hosts();
+    let studio = fixture
+        .computers
+        .snapshot()
+        .hosts
+        .iter()
+        .find(|host| host.label == "Studio Mac")
+        .expect("Studio Mac")
+        .key
+        .clone();
+    let store = tempfile::tempdir().expect("temp dir");
+    let secret = secp256k1::SecretKey::from_byte_array([0x22; 32]).expect("key");
+    let launch = |fixture: &mut Fixture, fake: &std::sync::Arc<HostThreadsFake>, name: &str| {
+        fixture.coder = CoderTab::new(format!("coder:{name}")).with_threads(
+            openagents_chat_app::host_threads::HostThreads::default()
+                .with_cache(Cache::open(store.path(), &secret).ok()),
+            Some(fake.clone()),
+        );
+    };
+    let until = |fixture: &mut Fixture, what: &str, done: &dyn Fn(&Value) -> bool| {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        loop {
+            let view = fixture.render();
+            if done(&view) {
+                return view;
+            }
+            assert!(std::time::Instant::now() < deadline, "{what}");
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+    };
+    let thread_row = |list: &Value| {
+        keys(list)
+            .into_iter()
+            .find(|key| key.starts_with("thread-"))
+    };
+    let kept = || {
+        std::fs::read_dir(store.path()).unwrap().any(|entry| {
+            entry
+                .unwrap()
+                .file_name()
+                .to_str()
+                .is_some_and(|name| name.starts_with("ht-"))
+        })
+    };
+    // The computer is on: its thread lists and is read, and kept.
+    let on = std::sync::Arc::new(HostThreadsFake {
+        host: studio.clone(),
+        ..HostThreadsFake::default()
+    });
+    launch(&mut fixture, &on, "first");
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    let row = loop {
+        let list = fixture.list();
+        if let Some(row) = thread_row(&list) {
+            break row;
+        }
+        assert!(std::time::Instant::now() < deadline, "no thread listed");
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    };
+    fixture.tap(&row);
+    until(&mut fixture, "the thread never opened", &|view| {
+        node(view, "thread-m1").is_some()
+    });
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while !kept() {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the thread was never kept"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    fixture.tap("coder-new");
+
+    // Relaunch with the computer off: the thread lists at once, marked
+    // with when it was read, and opens from what the phone kept.
+    let off = std::sync::Arc::new(HostThreadsFake {
+        host: studio.clone(),
+        offline: true.into(),
+        ..HostThreadsFake::default()
+    });
+    launch(&mut fixture, &off, "offline");
+    let list = fixture.list();
+    let row = thread_row(&list).expect("the kept thread lists at once");
+    let label = node(&list, &row).unwrap()["element"]["props"]["label"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    assert!(
+        label.starts_with("Write a haiku about rain\nStudio Mac · ") && label.contains("Last read"),
+        "{label}"
+    );
+    let chat = fixture.tap(&row);
+    let chat = if node(&chat, "thread-m1").is_some() {
+        chat
+    } else {
+        fixture.render()
+    };
+    assert!(node(&chat, "thread-m0").is_some() && node(&chat, "thread-m1").is_some());
+    assert!(node(&chat, "thread-loading").is_none());
+    assert!(
+        node(&chat, "thread-kept").unwrap()["element"]["props"]["value"]
+            .as_str()
+            .unwrap()
+            .starts_with("Saved on this phone · last read ")
+    );
+    // A follow-up while it is off waits on the phone.
+    fixture.send(&chat, None, "And in the snow?");
+    until(&mut fixture, "the queued follow-up never showed", &|view| {
+        node(view, "thread-m2").is_some()
+    });
+    assert!(off.sent.lock().unwrap().is_empty());
+    fixture.tap("coder-new");
+
+    // Relaunch with the computer back: the follow-up goes once, under the
+    // send ID it was given offline, without the thread being opened.
+    let back = std::sync::Arc::new(HostThreadsFake {
+        host: studio,
+        ..HostThreadsFake::default()
+    });
+    launch(&mut fixture, &back, "back");
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while back.sent.lock().unwrap().is_empty() {
+        fixture.render();
+        assert!(std::time::Instant::now() < deadline, "never delivered");
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    let list = fixture.list();
+    let row = thread_row(&list).expect("listed");
+    fixture.tap(&row);
+    until(&mut fixture, "the reply never showed", &|view| {
+        node(view, "thread-m3").is_some() && node(view, "thread-kept").is_none()
+    });
+    let sent = back.sent.lock().unwrap().clone();
+    assert_eq!(sent.len(), 1);
+    assert_eq!(sent[0].1, "And in the snow?");
+    assert_eq!(sent[0].0.len(), 32);
+    assert!(off.offline.load(Ordering::SeqCst) && off.sent.lock().unwrap().is_empty());
 }
 
 /// Open Studio Mac's thread with `fake`, send a follow-up whose reply

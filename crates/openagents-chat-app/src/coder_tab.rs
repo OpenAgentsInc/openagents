@@ -2345,6 +2345,12 @@ impl CoderTab {
         // Each computer's own threads, started in its desktop app or with
         // `openagents chat` there, labelled with the computer.
         rows.extend(self.threads.rows().into_iter().map(|(host, listed, row)| {
+            // Rows kept from an earlier read say how old they are until the
+            // computer answers again.
+            let kept = self
+                .threads
+                .kept_at(&host)
+                .map_or_else(String::new, |at| format!(" · Last read {}", ago(now, at)));
             let label = computers
                 .and_then(|c| c.snapshot().host(&host))
                 .map_or(listed, |record| record.label.clone());
@@ -2368,7 +2374,7 @@ impl CoderTab {
                         &host[..8.min(host.len())],
                         &row.thread[..16.min(row.thread.len())]
                     ),
-                    &format!("{title}\n{label} · {}", ago(now, row.updated)),
+                    &format!("{title}\n{label} · {}{kept}", ago(now, row.updated)),
                     Intent::OpenThread {
                         host: host.clone(),
                         thread: row.thread.clone(),
@@ -2735,6 +2741,14 @@ impl CoderTab {
         }
         if let Some(error) = &shown.error {
             children.push(status("thread-error", error));
+        }
+        // The copy this phone kept, until the computer answers a read.
+        if let Some(at) = shown.kept_at {
+            let now = computers.map_or_else(unix_now, |c| c.snapshot().now);
+            children.push(status(
+                "thread-kept",
+                &format!("Saved on this phone · last read {}", ago(now, at)),
+            ));
         }
         let rows: Vec<Node<Intent>> = if shown.loading {
             vec![node(

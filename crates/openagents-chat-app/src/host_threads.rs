@@ -25,9 +25,19 @@
 //! refuses the operation, and then the chip goes away. A follow-up chip
 //! sends its label with `thread.send`.
 //!
-//! Nothing here is kept across a relaunch, and nothing here touches this
-//! device's own threads, which need no computer: when a computer is
-//! offline its threads keep their last rows until the app closes.
+//! Each computer's list, and each thread's turns as last read, are kept in
+//! the app's encrypted store ([`HostThreads::with_cache`]), the way Coder
+//! chats are: a relaunch shows them at once, marked with when they were
+//! read, and they open with the computer off. A read that answers always
+//! replaces the kept copy. A follow-up waits in a durable outbox under the
+//! send ID minted when it was typed; it goes whenever the computer answers
+//! again, from the open thread or with the computer's next list read, and
+//! leaves the outbox only once the computer accepted or refused it.
+//! `thread.send` is idempotent per send ID, so a resend after a crash or a
+//! relaunch never appends twice. Nothing here touches this device's own
+//! threads, which need no computer. Cached bytes never prove current
+//! access: every send, stop, and run still goes through the computer under
+//! the device's grant.
 //!
 //! A thread that delegated Coder work names the task
 //! ([`ThreadCoder`](coder_host::access::thread::ThreadCoder)); the Coder
@@ -42,11 +52,13 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
+use coder_computers::cache::Cache;
 use coder_computers::live::Terminals;
 use coder_host::access::Code;
 use coder_host::access::protocol::{Operation, Outcome};
 use coder_host::access::thread::{ThreadPage, ThreadRole, ThreadRow, ThreadTurn};
 use openagents_chat::basic_coder::{Role, Turn};
+use serde::{Deserialize, Serialize};
 
 /// How often each computer's list is read again.
 pub const LIST_EVERY: Duration = Duration::from_secs(10);
@@ -64,6 +76,67 @@ const RESEND: Duration = Duration::from_secs(2);
 /// How long a follow-up keeps trying before it says the computer is not
 /// answering. It stays and goes again when the thread is opened next.
 const SEND_PATIENCE: Duration = Duration::from_secs(30);
+
+/// The key each computer's kept list is stored under.
+const LISTS: &str = "host-thread-lists";
+/// The key the follow-up outbox is stored under.
+const OUTBOX: &str = "host-thread-outbox";
+/// The key of the list of kept threads, least recently read first.
+const INDEX: &str = "host-thread-index";
+/// The prefix of each kept thread's key; the host key and thread ID follow.
+const PAGE: &str = "ht-";
+/// The most threads kept on disk.
+pub const MAX_KEPT: usize = 32;
+/// The most plaintext one kept thread may take; older turns go first.
+const MAX_KEPT_BYTES: usize = 160 * 1024;
+/// The most follow-ups waiting at once.
+pub const MAX_QUEUED: usize = 64;
+
+/// A computer's list as kept.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+struct KeptList {
+    label: String,
+    rows: Vec<ThreadRow>,
+    /// Unix seconds when the computer last answered the list.
+    read_at: u64,
+}
+
+/// A thread as last read, kept.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+struct KeptThread {
+    /// Unix seconds when the computer last answered a read.
+    read_at: u64,
+    /// The last page read, without its turns, its reply, or `busy`.
+    page: ThreadPage,
+    /// Every turn read, oldest first, from `start`.
+    start: u64,
+    turns: Vec<ThreadTurn>,
+}
+
+/// A follow-up waiting for its computer, under the send ID minted when it
+/// was typed.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Queued {
+    pub host: String,
+    pub thread: String,
+    pub request: String,
+    pub text: String,
+    /// Unix seconds when it was typed.
+    pub queued_at: u64,
+}
+
+fn unix_now() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |elapsed| elapsed.as_secs())
+}
+
+/// The key a thread is kept under, when its host and ID make one.
+fn page_key(host: &str, thread: &str) -> Option<String> {
+    let fits = |id: &str| !id.is_empty() && id.bytes().all(|b| b.is_ascii_alphanumeric());
+    (fits(host) && fits(thread) && host.len() <= 96 && thread.len() <= 64)
+        .then(|| format!("{PAGE}{host}-{thread}"))
+}
 
 /// Why a computer did not answer.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -204,6 +277,11 @@ impl Link for Live {
 pub struct Listed {
     pub label: String,
     pub rows: Vec<ThreadRow>,
+    /// Unix seconds when the computer last answered the list.
+    pub read_at: u64,
+    /// The computer answered since launch and its last read did not fail;
+    /// otherwise these rows are the copy kept from `read_at`.
+    pub fresh: bool,
 }
 
 /// A follow-up on its way to the computer.
@@ -245,9 +323,30 @@ struct Opened {
     /// is refused as not served, which hides the chip.
     can_run: Option<bool>,
     error: Option<String>,
+    /// The turns show the kept copy read at this time; no read answered
+    /// since the thread opened.
+    kept_at: Option<u64>,
+    /// What was last written to the store for this thread.
+    kept: Option<KeptThread>,
 }
 
 impl Opened {
+    /// This thread as it would be kept: settled turns only.
+    fn keepable(&self, read_at: u64) -> Option<KeptThread> {
+        let page = self.page.as_ref()?;
+        Some(KeptThread {
+            read_at,
+            page: ThreadPage {
+                turns: Vec::new(),
+                busy: false,
+                partial: String::new(),
+                ..page.clone()
+            },
+            start: self.turns_start,
+            turns: self.turns.clone(),
+        })
+    }
+
     /// The message whose reply is streaming, by its send ID (`None` for
     /// one sent without an ID): the follow-up this device sent, once the
     /// computer accepted it, else the last turn while the thread answers.
@@ -263,6 +362,15 @@ impl Opened {
 
 #[derive(Default)]
 struct Inner {
+    /// Where lists, threads, and the outbox are kept; `None` keeps them
+    /// only while the app runs.
+    cache: Option<Arc<Cache>>,
+    /// Kept threads' keys, least recently read first.
+    index: Vec<String>,
+    /// Follow-ups waiting for their computers, oldest first.
+    outbox: Vec<Queued>,
+    /// Send IDs being sent now, so two readers never send one at once.
+    delivering: BTreeSet<String>,
     lists: BTreeMap<String, Listed>,
     /// Whether each computer stops replies, once it answered a stop.
     stops: BTreeMap<String, bool>,
@@ -317,6 +425,67 @@ pub struct Shown {
     pub stopped_here: bool,
     /// Run Coder can still be offered. An older computer sets this false.
     pub runnable: bool,
+    /// The turns are the copy this device kept, read at this Unix time; the
+    /// computer has not answered since the thread opened.
+    pub kept_at: Option<u64>,
+    /// A follow-up waits for the computer to accept it.
+    pub queued: bool,
+}
+
+impl Inner {
+    fn save_lists(&self) {
+        let Some(cache) = &self.cache else { return };
+        let kept: BTreeMap<&String, KeptList> = self
+            .lists
+            .iter()
+            .map(|(host, listed)| {
+                (
+                    host,
+                    KeptList {
+                        label: listed.label.clone(),
+                        rows: listed.rows.clone(),
+                        read_at: listed.read_at,
+                    },
+                )
+            })
+            .collect();
+        let _ = cache.write(LISTS, &kept);
+    }
+
+    fn save_outbox(&self) -> bool {
+        self.cache
+            .as_ref()
+            .is_none_or(|cache| cache.write(OUTBOX, &self.outbox).is_ok())
+    }
+
+    /// Keep `kept` as `host`'s `thread`, trimmed to fit, newest read last.
+    fn keep_thread(&mut self, host: &str, thread: &str, mut kept: KeptThread) {
+        let (Some(cache), Some(key)) = (self.cache.clone(), page_key(host, thread)) else {
+            return;
+        };
+        while kept.turns.len() > 1
+            && serde_json::to_vec(&kept).map_or(0, |bytes| bytes.len()) > MAX_KEPT_BYTES
+        {
+            let drop = kept.turns.len().div_ceil(4);
+            kept.turns.drain(..drop);
+            kept.start += drop as u64;
+        }
+        if cache.write(&key, &kept).is_err() {
+            return;
+        }
+        self.index.retain(|kept| kept != &key);
+        self.index.push(key);
+        while self.index.len() > MAX_KEPT {
+            let old = self.index.remove(0);
+            let _ = cache.erase(&old);
+        }
+        let _ = cache.write(INDEX, &self.index);
+    }
+
+    fn kept_thread(&self, host: &str, thread: &str) -> Option<KeptThread> {
+        let key = page_key(host, thread)?;
+        self.cache.as_ref()?.read(&key).ok().flatten()
+    }
 }
 
 impl HostThreads {
@@ -325,6 +494,44 @@ impl HostThreads {
             inner: Arc::default(),
             wake,
         }
+    }
+
+    /// Keep lists, threads, and waiting follow-ups in `cache`, and show
+    /// what it kept at once: each list marked with when it was read.
+    #[must_use]
+    pub fn with_cache(self, cache: Option<Cache>) -> Self {
+        {
+            let mut inner = self.lock();
+            let cache = cache.map(Arc::new);
+            if let Some(cache) = &cache {
+                let lists: BTreeMap<String, KeptList> =
+                    cache.read(LISTS).ok().flatten().unwrap_or_default();
+                inner.lists = lists
+                    .into_iter()
+                    .map(|(host, kept)| {
+                        (
+                            host,
+                            Listed {
+                                label: kept.label,
+                                rows: kept.rows,
+                                read_at: kept.read_at,
+                                fresh: false,
+                            },
+                        )
+                    })
+                    .collect();
+                inner.outbox = cache.read(OUTBOX).ok().flatten().unwrap_or_default();
+                inner.index = cache.read(INDEX).ok().flatten().unwrap_or_default();
+            }
+            inner.cache = cache;
+            self.changed(&mut inner);
+        }
+        self
+    }
+
+    /// The follow-ups waiting for their computers, oldest first.
+    pub fn queued(&self) -> Vec<Queued> {
+        self.lock().outbox.clone()
     }
 
     fn lock(&self) -> MutexGuard<'_, Inner> {
@@ -353,6 +560,7 @@ impl HostThreads {
             let before = inner.lists.len();
             inner.lists.retain(|host, _| keep.contains(host));
             if inner.lists.len() != before {
+                inner.save_lists();
                 self.changed(&mut inner);
             }
             let due: Vec<(String, String)> = hosts
@@ -374,13 +582,38 @@ impl HostThreads {
                 let answer = link.list(&host);
                 let mut inner = threads.lock();
                 inner.listing.remove(&host);
+                let reached = answer.is_ok();
                 let wait = match answer {
                     Ok(rows) => {
-                        let listed = Listed { label, rows };
-                        let same = inner.lists.get(&host).is_some_and(|old| {
-                            old.rows == listed.rows && old.label == listed.label
+                        let old = inner.lists.get(&host);
+                        let same = old
+                            .is_some_and(|old| old.fresh && old.rows == rows && old.label == label);
+                        // The kept copy is rewritten only when it changed
+                        // or is a minute old, so an idle list is not
+                        // written every read.
+                        let now = unix_now();
+                        let save = !old.is_some_and(|old| {
+                            old.rows == rows
+                                && old.label == label
+                                && now.saturating_sub(old.read_at) < 60
                         });
-                        inner.lists.insert(host.clone(), listed);
+                        let read_at = if save {
+                            now
+                        } else {
+                            old.map_or(now, |old| old.read_at)
+                        };
+                        inner.lists.insert(
+                            host.clone(),
+                            Listed {
+                                label,
+                                rows,
+                                read_at,
+                                fresh: true,
+                            },
+                        );
+                        if save {
+                            inner.save_lists();
+                        }
                         if !same {
                             threads.changed(&mut inner);
                         }
@@ -388,15 +621,99 @@ impl HostThreads {
                     }
                     Err(Refusal::NotServed) => {
                         if inner.lists.remove(&host).is_some() {
+                            inner.save_lists();
                             threads.changed(&mut inner);
                         }
                         NOT_SERVED
                     }
-                    Err(_) => LIST_EVERY,
+                    Err(_) => {
+                        // Unreachable: the rows stay, marked with when
+                        // they were read.
+                        if let Some(listed) = inner.lists.get_mut(&host)
+                            && listed.fresh
+                        {
+                            listed.fresh = false;
+                            threads.changed(&mut inner);
+                        }
+                        LIST_EVERY
+                    }
                 };
-                inner.next.insert(host, Instant::now() + wait);
+                inner.next.insert(host.clone(), Instant::now() + wait);
+                let waiting: Vec<Queued> = if reached {
+                    inner
+                        .outbox
+                        .iter()
+                        .filter(|queued| queued.host == host)
+                        .cloned()
+                        .collect()
+                } else {
+                    Vec::new()
+                };
+                drop(inner);
+                // The computer answers again: follow-ups that waited for it
+                // go now, each under its own send ID.
+                for queued in waiting {
+                    threads.deliver(&queued, &*link);
+                }
             });
         }
+    }
+
+    /// Send one waiting follow-up, unless another reader is sending it
+    /// now (`None`). An answer or a refusal takes it out of the outbox; a
+    /// computer not reached leaves it there for the next try.
+    fn deliver(&self, queued: &Queued, link: &dyn Link) -> Option<Result<(), Refusal>> {
+        {
+            let mut inner = self.lock();
+            if !inner
+                .outbox
+                .iter()
+                .any(|waiting| waiting.request == queued.request)
+                || !inner.delivering.insert(queued.request.clone())
+            {
+                return None;
+            }
+        }
+        let answer = link.send(&queued.host, &queued.thread, &queued.request, &queued.text);
+        let mut inner = self.lock();
+        inner.delivering.remove(&queued.request);
+        if !matches!(answer, Err(Refusal::Failed)) {
+            inner
+                .outbox
+                .retain(|waiting| waiting.request != queued.request);
+            inner.save_outbox();
+        }
+        if let Some(open) = inner.open.as_mut()
+            && open
+                .sending
+                .as_ref()
+                .is_some_and(|sending| sending.request == queued.request)
+        {
+            match &answer {
+                Ok(()) => {
+                    if let Some(sending) = open.sending.as_mut() {
+                        sending.accepted = true;
+                    }
+                }
+                Err(Refusal::Failed) => {}
+                Err(refusal) => {
+                    open.sending = None;
+                    open.error = Some(words(refusal));
+                }
+            }
+            self.changed(&mut inner);
+        }
+        Some(answer)
+    }
+
+    /// When `host`'s list was last read, while its rows are the kept copy:
+    /// the computer has not answered since launch, or stopped answering.
+    pub fn kept_at(&self, host: &str) -> Option<u64> {
+        self.lock()
+            .lists
+            .get(host)
+            .filter(|listed| !listed.fresh)
+            .map(|listed| listed.read_at)
     }
 
     /// Every computer's threads: host key, computer label, and row.
@@ -428,21 +745,40 @@ impl HostThreads {
             inner.generation += 1;
             let generation = inner.generation;
             let can_stop = inner.stops.get(host).copied();
+            // The kept copy shows at once; the first read replaces it.
+            let kept = inner.kept_thread(host, thread);
+            // A follow-up still waiting for this thread shows as the last
+            // message and goes when the computer answers.
+            let sending = inner
+                .outbox
+                .iter()
+                .find(|queued| queued.host == host && queued.thread == thread)
+                .map(|queued| Sending {
+                    request: queued.request.clone(),
+                    text: queued.text.clone(),
+                    since: Instant::now(),
+                    accepted: false,
+                });
             inner.open = Some(Opened {
                 host: host.to_owned(),
                 thread: thread.to_owned(),
                 generation,
-                page: None,
-                turns: Vec::new(),
-                turns_start: 0,
+                page: kept.as_ref().map(|kept| kept.page.clone()),
+                turns: kept
+                    .as_ref()
+                    .map(|kept| kept.turns.clone())
+                    .unwrap_or_default(),
+                turns_start: kept.as_ref().map_or(0, |kept| kept.start),
                 loading_earlier: false,
-                sending: None,
+                sending,
                 can_stop,
                 stopping: false,
                 stopped_here: false,
                 running: false,
                 can_run: None,
                 error: None,
+                kept_at: kept.as_ref().map(|kept| kept.read_at),
+                kept,
             });
             self.changed(&mut inner);
             (generation, can_stop.is_none())
@@ -568,15 +904,35 @@ impl HostThreads {
             return false;
         }
         let mut inner = self.lock();
-        let Some(open) = inner.open.as_mut() else {
+        let Some(open) = inner.open.as_ref() else {
             return false;
         };
         if open.sending.is_some() || open.page.as_ref().is_some_and(|page| page.busy) {
             return false;
         }
-        open.sending = Some(Sending {
+        if inner.outbox.len() >= MAX_QUEUED {
+            return false;
+        }
+        // The send ID is minted once and kept with the text before anything
+        // goes, so every try, across relaunches, carries the same one.
+        let queued = Queued {
+            host: open.host.clone(),
+            thread: open.thread.clone(),
             request: uuid::Uuid::new_v4().simple().to_string(),
             text: text.to_owned(),
+            queued_at: unix_now(),
+        };
+        inner.outbox.push(queued.clone());
+        if !inner.save_outbox() {
+            inner.outbox.pop();
+            return false;
+        }
+        let Some(open) = inner.open.as_mut() else {
+            return false;
+        };
+        open.sending = Some(Sending {
+            request: queued.request,
+            text: queued.text,
             since: Instant::now(),
             accepted: false,
         });
@@ -677,6 +1033,9 @@ impl HostThreads {
                     turns.append(&mut open.turns);
                     open.turns = turns;
                     open.turns_start = page.start;
+                    if open.kept_at.is_none() && open.page.as_ref().is_some_and(|p| !p.busy) {
+                        threads.keep_open(&mut inner, generation);
+                    }
                 }
                 Ok(_) => {}
                 Err(refusal) => open.error = Some(words(&refusal)),
@@ -714,6 +1073,11 @@ impl HostThreads {
             stoppable: open.can_stop == Some(true) && !open.stopping && open.answering().is_some(),
             stopped_here: open.stopped_here,
             runnable: open.can_run != Some(false),
+            kept_at: open.kept_at,
+            queued: open
+                .sending
+                .as_ref()
+                .is_some_and(|sending| !sending.accepted),
         })
     }
 
@@ -732,28 +1096,31 @@ impl HostThreads {
                 }
             };
             if let Some(sending) = sending {
-                let answer = link.send(host, thread, &sending.request, &sending.text);
-                let mut inner = self.lock();
-                let Some(open) = inner.open.as_mut().filter(|o| o.generation == generation) else {
-                    return;
+                let queued = Queued {
+                    host: host.to_owned(),
+                    thread: thread.to_owned(),
+                    request: sending.request.clone(),
+                    text: sending.text.clone(),
+                    queued_at: 0,
                 };
-                match answer {
-                    Ok(()) => {
-                        if let Some(held) = open.sending.as_mut() {
-                            held.accepted = true;
-                        }
-                    }
-                    Err(Refusal::Failed) if sending.since.elapsed() < SEND_PATIENCE => {
-                        drop(inner);
+                if matches!(self.deliver(&queued, link), Some(Err(Refusal::Failed))) {
+                    if sending.since.elapsed() < SEND_PATIENCE {
                         std::thread::sleep(RESEND);
                         continue;
                     }
-                    Err(refusal) => {
-                        open.sending = None;
-                        open.error = Some(words(&refusal));
+                    // It stays in the outbox, shown as waiting, and goes
+                    // when the computer answers again.
+                    let mut inner = self.lock();
+                    let Some(open) = inner.open.as_mut().filter(|o| o.generation == generation)
+                    else {
+                        return;
+                    };
+                    let error = Some(QUEUED.to_owned());
+                    if open.error != error {
+                        open.error = error;
+                        self.changed(&mut inner);
                     }
                 }
-                self.changed(&mut inner);
             }
             let answer = link.read(host, thread, None);
             let pause = {
@@ -762,6 +1129,7 @@ impl HostThreads {
                     return;
                 };
                 let mut changed = false;
+                let mut answered = false;
                 match answer {
                     Ok(page) => {
                         // The newest page replaces the turns it covers and
@@ -790,28 +1158,82 @@ impl HostThreads {
                             open.sending = None;
                             changed = true;
                         }
-                        if open.page.as_ref() != Some(&page) || open.error.is_some() {
+                        if open.page.as_ref() != Some(&page)
+                            || open.error.is_some()
+                            || open.kept_at.is_some()
+                        {
                             open.page = Some(page);
                             open.error = None;
+                            open.kept_at = None;
                             changed = true;
                         }
+                        answered = true;
                     }
                     Err(refusal) => {
+                        let queued = open.sending.as_ref().is_some_and(|s| !s.accepted)
+                            && open.error.as_deref() == Some(QUEUED);
                         let error = Some(words(&refusal));
-                        if open.error != error {
+                        if !queued && open.error != error {
                             open.error = error;
                             changed = true;
                         }
                     }
                 }
-                let quick =
-                    open.sending.is_some() || open.page.as_ref().is_some_and(|page| page.busy);
+                let quick = open.error.is_none()
+                    && (open.sending.is_some() || open.page.as_ref().is_some_and(|page| page.busy));
+                // A settled thread is kept once its turns changed.
+                let settled = open.error.is_none()
+                    && open.kept_at.is_none()
+                    && open.page.as_ref().is_some_and(|page| !page.busy);
+                // The computer answers again: its kept list is read again
+                // at the next poll rather than on its timer.
+                if answered && inner.lists.get(host).is_some_and(|listed| !listed.fresh) {
+                    inner.next.remove(host);
+                }
+                if settled {
+                    self.keep_open(&mut inner, generation);
+                }
                 if changed {
                     self.changed(&mut inner);
                 }
                 if quick { STREAMING } else { SETTLED }
             };
             std::thread::sleep(pause);
+        }
+    }
+}
+
+/// What the open thread says while its follow-up waits for the computer.
+const QUEUED: &str =
+    "The computer isn't answering. Your message waits on this phone and goes when it's back.";
+
+impl HostThreads {
+    /// Keep the open thread of `generation` when its settled turns changed
+    /// since they were last kept.
+    fn keep_open(&self, inner: &mut Inner, generation: u64) {
+        let Some(open) = inner.open.as_ref().filter(|o| o.generation == generation) else {
+            return;
+        };
+        let now = unix_now();
+        let Some(kept) = open.keepable(now) else {
+            return;
+        };
+        // Unchanged turns are written again only once a minute, so the
+        // kept copy's time stays near the last read without a write per
+        // read.
+        let same = open.kept.as_ref().is_some_and(|old| {
+            old.page == kept.page
+                && old.start == kept.start
+                && old.turns == kept.turns
+                && now.saturating_sub(old.read_at) < 60
+        });
+        if same {
+            return;
+        }
+        let (host, thread) = (open.host.clone(), open.thread.clone());
+        inner.keep_thread(&host, &thread, kept.clone());
+        if let Some(open) = inner.open.as_mut() {
+            open.kept = Some(kept);
         }
     }
 }
@@ -905,6 +1327,8 @@ mod tests {
         old: std::sync::atomic::AtomicBool,
         stops: AtomicUsize,
         runs: AtomicUsize,
+        /// Every `thread.send` that reached the computer.
+        calls: AtomicUsize,
     }
 
     #[derive(Default)]
@@ -991,6 +1415,7 @@ mod tests {
             if self.offline.load(Ordering::SeqCst) {
                 return Err(Refusal::Failed);
             }
+            self.calls.fetch_add(1, Ordering::SeqCst);
             let mut state = self.state.lock().unwrap();
             if !state
                 .turns
@@ -1128,6 +1553,205 @@ mod tests {
                 .is_some_and(|shown| shown.turns.last().is_some_and(|t| t.text == "Snow falls."))
         });
         assert_eq!(fake.sends.load(Ordering::SeqCst), 1);
+    }
+
+    fn cache(dir: &std::path::Path) -> Option<Cache> {
+        let secret = secp256k1::SecretKey::from_byte_array([9; 32]).unwrap();
+        Some(Cache::open(dir, &secret).unwrap())
+    }
+
+    fn kept(dir: &std::path::Path) -> bool {
+        std::fs::read_dir(dir).unwrap().any(|entry| {
+            entry
+                .unwrap()
+                .file_name()
+                .to_str()
+                .is_some_and(|name| name.starts_with(PAGE))
+        })
+    }
+
+    #[test]
+    fn a_relaunch_with_the_computer_off_lists_and_opens_kept_threads() {
+        let temp = tempfile::tempdir().unwrap();
+        let fake = Arc::new(Fake::default());
+        {
+            let mut state = fake.state.lock().unwrap();
+            for n in 0..4 {
+                state.turns.push(user(&format!("Message {n}"), None));
+            }
+        }
+        let link: Arc<dyn Link> = fake.clone();
+        {
+            let threads = HostThreads::default().with_cache(cache(temp.path()));
+            threads.poll(vec![("host".into(), "Studio Mac".into())], &link);
+            until("the list arrives", || !threads.rows().is_empty());
+            assert_eq!(threads.kept_at("host"), None, "a fresh list");
+            threads.open("host", THREAD, link.clone());
+            until("the first page arrives", || {
+                threads.shown().is_some_and(|shown| !shown.loading)
+            });
+            threads.earlier(link.clone());
+            until("earlier turns arrive and are kept", || {
+                threads.shown().is_some_and(|shown| shown.start == 0) && kept(temp.path())
+            });
+            // Kept after the join, with every turn.
+            until("the joined turns are kept", || {
+                threads
+                    .lock()
+                    .open
+                    .as_ref()
+                    .and_then(|open| open.kept.as_ref())
+                    .is_some_and(|kept| kept.start == 0 && kept.turns.len() == 4)
+            });
+            threads.close();
+        }
+        // Relaunch with the computer off: the list shows at once, marked
+        // with when it was read, and the thread opens from the kept copy.
+        fake.offline.store(true, Ordering::SeqCst);
+        let threads = HostThreads::default().with_cache(cache(temp.path()));
+        let rows = threads.rows();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(
+            (rows[0].1.as_str(), rows[0].2.title.as_str()),
+            ("Studio Mac", "Rain")
+        );
+        let read_at = threads.kept_at("host").expect("marked as kept");
+        assert!(unix_now().saturating_sub(read_at) < 60);
+        threads.poll(vec![("host".into(), "Studio Mac".into())], &link);
+        std::thread::sleep(Duration::from_millis(100));
+        assert_eq!(
+            threads.rows().len(),
+            1,
+            "an unreachable computer keeps its rows"
+        );
+        assert!(threads.kept_at("host").is_some());
+        threads.open("host", THREAD, link.clone());
+        let shown = threads.shown().unwrap();
+        assert!(!shown.loading && !shown.busy);
+        assert!(shown.kept_at.is_some_and(|at| at.abs_diff(read_at) < 60));
+        assert_eq!(shown.title, "Rain");
+        let texts: Vec<_> = shown.turns.iter().map(|t| t.text.as_str()).collect();
+        assert_eq!(texts, ["Message 0", "Message 1", "Message 2", "Message 3"]);
+        until("the computer is not reached", || {
+            threads.shown().is_some_and(|shown| shown.error.is_some())
+        });
+        assert_eq!(threads.shown().unwrap().turns.len(), 4, "the copy stays");
+        // The computer answers again: the read replaces the copy.
+        fake.offline.store(false, Ordering::SeqCst);
+        until("a read replaces the copy", || {
+            threads
+                .shown()
+                .is_some_and(|shown| shown.kept_at.is_none() && shown.error.is_none())
+        });
+        until("the list is fresh again", || {
+            threads.poll(vec![("host".into(), "Studio Mac".into())], &link);
+            threads.kept_at("host").is_none()
+        });
+    }
+
+    #[test]
+    fn a_follow_up_queued_offline_goes_once_when_the_computer_is_back() {
+        let temp = tempfile::tempdir().unwrap();
+        let fake = Arc::new(Fake::default());
+        fake.state.lock().unwrap().turns.push(user("Hello", None));
+        let link: Arc<dyn Link> = fake.clone();
+        {
+            let threads = HostThreads::default().with_cache(cache(temp.path()));
+            threads.poll(vec![("host".into(), "Studio Mac".into())], &link);
+            threads.open("host", THREAD, link.clone());
+            until("the thread is kept", || {
+                kept(temp.path()) && !threads.rows().is_empty()
+            });
+            threads.close();
+        }
+        fake.offline.store(true, Ordering::SeqCst);
+        let request = {
+            let threads = HostThreads::default().with_cache(cache(temp.path()));
+            threads.open("host", THREAD, link.clone());
+            assert!(threads.send("And the snow?"));
+            let shown = threads.shown().unwrap();
+            assert!(shown.queued);
+            assert_eq!(shown.turns.last().unwrap().text, "And the snow?");
+            // It waits in the outbox, on disk, with its send ID.
+            let queued = threads.queued();
+            assert_eq!(queued.len(), 1);
+            assert_eq!(queued[0].text, "And the snow?");
+            assert_eq!(queued[0].request.len(), 32);
+            std::thread::sleep(Duration::from_millis(100));
+            threads.close();
+            queued[0].request.clone()
+        };
+        assert_eq!(fake.sends.load(Ordering::SeqCst), 0);
+        // Relaunch; the follow-up is still waiting, under the same ID, and
+        // shows in its thread before the computer answers.
+        let threads = HostThreads::default().with_cache(cache(temp.path()));
+        assert_eq!(threads.queued()[0].request, request);
+        threads.open("host", THREAD, link.clone());
+        let shown = threads.shown().unwrap();
+        assert!(shown.queued && shown.kept_at.is_some());
+        assert_eq!(
+            shown.turns.last().unwrap().request.as_deref(),
+            Some(request.as_str())
+        );
+        threads.close();
+        // The computer is back: its next list read delivers it, once.
+        fake.offline.store(false, Ordering::SeqCst);
+        threads.poll(vec![("host".into(), "Studio Mac".into())], &link);
+        until("the follow-up is delivered", || threads.queued().is_empty());
+        assert_eq!(fake.sends.load(Ordering::SeqCst), 1);
+        {
+            let state = fake.state.lock().unwrap();
+            let sent: Vec<_> = state
+                .turns
+                .iter()
+                .filter(|turn| turn.request.as_deref() == Some(request.as_str()))
+                .collect();
+            assert_eq!(sent.len(), 1);
+            assert_eq!(sent[0].text, "And the snow?");
+        }
+        // The outbox left the disk too: another relaunch sends nothing.
+        assert!(
+            HostThreads::default()
+                .with_cache(cache(temp.path()))
+                .queued()
+                .is_empty()
+        );
+        threads.open("host", THREAD, link.clone());
+        until("the reply shows", || {
+            threads
+                .shown()
+                .is_some_and(|shown| shown.turns.last().is_some_and(|t| t.text == "Snow falls."))
+        });
+        assert_eq!(fake.sends.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn a_follow_up_the_computer_took_before_a_crash_is_not_appended_twice() {
+        let temp = tempfile::tempdir().unwrap();
+        let fake = Arc::new(Fake::default());
+        let link: Arc<dyn Link> = fake.clone();
+        fake.offline.store(true, Ordering::SeqCst);
+        let queued = {
+            let threads = HostThreads::default().with_cache(cache(temp.path()));
+            threads.open("host", THREAD, link.clone());
+            assert!(threads.send("Once"));
+            threads.close();
+            threads.queued().remove(0)
+        };
+        // The computer took it, and the app died before it heard back.
+        fake.offline.store(false, Ordering::SeqCst);
+        link.send("host", THREAD, &queued.request, &queued.text)
+            .unwrap();
+        assert_eq!(fake.sends.load(Ordering::SeqCst), 1);
+        let threads = HostThreads::default().with_cache(cache(temp.path()));
+        threads.poll(vec![("host".into(), "Studio Mac".into())], &link);
+        until("the outbox empties", || threads.queued().is_empty());
+        assert_eq!(fake.sends.load(Ordering::SeqCst), 1, "the send ID held");
+        assert_eq!(
+            fake.calls.load(Ordering::SeqCst),
+            2,
+            "sent again, appended once"
+        );
     }
 
     #[test]

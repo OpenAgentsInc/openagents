@@ -81,7 +81,13 @@ The app has four tabs, shown as icons:
   running, **Stop Coder too** stops the task as well. A computer too old to
   stop a reply, or a phone that may only read it, shows no stop button at
   all. They are read again while the
-  phone reaches the computer; the phone's own chats need no computer. Only Coder's
+  phone reaches the computer; the phone's own chats need no computer.
+  The phone keeps each computer's chat list and the turns it last read in
+  its encrypted store (#10041), so after a relaunch with the computer off
+  they still list, marked **Last read …**, and open, marked **Saved on
+  this phone**. A message typed while the computer is off waits on the
+  phone under the send ID it was given and goes once the computer answers
+  again, even after a relaunch. Only Coder's
   chats show; the phone does not list Claude Code, Codex, OpenCode, or
   Devin sessions. A session a Coder task delegated to OpenCode or Devin
   shows inside its chat, where the task's transcript notes it, as a

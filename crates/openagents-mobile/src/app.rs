@@ -948,7 +948,8 @@ impl App {
                 .with_threads(
                     openagents_chat_app::host_threads::HostThreads::new(Arc::new(
                         crate::wake::ring,
-                    )),
+                    ))
+                    .with_cache(Cache::open(&config.state_dir.join("host-threads"), &secret).ok()),
                     thread_link,
                 )
                 .with_list(crate::coder_list::Store::open(
