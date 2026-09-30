@@ -485,6 +485,150 @@ mod tests {
     use super::*;
 
     #[test]
+    #[ignore = "requires a graphics adapter; run explicitly for compositor changes"]
+    fn partial_menu_uploads_preserve_the_gpu_foreground() {
+        let instance = wgpu::Instance::default();
+        let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+            power_preference: wgpu::PowerPreference::LowPower,
+            ..Default::default()
+        }))
+        .expect("a graphics adapter");
+        let (device, queue) =
+            pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
+                .expect("a graphics device");
+        let format = wgpu::TextureFormat::Rgba8Unorm;
+        let size = wgpu::Extent3d {
+            width: 256,
+            height: 256,
+            depth_or_array_layers: 1,
+        };
+        let output = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("menu upload regression"),
+            size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+            view_formats: &[],
+        });
+        let output_view = output.create_view(&wgpu::TextureViewDescriptor::default());
+        let readback = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("menu upload readback"),
+            size: 256 * 256 * 4,
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        });
+        let background = Color::rgb(6, 6, 6);
+        let mut compositor = Compositor::new(&device, format);
+        let window = crate::PxRect {
+            x: 0.0,
+            y: 0.0,
+            w: 256.0,
+            h: 256.0,
+        };
+        let menu = crate::PxRect {
+            x: 17.0,
+            y: 23.0,
+            w: 211.0,
+            h: 177.0,
+        };
+        let mut previous = None;
+        for step in 0..32 {
+            let look = Look {
+                dim: 1.0,
+                blur: 0.0,
+                scale: if step < 16 { 0.5 } else { 0.25 },
+            };
+            let replaced = compositor.fit(&device, 256, 256, look, window);
+            let mut frame = Frame::transparent(256, 256);
+            frame.fill(
+                crate::PxRect {
+                    x: 3.0,
+                    y: 4.0,
+                    w: 250.0,
+                    h: 248.0,
+                },
+                12.0,
+                Color::rgb(13, 13, 13),
+            );
+            let state = step % 5;
+            if matches!(state, 1..=3) {
+                frame.fill(menu, 12.0, Color::rgb(16, 16, 16));
+                frame.fill(
+                    crate::PxRect {
+                        x: 25.0,
+                        y: 31.0 + if state == 3 { 32.0 } else { 0.0 },
+                        w: 195.0,
+                        h: 30.0,
+                    },
+                    7.0,
+                    Color {
+                        alpha: 28,
+                        ..Color::rgb(255, 255, 255)
+                    },
+                );
+            }
+            let unchanged = previous.as_ref() == Some(&frame.pixels);
+            let regions = if replaced {
+                vec![window]
+            } else if unchanged {
+                vec![]
+            } else {
+                vec![menu]
+            };
+            compositor.upload_regions(&queue, &frame, &regions);
+            let mut encoder =
+                device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+            compositor.encode(&queue, &mut encoder, &output_view, background, look);
+            encoder.copy_texture_to_buffer(
+                output.as_image_copy(),
+                wgpu::TexelCopyBufferInfo {
+                    buffer: &readback,
+                    layout: wgpu::TexelCopyBufferLayout {
+                        offset: 0,
+                        bytes_per_row: Some(1024),
+                        rows_per_image: Some(256),
+                    },
+                },
+                size,
+            );
+            queue.submit([encoder.finish()]);
+            let slice = readback.slice(..);
+            let (sender, receiver) = std::sync::mpsc::sync_channel(1);
+            slice.map_async(wgpu::MapMode::Read, move |result| {
+                sender.send(result).unwrap();
+            });
+            device
+                .poll(wgpu::PollType::Wait {
+                    submission_index: None,
+                    timeout: Some(std::time::Duration::from_secs(5)),
+                })
+                .expect("GPU completion");
+            receiver.recv().unwrap().expect("mapped readback");
+            let pixels = slice.get_mapped_range();
+            for (index, (gpu, cpu)) in pixels
+                .chunks_exact(4)
+                .zip(frame.pixels.chunks_exact(4))
+                .enumerate()
+            {
+                let expected = composite_pixel([0; 3], background, 1.0, cpu.try_into().unwrap());
+                assert!(
+                    gpu[..3]
+                        .iter()
+                        .zip(expected)
+                        .all(|(actual, expected)| actual.abs_diff(expected) <= 1),
+                    "GPU menu frame {step}, pixel {index}: {gpu:?}, expected {expected:?}"
+                );
+                assert_eq!(gpu[3], 255);
+            }
+            drop(pixels);
+            readback.unmap();
+            previous = Some(frame.pixels);
+        }
+    }
+
+    #[test]
     fn an_interactive_layer_keeps_its_destination_and_unmodified_pixels() {
         let look = Look {
             dim: 0.0,

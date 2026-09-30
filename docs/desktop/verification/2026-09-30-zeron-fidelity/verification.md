@@ -334,3 +334,21 @@ Five chat-management checks, 88 core tests (one benchmark ignored), 60 desktop
 adapter tests, scoped formatting, and strict all-target Clippy pass. The
 product regression checks context order, both font sizes and line heights,
 and the fixed row height at both window sizes.
+
+## GPU upload regression
+
+The explicit graphics-adapter regression passes on this Mac:
+`cargo test -p rust-native-desktop partial_menu_uploads_preserve_the_gpu_foreground --lib -- --ignored`.
+It reads back every pixel of 32 submitted GPU frames: opening and closing a
+rounded menu, moving its selection, stationary frames with no texture write,
+and replacing the texture when the backdrop resolution changes. Each pixel
+matches the complete software frame's composited color within one byte.
+The menu region starts at an uneven offset and uses a partial-width upload,
+so the check also covers row strides and preserved surrounding pixels.
+Strict adapter Clippy and formatting pass. This is GPU completion evidence
+for the upload and compositing path; it does not measure display scanout.
+
+The original scratch chat preview's process started at 10:34, before the
+retained menu damage and texture replacement fixes. It stays open to preserve
+its temporary chats and draft. A separate updated preview provides the merged
+build without replacing that state.
